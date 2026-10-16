@@ -122,9 +122,15 @@ fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
             return Err(Error::Inconsistent);
         }
     }
-    let mut stmt = c.prepare("SELECT id FROM files ORDER BY id")?;
+    let mut stmt = c.prepare(
+        "WITH RECURSIVE subtree(id) AS (
+        SELECT id FROM folders WHERE id=?1 UNION
+        SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id)
+        SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree)
+        OR path=?2 OR (path>=?2||'/' AND path<?2||'0') ORDER BY id",
+    )?;
     let mut files = Vec::new();
-    for fid in stmt.query_map([], |r| r.get::<_, i64>(0))? {
+    for fid in stmt.query_map(params![id, root.path], |r| r.get::<_, i64>(0))? {
         let f = operations::read_state(c, fid?)?.ok_or(Error::Changed)?;
         let assigned = f.folder_id.is_some_and(|id| ids.contains(&id));
         if assigned || under(&f.path, &root.path) {
@@ -207,7 +213,13 @@ impl FolderIntent {
                     .file_name()
                     .and_then(|s| s.to_str())
                     .ok_or(Error::Changed)?;
-                validate_name(name)?;
+                if self.parent.is_some() {
+                    if Path::new(&root.path).file_name().and_then(|n| n.to_str()) != Some(name) {
+                        return Err(Error::Changed);
+                    }
+                } else {
+                    validate_name(name)?;
+                }
                 let expected_parent = self
                     .parent
                     .as_ref()
@@ -309,6 +321,24 @@ fn matches(c: &Connection, i: &FolderIntent, after: bool) -> Result<bool> {
     Ok(true)
 }
 fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
+    // Stale descendants at the destination would make the resulting tree
+    // inconsistent even when none of the exact target paths is occupied.
+    if let Some(target) = &i.target {
+        let path = Path::new(&i.root_path).join(target);
+        let path = path.to_str().ok_or(Error::PathUnresolvable)?;
+        let ids: HashSet<_> = i.after.folders.iter().map(|f| f.id).collect();
+        let mut stmt = c.prepare(
+            "SELECT id,path FROM folders WHERE path=?1 OR (path>=?1||'/' AND path<?1||'0')",
+        )?;
+        for row in stmt.query_map([path], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })? {
+            let (id, candidate) = row?;
+            if under(&candidate, path) && !ids.contains(&id) {
+                return Err(Error::Conflict);
+            }
+        }
+    }
     for f in &i.after.folders {
         if c.query_row(
             "SELECT EXISTS(SELECT 1 FROM folders WHERE path=?1 AND id<>?2)",
@@ -686,10 +716,10 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                             identity = Some(found);
                         }
                     }
-                    Err(Error::NotFound) => (),
+                    Err(Error::NotFound | Error::PathUnresolvable | Error::CrossDevice) => (),
                     Err(e) => return Err(e),
                 },
-                Err(Error::NotFound) => (),
+                Err(Error::NotFound | Error::PathUnresolvable | Error::CrossDevice) => (),
                 Err(e) => return Err(e),
             }
         }
@@ -865,8 +895,13 @@ fn removal_tree(c: &Connection, id: i64) -> Result<FolderTree> {
     for id in &ids {
         result.folders.push(folder(c, *id)?.ok_or(Error::Changed)?);
     }
-    let mut stmt = c.prepare("SELECT id FROM files ORDER BY id")?;
-    for id in stmt.query_map([], |r| r.get::<_, i64>(0))? {
+    let mut stmt = c.prepare(
+        "WITH RECURSIVE subtree(id) AS (
+        SELECT id FROM folders WHERE id=?1 UNION
+        SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id)
+        SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree) ORDER BY id",
+    )?;
+    for id in stmt.query_map([id], |r| r.get::<_, i64>(0))? {
         let f = operations::read_state(c, id?)?.ok_or(Error::Changed)?;
         if f.folder_id.is_some_and(|id| ids.contains(&id)) {
             result.files.push(f);

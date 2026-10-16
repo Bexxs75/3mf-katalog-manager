@@ -23,13 +23,7 @@ impl FsDatabase for &Mutex<Connection> {
 pub trait UploadLedger {
     fn detach(&mut self, file_ids: &[i64]) -> Result<()>;
     /// B resets imported entries to uploaded, idempotently, after DB-only removal.
-    fn reset_imported(&mut self, file_ids: &[i64]) -> Result<()> {
-        if file_ids.is_empty() {
-            Ok(())
-        } else {
-            Err(Error::Unsupported)
-        }
-    }
+    fn reset_imported(&mut self, file_ids: &[i64]) -> Result<()>;
     /// Identity from a journal entry, if tracked (including legacy entries resolved by B).
     fn identity(&mut self, _file_id: i64) -> Result<Option<Identity>> {
         Ok(None)
@@ -78,6 +72,8 @@ pub struct FileOps<D, L> {
     pub ledger: L,
 }
 pub(super) fn read_state(c: &Connection, id: i64) -> Result<Option<FileState>> {
+    #[cfg(test)]
+    super::tests::file_state_read();
     Ok(c.query_row(
         "SELECT id,path,name,folder_id,deleted_at,trash_path FROM files WHERE id=?1",
         [id],

@@ -570,17 +570,88 @@ impl FsContext {
         Ok(id)
     }
     pub(super) fn protects_catalog(&self, source: Identity, base: &str) -> Result<()> {
-        let root_dir = self.roots.iter().find(|r| r.path.to_str() == Some(base));
-        let dir = if let Some(root) = root_dir {
-            root.handle.try_clone()?
-        } else {
-            // Catalog base itself is protected by the normal resolver; resolve its parent via a child.
-            let child = self.resolve(&format!("{base}/catalog-guard"), Access::Source)?;
-            child.parent
+        let mut path = Path::new(base);
+        let dir = loop {
+            if let Some(root) = self.roots.iter().find(|r| r.path == path) {
+                break root.handle.try_clone()?;
+            }
+            // Only external settings may be canonicalized. Inside a managed root,
+            // retain NOFOLLOW, mount and protection checks, failing closed except
+            // for missing components, whose nearest existing ancestor is protected.
+            let opened = if self.roots.iter().any(|r| path.starts_with(&r.path)) {
+                self.resolve(
+                    &format!(
+                        "{}/catalog-guard",
+                        path.to_str().ok_or(Error::PathUnresolvable)?
+                    ),
+                    Access::Source,
+                )
+                .map(|child| child.parent)
+            } else {
+                std::fs::canonicalize(path)
+                    .and_then(|canonical| Directory::open(&canonical))
+                    .map_err(Error::from)
+            };
+            match opened {
+                Ok(dir) => break dir,
+                Err(Error::NotFound) => {
+                    path = path.parent().ok_or(Error::PathUnresolvable)?;
+                }
+                Err(e) => return Err(e),
+            }
         };
         if ancestor_ids(&dir)?.contains(&source) {
             return Err(Error::Protected);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod removal_mount_tests {
+    use super::*;
+
+    #[test]
+    fn a2fix_db_removal_ignores_cross_device_observation() {
+        struct Ledger;
+        impl UploadLedger for Ledger {
+            fn detach(&mut self, _: &[i64]) -> Result<()> {
+                Ok(())
+            }
+            fn reset_imported(&mut self, _: &[i64]) -> Result<()> {
+                Ok(())
+            }
+        }
+        let dir = crate::unique_test_dir("removal_mount");
+        std::fs::create_dir_all(dir.join("root/A/child")).unwrap();
+        std::fs::create_dir(dir.join("journal")).unwrap();
+        let mut context = FsContext::new(&[dir.join("root")], &[]).unwrap();
+        // Exercise the real mount comparison without requiring mount privileges.
+        context.roots[0].mount = Some(u64::MAX);
+        let db = crate::db::connect_in_memory().unwrap();
+        let a = crate::db::insert_folder_with_parent(
+            &db,
+            "A",
+            None,
+            dir.join("root/A").to_str().unwrap(),
+        )
+        .unwrap();
+        crate::db::insert_folder_with_parent(
+            &db,
+            "child",
+            Some(a),
+            dir.join("root/A/child").to_str().unwrap(),
+        )
+        .unwrap();
+        let mut ops = FileOps::new(
+            context,
+            Journal::open(&dir.join("journal")).unwrap(),
+            db,
+            Ledger,
+        );
+        assert_eq!(ops.remove_folder_from_catalog(a).unwrap().folder_count, 2);
+        assert!(dir.join("root/A/child").is_dir());
+        assert!(ops.journal.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
