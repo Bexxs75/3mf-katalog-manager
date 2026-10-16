@@ -55,11 +55,11 @@ use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::db::error::DbError;
-use crate::db::models::{FileType, MaterialRecord, NewFile, ScannedMetadataUpdate};
+use crate::db::models::{MaterialRecord, NewFile, ScannedMetadataUpdate};
+#[cfg(test)] use crate::db::models::FileType;
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::detect_slicers;
-use crate::tagging::{self, TaggingContext};
 use crate::{obj, stl, threemf};
 
 pub struct AppState {
@@ -87,29 +87,7 @@ pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::Mu
 /// as three platform-specific syscalls. Not atomic as a whole: after a crash,
 /// source and target can briefly both exist.
 pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    // Keep moved models private even when the source allowed broader access.
-    let mut dst = crate::safe_file::create_new_private(to)?;
-
-    let copy_result = (|| -> std::io::Result<()> {
-        let mut src = std::fs::File::open(from)?;
-        std::io::copy(&mut src, &mut dst)?;
-        dst.sync_all()?;
-        Ok(())
-    })();
-
-    if let Err(e) = copy_result {
-        // A partially written target is always cleaned up.
-        drop(dst);
-        let _ = std::fs::remove_file(to);
-        return Err(e);
-    }
-    drop(dst);
-
-    if let Err(remove_err) = std::fs::remove_file(from) {
-        let _ = std::fs::remove_file(to);
-        return Err(remove_err);
-    }
-    Ok(())
+    katalog_core::import::placement::move_file(from, to)
 }
 /// Second barrier next to `validate_folder_name`: checks the resolved target
 /// path against sensitive system directories (config, autostart, SSH/GPG, system
@@ -120,34 +98,15 @@ pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io
 /// The RESOLVED path is compared (`resolve_path_for_sensitivity_check`),
 /// otherwise `..` or symlinks could bypass the check.
 pub(crate) fn reject_if_sensitive_path(path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<()> {
-    reject_if_sensitive_path_expanded(path, &expand_sensitive_dirs(sensitive_dirs))
+    katalog_core::import::placement::reject_if_sensitive_path(path, sensitive_dirs).map_err(Into::into)
 }
 /// Adds the canonical spelling of each protected folder (e.g. /bin -> /usr/bin).
 /// Compute once when many paths are checked.
 fn expand_sensitive_dirs(sensitive_dirs: &[PathBuf]) -> Vec<PathBuf> {
-    let mut expanded = Vec::with_capacity(sensitive_dirs.len());
-    for dir in sensitive_dirs {
-        if let Ok(canonical) = dir.canonicalize() {
-            if canonical != *dir {
-                expanded.push(canonical);
-            }
-        }
-        expanded.push(dir.clone());
-    }
-    expanded
+    katalog_core::import::placement::expand_sensitive_dirs(sensitive_dirs)
 }
 fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> CmdResult<()> {
-    let resolved = resolve_path_for_sensitivity_check(path)?;
-    for dir in expanded_dirs {
-        if resolved == *dir || resolved.starts_with(dir) {
-            return Err(format!(
-                "Zielpfad liegt in einem geschuetzten Systemverzeichnis ({}) und wird abgelehnt",
-                dir.display()
-            )
-            .into());
-        }
-    }
-    Ok(())
+    katalog_core::import::placement::reject_if_sensitive_path_expanded(path, expanded_dirs).map_err(Into::into)
 }
 /// Containment instead of a denylist: `path` must lie inside the trash. Otherwise
 /// a backup could set `trash_path = ~/Documents/important.pdf` with an old
@@ -173,32 +132,7 @@ fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdRes
 ///   checked subtree) and the longest existing ancestor is resolved instead,
 ///   with the remaining components appended literally.
 fn resolve_path_for_sensitivity_check(path: &Path) -> CmdResult<PathBuf> {
-    if let Ok(canonical) = path.canonicalize() {
-        return Ok(canonical);
-    }
-    if path
-        .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
-        return Err(
-            "Pfad enthaelt \"..\"-Komponenten und wird abgelehnt".into(),
-        );
-    }
-
-    let mut trailing: Vec<std::ffi::OsString> = Vec::new();
-    let mut cursor = path;
-    while let (Some(name), Some(parent)) = (cursor.file_name(), cursor.parent()) {
-        trailing.push(name.to_os_string());
-        if let Ok(canonical) = parent.canonicalize() {
-            let mut resolved = canonical;
-            for component in trailing.iter().rev() {
-                resolved.push(component);
-            }
-            return Ok(resolved);
-        }
-        cursor = parent;
-    }
-    Ok(path.to_path_buf())
+    katalog_core::import::placement::resolve_path_for_sensitivity_check(path).map_err(Into::into)
 }
 // Only allow http(s) links: the frontend renders the URL unchanged as <a href>,
 // and a "javascript:"/"data:" value would be executed on click instead of

@@ -10,6 +10,7 @@ step-preview = ["dep:cxx", "dep:opencascade-sys"]
 test-support = []
 
 [dependencies]
+sha2 = "0.10"
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -49,6 +50,5 @@ xattr = "1"
 libc = "0.2"
 
 [dev-dependencies]
-sha2 = "0.10"
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util", "compress", "aes256"] }

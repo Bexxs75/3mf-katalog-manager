@@ -86,6 +86,7 @@ async fn fixture(forced: bool, proxy: bool) -> Fixture {
     let auth_path = dir.join("web-auth.json");
     password::write_auth(&auth_path, &auth).unwrap();
     let config = Config {
+        upload: None,
         write: false,
         static_dir: None,
         db_path: dir.join("catalog.db"),

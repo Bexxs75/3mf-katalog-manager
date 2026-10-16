@@ -10,9 +10,9 @@ fn kick(app: tauri::AppHandle) {
             let heart = job.clone();
             let heartbeat_thread = std::thread::spawn(move || heartbeat(heart));
             let result =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match &job.input {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match job.input() {
                     JobInput::Models(roots) => {
-                        run_models(service, &job, &mut &state.db, roots, &state.sensitive_dirs)
+                        run_models(service, &job, &mut &state.db, roots, &state.sensitive_dirs).map_err(CmdError::from)
                     }
                     JobInput::Archives {
                         target,
@@ -120,7 +120,7 @@ pub(super) async fn wait_legacy(job: Arc<ImportJob>) -> CmdResult<ImportResultDt
         while job.result().is_none() { std::thread::sleep(Duration::from_millis(10)); }
         let result = job.result().unwrap();
         if let Some(error) = result.job_error { return Err(if matches!(error.kind.as_str(), "database" | "internal") { error.message.into() } else { CmdError::expected(error.message) }); }
-        let legacy = job.legacy.lock().unwrap().take().unwrap_or_else(files::empty_import_result);
+        let legacy = job.take_legacy().unwrap_or_else(files::empty_import_result);
         Ok(legacy)
     }).await.map_err(|e| e.to_string())?
 }
@@ -366,7 +366,7 @@ pub(crate) async fn legacy_archives(
             while job.result().is_none() {
                 std::thread::sleep(Duration::from_millis(10));
             }
-            if let Some(result) = job.archive_legacy.lock().unwrap().take() {
+            if let Some(result) = job.take_archive_result() {
                 combined.imported.extend(result.imported);
                 combined.duplicate_count += result.duplicate_count;
                 combined.archives.extend(result.archives);
@@ -377,7 +377,7 @@ pub(crate) async fn legacy_archives(
                     .and_then(|r| r.job_error)
                     .map(|e| e.message)
                     .unwrap_or_else(|| "cancelled".into());
-                if let JobInput::Archives { requests, .. } = &job.input {
+                if let JobInput::Archives { requests, .. } = job.input() {
                     combined
                         .archives
                         .extend(requests.iter().map(|r| ArchiveOutcomeDto {
@@ -397,10 +397,5 @@ pub(crate) async fn legacy_archives(
 #[tauri::command]
 pub fn discard_archive_imports(state: State<AppState>, paths: Vec<String>) {
     let paths: HashSet<_> = paths.into_iter().map(PathBuf::from).collect();
-    state
-        .import_jobs
-        .archives
-        .lock()
-        .unwrap()
-        .retain(|(_, path), grant| grant.expires.is_none() || !paths.contains(path));
+    state.import_jobs.discard_archives(&paths.into_iter().collect::<Vec<_>>());
 }

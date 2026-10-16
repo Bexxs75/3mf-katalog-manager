@@ -1,3 +1,4 @@
+import { WebImport } from './components/WebImport';
 import { isReadOnly } from './lib/readOnly';
 import { DownloadSlicerView } from './components/DownloadSlicerView';
 import { useRuntimeEnvironment } from './hooks/useRuntimeEnvironment';
@@ -130,6 +131,7 @@ export default function App() {
     bulkRemoveFromCollection: collections.bulkRemoveFromCollection,
   });
 
+  const [webImportOpen, setWebImportOpen] = useState(false);
   const [tipsOpen, setTipsOpen] = useState(false);
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -345,12 +347,13 @@ export default function App() {
         count={filters.filtered.length}
         importTargetName={catalogBaseDir ? store.folders.find(f => f.id === filters.activeFolderId)?.name ?? catalogBaseDir : undefined}
         importTargetIsRoot={filters.activeFolderId === 'all'}
-        onImportFiles={fileImport.importFiles}
+        onImportFiles={import.meta.env.VITE_TARGET === 'web' ? () => setWebImportOpen(true) : fileImport.importFiles}
         onImportFolder={fileImport.importFolder}
         onImportFolderContents={fileImport.importFolderContents}
         mainView={mainView}
       />
 
+      {import.meta.env.VITE_TARGET === 'web' && <WebImport open={webImportOpen} onClose={() => setWebImportOpen(false)} onImported={() => Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags()])} />}
       <NetworkFilesystemWarning />
       <div className="flex-1 flex flex-row min-h-0">
         <Rail

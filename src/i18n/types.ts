@@ -6,6 +6,44 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  webUploadTitle: string;
+  webUploadChoose: string;
+  webUploadHint: string;
+  webUploadArchives: string;
+  webUploadFolders: string;
+  webUploadType: string;
+  webUploadInvalid: string;
+  webUploadConflict: string;
+  webUploadTooLarge: string;
+  webUploadNoSpace: string;
+  webUploadOffline: string;
+  webUploadRestart: string;
+  webUploadBusy: string;
+  webUploadForbidden: string;
+  webUploadMissing: string;
+  webUploadLength: string;
+  webUploadFailed: string;
+  webUploadSessionEnded: string;
+  webUploadCancelled: string;
+  webUploadQueued: string;
+  webUploadSending: string;
+  webUploadRetrying: string;
+  webUploadUploaded: string;
+  webUploadOpen: string;
+  webUploadDiscard: string;
+  webUploadDiscardHint: string;
+  webUploadImport: string;
+  webUploadImportAll: string;
+  webUploadConnecting: string;
+  webUploadDisconnected: string;
+  webUploadJobs: string;
+  webUploadImporting: string;
+  webUploadCancelling: string;
+  webUploadCompleted: string;
+  webUploadInvalidFile: string;
+  webUploadPartial: string;
+  webUploadResults: string;
+
   webManagerJobOpen: string;
   webManagerDeleteSpool: string;
   webManagerDeletePrinter: string;
@@ -292,6 +330,7 @@ export interface Translations {
   impWaitOne: string;
   impWaitMany: PluralForms;
   impResultTitle: string;
+  webImportResultTitle: string;
   impTabSkipped: string;
   impTabDuplicate: string;
   impTabNotPlaced: string;

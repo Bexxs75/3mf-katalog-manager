@@ -232,3 +232,125 @@ Lesemodus.** Nach dem 30-Sekunden-HTTP-Zeitlimit oder Verbindungsabbruch läuft
 begonnene DB-Arbeit weiter. Bei unklarer Antwort vor Wiederholung neu laden:
 `create_collection`, `add_print_log_entry`, `add_filament_spool`, `add_printer` und
 `add_unit` können Duplikate erzeugen. Grenzen und Audit-Vertrag: [WEB-PLAN.md](WEB-PLAN.md).
+
+### Browser-Upload und Import (Backend Stufe 5, Deutsch)
+
+Uploads sind standardmäßig aus. `KATALOG_UPLOAD_DIR=/models/uploads` aktiviert das
+Backend zusammen mit `KATALOG_WRITE=1`, Anmeldung und einer expliziten
+`KATALOG_ALLOWED_HOSTS`-Liste. Die Browser-Oberfläche folgt separat in Teil C.
+**Upload legt Dateien dauerhaft auf dem Server ab: nur im Heimnetz oder über VPN
+betreiben.** Desktop und Webserver dürfen niemals gleichzeitig dieselbe DB nutzen.
+Nur `.3mf`, `.stl`, `.obj`, `.stp` und `.step` sind erlaubt; Archive (ZIP/7z/RAR)
+bleiben der Desktop-App vorbehalten. Dateien bleiben im Upload-Ordner, ohne
+Zielordner-Auswahl und ohne Kopieren/Verschieben beim Import. STEP wird ohne
+OCCT/`step-preview` importiert: keine STEP-Metadaten oder Vorschau im Server.
+
+Den Upload-Ordner vorher anlegen (0755) und gezielt schreibbar einbinden; er muss
+unter `KATALOG_ROOTS` liegen. Der Prozess mit `PUID`/`PGID` (Standard 1000:1000)
+braucht dort sowie bei DB und Auth-Datei Schreibrechte. Upload-Dateien erhalten
+0644. Ein Symlink als Upload-Ordner und Überschneidungen (gleich, Eltern-/Kindpfad)
+mit DB-, Auth-, Trash- oder Static-Verzeichnissen verhindern den Start. Andere
+Modellfreigaben können lesend bleiben.
+
+`KATALOG_UPLOAD_MAX_MB` ist die Dateigrenze in MiB (Standard 1024, 1–4096),
+`KATALOG_UPLOAD_MAX_FILES` begrenzt gleichzeitig laufende Uploads (Standard 2,
+1–32). STL/OBJ sind zusätzlich auf 512 MiB begrenzt. Niedrigere Parsergrenzen:
+`KATALOG_IMPORT_MAX_MESH_MB=512`, `KATALOG_IMPORT_MAX_UNPACKED_MB=1024`,
+`KATALOG_IMPORT_MAX_VERTICES=2000000`, `KATALOG_IMPORT_MAX_TRIANGLES=3000000`.
+Diese vier Werte sind positive ganze Zahlen und dürfen die genannten Standards
+nicht überschreiten. Falsche Zahlen verhindern den Start, auch bei deaktiviertem
+Upload. Ein Import-Job verarbeitet sequenziell; die Grenzen sind keine RSS-Grenze:
+Parser, XML, Mesh und Metadaten können mehrere Kopien benötigen. Mehrere GiB freien
+RAM einplanen und bei knappen Containern die Grenzen senken; gemessener
+Spitzenspeicher hängt von den Dateien ab.
+
+Nicht importierte Uploads sind auf 200 Dateien/20 GiB begrenzt, zusätzlich bleiben
+256 MiB Speicherplatzreserve. Das dauerhafte Journal `web-uploads.json` liegt neben
+`KATALOG_AUTH_FILE` (0600); zusammen mit DB und Upload-Dateien sichern. Alle
+angemeldeten Sitzungen teilen Uploads und Jobs. Logout und Passwortwechsel löschen
+keine Uploads und stoppen keine Import-Jobs. Duplikate und ungültige Dateien bleiben
+liegen und können verworfen werden; ein abgebrochener Job kann bereits importierte
+Dateien enthalten. Beim Neustart gleicht der Server Journal und Katalog ab.
+
+Reverse Proxy: Body-Limit mindestens auf die gewünschte Upload-Grenze setzen
+(sonst HTTP 413); Streaming und SSE ohne Pufferung erlauben. Uploads haben maximal
+eine Stunde Gesamtdauer und 60 Sekunden ohne 64 KiB Fortschritt. SSE-Pings kommen
+alle 15 Sekunden, verlängern aber nicht die Sitzung. Uploads erfordern CSRF,
+passenden Origin und Content-Length; Proxy darf diese Header nicht entfernen.
+
+### Browser upload and import (stage 5 backend, English)
+
+Uploads are disabled by default. Set `KATALOG_UPLOAD_DIR=/models/uploads` together
+with `KATALOG_WRITE=1`, authentication and an explicit `KATALOG_ALLOWED_HOSTS` list.
+The browser interface follows separately in part C. **Uploads store files permanently
+on the server: use a home network or VPN only.** Never run the desktop app and web
+server against the same database concurrently. Supported files are `.3mf`, `.stl`,
+`.obj`, `.stp`, `.step`; ZIP/7z/RAR archives require the desktop app. Files remain in
+the upload directory: import neither copies nor moves them and has no target-folder
+selection. The server excludes OCCT/`step-preview`, so STEP metadata and preview
+are unavailable.
+
+Create the upload directory first (0755) and mount it writable. It must be under
+`KATALOG_ROOTS`; the process UID/GID (`PUID`/`PGID`, default 1000:1000) needs write
+access there and to DB/auth storage. Uploaded files use 0644. Startup rejects an
+upload directory symlink or any ancestor/descendant overlap with DB, auth, trash
+or static directories. Other model shares can remain read-only.
+
+`KATALOG_UPLOAD_MAX_MB` sets the per-file MiB limit (default 1024, range 1–4096);
+`KATALOG_UPLOAD_MAX_FILES` limits concurrent uploads (default 2, range 1–32).
+STL/OBJ also have a 512 MiB parser limit. Lower-only parser settings are
+`KATALOG_IMPORT_MAX_MESH_MB=512`, `KATALOG_IMPORT_MAX_UNPACKED_MB=1024`,
+`KATALOG_IMPORT_MAX_VERTICES=2000000`, `KATALOG_IMPORT_MAX_TRIANGLES=3000000`.
+They require positive integers no larger than those defaults. Invalid numeric
+configuration fails startup even with uploads disabled. Only one import job runs,
+parsing sequentially. These limits do not cap RSS: parser/XML/mesh/metadata copies
+can require several GiB RAM. Lower limits for small containers; measured peak
+memory depends on the files.
+
+Pending uploads are limited to 200 files/20 GiB with a 256 MiB disk-space reserve.
+The durable `web-uploads.json` journal (0600) sits beside `KATALOG_AUTH_FILE`; back
+it up with the database and uploaded files. All authenticated sessions share jobs
+and uploads. Logout/password changes neither delete uploads nor stop import jobs.
+Duplicates and invalid files remain available for discard; cancellation can leave
+already committed imports. Startup reconciles the journal with the catalog.
+
+Set reverse-proxy body limits high enough (otherwise HTTP 413), enable streaming
+and disable SSE buffering. Upload deadlines are one hour total and 60 seconds
+without 64 KiB progress. SSE pings every 15 seconds do not refresh session activity.
+Preserve CSRF, Origin and Content-Length headers at the proxy.
+
+SSE-Neuverbindungen erhalten einen Snapshot der aktiven Jobs, der letzten 32
+Job-Ergebnisse und der offenen Uploads (höchstens 500). Insgesamt bleiben die letzten
+100 abgeschlossenen Jobs über `get_import_result { jobId }` abrufbar. Die Puffer enthalten höchstens
+32 Ereignisse je Verbindung; erlaubt sind vier Verbindungen je Sitzung und 32 insgesamt.
+Web-Import-Batches enthalten höchstens 20 Dateien und werden auch ab 16 MiB
+gesammelten Metadaten abgeschlossen. Das Journal wird einmal je Batch geschrieben.
+
+SSE reconnections receive active jobs, the latest 32 job results, and pending uploads
+(up to 500). The latest 100 completed jobs remain available through
+`get_import_result { jobId }`.
+Each connection buffers at most 32 events; limits are four connections per session
+and 32 overall. Web import batches contain at most 20 files and also flush once
+retained metadata reaches 16 MiB. The journal is written once per batch.
+
+The journal retains at most 1,000 imported entries; pruning never deletes model
+files or catalog records. `GET /api/uploads` lists only open entries (at most 500;
+normal admission remains 200). Startup removes only regular `.journal-*.part`
+files older than one hour from auth storage. Untracked upload files and hardlinked
+`.upload-*.part` files are kept; one startup warning reports their count without
+paths. Administrators should inspect these leftovers manually before removing
+anything. After a journal failure, `restart_required` requires repair of storage
+and a server restart; it has no `Retry-After`. 3MF containers are limited to 10,000
+ZIP entries in both web and desktop import, checked before the ZIP index is built.
+
+Das Journal behält höchstens 1.000 importierte Einträge; beim Kürzen werden weder
+Modelldateien noch Katalogeinträge gelöscht. `GET /api/uploads` zeigt nur offene
+Einträge (höchstens 500; normale Annahmegrenze weiterhin 200). Beim Start werden
+nur reguläre `.journal-*.part`-Dateien im Auth-Ordner entfernt, die älter als eine
+Stunde sind. Upload-Dateien ohne Journal-Eintrag und hartverlinkte
+`.upload-*.part` bleiben erhalten; ein einmaliger Starthinweis nennt ihre Anzahl
+ohne Pfade. Administratoren sollten solche Reste vor dem Löschen manuell prüfen.
+Nach einem Journalfehler verlangt `restart_required` eine Behebung des
+Speicherproblems und einen Serverneustart; es gibt kein `Retry-After`.
+3MF-Container sind im Web und auf dem Desktop auf 10.000 ZIP-Einträge begrenzt;
+die Prüfung erfolgt vor dem Aufbau des ZIP-Index.

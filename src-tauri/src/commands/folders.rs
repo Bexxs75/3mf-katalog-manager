@@ -100,11 +100,7 @@ fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
 }
 
 pub(super) fn comparison_path(path: &Path) -> PathBuf {
-    // Windows Path components already recognize both separator spellings.
-    #[cfg(windows)]
-    { PathBuf::from(path.to_string_lossy().to_lowercase()) }
-    #[cfg(not(windows))]
-    { path.to_path_buf() }
+    katalog_core::import::placement::comparison_path(path)
 }
 
 fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { isReadOnly } from './readOnly';
 /** Browser session and CSRF token live only in memory. */
-export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean }
+export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean; uploadable?: boolean }
 let session: WebSession = { authenticated: false, mustChangePassword: false, csrfToken: null };
 let sessionEpoch = 0;
 const subscribers = new Set<() => void>();
@@ -55,3 +55,7 @@ export async function changePassword(current: string, next: string) {
 
 export const canEditMetadata = () => !isReadOnly() || session.writable === true;
 export const useCanEditMetadata = () => useSyncExternalStore(subscribe, canEditMetadata, canEditMetadata);
+
+/** Browser upload is a separate server capability; filesystem actions stay locked. */
+export const canUpload = () => isReadOnly() && session.authenticated && !session.mustChangePassword && session.writable === true && session.uploadable === true;
+export const useCanUpload = () => useSyncExternalStore(subscribe, canUpload, canUpload);

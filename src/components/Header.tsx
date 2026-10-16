@@ -1,3 +1,4 @@
+import { useCanUpload } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { CatalogDiskSync } from './CatalogDiskSync';
 import { useMenuKeyboard } from '../hooks/useMenuKeyboard';
@@ -62,6 +63,7 @@ export function Header({
 }: Props) {
   const t = useT();
   const formatCount = useFormatCount();
+  const uploadable = useCanUpload();
   const [importSource, setImportSource] = useState<'files' | 'folder' | 'folderContents'>('files');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -111,6 +113,7 @@ export function Header({
       {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} />}
       {mainView === 'catalog' && (
       <>
+      {uploadable && <button className="h-8 px-3 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" onClick={onImportFiles}>{t('webUploadTitle')}</button>}
       {import.meta.env.VITE_TARGET !== 'web' && <div ref={importRef} className="relative flex shrink-0">
         <button
           ref={importTriggerRef}

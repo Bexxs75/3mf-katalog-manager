@@ -20,7 +20,11 @@ pub fn parse_stl_file(path: &Path) -> Result<StlDocument, StlError> {
 }
 
 pub fn parse_stl_bytes(bytes: &[u8]) -> Result<StlDocument, StlError> {
-    let (vertices, triangles) = parser::parse(bytes)?;
+    parse_stl_bytes_limited(bytes, usize::MAX, usize::MAX)
+}
+
+pub(crate) fn parse_stl_bytes_limited(bytes: &[u8], vertices: usize, triangles: usize) -> Result<StlDocument, StlError> {
+    let (vertices, triangles) = parser::parse_limited(bytes, vertices, triangles)?;
 
     let mut bbox = BoundingBox::empty();
     for v in &vertices {

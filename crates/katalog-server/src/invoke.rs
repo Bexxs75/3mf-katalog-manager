@@ -127,6 +127,9 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
 }
 
 pub const READ_COMMANDS: &[&str] = &[
+    "get_import_state",
+    "get_import_result",
+
     "list_file_summaries",
     "list_all_file_tags",
     "list_files_by_ids",

@@ -13,6 +13,10 @@ use std::sync::{
 };
 use tokio::sync::Semaphore;
 pub const WRITE_COMMANDS: &[&str] = &[
+    "start_upload_import",
+    "discard_upload",
+    "cancel_import",
+
     "set_favorite",
     "set_print_status",
     "add_tag",

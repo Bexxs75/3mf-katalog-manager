@@ -206,3 +206,100 @@ Web spool updates preserve the image when `imagePng` is omitted, clear it on `nu
 and validate and replace it for a string.
 - **16.10.2026, Stufe 6 abgenommen:** Backend (`c1874ad8`) und Oberfläche (`3f65712c`). Material Manager und Drucker Manager im Browser: 14 Schreib- und 6 Lese-Commands, strikte Web-Varianten in einer Transaktion, Web-Spulenliste ohne Bilddaten (`hasImage`, Einzelabruf `get_filament_spool_image`, lazy), Bild bleibt beim Bearbeiten erhalten (Schlüssel fehlt = behalten, `null` = löschen), Quoten bei Neuanlage (5000/200/50), Löschfolgen vor dem Bestätigen sichtbar. Unabhängige Prüfung (Opus): kein Blocker, ein mittlerer Befund (Bildverlust beim Bearbeiten) behoben. Browsertest per Chromium/CDP: Spule mit Bild anlegen, bearbeiten ohne Bildverlust, Drucker anlegen, Löschdialog mit Folgen, ohne Schreibmodus alle Schreibknöpfe gesperrt; Druckeranbindung und „Drucke bestätigen“ verborgen. Tests: 1.158 Rust (0 Fehler außerhalb der Sandbox), 2.202 Frontend, Web-Bundle ohne Tauri. `restock_filament_spool` und `consume_resin` bleiben gesperrt (DB-only, später).
 - **Nächster Schritt: Stufe 5** (Import per Upload, SSE, Upload- und Entpacklimits). Spec und Review vor dem Commit durch Opus (Entscheidung 16.10.).
+
+### Browser-Upload und Import (Backend Stufe 5, Deutsch)
+
+Uploads sind standardmäßig aus. `KATALOG_UPLOAD_DIR=/models/uploads` aktiviert das
+Backend zusammen mit `KATALOG_WRITE=1`, Anmeldung und einer expliziten
+`KATALOG_ALLOWED_HOSTS`-Liste. Die Browser-Oberfläche folgt separat in Teil C.
+**Upload legt Dateien dauerhaft auf dem Server ab: nur im Heimnetz oder über VPN
+betreiben.** Desktop und Webserver dürfen niemals gleichzeitig dieselbe DB nutzen.
+Nur `.3mf`, `.stl`, `.obj`, `.stp` und `.step` sind erlaubt; Archive (ZIP/7z/RAR)
+bleiben der Desktop-App vorbehalten. Dateien bleiben im Upload-Ordner, ohne
+Zielordner-Auswahl und ohne Kopieren/Verschieben beim Import. STEP wird ohne
+OCCT/`step-preview` importiert: keine STEP-Metadaten oder Vorschau im Server.
+
+Den Upload-Ordner vorher anlegen (0755) und gezielt schreibbar einbinden; er muss
+unter `KATALOG_ROOTS` liegen. Der Prozess mit `PUID`/`PGID` (Standard 1000:1000)
+braucht dort sowie bei DB und Auth-Datei Schreibrechte. Upload-Dateien erhalten
+0644. Ein Symlink als Upload-Ordner und Überschneidungen (gleich, Eltern-/Kindpfad)
+mit DB-, Auth-, Trash- oder Static-Verzeichnissen verhindern den Start. Andere
+Modellfreigaben können lesend bleiben.
+
+`KATALOG_UPLOAD_MAX_MB` ist die Dateigrenze in MiB (Standard 1024, 1–4096),
+`KATALOG_UPLOAD_MAX_FILES` begrenzt gleichzeitig laufende Uploads (Standard 2,
+1–32). STL/OBJ sind zusätzlich auf 512 MiB begrenzt. Niedrigere Parsergrenzen:
+`KATALOG_IMPORT_MAX_MESH_MB=512`, `KATALOG_IMPORT_MAX_UNPACKED_MB=1024`,
+`KATALOG_IMPORT_MAX_VERTICES=2000000`, `KATALOG_IMPORT_MAX_TRIANGLES=3000000`.
+Diese vier Werte sind positive ganze Zahlen und dürfen die genannten Standards
+nicht überschreiten. Falsche Zahlen verhindern den Start, auch bei deaktiviertem
+Upload. Ein Import-Job verarbeitet sequenziell; die Grenzen sind keine RSS-Grenze:
+Parser, XML, Mesh und Metadaten können mehrere Kopien benötigen. Mehrere GiB freien
+RAM einplanen und bei knappen Containern die Grenzen senken; gemessener
+Spitzenspeicher hängt von den Dateien ab.
+
+Nicht importierte Uploads sind auf 200 Dateien/20 GiB begrenzt, zusätzlich bleiben
+256 MiB Speicherplatzreserve. Das dauerhafte Journal `web-uploads.json` liegt neben
+`KATALOG_AUTH_FILE` (0600); zusammen mit DB und Upload-Dateien sichern. Alle
+angemeldeten Sitzungen teilen Uploads und Jobs. Logout und Passwortwechsel löschen
+keine Uploads und stoppen keine Import-Jobs. Duplikate und ungültige Dateien bleiben
+liegen und können verworfen werden; ein abgebrochener Job kann bereits importierte
+Dateien enthalten. Beim Neustart gleicht der Server Journal und Katalog ab.
+
+Reverse Proxy: Body-Limit mindestens auf die gewünschte Upload-Grenze setzen
+(sonst HTTP 413); Streaming und SSE ohne Pufferung erlauben. Uploads haben maximal
+eine Stunde Gesamtdauer und 60 Sekunden ohne 64 KiB Fortschritt. SSE-Pings kommen
+alle 15 Sekunden, verlängern aber nicht die Sitzung. Uploads erfordern CSRF,
+passenden Origin und Content-Length; Proxy darf diese Header nicht entfernen.
+
+### Browser upload and import (stage 5 backend, English)
+
+Uploads are disabled by default. Set `KATALOG_UPLOAD_DIR=/models/uploads` together
+with `KATALOG_WRITE=1`, authentication and an explicit `KATALOG_ALLOWED_HOSTS` list.
+The browser interface follows separately in part C. **Uploads store files permanently
+on the server: use a home network or VPN only.** Never run the desktop app and web
+server against the same database concurrently. Supported files are `.3mf`, `.stl`,
+`.obj`, `.stp`, `.step`; ZIP/7z/RAR archives require the desktop app. Files remain in
+the upload directory: import neither copies nor moves them and has no target-folder
+selection. The server excludes OCCT/`step-preview`, so STEP metadata and preview
+are unavailable.
+
+Create the upload directory first (0755) and mount it writable. It must be under
+`KATALOG_ROOTS`; the process UID/GID (`PUID`/`PGID`, default 1000:1000) needs write
+access there and to DB/auth storage. Uploaded files use 0644. Startup rejects an
+upload directory symlink or any ancestor/descendant overlap with DB, auth, trash
+or static directories. Other model shares can remain read-only.
+
+`KATALOG_UPLOAD_MAX_MB` sets the per-file MiB limit (default 1024, range 1–4096);
+`KATALOG_UPLOAD_MAX_FILES` limits concurrent uploads (default 2, range 1–32).
+STL/OBJ also have a 512 MiB parser limit. Lower-only parser settings are
+`KATALOG_IMPORT_MAX_MESH_MB=512`, `KATALOG_IMPORT_MAX_UNPACKED_MB=1024`,
+`KATALOG_IMPORT_MAX_VERTICES=2000000`, `KATALOG_IMPORT_MAX_TRIANGLES=3000000`.
+They require positive integers no larger than those defaults. Invalid numeric
+configuration fails startup even with uploads disabled. Only one import job runs,
+parsing sequentially. These limits do not cap RSS: parser/XML/mesh/metadata copies
+can require several GiB RAM. Lower limits for small containers; measured peak
+memory depends on the files.
+
+Pending uploads are limited to 200 files/20 GiB with a 256 MiB disk-space reserve.
+The durable `web-uploads.json` journal (0600) sits beside `KATALOG_AUTH_FILE`; back
+it up with the database and uploaded files. All authenticated sessions share jobs
+and uploads. Logout/password changes neither delete uploads nor stop import jobs.
+Duplicates and invalid files remain available for discard; cancellation can leave
+already committed imports. Startup reconciles the journal with the catalog.
+
+Set reverse-proxy body limits high enough (otherwise HTTP 413), enable streaming
+and disable SSE buffering. Upload deadlines are one hour total and 60 seconds
+without 64 KiB progress. SSE pings every 15 seconds do not refresh session activity.
+Preserve CSRF, Origin and Content-Length headers at the proxy.
+
+SSE-Neuverbindungen erhalten einen Snapshot der aktiven Jobs, der letzten 32
+Job-Ergebnisse und der offenen Uploads (höchstens 200). Ältere Ergebnisse bleiben
+über `get_import_result { jobId }` dauerhaft abrufbar. Die Puffer enthalten höchstens
+32 Ereignisse je Verbindung; erlaubt sind vier Verbindungen je Sitzung und 32 insgesamt.
+Web-Import-Batches enthalten eine Datei, damit große Metadaten sich nicht aufsummieren.
+
+SSE reconnections receive active jobs, the latest 32 job results, and pending uploads
+(up to 200). Older results remain available through `get_import_result { jobId }`.
+Each connection buffers at most 32 events; limits are four connections per session
+and 32 overall. Web import batches contain one file to bound retained metadata.

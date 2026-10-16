@@ -1,5 +1,8 @@
 //! Importvertrag §9: real SQLite faults against the batched import path.
 use super::*;
+fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+    import_many_in_batches(&mut &mut *conn, roots, ImportMode::Batched)
+}
 
 struct Fixture(PathBuf);
 impl Fixture {

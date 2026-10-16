@@ -21,6 +21,21 @@ pub fn parse(bytes: &[u8]) -> Result<StlGeometry, StlError> {
     Ok(geometry)
 }
 
+pub(super) fn parse_limited(bytes: &[u8], vertices: usize, triangles: usize) -> Result<StlGeometry, StlError> {
+    let max_vertices = vertices.min(triangles.saturating_mul(3));
+    if is_binary(bytes) {
+        if read_facet_count(bytes).unwrap().saturating_mul(3) > max_vertices {
+            return Err(StlError::Parse("mesh limit".into()));
+        }
+    } else {
+        let text = std::str::from_utf8(bytes).map_err(|_| StlError::Parse("encoding".into()))?;
+        if text.lines().filter(|line| line.trim().starts_with("vertex")).take(max_vertices.saturating_add(1)).count() > max_vertices {
+            return Err(StlError::Parse("mesh limit".into()));
+        }
+    }
+    parse(bytes)
+}
+
 // A binary STL's size is fully determined by its facet count, so matching
 // that exactly is a more reliable format check than the conventional (but
 // non-mandatory) "solid" text prefix, which some binary exporters also emit.
