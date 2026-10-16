@@ -1,6 +1,7 @@
 import { invoke } from './transport';
 import { canManageFiles, getSnapshot, blockFileOperations } from './webSession';
-import { reportMetadataError } from './metadataErrors';
+import { getMetadataError, reportMetadataError } from './metadataErrors';
+import { messageOf } from './errors';
 import { fileOpsError, fileOpsMessage } from './fileOpsErrors';
 export interface ItemResult { id: string; ok: boolean; kind?: string; kept_on_disk?: boolean }
 export interface TrashSummary { count: number; bytes: number; maxDeletedAt: string | null }
@@ -8,59 +9,112 @@ const refreshers = new Set<() => void | Promise<unknown>>();
 export function subscribeFileOpsRefresh(refresh: () => void | Promise<unknown>) {
   refreshers.add(refresh); return () => { refreshers.delete(refresh); };
 }
-export async function refreshAfterFileOps() {
+/** Resolves true when every view reloaded; a failed reload is reported separately from a failed action. */
+export async function refreshAfterFileOps(reportFailure = true): Promise<boolean> {
   const results = await Promise.allSettled([...refreshers].map(refresh => Promise.resolve().then(refresh)));
-  if (results.some(result => result.status === 'rejected')) reportMetadataError(fileOpsMessage('generic'));
+  const ok = !results.some(result => result.status === 'rejected');
+  if (!ok && reportFailure) reportMetadataError(fileOpsMessage('refresh_failed'));
+  return ok;
+}
+type AppliedListener = (ids: string[]) => void;
+const appliedListeners = new Set<AppliedListener>();
+/** Lets selection state drop IDs that a delete/restore/purge just touched, whatever surface started it. */
+export function subscribeFileOpsApplied(listener: AppliedListener) {
+  appliedListeners.add(listener); return () => { appliedListeners.delete(listener); };
+}
+function affectedIds(command: string, args: Record<string, unknown>, result: unknown): string[] {
+  if (command === 'delete_files') return Array.isArray(args.fileIds) ? args.fileIds.map(String) : [];
+  if (command === 'restore_file' || command === 'delete_file_permanently') return args.fileId === undefined ? [] : [String(args.fileId)];
+  if (command === 'empty_trash_block' && result && typeof result === 'object' && Array.isArray((result as {results?: unknown}).results)) {
+    return ((result as {results: ItemResult[]}).results).filter(item => item.ok).map(item => item.id);
+  }
+  return [];
+}
+// The error slot holds one message; repeating the same text from nested layers adds nothing.
+function reportOnce(reason: unknown) {
+  if (getMetadataError() !== messageOf(reason)) reportMetadataError(reason);
 }
 function checkResults(results: ItemResult[]) {
   const failures = results.filter(result => !result.ok);
   if (failures.some(result => result.kind === 'restart_required')) blockFileOperations();
   const kept = results.filter(result => result.kept_on_disk);
-  if (kept.length) reportMetadataError(kept.map(result => `${result.id}: ${fileOpsMessage('kept')}`).join('\n'));
+  if (kept.length) reportOnce(kept.map(result => `${result.id}: ${fileOpsMessage('kept')}`).join('\n'));
   if (failures.length) throw { fileOpsMessage: results.map(result => `${result.id}: ${result.ok ? '✓' : fileOpsMessage(result.kind ?? 'generic')}`).join('\n'), kind: failures[0].kind };
 }
-/** Never optimistically mutate and always reconcile, even after an ambiguous lost response. */
-export async function fileOp<T = unknown>(command: string, args: Record<string, unknown>): Promise<T> {
+/** `quietKept`: the caller explains kept-on-disk itself (the confirmation dialog does). */
+export async function fileOp<T = unknown>(command: string, args: Record<string, unknown>, options: { quietKept?: boolean } = {}): Promise<T> {
   if (!canManageFiles()) throw fileOpsError({kind:'revoked'});
+  let failed = false; let outcome: unknown;
   try {
     const result = await invoke<T>(command, args);
+    outcome = result;
     if (Array.isArray(result)) checkResults(result as ItemResult[]);
-    else if (result && typeof result === 'object' && 'kind' in result) throw result;
-    if (result && typeof result === 'object' && 'kept_on_disk' in result && result.kept_on_disk) reportMetadataError(fileOpsMessage('kept'));
+    else if (result && typeof result === 'object' && 'kind' in result) {
+      // A single object with a kind is an error shape even on HTTP 200.
+      if ((result as {kind?: unknown}).kind === 'restart_required') blockFileOperations();
+      throw result;
+    }
+    if (!options.quietKept && result && typeof result === 'object' && 'kept_on_disk' in result && result.kept_on_disk) reportOnce(fileOpsMessage('kept'));
     return result;
   } catch (reason) {
-    const error = fileOpsError(reason); reportMetadataError(error); throw error;
-  } finally { await refreshAfterFileOps(); }
+    failed = true;
+    const error = fileOpsError(reason); reportOnce(error); throw error;
+  } finally {
+    const ids = affectedIds(command, args, outcome);
+    if (ids.length) appliedListeners.forEach(listener => listener(ids));
+    // A failed reload must not hide the action's own error.
+    await refreshAfterFileOps(!failed);
+  }
 }
-export async function fileOpsBatch(command: string, ids: string[], extra: Record<string, unknown> = {}): Promise<void> {
+const cancelled = (pending: string[]) => ({ message: [fileOpsMessage('cancelled'), ...pending.map(id => `${id}: ${fileOpsMessage('not_started')}`)].join('\n'), expected: true as const, kind: 'cancelled' });
+export async function fileOpsBatch(command: string, ids: string[], extra: Record<string, unknown> = {}, shouldStop: () => boolean = () => false): Promise<void> {
   const initiatingToken = getSnapshot().csrfToken;
   const unique = [...new Set(ids)];
   for (let offset = 0; offset < unique.length; offset += 200) {
     if (!canManageFiles() || getSnapshot().csrfToken !== initiatingToken) throw fileOpsError({kind:'revoked'});
+    // Stops between chunks only; a chunk already sent is never aborted halfway.
+    if (shouldStop()) { const error = cancelled(unique.slice(offset)); reportOnce(error); throw error; }
     try { await fileOp(command, { ...extra, fileIds: unique.slice(offset, offset + 200) }); }
     catch (reason) {
       const pending = unique.slice(offset + 200);
       if (!pending.length) throw reason;
       const message = (reason as {message:string}).message + '\n' + pending.map(id => `${id}: ${fileOpsMessage('not_started')}`).join('\n');
-      const error = {message, expected:true}; reportMetadataError(error); throw error;
+      const error = {message, expected:true}; reportOnce(error); throw error;
     }
   }
 }
+const validRemaining = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+const progressText = (done: number, total: number) => fileOpsMessage('progress').replace('{done}', String(done)).replace('{total}', String(total));
 /** The token is memory-only. A failed/ambiguous block is never advanced or replayed here. */
-export async function emptyWebTrash(summary: TrashSummary, password: string, onProgress: (completed: number, total: number) => void): Promise<void> {
+export async function emptyWebTrash(summary: TrashSummary, password: string, onProgress: (completed: number, total: number) => void, shouldStop: () => boolean = () => false): Promise<void> {
   const initiatingToken = getSnapshot().csrfToken;
   let start: {token:string; remaining:number};
   try {
+    if (shouldStop()) throw cancelled([]);
     start = await fileOp('empty_trash_start', { expectedCount: summary.count, maxDeletedAt: summary.maxDeletedAt, password });
   } finally { password = ''; }
+  if (!start || typeof start.token !== 'string' || !validRemaining(start.remaining)) { const error = fileOpsError({kind:'not_started'}); reportOnce(error); throw error; }
   let remaining = start.remaining;
   onProgress(summary.count - remaining, summary.count);
   while (remaining > 0) {
     if (!canManageFiles() || getSnapshot().csrfToken !== initiatingToken) throw fileOpsError({kind:'revoked'});
-    const block = await fileOp<{results:ItemResult[]; remaining:number}>('empty_trash_block', {token:start.token});
+    if (shouldStop()) {
+      const error = { message: progressText(summary.count - remaining, summary.count) + ' ' + fileOpsMessage('cancelled'), expected: true as const, kind: 'cancelled' };
+      reportOnce(error); throw error;
+    }
+    let block: {results:ItemResult[]; remaining:number};
+    try { block = await fileOp<{results:ItemResult[]; remaining:number}>('empty_trash_block', {token:start.token}); }
+    catch (reason) {
+      const error = fileOpsError(reason);
+      if (error.retryAfter === undefined) throw error;
+      // A long wait ends the run; the snapshot token is dropped with this function, so nothing resumes unseen.
+      const paused = { message: progressText(summary.count - remaining, summary.count) + ' ' + fileOpsMessage('paused') + ' ' + error.message, expected: true as const, kind: error.kind };
+      reportOnce(paused); throw paused;
+    }
+    if (!block || !Array.isArray(block.results) || !validRemaining(block.remaining)) { const error = fileOpsError({kind:'not_started'}); reportOnce(error); throw error; }
     onProgress(summary.count - block.remaining, summary.count);
     try { checkResults(block.results); }
-    catch (reason) { const error = fileOpsError(reason); reportMetadataError(error); throw error; }
+    catch (reason) { const error = fileOpsError(reason); reportOnce(error); throw error; }
     if (block.remaining >= remaining) throw fileOpsError({kind:'not_started'});
     remaining = block.remaining;
     if (remaining > 0) await new Promise(resolve => setTimeout(resolve, 2000));

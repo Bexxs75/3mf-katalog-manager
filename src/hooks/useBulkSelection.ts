@@ -70,6 +70,15 @@ export function useBulkSelection({
     setTagDraft('');
   }, []);
 
+  const deselectBulk = useCallback((ids: string[]) => {
+    setSelectedForBulk(previous => {
+      if (!ids.some(id => previous.has(id))) return previous;
+      const next = new Set([...previous].filter(id => !ids.includes(id)));
+      if (next.size === 0) setConfirmBulkDelete(false);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const activeIds = new Set(models.map(model => model.id));
     setSelectedForBulk(previous => {
@@ -196,6 +205,7 @@ export function useBulkSelection({
     toggleBulkSelect,
     selectAllVisible,
     clearBulkSelection,
+    deselectBulk,
     bulkDelete,
     bulkAddToQueue,
     bulkSetPrintStatus,

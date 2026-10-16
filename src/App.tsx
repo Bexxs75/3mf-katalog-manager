@@ -1,4 +1,4 @@
-import { subscribeFileOpsRefresh } from './lib/fileOps';
+import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
 import { canEditMetadata } from './lib/webSession';
 import { reportMetadataError } from './lib/metadataErrors';
 import { WebImport } from './components/WebImport';
@@ -166,6 +166,14 @@ export default function App() {
     ]);
   };
   useEffect(() => subscribeFileOpsRefresh(() => fileOpsRefresh.current()), []);
+  // Deleted/restored/purged IDs must not linger in any selection (detail, bulk, trash).
+  const dropSelection = useRef<(ids: string[]) => void>(() => {});
+  dropSelection.current = (ids) => {
+    store.setSelectedId(previous => previous && ids.includes(previous) ? null : previous);
+    setDetailModelId(previous => previous && ids.includes(previous) ? null : previous);
+    bulk.deselectBulk(ids);
+  };
+  useEffect(() => subscribeFileOpsApplied(ids => dropSelection.current(ids)), []);
 
   const removeCatalogModels = async (fileIds: string[]) => {
     if (!canEditMetadata()) return;

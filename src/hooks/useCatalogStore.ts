@@ -1,3 +1,4 @@
+import { webFileNameParts } from '../lib/webFileName';
 import { fileOp, fileOpsBatch, emptyWebTrash, type TrashSummary } from '../lib/fileOps';
 import { metadataBatch } from '../lib/metadataBatch';
 import { reportMetadataError } from '../lib/metadataErrors';
@@ -436,7 +437,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   // collision directly. The error goes to the caller as a rejection.
   const renameFile = useCallback((id: string, name: string) => {
     if (!canManageFiles()) return Promise.resolve();
-    if (isReadOnly()) return fileOp('rename_file', { fileId: id, name }).then(() => refreshFiles());
+    if (isReadOnly()) return fileOp('rename_file', { fileId: id, name: webFileNameParts(name).base }).then(() => refreshFiles());
     return filesApi.renameFile(id, name).then(() => {
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, name } : m)));
       // The new name can change the sort position. Scrolling happens in a

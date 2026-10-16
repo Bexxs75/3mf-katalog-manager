@@ -4,9 +4,12 @@ import { es } from '../i18n/es';
 import { fr } from '../i18n/fr';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { WEB_READ_COMMANDS, WEB_WRITE_COMMANDS } from './readOnly';
+import { retryAfterSeconds } from './fileOpsErrors';
 import { canEditMetadata, canManageFiles, getSnapshot, readResponse } from './webSession';
 
 export const FILE_OPS_COMMANDS = ['rename_file', 'move_files_to_folder', 'delete_files', 'restore_file', 'delete_file_permanently', 'empty_trash_start', 'empty_trash_block', 'create_folder', 'rename_folder', 'move_folder', 'remove_folder_from_catalog'] as const;
+
+const FILE_OPS_MAX_AUTO_RETRY_SECONDS = 5;
 
 async function webInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const fileOperation = (FILE_OPS_COMMANDS as readonly string[]).includes(command);
@@ -30,10 +33,10 @@ async function webInvoke<T>(command: string, args?: Record<string, unknown>): Pr
     const safe = !fileOperation || body.kind === 'rate_limited' || (!body.kind && body.message === 'Schreibzugriff derzeit ausgelastet');
     const retry = safe ? response.headers.get('Retry-After') : null;
     if (retry !== null) {
-      const seconds = Number(retry);
-      const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retry) - Date.now();
-      if (Number.isFinite(delay) && delay >= 0) {
-        await new Promise(resolve => setTimeout(resolve, delay));
+      const waitSeconds = retryAfterSeconds(retry);
+      // A confirmed destructive action must not fire minutes later unseen: long waits are surfaced to the user instead.
+      if (waitSeconds !== null && (!fileOperation || waitSeconds <= FILE_OPS_MAX_AUTO_RETRY_SECONDS)) {
+        await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
         if (fileOperation ? canManageFiles() && getSnapshot().csrfToken === initiatingToken : !writing || canEditMetadata()) response = await send();
       }
     }

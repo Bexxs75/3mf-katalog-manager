@@ -107,3 +107,15 @@ it('fileOps enables rename and the delete confirmation shortcut, then revokes bo
   fireEvent.keyDown(window,{key:'Delete'});
   expect(invoke).not.toHaveBeenCalled(); expect(confirm).toHaveBeenCalledOnce(); vi.unstubAllGlobals();
 });
+it('sends only the base name when a full file name reaches the web rename', async () => {
+  const { getSession, authenticationFailed } = await import('../lib/webSession');
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({authenticated:true,writable:true,fileOps:true,csrfToken:'token'})));
+  await getSession();
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.initialLoading).toBe(false));
+  await act(async () => result.current.renameFile('1','x.stl'));
+  await act(async () => result.current.renameFile('1','y.gcode.3mf'));
+  expect(invoke).toHaveBeenCalledWith('rename_file',{fileId:'1',name:'x'});
+  expect(invoke).toHaveBeenCalledWith('rename_file',{fileId:'1',name:'y'});
+  authenticationFailed(401); vi.unstubAllGlobals();
+});
