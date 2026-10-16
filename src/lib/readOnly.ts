@@ -39,5 +39,6 @@ export const WEB_WRITE_COMMANDS = [
   'reorder_units',
   'load_spool',
   'unload_spool',
+  'set_render_snapshot',
 
 ] as const;

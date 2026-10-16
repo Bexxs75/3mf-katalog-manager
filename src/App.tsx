@@ -29,6 +29,7 @@ import { ErrorText } from './diagnostics/ErrorText';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
+import { WebBackgroundSnapshots } from './components/WebBackgroundSnapshots';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { MoveToast } from './components/MoveToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
@@ -302,6 +303,7 @@ export default function App() {
       onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
       style={{ fontSize: 'var(--fs-body)', '--sidebar-width': mainView === 'printers' ? 'var(--pm-master-width)' : `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
     >
+      {import.meta.env.VITE_TARGET === 'web' && <WebBackgroundSnapshots ids={snapshotIds} noWebGL={noWebGL} capture={store.captureRenderSnapshot} skip={store.skipSnapshot} />}
       {import.meta.env.VITE_TARGET !== 'web' && !noWebGL && snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
           key={snapshotRenderer.generation}

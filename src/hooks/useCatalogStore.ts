@@ -1,6 +1,6 @@
 import { metadataBatch } from '../lib/metadataBatch';
 import { reportMetadataError } from '../lib/metadataErrors';
-import { canEditMetadata } from '../lib/webSession';
+import { canEditMetadata, canSaveSnapshots } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { hasInterruptedPreviewAttempt } from '../lib/snapshotQueue';
 import { isStepFilePath } from '../lib/stepFile';
@@ -586,13 +586,13 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   const latestSnapshotSaves = useRef(new Map<string, { failed: boolean }>()).current;
 
   const captureRenderSnapshot = useCallback((id: string, base64: string) => {
-    if (isReadOnly()) return Promise.resolve();
+    if (!canSaveSnapshots()) return Promise.resolve();
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, hasRenderSnapshot: true } : m)));
     const key = `renderSnapshot:${id}`;
     const attempt = { failed: false };
     latestSnapshotSaves.set(id, attempt);
     beginMutation(key);
-    filesApi
+    const save = filesApi
       .setRenderSnapshot(id, base64)
       .then(() => {
         // Detail reads started during the write may still contain the old flag.
@@ -621,6 +621,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
           delete pendingMutationCounts[key];
         }
       });
+    if (import.meta.env.VITE_TARGET === 'web') return save;
   }, []);
 
   const setModelLicenses = useCallback(async (ids: string[], license: string | null) => {

@@ -59,3 +59,6 @@ export const useCanEditMetadata = () => useSyncExternalStore(subscribe, canEditM
 /** Browser upload is a separate server capability; filesystem actions stay locked. */
 export const canUpload = () => isReadOnly() && session.authenticated && !session.mustChangePassword && session.writable === true && session.uploadable === true;
 export const useCanUpload = () => useSyncExternalStore(subscribe, canUpload, canUpload);
+
+/** Snapshot persistence has a separate capability from filesystem writes. */
+export const canSaveSnapshots = () => import.meta.env.VITE_TARGET === 'web' ? canEditMetadata() : !isReadOnly();

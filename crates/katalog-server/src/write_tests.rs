@@ -134,7 +134,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 35);
+    assert_eq!(WRITE_COMMANDS.len(), 36);
     assert_eq!(crate::READ_COMMANDS.len(), 22);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
@@ -781,6 +781,7 @@ async fn photo_body_has_30_seconds_other_bodies_keep_15_seconds() {
         ("add_print_log_entry", 30),
         ("add_filament_spool", 30),
         ("update_filament_spool", 30),
+        ("set_render_snapshot", 30),
         ("set_favorite", 15),
         ("get_app_version", 15),
     ] {
@@ -1181,7 +1182,7 @@ async fn manager_http_images_large_bodies_chunked_overflow_and_strict_nested_dto
 }
 #[tokio::test(start_paused = true)]
 async fn manager_image_admission_rate_and_logout_during_body_wait() {
-    for cmd in ["add_filament_spool", "update_filament_spool"] {
+    for cmd in ["add_filament_spool", "update_filament_spool", "set_render_snapshot"] {
         let f = Fixture::new(true);
         let gate = f.app.writer.as_ref().unwrap();
         let permits = gate.admission.clone().acquire_many_owned(33).await.unwrap();
@@ -1356,4 +1357,86 @@ async fn session_explicitly_reports_upload_disabled() {
     let response = router(fixture.app.clone()).oneshot(request).await.unwrap();
     let value: Value = serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
     assert_eq!(value["uploadable"], false);
+}
+
+#[tokio::test]
+async fn snapshot_http_storage_validation_and_access() {
+    let f = Fixture::new(true);
+    let args = json!({"fileId":f.id,"imageBase64":"iVBORw0KGgo="});
+    assert_eq!(
+        f.send("set_render_snapshot", args.clone()).await.status(),
+        200
+    );
+    let c = db::open_read_only(&f.app.config.db_path).unwrap();
+    assert_eq!(
+        db::get_file(&c, f.id.parse().unwrap())
+            .unwrap()
+            .unwrap()
+            .render_snapshot_png
+            .as_deref(),
+        Some(&b"\x89PNG\r\n\x1a\n"[..])
+    );
+    let summaries = value(f.send("list_file_summaries", json!({})).await).await;
+    assert_eq!(summaries[0]["hasRenderSnapshot"], true);
+    for (args, status) in [
+        (json!({"fileId":"999","imageBase64":"iVBORw0KGgo="}), 404),
+        (json!({"fileId":f.id,"imageBase64":"bad"}), 422),
+        (
+            json!({"fileId":f.id,"imageBase64":"iVBORw0KGgo=","extra":true}),
+            422,
+        ),
+    ] {
+        assert_eq!(f.send("set_render_snapshot", args).await.status(), status);
+    }
+    for (session, csrf, status) in [(None, true, 401), (Some(&f.session), false, 403)] {
+        let req = f.request(
+            "set_render_snapshot",
+            Body::from(args.to_string()),
+            session,
+            Some("http://localhost:8080"),
+            csrf,
+        );
+        assert_eq!(
+            router(f.app.clone()).oneshot(req).await.unwrap().status(),
+            status
+        );
+    }
+    for content_length in [false, true] {
+        let bytes = " ".repeat(crate::write::body_limit("add_print_log_entry") + 1);
+        let mut req = f.request(
+            "set_render_snapshot",
+            Body::from(bytes.clone()),
+            Some(&f.session),
+            Some("http://localhost:8080"),
+            true,
+        );
+        if content_length {
+            req.headers_mut()
+                .insert("content-length", bytes.len().to_string().parse().unwrap());
+        }
+        assert_eq!(
+            router(f.app.clone()).oneshot(req).await.unwrap().status(),
+            413
+        );
+    }
+    f.app
+        .writer
+        .as_ref()
+        .unwrap()
+        .conn
+        .lock()
+        .unwrap()
+        .execute("UPDATE files SET deleted_at='today' WHERE id=?1", [&f.id])
+        .unwrap();
+    assert_eq!(
+        f.send("set_render_snapshot", args.clone()).await.status(),
+        404
+    );
+    assert_eq!(
+        Fixture::new(false)
+            .send("set_render_snapshot", args)
+            .await
+            .status(),
+        404
+    );
 }

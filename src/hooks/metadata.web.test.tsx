@@ -85,7 +85,10 @@ it('still blocks filesystem handlers, deletion shortcuts and folder drag while w
   await act(async () => {
     const s = store.result.current;
     await s.deleteModel('1'); await s.renameFile('1', 'new'); await s.restoreModel('1'); await s.deleteModelPermanently('1'); await s.emptyTrashAction();
-    await s.uploadCustomImage('1'); await s.captureRenderSnapshot('1', 'x'); await s.rescanMetadata('1');
+    await s.uploadCustomImage('1'); await s.rescanMetadata('1');
+    await s.captureRenderSnapshot('1', 'x');
+    expect(writes()).toEqual([{ command: 'set_render_snapshot', args: { fileId: '1', imageBase64: 'x' } }]);
+    commands = [];
     await drag.result.current.onCreateFolder(null, 'new'); drag.result.current.onDragFolderStart('a'); drag.result.current.onDragFileStart('1');
   });
   act(() => drag.result.current.handleFolderMouseEnter('b'));
@@ -94,9 +97,13 @@ it('still blocks filesystem handlers, deletion shortcuts and folder drag while w
   fireEvent.keyDown(window, { key: 'Backspace', metaKey: true });
   fireEvent.keyDown(window, { key: 'a', ctrlKey: true }); fireEvent.keyDown(window, { key: ' ' });
   expect(remove).not.toHaveBeenCalled(); expect(select).toHaveBeenCalled(); expect(writes()).toEqual([]);
-  for (const command of ['delete_file', 'rename_file', 'restore_file', 'empty_trash', 'create_folder', 'move_file_to_folder', 'move_folder', 'start_import', 'rescan_file_metadata', 'upload_custom_image', 'set_render_snapshot', 'pick_and_read_image', 'remove_files_from_catalog']) {
+  for (const command of ['delete_file', 'rename_file', 'restore_file', 'empty_trash', 'create_folder', 'move_file_to_folder', 'move_folder', 'start_import', 'rescan_file_metadata', 'upload_custom_image', 'pick_and_read_image', 'remove_files_from_catalog']) {
     await expect(invoke(command)).rejects.toMatchObject({ expected: true });
   }
+  expect(writes()).toEqual([]);
+  writable = false; await act(async () => getSession());
+  await act(async () => store.result.current.captureRenderSnapshot('1', 'x'));
+  await expect(invoke('set_render_snapshot', { fileId: '1', imageBase64: 'x' })).rejects.toMatchObject({ expected: true });
   expect(writes()).toEqual([]);
 });
 it('reactively resets capabilities on logout, 401 and password requirement; reads all three auth responses', async () => {

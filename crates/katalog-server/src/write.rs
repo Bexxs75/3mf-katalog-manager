@@ -49,11 +49,12 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "reorder_units",
     "load_spool",
     "unload_spool",
+    "set_render_snapshot",
 ];
 pub(crate) fn image_command(command: &str) -> bool {
     matches!(
         command,
-        "add_print_log_entry" | "add_filament_spool" | "update_filament_spool"
+        "add_print_log_entry" | "add_filament_spool" | "update_filament_spool" | "set_render_snapshot"
     )
 }
 pub(crate) fn body_limit(command: &str) -> usize {
@@ -314,6 +315,15 @@ pub(crate) fn execute(
     a: &Value,
 ) -> Result<(Response, u64), Box<Response>> {
     match cmd {
+        "set_render_snapshot" => {
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct SnapshotArgs { file_id: String, image_base64: String }
+            let args: SnapshotArgs = serde_json::from_value(a.clone())
+                .map_err(|_| map_error(WriteError::expected("Ungültige Snapshot-Argumente")))?;
+            let file_id = id_value(&Value::String(args.file_id))?;
+            encode(web::set_render_snapshot(c, file_id, &args.image_base64))
+        }
         "add_filament_spool" => encode(web::add_filament_spool(c, spool(a)?)),
         "update_filament_spool" => {
             let s = spool(a)?;

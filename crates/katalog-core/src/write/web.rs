@@ -339,3 +339,29 @@ pub fn reorder_collection(
 mod tests;
 
 pub use super::web_manager::*;
+
+/// Maximum padded Base64 encoding of a permitted snapshot, checked before decoding.
+pub const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES.div_ceil(3) * 4;
+
+pub fn set_render_snapshot(
+    c: &mut Connection,
+    id: i64,
+    image_base64: &str,
+) -> WriteResult<Outcome<()>> {
+    use base64::Engine;
+    transaction(c, |c| {
+        exists(c, "files", id)?;
+        if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
+            return Err(invalid("Snapshot-Base64 ist zu groß"));
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(image_base64)
+            .map_err(|_| invalid("Ungültiges Snapshot-Base64"))?;
+        if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
+            return Err(invalid("Snapshot ist zu groß"));
+        }
+        super::validate_image_format(&bytes)?;
+        db::set_render_snapshot_png(c, id, &bytes)?;
+        Ok(outcome((), c.changes()))
+    })
+}

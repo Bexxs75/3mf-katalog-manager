@@ -395,3 +395,71 @@ fn web_print_log_validates_timestamp_and_desktop_image_signatures() {
     }
     assert_eq!(db::list_print_log_entries(&c, id).unwrap().len(), 3);
 }
+
+#[test]
+fn snapshot_limits_formats_and_rollback() {
+    use base64::Engine;
+    let mut c = db::connect_in_memory().unwrap();
+    let id = db::test_insert_minimal_file(&c, "/snapshot.stl", None).unwrap();
+    let encode = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+    for bytes in [
+        &b"\x89PNG\r\n\x1a\n"[..],
+        &b"\xff\xd8\xff"[..],
+        &b"RIFF0000WEBP"[..],
+    ] {
+        assert_eq!(
+            set_render_snapshot(&mut c, id, &encode(bytes))
+                .unwrap()
+                .changes,
+            1
+        );
+        assert_eq!(
+            db::get_file(&c, id)
+                .unwrap()
+                .unwrap()
+                .render_snapshot_png
+                .as_deref(),
+            Some(bytes)
+        );
+    }
+    // Invalid Base64 beyond the encoded limit must fail at the length guard.
+    let err = set_render_snapshot(
+        &mut c,
+        id,
+        &"!".repeat(MAX_RENDER_SNAPSHOT_BASE64_BYTES + 1),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, WriteError::Invalid { message } if message == "Snapshot-Base64 ist zu groß")
+    );
+    for input in [
+        "!".into(),
+        encode(b"GIF89a"),
+        encode(&vec![0; MAX_CUSTOM_IMAGE_BYTES + 1]),
+    ] {
+        assert!(matches!(
+            set_render_snapshot(&mut c, id, &input),
+            Err(WriteError::Invalid { .. })
+        ));
+        assert_eq!(
+            db::get_file(&c, id)
+                .unwrap()
+                .unwrap()
+                .render_snapshot_png
+                .as_deref(),
+            Some(&b"RIFF0000WEBP"[..])
+        );
+        assert!(c.is_autocommit());
+    }
+    let mut max = vec![0; MAX_CUSTOM_IMAGE_BYTES];
+    max[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+    set_render_snapshot(&mut c, id, &encode(&max)).unwrap();
+    assert_eq!(
+        db::get_file(&c, id)
+            .unwrap()
+            .unwrap()
+            .render_snapshot_png
+            .unwrap(),
+        max
+    );
+}
