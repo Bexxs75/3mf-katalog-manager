@@ -1,9 +1,9 @@
 //! Sync: fetches finished prints of all connected printers. The database is only
 //! locked for short read/write steps, never during a network request.
 
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::mpsc;
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
@@ -12,9 +12,7 @@ use crate::db::error::DbError;
 use crate::db::printer_link as store;
 
 pub const EVENT_JOBS_CHANGED: &str = "printer-jobs-changed";
-const FIRST_RUN_AFTER: Duration = Duration::from_secs(10);
 const MAX_NEW_JOBS: usize = 200;
-const INTERVAL: Duration = Duration::from_secs(300);
 
 pub type LinkMaker = dyn Fn(&str, &str) -> Result<Box<dyn PrinterLink>, LinkError> + Send + Sync;
 
@@ -137,27 +135,6 @@ impl SyncWaker {
     pub fn wake(&self) {
         let _ = self.0.send(());
     }
-}
-
-pub fn spawn_background(app: tauri::AppHandle) -> SyncWaker {
-    use tauri::{Emitter, Manager};
-    let (tx, rx) = mpsc::channel::<()>();
-    std::thread::spawn(move || {
-        let mut wait = FIRST_RUN_AFTER;
-        while let Ok(()) | Err(RecvTimeoutError::Timeout) = rx.recv_timeout(wait) {
-            while rx.try_recv().is_ok() {}
-            let state = app.state::<crate::commands::AppState>();
-            let maker = |kind: &str, address: &str| {
-                super::make_link(kind, address, super::address::AddressPolicy::HOME_NETWORK)
-            };
-            if let Err(e) = sync_once(&state.db, &maker, unix_now()) {
-                log::error!(target: "drucker", "sync failed: {e}");
-            }
-            let _ = app.emit(EVENT_JOBS_CHANGED, ());
-            wait = INTERVAL;
-        }
-    });
-    SyncWaker(tx)
 }
 
 #[cfg(test)]

@@ -1831,7 +1831,7 @@ mod tests {
     #[test]
     fn creality_import_tags_use_plate_extent_but_store_overall_dimensions() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/creality-3plates.3mf");
+            .join("../crates/katalog-core/tests/fixtures/creality-3plates.3mf");
         let model = super::read_import_model_file(&path, None).unwrap();
         assert_eq!(model.dimensions_mm, Some([334.0, 326.586525, 83.0]));
         assert!(!model.tags.iter().any(|tag| tag == "grossformat" || tag == "miniatur"));
@@ -1924,7 +1924,7 @@ mod tests {
 
     #[test]
     fn creality_project_fixture_has_three_plates_and_five_meshes() {
-        let bytes = include_bytes!("../../tests/fixtures/creality-3plates.3mf");
+        let bytes = include_bytes!("../../../crates/katalog-core/tests/fixtures/creality-3plates.3mf");
         let package = threemf::container::read_geometry_package(std::io::Cursor::new(bytes)).unwrap();
         assert_eq!(package.plate_assignments.objects.get("2"), Some(&1));
         for id in ["4", "6", "8"] { assert_eq!(package.plate_assignments.objects.get(id), Some(&2)); }

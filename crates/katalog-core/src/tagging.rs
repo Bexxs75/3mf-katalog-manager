@@ -30,7 +30,7 @@ const FILENAME_STOPWORDS: &[&str] = &[
 // Name table of the automatic tags, shared with the frontend
 // (src/lib/autoTags.json). The key is the German name and is what the database
 // stores; the frontend only translates the display.
-const AUTO_TAGS_JSON: &str = include_str!("../../src/lib/autoTags.json");
+const AUTO_TAGS_JSON: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/lib/autoTags.json"));
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

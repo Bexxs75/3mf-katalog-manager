@@ -25,11 +25,12 @@ tauri-build = { version = "2", features = [] }
 # IMPORTANT: this must stay the only default feature - a second one would be
 # turned off by `--no-default-features` as well.
 default = ["step-preview"]
-step-preview = ["dep:cxx", "dep:opencascade-sys"]
+step-preview = ["katalog-core/step-preview"]
 # Test versions: own update channel (see tauri.preview.conf.json for the own identifier).
 preview = []
 
 [dependencies]
+katalog-core = { path = "../crates/katalog-core", default-features = false }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = { version = "2", default-features = false, features = ["xdg-portal"] }
 tauri-plugin-single-instance = "2"
@@ -37,19 +38,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
 zip = "2"
-# Extracting archives on import (see src/archive/). Deliberately pure Rust
-# decoders for xz/zstd (lzma-rust2, ruzstd), so no further C libraries end up in
-# the three platform builds.
-tar = "0.4"
-flate2 = "1"
-bzip2 = "0.6"
-lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization"] }
-ruzstd = "0.9"
-# 7z: pure Rust. Without "aes256" - encrypted 7z archives are only detected (AES coder in the block), not extracted.
-sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util"] }
-# RAR: embeds the official UnRAR source code (C++). License see THIRD-PARTY-LICENSES.md (freeware, not an OSI license).
-unrar = "0.5"
-quick-xml = "0.41"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -66,41 +54,13 @@ unicode-normalization = "0.1.25"
 os_info = "3"
 # Anonymizing the host name in a log export before it leaves the computer.
 gethostname = "1"
-cxx = { version = "1", optional = true }
-# STEP preview: raw OCCT bindings. Deliberately WITHOUT the `builtin` feature -
-# that would build OCCT from source and link it STATICALLY, which triggers the
-# LGPL obligation (relinkable object files for every recipient). Linked
-# dynamically, OCCT stays replaceable; see THIRD-PARTY-LICENSES.md.
-opencascade-sys = { version = "0.3", optional = true }
-
-# macOS only: carry the archive's quarantine attribute over to extracted files (see src/archive/origin.rs).
-[target.'cfg(target_os = "macos")'.dependencies]
-xattr = "1"
-
-# Unix: open model files non-blocking so a FIFO can't hang the app (see src/safe_file.rs).
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
 
 [dev-dependencies]
+katalog-core = { path = "../crates/katalog-core", default-features = false, features = ["test-support"] }
 # Exercise command boundaries without a native window or global environment changes.
 tauri = { version = "2", features = ["test"] }
-# Tests only: create xz archives.
-lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
-# Tests only: create 7z archives (including encrypted ones).
-sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util", "compress", "aes256"] }
 
-# The patch replaces the crates.io version with the forked copy in
-# `vendor/opencascade-sys` - needed because 0.3.0 doesn't compile against OCCT
-# 7.9. Only two changes compared to upstream (TopoDS namespace, CMake minimum
-# version); rationale and maintenance notes are in
-# `vendor/opencascade-sys/VENDORING.md`.
-[patch.crates-io]
-opencascade-sys = { path = "vendor/opencascade-sys" }
-
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-panic = "abort"
-strip = true
+# Unix test fixture: create a FIFO to exercise the core's non-blocking file open
+# (see crates/katalog-core/src/safe_file.rs).
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"

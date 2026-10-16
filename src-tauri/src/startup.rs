@@ -70,7 +70,7 @@ pub fn save_window_theme(window: WebviewWindow, setting: String, resolved: Strin
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(MARKER);
     std::fs::write(&path, &marker).map_err(|e| e.to_string())?;
-    crate::harden_permissions(&path);
+    crate::safe_file::harden_permissions(&path);
     // The frontend's media query is authoritative if the platform cannot report it.
     window.set_background_color(Some(background(&marker, Some(if resolved == "dark" { Theme::Dark } else { Theme::Light }))))
         .map_err(|e| e.to_string())

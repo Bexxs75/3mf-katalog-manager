@@ -23,7 +23,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> src-tauri/target
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -61,12 +61,10 @@ jobs:
         run: npm run build
 
       - name: Clippy (all targets, -D warnings)
-        working-directory: src-tauri
-        run: cargo clippy --no-default-features --all-targets -- -D warnings
+        run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings
 
       - name: Rust tests
-        working-directory: src-tauri
-        run: cargo test --no-default-features
+        run: cargo test --workspace --no-default-features
 
       # The test guide generator writes the result sheet with openpyxl; Ubuntu's
       # package, because pip may not install into the system Python (PEP 668).

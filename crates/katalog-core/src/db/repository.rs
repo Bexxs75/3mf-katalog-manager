@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use std::path::PathBuf;
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -42,7 +42,7 @@ pub const BACKUP_DIR_NAME: &str = "update-backups";
 fn backup_before_migration(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     let Some((from, to)) = migration_backup_label(conn)? else { return Ok(()) };
     let dir = db_path.parent().ok_or_else(|| DbError::Other("Sicherungsordner nicht gefunden".into()))?.join(BACKUP_DIR_NAME);
-    let path = crate::updater::backup::create_schema(conn, &dir, from, to).map_err(DbError::Other)?;
+    let path = crate::backup::create_schema(conn, &dir, from, to).map_err(DbError::Other)?;
     log::info!(target: "backup", "Sicherung vor der Schema-Migration: {}", path.display());
     Ok(())
 }
@@ -80,7 +80,7 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), DbError> {
 }
 
 // Tests only: minimal files row (name from the last path segment), without the full `insert_file` path.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn test_insert_minimal_file(conn: &Connection, path: &str, folder_id: Option<i64>) -> Result<i64, DbError> {
     let name = Path::new(path)
         .file_name()
@@ -95,7 +95,7 @@ pub fn test_insert_minimal_file(conn: &Connection, path: &str, folder_id: Option
 }
 
 // Tests only: folders row without parent_id and without a real directory.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn insert_folder(conn: &Connection, name: &str) -> Result<i64, DbError> {
     // Synthetic path, because `path` isn't optional in Rust.
     conn.execute(
@@ -170,7 +170,7 @@ pub fn attach_folder_to_parent_by_path(conn: &Connection, dir: &Path) -> Result<
 
 /// Highest folder id in use. Ids are AUTOINCREMENT, so every row inserted
 /// afterwards has a larger id.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn max_folder_id(conn: &Connection) -> Result<i64, DbError> {
     Ok(conn.query_row("SELECT COALESCE(MAX(id), 0) FROM folders", [], |r| r.get(0))?)
 }
@@ -179,7 +179,7 @@ pub fn max_folder_id(conn: &Connection) -> Result<i64, DbError> {
 /// `known_max_id` and without files. Used when an extraction is undone because
 /// nothing new reached the catalog: an older row for the same path (e.g. a
 /// folder deleted outside the app) and its subfolders must stay.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn remove_new_folder_rows(conn: &Connection, dirs: &[PathBuf], known_max_id: i64) -> Result<(), DbError> {
     for dir in dirs.iter().rev() {
         conn.execute(
@@ -481,7 +481,7 @@ pub fn list_tag_counts(conn: &Connection) -> Result<Vec<TagCount>, DbError> {
 }
 
 // Tests only; the import uses `insert_file_within_tx` in a batch transaction.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError> {
     let tx = conn.transaction()?;
     let id = insert_file_within_tx(&tx, file)?;
@@ -1023,7 +1023,7 @@ pub fn max_queue_position(conn: &Connection) -> Result<Option<i64>, DbError> {
 }
 
 /// (id, path) of all files without content_hash. Only tests need it; production backfill queries the hashes itself.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn list_files_missing_content_hash(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
     let mut stmt = conn.prepare("SELECT id, path FROM files WHERE content_hash IS NULL AND deleted_at IS NULL")?;
     let rows = stmt
@@ -1032,7 +1032,7 @@ pub fn list_files_missing_content_hash(conn: &Connection) -> Result<Vec<(i64, St
     Ok(rows)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn set_content_hash(conn: &Connection, file_id: i64, hash: &str) -> Result<(), DbError> {
     conn.execute(
         "UPDATE files SET content_hash = ?1 WHERE id = ?2",

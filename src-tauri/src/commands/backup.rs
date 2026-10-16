@@ -76,7 +76,7 @@ fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings
     // A closure, so both temp files are cleaned up on failure too.
     let result: CmdResult<()> = (|| {
         {
-            crate::harden_permissions(&backup_db_path);
+            crate::safe_file::harden_permissions(&backup_db_path);
 
             let conn = db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
             let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
@@ -133,7 +133,7 @@ fn write_temp_file_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut file = crate::safe_file::create_new_private(path)?;
     file.write_all(bytes)?;
     drop(file);
-    crate::harden_permissions(path);
+    crate::safe_file::harden_permissions(path);
     Ok(())
 }
 /// Limits against zip bombs on import.

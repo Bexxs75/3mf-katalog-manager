@@ -211,7 +211,7 @@ def set_version(version, root="."):
 
     # Only the root package's version line is rewritten; dependency entries
     # that happen to share a version string (e.g. "1.0.0") must stay put.
-    lock_path = root / "src-tauri" / "Cargo.lock"
+    lock_path = root / "Cargo.lock"
     pattern = re.compile(r'(name = "' + re.escape(package_name) + r'"\nversion = ")[^"]+(")')
     lock_text, count = pattern.subn(lambda m: m.group(1) + version + m.group(2), lock_path.read_text(encoding="utf-8"), count=1)
     if count != 1:

@@ -13,13 +13,13 @@ mod migrations;
 pub use migrations::run_migrations;
 
 /// Schema version of this build (for tests that check the migration backup).
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn migrations_current_version() -> i64 {
     migrations::CURRENT_SCHEMA_VERSION
 }
 
 pub use repository::BACKUP_DIR_NAME;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use repository::{list_files_missing_content_hash, set_content_hash};
 pub use repository::{
     FileSummary,
@@ -42,18 +42,18 @@ pub use repository::{
     update_scanned_metadata,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use repository::insert_folder;
 
 // Only used in tests outside the DB layer.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use repository::insert_file;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use repository::test_insert_minimal_file;
 
 // Only used internally by repository::init() in production.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use repository::merge_auto_tag_aliases;
 
 pub use collections::{
@@ -62,13 +62,13 @@ pub use collections::{
     remove_file_from_collection, rename_collection, set_collection_position,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use repository::connect_in_memory;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use repository::SCHEMA_SQL;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use repository::{max_folder_id, remove_new_folder_rows};
 
 #[cfg(test)]

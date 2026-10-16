@@ -213,7 +213,7 @@ fn get_unit(conn: &Connection, unit_id: i64) -> Result<MaterialUnitRecord, DbErr
 }
 
 /// Adds a filament printer (shorthand for tests; the app uses `insert_printer_of_kind`).
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn insert_printer(conn: &Connection, name: &str) -> Result<i64, DbError> {
     insert_printer_of_kind(conn, name, PRINTER_KIND_FILAMENT)
 }

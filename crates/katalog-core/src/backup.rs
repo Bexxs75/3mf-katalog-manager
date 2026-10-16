@@ -42,7 +42,7 @@ pub fn create_schema(conn: &Connection, dir: &Path, from: i64, to: i64) -> Resul
 
 fn create_named(conn: &Connection, dir: &Path, name: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    crate::harden_permissions(dir);
+    crate::safe_file::harden_permissions(dir);
     // Reserve a unique name atomically: retries within a minute must not destroy
     // an earlier catalog copy, nor follow a pre-existing symlink.
     let mut path = dir.join(name);
@@ -61,7 +61,7 @@ fn create_named(conn: &Connection, dir: &Path, name: &str) -> Result<PathBuf, St
             Err(e) => return Err(e.to_string()),
         }
     }
-    crate::harden_permissions(&path);
+    crate::safe_file::harden_permissions(&path);
     let copied = (|| -> Result<(), String> {
         let mut dst = Connection::open(&path).map_err(|e| e.to_string())?;
         // A page budget covering the whole database, so the copy finishes in a single
@@ -80,7 +80,7 @@ fn create_named(conn: &Connection, dir: &Path, name: &str) -> Result<PathBuf, St
         let _ = std::fs::remove_file(&path);
         return Err(error);
     }
-    crate::harden_permissions(&path);
+    crate::safe_file::harden_permissions(&path);
     // A stray old backup that can't be deleted (e.g. permissions, a locked file on
     // Windows) must not block this install forever: the new backup above already
     // succeeded, so just leave the surplus for the next prune to try again.

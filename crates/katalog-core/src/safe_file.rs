@@ -80,10 +80,23 @@ pub fn create_private_temp(dir: &Path, prefix: &str, suffix: &str) -> std::io::R
     Err(last_err.unwrap_or_else(|| std::io::Error::other("no temp file could be created")))
 }
 
+// Data directory for the own user only (relevant on multi-user systems).
+#[cfg(unix)]
+pub fn harden_permissions(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = if path.is_dir() { 0o700 } else { 0o600 };
+    if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
+        log::error!(target: "startup", "could not harden file permissions for {path:?}: {e}");
+    }
+}
+
+#[cfg(not(unix))]
+pub fn harden_permissions(_path: &std::path::Path) {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::unique_test_dir;
+    use crate::unique_test_dir;
 
     #[test]
     fn reads_a_regular_file() {

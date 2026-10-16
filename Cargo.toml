@@ -1,0 +1,19 @@
+[workspace]
+members = ["src-tauri", "crates/katalog-core"]
+resolver = "2"
+
+# The patch replaces the crates.io version with the forked copy in
+# `src-tauri/vendor/opencascade-sys` - needed because 0.3.0 doesn't compile against OCCT
+# 7.9. Only two changes compared to upstream (TopoDS namespace, CMake minimum
+# version); rationale and maintenance notes are in
+# `src-tauri/vendor/opencascade-sys/VENDORING.md`.
+[patch.crates-io]
+opencascade-sys = { path = "src-tauri/vendor/opencascade-sys" }
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

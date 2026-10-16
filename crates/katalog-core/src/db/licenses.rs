@@ -11,7 +11,7 @@ struct Preset {
 // Both runtimes read the same table so adding a preset cannot change its meaning between views.
 #[cfg(test)]
 static PRESETS: std::sync::LazyLock<Vec<Preset>> = std::sync::LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../../src/lib/licensePresets.json")).expect("valid license presets")
+    serde_json::from_str(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/lib/licensePresets.json"))).expect("valid license presets")
 });
 
 #[cfg(test)]
