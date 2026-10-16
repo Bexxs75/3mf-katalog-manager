@@ -1,3 +1,4 @@
+import { canEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { dismissDragDropTip } from '../lib/dragDropTip';
 import { useCallback, useEffect, useState } from 'react';
@@ -26,7 +27,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
   const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean; unexpected?: boolean; collection?: 'added' | 'already' } | null>(null);
 
-  const onDragFileStart = useCallback((id: string) => isReadOnly() ? Promise.resolve() : setDraggedFileId(id), []);
+  const onDragFileStart = useCallback((id: string) => !canEditMetadata() ? Promise.resolve() : setDraggedFileId(id), []);
   // A click without hovering over another row moves nothing
   // (dragOverFolderId stays null).
   const onDragFolderStart = useCallback((id: string) => {
@@ -43,6 +44,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     (id: string) => {
       if (!draggedFileId && !draggedFolderId) return;
       setDragOverCollectionId(null);
+      if (isReadOnly()) return;
       if (draggedFileId && models.find((model) => model.id === draggedFileId)?.folderId === id) {
         setDragOverFolderId(null);
         return;
@@ -96,7 +98,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       setDraggedFileId(null);
       setDragOverFolderId(null);
       const file = models.find((m) => m.id === fileId);
-      if (collectionId && file && collectionTargets) {
+      if (canEditMetadata() && collectionId && file && collectionTargets) {
         const target = collectionTargets.collections.find(c => c.id === collectionId);
         if (!target) return;
         collectionsApi.listCollectionFiles(collectionId).then(async members => {
@@ -110,7 +112,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         });
         return;
       }
-      if (!folderId) return;
+      if (isReadOnly() || !folderId) return;
       const targetFolder = folders.find((f) => f.id === folderId);
       if (!file || !targetFolder) return;
       foldersApi

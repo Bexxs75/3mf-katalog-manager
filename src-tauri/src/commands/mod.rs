@@ -204,18 +204,9 @@ fn resolve_path_for_sensitivity_check(path: &Path) -> CmdResult<PathBuf> {
 // and a "javascript:"/"data:" value would be executed on click instead of
 // navigated (close to CWE-79).
 fn validate_source_url(url: Option<String>) -> CmdResult<Option<String>> {
-    let Some(trimmed) = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) else {
-        return Ok(None);
-    };
-    if is_http_url(&trimmed) {
-        Ok(Some(trimmed))
-    } else {
-        Err(CmdError::expected("source URL must start with http:// or https://"))
-    }
+    katalog_core::write::validate_source_url(url).map_err(Into::into)
 }
-fn is_http_url(url: &str) -> bool {
-    url.starts_with("http://") || url.starts_with("https://")
-}
+
 
 // Von Tests in mehreren Untermodulen gebraucht.
 #[cfg(test)]

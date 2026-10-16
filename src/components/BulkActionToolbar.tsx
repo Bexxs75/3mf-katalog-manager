@@ -1,3 +1,4 @@
+import { useCanEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
@@ -81,6 +82,7 @@ export function BulkActionToolbar({
   tagsInSelection,
   onBulkRemoveTag,
 }: BulkActionToolbarProps) {
+  const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
   const t = useT();
   const formatCount = useFormatCount();
@@ -146,10 +148,10 @@ export function BulkActionToolbar({
     onRemoveTagMenuOpenChange(false);
   }, [confirmationOpen, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
   const { language } = useLanguage();
-  if (isReadOnly()) return null;
+  if (!canEdit) return null;
   return (
     <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
-      {confirmRemove ? (
+      {!isReadOnly() && confirmRemove ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-small font-medium text-[var(--ink)]">{formatCount(t('removeModelsQuestion'), selectedCount)}</span>
           <span className="text-small text-[var(--ink-2)]">{t('removeModelHint')}</span>
@@ -163,7 +165,7 @@ export function BulkActionToolbar({
             finally { setBusy(false); }
           }}>{t('removeEntry')}</button>
         </div>
-      ) : confirmBulkDelete ? (
+      ) : !isReadOnly() && confirmBulkDelete ? (
         <>
           <span className="text-small font-medium text-[var(--ink)]">
             {formatCount(t('bulkDeleteConfirmQuestion'), selectedCount)}
@@ -303,10 +305,10 @@ export function BulkActionToolbar({
           <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('notPrintedLabel')}
           </button>
-          {onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
-          <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-small font-semibold cursor-pointer hover:border-red-400">
+          {!isReadOnly() && onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
+          {!isReadOnly() && <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-small font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}
-          </button>
+          </button>}
         </>
       )}
     </div>

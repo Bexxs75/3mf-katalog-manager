@@ -19,6 +19,7 @@ pub struct Config {
     pub allowed_hosts: Option<Vec<String>>,
     pub trust_proxy: bool,
     pub allow_no_auth: bool,
+    pub write: bool,
     pub password: Option<String>,
     pub password_file: Option<PathBuf>,
 }
@@ -73,6 +74,11 @@ impl Config {
             .unwrap_or_else(|| "127.0.0.1:8080".into())
             .parse()
             .map_err(|_| "KATALOG_BIND ist keine gültige IP-Adresse mit Port".to_string())?;
+        let write = lookup("KATALOG_WRITE").as_deref() == Some("1");
+        if write && (lookup("KATALOG_ALLOW_NO_AUTH").as_deref() == Some("1")
+            || lookup("KATALOG_ALLOWED_HOSTS").is_none_or(|s| s.trim().is_empty())) {
+            return Err("KATALOG_WRITE erfordert Anmeldung und eine explizite KATALOG_ALLOWED_HOSTS-Liste".into());
+        }
         let allow_no_auth = lookup("KATALOG_ALLOW_NO_AUTH").as_deref() == Some("1");
         if allow_no_auth && !bind.ip().is_loopback() {
             return Err("KATALOG_ALLOW_NO_AUTH=1 ist nur mit Loopback-Bindung erlaubt".into());
@@ -122,6 +128,7 @@ impl Config {
             allowed_hosts,
             trust_proxy,
             allow_no_auth,
+            write,
             password,
             password_file,
         })

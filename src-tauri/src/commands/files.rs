@@ -1,8 +1,7 @@
-use katalog_core::read::print_log_entry_to_dto;
 use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use super::*;
 
-pub(crate) const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024;
+pub(crate) use katalog_core::write::MAX_CUSTOM_IMAGE_BYTES;
 // Base64 inflates by 4/3: limit for the still encoded string in `set_render_snapshot`.
 const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
 
@@ -100,56 +99,19 @@ pub fn add_print_log_entry(
     note: Option<String>,
     photo_base64: Option<String>,
 ) -> CmdResult<PrintLogEntryDto> {
-    use base64::Engine;
-    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-
-    let photo_png = photo_base64
-        .map(|b64| {
-            base64::engine::general_purpose::STANDARD
-                .decode(&b64)
-                .map_err(|e| e.to_string())
-        })
-        .transpose()?;
-    if let Some(bytes) = &photo_png {
-        if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
-            return Err(format!(
-                "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
-                bytes.len() as f64 / (1024.0 * 1024.0),
-                MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
-            )
-            .into());
-        }
-    }
-
+    let entry = katalog_core::write::prepare_print_log_entry(file_id, printed_at, note, photo_base64)?;
     let conn = lock_db(&state)?;
-    let new_entry = db::models::NewPrintLogEntry {
-        file_id: fid,
-        printed_at,
-        note,
-        photo_png,
-    };
-    let id = db::insert_print_log_entry(&conn, &new_entry).map_err(|e| e.to_string())?;
-    let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
-    let entry = entries
-        .into_iter()
-        .find(|e| e.id == id)
-        .ok_or_else(|| "entry not found after insert".to_string())?;
-    Ok(print_log_entry_to_dto(entry))
+    katalog_core::write::insert_prepared_print_log_entry(&conn, entry).map_err(Into::into)
 }
 #[tauri::command]
 pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdResult<()> {
-    let id: i64 = entry_id
-        .parse()
-        .map_err(|_| "invalid entry id".to_string())?;
+    let _: i64 = entry_id.parse().map_err(|_| "invalid entry id".to_string())?;
     let conn = lock_db(&state)?;
-    db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string().into())
+    katalog_core::write::delete_print_log_entry(&conn, entry_id).map_err(Into::into)
 }
 /// Dialog filters can be bypassed by typing a path; trust the bytes instead.
 pub(crate) fn validate_image_format(bytes: &[u8]) -> CmdResult<()> {
-    let supported = bytes.starts_with(b"\x89PNG\r\n\x1a\n")
-        || bytes.starts_with(b"\xff\xd8\xff")
-        || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(&b"WEBP"[..]));
-    if supported { Ok(()) } else { Err(CmdError::expected("imageUploadUnsupported")) }
+    katalog_core::write::validate_image_format(bytes).map_err(Into::into)
 }
 
 /// Reads a user-picked image file with a size limit, directly through a reader
@@ -191,11 +153,7 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
 /// normalized to their key, so e.g. "Multipart" doesn't create a second tag next
 /// to "mehrteilig".
 fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
-    db::error::validate_text_length(tag, 100, "Tag").map_err(|e| CmdError::expected(e.to_string()))?;
-    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| match e {
-        db::error::DbError::Invalid(message) => CmdError::expected(message),
-        other => other.to_string().into(),
-    })
+    katalog_core::write::add_tag_with_conn(conn, file_id, tag).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -206,12 +164,9 @@ pub fn add_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResul
 }
 #[tauri::command]
 pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    // No normalization here (unlike add_tag): the frontend always sends the name
-    // actually stored - normalizing would make an alias tag (e.g. the ambiguous
-    // "mini") impossible to remove once it no longer matches the key.
-    db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string().into())
+    katalog_core::write::remove_tag(&conn, file_id, tag).map_err(Into::into)
 }
 /// Core logic of `move_file_to_folder`, without `State`, so it's testable.
 pub(super) fn move_file_to_folder_with_conn(
@@ -358,45 +313,35 @@ pub fn rename_file(state: State<AppState>, file_id: String, name: String) -> Cmd
 }
 #[tauri::command]
 pub fn set_print_status(state: State<AppState>, file_id: String, status: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_print_status(&conn, id, &status).map_err(|e| e.to_string().into())
+    katalog_core::write::set_print_status(&conn, file_id, status).map_err(Into::into)
 }
 #[tauri::command]
 pub fn set_favorite(state: State<AppState>, file_id: String, favorite: bool) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_favorite(&conn, id, favorite).map_err(|e| e.to_string().into())
+    katalog_core::write::set_favorite(&conn, file_id, favorite).map_err(Into::into)
 }
 #[tauri::command]
 pub fn mark_file_viewed(state: State<AppState>, file_id: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::mark_file_viewed(&conn, id).map_err(|e| e.to_string().into())
+    katalog_core::write::mark_file_viewed(&conn, file_id).map_err(Into::into)
 }
 #[tauri::command]
 pub fn add_to_queue(state: State<AppState>, file_id: String) -> CmdResult<i64> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    let next = db::max_queue_position(&conn)
-        .map_err(|e| e.to_string())?
-        .unwrap_or(0)
-        + 1;
-    db::set_queue_position(&conn, id, Some(next)).map_err(|e| e.to_string())?;
-    Ok(next)
+    katalog_core::write::add_to_queue(&conn, file_id).map_err(Into::into)
 }
 #[tauri::command]
 pub fn remove_from_queue(state: State<AppState>, file_id: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_queue_position(&conn, id, None).map_err(|e| e.to_string().into())
+    katalog_core::write::remove_from_queue(&conn, file_id).map_err(Into::into)
 }
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueuePositionUpdate {
-    pub file_id: String,
-    pub position: i64,
-}
+pub use katalog_core::write::QueuePositionUpdate;
 #[tauri::command]
 pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) -> CmdResult<()> {
     let mut conn = lock_db(&state)?;
@@ -409,27 +354,7 @@ fn reorder_queue_with_conn(
     conn: &mut Connection,
     updates: Vec<QueuePositionUpdate>,
 ) -> CmdResult<()> {
-    let mut parsed = Vec::with_capacity(updates.len());
-    for update in updates {
-        let id: i64 = update
-            .file_id
-            .parse()
-            .map_err(|_| "invalid file id".to_string())?;
-        if db::get_file(conn, id).map_err(|e| e.to_string())?.is_none() {
-            return Err(format!(
-                "Datei mit id {id} nicht gefunden - Batch wird nicht angewendet"
-            )
-            .into());
-        }
-        parsed.push((id, update.position));
-    }
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    for (id, position) in parsed {
-        db::set_queue_position(&tx, id, Some(position)).map_err(|e| e.to_string())?;
-    }
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+    katalog_core::write::reorder_queue_with_conn(conn, updates).map_err(Into::into)
 }
 #[tauri::command]
 pub async fn upload_custom_image(
@@ -496,10 +421,10 @@ pub fn set_source_url(
     file_id: String,
     url: Option<String>,
 ) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let url = validate_source_url(url)?;
     let conn = lock_db(&state)?;
-    db::set_source_url(&conn, id, url.as_deref()).map_err(|e| e.to_string().into())
+    katalog_core::write::set_source_url(&conn, file_id, url).map_err(Into::into)
 }
 pub(super) fn is_ignored_import_path(path: &Path) -> bool {
     path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
@@ -3058,7 +2983,7 @@ mod import_batch_tests;
 
 #[tauri::command]
 pub fn set_license(state: State<AppState>, file_ids: Vec<String>, license: Option<String>) -> CmdResult<()> {
-    let ids = file_ids.iter().map(|id| id.parse::<i64>().map_err(|_| "invalid file id".to_string())).collect::<Result<Vec<_>, _>>()?;
+    for id in &file_ids { let _: i64 = id.parse().map_err(|_| "invalid file id".to_string())?; }
     let mut conn = lock_db(&state)?;
-    db::licenses::set_license(&mut conn, &ids, license.as_deref()).map_err(|e| e.to_string().into())
+    katalog_core::write::set_license(&mut conn, file_ids, license).map_err(Into::into)
 }

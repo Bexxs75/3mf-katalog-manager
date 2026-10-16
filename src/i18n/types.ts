@@ -7,6 +7,9 @@ export interface PluralForms {
 
 export interface Translations {
   downloadModel: string;
+  webMetadataError: string;
+  webPhotoTooLarge: string;
+  webPhotoFormat: string;
   webReadOnly: string;
   webUnavailable: string;
   webSessionChecking: string;

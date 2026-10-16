@@ -1,3 +1,4 @@
+import { useCanEditMetadata } from '../lib/webSession';
 import { Icon as SharedIcon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useState, type ReactNode } from 'react';
@@ -89,6 +90,7 @@ function Hint({ children }: { children: ReactNode }) {
 }
 
 export function ToolsSection(props: ToolsSectionProps) {
+  const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
   const t = useT();
   const [collapsed, setCollapsed] = useState(false);
@@ -127,7 +129,7 @@ export function ToolsSection(props: ToolsSectionProps) {
       </button>
       {!collapsed && (
         <div className="flex flex-col gap-px">
-          {import.meta.env.VITE_TARGET !== 'web' && <>
+          {canEdit && <>
           <button
             type="button"
             aria-expanded={queueOpen}

@@ -95,6 +95,8 @@ use std::{
 };
 use subtle::ConstantTimeEq;
 use tower_http::limit::RequestBodyLimitLayer;
+use tower::{Layer, ServiceExt};
+use crate::write::{AuditCompletion, WriteProgress, WriteGate, WRITE_COMMANDS, body_limit};
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> u64;
@@ -123,6 +125,7 @@ struct Session {
     client: String,
     created: u64,
     seen: u64,
+    bucket: crate::write::Bucket,
 }
 #[derive(Default)]
 struct Failure {
@@ -252,6 +255,7 @@ struct Data {
     revision: u64,
 }
 struct App {
+    writer: Option<WriteGate>,
     config: Config,
     clock: Arc<dyn Clock>,
     data: Mutex<Data>,
@@ -259,7 +263,7 @@ struct App {
     geometry: Arc<GeometryGate>,
     downloads: Arc<tokio::sync::Semaphore>,
 }
-fn error(status: u16, message: &str) -> Response {
+pub(crate) fn error(status: u16, message: &str) -> Response {
     (
         StatusCode::from_u16(status).unwrap(),
         Json(json!({"message":message,"expected":status<500})),
@@ -279,14 +283,8 @@ fn event(kind: &str, client: &str, now: u64) {
 }
 
 pub async fn initialize(mut config: Config) -> Result<Router, String> {
-    let db_path = config.db_path.clone();
-    tokio::task::spawn_blocking(move || {
-        katalog_core::db::open_read_only(&db_path)
-            .map(|_| ())
-            .map_err(|e| format!("Katalog kann nicht nur lesend geöffnet werden: {e}"))
-    })
-    .await
-    .map_err(|_| "Katalogprüfung fehlgeschlagen".to_string())??;
+    validate_write_config(&config)?;
+    let writer = open_catalog(&config).await?;
     let auth = if config.allow_no_auth {
         eprintln!("WARNUNG: Anmeldung und CSRF sind ausgeschaltet (nur Loopback)!");
         None
@@ -300,14 +298,37 @@ pub async fn initialize(mut config: Config) -> Result<Router, String> {
             .await?,
         )
     };
-    Ok(build_app(AppConfig {
-        config,
-        auth,
-        clock: Arc::new(SystemClock),
-    }))
+    Ok(build_app_with_writer(AppConfig { config, auth, clock: Arc::new(SystemClock) }, writer))
 }
+/// Read-only convenience builder. Fallible write startup uses `try_build_app`.
 pub fn build_app(config: AppConfig) -> Router {
+    assert!(!config.config.write, "use try_build_app for write mode");
+    build_app_with_writer(config, None)
+}
+fn validate_write_config(config: &Config) -> Result<(), String> {
+    if config.write && (config.allow_no_auth || config.allowed_hosts.as_ref().is_none_or(|h| h.is_empty())) {
+        return Err("Schreibmodus erfordert Anmeldung und Hostliste".into());
+    }
+    Ok(())
+}
+async fn open_catalog(config: &Config) -> Result<Option<WriteGate>, String> {
+    let path = config.db_path.clone();
+    let write = config.write;
+    tokio::task::spawn_blocking(move || {
+        if write { katalog_core::db::open_read_write(&path).map(|c| Some(WriteGate::new(c))) }
+        else { katalog_core::db::open_read_only(&path).map(|_| None) }
+    }).await.map_err(|_| "Katalogprüfung fehlgeschlagen".to_string())?
+      .map_err(|e| if write { format!("Katalog kann nicht schreibend geöffnet werden: {e}") } else { format!("Katalog kann nicht nur lesend geöffnet werden: {e}") })
+}
+pub async fn try_build_app(config: AppConfig) -> Result<Router, String> {
+    validate_write_config(&config.config)?;
+    if config.config.write && config.auth.is_none() { return Err("Anmeldung fehlt".into()); }
+    let writer = open_catalog(&config.config).await?;
+    Ok(build_app_with_writer(config, writer))
+}
+fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Router {
     let app = Arc::new(App {
+        writer,
         config: config.config,
         clock: config.clock,
         data: Mutex::new(Data {
@@ -320,9 +341,11 @@ pub fn build_app(config: AppConfig) -> Router {
         geometry: Arc::new(GeometryGate::default()),
         downloads: Arc::new(tokio::sync::Semaphore::new(4)),
     });
+    router(app)
+}
+fn router(app: Arc<App>) -> Router {
     Router::new()
         .fallback(dispatch)
-        .layer(RequestBodyLimitLayer::new(65536))
         .layer(middleware::from_fn_with_state(app.clone(), protect))
         .with_state(app)
 }
@@ -419,10 +442,24 @@ fn origin_ok(app: &App, h: &HeaderMap) -> bool {
     let default = if scheme == "https" { 443 } else { 80 };
     oh == rh && op.unwrap_or(default) == rp.unwrap_or(default)
 }
-async fn protect(State(app): State<Arc<App>>, req: Request, next: Next) -> Response {
+async fn limited(req: Request, next: Next, limit: usize) -> Response {
+    let service = tower::service_fn(move |request: axum::http::Request<tower_http::body::Limited<Body>>| {
+        let next = next.clone();
+        async move { Ok::<_, std::convert::Infallible>(next.run(request.map(Body::new)).await) }
+    });
+    RequestBodyLimitLayer::new(limit).layer(service).oneshot(req).await.unwrap().map(Body::new)
+}
+async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> Response {
+    let command = req.uri().path().strip_prefix("/api/invoke/").unwrap_or("").to_owned();
+    let write_command = WRITE_COMMANDS.contains(&command.as_str());
+    let write = write_command && app.config.write;
+    let limit = if write { body_limit(&command) } else { 65536 };
+    let mut audit = write.then(|| AuditCompletion::new(&command, req.headers(), cookie_name(secure(&app, req.headers())), app.clock.now()));
+    if let Some(audit) = &audit { req.extensions_mut().insert(audit.progress.clone()); }
+
     let api = req.uri().path().starts_with("/api/");
     let mut response = match request_host(req.headers()) {
-        Err(e) => *e,
+        Err(e) => if write { error(403, "Ungültiger Host-Header") } else { *e },
         Ok(host) => {
             let allowed = app.config.allowed_hosts.as_ref().is_none_or(|list| {
                 list.iter().any(|s| {
@@ -438,25 +475,26 @@ async fn protect(State(app): State<Arc<App>>, req: Request, next: Next) -> Respo
                 })
             });
             if !allowed {
-                error(421, "Host nicht zugelassen")
+                error(if write { 403 } else { 421 }, "Host nicht zugelassen")
             } else if req.method() != Method::GET && req.method() != Method::POST {
                 error(405, "Methode nicht erlaubt")
             } else if req.method() == Method::POST
                 && !app.config.allow_no_auth
-                && !origin_ok(&app, req.headers())
+                && (!origin_ok(&app, req.headers()) || (write && app.config.write && !req.headers().contains_key(header::ORIGIN)))
             {
                 error(403, "Origin nicht zugelassen")
             } else if req.uri().path() == "/api/invoke/get_model_geometry" {
                 // Geometry processing has its own bounded admission; its body
                 // still has the same 15-second read deadline as other routes.
-                next.run(req).await
+                limited(req, next, limit).await
             } else {
-                tokio::time::timeout(std::time::Duration::from_secs(15), next.run(req))
+                tokio::time::timeout(std::time::Duration::from_secs(if write { 30 } else { 15 }), limited(req, next, limit))
                     .await
                     .unwrap_or_else(|_| error(408, "Zeitlimit für Anfrage überschritten"))
             }
         }
     };
+    if let Some(audit) = &mut audit { audit.status = response.status().as_u16(); }
     for (name, value) in [
         (
             "content-security-policy",
@@ -526,6 +564,7 @@ fn new_session(data: &mut Data, client: &str, now: u64) -> Result<Session, Box<R
         client: client.into(),
         created: now,
         seen: now,
+        bucket: crate::write::Bucket::new(now),
     };
     cleanup(data, now);
     if data
@@ -565,13 +604,19 @@ fn retry_response(seconds: u64) -> Response {
     r
 }
 async fn read_body(body: Body) -> Result<axum::body::Bytes, Box<Response>> {
-    tokio::time::timeout(std::time::Duration::from_secs(15), to_bytes(body, 65536))
+    read_body_limit(body, 65536).await
+}
+async fn read_body_limit(body: Body, limit: usize) -> Result<axum::body::Bytes, Box<Response>> {
+    read_body_deadline(body, limit, 15).await
+}
+async fn read_body_deadline(body: Body, limit: usize, seconds: u64) -> Result<axum::body::Bytes, Box<Response>> {
+    tokio::time::timeout(std::time::Duration::from_secs(seconds), to_bytes(body, limit))
         .await
         .map_err(|_| boxed_error(408, "Zeitlimit für Anfrage überschritten"))?
         .map_err(|_| boxed_error(413, "JSON-Körper ist zu groß"))
 }
-async fn json_body(body: Body) -> Result<Value, Box<Response>> {
-    let bytes = read_body(body).await?;
+async fn json_body(body: Body, limit: usize, seconds: u64) -> Result<Value, Box<Response>> {
+    let bytes = read_body_deadline(body, limit, seconds).await?;
     let value: Value =
         serde_json::from_slice(&bytes).map_err(|_| boxed_error(400, "Ungültiger JSON-Körper"))?;
     if !value.is_object() {
@@ -588,6 +633,10 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let now = app.clock.now();
     let path = req.uri().path().to_owned();
     let method = req.method().clone();
+    let command = path.strip_prefix("/api/invoke/").unwrap_or("");
+    let is_write = WRITE_COMMANDS.contains(&command);
+    if is_write && !app.config.write { return error(404, "Befehl im Web nicht verfügbar"); }
+    let audit = req.extensions().get::<Arc<WriteProgress>>().cloned();
     let download_id = path
         .strip_prefix("/api/files/")
         .and_then(|p| p.strip_suffix("/download"))
@@ -647,9 +696,10 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         .await;
     }
     if method == Method::GET {
+        let must_change = current.is_some() && app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change);
         return match path.as_str() {
             "/api/health"=>Json(json!({"ok":true})).into_response(),
-            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":current.is_some() && app.data.lock().unwrap().auth.as_ref().is_some_and(|a|a.must_change),"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
+            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
             "/"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8")],include_str!("../static/index.html")).into_response(),
             "/static/app.js"=>([(header::CONTENT_TYPE,"application/javascript; charset=utf-8")],include_str!("../static/app.js")).into_response(),
             "/static/app.css"=>([(header::CONTENT_TYPE,"text/css; charset=utf-8")],include_str!("../static/app.css")).into_response(),
@@ -713,7 +763,16 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     {
         return error(400, "Content-Type application/json erwartet");
     }
-    let args = match json_body(req.into_body()).await {
+    // Reserve before buffering, including for chunked uploads. RAII releases the
+    // place on invalid input, timeout or cancellation, then hands it to the worker.
+    let admission = if is_write {
+        match admit_write(&app, current.as_ref().expect("authenticated write")) {
+            Ok(permit) => Some(permit),
+            Err(response) => return *response,
+        }
+    } else { None };
+    let seconds = if command == "add_print_log_entry" { 30 } else { 15 };
+    let args = match json_body(req.into_body(), body_limit(command), seconds).await {
         Ok(v) => v,
         Err(e) => return *e,
     };
@@ -745,6 +804,9 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             }
         }
         p if p.starts_with("/api/invoke/") => {
+            if is_write {
+                return write_invoke(app, current.expect("authenticated write"), command.to_owned(), args, audit, admission.unwrap()).await;
+            }
             invoke(
                 app.config.db_path.clone(),
                 app.config.roots.clone(),
@@ -819,7 +881,7 @@ async fn verify_client(
 }
 async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value) -> Response {
     if app.config.allow_no_auth {
-        return Json(json!({"ok":true,"mustChangePassword":false,"csrfToken":null}))
+        return Json(json!({"ok":true,"mustChangePassword":false,"writable":false,"csrfToken":null}))
             .into_response();
     }
     let password = match string(&args, "password") {
@@ -845,7 +907,7 @@ async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value)
         Ok(s) => s,
         Err(e) => return *e,
     };
-    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
+    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
 }
 async fn change_password(
     app: Arc<App>,
@@ -939,10 +1001,11 @@ async fn change_password(
             client: peer,
             created: now,
             seen: now,
+        bucket: crate::write::Bucket::new(now),
         },
     );
     with_cookie(
-        Json(json!({"ok":true,"mustChangePassword":false,"csrfToken":csrf})).into_response(),
+        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"csrfToken":csrf})).into_response(),
         &token,
         secure,
         false,
@@ -952,3 +1015,56 @@ async fn change_password(
 #[cfg(test)]
 #[path = "web_security_tests.rs"]
 mod security_tests;
+
+fn admit_write(app: &App, current: &Session) -> Result<tokio::sync::OwnedSemaphorePermit, Box<Response>> {
+    let gate = app.writer.as_ref().expect("write connection initialized");
+    {
+        let mut data = app.data.lock().unwrap();
+        cleanup(&mut data, app.clock.now());
+        let Some(session) = data.sessions.get_mut(&current.token) else { return Err(boxed_error(401, "Sitzung abgelaufen")); };
+        if !session.bucket.take(app.clock.now()) { return Err(Box::new(crate::write::retry(429))); }
+    }
+    gate.admission.clone().try_acquire_owned().map_err(|_| Box::new(crate::write::retry(503)))
+}
+async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit) -> Response {
+    let gate = app.writer.as_ref().expect("write connection initialized");
+    let Ok(worker) = gate.worker.clone().acquire_owned().await else { return crate::write::retry(503); };
+    // Permits live with blocking work, including after HTTP timeout/disconnect.
+    tokio::task::spawn_blocking(move || {
+        let (_admission, _worker) = (admission, worker);
+        let mutex = &app.writer.as_ref().unwrap().conn;
+        let mut conn = match mutex.lock() {
+            Ok(conn) => conn,
+            Err(poisoned) => {
+                let conn = poisoned.into_inner();
+                if !conn.is_autocommit() && conn.execute_batch("ROLLBACK").is_err() {
+                    eprintln!("write error_kind=poison_rollback");
+                    return error(500, "Interner Schreibfehler");
+                }
+                if !conn.is_autocommit() {
+                    eprintln!("write error_kind=poison_transaction_state");
+                    return error(500, "Interner Schreibfehler");
+                }
+                mutex.clear_poison();
+                conn
+            }
+        };
+        {
+            let mut data = app.data.lock().unwrap();
+            cleanup(&mut data, app.clock.now());
+            if !data.sessions.contains_key(&current.token) { return error(401, "Sitzung abgelaufen"); }
+            if data.auth.as_ref().is_none_or(|a| a.must_change) { return error(403, "Bitte zuerst ein neues Passwort setzen"); }
+        }
+        match crate::write::execute(&mut conn, &command, &args) {
+            Ok((response, changes)) => {
+                if let Some(audit) = audit { audit.changes.store(changes, std::sync::atomic::Ordering::Relaxed); }
+                response
+            }
+            Err(response) => *response,
+        }
+    }).await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"))
+}
+
+#[cfg(test)]
+#[path = "write_tests.rs"]
+mod write_tests;

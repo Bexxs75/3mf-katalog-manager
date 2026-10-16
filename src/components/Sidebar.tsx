@@ -1,4 +1,5 @@
 import { isReadOnly } from '../lib/readOnly';
+import { useCanEditMetadata } from '../lib/webSession';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_STEP } from '../hooks/useSidebarWidth';
@@ -117,6 +118,7 @@ export function Sidebar({
   cleanupScanning,
   cleanupError,
 }: Props) {
+  const canEdit = useCanEditMetadata();
   const { jobActive, lockProps } = useImportLock();
   const [collectionMenu, setCollectionMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null);
   const [deletingCollection, setDeletingCollection] = useState<Collection | null>(null);
@@ -351,13 +353,13 @@ export function Sidebar({
             onClick={() => { if (renamingCollection?.id !== c.id) onSelectCollection(c.id); }}
             onContextMenu={(event) => {
               event.preventDefault();
-              if (isReadOnly() || renamingCollection) return;
+              if (!canEdit || renamingCollection) return;
               event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
               setCollectionMenu({ collection: c, x: event.clientX, y: event.clientY });
             }}
             onKeyDown={(event) => {
               if (event.target !== event.currentTarget) return;
-              if (!isReadOnly() && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
+              if (canEdit && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
                 event.preventDefault(); event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
                 const bounds = event.currentTarget.getBoundingClientRect();
                 setCollectionMenu({ collection: c, x: bounds.left, y: bounds.bottom });
@@ -403,7 +405,7 @@ export function Sidebar({
             />
           </div>
         ) : (
-          <>{!isReadOnly() && <div
+          <>{canEdit && <div
             onClick={() => {
               setCreatingCollection(true);
               setCollectionNameDraft('');

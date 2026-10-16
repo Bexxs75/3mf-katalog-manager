@@ -1,15 +1,17 @@
 import source from '../../crates/katalog-server/src/invoke.rs?raw';
+import writeSource from '../../crates/katalog-server/src/write.rs?raw';
 import { afterEach, expect, it, vi } from 'vitest';
-import { isReadOnly, WEB_READ_COMMANDS } from './readOnly';
+import { isReadOnly, WEB_READ_COMMANDS, WEB_WRITE_COMMANDS } from './readOnly';
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 it('is enabled only for the web build', () => {
   vi.stubEnv('VITE_TARGET', 'desktop'); expect(isReadOnly()).toBe(false);
   vi.stubEnv('VITE_TARGET', 'web'); expect(isReadOnly()).toBe(true);
 });
-it('matches exactly the server command dispatch', () => {
-  const allow = source.slice(source.indexOf('if !matches!(')).split(') {')[0];
-  const commands = [...allow.matchAll(/"([a-z_]+)"/g)].map(match => match[1]);
-  expect([...WEB_READ_COMMANDS].sort()).toEqual([...new Set(commands)].sort());
+it.each([[source, 'READ_COMMANDS', WEB_READ_COMMANDS], [writeSource, 'WRITE_COMMANDS', WEB_WRITE_COMMANDS]])('matches the exported Rust constant', (rust, name, list) => {
+  const constant = (rust as string).split(`pub const ${name}: &[&str] = &[`)[1]?.split('];')[0];
+  expect(constant).toBeDefined();
+  const commands = [...constant.matchAll(/"([a-z_]+)"/g)].map(match => match[1]);
+  expect([...list].sort()).toEqual(commands.sort());
 });
 it('rejects unavailable commands locally with an expected error', async () => {
   vi.stubEnv('VITE_TARGET', 'web'); vi.resetModules();

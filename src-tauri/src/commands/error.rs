@@ -196,3 +196,33 @@ fn read_error_adapter_preserves_all_wire_fields() {
         }
     }
 }
+
+impl From<katalog_core::write::WriteError> for CmdError {
+    fn from(error: katalog_core::write::WriteError) -> Self {
+        match error {
+            katalog_core::write::WriteError::Invalid { message } => Self::expected(message),
+            other => other.to_string().into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod write_adapter_tests {
+    use super::*;
+    use katalog_core::{db, write};
+    #[test]
+    fn write_adapters_preserve_expected_flags_messages_and_partial_desktop_effects() {
+        let mut c = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&c,"/one",None).unwrap();
+        let e = CmdError::from(write::add_tag_with_conn(&c,id,&"😀".repeat(51)).unwrap_err());
+        assert!(e.expected); assert_eq!(e.message,"Tag darf höchstens 100 Zeichen enthalten");
+        let e = CmdError::from(write::set_source_url(&c,id.to_string(),Some("file:///x".into())).unwrap_err());
+        assert!(e.expected); assert_eq!(e.message,"source URL must start with http:// or https://");
+        let e = CmdError::from(write::set_license(&mut c,vec![id.to_string()],Some("x".repeat(201))).unwrap_err());
+        assert!(!e.expected); assert_eq!(e.message,"Lizenz darf höchstens 200 Zeichen und keine Steuerzeichen enthalten");
+        let collection = write::create_collection(&c,"x".into()).unwrap();
+        let e = CmdError::from(write::add_files_to_collection(&c,collection.id.clone(),vec![id.to_string(),"bad".into()]).unwrap_err());
+        assert!(!e.expected); assert_eq!(e.message,"invalid file id");
+        assert_eq!(db::list_collection_file_ids(&c,collection.id.parse().unwrap()).unwrap(),vec![id]);
+    }
+}
