@@ -286,3 +286,5 @@ pub fn encode_file_images(images: Vec<db::FileImages>) -> Vec<FileImagesDto> {
 
 #[cfg(test)]
 mod tests;
+
+pub mod manager;

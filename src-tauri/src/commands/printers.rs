@@ -5,95 +5,21 @@
 
 use super::*;
 use db::printers as p;
-use serde::Deserialize;
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct MaterialUnitDto {
-    pub id: String,
-    pub printer_id: String,
-    pub name: String,
-    pub kind: String,
-    pub slot_count: i64,
-    pub bambu_ams_index: Option<i64>,
-}
+pub use katalog_core::read::manager::MaterialUnitDto;
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PrinterDto {
-    pub id: String,
-    pub name: String,
-    /// "filament" or "resin", fixed when the printer is added.
-    pub kind: String,
-    pub units: Vec<MaterialUnitDto>,
-    pub manufacturer: Option<String>,
-    pub model: Option<String>,
-    pub nozzle_mm: Option<f64>,
-    pub bed_x_mm: Option<f64>,
-    pub bed_y_mm: Option<f64>,
-    pub bed_z_mm: Option<f64>,
-}
+pub use katalog_core::read::manager::PrinterDto;
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LoadResultDto {
-    pub displaced_spool_id: Option<String>,
-}
+pub use katalog_core::write::printers::LoadResultDto;
 
 fn parse_id(value: &str, what: &str) -> CmdResult<i64> {
-    value.parse().map_err(|_| format!("ungueltige {what}-ID").into())
-}
-
-fn unit_dto(u: db::models::MaterialUnitRecord) -> MaterialUnitDto {
-    MaterialUnitDto {
-        id: u.id.to_string(),
-        printer_id: u.printer_id.to_string(),
-        name: u.name,
-        kind: u.kind,
-        slot_count: u.slot_count,
-        bambu_ams_index: u.bambu_ams_index,
-    }
+    value
+        .parse()
+        .map_err(|_| format!("ungueltige {what}-ID").into())
 }
 
 pub(crate) fn list_printers_with_conn(conn: &Connection) -> CmdResult<Vec<PrinterDto>> {
-    let printers = p::list_printers(conn).map_err(|e| e.to_string())?;
-    let units = p::list_units(conn).map_err(|e| e.to_string())?;
-    Ok(printers
-        .into_iter()
-        .map(|printer| PrinterDto {
-            id: printer.id.to_string(),
-            name: printer.name,
-            kind: printer.kind,
-            manufacturer: printer.manufacturer,
-            model: printer.model,
-            nozzle_mm: printer.nozzle_mm,
-            bed_x_mm: printer.bed_x_mm,
-            bed_y_mm: printer.bed_y_mm,
-            bed_z_mm: printer.bed_z_mm,
-            units: units
-                .iter()
-                .filter(|u| u.printer_id == printer.id)
-                .cloned()
-                .map(unit_dto)
-                .collect(),
-        })
-        .collect())
-}
-
-/// Runs `f` in a transaction and only commits on success.
-///
-/// `#[track_caller]` so the `?` below reports the location of the command that
-/// called `in_tx` (e.g. `rename_printer`), not this line - otherwise every
-/// DbError->CmdError conversion routed through here would log the same
-/// uninformative `printers.rs:in_tx` location.
-#[track_caller]
-fn in_tx<T>(conn: &mut Connection, f: impl FnOnce(&Connection) -> Result<T, db::error::DbError>) -> CmdResult<T> {
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    // No `.map_err(|e| e.to_string())` here: going through `From<DbError>` directly
-    // keeps `DbError::Invalid` (e.g. a rejected printer/unit name) marked `expected`.
-    let value = f(&tx)?;
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(value)
+    katalog_core::read::manager::list_printers_with_conn(conn).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -104,28 +30,23 @@ pub fn list_printers(state: State<AppState>) -> CmdResult<Vec<PrinterDto>> {
 
 /// `holder_name` is the (translated) name of the first unit: the spool holder
 /// for filament printers, the resin vat for resin printers.
-pub(crate) fn add_printer_with_conn(conn: &mut Connection, name: &str, holder_name: &str, kind: &str) -> CmdResult<PrinterDto> {
-    // Every filament printer gets a spool holder (1 slot) right away, so printers
-    // without an AMS can take a spool immediately; a resin printer gets its only
-    // unit, the resin vat, instead. Both in one transaction: if the unit fails, no
-    // printer is created either.
-    let id = in_tx(conn, |tx| {
-        let id = p::insert_printer_of_kind(tx, name, kind)?;
-        if kind == p::PRINTER_KIND_RESIN {
-            p::insert_resin_vat(tx, id, holder_name)?;
-        } else {
-            p::insert_unit(tx, id, "external", holder_name, None)?;
-        }
-        Ok(id)
-    })?;
-    list_printers_with_conn(conn)?
-        .into_iter()
-        .find(|printer| printer.id == id.to_string())
-        .ok_or_else(|| "Drucker nach dem Anlegen nicht gefunden".into())
+pub(crate) fn add_printer_with_conn(
+    conn: &mut Connection,
+    name: &str,
+    holder_name: &str,
+    kind: &str,
+) -> CmdResult<PrinterDto> {
+    katalog_core::write::printers::add_printer_with_conn(conn, name, holder_name, kind)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub fn add_printer(state: State<AppState>, name: String, holder_name: String, kind: Option<String>) -> CmdResult<PrinterDto> {
+pub fn add_printer(
+    state: State<AppState>,
+    name: String,
+    holder_name: String,
+    kind: Option<String>,
+) -> CmdResult<PrinterDto> {
     let mut conn = lock_db(&state)?;
     // If `kind` is missing (older callers), filament applies.
     let kind = kind.unwrap_or_else(|| p::PRINTER_KIND_FILAMENT.to_string());
@@ -134,52 +55,27 @@ pub fn add_printer(state: State<AppState>, name: String, holder_name: String, ki
 
 #[tauri::command]
 pub fn rename_printer(state: State<AppState>, printer_id: String, name: String) -> CmdResult<()> {
-    let id = parse_id(&printer_id, "Drucker")?;
     let mut conn = lock_db(&state)?;
-    in_tx(&mut conn, |tx| p::rename_printer(tx, id, &name))
+    katalog_core::write::printers::rename_printer(&mut conn, printer_id, name).map_err(Into::into)
 }
 
-#[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PrinterDetails {
-    pub manufacturer: Option<String>,
-    pub model: Option<String>,
-    pub nozzle_mm: Option<f64>,
-    pub bed_x_mm: Option<f64>,
-    pub bed_y_mm: Option<f64>,
-    pub bed_z_mm: Option<f64>,
-}
+pub use katalog_core::write::printers::PrinterDetails;
 
-fn update_printer_details_with_conn(conn: &mut Connection, id: i64, details: PrinterDetails) -> CmdResult<()> {
-    for (value, label) in [(&details.manufacturer, "Hersteller"), (&details.model, "Modellname")] {
-        if let Some(value) = value {
-            db::error::validate_text_length(value, 120, label)
-                .map_err(|e| CmdError::expected(e.to_string()))?;
-        }
-    }
-    for (value, min, max, label) in [
-        (details.nozzle_mm, 0.1, 2.0, "Düse"),
-        (details.bed_x_mm, 1.0, 2000.0, "Bauraum X"),
-        (details.bed_y_mm, 1.0, 2000.0, "Bauraum Y"),
-        (details.bed_z_mm, 1.0, 2000.0, "Bauraum Z"),
-    ] {
-        if value.is_some_and(|v| !v.is_finite() || v < min || v > max) {
-            return Err(CmdError::expected(format!("{label} muss zwischen {min} und {max} mm liegen")));
-        }
-    }
-    let clean = |s: Option<String>| s.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
-    in_tx(conn, |tx| {
-        let changed = tx.execute(
-            "UPDATE printers SET manufacturer=?1, model=?2, nozzle_mm=?3, bed_x_mm=?4, bed_y_mm=?5, bed_z_mm=?6 WHERE id=?7",
-            rusqlite::params![clean(details.manufacturer), clean(details.model), details.nozzle_mm, details.bed_x_mm, details.bed_y_mm, details.bed_z_mm, id],
-        )?;
-        if changed == 0 { return Err(db::error::DbError::Invalid("Drucker nicht gefunden".into())); }
-        Ok(())
-    })
+fn update_printer_details_with_conn(
+    conn: &mut Connection,
+    id: i64,
+    details: PrinterDetails,
+) -> CmdResult<()> {
+    katalog_core::write::printers::update_printer_details_with_conn(conn, id, details)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub fn update_printer_details(state: State<AppState>, id: String, details: PrinterDetails) -> CmdResult<()> {
+pub fn update_printer_details(
+    state: State<AppState>,
+    id: String,
+    details: PrinterDetails,
+) -> CmdResult<()> {
     let id = parse_id(&id, "Drucker")?;
     let mut conn = lock_db(&state)?;
     update_printer_details_with_conn(&mut conn, id, details)
@@ -187,17 +83,15 @@ pub fn update_printer_details(state: State<AppState>, id: String, details: Print
 
 #[tauri::command]
 pub fn reorder_printers(state: State<AppState>, ids: Vec<String>) -> CmdResult<()> {
-    let ids = ids.iter().map(|id| parse_id(id, "Drucker")).collect::<CmdResult<Vec<_>>>()?;
     let mut conn = lock_db(&state)?;
-    in_tx(&mut conn, |tx| p::reorder_printers(tx, &ids))
+    katalog_core::write::printers::reorder_printers(&mut conn, ids).map_err(Into::into)
 }
 
 /// Returns the number of spools that went back to their home location.
 #[tauri::command]
 pub fn delete_printer(state: State<AppState>, printer_id: String) -> CmdResult<usize> {
-    let id = parse_id(&printer_id, "Drucker")?;
     let mut conn = lock_db(&state)?;
-    in_tx(&mut conn, |tx| p::delete_printer(tx, id))
+    katalog_core::write::printers::delete_printer(&mut conn, printer_id).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -208,40 +102,38 @@ pub fn add_unit(
     name: String,
     slot_count: Option<i64>,
 ) -> CmdResult<MaterialUnitDto> {
-    let printer = parse_id(&printer_id, "Drucker")?;
     let mut conn = lock_db(&state)?;
-    let id = in_tx(&mut conn, |tx| p::insert_unit(tx, printer, &kind, &name, slot_count))?;
-    p::list_units(&conn)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|u| u.id == id)
-        .map(unit_dto)
-        .ok_or_else(|| "Einheit nach dem Anlegen nicht gefunden".into())
+    katalog_core::write::printers::add_unit(&mut conn, printer_id, kind, name, slot_count)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub fn update_unit(state: State<AppState>, unit_id: String, name: String, slot_count: Option<i64>) -> CmdResult<usize> {
-    let id = parse_id(&unit_id, "Einheit")?;
+pub fn update_unit(
+    state: State<AppState>,
+    unit_id: String,
+    name: String,
+    slot_count: Option<i64>,
+) -> CmdResult<usize> {
     let mut conn = lock_db(&state)?;
-    in_tx(&mut conn, |tx| p::update_unit(tx, id, &name, slot_count))
+    katalog_core::write::printers::update_unit(&mut conn, unit_id, name, slot_count)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
 pub fn delete_unit(state: State<AppState>, unit_id: String) -> CmdResult<usize> {
-    let id = parse_id(&unit_id, "Einheit")?;
     let mut conn = lock_db(&state)?;
-    in_tx(&mut conn, |tx| p::delete_unit(tx, id))
+    katalog_core::write::printers::delete_unit(&mut conn, unit_id).map_err(Into::into)
 }
 
 #[tauri::command]
-pub fn reorder_units(state: State<AppState>, printer_id: String, unit_ids: Vec<String>) -> CmdResult<()> {
-    let printer = parse_id(&printer_id, "Drucker")?;
-    let ids = unit_ids
-        .iter()
-        .map(|id| parse_id(id, "Einheit"))
-        .collect::<CmdResult<Vec<_>>>()?;
+pub fn reorder_units(
+    state: State<AppState>,
+    printer_id: String,
+    unit_ids: Vec<String>,
+) -> CmdResult<()> {
     let mut conn = lock_db(&state)?;
-    in_tx(&mut conn, |tx| p::reorder_units(tx, printer, &ids))
+    katalog_core::write::printers::reorder_units(&mut conn, printer_id, unit_ids)
+        .map_err(Into::into)
 }
 
 pub(crate) fn load_spool_with_conn(
@@ -250,16 +142,17 @@ pub(crate) fn load_spool_with_conn(
     unit_id: &str,
     slot_index: i64,
 ) -> CmdResult<LoadResultDto> {
-    let spool = parse_id(spool_id, "Spulen")?;
-    let unit = parse_id(unit_id, "Einheit")?;
-    let outcome = in_tx(conn, |tx| p::load_spool(tx, spool, unit, slot_index))?;
-    Ok(LoadResultDto {
-        displaced_spool_id: outcome.displaced_spool_id.map(|id| id.to_string()),
-    })
+    katalog_core::write::printers::load_spool_with_conn(conn, spool_id, unit_id, slot_index)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub fn load_spool(state: State<AppState>, spool_id: String, unit_id: String, slot_index: i64) -> CmdResult<LoadResultDto> {
+pub fn load_spool(
+    state: State<AppState>,
+    spool_id: String,
+    unit_id: String,
+    slot_index: i64,
+) -> CmdResult<LoadResultDto> {
     let mut conn = lock_db(&state)?;
     load_spool_with_conn(&mut conn, &spool_id, &unit_id, slot_index)
 }
@@ -269,40 +162,36 @@ pub(crate) fn unload_spool_with_conn(
     spool_id: &str,
     location: Option<String>,
 ) -> CmdResult<Option<String>> {
-    let spool = parse_id(spool_id, "Spulen")?;
-    in_tx(conn, |tx| p::unload_spool(tx, spool, location.as_deref()))
+    katalog_core::write::printers::unload_spool_with_conn(conn, spool_id, location)
+        .map_err(Into::into)
 }
 
 /// Returns the new location (for the "back to ..." notice).
 #[tauri::command]
-pub fn unload_spool(state: State<AppState>, spool_id: String, location: Option<String>) -> CmdResult<Option<String>> {
+pub fn unload_spool(
+    state: State<AppState>,
+    spool_id: String,
+    location: Option<String>,
+) -> CmdResult<Option<String>> {
     let mut conn = lock_db(&state)?;
     unload_spool_with_conn(&mut conn, &spool_id, location)
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PrinterHistoryJobDto {
-    id: String,
-    file_name: String,
-    outcome: String,
-    print_duration_s: f64,
-    used_mm: f64,
-    grams: Option<f64>,
-    state: String,
-}
+pub use katalog_core::read::manager::PrinterHistoryJobDto;
 
-fn list_printer_history_with_conn(conn: &Connection, printer_id: i64) -> CmdResult<Vec<PrinterHistoryJobDto>> {
-    let mut stmt = conn.prepare("SELECT id, file_name, outcome, print_duration_s, used_mm, booked_g, state FROM printer_jobs WHERE printer_id=?1 ORDER BY ended_at DESC, id DESC").map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([printer_id], |r| Ok(PrinterHistoryJobDto {
-        id: r.get::<_, i64>(0)?.to_string(), file_name: r.get(1)?, outcome: r.get(2)?,
-        print_duration_s: r.get(3)?, used_mm: r.get(4)?, grams: r.get(5)?, state: r.get(6)?,
-    })).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
-    Ok(rows)
+fn list_printer_history_with_conn(
+    conn: &Connection,
+    printer_id: i64,
+) -> CmdResult<Vec<PrinterHistoryJobDto>> {
+    katalog_core::read::manager::list_printer_history_with_conn(conn, printer_id)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub fn list_printer_history(state: State<AppState>, printer_id: String) -> CmdResult<Vec<PrinterHistoryJobDto>> {
+pub fn list_printer_history(
+    state: State<AppState>,
+    printer_id: String,
+) -> CmdResult<Vec<PrinterHistoryJobDto>> {
     let conn = lock_db(&state)?;
     list_printer_history_with_conn(&conn, parse_id(&printer_id, "Drucker")?)
 }
@@ -596,24 +485,51 @@ mod tests {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LastPrinterDto {
-    pub printer_name: String,
-    pub ended_at: f64,
-}
+pub use katalog_core::read::manager::LastPrinterDto;
 
-pub(crate) fn get_last_printer_for_file_with_conn(conn: &Connection, file_id: i64) -> CmdResult<Option<LastPrinterDto>> {
-    use rusqlite::OptionalExtension;
-    conn.query_row(
-        "SELECT p.name, j.ended_at FROM printer_jobs j JOIN printers p ON p.id = j.printer_id WHERE j.state = 'confirmed' AND j.booked_file_id = ?1 ORDER BY j.ended_at DESC, j.id DESC LIMIT 1",
-        [file_id],
-        |row| Ok(LastPrinterDto { printer_name: row.get(0)?, ended_at: row.get(1)? }),
-    ).optional().map_err(|e| e.to_string().into())
+pub(crate) fn get_last_printer_for_file_with_conn(
+    conn: &Connection,
+    file_id: i64,
+) -> CmdResult<Option<LastPrinterDto>> {
+    katalog_core::read::manager::get_last_printer_for_file_with_conn(conn, file_id)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub fn get_last_printer_for_file(state: State<AppState>, file_id: String) -> CmdResult<Option<LastPrinterDto>> {
+pub fn get_last_printer_for_file(
+    state: State<AppState>,
+    file_id: String,
+) -> CmdResult<Option<LastPrinterDto>> {
     let conn = lock_db(&state)?;
     get_last_printer_for_file_with_conn(&conn, parse_id(&file_id, "Datei")?)
+}
+
+#[cfg(test)]
+fn in_tx<T>(
+    conn: &mut Connection,
+    f: impl FnOnce(&Connection) -> Result<T, db::error::DbError>,
+) -> CmdResult<T> {
+    katalog_core::write::printers::in_tx(conn, f).map_err(Into::into)
+}
+
+#[cfg(test)]
+#[test]
+fn manager_desktop_error_flags_remain_distinct_from_web() {
+    let mut c = db::connect_in_memory().unwrap();
+    let bad_kind = add_printer_with_conn(&mut c, "P", "H", "other").unwrap_err();
+    assert!(!bad_kind.expected);
+    assert_eq!(bad_kind.message, "unbekannte Druckerart: other");
+    let empty = add_printer_with_conn(&mut c, " ", "H", "filament").unwrap_err();
+    assert!(empty.expected);
+    assert_eq!(empty.message, "Name darf nicht leer sein");
+    let missing = unload_spool_with_conn(&mut c, "999", None).unwrap_err();
+    assert!(!missing.expected);
+    assert_eq!(missing.message, "Spule 999 existiert nicht");
+    let invalid_id = load_spool_with_conn(&mut c, "bad", "1", 0).unwrap_err();
+    assert!(!invalid_id.expected);
+    assert_eq!(invalid_id.message, "ungueltige Spulen-ID");
+    let missing =
+        update_printer_details_with_conn(&mut c, 999, PrinterDetails::default()).unwrap_err();
+    assert!(missing.expected);
+    assert_eq!(missing.message, "Drucker nicht gefunden");
 }

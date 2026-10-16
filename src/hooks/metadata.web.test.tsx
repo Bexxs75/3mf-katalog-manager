@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@t
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { login, logout, authenticationFailed, canEditMetadata, useCanEditMetadata, changePassword, getSession } from '../lib/webSession';
-import { WEB_READ_COMMANDS, WEB_WRITE_COMMANDS } from '../lib/readOnly';
+import { WEB_READ_COMMANDS } from '../lib/readOnly';
 import { invoke } from '../lib/transport';
 import { useCatalogStore } from './useCatalogStore';
 import { useCollections } from './useCollections';
@@ -16,6 +16,14 @@ import { MetadataError } from '../components/MetadataError';
 import { clearMetadataError } from '../lib/metadataErrors';
 import { ContextMenu } from '../components/ContextMenu';
 import { readPrintLogPhoto, MAX_CUSTOM_IMAGE_BYTES } from '../lib/printLogPhoto';
+// Explicit metadata contract, independent of the full write allowlist's order.
+const METADATA_COMMANDS = [
+  'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'set_license',
+  'set_source_url', 'add_print_log_entry', 'delete_print_log_entry', 'mark_file_viewed',
+  'add_to_queue', 'remove_from_queue', 'reorder_queue', 'create_collection',
+  'rename_collection', 'delete_collection', 'add_files_to_collection',
+  'remove_file_from_collection', 'reorder_collection',
+] as const;
 const model = makeModelFile({ id: '1', tags: ['old'], queuePosition: null, favorite: false });
 let commands: { command: string; args: Record<string, unknown> }[];
 let writable = true;
@@ -65,7 +73,7 @@ it.each([false, true])('dispatches the 18 metadata actions through their hooks o
     () => collections.result.current.reorderCollection(['1']), () => collections.result.current.deleteCollection('2'),
   ];
   for (const action of actions) await act(async () => { await action(); await new Promise(resolve => setTimeout(resolve, 15)); });
-  expect(writes().map(call => call.command).sort()).toEqual(enabled ? [...WEB_WRITE_COMMANDS].sort() : []);
+  expect(writes().map(call => call.command).sort()).toEqual(enabled ? [...METADATA_COMMANDS].sort() : []);
   if (enabled) expect(writes().find(call => call.command === 'add_print_log_entry')?.args).toEqual({ fileId: '1', printedAt: '2026-10-16T00:00:00.000Z', note: null, photoBase64: null });
 });
 it('still blocks filesystem handlers, deletion shortcuts and folder drag while writable', async () => {

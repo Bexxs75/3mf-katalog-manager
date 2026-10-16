@@ -7,10 +7,10 @@ pub struct Outcome<T> {
     pub value: T,
     pub changes: u64,
 }
-fn outcome<T>(value: T, changes: u64) -> Outcome<T> {
+pub(super) fn outcome<T>(value: T, changes: u64) -> Outcome<T> {
     Outcome { value, changes }
 }
-fn invalid(message: &str) -> WriteError {
+pub(super) fn invalid(message: &str) -> WriteError {
     WriteError::expected(message)
 }
 fn missing() -> WriteError {
@@ -18,7 +18,7 @@ fn missing() -> WriteError {
         message: "Eintrag nicht gefunden".into(),
     }
 }
-fn transaction<T>(
+pub(super) fn transaction<T>(
     c: &mut Connection,
     f: impl FnOnce(&Connection) -> WriteResult<Outcome<T>>,
 ) -> WriteResult<Outcome<T>> {
@@ -27,12 +27,15 @@ fn transaction<T>(
     tx.commit()?;
     Ok(result)
 }
-fn exists(c: &Connection, table: &str, id: i64) -> WriteResult<()> {
+pub(super) fn exists(c: &Connection, table: &str, id: i64) -> WriteResult<()> {
     let sql = match table {
         "files" => "SELECT 1 FROM files WHERE id=?1 AND deleted_at IS NULL",
         "all_files" => "SELECT 1 FROM files WHERE id=?1",
         "collections" => "SELECT 1 FROM collections WHERE id=?1",
         "print_log" => "SELECT 1 FROM print_log WHERE id=?1",
+        "filament_spools" => "SELECT 1 FROM filament_spools WHERE id=?1",
+        "printers" => "SELECT 1 FROM printers WHERE id=?1",
+        "material_units" => "SELECT 1 FROM material_units WHERE id=?1",
         _ => unreachable!(),
     };
     if c.query_row(sql, [id], |_| Ok(())).optional()?.is_none() {
@@ -334,3 +337,5 @@ pub fn reorder_collection(
 #[cfg(test)]
 #[path = "web_tests.rs"]
 mod tests;
+
+pub use super::web_manager::*;

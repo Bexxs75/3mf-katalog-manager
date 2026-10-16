@@ -288,3 +288,9 @@ pub fn validate_image_format(bytes: &[u8]) -> WriteResult<()> {
         Err(WriteError::expected("imageUploadUnsupported"))
     }
 }
+
+pub mod manager;
+pub mod printers;
+mod web_manager;
+#[cfg(test)]
+mod web_manager_tests;

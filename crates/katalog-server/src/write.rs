@@ -31,9 +31,29 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "add_files_to_collection",
     "remove_file_from_collection",
     "reorder_collection",
+    "add_filament_spool",
+    "update_filament_spool",
+    "delete_filament_spool",
+    "add_printer",
+    "rename_printer",
+    "update_printer_details",
+    "reorder_printers",
+    "delete_printer",
+    "add_unit",
+    "update_unit",
+    "delete_unit",
+    "reorder_units",
+    "load_spool",
+    "unload_spool",
 ];
+pub(crate) fn image_command(command: &str) -> bool {
+    matches!(
+        command,
+        "add_print_log_entry" | "add_filament_spool" | "update_filament_spool"
+    )
+}
 pub(crate) fn body_limit(command: &str) -> usize {
-    if command == "add_print_log_entry" {
+    if image_command(command) {
         katalog_core::write::MAX_CUSTOM_IMAGE_BYTES * 4 / 3 + 16 * 1024
     } else if WRITE_COMMANDS.contains(&command) {
         16 * 1024
@@ -236,12 +256,116 @@ fn encode<T: Serialize>(
     let result = r.map_err(map_error)?;
     Ok((Json(result.value).into_response(), result.changes))
 }
+fn spool(a: &Value) -> Result<katalog_core::read::manager::FilamentSpoolDto, Box<Response>> {
+    let value = a.get("spool").ok_or_else(bad)?;
+    let object = value.as_object().ok_or_else(bad)?;
+    const FIELDS: &[&str] = &[
+        "id",
+        "material",
+        "manufacturer",
+        "color",
+        "location",
+        "diameterMm",
+        "originalWeightG",
+        "remainingWeightG",
+        "price",
+        "imagePng",
+        "colorHex",
+        "homeLocation",
+        "unitId",
+        "slotIndex",
+        "kind",
+    ];
+    if object.keys().any(|k| !FIELDS.contains(&k.as_str())) {
+        return Err(bad());
+    }
+    serde_json::from_value(value.clone()).map_err(|_| bad())
+}
+fn printer_details(a: &Value) -> Result<katalog_core::write::printers::PrinterDetails, Box<Response>> {
+    let value = a.get("details").ok_or_else(bad)?;
+    let object = value.as_object().ok_or_else(bad)?;
+    const FIELDS: &[&str] = &["manufacturer", "model", "nozzleMm", "bedXMm", "bedYMm", "bedZMm"];
+    if object.keys().any(|k| !FIELDS.contains(&k.as_str())) {
+        return Err(map_error(WriteError::expected("Unbekanntes Druckerdetail")));
+    }
+    serde_json::from_value(value.clone()).map_err(|_| bad())
+}
+fn manager_ids(a: &Value, key: &str) -> Result<Vec<i64>, Box<Response>> {
+    a.get(key)
+        .and_then(Value::as_array)
+        .ok_or_else(bad)?
+        .iter()
+        .map(id_value)
+        .collect()
+}
+fn slots(a: &Value) -> Result<Option<i64>, Box<Response>> {
+    match a.get("slotCount") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v.as_i64().map(Some).ok_or_else(bad),
+    }
+}
 pub(crate) fn execute(
     c: &mut Connection,
     cmd: &str,
     a: &Value,
 ) -> Result<(Response, u64), Box<Response>> {
     match cmd {
+        "add_filament_spool" => encode(web::add_filament_spool(c, spool(a)?)),
+        "update_filament_spool" => {
+            let s = spool(a)?;
+            let id = id_value(&Value::String(s.id.clone()))?;
+            encode(web::update_filament_spool(c, id, s, a["spool"].as_object().expect("validated spool").contains_key("imagePng")))
+        }
+        "delete_filament_spool" => encode(web::delete_filament_spool(c, id(a, "spoolId")?)),
+        "add_printer" => encode(web::add_printer(
+            c,
+            text(a, "name")?,
+            text(a, "holderName")?,
+            optional(a, "kind")?.as_deref().unwrap_or("filament"),
+        )),
+        "rename_printer" => encode(web::rename_printer(
+            c,
+            id(a, "printerId")?,
+            text(a, "name")?,
+        )),
+        "update_printer_details" => encode(web::update_printer_details(
+            c,
+            id(a, "id")?,
+            printer_details(a)?,
+        )),
+        "reorder_printers" => encode(web::reorder_printers(c, &manager_ids(a, "ids")?)),
+        "delete_printer" => encode(web::delete_printer(c, id(a, "printerId")?)),
+        "add_unit" => encode(web::add_unit(
+            c,
+            id(a, "printerId")?,
+            text(a, "kind")?,
+            text(a, "name")?,
+            slots(a)?,
+        )),
+        "update_unit" => encode(web::update_unit(
+            c,
+            id(a, "unitId")?,
+            text(a, "name")?,
+            slots(a)?,
+        )),
+        "delete_unit" => encode(web::delete_unit(c, id(a, "unitId")?)),
+        "reorder_units" => encode(web::reorder_units(
+            c,
+            id(a, "printerId")?,
+            &manager_ids(a, "unitIds")?,
+        )),
+        "load_spool" => encode(web::load_spool(
+            c,
+            id(a, "spoolId")?,
+            id(a, "unitId")?,
+            a.get("slotIndex").and_then(Value::as_i64).ok_or_else(bad)?,
+        )),
+        "unload_spool" => encode(web::unload_spool(
+            c,
+            id(a, "spoolId")?,
+            optional(a, "location")?,
+        )),
+
         "set_favorite" => encode(web::set_favorite(
             c,
             id(a, "fileId")?,

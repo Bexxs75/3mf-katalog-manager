@@ -110,9 +110,9 @@ Bis auf Weiteres gilt: Standard bindet nur an das lokale Netz, ohne Anmeldung st
 - **16.10.2026, Entscheidung (User):** Kein gleichzeitiger Betrieb von Desktop-App und Webversion auf derselben Datenbank. Der Nutzer entscheidet sich für Web oder lokal; beides parallel ergibt keinen Sinn. Das wird in der Dokumentation (README, docker-web, später Wiki) ausdrücklich festgehalten. Der Schreibmodus (`KATALOG_WRITE=1`) ist standardmäßig aus.
 - **16.10.2026, Entscheidung (User):** Modellwahl bleibt wie bisher (Codex baut, Claude prüft, Opus nur für Security). **Stufe 5 (Import per Upload) wird zusätzlich von Opus geprüft** (Spec/Plan und Review vor dem Commit): Uploads, Pfadsicherheit, Speicherlimits, Abbruch mitten im Import, Archive.
 
-### Stufe 4a, Teil A: optionaler Metadaten-Schreibmodus
+### Optionaler Schreibmodus (Stufe 4a und Stufe 6 Teil A)
 
-`KATALOG_WRITE=1` aktiviert ausschließlich die 18 Metadaten-Commands aus
+`KATALOG_WRITE=1` aktiviert die 32 Commands für Metadaten sowie Material- und Druckerverwaltung aus
 `katalog_server::WRITE_COMMANDS`. Standard bleibt lesend; Lese-Routen behalten
 64 KiB Body-Limit. Schreib-Requests benötigen Anmeldung, CSRF, einen vorhandenen
 passenden Origin und eine explizite, nicht leere `KATALOG_ALLOWED_HOSTS`-Liste.
@@ -127,22 +127,23 @@ Nebendateien und Auth-Datei); Modellfreigaben bleiben read-only. **Desktop-App u
 Web-Server dürfen nicht gleichzeitig dieselbe Datenbank verwenden, auch nicht
 im Lesemodus: entweder Web oder lokal.**
 
-Metadatenänderungen laufen unter `BEGIN IMMEDIATE`; die bestehende Lizenzfunktion
+Änderungen laufen unter `BEGIN IMMEDIATE`; die bestehende Lizenzfunktion
 behält als ausdrückliche Ausnahme ihre eigene Transaktion mit Zeilenprüfung und
 Rollback. Existenzprüfungen dafür erfolgen davor auf derselben Verbindung.
 Maximal ein Worker plus 32 wartende Requests; pro Sitzung Token-Bucket mit 60/s,
 Burst 120. Rate-Token und Warteschlangenplatz werden vor dem Body-Lesen reserviert;
-Abbruch und Fehler geben den Platz frei. 429 und 503 liefern `Retry-After`. Schreib-Bodies: 16 KiB, Druckprotokoll
-mit Foto: `MAX_CUSTOM_IMAGE_BYTES * 4 / 3 + 16 KiB`; decodiertes Foto höchstens 5 MiB.
+Abbruch und Fehler geben den Platz frei. 429 und 503 liefern `Retry-After`. Schreib-Bodies: 16 KiB, Druckprotokoll mit Foto und Spulenanlage/-änderung mit Bild: `MAX_CUSTOM_IMAGE_BYTES * 4 / 3 + 16 KiB`; decodiertes Foto höchstens 5 MiB.
 
-Das HTTP-Zeitlimit beträgt 30 Sekunden. Für Foto-Bodies gilt ebenfalls eine
+Das HTTP-Zeitlimit beträgt 30 Sekunden. Für Foto-/Spulenbild-Bodies gilt ebenfalls eine
 Lesefrist von 30 Sekunden; übrige Body-Lesefristen bleiben bei 15 Sekunden. Bereits gestartete Blocking-Arbeit läuft
 auch nach Timeout oder Verbindungsabbruch zu Ende; eine Antwort kann verloren gehen,
-obwohl die Änderung gespeichert wurde. Wiederholung ist unschädlich, außer bei
-`create_collection` und `add_print_log_entry`: dabei können Duplikate entstehen.
+obwohl die Änderung gespeichert wurde. Wiederholte Neuanlagen können Duplikate erzeugen, insbesondere bei
+`create_collection`, `add_print_log_entry`, `add_filament_spool`, `add_printer` und `add_unit`: dabei können Duplikate entstehen.
 Nach unklarer Antwort zuerst neu laden. Das Audit enthält nur Zeitpunkt,
 gekürzten Sitzungshash, Command, HTTP-Status und betroffene Zeilen: Summe der `changes()` der
-Hauptstatements, ohne Tag-Bereinigung, Kaskaden oder Trigger. Fehlgeschlagene,
+Hauptstatements, ohne Tag-Bereinigung, Kaskaden oder Trigger. Bei Manager-Commands
+zählen zurückgelegte/verdrängte Spulen und automatisch angelegte Halter/Wannen
+nicht mit; Laden auf dasselbe Ziel zählt als No-op 0. Fehlgeschlagene,
 zurückgerollte und vorab abgewiesene Aufrufe zählen 0; unveränderte UPDATE-Zeilen
 zählt SQLite als betroffen. Nur im Schreibmodus wird nach den Zugriffsprüfungen
 ein Audit angelegt; läuft Blocking-Arbeit nach HTTP-Timeout weiter, enthält die
@@ -151,3 +152,30 @@ HTTP-Antwort verwendet nur das Log den Status 499. Unerwartete Fehler
 werden zusätzlich nach Fehlerart ohne Inhalte protokolliert.
 
 - **16.10.2026, Stufe 4 abgenommen:** Backend (`e75d7d76`) und Oberfläche (`e3381f74`). Browsertest per Chromium/CDP gegen Server mit `KATALOG_WRITE=1`: Favorit, Druckstatus, Warteschlange, Tag hinzufügen/entfernen, Sammlung anlegen, Druckprotokoll mit Foto (5-MiB-Grenze sichtbar abgelehnt) schreiben mit Status 200; Kontextmenü ohne Löschen/Umbenennen/Verschieben, Entf-Taste ohne Wirkung; abgelaufene Sitzung führt zur Anmeldung ohne Schreibzugriff; ohne Schreibmodus bleibt die Oberfläche lesend. Kleinigkeiten: Startmeldung sagt auch im Schreibmodus „nur lesend“; Foto-Größenfehler trägt den allgemeinen Präfix „Änderung oder Neuladen fehlgeschlagen“.
+
+
+Stufe 6 Teil A: Sechs zusätzliche DB-only-Reads sind auch ohne Schreibmodus
+verfügbar. Web-Spulenlisten enthalten `hasImage` statt `imagePng`; Bilder werden
+über `get_filament_spool_image(id)` einzeln gelesen. Beim Web-Update erhält ein
+fehlender Schlüssel `imagePng` das gespeicherte Bild (UPDATE ohne Bildspalte),
+`null` löscht es, ein validierter String ersetzt es. Vier parallele Manager-Reads,
+maximal 1000 `check_filament.fileIds`, maximal 500 neueste Verlaufseinträge.
+Neue Web-Anlagen prüfen atomar 5000 Spulen, 200 Drucker und 50 Einheiten pro Drucker
+(einschließlich automatisch angelegter Halter/Wannen); größere Desktop-Bestände
+bleiben les-, bearbeit- und reduzierbar. `restock_filament_spool`, `consume_resin`
+und die Druckeranbindung bleiben im Web gesperrt. Manager-Oberflächen folgen in Teil B.
+
+English: `KATALOG_WRITE=1` enables 32 commands for metadata and material/printer
+management. Six new DB-only reads work without write mode. Web spool lists return
+`hasImage` instead of image data; `get_filament_spool_image(id)` loads one image.
+Manager reads are limited to four concurrent requests; filament checks accept
+1000 file IDs, history returns the latest 500 jobs. Atomic creation-only quotas
+are 5000 spools, 200 printers and 50 units per printer, including default holders
+and vats. Larger desktop inventories remain readable, editable and reducible.
+Restocking, resin consumption and printer networking remain unavailable on the web.
+Manager views are deferred to part B.
+
+Web manager audit counts only main-statement rows, excluding cascades, returned/displaced
+spools and automatically created holders/vats. Loading into the same slot counts 0.
+Web spool updates preserve the image when `imagePng` is omitted, clear it on `null`,
+and validate and replace it for a string.

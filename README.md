@@ -202,11 +202,10 @@ docs/              Additional documentation
 
 The application code is licensed under MIT — see [LICENSE](LICENSE). The optional STEP preview dynamically links Open CASCADE under LGPL-2.1 with the Open CASCADE exception. See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for details, full license texts, and source information.
 
-### Optional web metadata writes
+### Optional web writes
 
-The web backend remains read-only by default. `KATALOG_WRITE=1` enables the 18
-metadata commands listed in `katalog_server::WRITE_COMMANDS`; browser editing UI
-is a separate step. This requires authentication and an explicit, nonempty
+The web backend remains read-only by default. `KATALOG_WRITE=1` enables the 32
+commands for metadata and material/printer management listed in `katalog_server::WRITE_COMMANDS`; metadata editing is available in the browser, while manager views follow in stage 6 part B. This requires authentication and an explicit, nonempty
 `KATALOG_ALLOWED_HOSTS`, with CSRF and a matching Origin on write requests.
 `KATALOG_ALLOW_NO_AUTH=1` cannot be combined with writes. The catalog must already
 have the exact supported schema; the server never migrates it.
@@ -215,15 +214,14 @@ Keep `/config` writable for SQLite and authentication data. Model shares remain
 read-only. **Choose web or local operation: do not run the desktop app and web server
 concurrently against the same database, even in read-only mode.** A write has a 30-second HTTP deadline, but started database work
 continues after timeout or disconnect. Reload before retrying an ambiguous result:
-`create_collection` and `add_print_log_entry` can create duplicates on retry.
-Other metadata operations can safely be repeated. See [WEB-PLAN.md](WEB-PLAN.md)
+`create_collection`, `add_print_log_entry`, `add_filament_spool`, `add_printer` and
+`add_unit` can create duplicates on retry. See [WEB-PLAN.md](WEB-PLAN.md)
 for limits and the audit contract.
 
-### Optionaler Web-Schreibmodus für Metadaten
+### Optionaler Web-Schreibmodus
 
-Der Webserver bleibt standardmäßig lesend. `KATALOG_WRITE=1` aktiviert die 18
-Metadaten-Commands aus `katalog_server::WRITE_COMMANDS`; die Browser-Bedienung
-folgt separat. Anmeldung, eine explizite nicht leere `KATALOG_ALLOWED_HOSTS`-Liste,
+Der Webserver bleibt standardmäßig lesend. `KATALOG_WRITE=1` aktiviert die 32
+Commands für Metadaten sowie Material- und Druckerverwaltung aus `katalog_server::WRITE_COMMANDS`; Metadaten sind im Browser bearbeitbar, die Manager-Ansichten folgen in Stufe 6 Teil B. Anmeldung, eine explizite nicht leere `KATALOG_ALLOWED_HOSTS`-Liste,
 CSRF und ein passender Origin sind Pflicht. `KATALOG_ALLOW_NO_AUTH=1` ist damit
 unvereinbar. Der Server benötigt exakt das unterstützte Schema und migriert nie.
 
@@ -232,5 +230,5 @@ Modellfreigaben bleiben lesend. **Entweder Web oder lokal: Desktop-App und
 Web-Server dürfen nicht parallel dieselbe Datenbank verwenden, auch nicht im
 Lesemodus.** Nach dem 30-Sekunden-HTTP-Zeitlimit oder Verbindungsabbruch läuft
 begonnene DB-Arbeit weiter. Bei unklarer Antwort vor Wiederholung neu laden:
-`create_collection` und `add_print_log_entry` können Duplikate erzeugen. Andere
-Metadatenänderungen sind wiederholbar. Grenzen und Audit-Vertrag: [WEB-PLAN.md](WEB-PLAN.md).
+`create_collection`, `add_print_log_entry`, `add_filament_spool`, `add_printer` und
+`add_unit` können Duplikate erzeugen. Grenzen und Audit-Vertrag: [WEB-PLAN.md](WEB-PLAN.md).

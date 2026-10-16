@@ -7,6 +7,13 @@ export const WEB_READ_COMMANDS = [
   'list_print_log_entries', 'list_folders', 'list_collections', 'list_collection_files',
   'list_trash', 'list_file_images', 'get_model_geometry', 'get_app_version',
   'is_preview_build', 'has_step_preview',
+  'list_filament_spools',
+  'list_printers',
+  'list_printer_history',
+  'get_last_printer_for_file',
+  'check_filament',
+  'get_filament_spool_image',
+
 ] as const;
 
 /** Metadata only: the server remains the authority for each request. */
@@ -16,4 +23,19 @@ export const WEB_WRITE_COMMANDS = [
   'add_to_queue', 'remove_from_queue', 'reorder_queue', 'create_collection',
   'rename_collection', 'delete_collection', 'add_files_to_collection',
   'remove_file_from_collection', 'reorder_collection',
+  'add_filament_spool',
+  'update_filament_spool',
+  'delete_filament_spool',
+  'add_printer',
+  'rename_printer',
+  'update_printer_details',
+  'reorder_printers',
+  'delete_printer',
+  'add_unit',
+  'update_unit',
+  'delete_unit',
+  'reorder_units',
+  'load_spool',
+  'unload_spool',
+
 ] as const;

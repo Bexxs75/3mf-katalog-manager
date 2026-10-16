@@ -771,7 +771,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             Err(response) => return *response,
         }
     } else { None };
-    let seconds = if command == "add_print_log_entry" { 30 } else { 15 };
+    let seconds = if crate::write::image_command(command) { 30 } else { 15 };
     let args = match json_body(req.into_body(), body_limit(command), seconds).await {
         Ok(v) => v,
         Err(e) => return *e,

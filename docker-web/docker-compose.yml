@@ -18,7 +18,7 @@ services:
       - ./config:/config
       - ${MODELS_DIR:-./models}:/models:ro
     # Optional settings (uncomment):
-    # Optional metadata writes (default remains read-only):
+    # Optional metadata and material/printer management writes (default remains read-only):
     # /config must be writable; KATALOG_ALLOWED_HOSTS is mandatory.
     # Never run the desktop app against the same DB at the same time.
     # Authentication is mandatory; do not combine with KATALOG_ALLOW_NO_AUTH.

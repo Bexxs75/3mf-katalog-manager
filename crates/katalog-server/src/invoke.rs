@@ -15,12 +15,14 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 pub struct GeometryGate {
     workers: Arc<Semaphore>,
+    manager_reads: Arc<Semaphore>,
     admission: Arc<Semaphore>,
 }
 impl Default for GeometryGate {
     fn default() -> Self {
         Self {
             workers: Arc::new(Semaphore::new(2)),
+            manager_reads: Arc::new(Semaphore::new(4)),
             admission: Arc::new(Semaphore::new(10)),
         }
     }
@@ -125,20 +127,26 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
 }
 
 pub const READ_COMMANDS: &[&str] = &[
-"list_file_summaries"
-            , "list_all_file_tags"
-            , "list_files_by_ids"
-            , "list_tag_counts"
-            , "list_print_log_entries"
-            , "list_folders"
-            , "list_collections"
-            , "list_collection_files"
-            , "list_trash"
-            , "list_file_images"
-            , "get_model_geometry"
-            , "get_app_version"
-            , "is_preview_build"
-            , "has_step_preview"
+    "list_file_summaries",
+    "list_all_file_tags",
+    "list_files_by_ids",
+    "list_tag_counts",
+    "list_print_log_entries",
+    "list_folders",
+    "list_collections",
+    "list_collection_files",
+    "list_trash",
+    "list_file_images",
+    "get_model_geometry",
+    "get_app_version",
+    "is_preview_build",
+    "has_step_preview",
+    "list_filament_spools",
+    "list_printers",
+    "list_printer_history",
+    "get_last_printer_for_file",
+    "check_filament",
+    "get_filament_spool_image",
 ];
 
 pub async fn invoke(
@@ -159,7 +167,17 @@ pub async fn invoke(
         );
     }
     let file_id = match command.as_str() {
-        "list_print_log_entries" | "get_model_geometry" => match id(&args, "fileId") {
+        "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" => {
+            match id(&args, "fileId") {
+                Ok(v) => Some(v),
+                Err(e) => return *e,
+            }
+        }
+        "list_printer_history" => match id(&args, "printerId") {
+            Ok(v) => Some(v),
+            Err(e) => return *e,
+        },
+        "get_filament_spool_image" => match id(&args, "id") {
             Ok(v) => Some(v),
             Err(e) => return *e,
         },
@@ -182,6 +200,60 @@ pub async fn invoke(
         "is_preview_build" | "has_step_preview" => return Json(json!(false)).into_response(),
         _ => {}
     }
+    let check_ids = if command == "check_filament" {
+        let Some(values) = args.get("fileIds").and_then(Value::as_array) else {
+            return *error(
+                StatusCode::BAD_REQUEST,
+                "fileIds muss eine Liste sein",
+                true,
+            );
+        };
+        if values.len() > 1000 {
+            return *error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Höchstens 1000 IDs erlaubt",
+                true,
+            );
+        }
+        let Some(ids) = values
+            .iter()
+            .map(|v| v.as_str().map(str::to_owned))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return *error(
+                StatusCode::BAD_REQUEST,
+                "IDs müssen Zeichenfolgen sein",
+                true,
+            );
+        };
+        ids
+    } else {
+        Vec::new()
+    };
+    let manager_permit = if matches!(
+        command.as_str(),
+        "list_filament_spools"
+            | "list_printers"
+            | "list_printer_history"
+            | "get_last_printer_for_file"
+            | "check_filament"
+            | "get_filament_spool_image"
+    ) {
+        match gate.manager_reads.clone().try_acquire_owned() {
+            Ok(p) => Some(p),
+            Err(_) => {
+                let mut r = *error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Zu viele Manager-Anfragen",
+                    true,
+                );
+                r.headers_mut().insert("retry-after", "1".parse().unwrap());
+                return r;
+            }
+        }
+    } else {
+        None
+    };
     let permits = if command == "get_model_geometry" {
         match gate.acquire().await {
             Ok(p) => Some(p),
@@ -193,8 +265,28 @@ pub async fn invoke(
     let result = tokio::task::spawn_blocking(move || -> Result<Response, ReadError> {
         // The permits belong to this closure: cancelling HTTP does not release a running parser.
         let _permits = permits;
+        let _manager_permit = manager_permit;
         let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
         match command.as_str() {
+            "list_filament_spools" => encode(read::manager::list_filament_spools_web(&conn)?),
+            "list_printers" => encode(read::manager::list_printers_with_conn(&conn)?),
+            "list_printer_history" => encode(read::manager::list_printer_history_limit(
+                &conn,
+                file_id.unwrap().parse().unwrap(),
+                500,
+            )?),
+            "get_last_printer_for_file" => {
+                encode(read::manager::get_last_printer_for_file_with_conn(
+                    &conn,
+                    file_id.unwrap().parse().unwrap(),
+                )?)
+            }
+            "get_filament_spool_image" => encode(read::manager::get_filament_spool_image(
+                &conn,
+                file_id.unwrap().parse().unwrap(),
+            )?),
+            "check_filament" => encode(read::manager::check_filament_with_conn(&conn, &check_ids)?),
+
             "list_file_summaries" => encode(read::list_file_summaries(&conn)?),
             "list_all_file_tags" => encode(read::list_all_file_tags(&conn)?),
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
@@ -551,5 +643,41 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod manager_tests {
+    use super::*;
+    #[tokio::test]
+    async fn manager_read_concurrency_is_bounded_and_returns_retry_after() {
+        let gate = Arc::new(GeometryGate::default());
+        let permits = gate
+            .manager_reads
+            .clone()
+            .acquire_many_owned(4)
+            .await
+            .unwrap();
+        for command in [
+            "list_filament_spools",
+            "get_filament_spool_image",
+            "check_filament",
+            "list_printers",
+            "list_printer_history",
+            "get_last_printer_for_file",
+        ] {
+            let r = invoke(
+                PathBuf::from("unused"),
+                vec![],
+                command.into(),
+                json!({"id":"1","fileIds":[],"printerId":"1","fileId":"1"}),
+                gate.clone(),
+            )
+            .await;
+            assert_eq!(r.status(), 503, "{command}");
+            assert_eq!(r.headers()["retry-after"], "1");
+        }
+        drop(permits);
+        assert_eq!(gate.manager_reads.available_permits(), 4);
     }
 }

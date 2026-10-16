@@ -1,141 +1,50 @@
 use super::*;
 
-#[derive(Debug, Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FilamentSpoolDto {
-    pub id: String,
-    pub material: String,
-    pub manufacturer: Option<String>,
-    pub color: Option<String>,
-    pub location: Option<String>,
-    pub diameter_mm: f64,
-    pub original_weight_g: f64,
-    pub remaining_weight_g: f64,
-    pub price: Option<f64>,
-    pub image_png: Option<String>,
-    #[serde(default)]
-    pub color_hex: Option<String>,
-    /// Read-only: home location, unit and slot only change via `load_spool`/`unload_spool` (commands/printers.rs).
-    #[serde(default)]
-    pub home_location: Option<String>,
-    #[serde(default)]
-    pub unit_id: Option<String>,
-    #[serde(default)]
-    pub slot_index: Option<i64>,
-    /// "filament" or "resin"; if missing (older callers), "filament" applies.
-    #[serde(default = "default_spool_kind")]
-    pub kind: String,
-}
+pub use katalog_core::read::manager::FilamentSpoolDto;
 fn validate_color_hex(color_hex: &Option<String>) -> CmdResult<()> {
-    match color_hex {
-        Some(value) if !db::printers::is_valid_color_hex(value) => {
-            Err(format!("ungueltiger Farbwert: {value}").into())
-        }
-        _ => Ok(()),
-    }
-}
-
-fn default_spool_kind() -> String {
-    db::models::SPOOL_KIND_FILAMENT.to_string()
+    katalog_core::write::manager::validate_color_hex(color_hex).map_err(Into::into)
 }
 
 fn validate_spool_kind(kind: &str) -> CmdResult<()> {
-    if db::models::SPOOL_KINDS.contains(&kind) {
-        Ok(())
-    } else {
-        Err(format!("ungueltige Art: {kind}").into())
-    }
+    katalog_core::write::manager::validate_spool_kind(kind).map_err(Into::into)
 }
 /// Builds the DTO from the real database state (see `update_filament_spool`).
-fn spool_record_to_dto(s: db::models::FilamentSpoolRecord) -> FilamentSpoolDto {
-    use base64::Engine;
-    FilamentSpoolDto {
-        id: s.id.to_string(),
-        material: s.material,
-        manufacturer: s.manufacturer,
-        color: s.color,
-        location: s.location,
-        diameter_mm: s.diameter_mm,
-        original_weight_g: s.original_weight_g,
-        remaining_weight_g: s.remaining_weight_g,
-        price: s.price,
-        image_png: s.image_png.map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes)),
-        color_hex: s.color_hex,
-        home_location: s.home_location,
-        unit_id: s.unit_id.map(|id| id.to_string()),
-        slot_index: s.slot_index,
-        kind: s.kind,
-    }
-}
+use katalog_core::read::manager::spool_record_to_dto;
+#[cfg(test)]
 fn filament_dto_to_record(spool: &FilamentSpoolDto) -> CmdResult<db::models::NewFilamentSpool> {
-    use base64::Engine;
-    let image_png = spool.image_png.as_ref().map(|b64| {
-        if b64.len() > super::files::MAX_CUSTOM_IMAGE_BYTES.div_ceil(3) * 4 {
-            return Err(CmdError::expected("imageUploadTooLarge"));
-        }
-        let bytes = base64::engine::general_purpose::STANDARD.decode(b64)
-            .map_err(|_| CmdError::expected("imageUploadUnreadable"))?;
-        if bytes.len() > super::files::MAX_CUSTOM_IMAGE_BYTES {
-            return Err(CmdError::expected("imageUploadTooLarge"));
-        }
-        super::files::validate_image_format(&bytes)?;
-        Ok(bytes)
-    }).transpose()?;
-    Ok(db::models::NewFilamentSpool {
-        material: spool.material.clone(),
-        manufacturer: spool.manufacturer.clone(),
-        color: spool.color.clone(),
-        location: spool.location.clone(),
-        diameter_mm: spool.diameter_mm,
-        original_weight_g: spool.original_weight_g,
-        remaining_weight_g: spool.remaining_weight_g,
-        price: spool.price,
-        image_png,
-        color_hex: spool.color_hex.as_ref().map(|c| c.to_lowercase()),
-        kind: spool.kind.clone(),
-    })
+    katalog_core::write::manager::filament_dto_to_record(spool).map_err(Into::into)
 }
 #[tauri::command]
 pub fn list_filament_spools(state: State<AppState>) -> CmdResult<Vec<FilamentSpoolDto>> {
     let conn = lock_db(&state)?;
-    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
-    Ok(spools.into_iter().map(spool_record_to_dto).collect())
+    katalog_core::read::manager::list_filament_spools(&conn, true).map_err(Into::into)
 }
 #[tauri::command]
-pub fn add_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> CmdResult<FilamentSpoolDto> {
+pub fn add_filament_spool(
+    state: State<AppState>,
+    spool: FilamentSpoolDto,
+) -> CmdResult<FilamentSpoolDto> {
     validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
     let conn = lock_db(&state)?;
-    let new_spool = filament_dto_to_record(&spool)?;
-    let id = db::insert_filament_spool(&conn, &new_spool).map_err(|e| e.to_string())?;
-    // New spools always go to storage, even if the caller sends a slot.
-    Ok(FilamentSpoolDto {
-        id: id.to_string(),
-        color_hex: new_spool.color_hex,
-        home_location: None,
-        unit_id: None,
-        slot_index: None,
-        ..spool
-    })
+    katalog_core::write::manager::add_filament_spool(&conn, spool).map_err(Into::into)
 }
 /// Returns the freshly read DB state, not the caller's DTO: the color value is
 /// normalized, and slot fields never change this way.
 #[tauri::command]
-pub fn update_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> CmdResult<FilamentSpoolDto> {
+pub fn update_filament_spool(
+    state: State<AppState>,
+    spool: FilamentSpoolDto,
+) -> CmdResult<FilamentSpoolDto> {
     validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
-    let id: i64 = spool.id.parse().map_err(|_| "invalid spool id".to_string())?;
     let conn = lock_db(&state)?;
-    let new_spool = filament_dto_to_record(&spool)?;
-    db::update_filament_spool(&conn, id, &new_spool).map_err(|e| e.to_string())?;
-    let updated = db::get_filament_spool(&conn, id).map_err(|e| e.to_string())?;
-    Ok(spool_record_to_dto(updated))
+    katalog_core::write::manager::update_filament_spool(&conn, spool).map_err(Into::into)
 }
 #[tauri::command]
 pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdResult<()> {
-    let id: i64 = spool_id.parse().map_err(|_| "invalid spool id".to_string())?;
     let conn = lock_db(&state)?;
-    db::delete_filament_spool(&conn, id).map_err(|e| e.to_string().into())
+    katalog_core::write::manager::delete_filament_spool(&conn, spool_id).map_err(Into::into)
 }
 
 /// Limit for "Restock" (1 to 20).
@@ -274,61 +183,14 @@ pub(crate) fn check_filament_with_conn(
     conn: &Connection,
     file_ids: &[String],
 ) -> CmdResult<Vec<crate::filament_check::ModelCheck>> {
-    use crate::filament_check::{check_models, SlotRef, SpoolInput};
-
-    let mut models = Vec::new();
-    for raw in file_ids {
-        let Ok(id) = raw.parse::<i64>() else { continue };
-        let Some(file) = db::get_file(conn, id).map_err(|e| e.to_string())? else { continue };
-        if file.deleted_at.is_some() {
-            continue;
-        }
-        let slice = file
-            .slice_info_json
-            .as_deref()
-            .and_then(|json| serde_json::from_str::<crate::threemf::SliceInfo>(json).ok());
-        models.push((raw.clone(), slice));
-    }
-
-    let printers = db::printers::list_printers(conn).map_err(|e| e.to_string())?;
-    let units = db::printers::list_units(conn).map_err(|e| e.to_string())?;
-    let spools = db::list_filament_spools(conn)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        // "Is there enough filament?" (and the queue symbol) only with filament.
-        .filter(|s| s.kind == db::models::SPOOL_KIND_FILAMENT)
-        .map(|s| {
-            let slot = match (s.unit_id, s.slot_index) {
-                (Some(unit_id), Some(slot_index)) => units.iter().find(|u| u.id == unit_id).map(|u| SlotRef {
-                    printer: printers
-                        .iter()
-                        .find(|p| p.id == u.printer_id)
-                        .map(|p| p.name.clone())
-                        .unwrap_or_default(),
-                    unit: u.name.clone(),
-                    slot_number: slot_index + 1,
-                }),
-                _ => None,
-            };
-            SpoolInput {
-                id: s.id.to_string(),
-                material: s.material,
-                manufacturer: s.manufacturer,
-                color_name: s.color,
-                color_hex: s.color_hex,
-                remaining_g: s.remaining_weight_g,
-                original_g: s.original_weight_g,
-                slot,
-                location: s.location,
-            }
-        })
-        .collect::<Vec<_>>();
-
-    Ok(check_models(&models, &spools))
+    katalog_core::read::manager::check_filament_with_conn(conn, file_ids).map_err(Into::into)
 }
 
 #[tauri::command]
-pub fn check_filament(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<Vec<crate::filament_check::ModelCheck>> {
+pub fn check_filament(
+    state: State<AppState>,
+    file_ids: Vec<String>,
+) -> CmdResult<Vec<crate::filament_check::ModelCheck>> {
     let conn = lock_db(&state)?;
     check_filament_with_conn(&conn, &file_ids)
 }

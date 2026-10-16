@@ -1137,14 +1137,22 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
 }
 
 pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord>, DbError> {
+    list_filament_spools_with_images(conn, true)
+}
+
+pub fn list_filament_spools_with_images(conn: &Connection, include_images: bool) -> Result<Vec<FilamentSpoolRecord>, DbError> {
+    Ok(list_filament_spools_with_image_flags(conn, include_images)?.into_iter().map(|(spool, _)| spool).collect())
+}
+
+pub fn list_filament_spools_with_image_flags(conn: &Connection, include_images: bool) -> Result<Vec<(FilamentSpoolRecord, bool)>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
-                color_hex, home_location, unit_id, slot_index, kind
+        "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, CASE WHEN ?1 THEN image_png ELSE NULL END,
+                color_hex, home_location, unit_id, slot_index, kind, image_png IS NOT NULL AS has_image
          FROM filament_spools ORDER BY material, manufacturer",
     )?;
     let rows = stmt
-        .query_map([], |row| {
-            Ok(FilamentSpoolRecord {
+        .query_map([include_images], |row| {
+            Ok((FilamentSpoolRecord {
                 id: row.get(0)?,
                 material: row.get(1)?,
                 manufacturer: row.get(2)?,
@@ -1160,7 +1168,7 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
                 unit_id: row.get(12)?,
                 slot_index: row.get(13)?,
                 kind: row.get(14)?,
-            })
+            }, row.get(15)?))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
@@ -1200,6 +1208,11 @@ pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRec
 /// `db::printers` do). If the spool is loaded, the given location is its home
 /// location and goes to `home_location`; `location` then stays empty.
 pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpool) -> Result<(), DbError> {
+    update_filament_spool_image_policy(conn, id, spool, true)
+}
+
+/// Web PATCH policy: when false the UPDATE does not mention image_png.
+pub fn update_filament_spool_image_policy(conn: &Connection, id: i64, spool: &NewFilamentSpool, replace_image: bool) -> Result<(), DbError> {
     // A loaded entry keeps its kind: otherwise resin would sit in a filament slot
     // or filament in a resin vat.
     let loaded_kind: Option<String> = conn
@@ -1214,29 +1227,33 @@ pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpoo
             "Die Art eines Eintrags im Drucker kann nicht geaendert werden - erst herausnehmen".to_string(),
         ));
     }
-    conn.execute(
-        "UPDATE filament_spools
+    let image_assignment = if replace_image { ", image_png = ?12" } else { "" };
+    let sql = format!("UPDATE filament_spools
          SET material = ?1, manufacturer = ?2, color = ?3,
              location = CASE WHEN unit_id IS NULL THEN ?4 ELSE location END,
              home_location = CASE WHEN unit_id IS NULL THEN home_location ELSE ?4 END,
-             diameter_mm = ?5, original_weight_g = ?6, remaining_weight_g = ?7, price = ?8, image_png = ?9,
-             color_hex = ?11, kind = ?12
-         WHERE id = ?10",
-        params![
-            spool.material,
-            spool.manufacturer,
-            spool.color,
-            spool.location,
-            spool.diameter_mm,
-            crate::db::printers::round_tenth(spool.original_weight_g),
-            crate::db::printers::round_tenth(spool.remaining_weight_g),
-            spool.price,
-            spool.image_png,
-            id,
-            spool.color_hex,
-            spool.kind,
-        ],
-    )?;
+             diameter_mm = ?5, original_weight_g = ?6, remaining_weight_g = ?7, price = ?8,
+             color_hex = ?10, kind = ?11{image_assignment}
+         WHERE id = ?9");
+    let original_weight = crate::db::printers::round_tenth(spool.original_weight_g);
+    let remaining_weight = crate::db::printers::round_tenth(spool.remaining_weight_g);
+    let mut values: Vec<&dyn rusqlite::ToSql> = vec![
+            &spool.material,
+            &spool.manufacturer,
+            &spool.color,
+            &spool.location,
+            &spool.diameter_mm,
+            &original_weight,
+            &remaining_weight,
+            &spool.price,
+            &id,
+            &spool.color_hex,
+            &spool.kind,
+        ];
+    if replace_image {
+        values.push(&spool.image_png);
+    }
+    conn.execute(&sql, values.as_slice())?;
     Ok(())
 }
 
