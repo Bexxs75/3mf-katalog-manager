@@ -346,3 +346,5 @@ Betrieb/Operations: Warnungen und ACK-Verfahren in README.de.md, README.md und
 Root-Papierkorb ohne Web-Automatik, schreibbare Volumes und passende Rechte,
 NOREPLACE-fähiges Dateisystem, keine Cross-Filesystem-Moves, Heimnetz/VPN und
 externe Backups. / Read those warnings before enabling file management.
+
+- **17.10.2026, Stufe 7 abgenommen (Dateiverwaltung):** B-/C-Review-Korrekturen und Tageslimit für Papierkorb-Blöcke umgesetzt (Sonnet, da Codex-Limit bis 22.10.), unabhängig geprüft (Clippy sauber, Rust-Tests grün, Frontend 2350 Tests, kein Tauri im Server/Bundle). Browser-/API-Abnahme gegen die Testumgebung: Umbenennen, Verschieben, Papierkorb/Wiederherstellen, endgültig löschen mit Passwort, Papierkorb leeren in Blöcken, Ordner anlegen/umbenennen/verschieben/aus Katalog entfernen, Schutzorte (409), Zyklus (409), falscher Origin (403), unbekannte Argumente (422), Batch >200 (422); vier Absturzrunden (SIGKILL mitten in Schreibvorgängen) ohne Inkonsistenz zwischen DB und Platte. Offen/klein: verwaiste `.fsops-*.part` im Konfigurationsordner nach hartem Abbruch wird nicht aufgeräumt; Startmeldung/Hilfetext nennt noch „Katalog nur lesend“. Merge `f849428e`.
