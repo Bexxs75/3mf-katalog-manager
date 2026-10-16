@@ -21,3 +21,5 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&dir).expect("create test dir");
     dir
 }
+
+pub mod read;

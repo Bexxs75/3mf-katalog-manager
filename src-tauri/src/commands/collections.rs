@@ -1,24 +1,9 @@
 use super::*;
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionDto {
-    pub id: String,
-    pub name: String,
-    pub model_count: i64,
-}
-fn to_collection_dto(record: db::models::CollectionRecord) -> CollectionDto {
-    CollectionDto {
-        id: record.id.to_string(),
-        name: record.name,
-        model_count: record.model_count,
-    }
-}
 #[tauri::command]
 pub fn list_collections(state: State<AppState>) -> CmdResult<Vec<CollectionDto>> {
     let conn = lock_db(&state)?;
-    let collections = db::list_collections(&conn).map_err(|e| e.to_string())?;
-    Ok(collections.into_iter().map(to_collection_dto).collect())
+    katalog_core::read::list_collections(&conn).map_err(Into::into)
 }
 #[tauri::command]
 pub fn create_collection(state: State<AppState>, name: String) -> CmdResult<CollectionDto> {
@@ -101,12 +86,8 @@ fn reorder_collection_with_conn(
 }
 #[tauri::command]
 pub fn list_collection_files(state: State<AppState>, collection_id: String) -> CmdResult<Vec<ModelFileDto>> {
-    let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let conn = lock_db(&state)?;
-    let ids = db::list_collection_file_ids(&conn, cid).map_err(|e| e.to_string())?;
-    let files = db::list_files_by_ids(&conn, &ids).map_err(|e| e.to_string())?;
-    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
-    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
+    katalog_core::read::list_collection_files(&conn, collection_id).map_err(Into::into)
 }
 
 #[cfg(test)]

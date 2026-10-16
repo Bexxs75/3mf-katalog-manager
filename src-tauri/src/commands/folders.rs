@@ -2,54 +2,10 @@ use super::*;
 
 pub(super) const SETTING_CATALOG_BASE_DIR: &str = "catalog_base_dir";
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FolderDto {
-    pub id: String,
-    pub name: String,
-    pub path: String,
-    pub parent_id: Option<String>,
-    pub count: i64,
-}
 #[tauri::command]
 pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
     let conn = lock_db(&state)?;
-    let folders = db::list_folders(&conn).map_err(|e| e.to_string())?;
-    let files = db::list_files(&conn).map_err(|e| e.to_string())?;
-
-    fn is_descendant_or_self(folders: &[db::models::FolderRecord], candidate_id: i64, ancestor_id: i64) -> bool {
-        if candidate_id == ancestor_id {
-            return true;
-        }
-        let mut current = candidate_id;
-        while let Some(f) = folders.iter().find(|f| f.id == current) {
-            match f.parent_id {
-                Some(pid) if pid == ancestor_id => return true,
-                Some(pid) => current = pid,
-                None => return false,
-            }
-        }
-        false
-    }
-
-    let dtos = folders
-        .iter()
-        .map(|folder| {
-            let count = files
-                .iter()
-                .filter(|f| f.folder_id.is_some_and(|fid| is_descendant_or_self(&folders, fid, folder.id)))
-                .count() as i64;
-            FolderDto {
-                id: folder.id.to_string(),
-                name: folder.name.clone(),
-                path: folder.path.clone(),
-                parent_id: folder.parent_id.map(|id| id.to_string()),
-                count,
-            }
-        })
-        .collect();
-
-    Ok(dtos)
+    katalog_core::read::list_folders(&conn).map_err(Into::into)
 }
 /// `name` ends up in `join`/`with_file_name` and must be a single harmless path
 /// component: "../../etc/x" or "/etc/x" would otherwise create outside the
@@ -712,7 +668,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-
     #[test]
     fn managed_folders_reject_ancestors_before_adoption_or_rename() {
         let dir = unique_test_dir("protected_ancestor");
@@ -730,7 +685,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(target);
         let _ = std::fs::remove_dir_all(dir);
     }
-
 
     #[test]
     fn folder_names_reject_windows_special_components_on_every_platform() {

@@ -16,9 +16,7 @@ pub struct CmdError {
     pub code: Option<GeometryErrorCode>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum GeometryErrorCode { NotFound, Unreadable, TooLarge, Unsupported }
+pub use katalog_core::read::GeometryErrorCode;
 
 impl CmdError {
     fn input_log_level(import: bool) -> log::Level {
@@ -174,4 +172,27 @@ fn import_parser_details_replace_filenames_only_in_normal_logs() {
     let message = "3MF parse error: missing secret.model.3mf";
     assert_eq!(CmdError::import_log_message(message, true), message);
     assert!(!CmdError::import_log_message(message, false).contains("secret.model.3mf"));
+}
+
+impl From<katalog_core::read::ReadError> for CmdError {
+    #[track_caller]
+    fn from(error: katalog_core::read::ReadError) -> Self {
+        let mut mapped = if error.expected { Self::expected(error.message) }
+            else { Self::from(error.message) };
+        mapped.code = error.code;
+        mapped
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn read_error_adapter_preserves_all_wire_fields() {
+    use katalog_core::read::ReadError;
+    for expected in [false, true] {
+        for code in [None, Some(GeometryErrorCode::NotFound), Some(GeometryErrorCode::Unreadable), Some(GeometryErrorCode::TooLarge), Some(GeometryErrorCode::Unsupported)] {
+            let error = ReadError { message: "unverändert".into(), expected, code };
+            let original = serde_json::to_value(&error).unwrap();
+            assert_eq!(serde_json::to_value(CmdError::from(error)).unwrap(), original);
+        }
+    }
 }

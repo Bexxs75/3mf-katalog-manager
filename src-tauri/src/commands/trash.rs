@@ -95,9 +95,7 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
 #[tauri::command]
 pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
     let conn = lock_db(&state)?;
-    let files = db::list_trash(&conn).map_err(|e| e.to_string())?;
-    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
-    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
+    katalog_core::read::list_trash(&conn).map_err(Into::into)
 }
 /// Core logic of `restore_file` with an already loaded `FileRecord`, without `State`, so it's testable.
 fn restore_file_with_conn(
@@ -236,7 +234,6 @@ mod tests {
         assert!(delete_file_with_conn(&conn, &file, id, Path::new("unused")).is_err());
         assert_eq!(db::get_file(&conn, id).unwrap().unwrap().trash_path.as_deref(), Some("existing-trash"));
     }
-
 
     #[test]
     fn delete_file_compensates_when_soft_delete_fails() {

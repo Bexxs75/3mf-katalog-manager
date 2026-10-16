@@ -2465,6 +2465,7 @@ dependencies = [
 name = "katalog-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "bzip2 0.6.1",
  "chrono",
  "cxx",
@@ -2482,6 +2483,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sevenz-rust2",
+ "sha2 0.10.9",
  "tar",
  "unicode-normalization",
  "unrar",

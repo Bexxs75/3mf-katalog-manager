@@ -14,6 +14,31 @@ use super::models::{
 
 pub const SCHEMA_SQL: &str = include_str!("schema.sql");
 
+/// Opens an existing catalog without initialization, migrations or cleanup.
+/// SQLite's read-only flag is the primary write barrier; query_only adds a
+/// connection-local barrier. A hot rollback journal must be recovered by a writer.
+pub fn open_read_only(path: &Path) -> Result<Connection, DbError> {
+    if !path.try_exists().map_err(|e| DbError::Other(format!("Katalog nicht erreichbar: {e}")))? {
+        return Err(DbError::Other("Katalogdatei fehlt".into()));
+    }
+    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    conn.pragma_update(None, "query_only", true)?;
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))
+        .map_err(|e| match &e {
+            rusqlite::Error::SqliteFailure(code, _) if code.code == rusqlite::ErrorCode::ReadOnly =>
+                DbError::Other("Katalog kann nicht schreibgeschützt geöffnet werden: Ein heißes Journal muss zuerst von der Desktop-App (oder dem schreibenden Modus) wiederhergestellt werden".into()),
+            _ => DbError::from(e),
+        })?;
+    let supported = super::migrations::CURRENT_SCHEMA_VERSION;
+    if version < supported {
+        return Err(DbError::Other("Katalog muss zuerst von der Desktop-App (oder dem schreibenden Modus) migriert werden".into()));
+    }
+    if version > supported {
+        return Err(DbError::NewerSchema { found: version, supported });
+    }
+    Ok(conn)
+}
+
 pub fn connect(path: &Path) -> Result<Connection, DbError> {
     connect_with_warning(path).map(|(conn, _)| conn)
 }

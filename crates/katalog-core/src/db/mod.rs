@@ -22,7 +22,7 @@ pub use repository::BACKUP_DIR_NAME;
 #[cfg(any(test, feature = "test-support"))]
 pub use repository::{list_files_missing_content_hash, set_content_hash};
 pub use repository::{
-    FileSummary,
+    FileSummary, FileImages, open_read_only,
     add_tag_to_file, attach_folder_to_parent_by_path, connect, connect_with_warning, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_unused_tags, ensure_folder_path,
     file_exists_by_hash, file_exists_by_path, get_file, get_filament_spool,
@@ -950,3 +950,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 }
+
+#[cfg(test)]
+mod read_only_tests;
