@@ -253,11 +253,15 @@ export default function App() {
     bulk.clearBulkSelection();
     // Deliberately depends only on filter/collection changes - bulk itself
     // is new on every render and would clear the selection right away.
+    // Usage and print-status filters only hide models, so the selection
+    // cleanup for removed models does not cover them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filters.activeFolderId,
     filters.activeTag,
     filters.query,
+    filters.usage,
+    filters.printStatus,
     collections.activeCollection,
     collections.collectionsGalleryOpen,
   ]);
