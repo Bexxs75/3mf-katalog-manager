@@ -202,6 +202,10 @@ docs/              Zusätzliche Dokumentation
 
 Der Anwendungscode steht unter MIT — siehe [LICENSE](LICENSE). Die optionale STEP-Vorschau bindet Open CASCADE dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme ein. Details, Lizenztexte und Quellenhinweise stehen in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
 
+### Webserver: Netzbindung und Proxy
+
+**Netzbindung und Proxy (Deutsch).** Ist `KATALOG_BIND` keine Loopback-Adresse, ist `KATALOG_ALLOWED_HOSTS` Pflicht, und der Server startet sonst nicht (Schutz vor DNS-Rebinding); alle Namen und `Host:Port`, unter denen Browser den Server erreichen, eintragen. Der Server begrenzt Verbindungen auf 32 pro Client-Adresse (IPv6: pro /64) zusätzlich zu insgesamt 256. `KATALOG_TRUST_PROXY=1` lässt den Server den Headern `X-Forwarded-For`/`Forwarded` glauben: nur hinter einem Proxy verwenden, der den Server abschirmt und diese Header selbst setzt. Dann erscheinen alle Clients mit der Adresse des Proxys, daher greift die Pro-Adresse-Grenze nicht (nur das globale Limit); bei Nicht-Loopback-Bindung gibt der Server beim Start eine Warnung aus.
+
 ### Optionale Dateiverwaltung im Web (Stufe 7, Server)
 
 **Warnung:** `KATALOG_FILE_OPS=1` erlaubt dem Webserver, Dateien umzubenennen,

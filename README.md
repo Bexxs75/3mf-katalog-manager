@@ -218,6 +218,8 @@ continues after timeout or disconnect. Reload before retrying an ambiguous resul
 `add_unit` can create duplicates on retry. See [WEB-PLAN.md](WEB-PLAN.md)
 for limits and the audit contract.
 
+**Network binding and proxies (English).** If `KATALOG_BIND` is not a loopback address, `KATALOG_ALLOWED_HOSTS` is required and the server refuses to start without it (DNS-rebinding protection); list every name and `host:port` browsers use. The server limits connections to 32 per client address (IPv6: per /64) in addition to 256 in total. `KATALOG_TRUST_PROXY=1` makes the server believe `X-Forwarded-For`/`Forwarded` headers: use it only behind a proxy that shields the server and sets these headers itself. Then every client appears with the proxy's address, so the per-address connection limit is not applied (only the global limit); with a non-loopback bind the server prints a warning at startup.
+
 ### Optionaler Web-Schreibmodus
 
 Der Webserver bleibt standardmäßig lesend. `KATALOG_WRITE=1` aktiviert die 32
@@ -232,6 +234,8 @@ Lesemodus.** Nach dem 30-Sekunden-HTTP-Zeitlimit oder Verbindungsabbruch läuft
 begonnene DB-Arbeit weiter. Bei unklarer Antwort vor Wiederholung neu laden:
 `create_collection`, `add_print_log_entry`, `add_filament_spool`, `add_printer` und
 `add_unit` können Duplikate erzeugen. Grenzen und Audit-Vertrag: [WEB-PLAN.md](WEB-PLAN.md).
+
+**Netzbindung und Proxy (Deutsch).** Ist `KATALOG_BIND` keine Loopback-Adresse, ist `KATALOG_ALLOWED_HOSTS` Pflicht, und der Server startet sonst nicht (Schutz vor DNS-Rebinding); alle Namen und `Host:Port`, unter denen Browser den Server erreichen, eintragen. Der Server begrenzt Verbindungen auf 32 pro Client-Adresse (IPv6: pro /64) zusätzlich zu insgesamt 256. `KATALOG_TRUST_PROXY=1` lässt den Server den Headern `X-Forwarded-For`/`Forwarded` glauben: nur hinter einem Proxy verwenden, der den Server abschirmt und diese Header selbst setzt. Dann erscheinen alle Clients mit der Adresse des Proxys, daher greift die Pro-Adresse-Grenze nicht (nur das globale Limit); bei Nicht-Loopback-Bindung gibt der Server beim Start eine Warnung aus.
 
 ### Browser-Upload und Import (Backend Stufe 5, Deutsch)
 

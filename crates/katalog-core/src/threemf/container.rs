@@ -93,6 +93,11 @@ pub fn read_geometry_package<R: Read + Seek>(reader: R) -> Result<PackageParts, 
     read_package_inner(reader, true, None)
 }
 
+/// Geometry read with the web budgets instead of the desktop ones.
+pub(crate) fn read_web_geometry_package<R: Read + Seek>(reader: R, limits: crate::import::files::WebImportLimits) -> Result<PackageParts, ThreeMfError> {
+    read_package_inner(reader, true, Some(limits))
+}
+
 pub(crate) fn read_web_package<R: Read + Seek>(reader: R, limits: crate::import::files::WebImportLimits) -> Result<PackageParts, ThreeMfError> {
     read_package_inner(reader, false, Some(limits))
 }

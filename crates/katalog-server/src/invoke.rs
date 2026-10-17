@@ -97,6 +97,8 @@ fn id(args: &Value, key: &str) -> Result<String, Box<Response>> {
             )
         })
 }
+const MAX_FILE_IDS: usize = 500;
+
 fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
     let values = args
         .get("ids")
@@ -106,6 +108,15 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
         return Err(error(
             StatusCode::BAD_REQUEST,
             "Höchstens 200 Bild-IDs erlaubt",
+            true,
+        ));
+    }
+    // Each ID loads a full file record; an unbounded list would hold the
+    // database lock and build an arbitrarily large response.
+    if !images && values.len() > MAX_FILE_IDS {
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "Höchstens 500 IDs erlaubt",
             true,
         ));
     }
@@ -397,7 +408,13 @@ pub async fn invoke(
             "get_model_geometry" => {
                 let source = read::load_geometry_source(&conn, &file_id.unwrap())?;
                 drop(conn);
-                let bytes = read::get_model_geometry(&source.path, Some(&roots))?;
+                // The read-only web has no configured budgets; the defaults are the
+                // largest values the configuration can set.
+                let bytes = read::get_model_geometry_with_limits(
+                    &source.path,
+                    Some(&roots),
+                    Some(katalog_core::import::files::WebImportLimits::default()),
+                )?;
                 Ok(([("content-type", "application/octet-stream")], bytes).into_response())
             }
             _ => unreachable!("allowlist checked"),
@@ -637,6 +654,14 @@ mod tests {
         ] {
             assert_eq!(call(&c, cmd, args).await.status(), 400);
         }
+    }
+    #[tokio::test]
+    async fn list_files_by_ids_is_limited_to_500_ids() {
+        let c = catalog();
+        let too_many = call(&c, "list_files_by_ids", json!({"ids": vec!["1"; 501]})).await;
+        assert_eq!(too_many.status(), 400);
+        let at_limit = call(&c, "list_files_by_ids", json!({"ids": vec![c.id.clone(); 500]})).await;
+        assert_eq!(at_limit.status(), 200);
     }
     #[tokio::test]
     async fn geometry_roots_reject_outside_and_symlink() {

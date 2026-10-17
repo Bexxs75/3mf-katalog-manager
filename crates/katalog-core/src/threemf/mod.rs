@@ -55,6 +55,13 @@ pub fn extract_render_meshes_from_path(path: &Path) -> Result<Vec<RenderMesh>, T
     extract_render_meshes(&package)
 }
 
+/// Same as above, but under the web budgets (unpacked bytes, vertices, triangles).
+pub fn extract_render_meshes_from_path_web(path: &Path, limits: crate::import::files::WebImportLimits) -> Result<Vec<RenderMesh>, ThreeMfError> {
+    let file = crate::safe_file::open_regular(path)?;
+    let package = container::read_web_geometry_package(file, limits)?;
+    extract_render_meshes(&package)
+}
+
 /// Maximum nesting depth of the component chain, against stack overflow with extremely deep (acyclic) graphs.
 const MAX_COMPONENT_DEPTH: usize = 256;
 

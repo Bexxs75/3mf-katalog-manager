@@ -3,7 +3,9 @@ use axum::{extract::ConnectInfo, Router};
 use hyper::{server::conn::http1, service::service_fn};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::{
+    collections::HashMap,
     future::Future,
+    net::IpAddr,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll},
@@ -17,12 +19,72 @@ use tokio::{
 };
 use tower::ServiceExt;
 
+/// Simultaneous connections allowed per client address (IPv6: per /64).
+pub const MAX_CONNECTIONS_PER_PEER: usize = 32;
+
+/// Counts open connections per client network so one host cannot use up all
+/// global slots. IPv6 clients are grouped by /64 because a single subscriber
+/// usually controls a whole /64.
+#[derive(Clone)]
+pub struct PeerLimiter {
+    max: Option<usize>,
+    open: Arc<Mutex<HashMap<IpAddr, usize>>>,
+}
+pub struct PeerGuard {
+    key: Option<IpAddr>,
+    open: Arc<Mutex<HashMap<IpAddr, usize>>>,
+}
+impl Drop for PeerGuard {
+    fn drop(&mut self) {
+        if let Some(key) = self.key {
+            let mut open = self.open.lock().unwrap();
+            if let Some(count) = open.get_mut(&key) {
+                *count -= 1;
+                if *count == 0 {
+                    open.remove(&key);
+                }
+            }
+        }
+    }
+}
+impl PeerLimiter {
+    /// `max = None` disables the limit (behind a trusted proxy every client
+    /// shares the proxy's address).
+    pub fn new(max: Option<usize>) -> Self {
+        Self { max, open: Arc::default() }
+    }
+    fn key(address: IpAddr) -> IpAddr {
+        match address {
+            IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+                Some(v4) => IpAddr::V4(v4),
+                None => IpAddr::V6((u128::from(v6) & (!0u128 << 64)).into()),
+            },
+            v4 => v4,
+        }
+    }
+    fn acquire(&self, address: IpAddr) -> Option<PeerGuard> {
+        let Some(max) = self.max else {
+            return Some(PeerGuard { key: None, open: self.open.clone() });
+        };
+        let key = Self::key(address);
+        let mut open = self.open.lock().unwrap();
+        let count = open.entry(key).or_insert(0);
+        if *count >= max {
+            return None;
+        }
+        *count += 1;
+        Some(PeerGuard { key: Some(key), open: self.open.clone() })
+    }
+}
+
 pub async fn serve(
     listener: tokio::net::TcpListener,
     app: Router,
+    per_peer_limit: Option<usize>,
     shutdown: impl Future<Output = ()>,
 ) -> std::io::Result<()> {
     let slots = Arc::new(Semaphore::new(256));
+    let peers = PeerLimiter::new(per_peer_limit);
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
     tokio::pin!(shutdown);
@@ -33,7 +95,7 @@ pub async fn serve(
             Some(_) = tasks.join_next(), if !tasks.is_empty() => {},
             accepted = listener.accept() => match accepted {
                 Ok((stream, address)) => {
-                    admit(&mut tasks, &slots, stream, app.clone().layer(axum::Extension(ConnectInfo(address))), stopped.clone());
+                    admit(&mut tasks, &slots, &peers, address.ip(), stream, app.clone().layer(axum::Extension(ConnectInfo(address))), stopped.clone());
                 }
                 Err(e) => break Err(e),
             }
@@ -47,6 +109,8 @@ pub async fn serve(
 fn admit<I>(
     tasks: &mut JoinSet<()>,
     slots: &Arc<Semaphore>,
+    peers: &PeerLimiter,
+    peer: IpAddr,
     io: I,
     app: Router,
     stop: watch::Receiver<bool>,
@@ -54,11 +118,15 @@ fn admit<I>(
 where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
+    let Some(peer_guard) = peers.acquire(peer) else {
+        return false;
+    };
     let Ok(permit) = slots.clone().try_acquire_owned() else {
         return false;
     };
     tasks.spawn(async move {
         let _permit = permit;
+        let _peer_guard = peer_guard;
         connection(io, app, stop).await;
     });
     true
@@ -152,7 +220,7 @@ where
     builder
         .timer(TokioTimer::new())
         .keep_alive(true)
-        .header_read_timeout(Duration::from_secs(10));
+        .header_read_timeout(Duration::from_secs(5));
     let conn = builder.serve_connection(
         TokioIo::new(ActiveIo {
             io,
@@ -270,7 +338,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn slow_headers_are_disconnected_after_ten_seconds() {
+    async fn slow_headers_are_disconnected_after_five_seconds() {
         let (mut client, server) = tokio::io::duplex(4096);
         let (_stop, rx) = watch::channel(false);
         let task = tokio::spawn(connection(server, app(), rx));
@@ -279,7 +347,7 @@ mod tests {
             .await
             .unwrap();
         tokio::task::yield_now().await;
-        tokio::time::advance(Duration::from_secs(9)).await;
+        tokio::time::advance(Duration::from_secs(4)).await;
         assert!(!task.is_finished());
         client.write_all(b"h").await.unwrap();
         tokio::time::advance(Duration::from_secs(1)).await;
@@ -295,19 +363,53 @@ mod tests {
         let slots = Arc::new(Semaphore::new(256));
         let mut tasks = JoinSet::new();
         let (_stop, rx) = watch::channel(false);
+        let peers = PeerLimiter::new(Some(MAX_CONNECTIONS_PER_PEER));
         let mut clients = Vec::new();
-        for _ in 0..256 {
+        for i in 0..256u32 {
             let (client, server) = tokio::io::duplex(4096);
-            assert!(admit(&mut tasks, &slots, server, app(), rx.clone()));
+            let ip = IpAddr::from([10, 0, (i / 32) as u8, 1]);
+            assert!(admit(&mut tasks, &slots, &peers, ip, server, app(), rx.clone()));
             clients.push(client);
         }
         let (mut client, server) = tokio::io::duplex(4096);
-        assert!(!admit(&mut tasks, &slots, server, app(), rx.clone()));
+        assert!(!admit(&mut tasks, &slots, &peers, IpAddr::from([10, 1, 0, 1]), server, app(), rx.clone()));
         assert_eq!(client.read(&mut [0; 1]).await.unwrap(), 0);
         drop(clients);
         while tasks.join_next().await.is_some() {}
         let (_client, server) = tokio::io::duplex(4096);
-        assert!(admit(&mut tasks, &slots, server, app(), rx));
+        assert!(admit(&mut tasks, &slots, &peers, IpAddr::from([10, 1, 0, 1]), server, app(), rx));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn per_peer_limit_applies_per_address_and_ipv6_prefix() {
+        let slots = Arc::new(Semaphore::new(256));
+        let mut tasks = JoinSet::new();
+        let (_stop, rx) = watch::channel(false);
+        let peers = PeerLimiter::new(Some(MAX_CONNECTIONS_PER_PEER));
+        let a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        let same_64: IpAddr = "2001:db8:1:2:ffff::9".parse().unwrap();
+        let other_64: IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        let mut clients = Vec::new();
+        for _ in 0..MAX_CONNECTIONS_PER_PEER {
+            let (client, server) = tokio::io::duplex(4096);
+            assert!(admit(&mut tasks, &slots, &peers, a, server, app(), rx.clone()));
+            clients.push(client);
+        }
+        let (_c, server) = tokio::io::duplex(4096);
+        assert!(!admit(&mut tasks, &slots, &peers, same_64, server, app(), rx.clone()));
+        let (_c, server) = tokio::io::duplex(4096);
+        assert!(admit(&mut tasks, &slots, &peers, other_64, server, app(), rx.clone()));
+        drop(clients);
+        while tasks.join_next().await.is_some() {}
+        let (_c, server) = tokio::io::duplex(4096);
+        assert!(admit(&mut tasks, &slots, &peers, same_64, server, app(), rx.clone()));
+        // Without a per-peer limit (trusted proxy) only the global limit remains.
+        let unlimited = PeerLimiter::new(None);
+        for _ in 0..(MAX_CONNECTIONS_PER_PEER + 1) {
+            let (c, server) = tokio::io::duplex(4096);
+            assert!(admit(&mut tasks, &slots, &unlimited, a, server, app(), rx.clone()));
+            std::mem::forget(c);
+        }
     }
 
     #[tokio::test(start_paused = true)]
@@ -322,10 +424,10 @@ mod tests {
         let mut buffer = [0; 4096];
         let n = client.read(&mut buffer).await.unwrap();
         assert!(String::from_utf8_lossy(&buffer[..n]).contains("200 OK"));
-        tokio::time::advance(Duration::from_secs(9)).await;
+        tokio::time::advance(Duration::from_secs(4)).await;
         tokio::task::yield_now().await;
         assert!(!task.is_finished());
-        tokio::time::advance(Duration::from_secs(51)).await;
+        tokio::time::advance(Duration::from_secs(56)).await;
         tokio::task::yield_now().await;
         assert!(task.is_finished());
     }

@@ -852,3 +852,38 @@ fn known_file_id_with_replacement_inode_is_detached_even_matching_hash() {
     assert!(f.store.path(&e).exists());
     drop(original);
 }
+
+#[test]
+fn journal_with_loose_mode_hard_link_or_excess_size_is_refused_on_load() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    f.upload();
+    drop(f.store.clone());
+    let journal = f.root.join("auth/uploads.json");
+    let open = || {
+        UploadStore::load(
+            f.root.join("uploads"),
+            journal.clone(),
+            f.root.join("db"),
+            1024 * 1024,
+            2,
+            &HashMap::new(),
+        )
+        .map(|_| ())
+    };
+    assert!(open().is_ok(), "intact journal loads");
+    assert!(OfflineLedger::load(&f.root.join("auth")).is_ok());
+    // Group/world-readable mode.
+    std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(open().is_err());
+    std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o600)).unwrap();
+    // Second hard link to the journal.
+    let link = f.root.join("auth/uploads.link");
+    std::fs::hard_link(&journal, &link).unwrap();
+    assert!(open().is_err());
+    std::fs::remove_file(&link).unwrap();
+    assert!(open().is_ok());
+    // Above the size limit, even with valid mode.
+    File::options().write(true).open(&journal).unwrap().set_len(MAX_JOURNAL_BYTES + 1).unwrap();
+    assert!(open().is_err());
+}

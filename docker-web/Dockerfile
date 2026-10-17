@@ -28,6 +28,7 @@ RUN cargo build --release --locked -p katalog-server
 FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=server /w/src-tauri/target/release/katalog-server /usr/local/bin/katalog-server
 COPY --from=ui /app/dist-web /srv/ui
+# A non-loopback bind needs a host list (DNS rebinding); other names/IPs must be added via Compose.
 # Same volume layout as the desktop image: /config (home of the app data) and /models.
 ENV KATALOG_BIND=0.0.0.0:8080 \
     KATALOG_STATIC_DIR=/srv/ui \

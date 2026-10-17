@@ -20,12 +20,18 @@ services:
       # Optional upload storage: create ./uploads with owner PUID:PGID and mode 0755.
       # Uploads remain on the server; home network/VPN only.
       # - ./uploads:/models/uploads
-    # Optional settings (uncomment):
+    environment:
+      # Pflicht, wenn der Zugriff über andere Namen/IPs als localhost erfolgt.
+      # Required whenever browsers use other names/IPs than localhost: list every host name or
+      # IP:port, e.g. KATALOG_ALLOWED_HOSTS=katalog.home.example,192.168.1.50:8080
+      # (DNS-rebinding protection; the server refuses to start without a list).
+      # Default: localhost on the published port.
+      - KATALOG_ALLOWED_HOSTS=${KATALOG_ALLOWED_HOSTS:-localhost:${KATALOG_PORT:-8080},127.0.0.1:${KATALOG_PORT:-8080}}
+    # Optional settings (uncomment, as further items of environment: above):
     # Optional metadata and material/printer management writes (default remains read-only):
-    # /config must be writable; KATALOG_ALLOWED_HOSTS is mandatory.
+    # /config must be writable.
     # Never run the desktop app against the same DB at the same time.
     # Authentication is mandatory; do not combine with KATALOG_ALLOW_NO_AUTH.
-    # environment:
     #   - KATALOG_WRITE=1
     # Dateiverwaltung: erlaubt Rename/Move/Delete; /models darf NICHT :ro sein.
     # File management: permits rename/move/delete; /models must NOT be :ro.
@@ -45,8 +51,6 @@ services:
     #   - KATALOG_IMPORT_MAX_TRIANGLES=3000000
     #   # First-time password only (otherwise a random one is printed once in the log):
     #   - KATALOG_PASSWORD_FILE=/config/.kasmvnc-password   # reuse the desktop image's password
-    #   # Recommended when the port is reachable in the network (DNS rebinding protection):
-    #   - KATALOG_ALLOWED_HOSTS=katalog.home.example,192.168.1.50:8080
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

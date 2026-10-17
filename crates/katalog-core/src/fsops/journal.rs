@@ -149,6 +149,35 @@ impl Journal {
             fail_sync: false,
         })
     }
+    /// Removes `.fsops-<id>.part` files left behind by a crash between create and
+    /// rename. Only regular files owned by this user and untouched for `max_age`
+    /// qualify, so a concurrent writer's fresh temp file is never taken. Returns
+    /// the number of removed files. Not for read-only startup (it writes).
+    pub fn remove_stale_temp_files(&self, max_age: std::time::Duration) -> usize {
+        let Ok(names) = self.dir.names() else { return 0 };
+        let mut removed = 0;
+        for name in names {
+            let is_temp = name
+                .strip_prefix(".fsops-")
+                .and_then(|n| n.strip_suffix(".part"))
+                .is_some_and(|id| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()));
+            if !is_temp {
+                continue;
+            }
+            // `read` refuses symlinks and anything but regular files.
+            let Ok(file) = self.dir.read(&name) else { continue };
+            let Ok(meta) = file.metadata() else { continue };
+            let old_enough = meta
+                .modified()
+                .ok()
+                .and_then(|m| m.elapsed().ok())
+                .is_some_and(|age| age >= max_age);
+            if meta.uid() == unsafe { libc::geteuid() } && old_enough && self.dir.unlink(&name).is_ok() {
+                removed += 1;
+            }
+        }
+        removed
+    }
     pub fn is_empty(&self) -> bool {
         self.intents.is_empty() && self.folders.is_empty()
     }

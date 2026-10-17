@@ -77,11 +77,29 @@ impl Directory {
             libc::openat(
                 self.0.as_raw_fd(),
                 name.as_ptr(),
-                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY | libc::O_CLOEXEC,
             )
         };
+        // O_NONBLOCK keeps a FIFO from blocking the open; the type check follows at once.
         let file = unsafe { File::from_raw_fd(cvt(fd)?) };
         if !file.metadata()?.is_file() {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+        Ok(file)
+    }
+    /// Like `read`, but for journals that drive recovery decisions: the file must
+    /// be owned by the current user, mode 0600, not hard-linked and at most
+    /// `max_len` bytes. A violation is reported as `InvalidData`.
+    pub fn read_private(&self, name: &str, max_len: u64) -> io::Result<File> {
+        use std::os::unix::fs::MetadataExt;
+        let file = self.read(name)?;
+        let meta = file.metadata()?;
+        // SAFETY: geteuid has no preconditions and cannot fail.
+        if meta.nlink() != 1
+            || meta.uid() != unsafe { libc::geteuid() }
+            || meta.mode() & 0o777 != 0o600
+            || meta.len() > max_len
+        {
             return Err(io::Error::from(io::ErrorKind::InvalidData));
         }
         Ok(file)
@@ -362,5 +380,31 @@ impl Directory {
             cvt(close)?;
         }
         result
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod read_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn read_rejects_fifo_without_blocking_and_read_private_checks_mode_links_and_size() {
+        let dir = crate::unique_test_dir("upload_fs_read");
+        let fifo = CString::new(dir.join("pipe").as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        let handle = Directory::open(&dir).unwrap();
+        // With no writer a blocking open would hang the test.
+        assert_eq!(handle.read("pipe").unwrap_err().kind(), io::ErrorKind::InvalidData);
+
+        std::fs::write(dir.join("journal"), b"{}").unwrap();
+        std::fs::set_permissions(dir.join("journal"), std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(handle.read_private("journal", 16).is_ok());
+        assert_eq!(handle.read_private("journal", 1).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        std::fs::set_permissions(dir.join("journal"), std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(handle.read_private("journal", 16).is_err());
+        std::fs::set_permissions(dir.join("journal"), std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::hard_link(dir.join("journal"), dir.join("second")).unwrap();
+        assert!(handle.read_private("journal", 16).is_err());
     }
 }

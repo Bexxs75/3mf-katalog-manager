@@ -14,6 +14,80 @@ const MAX_TRIANGLES: usize = 60_000_000;
 // Keep render buffers and browser normal generation within a practical budget.
 pub(super) const MAX_PREVIEW_TRIANGLES: usize = 3_000_000;
 
+// Element counts per model file. Real projects stay far below these; without them a
+// small compressed file can expand into tens of millions of heap-allocated structs.
+const MAX_BUILD_ITEMS: usize = 1_000_000;
+const MAX_OBJECTS: usize = 1_000_000;
+const MAX_COMPONENTS: usize = 1_000_000;
+const MAX_MATERIALS: usize = 1_000_000;
+const MAX_METADATA_ENTRIES: usize = 100_000;
+/// Longer metadata values are cut: the value is display text, so an import of a
+/// real file keeps working while a single node cannot grow without bound.
+const MAX_METADATA_VALUE_BYTES: usize = 64 * 1024;
+/// A single start/empty tag with all its attributes.
+const MAX_TAG_BYTES: usize = 1024 * 1024;
+/// Bytes the reader may buffer for one XML event (tag, text node, comment).
+const MAX_EVENT_BYTES: usize = 4 * 1024 * 1024;
+
+fn limit_error(what: &str, max: usize) -> ThreeMfError {
+    ThreeMfError::ResourceLimitExceeded(format!("more than {max} {what} in model file"))
+}
+
+/// Fails reads once more than `MAX_EVENT_BYTES` were consumed without a closing
+/// `>`: the XML reader would otherwise buffer an endless text node or tag in memory.
+struct EventLimitReader<R> {
+    inner: R,
+    run: usize,
+    tripped: std::rc::Rc<std::cell::Cell<bool>>,
+}
+
+impl<R: std::io::Read> std::io::Read for EventLimitReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.account(&buf[..n]);
+        self.check()?;
+        Ok(n)
+    }
+}
+
+impl<R: BufRead> BufRead for EventLimitReader<R> {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        self.check()?;
+        self.inner.fill_buf()
+    }
+    fn consume(&mut self, amt: usize) {
+        if let Ok(buf) = self.inner.fill_buf() {
+            let seg = &buf[..amt.min(buf.len())];
+            self.run = match seg.iter().rposition(|&b| b == b'>') {
+                Some(pos) => seg.len() - pos - 1,
+                None => self.run.saturating_add(seg.len()),
+            };
+            if self.run > MAX_EVENT_BYTES {
+                self.tripped.set(true);
+            }
+        }
+        self.inner.consume(amt);
+    }
+}
+
+impl<R> EventLimitReader<R> {
+    fn account(&mut self, seg: &[u8]) {
+        self.run = match seg.iter().rposition(|&b| b == b'>') {
+            Some(pos) => seg.len() - pos - 1,
+            None => self.run.saturating_add(seg.len()),
+        };
+        if self.run > MAX_EVENT_BYTES {
+            self.tripped.set(true);
+        }
+    }
+    fn check(&self) -> std::io::Result<()> {
+        if self.tripped.get() {
+            return Err(std::io::Error::other("xml event too large"));
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 thread_local! {
     static TEST_MESH_LIMITS: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
@@ -94,6 +168,10 @@ struct ParseCtx {
     model: ParsedModel,
     vertices: usize,
     triangles: usize,
+    objects: usize,
+    components: usize,
+    materials: usize,
+    metadata_entries: usize,
     limits: (usize, usize),
     current_object: Option<(String, Object)>,
     current_mesh: Option<Mesh>,
@@ -106,8 +184,15 @@ struct ParseCtx {
 }
 
 fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), ThreeMfError> {
+    if e.len() > MAX_TAG_BYTES {
+        return Err(limit_error("bytes in one XML tag", MAX_TAG_BYTES));
+    }
     match name {
         "object" => {
+            if ctx.objects >= MAX_OBJECTS {
+                return Err(limit_error("objects", MAX_OBJECTS));
+            }
+            ctx.objects += 1;
             let id = get_attr(e, "id").unwrap_or_default();
             let object_type = get_attr(e, "type");
             ctx.current_object = Some((
@@ -160,6 +245,10 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
             }
         }
         "component" => {
+            if ctx.components >= MAX_COMPONENTS {
+                return Err(limit_error("components", MAX_COMPONENTS));
+            }
+            ctx.components += 1;
             if let Some((_, obj)) = ctx.current_object.as_mut() {
                 let object_id = get_attr(e, "objectid").unwrap_or_default();
                 let path = get_attr(e, "path").map(|p| p.trim_start_matches('/').to_string());
@@ -174,6 +263,9 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
             }
         }
         "item" => {
+            if ctx.model.build_items.len() >= MAX_BUILD_ITEMS {
+                return Err(limit_error("build items", MAX_BUILD_ITEMS));
+            }
             let object_id = get_attr(e, "objectid").unwrap_or_default();
             let path = get_attr(e, "path").map(|p| p.trim_start_matches('/').to_string());
             let transform = get_attr(e, "transform")
@@ -190,6 +282,10 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
             ctx.current_basematerials = Some(Vec::new());
         }
         "base" => {
+            if ctx.materials >= MAX_MATERIALS {
+                return Err(limit_error("base materials", MAX_MATERIALS));
+            }
+            ctx.materials += 1;
             if let Some(materials) = ctx.current_basematerials.as_mut() {
                 let name = get_attr(e, "name").unwrap_or_default();
                 let display_color = get_attr(e, "displaycolor");
@@ -200,6 +296,10 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
             }
         }
         "metadata" => {
+            if ctx.metadata_entries >= MAX_METADATA_ENTRIES {
+                return Err(limit_error("metadata entries", MAX_METADATA_ENTRIES));
+            }
+            ctx.metadata_entries += 1;
             ctx.pending_metadata_name = get_attr(e, "name");
             ctx.metadata_text.clear();
         }
@@ -256,12 +356,18 @@ pub(super) fn parse_model_xml_reader_with_preview<R: BufRead>(source: R, preview
 }
 
 pub(super) fn parse_model_xml_reader_with_limits<R: BufRead>(source: R, limits: (usize, usize)) -> Result<ParsedModel, ThreeMfError> {
-    let mut reader = Reader::from_reader(source);
+    let tripped = std::rc::Rc::new(std::cell::Cell::new(false));
+    let mut reader = Reader::from_reader(EventLimitReader { inner: source, run: 0, tripped: tripped.clone() });
     let mut ctx = ParseCtx { limits, ..ParseCtx::default() };
     let mut buf = Vec::new();
 
     loop {
-        match reader.read_event_into(&mut buf)? {
+        let event = match reader.read_event_into(&mut buf) {
+            Ok(event) => event,
+            Err(_) if tripped.get() => return Err(limit_error("bytes in one XML event", MAX_EVENT_BYTES)),
+            Err(e) => return Err(e.into()),
+        };
+        match event {
             Event::Eof => break,
             Event::Start(e) => {
                 let name = local_name(e.name().as_ref()).to_string();
@@ -274,7 +380,13 @@ pub(super) fn parse_model_xml_reader_with_limits<R: BufRead>(source: R, limits: 
             }
             Event::Text(t) => {
                 if ctx.pending_metadata_name.is_some() {
-                    ctx.metadata_text.push_str(&t.decode().map_err(quick_xml::Error::from)?);
+                    let text = t.decode().map_err(quick_xml::Error::from)?;
+                    let room = MAX_METADATA_VALUE_BYTES.saturating_sub(ctx.metadata_text.len());
+                    let mut cut = text.len().min(room);
+                    while !text.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    ctx.metadata_text.push_str(&text[..cut]);
                 }
             }
             Event::End(e) => {
@@ -478,5 +590,50 @@ mod streaming_tests {
         let result = parse_model_xml(&format!("<model>{object}{object}</model>"));
         TEST_MESH_LIMITS.with(|c| c.set(None));
         assert!(matches!(result, Err(ThreeMfError::ResourceLimitExceeded(_))));
+    }
+
+    fn assert_limit(result: Result<ParsedModel, ThreeMfError>) {
+        assert!(matches!(result, Err(ThreeMfError::ResourceLimitExceeded(_))), "{:?}", result.map(|_| ()));
+    }
+
+    #[test]
+    fn rejects_more_build_items_than_the_limit() {
+        let xml = format!("<model><build>{}</build></model>", "<item objectid='1'/>".repeat(MAX_BUILD_ITEMS + 1));
+        assert_limit(parse_model_xml(&xml));
+        let ok = format!("<model><build>{}</build></model>", "<item objectid='1'/>".repeat(1000));
+        assert_eq!(parse_model_xml(&ok).unwrap().build_items.len(), 1000);
+    }
+
+    #[test]
+    fn rejects_more_objects_components_materials_and_metadata_than_the_limit() {
+        let objects = format!("<model><resources>{}</resources></model>", "<object id='1'/>".repeat(MAX_OBJECTS + 1));
+        assert_limit(parse_model_xml(&objects));
+        let components = format!("<model><resources><object id='1'><components>{}</components></object></resources></model>", "<component objectid='2'/>".repeat(MAX_COMPONENTS + 1));
+        assert_limit(parse_model_xml(&components));
+        let bases = format!("<model><resources><basematerials id='1'>{}</basematerials></resources></model>", "<base name='a'/>".repeat(MAX_MATERIALS + 1));
+        assert_limit(parse_model_xml(&bases));
+        let metadata = format!("<model>{}</model>", "<metadata name='k'>v</metadata>".repeat(MAX_METADATA_ENTRIES + 1));
+        assert_limit(parse_model_xml(&metadata));
+    }
+
+    #[test]
+    fn overlong_metadata_value_is_cut_not_rejected() {
+        let value = "ä".repeat(MAX_METADATA_VALUE_BYTES);
+        let xml = format!("<model><metadata name='Description'>{value}</metadata><metadata name='Title'>ok</metadata></model>");
+        let model = parse_model_xml(&xml).unwrap();
+        let cut = &model.metadata["Description"];
+        assert!(cut.len() <= MAX_METADATA_VALUE_BYTES && cut.len() > MAX_METADATA_VALUE_BYTES - 4);
+        assert!(cut.chars().all(|c| c == 'ä'));
+        assert_eq!(model.metadata["Title"], "ok");
+    }
+
+    #[test]
+    fn rejects_oversized_tag_and_oversized_xml_event() {
+        let tag = format!("<model><item objectid='{}'/></model>", "1".repeat(MAX_TAG_BYTES + 1));
+        assert_limit(parse_model_xml(&tag));
+        let text = format!("<model><metadata name='k'>{}</metadata></model>", "x".repeat(MAX_EVENT_BYTES + 1));
+        assert_limit(parse_model_xml(&text));
+        let fits = format!("<model><metadata name='k'>{}</metadata></model>", "x".repeat(MAX_EVENT_BYTES / 2));
+        assert!(parse_model_xml(&fits).is_ok());
     }
 }

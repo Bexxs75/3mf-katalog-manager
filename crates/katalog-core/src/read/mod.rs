@@ -5,7 +5,7 @@ mod geometry;
 pub use dto::*;
 pub use error::{GeometryErrorCode, ReadError};
 pub use geometry::{
-    encode_render_meshes, geometry_io_error, get_model_geometry, load_geometry_source,
+    encode_render_meshes, geometry_io_error, get_model_geometry, get_model_geometry_with_limits, load_geometry_source,
     GeometrySource,
 };
 pub type ReadResult<T> = Result<T, ReadError>;

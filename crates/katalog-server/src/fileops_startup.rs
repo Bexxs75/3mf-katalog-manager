@@ -155,6 +155,12 @@ pub(crate) fn prepare(
     if !config.file_ops && journal.is_empty() && config.file_ops_ack.is_empty() {
         return Ok(None);
     }
+    // Leftovers of crashed runs; only in write mode because this deletes files.
+    if config.file_ops {
+        let max_age = std::time::Duration::from_secs(3600);
+        journal.remove_stale_temp_files(max_age);
+        crate::fileops_safety::remove_stale_backup_stages(&config.db_path, max_age);
+    }
     let context = crate::fileops_config::context(config)?;
     let offline = if store.is_none() {
         Some(

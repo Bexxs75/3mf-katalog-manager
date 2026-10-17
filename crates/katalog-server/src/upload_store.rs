@@ -192,6 +192,9 @@ pub fn sanitize_name(encoded: &str) -> Result<String, StoreError> {
 fn extension(name: &str) -> String {
     name.rsplit('.').next().unwrap_or("").to_ascii_lowercase()
 }
+/// Same bound as the filesystem-operation journal.
+const MAX_JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
+
 impl UploadStore {
     pub fn load(
         path: PathBuf,
@@ -213,7 +216,7 @@ impl UploadStore {
             .and_then(|s| s.to_str())
             .ok_or(StoreError::new(500, "journal_path"))?
             .to_owned();
-        let journal = match journal_dir.read(&journal_name) {
+        let journal = match journal_dir.read_private(&journal_name, MAX_JOURNAL_BYTES) {
             Ok(f) => serde_json::from_reader::<_, Journal>(f)
                 .map_err(|_| StoreError::new(500, "journal_invalid"))?,
             Err(e) if e.kind() == io::ErrorKind::NotFound => Journal::default(),
@@ -1019,7 +1022,7 @@ pub(crate) struct OfflineLedger {
 impl OfflineLedger {
     pub(crate) fn load(parent: &std::path::Path) -> Result<Self, StoreError> {
         let dir = Directory::open(parent)?;
-        let journal = match dir.read("web-uploads.json") {
+        let journal = match dir.read_private("web-uploads.json", MAX_JOURNAL_BYTES) {
             Ok(file) => serde_json::from_reader(file)
                 .map_err(|_| StoreError::new(500, "journal_invalid"))?,
             Err(e) if e.kind() == io::ErrorKind::NotFound => Journal::default(),

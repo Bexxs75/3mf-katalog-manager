@@ -1807,3 +1807,28 @@ fn a2fix_db_removal_unlocated_source_is_explicitly_rejected() {
     assert!(f.ops.folder_removal_summary(id).is_ok());
     assert!(f.ops.journal.is_empty());
 }
+
+#[test]
+fn stale_journal_temp_files_are_removed_but_fresh_and_foreign_names_stay() {
+    use std::time::{Duration, SystemTime};
+    let dir = crate::unique_test_dir("fsops_stale_part");
+    let old_part = dir.join(format!(".fsops-{}.part", "a".repeat(32)));
+    let fresh_part = dir.join(format!(".fsops-{}.part", "b".repeat(32)));
+    let foreign = dir.join(".fsops-notanid.part");
+    let journal_like = dir.join("unrelated.txt");
+    for path in [&old_part, &fresh_part, &foreign, &journal_like] {
+        fs::write(path, b"x").unwrap();
+    }
+    let old = SystemTime::now() - Duration::from_secs(2 * 3600);
+    for path in [&old_part, &foreign] {
+        fs::File::options().write(true).open(path).unwrap().set_modified(old).unwrap();
+    }
+    // A symlink with a matching name must not be followed or removed.
+    let link = dir.join(format!(".fsops-{}.part", "c".repeat(32)));
+    symlink(&journal_like, &link).unwrap();
+    let journal = Journal::open(&dir).unwrap();
+    assert_eq!(journal.remove_stale_temp_files(Duration::from_secs(3600)), 1);
+    assert!(!old_part.exists());
+    assert!(fresh_part.exists() && foreign.exists() && journal_like.exists());
+    assert!(link.symlink_metadata().is_ok());
+}

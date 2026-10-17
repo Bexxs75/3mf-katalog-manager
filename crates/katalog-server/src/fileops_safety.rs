@@ -269,9 +269,81 @@ fn ensure_backups(
     handle.sync()?;
     Ok(())
 }
+/// Deletes `backups/.web-fileops-stage-<pid>-<id>` directories that a crash left
+/// behind. Only real directories of this exact name shape, owned by this user and
+/// untouched for `max_age`, are removed; a running backup keeps touching its own.
+pub(crate) fn remove_stale_backup_stages(db_path: &Path, max_age: std::time::Duration) -> usize {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(db_path) = db_path.canonicalize() else { return 0 };
+    let Some(dir) = db_path.parent().map(|p| p.join("backups")) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return 0 };
+    // Same ownership rule as the backup files: whoever owns `backups/` itself.
+    let Ok(owner) = std::fs::metadata(&dir).map(|m| m.uid()) else { return 0 };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(rest) = name.to_str().and_then(|n| n.strip_prefix(".web-fileops-stage-")) else {
+            continue;
+        };
+        let shaped = rest.split_once('-').is_some_and(|(pid, id)| {
+            !pid.is_empty()
+                && pid.bytes().all(|b| b.is_ascii_digit())
+                && id.len() == 32
+                && id.bytes().all(|b| b.is_ascii_hexdigit())
+        });
+        // symlink_metadata: a symlink named like a stage must never be followed.
+        let Ok(meta) = std::fs::symlink_metadata(entry.path()) else { continue };
+        let old_enough = meta
+            .modified()
+            .ok()
+            .and_then(|m| m.elapsed().ok())
+            .is_some_and(|age| age >= max_age);
+        if shaped
+            && meta.is_dir()
+            && meta.uid() == owner
+            && old_enough
+            && std::fs::remove_dir_all(entry.path()).is_ok()
+        {
+            removed += 1;
+        }
+    }
+    removed
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stale_backup_stage_dirs_are_removed_but_fresh_foreign_and_symlinked_stay() {
+        use std::time::{Duration, SystemTime};
+        let dir = std::env::temp_dir().join(format!("fileops-stale-stage-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let backups = dir.join("backups");
+        std::fs::create_dir_all(&backups).unwrap();
+        std::fs::write(dir.join("catalog.db"), b"").unwrap();
+        let id = "a".repeat(32);
+        let stale = backups.join(format!(".web-fileops-stage-123-{id}"));
+        let fresh = backups.join(format!(".web-fileops-stage-124-{id}"));
+        let foreign = backups.join(".web-fileops-stage-mine");
+        let keep_file = backups.join("web-fileops-day-1.db");
+        for path in [&stale, &fresh, &foreign] {
+            std::fs::create_dir(path).unwrap();
+        }
+        std::fs::write(stale.join("backup.db"), b"x").unwrap();
+        std::fs::write(&keep_file, b"x").unwrap();
+        let outside = dir.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let link = backups.join(format!(".web-fileops-stage-125-{id}"));
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let old = SystemTime::now() - Duration::from_secs(2 * 3600);
+        for path in [&stale, &foreign] {
+            std::fs::File::open(path).unwrap().set_modified(old).unwrap();
+        }
+        assert_eq!(remove_stale_backup_stages(&dir.join("catalog.db"), Duration::from_secs(3600)), 1);
+        assert!(!stale.exists());
+        assert!(fresh.exists() && foreign.exists() && keep_file.exists());
+        assert!(link.symlink_metadata().is_ok() && outside.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
     #[test]
     fn batch_above_window_limit_is_rejected_without_retry_and_leaves_budget_unchanged() {
         let mut safety = FileOpsSafety::new(1000);

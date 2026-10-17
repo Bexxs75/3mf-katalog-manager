@@ -281,6 +281,11 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
+        std::fs::set_permissions(
+            f.path.join("auth/web-uploads.json"),
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
         std::fs::rename(source, target).unwrap();
         (std::sync::Arc::new(std::sync::Mutex::new(conn)), id)
     }

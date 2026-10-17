@@ -38,6 +38,20 @@ pub struct Config {
 }
 
 impl Config {
+    /// Beschreibt den tatsächlich aktiven Betriebsmodus für die Startmeldung.
+    pub fn mode_description(&self) -> String {
+        if !self.write {
+            return "nur lesend".into();
+        }
+        let mut mode = String::from("Schreibmodus");
+        if self.upload.is_some() {
+            mode.push_str(" mit Upload");
+        }
+        if self.file_ops {
+            mode.push_str(if self.upload.is_some() { " und Dateiverwaltung" } else { " mit Dateiverwaltung" });
+        }
+        mode
+    }
     pub fn from_env() -> Result<Self, String> {
         Self::from_lookup(|key| std::env::var(key).ok())
     }
@@ -133,9 +147,10 @@ impl Config {
                     .map(|h| format!("{h}:{}", bind.port()))
                     .collect(),
             ),
+            // Ohne Hostliste könnte eine fremde Webseite per DNS-Rebinding die
+            // angemeldete Sitzung eines Browsers im Heimnetz missbrauchen.
             None => {
-                eprintln!("WARNUNG: Nicht-Loopback-Bindung ohne Hostprüfung: Gefahr durch DNS-Rebinding. KATALOG_ALLOWED_HOSTS setzen!");
-                None
+                return Err("Nicht-Loopback-Bindung erfordert KATALOG_ALLOWED_HOSTS (Schutz vor DNS-Rebinding), z. B. KATALOG_ALLOWED_HOSTS=katalog.example,192.168.1.50:8080".into());
             }
         };
         let max_mb = positive_limit(&lookup, "KATALOG_UPLOAD_MAX_MB", 1024, 4096)?;
@@ -581,13 +596,50 @@ mod tests {
         assert!(Config::from_lookup(|_| None).is_err());
     }
     #[test]
+    fn mode_description_names_the_active_mode() {
+        let mut c = config(&[]).unwrap();
+        assert_eq!(c.mode_description(), "nur lesend");
+        c.write = true;
+        assert_eq!(c.mode_description(), "Schreibmodus");
+        c.file_ops = true;
+        assert_eq!(c.mode_description(), "Schreibmodus mit Dateiverwaltung");
+        c.upload = Some(UploadConfig {
+            dir: PathBuf::from("/u"),
+            max_bytes: 1,
+            max_files: 1,
+            limits: katalog_core::import::files::WebImportLimits {
+                max_file_bytes: 1,
+                max_mesh_file_bytes: 1,
+                max_unpacked_bytes: 1,
+                max_vertices: 1,
+                max_triangles: 1,
+            },
+        });
+        assert_eq!(c.mode_description(), "Schreibmodus mit Upload und Dateiverwaltung");
+        c.file_ops = false;
+        assert_eq!(c.mode_description(), "Schreibmodus mit Upload");
+    }
+    #[test]
+    fn non_loopback_bind_without_allowed_hosts_is_rejected() {
+        for bind in ["0.0.0.0:8080", "192.168.1.5:8080", "[::]:8080"] {
+            let Err(err) = config(&[("KATALOG_BIND", bind)]) else { panic!("{bind}") };
+            assert!(err.contains("KATALOG_ALLOWED_HOSTS"), "{bind}: {err}");
+        }
+        assert!(config(&[
+            ("KATALOG_BIND", "0.0.0.0:8080"),
+            ("KATALOG_ALLOWED_HOSTS", "localhost:8080")
+        ])
+        .is_ok());
+    }
+    #[test]
     fn proxy_and_external_binding_are_explicit() {
         let c = config(&[
             ("KATALOG_BIND", "0.0.0.0:9090"),
             ("KATALOG_TRUST_PROXY", "1"),
+            ("KATALOG_ALLOWED_HOSTS", "katalog.example"),
         ])
         .unwrap();
-        assert!(c.allowed_hosts.is_none() && c.trust_proxy);
+        assert!(c.allowed_hosts.is_some() && c.trust_proxy);
         assert!(
             config(&[
                 ("KATALOG_BIND", "[::1]:8080"),

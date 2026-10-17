@@ -114,7 +114,7 @@ fn cli_rejects_no_auth_with_proxy_before_opening_catalog() {
 }
 
 #[test]
-fn external_binding_warns_about_dns_rebinding_without_aborting_configuration() {
+fn external_binding_without_allowed_hosts_aborts_with_dns_rebinding_hint() {
     let run = |hosts: Option<&str>| {
         let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_katalog-server"));
         command
@@ -129,11 +129,14 @@ fn external_binding_warns_about_dns_rebinding_without_aborting_configuration() {
     };
     let output = run(None);
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success());
     assert!(stderr.contains("DNS-Rebinding") && stderr.contains("KATALOG_ALLOWED_HOSTS"));
+    // The configuration is rejected before the catalog is touched.
+    assert!(!stderr.contains("Katalog kann nicht nur lesend geöffnet werden"));
+    let with_hosts = run(Some("catalog.local:8080"));
+    let stderr = String::from_utf8_lossy(&with_hosts.stderr);
+    assert!(!stderr.contains("DNS-Rebinding"));
     assert!(stderr.contains("Katalog kann nicht nur lesend geöffnet werden"));
-    assert!(
-        !String::from_utf8_lossy(&run(Some("catalog.local:8080")).stderr).contains("DNS-Rebinding")
-    );
 }
 
 #[test]

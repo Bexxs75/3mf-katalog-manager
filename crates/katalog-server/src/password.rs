@@ -308,10 +308,13 @@ pub async fn bootstrap(
     if let Some(auth) = existing {
         return Ok(auth);
     }
-    let must_change = supplied.is_none();
+    // A short supplied password is accepted for setup but must be replaced on first login.
+    let short_supplied = supplied.as_ref().is_some_and(|v| v.chars().count() < 12);
+    let generated = supplied.is_none();
+    let must_change = generated || short_supplied;
     let plaintext = if let Some(value) = supplied {
-        if value.chars().count() < 12 {
-            eprintln!("Warnung: Das übernommene Passwort hat weniger als 12 Zeichen");
+        if short_supplied {
+            eprintln!("Warnung: Das übernommene Passwort hat weniger als 12 Zeichen; es muss beim ersten Anmelden geändert werden");
         }
         value
     } else {
@@ -326,7 +329,8 @@ pub async fn bootstrap(
     let write_path = path.to_path_buf();
     let persisted = auth.clone();
     file_work(move || write_auth(&write_path, &persisted)).await?;
-    if must_change {
+    // A supplied password is never echoed into the log.
+    if generated {
         eprintln!("\n=== EINMALIGES STARTPASSWORT ===\n{plaintext}\nBitte nach der Anmeldung sofort ändern.\n==============================\n");
     }
     Ok(auth)
@@ -510,6 +514,19 @@ mod tests {
         invalid.version = 2;
         fs::write(&p, serde_json::to_vec(&invalid).unwrap()).unwrap();
         assert!(read_auth(&p).is_err());
+        fs::remove_dir_all(p.parent().unwrap()).unwrap();
+    }
+    #[tokio::test]
+    async fn short_supplied_password_requires_change_on_first_login() {
+        let _guard = PASSWORD_TEST_LOCK.lock().await;
+        let p = path();
+        let short = bootstrap(&p, Some("kurz".into()), None).await.unwrap();
+        assert!(short.must_change);
+        assert!(verify_password(short.password_hash.clone(), "kurz".into()).await.unwrap());
+        fs::remove_dir_all(p.parent().unwrap()).unwrap();
+        let p = path();
+        let exactly_twelve = bootstrap(&p, Some("123456789012".into()), None).await.unwrap();
+        assert!(!exactly_twelve.must_change);
         fs::remove_dir_all(p.parent().unwrap()).unwrap();
     }
     #[tokio::test]

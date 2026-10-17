@@ -28,6 +28,15 @@ pub fn load_geometry_source(conn: &Connection, file_id: &str) -> ReadResult<Geom
 /// path being replaced concurrently by a filesystem writer; server shares must not
 /// be attacker-writable.
 pub fn get_model_geometry(path: &Path, allowed_roots: Option<&[PathBuf]>) -> ReadResult<Vec<u8>> {
+    get_model_geometry_with_limits(path, allowed_roots, None)
+}
+
+/// `web_limits` replaces the desktop 3MF parser budgets (2/3 GiB) with the web ones.
+pub fn get_model_geometry_with_limits(
+    path: &Path,
+    allowed_roots: Option<&[PathBuf]>,
+    web_limits: Option<crate::import::files::WebImportLimits>,
+) -> ReadResult<Vec<u8>> {
     let mut target = path.to_path_buf();
     if let Some(roots) = allowed_roots {
         let canonical = path.canonicalize().map_err(geometry_io_error)?;
@@ -48,7 +57,7 @@ pub fn get_model_geometry(path: &Path, allowed_roots: Option<&[PathBuf]>) -> Rea
         // in afterwards cannot redirect the read.
         target = canonical;
     }
-    Ok(encode_render_meshes(&load_geometry(&target)?))
+    Ok(encode_render_meshes(&load_geometry_with_obj_limit(&target, MAX_PREVIEW_TRIANGLES, web_limits)?))
 }
 
 pub fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
@@ -262,13 +271,15 @@ fn check_preview_size(
     Ok(())
 }
 
+#[cfg(test)]
 pub fn load_geometry(path: &Path) -> ReadResult<Vec<RenderMesh>> {
-    load_geometry_with_obj_limit(path, MAX_PREVIEW_TRIANGLES)
+    load_geometry_with_obj_limit(path, MAX_PREVIEW_TRIANGLES, None)
 }
 
 fn load_geometry_with_obj_limit(
     path: &Path,
     max_obj_triangles: u64,
+    web_limits: Option<crate::import::files::WebImportLimits>,
 ) -> ReadResult<Vec<RenderMesh>> {
     use super::GeometryErrorCode as Code;
     let extension = path
@@ -290,7 +301,11 @@ fn load_geometry_with_obj_limit(
             obj::ObjError::TooLarge => preview_too_large(e.to_string()),
             _ => unreadable(e.to_string()),
         })?],
-        "3mf" => threemf::extract_render_meshes_from_path(path).map_err(geometry_3mf_error)?,
+        "3mf" => match web_limits {
+            Some(limits) => threemf::extract_render_meshes_from_path_web(path, limits),
+            None => threemf::extract_render_meshes_from_path(path),
+        }
+        .map_err(geometry_3mf_error)?,
         _ => {
             return Err(ReadError::expected(format!(
                 "nicht unterstütztes Dateiformat: {extension}"
@@ -529,14 +544,14 @@ mod tests {
         let vertices = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 1 1 0\n";
         std::fs::write(&path, format!("{vertices}{}", "f 1 2 3\n".repeat(2))).unwrap();
         assert_eq!(
-            load_geometry_with_obj_limit(&path, 3).unwrap()[0]
+            load_geometry_with_obj_limit(&path, 3, None).unwrap()[0]
                 .indices
                 .len(),
             2
         );
         std::fs::write(&path, format!("{vertices}{}", "f 1 2 3\n".repeat(4))).unwrap();
         assert_eq!(
-            load_geometry_with_obj_limit(&path, 3).unwrap_err().code,
+            load_geometry_with_obj_limit(&path, 3, None).unwrap_err().code,
             Some(Code::TooLarge)
         );
         assert!(obj::parse_obj_file(&path).is_ok());
@@ -547,18 +562,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            load_geometry_with_obj_limit(&path, 3).unwrap_err().code,
+            load_geometry_with_obj_limit(&path, 3, None).unwrap_err().code,
             Some(Code::TooLarge)
         );
         std::fs::write(&path, format!("{vertices}f 1 2 4 3\n")).unwrap();
         assert_eq!(
-            load_geometry_with_obj_limit(&path, 2).unwrap()[0]
+            load_geometry_with_obj_limit(&path, 2, None).unwrap()[0]
                 .indices
                 .len(),
             2
         );
         assert_eq!(
-            load_geometry_with_obj_limit(&path, 1).unwrap_err().code,
+            load_geometry_with_obj_limit(&path, 1, None).unwrap_err().code,
             Some(Code::TooLarge)
         );
         std::fs::remove_dir_all(dir).unwrap();
@@ -764,5 +779,29 @@ endsolid x
         )
         .unwrap();
         assert!(header.get("plates").is_none());
+    }
+
+    #[test]
+    fn web_limits_apply_to_3mf_geometry_instead_of_desktop_limits() {
+        use crate::import::files::WebImportLimits;
+        use crate::read::GeometryErrorCode as Code;
+        use std::io::Write;
+        let model = r#"<?xml version="1.0"?><model unit="millimeter"><resources><object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources><build><item objectid="1"/></build></model>"#;
+        let dir = crate::unique_test_dir("web_geometry_limits");
+        let path = dir.join("tiny.3mf");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        zip.start_file("3D/3dmodel.model", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(model.as_bytes()).unwrap();
+        zip.finish().unwrap();
+        assert!(get_model_geometry_with_limits(&path, None, None).is_ok());
+        assert!(get_model_geometry_with_limits(&path, None, Some(WebImportLimits::default())).is_ok());
+        for limits in [
+            WebImportLimits { max_vertices: 2, ..WebImportLimits::default() },
+            WebImportLimits { max_triangles: 0, ..WebImportLimits::default() },
+            WebImportLimits { max_unpacked_bytes: 10, ..WebImportLimits::default() },
+        ] {
+            let error = get_model_geometry_with_limits(&path, None, Some(limits)).unwrap_err();
+            assert_eq!(error.code, Some(Code::TooLarge));
+        }
     }
 }

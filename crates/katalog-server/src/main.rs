@@ -1,7 +1,7 @@
 use katalog_server::config::Config;
 use std::{io::IsTerminal, path::PathBuf};
 
-const HELP: &str = "katalog-server – Katalog nur lesend\n\nVerwendung: katalog-server [--help | --version | set-password]\n\nKATALOG_DB                Bestehende catalog.db (Pflicht)\nKATALOG_ROOTS             Erlaubte Dateiwurzeln (Pflicht; Unix :, Windows ;)\nKATALOG_AUTH_FILE         Passwortdatei (Vorgabe: neben catalog.db/web-auth.json)\nKATALOG_PASSWORD          Passwort nur zur Ersteinrichtung\nKATALOG_PASSWORD_FILE     Alternativ Passwortdatei nur zur Ersteinrichtung\nKATALOG_STATIC_DIR        Optionales Web-Build-Verzeichnis statt Smoke-Seite\nKATALOG_BIND              IP:Port (Vorgabe 127.0.0.1:8080)\nKATALOG_ALLOWED_HOSTS     Erlaubte Hosts, kommagetrennt, optional mit Port\n                         IPv6 in Klammern; Loopback-Vorgabe: localhost,\n                         127.0.0.1, [::1] jeweils mit Bind-Port.\n                         Bei anderer Bindung ohne Angabe keine Hostprüfung.\nKATALOG_ALLOW_NO_AUTH=1    Nur bei Loopback: Anmeldung und CSRF abschalten\nKATALOG_TRUST_PROXY=1      Forwarded-Header für Client-IP und HTTPS vertrauen\n\nWurzeln dürfen nicht von Fremden beschreibbar sein.\nBei KATALOG_TRUST_PROXY=1 darf der Server nur hinter einem abschirmenden Proxy stehen.\nDer Proxy muss X-Forwarded-For anhängen oder überschreiben.\nKATALOG_ALLOW_NO_AUTH=1 darf nicht mit KATALOG_TRUST_PROXY=1 kombiniert werden.\nCookies (katalog_session) sind nicht nach Port getrennt: Andere HTTP-Dienste\nauf demselben Host erhalten das Cookie. Eigenen Host-/Domainnamen verwenden.\nDas Zufallspasswort bleibt dauerhaft im Log (docker logs); nach dem ersten\nAnmelden ändern.\nDer Server bietet kein HTTPS; vorgesehen für Heimnetz/VPN.\nOhne Passwortdatei erfolgt eine Ersteinrichtung mit zufälligem Einmalpasswort.\nset-password liest ein neues Passwort von stdin (Terminal: zweimal, Eingabe sichtbar),\nverlangt 12 bis 128 Zeichen und speichert es atomar. Keine Passwortargumente.\nEin bereits laufender Server muss danach neu gestartet werden.\n";
+const HELP: &str = "katalog-server – Katalog im Browser (nur lesend; Schreibmodus, Upload und Dateiverwaltung nur auf ausdrückliche Einstellung)\n\nVerwendung: katalog-server [--help | --version | set-password]\n\nKATALOG_DB                Bestehende catalog.db (Pflicht)\nKATALOG_ROOTS             Erlaubte Dateiwurzeln (Pflicht; Unix :, Windows ;)\nKATALOG_AUTH_FILE         Passwortdatei (Vorgabe: neben catalog.db/web-auth.json)\nKATALOG_PASSWORD          Passwort nur zur Ersteinrichtung\nKATALOG_PASSWORD_FILE     Alternativ Passwortdatei nur zur Ersteinrichtung\nKATALOG_STATIC_DIR        Optionales Web-Build-Verzeichnis statt Smoke-Seite\nKATALOG_BIND              IP:Port (Vorgabe 127.0.0.1:8080)\nKATALOG_ALLOWED_HOSTS     Erlaubte Hosts, kommagetrennt, optional mit Port\n                         IPv6 in Klammern; Loopback-Vorgabe: localhost,\n                         127.0.0.1, [::1] jeweils mit Bind-Port.\n                         Bei anderer Bindung Pflicht (Start bricht sonst ab).\nKATALOG_ALLOW_NO_AUTH=1    Nur bei Loopback: Anmeldung und CSRF abschalten\nKATALOG_TRUST_PROXY=1      Forwarded-Header für Client-IP und HTTPS vertrauen\n\nWurzeln dürfen nicht von Fremden beschreibbar sein.\nBei KATALOG_TRUST_PROXY=1 darf der Server nur hinter einem abschirmenden Proxy stehen.\nDer Proxy muss X-Forwarded-For anhängen oder überschreiben.\nKATALOG_ALLOW_NO_AUTH=1 darf nicht mit KATALOG_TRUST_PROXY=1 kombiniert werden.\nCookies (katalog_session) sind nicht nach Port getrennt: Andere HTTP-Dienste\nauf demselben Host erhalten das Cookie. Eigenen Host-/Domainnamen verwenden.\nDas Zufallspasswort bleibt dauerhaft im Log (docker logs); nach dem ersten\nAnmelden ändern.\nDer Server bietet kein HTTPS; vorgesehen für Heimnetz/VPN.\nOhne Passwortdatei erfolgt eine Ersteinrichtung mit zufälligem Einmalpasswort.\nset-password liest ein neues Passwort von stdin (Terminal: zweimal, Eingabe sichtbar),\nverlangt 12 bis 128 Zeichen und speichert es atomar. Keine Passwortargumente.\nEin bereits laufender Server muss danach neu gestartet werden.\n";
 
 #[tokio::main]
 async fn main() {
@@ -52,6 +52,11 @@ async fn run() -> Result<(), String> {
     }
     let config = Config::from_env()?;
     let bind = config.bind;
+    let mode = config.mode_description();
+    let trust_proxy = config.trust_proxy;
+    if config.trust_proxy && !bind.ip().is_loopback() {
+        eprintln!("WARNUNG: KATALOG_TRUST_PROXY=1 bei Nicht-Loopback-Bindung: Proxy-Header sind fälschbar, wenn der Server ohne abschirmenden Proxy erreichbar ist; die Pro-IP-Verbindungsgrenze greift dann nicht.");
+    }
     let app = katalog_server::initialize(config).await?;
     let listener = tokio::net::TcpListener::bind(bind)
         .await
@@ -59,8 +64,9 @@ async fn run() -> Result<(), String> {
     let address = listener
         .local_addr()
         .map_err(|e| format!("Adresse nicht lesbar: {e}"))?;
-    eprintln!("http://{address} – Katalog nur lesend");
-    katalog_server::transport::serve(listener, app, katalog_server::transport::shutdown_signal())
+    eprintln!("http://{address} – Katalog {mode}");
+    let per_peer = (!trust_proxy).then_some(katalog_server::transport::MAX_CONNECTIONS_PER_PEER);
+    katalog_server::transport::serve(listener, app, per_peer, katalog_server::transport::shutdown_signal())
         .await
         .map_err(|e| format!("HTTP-Server fehlgeschlagen: {e}"))
 }
