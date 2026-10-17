@@ -3104,11 +3104,11 @@
    "sizes": {
     "de": [
      498,
-     1114
+     1285
     ],
     "en": [
      498,
-     1090
+     1233
     ]
    }
   },
@@ -3138,11 +3138,11 @@
    "sizes": {
     "de": [
      498,
-     471
+     536
     ],
     "en": [
      498,
-     471
+     536
     ]
    }
   },
@@ -3564,12 +3564,12 @@
    "quality": 80,
    "sizes": {
     "de": [
-     618,
-     195
+     648,
+     316
     ],
     "en": [
-     592,
-     195
+     648,
+     316
     ]
    }
   },
@@ -4581,6 +4581,254 @@
      900
     ]
    }
+  },
+  {
+   "id": "wiki-festplatten-abgleich",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/festplatten-abgleich.webp",
+    "en": "src/assets/en/festplatten-abgleich.webp"
+   },
+   "recipe": "hb-sync",
+   "args": {
+    "mode": "button"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "format": "webp",
+   "sizes": {
+    "de": [
+     1000,
+     330
+    ],
+    "en": [
+     1000,
+     330
+    ]
+   },
+   "quality": 80
+  },
+  {
+   "id": "wiki-festplatten-abgleich-dialog",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/festplatten-abgleich-dialog.webp",
+    "en": "src/assets/en/festplatten-abgleich-dialog.webp"
+   },
+   "recipe": "hb-sync",
+   "args": {
+    "mode": "dialog"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "format": "webp",
+   "sizes": {
+    "de": [
+     912,
+     986
+    ],
+    "en": [
+     912,
+     986
+    ]
+   },
+   "quality": 80
+  },
+  {
+   "id": "wiki-lizenz",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/lizenz.webp",
+    "en": "src/assets/en/lizenz.webp"
+   },
+   "recipe": "hb-license",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   },
+   "quality": 80
+  },
+  {
+   "id": "wiki-filter-sortierung",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/filter-sortierung.webp",
+    "en": "src/assets/en/filter-sortierung.webp"
+   },
+   "recipe": "hb-filter-sort",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "format": "webp",
+   "sizes": {
+    "de": [
+     1400,
+     553
+    ],
+    "en": [
+     1400,
+     553
+    ]
+   },
+   "quality": 80
+  },
+  {
+   "id": "wiki-import-menue",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/import-menue.webp",
+    "en": "src/assets/en/import-menue.webp"
+   },
+   "recipe": "hb-import-menu",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "format": "webp",
+   "sizes": {
+    "de": [
+     510,
+     556
+    ],
+    "en": [
+     510,
+     525
+    ]
+   },
+   "quality": 80
+  },
+  {
+   "id": "wiki-import-fortschritt",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/import-fortschritt.webp",
+    "en": "src/assets/en/import-fortschritt.webp"
+   },
+   "recipe": "hb-import-progress",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1250,
+    800
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "format": "webp",
+   "sizes": {
+    "de": [
+     1380,
+     165
+    ],
+    "en": [
+     1380,
+     165
+    ]
+   },
+   "quality": 80
+  },
+  {
+   "id": "wiki-3d-fehlerkarte",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/3d-fehlerkarte.webp",
+    "en": "src/assets/en/3d-fehlerkarte.webp"
+   },
+   "recipe": "hb-3d-error",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   },
+   "quality": 80
+  },
+  {
+   "id": "wiki-drucker-manager-einheit",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/drucker-manager-einheit.webp",
+    "en": "src/assets/en/drucker-manager-einheit.webp"
+   },
+   "recipe": "hb-pm-unit",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   },
+   "quality": 80
   }
  ],
  "excluded": [
