@@ -7,7 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
-## [Unreleased]
+## [0.16.0] - 2026-10-17
 
 ### Added
 
@@ -58,6 +58,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Catalog backups made before an update or a schema change have clear names (`Katalog-Sicherung_<date>_vor-Update_<from>_auf_<to>.db`). The backup of the stable version you came from is never deleted automatically, so the way back stays open.
 
 ### Fixed
+
+- Grid tiles keep a fixed width instead of stretching to fill the row, so the grid no longer jumps when the details panel opens or closes.
 
 - Select all (Ctrl/Cmd+A and "Select all") in an open collection now selects only the models shown there. Before, models outside the collection were selected too, so bulk actions such as delete or set license reached them.
 - After a bulk delete the list is reloaded from the catalog, so models whose deletion was skipped (for example for missing file permissions) stay visible instead of disappearing until the next refresh.
@@ -593,7 +595,7 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
-## [Unreleased]
+## [0.16.0] - 2026-10-17
 
 ### Hinzugefügt
 
@@ -644,6 +646,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Sicherungen des Katalogs vor einem Update oder einer Schema-Änderung haben klare Namen (`Katalog-Sicherung_<Datum>_vor-Update_<von>_auf_<nach>.db`). Die Sicherung der stabilen Ausgangsversion wird nie automatisch gelöscht, der Rückweg bleibt offen.
 
 ### Behoben
+
+- Kacheln im Raster behalten eine feste Breite und werden nicht mehr zu einer Zeile gestreckt: Beim Öffnen und Schließen des Detailbereichs springt das Raster nicht mehr.
 
 - „Alles auswählen“ (Strg/Cmd+A und die Schaltfläche) in einer geöffneten Sammlung wählt nur noch die dort angezeigten Modelle aus. Vorher wurden auch Modelle außerhalb der Sammlung gewählt, sodass Sammelaktionen wie Löschen oder Lizenz setzen sie mit trafen.
 - Nach dem Sammellöschen wird die Liste aus dem Katalog neu geladen: Modelle, deren Löschen übersprungen wurde (zum Beispiel wegen fehlender Dateirechte), bleiben sichtbar, statt bis zur nächsten Aktualisierung zu verschwinden.
