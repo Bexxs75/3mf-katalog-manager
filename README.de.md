@@ -48,6 +48,7 @@ Ab v0.16.0 gibt es einen Download pro System: Windows `.msi`, macOS `.dmg` (Inte
 | Qidi Smart 3 | Klipper ab Werk | Druckliste und Verbrauch lesbar; die Uhr des Druckers ging falsch | 🟡 Ab v0.15.0 |
 | Creality K2 Plus (mit CFS) | Creality-Klipper 1.1.6.1, gerootet | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer nicht, die Spule wird von Hand gewählt | ☑️ Testbericht geprüft |
 | Qidi Q1 Pro | Klipper ab Werk (Moonraker 0.7.1) | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer (QIDISlicer) | ☑️ Testbericht geprüft |
+| Anycubic Kobra 3 V2 | Klipper mit Rinkhals | Druckliste und Verbrauch lesbar; Material (PETG) und Gewicht kommen aus den Slicer-Daten; der Drucker meldet ein ACE-Modul, geprüft wurde nur ein Druck mit einem Farbeintrag | ☑️ Testbericht geprüft |
 
 *Im Alltag bestätigt*: mit der App am eigenen Drucker ausprobiert. *Im Dauereinsatz bestätigt*: von Nutzern über längere Zeit im Alltag eingesetzt und zurückgemeldet. *Testbericht geprüft*: die Daten aus dem anonymen [Testformular](https://3mfkatalog.de/druckertest.html) passen, ein Praxistest fehlt noch. Dein Drucker fehlt? Mit deinem Test kommt er dazu.
 
