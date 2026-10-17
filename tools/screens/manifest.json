@@ -3706,8 +3706,10 @@
     "de": "bilder/detailseite.webp",
     "en": "bilder/en/detailseite.webp"
    },
-   "recipe": "hb-detail",
-   "args": {},
+   "recipe": "hb-plates",
+   "args": {
+    "plate": "all"
+   },
    "theme": "dark",
    "viewport": [
     1920,

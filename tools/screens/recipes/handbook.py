@@ -477,8 +477,10 @@ async def plates(s):
     await asyncio.sleep(3)
     assert await p.click_text(t["view3d"])
     await asyncio.sleep(4)
+    # args: plate = "all" shows all plates together (the first button of the bar), default is plate 2
+    want = "null" if s.args.get("plate") == "all" else "'2'"
     ok = await p.js("""(() => { const bar = document.querySelector('[data-plate-selector]'); if (!bar) return 'nobar';
-      const bs = [...bar.querySelectorAll('button')]; const two = bs.find(b => (b.innerText || '').trim() === '2'); if (!two) return 'no2'; two.click(); return 'ok'; })()""")
+      const bs = [...bar.querySelectorAll('button')]; const w = %s; const b = w ? bs.find(b => (b.innerText || '').trim() === w) : bs[0]; if (!b) return 'nobutton'; b.click(); return 'ok'; })()""" % want)
     assert ok == "ok", ok
     await asyncio.sleep(2.5)
     await unfocus(p)
