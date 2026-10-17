@@ -242,7 +242,7 @@ def v15_fixture(s: Session, name: str, update=None) -> dict:
     fx["list_folders"] += [{"count": 2, "id": "7", "name": k, "parentId": "2", "path": parent["path"] + "/" + k},
                            {"count": 2, "id": "8", "name": b, "parentId": "2", "path": parent["path"] + "/" + b}]
     lines = [
-        (f"2026-10-03 10:00:00 INFO  [start] 3MF Katalog Manager {VERSION} (ohne STEP) · Windows 11 · Schema 39 · 15 Modelle\n", None),
+        (f"2026-10-03 10:00:00 INFO  [start] 3MF Katalog Manager {VERSION} (mit STEP) · Windows 11 · Schema 39 · 15 Modelle\n", None),
         ("2026-10-03 10:00:00 INFO  [start] Katalog: ", None), ("<katalog>", True), ("\n", None),
         ("2026-10-03 10:02:11 INFO  [import] 3 importiert, 1 Duplikate, 0 übersprungen, 0 Archive offen, 1.3 s\n", None),
         ("2026-10-03 10:05:42 INFO  [drucker] 1 Drucker abgefragt, 2 neue Drucke\n", None),
