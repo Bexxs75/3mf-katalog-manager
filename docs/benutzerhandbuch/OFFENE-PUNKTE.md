@@ -43,5 +43,5 @@ Die Bildverweise des Handbuchs (`bilder/` für Deutsch, `bilder/en/` für Englis
 ## Prüfstand der Texte zu 0.16.0
 
 - Der Hinweistext zum Entfernen im Festplatten-Abgleich (`diskSyncRemoveHint`) nennt „Check catalog for issues“, der Knopf in den Einstellungen heißt aber „Scan catalog for issues“ (DE in beiden Fällen „Katalog auf Probleme prüfen“). Das Handbuch verweist deshalb auf die „Katalogprüfung (Einstellungen → Katalog)“. Die englische Abweichung liegt im App-Text, nicht im Handbuch.
-- Die Schwellen für „zu groß für die 3D-Ansicht“: 3 Mio. Dreiecke bei 3MF sind im Code belegt (`src-tauri/src/threemf/model_xml.rs`, `MAX_PREVIEW_TRIANGLES`); die Werte für STL (3 Mio. Dreiecke binär, 256 MiB ASCII) und OBJ (128 MiB) stammen aus dem Changelog 0.16.0 und wurden nicht einzeln im Code geprüft.
+- Die Schwellen für „zu groß für die 3D-Ansicht“: Alle Schwellen sind im Code belegt: 3 Mio. Dreiecke bei 3MF (`src-tauri/src/threemf/model_xml.rs`, `MAX_PREVIEW_TRIANGLES`) sowie 3 Mio. Dreiecke binär bei STL, 256 MiB bei ASCII-STL und 128 MiB bei OBJ (`src-tauri/src/commands/files.rs`, `MAX_PREVIEW_TRIANGLES`, `MAX_ASCII_STL_PREVIEW_BYTES`, `MAX_OBJ_PREVIEW_BYTES`).
 
