@@ -529,6 +529,26 @@ mod parse_tests {
     }
 
     #[test]
+    fn rinkhals_on_anycubic_kobra_3_v2_is_accepted() {
+        // Real test report (Anycubic Kobra 3 V2, Rinkhals): Moonraker version only "?",
+        // API 1.5.0, components kobra and mmu_ace. One completed print whose file in
+        // .3mf_temp/ is already gone ("exists": false), yet the slicer metadata with
+        // weight, material and a single colour entry is still there.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_3_v2.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_3_v2.json")).unwrap();
+        assert_eq!(page.count, 1);
+        assert_eq!(page.jobs.len(), 1);
+        let j = &page.jobs[0];
+        assert_eq!(j.remote_id, "000001@1792044571");
+        assert_eq!(j.file_name, "Datei 1.gcode");
+        assert_eq!(j.outcome, JobOutcome::Completed);
+        assert_eq!(j.material.as_deref(), Some("PETG"));
+        assert_eq!(j.slicer_weight_g, Some(45.53));
+        assert_eq!(j.used_mm, 15643.0);
+        assert_eq!(j.thumbnail_path.as_deref(), Some(".3mf_temp/.thumbs/Datei 1-512x512.png"));
+    }
+
+    #[test]
     fn second_kobra_s1_report_skips_a_print_without_usage() {
         // Real test report (Anycubic Kobra S1, Rinkhals, ACE Pro): a print cancelled right
         // at the start reports 0 mm; there is nothing to deduct, so it is not offered.
