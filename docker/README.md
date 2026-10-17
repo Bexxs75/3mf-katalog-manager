@@ -1,4 +1,352 @@
-# 3MF Katalog Manager im Container / in a container
+# 3MF Katalog Manager in a container / im Container
+
+## English
+
+> **Still unstable:** The Docker version works, but may still contain bugs and change. It is experimental and in maintenance mode: only bug and security fixes, no new features. Feedback via [GitHub Issues](https://github.com/bexxs75/3mf-katalog-manager/issues) is welcome.
+
+A browser desktop for the Linux AppImage, targeting x86_64/amd64. Requires Docker
+and Docker Compose. The workflow `.github/workflows/docker-image.yml` builds the
+GHCR image from a published Linux-x86_64 AppImage. Before pushing, it checks local
+scripts, Python unit tests, startup and authentication against the built image.
+It publishes exactly that tested candidate, without rebuilding.
+A successful workflow run provides the evidence for each image.
+
+### Start
+
+For every release (stable and RC), the image workflow provides a ready-to-use
+`docker-compose.yml` download after successful publication.
+For stable releases: [latest stable Compose file](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/docker-compose.yml).
+For RCs, download the file **from the asset list of the respective release**.
+It uses the published image with that exact release version as its default;
+`IMAGE_TAG` can override it. Start without cloning:
+
+```bash
+mkdir -p 3mf-katalog/config 3mf-katalog/models
+cd 3mf-katalog
+# Save the downloaded docker-compose.yml here.
+# Optional: create .env with your parameters such as PUID, PGID, TZ or MODELS_DIR.
+docker compose up -d
+```
+
+When using the files from the repository instead:
+
+`.env.example` and the Compose fallback use `latest`, the newest stable image
+(0.16.0 or later). Set `IMAGE_TAG=rc` only if you want pre-releases, or a specific
+published version without `v` to stay on it. `latest` follows only the highest
+published stable version; `MAJOR.MINOR` follows
+only the highest stable version in its series. RC releases publish their specific
+version and `rc`.
+
+From `docker/`:
+
+```bash
+cp .env.example .env
+mkdir -p config models
+# Edit .env: set IMAGE_TAG, PUID/PGID from `id -u` / `id -g`, TZ and MODELS_DIR.
+docker compose up -d
+docker compose logs 3mf-katalog
+```
+
+Open http://127.0.0.1:3000 (3001 is the base image's HTTPS endpoint).
+The first start prominently logs a random password; the default username is `abc`.
+To find it:
+
+```bash
+docker logs "$(docker compose ps -q 3mf-katalog)"
+cat config/.kasmvnc-password
+```
+
+The file belongs to the app UID and has mode `600`; use the appropriate host
+account to read it. Subsequent starts reuse it without logging it again.
+Restrict log access: the first-start log contains a secret. Set `PASSWORD` and
+`CUSTOM_USER` in `.env` to override defaults. A supplied password is never logged
+and does not replace the saved random password. Removing `PASSWORD` restores
+the saved password. Generated credentials use s6 runtime files, not Docker's
+stored container environment. A user-supplied `PASSWORD` is visible in
+`docker inspect`. `ALLOW_NO_AUTH=true` explicitly disables authentication even
+with a supplied password and logs a warning. Keep `.env` private, e.g. `chmod 600 .env`.
+
+For supplied credentials, `PASSWORD` must not contain spaces, tabs, line breaks
+or any of `*`, `?`, `[`, `:`, `%`, `\`, and must not start with `-`.
+`CUSTOM_USER` allows only `A-Z`, `a-z`, `0-9`, `.`, `_`, `-`, also without a
+leading `-`. Invalid values abort container startup with an error, even with
+`ALLOW_NO_AUTH=true`. Empty values still use the defaults; generated passwords
+remain 48 hex characters long. An invalid saved password file aborts startup
+when reused and remains unchanged. To recover, delete the file (a new password is generated) or set `PASSWORD`.
+These restrictions prevent the base image from
+altering credentials when setting up authentication.
+
+### Local build
+
+Set `APP_URL` (HTTPS, Linux x86_64 AppImage) and matching `APP_VERSION` in `.env`.
+Both lines are already in the file, empty, after you copy `.env.example`: put the
+value **right after the equals sign** and do not repeat `APP_URL=` inside the value
+(right: `APP_URL=https://github.com/…`, wrong: `APP_URL=APP_URL=https://github.com/…`).
+Otherwise the build stops with an error message:
+
+```bash
+docker compose build
+docker compose up -d --no-build
+```
+
+There is deliberately no default download of the prototype's old mutable preview.
+URL and version must match. `BASE_IMAGE` accepts a tag or digest; an older `.env` containing `BASE_IMAGE=…baseimage-kasmvnc…` overrides this default and
+makes the build fail: remove the line or set the new value from `.env.example`. The default is
+`ghcr.io/linuxserver/baseimage-selkies:ubuntunoble` (LinuxServer base with Selkies,
+X11/Openbox), already fixed by SHA256 digest in the Dockerfile and in
+`docker-compose.yml`, so a later build does not point to a different base image.
+The release workflow pins the same base image by digest and computes the release download's SHA256;
+the Dockerfile checks it on the second download through `APP_SHA256`. This checks
+consistency, not independent provenance. The revision label records the checked-out
+source commit from the default branch; the version label records the app version.
+The push does not generate SBOM/provenance attestations. Download and extraction
+use a separate build stage. The final stage does not add `curl`; any copy already
+included upstream is retained.
+
+### Folders and permissions
+
+```text
+docker/
+  .env                   private parameters, never commit
+  config/                /config: app home, database, settings, trash
+  models/                /models: models (or host MODELS_DIR)
+```
+
+`/config` needs a **local** volume. Network/FUSE filesystems trigger a startup
+warning and `/config/.network-filesystem-warning`; local filesystems remove an
+old marker. `stat -f` detection is a warning aid, not a guarantee about underlying
+storage or locking. Displaying the marker in the app belongs to the separate app package.
+
+`/models` may be a NAS share; its file-dialog bookmark is “Modelle”. Adapt the
+commented `/models2` mount for extra libraries. **Keep container paths unchanged**:
+the database stores absolute paths. `MODELS_DIR` only changes the host source.
+
+`PUID`/`PGID` configure app user `abc` through the base image. Host folders must be
+writable by those IDs; also check NAS ACLs. `CUSTOM_USER` is the web login, not a
+replacement for UID/GID. Default `UMASK=022`; use e.g. `002` for group sharing.
+The password stays mode `600`. The app service runs as `abc`. No added Linux
+capabilities, privileged mode or Docker socket. The example sets
+`no-new-privileges:true`; compatibility with the base image and WebKit is
+checked: the container starts, and login and app work.
+
+**Umlauts in file names:** If `ls` on the server shows a name like `K$'\303\266'rper.obj` instead of `Körper.obj`, only the terminal display is affected, not the file name (`\303\266` is an ö). The shell then has no UTF-8 setting. A tester reported that `LANG=de_DE.UTF-8` in their environment fixed the display (not verified by me). Set the time zone with `TZ` in `.env` as above.
+
+### Update and verify
+
+Set `IMAGE_TAG` in `.env` to `latest`, a published fixed version or `rc`.
+**Stable and rc require separate `/config` folders** and Compose projects;
+do not share catalogs. Parallel instances also need distinct host ports.
+There is no automatic rc-to-stable migration here.
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose ps
+docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q 3mf-katalog)"
+docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' \
+  "$(docker inspect --format '{{.Image}}' "$(docker compose ps -q 3mf-katalog)")"
+```
+
+Also check the app's version display. `pull` alone does not replace a running
+container. For local images, set the new matching URL/version, run
+`docker compose build` then `docker compose up -d --no-build`, and perform the
+same version/health checks. The image supplies the healthcheck: HTTP 200/401 on
+port 3000 **and** a running app process; 120 s start period and 30 s interval.
+It does not verify full GUI responsiveness.
+
+The app restarts after exit. Rapid failures increase the delay from 2 to 30 s;
+a run lasting at least 60 s resets it. App output and restart messages go to
+`docker logs`. `docker compose stop` sends SIGTERM to the app and its WebKit
+process group; the 30 s grace period allows SQLite/WAL to close before Docker
+kills remaining processes. `docker compose down` removes containers and the
+network while keeping host folders.
+
+### Backups
+
+The app ZIP contains **only the database and settings**, not models or trash.
+Back up `/models` and other model mounts separately. For full recovery also
+preserve/back up `/config`, including trash and WebView settings. Stop the
+container before copying `/config`; alternatively use the app's backup feature
+for the database. Preserve mount targets when restoring and **reactivate printer
+connections afterwards**: import deliberately pauses them.
+
+### Getting models into the app
+
+**Upload from your computer:** Open `/katalog/`, choose files under “Upload files”
+or drag them onto the drop area. They arrive in **Eingang** (`/models/Eingang`).
+Then in the app choose **Import → Folder… → Eingang**. The companion never writes
+to the catalog database; the app does not automatically watch the folder. Uploads
+require JavaScript and the same login as the companion. Each file has progress
+and cancellation; the browser sends files sequentially, the service allows two
+uploads in total.
+
+Prerequisite: `/models` must be **writable** by service user `abc` (Compose
+PUID/PGID). Eingang is created on the first upload only (0755, files 0644).
+If permissions are missing, the page shows a hint instead of the upload area:
+mount without `:ro`, set host ownership and write/search permissions on the target
+or its existing parent to match PUID/PGID. A file path instead of a directory
+also cannot be used.
+
+Optional: `KATALOG_UPLOAD_DIR` (default `/models/Eingang`) and
+`KATALOG_UPLOAD_MAX_MB` (default **2048 MiB per file**, positive integer).
+Uncomment the lines in **both** `.env` and Compose. Empty values use service
+defaults. The destination must stay inside an allowed root after resolving
+symlinks (`KATALOG_ALLOWED_ROOTS`, otherwise existing `/models`, `/models2`, etc.).
+Allowed: `.3mf`, `.stl`, `.obj`, `.stp`, `.step`, `.zip`, `.7z`, `.rar`; filenames
+and initial signatures are checked. Uploads do not extract archives. This is not
+full format validation or a virus scan. Existing files remain intact; duplicate
+names get ` (2)` through ` (100)`, then a conflict error. Available space must
+exceed the file size plus 256 MiB. Uploads abort after 60 seconds without body
+data. Interrupted temporary files are removed; after a service crash the next
+startup removes leftovers older than an hour. HTTP body length bounds the upload;
+immediately observable excess bytes are rejected and the connection is closed.
+
+The built-in nginx allows **4 GiB**; the service sets the actual limit, so keep
+`KATALOG_UPLOAD_MAX_MB` at **4096 or below**. An upstream **reverse proxy** also
+needs a higher size limit and streaming. A tester uploaded two large files through his Nginx Proxy Manager **without any
+change**. If your proxy rejects large uploads (error "413"), set
+`client_max_body_size 4g;` and `proxy_request_buffering off;` in the **Advanced** tab.
+Proxy timeouts must accommodate the transfer (internal timeouts: 3600 s).
+
+**Existing folder, network drive or `scp` method:** Drag and drop directly into
+the streamed desktop is not intended: stream file transfer is switched off
+(`HARDEN_DESKTOP=true`). To transfer via the server:
+
+1. **Mount a folder.** Put the models in the folder mounted as `/models` in Compose
+   (default `./models` or `MODELS_DIR`). The folder must be writable if the app is
+   to store files or unpack archives.
+2. **First start:** “Adopt existing folder structure”, pick “Modelle” (models) on
+   the left of the file dialog and confirm. All models enter the catalog with their
+   folder structure.
+3. **New files later:** copy them into the mounted folder on your computer, then
+   “Import” at the top left, “Files…” or “Folder…”, and “Modelle” in the dialog. If
+   the files sit in another mounted folder, press **Ctrl+L** in the dialog and type
+   the path, e.g. `/import/file.stl`.
+4. **ZIP archives:** import them like files. In the “Unpack archives” window use
+   “Change…” to choose a **writable** target folder, e.g. below “Modelle”.
+
+### Download and slicer
+
+The **“Download & slicer”** sidebar section provides the catalog list link, a short guide, and the requirements for local slicers.
+
+In the container app's detail view, **“Open in browser”** shows a link to the
+selected file with its slicer menu expanded. Copy it into the browser where you
+use the app to download the file or open it in your local slicer. The app in the
+streamed desktop does not open a browser tab itself.
+After the first visit to `/katalog/`, the app automatically knows the address
+(from `Host` and `X-Forwarded-Proto`); further visits update it.
+Until then, the dialog shows the path to append to your browser address.
+To fix the address, set `KATALOG_PUBLIC_URL`, e.g.
+`KATALOG_PUBLIC_URL=https://katalog.example.de` behind a reverse proxy or
+`http://192.168.1.10:3000` on a home network. Use the address you actually open in
+your browser, not a placeholder. Uncomment the lines in **both** `.env` and
+`docker-compose.yml`; an empty value in `.env` counts as not set. This variable takes priority.
+Only `http://` or `https://` with a host and optional port are accepted, without
+a path, query, fragment or trailing slash. Invalid values are ignored with a log message.
+
+Open **http://<Host>:3000/katalog/** in a normal browser tab alongside the
+browser desktop. The companion uses the same login and displays thumbnails,
+name search, type/folder/tag filters, sorting and pagination. “Download” saves
+a file to your PC; “Open in slicer” passes it to a slicer installed there.
+Search and downloads work without JavaScript; on macOS JavaScript adapts the
+Bambu link. The page speaks German,
+English, Spanish and French: the language comes from `Accept-Language` (German by
+default) and can be chosen in the header bar (`?lang=` parameter, works without
+JavaScript); light/dark appearance follows the system preference.
+
+**Hiding files from the list:** “Remove from list” asks for confirmation and only
+hides the file on this companion page (downloads and slicer links then return 404,
+including links issued earlier). The catalog, its database and the storage stay
+untouched; the companion never writes to the catalog and never deletes files. The
+list of hidden files is kept in `/config/.katalog-web-hidden.json` (part of the
+`/config` folder, preserved across updates). To show a file again, open “Show hidden
+files (N)” below the filters and choose “Show again”; right after removing there is
+also “Undo”.
+
+| Slicer | File types |
+|---|---|
+| OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
+| Bambu Studio | 3MF only (special link on macOS); STL does not open through the link, confirmed by a tester |
+| Creality Print | 3MF, STL, OBJ, STP/STEP |
+| ElegooSlicer | 3MF, STL, OBJ, STP/STEP |
+| Cura | 3MF, STL, OBJ |
+| Lychee | 3MF, STL, OBJ |
+| SuperSlicer | 3MF, STL, OBJ, STP/STEP |
+
+PrusaSlicer: download the file and open it in the slicer. The slicer must be
+installed on your **PC** and able to reach the container's address from that PC.
+On Linux its URL scheme must be registered. Slicers often reject self-signed
+certificates at `https://<Host>:3001`: use `http://<Host>:3000` on your home
+network or a reverse proxy with a valid certificate. The reverse proxy must
+forward `Host` (including the public port) and `X-Forwarded-Proto`; enable
+“Websockets” in Nginx Proxy Manager.
+
+Slicer links remain valid for **one hour** and allow downloads without login
+during that time. Treat them as credentials; reload the page if a link fails.
+Only catalog files outside the trash and inside `/models` or `/models<number>`
+are served; outward symlinks and paths containing `..` are blocked. Unavailable
+or disallowed files remain visible without buttons. The service only reads the
+database, runs as `abc` and listens on loopback. Its key is stored in
+`/config/.katalog-web-secret` (32 random bytes, mode 600).
+
+Optional container environment variables (add to Compose `environment`):
+`CATALOG_DB` selects a fixed database path; otherwise the newest
+`/config/.local/share/*/catalog.db` by modification time is used.
+`KATALOG_ALLOWED_ROOTS` replaces the model roots with a colon-separated list of
+absolute paths. `KATALOG_WEB_PORT` sets the internal port (default 8099); startup
+also adjusts the nginx proxy. Do not publish this internal port on the host.
+
+`src-tauri/src/lib.rs` creates `catalog.db` under `app.path().app_data_dir()`;
+`src-tauri/tauri.conf.json` specifies `com.thebexxs.mfkatalogmanager`. Different
+build identifiers use different data folders. The assumed Linux path below
+`/config/.local/share` has **not been checked against the real image**.
+
+The build checks nginx template anchors and the s6 service layout; missing
+anchors fail the build. Before pushing, the workflow runs
+`bash docker/tests/katalog-web.sh IMAGE` against the candidate. A fresh test volume
+checks unauthenticated GET/POST on `/katalog/`, `/katalog/upload` and
+`/katalog/remove` (401) on both ports, signed downloads without login and
+service restart. The script creates test data and a random password and removes
+the test container afterwards. Local unit tests make no network connections.
+ZIP batch download (stage B) is not included yet.
+
+### Networking and limitations
+
+Published ports 3000/3001 bind only to `127.0.0.1` on the host. The internal
+services (Selkies data connection 8082 and companion page 8099) listen exclusively
+on `127.0.0.1` inside the container; access goes through nginx on 3000/3001.
+For LAN access, replace both host addresses
+in Compose with the desired LAN IP, e.g. `192.168.1.10:3000:3000`, and retain
+authentication. Never expose it unprotected to the Internet; plan TLS and an
+appropriate reverse proxy for external access. Detailed network/reverse-proxy
+instructions will follow in package D6 in the
+[project wiki](https://github.com/Bexxs75/3mf-katalog-manager/wiki).
+
+- The desktop app cannot open host slicers or folders; slicer links are available on the companion page.
+- No drag and drop from the host desktop into the app.
+- Slower, software-rendered 3D preview.
+- One concurrent user; x86_64 only, no arm64.
+- Update via images (`docker compose pull`, then `docker compose up -d`). In the
+  container the app hides slicer, “Show in file manager”, folder/link opening and its
+  own updater (`THREEMF_CONTAINER=1`); links appear as text with “Copy link”.
+- Browser clipboard, keyboard, file dialogs and WebKit may differ from the desktop app.
+
+### Docker in a Proxmox LXC container
+
+If you run Docker in an LXC container instead of a VM, a tester (Proxmox, from their own
+experience) reports that the container needs the options `nesting=1` and `keyctl=1`. This
+is a hint from a tester's practice; we have not tested running it in an LXC container
+ourselves.
+
+### What has been tested
+
+- `bash scripts/check.sh` checks the scripts, Compose and Dockerfile structure and the password, file-system and supervisor logic without Docker.
+- `bash scripts/ci-smoke.sh IMAGE` starts the built image and checks login, generated and supplied passwords, loopback binding of 8082/8099, app restart after a crash, clean stop and `ALLOW_NO_AUTH`. The release workflow runs it before publishing.
+- `bash tests/upgrade.sh OLD NEW` checks an update on the same volume (schema migration with a copy beforehand); `bash tests/permissions.sh IMAGE` checks foreign `PUID`/`PGID` and a read-only models folder.
+- Checked by hand in the container: import from the file dialog, folder adoption, the archive dialog, catalog export and import, the printer link to a Moonraker test server, `no-new-privileges:true`.
+- Not yet tested: 3D preview with many models, restore with trash files, arm64, running in an LXC container.
+
+[License notices](LICENSES.md).
 
 ## Deutsch
 
@@ -30,10 +378,10 @@ docker compose up -d
 
 Bei Verwendung der Dateien aus dem Repository gilt dagegen:
 
-`.env.example` und der Compose-Fallback verwenden `latest`. **Bis zum ersten
-stabilen Image-Release muss `IMAGE_TAG=rc` oder eine konkrete veröffentlichte
-Version ohne `v` gesetzt werden.** `latest` folgt nur der höchsten veröffentlichten
-stabilen Version; `MAJOR.MINOR` folgt nur der höchsten stabilen Version seiner
+`.env.example` und der Compose-Fallback verwenden `latest`, das neueste stabile
+Image (ab 0.16.0). `IMAGE_TAG=rc` brauchst du nur für Vorabversionen; eine
+konkrete veröffentlichte Version ohne `v` hält dich dauerhaft auf diesem Stand.
+`latest` folgt nur der höchsten veröffentlichten stabilen Version; `MAJOR.MINOR` folgt nur der höchsten stabilen Version seiner
 Reihe. RC-Versionen veröffentlichen ihre konkrete Version und `rc`.
 
 Im Verzeichnis `docker/`:
@@ -362,352 +710,5 @@ LXC-Container selbst nicht geprüft.
 
 [Lizenzhinweise](LICENSES.md).
 
-### Hinweis zu alten Prototyp-Daten / Note on old prototype data
-Nutzt du einen `/config`-Ordner des früheren Prototyps weiter, lösche vorher `config/.config/openbox/autostart`. Sonst startet das Basisimage die App ein zweites Mal neben dem überwachten Dienst. / If you reuse a `/config` folder from the earlier prototype, delete `config/.config/openbox/autostart` first; otherwise the base image starts a second app instance next to the supervised one.
-
-## English
-
-> **Still unstable:** The Docker version works, but may still contain bugs and change. It is experimental and in maintenance mode: only bug and security fixes, no new features. Feedback via [GitHub Issues](https://github.com/bexxs75/3mf-katalog-manager/issues) is welcome.
-
-A browser desktop for the Linux AppImage, targeting x86_64/amd64. Requires Docker
-and Docker Compose. The workflow `.github/workflows/docker-image.yml` builds the
-GHCR image from a published Linux-x86_64 AppImage. Before pushing, it checks local
-scripts, Python unit tests, startup and authentication against the built image.
-It publishes exactly that tested candidate, without rebuilding.
-A successful workflow run provides the evidence for each image.
-
-### Start
-
-For every release (stable and RC), the image workflow provides a ready-to-use
-`docker-compose.yml` download after successful publication.
-For stable releases: [latest stable Compose file](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/docker-compose.yml).
-For RCs, download the file **from the asset list of the respective release**.
-It uses the published image with that exact release version as its default;
-`IMAGE_TAG` can override it. Start without cloning:
-
-```bash
-mkdir -p 3mf-katalog/config 3mf-katalog/models
-cd 3mf-katalog
-# Save the downloaded docker-compose.yml here.
-# Optional: create .env with your parameters such as PUID, PGID, TZ or MODELS_DIR.
-docker compose up -d
-```
-
-When using the files from the repository instead:
-
-`.env.example` and the Compose fallback use `latest`. **Until the first stable
-image release, set `IMAGE_TAG=rc` or a specific published version without `v`.**
-`latest` follows only the highest published stable version; `MAJOR.MINOR` follows
-only the highest stable version in its series. RC releases publish their specific
-version and `rc`.
-
-From `docker/`:
-
-```bash
-cp .env.example .env
-mkdir -p config models
-# Edit .env: set IMAGE_TAG, PUID/PGID from `id -u` / `id -g`, TZ and MODELS_DIR.
-docker compose up -d
-docker compose logs 3mf-katalog
-```
-
-Open http://127.0.0.1:3000 (3001 is the base image's HTTPS endpoint).
-The first start prominently logs a random password; the default username is `abc`.
-To find it:
-
-```bash
-docker logs "$(docker compose ps -q 3mf-katalog)"
-cat config/.kasmvnc-password
-```
-
-The file belongs to the app UID and has mode `600`; use the appropriate host
-account to read it. Subsequent starts reuse it without logging it again.
-Restrict log access: the first-start log contains a secret. Set `PASSWORD` and
-`CUSTOM_USER` in `.env` to override defaults. A supplied password is never logged
-and does not replace the saved random password. Removing `PASSWORD` restores
-the saved password. Generated credentials use s6 runtime files, not Docker's
-stored container environment. A user-supplied `PASSWORD` is visible in
-`docker inspect`. `ALLOW_NO_AUTH=true` explicitly disables authentication even
-with a supplied password and logs a warning. Keep `.env` private, e.g. `chmod 600 .env`.
-
-For supplied credentials, `PASSWORD` must not contain spaces, tabs, line breaks
-or any of `*`, `?`, `[`, `:`, `%`, `\`, and must not start with `-`.
-`CUSTOM_USER` allows only `A-Z`, `a-z`, `0-9`, `.`, `_`, `-`, also without a
-leading `-`. Invalid values abort container startup with an error, even with
-`ALLOW_NO_AUTH=true`. Empty values still use the defaults; generated passwords
-remain 48 hex characters long. An invalid saved password file aborts startup
-when reused and remains unchanged. To recover, delete the file (a new password is generated) or set `PASSWORD`.
-These restrictions prevent the base image from
-altering credentials when setting up authentication.
-
-### Local build
-
-Set `APP_URL` (HTTPS, Linux x86_64 AppImage) and matching `APP_VERSION` in `.env`.
-Both lines are already in the file, empty, after you copy `.env.example`: put the
-value **right after the equals sign** and do not repeat `APP_URL=` inside the value
-(right: `APP_URL=https://github.com/…`, wrong: `APP_URL=APP_URL=https://github.com/…`).
-Otherwise the build stops with an error message:
-
-```bash
-docker compose build
-docker compose up -d --no-build
-```
-
-There is deliberately no default download of the prototype's old mutable preview.
-URL and version must match. `BASE_IMAGE` accepts a tag or digest; an older `.env` containing `BASE_IMAGE=…baseimage-kasmvnc…` overrides this default and
-makes the build fail: remove the line or set the new value from `.env.example`. The default is
-`ghcr.io/linuxserver/baseimage-selkies:ubuntunoble` (LinuxServer base with Selkies,
-X11/Openbox), already fixed by SHA256 digest in the Dockerfile and in
-`docker-compose.yml`, so a later build does not point to a different base image.
-The release workflow pins the same base image by digest and computes the release download's SHA256;
-the Dockerfile checks it on the second download through `APP_SHA256`. This checks
-consistency, not independent provenance. The revision label records the checked-out
-source commit from the default branch; the version label records the app version.
-The push does not generate SBOM/provenance attestations. Download and extraction
-use a separate build stage. The final stage does not add `curl`; any copy already
-included upstream is retained.
-
-### Folders and permissions
-
-```text
-docker/
-  .env                   private parameters, never commit
-  config/                /config: app home, database, settings, trash
-  models/                /models: models (or host MODELS_DIR)
-```
-
-`/config` needs a **local** volume. Network/FUSE filesystems trigger a startup
-warning and `/config/.network-filesystem-warning`; local filesystems remove an
-old marker. `stat -f` detection is a warning aid, not a guarantee about underlying
-storage or locking. Displaying the marker in the app belongs to the separate app package.
-
-`/models` may be a NAS share; its file-dialog bookmark is “Modelle”. Adapt the
-commented `/models2` mount for extra libraries. **Keep container paths unchanged**:
-the database stores absolute paths. `MODELS_DIR` only changes the host source.
-
-`PUID`/`PGID` configure app user `abc` through the base image. Host folders must be
-writable by those IDs; also check NAS ACLs. `CUSTOM_USER` is the web login, not a
-replacement for UID/GID. Default `UMASK=022`; use e.g. `002` for group sharing.
-The password stays mode `600`. The app service runs as `abc`. No added Linux
-capabilities, privileged mode or Docker socket. The example sets
-`no-new-privileges:true`; compatibility with the base image and WebKit is
-checked: the container starts, and login and app work.
-
-**Umlauts in file names:** If `ls` on the server shows a name like `K$'\303\266'rper.obj` instead of `Körper.obj`, only the terminal display is affected, not the file name (`\303\266` is an ö). The shell then has no UTF-8 setting. A tester reported that `LANG=de_DE.UTF-8` in their environment fixed the display (not verified by me). Set the time zone with `TZ` in `.env` as above.
-
-### Update and verify
-
-Set `IMAGE_TAG` in `.env` to `latest`, a published fixed version or `rc`.
-**Stable and rc require separate `/config` folders** and Compose projects;
-do not share catalogs. Parallel instances also need distinct host ports.
-There is no automatic rc-to-stable migration here.
-
-```bash
-docker compose pull
-docker compose up -d
-docker compose ps
-docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q 3mf-katalog)"
-docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' \
-  "$(docker inspect --format '{{.Image}}' "$(docker compose ps -q 3mf-katalog)")"
-```
-
-Also check the app's version display. `pull` alone does not replace a running
-container. For local images, set the new matching URL/version, run
-`docker compose build` then `docker compose up -d --no-build`, and perform the
-same version/health checks. The image supplies the healthcheck: HTTP 200/401 on
-port 3000 **and** a running app process; 120 s start period and 30 s interval.
-It does not verify full GUI responsiveness.
-
-The app restarts after exit. Rapid failures increase the delay from 2 to 30 s;
-a run lasting at least 60 s resets it. App output and restart messages go to
-`docker logs`. `docker compose stop` sends SIGTERM to the app and its WebKit
-process group; the 30 s grace period allows SQLite/WAL to close before Docker
-kills remaining processes. `docker compose down` removes containers and the
-network while keeping host folders.
-
-### Backups
-
-The app ZIP contains **only the database and settings**, not models or trash.
-Back up `/models` and other model mounts separately. For full recovery also
-preserve/back up `/config`, including trash and WebView settings. Stop the
-container before copying `/config`; alternatively use the app's backup feature
-for the database. Preserve mount targets when restoring and **reactivate printer
-connections afterwards**: import deliberately pauses them.
-
-### Getting models into the app
-
-**Upload from your computer:** Open `/katalog/`, choose files under “Upload files”
-or drag them onto the drop area. They arrive in **Eingang** (`/models/Eingang`).
-Then in the app choose **Import → Folder… → Eingang**. The companion never writes
-to the catalog database; the app does not automatically watch the folder. Uploads
-require JavaScript and the same login as the companion. Each file has progress
-and cancellation; the browser sends files sequentially, the service allows two
-uploads in total.
-
-Prerequisite: `/models` must be **writable** by service user `abc` (Compose
-PUID/PGID). Eingang is created on the first upload only (0755, files 0644).
-If permissions are missing, the page shows a hint instead of the upload area:
-mount without `:ro`, set host ownership and write/search permissions on the target
-or its existing parent to match PUID/PGID. A file path instead of a directory
-also cannot be used.
-
-Optional: `KATALOG_UPLOAD_DIR` (default `/models/Eingang`) and
-`KATALOG_UPLOAD_MAX_MB` (default **2048 MiB per file**, positive integer).
-Uncomment the lines in **both** `.env` and Compose. Empty values use service
-defaults. The destination must stay inside an allowed root after resolving
-symlinks (`KATALOG_ALLOWED_ROOTS`, otherwise existing `/models`, `/models2`, etc.).
-Allowed: `.3mf`, `.stl`, `.obj`, `.stp`, `.step`, `.zip`, `.7z`, `.rar`; filenames
-and initial signatures are checked. Uploads do not extract archives. This is not
-full format validation or a virus scan. Existing files remain intact; duplicate
-names get ` (2)` through ` (100)`, then a conflict error. Available space must
-exceed the file size plus 256 MiB. Uploads abort after 60 seconds without body
-data. Interrupted temporary files are removed; after a service crash the next
-startup removes leftovers older than an hour. HTTP body length bounds the upload;
-immediately observable excess bytes are rejected and the connection is closed.
-
-The built-in nginx allows **4 GiB**; the service sets the actual limit, so keep
-`KATALOG_UPLOAD_MAX_MB` at **4096 or below**. An upstream **reverse proxy** also
-needs a higher size limit and streaming. A tester uploaded two large files through his Nginx Proxy Manager **without any
-change**. If your proxy rejects large uploads (error "413"), set
-`client_max_body_size 4g;` and `proxy_request_buffering off;` in the **Advanced** tab.
-Proxy timeouts must accommodate the transfer (internal timeouts: 3600 s).
-
-**Existing folder, network drive or `scp` method:** Drag and drop directly into
-the streamed desktop is not intended: stream file transfer is switched off
-(`HARDEN_DESKTOP=true`). To transfer via the server:
-
-1. **Mount a folder.** Put the models in the folder mounted as `/models` in Compose
-   (default `./models` or `MODELS_DIR`). The folder must be writable if the app is
-   to store files or unpack archives.
-2. **First start:** “Adopt existing folder structure”, pick “Modelle” (models) on
-   the left of the file dialog and confirm. All models enter the catalog with their
-   folder structure.
-3. **New files later:** copy them into the mounted folder on your computer, then
-   “Import” at the top left, “Files…” or “Folder…”, and “Modelle” in the dialog. If
-   the files sit in another mounted folder, press **Ctrl+L** in the dialog and type
-   the path, e.g. `/import/file.stl`.
-4. **ZIP archives:** import them like files. In the “Unpack archives” window use
-   “Change…” to choose a **writable** target folder, e.g. below “Modelle”.
-
-### Download and slicer
-
-The **“Download & slicer”** sidebar section provides the catalog list link, a short guide, and the requirements for local slicers.
-
-In the container app's detail view, **“Open in browser”** shows a link to the
-selected file with its slicer menu expanded. Copy it into the browser where you
-use the app to download the file or open it in your local slicer. The app in the
-streamed desktop does not open a browser tab itself.
-After the first visit to `/katalog/`, the app automatically knows the address
-(from `Host` and `X-Forwarded-Proto`); further visits update it.
-Until then, the dialog shows the path to append to your browser address.
-To fix the address, set `KATALOG_PUBLIC_URL`, e.g.
-`KATALOG_PUBLIC_URL=https://katalog.example.de` behind a reverse proxy or
-`http://192.168.1.10:3000` on a home network. Use the address you actually open in
-your browser, not a placeholder. Uncomment the lines in **both** `.env` and
-`docker-compose.yml`; an empty value in `.env` counts as not set. This variable takes priority.
-Only `http://` or `https://` with a host and optional port are accepted, without
-a path, query, fragment or trailing slash. Invalid values are ignored with a log message.
-
-Open **http://<Host>:3000/katalog/** in a normal browser tab alongside the
-browser desktop. The companion uses the same login and displays thumbnails,
-name search, type/folder/tag filters, sorting and pagination. “Download” saves
-a file to your PC; “Open in slicer” passes it to a slicer installed there.
-Search and downloads work without JavaScript; on macOS JavaScript adapts the
-Bambu link. The page speaks German,
-English, Spanish and French: the language comes from `Accept-Language` (German by
-default) and can be chosen in the header bar (`?lang=` parameter, works without
-JavaScript); light/dark appearance follows the system preference.
-
-**Hiding files from the list:** “Remove from list” asks for confirmation and only
-hides the file on this companion page (downloads and slicer links then return 404,
-including links issued earlier). The catalog, its database and the storage stay
-untouched; the companion never writes to the catalog and never deletes files. The
-list of hidden files is kept in `/config/.katalog-web-hidden.json` (part of the
-`/config` folder, preserved across updates). To show a file again, open “Show hidden
-files (N)” below the filters and choose “Show again”; right after removing there is
-also “Undo”.
-
-| Slicer | File types |
-|---|---|
-| OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
-| Bambu Studio | 3MF only (special link on macOS); STL does not open through the link, confirmed by a tester |
-| Creality Print | 3MF, STL, OBJ, STP/STEP |
-| ElegooSlicer | 3MF, STL, OBJ, STP/STEP |
-| Cura | 3MF, STL, OBJ |
-| Lychee | 3MF, STL, OBJ |
-| SuperSlicer | 3MF, STL, OBJ, STP/STEP |
-
-PrusaSlicer: download the file and open it in the slicer. The slicer must be
-installed on your **PC** and able to reach the container's address from that PC.
-On Linux its URL scheme must be registered. Slicers often reject self-signed
-certificates at `https://<Host>:3001`: use `http://<Host>:3000` on your home
-network or a reverse proxy with a valid certificate. The reverse proxy must
-forward `Host` (including the public port) and `X-Forwarded-Proto`; enable
-“Websockets” in Nginx Proxy Manager.
-
-Slicer links remain valid for **one hour** and allow downloads without login
-during that time. Treat them as credentials; reload the page if a link fails.
-Only catalog files outside the trash and inside `/models` or `/models<number>`
-are served; outward symlinks and paths containing `..` are blocked. Unavailable
-or disallowed files remain visible without buttons. The service only reads the
-database, runs as `abc` and listens on loopback. Its key is stored in
-`/config/.katalog-web-secret` (32 random bytes, mode 600).
-
-Optional container environment variables (add to Compose `environment`):
-`CATALOG_DB` selects a fixed database path; otherwise the newest
-`/config/.local/share/*/catalog.db` by modification time is used.
-`KATALOG_ALLOWED_ROOTS` replaces the model roots with a colon-separated list of
-absolute paths. `KATALOG_WEB_PORT` sets the internal port (default 8099); startup
-also adjusts the nginx proxy. Do not publish this internal port on the host.
-
-`src-tauri/src/lib.rs` creates `catalog.db` under `app.path().app_data_dir()`;
-`src-tauri/tauri.conf.json` specifies `com.thebexxs.mfkatalogmanager`. Different
-build identifiers use different data folders. The assumed Linux path below
-`/config/.local/share` has **not been checked against the real image**.
-
-The build checks nginx template anchors and the s6 service layout; missing
-anchors fail the build. Before pushing, the workflow runs
-`bash docker/tests/katalog-web.sh IMAGE` against the candidate. A fresh test volume
-checks unauthenticated GET/POST on `/katalog/`, `/katalog/upload` and
-`/katalog/remove` (401) on both ports, signed downloads without login and
-service restart. The script creates test data and a random password and removes
-the test container afterwards. Local unit tests make no network connections.
-ZIP batch download (stage B) is not included yet.
-
-### Networking and limitations
-
-Published ports 3000/3001 bind only to `127.0.0.1` on the host. The internal
-services (Selkies data connection 8082 and companion page 8099) listen exclusively
-on `127.0.0.1` inside the container; access goes through nginx on 3000/3001.
-For LAN access, replace both host addresses
-in Compose with the desired LAN IP, e.g. `192.168.1.10:3000:3000`, and retain
-authentication. Never expose it unprotected to the Internet; plan TLS and an
-appropriate reverse proxy for external access. Detailed network/reverse-proxy
-instructions will follow in package D6 in the
-[project wiki](https://github.com/Bexxs75/3mf-katalog-manager/wiki).
-
-- The desktop app cannot open host slicers or folders; slicer links are available on the companion page.
-- No drag and drop from the host desktop into the app.
-- Slower, software-rendered 3D preview.
-- One concurrent user; x86_64 only, no arm64.
-- Update via images (`docker compose pull`, then `docker compose up -d`). In the
-  container the app hides slicer, “Show in file manager”, folder/link opening and its
-  own updater (`THREEMF_CONTAINER=1`); links appear as text with “Copy link”.
-- Browser clipboard, keyboard, file dialogs and WebKit may differ from the desktop app.
-
-### Docker in a Proxmox LXC container
-
-If you run Docker in an LXC container instead of a VM, a tester (Proxmox, from their own
-experience) reports that the container needs the options `nesting=1` and `keyctl=1`. This
-is a hint from a tester's practice; we have not tested running it in an LXC container
-ourselves.
-
-### What has been tested
-
-- `bash scripts/check.sh` checks the scripts, Compose and Dockerfile structure and the password, file-system and supervisor logic without Docker.
-- `bash scripts/ci-smoke.sh IMAGE` starts the built image and checks login, generated and supplied passwords, loopback binding of 8082/8099, app restart after a crash, clean stop and `ALLOW_NO_AUTH`. The release workflow runs it before publishing.
-- `bash tests/upgrade.sh OLD NEW` checks an update on the same volume (schema migration with a copy beforehand); `bash tests/permissions.sh IMAGE` checks foreign `PUID`/`PGID` and a read-only models folder.
-- Checked by hand in the container: import from the file dialog, folder adoption, the archive dialog, catalog export and import, the printer link to a Moonraker test server, `no-new-privileges:true`.
-- Not yet tested: 3D preview with many models, restore with trash files, arm64, running in an LXC container.
-
-[License notices](LICENSES.md).
+### Note on old prototype data / Hinweis zu alten Prototyp-Daten
+If you reuse a `/config` folder from the earlier prototype, delete `config/.config/openbox/autostart` first; otherwise the base image starts a second app instance next to the supervised one. / Nutzt du einen `/config`-Ordner des früheren Prototyps weiter, lösche vorher `config/.config/openbox/autostart`. Sonst startet das Basisimage die App ein zweites Mal neben dem überwachten Dienst.
