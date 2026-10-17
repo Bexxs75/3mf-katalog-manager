@@ -6,7 +6,7 @@
 
 **Deine 3MF-, STL- und STEP-Sammlung wächst? Der 3MF Katalog Manager katalogisiert deine vorhandenen Ordner, findet jedes Modell in Sekunden, zeigt es in 3D und verbindet deine Dateien mit Filament, Druckwarteschlange und Druckprotokoll. Alles bleibt auf deinem Rechner: kein Konto, keine Cloud.**
 
-![Demo: Katalog durchsuchen, Modell mit Slicer-Daten öffnen, im Slicer öffnen, Material Manager mit AMS-Fächern](docs/assets/demo.gif)
+![Demo: Katalog durchsuchen, Modell mit Slicer-Daten öffnen, Material Manager mit AMS-Fächern, Printer Manager, Abgleich mit der Festplatte](docs/assets/demo.gif)
 
 - **100 % lokal** — keine Anmeldung, keine Cloud, kein Tracking. Deine Dateien bleiben, wo sie sind.
 - **Deine vorhandenen Ordner, durchsuchbar** — Ordner importieren, automatische Tags, echte 3D-Vorschau und Slicer-Daten (Gewicht, Filament je Platte).

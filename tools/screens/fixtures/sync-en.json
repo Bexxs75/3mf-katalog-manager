@@ -1,0 +1,47 @@
+{
+ "base": "base-en",
+ "ops": {
+  "scan_catalog_disk": {
+   "set": {
+    "newFolders": [
+     {
+      "path": "/srv/3D-Catalog/Garden",
+      "relativePath": "Garden",
+      "root": "/srv/3D-Catalog",
+      "id": null
+     }
+    ],
+    "newFiles": [
+     {
+      "path": "/srv/3D-Catalog/Garden/Watering Can Holder.3mf",
+      "relativePath": "Garden/Watering Can Holder.3mf",
+      "root": "/srv/3D-Catalog",
+      "id": null
+     },
+     {
+      "path": "/srv/3D-Catalog/Workshop/Screw Box.stl",
+      "relativePath": "Workshop/Screw Box.stl",
+      "root": "/srv/3D-Catalog",
+      "id": null
+     }
+    ],
+    "missingFiles": [
+     {
+      "path": "/srv/3D-Catalog/Decor/Flower Vase.3mf",
+      "relativePath": "Decor/Flower Vase.3mf",
+      "root": "/srv/3D-Catalog",
+      "id": "901"
+     },
+     {
+      "path": "/srv/3D-Catalog/Tech/Cable Holder.stl",
+      "relativePath": "Tech/Cable Holder.stl",
+      "root": "/srv/3D-Catalog",
+      "id": "902"
+     }
+    ],
+    "unreachableRoots": [],
+    "skippedPaths": []
+   }
+  }
+ }
+}

@@ -1,0 +1,47 @@
+{
+ "base": "base-de",
+ "ops": {
+  "scan_catalog_disk": {
+   "set": {
+    "newFolders": [
+     {
+      "path": "/srv/3D-Katalog/Garten",
+      "relativePath": "Garten",
+      "root": "/srv/3D-Katalog",
+      "id": null
+     }
+    ],
+    "newFiles": [
+     {
+      "path": "/srv/3D-Katalog/Garten/Gießkannenhalter.3mf",
+      "relativePath": "Garten/Gießkannenhalter.3mf",
+      "root": "/srv/3D-Katalog",
+      "id": null
+     },
+     {
+      "path": "/srv/3D-Katalog/Werkstatt/Schraubenbox.stl",
+      "relativePath": "Werkstatt/Schraubenbox.stl",
+      "root": "/srv/3D-Katalog",
+      "id": null
+     }
+    ],
+    "missingFiles": [
+     {
+      "path": "/srv/3D-Katalog/Deko/Blumenvase.3mf",
+      "relativePath": "Deko/Blumenvase.3mf",
+      "root": "/srv/3D-Katalog",
+      "id": "901"
+     },
+     {
+      "path": "/srv/3D-Katalog/Technik/Kabelhalter.stl",
+      "relativePath": "Technik/Kabelhalter.stl",
+      "root": "/srv/3D-Katalog",
+      "id": "902"
+     }
+    ],
+    "unreachableRoots": [],
+    "skippedPaths": []
+   }
+  }
+ }
+}

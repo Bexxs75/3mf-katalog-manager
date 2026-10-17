@@ -6,7 +6,7 @@
 
 **Your 3MF, STL and STEP collection keeps growing? The 3MF Katalog Manager catalogs the folders you already have, finds any model in seconds, shows it in 3D and connects your files with filament, print queue and print history. Everything stays on your computer: no account, no cloud.**
 
-![Demo: search the catalog, open a model with slicer data, open it in the slicer, Material Manager with AMS slots](docs/assets/demo.gif)
+![Demo: search the catalog, open a model with slicer data, Material Manager with AMS slots, Printer Manager, syncing with the disk](docs/assets/demo.gif)
 
 - **100 % local** — no sign-up, no cloud, no tracking. Your files stay where they are.
 - **Your existing folders, searchable** — import folders, get automatic tags, real 3D previews and slicer data (weight, filament per plate).

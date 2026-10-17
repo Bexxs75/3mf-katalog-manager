@@ -67,6 +67,12 @@ window.__unclamp = () => {
   }
   return false;
 };
+window.__curtain = (fixedEl) => {
+  // Hides the catalog behind a popover for a crop: a page-colored layer right below the popover (z-index 40).
+  const c = document.createElement('div'); c.className = '__mk';
+  Object.assign(c.style, { position: 'fixed', inset: '0', background: getComputedStyle(document.querySelector('.h-screen') || document.body).backgroundColor, zIndex: 39, pointerEvents: 'none' });
+  document.body.appendChild(c);
+};
 window.__unmark = () => document.querySelectorAll('.__mk').forEach(e => e.remove());
 window.__leaf = (t, extra) => [...document.querySelectorAll('*')].find(e => e.children.length === 0 && (e.innerText || '').trim() === t && (!extra || extra(e)));
 window.__btn = (t, f) => [...document.querySelectorAll('button')].find(e => (e.textContent || '').trim() === t && (!f || f(e.getBoundingClientRect())));
