@@ -322,6 +322,15 @@ fn scan_with_path_mode(
     let mut seen_files = HashSet::new();
     for (index, root) in roots.iter().enumerate() {
         let checked = (|| -> std::io::Result<()> {
+            // An empty directory holding catalogued files is most likely an unmounted
+            // volume or a container without its model volume, not a real deletion.
+            if read(&root.canonical)?.is_empty()
+                && rows
+                    .iter()
+                    .any(|(_, path, active, _)| *active && root.resolve(Path::new(path)).is_some())
+            {
+                return Err(std::io::Error::other("diskSyncRootEmpty"));
+            }
             if !roots[..index]
                 .iter()
                 .any(|r| root.canonical.starts_with(&r.canonical))
@@ -387,11 +396,17 @@ fn scan_with_path_mode(
             && *unassigned
             && !configured.iter().any(|root| path.starts_with(root))
             && !roots.iter().any(|root| root.resolve(path).is_some())
-            && backup::is_missing(path).unwrap_or(false)
         {
-            result
-                .missing_files
-                .push(entry(Path::new(""), path, Some(id.to_string())));
+            // Without its parent folder (unplugged drive) a loose file is unreachable, not missing.
+            if !parent_exists(path) {
+                result
+                    .unreachable_roots
+                    .push(path.parent().unwrap_or(path).to_string_lossy().into_owned());
+            } else if backup::is_missing(path).unwrap_or(false) {
+                result
+                    .missing_files
+                    .push(entry(Path::new(""), path, Some(id.to_string())));
+            }
         }
     }
     // A later I/O error may have made an earlier missing result unsafe.
@@ -419,9 +434,15 @@ fn scan_with_path_mode(
     result.missing_files.sort_by(|a, b| a.path.cmp(&b.path));
     result.missing_files.dedup_by(|a, b| a.id == b.id);
     result.unreachable_roots.sort();
+    result.unreachable_roots.dedup();
     result.skipped_paths.sort();
     result.skipped_paths.dedup();
     Ok(result)
+}
+
+fn parent_exists(path: &Path) -> bool {
+    path.parent()
+        .is_some_and(|p| std::fs::metadata(p).is_ok_and(|m| m.is_dir()))
 }
 
 fn suppress_case_only_new_files(scan: &mut DiskScan, case_insensitive: bool) {
@@ -444,7 +465,7 @@ fn checked_path(scan: &DiskScan, e: &DiskEntry, kind: &str) -> SyncResult<PathBu
     let changed = || DiskSyncError::path("diskSyncPathChanged", Path::new(&e.path));
     if kind == "missing" && e.root.is_empty() {
         let path = Path::new(&e.path);
-        return if backup::is_missing(path).unwrap_or(false) {
+        return if parent_exists(path) && backup::is_missing(path).unwrap_or(false) {
             Ok(path.to_path_buf())
         } else {
             Err(changed())
@@ -947,6 +968,8 @@ mod tests {
     fn missing_only_apply_requires_selection_and_moves_entries_to_trash() {
         let mut f = Fixture::new();
         let missing = f.root.join("missing.stl");
+        // A non-empty root is needed, otherwise it counts as an unmounted volume.
+        std::fs::write(f.root.join("notes.txt"), "present").unwrap();
         let id = db::test_insert_minimal_file(&f.conn, missing.to_str().unwrap(), None).unwrap();
         let preview = scan(&f.conn).unwrap();
         assert!(preview.new_files.is_empty());
@@ -962,7 +985,8 @@ mod tests {
         assert!(selection.new_paths.is_empty());
         let result = apply_with_reader(&mut f.conn, selection, |_| {
             panic!("Removing missing entries must not attempt to import a file")
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(result.removed_count, 1);
         assert!(result.file_ids.is_empty());
         assert!(result.folder_ids.is_empty());
@@ -988,9 +1012,89 @@ mod tests {
         assert_eq!(db::list_files(&f.conn).unwrap().len(), 1);
     }
     #[test]
+    fn empty_root_with_catalogued_files_is_unreachable_and_apply_changes_nothing() {
+        let mut f = Fixture::new();
+        for name in ["a.stl", "b.stl"] {
+            db::test_insert_minimal_file(&f.conn, f.root.join(name).to_str().unwrap(), None)
+                .unwrap();
+        }
+        let preview = scan(&f.conn).unwrap();
+        assert_eq!(preview.unreachable_roots, vec![f.root.to_string_lossy()]);
+        assert!(preview.missing_files.is_empty());
+        let selection = DiskSelection {
+            new_paths: vec![],
+            missing_ids: db::list_files(&f.conn)
+                .unwrap()
+                .iter()
+                .map(|file| file.id.to_string())
+                .collect(),
+            remove_missing: true,
+        };
+        assert!(apply(&mut f.conn, selection).is_err());
+        assert_eq!(db::list_files(&f.conn).unwrap().len(), 2);
+        assert!(db::list_trash(&f.conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn root_with_only_some_files_missing_still_offers_them() {
+        let f = Fixture::new();
+        std::fs::write(f.root.join("here.stl"), "mesh").unwrap();
+        db::test_insert_minimal_file(&f.conn, f.root.join("here.stl").to_str().unwrap(), None)
+            .unwrap();
+        db::test_insert_minimal_file(&f.conn, f.root.join("gone.stl").to_str().unwrap(), None)
+            .unwrap();
+        let preview = scan(&f.conn).unwrap();
+        assert!(preview.unreachable_roots.is_empty());
+        assert_eq!(preview.missing_files.len(), 1);
+        assert_eq!(
+            preview.missing_files[0].path,
+            f.root.join("gone.stl").to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn empty_root_without_catalogued_files_is_reachable() {
+        let f = Fixture::new();
+        let preview = scan(&f.conn).unwrap();
+        assert!(preview.unreachable_roots.is_empty());
+        assert!(preview.missing_files.is_empty());
+    }
+
+    #[test]
+    fn loose_file_with_existing_parent_is_offered_as_missing() {
+        let f = Fixture::new();
+        let outside = f.dir.path().join("loose");
+        std::fs::create_dir(&outside).unwrap();
+        db::test_insert_minimal_file(&f.conn, outside.join("gone.stl").to_str().unwrap(), None)
+            .unwrap();
+        let preview = scan(&f.conn).unwrap();
+        assert!(preview.unreachable_roots.is_empty());
+        assert_eq!(preview.missing_files.len(), 1);
+    }
+
+    #[test]
+    fn loose_file_with_absent_parent_is_unreachable_not_missing() {
+        let mut f = Fixture::new();
+        let drive = f.dir.path().join("stick");
+        db::test_insert_minimal_file(&f.conn, drive.join("gone.stl").to_str().unwrap(), None)
+            .unwrap();
+        let preview = scan(&f.conn).unwrap();
+        assert_eq!(preview.unreachable_roots, vec![drive.to_string_lossy()]);
+        assert!(preview.missing_files.is_empty());
+        let selection = DiskSelection {
+            new_paths: vec![],
+            missing_ids: vec![],
+            remove_missing: true,
+        };
+        assert!(apply(&mut f.conn, selection).is_err());
+        assert_eq!(db::list_files(&f.conn).unwrap().len(), 1);
+    }
+
+    #[test]
     fn stale_missing_selection_and_outside_paths_are_rejected() {
         let mut f = Fixture::new();
         let missing = f.root.join("missing.stl");
+        std::fs::write(f.root.join("notes.txt"), "present").unwrap();
         db::test_insert_minimal_file(&f.conn, missing.to_str().unwrap(), None).unwrap();
         let selection = f.select(true);
         std::fs::write(&missing, "returned").unwrap();

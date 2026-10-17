@@ -85,6 +85,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - Disk sync on Windows and macOS no longer creates duplicate files or folders after case-only renames; existing catalog paths are preserved.
 
+- When syncing with the disk, files of an empty or unmounted folder (NAS/USB not mounted) and files on an unplugged removable drive are no longer treated as "missing"; they count as unreachable and are not offered for removal.
+
 - The import banner counted only models that had also been moved to the target folder, so it could say “0 models imported” although they were in the catalog. Models imported but not moved are now counted as imported and shown as “of which not placed”.
 - Large 3MF projects (model files up to 2 GiB unpacked, such as high-resolution Bambu Studio projects) can now be imported: model XML is read without loading the whole text into memory. Models above 3 million triangles show the translated size-limit explanation instead of opening the 3D preview.
 
@@ -663,6 +665,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Die 3D-Vorschau zeichnet nicht mehr dauernd neu, solange sich nichts bewegt. Auf Rechnern ohne Grafikkarte (zum Beispiel im Docker-Container) hielt eine offene Vorschau den Prozessor bei über 100 %; jetzt wird nur noch gezeichnet, wenn du das Modell bewegst, zoomst oder drehst oder sich etwas ändert. Die automatische Drehung zeichnet weiterhin laufend.
 - Der Dialog „Neue Drucke“ beendet die App nicht mehr, wenn hunderte Drucke warten: Vorschaubilder laden höchstens vier gleichzeitig, und ein HTTP-Client, der sich nicht anlegen lässt, beendet die Anfrage mit einem Fehler statt die App abzustürzen.
 - Lässt sich die App nicht starten (Datenordner nicht beschreibbar oder voll, Katalog aus einer neueren App-Version, Katalog beschädigt oder Migration fehlgeschlagen), zeigt sie jetzt eine Meldung mit Ordner und nächstem Schritt statt sich still zu beenden. Ein Log-Ordner, der sich nicht anlegen lässt, verhindert den Start nicht mehr; protokolliert wird dann nur auf der Fehlerausgabe. Der Katalog bleibt dabei unverändert.
+
+- Beim Abgleich mit der Festplatte gelten Dateien eines leeren oder nicht eingehängten Ordners (NAS/USB nicht eingehängt) sowie Dateien auf einem ausgesteckten Wechseldatenträger nicht mehr als „fehlend“, sondern als nicht erreichbar und werden nicht zum Entfernen angeboten.
 - Ein Import, der mit übersprungenen oder nicht eingeordneten Dateien endet, zeigt nicht mehr die grüne Zeile „Fertig“: Sie wechselt in die Warnfarbe und lautet „Fertig, mit Hinweisen“.
 - Vorschaubilder sehr großer Kataloge verbrauchen nicht mehr immer mehr Speicher, bis das Fenster einfriert. STL/OBJ/PLY-Dateien über 200 MB erhalten keine automatische Hintergrundvorschau mehr; ihre Kacheln zeigen einen Platzhalter.
 - Pfeiltasten blättern auch nach Fokus auf Vorschau, Link oder einfachem Knopf zwischen Modellen; Widgets wie die Plattenleiste behalten ihre eigene Pfeilsteuerung.
