@@ -592,11 +592,11 @@
    "sizes": {
     "de": [
      1014,
-     181
+     230
     ],
     "en": [
      1014,
-     181
+     230
     ]
    }
   },
@@ -690,12 +690,12 @@
    "quality": 80,
    "sizes": {
     "de": [
-     653,
-     445
+     652,
+     545
     ],
     "en": [
      653,
-     423
+     514
     ]
    }
   },
@@ -954,12 +954,12 @@
    "quality": 80,
    "sizes": {
     "de": [
-     522,
-     1285
+     501,
+     1400
     ],
     "en": [
-     522,
-     1260
+     509,
+     1400
     ]
    }
   },
@@ -1506,12 +1506,12 @@
    "quality": 80,
    "sizes": {
     "de": [
-     1400,
-     248
+     596,
+     322
     ],
     "en": [
-     1400,
-     248
+     586,
+     322
     ]
    }
   },
@@ -1875,12 +1875,12 @@
    "quality": 80,
    "sizes": {
     "de": [
-     582,
-     484
+     583,
+     540
     ],
     "en": [
-     583,
-     484
+     582,
+     540
     ]
    }
   },
@@ -1975,11 +1975,11 @@
    "sizes": {
     "de": [
      660,
-     235
+     353
     ],
     "en": [
-     637,
-     209
+     660,
+     328
     ]
    }
   },
@@ -2354,11 +2354,11 @@
    "sizes": {
     "de": [
      498,
-     471
+     536
     ],
     "en": [
      498,
-     471
+     536
     ]
    }
   },
@@ -2629,11 +2629,11 @@
    "sizes": {
     "de": [
      498,
-     1114
+     1285
     ],
     "en": [
      498,
-     1090
+     1233
     ]
    }
   },
@@ -2843,12 +2843,12 @@
    "format": "png",
    "sizes": {
     "de": [
-     618,
-     195
+     648,
+     316
     ],
     "en": [
-     592,
-     195
+     648,
+     316
     ]
    }
   },
@@ -4248,7 +4248,17 @@
    },
    "max_edge": 1000,
    "format": "webp",
-   "quality": 80
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1000,
+     562
+    ],
+    "en": [
+     1000,
+     562
+    ]
+   }
   },
   {
    "id": "wiki-ordnername",
@@ -4277,19 +4287,303 @@
      900
     ]
    }
+  },
+  {
+   "id": "hb-25-printer-manager-einheit",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/25-drucker-verwalten.png",
+    "en": "docs/benutzerhandbuch/bilder/en/25-drucker-verwalten.png"
+   },
+   "recipe": "hb-pm-unit",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-35-platten-leiste",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/35-platten-leiste.png",
+    "en": "docs/benutzerhandbuch/bilder/en/35-platten-leiste.png"
+   },
+   "recipe": "hb-plates",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-39-festplatten-abgleich",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/39-festplatten-abgleich.png",
+    "en": "docs/benutzerhandbuch/bilder/en/39-festplatten-abgleich.png"
+   },
+   "recipe": "hb-sync",
+   "args": {
+    "mode": "button"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     1000,
+     330
+    ],
+    "en": [
+     1000,
+     330
+    ]
+   }
+  },
+  {
+   "id": "hb-40-festplatten-abgleich-dialog",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/40-festplatten-abgleich-dialog.png",
+    "en": "docs/benutzerhandbuch/bilder/en/40-festplatten-abgleich-dialog.png"
+   },
+   "recipe": "hb-sync",
+   "args": {
+    "mode": "dialog"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     912,
+     986
+    ],
+    "en": [
+     912,
+     986
+    ]
+   }
+  },
+  {
+   "id": "hb-41-lizenz",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/41-lizenz.png",
+    "en": "docs/benutzerhandbuch/bilder/en/41-lizenz.png"
+   },
+   "recipe": "hb-license",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-42-filter-sortierung",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/42-filter-sortierung.png",
+    "en": "docs/benutzerhandbuch/bilder/en/42-filter-sortierung.png"
+   },
+   "recipe": "hb-filter-sort",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     1400,
+     553
+    ],
+    "en": [
+     1400,
+     553
+    ]
+   }
+  },
+  {
+   "id": "hb-43-import-menue",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/43-import-menue.png",
+    "en": "docs/benutzerhandbuch/bilder/en/43-import-menue.png"
+   },
+   "recipe": "hb-import-menu",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     510,
+     556
+    ],
+    "en": [
+     510,
+     525
+    ]
+   }
+  },
+  {
+   "id": "hb-44-import-fortschritt",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/44-import-fortschritt.png",
+    "en": "docs/benutzerhandbuch/bilder/en/44-import-fortschritt.png"
+   },
+   "recipe": "hb-import-progress",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1250,
+    800
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     1380,
+     165
+    ],
+    "en": [
+     1380,
+     165
+    ]
+   }
+  },
+  {
+   "id": "hb-45-3d-fehlerkarte",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/45-3d-fehlerkarte.png",
+    "en": "docs/benutzerhandbuch/bilder/en/45-3d-fehlerkarte.png"
+   },
+   "recipe": "hb-3d-error",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-34-filterleiste",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/34-filterleiste.png",
+    "en": "docs/benutzerhandbuch/bilder/en/34-filterleiste.png"
+   },
+   "recipe": "hb-filterbar",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
   }
  ],
  "excluded": [
-  {
-   "root": "app",
-   "path": "docs/benutzerhandbuch/bilder/25-drucker-verwalten.png",
-   "reason": "panel \"Drucker verwalten\" no longer exists in 0.16 (Printer Manager)"
-  },
-  {
-   "root": "app",
-   "path": "docs/benutzerhandbuch/bilder/en/25-drucker-verwalten.png",
-   "reason": "see de"
-  },
   {
    "root": "app",
    "path": "docs/benutzerhandbuch/bilder/28-einstellungen-drucker.png",

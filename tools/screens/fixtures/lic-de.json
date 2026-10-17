@@ -1,0 +1,107 @@
+{
+ "base": "base-de",
+ "ops": {
+  "list_files": {
+   "by_id": {
+    "patch": {
+     "15": {
+      "license": "cc-by"
+     },
+     "10": {
+      "license": "cc-by-nc"
+     },
+     "14": {
+      "license": null
+     },
+     "3": {
+      "license": "personal"
+     },
+     "6": {
+      "license": "cc-by-sa"
+     },
+     "12": {
+      "license": null
+     },
+     "2": {
+      "license": "cc-by-nc-sa"
+     },
+     "13": {
+      "license": "cc-by-nc"
+     },
+     "8": {
+      "license": null
+     },
+     "1": {
+      "license": "cc-by-nc"
+     },
+     "9": {
+      "license": "cc0"
+     },
+     "11": {
+      "license": null
+     },
+     "7": {
+      "license": "cc-by-sa"
+     },
+     "4": {
+      "license": "commercial"
+     },
+     "5": {
+      "license": null
+     }
+    }
+   }
+  },
+  "list_file_summaries": {
+   "by_id": {
+    "patch": {
+     "15": {
+      "license": "cc-by"
+     },
+     "10": {
+      "license": "cc-by-nc"
+     },
+     "14": {
+      "license": null
+     },
+     "3": {
+      "license": "personal"
+     },
+     "6": {
+      "license": "cc-by-sa"
+     },
+     "12": {
+      "license": null
+     },
+     "2": {
+      "license": "cc-by-nc-sa"
+     },
+     "13": {
+      "license": "cc-by-nc"
+     },
+     "8": {
+      "license": null
+     },
+     "1": {
+      "license": "cc-by-nc"
+     },
+     "9": {
+      "license": "cc0"
+     },
+     "11": {
+      "license": null
+     },
+     "7": {
+      "license": "cc-by-sa"
+     },
+     "4": {
+      "license": "commercial"
+     },
+     "5": {
+      "license": null
+     }
+    }
+   }
+  }
+ }
+}

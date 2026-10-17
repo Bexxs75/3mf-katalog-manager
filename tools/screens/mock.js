@@ -9,6 +9,18 @@
     for (const [k, v] of Object.entries(PREFS)) localStorage.setItem(k, v);
   } catch (e) {}
 
+  // Fixed "now" (it keeps running): relative times such as "synced 5 days ago" must not depend on the day the pictures are taken.
+  // 2026-10-03, the date of the log lines in the pictures: nothing counts as "new" (7 days), the sync times of the fixtures read "6 days ago".
+  try {
+    const OFFSET = 1791028800 * 1000 - Date.now();
+    const RealDate = Date;
+    class FixedDate extends RealDate {
+      constructor(...args) { if (args.length === 0) super(RealDate.now() + OFFSET); else super(...args); }
+      static now() { return RealDate.now() + OFFSET; }
+    }
+    window.Date = FixedDate;
+  } catch (e) {}
+
   const clone = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
   const b64ToBuf = (b64) => {
     const bin = atob(b64);
