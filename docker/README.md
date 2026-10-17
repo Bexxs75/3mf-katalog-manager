@@ -30,9 +30,10 @@ docker compose up -d
 
 When using the files from the repository instead:
 
-`.env.example` and the Compose fallback use `latest`. **Until the first stable
-image release, set `IMAGE_TAG=rc` or a specific published version without `v`.**
-`latest` follows only the highest published stable version; `MAJOR.MINOR` follows
+`.env.example` and the Compose fallback use `latest`, the newest stable image
+(0.16.0 or later). Set `IMAGE_TAG=rc` only if you want pre-releases, or a specific
+published version without `v` to stay on it. `latest` follows only the highest
+published stable version; `MAJOR.MINOR` follows
 only the highest stable version in its series. RC releases publish their specific
 version and `rc`.
 
@@ -377,10 +378,10 @@ docker compose up -d
 
 Bei Verwendung der Dateien aus dem Repository gilt dagegen:
 
-`.env.example` und der Compose-Fallback verwenden `latest`. **Bis zum ersten
-stabilen Image-Release muss `IMAGE_TAG=rc` oder eine konkrete veröffentlichte
-Version ohne `v` gesetzt werden.** `latest` folgt nur der höchsten veröffentlichten
-stabilen Version; `MAJOR.MINOR` folgt nur der höchsten stabilen Version seiner
+`.env.example` und der Compose-Fallback verwenden `latest`, das neueste stabile
+Image (ab 0.16.0). `IMAGE_TAG=rc` brauchst du nur für Vorabversionen; eine
+konkrete veröffentlichte Version ohne `v` hält dich dauerhaft auf diesem Stand.
+`latest` folgt nur der höchsten veröffentlichten stabilen Version; `MAJOR.MINOR` folgt nur der höchsten stabilen Version seiner
 Reihe. RC-Versionen veröffentlichen ihre konkrete Version und `rc`.
 
 Im Verzeichnis `docker/`:
