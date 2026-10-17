@@ -1,0 +1,77 @@
+{
+  "result": {
+    "count": 1,
+    "jobs": [
+      {
+        "job_id": "000001",
+        "user": "No User",
+        "filename": ".3mf_temp/Datei 1.gcode",
+        "status": "completed",
+        "start_time": 1792044571.7220793,
+        "end_time": 1792050958.763924,
+        "print_duration": 5698.0,
+        "total_duration": 5912.0,
+        "filament_used": 15643.0,
+        "metadata": {
+          "size": 4922508,
+          "modified": 1792044564.3908424,
+          "uuid": "00000000-0000-0000-0000-000000000000",
+          "file_processors": [],
+          "slicer": "AnycubicSlicerNext",
+          "slicer_version": "2.0.0.3",
+          "gcode_start_byte": 13399,
+          "gcode_end_byte": 4900116,
+          "layer_count": 125,
+          "object_height": 36.92,
+          "estimated_time": 5816,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.28,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 250.0,
+          "first_layer_bed_temp": 90.0,
+          "chamber_temp": 0.0,
+          "filament_name": "eSun PETG",
+          "filament_type": "PETG",
+          "filament_colors": [
+            "#000000"
+          ],
+          "extruder_colors": [
+            "#000000"
+          ],
+          "filament_temps": [
+            250
+          ],
+          "referenced_tools": [],
+          "mmu_print": 1,
+          "filament_total": 15388.29,
+          "filament_weight_total": 45.53,
+          "filament_weights": [
+            45.53
+          ],
+          "thumbnails": [
+            {
+              "width": 32,
+              "height": 32,
+              "size": 571,
+              "relative_path": ".thumbs/Datei 1-32x32.png"
+            },
+            {
+              "width": 230,
+              "height": 110,
+              "size": 1267,
+              "relative_path": ".thumbs/Datei 1-230x110.png"
+            },
+            {
+              "width": 512,
+              "height": 512,
+              "size": 7316,
+              "relative_path": ".thumbs/Datei 1-512x512.png"
+            }
+          ]
+        },
+        "auxiliary_data": [],
+        "exists": false
+      }
+    ]
+  }
+}
