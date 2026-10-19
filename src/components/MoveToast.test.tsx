@@ -48,6 +48,28 @@ describe('MoveToast', () => {
     expect(onDone).toHaveBeenCalled();
     vi.useRealTimers();
   });
+
+  it('keeps an error toast for 8s', () => {
+    vi.useFakeTimers();
+    const { onDone } = renderToast({ error: true, to: 'Fehler' });
+    vi.advanceTimersByTime(7999);
+    expect(onDone).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('wraps a long error message instead of truncating it', () => {
+    const path = '/sehr/langer/pfad/ohne/leerzeichen/' + 'x'.repeat(200);
+    renderToast({ error: true, to: `Der Zielordner existiert nicht mehr: ${path}`, unexpected: true });
+    const message = screen.getByText(new RegExp(path.slice(0, 30)));
+    const toast = screen.getByRole('status');
+    for (const el of [toast, ...Array.from(toast.querySelectorAll('*'))]) {
+      expect(el.getAttribute('class') ?? '').not.toMatch(/whitespace-nowrap|text-ellipsis|truncate/);
+    }
+    expect(message.parentElement?.className).toContain('break-words');
+    expect(screen.getByText('Problem melden')).toBeInTheDocument();
+  });
 });
 
 it.each([
