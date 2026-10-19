@@ -17,6 +17,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Filter bar:** the button "Clear all" is now called "Reset filters", so it is clear that only the filters are reset and no models are deleted.
 
+### Fixed
+
+- **Delete on the detail page:** "Delete" now asks for confirmation first, like the list and the side panel; cancelling (button or Escape) changes nothing and returns focus to the "Delete" button.
+
 ## [0.16.0] - 2026-10-17
 
 ### Added
@@ -621,6 +625,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Geändert
 
 - **Filterleiste:** Der Knopf „Alle löschen“ heißt jetzt „Filter zurücksetzen“, damit klar ist, dass nur die Filter zurückgesetzt werden und keine Modelle gelöscht werden.
+
+### Behoben
+
+- **Löschen auf der Detailseite:** „Löschen“ fragt jetzt vorher nach, wie in der Liste und im Seitenbereich; Abbrechen (Knopf oder Escape) ändert nichts und setzt den Fokus zurück auf „Löschen“.
 
 ## [0.16.0] - 2026-10-17
 

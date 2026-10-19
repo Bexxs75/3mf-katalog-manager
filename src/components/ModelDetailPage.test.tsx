@@ -213,3 +213,37 @@ it('does not block unchanged custom text or a saved license', async () => {
   expect(onNavigate).toHaveBeenCalledTimes(2);
   expect(screen.queryByRole('dialog')).toBeNull();
 });
+
+it('asks before deleting and leaves the model alone when cancelled', () => {
+  const onDelete = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} /></LanguageProvider>);
+  const trigger = screen.getByRole('button', {name: 'Löschen'});
+  fireEvent.click(trigger);
+  expect(onDelete).not.toHaveBeenCalled();
+  expect(screen.getByText('Eintrag löschen?')).toBeVisible();
+  expect(screen.getByRole('button', {name: 'Abbrechen'})).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', {name: 'Abbrechen'}));
+  expect(onDelete).not.toHaveBeenCalled();
+  expect(screen.queryByText('Eintrag löschen?')).toBeNull();
+  expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+});
+
+it('cancels the delete question with Escape without closing the page', () => {
+  const onDelete = vi.fn();
+  const onClose = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} onClose={onClose} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.keyDown(screen.getByRole('button', {name: 'Abbrechen'}), {key: 'Escape'});
+  expect(screen.queryByText('Eintrag löschen?')).toBeNull();
+  expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+  expect(onDelete).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+it('deletes only after the question is confirmed', () => {
+  const onDelete = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  expect(onDelete).toHaveBeenCalledTimes(1);
+});
