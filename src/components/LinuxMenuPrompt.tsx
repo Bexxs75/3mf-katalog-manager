@@ -13,7 +13,9 @@ export function LinuxMenuPrompt({ wait = false }: { wait?: boolean } = {}) {
   const [added, setAdded] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // Set to true again on setup: StrictMode runs setup, cleanup, setup, and a
+  // cleanup-only reset would leave the ref false for the real mount.
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   // `wait` holds the question back while another first-run dialog is up.
   useEffect(() => {
     if (wait) return;

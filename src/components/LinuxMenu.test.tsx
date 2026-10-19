@@ -1,3 +1,4 @@
+import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -94,6 +95,22 @@ describe('LinuxMenuSettings', () => {
     wrap(<LinuxMenuSettings />);
     fireEvent.click(await screen.findByRole('switch', { name: de.linuxMenuTitle }));
     expect(await screen.findByRole('alert')).toHaveTextContent(de.linuxMenuForeignFile);
+  });
+});
+
+describe('StrictMode', () => {
+  const strict = (node: React.ReactNode) => wrap(<React.StrictMode>{node}</React.StrictMode>);
+
+  it('still shows the switch of the settings section', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValue(base);
+    strict(<LinuxMenuSettings />);
+    expect(await screen.findByRole('switch', { name: de.linuxMenuTitle })).toBeInTheDocument();
+  });
+
+  it('still shows the first-start question', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValue({ ...base, shouldPrompt: true });
+    strict(<LinuxMenuPrompt />);
+    expect(await screen.findByRole('dialog', { name: de.linuxMenuPromptTitle })).toBeInTheDocument();
   });
 });
 
