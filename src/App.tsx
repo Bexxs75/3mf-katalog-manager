@@ -25,6 +25,7 @@ import { FilamentView } from './components/FilamentView';
 import { ImportProgressRow } from './components/ImportProgressRow';
 import { ErrorText } from './diagnostics/ErrorText';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
+import { BulkDeleteFailureBanner } from './components/BulkDeleteFailureBanner';
 import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
@@ -572,6 +573,8 @@ export default function App() {
               onClose={fileImport.dismissImportBanner}
             />
           )}
+
+          <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
 
           {fileImport.pendingArchives && (
             <ArchiveImportDialog

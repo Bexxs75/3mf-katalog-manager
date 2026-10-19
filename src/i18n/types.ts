@@ -771,6 +771,9 @@ export interface Translations {
   selectAllLabel: string;
   clearSelectionLabel: string;
   bulkDeleteConfirmQuestion: PluralForms;
+  bulkDeleteFailed: PluralForms;
+  bulkDeleteFailedMore: string;
+  bulkDeleteFailedDismiss: string;
   trashEmptyState: string;
   emptyTrashButton: string;
   emptyTrashConfirmQuestion: string;

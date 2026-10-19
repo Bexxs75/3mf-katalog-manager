@@ -275,6 +275,15 @@ describe('useCatalogStore', () => {
     expect(result.current.selectedId).toBeNull();
   });
 
+  it('refetchAfterPartialDelete resolves with the reloaded models so callers can see what survived', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+    let reloaded: { id: string }[] = [];
+    await act(async () => { reloaded = await result.current.refetchAfterPartialDelete(['m1']); });
+    expect(reloaded.map((m) => m.id)).toEqual(['m1', 'm2']);
+  });
+
   it('refetchAfterPartialDelete keeps the selection when the selected model was not affected', async () => {
     mockInitialLoad([makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })]);
     const { result } = renderHook(() => useCatalogStore());
