@@ -376,6 +376,20 @@ pub(super) fn move_file_to_folder_with_conn(
         db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())?;
         return Ok(());
     }
+    // Without these checks the OS error ("No such file or directory") would reach
+    // the user as an unexpected fault, although the catalog is merely out of date.
+    if !target_dir.is_dir() {
+        return Err(CmdError::expected(format!(
+            "Der Zielordner existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
+            target_dir.display()
+        )));
+    }
+    if !old_path.is_file() {
+        return Err(CmdError::expected(format!(
+            "Die Datei existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
+            old_path.display()
+        )));
+    }
     move_file(&old_path, &new_path).map_err(|e| e.to_string())?;
 
     if let Err(db_err) =
@@ -3034,6 +3048,40 @@ endsolid x
             src_path.to_string_lossy(),
             "DB must still point at the original path"
         );
+    }
+    #[test]
+    fn move_file_to_folder_explains_a_target_folder_missing_on_disk() {
+        let dir = unique_test_dir("move_file_missing_target");
+        std::fs::create_dir_all(dir.join("source")).unwrap();
+        let src_path = dir.join("source/model.3mf");
+        std::fs::write(&src_path, b"CONTENT").unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let folder_id = db::insert_folder_with_parent(&conn, "gone", None, &dir.join("gone").to_string_lossy()).unwrap();
+        let file_id = db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
+
+        let err = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]).unwrap_err();
+
+        assert!(err.expected, "a vanished folder is feedback, not a fault");
+        assert!(err.message.contains("Zielordner existiert auf der Festplatte nicht mehr"), "{}", err.message);
+        assert!(src_path.exists(), "the file must stay where it was");
+        assert_eq!(db::get_file(&conn, file_id).unwrap().unwrap().path, src_path.to_string_lossy());
+    }
+    #[test]
+    fn move_file_to_folder_explains_a_source_file_missing_on_disk() {
+        let dir = unique_test_dir("move_file_missing_source");
+        std::fs::create_dir_all(dir.join("target")).unwrap();
+        let src_path = dir.join("source/model.3mf");
+
+        let conn = db::connect_in_memory().unwrap();
+        let folder_id = db::insert_folder_with_parent(&conn, "target", None, &dir.join("target").to_string_lossy()).unwrap();
+        let file_id = db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
+
+        let err = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]).unwrap_err();
+
+        assert!(err.expected);
+        assert!(err.message.contains("Datei existiert auf der Festplatte nicht mehr"), "{}", err.message);
+        assert!(!dir.join("target/model.3mf").exists(), "no empty file may be left behind");
     }
     #[test]
     fn collect_supported_files_does_not_follow_a_self_referential_symlink() {

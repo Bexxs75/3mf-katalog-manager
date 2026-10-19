@@ -21,6 +21,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Delete on the detail page:** "Delete" now asks for confirmation first, like the list and the side panel; cancelling (button or Escape) changes nothing and returns focus to the "Delete" button.
 - **Deleting several models:** if a file cannot be deleted (for example because it is locked or read-only), a message now names how many files are left (with their names, shortened for long lists) and stays until dismissed. A failure while reloading the list no longer hides it.
+- **Moving into a missing folder:** if the target folder (or the file itself) no longer exists on disk, moving a model now explains this and suggests syncing the catalog with the disk, instead of showing a raw system error with a "Report problem" link.
 
 ## [0.16.0] - 2026-10-17
 
@@ -631,6 +632,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 - **Löschen auf der Detailseite:** „Löschen“ fragt jetzt vorher nach, wie in der Liste und im Seitenbereich; Abbrechen (Knopf oder Escape) ändert nichts und setzt den Fokus zurück auf „Löschen“.
 - **Mehrere Modelle löschen:** Lässt sich eine Datei nicht löschen (zum Beispiel weil sie gesperrt oder schreibgeschützt ist), nennt eine Meldung jetzt, wie viele Dateien übrig geblieben sind (mit Namen, bei langen Listen gekürzt); sie bleibt, bis du sie schließt. Ein Fehler beim Neuladen der Liste überdeckt sie nicht mehr.
+- **Verschieben in einen fehlenden Ordner:** Existiert der Zielordner (oder die Datei selbst) auf der Festplatte nicht mehr, erklärt das Verschieben eines Modells das jetzt und empfiehlt, den Katalog mit der Festplatte abzugleichen, statt eine rohe Systemmeldung mit „Problem melden“ zu zeigen.
 
 ## [0.16.0] - 2026-10-17
 
