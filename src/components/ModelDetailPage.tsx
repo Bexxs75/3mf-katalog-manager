@@ -110,6 +110,22 @@ export function ModelDetailPage({
       deleteTriggerRef.current?.focus();
     }
   }, [confirmDelete]);
+  // Focus is not trapped in the question, so Escape can arrive from any button
+  // on the page. A capture listener on window runs before the page-level
+  // Escape handler (which would close the whole detail page) and keeps it from
+  // running. An open modal dialog keeps priority, as in that handler.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.stopPropagation();
+      setConfirmDelete(false);
+      deleteTriggerFocusPending.current = true;
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [confirmDelete]);
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const imageUpload = useImageUpload(model?.id, onUploadImage);
@@ -521,13 +537,6 @@ export function ModelDetailPage({
               role="group"
               aria-labelledby="detail-delete-question"
               className="flex gap-2.5 items-center flex-wrap"
-              onKeyDown={event => {
-                // Escape only dismisses the question; the page-level handler would close the whole detail page.
-                if (event.key !== 'Escape') return;
-                event.stopPropagation();
-                setConfirmDelete(false);
-                deleteTriggerFocusPending.current = true;
-              }}
             >
               <span id="detail-delete-question" className="text-body font-medium text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
               <button
