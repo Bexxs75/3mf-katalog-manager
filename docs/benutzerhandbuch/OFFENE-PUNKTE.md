@@ -19,7 +19,7 @@ Der Changelog-Eintrag zur Sicherung vor Migration nennt inzwischen zwei Kopien, 
 
 ## Tatsächliche Beschriftungen und Zuständigkeiten
 
-- `src/i18n/de.ts`: Der Filterknopf heißt "Alle löschen", nicht "Alle zurücksetzen"; die Ordneraktion heißt "Alle Ordner zuklappen".
+- `src/i18n/de.ts`: Der Filterknopf heißt "Filter zurücksetzen"; die Ordneraktion heißt "Alle Ordner zuklappen".
 - `src/components/PrinterManagerView.tsx`, `PrinterLinkControl.tsx`: Verwaltung und Verbindung liegen im Printer Manager. Der globale Schalter heißt "Anbindung" / "Connection".
 - `src/components/FilamentView.tsx`, `PrinterColumn.tsx`: Material einlegen und neue Drucke bestätigen bleiben im Material Manager. Seine Verwaltungslinks führen zum Printer Manager.
 - `src/components/Rail.tsx`: Vier Einstellungsreiter; der Verweis zum Printer Manager steht unter Allgemein.

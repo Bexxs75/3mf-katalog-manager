@@ -13,6 +13,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Start-menu entry (Linux AppImage):** on request, the AppImage adds itself to the start menu. It asks once on the first start ("Yes" / "Not now" / "Never ask"); the switch "Show in start menu" in Settings → General adds or removes the entry later. Nothing is written without your consent, the entry follows the file if you move or replace it, and entries from other tools (for example AppImageLauncher) or foreign files of the same name are never touched. Not shown for package installs.
 
+### Changed
+
+- **Filter bar:** the button "Clear all" is now called "Reset filters", so it is clear that only the filters are reset and no models are deleted.
+
 ## [0.16.0] - 2026-10-17
 
 ### Added
@@ -613,6 +617,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Hinzugefügt
 
 - **Startmenü-Eintrag (Linux-AppImage):** Auf Wunsch trägt sich das AppImage selbst ins Startmenü ein. Beim ersten Start fragt es einmal nach („Ja“ / „Nicht jetzt“ / „Nie fragen“); mit dem Schalter „Im Startmenü anzeigen“ unter Einstellungen → Allgemein lässt sich der Eintrag später anlegen oder entfernen. Ohne deine Zustimmung wird nichts geschrieben, der Eintrag folgt der Datei, wenn du sie verschiebst oder ersetzt, und Einträge anderer Programme (zum Beispiel AppImageLauncher) oder fremde Dateien gleichen Namens bleiben unangetastet. Bei Paket-Installationen wird nichts davon angezeigt.
+
+### Geändert
+
+- **Filterleiste:** Der Knopf „Alle löschen“ heißt jetzt „Filter zurücksetzen“, damit klar ist, dass nur die Filter zurückgesetzt werden und keine Modelle gelöscht werden.
 
 ## [0.16.0] - 2026-10-17
 

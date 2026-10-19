@@ -117,7 +117,7 @@ it('uses the same reset callback for the bar and empty card', () => {
   const props = filterWorkspace({query: 'missing', filtered: []});
   expect(screen.getByText('Kein Modell passt zu diesen Filtern')).toBeVisible();
   expect(screen.getByText('Entferne einen Filter oder setze alle zurück, um wieder alle 2 Modelle zu sehen.')).toBeVisible();
-  const buttons = screen.getAllByRole('button', {name: 'Alle löschen'});
+  const buttons = screen.getAllByRole('button', {name: de.filterBarClearAll});
   expect(buttons).toHaveLength(2);
   buttons.forEach(button => fireEvent.click(button));
   expect(props.onClearFilters).toHaveBeenCalledTimes(2);
@@ -129,7 +129,7 @@ it('keeps the tool empty text only for a tool without further filters', () => {
   filterWorkspace({toolView: 'favorites', filtered: []});
   expect(screen.queryByText('Kein Modell passt zu diesen Filtern')).toBeNull();
   expect(screen.getByText(de.toolViewEmpty)).toBeVisible();
-  expect(screen.getAllByRole('button', {name: 'Alle löschen'})).toHaveLength(1);
+  expect(screen.getAllByRole('button', {name: de.filterBarClearAll})).toHaveLength(1);
 });
 
 
