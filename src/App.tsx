@@ -587,6 +587,7 @@ export default function App() {
 
             <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
             <UpdateToast view={update} />
+            {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
           </NoticeStack>
 
           <MigrationBackupWarning />
@@ -600,7 +601,6 @@ export default function App() {
             />
           )}
 
-          {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
           {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
           {dragDrop.moveToast && (
             <MoveToast
