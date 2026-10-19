@@ -34,6 +34,7 @@ import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
 import { MigrationBackupWarning } from './components/MigrationBackupWarning';
+import { NoticeStack } from './components/NoticeStack';
 import { UpdateToast } from './components/UpdateToast';
 import { LinuxMenuPrompt } from './components/LinuxMenuPrompt';
 import { useTheme } from './hooks/useTheme';
@@ -563,19 +564,6 @@ export default function App() {
             />
           )}
 
-          {fileImport.importBanner && (
-            <ImportSummaryBanner
-              imported={fileImport.importBanner.imported}
-              duplicates={fileImport.importBanner.duplicates}
-              skipped={fileImport.importBanner.skipped}
-              otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
-              jobHasProblems={fileImport.importBanner.jobHasProblems}
-              onClose={fileImport.dismissImportBanner}
-            />
-          )}
-
-          <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
-
           {fileImport.pendingArchives && (
             <ArchiveImportDialog
               archives={fileImport.pendingArchives}
@@ -585,8 +573,23 @@ export default function App() {
             />
           )}
 
+          <NoticeStack>
+            {fileImport.importBanner && (
+              <ImportSummaryBanner
+                imported={fileImport.importBanner.imported}
+                duplicates={fileImport.importBanner.duplicates}
+                skipped={fileImport.importBanner.skipped}
+                otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
+                jobHasProblems={fileImport.importBanner.jobHasProblems}
+                onClose={fileImport.dismissImportBanner}
+              />
+            )}
+
+            <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
+            <UpdateToast view={update} />
+          </NoticeStack>
+
           <MigrationBackupWarning />
-          <UpdateToast view={update} />
           <LinuxMenuPrompt wait={setupDialogOpen} />
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (

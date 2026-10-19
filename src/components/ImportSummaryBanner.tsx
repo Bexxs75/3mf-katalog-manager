@@ -92,7 +92,7 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
   }, [onClose, hasProblems, hasOtherFilesNote]);
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-start gap-2.5 px-3.5 py-2.5 rounded-[4px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] text-[length:var(--font-size-title)] text-[var(--ink)]">
+    <div className="pointer-events-auto max-w-[min(90vw,480px)] flex items-start gap-2.5 px-3.5 py-2.5 rounded-[4px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] text-[length:var(--font-size-title)] text-[var(--ink)]">
       <div className="flex flex-col gap-1">
         <span>
           {t('importSummaryText')

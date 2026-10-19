@@ -24,7 +24,7 @@ export function BulkDeleteFailureBanner({ names, onClose }: Props) {
     list += ' ' + t('bulkDeleteFailedMore').replace('{count}', String(names.length - MAX_NAMES));
   }
   return (
-    <div role="alert" className="fixed bottom-4 right-4 z-50 max-w-[min(90vw,480px)] flex items-start gap-2.5 px-3.5 py-2.5 rounded-[4px] border border-red-400 bg-[var(--panel)] shadow-[var(--shadow)] text-[length:var(--font-size-title)] text-red-400">
+    <div role="alert" className="pointer-events-auto max-w-[min(90vw,480px)] flex items-start gap-2.5 px-3.5 py-2.5 rounded-[4px] border border-red-400 bg-[var(--panel)] shadow-[var(--shadow)] text-[length:var(--font-size-title)] text-red-400">
       <p className="flex-1 min-w-0 break-words">{formatCount(t('bulkDeleteFailed'), names.length).replace('{names}', () => list)}</p>
       <button
         type="button"

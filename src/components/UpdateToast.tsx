@@ -191,7 +191,7 @@ export function UpdateToast({ view }: { view: UpdaterView }) {
   return (
     <div
       role={isError ? 'alert' : undefined}
-      className={`fixed bottom-4 right-4 z-50 max-w-[400px] px-3.5 py-2.5 rounded-[4px] border border-[var(--line)] ${
+      className={`pointer-events-auto max-w-[400px] px-3.5 py-2.5 rounded-[4px] border border-[var(--line)] ${
         isError ? 'border-l-4 border-l-[var(--crit)]' : ''
       } bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink)]`}
     >
