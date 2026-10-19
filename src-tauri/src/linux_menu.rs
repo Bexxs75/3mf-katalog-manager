@@ -254,6 +254,15 @@ pub enum EntryState {
 }
 
 pub fn entry_state(desktop_file: &Path, appimage: &str) -> Result<EntryState, MenuError> {
+    // Inspect the entry itself, not what it points at: reading follows symlinks,
+    // so a foreign symlink with a missing target would look absent and then be
+    // replaced by the install.
+    match fs::symlink_metadata(desktop_file) {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => return Ok(EntryState::Foreign),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(EntryState::Absent),
+        Err(e) => return Err(io_err(e)),
+    }
     match fs::read_to_string(desktop_file) {
         Ok(content) if is_managed(&content) => {
             Ok(EntryState::Managed { current: exec_program(&content).as_deref() == Some(appimage) })
@@ -570,6 +579,43 @@ mod tests {
         assert_eq!(sync_path(REGULAR, APPIMAGE, &tmp.0), Ok(false));
         assert_eq!(fs::read_to_string(&p.desktop_file).unwrap(), theirs);
         assert!(!p.icons.iter().any(|(i, _)| i.exists()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_foreign_symlink_is_foreign_and_left_untouched() {
+        let tmp = Tmp::new("dangling");
+        let p = paths(REGULAR, &tmp.0);
+        fs::create_dir_all(&p.applications_dir).unwrap();
+        let target = tmp.0.join("missing-target.desktop");
+        std::os::unix::fs::symlink(&target, &p.desktop_file).unwrap();
+        assert_eq!(entry_state(&p.desktop_file, APPIMAGE), Ok(EntryState::Foreign));
+        assert_eq!(install(REGULAR, APPIMAGE, &tmp.0), Err(MenuError::ForeignFile));
+        assert_eq!(remove(REGULAR, &tmp.0), Err(MenuError::ForeignFile));
+        assert_eq!(sync_path(REGULAR, APPIMAGE, &tmp.0), Ok(false));
+        assert_eq!(fs::read_link(&p.desktop_file).unwrap(), target);
+        assert!(!target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_to_an_existing_foreign_file_is_foreign() {
+        let tmp = Tmp::new("symlink-foreign");
+        let p = paths(REGULAR, &tmp.0);
+        fs::create_dir_all(&p.applications_dir).unwrap();
+        let target = tmp.0.join("theirs.desktop");
+        fs::write(&target, "[Desktop Entry]\nName=Mine\nExec=/bin/true\n").unwrap();
+        std::os::unix::fs::symlink(&target, &p.desktop_file).unwrap();
+        assert_eq!(entry_state(&p.desktop_file, APPIMAGE), Ok(EntryState::Foreign));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn regular_file_with_our_marker_is_managed() {
+        let tmp = Tmp::new("managed-regular");
+        install(REGULAR, APPIMAGE, &tmp.0).unwrap();
+        let p = paths(REGULAR, &tmp.0);
+        assert_eq!(entry_state(&p.desktop_file, APPIMAGE), Ok(EntryState::Managed { current: true }));
     }
 
     #[test]
