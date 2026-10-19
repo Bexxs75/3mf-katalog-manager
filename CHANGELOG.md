@@ -24,6 +24,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Moving into a missing folder:** if the target folder (or the file itself) no longer exists on disk, moving a model now explains this and suggests syncing the catalog with the disk, instead of showing a raw system error with a "Report problem" link.
 - **Moving folders:** a drop that cannot work now says why instead of doing nothing: onto the folder itself or one of its subfolders, onto the folder it is already in, onto a folder that already has a folder of the same name, or for the catalog root folder and the folders above it. If a folder is missing on disk, the message suggests syncing the catalog; the backend also checks the real locations on disk.
 - **Number fields:** turning the mouse wheel over a focused number field no longer changes its value while you scroll the page; the field simply loses focus and the page scrolls on.
+- **Docker, slicer links:** special characters in the file name (such as `+`, spaces or umlauts) no longer show up as `%2B`, `%20` or similar in the slicer. The name in the link is now simplified to plain characters (for example `Würfel Größe.3mf` becomes `Wurfel_Grosse.3mf`); the downloaded file keeps its real name.
 
 ## [0.16.0] - 2026-10-17
 
@@ -637,6 +638,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Verschieben in einen fehlenden Ordner:** Existiert der Zielordner (oder die Datei selbst) auf der Festplatte nicht mehr, erklärt das Verschieben eines Modells das jetzt und empfiehlt, den Katalog mit der Festplatte abzugleichen, statt eine rohe Systemmeldung mit „Problem melden“ zu zeigen.
 - **Ordner verschieben:** Ein Ablegen, das nicht funktionieren kann, sagt jetzt, warum, statt nichts zu tun: auf den Ordner selbst oder einen seiner Unterordner, auf den Ordner, in dem er schon liegt, auf einen Ordner, der schon einen gleichnamigen Ordner enthält, oder beim Katalog-Stammordner und den Ordnern darüber. Fehlt ein Ordner auf der Festplatte, empfiehlt die Meldung den Abgleich des Katalogs; das Backend prüft außerdem die tatsächlichen Orte auf der Festplatte.
 - **Zahlenfelder:** Das Mausrad über einem fokussierten Zahlenfeld ändert beim Scrollen der Seite den Wert nicht mehr; das Feld verliert nur den Fokus, und die Seite scrollt weiter.
+- **Docker, Slicer-Links:** Sonderzeichen im Dateinamen (etwa `+`, Leerzeichen oder Umlaute) erscheinen im Slicer nicht mehr als `%2B`, `%20` o. Ä. Der Name im Link wird jetzt auf einfache Zeichen vereinfacht (zum Beispiel wird aus `Würfel Größe.3mf` `Wurfel_Grosse.3mf`); die heruntergeladene Datei behält ihren echten Namen.
 
 ## [0.16.0] - 2026-10-17
 
