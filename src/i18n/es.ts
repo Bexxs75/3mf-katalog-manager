@@ -363,6 +363,11 @@ export const es: Translations = {
   dndTipTitle: "Consejo: mueve archivos arrastrándolos",
   dndTipBody: "Arrastra una tarjeta de modelo a una carpeta de la izquierda o a un grupo de carpetas. El archivo también se mueve en el disco.",
   dndTipDismiss: "Entendido",
+  folderMoveSelf: "Una carpeta no se puede mover dentro de sí misma.",
+  folderMoveDescendant: "Una carpeta no se puede mover a una de sus propias subcarpetas.",
+  folderMoveAlreadyThere: "Esta carpeta ya está dentro de la carpeta de destino.",
+  folderMoveNameTaken: "La carpeta de destino ya contiene una carpeta con este nombre.",
+  folderMoveCatalogRoot: "La carpeta raíz del catálogo y las carpetas superiores no se pueden mover.",
 
   collapseAllFolders: 'Contraer todas las carpetas',
   expandAllFolders: 'Expandir todas las carpetas',

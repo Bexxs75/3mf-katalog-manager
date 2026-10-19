@@ -2,13 +2,24 @@ import { displayName } from '../lib/displayName';
 import { useT } from '../i18n/LanguageContext';
 import { Icon } from './Icon';
 import { useEffect } from 'react';
+import type { FolderMoveBlock } from '../lib/folderTree';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
+
+const BLOCKED_MESSAGES: Record<FolderMoveBlock, 'folderMoveCatalogRoot' | 'folderMoveSelf' | 'folderMoveDescendant' | 'folderMoveAlreadyThere' | 'folderMoveNameTaken'> = {
+  catalogRoot: 'folderMoveCatalogRoot',
+  self: 'folderMoveSelf',
+  descendant: 'folderMoveDescendant',
+  alreadyThere: 'folderMoveAlreadyThere',
+  nameTaken: 'folderMoveNameTaken',
+};
 
 interface Props {
   from: string;
   to: string;
   collection?: 'added' | 'already';
   error?: boolean;
+  /** A folder drop that was refused before reaching the backend; replaces `to` with a translated reason. */
+  blocked?: FolderMoveBlock;
   /** Only meaningful together with `error`: offers "Report problem" for an unexpected error. */
   unexpected?: boolean;
   onDone: () => void;
@@ -19,12 +30,12 @@ interface Props {
  * folder; disappears after 3 s (`onDone`). A new move restarts the
  * timer. With `error`, `to` carries the error message (no arrow, red accent).
  */
-export function MoveToast({ from, to, error = false, unexpected = false, collection, onDone }: Props) {
+export function MoveToast({ from, to, error = false, unexpected = false, collection, blocked, onDone }: Props) {
   const t = useT();
   useEffect(() => {
     const timer = setTimeout(onDone, 3000);
     return () => clearTimeout(timer);
-  }, [from, to, error, collection, onDone]);
+  }, [from, to, error, collection, blocked, onDone]);
 
   return (
     <div
@@ -39,7 +50,7 @@ export function MoveToast({ from, to, error = false, unexpected = false, collect
         <>
           <span className="font-semibold flex-none"><Icon name="close" size={14} /></span>
           <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{displayName(from)}:</span>
-          <span className="opacity-90 overflow-hidden text-ellipsis whitespace-nowrap">{displayName(to)}</span>
+          <span className="opacity-90 overflow-hidden text-ellipsis whitespace-nowrap">{blocked ? t(BLOCKED_MESSAGES[blocked]) : displayName(to)}</span>
           {unexpected && <ReportProblemLink />}
         </>
       ) : collection ? (

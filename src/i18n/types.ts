@@ -371,6 +371,11 @@ export interface Translations {
   dndTipTitle: string;
   dndTipBody: string;
   dndTipDismiss: string;
+  folderMoveSelf: string;
+  folderMoveDescendant: string;
+  folderMoveAlreadyThere: string;
+  folderMoveNameTaken: string;
+  folderMoveCatalogRoot: string;
 
   collapseAllFolders: string;
   expandAllFolders: string;

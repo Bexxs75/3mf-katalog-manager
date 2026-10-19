@@ -605,6 +605,7 @@ export default function App() {
               from={dragDrop.moveToast.from}
               to={dragDrop.moveToast.to}
               error={dragDrop.moveToast.error}
+              blocked={dragDrop.moveToast.blocked}
               unexpected={dragDrop.moveToast.unexpected}
               onDone={dragDrop.dismissMoveToast}
             />

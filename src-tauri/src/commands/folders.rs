@@ -261,7 +261,10 @@ fn move_folder_with_conn(
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
 
-    if target == id || is_descendant(&folders, target, id) {
+    if target == id {
+        return Err(CmdError::expected("Ein Ordner kann nicht in sich selbst verschoben werden"));
+    }
+    if is_descendant(&folders, target, id) {
         return Err(CmdError::expected("Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden"));
     }
 
@@ -280,8 +283,27 @@ fn move_folder_with_conn(
     archives::check_managed_location(&old_path, &expanded)?;
     archives::check_managed_location(&new_path, &expanded)?;
 
+    // Without these checks a vanished folder would surface as a raw OS error.
+    let out_of_date = "Gleiche den Katalog mit der Festplatte ab und versuche es erneut.";
+    if !old_path.is_dir() {
+        return Err(CmdError::expected(format!("Der Ordner existiert auf der Festplatte nicht mehr: {}. {out_of_date}", old_path.display())));
+    }
+    let new_parent = Path::new(&new_parent_path);
+    if !new_parent.is_dir() {
+        return Err(CmdError::expected(format!("Der Zielordner existiert auf der Festplatte nicht mehr: {}. {out_of_date}", new_parent.display())));
+    }
+    // The ids can disagree with the disk (outdated catalog, symlinks, differing
+    // case on case-insensitive volumes), so the real locations are compared too.
+    if let (Ok(source), Ok(parent)) = (old_path.canonicalize(), new_parent.canonicalize()) {
+        if comparison_path(&parent).starts_with(comparison_path(&source)) {
+            return Err(CmdError::expected("Ein Ordner kann nicht in sich selbst oder einen eigenen Unterordner verschoben werden"));
+        }
+        if old_path.parent().and_then(|p| p.canonicalize().ok()).is_some_and(|current| comparison_path(&current) == comparison_path(&parent)) {
+            return Err(CmdError::expected("Der Ordner liegt bereits im Zielordner"));
+        }
+    }
     if new_path.exists() {
-        return Err(CmdError::expected(format!("Zielordner existiert bereits: {}", new_path.display())));
+        return Err(CmdError::expected(format!("Der Zielordner enthält bereits einen Ordner mit diesem Namen: {}", new_path.display())));
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
@@ -925,6 +947,91 @@ mod tests {
         let a_after = folders.iter().find(|f| f.id == a_id).expect("A still present");
         assert_eq!(a_after.parent_id, None, "A's parent_id must be unchanged after rejected move");
 
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    fn two_folders(name: &str) -> (PathBuf, Connection, i64, i64, PathBuf, PathBuf) {
+        let tmp = unique_test_dir(name);
+        let a_dir = tmp.join("A");
+        let b_dir = tmp.join("B");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        std::fs::create_dir_all(&b_dir).unwrap();
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).unwrap();
+        let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).unwrap();
+        (tmp, conn, a_id, b_id, a_dir, b_dir)
+    }
+    fn expected_message(result: CmdResult<()>) -> String {
+        let err = result.expect_err("move must be refused");
+        assert!(err.expected, "refusals are feedback, not faults: {}", err.message);
+        err.message
+    }
+    #[test]
+    fn move_folder_explains_moving_into_itself() {
+        let (tmp, conn, a_id, _, a_dir, _) = two_folders("move_folder_self");
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(a_id), &[]));
+        assert!(message.contains("in sich selbst"), "{message}");
+        assert!(a_dir.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_explains_a_target_that_already_has_the_name() {
+        let (tmp, conn, a_id, b_id, a_dir, b_dir) = two_folders("move_folder_name_taken");
+        std::fs::create_dir_all(b_dir.join("A")).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(message.contains("enthält bereits einen Ordner mit diesem Namen"), "{message}");
+        assert!(a_dir.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_explains_a_target_that_is_the_current_parent() {
+        let tmp = unique_test_dir("move_folder_already_there");
+        let a_dir = tmp.join("A");
+        let child = a_dir.join("child");
+        std::fs::create_dir_all(&child).unwrap();
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).unwrap();
+        let child_id = db::insert_folder_with_parent(&conn, "child", Some(a_id), &child.to_string_lossy()).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, child_id, Some(a_id), &[]));
+        assert!(message.contains("liegt bereits im Zielordner"), "{message}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_checks_real_locations_for_a_stale_parent_link() {
+        // The catalog lists B as a sibling of A, but B really lies inside A.
+        let tmp = unique_test_dir("move_folder_stale_nesting");
+        let a_dir = tmp.join("A");
+        let b_dir = a_dir.join("B");
+        std::fs::create_dir_all(&b_dir).unwrap();
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).unwrap();
+        let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(message.contains("eigenen Unterordner"), "{message}");
+        assert!(a_dir.is_dir() && b_dir.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_explains_a_target_missing_on_disk() {
+        let (tmp, conn, a_id, b_id, a_dir, b_dir) = two_folders("move_folder_missing_target");
+        std::fs::remove_dir_all(&b_dir).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(message.contains("Zielordner existiert auf der Festplatte nicht mehr"), "{message}");
+        assert!(a_dir.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_explains_a_source_missing_on_disk() {
+        let (tmp, conn, a_id, b_id, a_dir, _) = two_folders("move_folder_missing_source");
+        std::fs::remove_dir_all(&a_dir).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(message.contains("Der Ordner existiert auf der Festplatte nicht mehr"), "{message}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_still_moves_into_a_valid_target() {
+        let (tmp, conn, a_id, b_id, a_dir, b_dir) = two_folders("move_folder_valid");
+        move_folder_with_conn(&conn, a_id, Some(b_id), &[]).unwrap();
+        assert!(!a_dir.exists() && b_dir.join("A").is_dir());
         let _ = std::fs::remove_dir_all(&tmp);
     }
     #[test]

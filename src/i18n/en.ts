@@ -363,6 +363,11 @@ export const en: Translations = {
   dndTipTitle: "Tip: move files by dragging",
   dndTipBody: "Drag a model card onto a folder on the left or onto a folder group. The file is moved on disk as well.",
   dndTipDismiss: "Got it",
+  folderMoveSelf: "A folder cannot be moved into itself.",
+  folderMoveDescendant: "A folder cannot be moved into one of its own subfolders.",
+  folderMoveAlreadyThere: "This folder is already inside the target folder.",
+  folderMoveNameTaken: "The target folder already contains a folder with this name.",
+  folderMoveCatalogRoot: "The catalog root folder and the folders above it cannot be moved.",
 
   collapseAllFolders: 'Collapse all folders',
   expandAllFolders: 'Expand all folders',

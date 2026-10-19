@@ -363,6 +363,11 @@ export const de: Translations = {
   dndTipTitle: "Tipp: Dateien per Ziehen verschieben",
   dndTipBody: "Zieh eine Modellkarte auf einen Ordner links oder auf eine Ordnergruppe. Die Datei wird dann auch auf der Festplatte verschoben.",
   dndTipDismiss: "Verstanden",
+  folderMoveSelf: "Ein Ordner kann nicht in sich selbst verschoben werden.",
+  folderMoveDescendant: "Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden.",
+  folderMoveAlreadyThere: "Dieser Ordner liegt bereits im Zielordner.",
+  folderMoveNameTaken: "Der Zielordner enthält bereits einen Ordner mit diesem Namen.",
+  folderMoveCatalogRoot: "Der Katalog-Stammordner und die Ordner darüber können nicht verschoben werden.",
 
   collapseAllFolders: 'Alle Ordner zuklappen',
   expandAllFolders: 'Alle Ordner aufklappen',

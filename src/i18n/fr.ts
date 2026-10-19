@@ -363,6 +363,11 @@ export const fr: Translations = {
   dndTipTitle: "Astuce : déplace les fichiers en les faisant glisser",
   dndTipBody: "Fais glisser une carte de modèle sur un dossier à gauche ou sur un groupe de dossiers. Le fichier est aussi déplacé sur le disque.",
   dndTipDismiss: "Compris",
+  folderMoveSelf: "Un dossier ne peut pas être déplacé dans lui-même.",
+  folderMoveDescendant: "Un dossier ne peut pas être déplacé dans l’un de ses propres sous-dossiers.",
+  folderMoveAlreadyThere: "Ce dossier se trouve déjà dans le dossier de destination.",
+  folderMoveNameTaken: "Le dossier de destination contient déjà un dossier portant ce nom.",
+  folderMoveCatalogRoot: "Le dossier racine du catalogue et les dossiers au-dessus ne peuvent pas être déplacés.",
 
   collapseAllFolders: 'Replier tous les dossiers',
   expandAllFolders: 'Déplier tous les dossiers',

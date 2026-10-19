@@ -35,6 +35,12 @@ describe('MoveToast', () => {
     expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
   });
 
+  it('shows the translated reason for a refused folder drop', () => {
+    renderToast({ from: 'Ordner', to: '', error: true, blocked: 'nameTaken' });
+    expect(screen.getByText('Der Zielordner enthält bereits einen Ordner mit diesem Namen.')).toBeInTheDocument();
+    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
+  });
+
   it('calls onDone after 3s', () => {
     vi.useFakeTimers();
     const { onDone } = renderToast();
