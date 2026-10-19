@@ -19,6 +19,8 @@ pub struct LinuxMenuStatus {
     pub third_party: bool,
     /// A `.desktop` file of that name exists that is not ours.
     pub conflict: bool,
+    /// Path of that file, so the user can rename or delete it.
+    pub conflict_path: Option<String>,
     pub should_prompt: bool,
 }
 
@@ -75,7 +77,8 @@ fn status(state: &State<'_, AppState>) -> CmdResult<LinuxMenuStatus> {
         third_party_entry: third_party,
         now_secs: now_secs(),
     });
-    Ok(LinuxMenuStatus { available: true, installed, third_party, conflict, should_prompt })
+    let conflict_path = conflict.then(|| p.desktop_file.to_string_lossy().into_owned());
+    Ok(LinuxMenuStatus { available: true, installed, third_party, conflict, conflict_path, should_prompt })
 }
 
 /// Best effort: menus and icon themes pick up changes on their own at the
@@ -97,6 +100,7 @@ fn refresh_desktop_caches(ctx: &Context) {
             .status();
     };
     run("update-desktop-database", &[p.applications_dir.as_os_str()]);
+    menu::touch_icon_theme_dir(&p.hicolor_dir);
     // Only refresh a cache that already exists: creating one would hide icons
     // that other programs later add to this folder without updating it.
     if p.hicolor_dir.join("icon-theme.cache").exists() {

@@ -14,7 +14,7 @@ vi.mock('../lib/api/linuxMenu', async (importActual) => ({
   answerLinuxMenuPrompt: vi.fn(),
 }));
 
-const base: api.LinuxMenuStatus = { available: true, installed: false, thirdParty: false, conflict: false, shouldPrompt: false };
+const base: api.LinuxMenuStatus = { available: true, installed: false, thirdParty: false, conflict: false, conflictPath: null, shouldPrompt: false };
 
 function wrap(node: React.ReactNode) {
   return render(<LanguageProvider><DiagnosticsProvider>{node}</DiagnosticsProvider></LanguageProvider>);
@@ -74,6 +74,20 @@ describe('LinuxMenuSettings', () => {
     expect(screen.getByText(de.linuxMenuThirdParty)).toBeVisible();
   });
 
+  it('names the foreign file and what to do about it', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValue({ ...base, conflict: true, conflictPath: '/home/u/.local/share/applications/mf-katalog-manager.desktop' });
+    wrap(<LinuxMenuSettings />);
+    expect(await screen.findByRole('switch', { name: de.linuxMenuTitle })).toBeDisabled();
+    expect(screen.getByText(de.linuxMenuForeignFilePath.replace('{path}', '/home/u/.local/share/applications/mf-katalog-manager.desktop'))).toBeVisible();
+  });
+
+  it('shows the heading once', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValue(base);
+    wrap(<LinuxMenuSettings />);
+    await screen.findByRole('switch', { name: de.linuxMenuTitle });
+    expect(screen.getAllByText(de.linuxMenuTitle)).toHaveLength(1);
+  });
+
   it('shows the translated message when a foreign file is in the way', async () => {
     vi.mocked(api.getLinuxMenuStatus).mockResolvedValue(base);
     vi.mocked(api.setLinuxMenuEnabled).mockRejectedValue({ message: 'linuxMenuForeignFile', expected: true });
@@ -99,7 +113,18 @@ describe('LinuxMenuPrompt', () => {
     expect(api.setLinuxMenuEnabled).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: de.linuxMenuYes }));
     expect(await screen.findByRole('status')).toHaveTextContent(de.linuxMenuAdded);
+    expect(screen.getByRole('dialog', { name: de.linuxMenuAddedTitle })).toBeVisible();
     expect(api.answerLinuxMenuPrompt).toHaveBeenCalledWith('yes');
+  });
+
+  it('does not ask while another first-run dialog is open, and asks once it is done', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValue({ ...base, shouldPrompt: true });
+    const { rerender } = wrap(<LinuxMenuPrompt wait />);
+    await new Promise(r => setTimeout(r, 20));
+    expect(api.getLinuxMenuStatus).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    rerender(<LanguageProvider><DiagnosticsProvider><LinuxMenuPrompt wait={false} /></DiagnosticsProvider></LanguageProvider>);
+    await screen.findByRole('dialog', { name: de.linuxMenuPromptTitle });
   });
 
   it.each([['linuxMenuNotNow', 'not_now'], ['linuxMenuNever', 'never']] as const)('"%s" closes the dialog', async (key, answer) => {

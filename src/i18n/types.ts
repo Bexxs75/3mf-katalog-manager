@@ -981,9 +981,12 @@ export interface Translations {
   infoVerboseLoggingOn: string;
   linuxMenuTitle: string;
   linuxMenuHint: string;
+  linuxMenuAddedTitle: string;
   linuxMenuAdded: string;
   linuxMenuThirdParty: string;
   linuxMenuForeignFile: string;
+  /** `{path}` is the foreign file. */
+  linuxMenuForeignFilePath: string;
   linuxMenuFailed: string;
   linuxMenuPromptTitle: string;
   linuxMenuPromptText: string;

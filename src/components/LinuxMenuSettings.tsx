@@ -36,14 +36,14 @@ export function LinuxMenuSettings() {
     }
   }
   return <>
-    <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('linuxMenuTitle')}</div>
-    <div className="flex items-center justify-between gap-2 text-caption text-[var(--ink)]">
-      <span>{t('linuxMenuTitle')}</span>
+    <div className="flex items-center justify-between gap-2 mt-4 mb-2">
+      <span className="text-[length:var(--font-size-body)] font-semibold">{t('linuxMenuTitle')}</span>
       <ToggleSwitch checked={status.installed} label={t('linuxMenuTitle')} disabled={busy || blocked} onChange={on => void change(on)} />
     </div>
     <p className="mt-1 text-caption leading-[1.4] text-[var(--ink-3)]">
       {status.thirdParty && !status.installed ? t('linuxMenuThirdParty')
-        : status.conflict && !status.installed ? t('linuxMenuForeignFile')
+        : status.conflict && !status.installed
+          ? (status.conflictPath ? t('linuxMenuForeignFilePath').replace('{path}', status.conflictPath) : t('linuxMenuForeignFile'))
         : t('linuxMenuHint')}
     </p>
     {justAdded && <p role="status" className="mt-1 text-caption leading-[1.4] text-[var(--ink-2)]">{t('linuxMenuAdded')}</p>}

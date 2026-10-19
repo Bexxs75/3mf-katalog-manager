@@ -213,8 +213,9 @@ pub fn render_desktop(variant: Variant, appimage: &str) -> Result<String, MenuEr
     if !Path::new(appimage).is_absolute() || appimage.chars().any(|c| c.is_control()) {
         return Err(MenuError::BadPath);
     }
-    // Graphics (model viewer/catalog) plus Utility keeps it in "Graphics" and
-    // in "Accessories" menus; 3D printing has no registered main category.
+    // Exactly one main category: two make KDE list the entry twice. Graphics
+    // fits a model catalog best; 3DGraphics is the registered additional
+    // category for it (3D printing itself has no registered category).
     Ok(format!(
         "[Desktop Entry]\n\
          Type=Application\n\
@@ -224,13 +225,24 @@ pub fn render_desktop(variant: Variant, appimage: &str) -> Result<String, MenuEr
          Exec={exec}\n\
          Icon={stem}\n\
          Terminal=false\n\
-         Categories=Graphics;Utility;\n\
+         Categories=Graphics;3DGraphics;\n\
          StartupWMClass={stem}\n\
          {MARKER_LINE}\n",
         name = variant.display_name,
         exec = quote_exec_arg(appimage),
         stem = variant.stem,
     ))
+}
+
+/// Marks the icon theme folder as changed. Icons are written into folders that
+/// already exist, which leaves this folder's modification time untouched, and
+/// a running GNOME Shell on X11 only re-reads icons when it sees that time
+/// move. Unlike writing an `icon-theme.cache`, this cannot hide icons that
+/// other programs add later.
+pub fn touch_icon_theme_dir(hicolor_dir: &Path) {
+    if let Ok(dir) = fs::File::open(hicolor_dir) {
+        let _ = dir.set_modified(std::time::SystemTime::now());
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -500,7 +512,9 @@ mod tests {
             assert!(text.lines().any(|l| l == line), "missing {line}");
         }
         assert!(text.contains("Comment[de]="));
-        assert!(text.contains("Categories=Graphics;Utility;"));
+        // One main category only, or KDE shows the entry twice.
+        assert!(text.contains("Categories=Graphics;3DGraphics;"));
+        assert!(!text.contains("Utility"));
         assert!(is_managed(&text));
     }
 
@@ -670,6 +684,19 @@ mod tests {
         assert!(!should_prompt(&PromptInput { decision: Some(Decision::NotNow(now + 5)), ..input() }));
     }
 
+    #[test]
+    fn touching_the_icon_folder_moves_its_modification_time() {
+        let tmp = Tmp::new("touch");
+        let dir = tmp.0.join("hicolor");
+        fs::create_dir_all(&dir).unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        fs::File::open(&dir).unwrap().set_modified(old).unwrap();
+        touch_icon_theme_dir(&dir);
+        assert!(fs::metadata(&dir).unwrap().modified().unwrap() > old + std::time::Duration::from_secs(3000));
+        // A missing folder is not an error.
+        touch_icon_theme_dir(&tmp.0.join("missing"));
+    }
+
     /// End-to-end on a scratch data directory; also checks the result with
     /// `desktop-file-validate` when that tool is installed.
     #[test]
@@ -680,10 +707,12 @@ mod tests {
         install(REGULAR, APPIMAGE, &home).unwrap();
         let validate = |expect_ok: bool| {
             match std::process::Command::new("desktop-file-validate").arg(&p.desktop_file).output() {
-                Ok(out) => assert_eq!(
-                    out.status.success(), expect_ok,
-                    "{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)
-                ),
+                Ok(out) => {
+                    let report = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+                    assert_eq!(out.status.success(), expect_ok, "{report}");
+                    // Hints (for example about several main categories) count as findings too.
+                    assert!(!expect_ok || report.is_empty(), "{report}");
+                }
                 Err(_) => eprintln!("desktop-file-validate not installed; skipped"),
             }
         };

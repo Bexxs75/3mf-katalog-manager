@@ -6,7 +6,7 @@ import { ErrorText } from '../diagnostics/ErrorText';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 
 /** One-time question on the first start of a Linux AppImage; nothing is written before "Yes". */
-export function LinuxMenuPrompt() {
+export function LinuxMenuPrompt({ wait = false }: { wait?: boolean } = {}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -14,9 +14,11 @@ export function LinuxMenuPrompt() {
   const [error, setError] = useState<AppError | null>(null);
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
+  // `wait` holds the question back while another first-run dialog is up.
   useEffect(() => {
+    if (wait) return;
     api.getLinuxMenuStatus().then(s => { if (mountedRef.current && s?.shouldPrompt) setOpen(true); }).catch(() => {});
-  }, []);
+  }, [wait]);
   if (!open) return null;
   async function answer(choice: api.LinuxMenuAnswer) {
     setBusy(true);
@@ -32,7 +34,7 @@ export function LinuxMenuPrompt() {
       if (mountedRef.current) setBusy(false);
     }
   }
-  return <CatalogActionDialog title={t('linuxMenuPromptTitle')} onClose={() => { if (busy) return; if (added) setOpen(false); else void answer('not_now'); }}>
+  return <CatalogActionDialog title={added ? t('linuxMenuAddedTitle') : t('linuxMenuPromptTitle')} onClose={() => { if (busy) return; if (added) setOpen(false); else void answer('not_now'); }}>
     {added ? <>
       <p role="status">{t('linuxMenuAdded')}</p>
       <div className="flex flex-wrap gap-2">

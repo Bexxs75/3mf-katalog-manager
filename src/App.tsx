@@ -584,7 +584,7 @@ export default function App() {
 
           <MigrationBackupWarning />
           <UpdateToast view={update} />
-          <LinuxMenuPrompt />
+          <LinuxMenuPrompt wait={setupDialogOpen} />
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
             <CatalogCleanupDialog

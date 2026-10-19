@@ -8,6 +8,8 @@ export interface LinuxMenuStatus {
   thirdParty: boolean;
   /** A start-menu file of that name exists that this app did not write. */
   conflict: boolean;
+  /** The foreign file in the way, when there is one. */
+  conflictPath: string | null;
   shouldPrompt: boolean;
 }
 
@@ -22,6 +24,7 @@ export function normalizeLinuxMenuStatus(value: unknown): LinuxMenuStatus | null
     installed: v.installed === true,
     thirdParty: v.thirdParty === true,
     conflict: v.conflict === true,
+    conflictPath: typeof v.conflictPath === 'string' ? v.conflictPath : null,
     shouldPrompt: v.shouldPrompt === true,
   };
 }
