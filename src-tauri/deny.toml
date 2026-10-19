@@ -44,6 +44,12 @@ ignore = [
     "RUSTSEC-2026-0367",
     "RUSTSEC-2026-0368",
     "RUSTSEC-2026-0369",
+    # zvariant, zbus_names and zvariant_derive are unmaintained and have no safe upgrade;
+    # they come in transitively via zbus -> ashpd -> rfd -> tauri-plugin-dialog (the
+    # xdg-portal file dialog on Linux).
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0372",
 ]
 
 [licenses]
