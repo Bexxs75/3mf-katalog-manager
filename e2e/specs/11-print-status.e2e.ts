@@ -23,7 +23,7 @@ describe('11 Druckstatus', () => {
     expect((await $$('[data-model-id]').length)).toBe(7);
     expect(await $(`[data-model-id][aria-label="${name}"]`).isExisting()).toBe(false);
     expect(await $('button[aria-label="Noch nicht gedruckt entfernen"]').isDisplayed()).toBe(true);
-    await button('Alle löschen');
+    await button('Filter zurücksetzen');
     await browser.waitUntil(async () => (await $$('[data-model-id]').length) === 8);
     expect(await filter().getValue()).toBe('');
     expect(await $('button[aria-label="Noch nicht gedruckt entfernen"]').isExisting()).toBe(false);

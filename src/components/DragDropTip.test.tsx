@@ -32,3 +32,9 @@ it('disappears immediately when a successful move dismisses it', async () => {
   act(() => dismissDragDropTip());
   expect(screen.queryByText('Verstanden')).toBeNull();
 });
+it('sits in normal flow so a notice stack can place it without overlap', () => {
+  render(<LanguageProvider><DragDropTip modelCount={1} folderCount={1} /></LanguageProvider>);
+  const tip = screen.getByRole('complementary');
+  expect(tip.className).not.toMatch(/\b(absolute|fixed)\b/);
+  expect(tip.className).toContain('pointer-events-auto');
+});

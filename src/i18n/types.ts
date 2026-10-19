@@ -371,6 +371,11 @@ export interface Translations {
   dndTipTitle: string;
   dndTipBody: string;
   dndTipDismiss: string;
+  folderMoveSelf: string;
+  folderMoveDescendant: string;
+  folderMoveAlreadyThere: string;
+  folderMoveNameTaken: string;
+  folderMoveCatalogRoot: string;
 
   collapseAllFolders: string;
   expandAllFolders: string;
@@ -771,6 +776,9 @@ export interface Translations {
   selectAllLabel: string;
   clearSelectionLabel: string;
   bulkDeleteConfirmQuestion: PluralForms;
+  bulkDeleteFailed: PluralForms;
+  bulkDeleteFailedMore: string;
+  bulkDeleteFailedDismiss: string;
   trashEmptyState: string;
   emptyTrashButton: string;
   emptyTrashConfirmQuestion: string;
@@ -979,6 +987,20 @@ export interface Translations {
   infoVerboseLoggingHint: string;
   /** `{date}` = local date the setting turns itself off */
   infoVerboseLoggingOn: string;
+  linuxMenuTitle: string;
+  linuxMenuHint: string;
+  linuxMenuAddedTitle: string;
+  linuxMenuAdded: string;
+  linuxMenuThirdParty: string;
+  linuxMenuForeignFile: string;
+  /** `{path}` is the foreign file. */
+  linuxMenuForeignFilePath: string;
+  linuxMenuFailed: string;
+  linuxMenuPromptTitle: string;
+  linuxMenuPromptText: string;
+  linuxMenuYes: string;
+  linuxMenuNotNow: string;
+  linuxMenuNever: string;
   infoFoldersHeading: string;
   infoOpenDataFolder: string;
   infoOpenDataFolderHint: string;

@@ -7,6 +7,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [Unreleased]
+
+### Added
+
+- **Start-menu entry (Linux AppImage):** on request, the AppImage adds itself to the start menu. It asks once on the first start ("Yes" / "Not now" / "Never ask"); the switch "Show in start menu" in Settings → General adds or removes the entry later. Nothing is written without your consent, the entry follows the file if you move or replace it, and entries from other tools (for example AppImageLauncher) or foreign files of the same name are never touched. Not shown for package installs.
+
+### Changed
+
+- **Filter bar:** the button "Clear all" is now called "Reset filters", so it is clear that only the filters are reset and no models are deleted.
+
+### Fixed
+
+- **Delete on the detail page:** "Delete" now asks for confirmation first, like the list and the side panel; cancelling (button or Escape) changes nothing and returns focus to the "Delete" button.
+- **Deleting several models:** if a file cannot be deleted (for example because it is locked or read-only), a message now names how many files are left (with their names, shortened for long lists) and stays until dismissed. A failure while reloading the list no longer hides it.
+- **Moving into a missing folder:** if the target folder (or the file itself) no longer exists on disk, moving a model now explains this and suggests syncing the catalog with the disk, instead of showing a raw system error with a "Report problem" link.
+- **Moving folders:** a drop that cannot work now says why instead of doing nothing: onto the folder itself or one of its subfolders, onto the folder it is already in, onto a folder that already has a folder of the same name, or for the catalog root folder and the folders above it. If a folder is missing on disk, the message suggests syncing the catalog; the backend also checks the real locations on disk.
+- **Number fields:** turning the mouse wheel over a focused number field no longer changes its value while you scroll the page; the field simply loses focus and the page scrolls on.
+- **Docker, slicer links:** special characters in the file name (such as `+`, spaces or umlauts) no longer show up as `%2B`, `%20` or similar in the slicer. The name in the link is now simplified to plain characters (for example `Würfel Größe.3mf` becomes `Wurfel_Grosse.3mf`); the downloaded file keeps its real name.
+- **Update from within the app (Linux AppImage):** after "Restart and install" the app now starts again on its own. Before, the new version was installed and the catalog backed up, but the app closed and had to be started by hand.
+
 ## [0.16.0] - 2026-10-17
 
 ### Added
@@ -601,6 +621,26 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [Unreleased]
+
+### Hinzugefügt
+
+- **Startmenü-Eintrag (Linux-AppImage):** Auf Wunsch trägt sich das AppImage selbst ins Startmenü ein. Beim ersten Start fragt es einmal nach („Ja“ / „Nicht jetzt“ / „Nie fragen“); mit dem Schalter „Im Startmenü anzeigen“ unter Einstellungen → Allgemein lässt sich der Eintrag später anlegen oder entfernen. Ohne deine Zustimmung wird nichts geschrieben, der Eintrag folgt der Datei, wenn du sie verschiebst oder ersetzt, und Einträge anderer Programme (zum Beispiel AppImageLauncher) oder fremde Dateien gleichen Namens bleiben unangetastet. Bei Paket-Installationen wird nichts davon angezeigt.
+
+### Geändert
+
+- **Filterleiste:** Der Knopf „Alle löschen“ heißt jetzt „Filter zurücksetzen“, damit klar ist, dass nur die Filter zurückgesetzt werden und keine Modelle gelöscht werden.
+
+### Behoben
+
+- **Löschen auf der Detailseite:** „Löschen“ fragt jetzt vorher nach, wie in der Liste und im Seitenbereich; Abbrechen (Knopf oder Escape) ändert nichts und setzt den Fokus zurück auf „Löschen“.
+- **Mehrere Modelle löschen:** Lässt sich eine Datei nicht löschen (zum Beispiel weil sie gesperrt oder schreibgeschützt ist), nennt eine Meldung jetzt, wie viele Dateien übrig geblieben sind (mit Namen, bei langen Listen gekürzt); sie bleibt, bis du sie schließt. Ein Fehler beim Neuladen der Liste überdeckt sie nicht mehr.
+- **Verschieben in einen fehlenden Ordner:** Existiert der Zielordner (oder die Datei selbst) auf der Festplatte nicht mehr, erklärt das Verschieben eines Modells das jetzt und empfiehlt, den Katalog mit der Festplatte abzugleichen, statt eine rohe Systemmeldung mit „Problem melden“ zu zeigen.
+- **Ordner verschieben:** Ein Ablegen, das nicht funktionieren kann, sagt jetzt, warum, statt nichts zu tun: auf den Ordner selbst oder einen seiner Unterordner, auf den Ordner, in dem er schon liegt, auf einen Ordner, der schon einen gleichnamigen Ordner enthält, oder beim Katalog-Stammordner und den Ordnern darüber. Fehlt ein Ordner auf der Festplatte, empfiehlt die Meldung den Abgleich des Katalogs; das Backend prüft außerdem die tatsächlichen Orte auf der Festplatte.
+- **Zahlenfelder:** Das Mausrad über einem fokussierten Zahlenfeld ändert beim Scrollen der Seite den Wert nicht mehr; das Feld verliert nur den Fokus, und die Seite scrollt weiter.
+- **Docker, Slicer-Links:** Sonderzeichen im Dateinamen (etwa `+`, Leerzeichen oder Umlaute) erscheinen im Slicer nicht mehr als `%2B`, `%20` o. Ä. Der Name im Link wird jetzt auf einfache Zeichen vereinfacht (zum Beispiel wird aus `Würfel Größe.3mf` `Wurfel_Grosse.3mf`); die heruntergeladene Datei behält ihren echten Namen.
+- **Update aus der App (Linux-AppImage):** Nach „Neu starten und installieren“ startet die App jetzt wieder von selbst. Bisher wurde die neue Version zwar installiert und der Katalog gesichert, die App schloss sich aber und musste von Hand gestartet werden.
 
 ## [0.16.0] - 2026-10-17
 

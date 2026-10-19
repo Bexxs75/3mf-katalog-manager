@@ -584,6 +584,31 @@ def filename(row):
     return name
 
 
+# Characters that are valid unencoded in a URL path segment.
+SLICER_NAME_SAFE = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~+()!$\',;=@&')
+SLICER_NAME_MAP = str.maketrans({'ß': 'ss', 'æ': 'ae', 'Æ': 'AE', 'ø': 'o', 'Ø': 'O', 'đ': 'd', 'Đ': 'D', 'ð': 'd', 'Ð': 'D',
+                                 'þ': 'th', 'Þ': 'Th', 'œ': 'oe', 'Œ': 'OE', 'ł': 'l', 'Ł': 'L', 'ı': 'i'})
+SLICER_NAME_STEM_MAX = 100
+
+
+def slicer_url_name(name):
+    """Last path segment of a slicer link, built so it never needs percent-encoding.
+
+    The slicer decodes the file= parameter once and shows the last path segment of
+    the resulting URL as the file name without decoding it again, so any encoded
+    character would appear literally (%2B instead of +). The server ignores this
+    segment and sends the real name in Content-Disposition, so it is display-only.
+    """
+    def clean(text):
+        text = unicodedata.normalize('NFKD', text.translate(SLICER_NAME_MAP))
+        text = ''.join(c if c in SLICER_NAME_SAFE else '_' for c in text if not unicodedata.combining(c))
+        return re.sub('_+', '_', text)
+    stem, ext = os.path.splitext(str(name))
+    # Leading dots are dropped so the segment can never be "." or "..".
+    stem = clean(stem).strip('_.')[:SLICER_NAME_STEM_MAX].rstrip('_.')
+    return (stem or 'model') + clean(ext)
+
+
 def list_url(query):
     kept = {k: v for k, v in query.items() if k in LIST_KEYS and v and (k != 'lang' or v in LANGS)}
     return '/katalog/' + ('?' + urlencode(kept) if kept else '')
@@ -1384,7 +1409,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     name = filename(row)
                     if not name.lower().endswith(('.3mf', '.stl', '.stp', '.step', '.obj')) and row['file_type'] in ALL_TYPES:
                         name += '.' + row['file_type']
-                    url = base + f'/katalog/signed/{fid}/{app.token(fid)}/' + quote(name, safe='')
+                    url = base + f'/katalog/signed/{fid}/{app.token(fid)}/' + slicer_url_name(name)
                     encoded = quote(url, safe='')
                     parts.append(f'<div class="actions"><a href="/katalog/download/{fid}">{t("download")}</a>')
                     links = []

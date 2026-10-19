@@ -226,8 +226,8 @@ The list shows additional columns (tags, volume, file size) and can be sorted by
 column header.
 
 The filter bar above the models shows the active folder, tag, collection, search, tool view,
-usage and print status. Remove individual filters with their close buttons; "Clear all" resets
-them together.
+usage and print status. Remove individual filters with their close buttons; "Reset filters" clears
+them all at once (no models are deleted).
 
 ![Active filters above the models](bilder/en/34-filterleiste.png)
 
@@ -1165,7 +1165,7 @@ Spaltenüberschrift sortieren.
 
 Die Filterleiste über den Modellen zeigt aktive Ordner-, Tag-, Sammlungs- und Suchfilter sowie
 die gewählte Werkzeugansicht, Nutzung und Druckstatus. Über die Schließen-Knöpfe entfernst du
-Filter einzeln. "Alle löschen" setzt sie gemeinsam zurück.
+Filter einzeln. "Filter zurücksetzen" setzt sie gemeinsam zurück (es werden keine Modelle gelöscht).
 
 ![Aktive Filter über den Modellen](bilder/34-filterleiste.png)
 

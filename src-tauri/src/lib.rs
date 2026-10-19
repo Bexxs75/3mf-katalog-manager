@@ -4,6 +4,7 @@ mod db;
 pub mod diagnostics;
 mod filament_check;
 mod geometry;
+mod linux_menu;
 mod log_target;
 mod obj;
 // Printer connection: connection and sync logic.
@@ -220,6 +221,7 @@ pub fn run() {
             app.manage(commands::DroppedImages::default());
             app.manage(commands::DiagnosticsState::default());
             app.manage(commands::UpdaterState::default());
+            commands::sync_linux_menu_path();
             startup::create_window(app)?;
             // Product name from the active config (differs for the preview variant) plus
             // the version, taken straight from Cargo.toml.
@@ -364,6 +366,9 @@ pub fn run() {
             commands::list_collection_files,
             commands::get_app_version,
             commands::is_preview_build,
+            commands::get_linux_menu_status,
+            commands::set_linux_menu_enabled,
+            commands::answer_linux_menu_prompt,
             commands::has_step_preview,
             commands::check_app_update,
             commands::get_update_channel,

@@ -25,6 +25,7 @@ import { FilamentView } from './components/FilamentView';
 import { ImportProgressRow } from './components/ImportProgressRow';
 import { ErrorText } from './diagnostics/ErrorText';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
+import { BulkDeleteFailureBanner } from './components/BulkDeleteFailureBanner';
 import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
@@ -33,7 +34,9 @@ import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
 import { MigrationBackupWarning } from './components/MigrationBackupWarning';
+import { NoticeStack } from './components/NoticeStack';
 import { UpdateToast } from './components/UpdateToast';
+import { LinuxMenuPrompt } from './components/LinuxMenuPrompt';
 import { useTheme } from './hooks/useTheme';
 import { useDetailPanel } from './hooks/useDetailPanel';
 import { useUiDensity } from './hooks/UiDensityContext';
@@ -561,17 +564,6 @@ export default function App() {
             />
           )}
 
-          {fileImport.importBanner && (
-            <ImportSummaryBanner
-              imported={fileImport.importBanner.imported}
-              duplicates={fileImport.importBanner.duplicates}
-              skipped={fileImport.importBanner.skipped}
-              otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
-              jobHasProblems={fileImport.importBanner.jobHasProblems}
-              onClose={fileImport.dismissImportBanner}
-            />
-          )}
-
           {fileImport.pendingArchives && (
             <ArchiveImportDialog
               archives={fileImport.pendingArchives}
@@ -581,8 +573,25 @@ export default function App() {
             />
           )}
 
+          <NoticeStack>
+            {fileImport.importBanner && (
+              <ImportSummaryBanner
+                imported={fileImport.importBanner.imported}
+                duplicates={fileImport.importBanner.duplicates}
+                skipped={fileImport.importBanner.skipped}
+                otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
+                jobHasProblems={fileImport.importBanner.jobHasProblems}
+                onClose={fileImport.dismissImportBanner}
+              />
+            )}
+
+            <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
+            <UpdateToast view={update} />
+            {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
+          </NoticeStack>
+
           <MigrationBackupWarning />
-          <UpdateToast view={update} />
+          <LinuxMenuPrompt wait={setupDialogOpen} />
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
             <CatalogCleanupDialog
@@ -592,7 +601,6 @@ export default function App() {
             />
           )}
 
-          {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
           {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
           {dragDrop.moveToast && (
             <MoveToast
@@ -600,6 +608,7 @@ export default function App() {
               from={dragDrop.moveToast.from}
               to={dragDrop.moveToast.to}
               error={dragDrop.moveToast.error}
+              blocked={dragDrop.moveToast.blocked}
               unexpected={dragDrop.moveToast.unexpected}
               onDone={dragDrop.dismissMoveToast}
             />

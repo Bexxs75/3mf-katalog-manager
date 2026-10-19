@@ -168,10 +168,11 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   // Loads only the slim summaries. Entries already upgraded are simply
   // loaded again on the next ensureFullModel().
-  const refreshFiles = useCallback(() => {
+  const loadFiles = useCallback(() => {
     const generation = ++loadGeneration.current;
     return loadSummariesWithTags().then(mapped => {
-      if (generation !== loadGeneration.current) return;
+      // A superseded load is still the backend's answer for the caller, even though it is not shown.
+      if (generation !== loadGeneration.current) return mapped;
       clearModelImages();
       setSummaryConfirmedSnapshotIds(new Set(mapped.filter(model => model.hasRenderSnapshot).map(model => model.id)));
       setFullyLoadedIds(new Set());
@@ -179,8 +180,10 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       setInitialLoadFailed(false);
       // Reads begun while summaries were loading are stale too.
       setRefreshGeneration(++loadGeneration.current);
+      return mapped;
     });
   }, [loadSummariesWithTags]);
+  const refreshFiles = useCallback((): Promise<void> => loadFiles().then(() => undefined), [loadFiles]);
   const refreshTags = useCallback(() => catalogMetaApi.listTagCounts().then(setTags), []);
   const refreshTrash = useCallback(() => filesApi.listTrash().then(setTrashModels), []);
 
@@ -326,17 +329,18 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   );
 
   // For callers where delete_files may have silently skipped IDs:
-  // reloads authoritatively instead of filtering locally.
+  // reloads authoritatively instead of filtering locally. Resolves with the
+  // reloaded list so callers can tell which files are still there.
   const refetchAfterPartialDelete = useCallback(
     (affectedIds: string[]) => {
-      const refreshed = refreshFiles();
+      const refreshed = loadFiles();
       setSelectedId((prev) => (prev && affectedIds.includes(prev) ? null : prev));
       refreshFolders();
       refreshTags();
       refreshTrash();
       return refreshed;
     },
-    [refreshFiles, refreshFolders, refreshTags, refreshTrash],
+    [loadFiles, refreshFolders, refreshTags, refreshTrash],
   );
 
   const restoreModel = useCallback(

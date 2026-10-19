@@ -8,7 +8,7 @@ import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
 import { useModelImages } from '../hooks/useModelImages';
 import { useImportLock } from '../hooks/ImportLockContext';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import { Icon } from './Icon';
 import { useDetailNavigation, type DetailDirection } from '../hooks/useDetailNavigation';
@@ -97,6 +97,19 @@ export function ModelDetailPage({
   const navigationTrigger = useRef<HTMLButtonElement | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerFocusPending = useRef(false);
+  // The trigger button is swapped for the confirmation, so focus would be lost
+  // without moving it explicitly: to Cancel when asking, back to Delete when cancelled.
+  useEffect(() => {
+    if (confirmDelete) cancelDeleteRef.current?.focus();
+    else if (deleteTriggerFocusPending.current) {
+      deleteTriggerFocusPending.current = false;
+      deleteTriggerRef.current?.focus();
+    }
+  }, [confirmDelete]);
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const imageUpload = useImageUpload(model?.id, onUploadImage);
@@ -503,9 +516,36 @@ export function ModelDetailPage({
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
         <span className="font-code text-small text-[var(--ink-3)] break-all">{displayName(model.path)}</span>
         <div className="flex gap-2.5 items-center flex-wrap min-w-0">
-          <button {...lockProps} onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
-            {t('delete')}
-          </button>
+          {confirmDelete ? (
+            <div
+              role="group"
+              aria-labelledby="detail-delete-question"
+              className="flex gap-2.5 items-center flex-wrap"
+              onKeyDown={event => {
+                // Escape only dismisses the question; the page-level handler would close the whole detail page.
+                if (event.key !== 'Escape') return;
+                event.stopPropagation();
+                setConfirmDelete(false);
+                deleteTriggerFocusPending.current = true;
+              }}
+            >
+              <span id="detail-delete-question" className="text-body font-medium text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
+              <button
+                ref={cancelDeleteRef}
+                onClick={() => { setConfirmDelete(false); deleteTriggerFocusPending.current = true; }}
+                className="px-4 py-2 rounded-md border border-[var(--line-strong)] text-body font-semibold text-[var(--ink)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {t('cancel')}
+              </button>
+              <button {...lockProps} onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-4 py-2 rounded-md border border-red-400 text-body font-semibold text-red-400 hover:bg-[var(--panel-2)]">
+                {t('delete')}
+              </button>
+            </div>
+          ) : (
+            <button ref={deleteTriggerRef} {...lockProps} onClick={() => setConfirmDelete(true)} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
+              {t('delete')}
+            </button>
+          )}
           <button
             onClick={onRescanMetadata}
             className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"

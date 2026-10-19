@@ -1,8 +1,8 @@
 import { dismissDragDropTip } from '../lib/dragDropTip';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as collectionsApi from '../lib/api/collections';
 import * as foldersApi from '../lib/api/folders';
-import { containsCatalogRoot, isFolderSelfOrDescendant } from '../lib/folderTree';
+import { folderMoveBlock, type FolderMoveBlock } from '../lib/folderTree';
 import { toAppError } from '../lib/errors';
 import type { ModelFile, Folder, Collection } from '../types';
 
@@ -23,41 +23,45 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
-  const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean; unexpected?: boolean; collection?: 'added' | 'already' } | null>(null);
+  const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean; unexpected?: boolean; collection?: 'added' | 'already'; blocked?: FolderMoveBlock } | null>(null);
+  // Last folder row under the pointer, valid or not: a refused drop still needs to say why.
+  const hoveredFolderId = useRef<string | null>(null);
 
   const onDragFileStart = useCallback((id: string) => setDraggedFileId(id), []);
-  // A click without hovering over another row moves nothing
-  // (dragOverFolderId stays null).
+  // A click without hovering over another row moves nothing. Folders that
+  // cannot be moved are still draggable, so dropping them explains the refusal.
   const onDragFolderStart = useCallback((id: string) => {
-    const folder = folders.find(folder => folder.id === id);
-    if (!folder || containsCatalogRoot(folder.path, catalogBaseDir)) return;
+    if (!folders.some(folder => folder.id === id)) return;
+    hoveredFolderId.current = null;
     setDraggedFolderId(id);
-  }, [folders, catalogBaseDir]);
+  }, [folders]);
   const dismissMoveToast = useCallback(() => setMoveToast(null), []);
 
-  // The cycle check is duplicated here only for the highlight; move_folder
-  // in the backend does the binding check.
+  // The checks are duplicated here for the highlight and the explanation;
+  // move_folder in the backend does the binding check.
   const handleFolderMouseEnter = useCallback(
     (id: string) => {
       if (!draggedFileId && !draggedFolderId) return;
+      hoveredFolderId.current = id;
       setDragOverCollectionId(null);
       if (draggedFileId && models.find((model) => model.id === draggedFileId)?.folderId === id) {
         setDragOverFolderId(null);
         return;
       }
-      if (draggedFolderId && isFolderSelfOrDescendant(id, draggedFolderId, folders)) {
+      if (draggedFolderId && folderMoveBlock(draggedFolderId, id, folders, catalogBaseDir)) {
         setDragOverFolderId(null);
         return;
       }
       setDragOverFolderId(id);
     },
-    [draggedFileId, draggedFolderId, folders, models],
+    [draggedFileId, draggedFolderId, folders, models, catalogBaseDir],
   );
 
   // Only reset if no other row is the target already: a late mouseleave
   // must not overwrite a newer mouseenter, otherwise a drop over a card
   // lands in the folder hovered last.
   const handleFolderMouseLeave = useCallback((id: string) => {
+    if (hoveredFolderId.current === id) hoveredFolderId.current = null;
     setDragOverFolderId((current) => (current === id ? null : current));
   }, []);
 
@@ -129,20 +133,25 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [draggedFileId, dragOverFolderId, dragOverCollectionId, collectionTargets, models, folders, refreshFolders, refreshFiles]);
 
-  // Dragging a folder onto a folder. The cycle check is repeated here so an
+  // Dragging a folder onto a folder. The checks are repeated here so an
   // invalid target never triggers an invoke.
   useEffect(() => {
     if (!draggedFolderId) return;
     const handleMouseUp = () => {
       const folderId = draggedFolderId;
-      const targetId = dragOverFolderId;
+      const targetId = hoveredFolderId.current;
+      hoveredFolderId.current = null;
       setDraggedFolderId(null);
       setDragOverFolderId(null);
-      if (!targetId || targetId === folderId) return;
-      if (isFolderSelfOrDescendant(targetId, folderId, folders)) return;
+      if (!targetId) return;
       const folder = folders.find((f) => f.id === folderId);
       const targetFolder = folders.find((f) => f.id === targetId);
-      if (!folder || !targetFolder || containsCatalogRoot(folder.path, catalogBaseDir)) return;
+      if (!folder || !targetFolder) return;
+      const blocked = folderMoveBlock(folderId, targetId, folders, catalogBaseDir);
+      if (blocked) {
+        setMoveToast({ from: folder.name, to: '', error: true, blocked });
+        return;
+      }
       foldersApi
         .moveFolder(folderId, targetId)
         .then(() => {
@@ -158,7 +167,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     };
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, [draggedFolderId, dragOverFolderId, folders, refreshFolders, refreshFiles, catalogBaseDir]);
+  }, [draggedFolderId, folders, refreshFolders, refreshFiles, catalogBaseDir]);
 
   return {
     draggedFileId,
