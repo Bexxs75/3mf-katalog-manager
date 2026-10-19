@@ -97,6 +97,8 @@ pub struct Paths {
     pub desktop_file: PathBuf,
     pub hicolor_dir: PathBuf,
     pub icons: Vec<(PathBuf, &'static [u8])>,
+    /// The largest icon file, referenced by absolute path from the launcher.
+    pub launcher_icon: PathBuf,
 }
 
 pub fn paths(variant: Variant, data_home: &Path) -> Paths {
@@ -106,7 +108,8 @@ pub fn paths(variant: Variant, data_home: &Path) -> Paths {
         .iter()
         .map(|(size, bytes)| (hicolor_dir.join(format!("{size}x{size}/apps/{}.png", variant.stem)), *bytes))
         .collect();
-    Paths { desktop_file: applications_dir.join(format!("{}.desktop", variant.stem)), applications_dir, hicolor_dir, icons }
+    let launcher_icon = hicolor_dir.join(format!("256x256/apps/{}.png", variant.stem));
+    Paths { desktop_file: applications_dir.join(format!("{}.desktop", variant.stem)), applications_dir, hicolor_dir, icons, launcher_icon }
 }
 
 /// Quotes one `Exec` argument following the Desktop Entry specification: the
@@ -208,11 +211,40 @@ pub fn is_managed(content: &str) -> bool {
     content.lines().any(|l| l.trim() == MARKER_LINE)
 }
 
-/// The text of the `.desktop` file for the AppImage at `appimage`.
-pub fn render_desktop(variant: Variant, appimage: &str) -> Result<String, MenuError> {
+/// The `Icon=` value for an icon file. KDE Plasma does not resolve the theme
+/// icon name of a launcher in the user's data folder, but it does show an
+/// icon given as an absolute path. The value is not quoted (unlike `Exec`),
+/// only a backslash is doubled because the value is a desktop-file string.
+pub fn icon_value(icon: &Path) -> Result<String, MenuError> {
+    let icon = icon.to_str().ok_or(MenuError::BadPath)?;
+    if !Path::new(icon).is_absolute() || icon.chars().any(|c| c.is_control()) {
+        return Err(MenuError::BadPath);
+    }
+    Ok(icon.replace('\\', "\\\\"))
+}
+
+fn icon_line(content: &str) -> Option<&str> {
+    let mut in_entry = false;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_entry = line == "[Desktop Entry]";
+        } else if in_entry {
+            if let Some(v) = line.strip_prefix("Icon=") {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+/// The text of the `.desktop` file for the AppImage at `appimage`, with the
+/// launcher icon at `icon`.
+pub fn render_desktop(variant: Variant, appimage: &str, icon: &Path) -> Result<String, MenuError> {
     if !Path::new(appimage).is_absolute() || appimage.chars().any(|c| c.is_control()) {
         return Err(MenuError::BadPath);
     }
+    let icon = icon_value(icon)?;
     // Exactly one main category: two make KDE list the entry twice. Graphics
     // fits a model catalog best; 3DGraphics is the registered additional
     // category for it (3D printing itself has no registered category).
@@ -223,7 +255,7 @@ pub fn render_desktop(variant: Variant, appimage: &str) -> Result<String, MenuEr
          Comment=Catalog and manage 3D printing model files\n\
          Comment[de]=3D-Druck-Modelldateien katalogisieren und verwalten\n\
          Exec={exec}\n\
-         Icon={stem}\n\
+         Icon={icon}\n\
          Terminal=false\n\
          Categories=Graphics;3DGraphics;\n\
          StartupWMClass={stem}\n\
@@ -248,12 +280,13 @@ pub fn touch_icon_theme_dir(hicolor_dir: &Path) {
 #[derive(Debug, PartialEq, Eq)]
 pub enum EntryState {
     Absent,
-    /// Written by us; `current` tells whether its `Exec` already points at the AppImage.
+    /// Written by us; `current` tells whether its `Exec` already points at the
+    /// AppImage and its `Icon` at the icon file (older entries named a theme icon).
     Managed { current: bool },
     Foreign,
 }
 
-pub fn entry_state(desktop_file: &Path, appimage: &str) -> Result<EntryState, MenuError> {
+pub fn entry_state(desktop_file: &Path, appimage: &str, icon: &str) -> Result<EntryState, MenuError> {
     // Inspect the entry itself, not what it points at: reading follows symlinks,
     // so a foreign symlink with a missing target would look absent and then be
     // replaced by the install.
@@ -265,7 +298,8 @@ pub fn entry_state(desktop_file: &Path, appimage: &str) -> Result<EntryState, Me
     }
     match fs::read_to_string(desktop_file) {
         Ok(content) if is_managed(&content) => {
-            Ok(EntryState::Managed { current: exec_program(&content).as_deref() == Some(appimage) })
+            let current = exec_program(&content).as_deref() == Some(appimage) && icon_line(&content) == Some(icon);
+            Ok(EntryState::Managed { current })
         }
         Ok(_) => Ok(EntryState::Foreign),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(EntryState::Absent),
@@ -375,8 +409,9 @@ fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), MenuError> {
 /// and does nothing when another tool already integrates the AppImage.
 pub fn install(variant: Variant, appimage: &str, data_home: &Path) -> Result<(), MenuError> {
     let p = paths(variant, data_home);
-    let content = render_desktop(variant, appimage)?;
-    match entry_state(&p.desktop_file, appimage)? {
+    let content = render_desktop(variant, appimage, &p.launcher_icon)?;
+    let icon = icon_value(&p.launcher_icon)?;
+    match entry_state(&p.desktop_file, appimage, &icon)? {
         EntryState::Foreign => return Err(MenuError::ForeignFile),
         EntryState::Absent if third_party_entry_exists(variant, &p.applications_dir, appimage) => {
             return Err(MenuError::ThirdParty)
@@ -390,14 +425,20 @@ pub fn install(variant: Variant, appimage: &str, data_home: &Path) -> Result<(),
     write_atomic(&p.desktop_file, content.as_bytes())
 }
 
-/// Points an existing entry of ours at the current AppImage path. Returns
-/// whether anything was rewritten. Without our entry (never consented, or
-/// removed) this does nothing.
+/// Points an existing entry of ours at the current AppImage path and icon
+/// file. Returns whether anything was rewritten. Without our entry (never
+/// consented, or removed) this does nothing.
 pub fn sync_path(variant: Variant, appimage: &str, data_home: &Path) -> Result<bool, MenuError> {
     let p = paths(variant, data_home);
-    match entry_state(&p.desktop_file, appimage)? {
+    let icon = icon_value(&p.launcher_icon)?;
+    match entry_state(&p.desktop_file, appimage, &icon)? {
         EntryState::Managed { current: false } => {
-            write_atomic(&p.desktop_file, render_desktop(variant, appimage)?.as_bytes())?;
+            let content = render_desktop(variant, appimage, &p.launcher_icon)?;
+            // Icons first, as in `install`: an entry pointing at a missing file shows a blank icon.
+            for (path, bytes) in &p.icons {
+                write_atomic(path, bytes)?;
+            }
+            write_atomic(&p.desktop_file, content.as_bytes())?;
             Ok(true)
         }
         _ => Ok(false),
@@ -409,7 +450,7 @@ pub fn sync_path(variant: Variant, appimage: &str, data_home: &Path) -> Result<b
 pub fn remove(variant: Variant, data_home: &Path) -> Result<bool, MenuError> {
     let p = paths(variant, data_home);
     // The AppImage path is irrelevant for ownership, only the marker counts.
-    let removed = match entry_state(&p.desktop_file, "")? {
+    let removed = match entry_state(&p.desktop_file, "", "")? {
         EntryState::Foreign => return Err(MenuError::ForeignFile),
         EntryState::Absent => false,
         EntryState::Managed { .. } => {
@@ -432,6 +473,7 @@ mod tests {
     use super::*;
 
     const APPIMAGE: &str = "/home/u/Apps/3MF Katalog Manager.AppImage";
+    const ICON: &str = "/home/u/.local/share/icons/hicolor/256x256/apps/mf-katalog-manager.png";
 
     struct Tmp(PathBuf);
     impl Tmp {
@@ -479,7 +521,7 @@ mod tests {
         ] {
             let quoted = quote_exec_arg(path);
             assert_eq!(parse_exec(&quoted), vec![path.to_string()], "{quoted}");
-            let content = render_desktop(REGULAR, path).unwrap();
+            let content = render_desktop(REGULAR, path, Path::new(ICON)).unwrap();
             assert_eq!(exec_program(&content).as_deref(), Some(path));
         }
     }
@@ -502,18 +544,27 @@ mod tests {
 
     #[test]
     fn rendering_rejects_relative_and_control_character_paths() {
-        assert_eq!(render_desktop(REGULAR, "app.AppImage"), Err(MenuError::BadPath));
-        assert_eq!(render_desktop(REGULAR, "/a\nExec=evil"), Err(MenuError::BadPath));
+        assert_eq!(render_desktop(REGULAR, "app.AppImage", Path::new(ICON)), Err(MenuError::BadPath));
+        assert_eq!(render_desktop(REGULAR, "/a\nExec=evil", Path::new(ICON)), Err(MenuError::BadPath));
+    }
+
+    #[test]
+    fn rendering_rejects_unusable_icon_paths() {
+        assert_eq!(render_desktop(REGULAR, APPIMAGE, Path::new("icon.png")), Err(MenuError::BadPath));
+        assert_eq!(render_desktop(REGULAR, APPIMAGE, Path::new("/a\nExec=evil/icon.png")), Err(MenuError::BadPath));
+        // Spaces stay unquoted, a backslash is doubled.
+        assert_eq!(icon_value(Path::new("/a b/c.png")).as_deref(), Ok("/a b/c.png"));
+        assert_eq!(icon_value(Path::new("/a\\b/c.png")).as_deref(), Ok("/a\\\\b/c.png"));
     }
 
     #[test]
     fn rendered_entry_has_the_required_keys() {
-        let text = render_desktop(REGULAR, APPIMAGE).unwrap();
+        let text = render_desktop(REGULAR, APPIMAGE, Path::new(ICON)).unwrap();
         for line in [
             "[Desktop Entry]",
             "Type=Application",
             "Name=3MF Katalog Manager",
-            "Icon=mf-katalog-manager",
+            "Icon=/home/u/.local/share/icons/hicolor/256x256/apps/mf-katalog-manager.png",
             "Terminal=false",
             "StartupWMClass=mf-katalog-manager",
             "X-3MF-Katalog-Managed=true",
@@ -589,7 +640,7 @@ mod tests {
         fs::create_dir_all(&p.applications_dir).unwrap();
         let target = tmp.0.join("missing-target.desktop");
         std::os::unix::fs::symlink(&target, &p.desktop_file).unwrap();
-        assert_eq!(entry_state(&p.desktop_file, APPIMAGE), Ok(EntryState::Foreign));
+        assert_eq!(entry_state(&p.desktop_file, APPIMAGE, &icon_value(&p.launcher_icon).unwrap()), Ok(EntryState::Foreign));
         assert_eq!(install(REGULAR, APPIMAGE, &tmp.0), Err(MenuError::ForeignFile));
         assert_eq!(remove(REGULAR, &tmp.0), Err(MenuError::ForeignFile));
         assert_eq!(sync_path(REGULAR, APPIMAGE, &tmp.0), Ok(false));
@@ -606,7 +657,7 @@ mod tests {
         let target = tmp.0.join("theirs.desktop");
         fs::write(&target, "[Desktop Entry]\nName=Mine\nExec=/bin/true\n").unwrap();
         std::os::unix::fs::symlink(&target, &p.desktop_file).unwrap();
-        assert_eq!(entry_state(&p.desktop_file, APPIMAGE), Ok(EntryState::Foreign));
+        assert_eq!(entry_state(&p.desktop_file, APPIMAGE, &icon_value(&p.launcher_icon).unwrap()), Ok(EntryState::Foreign));
     }
 
     #[cfg(unix)]
@@ -615,7 +666,7 @@ mod tests {
         let tmp = Tmp::new("managed-regular");
         install(REGULAR, APPIMAGE, &tmp.0).unwrap();
         let p = paths(REGULAR, &tmp.0);
-        assert_eq!(entry_state(&p.desktop_file, APPIMAGE), Ok(EntryState::Managed { current: true }));
+        assert_eq!(entry_state(&p.desktop_file, APPIMAGE, &icon_value(&p.launcher_icon).unwrap()), Ok(EntryState::Managed { current: true }));
     }
 
     #[test]
@@ -657,6 +708,64 @@ mod tests {
         assert_eq!(exec_program(&content).as_deref(), Some(moved));
         assert!(is_managed(&content));
         assert_eq!(sync_path(REGULAR, moved, &tmp.0), Ok(false));
+    }
+
+    #[test]
+    fn launcher_points_at_the_256_px_icon_file() {
+        let tmp = Tmp::new("icon-path");
+        for variant in [REGULAR, PREVIEW] {
+            install(variant, APPIMAGE, &tmp.0).unwrap();
+            let p = paths(variant, &tmp.0);
+            let content = fs::read_to_string(&p.desktop_file).unwrap();
+            let expected = tmp.0.join(format!("icons/hicolor/256x256/apps/{}.png", variant.stem));
+            assert_eq!(icon_line(&content), Some(expected.to_str().unwrap()));
+            assert_eq!(p.launcher_icon, expected);
+            assert!(expected.is_file());
+            assert!(p.icons.iter().any(|(i, _)| *i == expected));
+            assert_eq!(p.icons.len(), 3);
+        }
+    }
+
+    #[test]
+    fn data_folder_with_spaces_works() {
+        let tmp = Tmp::new("spaces");
+        let home = tmp.0.join("my data");
+        install(REGULAR, APPIMAGE, &home).unwrap();
+        let p = paths(REGULAR, &home);
+        let content = fs::read_to_string(&p.desktop_file).unwrap();
+        assert_eq!(icon_line(&content), Some(p.launcher_icon.to_str().unwrap()));
+        assert!(icon_line(&content).unwrap().contains("my data"));
+        assert_eq!(sync_path(REGULAR, APPIMAGE, &home), Ok(false));
+    }
+
+    #[test]
+    fn old_entry_with_an_icon_name_is_rewritten_once() {
+        let tmp = Tmp::new("old-entry");
+        let p = paths(REGULAR, &tmp.0);
+        fs::create_dir_all(&p.applications_dir).unwrap();
+        let old = render_desktop(REGULAR, APPIMAGE, &p.launcher_icon).unwrap()
+            .replace(&format!("Icon={}", p.launcher_icon.to_str().unwrap()), "Icon=mf-katalog-manager");
+        assert!(old.contains("Icon=mf-katalog-manager\n"));
+        fs::write(&p.desktop_file, &old).unwrap();
+        // The icons are missing as well and get written again.
+        assert_eq!(sync_path(REGULAR, APPIMAGE, &tmp.0), Ok(true));
+        let content = fs::read_to_string(&p.desktop_file).unwrap();
+        assert_eq!(icon_line(&content), Some(p.launcher_icon.to_str().unwrap()));
+        assert!(is_managed(&content));
+        assert!(p.icons.iter().all(|(i, _)| i.is_file()));
+        assert_eq!(sync_path(REGULAR, APPIMAGE, &tmp.0), Ok(false));
+    }
+
+    #[test]
+    fn foreign_entry_keeps_its_icon_on_sync() {
+        let tmp = Tmp::new("foreign-icon");
+        let p = paths(REGULAR, &tmp.0);
+        fs::create_dir_all(&p.applications_dir).unwrap();
+        let theirs = format!("[Desktop Entry]\nName=Mine\nExec={}\nIcon=mine\n", quote_exec_arg(APPIMAGE));
+        fs::write(&p.desktop_file, &theirs).unwrap();
+        assert_eq!(sync_path(REGULAR, APPIMAGE, &tmp.0), Ok(false));
+        assert_eq!(fs::read_to_string(&p.desktop_file).unwrap(), theirs);
+        assert!(!p.launcher_icon.exists());
     }
 
     #[test]
