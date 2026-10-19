@@ -240,6 +240,25 @@ it('cancels the delete question with Escape without closing the page', () => {
   expect(onClose).not.toHaveBeenCalled();
 });
 
+it('cancels the delete question with Escape from outside the question without closing the page', () => {
+  const onClose = vi.fn();
+  const bubbled = vi.fn();
+  window.addEventListener('keydown', bubbled);
+  try {
+    render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onClose={onClose} /></LanguageProvider>);
+    fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+    const rescan = screen.getByRole('button', {name: 'Metadaten neu einlesen'});
+    rescan.focus();
+    fireEvent.keyDown(rescan, {key: 'Escape'});
+    expect(screen.queryByText('Eintrag löschen?')).toBeNull();
+    expect(bubbled).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+  } finally {
+    window.removeEventListener('keydown', bubbled);
+  }
+});
+
 it('deletes only after the question is confirmed', () => {
   const onDelete = vi.fn();
   render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} /></LanguageProvider>);

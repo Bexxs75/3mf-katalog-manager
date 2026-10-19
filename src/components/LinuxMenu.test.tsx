@@ -1,3 +1,4 @@
+import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -97,6 +98,22 @@ describe('LinuxMenuSettings', () => {
   });
 });
 
+describe('StrictMode', () => {
+  const strict = (node: React.ReactNode) => wrap(<React.StrictMode>{node}</React.StrictMode>);
+
+  it('still shows the switch of the settings section', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValue(base);
+    strict(<LinuxMenuSettings />);
+    expect(await screen.findByRole('switch', { name: de.linuxMenuTitle })).toBeInTheDocument();
+  });
+
+  it('still shows the first-start question', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValue({ ...base, shouldPrompt: true });
+    strict(<LinuxMenuPrompt />);
+    expect(await screen.findByRole('dialog', { name: de.linuxMenuPromptTitle })).toBeInTheDocument();
+  });
+});
+
 describe('LinuxMenuPrompt', () => {
   it('stays closed unless the backend asks for it', async () => {
     vi.mocked(api.getLinuxMenuStatus).mockResolvedValue(base);
@@ -115,6 +132,8 @@ describe('LinuxMenuPrompt', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(de.linuxMenuAdded);
     expect(screen.getByRole('dialog', { name: de.linuxMenuAddedTitle })).toBeVisible();
     expect(api.answerLinuxMenuPrompt).toHaveBeenCalledWith('yes');
+    // The answer button is gone; focus must land on the new close button, not on the page.
+    expect(screen.getByRole('button', { name: de.impClose })).toHaveFocus();
   });
 
   it('does not ask while another first-run dialog is open, and asks once it is done', async () => {

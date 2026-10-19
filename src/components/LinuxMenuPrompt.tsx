@@ -13,12 +13,18 @@ export function LinuxMenuPrompt({ wait = false }: { wait?: boolean } = {}) {
   const [added, setAdded] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // Set to true again on setup: StrictMode runs setup, cleanup, setup, and a
+  // cleanup-only reset would leave the ref false for the real mount.
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   // `wait` holds the question back while another first-run dialog is up.
   useEffect(() => {
     if (wait) return;
     api.getLinuxMenuStatus().then(s => { if (mountedRef.current && s?.shouldPrompt) setOpen(true); }).catch(() => {});
   }, [wait]);
+  // The answer buttons are replaced once the entry is added; without this the
+  // focused button disappears and keyboard focus falls back to the page.
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (added) closeRef.current?.focus(); }, [added]);
   if (!open) return null;
   async function answer(choice: api.LinuxMenuAnswer) {
     setBusy(true);
@@ -38,7 +44,7 @@ export function LinuxMenuPrompt({ wait = false }: { wait?: boolean } = {}) {
     {added ? <>
       <p role="status">{t('linuxMenuAdded')}</p>
       <div className="flex flex-wrap gap-2">
-        <button className={catalogActionButton} data-initial-focus onClick={() => setOpen(false)}>{t('impClose')}</button>
+        <button ref={closeRef} className={catalogActionButton} data-initial-focus onClick={() => setOpen(false)}>{t('impClose')}</button>
       </div>
     </> : <>
       <p>{t('linuxMenuPromptText')}</p>
