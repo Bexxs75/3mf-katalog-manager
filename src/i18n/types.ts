@@ -979,6 +979,17 @@ export interface Translations {
   infoVerboseLoggingHint: string;
   /** `{date}` = local date the setting turns itself off */
   infoVerboseLoggingOn: string;
+  linuxMenuTitle: string;
+  linuxMenuHint: string;
+  linuxMenuAdded: string;
+  linuxMenuThirdParty: string;
+  linuxMenuForeignFile: string;
+  linuxMenuFailed: string;
+  linuxMenuPromptTitle: string;
+  linuxMenuPromptText: string;
+  linuxMenuYes: string;
+  linuxMenuNotNow: string;
+  linuxMenuNever: string;
   infoFoldersHeading: string;
   infoOpenDataFolder: string;
   infoOpenDataFolderHint: string;

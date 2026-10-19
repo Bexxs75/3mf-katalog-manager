@@ -13,6 +13,7 @@ import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { Language } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
+import { LinuxMenuSettings } from './LinuxMenuSettings';
 import { InfoFolders } from '../diagnostics/InfoFolders';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
@@ -323,6 +324,7 @@ export function Rail({
                     </button>
                   ))}
                 </div>
+                <LinuxMenuSettings />
               </>
             )}
 

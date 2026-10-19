@@ -7,6 +7,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [Unreleased]
+
+### Added
+
+- **Start-menu entry (Linux AppImage):** on request, the AppImage adds itself to the start menu. It asks once on the first start ("Yes" / "Not now" / "Never ask"); the switch "Show in start menu" in Settings → General adds or removes the entry later. Nothing is written without your consent, the entry follows the file if you move or replace it, and entries from other tools (for example AppImageLauncher) or foreign files of the same name are never touched. Not shown for package installs.
+
 ## [0.16.0] - 2026-10-17
 
 ### Added
@@ -601,6 +607,12 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [Unreleased]
+
+### Hinzugefügt
+
+- **Startmenü-Eintrag (Linux-AppImage):** Auf Wunsch trägt sich das AppImage selbst ins Startmenü ein. Beim ersten Start fragt es einmal nach („Ja“ / „Nicht jetzt“ / „Nie fragen“); mit dem Schalter „Im Startmenü anzeigen“ unter Einstellungen → Allgemein lässt sich der Eintrag später anlegen oder entfernen. Ohne deine Zustimmung wird nichts geschrieben, der Eintrag folgt der Datei, wenn du sie verschiebst oder ersetzt, und Einträge anderer Programme (zum Beispiel AppImageLauncher) oder fremde Dateien gleichen Namens bleiben unangetastet. Bei Paket-Installationen wird nichts davon angezeigt.
 
 ## [0.16.0] - 2026-10-17
 
