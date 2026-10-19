@@ -65,7 +65,8 @@ fn write_decision(state: &State<'_, AppState>, decision: Decision) -> CmdResult<
 fn status(state: &State<'_, AppState>) -> CmdResult<LinuxMenuStatus> {
     let Some(ctx) = context() else { return Ok(LinuxMenuStatus::default()) };
     let p = menu::paths(ctx.variant, &ctx.data_home);
-    let entry = menu::entry_state(&p.desktop_file, &ctx.appimage).map_err(to_cmd_error)?;
+    let icon = menu::icon_value(&p.launcher_icon).map_err(to_cmd_error)?;
+    let entry = menu::entry_state(&p.desktop_file, &ctx.appimage, &icon).map_err(to_cmd_error)?;
     let third_party = menu::third_party_entry_exists(ctx.variant, &p.applications_dir, &ctx.appimage);
     let installed = matches!(entry, menu::EntryState::Managed { .. });
     let conflict = entry == menu::EntryState::Foreign;
@@ -114,7 +115,7 @@ pub(crate) fn sync_linux_menu_path() {
     let Some(ctx) = context() else { return };
     match menu::sync_path(ctx.variant, &ctx.appimage, &ctx.data_home) {
         Ok(true) => {
-            log::info!(target: "linux_menu", "start-menu entry now points at the current AppImage");
+            log::info!(target: "linux_menu", "start-menu entry updated (AppImage path or icon)");
             refresh_desktop_caches(&ctx);
         }
         Ok(false) => {}
