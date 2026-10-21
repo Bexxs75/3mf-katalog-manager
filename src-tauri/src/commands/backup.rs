@@ -853,7 +853,7 @@ fn validate_catalog_db_bytes(
             // must look like what the app itself writes: allowed kind, an `_extras`
             // folder, no protected location, a trash file only inside the trash.
             let mut stmt = conn
-                .prepare("SELECT name, path, kind, trash_path FROM companion_files")
+                .prepare("SELECT c.name, c.path, c.kind, c.trash_path, c.deleted_at IS NULL, f.path FROM companion_files c JOIN files f ON f.id = c.file_id")
                 .map_err(|e| e.to_string())?;
             let companions = stmt
                 .query_map([], |row| {
@@ -862,18 +862,26 @@ fn validate_catalog_db_bytes(
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, Option<String>>(3)?,
+                        row.get::<_, bool>(4)?,
+                        row.get::<_, String>(5)?,
                     ))
                 })
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
-            for (name, path, kind, trash_path) in companions {
+            for (name, path, kind, trash_path, active, model_path) in companions {
                 validate_imported_path_length(&path, known_folders)?;
                 if let Some(path) = trash_path.as_ref().filter(|p| !p.trim().is_empty()) {
                     validate_imported_path_length(path, known_folders)?;
                 }
                 companions::validate_stored_fields(&name, &path, &kind)
                     .map_err(|why| format!("Begleitdatei-Eintrag im Archiv abgelehnt ({why})"))?;
+                // An active row is moved, opened and deleted by the app, so it has to sit
+                // in the folder of the model it belongs to. A trashed row keeps an older
+                // path when its model was moved meanwhile, so it is not held to this.
+                if active && !companions::is_in_extras_of(&model_path, &path) {
+                    return Err("Begleitdatei-Eintrag im Archiv abgelehnt (liegt nicht im Ordner ihres Modells)".to_string());
+                }
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
                     .map_err(|e| format!("Begleitdatei-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
@@ -3487,9 +3495,13 @@ mod companion_tests {
     }
 
     fn with_companion(conn: &Connection, name: &str, path: &str, kind: &str, trash_path: Option<&str>) {
+        with_companion_of(conn, "/catalog/Foo.3mf", name, path, kind, trash_path);
+    }
+
+    fn with_companion_of(conn: &Connection, model_path: &str, name: &str, path: &str, kind: &str, trash_path: Option<&str>) {
         // A crafted backup need not carry the CHECK constraints.
         conn.pragma_update(None, "ignore_check_constraints", true).unwrap();
-        let id = crate::db::test_insert_minimal_file(conn, "/catalog/Foo.3mf", None).unwrap();
+        let id = crate::db::test_insert_minimal_file(conn, model_path, None).unwrap();
         conn.execute(
             "INSERT INTO companion_files (file_id, name, path, kind, added_at, deleted_at, trash_path) VALUES (?1, ?2, ?3, ?4, 'now', ?5, ?6)",
             rusqlite::params![id, name, path, kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path],
@@ -3586,6 +3598,17 @@ mod companion_tests {
     }
 
     #[test]
+    fn an_active_companion_row_must_sit_in_the_folder_of_its_model() {
+        // Foo.3mf lives in /catalog; its row points into another model's folder.
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Other_extras/pic.png", "image", None));
+        assert!(validate(&bytes, &trash).is_err());
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/elsewhere/Foo_extras/pic.png", "image", None));
+        assert!(validate(&bytes, &trash).is_err());
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", None));
+        assert!(validate(&bytes, &trash).is_ok(), "counter-check: its own folder is fine");
+    }
+
+    #[test]
     fn a_folder_row_must_lie_below_its_parent_folder() {
         let make = |child: &'static str| {
             catalog_bytes(move |conn| {
@@ -3603,7 +3626,9 @@ mod companion_tests {
 
     #[test]
     fn a_companion_row_in_a_protected_folder_is_rejected() {
-        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "a.png", "/home/user/.config/autostart_extras/a.png", "image", None));
+        let (bytes, trash) = catalog_bytes(|conn| {
+            with_companion_of(conn, "/home/user/.config/autostart.3mf", "a.png", "/home/user/.config/autostart_extras/a.png", "image", None)
+        });
         assert!(validate_catalog_db_bytes(&bytes, &[PathBuf::from("/home/user/.config")], &trash, &[]).is_err());
         assert!(validate(&bytes, &trash).is_ok(), "counter-check: allowed when nothing is protected there");
     }

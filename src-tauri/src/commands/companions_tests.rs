@@ -765,3 +765,20 @@ fn a_failed_restore_leaves_name_path_and_trash_state_as_they_were() {
     assert_eq!(f.trash_entries(), vec![format!("companion-{}-pic.png", row.id)]);
     assert_eq!(std::fs::read_dir(f.root.join("Foo_extras")).unwrap().count(), 1, "only the other file");
 }
+
+#[test]
+fn a_row_outside_the_models_folder_is_not_moved_along_with_the_model() {
+    let f = Fixture::new();
+    let (id, old_model) = f.model("Foo.3mf");
+    let own = f.add(id, "pic.png", PNG);
+    let stray = f.source("stray.png", PNG);
+    let row = db::companions::insert_companion(&f.conn, id, "stray.png", &stray.to_string_lossy(), "image", Some(1), "now").unwrap();
+    let new_model = f.root.join("Bar.3mf");
+    std::fs::rename(&old_model, &new_model).unwrap();
+    let carried = carry(&f.conn, id, &old_model, &new_model).unwrap();
+    carried.finish();
+    assert!(stray.exists(), "a file outside the folder stays where it is");
+    assert_eq!(db::companions::get_companion(&f.conn, row).unwrap().unwrap().path, stray.to_string_lossy());
+    assert!(f.root.join("Bar_extras").join("pic.png").exists(), "counter-check: the model's own file moves");
+    assert_ne!(db::companions::get_companion(&f.conn, own.id).unwrap().unwrap().path, own.path);
+}

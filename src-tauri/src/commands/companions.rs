@@ -237,6 +237,30 @@ fn resolve_extras_target(conn: &Connection, model_path: &Path, sensitive_dirs: &
     Ok(extras)
 }
 
+/// Whether two folder paths name the same folder, by the same rule everywhere (Windows
+/// ignores case; macOS volumes are usually case-insensitive too).
+fn same_dir_with(a: &Path, b: &Path, case_insensitive: bool) -> bool {
+    let (a, b) = (folders::comparison_path(a), folders::comparison_path(b));
+    if case_insensitive {
+        a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+    } else {
+        a == b
+    }
+}
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    same_dir_with(a, b, CASE_INSENSITIVE_PATHS)
+}
+
+/// True when `companion_path` sits directly in the `_extras` folder of the model at
+/// `model_path`. Used to check rows that come from outside (a restored backup).
+pub(super) fn is_in_extras_of(model_path: &str, companion_path: &str) -> bool {
+    let (Some(extras), Some(dir)) = (extras_dir_for(Path::new(model_path)), Path::new(companion_path).parent()) else {
+        return false;
+    };
+    same_dir(dir, &extras)
+}
+
 /// Why `dir` cannot be trusted as the companion folder `expected` (the `_extras` folder
 /// next to a model). A link in place of the folder, or a model folder reached through a
 /// different route, would make a file operation land on someone else's file, because a
@@ -257,7 +281,7 @@ fn extras_dir_problem(dir: &Path, expected: &Path) -> Option<&'static str> {
     let (Ok(resolved_dir), Ok(resolved_model_dir)) = (dir.canonicalize(), model_dir.canonicalize()) else {
         return Some("Der Begleitdateien-Ordner kann nicht geprüft werden.");
     };
-    if folders::comparison_path(&resolved_dir) != folders::comparison_path(&resolved_model_dir.join(name)) {
+    if !same_dir(&resolved_dir, &resolved_model_dir.join(name)) {
         return Some("Der Begleitdateien-Ordner liegt nicht neben dem Modell und wird nicht verwendet.");
     }
     None
@@ -269,7 +293,7 @@ fn ensure_row_folder_genuine(conn: &Connection, row: &CompanionRecord) -> CmdRes
     let model = load_model(conn, row.file_id)?;
     let expected = extras_dir_for(Path::new(&model.path)).ok_or_else(|| CmdError::expected("Der Pfad des Modells ist nicht gültig."))?;
     let dir = Path::new(&row.path).parent().ok_or_else(|| CmdError::expected("Diese Begleitdatei ist ungültig und wird nicht verwendet."))?;
-    if folders::comparison_path(dir) != folders::comparison_path(&expected) {
+    if !same_dir(dir, &expected) {
         return Err(CmdError::expected("Die Begleitdatei liegt nicht im Begleitdateien-Ordner ihres Modells."));
     }
     match extras_dir_problem(dir, &expected) {
@@ -893,13 +917,29 @@ impl Carried {
 /// overwritten; on any failure everything done here is undone and an error returned, so
 /// the caller can undo the model move.
 pub(super) fn carry(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path) -> CmdResult<Carried> {
+    carry_with(conn, file_id, old_model, new_model, CASE_INSENSITIVE_PATHS)
+}
+
+fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
     let (Some(old_dir), Some(new_dir)) = (extras_dir_for(old_model), extras_dir_for(new_model)) else {
         return Ok(Carried::default());
     };
     if old_dir == new_dir {
         return Ok(Carried::default());
     }
-    let rows = db::companions::list_active_companions(conn, file_id)?;
+    // Only rows that really sit in the model's own folder travel with it; a row that
+    // points anywhere else is left exactly as it is, so a move never reaches a file
+    // outside that folder.
+    let rows: Vec<CompanionRecord> = db::companions::list_active_companions(conn, file_id)?
+        .into_iter()
+        .filter(|row| {
+            let inside = Path::new(&row.path).parent().is_some_and(|dir| same_dir_with(dir, &old_dir, case_insensitive));
+            if !inside {
+                log::warn!(target: "datei", "Begleitdatei liegt nicht im Ordner ihres Modells und wird nicht mitgeführt: {}", row.path);
+            }
+            inside
+        })
+        .collect();
     if rows.is_empty() {
         return Ok(Carried::default());
     }
@@ -913,7 +953,7 @@ pub(super) fn carry(conn: &Connection, file_id: i64, old_model: &Path, new_model
         carried.undo(conn);
         Err(error)
     };
-    if CASE_INSENSITIVE_PATHS && old_dir.to_string_lossy().to_lowercase() == new_dir.to_string_lossy().to_lowercase() {
+    if case_insensitive && old_dir.to_string_lossy().to_lowercase() == new_dir.to_string_lossy().to_lowercase() {
         // The model's new name differs only in case: it is the same folder, which has to be
         // renamed in place (moving the files into "the other" folder would hit themselves).
         if is_real_dir(&old_dir) {
