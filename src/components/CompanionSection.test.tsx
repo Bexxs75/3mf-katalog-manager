@@ -9,6 +9,7 @@ import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { ImportLockContext } from '../hooks/ImportLockContext';
 import { makeModelFile } from '../test/factories';
 import type { Companion } from '../types';
+import { trashDaysLeft } from '../lib/trashRetention';
 import { de } from '../i18n/de';
 import { en } from '../i18n/en';
 import { es } from '../i18n/es';
@@ -235,6 +236,150 @@ describe('CompanionSection', () => {
   });
 });
 
+describe('restoring removed companions', () => {
+  const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const trashed = (overrides: Partial<Companion> = {}) =>
+    companion({ id: 'old', name: 'Foto-1.jpg', kind: 'image', deletedAt: daysAgo(1), ...overrides });
+
+  it('offers "Rückgängig" in the notice, restores that file, reloads and keeps focus in the section', async () => {
+    handlers.remove_companion = () => { list = list.filter((item) => item.id !== 'c1'); };
+    handlers.restore_companion = () => { list = [photo, pdf, note]; return pdf; };
+    renderSection();
+    await screen.findByText('Anleitung.pdf');
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Anleitung.pdf' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Entfernen' }));
+    const status = await screen.findByRole('status');
+    fireEvent.click(within(status).getByRole('button', { name: 'Rückgängig' }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('restore_companion', { companionId: 'c1' }));
+    expect(await screen.findByText('„Anleitung.pdf“ wurde wiederhergestellt.')).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Begleitdateien (3)' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Hinzufügen …' })).toHaveFocus();
+  });
+
+  it('removes the "Rückgängig" button after 15 seconds but keeps the text', async () => {
+    vi.useFakeTimers();
+    try {
+      handlers.remove_companion = () => { list = list.filter((item) => item.id !== 'c1'); };
+      renderSection();
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Anleitung.pdf' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Entfernen' }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.getByRole('button', { name: 'Rückgängig' })).toBeVisible();
+      await act(async () => { await vi.advanceTimersByTimeAsync(14000); });
+      expect(screen.getByRole('button', { name: 'Rückgängig' })).toBeVisible();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+      expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull();
+      expect(screen.getByText('„Anleitung.pdf“ wurde in den Papierkorb gelegt.')).toBeVisible();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('shows the backend reason when undoing fails', async () => {
+    handlers.remove_companion = () => { list = list.filter((item) => item.id !== 'c1'); };
+    handlers.restore_companion = () => Promise.reject({ message: 'Das Modell liegt im Papierkorb.', expected: true });
+    renderSection();
+    await screen.findByText('Anleitung.pdf');
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Anleitung.pdf' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Entfernen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rückgängig' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Wiederherstellen nicht möglich:');
+    expect(alert).toHaveTextContent('Das Modell liegt im Papierkorb.');
+  });
+
+  it('hides the "Entfernt" row when nothing was removed', async () => {
+    renderSection();
+    await screen.findByText('Anleitung.pdf');
+    expect(screen.queryByRole('button', { name: /^Entfernt/ })).toBeNull();
+  });
+
+  it('counts only active entries in the title and shows removed ones only after expanding, without open or tile', async () => {
+    list = [pdf, trashed(), trashed({ id: 'old2', name: 'Notiz.txt', kind: 'text' })];
+    renderSection();
+    expect(await screen.findByRole('heading', { name: 'Begleitdateien (1)' })).toBeVisible();
+    const toggle = screen.getByRole('button', { name: /Entfernt \(2\)/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Foto-1.jpg')).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Foto-1.jpg')).toBeVisible();
+    expect(screen.getByText('Entfernte Begleitdateien liegen 7 Tage im App-Papierkorb. Danach werden sie endgültig gelöscht.')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Foto-1.jpg (öffnen|groß)|Bild Foto-1.jpg/ })).toBeNull();
+    expect(calls('companion_image_data')).toHaveLength(0);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Foto-1.jpg')).toBeNull();
+  });
+
+  it('shows the days left, and "läuft bald ab" when over or unreadable', async () => {
+    list = [
+      trashed({ id: 'a', name: 'A.jpg', deletedAt: daysAgo(1) }),
+      trashed({ id: 'b', name: 'B.jpg', deletedAt: daysAgo(6.5) }),
+      trashed({ id: 'c', name: 'C.jpg', deletedAt: daysAgo(9) }),
+      trashed({ id: 'd', name: 'D.jpg', deletedAt: 'kein Datum' }),
+    ];
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: /Entfernt \(4\)/ }));
+    const row = (name: string) => screen.getByText(name).closest('li')!;
+    expect(row('A.jpg')).toHaveTextContent('noch 6 Tage');
+    expect(row('B.jpg')).toHaveTextContent('noch 1 Tag');
+    expect(row('B.jpg')).not.toHaveTextContent('noch 1 Tage');
+    expect(row('C.jpg')).toHaveTextContent('läuft bald ab');
+    expect(row('D.jpg')).toHaveTextContent('läuft bald ab');
+    expect(row('D.jpg')).not.toHaveTextContent(/noch \d/);
+  });
+
+  it('restores from the list, reloads, announces it and keeps focus on a live control', async () => {
+    list = [pdf, trashed()];
+    handlers.restore_companion = () => { list = [pdf, trashed({ deletedAt: null })]; return list[1]; };
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: /Entfernt \(1\)/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Foto-1.jpg wiederherstellen' }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('restore_companion', { companionId: 'old' }));
+    expect(await screen.findByText('„Foto-1.jpg“ wurde wiederhergestellt.')).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Begleitdateien (2)' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Entfernt/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Hinzufügen …' })).toHaveFocus();
+  });
+
+  it('shows the backend reason when restoring from the list fails', async () => {
+    list = [trashed()];
+    handlers.restore_companion = () => Promise.reject({ message: 'Die Datei ist im Papierkorb nicht mehr vorhanden.', expected: true });
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: /Entfernt \(1\)/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Foto-1.jpg wiederherstellen' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Wiederherstellen nicht möglich: Die Datei ist im Papierkorb nicht mehr vorhanden.');
+    expect(screen.getByText('Foto-1.jpg')).toBeVisible();
+  });
+
+  it('locks restoring during an import', async () => {
+    list = [trashed()];
+    renderSection({ lock: true });
+    fireEvent.click(await screen.findByRole('button', { name: /Entfernt \(1\)/ }));
+    expect(screen.getByRole('button', { name: 'Foto-1.jpg wiederherstellen' })).toBeDisabled();
+  });
+
+  it('renders removed names only as text', async () => {
+    list = [trashed({ name: '<img src=x onerror=alert(1)>.jpg' })];
+    const { container } = renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: /Entfernt \(1\)/ }));
+    expect(screen.getByText('<img src=x onerror=alert(1)>.jpg')).toBeVisible();
+    expect(container.querySelector('img[src="x"]')).toBeNull();
+  });
+});
+
+describe('trashDaysLeft', () => {
+  const now = Date.parse('2026-10-10T12:00:00Z');
+  it.each([
+    ['2026-10-10T12:00:00Z', 7], ['2026-10-03T13:00:00Z', 1], ['2026-10-03T12:00:00Z', null],
+    ['2026-09-01T00:00:00Z', null], ['2026-10-12T12:00:00Z', 7], ['garbage', null], [null, null],
+  ])('%s -> %s', (deletedAt, expected) => {
+    expect(trashDaysLeft(deletedAt, now)).toBe(expected);
+  });
+});
+
 describe('DetailPanel', () => {
   const noop = vi.fn();
   const panel = (density: string, trashMode = false) => {
@@ -263,15 +408,23 @@ describe('DetailPanel', () => {
 describe('texts', () => {
   const keys = ['companionsHeading', 'companionsEmpty', 'companionsAdd', 'companionOpen', 'companionOpenNamed', 'companionMenu',
     'companionReveal', 'companionRemove', 'companionMissing', 'companionViewImage', 'companionPreviewClose',
-    'companionPreviewUnavailable', 'companionRemoved', 'companionAddFailed', 'companionsLoadFailed'] as const;
+    'companionPreviewUnavailable', 'companionRemoved', 'companionAddFailed', 'companionsLoadFailed',
+    'companionRestoreFailed', 'companionsRemovedToggle', 'companionRemovedExpiresSoon', 'companionRestore', 'companionRestoreNamed',
+    'companionsRemovedHint', 'companionRestored', 'undoButton'] as const;
   it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('has all companion texts in %s', (_name, table) => {
     for (const key of keys) expect(String(table[key]).length, key).toBeGreaterThan(1);
-    for (const key of ['companionsAdded', 'archiveSummaryCompanionsAssigned', 'archiveSummaryCompanionsIgnored'] as const) {
+    for (const key of ['companionsAdded', 'companionRemovedDaysLeft', 'archiveSummaryCompanionsAssigned', 'archiveSummaryCompanionsIgnored'] as const) {
       expect(table[key].one).toContain('{count}');
       expect(table[key].other).toContain('{count}');
     }
-    for (const key of ['companionOpenNamed', 'companionMenu', 'companionViewImage', 'companionRemoved', 'companionAddFailed'] as const) {
+    for (const key of ['companionOpenNamed', 'companionMenu', 'companionViewImage', 'companionRemoved', 'companionAddFailed', 'companionRestoreNamed', 'companionRestored'] as const) {
       expect(table[key], key).toContain('{name}');
+    }
+  });
+  it('has the count placeholder in the removed toggle and differs per language', () => {
+    for (const table of [de, en, es, fr]) expect(table.companionsRemovedToggle).toContain('{count}');
+    for (const key of ['companionsRemovedToggle', 'companionRestore', 'companionRestoreFailed', 'companionRemovedExpiresSoon', 'companionsRemovedHint'] as const) {
+      expect(new Set([de, en, es, fr].map((table) => table[key])).size, key).toBe(4);
     }
   });
   it('differs between the four languages for the heading', () => {

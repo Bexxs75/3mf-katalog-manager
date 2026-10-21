@@ -11,8 +11,9 @@ import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useModalDialog } from '../hooks/useModalDialog';
 import {
   addCompanion, companionImageData, companionOpenInfo, listCompanions, openCompanion,
-  pickCompanionFiles, removeCompanion,
+  pickCompanionFiles, removeCompanion, restoreCompanion,
 } from '../lib/api/companions';
+import { trashDaysLeft } from '../lib/trashRetention';
 import type { Companion } from '../types';
 import { Icon } from './Icon';
 
@@ -22,9 +23,14 @@ interface Props {
   variant: 'compact' | 'comfort' | 'page';
 }
 
+// Long enough to find the button, read the hint and decide (same as the move and rename notices).
+const UNDO_DURATION_MS = 15000;
+
 interface AddFailure { name: string; error: AppError }
 
 const buttonClass = 'h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-default';
+
+const kindIcon = (item: Companion) => (item.kind === 'pdf' ? '📄' : item.kind === 'text' ? '📝' : '🖼');
 
 function baseName(path: string) {
   return path.split(/[\\/]/).pop() || path;
@@ -192,9 +198,15 @@ export function CompanionSection({ fileId, variant }: Props) {
   const { container } = useRuntimeEnvironment();
   const headingId = useId();
   const [items, setItems] = useState<Companion[]>([]);
+  const [removed, setRemoved] = useState<Companion[]>([]);
+  const [showRemoved, setShowRemoved] = useState(false);
+  // The entry just removed, while the "Undo" button of its notice is on offer.
+  const [undoTarget, setUndoTarget] = useState<{ id: string; name: string } | null>(null);
+  const removedId = useId();
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<AppError | null>(null);
   const [actionError, setActionError] = useState<AppError | null>(null);
+  const [restoreError, setRestoreError] = useState<AppError | null>(null);
   const [failures, setFailures] = useState<AddFailure[]>([]);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -211,7 +223,9 @@ export function CompanionSection({ fileId, variant }: Props) {
     try {
       const all = await listCompanions(fileId);
       if (request.current !== current) return;
-      setItems(Array.isArray(all) ? all.filter((item) => !item.deletedAt) : []);
+      const list = Array.isArray(all) ? all : [];
+      setItems(list.filter((item) => !item.deletedAt));
+      setRemoved(list.filter((item) => !!item.deletedAt));
       setLoadError(null);
     } catch (e) {
       if (request.current === current) setLoadError(toAppError(e));
@@ -221,12 +235,19 @@ export function CompanionSection({ fileId, variant }: Props) {
   }, [fileId]);
 
   useEffect(() => {
-    setItems([]); setLoaded(false); setLoadError(null); setActionError(null); setFailures([]);
+    setItems([]); setRemoved([]); setShowRemoved(false); setUndoTarget(null); setLoaded(false); setLoadError(null); setActionError(null); setRestoreError(null); setFailures([]);
     setNotice(''); setImages({}); setPreview(null);
     requestedImages.current = new Set();
     void reload();
     return () => { request.current++; };
   }, [fileId, reload]);
+
+  // The button goes away after a while; the text stays, and the "Removed" list still offers the way back.
+  useEffect(() => {
+    if (!undoTarget) return;
+    const timer = setTimeout(() => setUndoTarget(null), UNDO_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [undoTarget]);
 
   // Pictures are fetched one by one when their tile shows up, never with the list.
   const loadImage = useCallback((id: string) => {
@@ -241,7 +262,7 @@ export function CompanionSection({ fileId, variant }: Props) {
   const guarded = async (action: () => Promise<void>) => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true);
-    setActionError(null); setNotice('');
+    setActionError(null); setRestoreError(null); setNotice(''); setUndoTarget(null);
     try { await action(); } finally { busyRef.current = false; setBusy(false); }
   };
 
@@ -266,9 +287,20 @@ export function CompanionSection({ fileId, variant }: Props) {
     try {
       await removeCompanion(item.id);
       setNotice(t('companionRemoved').replace('{name}', displayName(item.name)));
+      setUndoTarget({ id: item.id, name: item.name });
     } catch (e) { setActionError(toAppError(e)); }
     await reload();
     // The removed entry's controls are gone, so focus goes to the stable add button.
+    addButton.current?.focus();
+  });
+
+  const restore = (item: { id: string; name: string }) => guarded(async () => {
+    try {
+      await restoreCompanion(item.id);
+      setNotice(t('companionRestored').replace('{name}', displayName(item.name)));
+    } catch (e) { setRestoreError(toAppError(e)); }
+    await reload();
+    // The entry's button is gone after a restore, so focus goes to the stable add button.
     addButton.current?.focus();
   });
 
@@ -349,7 +381,7 @@ export function CompanionSection({ fileId, variant }: Props) {
           {rowItems.map((item) => (
             <li key={item.id} className="flex items-center gap-2 py-1.5 border-b border-[var(--line)]">
               <span aria-hidden="true" className="flex-none w-5 text-center">
-                {item.kind === 'pdf' ? '📄' : item.kind === 'text' ? '📝' : '🖼'}
+                {kindIcon(item)}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="text-small font-medium break-words" style={{ overflowWrap: 'anywhere' }}>{displayName(item.name)}</div>
@@ -378,7 +410,67 @@ export function CompanionSection({ fileId, variant }: Props) {
         </ul>
       )}
 
-      {notice && <p role="status" className="pt-2 text-small text-[var(--ink-2)] break-words">{notice}</p>}
+      {removed.length > 0 && (
+        <div className="pt-2">
+          <button
+            type="button"
+            aria-expanded={showRemoved}
+            aria-controls={removedId}
+            onClick={() => setShowRemoved((value) => !value)}
+            className="text-small font-medium text-[var(--accent)] cursor-pointer hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          >
+            {t('companionsRemovedToggle').replace('{count}', String(removed.length))}{' '}
+            <span aria-hidden="true" className={`inline-block align-middle ${showRemoved ? 'rotate-180' : ''}`}><Icon name="chevron" size={12} /></span>
+          </button>
+          <div id={removedId} hidden={!showRemoved}>
+            {showRemoved && (
+              <>
+                <ul>
+                  {removed.map((item) => {
+                    const days = trashDaysLeft(item.deletedAt);
+                    return (
+                      <li key={item.id} className="flex items-center gap-2 py-1.5 border-b border-[var(--line)]">
+                        <span aria-hidden="true" className="flex-none w-5 text-center opacity-60">{kindIcon(item)}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-small text-[var(--ink-3)] break-words" style={{ overflowWrap: 'anywhere' }}>{displayName(item.name)}</div>
+                          <div className="text-compact-meta text-[var(--ink-3)] tabular-nums">
+                            {days === null ? t('companionRemovedExpiresSoon') : formatCount(t('companionRemovedDaysLeft'), days)}
+                          </div>
+                        </div>
+                        <button type="button" {...lockProps} onClick={() => void restore(item)}
+                          aria-label={t('companionRestoreNamed').replace('{name}', displayName(item.name))} className={buttonClass}>
+                          {t('companionRestore')}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="pt-2 text-compact-meta text-[var(--ink-3)] break-words">{t('companionsRemovedHint')}</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {notice && (
+        <p role="status" className="pt-2 text-small text-[var(--ink-2)] break-words">
+          {notice}
+          {undoTarget && (
+            <>
+              {' '}
+              <button type="button" {...lockProps} onClick={() => void restore(undoTarget)}
+                className="font-semibold text-[var(--accent)] underline cursor-pointer disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+                {t('undoButton')}
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {restoreError && (
+        <p role="alert" className="pt-2 text-small text-[var(--accent)] break-words">
+          {t('companionRestoreFailed')} <ErrorText error={restoreError} />
+        </p>
+      )}
       {actionError && (
         <p role="alert" className="pt-2 text-small text-[var(--accent)] break-words"><ErrorText error={actionError} /></p>
       )}
