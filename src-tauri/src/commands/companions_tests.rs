@@ -782,3 +782,32 @@ fn a_row_outside_the_models_folder_is_not_moved_along_with_the_model() {
     assert!(f.root.join("Bar_extras").join("pic.png").exists(), "counter-check: the model's own file moves");
     assert_ne!(db::companions::get_companion(&f.conn, own.id).unwrap().unwrap().path, own.path);
 }
+
+#[test]
+fn a_case_only_rename_leaves_a_folder_shared_with_another_model_alone() {
+    let f = Fixture::new();
+    let (a, stl) = f.model("a.stl");
+    let (b, _) = f.model("a.3mf");
+    let first = f.add(a, "one.png", PNG);
+    let second = f.add(b, "two.png", PNG);
+    assert_eq!(Path::new(&first.path).parent(), Path::new(&second.path).parent(), "precondition: one shared folder");
+    let new_model = f.root.join("A.stl");
+    let carried = carry_with(&f.conn, a, &stl, &new_model, true).unwrap();
+    carried.finish();
+    assert!(Path::new(&second.path).exists(), "the other model's file is still where its row says");
+    assert_eq!(f.rows(b)[0].path, second.path);
+    assert_eq!(f.rows(a)[0].path, first.path);
+}
+
+#[test]
+fn a_case_only_rename_still_renames_a_folder_nobody_shares() {
+    let f = Fixture::new();
+    let (a, stl) = f.model("a.stl");
+    f.add(a, "one.png", PNG);
+    let new_model = f.root.join("A.stl");
+    let carried = carry_with(&f.conn, a, &stl, &new_model, true).unwrap();
+    carried.finish();
+    let row = &f.rows(a)[0];
+    assert!(row.path.contains("A_extras"), "{}", row.path);
+    assert!(Path::new(&row.path).exists());
+}

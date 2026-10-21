@@ -956,6 +956,17 @@ fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Pat
     if case_insensitive && old_dir.to_string_lossy().to_lowercase() == new_dir.to_string_lossy().to_lowercase() {
         // The model's new name differs only in case: it is the same folder, which has to be
         // renamed in place (moving the files into "the other" folder would hit themselves).
+        // A folder that another model's companions live in is left alone: renaming it
+        // would leave that model's rows pointing at a name that no longer exists on
+        // volumes that tell the two spellings apart.
+        let own = rows.len();
+        let in_folder = db::companions::list_active_companion_paths(conn)?
+            .iter()
+            .filter(|path| Path::new(path).parent().is_some_and(|dir| same_dir_with(dir, &old_dir, case_insensitive)))
+            .count();
+        if in_folder > own {
+            return Ok(Carried::default());
+        }
         if is_real_dir(&old_dir) {
             std::fs::rename(&old_dir, &new_dir).map_err(|e| CmdError::from(e.to_string()))?;
             carried.renamed_dir = Some((old_dir.clone(), new_dir.clone()));
