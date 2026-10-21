@@ -70,6 +70,12 @@ export interface ModelFile {
   queuePosition: number | null;
   favorite: boolean;
   deletedAt: string | null;
+  /**
+   * Set while this record only carries the list summary (fields such as
+   * `sliceInfo` are placeholders until the full record is loaded). Absent on
+   * full records, so UI that must tell "not loaded yet" from "really empty" can ask.
+   */
+  summaryOnly?: boolean;
 }
 
 /**

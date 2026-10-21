@@ -52,6 +52,7 @@ import { useSlicers } from './hooks/useSlicers';
 import { useDisplayPreference } from './hooks/useDisplayPreference';
 import { useCatalogBaseDir, useRegisterCatalogBaseDirOnStartup } from './hooks/useCatalogBaseDir';
 import { licenseUsage } from './lib/licenses';
+import { modelMayFitBed } from './lib/buildPlateFit';
 import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { useCollections } from './hooks/useCollections';
@@ -88,7 +89,7 @@ export default function App() {
   const store = useCatalogStore({ detailModelId, preselectFirst: detailPanel === 'pinned' });
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
   const { language } = useLanguage();
-  const filters = useCatalogFilters(store.models, store.folders, language);
+  const filters = useCatalogFilters(store.models, store.folders, language, printers.printers);
   const collections = useCollections();
   const collapsedFolders = useCollapsedFolders();
   const expansion = useFolderExpansion();
@@ -239,6 +240,7 @@ export default function App() {
     filters.setActiveTag(null);
     filters.setUsage(null);
     filters.setPrintStatus(null);
+    filters.setFitPrinterId(null);
     filters.setQuery('');
     filters.setToolView(null);
   };
@@ -294,8 +296,9 @@ export default function App() {
       return current ? { ...model, license: current.license, printStatus: current.printStatus } : model;
     })
       .filter(model => !filters.printStatus || (model.printStatus === 'printed') === (filters.printStatus === 'printed'))
-      .filter(model => !filters.usage || licenseUsage(model.license) === filters.usage);
-  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printStatus, filters.usage, store.models]);
+      .filter(model => !filters.usage || licenseUsage(model.license) === filters.usage)
+      .filter(model => !filters.fitBed || modelMayFitBed(model.dimensionsMm, filters.fitBed));
+  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printStatus, filters.usage, filters.fitBed, store.models]);
   const filteredIds = displayedModels.map(model => model.id);
   const navigateDetail = (direction: DetailDirection) => {
     const id = detailNeighbor(filteredIds, detailModelId, direction);
@@ -355,7 +358,7 @@ export default function App() {
     bulk.clearBulkSelection();
     // Deliberately depends only on filter/collection changes - bulk itself
     // is new on every render and would clear the selection right away.
-    // Usage and print-status filters only hide models, so the selection
+    // Usage, print-status and print-bed filters only hide models, so the selection
     // cleanup for removed models does not cover them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -364,6 +367,7 @@ export default function App() {
     filters.query,
     filters.usage,
     filters.printStatus,
+    filters.fitPrinterId,
     collections.activeCollection,
     collections.collectionsGalleryOpen,
   ]);
@@ -626,6 +630,9 @@ export default function App() {
               setPrintStatus={filters.setPrintStatus}
               usage={filters.usage}
               setUsage={filters.setUsage}
+              printers={printers.printers}
+              fitPrinterId={filters.fitPrinterId}
+              setFitPrinterId={filters.setFitPrinterId}
               openInSlicer={slicerLauncher.openInSlicer}
               rescanMetadata={store.rescanMetadata}
               addModelToCollection={collections.addModelToCollection}

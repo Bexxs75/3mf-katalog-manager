@@ -241,3 +241,23 @@ it('combines print status with folder, search and a tool view while retaining to
     activeFolderId: 'f', activeTag: null, query: 'Cube', printStatus: 'not_printed', sort: 'printStatus', toolView: 'recent',
   }).map(m => m.id)).toEqual(['b', 'a']);
 });
+
+describe('print bed filtering', () => {
+  const models = [
+    makeModelFile({ id: 'small', name: 'Small', dimensionsMm: [50, 50, 50] }),
+    makeModelFile({ id: 'wide', name: 'Wide', dimensionsMm: [300, 50, 50] }),
+    makeModelFile({ id: 'unknown', name: 'Unknown', dimensionsMm: null }),
+    makeModelFile({ id: 'zero', name: 'Zero', dimensionsMm: [0, 0, 0] }),
+  ];
+  const criteria = { activeFolderId: 'all', activeTag: null, query: '', sort: 'name' as const };
+
+  it('hides models that certainly do not fit but keeps those without known size', () => {
+    const result = filterAndSortModels(models, [], { ...criteria, fitBed: [256, 256, 256] });
+    expect(result.map(m => m.id)).toEqual(['small', 'unknown', 'zero']);
+  });
+
+  it('shows everything without a chosen printer', () => {
+    expect(filterAndSortModels(models, [], { ...criteria, fitBed: null })).toHaveLength(4);
+    expect(filterAndSortModels(models, [], criteria)).toHaveLength(4);
+  });
+});

@@ -51,6 +51,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     queuePosition: s.queuePosition,
     favorite: s.favorite,
     deletedAt: null,
+    summaryOnly: true,
   };
 }
 
@@ -137,7 +138,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       // Only take it if no new mutation started during the await and no
       // newer resync has already taken a more current state.
       if (fresh && generation === loadGeneration.current && pendingMutationCounts[key] === undefined && mutationEpochs[key] === epochAtResyncStart) {
-        setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh, hasThumbnail: fresh.thumbnailImage !== null, hasRenderSnapshot: fresh.renderSnapshotImage !== null } : m)));
+        setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh, summaryOnly: false, hasThumbnail: fresh.thumbnailImage !== null, hasRenderSnapshot: fresh.renderSnapshotImage !== null } : m)));
       }
     } catch (e) {
       console.error(`[resync] reloading ${key} failed:`, e);

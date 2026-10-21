@@ -1,11 +1,12 @@
 import type { LicenseUsage } from '../lib/licenses';
 import { useMemo, useState } from 'react';
 import type { Language } from '../i18n/types';
-import type { ModelFile, Folder, ViewMode, SortKey, SortDirection } from '../types';
+import type { ModelFile, Folder, ViewMode, SortKey, SortDirection, Printer } from '../types';
+import { printerBuildVolume } from '../lib/buildPlateFit';
 import type { RecentSnapshot, ToolView } from '../lib/toolViews';
 import { defaultSortDirection, filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
 
-export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de') {
+export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de', printers: readonly Printer[] = []) {
   const [view, setView] = useState<ViewMode>('grid');
   const [sorting, setSorting] = useState<{ sort: SortKey; sortDirection: SortDirection }>({ sort: 'name', sortDirection: 'asc' });
   const { sort, sortDirection } = sorting;
@@ -17,6 +18,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   };
   const [printStatus, setPrintStatus] = useState<ModelFile['printStatus'] | null>(null);
   const [usage, setUsage] = useState<LicenseUsage | null>(null);
+  const [fitPrinterChoice, setFitPrinterId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -30,11 +32,17 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
     setRecentSnapshot(next === 'recent' ? new Map(models.map((m) => [m.id, m.lastViewedAt])) : null);
   };
 
+  // A printer that was deleted or lost its build volume no longer filters
+  // (and no longer shows as a chip), instead of silently hiding everything.
+  const fitPrinter = printers.find(printer => printer.id === fitPrinterChoice && printerBuildVolume(printer)) ?? null;
+  const fitBed = useMemo(() => (fitPrinter ? printerBuildVolume(fitPrinter) : null), [fitPrinter]);
+
   const filtered = useMemo(
     () =>
       filterAndSortModels(models, folders, {
         usage,
         printStatus,
+        fitBed,
         activeFolderId,
         activeTag,
         query,
@@ -44,7 +52,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
         toolView,
         recentSnapshot: recentSnapshot ?? undefined,
       }),
-    [models, folders, usage, printStatus, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot],
+    [models, folders, usage, printStatus, fitBed, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot],
   );
 
   const queue = useMemo(() => selectQueuedModels(models), [models]);
@@ -52,6 +60,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   return {
     usage, setUsage,
     printStatus, setPrintStatus,
+    fitPrinterId: fitPrinter?.id ?? null, setFitPrinterId, fitBed,
     view, setView,
     sort, setSort, sortDirection, setSortDirection,
     query, setQuery,

@@ -1,5 +1,6 @@
 import { displayName } from '../lib/displayName';
 import { usageLabels, type LicenseUsage } from '../lib/licenses';
+import { printerBuildVolume } from '../lib/buildPlateFit';
 import { ModelLayoutContext } from '../hooks/ModelLayoutContext';
 import { scrollTileIntoView } from '../hooks/useKeyboardShortcuts';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
@@ -20,7 +21,7 @@ import { DetailPanel } from './DetailPanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
 import { BulkActionToolbar } from './BulkActionToolbar';
-import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig, FolderTrashResult } from '../types';
+import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig, FolderTrashResult, Printer } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
@@ -125,6 +126,10 @@ interface CatalogWorkspaceProps {
   setPrintStatus?: (status: ModelFile['printStatus'] | null) => void;
   usage?: LicenseUsage | null;
   setUsage?: (usage: LicenseUsage | null) => void;
+  /** Printers of the Printer Manager; those with a build volume feed the "Fits on" filter and the print-bed section. */
+  printers?: Printer[];
+  fitPrinterId?: string | null;
+  setFitPrinterId?: (printerId: string | null) => void;
   setModelSourceUrl: (id: string, url: string | null) => void;
   openInSlicer: (id: string) => void;
   rescanMetadata: (id: string) => void;
@@ -241,6 +246,9 @@ export function CatalogWorkspace({
   setPrintStatus,
   usage = null,
   setUsage,
+  printers = [],
+  fitPrinterId = null,
+  setFitPrinterId,
   openInSlicer,
   rescanMetadata,
   addModelToCollection,
@@ -330,7 +338,7 @@ export function CatalogWorkspace({
   const t = useT();
   const formatCount = useFormatCount();
   const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
-    view, sort, language, query, usage, printStatus, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
+    view, sort, language, query, usage, printStatus, fitPrinterId, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
   const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
@@ -343,11 +351,15 @@ export function CatalogWorkspace({
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
   const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');
+  const fitPrinters = printers.filter(printer => printerBuildVolume(printer));
+  const fitPrinter = fitPrinters.find(printer => printer.id === fitPrinterId) ?? null;
   const chips = [
     ...(printStatus ? [{kind: 'printStatusFilter' as const, value: printStatusLabel,
       removeLabel: t('chipRemove').replace('{label}', printStatusLabel), remove: () => setPrintStatus?.(null)}] : []),
     ...(usage ? [{kind: 'licenseUsage' as const, value: t(usageLabels[usage]),
       removeLabel: t('chipRemove').replace('{label}', t(usageLabels[usage])), remove: () => setUsage?.(null)}] : []),
+    ...(fitPrinter ? [{kind: 'fitPrinterFilter' as const, value: fitPrinter.name,
+      removeLabel: t('chipRemove').replace('{label}', `${t('fitPrinterFilter')} ${fitPrinter.name}`), remove: () => setFitPrinterId?.(null)}] : []),
     ...(toolView ? [{kind: 'filterBarView' as const, value: t(TOOL_VIEW_LABEL_KEY[toolView]),
       removeLabel: t('chipRemove').replace('{label}', t(TOOL_VIEW_LABEL_KEY[toolView])), remove: () => setToolView(null)}] : []),
     ...(activeCollection ? [{kind: 'filterBarCollection' as const, value: collectionName,
@@ -360,7 +372,7 @@ export function CatalogWorkspace({
       removeLabel: t('filterBarRemoveSearch').replace('{label}', query), remove: () => setQuery('')}] : []),
   ];
   const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
-  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus;
+  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && !fitPrinter;
   return (
     <div className="relative flex-1 flex min-h-0">
       <Sidebar
@@ -452,7 +464,7 @@ export function CatalogWorkspace({
 
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
         {importRow}
-        {(setUsage || setPrintStatus || chips.length > 0) && (
+        {(setUsage || setPrintStatus || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
           <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
             <span className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
             {setUsage && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
@@ -470,6 +482,14 @@ export function CatalogWorkspace({
                 <option value="">{t('printStatusAll')}</option>
                 <option value="printed">{t('printStatusPrinted')}</option>
                 <option value="not_printed">{t('printStatusNotPrinted')}</option>
+              </select>
+            </label>}
+            {setFitPrinterId && fitPrinters.length > 0 && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
+              {t('fitPrinterFilter')}
+              <select aria-label={t('fitPrinterFilter')} value={fitPrinter?.id ?? ''} onChange={event => setFitPrinterId(event.target.value || null)}
+                className="max-w-full rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] px-2 py-1">
+                <option value="">{t('fitPrinterAll')}</option>
+                {fitPrinters.map(printer => <option key={printer.id} value={printer.id}>{printer.name}</option>)}
               </select>
             </label>}
             {chips.map(chip => (
@@ -548,6 +568,7 @@ export function CatalogWorkspace({
             allTags={tags.map(tag => tag.label)}
             tagHues={tagHues}
             model={detailModel}
+            printers={printers}
             onClose={() => setDetailModelId(null)}
             onAddTag={(t) => addTag(detailModel.id, t)}
             onRemoveTag={(t) => removeTag(detailModel.id, t)}
@@ -673,6 +694,7 @@ export function CatalogWorkspace({
         <DetailPanel
           filament={selectedFilament.error ? null : selectedFilament.checks?.get(selected?.id ?? '')}
           lastPrinter={lastPrinter}
+          printers={printers}
           allTags={tags.map(tag => tag.label)}
           tagHues={tagHues}
           model={selected}
