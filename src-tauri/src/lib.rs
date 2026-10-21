@@ -353,6 +353,8 @@ pub fn run() {
             commands::remove_files_from_catalog,
             commands::folder_removal_summary,
             commands::remove_folder_from_catalog,
+            commands::folder_trash_summary,
+            commands::trash_folder,
             commands::reset_catalog,
             commands::list_trash,
             commands::restore_file,

@@ -165,7 +165,7 @@ pub(super) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> 
 }
 
 // Pure component comparison; callers resolve existing filesystem paths first.
-fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
+pub(super) fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
     let path = comparison_path(path);
     folders.iter()
         .filter_map(|folder| {

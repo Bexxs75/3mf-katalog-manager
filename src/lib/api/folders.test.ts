@@ -31,4 +31,14 @@ describe('folders api', () => {
     await foldersApi.renameFolder('folder1', 'New name');
     expect(invoke).toHaveBeenCalledWith('rename_folder', { folderId: 'folder1', name: 'New name' });
   });
+
+  it('folderTrashSummary calls folder_trash_summary', async () => {
+    await foldersApi.folderTrashSummary('folder1');
+    expect(invoke).toHaveBeenCalledWith('folder_trash_summary', { folderId: 'folder1' });
+  });
+
+  it('trashFolder calls trash_folder', async () => {
+    await foldersApi.trashFolder('folder1');
+    expect(invoke).toHaveBeenCalledWith('trash_folder', { folderId: 'folder1' });
+  });
 });
