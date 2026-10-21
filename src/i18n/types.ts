@@ -1219,6 +1219,37 @@ export interface Translations {
   sfDialogHint: string;
   sfRejectedDone: PluralForms;
   sfSizeLabel: string;
+  filamentGroupModeLabel: string;
+  filamentGroupModeGrouped: string;
+  filamentGroupModeSingle: string;
+  filamentStatSorts: string;
+  filamentGroupCount: PluralForms;
+  resinGroupCount: PluralForms;
+  filamentGroupOfTotal: string;
+  filamentGroupShow: string;
+  filamentGroupHide: string;
+  resinGroupShow: string;
+  resinGroupHide: string;
+  filamentGroupToggleAria: string;
+  filamentGroupEmptyCount: PluralForms;
+  resinGroupEmptyCount: PluralForms;
+  filamentGroupSlot: string;
+  filamentGroupBooksHere: string;
+  filamentGroupLoaded: string;
+  filamentGroupSingle: string;
+  filamentColumnCount: string;
+  filamentColorsSection: string;
+  filamentColorN: string;
+  filamentColorAdd: string;
+  filamentColorRemoveN: string;
+  filamentColorInvalid: string;
+  filamentColorFirstHint: string;
+  filamentColorMulti: string;
+  filamentWeightHintMakerMaterial: string;
+  filamentWeightHintMaker: string;
+  filamentSuggestedSpool: string;
+  resinSuggestedBottle: string;
+  resinConsumeBottleLabel: string;
 }
 
 export function formatCount(forms: PluralForms, n: number, language: Language = 'de'): string {

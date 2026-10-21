@@ -6,12 +6,14 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatSpoolAmount } from '../i18n/format';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isInStorage, slotKey, spoolFitsUnit, spoolsBySlot } from '../lib/filamentSlots';
-import { isValidColorHex } from '../lib/filamentColors';
+import { groupFilaments } from '../lib/filamentGroups';
+import { suggestSpool } from '../lib/spoolSuggestion';
 import type { SpoolDropTarget } from '../hooks/useSpoolDragAndDrop';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { FilamentSpool, MaterialUnit, Printer, SpoolKind } from '../types';
 import { PrinterLinkStatus } from './PrinterLinkStatus';
 import { ResinBottleIcon } from './ResinBottleIcon';
+import { SpoolColorDot } from './SpoolColorDot';
 
 interface Props {
   /** All printers; only those of the current view (`kind`) are shown. */
@@ -144,11 +146,7 @@ export function PrinterColumn({
                           <ResinBottleIcon colorHex={spool.colorHex} size={18} />
                         </span>
                       ) : (
-                        <span
-                          className="w-3.5 h-3.5 rounded-[3px] border border-[var(--line-strong)] flex-none"
-                          style={spool.colorHex && isValidColorHex(spool.colorHex) ? { backgroundColor: spool.colorHex } : undefined}
-                          aria-hidden
-                        />
+                        <SpoolColorDot spool={spool} className="w-3.5 h-3.5" shape="rounded-[3px]" />
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-[var(--ink)]">
@@ -256,6 +254,7 @@ interface SlotMenuProps {
 
 function SlotMenu({ spool, storage, vat, onClose, onLoad, onUnload, onEdit, onConsume }: SlotMenuProps) {
   const t = useT();
+  const { language } = useLanguage();
   const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
@@ -280,6 +279,17 @@ function SlotMenu({ spool, storage, vat, onClose, onLoad, onUnload, onEdit, onCo
   const needle = query.trim().toLowerCase();
   const candidates = storage.filter(
     (s) => !needle || [s.material, s.manufacturer, s.color, s.location].some((v) => v?.toLowerCase().includes(needle)),
+  );
+
+  // Among equal spools the one with the smallest usable rest is marked as the suggestion;
+  // it is only a hint, every spool stays selectable.
+  const suggestedIds = new Set(
+    groupFilaments(candidates)
+      .filter((group) => group.spools.length > 1)
+      .flatMap((group) => {
+        const pick = suggestSpool(group.spools);
+        return pick ? [pick.id] : [];
+      }),
   );
 
   const action = (label: ReactNode, run: () => void) => (
@@ -334,13 +344,18 @@ function SlotMenu({ spool, storage, vat, onClose, onLoad, onUnload, onEdit, onCo
               }}
               className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-small hover:bg-[var(--panel-2)] cursor-pointer"
             >
-              <span
-                className="w-3 h-3 rounded-full border border-[var(--line-strong)] flex-none"
-                style={candidate.colorHex && isValidColorHex(candidate.colorHex) ? { backgroundColor: candidate.colorHex } : undefined}
-                aria-hidden
-              />
-              <span className="flex-1 truncate">{[candidate.material, candidate.color].filter(Boolean).join(' · ')}</span>
-              <span className="text-caption text-[var(--ink-3)] truncate max-w-[80px]">{candidate.location}</span>
+              <SpoolColorDot spool={candidate} />
+              <span className="flex-1 min-w-0">
+                <span className="block truncate">{[candidate.material, candidate.color].filter(Boolean).join(' · ')}</span>
+                {suggestedIds.has(candidate.id) && (
+                  <span className="block truncate text-caption text-[var(--accent)]">
+                    {vat ? t('resinSuggestedBottle') : t('filamentSuggestedSpool')}
+                  </span>
+                )}
+              </span>
+              <span className="text-caption text-[var(--ink-3)] truncate max-w-[110px]">
+                {[candidate.location, formatSpoolAmount(candidate.remainingWeightG, candidate.kind, language)].filter(Boolean).join(' · ')}
+              </span>
             </button>
           ))
         )}

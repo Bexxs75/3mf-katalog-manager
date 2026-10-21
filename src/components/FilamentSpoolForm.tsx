@@ -7,6 +7,8 @@ import { parseDecimalInput } from '../lib/decimalInput';
 import type { FilamentSpool, SpoolKind } from '../types';
 import { FILAMENT_MATERIALS, RESIN_MATERIALS, manufacturerSuggestions } from '../lib/filamentCatalog';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
+import { isValidColorHex } from '../lib/filamentColors';
+import { suggestSpoolWeight } from '../lib/spoolWeightSuggestion';
 import { useImageDropZone } from '../hooks/useImageDropZone';
 import { readDroppedImage } from '../lib/api/filament';
 import type { ImageDropRejection } from '../lib/imageDrop';
@@ -20,6 +22,8 @@ interface Props {
   editing: FilamentSpool | null;
   knownLocations: string[];
   knownManufacturers?: string[];
+  /** All spools: the start weight of a new spool comes from the newest matching one. */
+  knownSpools?: FilamentSpool[];
   onClose: () => void;
   onSaved: () => void;
   /** Kind for new entries (current view in the inventory). */
@@ -32,6 +36,8 @@ interface FormState {
   manufacturer: string;
   color: string;
   colorHex: string | null;
+  /** Texts of the colors 2 to 4 as typed; the first color is `colorHex`. */
+  extraColors: string[];
   location: string;
   diameterMm: string;
   originalWeightG: string;
@@ -47,6 +53,7 @@ const EMPTY_FORM: FormState = {
   manufacturer: '',
   color: '',
   colorHex: null,
+  extraColors: [],
   location: '',
   diameterMm: '1.75',
   originalWeightG: '1000',
@@ -55,6 +62,16 @@ const EMPTY_FORM: FormState = {
   imagePng: null,
   quantity: '1',
 };
+
+/** Most colors one spool can carry (the backend checks the same). */
+const MAX_COLORS = 4;
+const NO_SPOOLS: FilamentSpool[] = [];
+
+/** `1a1a1a` and `#1A1A1A` both become `#1a1a1a`; whatever else stays as typed. */
+function normalizeHex(text: string): string {
+  const trimmed = text.trim();
+  return (trimmed.startsWith('#') ? trimmed : `#${trimmed}`).toLowerCase();
+}
 
 type NumericField = 'diameterMm' | 'price' | 'originalWeightG' | 'remainingWeightG';
 
@@ -67,7 +84,8 @@ function toForm(spool: FilamentSpool): FormState {
     material: spool.material,
     manufacturer: spool.manufacturer ?? '',
     color: spool.color ?? '',
-    colorHex: spool.colorHex,
+    colorHex: spool.colorHexes[0] ?? spool.colorHex,
+    extraColors: spool.colorHexes.slice(1),
     // If the spool sits in a slot, the field edits its home location.
     location: (spool.unitId !== null ? spool.homeLocation : spool.location) ?? '',
     diameterMm: String(spool.diameterMm),
@@ -79,13 +97,16 @@ function toForm(spool: FilamentSpool): FormState {
   };
 }
 
-export function FilamentSpoolForm({ open, editing, knownLocations, knownManufacturers = [], onClose, onSaved, defaultKind = 'filament' }: Props) {
+export function FilamentSpoolForm({ open, editing, knownLocations, knownManufacturers = [], knownSpools = NO_SPOOLS, onClose, onSaved, defaultKind = 'filament' }: Props) {
   const t = useT();
   const dialogRef = useModalDialog<HTMLElement>({ open, onClose });
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const fieldId = useId();
   const numericRefs = useRef<Partial<Record<NumericField, HTMLInputElement | null>>>({});
   const [attempted, setAttempted] = useState(false);
+  // A weight the user typed is never replaced by the suggestion for the maker and material.
+  const [weightTouched, setWeightTouched] = useState({ original: false, remaining: false });
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
   const diameter = parseDecimalInput(form.diameterMm);
   const price = form.price.trim() === '' ? null : parseDecimalInput(form.price);
   const original = parseDecimalInput(form.originalWeightG);
@@ -98,6 +119,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
     originalWeightG: !Number.isFinite(original) || original <= 0 || !Number.isFinite(roundedOriginal) || roundedOriginal <= 0,
     remainingWeightG: !Number.isFinite(remaining) || remaining < 0 || remaining > original,
   };
+  const extraInvalid = form.extraColors.map((text) => text.trim() !== '' && !isValidColorHex(normalizeHex(text)));
   const messages = {
     diameterMm: t('filamentInvalidDiameter'), price: t('filamentInvalidPrice'),
     originalWeightG: t('filamentInvalidOriginal'), remainingWeightG: t('filamentInvalidRemaining'),
@@ -122,11 +144,43 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
   useEffect(() => {
     if (open) {
       setForm(editing ? toForm(editing) : { ...EMPTY_FORM, kind: defaultKind });
+      setWeightTouched({ original: false, remaining: false });
       setError(null);
       setAttempted(false);
       setImageError(null);
     }
   }, [open, editing, defaultKind]);
+
+  // New spool: start weights follow the maker and material until the user types one.
+  const weightSuggestion = suggestSpoolWeight(knownSpools, form.kind, form.manufacturer, form.material);
+  useEffect(() => {
+    if (!open || editing) return;
+    setForm((prev) => {
+      const weight = String(suggestSpoolWeight(knownSpools, prev.kind, prev.manufacturer, prev.material).weight);
+      const next = {
+        ...prev,
+        originalWeightG: weightTouched.original ? prev.originalWeightG : weight,
+        remainingWeightG: weightTouched.remaining ? prev.remainingWeightG : weight,
+      };
+      return next.originalWeightG === prev.originalWeightG && next.remainingWeightG === prev.remainingWeightG ? prev : next;
+    });
+  }, [open, editing, knownSpools, form.kind, form.manufacturer, form.material, weightTouched]);
+
+  useEffect(() => {
+    if (pendingFocus === null) return;
+    document.getElementById(pendingFocus)?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus, form.extraColors.length]);
+
+  const addColor = () => {
+    const id = `${fieldId}-extra-${form.extraColors.length}`;
+    setForm((f) => (f.extraColors.length + 1 >= MAX_COLORS ? f : { ...f, extraColors: [...f.extraColors, ''] }));
+    setPendingFocus(id);
+  };
+  const removeColor = (index: number) => {
+    setForm((f) => ({ ...f, extraColors: f.extraColors.filter((_, i) => i !== index) }));
+    setPendingFocus(`${fieldId}-add-color`);
+  };
 
   const handlePickImage = () => {
     invoke<string | null>('pick_and_read_image')
@@ -167,10 +221,20 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       numericRefs.current[firstInvalid]?.focus();
       return;
     }
+    const badColor = extraInvalid.indexOf(true);
+    if (badColor >= 0) {
+      document.getElementById(`${fieldId}-extra-${badColor}`)?.focus();
+      return;
+    }
     if (imageError) {
       imageErrorRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
       return;
     }
+    // One color stays single-colored (empty list); two or more become the list. The
+    // backend keeps `colorHex` equal to the first entry.
+    const listed = [form.colorHex, ...form.extraColors.map((text) => (text.trim() === '' ? null : normalizeHex(text)))]
+      .filter((hex): hex is string => hex !== null && isValidColorHex(hex));
+    const colorHexes = listed.length > 1 ? listed : [];
     const payload: FilamentSpool = {
       id: editing?.id ?? '',
       material: form.material.trim(),
@@ -182,7 +246,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       remainingWeightG: Math.round(remaining * 10) / 10,
       price,
       imagePng: form.imagePng,
-      colorHex: form.colorHex,
+      colorHex: colorHexes[0] ?? form.colorHex,
+      colorHexes,
       // Only passed through - the slot is changed exclusively by load/unload_spool.
       homeLocation: editing?.homeLocation ?? null,
       unitId: editing?.unitId ?? null,
@@ -355,9 +420,60 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
                   className={fieldClass}
                 />
               </div>
-              <div>
-                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorValueLabel')}</label>
+              <div role="group" aria-labelledby={`${fieldId}-colors`}>
+                <span id={`${fieldId}-colors`} className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorsSection')}</span>
                 <ColorPicker value={form.colorHex} onChange={(colorHex) => setForm((f) => ({ ...f, colorHex }))} />
+                {form.extraColors.map((text, index) => {
+                  const n = index + 2;
+                  const bad = extraInvalid[index];
+                  return (
+                    <div key={index} className="mt-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-7 h-7 rounded-[4px] border border-[var(--line-strong)] flex-none"
+                          style={isValidColorHex(normalizeHex(text)) ? { backgroundColor: normalizeHex(text) } : undefined}
+                          aria-hidden
+                        />
+                        <input
+                          id={`${fieldId}-extra-${index}`}
+                          value={text}
+                          onChange={(e) => setForm((f) => ({ ...f, extraColors: f.extraColors.map((c, i) => (i === index ? e.target.value : c)) }))}
+                          placeholder="#1a1a1a"
+                          maxLength={7}
+                          aria-label={t('filamentColorN').replace('{n}', String(n))}
+                          aria-invalid={bad ? true : undefined}
+                          aria-describedby={bad ? `${fieldId}-extra-${index}-error` : undefined}
+                          className={`w-28 h-8 px-2 rounded-md border bg-[var(--panel)] text-[var(--ink)] font-medium tabular-nums text-small outline-0 focus:border-[var(--accent)] ${bad ? 'border-[var(--crit)]' : 'border-[var(--line-strong)]'}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeColor(index)}
+                          aria-label={t('filamentColorRemoveN').replace('{n}', String(n))}
+                          title={t('filamentColorRemoveN').replace('{n}', String(n))}
+                          className="w-7 h-7 rounded-md grid place-items-center text-[var(--ink-3)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)] cursor-pointer"
+                        >
+                          <Icon name="close" size={14} />
+                        </button>
+                      </div>
+                      {bad && (
+                        <p id={`${fieldId}-extra-${index}-error`} role="alert" className="mt-1 text-caption text-[var(--crit)]">{t('filamentColorInvalid')}</p>
+                      )}
+                    </div>
+                  );
+                })}
+                {form.extraColors.length + 1 < MAX_COLORS && (
+                  <button
+                    type="button"
+                    id={`${fieldId}-add-color`}
+                    onClick={addColor}
+                    className="mt-2 h-7 px-2.5 rounded-md border border-dashed border-[var(--line-strong)] text-caption font-semibold text-[var(--ink-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer"
+                  >
+                    {t('filamentColorAdd')}
+                  </button>
+                )}
+                {form.extraColors.length > 0 && (
+                  <p className="text-caption text-[var(--ink-3)] mt-1 leading-snug">{t('filamentColorFirstHint')}</p>
+                )}
               </div>
 
               {!editing && (
@@ -447,10 +563,20 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
                   type="text"
                   inputMode="decimal"
                   value={form.originalWeightG}
-                  onChange={(e) => setForm((f) => ({ ...f, originalWeightG: e.target.value }))}
+                  onChange={(e) => {
+                    setWeightTouched((w) => ({ ...w, original: true }));
+                    setForm((f) => ({ ...f, originalWeightG: e.target.value }));
+                  }}
                   {...numericProps('originalWeightG')}
                 />
                 {fieldError('originalWeightG')}
+                {!editing && !weightTouched.original && weightSuggestion.source !== 'default' && (
+                  <p className="mt-1 text-caption text-[var(--ink-3)]">
+                    {weightSuggestion.source === 'manufacturerMaterial'
+                      ? t('filamentWeightHintMakerMaterial').replace('{manufacturer}', weightSuggestion.manufacturer).replace('{material}', weightSuggestion.material)
+                      : t('filamentWeightHintMaker').replace('{manufacturer}', weightSuggestion.manufacturer)}
+                  </p>
+                )}
               </div>
               <div>
                 <label htmlFor={`${fieldId}-remainingWeightG`} className="block text-caption font-semibold text-[var(--ink-2)] mb-1">
@@ -460,7 +586,10 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
                   type="text"
                   inputMode="decimal"
                   value={form.remainingWeightG}
-                  onChange={(e) => setForm((f) => ({ ...f, remainingWeightG: e.target.value }))}
+                  onChange={(e) => {
+                    setWeightTouched((w) => ({ ...w, remaining: true }));
+                    setForm((f) => ({ ...f, remainingWeightG: e.target.value }));
+                  }}
                   {...numericProps('remainingWeightG')}
                 />
                 {fieldError('remainingWeightG')}

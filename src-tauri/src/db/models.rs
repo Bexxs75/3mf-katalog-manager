@@ -198,6 +198,9 @@ pub struct FilamentSpoolRecord {
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
     pub color_hex: Option<String>,
+    /// Up to four colours of a multi-colour spool; empty means single-colour. When not
+    /// empty, `color_hex` is always its first entry (the slicer colour match reads that).
+    pub color_hexes: Vec<String>,
     /// Home location while the spool sits in a slot (otherwise `None`).
     pub home_location: Option<String>,
     pub unit_id: Option<i64>,
@@ -217,6 +220,8 @@ pub struct NewFilamentSpool {
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
     pub color_hex: Option<String>,
+    /// See `FilamentSpoolRecord::color_hexes`.
+    pub color_hexes: Vec<String>,
     pub kind: String,
 }
 

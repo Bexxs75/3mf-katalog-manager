@@ -605,6 +605,7 @@ mod tests {
             price,
             image_png: None,
             color_hex: None,
+            color_hexes: Vec::new(),
             home_location: None,
             unit_id: None,
             slot_index: None,

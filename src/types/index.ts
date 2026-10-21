@@ -250,6 +250,8 @@ export interface FilamentSpool {
   imagePng: string | null;
   /** Color value `#rrggbb`; `color` stays the color name. */
   colorHex: string | null;
+  /** Up to four colors of a multi-color spool (`#rrggbb`); empty = single-color. `colorHex` is always the first entry. */
+  colorHexes: string[];
   /** Home location while the spool sits in a slot (then `location` is empty). */
   homeLocation: string | null;
   unitId: string | null;

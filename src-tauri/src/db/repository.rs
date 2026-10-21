@@ -1136,8 +1136,8 @@ pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> 
 pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Result<i64, DbError> {
     conn.execute(
         "INSERT INTO filament_spools
-            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at, color_hex, kind)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at, color_hex, kind, color_hexes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             spool.material,
             spool.manufacturer,
@@ -1149,8 +1149,9 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
             spool.price,
             spool.image_png,
             chrono::Utc::now().to_rfc3339(),
-            spool.color_hex,
+            crate::db::printers::primary_color_hex(&spool.color_hexes, spool.color_hex.as_deref()),
             spool.kind,
+            crate::db::printers::color_list_to_json(&spool.color_hexes),
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -1159,7 +1160,7 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
 pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
-                color_hex, home_location, unit_id, slot_index, kind
+                color_hex, home_location, unit_id, slot_index, kind, color_hexes
          FROM filament_spools ORDER BY material, manufacturer",
     )?;
     let rows = stmt
@@ -1180,6 +1181,7 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
                 unit_id: row.get(12)?,
                 slot_index: row.get(13)?,
                 kind: row.get(14)?,
+                color_hexes: crate::db::printers::color_list_from_json(row.get::<_, Option<String>>(15)?.as_deref()),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1190,7 +1192,7 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
 pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRecord, DbError> {
     conn.query_row(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
-                color_hex, home_location, unit_id, slot_index, kind
+                color_hex, home_location, unit_id, slot_index, kind, color_hexes
          FROM filament_spools WHERE id = ?1",
         params![id],
         |row| {
@@ -1210,6 +1212,7 @@ pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRec
                 unit_id: row.get(12)?,
                 slot_index: row.get(13)?,
                 kind: row.get(14)?,
+                color_hexes: crate::db::printers::color_list_from_json(row.get::<_, Option<String>>(15)?.as_deref()),
             })
         },
     )
@@ -1240,7 +1243,7 @@ pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpoo
              location = CASE WHEN unit_id IS NULL THEN ?4 ELSE location END,
              home_location = CASE WHEN unit_id IS NULL THEN home_location ELSE ?4 END,
              diameter_mm = ?5, original_weight_g = ?6, remaining_weight_g = ?7, price = ?8, image_png = ?9,
-             color_hex = ?11, kind = ?12
+             color_hex = ?11, kind = ?12, color_hexes = ?13
          WHERE id = ?10",
         params![
             spool.material,
@@ -1253,8 +1256,9 @@ pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpoo
             spool.price,
             spool.image_png,
             id,
-            spool.color_hex,
+            crate::db::printers::primary_color_hex(&spool.color_hexes, spool.color_hex.as_deref()),
             spool.kind,
+            crate::db::printers::color_list_to_json(&spool.color_hexes),
         ],
     )?;
     Ok(())

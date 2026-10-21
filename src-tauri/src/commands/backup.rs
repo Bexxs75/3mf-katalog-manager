@@ -204,7 +204,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("tags", &["id", "name", "color_hue"]),
     ("file_tags", &["file_id", "tag_id"]),
     ("file_metadata", &["file_id", "label", "value"]),
-    ("filament_spools", &["id", "material", "remaining_weight_g", "unit_id", "slot_index", "home_location", "color_hex", "kind"]),
+    ("filament_spools", &["id", "material", "remaining_weight_g", "unit_id", "slot_index", "home_location", "color_hex", "color_hexes", "kind"]),
     ("printers", &["id", "name", "position", "kind"]),
     ("material_units", &["id", "printer_id", "name", "kind", "slot_count", "bambu_ams_index", "position"]),
     ("collections", &["id", "name", "created_at"]),
@@ -339,6 +339,7 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("filament_spools", "price", ColType::Real, true),
     ("filament_spools", "image_png", ColType::Blob, true),
     ("filament_spools", "color_hex", ColType::Text, true),
+    ("filament_spools", "color_hexes", ColType::Text, true),
     ("filament_spools", "home_location", ColType::Text, true),
     ("filament_spools", "unit_id", ColType::Integer, true),
     ("filament_spools", "slot_index", ColType::Integer, true),
@@ -530,6 +531,21 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
     if bad_colors > 0 {
         return Err("Katalog-Datenbank enthaelt ungueltige Farbwerte".to_string());
     }
+
+    // The colour list is parsed again on every load; a foreign backup must not bring
+    // oversized lists or text that is not a colour.
+    let mut color_lists = conn
+        .prepare("SELECT color_hexes FROM filament_spools WHERE color_hexes IS NOT NULL")
+        .map_err(|e| e.to_string())?;
+    for raw in color_lists.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())? {
+        let raw = raw.map_err(|e| e.to_string())?;
+        let valid = serde_json::from_str::<Vec<String>>(&raw)
+            .is_ok_and(|list| crate::db::printers::validate_color_list(&list).is_ok());
+        if !valid {
+            return Err("Katalog-Datenbank enthaelt ungueltige Farblisten".to_string());
+        }
+    }
+    drop(color_lists);
 
     // Resin only in a resin vat, filament never. A crafted backup can bring the
     // column without its CHECK.
@@ -1338,6 +1354,100 @@ mod tests {
         assert_eq!(db::list_files(&conn).unwrap()[0].creator.as_deref(), Some("Jane"));
     }
 
+    fn spool_colors(state: &AppState) -> Vec<(Option<String>, Vec<String>)> {
+        let conn = state.db.lock().unwrap();
+        db::list_filament_spools(&conn).unwrap().into_iter().map(|s| (s.color_hex, s.color_hexes)).collect()
+    }
+
+    fn colour_spool(colors: &[&str]) -> db::models::NewFilamentSpool {
+        db::models::NewFilamentSpool {
+            material: "PLA".into(),
+            manufacturer: None,
+            color: None,
+            location: None,
+            diameter_mm: 1.75,
+            original_weight_g: 1000.0,
+            remaining_weight_g: 500.0,
+            price: None,
+            image_png: None,
+            color_hex: None,
+            color_hexes: colors.iter().map(|c| c.to_string()).collect(),
+            kind: "filament".into(),
+        }
+    }
+
+    #[test]
+    fn spool_color_lists_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_colors_roundtrip_a");
+        {
+            let conn = source.db.lock().unwrap();
+            db::insert_filament_spool(&conn, &colour_spool(&["#ff0000", "#00ff00", "#ff0000"])).unwrap();
+            db::insert_filament_spool(&conn, &colour_spool(&[])).unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_colors_roundtrip_b");
+        assert!(spool_colors(&target).is_empty());
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let mut restored = spool_colors(&target);
+        restored.sort();
+        assert_eq!(restored, vec![
+            (None, vec![]),
+            (Some("#ff0000".into()), vec!["#ff0000".into(), "#00ff00".into(), "#ff0000".into()]),
+        ]);
+    }
+
+    #[test]
+    fn a_backup_from_before_the_spool_color_list_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_colors_old_a");
+        {
+            let conn = old.db.lock().unwrap();
+            let mut spool = colour_spool(&[]);
+            spool.color_hex = Some("#b03020".into());
+            db::insert_filament_spool(&conn, &spool).unwrap();
+            conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN color_hexes").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SPOOL_COLOR_LIST_MIGRATION_VERSION - 1).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT color_hexes FROM filament_spools").is_err(), "precondition: the backup has no such column");
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_colors_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        assert_eq!(spool_colors(&target), vec![(Some("#b03020".into()), vec![])]);
+    }
+
+    #[test]
+    fn imported_spool_color_lists_are_checked() {
+        for (value, valid) in [
+            (r##"["#ff0000","#00ff00","#0000ff","#ffffff"]"##, true),
+            (r##"["#ff0000","#ff0000"]"##, true),
+            (r##"["#ff0000","#00ff00","#0000ff","#ffffff","#000000"]"##, false),
+            (r##"["#ff0000","red"]"##, false),
+            (r##"["#ff00001"]"##, false),
+            (r##"{"a":1}"##, false),
+            ("not json", false),
+        ] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                db::insert_filament_spool(conn, &colour_spool(&[])).unwrap();
+                conn.execute("UPDATE filament_spools SET color_hexes = ?1", [value]).unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
+            assert_eq!(result.is_ok(), valid, "{value}: {result:?}");
+        }
+    }
+
     #[test]
     fn imported_source_values_are_checked() {
         for (column, value, valid) in [
@@ -2046,6 +2156,7 @@ mod tests {
                     price: None,
                     image_png: None,
                     color_hex: Some("#1a1a1a".to_string()),
+                    color_hexes: Vec::new(),
                     kind: "filament".to_string(),
                 },
             )
@@ -2238,6 +2349,7 @@ mod tests {
                     price: Some(19.99),
                     image_png: Some(vec![9, 9, 9]),
                     color_hex: Some("#1a1a1a".to_string()),
+                    color_hexes: Vec::new(),
                     kind: "filament".to_string(),
                 },
             )
@@ -3108,6 +3220,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: None,
+                color_hexes: Vec::new(),
                 kind: "resin".to_string(),
             },
         )
@@ -3251,6 +3364,7 @@ mod tests {
             price: None,
             image_png: None,
             color_hex: None,
+            color_hexes: Vec::new(),
             kind: "resin".to_string(),
         }
     }

@@ -137,6 +137,8 @@ const MIGRATIONS: &[MigrationStep] = &[
     // Companion files of a model and the remembered source folders (with the files
     // the user declined). New tables only, no existing data is touched.
     MigrationStep::Simple(add_companion_and_source_tables),
+    // Colour list of a spool (JSON array of up to four `#rrggbb` values); NULL means single-colour.
+    MigrationStep::Simple(add_spool_color_list),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -171,6 +173,16 @@ pub(crate) const SOURCE_COLUMNS_MIGRATION_VERSION: i64 = 48;
 /// what every catalog written by the version that introduced them contains.
 #[cfg(test)]
 pub(crate) const COMPANION_TABLES_MIGRATION_VERSION: i64 = 49;
+
+/// Schema version after the spool colour list. Must stay 50: that is what every catalog
+/// written by the version that introduced the column contains.
+#[cfg(test)]
+pub(crate) const SPOOL_COLOR_LIST_MIGRATION_VERSION: i64 = 50;
+
+/// New nullable column only, so existing spools stay single-colour and keep every value.
+fn add_spool_color_list(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "ALTER TABLE filament_spools ADD COLUMN color_hexes TEXT")
+}
 
 fn add_companion_and_source_tables(conn: &Connection) -> Result<(), DbError> {
     exec(conn, "CREATE TABLE IF NOT EXISTS companion_files (
@@ -630,9 +642,10 @@ mod tests {
     }
 
     #[test]
-    fn the_companion_and_source_step_is_the_last_step_and_adds_only_tables() {
-        assert_eq!(COMPANION_TABLES_MIGRATION_VERSION, CURRENT_SCHEMA_VERSION, "the step must stay where it shipped");
+    fn the_companion_and_source_step_stays_at_49_and_adds_only_tables() {
+        assert_eq!(COMPANION_TABLES_MIGRATION_VERSION, 49, "the step must stay where it shipped");
         assert_eq!(COMPANION_TABLES_MIGRATION_VERSION, SOURCE_COLUMNS_MIGRATION_VERSION + 1);
+        assert_eq!(SPOOL_COLOR_LIST_MIGRATION_VERSION, COMPANION_TABLES_MIGRATION_VERSION + 1);
     }
 
     #[test]
@@ -685,6 +698,55 @@ mod tests {
         }
         add_companion_and_source_tables(&fresh).unwrap();
         add_companion_and_source_tables(&fresh).unwrap();
+    }
+
+    /// A catalog one step behind the colour list: spools with all their values, no `color_hexes` yet.
+    fn catalog_before_spool_color_list() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN color_hexes").unwrap();
+        conn.execute(
+            "INSERT INTO filament_spools (material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, created_at, color_hex)
+             VALUES ('PLA', 'Bambu', 'Rot', 1.75, 1000, 640.5, 'now', '#b03020')",
+            [],
+        ).unwrap();
+        conn.pragma_update(None, "user_version", SPOOL_COLOR_LIST_MIGRATION_VERSION - 1).unwrap();
+        conn
+    }
+
+    fn spool_snapshot(conn: &Connection) -> String {
+        conn.query_row(
+            "SELECT id || '|' || material || '|' || manufacturer || '|' || color || '|' || diameter_mm || '|' || original_weight_g
+                    || '|' || remaining_weight_g || '|' || color_hex || '|' || kind FROM filament_spools",
+            [],
+            |r| r.get(0),
+        ).unwrap()
+    }
+
+    #[test]
+    fn the_spool_color_list_step_adds_a_nullable_column_and_keeps_the_spools_unchanged() {
+        let mut conn = catalog_before_spool_color_list();
+        assert!(conn.prepare("SELECT color_hexes FROM filament_spools").is_err(), "precondition: no column yet");
+        let before = spool_snapshot(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(spool_snapshot(&conn), before, "no existing value may change");
+        let list: Option<String> = conn.query_row("SELECT color_hexes FROM filament_spools", [], |r| r.get(0)).unwrap();
+        assert_eq!(list, None, "old spools stay single-colour");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, SPOOL_COLOR_LIST_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn the_spool_color_list_step_is_repeatable_and_part_of_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        fresh.prepare("SELECT color_hexes FROM filament_spools").unwrap();
+        add_spool_color_list(&fresh).unwrap();
+        add_spool_color_list(&fresh).unwrap();
     }
 
     #[test]
@@ -1008,7 +1070,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 10);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 11);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

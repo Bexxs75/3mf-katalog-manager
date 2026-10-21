@@ -17,7 +17,7 @@ function spool(overrides: Partial<FilamentSpool>): FilamentSpool {
   return {
     id: 's1', material: 'PLA', manufacturer: null, color: 'Schwarz', location: null,
     diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 620, price: null, imagePng: null,
-    colorHex: '#1a1a1a', homeLocation: null, unitId: null, slotIndex: null, kind: 'filament', ...overrides,
+    colorHex: '#1a1a1a', colorHexes: [], homeLocation: null, unitId: null, slotIndex: null, kind: 'filament', ...overrides,
   };
 }
 
@@ -54,6 +54,7 @@ beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
   localStorage.removeItem('3mf-katalog-filament-kind');
   localStorage.removeItem('3mf-katalog-filament-layout');
+  localStorage.removeItem('3mf-katalog-filament-group-mode');
 });
 
 function printerLink(): PrinterLinkState {
@@ -126,7 +127,8 @@ describe('FilamentView with printers', () => {
     ]);
   });
 
-  it('shows loaded spools only in the printer column but counts all spools', async () => {
+  it('shows loaded spools only in the printer column in the single view but counts all spools', async () => {
+    localStorage.setItem('3mf-katalog-filament-group-mode', 'single');
     renderView();
     await waitFor(() => expect(screen.getByTestId('slot-u1-0')).toHaveTextContent('PLA · Schwarz'));
     const storage = screen.getByTestId('filament-storage');
@@ -197,7 +199,8 @@ describe('FilamentView with printers', () => {
         templateId: 'store', count: 1, weight: 1000, price: null, location: 'Regal 1',
       }),
     );
-    expect(await screen.findByTestId('spool-card-new1')).toHaveClass('spool-new');
+    // The new spool equals STORED, so both sit in one group card, which carries the highlight.
+    expect(await screen.findByTestId('group-card-store')).toHaveClass('spool-new');
     expect(screen.getByRole('status')).toHaveTextContent('1 Spule PETG · Rot angelegt');
     expect(screen.queryByRole('dialog', { name: /Nachkaufen/ })).toBeNull();
   });
@@ -445,4 +448,149 @@ it('opens the print review dialog immediately when navigated from history', asyn
   const l = { ...printerLink(), enabled: true, jobs: [printerJob({})] };
   render(<LanguageProvider><PrintersWrapper>{printers => <FilamentView printerLink={l} printers={printers} printerContext={{ printerId: 'p1', reviewJobs: true }} />}</PrintersWrapper></LanguageProvider>);
   expect(await screen.findByRole('dialog', { name: 'Neue Drucke' })).toBeInTheDocument();
+});
+
+describe('FilamentView grouped inventory', () => {
+  const G1 = spool({ id: 'g1', material: 'PLA', manufacturer: 'Polymaker', color: 'Schwarz', location: 'Regal A', remainingWeightG: 920 });
+  const G2 = spool({ id: 'g2', material: 'PLA', manufacturer: 'Polymaker', color: 'Schwarz', location: 'Regal A', remainingWeightG: 640 });
+  const LOW = spool({ id: 'low', material: 'PETG', manufacturer: 'Anycubic', color: 'Rot', colorHex: '#c0392b', location: 'Box', remainingWeightG: 120 });
+  const FULL = spool({ id: 'full', material: 'TPU', manufacturer: 'eSun', color: 'Gelb', colorHex: '#f1c40f', location: 'Regal B', remainingWeightG: 1000 });
+  const AMS1 = spool({ id: 'am1', material: 'PLA', manufacturer: 'Polymaker', color: 'Schwarz', location: null, homeLocation: 'Regal A', unitId: 'u1', slotIndex: 0, remainingWeightG: 700 });
+  const AMS2 = spool({ id: 'am2', material: 'PLA', manufacturer: 'Polymaker', color: 'Schwarz', location: null, homeLocation: 'Regal A', unitId: 'u1', slotIndex: 2, remainingWeightG: 650 });
+
+  function mockStock(list: FilamentSpool[]) {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') return Promise.resolve(list);
+      if (cmd === 'list_printers') return Promise.resolve([X1C]);
+      return Promise.resolve(undefined);
+    });
+  }
+  const stat = (label: string) => screen.getByText(label).nextElementSibling;
+
+  it('groups equal spools by default and counts single spools, kinds and grams in the header', async () => {
+    mockStock([G1, G2, LOW, FULL, AMS1, AMS2]);
+    renderView();
+    const card = await screen.findByTestId('group-card-g1');
+    expect(card).toHaveTextContent('2 Spulen');
+    expect(card).toHaveTextContent('1.560,0 g');
+    expect(screen.getByTestId('spool-card-low')).toBeInTheDocument();
+    expect(stat('Spulen gesamt')).toHaveTextContent('6');
+    // Shelf group, PETG, TPU and the group in the AMS.
+    expect(stat('Verschiedene Sorten')).toHaveTextContent('4');
+    expect(stat('Restbestand gesamt')).toHaveTextContent('4.030 g');
+  });
+
+  it('shows spools in a printer as a group of their own with the unit name', async () => {
+    mockStock([G1, G2, AMS1, AMS2]);
+    renderView();
+    const card = await screen.findByTestId('group-card-am1');
+    expect(card).toHaveTextContent('X1C · AMS A');
+    expect(card).toHaveTextContent('Fach 1, Fach 3');
+    expect(card).toHaveTextContent('Drucke buchen hier ab');
+    expect(card).toHaveTextContent('1.350,0 g');
+    expect(screen.getByTestId('group-card-g1')).not.toHaveTextContent('Drucke buchen hier ab');
+  });
+
+  it('orders the cards by their remaining share, lowest first', async () => {
+    mockStock([FULL, G1, G2, LOW]);
+    renderView();
+    await screen.findByTestId('group-card-g1');
+    const ids = screen.getAllByTestId(/^(group|spool)-card-/).map((el) => el.getAttribute('data-testid'));
+    expect(ids).toEqual(['spool-card-low', 'group-card-g1', 'spool-card-full']);
+  });
+
+  it('switches to the single view, lists every shelf spool again and remembers the choice', async () => {
+    mockStock([G1, G2, AMS1, AMS2]);
+    const first = renderView();
+    await screen.findByTestId('group-card-g1');
+    fireEvent.click(screen.getByRole('button', { name: 'Einzeln' }));
+    expect(screen.getByTestId('spool-card-g1')).toBeInTheDocument();
+    expect(screen.getByTestId('spool-card-g2')).toBeInTheDocument();
+    expect(screen.queryByTestId('group-card-g1')).toBeNull();
+    // As before, loaded spools are only in the printer column here.
+    expect(within(screen.getByTestId('filament-storage')).queryByTestId('spool-card-am1')).toBeNull();
+    // The header keeps counting single spools, kinds are still groups.
+    expect(stat('Spulen gesamt')).toHaveTextContent('4');
+    expect(stat('Verschiedene Sorten')).toHaveTextContent('2');
+    first.unmount();
+    renderView();
+    expect(await screen.findByTestId('spool-card-g1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Einzeln' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Gruppiert' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('applies the choice to the list as well', async () => {
+    mockStock([G1, G2]);
+    renderView();
+    await screen.findByTestId('group-card-g1');
+    fireEvent.click(screen.getByRole('button', { name: 'Liste' }));
+    expect(screen.getByTestId('group-row-g1')).toBeInTheDocument();
+    expect(screen.queryByTestId('spool-row-g1')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Einzeln' }));
+    expect(screen.getByTestId('spool-row-g1')).toBeInTheDocument();
+    expect(screen.getByTestId('spool-row-g2')).toBeInTheDocument();
+    expect(screen.queryByTestId('group-row-g1')).toBeNull();
+  });
+
+  it('expands a group card to its spools', async () => {
+    mockStock([G1, G2]);
+    renderView();
+    const toggle = await screen.findByRole('button', { name: 'PLA Schwarz: Spulen anzeigen' });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('spool-row-g1')).toHaveTextContent('920,0 g');
+    expect(screen.getByTestId('spool-row-g2')).toHaveTextContent('640,0 g');
+  });
+
+  it('filters "Niedrig" by the total of the group, not by single spools', async () => {
+    // One nearly empty spool in a group that is full as a whole stays out of "Niedrig".
+    const NEAR_EMPTY = spool({ id: 'ne', material: 'PLA', manufacturer: 'Polymaker', color: 'Schwarz', location: 'Regal A', remainingWeightG: 50 });
+    mockStock([G1, NEAR_EMPTY, LOW]);
+    renderView();
+    await screen.findByTestId('group-card-g1');
+    fireEvent.click(screen.getByRole('button', { name: 'Niedrig' }));
+    expect(screen.getByTestId('spool-card-low')).toBeInTheDocument();
+    expect(screen.queryByTestId('group-card-g1')).toBeNull();
+  });
+
+  it('counts groups as "Niedrig / leer" in the grouped view and spools in the single view', async () => {
+    const A = spool({ id: 'x1', material: 'ABS', manufacturer: 'M', color: 'Grau', location: 'R', remainingWeightG: 100 });
+    const B = spool({ id: 'x2', material: 'ABS', manufacturer: 'M', color: 'Grau', location: 'R', remainingWeightG: 100 });
+    mockStock([A, B]);
+    renderView();
+    await screen.findByTestId('group-card-x1');
+    expect(stat('Niedrig / leer')).toHaveTextContent('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Einzeln' }));
+    expect(stat('Niedrig / leer')).toHaveTextContent('2');
+  });
+
+  it('finds a group by its manufacturer in the search', async () => {
+    mockStock([G1, G2, LOW]);
+    renderView();
+    await screen.findByTestId('group-card-g1');
+    fireEvent.change(screen.getByPlaceholderText(/durchsuchen/), { target: { value: 'anycubic' } });
+    expect(screen.queryByTestId('group-card-g1')).toBeNull();
+    expect(screen.getByTestId('spool-card-low')).toBeInTheDocument();
+  });
+
+  it('offers restock on the group card with the first spool as template', async () => {
+    mockStock([G1, G2]);
+    renderView();
+    const card = await screen.findByTestId('group-card-g1');
+    fireEvent.click(within(card).getByRole('button', { name: 'Nachkaufen' }));
+    expect(await screen.findByRole('dialog', { name: /Nachkaufen/ })).toBeInTheDocument();
+  });
+
+  it('loads the spool with the smallest rest when a group card is dropped on a slot', async () => {
+    mockStock([G1, G2, STORED]);
+    renderView();
+    const card = await screen.findByTestId('group-card-g1');
+    fireEvent.mouseDown(card, { clientX: 0, clientY: 0, button: 0 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    fireEvent.mouseEnter(screen.getByTestId('slot-u1-1'));
+    fireEvent.mouseUp(document);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('load_spool', { spoolId: 'g2', unitId: 'u1', slotIndex: 1 }),
+    );
+  });
 });

@@ -26,6 +26,9 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Sync with disk on start:** optional setting that checks the catalog folders at start and shows a notice only when something changed; a second option adds new files and detected renames without asking (never removes anything, never adds duplicates).
 - **Detail page:** a 3MF without slicer data now explains why no filament usage is shown and how to export a sliced plate, with a link to the manual.
 - **Print bed:** the detail view lists, for every printer of the Printer Manager that has a build volume, whether the model fits (width and depth may swap when the model is turned on the plate; the height stays). A new filter "Fits on" in the filter bar shows only models that fit the chosen printer; models without known size stay visible.
+- **Material Manager:** equal spools are grouped into one card with the count, total rest and total target amount; a click shows the single spools, each with its own bar. Spools in a printer form a group per unit (for example "X1C · AMS 1"). Cards are sorted by remaining share, lowest first. A switch "Grouped / Single" (grouped by default, remembered) applies to the dashboard and the list; the header also shows the number of different kinds.
+- **Material Manager:** multi-color spools: up to four colors per spool, shown as a split color dot. The first color is used to match the slicer colors.
+- **Material Manager:** a new spool starts with the weight last used for the same manufacturer and material (otherwise the manufacturer, otherwise 1000 g); the field stays editable. When loading from the shelf into a printer or deducting resin by hand, the spool with the smallest rest that still suffices is suggested.
 
 ### Fixed
 
@@ -39,6 +42,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Trash:** Restoring a model from the trash now recreates its folder if it no longer exists, so models of a deleted folder can be brought back.
 - **Catalog database:** The catalog database gets three new columns for the platform and model ID of downloaded files; older catalogs are upgraded automatically (a copy is saved first).
 - **Catalog database:** The catalog database gets new tables for companion files and for remembered source folders; older catalogs are upgraded automatically (a copy is saved first).
+- **Catalog database:** The catalog database gets a new column for the colors of a spool (schema version 50); older catalogs are upgraded automatically (a copy is saved first).
 
 
 ## [0.16.3] - 2026-10-21
@@ -691,6 +695,9 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Abgleich mit der Festplatte beim Start:** Optionale Einstellung, die beim Start die Katalogordner prüft und nur bei Änderungen einen Hinweis zeigt; eine zweite Option nimmt neue Dateien und erkannte Umbenennungen ohne Rückfrage auf (entfernt nie etwas, nimmt nie Duplikate auf).
 - **Detailseite:** Eine 3MF ohne Slicer-Daten erklärt jetzt, warum kein Filamentverbrauch angezeigt wird und wie man eine geslicte Platte exportiert, mit Link zum Handbuch.
 - **Druckbett:** Die Detailansicht listet für jeden Drucker des Printer Managers mit Bauraum, ob das Modell passt (Breite und Tiefe dürfen vertauscht werden, wenn das Modell auf der Platte gedreht wird; die Höhe bleibt). Ein neuer Filter „Passt auf“ in der Filterleiste zeigt nur Modelle, die auf den gewählten Drucker passen; Modelle ohne bekannte Maße bleiben sichtbar.
+- **Material Manager:** Gleiche Spulen werden zu einer Karte mit Stückzahl, Gesamtrest und Gesamtsoll zusammengefasst; ein Klick zeigt die einzelnen Spulen, jede mit eigenem Balken. Spulen in einem Drucker bilden je Einheit eine eigene Gruppe (z. B. „X1C · AMS 1“). Die Karten sind nach Restbestand-Anteil sortiert, knappe zuerst. Ein Umschalter „Gruppiert / Einzeln“ (Standard gruppiert, wird gemerkt) gilt für Dashboard und Liste; die Kopfzahlen zeigen zusätzlich die Zahl der verschiedenen Sorten.
+- **Material Manager:** Mehrfarbige Spulen: bis zu vier Farben je Spule, als geteilter Farbpunkt dargestellt. Die erste Farbe gilt für den Abgleich mit den Slicer-Farben.
+- **Material Manager:** Eine neue Spule startet mit dem zuletzt genutzten Gewicht für denselben Hersteller und dasselbe Material (sonst für den Hersteller, sonst 1000 g); das Feld bleibt änderbar. Beim Einlegen aus dem Regal in einen Drucker und beim manuellen Abbuchen von Resin wird die Spule mit dem kleinsten noch ausreichenden Rest vorgeschlagen.
 
 ### Behoben
 
@@ -704,6 +711,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Papierkorb:** Beim Wiederherstellen eines Modells aus dem Papierkorb wird sein Ordner neu angelegt, falls er nicht mehr existiert; so lassen sich Modelle eines gelöschten Ordners zurückholen.
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt drei neue Spalten für die Plattform und die Modell-ID heruntergeladener Dateien; ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt neue Tabellen für Begleitdateien und für gemerkte Quellordner; ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
+- **Katalog-Datenbank:** Die Katalog-Datenbank bekommt eine neue Spalte für die Farben einer Spule (Schema 50); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
 
 
 ## [0.16.3] - 2026-10-21

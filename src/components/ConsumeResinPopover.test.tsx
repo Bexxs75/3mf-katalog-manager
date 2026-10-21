@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve())
 const BOTTLE: FilamentSpool = {
   id: 'r1', material: 'Standard', manufacturer: 'Elegoo', color: 'Grau', location: 'Resin-Schrank',
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 640, price: 27.99, imagePng: null,
-  colorHex: '#8a8f98', homeLocation: null, unitId: null, slotIndex: null, kind: 'resin',
+  colorHex: '#8a8f98', colorHexes: [], homeLocation: null, unitId: null, slotIndex: null, kind: 'resin',
 };
 
 let anchor: HTMLButtonElement;
@@ -68,5 +68,56 @@ describe('ConsumeResinPopover', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConsumeResinPopover with several bottles', () => {
+  const bottle = (id: string, remainingWeightG: number): FilamentSpool => ({ ...BOTTLE, id, remainingWeightG });
+  const choices = [bottle('r1', 800), bottle('r2', 200), bottle('r3', 0), bottle('r4', 500)];
+
+  function renderChoices() {
+    const onConsumed = vi.fn();
+    render(
+      <LanguageProvider>
+        <ConsumeResinPopover spool={choices[1]} choices={choices} anchor={anchor} onClose={vi.fn()} onConsumed={onConsumed} />
+      </LanguageProvider>,
+    );
+    return onConsumed;
+  }
+  const picker = () => screen.getByLabelText('Flasche') as HTMLSelectElement;
+
+  it('preselects the bottle with the smallest rest that is not empty', () => {
+    renderChoices();
+    expect(picker().value).toBe('r2');
+    expect(screen.getByRole('option', { name: /Vorschlag/ })).toHaveValue('r2');
+  });
+
+  it('moves the preselection to the smallest bottle that still covers the amount', () => {
+    renderChoices();
+    fireEvent.change(screen.getByLabelText('Verbraucht (ml)'), { target: { value: '300' } });
+    expect(picker().value).toBe('r4');
+    fireEvent.change(screen.getByLabelText('Verbraucht (ml)'), { target: { value: '700' } });
+    expect(picker().value).toBe('r1');
+  });
+
+  it('keeps a bottle the user picked, whatever amount is typed afterwards', () => {
+    renderChoices();
+    fireEvent.change(picker(), { target: { value: 'r1' } });
+    fireEvent.change(screen.getByLabelText('Verbraucht (ml)'), { target: { value: '50' } });
+    expect(picker().value).toBe('r1');
+  });
+
+  it('deducts from the selected bottle', async () => {
+    vi.mocked(invoke).mockResolvedValue({ ...choices[3], remainingWeightG: 200 });
+    const onConsumed = renderChoices();
+    fireEvent.change(screen.getByLabelText('Verbraucht (ml)'), { target: { value: '300' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Abbuchen' }));
+    await waitFor(() => expect(onConsumed).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('consume_resin', { spoolId: 'r4', amountMl: 300 });
+  });
+
+  it('has no bottle picker for a single bottle', () => {
+    renderPopover();
+    expect(screen.queryByLabelText('Flasche')).toBeNull();
   });
 });
