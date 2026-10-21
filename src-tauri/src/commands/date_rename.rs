@@ -550,7 +550,7 @@ mod tests {
         let results = apply_with_conn(
             &conn,
             vec![DateRenameItem { id: id.clone(), new_name: format!("{prefix}model.3mf") }],
-            &[dir.clone()],
+            std::slice::from_ref(&dir),
         )
         .unwrap();
         assert_eq!(results[0].status, ApplyStatus::Failed);
