@@ -13,6 +13,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Import filenames:** optional date/time prefixes (`YYYY-MM-DD_HH-MM_`), off by default. New catalog models get collision-safe names with extension-preserving length limits; external files imported in place are not renamed. Existing entries, disk sync, backup restoration and archive extraction are unchanged.
 
+### Changed
+
+- **Moving model files:** Moved model files keep the permissions and modification time of the original file.
+
 ## [0.16.3] - 2026-10-21
 
 ### Fixed
@@ -649,6 +653,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Hinzugefügt
 
 - **Dateinamen beim Import:** optionaler Datums-/Uhrzeitpräfix (`JJJJ-MM-TT_HH-MM_`), standardmäßig aus. Neue Katalogmodelle erhalten kollisionsfreie Namen mit Längenbegrenzung und erhaltener Endung; externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt. Bestehende Einträge, Festplattenabgleich, Backup-Wiederherstellung und Archiv-Entpacken bleiben unverändert.
+
+### Geändert
+
+- **Modelldateien verschieben:** Verschobene Modelldateien behalten die Rechte und die Änderungszeit der Originaldatei.
 
 ## [0.16.3] - 2026-10-21
 
