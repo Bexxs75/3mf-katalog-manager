@@ -12,7 +12,7 @@ import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
 import { FolderTree } from './FolderTree';
-import { sortTagsForDisplay, tagLabel, tagMatches } from '../lib/autoTags';
+import { sortTagsForDisplay, shortTagLabel, tagLabel, tagMatches } from '../lib/autoTags';
 import { ToolsSection } from './ToolsSection';
 import type { ToolCounts, ToolView } from '../lib/toolViews';
 import type { AppError } from '../lib/errors';
@@ -439,20 +439,21 @@ export function Sidebar({
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-1 text-[var(--ink-3)]"><Icon name="close" size={14} /></button>}
             </div>
             {visibleTags.length === 0 && tagQuery.trim() && <p className="text-small text-[var(--ink-3)]">{t('tagSearchEmpty')}</p>}
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex min-w-0 flex-wrap gap-1.5">
             {visibleTags.map((tag) => (
               <button
                 key={tag.label}
+                title={`#${tagLabel(tag.label, language)}`}
                 onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
-                className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-medium tabular-nums text-caption ${
+                className={`inline-flex max-w-full min-w-0 items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-medium tabular-nums text-caption ${
                   activeTag === tag.label
                     ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] hover:text-[var(--ink)]'
                     : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
                 }`}
               >
                 <TagDot hue={tag.colorHue} />
-                #{tagLabel(tag.label, language)}
-                <span className="text-[var(--ink-3)]">{tag.count}</span>
+                <span className="truncate">{shortTagLabel(`#${tagLabel(tag.label, language)}`)}</span>
+                <span className="flex-none text-[var(--ink-3)]">{tag.count}</span>
               </button>
             ))}
             </div>

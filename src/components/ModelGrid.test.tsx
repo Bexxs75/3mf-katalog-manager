@@ -151,3 +151,13 @@ it.each(['compact', 'comfort', 'list'])('exposes bidi names in text and accessib
   expect(model.name).toBe('part\u202etxt.3mf');
   expect(model.path).toBe('/models/part\u202etxt.3mf');
 });
+
+
+it('shortens long tag chips in ModelList and exposes the full tooltip', () => {
+  const tag = 'a'.repeat(95);
+  const { getByText } = render(<LanguageProvider><ModelList {...props} models={[makeModelFile({ tags: [tag] })]} /></LanguageProvider>);
+  const text = getByText('#' + 'a'.repeat(28) + '…');
+  expect(text).toHaveClass('truncate');
+  expect(text.parentElement).toHaveAttribute('title', '#' + tag);
+  expect(text.parentElement).toHaveClass('shrink-0');
+});

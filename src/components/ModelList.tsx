@@ -9,7 +9,7 @@ import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatVolumeCm3 } from '../i18n/format';
 import { BulkCheckbox } from './BulkCheckbox';
-import { tagLabel } from '../lib/autoTags';
+import { shortTagLabel, tagLabel } from '../lib/autoTags';
 
 interface Props {
   models: ModelFile[];
@@ -85,13 +85,14 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
             <LicenseBadge license={m.license} />
           </span>
-          <span className="flex gap-1 overflow-hidden">
+          <span className="flex min-w-0 gap-1 overflow-hidden">
             {m.tags.map((tag) => (
               <span
                 key={tag}
-                className="font-medium tabular-nums text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
+                title={`#${tagLabel(tag, language)}`}
+                className="inline-flex shrink-0 font-medium tabular-nums text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
               >
-                #{tagLabel(tag, language)}
+                <span className="truncate">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
               </span>
             ))}
           </span>

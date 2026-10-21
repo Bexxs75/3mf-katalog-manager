@@ -266,3 +266,18 @@ it('deletes only after the question is confirmed', () => {
   fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
   expect(onDelete).toHaveBeenCalledTimes(1);
 });
+
+
+it('shortens long tag chips but removes the full tag', () => {
+  const tag = 'a'.repeat(95);
+  const onRemoveTag = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} model={makeModelFile({ tags: [tag] })} hasPrevious={false} hasNext={false} onRemoveTag={onRemoveTag} /></LanguageProvider>);
+  const text = screen.getByText('#' + 'a'.repeat(28) + '…');
+  expect(text).toHaveClass('truncate');
+  expect(text.parentElement).toHaveAttribute('title', '#' + tag);
+  expect(text.parentElement).toHaveClass('max-w-full', 'min-w-0');
+  const remove = screen.getByRole('button', { name: tag + ' entfernen' });
+  expect(remove).toHaveClass('flex-none');
+  fireEvent.click(remove);
+  expect(onRemoveTag).toHaveBeenCalledWith(tag);
+});

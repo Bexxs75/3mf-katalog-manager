@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalTag, sortTagsForDisplay, tagLabel, tagMatches } from './autoTags';
+import { canonicalTag, shortTagLabel, sortTagsForDisplay, tagLabel, tagMatches } from './autoTags';
 
 describe('tagLabel', () => {
   it('translates every auto tag into every language', () => {
@@ -78,5 +78,19 @@ describe('sortTagsForDisplay', () => {
     ];
     sortTagsForDisplay(tags, 'de');
     expect(tags.map((t) => t.label)).toEqual(['b', 'a']);
+  });
+});
+
+
+describe('shortTagLabel', () => {
+  it.each([
+    ['', ''],
+    ['#' + 'a'.repeat(28), '#' + 'a'.repeat(28)],
+    ['#' + 'a'.repeat(29), '#' + 'a'.repeat(28) + '…'],
+    ['#' + 'ä'.repeat(29), '#' + 'ä'.repeat(28) + '…'],
+    ['#' + '😀'.repeat(28), '#' + '😀'.repeat(28)],
+    ['#' + 'a'.repeat(27) + '😀z', '#' + 'a'.repeat(27) + '😀…'],
+  ])('shortens the displayed label by codepoints: %s', (label, expected) => {
+    expect(shortTagLabel(label)).toBe(expected);
   });
 });

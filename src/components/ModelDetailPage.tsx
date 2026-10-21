@@ -26,7 +26,7 @@ import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 import { usePrintLog } from '../hooks/usePrintLog';
 import { useFilamentCheck } from '../hooks/useFilamentCheck';
 import { formatWeightG, formatLengthM, formatPrice } from '../i18n/format';
-import { tagLabel } from '../lib/autoTags';
+import { shortTagLabel, tagLabel } from '../lib/autoTags';
 import { FilamentCheckSection } from './FilamentCheckSection';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
@@ -325,12 +325,12 @@ export function ModelDetailPage({
               <p className="ui-label text-[var(--ink-3)] mb-2">
                 {t('hashtagsHeading')}
               </p>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex min-w-0 flex-wrap gap-1.5">
                 {model.tags.map((tag) => (
-                  <span key={tag} className="inline-flex items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
+                  <span key={tag} title={`#${tagLabel(tag, language)}`} className="inline-flex max-w-full min-w-0 items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
                     <TagDot hue={tagHues?.[tag]} />
-                    #{tagLabel(tag, language)}{' '}
-                    <button aria-label={t('chipRemove').replace('{label}', tag)} onClick={() => onRemoveTag(tag)} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="close" size={14} /></button>
+                    <span className="truncate">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+                    <button aria-label={t('chipRemove').replace('{label}', tag)} onClick={() => onRemoveTag(tag)} className="flex-none hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="close" size={14} /></button>
                   </span>
                 ))}
                 <TagInput

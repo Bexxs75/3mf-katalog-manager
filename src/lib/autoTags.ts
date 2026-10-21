@@ -24,6 +24,15 @@ export function tagLabel(tag: string, language: Language): string {
   return Object.prototype.hasOwnProperty.call(TABLE, tag) ? TABLE[tag][language] : tag;
 }
 
+const MAX_TAG_LABEL_CODEPOINTS = 29;
+
+export function shortTagLabel(label: string): string {
+  const codepoints = Array.from(label);
+  return codepoints.length > MAX_TAG_LABEL_CODEPOINTS
+    ? codepoints.slice(0, MAX_TAG_LABEL_CODEPOINTS).join('') + '…'
+    : label;
+}
+
 export function canonicalTag(input: string): string {
   return ALIAS_TO_CANONICAL.get(aliasKey(input)) ?? input;
 }

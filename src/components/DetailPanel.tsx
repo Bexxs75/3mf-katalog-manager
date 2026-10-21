@@ -22,7 +22,7 @@ import { buildMetaRows } from '../lib/modelMetadata';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
-import { tagLabel } from '../lib/autoTags';
+import { shortTagLabel, tagLabel } from '../lib/autoTags';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
@@ -289,20 +289,23 @@ export function DetailPanel({
           <div className="text-compact-meta ui-label text-[var(--ink-3)] pb-2.5">
             {t('hashtagsHeading')}
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex min-w-0 flex-wrap gap-1.5">
             {model.tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-medium tabular-nums text-caption"
+                title={`#${tagLabel(tag, language)}`}
+                className="inline-flex max-w-full min-w-0 items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-medium tabular-nums text-caption"
               >
                 <TagDot hue={tagHues?.[tag]} />
-                #{tagLabel(tag, language)}
-                <span
+                <span className="truncate">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+                <button
+                  type="button"
+                  aria-label={t('chipRemove').replace('{label}', tag)}
                   onClick={() => onRemoveTag(tag)}
-                  className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                  className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 >
                   <Icon name="close" size={14} />
-                </span>
+                </button>
               </span>
             ))}
             <TagInput
@@ -414,22 +417,25 @@ export function DetailPanel({
           </button>
         </div>
         <div className="px-[18px]"><StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} /></div>
-        <div className="px-[18px] pb-3.5 flex flex-wrap gap-1.5">
+        <div className="px-[18px] pb-3.5 flex min-w-0 flex-wrap gap-1.5">
           {model.tags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
+              title={`#${tagLabel(tag, language)}`}
+              className="inline-flex max-w-full min-w-0 items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
               <TagDot hue={tagHues?.[tag]} />
-              #{tagLabel(tag, language)}
-              <span
+              <span className="truncate">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+              <button
+                type="button"
+                aria-label={t('chipRemove').replace('{label}', tag)}
                 onClick={() => onRemoveTag(tag)}
-                className="w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 style={{ fontSize: 'var(--font-size-label)' }}
               >
                 <Icon name="close" size={14} />
-              </span>
+              </button>
             </span>
           ))}
           <TagInput
