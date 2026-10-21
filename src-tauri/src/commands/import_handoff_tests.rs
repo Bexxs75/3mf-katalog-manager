@@ -344,3 +344,59 @@ fn contract_16_merged_dialog_is_partitioned_without_losing_parent_or_order() {
         );
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn a_folder_swapped_for_a_link_after_the_scan_does_not_lead_out_of_the_source_folder() {
+    let fixture = Fixture::new();
+    let source_root = fixture.0.join("source");
+    let foreign = fixture.0.join("foreign");
+    std::fs::create_dir_all(source_root.join("box")).unwrap();
+    std::fs::create_dir_all(&foreign).unwrap();
+    // The scan listed source/box/part_1.stl; afterwards `box` became a link to a folder
+    // that holds a file of the same name.
+    let listed = source_root.join("box").join("part_1.stl");
+    std::fs::copy(fixture.stl(1), foreign.join("part_1.stl")).unwrap();
+    std::fs::remove_dir_all(source_root.join("box")).unwrap();
+    std::os::unix::fs::symlink(&foreign, source_root.join("box")).unwrap();
+    let service = ImportJobs::default();
+    let job = service
+        .enqueue_confined(
+            ImportSource::Files,
+            None,
+            false,
+            None,
+            JobInput::Models(vec![listed.clone()]),
+            None,
+            vec![source_root.clone()],
+        )
+        .unwrap();
+    service.next().unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    run_models(&service, &job, &mut &mut conn, &[listed.clone()], &[]).unwrap();
+    service.finish(&job, None);
+    let result = job.result().unwrap();
+    assert!(result.groups.imported.is_empty());
+    assert_eq!(result.groups.skipped.len(), 1);
+    assert_eq!(result.groups.skipped[0].reason, "unsafe");
+    assert!(foreign.join("part_1.stl").exists());
+    assert!(db::list_files(&conn).unwrap().is_empty());
+}
+
+#[test]
+fn an_import_confined_to_a_source_folder_still_takes_its_ordinary_files() {
+    let fixture = Fixture::new();
+    let source_root = fixture.0.join("source");
+    std::fs::create_dir_all(source_root.join("box")).unwrap();
+    std::fs::copy(fixture.stl(1), source_root.join("box").join("part_1.stl")).unwrap();
+    let listed = source_root.join("box").join("part_1.stl");
+    let service = ImportJobs::default();
+    let job = service
+        .enqueue_confined(ImportSource::Files, None, false, None, JobInput::Models(vec![listed.clone()]), None, vec![source_root])
+        .unwrap();
+    service.next().unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    run_models(&service, &job, &mut &mut conn, &[listed], &[]).unwrap();
+    service.finish(&job, None);
+    assert_eq!(job.result().unwrap().groups.imported.len(), 1);
+}

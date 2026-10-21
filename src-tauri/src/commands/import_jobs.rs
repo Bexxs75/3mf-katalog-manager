@@ -243,6 +243,10 @@ pub struct ImportJob {
     pub placement_required: bool,
     pub parent_job_id: Option<String>,
     pub cancel: AtomicBool,
+    /// Folders the job's files must stay below (empty: no restriction). Set for imports
+    /// from source folders, where a folder swapped for a link after the scan must not
+    /// lead the worker to a file elsewhere.
+    confine_to: Vec<PathBuf>,
     control_state: AtomicU8,
     terminal_at: AtomicU64,
     input: JobInput,
@@ -447,6 +451,19 @@ impl ImportJobs {
         input: JobInput,
         error: Option<ImportJobError>,
     ) -> CmdResult<Arc<ImportJob>> {
+        self.enqueue_confined(source, target, placement, parent, input, error, Vec::new())
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn enqueue_confined(
+        &self,
+        source: ImportSource,
+        target: Option<String>,
+        placement: bool,
+        parent: Option<String>,
+        input: JobInput,
+        error: Option<ImportJobError>,
+        confine_to: Vec<PathBuf>,
+    ) -> CmdResult<Arc<ImportJob>> {
         let share = self.gate.import();
         static SEQUENCE: AtomicU64 = AtomicU64::new(0);
         let id = format!(
@@ -464,6 +481,7 @@ impl ImportJobs {
             target_folder_id: target,
             placement_required: placement,
             parent_job_id: parent,
+            confine_to,
             input,
             legacy: Mutex::new(None),
             archive_legacy: Mutex::new(None),
