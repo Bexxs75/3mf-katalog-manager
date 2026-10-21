@@ -731,6 +731,19 @@ it('recovers from a failed initial load after a successful refresh', async () =>
   expect(result.current.models).toHaveLength(1);
 });
 
+it('carries platform and IDs from the summaries into the loaded models', async () => {
+  mockInitialLoad([
+    makeModelFile({ id: 'm1', sourcePlatform: 'makerworld', sourceModelId: 'USfa963547e39de4', sourceProfileId: '1067399466' }),
+    makeModelFile({ id: 'm2' }),
+  ]);
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(2));
+  const [withSource, without] = result.current.models;
+  expect([withSource.sourcePlatform, withSource.sourceModelId, withSource.sourceProfileId])
+    .toEqual(['makerworld', 'USfa963547e39de4', '1067399466']);
+  expect([without.sourcePlatform, without.sourceModelId, without.sourceProfileId]).toEqual([null, null, null]);
+});
+
 it('saves a selection in one command and keeps licenses unchanged on failure', async () => {
   const models = [makeModelFile({ id: 'm1', license: 'personal' }), makeModelFile({ id: 'm2', license: null })];
   mockInitialLoad(models);

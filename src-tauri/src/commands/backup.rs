@@ -198,6 +198,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("files", &[
         "id", "name", "path", "file_type", "folder_id", "file_size_bytes",
         "imported_at", "deleted_at", "trash_path", "license",
+        "source_platform", "source_model_id", "source_profile_id",
     ]),
     ("folders", &["id", "name", "parent_id", "path"]),
     ("tags", &["id", "name", "color_hue"]),
@@ -297,6 +298,9 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("files", "custom_image_png", ColType::Blob, true),
     ("files", "source_url", ColType::Text, true),
     ("files", "license", ColType::Text, true),
+    ("files", "source_platform", ColType::Text, true),
+    ("files", "source_model_id", ColType::Text, true),
+    ("files", "source_profile_id", ColType::Text, true),
     ("files", "queue_position", ColType::Integer, true),
     ("files", "favorite", ColType::Integer, false),
     ("files", "plate_count", ColType::Integer, true),
@@ -670,6 +674,17 @@ fn validate_catalog_db_bytes(
                     .map_err(|e| e.to_string())?;
             }
             drop(licenses);
+            // Shown in the UI, so a foreign backup must not smuggle in oversized or control text.
+            let mut sources = conn.prepare(
+                "SELECT source_platform, source_model_id, source_profile_id FROM files
+                 WHERE source_platform IS NOT NULL OR source_model_id IS NOT NULL OR source_profile_id IS NOT NULL")
+                .map_err(|e| e.to_string())?;
+            for row in sources.query_map([], |row| Ok([row.get::<_, Option<String>>(0)?, row.get(1)?, row.get(2)?])).map_err(|e| e.to_string())? {
+                for value in row.map_err(|e| e.to_string())?.into_iter().flatten() {
+                    crate::threemf::source::validate_source_value(&value).map_err(|e| e.to_string())?;
+                }
+            }
+            drop(sources);
 
             // A DB with a current user_version skips every migration and can bring tables
             // without CHECK, FK and unique index. Without this check e.g.
@@ -1150,6 +1165,7 @@ mod tests {
             custom_image_png: None,
             source_url: None,
             license: None,
+            source: Default::default(),
             queue_position: None,
             favorite: false,
             plate_count: None,
@@ -1161,7 +1177,8 @@ mod tests {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
             crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
             conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+            // The license step is the one before the source-column step.
+            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 2).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_ok());
         for (value, valid) in [(None, true), (Some("cc-by".to_string()), true),
@@ -1179,6 +1196,112 @@ mod tests {
             conn.execute("UPDATE files SET license = X'1234' WHERE id = ?1", [id]).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
+    }
+
+    fn state_with_catalog(name: &str) -> (AppState, PathBuf) {
+        let dir = unique_test_dir(name);
+        let db_path = dir.join("catalog.db");
+        let state = AppState {
+            import_jobs: ImportJobs::default(),
+            db: Mutex::new(db::connect(&db_path).unwrap()),
+            trash_dir: dir.join("trash"),
+            db_path,
+            sensitive_dirs: Vec::new(),
+        };
+        (state, dir)
+    }
+
+    fn stored_source(state: &AppState) -> Vec<(Option<String>, Option<String>, Option<String>)> {
+        let conn = state.db.lock().unwrap();
+        db::list_files(&conn).unwrap().into_iter()
+            .map(|f| (f.source_platform, f.source_model_id, f.source_profile_id)).collect()
+    }
+
+    #[test]
+    fn platform_and_ids_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_source_roundtrip_a");
+        {
+            let mut conn = source.db.lock().unwrap();
+            let mut file = sample_new_file_for_rescan_test(&dir.join("model.3mf"));
+            file.source = db::models::SourceInfo {
+                platform: Some("makerworld".into()),
+                model_id: Some("USfa963547e39de4".into()),
+                profile_id: Some("1067399466".into()),
+            };
+            db::insert_file(&mut conn, &file).unwrap();
+            let mut plain = sample_new_file_for_rescan_test(&dir.join("plain.3mf"));
+            plain.name = "plain.3mf".into();
+            db::insert_file(&mut conn, &plain).unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_source_roundtrip_b");
+        assert!(stored_source(&target).is_empty());
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let mut restored = stored_source(&target);
+        restored.sort();
+        assert_eq!(restored, vec![
+            (None, None, None),
+            (Some("makerworld".into()), Some("USfa963547e39de4".into()), Some("1067399466".into())),
+        ]);
+    }
+
+    #[test]
+    fn a_backup_from_before_the_source_columns_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_source_old_a");
+        {
+            let mut conn = old.db.lock().unwrap();
+            let mut file = sample_new_file_for_rescan_test(&dir.join("old.3mf"));
+            file.creator = Some("Jane".into());
+            db::insert_file(&mut conn, &file).unwrap();
+            conn.execute_batch("ALTER TABLE files DROP COLUMN source_platform; ALTER TABLE files DROP COLUMN source_model_id; ALTER TABLE files DROP COLUMN source_profile_id").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT source_platform FROM files").is_err(), "precondition: the backup has no such column");
+
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_source_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        assert_eq!(stored_source(&target), vec![(None, None, None)]);
+        let conn = target.db.lock().unwrap();
+        assert_eq!(db::list_files(&conn).unwrap()[0].creator.as_deref(), Some("Jane"));
+    }
+
+    #[test]
+    fn imported_source_values_are_checked() {
+        for (column, value, valid) in [
+            ("source_platform", "makerworld".to_string(), true),
+            ("source_model_id", "é".repeat(128), true),
+            ("source_model_id", "é".repeat(129), false),
+            ("source_profile_id", "12\u{7}34".to_string(), false),
+            ("source_profile_id", "12\u{202E}34".to_string(), false),
+        ] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+                conn.execute(&format!("UPDATE files SET {column} = ?1 WHERE id = ?2"), rusqlite::params![value, id]).unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
+            assert_eq!(result.is_ok(), valid, "{column}: {result:?}");
+        }
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            conn.execute("UPDATE files SET source_model_id = X'1234' WHERE id = ?1", [id]).unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err(), "a BLOB is the wrong storage class");
     }
 
     #[test]
@@ -2005,6 +2128,7 @@ mod tests {
             metadata.insert("Slicer".to_string(), "Bambu Studio".to_string());
             let new_file = NewFile {
                 license: None,
+                source: Default::default(),
                 name: "Gehaeuse.3mf".to_string(),
                 path: "/tmp/Projekte/Gehaeuse.3mf".to_string(),
                 file_type: FileType::ThreeMf,

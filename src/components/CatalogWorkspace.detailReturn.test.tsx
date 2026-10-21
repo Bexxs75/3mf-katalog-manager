@@ -17,7 +17,7 @@ const model: ModelFile = {
   fileModifiedAt: null, importedAt: '2026-10-01T00:00:00Z', printStatus: 'not_printed', estimatedWeightG: null,
   weightSource: 'estimated', sliceInfo: null, costEstimate: null, lastViewedAt: null,
   contentHash: null, creator: null, customImage: null, thumbnailImage: null,
-  renderSnapshotImage: null, license: null, sourceUrl: null, queuePosition: null, favorite: false, deletedAt: null,
+  renderSnapshotImage: null, license: null, sourcePlatform: null, sourceModelId: null, sourceProfileId: null, sourceUrl: null, queuePosition: null, favorite: false, deletedAt: null,
 };
 const props = {
   setQuery: vi.fn(),

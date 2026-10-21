@@ -52,7 +52,10 @@ CREATE TABLE IF NOT EXISTS files (
     plate_count INTEGER,
     slice_info_json TEXT,
     deleted_at TEXT,
-    trash_path TEXT
+    trash_path TEXT,
+    source_platform TEXT,
+    source_model_id TEXT,
+    source_profile_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);
