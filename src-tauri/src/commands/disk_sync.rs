@@ -1177,7 +1177,8 @@ fn apply_with_path_mode(
     {
         // Do not leave empty catalog folders when every contained import failed.
         if importable.iter().any(|file| {
-            Path::new(&file.path).starts_with(&e.path)
+            chosen.contains(&file.path)
+                && Path::new(&file.path).starts_with(&e.path)
                 && !result
                     .failed_paths
                     .iter()

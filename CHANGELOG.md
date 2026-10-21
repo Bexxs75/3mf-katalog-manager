@@ -12,6 +12,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Added
 
 - **Import filenames:** optional date/time prefixes (`YYYY-MM-DD_HH-MM_`), off by default. New catalog models get collision-safe names with extension-preserving length limits; external files imported in place are not renamed. Existing entries, disk sync, backup restoration and archive extraction are unchanged.
+- **Sync with disk:** files that were renamed or moved outside the app (for example in the file manager, including a renamed folder) are recognised by their identical content and offered as "Renamed or moved", ticked by default. Applying keeps the existing catalog entry with its tags, favourite, notes, print log and collections instead of creating a second, empty one; when a whole folder was renamed, the folder entry follows. A match is only made when it is unambiguous and the file is unchanged. New files with the same content as a model already in the catalog are listed separately, not ticked by default. Every entry in the dialog now has its own checkbox.
 
 ### Fixed
 
@@ -659,6 +660,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Hinzugefügt
 
 - **Dateinamen beim Import:** optionaler Datums-/Uhrzeitpräfix (`JJJJ-MM-TT_HH-MM_`), standardmäßig aus. Neue Katalogmodelle erhalten kollisionsfreie Namen mit Längenbegrenzung und erhaltener Endung; externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt. Bestehende Einträge, Festplattenabgleich, Backup-Wiederherstellung und Archiv-Entpacken bleiben unverändert.
+- **Abgleich mit der Festplatte:** Dateien, die außerhalb der App umbenannt oder verschoben wurden (z. B. im Dateimanager, auch ein umbenannter Ordner), werden am gleichen Inhalt erkannt und als „Umbenannt oder verschoben“ angeboten, standardmäßig angehakt. Beim Übernehmen bleibt der bestehende Katalogeintrag mit Tags, Favorit, Notizen, Druckprotokoll und Sammlungen erhalten, statt einen zweiten, leeren anzulegen; wurde ein ganzer Ordner umbenannt, zieht der Ordnereintrag mit. Eine Zuordnung erfolgt nur, wenn sie eindeutig ist und die Datei unverändert ist. Neue Dateien mit gleichem Inhalt wie ein Modell, das schon im Katalog ist, stehen in einer eigenen Gruppe und sind nicht vorausgewählt. Jeder Eintrag im Dialog hat jetzt eine eigene Checkbox.
 
 ### Behoben
 

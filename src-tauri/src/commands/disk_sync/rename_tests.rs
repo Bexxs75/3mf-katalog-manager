@@ -454,3 +454,21 @@ fn folder_with_a_renamed_file_inside_is_not_renamed_as_a_folder() {
     assert_eq!(f.folder(&f.root.join("Alt")).unwrap().id, folder.id);
     assert_eq!(db::list_files(&f.conn).unwrap()[0].path, s(&f.root.join("Neu/b.obj")));
 }
+
+#[test]
+fn unticked_file_does_not_leave_an_empty_folder_row() {
+    let mut f = Fixture::new();
+    std::fs::create_dir(f.root.join("Neu")).unwrap();
+    let file = f.root.join("Neu/a.obj");
+    std::fs::write(&file, OBJ_A).unwrap();
+    let preview = f.scan();
+    // The folder is selected but none of the files below it.
+    let selection = DiskSelection {
+        new_paths: preview.new_folders.iter().map(|e| e.path.clone()).collect(),
+        ..Default::default()
+    };
+    assert_eq!(preview.new_folders.len(), 1);
+    let applied = apply(&mut f.conn, selection).unwrap();
+    assert!(applied.file_ids.is_empty() && applied.folder_ids.is_empty());
+    assert!(f.folder(&f.root.join("Neu")).is_none());
+}
