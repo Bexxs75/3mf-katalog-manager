@@ -53,6 +53,7 @@ beforeEach(() => {
   });
   localStorage.setItem('3mf-katalog-language', 'de');
   localStorage.removeItem('3mf-katalog-filament-kind');
+  localStorage.removeItem('3mf-katalog-filament-layout');
 });
 
 function printerLink(): PrinterLinkState {
@@ -87,7 +88,7 @@ function PrintersWrapper({ children }: { children: (printers: ReturnType<typeof 
 }
 
 function renderView() {
-  render(
+  return render(
     <LanguageProvider>
       <PrintersWrapper>{(printers) => <FilamentView printerLink={printerLink()} printers={printers} />}</PrintersWrapper>
     </LanguageProvider>,
@@ -95,6 +96,36 @@ function renderView() {
 }
 
 describe('FilamentView with printers', () => {
+  it('remembers list layout after remounting', async () => {
+    const first = renderView();
+    await screen.findByTestId('spool-card-store');
+    fireEvent.click(screen.getByRole('button', { name: 'Liste' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    first.unmount();
+    renderView();
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+  });
+
+  it.each(['filament', 'resin'] as const)('suggests saved manufacturers only for %s', async (kind) => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') return Promise.resolve([
+        { ...STORED, manufacturer: 'Custom Filament' },
+        { ...RESIN, manufacturer: 'Custom Resin' },
+      ]);
+      if (cmd === 'list_printers') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    renderView();
+    await screen.findByTestId('spool-card-store');
+    if (kind === 'resin') fireEvent.click(screen.getByRole('button', { name: 'Resin' }));
+    fireEvent.click(screen.getByRole('button', { name: kind === 'resin' ? 'Flasche anlegen' : 'Spule anlegen' }));
+    const input = screen.getByPlaceholderText('Hersteller');
+    fireEvent.change(input, { target: { value: 'Custom' } });
+    expect(screen.getAllByRole('option').map(o => o.textContent)).toEqual([
+      kind === 'resin' ? 'Custom Resin' : 'Custom Filament',
+    ]);
+  });
+
   it('shows loaded spools only in the printer column but counts all spools', async () => {
     renderView();
     await waitFor(() => expect(screen.getByTestId('slot-u1-0')).toHaveTextContent('PLA · Schwarz'));

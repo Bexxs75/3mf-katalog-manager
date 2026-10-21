@@ -42,6 +42,8 @@ export interface Translations {
   diskSyncFailed: string;
   diskSyncRefresh: string;
   diskSyncRunning: string;
+  diskSyncFileLabel: string;
+  diskSyncRootLabel: string;
   diskSyncTitle: string;
   diskSyncCurrent: string;
   diskSyncLast: string;

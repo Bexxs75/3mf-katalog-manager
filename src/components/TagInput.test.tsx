@@ -13,6 +13,21 @@ function setup(allTags = ['Zebra', 'Gehäuse', 'Gehäuse groß', 'bereits'], tag
 afterEach(() => localStorage.clear());
 
 describe('TagInput', () => {
+  it('renders more than 200 tags and allows selecting the last one', () => {
+    const available = Array.from({ length: 205 }, (_, i) => `Tag ${String(i).padStart(3, '0')}`);
+    const { input, onAddTag } = setup(available, []);
+    fireEvent.focus(input);
+    expect(screen.getAllByRole('option')).toHaveLength(205);
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onAddTag).toHaveBeenCalledWith('Tag 204');
+  });
+  it('wraps long options across the full width without horizontal scrolling', () => {
+    const { input } = setup(['LongTag'.repeat(50)], []);
+    fireEvent.focus(input);
+    expect(screen.getByRole('listbox')).toHaveClass('overflow-x-hidden');
+    expect(screen.getByRole('option')).toHaveClass('break-words', 'min-w-0', 'w-full');
+  });
   it('filters case-insensitively, preserves umlauts, sorts and excludes assigned tags', () => {
     const { input } = setup();
     fireEvent.focus(input);

@@ -37,6 +37,8 @@ export const de: Translations = {
   diskSyncFailed: 'Der Abgleich ist fehlgeschlagen. Bitte erneut versuchen.',
   diskSyncRefresh: "Aktualisieren",
   diskSyncRunning: "Gleiche ab…",
+  diskSyncFileLabel: "Datei",
+  diskSyncRootLabel: "Katalogordner",
   diskSyncTitle: "Abgleich mit der Festplatte",
   diskSyncCurrent: "Alles aktuell",
   diskSyncLast: "Zuletzt abgeglichen",

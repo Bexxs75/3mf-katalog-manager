@@ -37,6 +37,8 @@ export const es: Translations = {
   diskSyncFailed: 'La sincronización ha fallado. Vuelve a intentarlo.',
   diskSyncRefresh: "Actualizar",
   diskSyncRunning: "Sincronizando…",
+  diskSyncFileLabel: "Archivo",
+  diskSyncRootLabel: "Carpeta del catálogo",
   diskSyncTitle: "Sincronizar con el disco",
   diskSyncCurrent: "Todo está actualizado",
   diskSyncLast: "Última comprobación",

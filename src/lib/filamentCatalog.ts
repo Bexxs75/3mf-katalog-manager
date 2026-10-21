@@ -1,3 +1,5 @@
+import type { SpoolKind } from '../types';
+
 // Curated suggestion lists for the material/manufacturer fields in the
 // filament catalog (see FilamentView.tsx). Sorted alphabetically, they only
 // serve as autocomplete suggestions - both fields stay free text inputs
@@ -99,3 +101,17 @@ export const RESIN_MANUFACTURERS: string[] = [
   'Siraya Tech',
   'Sunlu',
 ];
+
+export function manufacturerSuggestions(kind: SpoolKind, known: string[]): string[] {
+  const curated = kind === 'resin' ? RESIN_MANUFACTURERS : FILAMENT_MANUFACTURERS;
+  const seen = new Set(curated.map(name => name.toLowerCase()));
+  const custom: string[] = [];
+  for (const value of known) {
+    const name = value.trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    custom.push(name);
+  }
+  return [...curated, ...custom.sort((a, b) => a.localeCompare(b))];
+}

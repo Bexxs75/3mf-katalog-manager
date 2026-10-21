@@ -37,6 +37,8 @@ export const en: Translations = {
   diskSyncFailed: 'The sync failed. Please try again.',
   diskSyncRefresh: "Refresh",
   diskSyncRunning: "Syncing…",
+  diskSyncFileLabel: "File",
+  diskSyncRootLabel: "Catalog folder",
   diskSyncTitle: "Sync with disk",
   diskSyncCurrent: "Everything is up to date",
   diskSyncLast: "Last checked",

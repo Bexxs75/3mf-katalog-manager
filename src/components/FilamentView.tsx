@@ -9,6 +9,7 @@ import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
 import { restockSpoolLabel, roundTenth } from '../lib/filamentRestock';
+import { loadLayout, saveLayout, type LayoutMode } from '../lib/layoutPreference';
 import { loadSpoolKind, saveSpoolKind } from '../lib/spoolKindPreference';
 import { FilamentDashboard } from './FilamentDashboard';
 import { FilamentTable } from './FilamentTable';
@@ -27,7 +28,6 @@ import { isInStorage, spoolFitsUnit, spoolLabel } from '../lib/filamentSlots';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
-type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
 
 /** How long newly created entries keep their green outline. */
@@ -56,7 +56,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
   const [error, setError] = useState<AppError | null>(null);
-  const [layout, setLayout] = useState<LayoutMode>('dashboard');
+  const [layout, setLayout] = useState<LayoutMode>(loadLayout);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -115,6 +115,12 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
     () =>
       [...new Set(spools.flatMap((s) => [s.location, s.homeLocation]).filter((l): l is string => !!l))].sort(),
     [spools],
+  );
+
+  const formKind = editingSpool?.kind ?? kind;
+  const knownManufacturers = useMemo(
+    () => spools.filter(s => s.kind === formKind).map(s => s.manufacturer).filter((name): name is string => !!name),
+    [spools, formKind],
   );
 
   // Spools in a printer appear only in the right column, not in storage.
@@ -339,10 +345,10 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           </button>
 
           <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[8px] bg-[var(--panel-2)]">
-            <button onClick={() => setLayout('dashboard')} className={`${segBase} ${layout === 'dashboard' ? segActive : segInactive}`}>
+            <button onClick={() => { setLayout('dashboard'); saveLayout('dashboard'); }} className={`${segBase} ${layout === 'dashboard' ? segActive : segInactive}`}>
               {t('filamentViewDashboard')}
             </button>
-            <button onClick={() => setLayout('list')} className={`${segBase} ${layout === 'list' ? segActive : segInactive}`}>
+            <button onClick={() => { setLayout('list'); saveLayout('list'); }} className={`${segBase} ${layout === 'list' ? segActive : segInactive}`}>
               {t('filamentViewList')}
             </button>
           </div>
@@ -466,6 +472,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
       <FilamentSpoolForm
         open={panelOpen}
         editing={editingSpool}
+        knownManufacturers={knownManufacturers}
         knownLocations={knownLocations}
         onClose={() => setPanelOpen(false)}
         onSaved={refresh}

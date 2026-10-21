@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { ImportLockContext } from '../hooks/ImportLockContext';
@@ -25,6 +25,22 @@ const renderSync = (onApplied = vi.fn().mockResolvedValue(undefined)) => {
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
 describe('catalog disk sync', () => {
+  it.each([['de', 'Datei', 'Katalogordner'], ['en', 'File', 'Catalog folder'], ['es', 'Archivo', 'Carpeta del catálogo'], ['fr', 'Fichier', 'Dossier du catalogue']])('separates file and catalog folder in %s', async (language, fileLabel, rootLabel) => {
+    localStorage.setItem('3mf-katalog-language', language);
+    vi.mocked(invoke).mockResolvedValue(changes);
+    renderSync();
+    fireEvent.keyDown(document, { key: 'F5' });
+    const dialog = await screen.findByRole('dialog');
+    for (const item of within(dialog).getAllByRole('listitem')) {
+      const fileRow = within(item).getByText(fileLabel).parentElement!;
+      const rootRow = within(item).getByText(rootLabel).parentElement!;
+      expect(fileRow).not.toBe(rootRow);
+      expect(fileRow).toHaveTextContent(/new.obj|gone.stl/);
+      expect(fileRow).not.toHaveTextContent('/models');
+      expect(rootRow).toHaveTextContent('/models');
+      expect(item).toHaveAttribute('title');
+    }
+  });
   it('runs via F5, prevents duplicate scans and reports unchanged catalogs', async () => {
     let resolve!: (scan: DiskScan) => void;
     vi.mocked(invoke).mockReturnValue(new Promise<DiskScan>(r => { resolve = r; }));
@@ -47,7 +63,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
-    expect(screen.getByText('foto[U+202E]gpj.stl')).toHaveAttribute('title', '/models/foto[U+202E]gpj.stl');
+    expect(screen.getByText('foto[U+202E]gpj.stl').closest('li')).toHaveAttribute('title', '/models/foto[U+202E]gpj.stl');
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', {
       selection: { newPaths: [path], missingIds: [], removeMissing: false },

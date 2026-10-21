@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
 import { parseDecimalInput } from '../lib/decimalInput';
 import type { FilamentSpool, SpoolKind } from '../types';
-import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS, RESIN_MATERIALS, RESIN_MANUFACTURERS } from '../lib/filamentCatalog';
+import { FILAMENT_MATERIALS, RESIN_MATERIALS, manufacturerSuggestions } from '../lib/filamentCatalog';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { useImageDropZone } from '../hooks/useImageDropZone';
 import { readDroppedImage } from '../lib/api/filament';
@@ -19,6 +19,7 @@ interface Props {
   open: boolean;
   editing: FilamentSpool | null;
   knownLocations: string[];
+  knownManufacturers?: string[];
   onClose: () => void;
   onSaved: () => void;
   /** Kind for new entries (current view in the inventory). */
@@ -78,7 +79,7 @@ function toForm(spool: FilamentSpool): FormState {
   };
 }
 
-export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSaved, defaultKind = 'filament' }: Props) {
+export function FilamentSpoolForm({ open, editing, knownLocations, knownManufacturers = [], onClose, onSaved, defaultKind = 'filament' }: Props) {
   const t = useT();
   const dialogRef = useModalDialog<HTMLElement>({ open, onClose });
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -340,7 +341,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                   maxSuggestions={Infinity}
                   value={form.manufacturer}
                   onChange={(v) => setForm((f) => ({ ...f, manufacturer: v }))}
-                  options={resin ? RESIN_MANUFACTURERS : FILAMENT_MANUFACTURERS}
+                  options={manufacturerSuggestions(form.kind, knownManufacturers)}
                   placeholder={t('filamentManufacturerLabel')}
                   className={fieldClass}
                 />

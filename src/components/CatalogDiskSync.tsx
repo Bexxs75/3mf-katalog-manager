@@ -20,7 +20,19 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   const hasMissing = !!scan && scan.missingFiles.length > 0;
   const canApply = hasNew || (remove && hasMissing);
   const ref = useModalDialog({ open: true, onClose, busy });
-  const group = (entries: DiskEntry[]) => <ul className="space-y-1">{entries.map(e => <li key={e.path} title={displayName(e.path)} className="rounded bg-[var(--panel-2)] p-2 break-all font-code text-small">{displayName(e.relativePath)}<span className="block text-[var(--ink-3)]">{displayName(e.root)}</span></li>)}</ul>;
+  const group = (entries: DiskEntry[]) => <ul className="space-y-1">{entries.map(e => (
+    <li key={e.path} title={displayName(e.path)} className="rounded bg-[var(--panel-2)] p-2 text-small">
+      <div className="flex gap-2">
+        <span className="w-[100px] shrink-0 text-[var(--ink-3)]">{t('diskSyncFileLabel')}</span>
+        <span className="min-w-0 break-all font-code">{displayName(e.relativePath)}</span>
+      </div>
+      <div className="my-1.5 border-t border-[var(--line)]" />
+      <div className="flex gap-2">
+        <span className="w-[100px] shrink-0 text-[var(--ink-3)]">{t('diskSyncRootLabel')}</span>
+        <span className="min-w-0 break-all font-code">{displayName(e.root)}</span>
+      </div>
+    </li>
+  ))}</ul>;
   return createPortal(<div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
     <div ref={ref} role="dialog" aria-modal="true" aria-label={t('diskSyncTitle')} tabIndex={-1} className="w-[560px] max-w-full max-h-[85vh] flex flex-col rounded-lg bg-[var(--panel)] border border-[var(--line)] shadow-[var(--shadow)]">
       <h2 className="text-title font-semibold px-4 py-3 border-b border-[var(--line)]">{t('diskSyncTitle')}</h2>
