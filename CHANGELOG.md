@@ -13,6 +13,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Import filenames:** optional date/time prefixes (`YYYY-MM-DD_HH-MM_`), off by default. New catalog models get collision-safe names with extension-preserving length limits; external files imported in place are not renamed. Existing entries, disk sync, backup restoration and archive extraction are unchanged.
 
+### Fixed
+
+- **Folders:** renaming or moving a folder now also carries files whose catalog entry is not assigned to that folder, and trashed entries below it, so they no longer point to a path that does not exist any more. If a new path is already taken by another entry, the rename or move is cancelled and nothing is changed.
+
 ## [0.16.3] - 2026-10-21
 
 ### Fixed
@@ -649,6 +653,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Hinzugefügt
 
 - **Dateinamen beim Import:** optionaler Datums-/Uhrzeitpräfix (`JJJJ-MM-TT_HH-MM_`), standardmäßig aus. Neue Katalogmodelle erhalten kollisionsfreie Namen mit Längenbegrenzung und erhaltener Endung; externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt. Bestehende Einträge, Festplattenabgleich, Backup-Wiederherstellung und Archiv-Entpacken bleiben unverändert.
+
+### Behoben
+
+- **Ordner:** Beim Umbenennen oder Verschieben eines Ordners werden jetzt auch Dateien mitgeführt, deren Katalogeintrag diesem Ordner nicht zugeordnet ist, sowie Einträge im Papierkorb darunter; sie zeigen danach nicht mehr auf einen nicht mehr vorhandenen Pfad. Ist ein neuer Pfad bereits durch einen anderen Eintrag belegt, wird das Umbenennen oder Verschieben abgebrochen und nichts verändert.
 
 ## [0.16.3] - 2026-10-21
 
