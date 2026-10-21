@@ -211,6 +211,11 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("collection_files", &["collection_id", "file_id", "position"]),
     ("registered_slicers", &["id", "name", "executable_path", "is_auto_detected"]),
     ("app_settings", &["key", "value"]),
+    ("companion_files", &[
+        "id", "file_id", "name", "path", "kind", "size_bytes", "added_at", "deleted_at", "trash_path",
+    ]),
+    ("source_folders", &["id", "path", "added_at"]),
+    ("source_rejected", &["id", "path", "size_bytes", "rejected_at"]),
     ("printer_connections", &["printer_id", "kind", "address", "connected_since", "paused"]),
     ("printer_jobs", &[
         "id", "printer_id", "remote_id", "file_name", "outcome", "raw_status", "ended_at",
@@ -359,6 +364,23 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("registered_slicers", "name", ColType::Text, false),
     ("registered_slicers", "executable_path", ColType::Text, false),
     ("registered_slicers", "is_auto_detected", ColType::Integer, false),
+    // companion_files, source_folders, source_rejected - see db/companions.rs and db/sources.rs.
+    ("companion_files", "id", ColType::Integer, false),
+    ("companion_files", "file_id", ColType::Integer, false),
+    ("companion_files", "name", ColType::Text, false),
+    ("companion_files", "path", ColType::Text, false),
+    ("companion_files", "kind", ColType::Text, false),
+    ("companion_files", "size_bytes", ColType::Integer, true),
+    ("companion_files", "added_at", ColType::Text, false),
+    ("companion_files", "deleted_at", ColType::Text, true),
+    ("companion_files", "trash_path", ColType::Text, true),
+    ("source_folders", "id", ColType::Integer, false),
+    ("source_folders", "path", ColType::Text, false),
+    ("source_folders", "added_at", ColType::Text, false),
+    ("source_rejected", "id", ColType::Integer, false),
+    ("source_rejected", "path", ColType::Text, false),
+    ("source_rejected", "size_bytes", ColType::Integer, false),
+    ("source_rejected", "rejected_at", ColType::Text, false),
     // Printer connection - see db/printer_link.rs (connection_from_row, job_from_row).
     ("app_settings", "key", ColType::Text, false),
     ("app_settings", "value", ColType::Text, false),
@@ -795,6 +817,41 @@ fn validate_catalog_db_bytes(
                         .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 }
             }
+            // Companion rows decide which files the app moves, deletes or opens, so each
+            // must look like what the app itself writes: allowed kind, an `_extras`
+            // folder, no protected location, a trash file only inside the trash.
+            let mut stmt = conn
+                .prepare("SELECT name, path, kind, trash_path FROM companion_files")
+                .map_err(|e| e.to_string())?;
+            let companions = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            for (name, path, kind, trash_path) in companions {
+                validate_imported_path_length(&path, known_folders)?;
+                if let Some(path) = trash_path.as_ref().filter(|p| !p.trim().is_empty()) {
+                    validate_imported_path_length(path, known_folders)?;
+                }
+                companions::validate_stored_fields(&name, &path, &kind)
+                    .map_err(|why| format!("Begleitdatei-Eintrag im Archiv abgelehnt ({why})"))?;
+                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
+                    .map_err(|e| format!("Begleitdatei-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
+                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &trash_denylist)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                    reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                }
+            }
+            drop(stmt);
             Ok(())
         });
 
@@ -1178,7 +1235,7 @@ mod tests {
             crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
             conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
             // The license step is the one before the source-column step.
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 2).unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION - 2).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_ok());
         for (value, valid) in [(None, true), (Some("cc-by".to_string()), true),
@@ -1261,7 +1318,7 @@ mod tests {
             file.creator = Some("Jane".into());
             db::insert_file(&mut conn, &file).unwrap();
             conn.execute_batch("ALTER TABLE files DROP COLUMN source_platform; ALTER TABLE files DROP COLUMN source_model_id; ALTER TABLE files DROP COLUMN source_profile_id").unwrap();
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION - 1).unwrap();
         }
         let zip_path = dir.join("old-backup.zip");
         write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
@@ -3252,5 +3309,162 @@ mod tests {
             .unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod companion_tests {
+    use super::*;
+
+    fn state_with_catalog(name: &str) -> (AppState, PathBuf) {
+        let dir = unique_test_dir(name);
+        let db_path = dir.join("catalog.db");
+        let state = AppState {
+            import_jobs: ImportJobs::default(),
+            db: Mutex::new(db::connect(&db_path).unwrap()),
+            trash_dir: dir.join("trash"),
+            db_path,
+            sensitive_dirs: Vec::new(),
+        };
+        (state, dir)
+    }
+
+    /// The bytes of a catalog database after `setup` ran on it, plus the trash folder to validate against.
+    fn catalog_bytes(setup: impl FnOnce(&Connection)) -> (Vec<u8>, PathBuf) {
+        let dir = unique_test_dir("backup_companion_bytes");
+        let path = dir.join("catalog.db");
+        {
+            let conn = crate::db::connect(&path).unwrap();
+            setup(&conn);
+        }
+        (std::fs::read(&path).unwrap(), dir.join("trash"))
+    }
+
+    fn with_companion(conn: &Connection, name: &str, path: &str, kind: &str, trash_path: Option<&str>) {
+        // A crafted backup need not carry the CHECK constraints.
+        conn.pragma_update(None, "ignore_check_constraints", true).unwrap();
+        let id = crate::db::test_insert_minimal_file(conn, "/catalog/Foo.3mf", None).unwrap();
+        conn.execute(
+            "INSERT INTO companion_files (file_id, name, path, kind, added_at, deleted_at, trash_path) VALUES (?1, ?2, ?3, ?4, 'now', ?5, ?6)",
+            rusqlite::params![id, name, path, kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path],
+        )
+        .unwrap();
+    }
+
+    fn validate(bytes: &[u8], trash: &Path) -> Result<(), String> {
+        validate_catalog_db_bytes(bytes, &[], trash, &[])
+    }
+
+    #[test]
+    fn companions_and_source_folders_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_companion_roundtrip_a");
+        {
+            let conn = source.db.lock().unwrap();
+            with_companion(&conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", None);
+            conn.execute("INSERT INTO source_folders (path, added_at) VALUES ('/downloads', 't')", []).unwrap();
+            conn.execute("INSERT INTO source_rejected (path, size_bytes, rejected_at) VALUES ('/downloads/x.stl', 12, 't')", []).unwrap();
+            crate::db::printer_link::set_setting(&conn, "source_check_on_start", "1").unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate(&db_bytes, &dir).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+
+        let (target, _target_dir) = state_with_catalog("backup_companion_roundtrip_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        let restored: (String, String, String) = conn
+            .query_row("SELECT name, path, kind FROM companion_files", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap();
+        assert_eq!(restored, ("pic.png".into(), "/catalog/Foo_extras/pic.png".into(), "image".into()));
+        let count = |table: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!((count("source_folders"), count("source_rejected")), (1, 1));
+        assert!(crate::db::sources::source_check_on_start(&conn).unwrap());
+    }
+
+    #[test]
+    fn a_backup_from_before_the_new_tables_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_companion_old_a");
+        {
+            let conn = old.db.lock().unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
+            conn.execute_batch("DROP TABLE companion_files; DROP TABLE source_folders; DROP TABLE source_rejected").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT * FROM companion_files").is_err(), "precondition: the backup has no such table");
+
+        validate(&db_bytes, &dir).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_companion_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        for table in ["companion_files", "source_folders", "source_rejected"] {
+            let rows: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert_eq!(rows, 0, "{table} exists and is empty");
+        }
+        assert_eq!(db::list_files(&conn).unwrap()[0].creator.as_deref(), Some("Jane"));
+    }
+
+    #[test]
+    fn a_well_formed_companion_row_is_accepted() {
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", None));
+        assert!(validate(&bytes, &trash).is_ok());
+    }
+
+    #[test]
+    fn crafted_companion_rows_are_rejected() {
+        let cases: [(&str, &str, &str, &str); 7] = [
+            ("not an _extras folder", "secret.png", "/home/user/.ssh/secret.png", "image"),
+            ("name does not match the path", "other.png", "/catalog/Foo_extras/pic.png", "image"),
+            ("a kind that does not exist", "pic.png", "/catalog/Foo_extras/pic.png", "exe"),
+            ("kind and extension disagree", "pic.png", "/catalog/Foo_extras/pic.png", "pdf"),
+            ("an executable as an image", "tool.exe", "/catalog/Foo_extras/tool.exe", "image"),
+            ("a parent reference", "pic.png", "/catalog/Foo_extras/../pic.png", "image"),
+            ("a relative path", "pic.png", "Foo_extras/pic.png", "image"),
+        ];
+        for (why, name, path, kind) in cases {
+            let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, name, path, kind, None));
+            assert!(validate(&bytes, &trash).is_err(), "{why}");
+        }
+    }
+
+    #[test]
+    fn a_companion_row_in_a_protected_folder_is_rejected() {
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "a.png", "/home/user/.config/autostart_extras/a.png", "image", None));
+        assert!(validate_catalog_db_bytes(&bytes, &[PathBuf::from("/home/user/.config")], &trash, &[]).is_err());
+        assert!(validate(&bytes, &trash).is_ok(), "counter-check: allowed when nothing is protected there");
+    }
+
+    #[test]
+    fn a_companion_trash_path_must_lie_inside_the_trash_folder() {
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", Some("/home/user/Documents/precious.png")));
+        assert!(validate(&bytes, &trash).is_err(), "a restored backup must not make the app delete a document");
+        let inside = trash.join("companion-1-pic.png");
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", Some(&inside.to_string_lossy())));
+        let _ = trash;
+        assert!(validate(&bytes, inside.parent().unwrap()).is_ok(), "counter-check: inside the trash it is fine");
+    }
+
+    #[test]
+    fn wrong_storage_classes_in_the_new_tables_are_rejected() {
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO source_rejected (path, size_bytes, rejected_at) VALUES ('/d/x.stl', 'big', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_err());
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO source_folders (path, added_at) VALUES (X'1234', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_err());
     }
 }

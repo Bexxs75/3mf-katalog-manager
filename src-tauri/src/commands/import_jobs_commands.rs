@@ -42,7 +42,7 @@ pub struct StartedImport {
     pub job_id: Option<String>,
 }
 
-fn submit_models(
+pub(crate) fn submit_models(
     app: &tauri::AppHandle,
     source: ImportSource,
     paths: Vec<PathBuf>,

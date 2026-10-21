@@ -15,6 +15,8 @@ function outcome(overrides: Partial<ArchiveOutcome>): ArchiveOutcome {
     unsafeSkipped: 0,
     blockedSkipped: 0,
     otherFilesExtracted: 0,
+    companionsAssigned: 0,
+    companionsIgnored: 0,
     archiveDeleted: false,
     deleteError: null,
     error: null,

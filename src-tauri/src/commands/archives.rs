@@ -87,6 +87,12 @@ pub struct ArchiveOutcomeDto {
     /// Extracted files that are not models (TXT, PDF, ...): they stay in the target
     /// folder but never enter the catalog.
     pub other_files_extracted: u32,
+    /// Files of an allowed type (picture, PDF, text) that were moved into the
+    /// companion folder of the model they belong to.
+    pub companions_assigned: u32,
+    /// Extracted files of a type that is not allowed as a companion. They stay in the
+    /// target folder, like all other files that are not models.
+    pub companions_ignored: u32,
     pub archive_deleted: bool,
     pub delete_error: Option<String>,
     pub error: Option<String>,
@@ -246,6 +252,7 @@ fn extract_one(
     request: &ArchiveRequest,
     result: &mut ArchiveImportResultDto,
     import_dir: &mut impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
+    assign_companions: &mut impl FnMut(&Path, &[PathBuf], &[ModelFileDto]) -> (u32, u32),
     on_progress: &mut impl FnMut(&str, &'static str),
 ) -> ArchiveOutcomeDto {
     let mut outcome = ArchiveOutcomeDto {
@@ -327,6 +334,11 @@ fn extract_one(
         }
         return outcome;
     }
+    // Pictures, PDFs and text files of the archive join the model they belong to; the
+    // rest stays in the folder. What is left over is what the summary calls "other files".
+    let (assigned, ignored) = assign_companions(&dest, &extraction.written_files(&dest), &outcome.models.imported);
+    outcome.companions_assigned = assigned;
+    outcome.companions_ignored = ignored;
     outcome.other_files_extracted = extraction.count_written_files_not_matching(&dest, is_supported_extension);
     outcome.stripped_root = extraction.stripped_root.clone();
     outcome.extracted_to = Some(dest.to_string_lossy().to_string());
@@ -369,11 +381,30 @@ pub(crate) fn extract_archives_core(
     mut import_dir: impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
     mut on_progress: impl FnMut(&str, &'static str),
 ) -> CmdResult<ArchiveImportResultDto> {
-    extract_archives_controlled(sensitive_dirs, target_dir, requests, delete_archives, &mut import_dir, &mut on_progress, None)
+    extract_archives_controlled(
+        sensitive_dirs,
+        target_dir,
+        requests,
+        delete_archives,
+        CatalogSteps { import_dir: &mut import_dir, assign_companions: |_: &Path, _: &[PathBuf], _: &[ModelFileDto]| (0, 0) },
+        &mut on_progress,
+        None,
+    )
 }
+/// The two steps that touch the catalog while an archive is processed.
+pub(super) struct CatalogSteps<I, A> {
+    /// Imports the extracted folder.
+    pub import_dir: I,
+    /// Gives extracted pictures, PDFs and text files to their model: `(assigned, ignored)`.
+    pub assign_companions: A,
+}
+
 pub(super) fn extract_archives_controlled(
     sensitive_dirs: &[PathBuf], target_dir: &Path, requests: Vec<ArchiveRequest>, delete_archives: bool,
-    mut import_dir: impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
+    mut steps: CatalogSteps<
+        impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
+        impl FnMut(&Path, &[PathBuf], &[ModelFileDto]) -> (u32, u32),
+    >,
     mut on_progress: impl FnMut(&str, &'static str), cancel: Option<&std::sync::atomic::AtomicBool>,
 ) -> CmdResult<ArchiveImportResultDto> {
     // Compute once - the guard runs for every entry.
@@ -397,7 +428,7 @@ pub(super) fn extract_archives_controlled(
             result.archives.push(ArchiveOutcomeDto { path: request.path.clone(), error: Some("notStarted".into()), ..Default::default() });
             continue;
         }
-        let outcome = extract_one(&ctx, request, &mut result, &mut import_dir, &mut on_progress);
+        let outcome = extract_one(&ctx, request, &mut result, &mut steps.import_dir, &mut steps.assign_companions, &mut on_progress);
         on_progress(&request.path, if outcome.error.is_some() { "failed" } else { "done" });
         result.archives.push(outcome);
     }
@@ -1027,3 +1058,7 @@ mod tests {
 #[cfg(test)]
 #[path = "import_archive_tests.rs"]
 mod import_archive_tests;
+
+#[cfg(test)]
+#[path = "archive_companion_tests.rs"]
+mod archive_companion_tests;

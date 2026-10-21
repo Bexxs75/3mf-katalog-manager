@@ -298,10 +298,17 @@ fn record_skipped(scan: &mut DiskScan, root: &DiskRoot, dir: &Path) {
         .push(stored.to_string_lossy().into_owned());
 }
 
+/// What the catalog already knows, as comparison keys.
+struct KnownPaths<'a> {
+    folders: &'a HashSet<PathBuf>,
+    files: &'a HashSet<PathBuf>,
+    /// Companion folders of catalog models.
+    extras: &'a HashSet<PathBuf>,
+}
+
 fn walk(
     root: &DiskRoot,
-    known_folders: &HashSet<PathBuf>,
-    known_files: &HashSet<PathBuf>,
+    known: &KnownPaths,
     scan: &mut DiskScan,
     case_insensitive: bool,
     seen_files: &mut HashSet<PathBuf>,
@@ -331,11 +338,16 @@ fn walk(
                 continue;
             }
             if kind.is_dir() {
+                // The companion folder of a catalog model is managed through the
+                // database; its contents are neither new files nor a new folder.
+                if known.extras.contains(&path_key(&path, case_insensitive)) {
+                    continue;
+                }
                 pending.push(path);
             } else if kind.is_file() && files::is_supported_extension(&path) {
                 let key = path_key(&path, case_insensitive);
                 seen_files.insert(key.clone());
-                if known_files.contains(&key) {
+                if known.files.contains(&key) {
                     continue;
                 }
                 let stored = root
@@ -347,7 +359,7 @@ fn walk(
                     .skip(1)
                     .take_while(|p| *p != root.canonical)
                 {
-                    if !known_folders.contains(&path_key(parent, case_insensitive)) {
+                    if !known.folders.contains(&path_key(parent, case_insensitive)) {
                         new_folders.insert(parent.to_path_buf());
                     }
                 }
@@ -440,6 +452,19 @@ fn scan_with_path_mode(
         .iter()
         .map(|(_, p, _, _)| resolver.key(Path::new(p)))
         .collect();
+    // Companion folders of catalog models, by the model's name and by where the
+    // companion rows actually are.
+    let known_extras: HashSet<PathBuf> = rows
+        .iter()
+        .filter_map(|(_, p, _, _)| companions::extras_dir_for(Path::new(p)))
+        .chain(
+            db::companions::list_active_companion_paths(conn)
+                .map_err(|e| e.to_string())?
+                .iter()
+                .filter_map(|p| Path::new(p).parent().map(Path::to_path_buf)),
+        )
+        .map(|dir| resolver.key(&dir))
+        .collect();
     let mut seen_files = HashSet::new();
     for (index, root) in roots.iter().enumerate() {
         let checked = (|| -> std::io::Result<()> {
@@ -458,8 +483,7 @@ fn scan_with_path_mode(
             {
                 walk(
                     root,
-                    &known_folders,
-                    &known_files,
+                    &KnownPaths { folders: &known_folders, files: &known_files, extras: &known_extras },
                     &mut result,
                     case_insensitive,
                     &mut seen_files,
@@ -2342,3 +2366,6 @@ mod rename_tests;
 
 #[cfg(test)]
 mod missing_folder_tests;
+
+#[cfg(test)]
+mod companion_tests;

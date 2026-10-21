@@ -264,3 +264,35 @@ pub struct PrintLogEntryRecord {
     pub note: Option<String>,
     pub photo_png: Option<Vec<u8>>,
 }
+
+/// An extra file of a model (picture, PDF, text note). `deleted_at`/`trash_path`
+/// are set while it sits in the app trash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionRecord {
+    pub id: i64,
+    pub file_id: i64,
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub size_bytes: Option<i64>,
+    pub added_at: String,
+    pub deleted_at: Option<String>,
+    pub trash_path: Option<String>,
+}
+
+/// A folder watched for new model files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceFolderRecord {
+    pub id: i64,
+    pub path: String,
+    pub added_at: String,
+}
+
+/// A source-folder file the user declined; matched by path and size.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RejectedSourceRecord {
+    pub id: i64,
+    pub path: String,
+    pub size_bytes: i64,
+    pub rejected_at: String,
+}
