@@ -26,4 +26,9 @@ describe('folders api', () => {
     await foldersApi.moveFolder('folder1', 'folder2');
     expect(invoke).toHaveBeenCalledWith('move_folder', { folderId: 'folder1', newParentId: 'folder2' });
   });
+  it('renameFolder', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await foldersApi.renameFolder('folder1', 'New name');
+    expect(invoke).toHaveBeenCalledWith('rename_folder', { folderId: 'folder1', name: 'New name' });
+  });
 });

@@ -83,6 +83,7 @@ interface CatalogWorkspaceProps {
   bulkDelete: () => void;
   bulkRemove?: () => Promise<void>;
   onCatalogRemoved?: () => void;
+  onFolderRenamed?: (info: { from: string; to: string; count: number }) => void;
   onRemoveModelFromCatalog?: (id: string) => Promise<void>;
   selectAllVisible: () => void;
   clearBulkSelection: () => void;
@@ -192,6 +193,7 @@ export function CatalogWorkspace({
   bulkDelete,
   bulkRemove,
   onCatalogRemoved,
+  onFolderRenamed,
   onRemoveModelFromCatalog,
   selectAllVisible,
   clearBulkSelection,
@@ -372,6 +374,7 @@ export function CatalogWorkspace({
         folders={folders}
         totalModelCount={models.length}
         onCatalogRemoved={onCatalogRemoved}
+        onFolderRenamed={onFolderRenamed}
         activeFolderId={activeFolderId}
         onFolderSelect={(id) => {
           setActiveFolderId(id);

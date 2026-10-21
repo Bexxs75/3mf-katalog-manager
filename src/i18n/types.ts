@@ -411,6 +411,12 @@ export interface Translations {
   removeFolderSafe: string;
   removeFolderReimport: string;
   catalogBaseProtected: string;
+  renameFolder: string;
+  renameFolderLabel: string;
+  renameFolderHint: PluralForms;
+  renameFolderEmpty: string;
+  renameFolderSeparator: string;
+  folderRenamed: PluralForms;
   resetCatalog: string;
   resetCatalogHint: string;
   resetCatalogQuestion: string;
