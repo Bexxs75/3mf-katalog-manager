@@ -13,3 +13,6 @@ export function moveFileToFolder(fileId: string, folderId: string) {
 export function moveFolder(folderId: string, newParentId: string) {
   return invoke('move_folder', { folderId, newParentId });
 }
+export function renameFolder(folderId: string, name: string) {
+  return invoke('rename_folder', { folderId, name });
+}

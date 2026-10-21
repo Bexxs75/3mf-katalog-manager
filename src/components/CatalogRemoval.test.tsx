@@ -36,7 +36,7 @@ describe('folder catalog removal', () => {
     vi.mocked(invoke).mockResolvedValueOnce({ name: 'Parts', subfolderCount: 0, modelCount: 4 }).mockRejectedValueOnce({ expected: true, message: 'Das ist der Speicherort des Katalogs. Zum Leeren „Katalog zurücksetzen“ in den Einstellungen verwenden.' });
     render(<Provider><FolderTree folders={folders} totalModelCount={4} activeFolderId="all" onSelect={() => {}} onRemoved={() => {}} /></Provider>);
     fireEvent.contextMenu(screen.getByText('Parts'));
-    fireEvent.click(screen.getByRole('menuitem'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus dem Katalog entfernen' }));
     await screen.findByRole('dialog');
     await screen.findByText('4 Modelle samt Tags und Einträgen im Druckprotokoll');
     fireEvent.click(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' }));
@@ -48,7 +48,7 @@ describe('folder catalog removal', () => {
     render(<Provider><FolderTree folders={folders} totalModelCount={4} activeFolderId="all" onSelect={() => {}} /></Provider>);
     const row = screen.getByText('Parts').closest('[tabindex]')!;
     fireEvent.contextMenu(row);
-    fireEvent.click(screen.getByRole('menuitem'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus dem Katalog entfernen' }));
     await screen.findByText('4 Modelle samt Tags und Einträgen im Druckprotokoll');
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();

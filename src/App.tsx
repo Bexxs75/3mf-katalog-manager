@@ -15,7 +15,7 @@ import { useFolderExpansion } from './hooks/useFolderExpansion';
 import { detailNeighbor, type DetailDirection } from './hooks/useDetailNavigation';
 import { useSidebarWidth } from './hooks/useSidebarWidth';
 import { invoke } from '@tauri-apps/api/core';
-import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { isWebGLUnavailable } from './lib/webglAvailability';
 import { nextRendererGeneration, snapshotQueue } from './lib/snapshotQueue';
@@ -30,6 +30,7 @@ import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { MoveToast } from './components/MoveToast';
+import { RenameToast } from './components/RenameToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
@@ -150,6 +151,14 @@ export default function App() {
       store.refreshTrash(), collections.refreshCollections(), printerLink.refresh(),
       ...(includeActiveCollection && collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
     ]).catch((e) => console.error('[catalog] refresh after removal failed:', e));
+  };
+  const [renameToast, setRenameToast] = useState<{ from: string; to: string; count: number } | null>(null);
+  const dismissRenameToast = useCallback(() => setRenameToast(null), []);
+  // Same reload as after move_folder: folder paths changed, and so did the paths of the models below it.
+  const onFolderRenamed = (info: { from: string; to: string; count: number }) => {
+    setRenameToast(info);
+    void Promise.all([store.refreshFolders(), store.refreshFiles()])
+      .catch((e) => console.error('[folders] refresh after rename failed:', e));
   };
   const removeCatalogModels = async (fileIds: string[]) => {
     await invoke('remove_files_from_catalog', { fileIds });
@@ -477,6 +486,7 @@ export default function App() {
               bulkDelete={bulk.bulkDelete}
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
               onCatalogRemoved={refreshAfterRemoval}
+              onFolderRenamed={onFolderRenamed}
               onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
               selectAllVisible={() => bulk.selectAllVisible(filteredIds)}
               clearBulkSelection={bulk.clearBulkSelection}
@@ -613,6 +623,7 @@ export default function App() {
               onDone={dragDrop.dismissMoveToast}
             />
           )}
+          {renameToast && <RenameToast from={renameToast.from} to={renameToast.to} count={renameToast.count} onDone={dismissRenameToast} />}
         </div>
       </div>
       {setupDialogOpen && (

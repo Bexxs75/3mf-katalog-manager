@@ -35,6 +35,7 @@ interface Props {
   folders: Folder[];
   totalModelCount: number;
   onCatalogRemoved?: () => void;
+  onFolderRenamed?: (info: { from: string; to: string; count: number }) => void;
   activeFolderId: string;
   onFolderSelect: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
@@ -85,6 +86,7 @@ export function Sidebar({
   folders,
   totalModelCount,
   onCatalogRemoved,
+  onFolderRenamed,
   activeFolderId,
   onFolderSelect,
   onCreateFolder,
@@ -274,6 +276,7 @@ export function Sidebar({
           activeFolderId={activeFolderId}
           onSelect={onFolderSelect}
           onRemoved={onCatalogRemoved}
+          onRenamed={onFolderRenamed}
           draggedFileId={draggedFileId}
           draggedFileFolderId={draggedFileFolderId}
           dragOverFolderId={dragOverFolderId}
