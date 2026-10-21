@@ -13,6 +13,8 @@ interface Props {
   jobHasProblems?: boolean;
   skipped?: SkippedFile[];
   onClose: () => void;
+  // Opens the "recently added" view; offered only when models were added.
+  onShowNew?: () => void;
 }
 
 // Names shown per reason; a large folder can hold hundreds of broken files.
@@ -28,7 +30,7 @@ function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-export function ImportSummaryBanner({ imported, duplicates, archives, skipped, otherFilesExtracted = 0, jobHasProblems = false, onClose }: Props) {
+export function ImportSummaryBanner({ imported, duplicates, archives, skipped, otherFilesExtracted = 0, jobHasProblems = false, onClose, onShowNew }: Props) {
   const t = useT();
   const formatCount = useFormatCount();
 
@@ -108,6 +110,15 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
               </li>
             ))}
           </ul>
+        )}
+        {onShowNew && imported > 0 && (
+          <button
+            type="button"
+            onClick={() => { onShowNew(); onClose(); }}
+            className="self-start px-2.5 py-1 rounded-[4px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[length:var(--font-size-meta)] font-semibold cursor-pointer hover:bg-[var(--panel-2)]"
+          >
+            {t('importShowNew')}
+          </button>
         )}
       </div>
       <span

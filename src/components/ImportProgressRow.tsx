@@ -15,8 +15,10 @@ interface Props {
   onCancel: () => void | Promise<void>;
   onDismiss: () => void;
   onSelectModel?: (id: string) => void;
+  // Opens the "recently added" view; offered only when the job added models.
+  onShowNew?: () => void;
 }
-export function ImportProgressRow({ progress: p, meta, result, queued, onCancel, onDismiss, onSelectModel }: Props) {
+export function ImportProgressRow({ progress: p, meta, result, queued, onCancel, onDismiss, onSelectModel, onShowNew }: Props) {
   const t = useT();
   const formatCount = useFormatCount(); const { language } = useLanguage();
   const n = (value: number) => new Intl.NumberFormat(language).format(value);
@@ -42,7 +44,7 @@ export function ImportProgressRow({ progress: p, meta, result, queued, onCancel,
   return <>
     <section className={`import-row ${state === 'finished' ? (withIssues ? 'warn-done' : 'done') : state === 'cancelled' ? 'cancel' : state === 'failed' ? 'fail' : ''}`} role="status" aria-live="polite">
       <div className="import-title"><span className="import-chip">{status}</span><span>{source} · {title}</span>{queued > 0 && <span className="import-queue">{formatCount(t('impWaitMany'), queued)}</span>}</div>
-      <div className="import-actions">{ended ? <><button ref={detailsRef} onClick={() => setDetails(true)}>{t('impDetails')}</button>{state === 'failed' && <ReportProblemLink />}<button onClick={onDismiss}>{t('impClose')}</button></> : <button disabled={cancelling} onClick={() => { setCancelRequested(true); void onCancel(); }}>{cancelling ? t('impCancelling') : t('impCancel')}</button>}</div>
+      <div className="import-actions">{ended ? <>{onShowNew && importedTotal > 0 && <button onClick={() => { onShowNew(); onDismiss(); }}>{t('importShowNew')}</button>}<button ref={detailsRef} onClick={() => setDetails(true)}>{t('impDetails')}</button>{state === 'failed' && <ReportProblemLink />}<button onClick={onDismiss}>{t('impClose')}</button></> : <button disabled={cancelling} onClick={() => { setCancelRequested(true); void onCancel(); }}>{cancelling ? t('impCancelling') : t('impCancel')}</button>}</div>
       <div className={`import-bar ${state === 'scanning' || state === 'queued' ? 'indeterminate' : ''}`} role="progressbar" aria-label={status} aria-valuemin={0} aria-valuemax={p.total ?? counts.known} aria-valuenow={state === 'scanning' || state === 'queued' ? undefined : p.done}><i style={state === 'scanning' || state === 'queued' ? undefined : {width: `${Math.min(100, (state === 'finished' ? 1 : p.done / Math.max(1, p.total ?? counts.known)) * 100)}%`}} /></div>
       <div className="import-meta">{state === 'failed' && result?.scanComplete === false && <>{formatCount(t('impSearchStopped'), counts.known)} · </>}{message}</div>
       {state === 'finished' && archivesSkipped > 0 && <div className="import-meta">{formatCount(t('impArchivesSkipped'), archivesSkipped).replace('{import}', t('import')).replace('{files}', t('importFilesOption'))}</div>}

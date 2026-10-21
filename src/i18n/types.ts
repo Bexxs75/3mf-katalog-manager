@@ -274,6 +274,7 @@ export interface Translations {
   impCancelling: string;
   impDetails: string;
   impClose: string;
+  importShowNew: string;
   impImported: string;
   impDuplicate: string;
   impSkipped: string;

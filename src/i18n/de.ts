@@ -268,6 +268,7 @@ export const de: Translations = {
   impCancelling: "Wird abgebrochen …",
   impDetails: "Details",
   impClose: "Schließen",
+  importShowNew: "Neu hinzugefügt ansehen",
   impImported: "importiert",
   impDuplicate: "doppelt",
   impSkipped: "übersprungen",
