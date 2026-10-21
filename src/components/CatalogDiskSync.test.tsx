@@ -315,9 +315,9 @@ describe('catalog disk sync', () => {
     it('disables the apply button when everything is unticked', async () => {
       await open();
       for (const name of ['Drucker-Teile/Halter.3mf → Druckerteile/Halter.3mf', 'Deko/Vase.stl → Deko/Vase_v2.stl', 'Deko/Schale.3mf']) fireEvent.click(box(name));
-      expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeDisabled();
+      await waitFor(() => expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeDisabled());
       fireEvent.click(box('Deko/Vase - Kopie.3mf'));
-      expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeEnabled();
+      await waitFor(() => expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeEnabled());
     });
     it('offers a scan that only contains renames', async () => {
       await open({ ...empty, renamedFiles: grouped.renamedFiles });
