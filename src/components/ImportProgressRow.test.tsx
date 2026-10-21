@@ -111,3 +111,16 @@ it('shows a warning state when models were imported but not placed', () => {
   expect(screen.getByText('Fertig, mit Hinweisen')).toBeVisible();
   expect(screen.getByRole('status')).toHaveClass('warn-done'); expect(screen.getByRole('status')).not.toHaveClass('done');
 });
+it('offers "view recently added" after an import that added models, closes the notice and calls back', () => {
+  const onShowNew = vi.fn(); const onDismiss = vi.fn();
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'finished' as ImportState}} meta={{jobId:'j1',source:'files'}} result={importResult} queued={0} onCancel={vi.fn()} onDismiss={onDismiss} onShowNew={onShowNew} /></LanguageProvider>);
+  const button = screen.getByRole('button',{name:'Neu hinzugefügt ansehen'});
+  button.focus(); expect(button).toHaveFocus();
+  fireEvent.click(button);
+  expect(onShowNew).toHaveBeenCalledOnce(); expect(onDismiss).toHaveBeenCalledOnce();
+});
+it('does not offer "view recently added" when nothing new was imported', () => {
+  const none: ImportCounts = {...importResult.counts, imported: 0, importedNotPlaced: 0};
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'finished' as ImportState,counts:none}} meta={{jobId:'j1',source:'files'}} result={{...importResult,counts:none,groups:{...importResult.groups,archive:[]}}} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} onShowNew={vi.fn()} /></LanguageProvider>);
+  expect(screen.queryByRole('button',{name:'Neu hinzugefügt ansehen'})).toBeNull();
+});

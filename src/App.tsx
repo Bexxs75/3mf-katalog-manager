@@ -175,6 +175,16 @@ export default function App() {
     filters.setQuery('');
     filters.setToolView(null);
   };
+  // Same target as a click on the sidebar entry, but with filters cleared first:
+  // an active folder or search would otherwise hide the models just imported.
+  const showRecentlyAdded = () => {
+    clearCatalogFilters();
+    filters.setToolView('new');
+    setMainView('catalog');
+    // The import notice that held focus is closing; park focus on the main
+    // view (once it is rendered) instead of letting it fall back to <body>.
+    setTimeout(() => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus(), 0);
+  };
   const finishCatalogReset = () => {
     resetCatalogSetup();
     clearCatalogFilters();
@@ -437,6 +447,7 @@ export default function App() {
                   onCancel={fileImport.cancel}
                   onDismiss={fileImport.dismiss}
                   onSelectModel={setDetailModelId}
+                  onShowNew={showRecentlyAdded}
                 />}
                 {fileImport.error && <div role="alert"><ErrorText error={fileImport.error} /></div>}
               </>}
@@ -592,6 +603,7 @@ export default function App() {
                 otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
                 jobHasProblems={fileImport.importBanner.jobHasProblems}
                 onClose={fileImport.dismissImportBanner}
+                onShowNew={showRecentlyAdded}
               />
             )}
 
