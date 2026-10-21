@@ -18,6 +18,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { ModelFile, SlicerConfig, Collection } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
+import { SourcePlatformRows } from './SourcePlatformRows';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { ModelPreview } from './ModelPreview';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
@@ -290,6 +291,7 @@ export function ModelDetailPage({
               <span className="text-[var(--ink-3)]">{t('metaCreator')}</span>
               <span className="font-medium tabular-nums text-right">{model.creator ?? t('noValue')}</span>
             </div>
+            <SourcePlatformRows model={model} variant="page" />
             <div className="flex justify-between items-baseline gap-4 py-2 text-body">
               <span className="text-[var(--ink-3)]">{t('metaSourceUrl')}</span>
               {editingSource ? (

@@ -810,6 +810,9 @@ export interface Translations {
   detailViewer3d: string;
   detailViewerImage: string;
   metaCreator: string;
+  metaPlatform: string;
+  metaModelId: string;
+  metaProfileId: string;
 
   queueHeading: string;
   queueEmptyState: string;
