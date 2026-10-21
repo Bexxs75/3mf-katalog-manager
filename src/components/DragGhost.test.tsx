@@ -14,3 +14,10 @@ it('starts at the pointer that triggered dragging', () => {
   render(<DragGhost name="Gear" initialPosition={{ x: 25, y: 40 }} />);
   expect(screen.getByText('Gear').parentElement).toHaveStyle({ left: '35px', top: '50px', visibility: 'visible' });
 });
+
+it('shows a count badge only when several cards travel together', () => {
+  const { rerender } = render(<DragGhost name="Gear" />);
+  expect(screen.queryByTestId('drag-count')).toBeNull();
+  rerender(<DragGhost name="Gear" count={3} />);
+  expect(screen.getByTestId('drag-count')).toHaveTextContent('3');
+});

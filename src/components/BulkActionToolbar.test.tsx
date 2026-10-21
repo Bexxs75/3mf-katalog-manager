@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { BulkActionToolbar } from './BulkActionToolbar';
+import { ImportLockContext } from '../hooks/ImportLockContext';
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -329,4 +330,31 @@ describe.each(['tags', 'collections'] as const)('%s list menu', kind => {
     expect(screen.getByRole('button', { name: kind === 'tags' ? 'Tag entfernen' : 'Zu Sammlung hinzufügen' })).toHaveFocus();
     expect(props.onClearSelection).not.toHaveBeenCalled();
   });
+});
+
+describe('BulkActionToolbar move', () => {
+  it('has a "Verschieben …" button that opens the move dialog', () => {
+    const onBulkMove = vi.fn();
+    renderToolbar({ onBulkMove });
+    fireEvent.click(screen.getByRole('button', { name: 'Verschieben …' }));
+    expect(onBulkMove).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no move button when the caller gives no handler', () => {
+    renderToolbar();
+    expect(screen.queryByRole('button', { name: 'Verschieben …' })).toBeNull();
+  });
+});
+
+it('disables the move button while an import runs', () => {
+  render(<LanguageProvider><ImportLockContext.Provider value={true}>
+    <BulkActionToolbar {...{
+      selectedCount: 2, confirmBulkDelete: false, onConfirmBulkDeleteChange: vi.fn(), onSelectAllVisible: vi.fn(), onClearSelection: vi.fn(),
+      onBulkAddToQueue: vi.fn(), addToCollectionMenuOpen: false, onAddToCollectionMenuOpenChange: vi.fn(), collections: [], onBulkAddToCollection: vi.fn(),
+      activeCollection: null, onBulkRemoveFromCollection: vi.fn(), onBulkSetPrintStatus: vi.fn(), onBulkDelete: vi.fn(), onBulkMove: vi.fn(), addTagMenuOpen: false,
+      onAddTagMenuOpenChange: vi.fn(), allTags: [], tagsInAllSelection: [], tagDraft: '', onTagDraftChange: vi.fn(), onSubmitBulkAddTag: vi.fn(),
+      removeTagMenuOpen: false, onRemoveTagMenuOpenChange: vi.fn(), tagsInSelection: [], onBulkRemoveTag: vi.fn(),
+    }} />
+  </ImportLockContext.Provider></LanguageProvider>);
+  expect(screen.getByRole('button', { name: 'Verschieben …' })).toBeDisabled();
 });

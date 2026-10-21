@@ -31,3 +31,9 @@ it('shows the empty catalog hint cards and opens help', () => {
   for (const name of ['Auswählen', 'Rechtsklick', 'Schnell suchen']) expect(screen.getByRole('heading', { name })).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Tastenkürzel und Tipps' })); expect(open).toHaveBeenCalledOnce();
 });
+it('lists the shortcuts for moving and undoing', () => {
+  render(<LanguageProvider><KeyboardTipsDialog onClose={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText('M')).toBeInTheDocument();
+  expect(screen.getByText('Ausgewählte Modelle in einen Ordner verschieben')).toBeInTheDocument();
+  expect(screen.getByText('Strg+Z')).toBeInTheDocument();
+});
