@@ -1,6 +1,7 @@
 import { displayName } from '../lib/displayName';
 import { ImportRenameSetting } from './ImportRenameSetting';
 import { SourceFoldersSettings } from './SourceFoldersSettings';
+import { DiskSyncSettings } from './DiskSyncSettings';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -254,6 +255,7 @@ export function Rail({
                 </button>
                 <p className="text-small text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
                 <ImportRenameSetting />
+                <DiskSyncSettings />
                 <SourceFoldersSettings />
                 <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
                   <p>{t('settingsPrintersMovedHint')}</p>

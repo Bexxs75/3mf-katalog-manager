@@ -23,6 +23,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Moving models:** Several models can be moved at once, by dragging a selected card (all selected cards travel along, the folder shows the count) or with "Move to …" (selection bar, context menu or key M). The notice names the folder and says which files were skipped or failed.
 - **Undo:** Ctrl+Z (Cmd+Z on macOS) or the "Undo" button takes back moving models, moving folders and renaming folders, several steps in a row, as long as the app is running.
 - **Companion files:** add pictures, PDFs and text files to a model, show them and open them (pictures as thumbnails with an enlarged view, PDF and text with the default program). Archive imports assign them to their model automatically. They live in a folder `Name_extras` next to the model and go to the trash together with the model. Companion files removed by mistake can be restored from the notice or from the "Removed" list of the model for 7 days.
+- **Sync with disk on start:** optional setting that checks the catalog folders at start and shows a notice only when something changed; a second option adds new files and detected renames without asking (never removes anything, never adds duplicates).
 
 ### Fixed
 
@@ -684,6 +685,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Modelle verschieben:** Mehrere Modelle lassen sich auf einmal verschieben, durch Ziehen einer markierten Karte (alle markierten Karten ziehen mit, der Ordner zeigt die Anzahl) oder über „Verschieben nach …“ (Auswahlleiste, Kontextmenü oder Taste M). Der Hinweis nennt den Ordner und welche Dateien übersprungen wurden oder fehlgeschlagen sind.
 - **Rückgängig:** Strg+Z (Cmd+Z auf macOS) oder der Knopf „Rückgängig“ nimmt das Verschieben von Modellen, das Verschieben von Ordnern und das Umbenennen von Ordnern zurück, auch mehrere Schritte hintereinander, solange die App läuft.
 - **Begleitdateien:** Bilder, PDF- und Textdateien lassen sich einem Modell hinzufügen, anzeigen und öffnen (Bilder als Vorschau mit Großansicht, PDF und Text mit dem Standardprogramm). Beim Archiv-Import werden sie automatisch dem Modell zugeordnet. Sie liegen in einem Ordner `Name_extras` neben dem Modell und gehen mit dem Modell in den Papierkorb. Versehentlich entfernte Begleitdateien lassen sich 7 Tage lang über den Hinweis oder die Liste „Entfernt“ des Modells wiederherstellen.
+- **Abgleich mit der Festplatte beim Start:** Optionale Einstellung, die beim Start die Katalogordner prüft und nur bei Änderungen einen Hinweis zeigt; eine zweite Option nimmt neue Dateien und erkannte Umbenennungen ohne Rückfrage auf (entfernt nie etwas, nimmt nie Duplikate auf).
 
 ### Behoben
 

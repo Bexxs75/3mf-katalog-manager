@@ -1261,12 +1261,14 @@ fn emptied_folder_target(
     usable.then_some(target)
 }
 
+/// Reads a model for import including its content hash, which rename detection needs later.
+fn read_model_with_hash(path: &Path) -> CmdResult<db::models::NewFile> {
+    let mut file = files::read_import_model_file(path, None)?;
+    file.content_hash = Some(files::compute_content_hash(path)?);
+    Ok(file)
+}
 fn apply(conn: &mut Connection, selection: DiskSelection) -> SyncResult<DiskApplied> {
-    apply_with_reader(conn, selection, |path| {
-        let mut file = files::read_import_model_file(path, None)?;
-        file.content_hash = Some(files::compute_content_hash(path)?);
-        Ok(file)
-    })
+    apply_with_reader(conn, selection, read_model_with_hash)
 }
 fn apply_with_reader(
     conn: &mut Connection,
@@ -2357,6 +2359,12 @@ mod tests {
         );
     }
 }
+
+mod start_sync;
+pub use start_sync::*;
+
+#[cfg(test)]
+mod start_sync_tests;
 
 #[cfg(test)]
 mod roadmap_1g_tests;
