@@ -254,3 +254,16 @@ fn two_identical_new_files_are_taken_over_only_once() {
     assert_eq!(again.applied, Some(StartSyncApplied::default()));
     assert_eq!(w.paths(), before);
 }
+
+#[test]
+fn files_above_the_size_limit_are_not_hashed_for_repeats() {
+    let w = World::new();
+    let same = "v 0 0 0\nv 7 0 0\nv 0 7 0\nf 1 2 3\n";
+    std::fs::write(w.root.join("a_twin.obj"), same).unwrap();
+    std::fs::write(w.root.join("b_twin.obj"), same).unwrap();
+    let preview = scan(&w.conn).unwrap();
+    let size = same.len() as u64;
+    assert!(repeated_new_files_within(&preview, size - 1).is_empty(), "too large to be compared");
+    let within = repeated_new_files_within(&preview, size);
+    assert_eq!(within.len(), 1, "counter-check: within the limit the second twin is held back");
+}
