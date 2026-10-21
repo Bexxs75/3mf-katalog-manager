@@ -441,10 +441,27 @@ fn move_file_core(
         let code = if e.kind() == std::io::ErrorKind::AlreadyExists { "name_exists" } else { "error" };
         return Err(MoveRefusal::new(code, e.to_string()));
     }
+    // The model's companion files travel with it; a clash there undoes the model move.
+    let carried = match companions::carry(conn, file_id, &old_path, &new_path) {
+        Ok(carried) => carried,
+        Err(error) => {
+            if let Err(rollback_err) = move_file(&new_path, &old_path) {
+                return Err(MoveRefusal::new(
+                    "error",
+                    format!(
+                        "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}",
+                        new_path.display()
+                    ),
+                ));
+            }
+            return Err(MoveRefusal::new("error", error));
+        }
+    };
 
     if let Err(db_err) =
         db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
     {
+        carried.undo(conn);
         // Undo the physical move so file system and DB don't drift apart. move_file
         // never overwrites anything.
         if let Err(rollback_err) = move_file(&new_path, &old_path) {
@@ -469,6 +486,7 @@ fn move_file_core(
         let code = if path_taken { "name_exists" } else { "error" };
         return Err(MoveRefusal::new(code, db_err.to_string()));
     }
+    carried.finish();
     log::debug!(target: "datei", "verschoben: {} -> {}", old_path.display(), new_path.display());
     Ok(MoveOutcome::Moved { from_folder_id: file.folder_id, from_path: file.path })
 }
@@ -654,7 +672,22 @@ pub(super) fn rename_file_with_conn(
         }
     })?;
 
+    // The model's companion files follow into the folder named after the new name.
+    let carried = match companions::carry(conn, id, &old_path, &new_path) {
+        Ok(carried) => carried,
+        Err(error) => {
+            if let Err(rollback_err) = rename::rename_file_on_disk(&new_path, &old_path) {
+                return Err(format!(
+                    "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}",
+                    new_path.display()
+                )
+                .into());
+            }
+            return Err(error);
+        }
+    };
     if let Err(db_err) = db::rename_file(conn, id, &new_name, &new_path.to_string_lossy()) {
+        carried.undo(conn);
         // Undo the rename so file system and DB don't drift apart.
         if let Err(rollback_err) = rename::rename_file_on_disk(&new_path, &old_path) {
             return Err(format!(
@@ -666,6 +699,7 @@ pub(super) fn rename_file_with_conn(
         }
         return Err(db_err.to_string().into());
     }
+    carried.finish();
     log::debug!(target: "datei", "umbenannt: {} -> {}", old_path.display(), new_path.display());
     Ok(())
 }

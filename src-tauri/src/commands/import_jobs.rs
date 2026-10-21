@@ -699,6 +699,13 @@ impl ImportJobs {
         self.pickers
             .register(&[path.to_path_buf()], self.clock.now_ms(), 600_000);
     }
+    /// Consumes the proof that the user chose `path` in a file dialog or dropped it on the
+    /// window. Single use, so a path is never accepted twice.
+    pub(super) fn claim_user_selected(&self, path: &Path) -> bool {
+        let now = self.clock.now_ms();
+        let paths = [path.to_path_buf()];
+        self.pickers.claim(&paths, now) || self.drops.claim(&paths, now)
+    }
 }
 
 impl ImportJobs {

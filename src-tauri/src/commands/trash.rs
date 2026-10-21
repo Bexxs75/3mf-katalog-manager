@@ -20,7 +20,10 @@ pub(super) fn delete_file_with_conn(
             // Path unreachable (renamed folder, unmounted drive): nothing to move, but
             // still only soft-delete, because the file is usually not really gone. Other
             // errors like PermissionDenied go through the error path below.
-            return delete_missing_file_with_conn(conn, id);
+            let deleted_at = chrono::Utc::now().to_rfc3339();
+            db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| CmdError::from(e.to_string()))?;
+            companions::trash_with_model(conn, id, trash_dir, &deleted_at);
+            return Ok(());
         }
         Err(e) => return Err(e.to_string().into()),
         Ok(_) => {}
@@ -43,6 +46,9 @@ pub(super) fn delete_file_with_conn(
         }
         return Err(db_err.to_string().into());
     }
+    // The companions follow the model into the trash under the same timestamp, so
+    // restoring the model finds exactly these. They cannot make the removal fail.
+    companions::trash_with_model(conn, id, trash_dir, &deleted_at);
     log::debug!(target: "datei", "in den Papierkorb: {}", file.path);
     Ok(())
 }
@@ -101,6 +107,20 @@ pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
 }
 /// Core logic of `restore_file` with an already loaded `FileRecord`, without `State`, so it's testable.
 fn restore_file_with_conn(
+    conn: &Connection,
+    file: &db::models::FileRecord,
+    id: i64,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    restore_model_with_conn(conn, file, id, sensitive_dirs)?;
+    // Companions that went to the trash together with the model come back with it.
+    if let Some(deleted_at) = &file.deleted_at {
+        companions::restore_with_model(conn, id, deleted_at, sensitive_dirs);
+    }
+    Ok(())
+}
+
+fn restore_model_with_conn(
     conn: &Connection,
     file: &db::models::FileRecord,
     id: i64,
@@ -260,6 +280,8 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
             }
         }
     }
+    // Its companions in the trash go with it; the rows follow by cascade.
+    companions::purge_trash_files_of_model(&conn, id, &state.trash_dir)?;
     db::delete_file(&conn, id).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
@@ -276,15 +298,21 @@ pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
                 }
             }
         }
+        if let Err(e) = companions::purge_trash_files_of_model(&conn, file.id, &state.trash_dir) {
+            log::error!(target: "trash", "removing companions failed for file ID {}: {e}", file.id);
+            continue;
+        }
         if let Err(e) = db::delete_file(&conn, file.id) {
             log::error!(target: "trash", "could not delete DB row for file ID {}: {e}", file.id);
         }
     }
+    // Companions removed on their own from a model that is still in the catalog.
+    companions::purge_all_trashed(&conn, &state.trash_dir);
     Ok(())
 }
 /// At startup: removes trash entries older than 7 days. Single errors are
 /// logged and skipped.
-pub fn purge_expired_trash_on_startup(conn: &Connection) {
+pub fn purge_expired_trash_on_startup(conn: &Connection, trash_dir: &std::path::Path) {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
     let expired = match db::purge_expired_trash(conn, &cutoff) {
         Ok(files) => files,
@@ -302,10 +330,15 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
                 }
             }
         }
+        if let Err(e) = companions::purge_trash_files_of_model(conn, file.id, trash_dir) {
+            log::error!(target: "startup", "trash cleanup: companions failed for ID {}: {e}", file.id);
+            continue;
+        }
         if let Err(e) = db::delete_file(conn, file.id) {
             log::error!(target: "startup", "trash cleanup: DB row failed for ID {}: {e}", file.id);
         }
     }
+    companions::purge_expired_trashed(conn, trash_dir, &cutoff);
 }
 
 #[cfg(test)]

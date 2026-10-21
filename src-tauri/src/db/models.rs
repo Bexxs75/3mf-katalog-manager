@@ -265,9 +265,6 @@ pub struct PrintLogEntryRecord {
     pub photo_png: Option<Vec<u8>>,
 }
 
-/// Kinds of companion files; mirrors the CHECK of `companion_files.kind`.
-pub const COMPANION_KINDS: [&str; 3] = ["image", "pdf", "text"];
-
 /// An extra file of a model (picture, PDF, text note). `deleted_at`/`trash_path`
 /// are set while it sits in the app trash.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -44,6 +44,16 @@ impl Extraction {
             })
             .count() as u32
     }
+    /// Regular files written in this run, without platform metadata. Symlinks and
+    /// folders are not included. Lets the caller sort the files by type.
+    pub fn written_files(&self, dest: &Path) -> Vec<PathBuf> {
+        self.created
+            .iter()
+            .filter(|path| fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file()))
+            .filter(|path| !is_platform_metadata(&path.strip_prefix(dest).unwrap_or(path).to_string_lossy().replace('\\', "/")))
+            .cloned()
+            .collect()
+    }
     /// Removes everything this run created - in reverse order, so folders are removed
     /// after their content. Files/folders that existed before are never touched.
     pub fn rollback(self) {

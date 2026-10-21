@@ -158,7 +158,14 @@ fn folder_trash_summary_with_conn(conn: &Connection, folder_id: &str, sensitive_
         .into_iter()
         .filter(|(_, p)| refusal_reason(p, &resolved, &expanded).is_none())
         .collect();
-    let known: HashSet<PathBuf> = files.iter().map(|(_, p)| folders::comparison_path(Path::new(p))).collect();
+    // Companion files go to the trash with their model, so they are not "other" files.
+    let companion_paths = db::companions::list_active_companion_paths(conn).map_err(DbError::from)?;
+    let known: HashSet<PathBuf> = files
+        .iter()
+        .map(|(_, p)| p)
+        .chain(companion_paths.iter())
+        .map(|p| folders::comparison_path(Path::new(p)))
+        .collect();
     let (other_file_count, other_file_count_truncated) = count_other_files(Path::new(&root.path), &known);
     Ok(FolderTrashSummary {
         name: root.name.clone(),

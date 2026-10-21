@@ -817,6 +817,41 @@ fn validate_catalog_db_bytes(
                         .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 }
             }
+            // Companion rows decide which files the app moves, deletes or opens, so each
+            // must look like what the app itself writes: allowed kind, an `_extras`
+            // folder, no protected location, a trash file only inside the trash.
+            let mut stmt = conn
+                .prepare("SELECT name, path, kind, trash_path FROM companion_files")
+                .map_err(|e| e.to_string())?;
+            let companions = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            for (name, path, kind, trash_path) in companions {
+                validate_imported_path_length(&path, known_folders)?;
+                if let Some(path) = trash_path.as_ref().filter(|p| !p.trim().is_empty()) {
+                    validate_imported_path_length(path, known_folders)?;
+                }
+                companions::validate_stored_fields(&name, &path, &kind)
+                    .map_err(|why| format!("Begleitdatei-Eintrag im Archiv abgelehnt ({why})"))?;
+                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
+                    .map_err(|e| format!("Begleitdatei-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
+                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &trash_denylist)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                    reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                }
+            }
+            drop(stmt);
             Ok(())
         });
 

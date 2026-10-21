@@ -182,7 +182,7 @@ pub fn run() {
             if let Err(e) = db::delete_unused_tags(&conn) {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
-            commands::purge_expired_trash_on_startup(&conn);
+            commands::purge_expired_trash_on_startup(&conn, &trash_dir);
             let sensitive_dirs = sensitive_dirs(app.handle());
             app.manage(commands::AppState {
                 import_jobs: commands::ImportJobs::for_app(app.handle().clone()),
@@ -256,6 +256,14 @@ pub fn run() {
             commands::get_import_result,
             commands::get_import_state,
             commands::list_file_summaries,
+            commands::list_companions,
+            commands::pick_companion_files,
+            commands::add_companion,
+            commands::remove_companion,
+            commands::restore_companion,
+            commands::companion_open_info,
+            commands::open_companion,
+            commands::companion_image_data,
             commands::list_file_images,
             commands::list_all_file_tags,
             commands::list_files_by_ids,

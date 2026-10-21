@@ -189,6 +189,10 @@ export interface ArchiveOutcome {
   blockedSkipped: number;
   /** Non-model files (TXT, PDF, ...) that were extracted but not added to the catalog. */
   otherFilesExtracted: number;
+  /** Pictures, PDFs and text files that were moved into the companion folder of their model. */
+  companionsAssigned: number;
+  /** Extracted files of a type that is not allowed as a companion; they stay in the folder. */
+  companionsIgnored: number;
   archiveDeleted: boolean;
   deleteError: string | null;
   error: string | null;
@@ -470,3 +474,26 @@ export interface ImportProgress {
 export interface StartedImport { jobId: string | null }
 
 export type SortDirection = 'asc' | 'desc';
+
+export type CompanionKind = 'image' | 'pdf' | 'text';
+
+/** An extra file of a model (picture, PDF, text). Trashed ones have `deletedAt` set. */
+export interface Companion {
+  id: string;
+  fileId: string;
+  name: string;
+  path: string;
+  kind: CompanionKind;
+  sizeBytes: number | null;
+  addedAt: string;
+  deletedAt: string | null;
+  /** The file is gone from disk. A state of this entry only, never a catalog change. */
+  missing: boolean;
+}
+
+export interface CompanionOpenInfo {
+  id: string;
+  name: string;
+  path: string;
+  kind: CompanionKind;
+}

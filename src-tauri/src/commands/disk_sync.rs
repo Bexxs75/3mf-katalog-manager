@@ -302,6 +302,7 @@ fn walk(
     root: &DiskRoot,
     known_folders: &HashSet<PathBuf>,
     known_files: &HashSet<PathBuf>,
+    known_extras: &HashSet<PathBuf>,
     scan: &mut DiskScan,
     case_insensitive: bool,
     seen_files: &mut HashSet<PathBuf>,
@@ -331,6 +332,11 @@ fn walk(
                 continue;
             }
             if kind.is_dir() {
+                // The companion folder of a catalog model is managed through the
+                // database; its contents are neither new files nor a new folder.
+                if known_extras.contains(&path_key(&path, case_insensitive)) {
+                    continue;
+                }
                 pending.push(path);
             } else if kind.is_file() && files::is_supported_extension(&path) {
                 let key = path_key(&path, case_insensitive);
@@ -440,6 +446,19 @@ fn scan_with_path_mode(
         .iter()
         .map(|(_, p, _, _)| resolver.key(Path::new(p)))
         .collect();
+    // Companion folders of catalog models, by the model's name and by where the
+    // companion rows actually are.
+    let known_extras: HashSet<PathBuf> = rows
+        .iter()
+        .filter_map(|(_, p, _, _)| companions::extras_dir_for(Path::new(p)))
+        .chain(
+            db::companions::list_active_companion_paths(conn)
+                .map_err(|e| e.to_string())?
+                .iter()
+                .filter_map(|p| Path::new(p).parent().map(Path::to_path_buf)),
+        )
+        .map(|dir| resolver.key(&dir))
+        .collect();
     let mut seen_files = HashSet::new();
     for (index, root) in roots.iter().enumerate() {
         let checked = (|| -> std::io::Result<()> {
@@ -460,6 +479,7 @@ fn scan_with_path_mode(
                     root,
                     &known_folders,
                     &known_files,
+                    &known_extras,
                     &mut result,
                     case_insensitive,
                     &mut seen_files,
