@@ -823,7 +823,7 @@ fn rename_internal_in_place_preserves_folder_and_reports_protected_root() {
         } else {
             vec![]
         };
-        run_models(&service, &job, &mut &mut conn, &[path.clone()], &sensitive).unwrap();
+        run_models(&service, &job, &mut &mut conn, std::slice::from_ref(&path), &sensitive).unwrap();
         job.finish(None);
         let result = job.result().unwrap();
         assert_partition(&result, 1);
@@ -908,7 +908,7 @@ fn non_utf8_import_names_are_never_renamed_lossily() {
             .enqueue(ImportSource::Folder, None, false, None)
             .unwrap();
         service.next().unwrap();
-        finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+        finish_models(&service, &job, &mut conn, std::slice::from_ref(&fixture.0));
         let result = job.result().unwrap();
         assert_partition(&result, 1);
         assert!(result.job_error.is_none());
@@ -936,7 +936,7 @@ fn rename_database_failure_rolls_back_and_fails_job() {
         .enqueue(ImportSource::Files, None, false, None)
         .unwrap();
     service.next().unwrap();
-    finish_models(&service, &job, &mut conn, &[path.clone()]);
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&path));
     let result = job.result().unwrap();
     assert_partition(&result, 1);
     assert!(result

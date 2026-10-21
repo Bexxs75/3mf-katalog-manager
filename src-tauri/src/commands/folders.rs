@@ -151,7 +151,7 @@ pub(super) fn comparison_path(path: &Path) -> PathBuf {
     { path.to_path_buf() }
 }
 
-fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {
+pub(super) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {
     let Some(base) = db::printer_link::get_setting(conn, SETTING_CATALOG_BASE_DIR)? else {
         return Ok(());
     };

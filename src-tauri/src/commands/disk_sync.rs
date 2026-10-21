@@ -15,24 +15,79 @@ pub struct DiskEntry {
 pub struct DiskScan {
     new_folders: Vec<DiskEntry>,
     new_files: Vec<DiskEntry>,
+    /// Missing catalog rows that reappear as exactly one new file with the same content.
+    renamed_files: Vec<DiskRename>,
+    /// New files whose content already belongs to a present catalog row.
+    duplicate_files: Vec<DiskDuplicate>,
     missing_files: Vec<DiskEntry>,
     unreachable_roots: Vec<String>,
     skipped_paths: Vec<String>,
     #[serde(skip)]
     roots: Vec<DiskRoot>,
 }
+/// A catalog row whose file was renamed or moved outside the app.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskRename {
+    id: String,
+    old_path: String,
+    old_relative_path: String,
+    old_root: String,
+    new_path: String,
+    new_relative_path: String,
+    root: String,
+}
+impl DiskRename {
+    fn old_entry(&self) -> DiskEntry {
+        DiskEntry {
+            path: self.old_path.clone(),
+            relative_path: self.old_relative_path.clone(),
+            root: self.old_root.clone(),
+            id: Some(self.id.clone()),
+        }
+    }
+    fn new_entry(&self) -> DiskEntry {
+        DiskEntry {
+            path: self.new_path.clone(),
+            relative_path: self.new_relative_path.clone(),
+            root: self.root.clone(),
+            id: None,
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskDuplicate {
+    #[serde(flatten)]
+    entry: DiskEntry,
+    duplicate_of_name: String,
+    duplicate_of_path: String,
+}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RenameChoice {
+    id: String,
+    new_path: String,
+}
+// Every field has a default so that callers written before renames existed still work.
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct DiskSelection {
     new_paths: Vec<String>,
     missing_ids: Vec<String>,
     remove_missing: bool,
+    renames: Vec<RenameChoice>,
+    // Filled by the command from app state, never taken from the webview.
+    #[serde(skip)]
+    sensitive_dirs: Vec<PathBuf>,
 }
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiskApplied {
     file_ids: Vec<String>,
     folder_ids: Vec<String>,
+    renamed_ids: Vec<String>,
+    renamed_count: usize,
     removed_count: usize,
     failed_paths: Vec<DiskFailedPath>,
 }
@@ -484,11 +539,161 @@ fn scan_with_path_mode(
     result.new_files.sort_by(|a, b| a.path.cmp(&b.path));
     result.missing_files.sort_by(|a, b| a.path.cmp(&b.path));
     result.missing_files.dedup_by(|a, b| a.id == b.id);
+    if result.unreachable_roots.is_empty() {
+        classify_by_content(conn, &mut result, case_insensitive, &hash_for_match)?;
+    }
     result.unreachable_roots.sort();
     result.unreachable_roots.dedup();
     result.skipped_paths.sort();
     result.skipped_paths.dedup();
     Ok(result)
+}
+
+/// Hash used to recognise a file again. Same function as the import and the stored
+/// `content_hash`, so equal content always yields equal hashes. Files above the import
+/// size limit and unreadable files get no hash and simply stay "new".
+fn hash_for_match(path: &Path) -> Option<String> {
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > crate::safe_file::MAX_MODEL_FILE_BYTES {
+        return None;
+    }
+    files::compute_content_hash(path).ok()
+}
+
+fn extension_key(path: &Path) -> Option<String> {
+    path.extension().map(|e| e.to_string_lossy().to_lowercase())
+}
+
+/// Splits the new files by content: a clear rename partner among the missing rows, or a
+/// copy of a row that is still there. Only new files are hashed (never the whole
+/// catalog), so a scan of a large, unchanged catalog costs nothing extra.
+fn classify_by_content(
+    conn: &Connection,
+    scan: &mut DiskScan,
+    case_insensitive: bool,
+    hash: &dyn Fn(&Path) -> Option<String>,
+) -> SyncResult<()> {
+    if scan.new_files.is_empty() {
+        return Ok(());
+    }
+    let missing_ids: HashSet<&str> = scan
+        .missing_files
+        .iter()
+        .filter_map(|e| e.id.as_deref())
+        .collect();
+    // Rows without a stored hash can never be matched.
+    let mut missing_by_hash: HashMap<String, Vec<String>> = HashMap::new();
+    let mut present_by_hash: HashMap<String, (String, String)> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, path, content_hash FROM files
+                 WHERE deleted_at IS NULL AND content_hash IS NOT NULL ORDER BY id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?.to_string(),
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (id, name, path, content_hash) = row.map_err(|e| e.to_string())?;
+            if missing_ids.contains(id.as_str()) {
+                missing_by_hash.entry(content_hash).or_default().push(id);
+            } else {
+                // The lowest id wins, so the hint is stable between scans.
+                present_by_hash.entry(content_hash).or_insert((name, path));
+            }
+        }
+    }
+    if missing_by_hash.is_empty() && present_by_hash.is_empty() {
+        return Ok(());
+    }
+    let mut new_by_hash: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, e) in scan.new_files.iter().enumerate() {
+        let disk_path = scan
+            .roots
+            .iter()
+            .find(|r| r.stored == Path::new(&e.root))
+            .and_then(|r| r.resolve(Path::new(&e.path)));
+        if let Some(content_hash) = disk_path.and_then(|p| hash(&p)) {
+            new_by_hash.entry(content_hash).or_default().push(index);
+        }
+    }
+    let mut moved = HashSet::new();
+    let mut renamed_ids = HashSet::new();
+    for (content_hash, indices) in &new_by_hash {
+        if let Some((name, path)) = present_by_hash.get(content_hash) {
+            // Even when a missing row has this content too: a copy of a present model is
+            // never silently treated as the move of another one.
+            for &i in indices {
+                moved.insert(i);
+                scan.duplicate_files.push(DiskDuplicate {
+                    entry: scan.new_files[i].clone(),
+                    duplicate_of_name: name.clone(),
+                    duplicate_of_path: path.clone(),
+                });
+            }
+            continue;
+        }
+        let (Some(ids), [index]) = (missing_by_hash.get(content_hash), indices.as_slice()) else {
+            continue;
+        };
+        let [id] = ids.as_slice() else { continue };
+        let Some(old) = scan
+            .missing_files
+            .iter()
+            .find(|e| e.id.as_deref() == Some(id.as_str()))
+        else {
+            continue;
+        };
+        let new = &scan.new_files[*index];
+        // A changed extension would also change the file type; leave that to the user.
+        if extension_key(Path::new(&old.path)) != extension_key(Path::new(&new.path)) {
+            continue;
+        }
+        moved.insert(*index);
+        renamed_ids.insert(id.clone());
+        scan.renamed_files.push(DiskRename {
+            id: id.clone(),
+            old_path: old.path.clone(),
+            old_relative_path: old.relative_path.clone(),
+            old_root: old.root.clone(),
+            new_path: new.path.clone(),
+            new_relative_path: new.relative_path.clone(),
+            root: new.root.clone(),
+        });
+    }
+    if moved.is_empty() {
+        return Ok(());
+    }
+    let mut index = 0;
+    scan.new_files.retain(|_| {
+        index += 1;
+        !moved.contains(&(index - 1))
+    });
+    scan.missing_files
+        .retain(|e| !e.id.as_ref().is_some_and(|id| renamed_ids.contains(id)));
+    // A folder that now only holds renamed files is not new: the files bring their
+    // catalog folder with them.
+    let remaining: Vec<PathBuf> = scan
+        .new_files
+        .iter()
+        .chain(scan.duplicate_files.iter().map(|d| &d.entry))
+        .map(|e| path_key(Path::new(&e.path), case_insensitive))
+        .collect();
+    scan.new_folders.retain(|folder| {
+        let folder = path_key(Path::new(&folder.path), case_insensitive);
+        remaining.iter().any(|file| file.starts_with(&folder))
+    });
+    scan.renamed_files.sort_by(|a, b| a.new_path.cmp(&b.new_path));
+    scan.duplicate_files.sort_by(|a, b| a.entry.path.cmp(&b.entry.path));
+    Ok(())
 }
 
 fn parent_exists(path: &Path) -> bool {
@@ -574,6 +779,227 @@ fn ensure_sync_folder(
     }
     db::ensure_folder_path(conn, root, dir).map_err(|e| e.to_string().into())
 }
+/// Checks a chosen pairing against the disk as it is now. The scan matched hashes a
+/// moment ago, but parsing other files can take minutes and the user may have edited the
+/// target in between.
+fn verify_rename(
+    conn: &Connection,
+    scan: &DiskScan,
+    rename: &DiskRename,
+    expanded_sensitive: &[PathBuf],
+) -> Result<(), String> {
+    let id: i64 = rename.id.parse().map_err(|_| "diskSyncStale".to_string())?;
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT content_hash FROM files WHERE id = ?1 AND deleted_at IS NULL",
+            [id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let target = scan
+        .roots
+        .iter()
+        .find(|r| r.stored == Path::new(&rename.root))
+        .and_then(|r| r.resolve(Path::new(&rename.new_path)))
+        .ok_or("diskSyncPathChanged")?;
+    match (stored, hash_for_match(&target)) {
+        (Some(stored), Some(current)) if stored == current => {}
+        _ => return Err("Inhalt der Datei hat sich geändert".into()),
+    }
+    let parent = Path::new(&rename.new_path).parent().unwrap_or(&target);
+    archives::check_managed_location(parent, expanded_sensitive).map_err(|e| e.message)
+}
+
+/// Points an existing catalog row at its new location. Everything attached to the row
+/// (tags, favourite, notes, print log, collections) hangs on `id` and stays.
+fn apply_rename(
+    tx: &Connection,
+    scan: &DiskScan,
+    rename: &DiskRename,
+    known_files: &mut HashSet<PathBuf>,
+    key: &dyn Fn(&Path) -> PathBuf,
+    case_insensitive: bool,
+) -> Result<(), String> {
+    let id: i64 = rename.id.parse().map_err(|_| "diskSyncStale".to_string())?;
+    let current: String = tx
+        .query_row(
+            "SELECT path FROM files WHERE id = ?1 AND deleted_at IS NULL",
+            [id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let (old_key, new_key) = (key(Path::new(&current)), key(Path::new(&rename.new_path)));
+    // A folder rename may already have moved the row; otherwise the target must be free.
+    if current != rename.new_path && old_key != new_key && known_files.contains(&new_key) {
+        return Err("Zielpfad ist schon im Katalog".into());
+    }
+    let new_path = Path::new(&rename.new_path);
+    let name = new_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .ok_or("invalid path")?;
+    let folder_id = ensure_sync_folder(
+        tx,
+        scan,
+        Path::new(&rename.root),
+        new_path.parent().ok_or("invalid path")?,
+        case_insensitive,
+    )
+    .map_err(|e| e.code.to_string())?;
+    tx.execute(
+        "UPDATE files SET name = ?1, path = ?2, folder_id = ?3 WHERE id = ?4",
+        rusqlite::params![name, rename.new_path, folder_id, id],
+    )
+    .map_err(|e| e.to_string())?;
+    known_files.remove(&old_key);
+    known_files.insert(new_key);
+    Ok(())
+}
+
+/// When every file below a catalog folder was renamed together with the folder (same
+/// new parent, same layout beneath), the folder row itself follows instead of leaving an
+/// empty old row beside a new one. Anything less clear leaves the folder alone: the old
+/// row then stays and is treated as before. Best effort, never fails the sync.
+fn move_emptied_folders(
+    tx: &Connection,
+    scan: &DiskScan,
+    renames: &[&DiskRename],
+    expanded_sensitive: &[PathBuf],
+) {
+    let sep = std::path::MAIN_SEPARATOR;
+    let Ok(folders) = db::list_folders(tx) else {
+        return;
+    };
+    let by_id: HashMap<&str, &DiskRename> = renames.iter().map(|r| (r.id.as_str(), *r)).collect();
+    let mut candidates: Vec<&db::models::FolderRecord> = folders
+        .iter()
+        .filter(|f| {
+            f.parent_id.is_some()
+                && renames
+                    .iter()
+                    .any(|r| r.old_path.starts_with(&format!("{}{sep}", f.path)))
+        })
+        .collect();
+    candidates.sort_by_key(|f| f.path.len());
+    let mut moved: Vec<&str> = Vec::new();
+    for folder in candidates {
+        // Rows below a folder that was just moved no longer carry their old paths.
+        if moved
+            .iter()
+            .any(|m| folder.path.starts_with(&format!("{m}{sep}")))
+        {
+            continue;
+        }
+        let Some(target) = emptied_folder_target(tx, scan, &folders, folder, &by_id, expanded_sensitive)
+        else {
+            continue;
+        };
+        if tx.execute_batch("SAVEPOINT disk_sync_folder").is_err() {
+            return;
+        }
+        let done = (|| -> Result<(), String> {
+            let (parent_dir, name) = (
+                target.parent().ok_or("no parent")?,
+                target.file_name().ok_or("no name")?.to_string_lossy(),
+            );
+            let stored_root = scan
+                .roots
+                .iter()
+                .find(|r| r.resolve(&target).is_some())
+                .ok_or("outside roots")?
+                .stored
+                .clone();
+            let parent_id = ensure_sync_folder(tx, scan, &stored_root, parent_dir, CASE_INSENSITIVE_PATHS)
+                .map_err(|e| e.code.to_string())?;
+            db::rename_folder_name(tx, folder.id, &name).map_err(|e| e.to_string())?;
+            db::set_folder_parent(tx, folder.id, Some(parent_id)).map_err(|e| e.to_string())?;
+            db::update_paths_under_folder(tx, folder.id, &folder.path, &target.to_string_lossy())
+                .map_err(|e| e.to_string())
+        })();
+        let finish = if done.is_ok() {
+            "RELEASE disk_sync_folder"
+        } else {
+            "ROLLBACK TO disk_sync_folder; RELEASE disk_sync_folder"
+        };
+        if tx.execute_batch(finish).is_err() {
+            return;
+        }
+        if done.is_ok() {
+            moved.push(&folder.path);
+        }
+    }
+}
+
+/// The new location of `folder` if the renames describe a pure folder rename or move.
+fn emptied_folder_target(
+    tx: &Connection,
+    scan: &DiskScan,
+    folders: &[db::models::FolderRecord],
+    folder: &db::models::FolderRecord,
+    by_id: &HashMap<&str, &DiskRename>,
+    expanded_sensitive: &[PathBuf],
+) -> Option<PathBuf> {
+    let sep = std::path::MAIN_SEPARATOR;
+    let prefix = format!("{}{sep}", folder.path);
+    // Trash rows and rows of other states count too: they would move with the folder.
+    let mut stmt = tx
+        .prepare("SELECT id, path FROM files WHERE substr(path, 1, length(?1)) = ?1")
+        .ok()?;
+    let below: Vec<(i64, String)> = stmt
+        .query_map([&prefix], |r| Ok((r.get(0).ok().unwrap_or(0), r.get(1)?)))
+        .ok()?
+        .collect::<Result<_, _>>()
+        .ok()?;
+    let mut new_prefix: Option<String> = None;
+    for (id, path) in &below {
+        let rename = by_id.get(id.to_string().as_str())?;
+        if rename.old_path != *path {
+            return None;
+        }
+        let suffix = path.strip_prefix(&prefix)?;
+        let start = rename.new_path.strip_suffix(suffix)?;
+        if new_prefix.get_or_insert_with(|| start.to_string()) != start {
+            return None;
+        }
+    }
+    let target = PathBuf::from(new_prefix?.strip_suffix(sep)?);
+    // Rows assigned to the folder (or below) whose path points elsewhere would be mangled.
+    let mut subtree = vec![folder.id];
+    let mut i = 0;
+    while i < subtree.len() {
+        let parent = subtree[i];
+        subtree.extend(
+            folders
+                .iter()
+                .filter(|f| f.parent_id == Some(parent))
+                .map(|f| f.id),
+        );
+        i += 1;
+    }
+    for id in &subtree {
+        let mut stmt = tx.prepare("SELECT path FROM files WHERE folder_id = ?1").ok()?;
+        let paths: Vec<String> = stmt
+            .query_map([id], |r| r.get(0))
+            .ok()?
+            .collect::<Result<_, _>>()
+            .ok()?;
+        if paths.iter().any(|p| !p.starts_with(&prefix)) {
+            return None;
+        }
+    }
+    let old = Path::new(&folder.path);
+    let usable = target != old
+        && !target.starts_with(old)
+        && !folders.iter().any(|f| Path::new(&f.path) == target)
+        && scan
+            .roots
+            .iter()
+            .any(|r| r.resolve(&target).is_some() && r.stored != target && r.canonical != target)
+        && folders::reject_catalog_root_relocation(tx, old).is_ok()
+        && archives::check_managed_location(&target, expanded_sensitive).is_ok();
+    usable.then_some(target)
+}
+
 fn apply(conn: &mut Connection, selection: DiskSelection) -> SyncResult<DiskApplied> {
     apply_with_reader(conn, selection, |path| {
         let mut file = files::read_import_model_file(path, None)?;
@@ -604,10 +1030,16 @@ fn apply_with_path_mode(
         ));
     }
     let chosen: HashSet<_> = selection.new_paths.into_iter().collect();
+    // Copies of present models are offered separately but are imported like any new file.
+    let importable: Vec<&DiskEntry> = current
+        .new_files
+        .iter()
+        .chain(current.duplicate_files.iter().map(|d| &d.entry))
+        .collect();
     let available: HashSet<_> = current
         .new_folders
         .iter()
-        .chain(&current.new_files)
+        .chain(importable.iter().copied())
         .map(|e| &e.path)
         .collect();
     let missing: HashSet<_> = selection.missing_ids.into_iter().collect();
@@ -616,6 +1048,17 @@ fn apply_with_path_mode(
         .iter()
         .filter_map(|e| e.id.as_ref())
         .collect();
+    let chosen_renames: Vec<&DiskRename> = selection
+        .renames
+        .iter()
+        .map(|choice| {
+            current
+                .renamed_files
+                .iter()
+                .find(|r| r.id == choice.id && r.new_path == choice.new_path)
+        })
+        .collect::<Option<_>>()
+        .ok_or_else(|| DiskSyncError::new("diskSyncStale", vec![]))?;
     if chosen.iter().any(|p| !available.contains(p))
         || (selection.remove_missing && missing.iter().any(|id| !missing_now.contains(id)))
     {
@@ -624,11 +1067,21 @@ fn apply_with_path_mode(
     // Parsing, thumbnails and hashing can take minutes. Keep SQLite writable.
     let mut prepared = Vec::new();
     let mut result = DiskApplied::default();
-    for e in current
-        .new_files
-        .iter()
-        .filter(|e| chosen.contains(&e.path))
-    {
+    let mut renames: Vec<&DiskRename> = Vec::new();
+    let expanded_sensitive = expand_sensitive_dirs(&selection.sensitive_dirs);
+    for r in chosen_renames {
+        if renames.iter().any(|known| known.id == r.id) {
+            continue;
+        }
+        match verify_rename(conn, &current, r, &expanded_sensitive) {
+            Ok(()) => renames.push(r),
+            Err(reason) => result.failed_paths.push(DiskFailedPath {
+                path: r.new_path.clone(),
+                reason,
+            }),
+        }
+    }
+    for e in importable.iter().copied().filter(|e| chosen.contains(&e.path)) {
         let path = checked_path(&current, e, "file")?;
         let mut file = match read(&path) {
             Ok(file) => file,
@@ -656,12 +1109,12 @@ fn apply_with_path_mode(
         {
             checked_path(&current, e, "folder")?;
         }
-        for e in current
-            .new_files
-            .iter()
-            .filter(|e| chosen.contains(&e.path))
-        {
+        for e in importable.iter().copied().filter(|e| chosen.contains(&e.path)) {
             checked_path(&current, e, "file")?;
+        }
+        for r in &renames {
+            checked_path(&current, &r.new_entry(), "file")?;
+            checked_path(&current, &r.old_entry(), "missing")?;
         }
         if selection.remove_missing {
             for e in current
@@ -681,6 +1134,8 @@ fn apply_with_path_mode(
         .map(|f| f.id)
         .collect();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    // Before the path set is read: a renamed folder rewrites the paths below it.
+    move_emptied_folders(&tx, &current, &renames, &expanded_sensitive);
     let resolver = KeyResolver::new(&current.roots, case_insensitive);
     let key = |p: &Path| resolver.key(p);
     let mut known_files: HashSet<_> = {
@@ -694,13 +1149,34 @@ fn apply_with_path_mode(
             .map_err(|e| e.to_string())?;
         paths.iter().map(|p| key(Path::new(p))).collect()
     };
+    for r in &renames {
+        // One savepoint per file: a collision fails this pairing only.
+        tx.execute_batch("SAVEPOINT disk_sync_rename")
+            .map_err(|e| e.to_string())?;
+        match apply_rename(&tx, &current, r, &mut known_files, &key, case_insensitive) {
+            Ok(()) => {
+                tx.execute_batch("RELEASE disk_sync_rename")
+                    .map_err(|e| e.to_string())?;
+                result.renamed_ids.push(r.id.clone());
+            }
+            Err(reason) => {
+                tx.execute_batch("ROLLBACK TO disk_sync_rename; RELEASE disk_sync_rename")
+                    .map_err(|e| e.to_string())?;
+                result.failed_paths.push(DiskFailedPath {
+                    path: r.new_path.clone(),
+                    reason,
+                });
+            }
+        }
+    }
+    result.renamed_count = result.renamed_ids.len();
     for e in current
         .new_folders
         .iter()
         .filter(|e| chosen.contains(&e.path))
     {
         // Do not leave empty catalog folders when every contained import failed.
-        if current.new_files.iter().any(|file| {
+        if importable.iter().any(|file| {
             Path::new(&file.path).starts_with(&e.path)
                 && !result
                     .failed_paths
@@ -789,6 +1265,8 @@ pub async fn apply_catalog_disk_sync(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let _guard = state.import_jobs.gate.exclusive()?;
+        let mut selection = selection;
+        selection.sensitive_dirs = state.sensitive_dirs.clone();
         apply(&mut connection(&state)?, selection)
     })
     .await
@@ -837,11 +1315,23 @@ mod tests {
         }
         fn select(&self, remove_missing: bool) -> DiskSelection {
             let preview = scan(&self.conn).unwrap();
+            let renames = preview
+                .renamed_files
+                .iter()
+                .map(|r| RenameChoice {
+                    id: r.id.clone(),
+                    new_path: r.new_path.clone(),
+                })
+                .collect();
             DiskSelection {
+                renames,
                 new_paths: preview
                     .new_folders
                     .into_iter()
                     .chain(preview.new_files)
+                    // Copies of present models are opt-in in the dialog; these helpers
+                    // model a user who accepts everything.
+                    .chain(preview.duplicate_files.into_iter().map(|d| d.entry))
                     .map(|e| e.path)
                     .collect(),
                 missing_ids: preview
@@ -850,6 +1340,7 @@ mod tests {
                     .filter_map(|e| e.id)
                     .collect(),
                 remove_missing,
+                ..Default::default()
             }
         }
     }
@@ -887,6 +1378,7 @@ mod tests {
             new_paths: vec![new_file.to_string_lossy().into_owned()],
             missing_ids: vec![],
             remove_missing: false,
+            ..Default::default()
         };
         let applied = apply_with_path_mode(
             &mut f.conn,
@@ -1074,6 +1566,7 @@ mod tests {
                 .map(|file| file.id.to_string())
                 .collect(),
             remove_missing: true,
+            ..Default::default()
         };
         assert!(apply(&mut f.conn, selection).is_err());
         assert_eq!(db::list_files(&f.conn).unwrap().len(), 2);
@@ -1130,6 +1623,7 @@ mod tests {
             new_paths: vec![],
             missing_ids: vec![],
             remove_missing: true,
+            ..Default::default()
         };
         assert!(apply(&mut f.conn, selection).is_err());
         assert_eq!(db::list_files(&f.conn).unwrap().len(), 1);
@@ -1148,6 +1642,7 @@ mod tests {
             new_paths: vec![f.dir.path().join("outside.obj").to_string_lossy().into()],
             missing_ids: vec![],
             remove_missing: false,
+            ..Default::default()
         };
         assert!(apply(&mut f.conn, selection).is_err());
         assert_eq!(db::list_files(&f.conn).unwrap().len(), 1);
@@ -1588,3 +2083,6 @@ mod tests {
 
 #[cfg(test)]
 mod roadmap_1g_tests;
+
+#[cfg(test)]
+mod rename_tests;

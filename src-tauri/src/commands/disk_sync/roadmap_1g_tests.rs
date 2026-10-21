@@ -44,10 +44,14 @@ impl Fixture {
                 .new_folders
                 .into_iter()
                 .chain(preview.new_files)
+                // The dialog leaves hash duplicates unticked, but this helper stands for
+                // a user who accepts everything the scan lists.
+                .chain(preview.duplicate_files.into_iter().map(|d| d.entry))
                 .map(|e| e.path)
                 .collect(),
             missing_ids: Vec::new(),
             remove_missing: false,
+            ..Default::default()
         };
         apply(&mut self.conn, selection).unwrap()
     }
@@ -57,6 +61,14 @@ impl Fixture {
             .new_files
             .into_iter()
             .map(|e| e.path)
+            .collect()
+    }
+    fn duplicate_files(&self) -> Vec<String> {
+        scan(&self.conn)
+            .unwrap()
+            .duplicate_files
+            .into_iter()
+            .map(|d| d.entry.path)
             .collect()
     }
     /// Runs the real batch import (same store transaction as the job import).
@@ -71,10 +83,11 @@ fn s(path: &Path) -> String {
 
 /// H1, file manager variant: a copy lands in the catalog folder, a model with the
 /// same content is already catalogued. Import: "duplicate (hash)", file stays on
-/// disk. Sync: offers the very same file as new.
-/// Reproduces today's behaviour, see Roadmap 1g.
+/// disk. Sync: offers the very same file, but in the "same content as an existing
+/// model" group instead of as a plain new file, so the user sees why the import
+/// refused it.
 #[test]
-fn h1_import_rejects_hash_duplicate_in_catalog_folder_and_sync_offers_it_as_new() {
+fn h1_import_rejects_hash_duplicate_in_catalog_folder_and_sync_offers_it_as_duplicate() {
     let mut f = Fixture::new();
     let original = f.root.join("original.obj");
     std::fs::write(&original, OBJ_A).unwrap();
@@ -89,21 +102,24 @@ fn h1_import_rejects_hash_duplicate_in_catalog_folder_and_sync_offers_it_as_new(
     assert_eq!(result.duplicate_entries[0].path, s(&copy));
     assert!(copy.exists(), "the rejected file stays where it is");
 
-    assert_eq!(f.new_files(), vec![s(&copy)], "sync offers the rejected file as new");
-    // Applying it creates the hash duplicate the import refused.
+    assert!(f.new_files().is_empty(), "a hash duplicate is not a plain new file");
+    assert_eq!(f.duplicate_files(), vec![s(&copy)]);
+    let hint = scan(&f.conn).unwrap().duplicate_files.remove(0);
+    assert_eq!(hint.duplicate_of_path, s(&original));
+    // Accepting it explicitly still creates the second row, as before.
     let applied = f.sync_all();
     assert_eq!(applied.file_ids.len(), 1);
     let files = db::list_files(&f.conn).unwrap();
     assert_eq!(files.len(), 2);
     assert_eq!(files[0].content_hash, files[1].content_hash);
-    assert!(f.new_files().is_empty(), "afterwards it is known by path");
+    assert!(f.duplicate_files().is_empty(), "afterwards it is known by path");
 }
 
 /// H1, archive/extracted folder variant: mixed content, only the hash duplicate
-/// stays unimported inside the new catalog folder and is offered by the next sync.
-/// Reproduces today's behaviour, see Roadmap 1g.
+/// stays unimported inside the new catalog folder and is offered by the next sync
+/// in the duplicate group.
 #[test]
-fn h1_mixed_folder_import_leaves_hash_duplicate_that_sync_offers() {
+fn h1_mixed_folder_import_leaves_hash_duplicate_that_sync_offers_as_duplicate() {
     let mut f = Fixture::new();
     let original = f.root.join("original.obj");
     std::fs::write(&original, OBJ_A).unwrap();
@@ -122,7 +138,8 @@ fn h1_mixed_folder_import_leaves_hash_duplicate_that_sync_offers() {
     assert_eq!(result.duplicate_entries[0].kind, "hash");
     assert_eq!(result.duplicate_entries[0].path, s(&dup));
 
-    assert_eq!(f.new_files(), vec![s(&dup)]);
+    assert!(f.new_files().is_empty());
+    assert_eq!(f.duplicate_files(), vec![s(&dup)]);
 }
 
 /// H1, control: a hash duplicate OUTSIDE every catalog folder is not offered by the
