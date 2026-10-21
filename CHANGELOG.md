@@ -27,6 +27,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Moving model files:** Moved model files keep the permissions and modification time of the original file.
 - **Trash:** Restoring a model from the trash now recreates its folder if it no longer exists, so models of a deleted folder can be brought back.
+- **Catalog database:** The catalog database gets three new columns for the platform and model ID of downloaded files; older catalogs are upgraded automatically (a copy is saved first).
 
 
 ## [0.16.3] - 2026-10-21
@@ -680,6 +681,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 - **Modelldateien verschieben:** Verschobene Modelldateien behalten die Rechte und die Änderungszeit der Originaldatei.
 - **Papierkorb:** Beim Wiederherstellen eines Modells aus dem Papierkorb wird sein Ordner neu angelegt, falls er nicht mehr existiert; so lassen sich Modelle eines gelöschten Ordners zurückholen.
+- **Katalog-Datenbank:** Die Katalog-Datenbank bekommt drei neue Spalten für die Plattform und die Modell-ID heruntergeladener Dateien; ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
 
 
 ## [0.16.3] - 2026-10-21
