@@ -146,7 +146,7 @@ pub(super) fn run_models(
     sensitive: &[PathBuf],
 ) -> CmdResult<()> {
     let rename = database.with_conn(|conn| import_rename::enabled(conn))?;
-    let prefix = rename.then(|| chrono::Local::now().format("%Y-%m-%d_%H-%M_").to_string());
+    let prefix = rename.then(|| import_rename::date_prefix(chrono::Local::now()));
     let candidates = scan_candidates(job, roots, service.scan_limit);
     let rename_paths = if rename {
         database.with_conn(|conn| {
