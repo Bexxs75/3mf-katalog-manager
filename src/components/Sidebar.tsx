@@ -8,7 +8,7 @@ import { folderNameProblem, folderNameProblemText } from '../lib/folderName';
 import { Icon } from './Icon';
 import { TagDot } from './TagDot';
 import { useEffect, useId, useRef, useState } from 'react';
-import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../types';
+import type { Folder, TagCount, ModelFile, Collection, FilamentCheck, FolderTrashResult } from '../types';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
 import { FolderTree } from './FolderTree';
@@ -36,6 +36,7 @@ interface Props {
   totalModelCount: number;
   onCatalogRemoved?: () => void;
   onFolderRenamed?: (info: { from: string; to: string; count: number }) => void;
+  onFolderTrashed?: (result: FolderTrashResult) => void;
   activeFolderId: string;
   onFolderSelect: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
@@ -87,6 +88,7 @@ export function Sidebar({
   totalModelCount,
   onCatalogRemoved,
   onFolderRenamed,
+  onFolderTrashed,
   activeFolderId,
   onFolderSelect,
   onCreateFolder,
@@ -277,6 +279,7 @@ export function Sidebar({
           onSelect={onFolderSelect}
           onRemoved={onCatalogRemoved}
           onRenamed={onFolderRenamed}
+          onTrashed={onFolderTrashed}
           draggedFileId={draggedFileId}
           draggedFileFolderId={draggedFileFolderId}
           dragOverFolderId={dragOverFolderId}
