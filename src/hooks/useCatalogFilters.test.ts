@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCatalogFilters } from './useCatalogFilters';
-import { makeModelFile } from '../test/factories';
+import { makeModelFile, makePrinter } from '../test/factories';
 
 describe('useCatalogFilters', () => {
   it('returns initial state with correct structure', () => {
@@ -148,4 +148,42 @@ it('updates and clears print status without losing usage', () => {
   expect(result.current.filtered.map(m => m.id)).toEqual(['u']);
   act(() => result.current.setPrintStatus(null));
   expect(result.current.filtered.map(m => m.id)).toEqual(['p', 'u']);
+});
+
+describe('print bed filter', () => {
+  const models = [
+    makeModelFile({ id: 'small', dimensionsMm: [50, 50, 50] }),
+    makeModelFile({ id: 'wide', dimensionsMm: [300, 50, 50] }),
+    makeModelFile({ id: 'unknown', dimensionsMm: null }),
+  ];
+  const mini = makePrinter({ id: 'mini', name: 'Mini', bedXMm: 180, bedYMm: 180, bedZMm: 180 });
+  const big = makePrinter({ id: 'big', name: 'Big', bedXMm: 400, bedYMm: 400, bedZMm: 400 });
+
+  it('starts with all models and filters by the chosen printer', () => {
+    const { result } = renderHook(() => useCatalogFilters(models, [], 'de', [mini, big]));
+    expect(result.current.fitPrinterId).toBeNull();
+    expect(result.current.filtered).toHaveLength(3);
+    act(() => result.current.setFitPrinterId('mini'));
+    expect(result.current.filtered.map(m => m.id).sort()).toEqual(['small', 'unknown']);
+    act(() => result.current.setFitPrinterId('big'));
+    expect(result.current.filtered).toHaveLength(3);
+    act(() => result.current.setFitPrinterId(null));
+    expect(result.current.filtered).toHaveLength(3);
+  });
+
+  it('ignores a printer that was deleted or has no build volume', () => {
+    const noBed = makePrinter({ id: 'nobed', bedXMm: null });
+    const { result, rerender } = renderHook(({ printers }) => useCatalogFilters(models, [], 'de', printers), {
+      initialProps: { printers: [mini] },
+    });
+    act(() => result.current.setFitPrinterId('mini'));
+    expect(result.current.filtered).toHaveLength(2);
+    rerender({ printers: [] });
+    expect(result.current.fitPrinterId).toBeNull();
+    expect(result.current.filtered).toHaveLength(3);
+    rerender({ printers: [noBed] });
+    act(() => result.current.setFitPrinterId('nobed'));
+    expect(result.current.fitPrinterId).toBeNull();
+    expect(result.current.filtered).toHaveLength(3);
+  });
 });
