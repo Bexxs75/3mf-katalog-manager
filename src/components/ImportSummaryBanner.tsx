@@ -10,6 +10,8 @@ interface Props {
   duplicates: number;
   archives?: ArchiveOutcome[];
   otherFilesExtracted?: number;
+  companionsAssigned?: number;
+  companionsIgnored?: number;
   jobHasProblems?: boolean;
   skipped?: SkippedFile[];
   onClose: () => void;
@@ -30,7 +32,7 @@ function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-export function ImportSummaryBanner({ imported, duplicates, archives, skipped, otherFilesExtracted = 0, jobHasProblems = false, onClose, onShowNew }: Props) {
+export function ImportSummaryBanner({ imported, duplicates, archives, skipped, otherFilesExtracted = 0, companionsAssigned = 0, companionsIgnored = 0, jobHasProblems = false, onClose, onShowNew }: Props) {
   const t = useT();
   const formatCount = useFormatCount();
 
@@ -80,13 +82,19 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
     }
   }
 
-  const otherFiles = otherFilesExtracted + (archives ?? []).reduce((sum, a) => sum + a.otherFilesExtracted, 0);
+  const sum = (pick: (a: ArchiveOutcome) => number) => (archives ?? []).reduce((total, a) => total + pick(a), 0);
+  const assigned = companionsAssigned + sum((a) => a.companionsAssigned);
+  const ignored = companionsIgnored + sum((a) => a.companionsIgnored);
+  if (assigned > 0) lines.push({ key: 'companionsAssigned', text: formatCount(t('archiveSummaryCompanionsAssigned'), assigned) });
+  if (ignored > 0) lines.push({ key: 'companionsIgnored', text: formatCount(t('archiveSummaryCompanionsIgnored'), ignored) });
+  // The backend counts ignored files among the "other" ones; they have their own line now.
+  const otherFiles = otherFilesExtracted + sum((a) => a.otherFilesExtracted) - ignored;
   if (otherFiles > 0) lines.push({ key: 'otherFiles', text: formatCount(t('archiveSummaryOtherFiles'), otherFiles) });
 
   // Error messages stay until they are dismissed - otherwise a failed
   // archive would disappear unnoticed after 5 s. The note about non-model files
   // is a longer sentence the user has to be able to read first.
-  const hasOtherFilesNote = lines.some((line) => line.key === 'otherFiles');
+  const hasOtherFilesNote = lines.some((line) => ['otherFiles', 'companionsAssigned', 'companionsIgnored'].includes(line.key));
   useEffect(() => {
     if (hasProblems) return;
     const timer = setTimeout(onClose, hasOtherFilesNote ? 15000 : 5000);

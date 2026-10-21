@@ -166,6 +166,17 @@ it.each([0, 2])('renders the archive job result in the banner with %s other file
   else expect(screen.queryByText(/weitere Dateien wurden entpackt/)).not.toBeInTheDocument();
 });
 
+it('shows companion counts from an archive job even when no other files are left', async () => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  render(createElement(LanguageProvider, null, createElement(ImportBannerHarness)));
+  const archive = importResult.groups.archive[1];
+  if (archive.state === 'pending') throw new Error('expected completed fixture');
+  const value: ImportJobResult = {...finished(), source: 'archive', groups: {...finished().groups, archive: [{...archive, otherFilesExtracted: 1, companionsAssigned: 3, companionsIgnored: 1, unsafeSkipped: 0, models: {imported: [], skipped: [], duplicates: []}}]}};
+  await act(async () => events.handlers['import://finished']({payload: value}));
+  expect(screen.getByText('3 Begleitdateien wurden Modellen zugeordnet.')).toBeVisible();
+  expect(screen.getByText(/1 Datei ignoriert/)).toBeVisible();
+});
+
 it.each([false, true])('keeps an archive hint for 15 seconds, or until dismissed with problems (%s)', jobHasProblems => {
   vi.useFakeTimers();
   try {

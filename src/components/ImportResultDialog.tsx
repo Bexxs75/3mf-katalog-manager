@@ -24,7 +24,12 @@ export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}
     for (const a of result.groups.archive) {
       archive.push({path: a.path, reason: a.state === 'pending' ? t('impPending') : a.error ? (a.error === 'cancelled' ? t('impArchiveCancelled') : reason(a.error)) : t('impExtracted').replace('{path}', a.extractedTo ?? '')});
       if (a.state !== 'pending') {
-        if (a.otherFilesExtracted > 0) archive.push({path: a.extractedTo ?? a.path, reason: formatCount(t('archiveSummaryOtherFiles'), a.otherFilesExtracted), nested: true});
+        const where = a.extractedTo ?? a.path;
+        if (a.companionsAssigned > 0) archive.push({path: where, reason: formatCount(t('archiveSummaryCompanionsAssigned'), a.companionsAssigned), nested: true});
+        if (a.companionsIgnored > 0) archive.push({path: where, reason: formatCount(t('archiveSummaryCompanionsIgnored'), a.companionsIgnored), nested: true});
+        // Ignored files are part of the backend's "other files" count and have their own row.
+        const other = a.otherFilesExtracted - a.companionsIgnored;
+        if (other > 0) archive.push({path: where, reason: formatCount(t('archiveSummaryOtherFiles'), other), nested: true});
         for (const r of a.models.skipped) archive.push({path: r.entryPath, reason: reason(r.reason), nested: true});
         for (const r of a.models.duplicates) archive.push({path: r.entryPath, reason: reason(r.kind), nested: true});
       }
