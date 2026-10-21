@@ -99,6 +99,25 @@ fn intermediate_name(old: &Path, counter: u64) -> io::Result<String> {
     Ok(format!("{prefix}{suffix}"))
 }
 
+/// Renames a single file inside its directory without ever replacing an existing
+/// entry: the collision check alone leaves a window in which another program could
+/// create the target, and `std::fs::rename` would then overwrite it on Linux and
+/// macOS. `move_file` links first, which fails with `AlreadyExists` instead.
+/// Case-only renames and symlinks keep `rename_on_disk`: a case-only target is the
+/// file itself on a case-insensitive volume (a link would be refused), and a link
+/// to a symlink would not move the symlink.
+pub(super) fn rename_file_on_disk(old: &Path, new: &Path) -> io::Result<()> {
+    if target_collides(old, new)? {
+        return Err(io::Error::new(io::ErrorKind::AlreadyExists, "rename target exists"));
+    }
+    let is_symlink = std::fs::symlink_metadata(old).is_ok_and(|m| m.file_type().is_symlink());
+    if is_case_only(old, new) || is_symlink {
+        return rename_on_disk(old, new);
+    }
+    super::import_rename::race_point("before-file-rename", new);
+    super::move_file(old, new)
+}
+
 pub(super) fn rename_on_disk(old: &Path, new: &Path) -> io::Result<()> {
     rename_with(old, new, |from, to| std::fs::rename(from, to))
 }
