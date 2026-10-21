@@ -14,7 +14,7 @@ mod migrations;
 
 pub use migrations::run_migrations;
 #[cfg(test)]
-pub(crate) use migrations::SOURCE_COLUMNS_MIGRATION_VERSION;
+pub(crate) use migrations::{SOURCE_COLUMNS_MIGRATION_VERSION, SPOOL_COLOR_LIST_MIGRATION_VERSION};
 
 /// Schema version of this build (for tests that check the migration backup).
 #[cfg(test)]
@@ -395,6 +395,7 @@ mod tests {
             price: Some(19.99),
             image_png: None,
             color_hex: Some("#1a1a1a".to_string()),
+            color_hexes: Vec::new(),
             kind: "filament".to_string(),
         }
     }
