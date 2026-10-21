@@ -29,6 +29,7 @@ mod printers;
 mod security;
 mod slicers;
 mod trash;
+mod folder_trash;
 mod updater;
 
 pub use archives::*;
@@ -47,6 +48,7 @@ pub use printers::*;
 pub use security::*;
 pub use slicers::*;
 pub use trash::*;
+pub use folder_trash::*;
 pub use updater::*;
 
 use std::collections::{BTreeMap, HashMap, HashSet};

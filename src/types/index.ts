@@ -108,6 +108,31 @@ export interface Folder {
   count: number;
 }
 
+export interface FolderTrashSummary {
+  name: string;
+  subfolderCount: number;
+  modelCount: number;
+  /** Files on disk the catalog does not know; only counted, never touched. */
+  otherFileCount: number;
+  /** The count stopped at its limit, so it means "at least". */
+  otherFileCountTruncated: boolean;
+  isCatalogRootOrAncestor: boolean;
+}
+
+export interface FolderTrashFailure {
+  fileId: string;
+  path: string;
+  reason: string;
+}
+
+export interface FolderTrashResult {
+  trashedModelCount: number;
+  failed: FolderTrashFailure[];
+  removedFolderCount: number;
+  /** Folders of the tree that still exist on disk. */
+  keptOnDisk: string[];
+}
+
 export type SkipReason = 'empty' | 'invalid' | 'failed';
 
 export interface SkippedFile {

@@ -2,7 +2,7 @@ use super::*;
 use rusqlite::OptionalExtension;
 use tauri::Manager;
 
-const SUBTREE: &str = "WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id = ?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id)";
+pub(super) const SUBTREE: &str = "WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id = ?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id)";
 const BASE_DIR_ERROR: &str = "Das ist der Speicherort des Katalogs. Zum Leeren „Katalog zurücksetzen“ in den Einstellungen verwenden.";
 
 #[derive(Debug, Serialize)]
@@ -20,7 +20,7 @@ pub struct CatalogRemovalCount {
     folder_count: i64,
 }
 
-fn parse_id(id: &str) -> CmdResult<i64> {
+pub(super) fn parse_id(id: &str) -> CmdResult<i64> {
     id.parse::<i64>()
         .ok()
         .filter(|id| *id > 0)

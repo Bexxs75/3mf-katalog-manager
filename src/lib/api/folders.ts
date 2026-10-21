@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Folder } from '../../types';
+import type { Folder, FolderTrashResult, FolderTrashSummary } from '../../types';
 
 export function listFolders() {
   return invoke<Folder[]>('list_folders');
@@ -15,4 +15,10 @@ export function moveFolder(folderId: string, newParentId: string) {
 }
 export function renameFolder(folderId: string, name: string) {
   return invoke('rename_folder', { folderId, name });
+}
+export function folderTrashSummary(folderId: string) {
+  return invoke<FolderTrashSummary>('folder_trash_summary', { folderId });
+}
+export function trashFolder(folderId: string) {
+  return invoke<FolderTrashResult>('trash_folder', { folderId });
 }
