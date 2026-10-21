@@ -393,7 +393,7 @@ it('shortens long tag chips while preserving the count and full filter value', (
     width={242} setWidth={vi.fn()} resetWidth={vi.fn()} allFoldersCollapsed onToggleAllFolders={vi.fn()} /></LanguageProvider>);
   fireEvent.click(screen.getByText('Tags'));
   const text = screen.getByText('#' + 'a'.repeat(28) + '…');
-  expect(text).toHaveClass('truncate');
+  expect(text).toHaveClass('whitespace-nowrap');
   const chip = text.closest('button')!;
   expect(chip).toHaveAttribute('title', '#' + tag);
   expect(chip).toHaveClass('max-w-full', 'min-w-0');

@@ -452,7 +452,7 @@ export function Sidebar({
                 }`}
               >
                 <TagDot hue={tag.colorHue} />
-                <span className="truncate">{shortTagLabel(`#${tagLabel(tag.label, language)}`)}</span>
+                <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag.label, language)}`)}</span>
                 <span className="flex-none text-[var(--ink-3)]">{tag.count}</span>
               </button>
             ))}

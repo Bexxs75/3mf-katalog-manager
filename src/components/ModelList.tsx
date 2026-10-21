@@ -92,7 +92,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
                 title={`#${tagLabel(tag, language)}`}
                 className="inline-flex shrink-0 font-medium tabular-nums text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
               >
-                <span className="truncate">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+                <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
               </span>
             ))}
           </span>

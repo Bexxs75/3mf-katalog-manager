@@ -329,7 +329,7 @@ export function ModelDetailPage({
                 {model.tags.map((tag) => (
                   <span key={tag} title={`#${tagLabel(tag, language)}`} className="inline-flex max-w-full min-w-0 items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
                     <TagDot hue={tagHues?.[tag]} />
-                    <span className="truncate">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+                    <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
                     <button aria-label={t('chipRemove').replace('{label}', tag)} onClick={() => onRemoveTag(tag)} className="flex-none hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="close" size={14} /></button>
                   </span>
                 ))}

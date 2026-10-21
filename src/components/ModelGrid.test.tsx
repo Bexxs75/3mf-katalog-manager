@@ -157,7 +157,7 @@ it('shortens long tag chips in ModelList and exposes the full tooltip', () => {
   const tag = 'a'.repeat(95);
   const { getByText } = render(<LanguageProvider><ModelList {...props} models={[makeModelFile({ tags: [tag] })]} /></LanguageProvider>);
   const text = getByText('#' + 'a'.repeat(28) + '…');
-  expect(text).toHaveClass('truncate');
+  expect(text).toHaveClass('whitespace-nowrap');
   expect(text.parentElement).toHaveAttribute('title', '#' + tag);
   expect(text.parentElement).toHaveClass('shrink-0');
 });
