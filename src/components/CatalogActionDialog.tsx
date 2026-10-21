@@ -3,18 +3,22 @@ import { useId, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 /** Shared keyboard boundary for catalog-only confirmations. */
-export function CatalogActionDialog({ title, children, onClose, returnFocus }: {
+export function CatalogActionDialog({ title, children, onClose, returnFocus, busy, wide }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   returnFocus?: RefObject<HTMLElement | null>;
+  /** While true, Escape and a backdrop click do not close the dialog. */
+  busy?: boolean;
+  /** Wider panel for table content. */
+  wide?: boolean;
 }) {
-  const ref = useModalDialog({ open: true, onClose, returnFocus, initialFocus: '[data-initial-focus]' });
+  const ref = useModalDialog({ open: true, onClose, busy, returnFocus, initialFocus: '[data-initial-focus]' });
   const titleId = useId();
   return createPortal(
-    <div className="fixed inset-0 z-[100] bg-black/45 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[100] bg-black/45 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
-        className="w-full max-w-[540px] max-h-[90vh] overflow-auto rounded-lg border border-[var(--line)] bg-[var(--panel)] text-[var(--ink)] p-5 shadow-[var(--shadow)] text-body space-y-4">
+        className={`w-full ${wide ? 'max-w-[760px]' : 'max-w-[540px]'} max-h-[90vh] overflow-auto rounded-lg border border-[var(--line)] bg-[var(--panel)] text-[var(--ink)] p-5 shadow-[var(--shadow)] text-body space-y-4`}>
         <h2 id={titleId} className="text-title font-semibold">{title}</h2>
         {children}
       </div>

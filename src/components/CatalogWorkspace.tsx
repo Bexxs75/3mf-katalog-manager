@@ -84,6 +84,7 @@ interface CatalogWorkspaceProps {
   bulkRemove?: () => Promise<void>;
   onCatalogRemoved?: () => void;
   onFolderRenamed?: (info: { from: string; to: string; count: number }) => void;
+  onDateRenamed?: (outcome: { renamed: number; failed: number }) => void;
   onRemoveModelFromCatalog?: (id: string) => Promise<void>;
   selectAllVisible: () => void;
   clearBulkSelection: () => void;
@@ -194,6 +195,7 @@ export function CatalogWorkspace({
   bulkRemove,
   onCatalogRemoved,
   onFolderRenamed,
+  onDateRenamed,
   onRemoveModelFromCatalog,
   selectAllVisible,
   clearBulkSelection,
@@ -503,6 +505,8 @@ export function CatalogWorkspace({
             onRemoveTagMenuOpenChange={setRemoveTagMenuOpen}
             tagsInSelection={tagsInSelection}
             onBulkRemoveTag={bulkRemoveTag}
+            selectedIds={[...selectedForBulk]}
+            onDateRenamed={onDateRenamed}
           />
         )}
 

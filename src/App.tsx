@@ -26,6 +26,7 @@ import { ImportProgressRow } from './components/ImportProgressRow';
 import { ErrorText } from './diagnostics/ErrorText';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { BulkDeleteFailureBanner } from './components/BulkDeleteFailureBanner';
+import { DateRenameBanner } from './components/DateRenameBanner';
 import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
@@ -159,6 +160,13 @@ export default function App() {
     setRenameToast(info);
     void Promise.all([store.refreshFolders(), store.refreshFiles()])
       .catch((e) => console.error('[folders] refresh after rename failed:', e));
+  };
+  const [dateRenameOutcome, setDateRenameOutcome] = useState<{ renamed: number; failed: number } | null>(null);
+  const dismissDateRenameNotice = useCallback(() => setDateRenameOutcome(null), []);
+  // Names and paths changed on disk and in the catalog, so the list is reloaded rather than patched.
+  const onDateRenamed = (outcome: { renamed: number; failed: number }) => {
+    setDateRenameOutcome(outcome);
+    void store.refreshFiles().catch((e) => console.error('[files] refresh after date rename failed:', e));
   };
   const removeCatalogModels = async (fileIds: string[]) => {
     await invoke('remove_files_from_catalog', { fileIds });
@@ -487,6 +495,7 @@ export default function App() {
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
               onCatalogRemoved={refreshAfterRemoval}
               onFolderRenamed={onFolderRenamed}
+              onDateRenamed={onDateRenamed}
               onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
               selectAllVisible={() => bulk.selectAllVisible(filteredIds)}
               clearBulkSelection={bulk.clearBulkSelection}
@@ -596,6 +605,7 @@ export default function App() {
             )}
 
             <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
+            <DateRenameBanner outcome={dateRenameOutcome} onClose={dismissDateRenameNotice} />
             <UpdateToast view={update} />
             {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
           </NoticeStack>
