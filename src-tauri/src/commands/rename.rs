@@ -2,7 +2,7 @@ use std::io;
 use std::path::Path;
 use unicode_normalization::UnicodeNormalization;
 
-fn normalized_lowercase(name: &str) -> String {
+pub(super) fn normalized_lowercase(name: &str) -> String {
     name.nfc()
         .collect::<String>()
         .to_lowercase()

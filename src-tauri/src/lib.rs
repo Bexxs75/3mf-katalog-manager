@@ -263,6 +263,8 @@ pub fn run() {
             commands::create_folder,
             commands::move_file_to_folder,
             commands::rename_file,
+            commands::preview_date_rename,
+            commands::apply_date_rename,
             commands::rename_folder,
             commands::move_folder,
             commands::pick_folder_path,
