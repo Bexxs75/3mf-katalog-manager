@@ -76,8 +76,10 @@ describe('folder rename', () => {
     fireEvent.keyDown(field(), { key: 'Enter' });
     await waitFor(() => expect(onRenamed).toHaveBeenCalledWith({ id: '1', from: 'Parts', to: 'Druckerteile', count: 37 }));
     expect(invoke).toHaveBeenCalledWith('rename_folder', { folderId: '1', name: 'Druckerteile' });
-    expect(screen.queryByRole('textbox')).toBeNull();
-    expect(document.activeElement).toBe(screen.getByText('Parts').closest('[tabindex]'));
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox')).toBeNull();
+      expect(document.activeElement).toBe(screen.getByText('Parts').closest('[tabindex]'));
+    });
   });
 
   it('Escape cancels without a call and focuses the row', () => {
