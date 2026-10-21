@@ -15,6 +15,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Tag suggestion list:** long tags now wrap, so the highlight spans the full width of the list instead of showing a horizontal scroll bar. The empty list no longer stops after 200 tags.
 - **Material Manager, manufacturers:** manufacturers you typed yourself now appear in the suggestion list for new and edited spools (filament and resin kept apart).
 - **Sync with disk:** each entry now shows the file path and the catalog folder on separate, labeled lines ("File" / "Catalog folder"), so they are no longer read as one split path.
+- **Long tags:** very long tags no longer run out of their chip in the detail panel, detail page, list and sidebar. The display is cut after 29 characters with “…”; the full tag shows as a tooltip and is stored unchanged.
 
 ## [0.16.2] - 2026-10-19
 
@@ -645,6 +646,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Tag-Vorschlagsliste:** Lange Tags brechen jetzt um, damit der Treffer-Balken die volle Listenbreite hat und keine waagerechte Scroll-Leiste erscheint. Die leere Liste endet nicht mehr nach 200 Tags.
 - **Material Manager, Hersteller:** Selbst eingetippte Hersteller erscheinen jetzt in der Vorschlagsliste für neue und bearbeitete Spulen (Filament und Resin getrennt).
 - **Abgleich mit der Festplatte:** Pro Eintrag stehen Dateipfad und Katalogordner jetzt in getrennten, beschrifteten Zeilen („Datei“ / „Katalogordner“) und werden nicht mehr als ein geteilter Pfad gelesen.
+- **Lange Tags:** Sehr lange Tags laufen in Detailbereich, Detailseite, Liste und Seitenleiste nicht mehr aus dem Chip. Die Anzeige wird nach 29 Zeichen mit „…“ gekürzt; der volle Tag erscheint als Tooltip und bleibt unverändert gespeichert.
 
 ## [0.16.2] - 2026-10-19
 
