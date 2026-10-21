@@ -1,8 +1,8 @@
 //! Roadmap 1g: "Import reports a duplicate, the disk sync offers the same file as new".
 //!
-//! These tests REPRODUCE TODAY'S BEHAVIOUR and keep it as the expected result, so
-//! they are green. They do not assert that the problem is fixed. When 1g is
-//! fixed, the tests marked "reproduces today's behaviour" must be rewritten.
+//! The hash-duplicate, trash and unreadable-file tests (marked "reproduces today's
+//! behaviour") document known behaviour and do not assert a fix. The symlink-alias
+//! tests assert the fixed behaviour: the sync compares resolved paths.
 //! See /mnt/claude/claudex-runs/docs/befund-1g-doppelt-neu.md.
 use super::*;
 
@@ -163,16 +163,13 @@ fn h2_symlink_alias_is_reported_as_hash_not_path_duplicate_and_sync_does_not_off
     assert!(f.new_files().is_empty());
 }
 
-/// H2 (symlink alias, new content): a file imported through a symlink to the catalog
-/// folder is stored under the alias spelling. The sync resolves only paths below
-/// the stored/canonical root, so it does NOT recognise the stored alias path and
-/// offers the same physical file as new. Applying it adds a second row with the
-/// same hash (the sync never checks hashes).
-/// Reproduces today's behaviour, see Roadmap 1g. This is the same symptom as the
-/// reported one ("imported, yet offered as new") without any hash rejection.
+/// A file imported through a symlink to the catalog folder is stored under the alias
+/// spelling. The sync compares resolved paths, so it recognises the physical file as
+/// already catalogued and neither offers it as new nor reports the alias row missing.
+/// The stored alias path stays untouched.
 #[cfg(unix)]
 #[test]
-fn h2_symlink_alias_import_of_new_content_is_offered_again_by_sync() {
+fn symlink_alias_import_is_not_offered_again_by_sync() {
     let mut f = Fixture::new();
     let alias = f.base.join("alias");
     std::os::unix::fs::symlink(&f.root, &alias).unwrap();
@@ -181,11 +178,101 @@ fn h2_symlink_alias_import_of_new_content_is_offered_again_by_sync() {
     let result = f.import(&[&via_alias]);
     assert_eq!(result.imported.len(), 1);
     assert_eq!(result.imported[0].path, s(&via_alias));
-    assert_eq!(f.new_files(), vec![s(&f.root.join("b.obj"))]);
-    f.sync_all();
+    let preview = scan(&f.conn).unwrap();
+    assert!(preview.new_files.is_empty(), "{:?}", preview.new_files);
+    assert!(preview.missing_files.is_empty());
+    assert_eq!(f.sync_all().file_ids.len(), 0);
     let files = db::list_files(&f.conn).unwrap();
-    assert_eq!(files.len(), 2);
-    assert_eq!(files[0].content_hash, files[1].content_hash);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].path, s(&via_alias), "stored path is not rewritten");
+}
+
+/// The catalog folder itself is configured through a symlink spelling, and a row was
+/// stored under the real path (and vice versa for a second file).
+#[cfg(unix)]
+#[test]
+fn symlink_to_catalog_folder_from_outside_matches_real_path_rows() {
+    let mut f = Fixture::new();
+    let alias = f.base.join("outside-alias");
+    std::os::unix::fs::symlink(&f.root, &alias).unwrap();
+    std::fs::create_dir(f.root.join("sub")).unwrap();
+    std::fs::write(f.root.join("sub").join("c.obj"), OBJ_A).unwrap();
+    f.sync_all();
+    // The same file reached through the outside alias is the same file.
+    let via_alias = alias.join("sub").join("c.obj");
+    let mut file = db::list_files(&f.conn).unwrap().remove(0);
+    file.path = s(&via_alias);
+    f.conn
+        .execute(
+            "UPDATE files SET path = ?1 WHERE id = ?2",
+            rusqlite::params![file.path, file.id],
+        )
+        .unwrap();
+    let preview = scan(&f.conn).unwrap();
+    assert!(preview.new_files.is_empty(), "{:?}", preview.new_files);
+    assert!(preview.missing_files.is_empty());
+}
+
+/// Alias directory inside the catalog folder and an alias file next to the real file.
+#[cfg(unix)]
+#[test]
+fn alias_directory_and_alias_file_inside_catalog_folder_are_the_same_file() {
+    let mut f = Fixture::new();
+    std::fs::create_dir(f.root.join("real")).unwrap();
+    std::fs::write(f.root.join("real").join("d.obj"), OBJ_A).unwrap();
+    std::fs::write(f.root.join("e.obj"), OBJ_B).unwrap();
+    f.sync_all();
+    std::os::unix::fs::symlink(f.root.join("real"), f.root.join("linkdir")).unwrap();
+    std::os::unix::fs::symlink(f.root.join("e.obj"), f.root.join("link-e.obj")).unwrap();
+    let rows = db::list_files(&f.conn).unwrap();
+    let d = rows.iter().find(|r| r.path.ends_with("d.obj")).unwrap();
+    let e = rows.iter().find(|r| r.path.ends_with("e.obj")).unwrap();
+    for (id, path) in [
+        (&d.id, f.root.join("linkdir").join("d.obj")),
+        (&e.id, f.root.join("link-e.obj")),
+    ] {
+        f.conn
+            .execute(
+                "UPDATE files SET path = ?1 WHERE id = ?2",
+                rusqlite::params![s(&path), id],
+            )
+            .unwrap();
+    }
+    let preview = scan(&f.conn).unwrap();
+    assert!(preview.new_files.is_empty(), "{:?}", preview.new_files);
+    assert!(preview.missing_files.is_empty(), "{:?}", preview.missing_files);
+}
+
+/// A symlink loop and a dangling symlink must neither hang nor panic; the key
+/// falls back to the plain spelling.
+#[cfg(unix)]
+#[test]
+fn symlink_loop_and_dangling_symlink_fall_back_to_the_plain_spelling() {
+    let f = Fixture::new();
+    let a = f.base.join("loop-a");
+    let b = f.base.join("loop-b");
+    std::os::unix::fs::symlink(&b, &a).unwrap();
+    std::os::unix::fs::symlink(&a, &b).unwrap();
+    let dangling = f.base.join("dangling.obj");
+    std::os::unix::fs::symlink(f.base.join("nowhere.obj"), &dangling).unwrap();
+    let resolver = KeyResolver::new(&[], false);
+    for path in [a.join("x.obj"), a.clone(), dangling.clone()] {
+        assert_eq!(resolver.key(&path), path);
+    }
+}
+
+/// A file that cannot be resolved (missing) is keyed by its resolved parent plus its
+/// name, or by the plain spelling when even the parent is gone.
+#[test]
+fn unresolvable_file_falls_back_to_path_key() {
+    let f = Fixture::new();
+    for case_insensitive in [false, true] {
+        let resolver = KeyResolver::new(&[], case_insensitive);
+        let gone = f.root.join("Gone.obj");
+        assert_eq!(resolver.key(&gone), path_key(&gone, case_insensitive));
+        let no_dir = f.base.join("no-dir").join("Gone.obj");
+        assert_eq!(resolver.key(&no_dir), path_key(&no_dir, case_insensitive));
+    }
 }
 
 /// H2 (Unicode): `path_key` folds case only; NFC and NFD spellings of one name stay

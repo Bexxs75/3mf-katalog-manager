@@ -65,6 +65,61 @@ fn path_key(path: &Path, case_insensitive: bool) -> PathBuf {
     }
 }
 
+/// Compares paths by what they point to, not by how they are spelled. A catalog row may
+/// hold a symlink spelling of a file (the import stores whatever path it was given)
+/// while the scan walks the real tree; both must yield the same key or the same file
+/// is offered as new. Stored paths are never rewritten, only the comparison key is.
+struct KeyResolver<'a> {
+    roots: &'a [DiskRoot],
+    case_insensitive: bool,
+    // One lookup per directory instead of per file; `None` remembers a failed lookup.
+    dirs: std::cell::RefCell<HashMap<PathBuf, Option<PathBuf>>>,
+}
+impl<'a> KeyResolver<'a> {
+    fn new(roots: &'a [DiskRoot], case_insensitive: bool) -> Self {
+        Self {
+            roots,
+            case_insensitive,
+            dirs: Default::default(),
+        }
+    }
+    /// Maps a stored path below a configured root onto the canonical root.
+    fn normalize(&self, path: &Path) -> PathBuf {
+        self.roots
+            .iter()
+            .find_map(|r| r.resolve(path))
+            .unwrap_or_else(|| path.to_path_buf())
+    }
+    fn canonical_dir(&self, dir: &Path) -> Option<PathBuf> {
+        if let Some(known) = self.dirs.borrow().get(dir) {
+            return known.clone();
+        }
+        let resolved = std::fs::canonicalize(dir).ok();
+        self.dirs
+            .borrow_mut()
+            .insert(dir.to_path_buf(), resolved.clone());
+        resolved
+    }
+    /// Falls back to the plain spelling whenever resolving fails (missing file or
+    /// directory, no permission, symlink loop), so a broken alias never hides a file.
+    fn key(&self, path: &Path) -> PathBuf {
+        let normalized = self.normalize(path);
+        let mut resolved = match (normalized.parent(), normalized.file_name()) {
+            (Some(parent), Some(name)) => self
+                .canonical_dir(parent)
+                .map_or_else(|| normalized.clone(), |dir| dir.join(name)),
+            _ => normalized,
+        };
+        // The file itself may be a symlink; the scan lists its target instead.
+        if std::fs::symlink_metadata(&resolved).is_ok_and(|m| m.file_type().is_symlink()) {
+            if let Ok(target) = std::fs::canonicalize(&resolved) {
+                resolved = target;
+            }
+        }
+        path_key(&resolved, self.case_insensitive)
+    }
+}
+
 #[derive(Debug)]
 struct DiskRoot {
     stored: PathBuf,
@@ -290,12 +345,8 @@ fn scan_with_path_mode(
         .roots
         .sort_by_key(|r| r.canonical.components().count());
     let roots = std::mem::take(&mut result.roots);
-    let normalize = |p: &Path| {
-        roots
-            .iter()
-            .find_map(|r| r.resolve(p))
-            .unwrap_or_else(|| p.to_path_buf())
-    };
+    let resolver = KeyResolver::new(&roots, case_insensitive);
+    let normalize = |p: &Path| resolver.normalize(p);
     let known_folders = known_folders
         .iter()
         .map(|p| path_key(&normalize(p), case_insensitive))
@@ -317,7 +368,7 @@ fn scan_with_path_mode(
         .map_err(|e| e.to_string())?;
     let known_files = rows
         .iter()
-        .map(|(_, p, _, _)| path_key(&normalize(Path::new(p)), case_insensitive))
+        .map(|(_, p, _, _)| resolver.key(Path::new(p)))
         .collect();
     let mut seen_files = HashSet::new();
     for (index, root) in roots.iter().enumerate() {
@@ -419,7 +470,7 @@ fn scan_with_path_mode(
     if case_insensitive {
         // A directory entry proves presence even when the stored spelling cannot be opened.
         result.missing_files.retain(|e| {
-            !seen_files.contains(&path_key(&normalize(Path::new(&e.path)), case_insensitive))
+            !seen_files.contains(&resolver.key(Path::new(&e.path)))
         });
         suppress_case_only_new_files(&mut result, case_insensitive);
     }
@@ -630,14 +681,8 @@ fn apply_with_path_mode(
         .map(|f| f.id)
         .collect();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let key = |p: &Path| {
-        let resolved = current
-            .roots
-            .iter()
-            .find_map(|root| root.resolve(p))
-            .unwrap_or_else(|| p.to_path_buf());
-        path_key(&resolved, case_insensitive)
-    };
+    let resolver = KeyResolver::new(&current.roots, case_insensitive);
+    let key = |p: &Path| resolver.key(p);
     let mut known_files: HashSet<_> = {
         let mut stmt = tx
             .prepare("SELECT path FROM files")
