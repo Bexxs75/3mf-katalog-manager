@@ -1126,6 +1126,41 @@ export interface Translations {
   unexpectedErrorText: string;
   reportProblemLink: string;
   errorBoundaryReload: string;
+  sfTitle: string;
+  sfDescription: string;
+  sfNone: string;
+  sfUnreachable: string;
+  sfRemove: string;
+  sfRemoveLabel: string;
+  sfAdd: string;
+  sfCheckOnStart: string;
+  sfCheckOnStartHint: string;
+  sfRejected: string;
+  sfResetRejected: string;
+  sfRules: string;
+  sfLockedNote: string;
+  sfMenuCheck: string;
+  sfMenuHint: string;
+  sfChecking: string;
+  sfFoundOne: PluralForms;
+  sfFoundMany: PluralForms;
+  sfFoundNone: string;
+  sfNoFolders: string;
+  sfTruncated: string;
+  sfSkippedEntries: PluralForms;
+  sfUnreachableFolders: PluralForms;
+  sfView: string;
+  sfLater: string;
+  sfDismiss: string;
+  sfDialogTitle: string;
+  sfMove: PluralForms;
+  sfReject: string;
+  sfWorking: string;
+  sfDuplicate: string;
+  sfDuplicateHint: string;
+  sfDialogHint: string;
+  sfRejectedDone: PluralForms;
+  sfSizeLabel: string;
 }
 
 export function formatCount(forms: PluralForms, n: number, language: Language = 'de'): string {
