@@ -373,7 +373,7 @@ fn a_folder_swapped_for_a_link_after_the_scan_does_not_lead_out_of_the_source_fo
         .unwrap();
     service.next().unwrap();
     let mut conn = db::connect_in_memory().unwrap();
-    run_models(&service, &job, &mut &mut conn, &[listed.clone()], &[]).unwrap();
+    run_models(&service, &job, &mut &mut conn, std::slice::from_ref(&listed), &[]).unwrap();
     service.finish(&job, None);
     let result = job.result().unwrap();
     assert!(result.groups.imported.is_empty());
