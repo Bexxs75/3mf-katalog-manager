@@ -1384,6 +1384,91 @@ mod tests {
         assert!(!dir.join("Neu").is_dir() || std::fs::read_dir(dir.join("Neu")).unwrap().count() == 0);
     }
 
+    fn db_file_path(conn: &Connection, id: i64) -> String {
+        db::get_file(conn, id).unwrap().unwrap().path
+    }
+
+    #[test]
+    fn rename_folder_carries_files_that_are_not_assigned_to_the_folder() {
+        let tmp = unique_test_dir("rename_folder_unassigned_files");
+        let deko = tmp.join("Deko");
+        let deko2 = tmp.join("Deko2");
+        std::fs::create_dir_all(deko.join("Sub")).unwrap();
+        std::fs::create_dir_all(&deko2).unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let deko_id = db::insert_folder_with_parent(&conn, "Deko", None, &deko.to_string_lossy()).unwrap();
+        db::insert_folder_with_parent(&conn, "Deko2", None, &deko2.to_string_lossy()).unwrap();
+        let loose = db::test_insert_minimal_file(&conn, &deko.join("loose.3mf").to_string_lossy(), None).unwrap();
+        let loose_deep = db::test_insert_minimal_file(&conn, &deko.join("Sub").join("d.3mf").to_string_lossy(), None).unwrap();
+        let sibling = db::test_insert_minimal_file(&conn, &deko2.join("x.3mf").to_string_lossy(), None).unwrap();
+        let trashed = db::test_insert_minimal_file(&conn, &deko.join("gone.3mf").to_string_lossy(), None).unwrap();
+        db::soft_delete_file(&conn, trashed, Some("/trash/1-gone.3mf"), "2026-01-01T00:00:00Z").unwrap();
+
+        rename_folder_with_conn(&conn, deko_id, "Dekor".to_string(), &[]).expect("rename should succeed");
+
+        let new = tmp.join("Dekor");
+        assert_eq!(db_file_path(&conn, loose), new.join("loose.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, loose_deep), new.join("Sub").join("d.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, trashed), new.join("gone.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, sibling), deko2.join("x.3mf").to_string_lossy());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn move_folder_carries_files_that_are_not_assigned_to_the_folder() {
+        let tmp = unique_test_dir("move_folder_unassigned_files");
+        let b_dir = tmp.join("A").join("B");
+        let b2_dir = tmp.join("A").join("B2");
+        let x_dir = tmp.join("X");
+        std::fs::create_dir_all(b_dir.join("C")).unwrap();
+        std::fs::create_dir_all(&b2_dir).unwrap();
+        std::fs::create_dir_all(&x_dir).unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).unwrap();
+        let x_id = db::insert_folder_with_parent(&conn, "X", None, &x_dir.to_string_lossy()).unwrap();
+        let loose = db::test_insert_minimal_file(&conn, &b_dir.join("C").join("l.3mf").to_string_lossy(), None).unwrap();
+        let sibling = db::test_insert_minimal_file(&conn, &b2_dir.join("s.3mf").to_string_lossy(), None).unwrap();
+        let trashed = db::test_insert_minimal_file(&conn, &b_dir.join("gone.3mf").to_string_lossy(), None).unwrap();
+        db::soft_delete_file(&conn, trashed, None, "2026-01-01T00:00:00Z").unwrap();
+
+        move_folder_with_conn(&conn, b_id, Some(x_id), &[]).expect("move should succeed");
+
+        let new = x_dir.join("B");
+        assert_eq!(db_file_path(&conn, loose), new.join("C").join("l.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, trashed), new.join("gone.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, sibling), b2_dir.join("s.3mf").to_string_lossy());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn rename_folder_rolls_back_disk_and_catalog_when_a_file_path_is_already_taken() {
+        let tmp = unique_test_dir("rename_folder_path_collision");
+        std::fs::create_dir_all(tmp.join("Alt")).unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::insert_folder_with_parent(&conn, "Alt", None, &tmp.join("Alt").to_string_lossy()).unwrap();
+        let moving = db::test_insert_minimal_file(&conn, &tmp.join("Alt").join("a.3mf").to_string_lossy(), None).unwrap();
+        // Stale entry (no folder on disk or in the catalog) that already holds the new path.
+        let squatter = db::test_insert_minimal_file(&conn, &tmp.join("Neu").join("a.3mf").to_string_lossy(), None).unwrap();
+
+        let result = rename_folder_with_conn(&conn, id, "Neu".to_string(), &[]);
+
+        assert!(result.is_err(), "a colliding file path must fail the rename, not be skipped");
+        assert!(tmp.join("Alt").is_dir(), "the folder on disk must be renamed back");
+        assert!(!tmp.join("Neu").exists());
+        let folder = db::list_folders(&conn).unwrap().into_iter().find(|f| f.id == id).unwrap();
+        assert_eq!(folder.name, "Alt");
+        assert_eq!(folder.path, tmp.join("Alt").to_string_lossy());
+        assert_eq!(db_file_path(&conn, moving), tmp.join("Alt").join("a.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, squatter), tmp.join("Neu").join("a.3mf").to_string_lossy());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// Parent approved the way the dialog does it: picked in the folder dialog.
     fn picked_parent(name: &str) -> (PathBuf, ApprovedTargets, ApprovedCatalogParents) {
         let parent = unique_test_dir(name);
