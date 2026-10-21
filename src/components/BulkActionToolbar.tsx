@@ -25,6 +25,7 @@ interface BulkActionToolbarProps {
   onBulkSetLicense?: (license: string | null) => Promise<void>;
   onBulkSetPrintStatus: (status: 'printed' | 'not_printed') => void;
   onBulkDelete: () => void;
+  onBulkMove?: () => void;
   onBulkRemove?: () => Promise<void>;
   addTagMenuOpen: boolean;
   onAddTagMenuOpenChange: (value: boolean) => void;
@@ -67,6 +68,7 @@ export function BulkActionToolbar({
   onBulkSetPrintStatus,
   onBulkSetLicense,
   onBulkDelete,
+  onBulkMove,
   onBulkRemove,
   addTagMenuOpen,
   onAddTagMenuOpenChange,
@@ -301,6 +303,7 @@ export function BulkActionToolbar({
           <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('notPrintedLabel')}
           </button>
+          {onBulkMove && <button {...lockProps} onClick={onBulkMove} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">{t('moveBulkLabel')}</button>}
           {onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
           <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-small font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}

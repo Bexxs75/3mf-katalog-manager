@@ -1,6 +1,13 @@
 const interactive = 'input, textarea, select, button, a[href], summary, [contenteditable]:not([contenteditable="false"]), ' +
   ['button', 'menuitem', 'menuitemradio', 'menuitemcheckbox', 'option', 'tab', 'switch', 'checkbox', 'radio', 'combobox', 'slider', 'separator', 'tree', 'treeitem', 'listbox', 'spinbutton', 'grid', 'scrollbar', 'textbox', 'searchbox'].map(role => `[role="${role}"]`).join(', ');
 
+const TEXT_ENTRY = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="color"]):not([type="file"]), [contenteditable]:not([contenteditable="false"])';
+
+/** Whether typing goes into a text field, where the field's own undo must win over app-level shortcuts. */
+export function isTextEntryTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest(TEXT_ENTRY);
+}
+
 export function shouldIgnoreCatalogShortcut(event: KeyboardEvent, options: {
   allowModifiers?: boolean;
   allowInteractive?: boolean;

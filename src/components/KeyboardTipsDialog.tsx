@@ -16,6 +16,7 @@ export function KeyboardTipsDialog({ onClose }: { onClose: () => void }) {
     ['/', 'keyboardSearch'], [`${modifier}+F`, 'keyboardSearch'], ['← → ↑ ↓', 'keyboardNavigate'],
     ['Enter', 'keyboardEnter'], [t('keyboardHomeEnd'), 'keyboardBoundary'], [t('keyboardSpace'), 'keyboardToggle'],
     [`${modifier}+A`, 'keyboardSelectAll'], [isMacPlatform() ? `${t('keyboardDeleteKey')} / Cmd+⌫` : t('keyboardDeleteKey'), 'keyboardDelete'],
+    ['M', 'keyboardMove'], [`${modifier}+Z`, 'keyboardUndo'],
     ['Esc', 'keyboardEscape'], ['Esc', 'keyboardSearchEscape'], ['?', 'keyboardOpenTips'],
   ];
   const tips: [TextKey, TextKey][] = [

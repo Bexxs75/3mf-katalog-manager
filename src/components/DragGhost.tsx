@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 interface Position { x: number; y: number }
 
-export function DragGhost({ name, image, initialPosition = null }: { name: string; image?: string | null; initialPosition?: Position | null }) {
+export function DragGhost({ name, image, count = 1, initialPosition = null }: { name: string; image?: string | null; count?: number; initialPosition?: Position | null }) {
   const [position, setPosition] = useState<Position | null>(initialPosition);
   useEffect(() => {
     const move = (event: MouseEvent) => setPosition({ x: event.clientX, y: event.clientY });
@@ -16,6 +16,8 @@ export function DragGhost({ name, image, initialPosition = null }: { name: strin
       className="z-50 flex items-center gap-2 max-w-64 p-2 rounded-[6px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink)] shadow-[var(--shadow)] -rotate-2 motion-reduce:rotate-0 motion-reduce:transition-none">
       {image && <img draggable={false} src={image} alt="" className="w-10 h-10 object-cover rounded" />}
       <span className="truncate text-small font-medium">{displayName(name)}</span>
+      {/* Several cards travel together when the dragged one is part of the selection. */}
+      {count > 1 && <span data-testid="drag-count" className="flex-none min-w-5 h-5 px-1.5 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold tabular-nums flex items-center justify-center">{count}</span>}
     </div>
   );
 }

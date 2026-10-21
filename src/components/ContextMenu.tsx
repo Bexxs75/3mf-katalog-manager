@@ -21,6 +21,8 @@ interface Props {
   fileId: string;
   currentName: string;
   onRename: (newName: string) => Promise<void>;
+  /** Opens the "Move to ..." dialog; omitted when the caller cannot move files. */
+  onMove?: () => void;
 }
 
 type View = 'menu' | 'confirmDelete' | 'confirmRemove' | 'rename';
@@ -39,6 +41,7 @@ function ModelContextMenu({
   fileId,
   currentName,
   onRename,
+  onMove,
 }: Props) {
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
@@ -214,6 +217,10 @@ function ModelContextMenu({
           >
             {t('renameLabel')}
           </button>
+          {onMove && <button {...lockProps} onClick={() => { onMove(); onClose(); }}
+            className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50">
+            {t('moveContextLabel')}
+          </button>}
           {onRemove && <>
             <div className="border-t border-[var(--line)]" />
             <button {...lockProps} onClick={() => { setRenameError(null); setView('confirmRemove'); }}

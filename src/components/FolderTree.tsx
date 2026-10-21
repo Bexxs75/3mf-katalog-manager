@@ -22,9 +22,11 @@ interface Props {
   activeFolderId: string;
   onSelect: (id: string) => void;
   onRemoved?: () => void;
-  onRenamed?: (info: { from: string; to: string; count: number }) => void;
+  onRenamed?: (info: { id: string; from: string; to: string; count: number }) => void;
   draggedFileId?: string | null;
   draggedFileFolderId?: string | null;
+  /** Number of cards travelling with the dragged one; more than one changes the drop label. */
+  draggedFileCount?: number;
   dragOverFolderId?: string | null;
   draggedFolderId?: string | null;
   onFolderMouseEnter?: (id: string) => void;
@@ -55,6 +57,7 @@ export function FolderTree({
   onRenamed,
   draggedFileId = null,
   draggedFileFolderId = null,
+  draggedFileCount = 1,
   dragOverFolderId = null,
   draggedFolderId = null,
   onFolderMouseEnter,
@@ -102,7 +105,7 @@ export function FolderTree({
     }
     focusRowAfterRename.current = node.id;
     setRenaming(null);
-    onRenamed?.({ from: node.name, to: name, count: node.count });
+    onRenamed?.({ id: node.id, from: node.name, to: name, count: node.count });
   }
   // Focus moves into the field when editing starts and back to the row when it ends.
   const renamingId = renaming?.id ?? null;
@@ -219,7 +222,7 @@ export function FolderTree({
           <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{displayName(node.name)}</span>
           {node.missing && <span className="shrink-0 rounded-full px-1.5 text-compact-meta bg-[var(--warn-soft)] text-[var(--warn)]">{t('folderMissingOnDisk')}</span>}
           <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{node.count}</span>
-          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
+          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{draggedFileId && draggedFileCount > 1 ? formatCount(t('dropHereMany'), draggedFileCount) : t('dropHereLabel')}</span>}
         </div>
         {isOpen && node.children.map((c) => renderNode(c, depth + 1))}
       </div>

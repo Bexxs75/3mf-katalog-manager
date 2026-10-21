@@ -1,4 +1,4 @@
-import { shouldIgnoreCatalogShortcut, hasPlatformModifier, isMacPlatform } from '../lib/keyboardGuard';
+import { shouldIgnoreCatalogShortcut, hasPlatformModifier, isMacPlatform, isTextEntryTarget } from '../lib/keyboardGuard';
 import { useContext, useEffect } from 'react';
 import { ModelLayoutContext, type ModelLayout } from './ModelLayoutContext';
 
@@ -26,6 +26,10 @@ interface UseKeyboardShortcutsArgs {
   navigationEnabled: boolean;
   // Space: add the selected model to the multi-selection.
   toggleBulkSelect: (id: string) => void;
+  // M: open the "Move to ..." dialog for the selection.
+  onMoveSelection?: () => void;
+  // Ctrl/Cmd+Z: undo the last move or rename. Left out while an import runs.
+  onUndo?: () => void;
 }
 
 // `?.scrollIntoView?.(...)` instead of `.scrollIntoView(...)`: both the element
@@ -105,10 +109,21 @@ export function useKeyboardShortcuts({
   openBulkDeleteConfirm,
   navigationEnabled,
   toggleBulkSelect,
+  onMoveSelection,
+  onUndo,
 }: UseKeyboardShortcutsArgs) {
   const registry = useContext(ModelLayoutContext);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Handled before the shared guard: that one also skips focused buttons, but undo must work
+      // after a click on any button. Only text fields keep their own undo, and dialogs/menus own the keys.
+      if (hasPlatformModifier(e) && e.key.toLowerCase() === 'z') {
+        if (onUndo && !e.defaultPrevented && !e.isComposing && !isTextEntryTarget(e.target) && !isTextEntryTarget(document.activeElement) &&
+          !document.querySelector('[role="dialog"][aria-modal="true"], [data-navigation-menu], [role="menu"], [role="listbox"]')) {
+          e.preventDefault(); onUndo();
+        }
+        return;
+      }
       const platformModifier = hasPlatformModifier(e);
       const search = platformModifier && e.key.toLowerCase() === 'f';
       const selectAll = platformModifier && e.key.toLowerCase() === 'a';
@@ -122,6 +137,7 @@ export function useKeyboardShortcuts({
       if (singleKeyShortcuts && e.key === '?') { e.preventDefault(); onOpenTips?.(); return; }
       if (!navigationEnabled) return;
       if (selectAll) { e.preventDefault(); selectAllVisible?.(); return; }
+      if (singleKeyShortcuts && onMoveSelection && (e.key === 'm' || e.key === 'M')) { e.preventDefault(); onMoveSelection(); return; }
       if (e.key === 'Enter' && selectedId) { e.preventDefault(); onOpenDetail?.(selectedId); return; }
       if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && hasBulkSelection && !e.repeat) {
         e.preventDefault(); openBulkDeleteConfirm(); return;
@@ -172,5 +188,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onOpenDetail, selectAllVisible, onOpenTips, singleKeyShortcuts, registry, filteredIds, selectedId, selectModel, hasBulkSelection, openBulkDeleteConfirm, navigationEnabled, toggleBulkSelect]);
+  }, [onOpenDetail, selectAllVisible, onOpenTips, singleKeyShortcuts, registry, filteredIds, selectedId, selectModel, hasBulkSelection, openBulkDeleteConfirm, navigationEnabled, toggleBulkSelect, onMoveSelection, onUndo]);
 }

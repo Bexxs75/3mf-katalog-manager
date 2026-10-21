@@ -59,6 +59,7 @@ interface CatalogWorkspaceProps {
   setActiveFolderId: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
   draggedFileId?: string | null;
+  draggedFileCount?: number;
   dragOverCollectionId?: string | null;
   handleCollectionMouseEnter?: (id: string) => void;
   handleCollectionMouseLeave?: (id: string) => void;
@@ -81,9 +82,10 @@ interface CatalogWorkspaceProps {
   confirmBulkDelete: boolean;
   setConfirmBulkDelete: (value: boolean) => void;
   bulkDelete: () => void;
+  onBulkMove?: () => void;
   bulkRemove?: () => Promise<void>;
   onCatalogRemoved?: () => void;
-  onFolderRenamed?: (info: { from: string; to: string; count: number }) => void;
+  onFolderRenamed?: (info: { id: string; from: string; to: string; count: number }) => void;
   onRemoveModelFromCatalog?: (id: string) => Promise<void>;
   selectAllVisible: () => void;
   clearBulkSelection: () => void;
@@ -169,6 +171,7 @@ export function CatalogWorkspace({
   setActiveFolderId,
   onCreateFolder,
   draggedFileId = null,
+  draggedFileCount = 1,
   dragOverCollectionId,
   handleCollectionMouseEnter,
   handleCollectionMouseLeave,
@@ -191,6 +194,7 @@ export function CatalogWorkspace({
   confirmBulkDelete,
   setConfirmBulkDelete,
   bulkDelete,
+  onBulkMove,
   bulkRemove,
   onCatalogRemoved,
   onFolderRenamed,
@@ -389,6 +393,7 @@ export function CatalogWorkspace({
         draggedFolderId={draggedFolderId}
         draggedFileId={draggedFileId}
         draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
+        draggedFileCount={draggedFileCount}
         onFolderMouseEnter={handleFolderMouseEnter}
         onFolderMouseLeave={handleFolderMouseLeave}
         onDragFolderStart={jobActive ? () => {} : onDragFolderStart}
@@ -491,6 +496,7 @@ export function CatalogWorkspace({
             onBulkSetLicense={setModelLicenses ? value => setModelLicenses([...selectedForBulk], value) : undefined}
             onBulkSetPrintStatus={bulkSetPrintStatus}
             onBulkDelete={bulkDelete}
+            onBulkMove={onBulkMove}
             onBulkRemove={bulkRemove}
             addTagMenuOpen={addTagMenuOpen}
             onAddTagMenuOpenChange={setAddTagMenuOpen}
@@ -615,6 +621,7 @@ export function CatalogWorkspace({
                 draggedFolderId={draggedFolderId}
                 draggedFileId={draggedFileId}
                 draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
+        draggedFileCount={draggedFileCount}
                 dragOverFolderId={dragOverFolderId}
                 onDragFolderStart={jobActive ? () => {} : onDragFolderStart}
                 onFolderMouseEnter={handleFolderMouseEnter}
@@ -636,6 +643,7 @@ export function CatalogWorkspace({
                 draggedFolderId={draggedFolderId}
                 draggedFileId={draggedFileId}
                 draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
+        draggedFileCount={draggedFileCount}
                 dragOverFolderId={dragOverFolderId}
                 onDragFolderStart={jobActive ? () => {} : onDragFolderStart}
                 onFolderMouseEnter={handleFolderMouseEnter}
