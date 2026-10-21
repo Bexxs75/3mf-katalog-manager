@@ -24,6 +24,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Undo:** Ctrl+Z (Cmd+Z on macOS) or the "Undo" button takes back moving models, moving folders and renaming folders, several steps in a row, as long as the app is running.
 - **Companion files:** add pictures, PDFs and text files to a model, show them and open them (pictures as thumbnails with an enlarged view, PDF and text with the default program). Archive imports assign them to their model automatically. They live in a folder `Name_extras` next to the model and go to the trash together with the model. Companion files removed by mistake can be restored from the notice or from the "Removed" list of the model for 7 days.
 - **Sync with disk on start:** optional setting that checks the catalog folders at start and shows a notice only when something changed; a second option adds new files and detected renames without asking (never removes anything, never adds duplicates).
+- **Detail page:** a 3MF without slicer data now explains why no filament usage is shown and how to export a sliced plate, with a link to the manual.
+- **Print bed:** the detail view lists, for every printer of the Printer Manager that has a build volume, whether the model fits (width and depth may swap when the model is turned on the plate; the height stays). A new filter "Fits on" in the filter bar shows only models that fit the chosen printer; models without known size stay visible.
 
 ### Fixed
 
@@ -687,6 +689,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Rückgängig:** Strg+Z (Cmd+Z auf macOS) oder der Knopf „Rückgängig“ nimmt das Verschieben von Modellen, das Verschieben von Ordnern und das Umbenennen von Ordnern zurück, auch mehrere Schritte hintereinander, solange die App läuft.
 - **Begleitdateien:** Bilder, PDF- und Textdateien lassen sich einem Modell hinzufügen, anzeigen und öffnen (Bilder als Vorschau mit Großansicht, PDF und Text mit dem Standardprogramm). Beim Archiv-Import werden sie automatisch dem Modell zugeordnet. Sie liegen in einem Ordner `Name_extras` neben dem Modell und gehen mit dem Modell in den Papierkorb. Versehentlich entfernte Begleitdateien lassen sich 7 Tage lang über den Hinweis oder die Liste „Entfernt“ des Modells wiederherstellen.
 - **Abgleich mit der Festplatte beim Start:** Optionale Einstellung, die beim Start die Katalogordner prüft und nur bei Änderungen einen Hinweis zeigt; eine zweite Option nimmt neue Dateien und erkannte Umbenennungen ohne Rückfrage auf (entfernt nie etwas, nimmt nie Duplikate auf).
+- **Detailseite:** Eine 3MF ohne Slicer-Daten erklärt jetzt, warum kein Filamentverbrauch angezeigt wird und wie man eine geslicte Platte exportiert, mit Link zum Handbuch.
+- **Druckbett:** Die Detailansicht listet für jeden Drucker des Printer Managers mit Bauraum, ob das Modell passt (Breite und Tiefe dürfen vertauscht werden, wenn das Modell auf der Platte gedreht wird; die Höhe bleibt). Ein neuer Filter „Passt auf“ in der Filterleiste zeigt nur Modelle, die auf den gewählten Drucker passen; Modelle ohne bekannte Maße bleiben sichtbar.
 
 ### Behoben
 
