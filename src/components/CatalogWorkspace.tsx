@@ -20,7 +20,7 @@ import { DetailPanel } from './DetailPanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
 import { BulkActionToolbar } from './BulkActionToolbar';
-import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig } from '../types';
+import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig, FolderTrashResult } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
@@ -84,6 +84,7 @@ interface CatalogWorkspaceProps {
   bulkRemove?: () => Promise<void>;
   onCatalogRemoved?: () => void;
   onFolderRenamed?: (info: { from: string; to: string; count: number }) => void;
+  onFolderTrashed?: (result: FolderTrashResult) => void;
   onRemoveModelFromCatalog?: (id: string) => Promise<void>;
   selectAllVisible: () => void;
   clearBulkSelection: () => void;
@@ -194,6 +195,7 @@ export function CatalogWorkspace({
   bulkRemove,
   onCatalogRemoved,
   onFolderRenamed,
+  onFolderTrashed,
   onRemoveModelFromCatalog,
   selectAllVisible,
   clearBulkSelection,
@@ -375,6 +377,7 @@ export function CatalogWorkspace({
         totalModelCount={models.length}
         onCatalogRemoved={onCatalogRemoved}
         onFolderRenamed={onFolderRenamed}
+        onFolderTrashed={onFolderTrashed}
         activeFolderId={activeFolderId}
         onFolderSelect={(id) => {
           setActiveFolderId(id);

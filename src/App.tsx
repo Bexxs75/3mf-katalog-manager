@@ -7,7 +7,7 @@ import { ModelLayoutContext } from './hooks/ModelLayoutContext';
 import { useModelImages } from './hooks/useModelImages';
 import { ImportLockContext } from './hooks/ImportLockContext';
 import { PrinterManagerView } from './components/PrinterManagerView';
-import type { MainView, PrinterNavigation } from './types';
+import type { MainView, PrinterNavigation, FolderTrashResult } from './types';
 import { DragGhost } from './components/DragGhost';
 import { DragDropTip } from './components/DragDropTip';
 import { resolveDisplayImage } from './lib/resolveDisplayImage';
@@ -31,6 +31,7 @@ import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { MoveToast } from './components/MoveToast';
 import { RenameToast } from './components/RenameToast';
+import { FolderTrashToast } from './components/FolderTrashToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
@@ -159,6 +160,13 @@ export default function App() {
     setRenameToast(info);
     void Promise.all([store.refreshFolders(), store.refreshFiles()])
       .catch((e) => console.error('[folders] refresh after rename failed:', e));
+  };
+  const [trashToast, setTrashToast] = useState<FolderTrashResult | null>(null);
+  const dismissTrashToast = useCallback(() => setTrashToast(null), []);
+  // Models left the catalog list and entered the trash, so lists, selection and trash all reload.
+  const onFolderTrashed = (result: FolderTrashResult) => {
+    setTrashToast(result);
+    refreshAfterRemoval();
   };
   const removeCatalogModels = async (fileIds: string[]) => {
     await invoke('remove_files_from_catalog', { fileIds });
@@ -499,6 +507,7 @@ export default function App() {
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
               onCatalogRemoved={refreshAfterRemoval}
               onFolderRenamed={onFolderRenamed}
+              onFolderTrashed={onFolderTrashed}
               onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
               selectAllVisible={() => bulk.selectAllVisible(filteredIds)}
               clearBulkSelection={bulk.clearBulkSelection}
@@ -637,6 +646,7 @@ export default function App() {
             />
           )}
           {renameToast && <RenameToast from={renameToast.from} to={renameToast.to} count={renameToast.count} onDone={dismissRenameToast} />}
+          {trashToast && <FolderTrashToast result={trashToast} onDone={dismissTrashToast} />}
         </div>
       </div>
       {setupDialogOpen && (

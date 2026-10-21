@@ -13,6 +13,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Import:** After an import, the notice offers a button to open the 'Recently added' view.
 - **Folders:** Rename a folder from the folder tree (context menu or F2); the folder is renamed on disk too and its models are carried along.
+- **Folders:** Delete a folder from the folder tree: its models move to the app trash (7 days), other files and non-empty folders stay on disk.
 - **Import filenames:** optional date/time prefixes (`YYYY-MM-DD_HH-MM_`), off by default. New catalog models get collision-safe names with extension-preserving length limits; external files imported in place are not renamed. Existing entries, disk sync, backup restoration and archive extraction are unchanged.
 - **Sync with disk:** files that were renamed or moved outside the app (for example in the file manager, including a renamed folder) are recognised by their identical content and offered as "Renamed or moved", ticked by default. Applying keeps the existing catalog entry with its tags, favourite, notes, print log and collections instead of creating a second, empty one; when a whole folder was renamed, the folder entry follows. A match is only made when it is unambiguous and the file is unchanged. New files with the same content as a model already in the catalog are listed separately, not ticked by default. Every entry in the dialog now has its own checkbox.
 - **Folders:** Folders that no longer exist on disk are marked in the folder tree and listed by the sync with disk. They are only reported; "Remove missing files from the catalog" then also removes the folder entry together with its missing models (into the app trash).
@@ -25,6 +26,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Changed
 
 - **Moving model files:** Moved model files keep the permissions and modification time of the original file.
+- **Trash:** Restoring a model from the trash now recreates its folder if it no longer exists, so models of a deleted folder can be brought back.
 
 
 ## [0.16.3] - 2026-10-21
@@ -664,6 +666,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 - **Import:** Nach einem Import bietet der Hinweis einen Knopf, der die Ansicht „Neu hinzugefügt“ öffnet.
 - **Ordner:** Ordner lassen sich in der Ordnerliste umbenennen (Kontextmenü oder F2); der Ordner wird auch auf der Festplatte umbenannt und seine Modelle werden mitgeführt.
+- **Ordner:** Ordner lassen sich in der Ordnerliste löschen: Ihre Modelle wandern in den App-Papierkorb (7 Tage), andere Dateien und nicht leere Ordner bleiben auf der Festplatte.
 - **Dateinamen beim Import:** optionaler Datums-/Uhrzeitpräfix (`JJJJ-MM-TT_HH-MM_`), standardmäßig aus. Neue Katalogmodelle erhalten kollisionsfreie Namen mit Längenbegrenzung und erhaltener Endung; externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt. Bestehende Einträge, Festplattenabgleich, Backup-Wiederherstellung und Archiv-Entpacken bleiben unverändert.
 - **Abgleich mit der Festplatte:** Dateien, die außerhalb der App umbenannt oder verschoben wurden (z. B. im Dateimanager, auch ein umbenannter Ordner), werden am gleichen Inhalt erkannt und als „Umbenannt oder verschoben“ angeboten, standardmäßig angehakt. Beim Übernehmen bleibt der bestehende Katalogeintrag mit Tags, Favorit, Notizen, Druckprotokoll und Sammlungen erhalten, statt einen zweiten, leeren anzulegen; wurde ein ganzer Ordner umbenannt, zieht der Ordnereintrag mit. Eine Zuordnung erfolgt nur, wenn sie eindeutig ist und die Datei unverändert ist. Neue Dateien mit gleichem Inhalt wie ein Modell, das schon im Katalog ist, stehen in einer eigenen Gruppe und sind nicht vorausgewählt. Jeder Eintrag im Dialog hat jetzt eine eigene Checkbox.
 - **Ordner:** Ordner, die auf der Festplatte nicht mehr existieren, sind im Ordnerbaum markiert und werden vom Abgleich mit der Festplatte aufgelistet. Sie werden nur gemeldet; „Fehlende Dateien aus dem Katalog entfernen“ entfernt dann auch den Ordnereintrag samt seinen fehlenden Modellen (in den App-Papierkorb).
@@ -676,6 +679,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Geändert
 
 - **Modelldateien verschieben:** Verschobene Modelldateien behalten die Rechte und die Änderungszeit der Originaldatei.
+- **Papierkorb:** Beim Wiederherstellen eines Modells aus dem Papierkorb wird sein Ordner neu angelegt, falls er nicht mehr existiert; so lassen sich Modelle eines gelöschten Ordners zurückholen.
 
 
 ## [0.16.3] - 2026-10-21

@@ -8,7 +8,7 @@ import { renameFolder } from '../lib/api/folders';
 import { expectedError, toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { useDragThreshold } from '../hooks/useDragThreshold';
-import type { Folder } from '../types';
+import type { Folder, FolderTrashResult } from '../types';
 import { useT, useFormatCount } from '../i18n/LanguageContext';
 
 interface TreeNode extends Folder {
@@ -22,6 +22,7 @@ interface Props {
   activeFolderId: string;
   onSelect: (id: string) => void;
   onRemoved?: () => void;
+  onTrashed?: (result: FolderTrashResult) => void;
   onRenamed?: (info: { from: string; to: string; count: number }) => void;
   draggedFileId?: string | null;
   draggedFileFolderId?: string | null;
@@ -52,6 +53,7 @@ export function FolderTree({
   activeFolderId,
   onSelect,
   onRemoved,
+  onTrashed,
   onRenamed,
   draggedFileId = null,
   draggedFileFolderId = null,
@@ -77,6 +79,18 @@ export function FolderTree({
   // Folder rows are only 28px high: an immediate drag start would let even a
   // slight slip during a click trigger a real move_folder.
   const folderDrag = useDragThreshold(jobActive ? undefined : onDragFolderStart);
+
+  // The folder row disappears: if the active folder lay inside it, fall back to "All models" and park the focus there.
+  function leaveFolder(folderId: string) {
+    let active = folders.find((f) => f.id === activeFolderId);
+    const seen = new Set<string>();
+    while (active && !seen.has(active.id)) {
+      if (active.id === folderId) { onSelect('all'); break; }
+      seen.add(active.id); active = folders.find((f) => f.id === active?.parentId);
+    }
+    returnFocus.current = allModelsRef.current;
+    allModelsRef.current?.focus();
+  }
 
   function startRename(node: Folder) {
     if (jobActive) return;
@@ -246,17 +260,9 @@ export function FolderTree({
       {tree.map((n) => renderNode(n, 0))}
       {menu && <FolderCatalogMenu folderId={menu.id} name={menu.name} x={menu.x} y={menu.y}
         returnFocus={returnFocus} onClose={() => setMenu(null)}
-        onRename={() => { const node = folders.find((f) => f.id === menu.id); setMenu(null); if (node) startRename(node); }} onRemoved={() => {
-          let active = folders.find((f) => f.id === activeFolderId);
-          const seen = new Set<string>();
-          while (active && !seen.has(active.id)) {
-            if (active.id === menu.id) { onSelect('all'); break; }
-            seen.add(active.id); active = folders.find((f) => f.id === active?.parentId);
-          }
-          returnFocus.current = allModelsRef.current;
-          allModelsRef.current?.focus();
-          onRemoved?.();
-        }} /> }
+        onRename={() => { const node = folders.find((f) => f.id === menu.id); setMenu(null); if (node) startRename(node); }}
+        onRemoved={() => { leaveFolder(menu.id); onRemoved?.(); }}
+        onTrashed={(result) => { leaveFolder(menu.id); onTrashed?.(result); }} /> }
     </div>
   );
 }

@@ -422,6 +422,18 @@ export interface Translations {
   renameFolderEmpty: string;
   renameFolderSeparator: string;
   folderRenamed: PluralForms;
+  trashFolder: string;
+  trashFolderQuestion: string;
+  trashFolderSubfolders: PluralForms;
+  trashFolderModels: PluralForms;
+  trashFolderOthers: PluralForms;
+  trashFolderOthersAtLeast: PluralForms;
+  trashFolderEmptyNote: string;
+  trashFolderConfirm: string;
+  trashFolderProtected: string;
+  trashFolderDone: PluralForms;
+  trashFolderKept: PluralForms;
+  trashFolderFailed: PluralForms;
   resetCatalog: string;
   resetCatalogHint: string;
   resetCatalogQuestion: string;
