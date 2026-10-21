@@ -785,6 +785,9 @@ export const en: Translations = {
   detailViewer3d: '3D view',
   detailViewerImage: 'Image',
   metaCreator: 'Creator',
+  metaPlatform: 'Platform',
+  metaModelId: 'Model ID',
+  metaProfileId: 'Profile ID',
 
   queueHeading: 'Print Queue',
   queueEmptyState: 'No models in the queue',

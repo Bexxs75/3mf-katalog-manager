@@ -785,6 +785,9 @@ export const fr: Translations = {
   detailViewer3d: 'Vue 3D',
   detailViewerImage: 'Image',
   metaCreator: 'Créateur',
+  metaPlatform: 'Plateforme',
+  metaModelId: 'ID du modèle',
+  metaProfileId: 'ID du profil',
 
   queueHeading: "File d'impression",
   queueEmptyState: 'Aucun modèle dans la file',

@@ -19,6 +19,7 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelPreview } from './ModelPreview';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
+import { SourcePlatformRows } from './SourcePlatformRows';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
@@ -246,6 +247,7 @@ export function DetailPanel({
               <span className="flex-1 font-medium tabular-nums text-small text-right">{row.value}</span>
             </div>
           ))}
+          <SourcePlatformRows model={model} variant="compact" />
           <div className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]">
             <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">
               {t('metaSourceUrl')}
@@ -467,6 +469,7 @@ export function DetailPanel({
               <span className="font-semibold">{row.value}</span>
             </div>
           ))}
+          <div style={{ fontSize: 'var(--font-size-body)' }}><SourcePlatformRows model={model} variant="comfort" /></div>
           <div className="flex justify-between items-center gap-2 py-2" style={{ fontSize: 'var(--font-size-body)' }}>
             <span className="text-[var(--ink-2)]">{t('metaSourceUrl')}</span>
             {editingSourceUrl ? (

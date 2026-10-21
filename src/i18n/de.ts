@@ -785,6 +785,9 @@ export const de: Translations = {
   detailViewer3d: '3D-Ansicht',
   detailViewerImage: 'Bild',
   metaCreator: 'Ersteller',
+  metaPlatform: 'Plattform',
+  metaModelId: 'Modell-ID',
+  metaProfileId: 'Profil-ID',
 
   queueHeading: 'Warteschlange',
   queueEmptyState: 'Keine Modelle in der Warteschlange',
