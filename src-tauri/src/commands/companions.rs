@@ -252,15 +252,6 @@ fn same_dir(a: &Path, b: &Path) -> bool {
     same_dir_with(a, b, CASE_INSENSITIVE_PATHS)
 }
 
-/// True when `companion_path` sits directly in the `_extras` folder of the model at
-/// `model_path`. Used to check rows that come from outside (a restored backup).
-pub(super) fn is_in_extras_of(model_path: &str, companion_path: &str) -> bool {
-    let (Some(extras), Some(dir)) = (extras_dir_for(Path::new(model_path)), Path::new(companion_path).parent()) else {
-        return false;
-    };
-    same_dir(dir, &extras)
-}
-
 /// Why `dir` cannot be trusted as the companion folder `expected` (the `_extras` folder
 /// next to a model). A link in place of the folder, or a model folder reached through a
 /// different route, would make a file operation land on someone else's file, because a

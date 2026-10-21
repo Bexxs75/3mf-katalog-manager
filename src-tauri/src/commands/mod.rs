@@ -376,30 +376,17 @@ pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io
 /// The permission bits a copy gets. The group bits of a file with a POSIX ACL are the
 /// ACL mask, not the group's rights, so copying them could open the file to a group
 /// the ACL excluded; for such a file only the owner bits are taken. Otherwise group and
-/// other never get more than the owner has, and the process umask is applied like it
-/// would be for any file this program creates.
+/// other never get more than the owner has. The umask is deliberately not applied: the
+/// source mode is the upper bound, and a hard-link move keeps it exactly as well.
 #[cfg(unix)]
-fn copied_mode(source_mode: u32, source_has_acl: bool, umask: u32) -> u32 {
+fn copied_mode(source_mode: u32, source_has_acl: bool) -> u32 {
     let owner = source_mode & 0o700;
     if source_has_acl {
         return owner;
     }
     let group = source_mode & 0o070 & (owner >> 3);
     let other = source_mode & 0o007 & (owner >> 6);
-    (owner | group | other) & !umask & 0o777
-}
-
-/// The umask of this process. It can only be read by setting it; it is set to the
-/// stricter value first so that a file created by another thread in between is never
-/// more open than intended.
-#[cfg(unix)]
-fn current_umask() -> u32 {
-    // SAFETY: umask has no preconditions and cannot fail.
-    unsafe {
-        let old = libc::umask(0o077);
-        libc::umask(old);
-        old as u32
-    }
+    owner | group | other
 }
 
 /// True when the file carries an extended POSIX ACL (Linux). Other systems report
@@ -447,7 +434,7 @@ fn move_file_by_copy(from: &std::path::Path, to: &std::path::Path) -> std::io::R
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = copied_mode(src_meta.permissions().mode(), has_extended_acl(from), current_umask());
+            let mode = copied_mode(src_meta.permissions().mode(), has_extended_acl(from));
             let _ = dst.set_permissions(std::fs::Permissions::from_mode(mode));
         }
         #[cfg(not(unix))]
@@ -733,14 +720,13 @@ mod tests {
     }
     #[cfg(unix)]
     #[test]
-    fn copied_mode_is_never_more_open_than_the_source_and_follows_the_umask() {
-        assert_eq!(copied_mode(0o644, false, 0o022), 0o644);
-        assert_eq!(copied_mode(0o666, false, 0o022), 0o644, "umask applies");
-        assert_eq!(copied_mode(0o666, false, 0o077), 0o600);
-        assert_eq!(copied_mode(0o604, false, 0), 0o604);
-        assert_eq!(copied_mode(0o464, false, 0), 0o444, "group and other never exceed the owner");
-        assert_eq!(copied_mode(0o2755, false, 0o022), 0o755, "special bits dropped");
-        assert_eq!(copied_mode(0o660, true, 0), 0o600, "with an ACL the group bits are only the mask");
+    fn copied_mode_is_never_more_open_than_the_source() {
+        assert_eq!(copied_mode(0o644, false), 0o644);
+        assert_eq!(copied_mode(0o664, false), 0o664, "a group-writable file stays group-writable");
+        assert_eq!(copied_mode(0o604, false), 0o604);
+        assert_eq!(copied_mode(0o464, false), 0o444, "group and other never exceed the owner");
+        assert_eq!(copied_mode(0o2755, false), 0o755, "special bits dropped");
+        assert_eq!(copied_mode(0o660, true), 0o600, "with an ACL the group bits are only the mask");
     }
     #[cfg(unix)]
     #[test]
