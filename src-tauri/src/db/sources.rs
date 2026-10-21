@@ -56,6 +56,11 @@ pub fn list_rejected_sources(conn: &Connection) -> Result<Vec<RejectedSourceReco
     Ok(rows)
 }
 
+pub fn delete_rejected_source(conn: &Connection, id: i64) -> Result<(), DbError> {
+    conn.execute("DELETE FROM source_rejected WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
 pub fn count_rejected_sources(conn: &Connection) -> Result<i64, DbError> {
     Ok(conn.query_row("SELECT COUNT(*) FROM source_rejected", [], |r| r.get(0))?)
 }

@@ -497,3 +497,34 @@ export interface CompanionOpenInfo {
   path: string;
   kind: CompanionKind;
 }
+
+/** A folder that is checked for new model files. */
+export interface SourceFolder {
+  id: string;
+  path: string;
+  addedAt: string;
+  /** The folder exists and still is the folder that was added. */
+  reachable: boolean;
+}
+
+export interface SourceFile {
+  path: string;
+  /** Path below the source folder, with `/` separators. */
+  relativePath: string;
+  sizeBytes: number;
+  /** Id of a catalog model with identical content, when it could be compared. */
+  duplicateOfId: string | null;
+}
+
+/** New model files of one source folder. */
+export interface SourceScan {
+  folderId: string;
+  folderPath: string;
+  files: SourceFile[];
+  /** Entries that could not be read and were left out. */
+  skipped: number;
+  /** The check stopped at its entry limit; there may be more files. */
+  truncated: boolean;
+  /** The folder could not be checked (missing, moved, or no longer allowed). */
+  unreachable: boolean;
+}
