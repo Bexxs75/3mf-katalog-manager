@@ -7,6 +7,7 @@ import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
 import { Icon } from './Icon';
+import { CompanionSection } from './CompanionSection';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
 import { StatusBadges } from './StatusBadges';
@@ -320,6 +321,8 @@ export function DetailPanel({
             />
           </div>
         </div>
+
+        <CompanionSection key={model.id} fileId={model.id} variant="compact" />
       </div>
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
@@ -509,6 +512,8 @@ export function DetailPanel({
             )}
           </div>
         </div>
+
+        <CompanionSection key={model.id} fileId={model.id} variant="comfort" />
       </div>
 
       <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">

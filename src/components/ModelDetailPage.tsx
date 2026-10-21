@@ -31,6 +31,7 @@ import { shortTagLabel, tagLabel } from '../lib/autoTags';
 import { FilamentCheckSection } from './FilamentCheckSection';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
+import { CompanionSection } from './CompanionSection';
 
 interface Props {
   allTags: string[];
@@ -373,6 +374,10 @@ export function ModelDetailPage({
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
+        <CompanionSection key={model.id} fileId={model.id} variant="page" />
       </div>
 
       {model.sliceInfo && (

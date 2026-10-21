@@ -659,6 +659,8 @@ export default function App() {
                 duplicates={fileImport.importBanner.duplicates}
                 skipped={fileImport.importBanner.skipped}
                 otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
+                companionsAssigned={fileImport.importBanner.companionsAssigned}
+                companionsIgnored={fileImport.importBanner.companionsIgnored}
                 jobHasProblems={fileImport.importBanner.jobHasProblems}
                 onClose={fileImport.dismissImportBanner}
                 onShowNew={showRecentlyAdded}

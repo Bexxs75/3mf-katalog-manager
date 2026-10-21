@@ -281,3 +281,17 @@ it('shortens long tag chips but removes the full tag', () => {
   fireEvent.click(remove);
   expect(onRemoveTag).toHaveBeenCalledWith(tag);
 });
+
+it('shows the companion files of the model on the detail page', async () => {
+  vi.mocked(invoke).mockImplementation((command: string) => Promise.resolve(command === 'list_companions'
+    ? [{ id: 'c1', fileId: 'model-1', name: 'Anleitung.pdf', path: '/c/Anleitung.pdf', kind: 'pdf', sizeBytes: 10, addedAt: '', deletedAt: null, missing: false }]
+    : []));
+  try {
+    render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>);
+    expect(await screen.findByRole('heading', { name: 'Begleitdateien (1)' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Anleitung.pdf öffnen' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Hinzufügen …' })).toBeEnabled();
+  } finally {
+    vi.mocked(invoke).mockImplementation(() => Promise.resolve([]));
+  }
+});

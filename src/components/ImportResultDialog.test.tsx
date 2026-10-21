@@ -66,3 +66,12 @@ it.each([0, 2])('shows %s extracted non-model files in the archive group', other
   if (otherFilesExtracted) expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
   else expect(screen.queryByText(/weitere Dateien wurden entpackt/)).not.toBeInTheDocument();
 });
+it('lists assigned and ignored companion files as rows of the archive', () => {
+  const archive = importResult.groups.archive[1];
+  const result = {...importResult, groups: {...importResult.groups, archive: [{...archive, companionsAssigned: 3, companionsIgnored: 1, otherFilesExtracted: 1}]}};
+  render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} /></LanguageProvider>);
+  fireEvent.click(screen.getAllByRole('tab')[3]);
+  expect(screen.getByText('3 Begleitdateien wurden Modellen zugeordnet.')).toBeVisible();
+  expect(screen.getByText(/1 Datei ignoriert \(nicht erlaubter Typ\)/)).toBeVisible();
+  expect(screen.queryByText(/weitere Datei/)).toBeNull();
+});

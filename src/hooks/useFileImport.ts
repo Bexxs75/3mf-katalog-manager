@@ -35,7 +35,7 @@ export function useFileImport(args: UseFileImportArgs) {
   const [error, setError] = useState<ReturnType<typeof toAppError> | null>(null);
   const [pendingArchives, setPendingArchives] = useState<ArchiveInfo[] | null>(null);
   // Setup still uses the legacy DTO and its summary.
-  const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number; skipped: SkippedFile[]; otherFilesExtracted?: number; jobHasProblems?: boolean } | null>(null);
+  const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number; skipped: SkippedFile[]; otherFilesExtracted?: number; companionsAssigned?: number; companionsIgnored?: number; jobHasProblems?: boolean } | null>(null);
   const mergeImported = useCallback((value: ImportResultDto) => {
     latest.current.onImported(value);
     if (value.duplicateCount || value.skipped?.length) setImportBanner({ imported: value.imported.length, duplicates: value.duplicateCount, skipped: value.skipped ?? [] });
@@ -65,11 +65,13 @@ export function useFileImport(args: UseFileImportArgs) {
     const archives = value.groups.archive.filter(a => a.state !== 'pending');
     if (archives.length || value.source === 'archive') {
       const otherFilesExtracted = archives.reduce((sum, a) => sum + a.otherFilesExtracted, 0);
+      const companionsAssigned = archives.reduce((sum, a) => sum + a.companionsAssigned, 0);
+      const companionsIgnored = archives.reduce((sum, a) => sum + a.companionsIgnored, 0);
       const counts = countsWithArchiveModels(value.counts, value.groups);
       // Detailed archive outcomes stay in the result dialog; the banner adds only
       // the location hint, but must remain visible when the job has problems.
       const jobHasProblems = value.state !== 'finished' || !!value.jobError || counts.skipped > 0 || counts.importedNotPlaced > 0 || archives.some(a => a.state === 'failed' || !!a.error || !!a.deleteError || a.existingSkipped > 0 || a.unsafeSkipped > 0 || a.blockedSkipped > 0);
-      if (otherFilesExtracted > 0) setImportBanner({imported: counts.imported + counts.importedNotPlaced, duplicates: counts.duplicate, skipped: [], otherFilesExtracted, jobHasProblems});
+      if (otherFilesExtracted > 0 || companionsAssigned > 0 || companionsIgnored > 0) setImportBanner({imported: counts.imported + counts.importedNotPlaced, duplicates: counts.duplicate, skipped: [], otherFilesExtracted, companionsAssigned, companionsIgnored, jobHasProblems});
     }
     const paths = value.groups.archive.filter(a => a.state === 'pending').map(a => a.path);
     if (!paths.length) return;

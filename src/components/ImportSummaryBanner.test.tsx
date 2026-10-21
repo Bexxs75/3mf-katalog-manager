@@ -200,4 +200,37 @@ describe('ImportSummaryBanner "view recently added" button', () => {
     renderWith(3);
     expect(screen.queryByRole('button', { name: 'Neu hinzugefügt ansehen' })).not.toBeInTheDocument();
   });
+  it('reports assigned companion files and ignored files, without counting ignored ones twice', () => {
+    renderBanner([outcome({ companionsAssigned: 3, companionsIgnored: 1, otherFilesExtracted: 1 }), outcome({ path: '/dl/b.zip', companionsAssigned: 2 })]);
+    expect(screen.getByText('5 Begleitdateien wurden Modellen zugeordnet.')).toBeInTheDocument();
+    expect(screen.getByText(/1 Datei ignoriert \(nicht erlaubter Typ\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/weitere Datei/)).not.toBeInTheDocument();
+  });
+
+  it('still reports other files that are neither assigned nor ignored', () => {
+    renderBanner([outcome({ companionsIgnored: 1, otherFilesExtracted: 3 })]);
+    expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeInTheDocument();
+  });
+
+  it('uses the singular for one assigned companion file and keeps the banner for 15s', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    renderBanner([outcome({ companionsAssigned: 1 })], onClose);
+    expect(screen.getByText('1 Begleitdatei wurde dem Modell zugeordnet.')).toBeInTheDocument();
+    vi.advanceTimersByTime(6000);
+    expect(onClose).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(10000);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('shows the companion counts that the job summary passes in', () => {
+    render(
+      <LanguageProvider>
+        <ImportSummaryBanner imported={1} duplicates={0} companionsAssigned={3} companionsIgnored={2} otherFilesExtracted={2} onClose={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('3 Begleitdateien wurden Modellen zugeordnet.')).toBeInTheDocument();
+    expect(screen.getByText(/2 Dateien ignoriert/)).toBeInTheDocument();
+  });
 });
