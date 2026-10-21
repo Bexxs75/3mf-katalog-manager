@@ -39,6 +39,9 @@ import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
 import { MigrationBackupWarning } from './components/MigrationBackupWarning';
 import { NoticeStack } from './components/NoticeStack';
+import { StartSyncBanner } from './components/StartSyncBanner';
+import { useStartSync } from './hooks/useStartSync';
+import { requestDiskSync } from './lib/api/diskSync';
 import { UpdateToast } from './components/UpdateToast';
 import { LinuxMenuPrompt } from './components/LinuxMenuPrompt';
 import { useTheme } from './hooks/useTheme';
@@ -146,6 +149,16 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
+  const reloadAfterDiskSync = () => Promise.all([
+    store.refreshFiles(), store.refreshFolders(), store.refreshTags(), store.refreshTrash(),
+    collections.refreshCollections(),
+    ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+  ]);
+  // Not while the first-run dialog is open, in the trash or other views, or during an import.
+  const startSync = useStartSync(
+    !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
+    reloadAfterDiskSync,
+  );
   const [moveDialog, setMoveDialog] = useState<{ ids: string[] } | null>(null);
   const moveReturnFocus = useRef<HTMLElement | null>(null);
   const focusCatalogMain = () => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus();
@@ -399,11 +412,7 @@ export default function App() {
       {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}
       <Header
         onDiskSyncScanned={store.refreshFolders}
-        onDiskSyncApplied={() => Promise.all([
-          store.refreshFiles(), store.refreshFolders(), store.refreshTags(), store.refreshTrash(),
-          collections.refreshCollections(),
-          ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
-        ])}
+        onDiskSyncApplied={reloadAfterDiskSync}
         detailPanel={detailPanel} onDetailPanelChange={setDetailPanel}
         onOpenTips={() => setTipsOpen(true)}
         allFoldersCollapsed={allFoldersCollapsed}
@@ -666,6 +675,7 @@ export default function App() {
             )}
 
             <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
+            <StartSyncBanner notice={startSync.notice} onView={() => { startSync.dismiss(); requestDiskSync(); }} onClose={() => { startSync.dismiss(); setTimeout(() => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus(), 0); }} />
             <DateRenameBanner outcome={dateRenameOutcome} onClose={dismissDateRenameNotice} />
             <UpdateToast view={update} />
             {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}

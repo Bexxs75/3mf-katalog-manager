@@ -47,3 +47,24 @@ export function diskSyncError(error: unknown): DiskSyncError {
     paths: Array.isArray(value?.paths) ? value.paths.filter((p): p is string => typeof p === 'string') : [],
   };
 }
+
+/** What the start sync did; `applied` is set only when the automatic take-over was on. */
+export interface StartSyncResult {
+  ran: boolean; busy: boolean;
+  newFiles: number; renamed: number; missingFiles: number; missingFolders: number; duplicates: number; unreachableRoots: number;
+  applied: { added: number; renamed: number; failed: number } | null;
+}
+export const runStartSync = () => invoke<StartSyncResult>('run_start_sync');
+export const getSyncOnStart = () => invoke<boolean>('get_sync_on_start');
+export const setSyncOnStart = (enabled: boolean) => invoke<void>('set_sync_on_start', { enabled });
+export const getSyncAutoAdd = () => invoke<boolean>('get_sync_auto_add');
+export const setSyncAutoAdd = (enabled: boolean) => invoke<void>('set_sync_auto_add', { enabled });
+
+// The sync dialog lives in the header; other parts of the app ask for it through this event
+// instead of owning a second copy of the dialog.
+const DISK_SYNC_REQUEST_EVENT = 'catalog-disk-sync-request';
+export const requestDiskSync = () => document.dispatchEvent(new Event(DISK_SYNC_REQUEST_EVENT));
+export const onDiskSyncRequest = (handler: () => void) => {
+  document.addEventListener(DISK_SYNC_REQUEST_EVENT, handler);
+  return () => document.removeEventListener(DISK_SYNC_REQUEST_EVENT, handler);
+};

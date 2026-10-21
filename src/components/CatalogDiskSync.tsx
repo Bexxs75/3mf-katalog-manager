@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { applyCatalogDiskSync, scanCatalogDisk, diskSyncError, type DiskSyncError, type DiskScan, type DiskApplied, type DiskEntry, type DiskFolderEntry, type DiskFailedPath, type DiskPicked, type DiskRename } from '../lib/api/diskSync';
+import { applyCatalogDiskSync, scanCatalogDisk, diskSyncError, onDiskSyncRequest, type DiskSyncError, type DiskScan, type DiskApplied, type DiskEntry, type DiskFolderEntry, type DiskFailedPath, type DiskPicked, type DiskRename } from '../lib/api/diskSync';
 import { Icon } from './Icon';
 
 const button = 'px-3 py-2 rounded border border-[var(--line)] bg-[var(--panel)] text-body cursor-pointer disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
@@ -163,6 +163,8 @@ export function CatalogDiskSync({ onApplied, onScanned, active = true }: { onApp
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
   }, [run, active]);
+  // The start notice opens the same scan-and-dialog flow as the button, even from another view.
+  useEffect(() => onDiskSyncRequest(() => { if (!document.querySelector('[role="dialog"], [aria-modal="true"]')) void run(); }), [run]);
   const apply = async (remove: boolean, picked: DiskPicked) => {
     if (!scan || running.current) return;
     running.current = true; setBusy(true);

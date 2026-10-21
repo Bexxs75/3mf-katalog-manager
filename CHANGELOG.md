@@ -21,6 +21,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Folders:** Folders that no longer exist on disk are marked in the folder tree and listed by the sync with disk. They are only reported; "Remove missing files from the catalog" then also removes the folder entry together with its missing models (into the app trash).
 - **Moving models:** Several models can be moved at once, by dragging a selected card (all selected cards travel along, the folder shows the count) or with "Move to …" (selection bar, context menu or key M). The notice names the folder and says which files were skipped or failed.
 - **Undo:** Ctrl+Z (Cmd+Z on macOS) or the "Undo" button takes back moving models, moving folders and renaming folders, several steps in a row, as long as the app is running.
+- **Sync with disk on start:** optional setting that checks the catalog folders at start and shows a notice only when something changed; a second option adds new files and detected renames without asking (never removes anything, never adds duplicates).
 
 ### Fixed
 
@@ -680,6 +681,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Ordner:** Ordner, die auf der Festplatte nicht mehr existieren, sind im Ordnerbaum markiert und werden vom Abgleich mit der Festplatte aufgelistet. Sie werden nur gemeldet; „Fehlende Dateien aus dem Katalog entfernen“ entfernt dann auch den Ordnereintrag samt seinen fehlenden Modellen (in den App-Papierkorb).
 - **Modelle verschieben:** Mehrere Modelle lassen sich auf einmal verschieben, durch Ziehen einer markierten Karte (alle markierten Karten ziehen mit, der Ordner zeigt die Anzahl) oder über „Verschieben nach …“ (Auswahlleiste, Kontextmenü oder Taste M). Der Hinweis nennt den Ordner und welche Dateien übersprungen wurden oder fehlgeschlagen sind.
 - **Rückgängig:** Strg+Z (Cmd+Z auf macOS) oder der Knopf „Rückgängig“ nimmt das Verschieben von Modellen, das Verschieben von Ordnern und das Umbenennen von Ordnern zurück, auch mehrere Schritte hintereinander, solange die App läuft.
+- **Abgleich mit der Festplatte beim Start:** Optionale Einstellung, die beim Start die Katalogordner prüft und nur bei Änderungen einen Hinweis zeigt; eine zweite Option nimmt neue Dateien und erkannte Umbenennungen ohne Rückfrage auf (entfernt nie etwas, nimmt nie Duplikate auf).
 
 ### Behoben
 

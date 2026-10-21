@@ -335,3 +335,24 @@ describe('catalog disk sync', () => {
   });
 
 });
+
+describe('request from outside (start notice)', () => {
+  it('opens the same scan and dialog as the button, once, and not under another dialog', async () => {
+    const { requestDiskSync } = await import('../lib/api/diskSync');
+    vi.mocked(invoke).mockResolvedValue(changes);
+    renderSync();
+    act(() => requestDiskSync());
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(invoke).toHaveBeenCalledWith('scan_catalog_disk');
+    act(() => requestDiskSync());
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'scan_catalog_disk')).toHaveLength(1);
+  });
+  it('stops listening when the component is gone', async () => {
+    const { requestDiskSync } = await import('../lib/api/diskSync');
+    vi.mocked(invoke).mockResolvedValue(changes);
+    const view = render(<LanguageProvider><CatalogDiskSync /></LanguageProvider>);
+    view.unmount();
+    act(() => requestDiskSync());
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});

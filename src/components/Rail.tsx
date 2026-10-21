@@ -1,5 +1,6 @@
 import { displayName } from '../lib/displayName';
 import { ImportRenameSetting } from './ImportRenameSetting';
+import { DiskSyncSettings } from './DiskSyncSettings';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -248,6 +249,7 @@ export function Rail({
                 </button>
                 <p className="text-small text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
                 <ImportRenameSetting />
+                <DiskSyncSettings />
                 <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
                   <p>{t('settingsPrintersMovedHint')}</p>
                   <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {
