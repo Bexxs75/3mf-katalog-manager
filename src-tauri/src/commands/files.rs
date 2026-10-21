@@ -336,61 +336,105 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
     // "mini") impossible to remove once it no longer matches the key.
     db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string().into())
 }
-/// Core logic of `move_file_to_folder`, without `State`, so it's testable.
-pub(super) fn move_file_to_folder_with_conn(
+/// What `move_file_core` did for one file.
+#[derive(Debug, PartialEq, Eq)]
+enum MoveOutcome {
+    /// Moved (or, for a file already lying in the folder's directory, only
+    /// re-assigned in the catalog). Carries the old place for an undo.
+    Moved { from_folder_id: Option<i64>, from_path: String },
+    /// Already in the target folder, nothing to do.
+    AlreadyThere,
+}
+
+/// A refused move: a stable machine code for the batch result plus the
+/// message the single-file command has always shown.
+struct MoveRefusal {
+    code: &'static str,
+    error: CmdError,
+}
+
+impl MoveRefusal {
+    fn new(code: &'static str, error: impl Into<CmdError>) -> Self {
+        Self { code, error: error.into() }
+    }
+}
+
+/// Shared by the single and the batch move, so both keep the same safety
+/// checks, never overwrite and roll back on a DB failure. The refusal code is
+/// what lets the batch report a name clash or a missing source without
+/// parsing messages.
+fn move_file_core(
     conn: &Connection,
     file_id: i64,
     folder_id: Option<i64>,
     sensitive_dirs: &[PathBuf],
-) -> CmdResult<()> {
+) -> Result<MoveOutcome, MoveRefusal> {
     let file = db::get_file(conn, file_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "file not found".to_string())?;
+        .map_err(|e| MoveRefusal::new("error", e.to_string()))?
+        .ok_or_else(|| MoveRefusal::new("not_found", "file not found".to_string()))?;
     if file.deleted_at.is_some() {
-        return Err(CmdError::expected("file is in trash"));
+        return Err(MoveRefusal::new("in_trash", CmdError::expected("file is in trash")));
     }
 
     let target_dir: std::path::PathBuf = match folder_id {
         Some(fid) => {
-            let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+            let folders = db::list_folders(conn).map_err(|e| MoveRefusal::new("error", e.to_string()))?;
             let folder = folders
                 .iter()
                 .find(|f| f.id == fid)
-                .ok_or_else(|| "folder not found".to_string())?;
+                .ok_or_else(|| MoveRefusal::new("folder_not_found", "folder not found".to_string()))?;
             std::path::PathBuf::from(&folder.path)
         }
         None => std::path::Path::new(&file.path)
             .parent()
             .map(|p| p.to_path_buf())
-            .ok_or_else(|| "invalid current path".to_string())?,
+            .ok_or_else(|| MoveRefusal::new("error", "invalid current path".to_string()))?,
     };
-    reject_if_sensitive_path(&target_dir, sensitive_dirs)?;
+    let sensitive = |path: &std::path::Path| {
+        reject_if_sensitive_path(path, sensitive_dirs).map_err(|e| MoveRefusal::new("sensitive_path", e))
+    };
+    sensitive(&target_dir)?;
 
     let old_path = std::path::PathBuf::from(&file.path);
-    let name = old_path.file_name().ok_or_else(|| "invalid file path".to_string())?;
+    let name = old_path
+        .file_name()
+        .ok_or_else(|| MoveRefusal::new("error", "invalid file path".to_string()))?;
     let new_path = target_dir.join(name);
-    reject_if_sensitive_path(&old_path, sensitive_dirs)?;
-    reject_if_sensitive_path(&new_path, sensitive_dirs)?;
+    sensitive(&old_path)?;
+    sensitive(&new_path)?;
     if folders::comparison_path(&old_path) == folders::comparison_path(&new_path) {
+        if folder_id.is_some() && file.folder_id == folder_id {
+            return Ok(MoveOutcome::AlreadyThere);
+        }
         // Importing the target's own contents only needs a catalog assignment.
-        db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())?;
-        return Ok(());
+        db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
+            .map_err(|e| MoveRefusal::new("error", e.to_string()))?;
+        return Ok(MoveOutcome::Moved { from_folder_id: file.folder_id, from_path: file.path });
     }
     // Without these checks the OS error ("No such file or directory") would reach
     // the user as an unexpected fault, although the catalog is merely out of date.
     if !target_dir.is_dir() {
-        return Err(CmdError::expected(format!(
-            "Der Zielordner existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
-            target_dir.display()
-        )));
+        return Err(MoveRefusal::new(
+            "target_missing",
+            CmdError::expected(format!(
+                "Der Zielordner existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
+                target_dir.display()
+            )),
+        ));
     }
     if !old_path.is_file() {
-        return Err(CmdError::expected(format!(
-            "Die Datei existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
-            old_path.display()
-        )));
+        return Err(MoveRefusal::new(
+            "source_missing",
+            CmdError::expected(format!(
+                "Die Datei existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
+                old_path.display()
+            )),
+        ));
     }
-    move_file(&old_path, &new_path).map_err(|e| e.to_string())?;
+    if let Err(e) = move_file(&old_path, &new_path) {
+        let code = if e.kind() == std::io::ErrorKind::AlreadyExists { "name_exists" } else { "error" };
+        return Err(MoveRefusal::new(code, e.to_string()));
+    }
 
     if let Err(db_err) =
         db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
@@ -398,17 +442,41 @@ pub(super) fn move_file_to_folder_with_conn(
         // Undo the physical move so file system and DB don't drift apart. move_file
         // never overwrites anything.
         if let Err(rollback_err) = move_file(&new_path, &old_path) {
-            return Err(format!(
-                "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB verweist weiter auf {}",
-                new_path.display(),
-                old_path.display()
-            )
-            .into());
+            return Err(MoveRefusal::new(
+                "error",
+                format!(
+                    "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB verweist weiter auf {}",
+                    new_path.display(),
+                    old_path.display()
+                ),
+            ));
         }
-        return Err(db_err.to_string().into());
+        // files.path is UNIQUE: a catalog row already owning the target path
+        // (e.g. a file missing on disk) is a name clash, not a fault.
+        let path_taken = conn
+            .query_row(
+                "SELECT 1 FROM files WHERE path = ?1 AND id != ?2",
+                rusqlite::params![new_path.to_string_lossy(), file_id],
+                |_| Ok(()),
+            )
+            .is_ok();
+        let code = if path_taken { "name_exists" } else { "error" };
+        return Err(MoveRefusal::new(code, db_err.to_string()));
     }
     log::debug!(target: "datei", "verschoben: {} -> {}", old_path.display(), new_path.display());
-    Ok(())
+    Ok(MoveOutcome::Moved { from_folder_id: file.folder_id, from_path: file.path })
+}
+
+/// Core logic of `move_file_to_folder`, without `State`, so it's testable.
+pub(super) fn move_file_to_folder_with_conn(
+    conn: &Connection,
+    file_id: i64,
+    folder_id: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    move_file_core(conn, file_id, folder_id, sensitive_dirs)
+        .map(|_| ())
+        .map_err(|refusal| refusal.error)
 }
 /// Moves a file into a target folder's directory and updates `folder_id`/`path`.
 /// `folder_id: None` leaves it where it is.
@@ -430,6 +498,111 @@ pub fn move_file_to_folder(
     let conn = lock_db(&state)?;
     let sensitive_dirs = state.sensitive_dirs.clone();
     move_file_to_folder_with_conn(&conn, id, target_id, &sensitive_dirs)
+}
+
+/// Upper bound per `move_files_to_folder` call; keeps one call from holding the
+/// catalog gate for an unbounded time.
+pub(crate) const MAX_BATCH_MOVE_FILES: usize = 5000;
+
+/// Per-file result of `move_files_to_folder`. `status` is "moved", "skipped"
+/// or "failed"; `reason` is a stable code. `from_folder_id`/`from_path` are
+/// only set for "moved" and are exactly what an undo call needs.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveFileResult {
+    pub id: String,
+    pub status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_folder_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_path: Option<String>,
+}
+
+impl MoveFileResult {
+    fn with_reason(id: &str, status: &'static str, reason: &str) -> Self {
+        Self { id: id.to_string(), status, reason: Some(reason.to_string()), from_folder_id: None, from_path: None }
+    }
+}
+
+/// Core of `move_files_to_folder`, without `State`. `lock` hands out the DB
+/// connection per file, so the lock is not held across the whole batch (moves
+/// across drives can be slow) and never nested.
+pub(super) fn move_files_to_folder_with<G, C>(
+    mut lock: G,
+    file_ids: &[String],
+    folder_id: i64,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<Vec<MoveFileResult>>
+where
+    G: FnMut() -> CmdResult<C>,
+    C: std::ops::Deref<Target = Connection>,
+{
+    if file_ids.len() > MAX_BATCH_MOVE_FILES {
+        return Err(CmdError::expected(format!(
+            "Zu viele Dateien auf einmal ({}, höchstens {MAX_BATCH_MOVE_FILES}).",
+            file_ids.len()
+        )));
+    }
+    {
+        // The target is the same for every file, so a wrong one fails the whole call
+        // instead of producing thousands of identical per-file failures.
+        let conn = lock()?;
+        let folders = db::list_folders(&conn).map_err(|e| e.to_string())?;
+        let folder = folders
+            .iter()
+            .find(|f| f.id == folder_id)
+            .ok_or_else(|| "folder not found".to_string())?;
+        let target_dir = std::path::PathBuf::from(&folder.path);
+        reject_if_sensitive_path(&target_dir, sensitive_dirs)?;
+        if !target_dir.is_dir() {
+            return Err(CmdError::expected(format!(
+                "Der Zielordner existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
+                target_dir.display()
+            )));
+        }
+    }
+
+    let mut results = Vec::with_capacity(file_ids.len());
+    for id_str in file_ids {
+        let Ok(id) = id_str.parse::<i64>() else {
+            results.push(MoveFileResult::with_reason(id_str, "failed", "invalid_id"));
+            continue;
+        };
+        let conn = lock()?;
+        results.push(match move_file_core(&conn, id, Some(folder_id), sensitive_dirs) {
+            Ok(MoveOutcome::Moved { from_folder_id, from_path }) => MoveFileResult {
+                id: id_str.clone(),
+                status: "moved",
+                reason: None,
+                from_folder_id: from_folder_id.map(|f| f.to_string()),
+                from_path: Some(from_path),
+            },
+            Ok(MoveOutcome::AlreadyThere) => MoveFileResult::with_reason(id_str, "skipped", "already_there"),
+            Err(refusal) => {
+                let status = if refusal.code == "name_exists" { "skipped" } else { "failed" };
+                MoveFileResult::with_reason(id_str, status, refusal.code)
+            }
+        });
+    }
+    Ok(results)
+}
+
+/// Moves several files into one catalog folder. Every file is moved on its own
+/// (same checks and rollback as `move_file_to_folder`); a refusal or failure for
+/// one file never stops the rest. Undo is another call with the returned
+/// `fromFolderId` per file (files grouped by old folder).
+#[tauri::command]
+pub fn move_files_to_folder(
+    state: State<AppState>,
+    file_ids: Vec<String>,
+    folder_id: String,
+) -> CmdResult<Vec<MoveFileResult>> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
+    let target_id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
+    let sensitive_dirs = state.sensitive_dirs.clone();
+    move_files_to_folder_with(|| lock_db(&state), &file_ids, target_id, &sensitive_dirs)
 }
 /// `name` ends up in `with_file_name` and must be a single harmless path
 /// component (CWE-22, like `validate_folder_name`).
@@ -3047,6 +3220,171 @@ endsolid x
             file_after.path,
             src_path.to_string_lossy(),
             "DB must still point at the original path"
+        );
+    }
+    /// Two folders (src, dst) with real files; returns (conn, dir, src_folder, dst_folder).
+    fn batch_move_fixture(tag: &str) -> (Connection, PathBuf, i64, i64) {
+        let dir = unique_test_dir(tag);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join("dst")).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let src = db::insert_folder_with_parent(&conn, "src", None, &dir.join("src").to_string_lossy()).unwrap();
+        let dst = db::insert_folder_with_parent(&conn, "dst", None, &dir.join("dst").to_string_lossy()).unwrap();
+        (conn, dir, src, dst)
+    }
+    fn batch_add_file(conn: &Connection, dir: &std::path::Path, sub: &str, name: &str, folder: i64) -> i64 {
+        let path = dir.join(sub).join(name);
+        std::fs::write(&path, format!("content of {sub}/{name}")).unwrap();
+        db::test_insert_minimal_file(conn, &path.to_string_lossy(), Some(folder)).unwrap()
+    }
+    fn run_batch(conn: &Connection, ids: &[String], folder: i64) -> CmdResult<Vec<MoveFileResult>> {
+        move_files_to_folder_with(|| Ok(conn), ids, folder, &[])
+    }
+    fn ids(v: &[i64]) -> Vec<String> {
+        v.iter().map(|i| i.to_string()).collect()
+    }
+
+    #[test]
+    fn move_files_to_folder_moves_several_files_and_reports_old_places() {
+        let (conn, dir, src, dst) = batch_move_fixture("batch_move_ok");
+        let a = batch_add_file(&conn, &dir, "src", "a.3mf", src);
+        let b = batch_add_file(&conn, &dir, "src", "b.3mf", src);
+
+        let res = run_batch(&conn, &ids(&[a, b]), dst).unwrap();
+
+        assert_eq!(res.len(), 2);
+        for (r, (id, name)) in res.iter().zip([(a, "a.3mf"), (b, "b.3mf")]) {
+            assert_eq!(r.status, "moved");
+            assert_eq!(r.id, id.to_string());
+            assert_eq!(r.reason, None);
+            assert_eq!(r.from_folder_id.as_deref(), Some(src.to_string().as_str()));
+            assert_eq!(r.from_path.as_deref(), Some(dir.join("src").join(name).to_string_lossy().as_ref()));
+            let rec = db::get_file(&conn, id).unwrap().unwrap();
+            assert_eq!(rec.folder_id, Some(dst));
+            assert_eq!(rec.path, dir.join("dst").join(name).to_string_lossy());
+            assert!(dir.join("dst").join(name).is_file());
+            assert!(!dir.join("src").join(name).exists());
+        }
+        // The result is enough for an undo: moving back per old folder restores everything.
+        let undo = run_batch(&conn, &ids(&[a, b]), src).unwrap();
+        assert!(undo.iter().all(|r| r.status == "moved"));
+        assert!(dir.join("src/a.3mf").is_file() && dir.join("src/b.3mf").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_files_to_folder_mixed_batch_reports_each_file_and_changes_only_the_ok_one() {
+        let (conn, dir, src, dst) = batch_move_fixture("batch_move_mixed");
+        let ok = batch_add_file(&conn, &dir, "src", "ok.3mf", src);
+        let clash = batch_add_file(&conn, &dir, "src", "clash.3mf", src);
+        // Same name already in the target, on disk and in the catalog.
+        std::fs::write(dir.join("dst/clash.3mf"), b"TARGET").unwrap();
+        db::test_insert_minimal_file(&conn, &dir.join("dst/clash.3mf").to_string_lossy(), Some(dst)).unwrap();
+        let there = batch_add_file(&conn, &dir, "dst", "there.3mf", dst);
+        let trashed = batch_add_file(&conn, &dir, "src", "trash.3mf", src);
+        db::soft_delete_file(&conn, trashed, None, "2026-01-01T00:00:00Z").unwrap();
+        let vanished = batch_add_file(&conn, &dir, "src", "vanished.3mf", src);
+        std::fs::remove_file(dir.join("src/vanished.3mf")).unwrap();
+        let mut input = ids(&[clash, there, 987654, ok, trashed, vanished]);
+        input.push("abc".into());
+
+        let res = run_batch(&conn, &input, dst).unwrap();
+
+        let got: Vec<(&str, &str)> = res
+            .iter()
+            .map(|r| (r.status, r.reason.as_deref().unwrap_or("")))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("skipped", "name_exists"),
+                ("skipped", "already_there"),
+                ("failed", "not_found"),
+                ("moved", ""),
+                ("failed", "in_trash"),
+                ("failed", "source_missing"),
+                ("failed", "invalid_id"),
+            ]
+        );
+        // The ok file is moved ...
+        assert!(dir.join("dst/ok.3mf").is_file() && !dir.join("src/ok.3mf").exists());
+        assert_eq!(db::get_file(&conn, ok).unwrap().unwrap().folder_id, Some(dst));
+        // ... and nothing else changed; the existing target was not overwritten.
+        assert_eq!(std::fs::read(dir.join("dst/clash.3mf")).unwrap(), b"TARGET");
+        assert_eq!(std::fs::read(dir.join("src/clash.3mf")).unwrap(), b"content of src/clash.3mf");
+        for (id, name) in [(clash, "clash.3mf"), (trashed, "trash.3mf"), (vanished, "vanished.3mf")] {
+            let rec = db::get_file(&conn, id).unwrap().unwrap();
+            assert_eq!(rec.folder_id, Some(src), "{name}");
+            assert_eq!(rec.path, dir.join("src").join(name).to_string_lossy(), "{name}");
+        }
+        assert!(dir.join("src/trash.3mf").is_file());
+        let there_rec = db::get_file(&conn, there).unwrap().unwrap();
+        assert_eq!(there_rec.path, dir.join("dst/there.3mf").to_string_lossy());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_files_to_folder_skips_a_name_taken_only_in_the_catalog() {
+        let (conn, dir, src, dst) = batch_move_fixture("batch_move_catalog_clash");
+        let f = batch_add_file(&conn, &dir, "src", "m.3mf", src);
+        // Catalog row owns the target path although the file is gone from disk.
+        db::test_insert_minimal_file(&conn, &dir.join("dst/m.3mf").to_string_lossy(), Some(dst)).unwrap();
+
+        let res = run_batch(&conn, &ids(&[f]), dst).unwrap();
+
+        assert_eq!((res[0].status, res[0].reason.as_deref()), ("skipped", Some("name_exists")));
+        assert!(dir.join("src/m.3mf").is_file());
+        assert!(!dir.join("dst/m.3mf").exists());
+        assert_eq!(db::get_file(&conn, f).unwrap().unwrap().folder_id, Some(src));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_files_to_folder_rejects_more_than_the_limit_and_a_bad_target() {
+        let (conn, dir, src, dst) = batch_move_fixture("batch_move_limit");
+        let f = batch_add_file(&conn, &dir, "src", "m.3mf", src);
+
+        let too_many: Vec<String> = (0..5001).map(|i| i.to_string()).collect();
+        assert!(run_batch(&conn, &too_many, dst).is_err());
+        // Exactly the limit is accepted (all unknown ids -> per-file failures).
+        let at_limit: Vec<String> = (900_000..905_000).map(|i| i.to_string()).collect();
+        assert_eq!(run_batch(&conn, &at_limit, dst).unwrap().len(), 5000);
+
+        assert!(run_batch(&conn, &ids(&[f]), 424242).is_err(), "target must be a catalog folder");
+        let sensitive = [dir.join("dst")];
+        let err = move_files_to_folder_with(|| Ok(&conn), &ids(&[f]), dst, &sensitive);
+        assert!(err.is_err(), "sensitive target must be refused");
+        assert!(dir.join("src/m.3mf").is_file());
+        assert_eq!(db::get_file(&conn, f).unwrap().unwrap().folder_id, Some(src));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_files_to_folder_assigns_a_file_lying_in_the_directory_but_in_another_folder() {
+        let (conn, dir, src, dst) = batch_move_fixture("batch_move_assign");
+        // Physically in dst, but catalogued under src.
+        let f = batch_add_file(&conn, &dir, "dst", "m.3mf", src);
+
+        let res = run_batch(&conn, &ids(&[f]), dst).unwrap();
+
+        assert_eq!(res[0].status, "moved");
+        assert_eq!(db::get_file(&conn, f).unwrap().unwrap().folder_id, Some(dst));
+        assert!(dir.join("dst/m.3mf").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_files_to_folder_result_serializes_as_camel_case() {
+        let r = MoveFileResult {
+            id: "1".into(),
+            status: "moved",
+            reason: None,
+            from_folder_id: Some("2".into()),
+            from_path: Some("/a/b.3mf".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(&r).unwrap(),
+            serde_json::json!({"id":"1","status":"moved","fromFolderId":"2","fromPath":"/a/b.3mf"})
         );
     }
     #[test]
