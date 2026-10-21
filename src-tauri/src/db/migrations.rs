@@ -130,6 +130,10 @@ const MIGRATIONS: &[MigrationStep] = &[
     // positional table rebuilds above then moved their values.
     MigrationStep::Simple(repair_shifted_file_columns),
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE files ADD COLUMN license TEXT")),
+    // Platform and IDs of downloaded models. Only the columns are created here:
+    // existing entries get their values on the next metadata rescan, never in a
+    // bulk run while the catalog is being upgraded.
+    MigrationStep::Simple(add_source_columns),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -155,6 +159,13 @@ const DROP_SAVED_FILTERS_MIGRATION_VERSION: i64 = 38;
 /// Schema version after adding `printer_connections.clock_offset_s`.
 #[cfg(test)]
 const CLOCK_OFFSET_MIGRATION_VERSION: i64 = 39;
+
+fn add_source_columns(conn: &Connection) -> Result<(), DbError> {
+    for column in ["source_platform", "source_model_id", "source_profile_id"] {
+        exec(conn, &format!("ALTER TABLE files ADD COLUMN {column} TEXT"))?;
+    }
+    Ok(())
+}
 
 /// Runs a single statement. The only tolerated error is "duplicate column name"
 /// (column already exists); everything else propagates.
@@ -438,7 +449,8 @@ mod tests {
         let mut conn = crate::db::connect_in_memory().unwrap();
         let id = crate::db::test_insert_minimal_file(&conn, "/model.3mf", None).unwrap();
         conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
-        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 1).unwrap();
+        // The license step is the one before the source-column step.
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 2).unwrap();
         run_migrations(&mut conn).unwrap();
         assert_eq!(crate::db::get_file(&conn, id).unwrap().unwrap().license, None);
         let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
@@ -509,6 +521,55 @@ mod tests {
         assert_eq!(read("p6"), (s(r#"{"total_weight_g":6.0}"#), None, None));
         assert_eq!(read("p7"), (None, None, s("/not/json")));
         assert_eq!(read("p8"), (None, None, s(r#"{"total_weight_g":"#)));
+    }
+
+    /// The columns the Docker companion reads; they must survive every migration unchanged.
+    const COMPANION_COLUMNS: &str = "id, name, path, file_type, file_size_bytes, thumbnail_png, folder_id, deleted_at";
+
+    #[test]
+    fn source_columns_are_added_to_a_previous_version_catalog_without_touching_its_data() {
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/model.3mf", None).unwrap();
+        conn.execute("UPDATE files SET creator = 'Jane', license = 'cc-by', source_url = 'https://example.com/m', favorite = 1 WHERE id = ?1", [id]).unwrap();
+        let snapshot = |conn: &Connection| -> String {
+            conn.query_row(
+                &format!("SELECT {COMPANION_COLUMNS}, creator, license, source_url, favorite, print_status, imported_at FROM files WHERE id = ?1"),
+                [id],
+                |r| {
+                    let mut parts = Vec::new();
+                    for i in 0..14 {
+                        parts.push(format!("{:?}", r.get_ref(i)?));
+                    }
+                    Ok(parts.join("|"))
+                },
+            ).unwrap()
+        };
+        let before = snapshot(&conn);
+
+        // The previous version's catalog: same data, none of the three columns, one step behind.
+        conn.execute_batch("ALTER TABLE files DROP COLUMN source_platform; ALTER TABLE files DROP COLUMN source_model_id; ALTER TABLE files DROP COLUMN source_profile_id").unwrap();
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 1).unwrap();
+        assert!(conn.prepare("SELECT source_platform FROM files").is_err(), "precondition: column is gone");
+
+        run_migrations(&mut conn).unwrap();
+
+        let row: (Option<String>, Option<String>, Option<String>) = conn
+            .query_row("SELECT source_platform, source_model_id, source_profile_id FROM files WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap();
+        assert_eq!(row, (None, None, None), "existing entries stay empty until the next rescan");
+        assert_eq!(snapshot(&conn), before, "no existing value may change");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn source_columns_exist_in_a_fresh_schema_and_the_step_is_repeatable() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        fresh.prepare("SELECT source_platform, source_model_id, source_profile_id FROM files").unwrap();
+        // A development catalog that already has the columns must not fail on the step.
+        add_source_columns(&fresh).unwrap();
+        fresh.prepare(&format!("SELECT {COMPANION_COLUMNS} FROM files")).unwrap();
     }
 
     #[test]
@@ -824,7 +885,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 8);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 9);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

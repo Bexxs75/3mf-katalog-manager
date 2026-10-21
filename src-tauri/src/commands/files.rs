@@ -12,6 +12,9 @@ const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 +
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
     pub license: Option<String>,
+    pub source_platform: Option<String>,
+    pub source_model_id: Option<String>,
+    pub source_profile_id: Option<String>,
     pub materials: Vec<MaterialDto>,
     pub estimated_weight_g: Option<f64>,
     pub weight_source: String,
@@ -91,6 +94,9 @@ fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
     };
     FileSummaryDto {
         license: s.license,
+        source_platform: s.source_platform,
+        source_model_id: s.source_model_id,
+        source_profile_id: s.source_profile_id,
         estimated_weight_g,
         weight_source: weight_source.into(),
         materials: s.materials.into_iter().map(|m| MaterialDto { name: m.name, display_color: m.display_color }).collect(),
@@ -1123,6 +1129,7 @@ fn read_model_file_inner(path: &Path, display_name: Option<&str>) -> Result<NewF
         custom_image_png: None,
         source_url: None,
         license: None,
+        source: threemf::source::detect_source(&metadata),
         queue_position: None,
         favorite: false,
         plate_count,
@@ -1170,7 +1177,9 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
     let update = match extension.as_deref() {
         Some("3mf") => {
             let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
+            let source = threemf::source::detect_source(&doc.metadata);
             ScannedMetadataUpdate {
+                source,
                 dimensions_mm: doc.dimensions_mm,
                 volume_cm3: doc.volume_cm3,
                 object_count: Some(doc.object_count as i64),
@@ -1202,6 +1211,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 slice_info_json: None,
                 materials: Vec::new(),
                 metadata: BTreeMap::new(),
+                source: Default::default(),
                 file_size_bytes,
                 file_modified_at: disk_modified_at(path),
                 content_hash,
@@ -1218,6 +1228,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 slice_info_json: None,
                 materials: Vec::new(),
                 metadata: BTreeMap::new(),
+                source: Default::default(),
                 file_size_bytes,
                 file_modified_at: disk_modified_at(path),
                 content_hash,
@@ -1234,6 +1245,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 slice_info_json: None,
                 materials: Vec::new(),
                 metadata: BTreeMap::new(),
+                source: Default::default(),
                 file_size_bytes,
                 file_modified_at: disk_modified_at(path),
                 content_hash,
@@ -2220,6 +2232,7 @@ mod tests {
     fn summary_serialization_has_presence_flags_and_no_image_fields() {
         let summary = FileSummaryDto {
             license: None,
+            source_platform: None, source_model_id: None, source_profile_id: None,
             materials: Vec::new(), estimated_weight_g: None, weight_source: "estimated".into(),
             id: "1".into(), name: "test".into(), path: "/tmp/test.stl".into(), file_type: "stl".into(),
             folder_id: String::new(), file_size_bytes: 10, dimensions_mm: None, volume_cm3: None,
@@ -3111,6 +3124,7 @@ endsolid x
             custom_image_png: None,
             source_url: None,
             license: None,
+            source: Default::default(),
             queue_position: None,
             favorite: false,
             plate_count: None,
@@ -3149,6 +3163,7 @@ endsolid x
             custom_image_png: None,
             source_url: None,
             license: None,
+            source: Default::default(),
             queue_position: None,
             favorite: false,
             plate_count: None,
@@ -4159,3 +4174,6 @@ pub fn set_license(state: State<AppState>, file_ids: Vec<String>, license: Optio
     let mut conn = lock_db(&state)?;
     db::licenses::set_license(&mut conn, &ids, license.as_deref()).map_err(|e| e.to_string().into())
 }
+
+#[cfg(test)]
+mod source_platform_tests;

@@ -36,6 +36,16 @@ pub struct MaterialRecord {
     pub display_color: Option<String>,
 }
 
+/// Where a model was downloaded from, as far as the file itself proves it.
+/// All three fields are `None` when the file carries no such proof.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SourceInfo {
+    /// Stable lowercase key (`makerworld`); the UI maps it to a display name.
+    pub platform: Option<String>,
+    pub model_id: Option<String>,
+    pub profile_id: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewFile {
     pub name: String,
@@ -63,6 +73,7 @@ pub struct NewFile {
     pub custom_image_png: Option<Vec<u8>>,
     pub source_url: Option<String>,
     pub license: Option<String>,
+    pub source: SourceInfo,
     pub queue_position: Option<i64>,
     pub favorite: bool,
     pub plate_count: Option<i64>,
@@ -82,6 +93,9 @@ pub struct ScannedMetadataUpdate {
     pub metadata: BTreeMap<String, String>,
     pub file_size_bytes: i64,
     pub content_hash: Option<String>,
+    /// Overwritten like the other scanned fields: a file that no longer carries
+    /// the data clears the columns.
+    pub source: SourceInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +139,9 @@ pub struct FileRecord {
     pub slice_info_json: Option<String>,
     pub deleted_at: Option<String>,
     pub trash_path: Option<String>,
+    pub source_platform: Option<String>,
+    pub source_model_id: Option<String>,
+    pub source_profile_id: Option<String>,
 }
 
 impl FileRecord {

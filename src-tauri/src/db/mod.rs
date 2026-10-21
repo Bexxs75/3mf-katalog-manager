@@ -110,6 +110,7 @@ mod tests {
             custom_image_png: None,
             source_url: None,
             license: None,
+            source: Default::default(),
             queue_position: None,
             favorite: false,
             plate_count: None,

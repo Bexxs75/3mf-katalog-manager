@@ -4,6 +4,7 @@ pub mod geometry;
 pub mod model_xml;
 pub mod plates;
 pub mod slice_info;
+pub mod source;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
