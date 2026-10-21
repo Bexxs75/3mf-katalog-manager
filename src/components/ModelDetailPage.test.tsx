@@ -1,10 +1,12 @@
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ModelDetailPage } from './ModelDetailPage';
 import { LanguageProvider } from '../i18n/LanguageContext';
-import { makeModelFile } from '../test/factories';
+import { makeModelFile, makePrinter } from '../test/factories';
+import { de } from '../i18n/de';
+import { FILAMENT_USAGE_HELP_URL } from '../lib/filamentUsageHelp';
 
 vi.mock('./ModelPreview', () => ({ ModelPreview: () => <>
   <button>Viewer control</button>
@@ -294,4 +296,52 @@ it('shows the companion files of the model on the detail page', async () => {
   } finally {
     vi.mocked(invoke).mockImplementation(() => Promise.resolve([]));
   }
+});
+
+const renderPage = (extra: Partial<React.ComponentProps<typeof ModelDetailPage>> = {}) => render(
+  <LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} {...extra} /></LanguageProvider>);
+const sliceInfo = { totalWeightG: 5, plates: [{ plateIndex: 1, weightG: 5, filaments: [{ type: 'PLA', color: null, usedG: 5, usedM: 1.6 }] }] };
+
+it('explains a missing filament usage for a loaded 3MF and links to the manual', () => {
+  renderPage({ model: makeModelFile({ path: '/c/a.3mf', sliceInfo: null }) });
+  const hint = screen.getByRole('status');
+  expect(hint).toHaveTextContent(de.filamentUsageMissingTitle);
+  expect(hint).toHaveTextContent(de.filamentUsageMissingBody);
+  expect(screen.getByRole('link', { name: de.filamentUsageMissingLink })).toHaveAttribute('href', FILAMENT_USAGE_HELP_URL);
+});
+
+it('shows the usage and no hint when the 3MF has slicer data', () => {
+  renderPage({ model: makeModelFile({ path: '/c/a.3mf', sliceInfo }) });
+  expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
+  expect(screen.getByText(de.sliceFilamentHeading)).toBeVisible();
+});
+
+it.each(['stl', 'obj', 'step'])('shows no usage hint for a %s file', extension => {
+  renderPage({ model: makeModelFile({ path: `/c/a.${extension}`, sliceInfo: null }) });
+  expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
+});
+
+it('shows no usage hint while only the list summary is loaded', () => {
+  renderPage({ model: makeModelFile({ path: '/c/a.3mf', sliceInfo: null, summaryOnly: true }) });
+  expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
+});
+
+it('lists the print bed verdict per printer on the detail page, without printers lacking a build volume', () => {
+  renderPage({
+    model: makeModelFile({ dimensionsMm: [220, 180, 140] }),
+    printers: [makePrinter({ id: 'a', name: 'X1C' }), makePrinter({ id: 'b', name: 'Mini', bedXMm: 180, bedYMm: 180, bedZMm: 180 }),
+      makePrinter({ id: 'c', name: 'NoBed', bedXMm: null })],
+  });
+  const section = screen.getByRole('region', { name: de.plateFitHeading });
+  expect(section).toHaveTextContent('Modell 220 × 180 × 140 mm');
+  const rows = within(section).getAllByRole('listitem');
+  expect(rows).toHaveLength(2);
+  expect(rows[0]).toHaveTextContent(`${de.plateFitFits}X1C (256 × 256 × 256)`);
+  expect(rows[1]).toHaveTextContent(`${de.plateFitTooLarge}Mini (180 × 180 × 180): 220 mm zu breit`);
+  expect(section).not.toHaveTextContent('NoBed');
+});
+
+it('shows no print bed section without printers that have a build volume', () => {
+  renderPage({ model: makeModelFile({ dimensionsMm: [10, 10, 10] }), printers: [makePrinter({ bedZMm: 0 })] });
+  expect(screen.queryByRole('region', { name: de.plateFitHeading })).toBeNull();
 });

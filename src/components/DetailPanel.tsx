@@ -9,10 +9,11 @@ import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
 import { Icon } from './Icon';
 import { CompanionSection } from './CompanionSection';
+import { BuildPlateFit } from './BuildPlateFit';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
 import { StatusBadges } from './StatusBadges';
-import type { FilamentCheck } from '../types';
+import type { FilamentCheck, Printer } from '../types';
 import type { LastPrinter } from '../lib/api/lastPrinter';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
@@ -37,6 +38,8 @@ interface Props {
   tagHues?: Record<string, number>;
   model: ModelFile | null;
   trashMode?: boolean;
+  /** Printers of the Printer Manager, for the "print bed" section (those with a build volume). */
+  printers?: Printer[];
   onRestore?: () => void;
   onDeletePermanently?: () => void;
   onAddTag: (tag: string) => void;
@@ -61,6 +64,7 @@ export function DetailPanel({
   allTags,
   tagHues,
   trashMode,
+  printers = [],
   onRestore,
   onDeletePermanently,
   onAddTag,
@@ -323,6 +327,7 @@ export function DetailPanel({
           </div>
         </div>
 
+        <BuildPlateFit model={model} printers={printers} variant="compact" />
         <CompanionSection key={model.id} fileId={model.id} variant="compact" />
       </div>
 
@@ -514,6 +519,7 @@ export function DetailPanel({
           </div>
         </div>
 
+        <BuildPlateFit model={model} printers={printers} variant="comfort" />
         <CompanionSection key={model.id} fileId={model.id} variant="comfort" />
       </div>
 

@@ -15,7 +15,7 @@ import { useDetailNavigation, type DetailDirection } from '../hooks/useDetailNav
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
 import { invoke } from '@tauri-apps/api/core';
-import type { ModelFile, SlicerConfig, Collection } from '../types';
+import type { ModelFile, SlicerConfig, Collection, Printer } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { SourcePlatformRows } from './SourcePlatformRows';
@@ -32,6 +32,9 @@ import { FilamentCheckSection } from './FilamentCheckSection';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { CompanionSection } from './CompanionSection';
+import { BuildPlateFit } from './BuildPlateFit';
+import { FilamentUsageMissing } from './FilamentUsageMissing';
+import { isFilamentUsageMissing } from '../lib/filamentUsageHelp';
 
 interface Props {
   allTags: string[];
@@ -58,6 +61,8 @@ interface Props {
   onRescanMetadata: () => void;
   onAddToCollection: (collectionId: string) => void;
   collections: Collection[];
+  /** Printers of the Printer Manager, for the "print bed" section (those with a build volume). */
+  printers?: Printer[];
   slicers: SlicerConfig[];
   slicerError: AppError | null;
   rescanError: AppError | null;
@@ -89,6 +94,7 @@ export function ModelDetailPage({
   onRescanMetadata,
   onAddToCollection,
   collections,
+  printers = [],
   slicers,
   slicerError,
   rescanError,
@@ -376,9 +382,13 @@ export function ModelDetailPage({
         </div>
       </div>
 
+      <BuildPlateFit model={model} printers={printers} variant="page" />
+
       <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
         <CompanionSection key={model.id} fileId={model.id} variant="page" />
       </div>
+
+      {isFilamentUsageMissing(model) && <FilamentUsageMissing />}
 
       {model.sliceInfo && (
         <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">

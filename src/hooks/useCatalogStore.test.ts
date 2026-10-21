@@ -66,6 +66,17 @@ beforeEach(() => {
 });
 
 describe('useCatalogStore', () => {
+  it('marks list summaries as summary-only until the full record is loaded', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1', sliceInfo: { totalWeightG: 5, plates: [] } })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    expect(result.current.models[0].summaryOnly).toBe(true);
+    expect(result.current.models[0].sliceInfo).toBeNull();
+    act(() => result.current.ensureFullModel('m1'));
+    await waitFor(() => expect(result.current.models[0].sliceInfo).not.toBeNull());
+    expect(result.current.models[0].summaryOnly).toBeFalsy();
+  });
+
   it('does not automatically select or queue an interrupted STEP preview, but permits a click', async () => {
     localStorage.setItem('3mf-katalog-preview-attempt:m1', '1');
     mockInitialLoad([makeModelFile({ id: 'm1', path: '/cat/model.step' })]);
