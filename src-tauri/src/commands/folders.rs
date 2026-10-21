@@ -10,12 +10,20 @@ pub struct FolderDto {
     pub path: String,
     pub parent_id: Option<String>,
     pub count: i64,
+    /// The directory is gone from disk. False also when that is unknown (root not readable).
+    pub missing: bool,
 }
 #[tauri::command]
 pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
-    let conn = lock_db(&state)?;
-    let folders = db::list_folders(&conn).map_err(|e| e.to_string())?;
-    let files = db::list_files(&conn).map_err(|e| e.to_string())?;
+    let (folders, files) = {
+        let conn = lock_db(&state)?;
+        (
+            db::list_folders(&conn).map_err(|e| e.to_string())?,
+            db::list_files(&conn).map_err(|e| e.to_string())?,
+        )
+    };
+    // Disk access happens after the catalog lock is released: a slow network drive must not block it.
+    let missing = disk_sync::missing_folder_ids(&folders);
 
     fn is_descendant_or_self(folders: &[db::models::FolderRecord], candidate_id: i64, ancestor_id: i64) -> bool {
         if candidate_id == ancestor_id {
@@ -45,6 +53,7 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
                 path: folder.path.clone(),
                 parent_id: folder.parent_id.map(|id| id.to_string()),
                 count,
+                missing: missing.contains(&folder.id),
             }
         })
         .collect();
@@ -133,6 +142,7 @@ fn create_folder_with_conn(
         path: new_dir.to_string_lossy().to_string(),
         parent_id: parent.map(|p| p.to_string()),
         count: 0,
+        missing: false,
     })
 }
 fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
@@ -376,6 +386,7 @@ fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResu
         path: folder.path.clone(),
         parent_id: folder.parent_id.map(|p| p.to_string()),
         count: 0,
+        missing: false,
     })
 }
 /// Only folders the user picked or created in the app may become the catalog
@@ -434,6 +445,7 @@ pub(super) fn register_existing_catalog_base_dir_with_conn(conn: &Connection, di
         path: folder.path,
         parent_id: folder.parent_id.map(|id| id.to_string()),
         count: 0,
+        missing: false,
     };
     db::printer_link::set_setting(&tx, SETTING_CATALOG_BASE_DIR, &folder.path).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;

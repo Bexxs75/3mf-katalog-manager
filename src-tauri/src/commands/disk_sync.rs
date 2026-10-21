@@ -1,4 +1,5 @@
 use super::*;
+use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use tauri::Manager;
 
@@ -20,10 +21,24 @@ pub struct DiskScan {
     /// New files whose content already belongs to a present catalog row.
     duplicate_files: Vec<DiskDuplicate>,
     missing_files: Vec<DiskEntry>,
+    /// Topmost catalog folders that are gone from disk although their catalog root is
+    /// reachable. Only reported: the sync never removes one on its own.
+    missing_folders: Vec<DiskFolderEntry>,
     unreachable_roots: Vec<String>,
     skipped_paths: Vec<String>,
     #[serde(skip)]
     roots: Vec<DiskRoot>,
+}
+/// A catalog folder row whose directory no longer exists on disk.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskFolderEntry {
+    id: String,
+    path: String,
+    relative_path: String,
+    root: String,
+    /// Models below the folder, subfolders included, trash excluded.
+    model_count: i64,
 }
 /// A catalog row whose file was renamed or moved outside the app.
 #[derive(Debug, Clone, Serialize)]
@@ -541,6 +556,8 @@ fn scan_with_path_mode(
     result.missing_files.dedup_by(|a, b| a.id == b.id);
     if result.unreachable_roots.is_empty() {
         classify_by_content(conn, &mut result, case_insensitive, &hash_for_match)?;
+        // After the content match: a folder whose files were recognised as moved is not gone.
+        result.missing_folders = find_missing_folders(conn, &result, case_insensitive)?;
     }
     result.unreachable_roots.sort();
     result.unreachable_roots.dedup();
@@ -693,6 +710,190 @@ fn classify_by_content(
     });
     scan.renamed_files.sort_by(|a, b| a.new_path.cmp(&b.new_path));
     scan.duplicate_files.sort_by(|a, b| a.entry.path.cmp(&b.entry.path));
+    Ok(())
+}
+
+/// Topmost catalog folders (never a catalog root) whose directory is gone while the
+/// root they belong to was readable. A root that cannot be read is reported through
+/// `unreachable_roots` instead, so an unplugged drive never looks like deleted folders.
+/// Folders holding files that were recognised as renamed or moved are left out: they most
+/// likely moved with their content, and the apply step follows them.
+fn find_missing_folders(
+    conn: &Connection,
+    scan: &DiskScan,
+    case_insensitive: bool,
+) -> SyncResult<Vec<DiskFolderEntry>> {
+    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+    let sep = std::path::MAIN_SEPARATOR;
+    let moved_from: Vec<PathBuf> = scan
+        .renamed_files
+        .iter()
+        .map(|r| path_key(Path::new(&r.old_path), case_insensitive))
+        .collect();
+    let skipped: Vec<&Path> = scan.skipped_paths.iter().map(Path::new).collect();
+    let mut gone: HashSet<i64> = HashSet::new();
+    let mut moved: HashSet<i64> = HashSet::new();
+    for folder in &folders {
+        let path = Path::new(&folder.path);
+        if folder.path.is_empty() || scan.roots.iter().any(|r| r.stored == path) {
+            continue;
+        }
+        let Some((root, resolved)) = scan.roots.iter().find_map(|r| r.resolve(path).map(|p| (r, p)))
+        else {
+            continue;
+        };
+        let missing = no_symlinks(&root.canonical, &resolved)
+            .and_then(|safe| if safe { backup::is_missing(&resolved) } else { Ok(false) });
+        if !missing.unwrap_or(false) || skipped.iter().any(|s| path.starts_with(s)) {
+            continue;
+        }
+        gone.insert(folder.id);
+        let prefix = path_key(Path::new(&format!("{}{sep}", folder.path)), case_insensitive);
+        if moved_from.iter().any(|old| old.starts_with(&prefix)) {
+            moved.insert(folder.id);
+        }
+    }
+    let parent_of: HashMap<i64, Option<i64>> = folders.iter().map(|f| (f.id, f.parent_id)).collect();
+    let mut children: HashMap<i64, Vec<i64>> = HashMap::new();
+    for f in &folders {
+        if let Some(parent) = f.parent_id {
+            children.entry(parent).or_default().push(f.id);
+        }
+    }
+    let subtree = |id: i64| {
+        let mut ids = vec![id];
+        let mut i = 0;
+        while i < ids.len() {
+            ids.extend(children.get(&ids[i]).into_iter().flatten().copied());
+            i += 1;
+        }
+        ids
+    };
+    // Everything below a folder that moved went with it, even subfolders without files.
+    let moved_subtrees: HashSet<i64> = moved.iter().flat_map(|id| subtree(*id)).collect();
+    let reportable: HashSet<i64> = gone.difference(&moved_subtrees).copied().collect();
+    let mut per_folder: HashMap<i64, i64> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT folder_id, COUNT(*) FROM files
+                 WHERE folder_id IS NOT NULL AND deleted_at IS NULL GROUP BY folder_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (id, n) = row.map_err(|e| e.to_string())?;
+            per_folder.insert(id, n);
+        }
+    }
+    let mut found = Vec::new();
+    for folder in &folders {
+        let parent_reported = parent_of
+            .get(&folder.id)
+            .copied()
+            .flatten()
+            .is_some_and(|p| reportable.contains(&p));
+        if !reportable.contains(&folder.id) || parent_reported {
+            continue;
+        }
+        let path = Path::new(&folder.path);
+        let Some(root) = scan.roots.iter().find(|r| r.resolve(path).is_some()) else {
+            continue;
+        };
+        let DiskEntry { path, relative_path, root, .. } = entry(&root.stored, path, None);
+        found.push(DiskFolderEntry {
+            id: folder.id.to_string(),
+            path,
+            relative_path,
+            root,
+            model_count: subtree(folder.id).iter().filter_map(|id| per_folder.get(id)).sum(),
+        });
+    }
+    found.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(found)
+}
+
+/// Cheap existence check for the folder tree: ids of catalog folders whose directory is
+/// gone. Folders of a root that is missing, unreadable or empty (unplugged drive, mount
+/// point without its volume) are "unknown" and not listed; only NotFound counts as gone.
+pub(super) fn missing_folder_ids(folders: &[db::models::FolderRecord]) -> HashSet<i64> {
+    let by_id: HashMap<i64, &db::models::FolderRecord> = folders.iter().map(|f| (f.id, f)).collect();
+    let mut root_readable: HashMap<i64, bool> = HashMap::new();
+    let mut gone = HashSet::new();
+    for folder in folders {
+        if folder.parent_id.is_none() || folder.path.is_empty() {
+            continue;
+        }
+        let mut root = folder;
+        let mut steps = 0;
+        while let Some(parent) = root.parent_id.and_then(|p| by_id.get(&p)) {
+            root = parent;
+            steps += 1;
+            if steps > folders.len() {
+                break;
+            }
+        }
+        if root.parent_id.is_some() {
+            continue;
+        }
+        let readable = *root_readable.entry(root.id).or_insert_with(|| {
+            std::fs::read_dir(&root.path).is_ok_and(|mut entries| entries.next().is_some())
+        });
+        if readable && backup::is_missing(Path::new(&folder.path)).unwrap_or(false) {
+            gone.insert(folder.id);
+        }
+    }
+    gone
+}
+
+/// Drops the rows of folders reported as missing, after their missing models went to the
+/// trash. A folder that still holds an active model (one the user did not see as missing)
+/// or contains the catalog base directory is kept.
+fn remove_missing_folders(tx: &Connection, current: &DiskScan) -> SyncResult<()> {
+    if current.missing_folders.is_empty() {
+        return Ok(());
+    }
+    let folders = db::list_folders(tx).map_err(|e| e.to_string())?;
+    let base: Option<String> = tx
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            [folders::SETTING_CATALOG_BASE_DIR],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    for reported in &current.missing_folders {
+        let Ok(id) = reported.id.parse::<i64>() else {
+            continue;
+        };
+        let mut ids = vec![id];
+        let mut i = 0;
+        while i < ids.len() {
+            let parent = ids[i];
+            ids.extend(folders.iter().filter(|f| f.parent_id == Some(parent)).map(|f| f.id));
+            i += 1;
+        }
+        let in_subtree = |f: &&db::models::FolderRecord| ids.contains(&f.id);
+        if !folders.iter().filter(in_subtree).any(|f| f.id == id)
+            || folders.iter().filter(in_subtree).any(|f| Some(&f.path) == base.as_ref())
+        {
+            continue;
+        }
+        let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+        let active: i64 = tx
+            .query_row(
+                &format!("SELECT COUNT(*) FROM files WHERE folder_id IN ({list}) AND deleted_at IS NULL"),
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if active == 0 {
+            tx.execute(&format!("DELETE FROM folders WHERE id IN ({list})"), [])
+                .map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
 }
 
@@ -1276,6 +1477,7 @@ fn apply_with_path_mode(
             trash::delete_missing_file_with_conn(&tx, id)?;
             result.removed_count += 1;
         }
+        remove_missing_folders(&tx, &current)?;
     }
     result.folder_ids = db::list_folders(&tx)
         .map_err(|e| e.to_string())?
@@ -2137,3 +2339,6 @@ mod roadmap_1g_tests;
 
 #[cfg(test)]
 mod rename_tests;
+
+#[cfg(test)]
+mod missing_folder_tests;
