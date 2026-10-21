@@ -17,6 +17,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Folders:** renaming or moving a folder now also carries files whose catalog entry is not assigned to that folder, and trashed entries below it, so they no longer point to a path that does not exist any more. If a new path is already taken by another entry, the rename or move is cancelled and nothing is changed.
 
+### Changed
+
+- **Moving model files:** Moved model files keep the permissions and modification time of the original file.
+
 ## [0.16.3] - 2026-10-21
 
 ### Fixed
@@ -657,6 +661,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Behoben
 
 - **Ordner:** Beim Umbenennen oder Verschieben eines Ordners werden jetzt auch Dateien mitgeführt, deren Katalogeintrag diesem Ordner nicht zugeordnet ist, sowie Einträge im Papierkorb darunter; sie zeigen danach nicht mehr auf einen nicht mehr vorhandenen Pfad. Ist ein neuer Pfad bereits durch einen anderen Eintrag belegt, wird das Umbenennen oder Verschieben abgebrochen und nichts verändert.
+
+### Geändert
+
+- **Modelldateien verschieben:** Verschobene Modelldateien behalten die Rechte und die Änderungszeit der Originaldatei.
 
 ## [0.16.3] - 2026-10-21
 
