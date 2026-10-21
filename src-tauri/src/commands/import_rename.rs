@@ -99,8 +99,13 @@ thread_local! {
     static RACE: std::cell::RefCell<Option<RaceHook>> =
         const { std::cell::RefCell::new(None) };
 }
+/// Installs (or, with `None`, removes) the hook of the current test thread.
 #[cfg(test)]
-fn race_point(stage: &str, path: &Path) {
+pub(super) fn set_race_hook(hook: Option<RaceHook>) {
+    RACE.with(|race| *race.borrow_mut() = hook);
+}
+#[cfg(test)]
+pub(super) fn race_point(stage: &str, path: &Path) {
     RACE.with(|race| {
         if let Some(hook) = race.borrow().as_ref() {
             hook(stage, path);
@@ -108,7 +113,7 @@ fn race_point(stage: &str, path: &Path) {
     });
 }
 #[cfg(not(test))]
-fn race_point(_stage: &str, _path: &Path) {}
+pub(super) fn race_point(_stage: &str, _path: &Path) {}
 
 /// Only called for rows created by this import, never for rescans or manual moves.
 pub(super) fn place(

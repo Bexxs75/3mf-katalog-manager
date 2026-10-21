@@ -244,7 +244,14 @@ fn apply_one(
     if target_taken(conn, id, &old_path, &new_path).map_err(|e| e.message)? {
         return Err("targetTaken".into());
     }
-    files::rename_file_with_conn(conn, id, item.new_name.clone(), sensitive).map_err(|e| e.message)
+    files::rename_file_with_conn(conn, id, item.new_name.clone(), sensitive).map_err(|e| {
+        // The target can appear between the check above and the rename.
+        if target_taken(conn, id, &old_path, &new_path).unwrap_or(false) {
+            "targetTaken".to_string()
+        } else {
+            e.message
+        }
+    })
 }
 
 fn apply_with_conn(
@@ -447,6 +454,29 @@ mod tests {
         let row = db::get_file(&conn, id.parse().unwrap()).unwrap().unwrap();
         assert_eq!(row.name, new_name);
         assert_eq!(row.path, dir.join(&new_name).to_string_lossy());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn target_created_after_the_check_is_never_overwritten() {
+        let (conn, dir) = setup("date_rename_race");
+        let id = add(&conn, &dir, "model.3mf");
+        let new_name = format!("{}model.3mf", modified_prefix());
+        let target = dir.join(&new_name);
+        let racer = target.clone();
+        import_rename::set_race_hook(Some(Box::new(move |stage, _| {
+            if stage == "before-file-rename" && !racer.exists() {
+                std::fs::write(&racer, b"created meanwhile").unwrap();
+            }
+        })));
+        let results = apply_with_conn(&conn, vec![DateRenameItem { id: id.clone(), new_name }], &[]).unwrap();
+        import_rename::set_race_hook(None);
+        assert_eq!(results[0].status, ApplyStatus::Failed);
+        assert_eq!(results[0].reason.as_deref(), Some("targetTaken"));
+        assert_eq!(std::fs::read(&target).unwrap(), b"created meanwhile");
+        assert!(dir.join("model.3mf").exists(), "the original stays where it was");
+        let row = db::get_file(&conn, id.parse().unwrap()).unwrap().unwrap();
+        assert_eq!(row.name, "model.3mf");
         let _ = std::fs::remove_dir_all(dir);
     }
 

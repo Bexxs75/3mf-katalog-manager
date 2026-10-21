@@ -615,8 +615,8 @@ pub fn move_files_to_folder(
 fn validate_file_name(name: &str) -> CmdResult<()> {
     folders::validate_name(name, true, "Dateiname")
 }
-/// Core logic of `rename_file`, without `State`, so it's testable. `fs::rename`
-/// instead of `move_file`, because source and target are in the same directory.
+/// Core logic of `rename_file`, without `State`, so it's testable. Goes through
+/// `rename_file_on_disk`, which never replaces an existing target.
 pub(super) fn rename_file_with_conn(
     conn: &Connection,
     id: i64,
@@ -645,11 +645,18 @@ pub(super) fn rename_file_with_conn(
             new_path.display()
         )));
     }
-    rename::rename_on_disk(&old_path, &new_path).map_err(|e| e.to_string())?;
+    rename::rename_file_on_disk(&old_path, &new_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            // Created by someone else after the check above; reported like the early collision.
+            CmdError::expected(format!("Zieldatei existiert bereits: {}", new_path.display()))
+        } else {
+            e.to_string().into()
+        }
+    })?;
 
     if let Err(db_err) = db::rename_file(conn, id, &new_name, &new_path.to_string_lossy()) {
         // Undo the rename so file system and DB don't drift apart.
-        if let Err(rollback_err) = rename::rename_on_disk(&new_path, &old_path) {
+        if let Err(rollback_err) = rename::rename_file_on_disk(&new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
                 new_path.display(),
@@ -662,7 +669,7 @@ pub(super) fn rename_file_with_conn(
     log::debug!(target: "datei", "umbenannt: {} -> {}", old_path.display(), new_path.display());
     Ok(())
 }
-/// Renames a real file on disk (`std::fs::rename`, same directory) and updates
+/// Renames a real file on disk (same directory, never replacing a file) and updates
 /// `name`/`path` in the DB accordingly.
 #[tauri::command]
 pub fn rename_file(state: State<AppState>, file_id: String, name: String) -> CmdResult<()> {
@@ -2918,6 +2925,56 @@ endsolid x
             "file must not remain stranded under the new name"
         );
 
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn rename_file_never_overwrites_a_target_created_after_the_check() {
+        let tmp = unique_test_dir("rename_file_race");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let old_path = tmp.join("alt.3mf");
+        let target = tmp.join("neu.3mf");
+        std::fs::write(&old_path, b"original").unwrap();
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+        let racer = target.clone();
+        import_rename::set_race_hook(Some(Box::new(move |stage, _| {
+            if stage == "before-file-rename" && !racer.exists() {
+                std::fs::write(&racer, b"created meanwhile").unwrap();
+            }
+        })));
+        let result = rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &[]);
+        import_rename::set_race_hook(None);
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"created meanwhile");
+        assert_eq!(std::fs::read(&old_path).unwrap(), b"original");
+        assert_eq!(db::get_file(&conn, file_id).unwrap().unwrap().name, "alt.3mf");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn rename_file_rollback_never_overwrites_a_source_recreated_meanwhile() {
+        let tmp = unique_test_dir("rename_file_rollback_race");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let old_path = tmp.join("alt.3mf");
+        std::fs::write(&old_path, b"original").unwrap();
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER block_rename BEFORE UPDATE ON files WHEN NEW.id = {file_id}
+             BEGIN SELECT RAISE(ABORT, 'simulierter Fehler bei rename_file'); END;"
+        ))
+        .unwrap();
+        // Another program recreates the old name right before the rollback runs.
+        let recreated = old_path.clone();
+        import_rename::set_race_hook(Some(Box::new(move |stage, path| {
+            if stage == "before-file-rename" && path == recreated && !recreated.exists() {
+                std::fs::write(&recreated, b"recreated meanwhile").unwrap();
+            }
+        })));
+        let result = rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &[]);
+        import_rename::set_race_hook(None);
+        assert!(result.unwrap_err().to_string().contains("Rollback"));
+        assert_eq!(std::fs::read(&old_path).unwrap(), b"recreated meanwhile");
+        assert_eq!(std::fs::read(tmp.join("neu.3mf")).unwrap(), b"original");
         let _ = std::fs::remove_dir_all(&tmp);
     }
     #[test]

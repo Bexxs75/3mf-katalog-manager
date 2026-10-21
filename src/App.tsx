@@ -523,6 +523,7 @@ export default function App() {
               setActiveFolderId={filters.setActiveFolderId}
               onCreateFolder={dragDrop.onCreateFolder}
               draggedFileId={dragDrop.draggedFileId}
+              draggedFileFolderId={dragDrop.draggedFilesFolderId}
               draggedFileCount={dragDrop.draggedFileIds.length}
               dragOverCollectionId={dragDrop.dragOverCollectionId}
               handleCollectionMouseEnter={dragDrop.handleCollectionMouseEnter}
