@@ -155,3 +155,69 @@ pub fn list_active_companion_paths(conn: &Connection) -> Result<Vec<String>, DbE
     let rows = stmt.query_map([], |r| r.get(0))?.collect::<Result<Vec<String>, _>>()?;
     Ok(rows)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{connect_in_memory, insert_folder, test_insert_minimal_file, update_paths_under_folder};
+
+    fn model(conn: &Connection, path: &str) -> i64 {
+        test_insert_minimal_file(conn, path, None).unwrap()
+    }
+
+    #[test]
+    fn rows_are_stored_listed_and_removed_with_their_model() {
+        let conn = connect_in_memory().unwrap();
+        let (a, b) = (model(&conn, "/m/a.3mf"), model(&conn, "/m/b.3mf"));
+        let first = insert_companion(&conn, a, "z.txt", "/m/a_extras/z.txt", "text", Some(5), "t1").unwrap();
+        insert_companion(&conn, a, "A.png", "/m/a_extras/A.png", "image", None, "t2").unwrap();
+        insert_companion(&conn, b, "b.pdf", "/m/b_extras/b.pdf", "pdf", Some(1), "t3").unwrap();
+        let names: Vec<_> = list_companions(&conn, a).unwrap().into_iter().map(|c| c.name).collect();
+        assert_eq!(names, vec!["A.png", "z.txt"], "sorted by name, ignoring case");
+        assert_eq!(get_companion(&conn, first).unwrap().unwrap().size_bytes, Some(5));
+        assert!(insert_companion(&conn, a, "z.txt", "/m/a_extras/z.txt", "text", None, "t").is_err(), "paths are unique");
+        assert!(insert_companion(&conn, a, "x.exe", "/m/a_extras/x.exe", "exe", None, "t").is_err(), "kinds are checked");
+        assert!(insert_companion(&conn, 999, "n.txt", "/m/n.txt", "text", None, "t").is_err(), "a model must exist");
+        conn.execute("DELETE FROM files WHERE id = ?1", [a]).unwrap();
+        assert!(list_companions(&conn, a).unwrap().is_empty());
+        assert_eq!(list_companions(&conn, b).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn trash_state_is_tracked_per_row() {
+        let conn = connect_in_memory().unwrap();
+        let a = model(&conn, "/m/a.3mf");
+        let one = insert_companion(&conn, a, "1.txt", "/m/a_extras/1.txt", "text", None, "t").unwrap();
+        let two = insert_companion(&conn, a, "2.txt", "/m/a_extras/2.txt", "text", None, "t").unwrap();
+        soft_delete_companion(&conn, one, Some("/trash/companion-1-1.txt"), "T1").unwrap();
+        soft_delete_companion(&conn, two, None, "T2").unwrap();
+        assert_eq!(count_active_companions(&conn, a).unwrap(), 0);
+        assert_eq!(list_trashed_with_model(&conn, a, "T1").unwrap().len(), 1);
+        assert_eq!(list_trashed_files_of_model(&conn, a).unwrap().len(), 2);
+        assert_eq!(list_expired_trashed_companions(&conn, "T2").unwrap().len(), 1, "only T1 is older than T2");
+        restore_companion(&conn, one, "/m/a_extras/1.txt").unwrap();
+        assert_eq!(list_active_companions(&conn, a).unwrap().len(), 1);
+        assert!(soft_delete_companion(&conn, 999, None, "T").is_err());
+    }
+
+    #[test]
+    fn a_folder_rename_rewrites_companion_paths_below_it_and_nothing_else() {
+        let conn = connect_in_memory().unwrap();
+        let folder = insert_folder(&conn, "/a/Deko").unwrap();
+        let inside = model(&conn, "/a/Deko/x.3mf");
+        let sibling = model(&conn, "/a/Deko2/y.3mf");
+        insert_companion(&conn, inside, "p.png", "/a/Deko/x_extras/p.png", "image", None, "t").unwrap();
+        insert_companion(&conn, sibling, "p.png", "/a/Deko2/y_extras/p.png", "image", None, "t").unwrap();
+        let trashed = insert_companion(&conn, inside, "q.png", "/a/Deko/x_extras/q.png", "image", None, "t").unwrap();
+        soft_delete_companion(&conn, trashed, Some("/trash/companion-3-q.png"), "T").unwrap();
+
+        update_paths_under_folder(&conn, folder, "/a/Deko", "/a/Decor").unwrap();
+
+        let path = |model: i64, name: &str| list_companions(&conn, model).unwrap().into_iter().find(|c| c.name == name).unwrap();
+        assert_eq!(path(inside, "p.png").path, "/a/Decor/x_extras/p.png");
+        assert_eq!(path(sibling, "p.png").path, "/a/Deko2/y_extras/p.png", "a folder with a similar name stays");
+        let moved_trashed = path(inside, "q.png");
+        assert_eq!(moved_trashed.path, "/a/Decor/x_extras/q.png", "where a restore will put it");
+        assert_eq!(moved_trashed.trash_path.as_deref(), Some("/trash/companion-3-q.png"), "the trash file itself is not touched");
+    }
+}

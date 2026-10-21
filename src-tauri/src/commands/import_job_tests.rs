@@ -953,3 +953,54 @@ fn rename_database_failure_rolls_back_and_fails_job() {
         path.to_str().unwrap()
     );
 }
+
+#[test]
+fn source_folder_files_are_moved_into_the_catalog_folder_like_a_normal_import() {
+    let fixture = Fixture::new();
+    let catalog = fixture.0.join("catalog");
+    std::fs::create_dir(&catalog).unwrap();
+    let downloads = fixture.0.join("downloads");
+    std::fs::create_dir_all(downloads.join("sub")).unwrap();
+    let a = fixture.stl(1);
+    let b = fixture.stl(2);
+    let left = fixture.stl(3);
+    for (file, target) in [(&a, "a.stl"), (&b, "sub/b.stl"), (&left, "left.stl")] {
+        std::fs::rename(file, downloads.join(target)).unwrap();
+    }
+    let (a, b, left) = (downloads.join("a.stl"), downloads.join("sub/b.stl"), downloads.join("left.stl"));
+
+    let conn = db::connect_in_memory().unwrap();
+    let folder = db::insert_folder_with_parent(&conn, "catalog", None, catalog.to_str().unwrap()).unwrap();
+    db::printer_link::set_setting(&conn, folders::SETTING_CATALOG_BASE_DIR, catalog.to_str().unwrap()).unwrap();
+    let state = AppState {
+        import_jobs: ImportJobs::default(),
+        db: Mutex::new(conn),
+        trash_dir: fixture.0.join("trash"),
+        db_path: fixture.0.join("catalog.db"),
+        sensitive_dirs: Vec::new(),
+    };
+    source_folders::add_source_folder_with_conn(&state.db.lock().unwrap(), &downloads, &[]).unwrap();
+    let chosen = vec![a.to_string_lossy().into_owned(), b.to_string_lossy().into_owned()];
+    let paths = source_folders::accepted_import_paths(&state, &chosen, 5000).unwrap();
+    let originals: Vec<_> = paths.iter().map(|p| std::fs::read(p).unwrap()).collect();
+
+    // What `import_source_files` hands to the queue: the same job a normal import with a
+    // catalog folder runs, placing the files into that folder.
+    let service = ImportJobs::default();
+    let job = service.enqueue(ImportSource::Files, Some(folder.to_string()), true, None).unwrap();
+    service.next().unwrap();
+    finish_models(&service, &job, &mut state.db.lock().unwrap(), &paths);
+
+    let result = job.result().unwrap();
+    assert_eq!(result.counts.imported, 2);
+    for (path, original) in paths.iter().zip(&originals) {
+        assert!(!path.exists(), "moved out of the source folder: {}", path.display());
+        assert_eq!(&std::fs::read(catalog.join(path.file_name().unwrap())).unwrap(), original);
+    }
+    assert!(left.is_file(), "files that were not chosen stay");
+    let stored: Vec<String> = db::list_files(&state.db.lock().unwrap()).unwrap().into_iter().map(|file| file.path).collect();
+    assert!(stored.iter().all(|p| Path::new(p).starts_with(&catalog)), "{stored:?}");
+    let again = source_folders::scan_with_state(&state, 5000).unwrap();
+    let names: Vec<_> = again[0].files.iter().map(|f| f.relative_path.clone()).collect();
+    assert_eq!(names, vec!["left.stl"], "what was taken in is no longer new");
+}

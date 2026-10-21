@@ -167,6 +167,11 @@ const CLOCK_OFFSET_MIGRATION_VERSION: i64 = 39;
 #[cfg(test)]
 pub(crate) const SOURCE_COLUMNS_MIGRATION_VERSION: i64 = 48;
 
+/// Schema version after the companion and source-folder tables. Must stay 49: that is
+/// what every catalog written by the version that introduced them contains.
+#[cfg(test)]
+pub(crate) const COMPANION_TABLES_MIGRATION_VERSION: i64 = 49;
+
 fn add_companion_and_source_tables(conn: &Connection) -> Result<(), DbError> {
     exec(conn, "CREATE TABLE IF NOT EXISTS companion_files (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -603,6 +608,91 @@ mod tests {
         // A development catalog that already has the columns must not fail on the step.
         add_source_columns(&fresh).unwrap();
         fresh.prepare(&format!("SELECT {COMPANION_COLUMNS} FROM files")).unwrap();
+    }
+
+    /// A catalog as the previous version left it: the full old schema, none of the new
+    /// tables, one step behind, with data in several tables.
+    fn previous_version_catalog() -> (Connection, i64) {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let folder = crate::db::insert_folder(&conn, "root").unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/models/a.3mf", Some(folder)).unwrap();
+        conn.execute("UPDATE files SET creator = 'Jane', favorite = 1, license = 'cc-by' WHERE id = ?1", [id]).unwrap();
+        conn.execute("INSERT INTO tags (id, name, color_hue) VALUES (1, 'deko', 10)", []).unwrap();
+        conn.execute("INSERT INTO file_tags VALUES (?1, 1)", [id]).unwrap();
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('catalog_base_dir', '/models')", []).unwrap();
+        conn.execute_batch("DROP TABLE companion_files; DROP TABLE source_folders; DROP TABLE source_rejected;").unwrap();
+        conn.pragma_update(None, "user_version", COMPANION_TABLES_MIGRATION_VERSION - 1).unwrap();
+        (conn, id)
+    }
+
+    fn table_exists(conn: &Connection, name: &str) -> bool {
+        conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1", [name], |r| r.get::<_, i64>(0)).unwrap() == 1
+    }
+
+    #[test]
+    fn the_companion_and_source_step_is_the_last_step_and_adds_only_tables() {
+        assert_eq!(COMPANION_TABLES_MIGRATION_VERSION, CURRENT_SCHEMA_VERSION, "the step must stay where it shipped");
+        assert_eq!(COMPANION_TABLES_MIGRATION_VERSION, SOURCE_COLUMNS_MIGRATION_VERSION + 1);
+    }
+
+    #[test]
+    fn a_previous_version_catalog_gets_the_new_tables_and_keeps_all_its_data() {
+        let (mut conn, id) = previous_version_catalog();
+        for table in ["companion_files", "source_folders", "source_rejected"] {
+            assert!(!table_exists(&conn, table), "precondition: {table} is not there yet");
+        }
+        let snapshot = |conn: &Connection| -> Vec<String> {
+            let mut rows = Vec::new();
+            for sql in [
+                "SELECT id || '|' || name || '|' || path || '|' || ifnull(creator, '') || '|' || favorite || '|' || ifnull(license, '') || '|' || ifnull(folder_id, '') FROM files",
+                "SELECT id || '|' || name || '|' || color_hue FROM tags",
+                "SELECT file_id || '|' || tag_id FROM file_tags",
+                "SELECT key || '|' || value FROM app_settings",
+                "SELECT id || '|' || name || '|' || path FROM folders",
+            ] {
+                let mut stmt = conn.prepare(sql).unwrap();
+                rows.extend(stmt.query_map([], |r| r.get::<_, String>(0)).unwrap().map(|r| r.unwrap()));
+            }
+            rows
+        };
+        let before = snapshot(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(snapshot(&conn), before, "no existing value may change");
+        for table in ["companion_files", "source_folders", "source_rejected"] {
+            assert!(table_exists(&conn, table), "{table}");
+            let rows: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert_eq!(rows, 0, "{table} starts empty");
+        }
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        // The new tables work: kinds are checked, paths are unique, and the rows follow their model.
+        conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'p.png', '/models/a_extras/p.png', 'image', 'now')", [id]).unwrap();
+        assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'x', '/other', 'exe', 'now')", [id]).is_err(), "kind is checked");
+        assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'p.png', '/models/a_extras/p.png', 'image', 'now')", [id]).is_err(), "path is unique");
+        conn.execute("DELETE FROM files WHERE id = ?1", [id]).unwrap();
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0, "deleting the model removes its companion rows");
+    }
+
+    #[test]
+    fn the_new_tables_exist_in_a_fresh_schema_and_the_step_is_repeatable() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        for table in ["companion_files", "source_folders", "source_rejected"] {
+            assert!(table_exists(&fresh, table), "{table}");
+        }
+        add_companion_and_source_tables(&fresh).unwrap();
+        add_companion_and_source_tables(&fresh).unwrap();
+    }
+
+    #[test]
+    fn opening_a_previous_version_catalog_through_init_migrates_it() {
+        let (mut conn, id) = previous_version_catalog();
+        crate::db::repository::init(&mut conn).unwrap();
+        assert!(table_exists(&conn, "companion_files"));
+        assert!(crate::db::get_file(&conn, id).unwrap().is_some());
     }
 
     #[test]

@@ -158,8 +158,10 @@ fn contract_10_cancel_second_archive_preserves_first_and_never_starts_third() {
         &fixture.target(),
         requests,
         false,
-        |dir, created| import_extracted_dir(&mut conn, dir, created),
-        |_, _, _| (0, 0),
+        CatalogSteps {
+            import_dir: |dir: &Path, created: &[PathBuf]| import_extracted_dir(&mut conn, dir, created),
+            assign_companions: |_: &Path, _: &[PathBuf], _: &[ModelFileDto]| (0, 0),
+        },
         |path, phase| {
             if phase == "extracting" {
                 started.push(path.to_string());

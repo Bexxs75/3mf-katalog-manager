@@ -462,7 +462,8 @@ pub(super) fn run_archives(
             target,
             vec![request],
             delete,
-            |dir, created| {
+            archives::CatalogSteps {
+                import_dir: |dir: &Path, created: &[PathBuf]| {
                 let mut database = ArchiveJobDb {
                     db: &state.db,
                     job,
@@ -490,13 +491,14 @@ pub(super) fn run_archives(
                     }
                 }
                 Ok(result)
-            },
-            |_dir, written, imported| match state.db.lock() {
-                Ok(conn) => companions::assign_from_archive(&conn, written, imported, &state.sensitive_dirs),
-                Err(error) => {
-                    log::warn!(target: "archive", "companion assignment lock failed: {error}");
-                    (0, 0)
-                }
+                },
+                assign_companions: |_dir: &Path, written: &[PathBuf], imported: &[ModelFileDto]| match state.db.lock() {
+                    Ok(conn) => companions::assign_from_archive(&conn, written, imported, &state.sensitive_dirs),
+                    Err(error) => {
+                        log::warn!(target: "archive", "companion assignment lock failed: {error}");
+                        (0, 0)
+                    }
+                },
             },
             |path, stage| {
                 let _ = app.emit(

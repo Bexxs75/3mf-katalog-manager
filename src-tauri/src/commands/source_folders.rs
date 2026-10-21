@@ -375,6 +375,24 @@ pub async fn scan_source_folders(app: tauri::AppHandle) -> CmdResult<Vec<SourceS
         .map_err(|e| e.to_string())?
 }
 
+/// The files an import from source folders may take: a catalog folder must be set up
+/// (otherwise the import would register the files where they are instead of moving
+/// them) and every path must be listed by a fresh scan.
+pub(super) fn accepted_import_paths(state: &AppState, requested: &[String], max_entries: usize) -> CmdResult<Vec<PathBuf>> {
+    {
+        let conn = lock(&state.db)?;
+        if db::printer_link::get_setting(&conn, folders::SETTING_CATALOG_BASE_DIR)?.is_none() {
+            return Err(CmdError::expected("Es ist noch kein Katalogordner eingerichtet. Ohne ihn können Dateien nicht aus einem Quellordner übernommen werden."));
+        }
+    }
+    let scans = scan_with_state(state, max_entries)?;
+    let accepted = validate_requested(&scans, requested)?;
+    if accepted.is_empty() {
+        return Err(CmdError::expected("Es wurden keine Dateien ausgewählt."));
+    }
+    Ok(accepted.into_iter().map(|(path, _)| path).collect())
+}
+
 /// Takes the chosen files into the catalog through the normal import job, which moves
 /// them into the catalog folder. Only files a fresh scan lists for a registered source
 /// folder are accepted. Returns the job to follow, like `start_import`.
@@ -382,21 +400,7 @@ pub async fn scan_source_folders(app: tauri::AppHandle) -> CmdResult<Vec<SourceS
 pub async fn import_source_files(app: tauri::AppHandle, paths: Vec<String>) -> CmdResult<StartedImport> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        {
-            // Without a catalog folder the import would register the files where they
-            // are; a source folder import must always move them.
-            let conn = lock(&state.db)?;
-            let base = db::printer_link::get_setting(&conn, folders::SETTING_CATALOG_BASE_DIR)?;
-            if base.is_none() {
-                return Err(CmdError::expected("Es ist noch kein Katalogordner eingerichtet. Ohne ihn können Dateien nicht aus einem Quellordner übernommen werden."));
-            }
-        }
-        let scans = scan_with_state(&state, MAX_SCAN_ENTRIES)?;
-        let accepted = validate_requested(&scans, &paths)?;
-        if accepted.is_empty() {
-            return Err(CmdError::expected("Es wurden keine Dateien ausgewählt."));
-        }
-        let paths: Vec<PathBuf> = accepted.into_iter().map(|(path, _)| path).collect();
+        let paths = accepted_import_paths(&state, &paths, MAX_SCAN_ENTRIES)?;
         let job = submit_models(&app, ImportSource::Files, paths, None, false)?;
         Ok(StartedImport { job_id: Some(job.id.clone()) })
     })
@@ -429,3 +433,7 @@ pub fn reset_rejected_source_files(state: State<AppState>) -> CmdResult<i64> {
     let conn = lock(&state.db)?;
     Ok(store::clear_rejected_sources(&conn)?)
 }
+
+#[cfg(test)]
+#[path = "source_folders_tests.rs"]
+mod tests;

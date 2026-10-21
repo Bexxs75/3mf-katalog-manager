@@ -1656,3 +1656,77 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[cfg(test)]
+mod companion_tests {
+    use super::*;
+
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+
+    /// A folder tree `catalog/Deko/sub` with one model and one companion in `sub`, and a
+    /// sibling `catalog/Deko2` with a model of its own.
+    struct Tree {
+        conn: Connection,
+        catalog: PathBuf,
+        model: i64,
+        companion: i64,
+        other_companion: i64,
+        deko: i64,
+        target: i64,
+    }
+
+    fn tree(name: &str) -> Tree {
+        let catalog = unique_test_dir(name).canonicalize().unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let root = db::insert_folder_with_parent(&conn, "catalog", None, &catalog.to_string_lossy()).unwrap();
+        let folder = |parent: i64, relative: &str| {
+            let path = catalog.join(relative);
+            std::fs::create_dir_all(&path).unwrap();
+            db::insert_folder_with_parent(&conn, relative.rsplit('/').next().unwrap(), Some(parent), &path.to_string_lossy()).unwrap()
+        };
+        let deko = folder(root, "Deko");
+        let sub = folder(deko, "Deko/sub");
+        let deko2 = folder(root, "Deko2");
+        let target = folder(root, "Target");
+        let model = |folder_id: i64, relative: &str| {
+            let path = catalog.join(relative);
+            std::fs::write(&path, b"model").unwrap();
+            let id = db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(folder_id)).unwrap();
+            let extras = path.with_file_name(format!("{}_extras", path.file_stem().unwrap().to_string_lossy()));
+            std::fs::create_dir_all(&extras).unwrap();
+            let companion = extras.join("pic.png");
+            std::fs::write(&companion, PNG).unwrap();
+            let row = db::companions::insert_companion(&conn, id, "pic.png", &companion.to_string_lossy(), "image", None, "now").unwrap();
+            (id, row)
+        };
+        let (model_id, companion) = model(sub, "Deko/sub/Foo.3mf");
+        let (_, other_companion) = model(deko2, "Deko2/Bar.3mf");
+        Tree { conn, catalog, model: model_id, companion, other_companion, deko, target }
+    }
+
+    fn path_of(tree: &Tree, companion: i64) -> PathBuf {
+        PathBuf::from(db::companions::get_companion(&tree.conn, companion).unwrap().unwrap().path)
+    }
+
+    #[test]
+    fn renaming_a_folder_carries_the_companion_paths_of_everything_below_it() {
+        let t = tree("folder_rename_companions");
+        rename_folder_with_conn(&t.conn, t.deko, "Decor".into(), &[]).unwrap();
+        let moved = path_of(&t, t.companion);
+        assert_eq!(moved, t.catalog.join("Decor/sub/Foo_extras/pic.png"));
+        assert!(moved.is_file(), "the file moved with its folder");
+        assert_eq!(path_of(&t, t.other_companion), t.catalog.join("Deko2/Bar_extras/pic.png"), "a folder with a similar name is untouched");
+        assert!(path_of(&t, t.other_companion).is_file());
+    }
+
+    #[test]
+    fn moving_a_folder_carries_the_companion_paths_too() {
+        let t = tree("folder_move_companions");
+        move_folder_with_conn(&t.conn, t.deko, Some(t.target), &[]).unwrap();
+        let moved = path_of(&t, t.companion);
+        assert_eq!(moved, t.catalog.join("Target/Deko/sub/Foo_extras/pic.png"));
+        assert!(moved.is_file());
+        let model = db::get_file(&t.conn, t.model).unwrap().unwrap();
+        assert!(Path::new(&model.path).is_file());
+    }
+}

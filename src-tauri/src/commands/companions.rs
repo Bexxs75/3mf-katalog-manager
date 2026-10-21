@@ -909,11 +909,11 @@ pub(super) fn carry(conn: &Connection, file_id: i64, old_model: &Path, new_model
     Ok(carried)
 }
 
-fn blocking<T: Send + 'static>(
+async fn blocking<T: Send + 'static>(
     app: tauri::AppHandle,
     work: impl FnOnce(&tauri::AppHandle) -> CmdResult<T> + Send + 'static,
-) -> impl std::future::Future<Output = CmdResult<T>> {
-    async move { tauri::async_runtime::spawn_blocking(move || work(&app)).await.map_err(|e| e.to_string())? }
+) -> CmdResult<T> {
+    tauri::async_runtime::spawn_blocking(move || work(&app)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1060,3 +1060,7 @@ pub async fn companion_image_data(app: tauri::AppHandle, companion_id: String) -
     })
     .await
 }
+
+#[cfg(test)]
+#[path = "companions_tests.rs"]
+mod tests;

@@ -381,12 +381,30 @@ pub(crate) fn extract_archives_core(
     mut import_dir: impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
     mut on_progress: impl FnMut(&str, &'static str),
 ) -> CmdResult<ArchiveImportResultDto> {
-    extract_archives_controlled(sensitive_dirs, target_dir, requests, delete_archives, &mut import_dir, |_, _, _| (0, 0), &mut on_progress, None)
+    extract_archives_controlled(
+        sensitive_dirs,
+        target_dir,
+        requests,
+        delete_archives,
+        CatalogSteps { import_dir: &mut import_dir, assign_companions: |_: &Path, _: &[PathBuf], _: &[ModelFileDto]| (0, 0) },
+        &mut on_progress,
+        None,
+    )
 }
+/// The two steps that touch the catalog while an archive is processed.
+pub(super) struct CatalogSteps<I, A> {
+    /// Imports the extracted folder.
+    pub import_dir: I,
+    /// Gives extracted pictures, PDFs and text files to their model: `(assigned, ignored)`.
+    pub assign_companions: A,
+}
+
 pub(super) fn extract_archives_controlled(
     sensitive_dirs: &[PathBuf], target_dir: &Path, requests: Vec<ArchiveRequest>, delete_archives: bool,
-    mut import_dir: impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
-    mut assign_companions: impl FnMut(&Path, &[PathBuf], &[ModelFileDto]) -> (u32, u32),
+    mut steps: CatalogSteps<
+        impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
+        impl FnMut(&Path, &[PathBuf], &[ModelFileDto]) -> (u32, u32),
+    >,
     mut on_progress: impl FnMut(&str, &'static str), cancel: Option<&std::sync::atomic::AtomicBool>,
 ) -> CmdResult<ArchiveImportResultDto> {
     // Compute once - the guard runs for every entry.
@@ -410,7 +428,7 @@ pub(super) fn extract_archives_controlled(
             result.archives.push(ArchiveOutcomeDto { path: request.path.clone(), error: Some("notStarted".into()), ..Default::default() });
             continue;
         }
-        let outcome = extract_one(&ctx, request, &mut result, &mut import_dir, &mut assign_companions, &mut on_progress);
+        let outcome = extract_one(&ctx, request, &mut result, &mut steps.import_dir, &mut steps.assign_companions, &mut on_progress);
         on_progress(&request.path, if outcome.error.is_some() { "failed" } else { "done" });
         result.archives.push(outcome);
     }
@@ -1040,3 +1058,7 @@ mod tests {
 #[cfg(test)]
 #[path = "import_archive_tests.rs"]
 mod import_archive_tests;
+
+#[cfg(test)]
+#[path = "archive_companion_tests.rs"]
+mod archive_companion_tests;

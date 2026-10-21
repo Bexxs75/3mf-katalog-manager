@@ -159,7 +159,7 @@ fn folder_trash_summary_with_conn(conn: &Connection, folder_id: &str, sensitive_
         .filter(|(_, p)| refusal_reason(p, &resolved, &expanded).is_none())
         .collect();
     // Companion files go to the trash with their model, so they are not "other" files.
-    let companion_paths = db::companions::list_active_companion_paths(conn).map_err(DbError::from)?;
+    let companion_paths = db::companions::list_active_companion_paths(conn)?;
     let known: HashSet<PathBuf> = files
         .iter()
         .map(|(_, p)| p)

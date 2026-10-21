@@ -77,3 +77,46 @@ pub fn source_check_on_start(conn: &Connection) -> Result<bool, DbError> {
 pub fn set_source_check_on_start(conn: &Connection, enabled: bool) -> Result<(), DbError> {
     set_setting(conn, SETTING_SOURCE_CHECK_ON_START, if enabled { "1" } else { "0" })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::connect_in_memory;
+
+    #[test]
+    fn source_folders_are_unique_and_forgotten_without_side_effects() {
+        let conn = connect_in_memory().unwrap();
+        let id = insert_source_folder(&conn, "/dl", "t1").unwrap();
+        insert_source_folder(&conn, "/slicer", "t2").unwrap();
+        assert!(insert_source_folder(&conn, "/dl", "t3").is_err(), "a path is stored once");
+        assert_eq!(list_source_folders(&conn).unwrap().len(), 2);
+        assert_eq!(get_source_folder(&conn, id).unwrap().unwrap().path, "/dl");
+        assert!(delete_source_folder(&conn, id).unwrap());
+        assert!(!delete_source_folder(&conn, id).unwrap());
+        assert_eq!(list_source_folders(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_decline_remembers_path_and_size_and_a_second_one_updates_the_size() {
+        let conn = connect_in_memory().unwrap();
+        upsert_rejected_source(&conn, "/dl/a.stl", 100, "t1").unwrap();
+        upsert_rejected_source(&conn, "/dl/b.stl", 5, "t1").unwrap();
+        upsert_rejected_source(&conn, "/dl/a.stl", 120, "t2").unwrap();
+        let rows = list_rejected_sources(&conn).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!((rows[0].path.as_str(), rows[0].size_bytes, rows[0].rejected_at.as_str()), ("/dl/a.stl", 120, "t2"));
+        assert_eq!(count_rejected_sources(&conn).unwrap(), 2);
+        assert_eq!(clear_rejected_sources(&conn).unwrap(), 2);
+        assert_eq!(count_rejected_sources(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn the_start_check_switch_defaults_to_off_and_is_a_plain_setting() {
+        let conn = connect_in_memory().unwrap();
+        assert!(!source_check_on_start(&conn).unwrap());
+        set_source_check_on_start(&conn, true).unwrap();
+        assert_eq!(get_setting(&conn, SETTING_SOURCE_CHECK_ON_START).unwrap().as_deref(), Some("1"));
+        set_source_check_on_start(&conn, false).unwrap();
+        assert!(!source_check_on_start(&conn).unwrap());
+    }
+}

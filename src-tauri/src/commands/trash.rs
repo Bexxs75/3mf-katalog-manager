@@ -106,7 +106,7 @@ pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
     Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 /// Core logic of `restore_file` with an already loaded `FileRecord`, without `State`, so it's testable.
-fn restore_file_with_conn(
+pub(super) fn restore_file_with_conn(
     conn: &Connection,
     file: &db::models::FileRecord,
     id: i64,
@@ -267,7 +267,11 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
     let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    let file = db::get_file(&conn, id)
+    delete_file_permanently_with_conn(&conn, id, &state.trash_dir)
+}
+/// Core logic of `delete_file_permanently`, without `State`, so it's testable.
+pub(super) fn delete_file_permanently_with_conn(conn: &Connection, id: i64, trash_dir: &std::path::Path) -> CmdResult<()> {
+    let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
     if file.deleted_at.is_none() {
@@ -281,14 +285,18 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
         }
     }
     // Its companions in the trash go with it; the rows follow by cascade.
-    companions::purge_trash_files_of_model(&conn, id, &state.trash_dir)?;
-    db::delete_file(&conn, id).map_err(|e| e.to_string().into())
+    companions::purge_trash_files_of_model(conn, id, trash_dir)?;
+    db::delete_file(conn, id).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
     let _catalog_share = state.import_jobs.gate.exclusive()?;
     let conn = lock_db(&state)?;
-    let files = db::list_trash(&conn).map_err(|e| e.to_string())?;
+    empty_trash_with_conn(&conn, &state.trash_dir)
+}
+/// Core logic of `empty_trash`, without `State`, so it's testable.
+pub(super) fn empty_trash_with_conn(conn: &Connection, trash_dir: &std::path::Path) -> CmdResult<()> {
+    let files = db::list_trash(conn).map_err(|e| e.to_string())?;
     for file in files {
         if let Some(trash_path) = &file.trash_path {
             if let Err(e) = std::fs::remove_file(trash_path) {
@@ -298,16 +306,16 @@ pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
                 }
             }
         }
-        if let Err(e) = companions::purge_trash_files_of_model(&conn, file.id, &state.trash_dir) {
+        if let Err(e) = companions::purge_trash_files_of_model(conn, file.id, trash_dir) {
             log::error!(target: "trash", "removing companions failed for file ID {}: {e}", file.id);
             continue;
         }
-        if let Err(e) = db::delete_file(&conn, file.id) {
+        if let Err(e) = db::delete_file(conn, file.id) {
             log::error!(target: "trash", "could not delete DB row for file ID {}: {e}", file.id);
         }
     }
     // Companions removed on their own from a model that is still in the catalog.
-    companions::purge_all_trashed(&conn, &state.trash_dir);
+    companions::purge_all_trashed(conn, trash_dir);
     Ok(())
 }
 /// At startup: removes trash entries older than 7 days. Single errors are
