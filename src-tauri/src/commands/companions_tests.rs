@@ -672,3 +672,96 @@ fn stored_rows_are_validated_like_the_app_writes_them() {
     assert!(validate_stored_fields("a.png", "Foo_extras/a.png", "image").is_err(), "relative");
     assert!(validate_stored_fields("b.png", "/c/Foo_extras/a.png", "image").is_err(), "name must match the path");
 }
+
+/// Replaces the extras folder of `Foo.3mf` by a link to a foreign folder that holds a
+/// file of the same name, the way a swapped folder would look.
+#[cfg(unix)]
+fn swap_extras_for_link_to_foreign_folder(f: &Fixture, name: &str) -> (PathBuf, PathBuf) {
+    let real = f.root.join("Foo_extras");
+    std::fs::rename(&real, f.base.join("Foo_extras_real")).unwrap();
+    let foreign = f.base.join("foreign");
+    std::fs::create_dir(&foreign).unwrap();
+    let foreign_file = foreign.join(name);
+    std::fs::write(&foreign_file, PNG).unwrap();
+    std::os::unix::fs::symlink(&foreign, &real).unwrap();
+    (foreign, foreign_file)
+}
+
+#[cfg(unix)]
+#[test]
+fn a_companion_reached_through_a_linked_extras_folder_is_never_touched() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let pic = f.add(id, "pic.png", PNG);
+    let (foreign, foreign_file) = swap_extras_for_link_to_foreign_folder(&f, "pic.png");
+    assert!(remove_companion_with_conn(&f.conn, pic.id, &f.trash).is_err());
+    assert!(open_info_with_conn(&f.conn, pic.id, &[]).is_err());
+    assert!(image_data_with_conn(&f.conn, pic.id, &[]).is_err());
+    let source = f.source("other.png", PNG);
+    assert!(add_companion_with_conn(&f.conn, id, &source, &[]).is_err());
+    assert!(foreign_file.exists(), "the foreign file stays where it is");
+    assert_eq!(std::fs::read_dir(&foreign).unwrap().count(), 1);
+    assert!(f.trash_entries().is_empty());
+    assert!(f.rows(id)[0].deleted_at.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_linked_extras_folder_stops_the_companions_following_a_model() {
+    let f = Fixture::new();
+    let (id, old_model) = f.model("Foo.3mf");
+    f.add(id, "pic.png", PNG);
+    let (_, foreign_file) = swap_extras_for_link_to_foreign_folder(&f, "pic.png");
+    let new_model = f.root.join("Bar.3mf");
+    assert!(carry(&f.conn, id, &old_model, &new_model).is_err());
+    assert!(foreign_file.exists());
+    assert!(!f.root.join("Bar_extras").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_linked_extras_folder_is_not_trashed_with_the_model() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    f.add(id, "pic.png", PNG);
+    let (_, foreign_file) = swap_extras_for_link_to_foreign_folder(&f, "pic.png");
+    f.trash_model(id);
+    assert!(foreign_file.exists());
+    assert_eq!(f.trash_entries().len(), 1, "only the model itself");
+}
+
+#[test]
+fn a_companion_name_that_a_trashed_entry_still_holds_is_not_reused() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let first = f.add(id, "a.txt", TEXT);
+    remove_companion_with_conn(&f.conn, first.id, &f.trash).unwrap();
+    let second = f.add(id, "a.txt", TEXT);
+    assert_eq!(second.name, "a (2).txt");
+    assert_eq!(f.rows(id).len(), 2);
+    // The restored entry may take its own old path back; the two never clash.
+    let restored = restore_companion_with_conn(&f.conn, first.id, &[]).unwrap();
+    assert_eq!(restored.name, "a.txt");
+    assert_eq!(std::fs::read(&restored.path).unwrap(), TEXT);
+}
+
+#[test]
+fn a_failed_restore_leaves_name_path_and_trash_state_as_they_were() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let row = f.add(id, "pic.png", PNG);
+    remove_companion_with_conn(&f.conn, row.id, &f.trash).unwrap();
+    // Occupy the first free name with a row whose file is gone, so the row update is
+    // the step that can fail; the file move must be undone and the row stay untouched.
+    std::fs::create_dir(f.root.join("Foo_extras")).unwrap();
+    std::fs::write(f.root.join("Foo_extras").join("pic.png"), b"newer").unwrap();
+    f.conn
+        .execute_batch("CREATE TRIGGER block_path BEFORE UPDATE OF path ON companion_files BEGIN SELECT RAISE(ABORT, 'blocked'); END;")
+        .unwrap();
+    let before = db::companions::get_companion(&f.conn, row.id).unwrap().unwrap();
+    assert!(restore_companion_with_conn(&f.conn, row.id, &[]).is_err());
+    let after = db::companions::get_companion(&f.conn, row.id).unwrap().unwrap();
+    assert_eq!((&after.name, &after.path, &after.trash_path, &after.deleted_at), (&before.name, &before.path, &before.trash_path, &before.deleted_at));
+    assert_eq!(f.trash_entries(), vec![format!("companion-{}-pic.png", row.id)]);
+    assert_eq!(std::fs::read_dir(f.root.join("Foo_extras")).unwrap().count(), 1, "only the other file");
+}

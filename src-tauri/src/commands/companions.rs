@@ -170,8 +170,11 @@ fn companion_file_name(source: &Path) -> Option<String> {
 }
 
 /// Creates a new file under the first free `name`, `name (2)`, ... Never replaces and
-/// never follows a symlink at the target (create_new).
-fn create_unique(dir: &Path, name: &str) -> std::io::Result<(PathBuf, std::fs::File)> {
+/// never follows a symlink at the target (create_new). A path that a catalog row
+/// already holds (a trashed companion keeps its old path) counts as taken too, because
+/// the row's path is unique; `own_row` is the row that is being restored, which may
+/// take its own old path back.
+fn create_unique(conn: &Connection, dir: &Path, name: &str, own_row: Option<i64>) -> std::io::Result<(PathBuf, std::fs::File)> {
     let (stem, extension) = match name.rsplit_once('.') {
         Some((stem, extension)) => (stem, format!(".{extension}")),
         None => (name, String::new()),
@@ -179,6 +182,11 @@ fn create_unique(dir: &Path, name: &str) -> std::io::Result<(PathBuf, std::fs::F
     for attempt in 1..=999u32 {
         let candidate = if attempt == 1 { name.to_string() } else { format!("{stem} ({attempt}){extension}") };
         let path = dir.join(candidate);
+        let held = db::companions::path_held_by_other_row(conn, &path.to_string_lossy(), own_row)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        if held {
+            continue;
+        }
         match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(file) => return Ok((path, file)),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -223,10 +231,51 @@ fn resolve_extras_target(conn: &Connection, model_path: &Path, sensitive_dirs: &
     if !inside_catalog {
         return Err(CmdError::expected("Das Modell liegt nicht in einem Katalogordner. Begleitdateien können nur dort abgelegt werden."));
     }
-    if std::fs::symlink_metadata(&extras).is_ok_and(|m| !m.is_dir()) {
-        return Err(CmdError::expected("Der Begleitdateien-Ordner ist kein echter Ordner (Verknüpfung oder Datei) und wird nicht verwendet."));
+    if let Some(problem) = extras_dir_problem(&extras, &extras) {
+        return Err(CmdError::expected(problem));
     }
     Ok(extras)
+}
+
+/// Why `dir` cannot be trusted as the companion folder `expected` (the `_extras` folder
+/// next to a model). A link in place of the folder, or a model folder reached through a
+/// different route, would make a file operation land on someone else's file, because a
+/// check on the file alone follows links in its parent folders. A folder that does not
+/// exist is fine: there is nothing to touch.
+fn extras_dir_problem(dir: &Path, expected: &Path) -> Option<&'static str> {
+    let meta = match std::fs::symlink_metadata(dir) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(_) => return Some("Der Begleitdateien-Ordner kann nicht geprüft werden."),
+    };
+    if !meta.is_dir() {
+        return Some("Der Begleitdateien-Ordner ist kein echter Ordner (Verknüpfung oder Datei) und wird nicht verwendet.");
+    }
+    let (Some(model_dir), Some(name)) = (expected.parent(), expected.file_name()) else {
+        return Some("Der Pfad des Modells ist nicht gültig.");
+    };
+    let (Ok(resolved_dir), Ok(resolved_model_dir)) = (dir.canonicalize(), model_dir.canonicalize()) else {
+        return Some("Der Begleitdateien-Ordner kann nicht geprüft werden.");
+    };
+    if folders::comparison_path(&resolved_dir) != folders::comparison_path(&resolved_model_dir.join(name)) {
+        return Some("Der Begleitdateien-Ordner liegt nicht neben dem Modell und wird nicht verwendet.");
+    }
+    None
+}
+
+/// The folder of a stored companion must be exactly the genuine `_extras` folder of the
+/// model the row belongs to, before any file in it is moved, opened or read.
+fn ensure_row_folder_genuine(conn: &Connection, row: &CompanionRecord) -> CmdResult<()> {
+    let model = load_model(conn, row.file_id)?;
+    let expected = extras_dir_for(Path::new(&model.path)).ok_or_else(|| CmdError::expected("Der Pfad des Modells ist nicht gültig."))?;
+    let dir = Path::new(&row.path).parent().ok_or_else(|| CmdError::expected("Diese Begleitdatei ist ungültig und wird nicht verwendet."))?;
+    if folders::comparison_path(dir) != folders::comparison_path(&expected) {
+        return Err(CmdError::expected("Die Begleitdatei liegt nicht im Begleitdateien-Ordner ihres Modells."));
+    }
+    match extras_dir_problem(dir, &expected) {
+        Some(problem) => Err(CmdError::expected(problem)),
+        None => Ok(()),
+    }
 }
 
 /// Structural check of a stored row. A restored backup could name any path; a companion
@@ -257,13 +306,14 @@ fn verify_row(row: &CompanionRecord) -> CmdResult<CompanionKind> {
 /// Opens a stored companion for reading after all checks: structure, not trashed, a
 /// regular file (never a symlink), size, protected folders, and the content check.
 /// The returned handle is the one that was checked.
-fn open_checked(row: &CompanionRecord, sensitive_dirs: &[PathBuf], max_bytes: u64) -> CmdResult<(CompanionKind, std::fs::File, Vec<u8>)> {
+fn open_checked(conn: &Connection, row: &CompanionRecord, sensitive_dirs: &[PathBuf], max_bytes: u64) -> CmdResult<(CompanionKind, std::fs::File, Vec<u8>)> {
     let kind = verify_row(row)?;
     if row.deleted_at.is_some() {
         return Err(CmdError::expected("Diese Begleitdatei liegt im Papierkorb."));
     }
     let path = Path::new(&row.path);
     reject_if_sensitive_path(path, sensitive_dirs)?;
+    ensure_row_folder_genuine(conn, row)?;
     if !is_real_file(path) {
         return Err(CmdError::expected("Die Begleitdatei existiert nicht mehr oder ist keine normale Datei."));
     }
@@ -388,7 +438,7 @@ pub(super) fn add_companion_with_conn(
             let _ = std::fs::remove_dir(&extras);
         }
     };
-    let (target, mut output) = match create_unique(&extras, &name) {
+    let (target, mut output) = match create_unique(conn, &extras, &name, None) {
         Ok(created) => created,
         Err(e) => {
             cleanup_dir();
@@ -469,6 +519,7 @@ fn trash_one(conn: &Connection, row: &CompanionRecord, trash_dir: &Path, deleted
         Ok(meta) if !meta.is_file() => return Err(CmdError::expected("Die Begleitdatei ist keine normale Datei.")),
         Ok(_) => {}
     }
+    ensure_row_folder_genuine(conn, row)?;
     let target = trash_target(trash_dir, row);
     move_file(path, &target).map_err(|e| e.to_string())?;
     if let Err(db_err) = db::companions::soft_delete_companion(conn, row.id, Some(&target.to_string_lossy()), deleted_at) {
@@ -530,7 +581,7 @@ fn restore_one(conn: &Connection, row: &CompanionRecord, extras: &Path) -> CmdRe
         }
     };
     // Reserve a free name first: move_file never replaces, but the name decides the new path.
-    let (target, reserved) = match create_unique(extras, &row.name) {
+    let (target, reserved) = match create_unique(conn, extras, &row.name, Some(row.id)) {
         Ok(created) => created,
         Err(e) => {
             cleanup_dir();
@@ -544,9 +595,9 @@ fn restore_one(conn: &Connection, row: &CompanionRecord, extras: &Path) -> CmdRe
         return Err(e.to_string().into());
     }
     let new_name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| row.name.clone());
-    let db_result = conn.execute("UPDATE companion_files SET name = ?1 WHERE id = ?2", rusqlite::params![new_name, row.id])
-        .map_err(DbError::from)
-        .and_then(|_| db::companions::restore_companion(conn, row.id, &target.to_string_lossy()));
+    // Name, path and trash state change in one statement, so a failure cannot leave the
+    // row half restored.
+    let db_result = db::companions::restore_companion_as(conn, row.id, &new_name, &target.to_string_lossy());
     if let Err(db_err) = db_result {
         if let Err(rollback_err) = move_file(&target, Path::new(trash_path)) {
             return Err(format!(
@@ -852,6 +903,11 @@ pub(super) fn carry(conn: &Connection, file_id: i64, old_model: &Path, new_model
     if rows.is_empty() {
         return Ok(Carried::default());
     }
+    // Files are only taken out of the genuine old folder; through a link they could belong
+    // to someone else.
+    if let Some(problem) = extras_dir_problem(&old_dir, &old_dir) {
+        return Err(CmdError::expected(problem));
+    }
     let mut carried = Carried { old_dir: Some(old_dir.clone()), ..Default::default() };
     let fail = |carried: Carried, error: CmdError| -> CmdResult<Carried> {
         carried.undo(conn);
@@ -996,7 +1052,7 @@ pub async fn restore_companion(app: tauri::AppHandle, companion_id: String) -> C
 /// Path and kind of a companion, only if it still passes every check for an allowed type.
 pub(super) fn open_info_with_conn(conn: &Connection, id: i64, sensitive_dirs: &[PathBuf]) -> CmdResult<CompanionOpenInfoDto> {
     let row = load_row(conn, id)?;
-    let (kind, _, _) = open_checked(&row, sensitive_dirs, MAX_COMPANION_BYTES)?;
+    let (kind, _, _) = open_checked(conn, &row, sensitive_dirs, MAX_COMPANION_BYTES)?;
     Ok(CompanionOpenInfoDto { id: row.id.to_string(), name: row.name, path: row.path, kind: kind.as_str().to_string() })
 }
 
@@ -1040,7 +1096,7 @@ pub(super) fn image_data_with_conn(conn: &Connection, id: i64, sensitive_dirs: &
     if CompanionKind::parse(&row.kind) != Some(CompanionKind::Image) {
         return Err(CmdError::expected("Diese Begleitdatei ist kein Bild."));
     }
-    let (_, mut file, head) = open_checked(&row, sensitive_dirs, MAX_PREVIEW_BYTES)?;
+    let (_, mut file, head) = open_checked(conn, &row, sensitive_dirs, MAX_PREVIEW_BYTES)?;
     let mut bytes = head;
     Read::by_ref(&mut file).take(MAX_PREVIEW_BYTES + 1 - bytes.len() as u64).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     if bytes.len() as u64 > MAX_PREVIEW_BYTES {
