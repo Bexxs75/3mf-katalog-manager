@@ -63,6 +63,10 @@ export interface ModelFile {
   thumbnailImage: string | null;
   renderSnapshotImage: string | null;
   sourceUrl: string | null;
+  /** Stable lowercase key such as 'makerworld'; null when the file does not prove its origin. */
+  sourcePlatform: string | null;
+  sourceModelId: string | null;
+  sourceProfileId: string | null;
   queuePosition: number | null;
   favorite: boolean;
   deletedAt: string | null;
@@ -76,6 +80,10 @@ export interface ModelFile {
  */
 export interface ModelFileSummary {
   license: string | null;
+  /** Stable lowercase key such as 'makerworld'; null when the file does not prove its origin. */
+  sourcePlatform: string | null;
+  sourceModelId: string | null;
+  sourceProfileId: string | null;
   id: string;
   name: string;
   path: string;
