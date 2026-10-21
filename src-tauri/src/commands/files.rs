@@ -611,7 +611,7 @@ fn validate_file_name(name: &str) -> CmdResult<()> {
 }
 /// Core logic of `rename_file`, without `State`, so it's testable. `fs::rename`
 /// instead of `move_file`, because source and target are in the same directory.
-fn rename_file_with_conn(
+pub(super) fn rename_file_with_conn(
     conn: &Connection,
     id: i64,
     new_name: String,

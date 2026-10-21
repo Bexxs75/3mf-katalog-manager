@@ -22,14 +22,28 @@ pub fn set_import_rename_enabled(state: State<AppState>, enabled: bool) -> CmdRe
         .map_err(|e| e.to_string().into())
 }
 
+/// Prefix layout shared by the import and the rename of existing files, so both
+/// produce and recognise the same names.
+const PREFIX_FORMAT: &str = "%Y-%m-%d_%H-%M_";
+/// Byte length of a formatted prefix (all ASCII).
+pub(super) const PREFIX_LEN: usize = 17;
+
+pub(super) fn date_prefix(time: chrono::DateTime<chrono::Local>) -> String {
+    time.format(PREFIX_FORMAT).to_string()
+}
+
+pub(super) fn has_date_prefix(name: &str) -> bool {
+    static PREFIX_PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    PREFIX_PATTERN
+        .get_or_init(|| regex::Regex::new(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_").unwrap())
+        .is_match(name)
+}
+
 fn import_name(original: &str, prefix: Option<&str>, number: u32) -> String {
     if prefix.is_none() && number == 1 {
         return original.to_string();
     }
-    static PREFIX_PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let prefixed = PREFIX_PATTERN
-        .get_or_init(|| regex::Regex::new(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_").unwrap());
-    let prefix = if prefixed.is_match(original) {
+    let prefix = if has_date_prefix(original) {
         ""
     } else {
         prefix.unwrap_or("")

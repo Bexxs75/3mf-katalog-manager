@@ -8,6 +8,7 @@ import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { TagInput } from './TagInput';
 import { ViewportPopover } from './ViewportPopover';
 import { tagLabel } from '../lib/autoTags';
+import { DateRenameDialog, type DateRenameOutcome } from './DateRenameDialog';
 
 interface BulkActionToolbarProps {
   selectedCount: number;
@@ -37,6 +38,9 @@ interface BulkActionToolbarProps {
   onRemoveTagMenuOpenChange: (value: boolean) => void;
   tagsInSelection: string[];
   onBulkRemoveTag: (tag: string) => void;
+  /** Ids of the selected models; together with `onDateRenamed` this enables the date rename entry. */
+  selectedIds?: string[];
+  onDateRenamed?: (outcome: DateRenameOutcome) => void;
 }
 
 function navigateListMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -79,6 +83,8 @@ export function BulkActionToolbar({
   onRemoveTagMenuOpenChange,
   tagsInSelection,
   onBulkRemoveTag,
+  selectedIds,
+  onDateRenamed,
 }: BulkActionToolbarProps) {
   const { lockProps } = useImportLock();
   const t = useT();
@@ -88,6 +94,9 @@ export function BulkActionToolbar({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Snapshot at opening: the preview must not reload when the selection prop is rebuilt.
+  const [dateRenameIds, setDateRenameIds] = useState<string[] | null>(null);
+  const dateRenameRef = useRef<HTMLButtonElement>(null);
 
   const cancelRef = useRef<HTMLButtonElement>(null);
   const removeRef = useRef<HTMLButtonElement>(null);
@@ -112,6 +121,8 @@ export function BulkActionToolbar({
     const onKeyDown = (e: KeyboardEvent) => {
       if (shouldIgnoreCatalogShortcut(e, { allowInteractive: anyMenuOpen || confirmRemove || confirmBulkDelete, allowMenus: anyMenuOpen, preserveEscapeSelection: !anyMenuOpen && !confirmRemove && !confirmBulkDelete })) return;
       if (e.key !== 'Escape') return;
+      // The dialog handles its own Escape; it must not also clear the selection.
+      if (dateRenameIds) return;
       if (anyMenuOpen) {
         (licenseOpen ? licenseRef : addToCollectionMenuOpen ? collectionRef : addTagMenuOpen ? addTagRef : removeTagRef).current?.focus();
         setLicenseOpen(false);
@@ -132,7 +143,7 @@ export function BulkActionToolbar({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [anyMenuOpen, confirmRemove, confirmBulkDelete, busy, onConfirmBulkDeleteChange, onClearSelection, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
+  }, [anyMenuOpen, confirmRemove, confirmBulkDelete, busy, dateRenameIds, onConfirmBulkDeleteChange, onClearSelection, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
   // A confirmation replaces the bar's buttons, so a menu left open behind it
   // would be invisible: Escape would seem to do nothing, and the menu would
   // reappear after cancelling. Opening a confirmation therefore closes the menus.
@@ -301,11 +312,17 @@ export function BulkActionToolbar({
           <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('notPrintedLabel')}
           </button>
+          {selectedIds && onDateRenamed && <button ref={dateRenameRef} type="button" {...lockProps} onClick={() => setDateRenameIds([...selectedIds])} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-default">{t('dateRenameMenu')}</button>}
           {onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
           <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-small font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}
           </button>
         </>
+      )}
+      {dateRenameIds && onDateRenamed && (
+        <DateRenameDialog fileIds={dateRenameIds} returnFocus={dateRenameRef}
+          onClose={() => setDateRenameIds(null)}
+          onDone={outcome => { setDateRenameIds(null); onDateRenamed(outcome); }} />
       )}
     </div>
   );
