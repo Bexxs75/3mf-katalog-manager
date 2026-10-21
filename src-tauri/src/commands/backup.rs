@@ -535,12 +535,19 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
     // The colour list is parsed again on every load; a foreign backup must not bring
     // oversized lists or text that is not a colour.
     let mut color_lists = conn
-        .prepare("SELECT color_hexes FROM filament_spools WHERE color_hexes IS NOT NULL")
+        .prepare("SELECT color_hexes, color_hex FROM filament_spools WHERE color_hexes IS NOT NULL")
         .map_err(|e| e.to_string())?;
-    for raw in color_lists.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())? {
-        let raw = raw.map_err(|e| e.to_string())?;
-        let valid = serde_json::from_str::<Vec<String>>(&raw)
-            .is_ok_and(|list| crate::db::printers::validate_color_list(&list).is_ok());
+    for row in color_lists
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)))
+        .map_err(|e| e.to_string())?
+    {
+        let (raw, single) = row.map_err(|e| e.to_string())?;
+        // The single colour (slicer matching) must equal the first list entry, as the
+        // app itself always stores it.
+        let valid = serde_json::from_str::<Vec<String>>(&raw).is_ok_and(|list| {
+            crate::db::printers::validate_color_list(&list).is_ok()
+                && list.first().is_none_or(|first| single.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(first)))
+        });
         if !valid {
             return Err("Katalog-Datenbank enthaelt ungueltige Farblisten".to_string());
         }
@@ -1441,10 +1448,26 @@ mod tests {
         ] {
             let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
                 db::insert_filament_spool(conn, &colour_spool(&[])).unwrap();
-                conn.execute("UPDATE filament_spools SET color_hexes = ?1", [value]).unwrap();
+                conn.execute("UPDATE filament_spools SET color_hexes = ?1, color_hex = '#ff0000'", [value]).unwrap();
             });
             let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), valid, "{value}: {result:?}");
+        }
+    }
+
+    #[test]
+    fn an_imported_color_list_must_start_with_the_single_color() {
+        for (single, valid) in [(Some("#ff0000"), true), (Some("#FF0000"), true), (Some("#0000ff"), false), (None, false)] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                db::insert_filament_spool(conn, &colour_spool(&[])).unwrap();
+                conn.execute(
+                    "UPDATE filament_spools SET color_hexes = '[\"#ff0000\",\"#00ff00\"]', color_hex = ?1",
+                    [single],
+                )
+                .unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
+            assert_eq!(result.is_ok(), valid, "{single:?}: {result:?}");
         }
     }
 

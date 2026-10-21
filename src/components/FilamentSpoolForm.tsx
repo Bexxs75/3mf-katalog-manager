@@ -246,7 +246,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       remainingWeightG: Math.round(remaining * 10) / 10,
       price,
       imagePng: form.imagePng,
-      colorHex: colorHexes[0] ?? form.colorHex,
+      // A lone remaining extra color (first one set to "none") becomes the single color.
+      colorHex: colorHexes[0] ?? listed[0] ?? form.colorHex,
       colorHexes,
       // Only passed through - the slot is changed exclusively by load/unload_spool.
       homeLocation: editing?.homeLocation ?? null,

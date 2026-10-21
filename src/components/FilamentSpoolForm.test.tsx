@@ -455,6 +455,17 @@ describe('multi-color spools in the form', () => {
     expect(savedSpool('update_filament_spool').colorHexes).toEqual(['#aa0000', '#0000cc']);
   });
 
+  it('keeps the remaining extra color when the first color is cleared', async () => {
+    const onSaved = renderFormWith({ editing: spoolWith({ colorHex: '#aa0000', colorHexes: ['#aa0000', '#00bb00'] }) });
+    const first = screen.getByRole('textbox', { name: 'Farbwert' });
+    fireEvent.change(first, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const spool = savedSpool('update_filament_spool');
+    expect(spool.colorHexes).toEqual([]);
+    expect(spool.colorHex).toBe('#00bb00');
+  });
+
   it('keeps duplicate colors', async () => {
     const onSaved = renderFormWith({ editing: spoolWith({ colorHex: '#aa0000', colorHexes: ['#aa0000', '#00bb00', '#aa0000'] }) });
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
