@@ -759,16 +759,25 @@ fn validate_catalog_db_bytes(
             drop(paths);
 
             let mut stmt = conn
-                .prepare("SELECT name, path FROM folders")
+                .prepare("SELECT f.name, f.path, p.path FROM folders f LEFT JOIN folders p ON p.id = f.parent_id")
                 .map_err(|e| e.to_string())?;
             let paths = stmt
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?)))
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
-            for (name, path) in paths {
+            for (name, path, parent_path) in paths {
                 validate_file_name(&name).map_err(|e| e.message)?;
                 validate_imported_path_length(&path, known_folders)?;
+                // A folder lies below its parent on disk; deleting or moving a folder tree
+                // acts on every row below it, so a row that names a place elsewhere would
+                // widen that. Rows without a path (and root folders) are not checked.
+                if let Some(parent_path) = parent_path.filter(|p| !p.trim().is_empty()).filter(|_| !path.trim().is_empty()) {
+                    let (child, parent) = (folders::comparison_path(Path::new(&path)), folders::comparison_path(Path::new(&parent_path)));
+                    if child == parent || !child.starts_with(&parent) {
+                        return Err("Ordner-Eintrag im Archiv abgelehnt: liegt nicht unterhalb seines übergeordneten Ordners".to_string());
+                    }
+                }
                 // `.message`, not `{e}`/Display: `e` is already a `CmdError` (logged once
                 // at its creation site inside `reject_if_sensitive_path_expanded`); this
                 // just carries its text onward as part of this function's `String` error,
@@ -3573,6 +3582,22 @@ mod companion_tests {
         for (why, name, path, kind) in cases {
             let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, name, path, kind, None));
             assert!(validate(&bytes, &trash).is_err(), "{why}");
+        }
+    }
+
+    #[test]
+    fn a_folder_row_must_lie_below_its_parent_folder() {
+        let make = |child: &'static str| {
+            catalog_bytes(move |conn| {
+                let root = crate::db::insert_folder_with_parent(conn, "catalog", None, "/catalog").unwrap();
+                crate::db::insert_folder_with_parent(conn, "Sub", Some(root), child).unwrap();
+            })
+        };
+        let (bytes, trash) = make("/catalog/Sub");
+        assert!(validate(&bytes, &trash).is_ok(), "counter-check: a normal child folder is fine");
+        for outside in ["/other/Sub", "/catalog2/Sub", "/tmp"] {
+            let (bytes, trash) = make(outside);
+            assert!(validate(&bytes, &trash).is_err(), "{outside}");
         }
     }
 
