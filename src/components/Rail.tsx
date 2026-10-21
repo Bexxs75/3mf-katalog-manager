@@ -1,5 +1,6 @@
 import { displayName } from '../lib/displayName';
 import { ImportRenameSetting } from './ImportRenameSetting';
+import { SourceFoldersSettings } from './SourceFoldersSettings';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -31,6 +32,8 @@ interface Props {
   onMainViewChange: (v: MainView) => void;
   trashCount: number;
   settingsOpen: boolean;
+  /** Changes whenever the app wants the General tab (for example to point at the source folders). */
+  generalTabRequest?: number;
   onSettingsOpenChange: (open: boolean) => void;
   themeSetting: ThemeSetting;
   onThemeChange: (t: ThemeSetting) => void;
@@ -83,6 +86,7 @@ export function Rail({
   onMainViewChange,
   trashCount,
   settingsOpen,
+  generalTabRequest,
   onSettingsOpenChange,
   themeSetting,
   onThemeChange,
@@ -116,6 +120,8 @@ export function Rail({
   const { language, setLanguage } = useLanguage();
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'slicer' | 'catalog' | 'info'>('general');
+
+  useEffect(() => { if (generalTabRequest) setActiveSettingsTab('general'); }, [generalTabRequest]);
 
   const railRef = useRef<HTMLElement>(null);
   const settingsWrapperRef = useRef<HTMLDivElement>(null);
@@ -248,6 +254,7 @@ export function Rail({
                 </button>
                 <p className="text-small text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
                 <ImportRenameSetting />
+                <SourceFoldersSettings />
                 <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
                   <p>{t('settingsPrintersMovedHint')}</p>
                   <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {

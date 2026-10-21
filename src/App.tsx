@@ -54,6 +54,10 @@ import { useCollections } from './hooks/useCollections';
 import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
 import { NO_FOLDER_COLLAPSE_KEY, useCollapsedFolders } from './hooks/useCollapsedFolders';
 import { useFileImport } from './hooks/useFileImport';
+import { useSourceFolderCheck } from './hooks/useSourceFolderCheck';
+import { SourceFolderNotice } from './components/SourceFolderNotice';
+import { SourceFilesDialog } from './components/SourceFilesDialog';
+import { rejectSourceFiles } from './lib/api/sourceFolders';
 import { useCatalogBackup } from './hooks/useCatalogBackup';
 import { useCatalogCleanup } from './hooks/useCatalogCleanup';
 import { useBulkSelection } from './hooks/useBulkSelection';
@@ -139,6 +143,13 @@ export default function App() {
   const [tipsOpen, setTipsOpen] = useState(false);
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [generalTabRequest, setGeneralTabRequest] = useState(0);
+  const sourceCheck = useSourceFolderCheck({
+    ready: !store.initialLoading,
+    jobActive: fileImport.jobActive,
+    // Without a source folder the check has nothing to do; show where to add one.
+    onNoFolders: () => { setGeneralTabRequest(n => n + 1); setSettingsOpen(true); },
+  });
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
   const update = useUpdater();
 
@@ -423,6 +434,7 @@ export default function App() {
         onImportFiles={fileImport.importFiles}
         onImportFolder={fileImport.importFolder}
         onImportFolderContents={fileImport.importFolderContents}
+        onCheckSourceFolders={() => void sourceCheck.check()}
         mainView={mainView}
       />
 
@@ -436,6 +448,7 @@ export default function App() {
           onMainViewChange={changeMainView}
           trashCount={store.trashModels.length}
           settingsOpen={settingsOpen}
+          generalTabRequest={generalTabRequest}
           onSettingsOpenChange={setSettingsOpen}
           themeSetting={setting}
           onThemeChange={setTheme}
@@ -652,7 +665,18 @@ export default function App() {
             />
           )}
 
+          {sourceCheck.dialogOpen && (
+            <SourceFilesDialog
+              scans={sourceCheck.scans}
+              onClose={sourceCheck.closeDialog}
+              onImport={fileImport.importSourceFiles}
+              onReject={rejectSourceFiles}
+              onRescan={sourceCheck.rescan}
+            />
+          )}
+
           <NoticeStack>
+            {sourceCheck.notice && <SourceFolderNotice notice={sourceCheck.notice} onView={sourceCheck.openDialog} onClose={sourceCheck.dismissNotice} />}
             {fileImport.importBanner && (
               <ImportSummaryBanner
                 imported={fileImport.importBanner.imported}
