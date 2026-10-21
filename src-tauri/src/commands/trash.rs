@@ -157,9 +157,7 @@ fn restore_file_with_conn(
     let db_result = (|| -> Result<(), DbError> {
         let tx = conn.unchecked_transaction()?;
         db::restore_file(&tx, id, new_path_arg)?;
-        if !created_dirs.is_empty() {
-            relink_restored_folder(&tx, id, target_path.parent())?;
-        }
+        relink_restored_folder(&tx, id, target_path.parent(), !created_dirs.is_empty())?;
         tx.commit().map_err(DbError::from)
     })();
     if let Err(db_err) = db_result {
@@ -195,22 +193,43 @@ fn missing_parent_dirs(target: &std::path::Path) -> Vec<PathBuf> {
     missing
 }
 
-/// Puts a restored file back into the catalog folder tree after its folder was
-/// recreated: the nearest cataloged ancestor (or the catalog base folder) is the
-/// anchor, the missing folder rows are inserted below it - the same way the disk
-/// sync attaches new folders. Without an anchor the file stays unassigned.
-fn relink_restored_folder(conn: &Connection, id: i64, dir: Option<&std::path::Path>) -> Result<(), DbError> {
+/// Puts a restored file back into the catalog folder tree. When the directory was
+/// recreated (`created`), the nearest cataloged ancestor (or the catalog base folder)
+/// is the anchor and the missing folder rows are inserted below it - the same way the
+/// disk sync attaches new folders. When the directory already existed, only a folder
+/// row for exactly that directory is reused: a row that is missing then may have been
+/// removed from the catalog on purpose, and a restore must not bring it back. A file
+/// whose folder is not found stays as it is.
+fn relink_restored_folder(
+    conn: &Connection,
+    id: i64,
+    dir: Option<&std::path::Path>,
+    created: bool,
+) -> Result<(), DbError> {
     let Some(dir) = dir else { return Ok(()) };
     let folders = db::list_folders(conn)?;
-    let anchor = match folders::find_catalog_parent(dir, &folders) {
-        Some(parent) => folders.iter().find(|f| f.id == parent).map(|f| PathBuf::from(&f.path)),
-        None => db::printer_link::get_setting(conn, folders::SETTING_CATALOG_BASE_DIR)?
-            .map(PathBuf::from)
-            .filter(|base| folders::comparison_path(dir).starts_with(folders::comparison_path(base))),
+    let existing = folders
+        .iter()
+        .find(|f| folders::comparison_path(std::path::Path::new(&f.path)) == folders::comparison_path(dir))
+        .map(|f| f.id);
+    let folder_id = match existing {
+        Some(folder_id) => folder_id,
+        None if !created => return Ok(()),
+        None => {
+            let anchor = match folders::find_catalog_parent(dir, &folders) {
+                Some(parent) => folders.iter().find(|f| f.id == parent).map(|f| PathBuf::from(&f.path)),
+                None => db::printer_link::get_setting(conn, folders::SETTING_CATALOG_BASE_DIR)?
+                    .map(PathBuf::from)
+                    .filter(|base| folders::comparison_path(dir).starts_with(folders::comparison_path(base))),
+            };
+            let Some(anchor) = anchor else { return Ok(()) };
+            db::ensure_folder_path(conn, &anchor, dir)?
+        }
     };
-    let Some(anchor) = anchor else { return Ok(()) };
-    let folder_id = db::ensure_folder_path(conn, &anchor, dir)?;
-    conn.execute("UPDATE files SET folder_id = ?1 WHERE id = ?2", rusqlite::params![folder_id, id])?;
+    conn.execute(
+        "UPDATE files SET folder_id = ?1 WHERE id = ?2 AND folder_id IS NOT ?1",
+        rusqlite::params![folder_id, id],
+    )?;
     Ok(())
 }
 #[tauri::command]
@@ -480,6 +499,76 @@ mod restore_into_missing_folder_tests {
         assert_eq!(PathBuf::from(folder.0), base.join("A").join("B"));
         let rows: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
         assert_eq!(rows, 3, "base, A and B again, without duplicates");
+    }
+
+    /// Two models in A, trashed together with their folder.
+    fn two_models_trashed(name: &str) -> (Connection, PathBuf, [i64; 2]) {
+        let tmp = unique_test_dir(name);
+        let base = tmp.join("catalog");
+        let trash = tmp.join("trash");
+        std::fs::create_dir_all(base.join("A")).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        db::printer_link::set_setting(&conn, folders::SETTING_CATALOG_BASE_DIR, &base.to_string_lossy()).unwrap();
+        let base_id = db::insert_folder_with_parent(&conn, "catalog", None, &base.to_string_lossy()).unwrap();
+        let a = db::insert_folder_with_parent(&conn, "A", Some(base_id), &base.join("A").to_string_lossy()).unwrap();
+        let ids = ["one.3mf", "two.3mf"].map(|n| {
+            let path = base.join("A").join(n);
+            std::fs::write(&path, n.as_bytes()).unwrap();
+            db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(a)).unwrap()
+        });
+        assert_eq!(super::super::folder_trash::trash_folder_for_test(&conn, a, &trash), 2);
+        (conn, base, ids)
+    }
+
+    fn restore(conn: &Connection, id: i64) {
+        let file = db::get_file(conn, id).unwrap().unwrap();
+        restore_file_with_conn(conn, &file, id, &[]).unwrap();
+    }
+
+    fn folder_of(conn: &Connection, id: i64) -> Option<i64> {
+        db::get_file(conn, id).unwrap().unwrap().folder_id
+    }
+
+    #[test]
+    fn every_restored_model_of_a_deleted_folder_gets_its_folder_back() {
+        let (conn, base, [one, two]) = two_models_trashed("restore_two_models");
+        restore(&conn, one);
+        restore(&conn, two);
+        let first = folder_of(&conn, one).expect("first model is assigned");
+        assert_eq!(folder_of(&conn, two), Some(first), "the second model must join the recreated folder");
+        let path: String = conn.query_row("SELECT path FROM folders WHERE id = ?1", [first], |r| r.get(0)).unwrap();
+        assert_eq!(PathBuf::from(path), base.join("A"));
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 2, "base and A, no duplicates");
+    }
+
+    #[test]
+    fn restore_fixes_a_folder_assignment_that_points_to_another_folder() {
+        let (conn, base, [one, two]) = two_models_trashed("restore_stale_assignment");
+        restore(&conn, one);
+        let a = folder_of(&conn, one).unwrap();
+        let other = db::insert_folder_with_parent(&conn, "Other", None, &base.join("Other").to_string_lossy()).unwrap();
+        conn.execute("UPDATE files SET folder_id = ?1 WHERE id = ?2", [other, two]).unwrap();
+        conn.execute("UPDATE files SET deleted_at = '2026-01-01T00:00:00Z' WHERE id = ?1", [two]).unwrap();
+        restore(&conn, two);
+        assert_eq!(folder_of(&conn, two), Some(a));
+    }
+
+    #[test]
+    fn restore_never_recreates_a_folder_row_the_user_removed_while_the_directory_exists() {
+        let (conn, base, [one, two]) = two_models_trashed("restore_removed_row");
+        // The directory comes back without a catalog row (e.g. made by hand), the user
+        // did not ask for it in the catalog.
+        std::fs::create_dir_all(base.join("A")).unwrap();
+        let rows_before: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
+        restore(&conn, one);
+        restore(&conn, two);
+        let rows_after: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows_after, rows_before);
+        assert_eq!(folder_of(&conn, one), None);
+        assert_eq!(folder_of(&conn, two), None);
+        assert!(base.join("A").join("one.3mf").exists() && base.join("A").join("two.3mf").exists());
     }
 
     #[test]
