@@ -473,6 +473,28 @@ fn partly_moved_folder_is_left_alone() {
 }
 
 #[test]
+fn folder_rows_stay_when_a_sibling_folder_still_exists_on_disk() {
+    let mut f = Fixture::new();
+    let moved = f.add("Alt/a.obj", OBJ_A);
+    // Empty catalogued subfolder: it is not offered by the scan but has a row.
+    let leer = f.root.join("Alt/Leer");
+    std::fs::create_dir(&leer).unwrap();
+    db::ensure_folder_path(&f.conn, &f.root, &leer).unwrap();
+    let alt = f.folder(&f.root.join("Alt")).unwrap();
+    let leer_row = f.folder(&leer).unwrap();
+    std::fs::create_dir(f.root.join("Neu")).unwrap();
+    std::fs::rename(&moved, f.root.join("Neu/a.obj")).unwrap();
+    let applied = f.apply_all();
+    assert_eq!(applied.renamed_count, 1);
+    // Alt and Alt/Leer are untouched on disk, so their rows must not move.
+    assert_eq!(f.folder(&f.root.join("Alt")).unwrap().id, alt.id);
+    assert_eq!(f.folder(&leer).unwrap().id, leer_row.id);
+    assert!(f.folder(&f.root.join("Neu/Leer")).is_none());
+    assert_ne!(f.folder(&f.root.join("Neu")).unwrap().id, alt.id);
+    assert!(db::list_files(&f.conn).unwrap()[0].path.ends_with("Neu/a.obj"));
+}
+
+#[test]
 fn folder_with_a_renamed_file_inside_is_not_renamed_as_a_folder() {
     let mut f = Fixture::new();
     f.add("Alt/a.obj", OBJ_A);

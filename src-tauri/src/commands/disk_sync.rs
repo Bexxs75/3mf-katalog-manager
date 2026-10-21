@@ -943,6 +943,16 @@ fn move_emptied_folders(
     }
 }
 
+/// True when something still exists at `old` that is not just `new` under another
+/// spelling (a case-only rename on a case-insensitive file system).
+fn remains_at_old_location(old: &Path, new: &Path) -> bool {
+    old.symlink_metadata().is_ok()
+        && match (old.canonicalize(), new.canonicalize()) {
+            (Ok(old), Ok(new)) => old != new,
+            _ => true,
+        }
+}
+
 /// The new location of `folder` if the renames describe a pure folder rename or move.
 fn emptied_folder_target(
     tx: &Connection,
@@ -1001,7 +1011,20 @@ fn emptied_folder_target(
         }
     }
     let old = Path::new(&folder.path);
-    let usable = target != old
+    // Every file moved away, but the folder (or a catalogued subfolder, possibly empty)
+    // may still be there. Its row then describes something that did not move.
+    let subfolder_remains = folders
+        .iter()
+        .filter(|f| subtree.contains(&f.id))
+        .any(|f| {
+            let stored = Path::new(&f.path);
+            let relocated = stored
+                .strip_prefix(old)
+                .map_or_else(|_| target.clone(), |rest| target.join(rest));
+            remains_at_old_location(stored, &relocated)
+        });
+    let usable = !subfolder_remains
+        && target != old
         && !target.starts_with(old)
         && !folders.iter().any(|f| Path::new(&f.path) == target)
         && scan

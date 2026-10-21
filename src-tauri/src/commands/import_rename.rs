@@ -79,8 +79,10 @@ pub(super) fn is_internal(path: &Path, base: Option<&Path>) -> bool {
 // Lets tests act as another program that touches the disk between a check and the
 // file operation that follows it.
 #[cfg(test)]
+type RaceHook = Box<dyn Fn(&str, &Path)>;
+#[cfg(test)]
 thread_local! {
-    static RACE: std::cell::RefCell<Option<Box<dyn Fn(&str, &Path)>>> =
+    static RACE: std::cell::RefCell<Option<RaceHook>> =
         const { std::cell::RefCell::new(None) };
 }
 #[cfg(test)]
