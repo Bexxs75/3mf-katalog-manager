@@ -6,6 +6,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { formatStockG } from '../i18n/format';
 import type { Language } from '../i18n/types';
 import type { FilamentSpool } from '../types';
+import { SpoolColorDot } from './SpoolColorDot';
 
 interface Props {
   spools: FilamentSpool[];
@@ -96,7 +97,7 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
       >
         {selected ? (
           <>
-            <span className="w-3 h-3 rounded-[3px] flex-none border border-white/15" style={{ background: selected.colorHex ?? 'transparent' }} />
+            <SpoolColorDot spool={selected} shape="rounded-[3px]" />
             <span className="truncate min-w-0 flex-1">{triggerLabel(selected)}</span>
             <span className="flex-none font-medium tabular-nums text-caption text-[var(--ink-3)]">{formatStockG(selected.remainingWeightG, language)}</span>
           </>
@@ -148,7 +149,7 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
                 onMouseDown={(e) => { e.preventDefault(); choose(s.id); }}
                 className={`px-2 py-1.5 flex items-center gap-2 text-small cursor-pointer ${s.id === activeId ? 'bg-[var(--panel-2)]' : ''}`}
               >
-                <span className="w-3 h-3 mt-0.5 rounded-[3px] flex-none self-start border border-white/15" style={{ background: s.colorHex ?? 'transparent' }} />
+                <SpoolColorDot spool={s} className="w-3 h-3 mt-0.5 self-start" shape="rounded-[3px]" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{[s.material, s.color].filter(Boolean).join(' · ')}</span>
                   <span className="block truncate text-caption text-[var(--ink-3)]">{optionMeta(s, language)}</span>

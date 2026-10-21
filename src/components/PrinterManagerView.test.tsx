@@ -20,7 +20,7 @@ const b: Printer = { ...details, id: '2', name: 'Saturn', kind: 'resin', units: 
 ] };
 const spool: FilamentSpool = { id: 's1', material: 'PLA', manufacturer: null, color: 'Rot', location: null,
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 600, price: null, imagePng: null,
-  colorHex: '#ff0000', homeLocation: 'Regal', unitId: 'u1', slotIndex: 0, kind: 'filament' };
+  colorHex: '#ff0000', colorHexes: [], homeLocation: 'Regal', unitId: 'u1', slotIndex: 0, kind: 'filament' };
 let list: Printer[];
 let history: PrinterHistoryJob[];
 const link = (): PrinterLinkState => ({ refreshKey: 0, enabled: false, connections: [], jobs: [], error: null,
