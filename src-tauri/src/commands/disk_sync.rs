@@ -781,12 +781,26 @@ fn ensure_sync_folder(
 }
 /// Checks a chosen pairing against the disk as it is now. The scan matched hashes a
 /// moment ago, but parsing other files can take minutes and the user may have edited the
-/// target in between.
+/// target in between. Quick pre-filter only: `confirm_rename_target` decides right before
+/// the row is switched.
 fn verify_rename(
     conn: &Connection,
     scan: &DiskScan,
     rename: &DiskRename,
     expanded_sensitive: &[PathBuf],
+) -> Result<(), String> {
+    confirm_rename_target(conn, scan, rename)?;
+    let new_path = Path::new(&rename.new_path);
+    let parent = new_path.parent().unwrap_or(new_path);
+    archives::check_managed_location(parent, expanded_sensitive).map_err(|e| e.message)
+}
+
+/// The target must still hold the content stored for the row. Without this a different
+/// model put there in the meantime would inherit the row's tags, favourite and print log.
+fn confirm_rename_target(
+    conn: &Connection,
+    scan: &DiskScan,
+    rename: &DiskRename,
 ) -> Result<(), String> {
     let id: i64 = rename.id.parse().map_err(|_| "diskSyncStale".to_string())?;
     let stored: Option<String> = conn
@@ -806,8 +820,7 @@ fn verify_rename(
         (Some(stored), Some(current)) if stored == current => {}
         _ => return Err("Inhalt der Datei hat sich geändert".into()),
     }
-    let parent = Path::new(&rename.new_path).parent().unwrap_or(&target);
-    archives::check_managed_location(parent, expanded_sensitive).map_err(|e| e.message)
+    Ok(())
 }
 
 /// Points an existing catalog row at its new location. Everything attached to the row
@@ -1134,6 +1147,20 @@ fn apply_with_path_mode(
         .map(|f| f.id)
         .collect();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    // Authoritative content check: all long reads are done, so this is the last look at
+    // the targets before rows are switched. It runs before the folder step, which
+    // rewrites paths for the pairings it covers.
+    let mut confirmed: Vec<&DiskRename> = Vec::new();
+    for r in &renames {
+        match confirm_rename_target(&tx, &current, r) {
+            Ok(()) => confirmed.push(r),
+            Err(reason) => result.failed_paths.push(DiskFailedPath {
+                path: r.new_path.clone(),
+                reason,
+            }),
+        }
+    }
+    let renames = confirmed;
     // Before the path set is read: a renamed folder rewrites the paths below it.
     move_emptied_folders(&tx, &current, &renames, &expanded_sensitive);
     let resolver = KeyResolver::new(&current.roots, case_insensitive);

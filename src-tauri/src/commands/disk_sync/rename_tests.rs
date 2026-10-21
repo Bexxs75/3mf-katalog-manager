@@ -324,6 +324,37 @@ fn verify_rename_rejects_a_target_whose_hash_changed_after_the_scan() {
 }
 
 #[test]
+fn target_replaced_while_other_models_are_read_leaves_the_row_untouched() {
+    let mut f = Fixture::new();
+    let old = f.add("Vase.obj", OBJ_A);
+    let new = f.root.join("Vase2.obj");
+    std::fs::rename(&old, &new).unwrap();
+    // A new model forces the (possibly minutes long) read after the first check.
+    let fresh = f.root.join("Fresh.obj");
+    std::fs::write(&fresh, OBJ_B).unwrap();
+    let selection = f.selection(false);
+    assert_eq!(selection.renames.len(), 1);
+    let target = new.clone();
+    let applied = apply_with_reader(&mut f.conn, selection, |path| {
+        // Another program puts a different model at the pairing target meanwhile.
+        std::fs::write(&target, OBJ_C).unwrap();
+        let mut file = files::read_import_model_file(path, None)?;
+        file.content_hash = Some(files::compute_content_hash(path)?);
+        Ok(file)
+    })
+    .unwrap();
+    assert_eq!(applied.renamed_count, 0);
+    assert_eq!(applied.failed_paths.len(), 1);
+    assert_eq!(applied.failed_paths[0].path, s(&new));
+    assert_eq!(applied.file_ids.len(), 1, "the other chosen model is still imported");
+    let row: String = f
+        .conn
+        .query_row("SELECT path FROM files WHERE path = ?1", [s(&old)], |r| r.get(0))
+        .unwrap();
+    assert_eq!(row, s(&old));
+}
+
+#[test]
 fn rename_to_an_unlisted_target_is_rejected() {
     let mut f = Fixture::new();
     let old = f.add("Vase.obj", OBJ_A);
