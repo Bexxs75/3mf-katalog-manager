@@ -276,6 +276,11 @@ fn trash_folder_with_conn(
             // drop a directory link), and never followed.
             Ok(meta) if !meta.is_dir() => kept_on_disk.push(folder.path.clone()),
             Ok(_) if blocked.contains(&folder.id) => kept_on_disk.push(folder.path.clone()),
+            // A folder row can name any path; only a directory that really lies inside
+            // the chosen folder (links resolved) may be removed.
+            Ok(_) if !path.canonicalize().is_ok_and(|real| folders::comparison_path(&real).starts_with(folders::comparison_path(&resolved))) => {
+                kept_on_disk.push(folder.path.clone())
+            }
             // Never `remove_dir_all`: a non-empty directory must fail here.
             Ok(_) => {
                 if std::fs::remove_dir(path).is_err() {
@@ -411,6 +416,18 @@ mod tests {
         let result = trash_folder_with_conn(&f.conn, &f.a.to_string(), &f.trash, &f.sensitive).unwrap();
         assert!(unknown.is_dir());
         assert!(result.kept_on_disk.iter().any(|p| Path::new(p) == f.root.join("A").join("B")));
+    }
+
+    #[test]
+    fn an_empty_directory_outside_the_chosen_folder_is_never_removed() {
+        let f = fixture("folder_trash_outside_dir");
+        let outside = f.root.parent().unwrap().join("elsewhere");
+        std::fs::create_dir(&outside).unwrap();
+        db::insert_folder_with_parent(&f.conn, "elsewhere", Some(f.a), &outside.to_string_lossy()).unwrap();
+        let result = trash_folder_with_conn(&f.conn, &f.a.to_string(), &f.trash, &f.sensitive).unwrap();
+        assert!(outside.is_dir(), "a directory outside the folder stays");
+        assert!(result.kept_on_disk.iter().any(|p| Path::new(p) == outside));
+        assert!(!f.root.join("A").exists(), "counter-check: the folder's own empty directories still go");
     }
 
     #[test]

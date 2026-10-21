@@ -67,8 +67,13 @@ pub struct StartSyncResult {
 /// The scan only compares new files with catalog entries, so two identical files dropped
 /// in together would both be taken over; only the first of them is. Files are grouped by
 /// size first and only groups of more than one are hashed. A file that cannot be read is
-/// never held back.
+/// never held back. Files above the import size limit are left out: the scan does not
+/// hash them either, and hashing them here would keep the catalog gate busy for nothing.
 fn repeated_new_files(scan: &DiskScan) -> HashSet<String> {
+    repeated_new_files_within(scan, crate::safe_file::MAX_MODEL_FILE_BYTES)
+}
+
+pub(super) fn repeated_new_files_within(scan: &DiskScan, max_bytes: u64) -> HashSet<String> {
     let mut by_size: HashMap<u64, Vec<(&str, PathBuf)>> = HashMap::new();
     for entry in &scan.new_files {
         let Some(disk_path) = scan.roots.iter().find(|r| r.stored == Path::new(&entry.root)).and_then(|r| r.resolve(Path::new(&entry.path)))
@@ -76,7 +81,7 @@ fn repeated_new_files(scan: &DiskScan) -> HashSet<String> {
             continue;
         };
         if let Ok(meta) = std::fs::symlink_metadata(&disk_path) {
-            if meta.is_file() {
+            if meta.is_file() && meta.len() <= max_bytes {
                 by_size.entry(meta.len()).or_default().push((entry.path.as_str(), disk_path));
             }
         }
