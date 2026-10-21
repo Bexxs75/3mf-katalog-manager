@@ -7,6 +7,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [0.16.3] - 2026-10-21
+
+### Fixed
+
+- **Material Manager:** the chosen view ("Dashboard" or "List") is now kept when you switch to the catalog and back.
+- **Tag suggestion list:** long tags now wrap, so the highlight spans the full width of the list instead of showing a horizontal scroll bar. The empty list no longer stops after 200 tags.
+- **Material Manager, manufacturers:** manufacturers you typed yourself now appear in the suggestion list for new and edited spools (filament and resin kept apart).
+- **Sync with disk:** each entry now shows the file path and the catalog folder on separate, labeled lines ("File" / "Catalog folder"), so they are no longer read as one split path.
+
 ## [0.16.2] - 2026-10-19
 
 ### Fixed
@@ -627,6 +636,15 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [0.16.3] - 2026-10-21
+
+### Behoben
+
+- **Material Manager:** Die gewählte Ansicht („Dashboard“ oder „Liste“) bleibt erhalten, wenn du zum Katalog und zurück wechselst.
+- **Tag-Vorschlagsliste:** Lange Tags brechen jetzt um, damit der Treffer-Balken die volle Listenbreite hat und keine waagerechte Scroll-Leiste erscheint. Die leere Liste endet nicht mehr nach 200 Tags.
+- **Material Manager, Hersteller:** Selbst eingetippte Hersteller erscheinen jetzt in der Vorschlagsliste für neue und bearbeitete Spulen (Filament und Resin getrennt).
+- **Abgleich mit der Festplatte:** Pro Eintrag stehen Dateipfad und Katalogordner jetzt in getrennten, beschrifteten Zeilen („Datei“ / „Katalogordner“) und werden nicht mehr als ein geteilter Pfad gelesen.
 
 ## [0.16.2] - 2026-10-19
 
