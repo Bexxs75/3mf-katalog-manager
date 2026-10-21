@@ -1,3 +1,4 @@
+import { TRASH_RETENTION_DAYS } from '../lib/trashRetention';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
@@ -108,7 +109,7 @@ export function DetailPanel({
   if (trashMode) {
     const rows = buildMetaRows(model, t, language);
     const expiryDate = model.deletedAt
-      ? new Date(new Date(model.deletedAt).getTime() + 7 * 24 * 60 * 60 * 1000)
+      ? new Date(new Date(model.deletedAt).getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000)
       : null;
     return (
       <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">

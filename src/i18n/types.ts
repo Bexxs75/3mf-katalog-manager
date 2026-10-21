@@ -808,6 +808,14 @@ export interface Translations {
   companionAddFailed: string;
   companionsLoadFailed: string;
   companionsAdded: PluralForms;
+  companionRestoreFailed: string;
+  companionsRemovedToggle: string;
+  companionRemovedDaysLeft: PluralForms;
+  companionRemovedExpiresSoon: string;
+  companionRestore: string;
+  companionRestoreNamed: string;
+  companionsRemovedHint: string;
+  companionRestored: string;
   archiveSummaryCompanionsAssigned: PluralForms;
   archiveSummaryCompanionsIgnored: PluralForms;
   archiveSummaryUnsafeSkipped: PluralForms;
