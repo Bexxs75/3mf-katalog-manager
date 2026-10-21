@@ -191,3 +191,37 @@ CREATE TABLE IF NOT EXISTS printer_jobs (
     decided_at TEXT,
     UNIQUE (printer_id, remote_id)
 );
+
+-- Extra files that belong to one model (pictures, PDFs, text notes). The files
+-- live in a `<model name>_extras` folder next to the model; this table only knows
+-- them. A row with `deleted_at` sits in the app trash at `trash_path`.
+CREATE TABLE IF NOT EXISTS companion_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text')),
+    size_bytes INTEGER,
+    added_at TEXT NOT NULL,
+    deleted_at TEXT,
+    trash_path TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_companion_files_file_id ON companion_files (file_id);
+
+-- Folders the user wants checked for new model files. Machine-local paths; the
+-- files in them are only read, imports move them into the catalog folder.
+CREATE TABLE IF NOT EXISTS source_folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    added_at TEXT NOT NULL
+);
+
+-- Files from a source folder the user declined; identified by path and size, so a
+-- changed file is offered again.
+CREATE TABLE IF NOT EXISTS source_rejected (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    size_bytes INTEGER NOT NULL,
+    rejected_at TEXT NOT NULL
+);

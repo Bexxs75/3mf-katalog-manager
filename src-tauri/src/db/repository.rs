@@ -328,6 +328,13 @@ pub fn update_paths_under_folder(
          WHERE substr(path, 1, length(?2) + length(?3)) = ?2 || ?3",
         params![new_path, old_path, sep],
     )?;
+    // Companion files sit in `_extras` folders below the model's folder and move
+    // with it. Trashed rows follow too: their path is where a restore puts them.
+    conn.execute(
+        "UPDATE companion_files SET path = ?1 || substr(path, length(?2) + 1)
+         WHERE substr(path, 1, length(?2) + length(?3)) = ?2 || ?3",
+        params![new_path, old_path, sep],
+    )?;
     Ok(())
 }
 

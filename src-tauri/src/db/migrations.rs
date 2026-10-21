@@ -134,6 +134,9 @@ const MIGRATIONS: &[MigrationStep] = &[
     // existing entries get their values on the next metadata rescan, never in a
     // bulk run while the catalog is being upgraded.
     MigrationStep::Simple(add_source_columns),
+    // Companion files of a model and the remembered source folders (with the files
+    // the user declined). New tables only, no existing data is touched.
+    MigrationStep::Simple(add_companion_and_source_tables),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -159,6 +162,36 @@ const DROP_SAVED_FILTERS_MIGRATION_VERSION: i64 = 38;
 /// Schema version after adding `printer_connections.clock_offset_s`.
 #[cfg(test)]
 const CLOCK_OFFSET_MIGRATION_VERSION: i64 = 39;
+
+/// Schema version after the source columns of `files` (the step before the companion tables).
+#[cfg(test)]
+pub(crate) const SOURCE_COLUMNS_MIGRATION_VERSION: i64 = 48;
+
+fn add_companion_and_source_tables(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS companion_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text')),
+        size_bytes INTEGER,
+        added_at TEXT NOT NULL,
+        deleted_at TEXT,
+        trash_path TEXT
+    )")?;
+    exec(conn, "CREATE INDEX IF NOT EXISTS idx_companion_files_file_id ON companion_files (file_id)")?;
+    exec(conn, "CREATE TABLE IF NOT EXISTS source_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        added_at TEXT NOT NULL
+    )")?;
+    exec(conn, "CREATE TABLE IF NOT EXISTS source_rejected (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        size_bytes INTEGER NOT NULL,
+        rejected_at TEXT NOT NULL
+    )")
+}
 
 fn add_source_columns(conn: &Connection) -> Result<(), DbError> {
     for column in ["source_platform", "source_model_id", "source_profile_id"] {
@@ -450,7 +483,7 @@ mod tests {
         let id = crate::db::test_insert_minimal_file(&conn, "/model.3mf", None).unwrap();
         conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
         // The license step is the one before the source-column step.
-        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 2).unwrap();
+        conn.pragma_update(None, "user_version", SOURCE_COLUMNS_MIGRATION_VERSION - 2).unwrap();
         run_migrations(&mut conn).unwrap();
         assert_eq!(crate::db::get_file(&conn, id).unwrap().unwrap().license, None);
         let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
@@ -548,7 +581,7 @@ mod tests {
 
         // The previous version's catalog: same data, none of the three columns, one step behind.
         conn.execute_batch("ALTER TABLE files DROP COLUMN source_platform; ALTER TABLE files DROP COLUMN source_model_id; ALTER TABLE files DROP COLUMN source_profile_id").unwrap();
-        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 1).unwrap();
+        conn.pragma_update(None, "user_version", SOURCE_COLUMNS_MIGRATION_VERSION - 1).unwrap();
         assert!(conn.prepare("SELECT source_platform FROM files").is_err(), "precondition: column is gone");
 
         run_migrations(&mut conn).unwrap();
@@ -885,7 +918,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 9);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 10);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

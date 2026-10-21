@@ -4,6 +4,8 @@ pub mod licenses;
 mod repository;
 mod collections;
 mod tag_fragments;
+pub mod companions;
+pub mod sources;
 pub use tag_fragments::cleanup_tag_fragments;
 pub mod printers;
 // Printer connection: settings, connections, fetched prints.
@@ -11,6 +13,8 @@ pub mod printer_link;
 mod migrations;
 
 pub use migrations::run_migrations;
+#[cfg(test)]
+pub(crate) use migrations::SOURCE_COLUMNS_MIGRATION_VERSION;
 
 /// Schema version of this build (for tests that check the migration backup).
 #[cfg(test)]

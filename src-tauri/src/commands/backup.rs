@@ -211,6 +211,11 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("collection_files", &["collection_id", "file_id", "position"]),
     ("registered_slicers", &["id", "name", "executable_path", "is_auto_detected"]),
     ("app_settings", &["key", "value"]),
+    ("companion_files", &[
+        "id", "file_id", "name", "path", "kind", "size_bytes", "added_at", "deleted_at", "trash_path",
+    ]),
+    ("source_folders", &["id", "path", "added_at"]),
+    ("source_rejected", &["id", "path", "size_bytes", "rejected_at"]),
     ("printer_connections", &["printer_id", "kind", "address", "connected_since", "paused"]),
     ("printer_jobs", &[
         "id", "printer_id", "remote_id", "file_name", "outcome", "raw_status", "ended_at",
@@ -359,6 +364,23 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("registered_slicers", "name", ColType::Text, false),
     ("registered_slicers", "executable_path", ColType::Text, false),
     ("registered_slicers", "is_auto_detected", ColType::Integer, false),
+    // companion_files, source_folders, source_rejected - see db/companions.rs and db/sources.rs.
+    ("companion_files", "id", ColType::Integer, false),
+    ("companion_files", "file_id", ColType::Integer, false),
+    ("companion_files", "name", ColType::Text, false),
+    ("companion_files", "path", ColType::Text, false),
+    ("companion_files", "kind", ColType::Text, false),
+    ("companion_files", "size_bytes", ColType::Integer, true),
+    ("companion_files", "added_at", ColType::Text, false),
+    ("companion_files", "deleted_at", ColType::Text, true),
+    ("companion_files", "trash_path", ColType::Text, true),
+    ("source_folders", "id", ColType::Integer, false),
+    ("source_folders", "path", ColType::Text, false),
+    ("source_folders", "added_at", ColType::Text, false),
+    ("source_rejected", "id", ColType::Integer, false),
+    ("source_rejected", "path", ColType::Text, false),
+    ("source_rejected", "size_bytes", ColType::Integer, false),
+    ("source_rejected", "rejected_at", ColType::Text, false),
     // Printer connection - see db/printer_link.rs (connection_from_row, job_from_row).
     ("app_settings", "key", ColType::Text, false),
     ("app_settings", "value", ColType::Text, false),
@@ -1178,7 +1200,7 @@ mod tests {
             crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
             conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
             // The license step is the one before the source-column step.
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 2).unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION - 2).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_ok());
         for (value, valid) in [(None, true), (Some("cc-by".to_string()), true),
@@ -1261,7 +1283,7 @@ mod tests {
             file.creator = Some("Jane".into());
             db::insert_file(&mut conn, &file).unwrap();
             conn.execute_batch("ALTER TABLE files DROP COLUMN source_platform; ALTER TABLE files DROP COLUMN source_model_id; ALTER TABLE files DROP COLUMN source_profile_id").unwrap();
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION - 1).unwrap();
         }
         let zip_path = dir.join("old-backup.zip");
         write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
