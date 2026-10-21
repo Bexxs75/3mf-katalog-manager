@@ -297,7 +297,7 @@ export function DetailPanel({
                 className="inline-flex max-w-full min-w-0 items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-medium tabular-nums text-caption"
               >
                 <TagDot hue={tagHues?.[tag]} />
-                <span className="truncate">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+                <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
                 <button
                   type="button"
                   aria-label={t('chipRemove').replace('{label}', tag)}
@@ -426,7 +426,7 @@ export function DetailPanel({
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
               <TagDot hue={tagHues?.[tag]} />
-              <span className="truncate">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+              <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
               <button
                 type="button"
                 aria-label={t('chipRemove').replace('{label}', tag)}

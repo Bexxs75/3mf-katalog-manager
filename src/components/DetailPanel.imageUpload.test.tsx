@@ -100,7 +100,7 @@ it.each(['compact', 'comfort'])('shortens long tag chips but removes the full ta
     onSnapshotCaptured={noop} onSetSourceUrl={noop} onOpenInSlicer={noop} slicerError={null}
   /></UiDensityProvider></LanguageProvider>);
   const text = screen.getByText('#' + 'a'.repeat(28) + '…');
-  expect(text).toHaveClass('truncate');
+  expect(text).toHaveClass('whitespace-nowrap');
   expect(text.parentElement).toHaveAttribute('title', '#' + tag);
   expect(text.parentElement).toHaveClass('max-w-full', 'min-w-0');
   const remove = screen.getByRole('button', { name: tag + ' entfernen' });
