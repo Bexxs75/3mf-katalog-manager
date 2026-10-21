@@ -373,13 +373,61 @@ pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io
     move_file_by_copy(from, to)
 }
 
+/// The permission bits a copy gets. The group bits of a file with a POSIX ACL are the
+/// ACL mask, not the group's rights, so copying them could open the file to a group
+/// the ACL excluded; for such a file only the owner bits are taken. Otherwise group and
+/// other never get more than the owner has, and the process umask is applied like it
+/// would be for any file this program creates.
+#[cfg(unix)]
+fn copied_mode(source_mode: u32, source_has_acl: bool, umask: u32) -> u32 {
+    let owner = source_mode & 0o700;
+    if source_has_acl {
+        return owner;
+    }
+    let group = source_mode & 0o070 & (owner >> 3);
+    let other = source_mode & 0o007 & (owner >> 6);
+    (owner | group | other) & !umask & 0o777
+}
+
+/// The umask of this process. It can only be read by setting it; it is set to the
+/// stricter value first so that a file created by another thread in between is never
+/// more open than intended.
+#[cfg(unix)]
+fn current_umask() -> u32 {
+    // SAFETY: umask has no preconditions and cannot fail.
+    unsafe {
+        let old = libc::umask(0o077);
+        libc::umask(old);
+        old as u32
+    }
+}
+
+/// True when the file carries an extended POSIX ACL (Linux). Other systems report
+/// false and rely on the plain mode rules.
+#[cfg(unix)]
+fn has_extended_acl(path: &std::path::Path) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else { return false };
+        // SAFETY: both strings are NUL-terminated; a null buffer with size 0 only asks for the size.
+        let size = unsafe { libc::getxattr(path.as_ptr(), c"system.posix_acl_access".as_ptr(), std::ptr::null_mut(), 0) };
+        size >= 0
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = path;
+        false
+    }
+}
+
 /// Copy-based move used when a hard link is not possible; split out so tests
 /// can exercise it on a file system that supports hard links.
 ///
 /// Creates the target with `create_new` (O_EXCL/CREATE_NEW, never replaces),
 /// copies, applies the source's permissions and modification time, and
-/// deletes the source. The target is created owner-only (0600) and widened to
-/// the source mode only after the content is written, so the copy is never
+/// deletes the source. The target is created owner-only (0600) and widened
+/// only after the content is written (see `copied_mode`), so the copy is never
 /// more open than the source at any moment. setuid/setgid/sticky bits are not
 /// carried over; the owner cannot be preserved. Failing to apply time or
 /// permissions is not fatal, an incomplete copy is. A partially written
@@ -399,7 +447,8 @@ fn move_file_by_copy(from: &std::path::Path, to: &std::path::Path) -> std::io::R
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = dst.set_permissions(std::fs::Permissions::from_mode(src_meta.permissions().mode() & 0o777));
+            let mode = copied_mode(src_meta.permissions().mode(), has_extended_acl(from), current_umask());
+            let _ = dst.set_permissions(std::fs::Permissions::from_mode(mode));
         }
         #[cfg(not(unix))]
         {
@@ -681,6 +730,43 @@ mod tests {
             assert!(!from.exists());
             std::fs::remove_dir_all(dir).unwrap();
         }
+    }
+    #[cfg(unix)]
+    #[test]
+    fn copied_mode_is_never_more_open_than_the_source_and_follows_the_umask() {
+        assert_eq!(copied_mode(0o644, false, 0o022), 0o644);
+        assert_eq!(copied_mode(0o666, false, 0o022), 0o644, "umask applies");
+        assert_eq!(copied_mode(0o666, false, 0o077), 0o600);
+        assert_eq!(copied_mode(0o604, false, 0), 0o604);
+        assert_eq!(copied_mode(0o464, false, 0), 0o444, "group and other never exceed the owner");
+        assert_eq!(copied_mode(0o2755, false, 0o022), 0o755, "special bits dropped");
+        assert_eq!(copied_mode(0o660, true, 0), 0o600, "with an ACL the group bits are only the mask");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn copy_fallback_keeps_the_group_closed_for_a_source_with_an_acl() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = unique_test_dir("move_copy_acl");
+        let from = make_source(&dir, 0o600);
+        // Entries: owner rw-, named user 12345 r--, group ---, mask rw-, other ---.
+        let mut acl: Vec<u8> = 2u32.to_le_bytes().to_vec();
+        for (tag, perm, id) in [(1u16, 6u16, u32::MAX), (2, 4, 12345), (4, 0, u32::MAX), (0x10, 6, u32::MAX), (0x20, 0, u32::MAX)] {
+            acl.extend(tag.to_le_bytes());
+            acl.extend(perm.to_le_bytes());
+            acl.extend(id.to_le_bytes());
+        }
+        let path = std::ffi::CString::new(from.as_os_str().as_bytes()).unwrap();
+        let set = unsafe { libc::setxattr(path.as_ptr(), c"system.posix_acl_access".as_ptr(), acl.as_ptr().cast(), acl.len(), 0) };
+        if set != 0 {
+            // This file system has no ACL support; the pure mode rules are covered above.
+            std::fs::remove_dir_all(dir).unwrap();
+            return;
+        }
+        assert_eq!(mode_of(&from) & 0o070, 0o060, "precondition: the group bits show the mask");
+        let to = dir.join("target.3mf");
+        move_file_by_copy(&from, &to).unwrap();
+        assert_eq!(mode_of(&to) & 0o077, 0, "the copy is closed to group and others");
+        std::fs::remove_dir_all(dir).unwrap();
     }
     #[cfg(unix)]
     #[test]
