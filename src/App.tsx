@@ -348,6 +348,7 @@ export default function App() {
       )}
       {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}
       <Header
+        onDiskSyncScanned={store.refreshFolders}
         onDiskSyncApplied={() => Promise.all([
           store.refreshFiles(), store.refreshFolders(), store.refreshTags(), store.refreshTrash(),
           collections.refreshCollections(),

@@ -12,7 +12,7 @@ import { es } from '../i18n/es';
 import { fr } from '../i18n/fr';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-const empty: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], unreachableRoots: [], skippedPaths: [] };
+const empty: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [] };
 const changes: DiskScan = {
   ...empty,
   newFiles: [{ path: '/models/new.obj', relativePath: 'new.obj', root: '/models', id: null }],
