@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import * as api from '../lib/api/importExport';
+import { importSourceFiles } from '../lib/api/sourceFolders';
 import { countsWithArchiveModels } from '../lib/importCounts';
 import { toAppError } from '../lib/errors';
 import type { ArchiveInfo, ArchiveRequest, ImportJobResult, ImportProgress, ImportResultDto, ImportSource, SkippedFile, StartedImport } from '../types';
@@ -169,6 +170,11 @@ export function useFileImport(args: UseFileImportArgs) {
     importFiles: () => track(api.startImport('files', args.activeFolderId === 'all' ? args.rootFolderId : args.activeFolderId), {source: 'files', targetName: args.catalogBaseDir ? args.targetName ?? args.catalogBaseDir : undefined}),
     importFolderContents: () => track(api.startImport('folderContents', args.activeFolderId === 'all' ? args.rootFolderId : args.activeFolderId), {source: 'folderContents', targetName: args.catalogBaseDir ? args.targetName ?? args.catalogBaseDir : undefined}),
     importFolder: () => track(api.startImport('folder'), {source: 'folder'}),
+    // Start errors reach the caller (the source folder dialog shows them); progress problems go to `error`.
+    importSourceFiles: async (paths: string[]) => {
+      const started = await importSourceFiles(paths);
+      await track(Promise.resolve(started), {source: 'files', targetName: args.catalogBaseDir ?? undefined});
+    },
     startArchives, pendingArchives,
     cancelArchives: async () => {
       try { if (pendingArchives?.length) await api.discardArchiveImports(pendingArchives.map(a => a.path)); parents.current.clear(); setPendingArchives(null); }

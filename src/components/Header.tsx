@@ -1,6 +1,7 @@
 import { displayName } from '../lib/displayName';
 import { CatalogDiskSync } from './CatalogDiskSync';
 import { useMenuKeyboard } from '../hooks/useMenuKeyboard';
+import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
 import { useDismissableMenu } from '../hooks/useDismissableMenu';
@@ -30,6 +31,7 @@ interface Props {
   onImportFiles: () => void;
   onImportFolder: () => void;
   onImportFolderContents: () => void;
+  onCheckSourceFolders: () => void;
   detailOpen?: boolean;
   onOpenTips?: () => void;
   mainView: MainView;
@@ -59,10 +61,13 @@ export function Header({
   onImportFiles,
   onImportFolder,
   onImportFolderContents,
+  onCheckSourceFolders,
   mainView, onOpenTips,
   detailOpen = false,
 }: Props) {
   const t = useT();
+  // Checking runs only while no import is active (the move would be refused anyway).
+  const { jobActive } = useImportLock();
   const formatCount = useFormatCount();
   const [importSource, setImportSource] = useState<'files' | 'folder' | 'folderContents'>('files');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
@@ -170,6 +175,18 @@ export function Header({
               className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
               {t('importFolderContentsOption')}
+            </button>
+            <button
+              role="menuitem" tabIndex={-1}
+              title={t('sfMenuHint')}
+              disabled={jobActive}
+              onClick={() => {
+                setImportMenuOpen(false);
+                onCheckSourceFolders();
+              }}
+              className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer disabled:opacity-50 disabled:cursor-default"
+            >
+              {t('sfMenuCheck')}
             </button>
           </div>
         )}

@@ -241,3 +241,13 @@ it.each(['failed', 'existingSkipped', 'blockedSkipped'] as const)('keeps the arc
     expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
   } finally { vi.useRealTimers(); }
 });
+it('tracks a source folder import like any other job and hands start errors to the caller', async () => {
+  vi.mocked(invoke).mockImplementation(async cmd => cmd === 'import_source_files' ? { jobId: 'j7' } : cmd === 'get_import_state' ? progress('j7') : null);
+  const { result } = setup();
+  await act(async () => { await result.current.importSourceFiles(['/dl/a.3mf']); });
+  expect(invoke).toHaveBeenCalledWith('import_source_files', { paths: ['/dl/a.3mf'] });
+  expect(result.current.jobId).toBe('j7'); expect(result.current.jobActive).toBe(true);
+  vi.mocked(invoke).mockRejectedValueOnce({ message: 'Importlauf aktiv', expected: true });
+  await expect(act(async () => { await result.current.importSourceFiles(['/dl/b.3mf']); })).rejects.toMatchObject({ message: 'Importlauf aktiv' });
+  expect(result.current.error).toBeNull();
+});
