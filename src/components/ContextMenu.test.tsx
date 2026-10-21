@@ -131,3 +131,21 @@ it.each(['.stl', '.st\u202el'])('preserves bidi controls in the rename input and
   fireEvent.keyDown(input, {key: 'Enter'});
   await waitFor(() => expect(onRename).toHaveBeenCalledWith(`renamed\u202etxt${extension}`));
 });
+
+it('offers "Verschieben nach …" that opens the move dialog and closes the menu', () => {
+  const onMove = vi.fn();
+  const onClose = vi.fn();
+  render(<LanguageProvider><ContextMenu x={0} y={0} onClose={onClose} onOpenInSlicer={() => {}}
+    onDelete={() => {}} inQueue={false} onToggleQueue={() => {}} printed={false} onTogglePrintStatus={() => {}}
+    fileId="42" currentName="Wuerfel.stl" onRename={vi.fn()} onMove={onMove} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Verschieben nach …' }));
+  expect(onMove).toHaveBeenCalledTimes(1);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('has no move entry while an import runs', () => {
+  render(<LanguageProvider><ImportLockContext.Provider value={true}><ContextMenu x={0} y={0} onClose={() => {}} onOpenInSlicer={() => {}}
+    onDelete={() => {}} inQueue={false} onToggleQueue={() => {}} printed={false} onTogglePrintStatus={() => {}}
+    fileId="42" currentName="Wuerfel.stl" onRename={vi.fn()} onMove={vi.fn()} /></ImportLockContext.Provider></LanguageProvider>);
+  expect(screen.getByRole('button', { name: 'Verschieben nach …' })).toBeDisabled();
+});

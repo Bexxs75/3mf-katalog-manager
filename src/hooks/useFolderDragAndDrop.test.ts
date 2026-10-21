@@ -24,7 +24,7 @@ describe('useFolderDragAndDrop', () => {
   it('dragging a file onto a folder and releasing the mouse moves it', async () => {
     const folders = [makeFolder({ id: 'f1', path: '/Target' })];
     const models = [makeModelFile({ id: 'm1', name: 'Model' })];
-    vi.mocked(invoke).mockResolvedValue(undefined);
+    vi.mocked(invoke).mockResolvedValue([{ id: 'm1', status: 'moved', fromFolderId: 'old', fromPath: '/Old' }]);
     const refreshFolders = vi.fn();
     const refreshFiles = vi.fn();
     const { result } = renderHook(() =>
@@ -36,8 +36,8 @@ describe('useFolderDragAndDrop', () => {
     await act(async () => {
       fireEvent.mouseUp(document);
     });
-    expect(invoke).toHaveBeenCalledWith('move_file_to_folder', { fileId: 'm1', folderId: 'f1' });
-    await waitFor(() => expect(result.current.moveToast).toEqual({ from: 'Model', to: '/Target' }));
+    expect(invoke).toHaveBeenCalledWith('move_files_to_folder', { fileIds: ['m1'], folderId: 'f1' });
+    await waitFor(() => expect(result.current.moveToast).toMatchObject({ from: 'Model', to: '/Target', canUndo: true }));
     expect(result.current.draggedFileId).toBeNull();
     expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBe('true');
   });

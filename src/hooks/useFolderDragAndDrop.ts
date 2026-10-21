@@ -2,8 +2,12 @@ import { dismissDragDropTip } from '../lib/dragDropTip';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as collectionsApi from '../lib/api/collections';
 import * as foldersApi from '../lib/api/folders';
-import { folderMoveBlock, type FolderMoveBlock } from '../lib/folderTree';
-import { toAppError } from '../lib/errors';
+import { folderMoveBlock } from '../lib/folderTree';
+import { messageOf, toAppError } from '../lib/errors';
+import {
+  groupByOldFolder, pushUndoStep, summarizeMoveResults, undoItemsFromResults,
+  type MoveToastState, type UndoOutcome, type UndoStep,
+} from '../lib/moveUndo';
 import type { ModelFile, Folder, Collection } from '../types';
 
 interface Refreshers {
@@ -16,18 +20,42 @@ interface CollectionTargets {
   addModelToCollection: (fileId: string, collectionId: string) => Promise<unknown>;
 }
 
-export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers, collectionTargets?: CollectionTargets, catalogBaseDir: string | null = null) {
+export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers, collectionTargets?: CollectionTargets, catalogBaseDir: string | null = null, selectedIds?: ReadonlySet<string>) {
   // Mouse-based dragging instead of HTML5 DnD: under Tauri/WebKitGTK
   // dragDropEnabled intercepts native drag sessions at window level.
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
-  const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean; unexpected?: boolean; collection?: 'added' | 'already'; blocked?: FolderMoveBlock } | null>(null);
+  // Everything that travels with the dragged card: the whole selection when the
+  // card is part of it, otherwise just the card.
+  const [draggedFileIds, setDraggedFileIds] = useState<string[]>([]);
+  const [moveToast, setMoveToast] = useState<MoveToastState | null>(null);
+  // In memory only (gone after a restart); the ref is the source of truth so a quick
+  // second action never reads a stale list, the counter only drives re-renders.
+  const undoStack = useRef<UndoStep[]>([]);
+  const [undoCount, setUndoCount] = useState(0);
+  const undoBusy = useRef(false);
   // Last folder row under the pointer, valid or not: a refused drop still needs to say why.
   const hoveredFolderId = useRef<string | null>(null);
 
-  const onDragFileStart = useCallback((id: string) => setDraggedFileId(id), []);
+  const recordUndo = useCallback((step: UndoStep) => {
+    undoStack.current = pushUndoStep(undoStack.current, step);
+    setUndoCount(undoStack.current.length);
+  }, []);
+  const clearUndo = useCallback(() => {
+    undoStack.current = [];
+    setUndoCount(0);
+  }, []);
+  const recordFolderRename = useCallback(
+    (step: { folderId: string; oldName: string; newName: string }) => recordUndo({ kind: 'renameFolder', ...step }),
+    [recordUndo],
+  );
+
+  const onDragFileStart = useCallback((id: string) => {
+    setDraggedFileId(id);
+    setDraggedFileIds(selectedIds?.has(id) ? [...selectedIds] : [id]);
+  }, [selectedIds]);
   // A click without hovering over another row moves nothing. Folders that
   // cannot be moved are still draggable, so dropping them explains the refusal.
   const onDragFolderStart = useCallback((id: string) => {
@@ -66,10 +94,11 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   }, []);
 
   const handleCollectionMouseEnter = useCallback((id: string) => {
-    if (!draggedFileId) return;
+    // Adding to a collection stays a one-card action; a multi-card drag only targets folders.
+    if (!draggedFileId || draggedFileIds.length > 1) return;
     setDragOverFolderId(null);
     setDragOverCollectionId(id);
-  }, [draggedFileId]);
+  }, [draggedFileId, draggedFileIds]);
   const handleCollectionMouseLeave = useCallback((id: string) => {
     setDragOverCollectionId(current => current === id ? null : current);
   }, []);
@@ -88,14 +117,93 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     [refreshFolders],
   );
 
+  // Shared by the drop on a folder and by the "Move to ..." dialog.
+  const moveFiles = useCallback(async (ids: string[], folderId: string) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target || ids.length === 0) return;
+    const nameOf = (id: string) => models.find((m) => m.id === id)?.name ?? id;
+    try {
+      const results = await foldersApi.moveFilesToFolder(ids, folderId);
+      const summary = summarizeMoveResults(results);
+      if (summary.moved > 0) {
+        dismissDragDropTip();
+        refreshFolders();
+        refreshFiles();
+      }
+      const items = undoItemsFromResults(results);
+      if (items.length > 0) recordUndo({ kind: 'moveFiles', items });
+      const shown = summary.moved > 0 ? results.filter((r) => r.status === 'moved').map((r) => r.id) : ids;
+      const names = shown.slice(0, 2).map(nameOf);
+      setMoveToast({ from: names[0], to: target.path, batch: { names, total: ids.length, summary }, canUndo: items.length > 0 });
+    } catch (e) {
+      console.error('[folders] moving files failed:', e);
+      const err = toAppError(e);
+      setMoveToast({ from: nameOf(ids[0]), to: err.message, error: true, unexpected: err.unexpected });
+    }
+  }, [folders, models, recordUndo, refreshFolders, refreshFiles]);
+
+  // Runs the opposite action without checking anything first: the backend
+  // knows the real disk state, and a refusal is reported instead of guessed.
+  // The step is consumed either way so a failing step cannot block the ones below it.
+  const undo = useCallback(async () => {
+    if (undoBusy.current) return;
+    const step = undoStack.current[undoStack.current.length - 1];
+    if (!step) return;
+    undoBusy.current = true;
+    undoStack.current = undoStack.current.slice(0, -1);
+    setUndoCount(undoStack.current.length);
+    let outcome: UndoOutcome;
+    try {
+      if (step.kind === 'moveFiles') {
+        let moved = 0;
+        let reason: string | undefined;
+        for (const [folderId, fileIds] of groupByOldFolder(step.items)) {
+          try {
+            const results = await foldersApi.moveFilesToFolder(fileIds, folderId);
+            for (const result of results) {
+              if (result.status === 'moved') moved++;
+              else reason ??= result.status === 'skipped' ? 'name_exists' : result.reason;
+            }
+          } catch (e) {
+            console.error('[folders] undo of file move failed:', e);
+            reason ??= messageOf(e);
+          }
+        }
+        outcome = { kind: 'files', ok: moved === step.items.length, count: moved, total: step.items.length, reason };
+      } else if (step.kind === 'moveFolder') {
+        await foldersApi.moveFolder(step.folderId, step.fromParentId);
+        outcome = { kind: 'folderMove', ok: true, name: step.name };
+      } else {
+        await foldersApi.renameFolder(step.folderId, step.oldName);
+        outcome = { kind: 'rename', ok: true, name: step.newName, restoredName: step.oldName };
+      }
+    } catch (e) {
+      console.error('[folders] undo failed:', e);
+      outcome = {
+        kind: step.kind === 'moveFolder' ? 'folderMove' : 'rename', ok: false,
+        name: step.kind === 'moveFolder' ? step.name : step.kind === 'renameFolder' ? step.newName : undefined,
+        reason: messageOf(e),
+      };
+    } finally {
+      undoBusy.current = false;
+    }
+    if (outcome.ok || (outcome.count ?? 0) > 0) {
+      refreshFolders();
+      refreshFiles();
+    }
+    setMoveToast({ from: outcome.name ?? '', to: '', undo: outcome, error: !outcome.ok });
+  }, [refreshFolders, refreshFiles]);
+
   useEffect(() => {
     if (!draggedFileId) return;
     const handleMouseUp = () => {
       const fileId = draggedFileId;
+      const fileIds = draggedFileIds;
       const folderId = dragOverFolderId;
       const collectionId = dragOverCollectionId;
       setDragOverCollectionId(null);
       setDraggedFileId(null);
+      setDraggedFileIds([]);
       setDragOverFolderId(null);
       const file = models.find((m) => m.id === fileId);
       if (collectionId && file && collectionTargets) {
@@ -112,26 +220,12 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         });
         return;
       }
-      if (!folderId) return;
-      const targetFolder = folders.find((f) => f.id === folderId);
-      if (!file || !targetFolder) return;
-      foldersApi
-        .moveFileToFolder(fileId, folderId)
-        .then(() => {
-          dismissDragDropTip();
-          setMoveToast({ from: file.name, to: targetFolder.path });
-          refreshFolders();
-          refreshFiles();
-        })
-        .catch((e) => {
-          console.error('[folders] moving file failed:', e);
-          const err = toAppError(e);
-          setMoveToast({ from: file.name, to: err.message, error: true, unexpected: err.unexpected });
-        });
+      if (!folderId || !file) return;
+      void moveFiles(fileIds, folderId);
     };
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, [draggedFileId, dragOverFolderId, dragOverCollectionId, collectionTargets, models, folders, refreshFolders, refreshFiles]);
+  }, [draggedFileId, draggedFileIds, dragOverFolderId, dragOverCollectionId, collectionTargets, models, moveFiles]);
 
   // Dragging a folder onto a folder. The checks are repeated here so an
   // invalid target never triggers an invoke.
@@ -152,10 +246,13 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         setMoveToast({ from: folder.name, to: '', error: true, blocked });
         return;
       }
+      const fromParentId = folder.parentId;
       foldersApi
         .moveFolder(folderId, targetId)
         .then(() => {
-          setMoveToast({ from: folder.name, to: targetFolder.path });
+          // The old parent has to be remembered now: after the reload the folder only knows its new one.
+          if (fromParentId) recordUndo({ kind: 'moveFolder', folderId, name: folder.name, fromParentId });
+          setMoveToast({ from: folder.name, to: targetFolder.path, canUndo: !!fromParentId });
           refreshFolders();
           refreshFiles();
         })
@@ -167,10 +264,11 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     };
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, [draggedFolderId, folders, refreshFolders, refreshFiles, catalogBaseDir]);
+  }, [draggedFolderId, folders, refreshFolders, refreshFiles, catalogBaseDir, recordUndo]);
 
   return {
     draggedFileId,
+    draggedFileIds,
     draggedFolderId,
     dragOverFolderId,
     dragOverCollectionId,
@@ -183,5 +281,10 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     handleFolderMouseEnter,
     handleFolderMouseLeave,
     onCreateFolder,
+    moveFiles,
+    undo,
+    undoCount,
+    clearUndo,
+    recordFolderRename,
   };
 }

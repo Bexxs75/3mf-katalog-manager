@@ -31,6 +31,7 @@ import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { MoveToast } from './components/MoveToast';
+import { MoveTargetDialog } from './components/MoveTargetDialog';
 import { RenameToast } from './components/RenameToast';
 import { FolderTrashToast } from './components/FolderTrashToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
@@ -81,10 +82,6 @@ export default function App() {
   const { language } = useLanguage();
   const filters = useCatalogFilters(store.models, store.folders, language);
   const collections = useCollections();
-  const dragDrop = useFolderDragAndDrop(store.models, store.folders, {
-    refreshFolders: store.refreshFolders,
-    refreshFiles: store.refreshFiles,
-  }, collections, catalogBaseDir);
   const collapsedFolders = useCollapsedFolders();
   const expansion = useFolderExpansion();
   const sidebarWidth = useSidebarWidth();
@@ -134,6 +131,10 @@ export default function App() {
     bulkAddToCollection: collections.bulkAddToCollection,
     bulkRemoveFromCollection: collections.bulkRemoveFromCollection,
   });
+  const dragDrop = useFolderDragAndDrop(store.models, store.folders, {
+    refreshFolders: store.refreshFolders,
+    refreshFiles: store.refreshFiles,
+  }, collections, catalogBaseDir, bulk.selectedForBulk);
 
   const [tipsOpen, setTipsOpen] = useState(false);
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
@@ -145,6 +146,25 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
+  const [moveDialog, setMoveDialog] = useState<{ ids: string[] } | null>(null);
+  const moveReturnFocus = useRef<HTMLElement | null>(null);
+  const focusCatalogMain = () => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus();
+  const tileOf = (id: string) => document.querySelector<HTMLElement>(`[data-model-id="${CSS.escape(id)}"]`);
+  // Moving is a catalog action like any other: not while an import is running.
+  const openMoveDialog = (ids: string[], returnTo: HTMLElement | null) => {
+    if (fileImport.jobActive || ids.length === 0) return;
+    moveReturnFocus.current = returnTo;
+    setMoveDialog({ ids });
+  };
+  const confirmMove = async (folderId: string) => {
+    if (!moveDialog) return;
+    const { ids } = moveDialog;
+    setMoveDialog(null);
+    await dragDrop.moveFiles(ids, folderId);
+    // The tile the dialog was opened from may be gone after the move; keep focus inside the catalog.
+    if (!moveReturnFocus.current?.isConnected) focusCatalogMain();
+  };
+  useEffect(() => { dragDrop.clearUndo(); }, [catalogBaseDir, dragDrop.clearUndo]);
   const refreshAfterRemoval = (includeActiveCollection = true) => {
     store.setSelectedId(null);
     setDetailModelId(null);
@@ -156,8 +176,13 @@ export default function App() {
   };
   const [renameToast, setRenameToast] = useState<{ from: string; to: string; count: number } | null>(null);
   const dismissRenameToast = useCallback(() => setRenameToast(null), []);
+  const hasMoveToast = !!dragDrop.moveToast;
+  useEffect(() => { if (hasMoveToast) setRenameToast(null); }, [hasMoveToast, dragDrop.moveToast]);
   // Same reload as after move_folder: folder paths changed, and so did the paths of the models below it.
-  const onFolderRenamed = (info: { from: string; to: string; count: number }) => {
+  const onFolderRenamed = (info: { id: string; from: string; to: string; count: number }) => {
+    dragDrop.recordFolderRename({ folderId: info.id, oldName: info.from, newName: info.to });
+    // One toast at a time, so an "Undo" button always belongs to the newest step.
+    dragDrop.dismissMoveToast();
     setRenameToast(info);
     void Promise.all([store.refreshFolders(), store.refreshFiles()])
       .catch((e) => console.error('[folders] refresh after rename failed:', e));
@@ -202,6 +227,10 @@ export default function App() {
     setTimeout(() => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus(), 0);
   };
   const finishCatalogReset = () => {
+    // Undo steps point at folders and files that no longer exist.
+    dragDrop.clearUndo();
+    dragDrop.dismissMoveToast();
+    setMoveDialog(null);
     resetCatalogSetup();
     clearCatalogFilters();
     setContextMenu(null);
@@ -262,6 +291,11 @@ export default function App() {
     openBulkDeleteConfirm: () => { if (!fileImport.jobActive) bulk.setConfirmBulkDelete(true); },
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
     toggleBulkSelect: bulk.toggleBulkSelect,
+    onMoveSelection: () => {
+      const ids = bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
+      openMoveDialog(ids, ids.length === 1 ? tileOf(ids[0]) : (document.activeElement as HTMLElement | null));
+    },
+    onUndo: fileImport.jobActive ? undefined : () => void dragDrop.undo(),
   });
 
   useEffect(() => {
@@ -489,6 +523,7 @@ export default function App() {
               setActiveFolderId={filters.setActiveFolderId}
               onCreateFolder={dragDrop.onCreateFolder}
               draggedFileId={dragDrop.draggedFileId}
+              draggedFileCount={dragDrop.draggedFileIds.length}
               dragOverCollectionId={dragDrop.dragOverCollectionId}
               handleCollectionMouseEnter={dragDrop.handleCollectionMouseEnter}
               handleCollectionMouseLeave={dragDrop.handleCollectionMouseLeave}
@@ -512,6 +547,7 @@ export default function App() {
               confirmBulkDelete={bulk.confirmBulkDelete}
               setConfirmBulkDelete={bulk.setConfirmBulkDelete}
               bulkDelete={bulk.bulkDelete}
+              onBulkMove={() => openMoveDialog([...bulk.selectedForBulk], document.activeElement as HTMLElement | null)}
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
               onCatalogRemoved={refreshAfterRemoval}
               onFolderRenamed={onFolderRenamed}
@@ -601,6 +637,8 @@ export default function App() {
               fileId={contextModel.id}
               currentName={contextModel.name}
               onRename={(name) => store.renameFile(contextModel.id, name)}
+              onMove={() => openMoveDialog(
+                bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
             />
           )}
 
@@ -643,7 +681,7 @@ export default function App() {
             />
           )}
 
-          {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
+          {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} count={dragDrop.draggedFileIds.length} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
           {dragDrop.moveToast && (
             <MoveToast
               collection={dragDrop.moveToast.collection}
@@ -652,10 +690,22 @@ export default function App() {
               error={dragDrop.moveToast.error}
               blocked={dragDrop.moveToast.blocked}
               unexpected={dragDrop.moveToast.unexpected}
+              batch={dragDrop.moveToast.batch}
+              undo={dragDrop.moveToast.undo}
+              onUndo={dragDrop.moveToast.canUndo && !fileImport.jobActive ? () => {
+                // The button is about to disappear; park focus in the catalog instead of losing it.
+                focusCatalogMain();
+                void dragDrop.undo();
+              } : undefined}
               onDone={dragDrop.dismissMoveToast}
             />
           )}
-          {renameToast && <RenameToast from={renameToast.from} to={renameToast.to} count={renameToast.count} onDone={dismissRenameToast} />}
+          {moveDialog && (
+            <MoveTargetDialog count={moveDialog.ids.length} folders={store.folders} returnFocus={moveReturnFocus}
+              onCancel={() => setMoveDialog(null)} onMove={(folderId) => void confirmMove(folderId)} />
+          )}
+          {renameToast && <RenameToast from={renameToast.from} to={renameToast.to} count={renameToast.count} onDone={dismissRenameToast}
+            onUndo={fileImport.jobActive ? undefined : () => { focusCatalogMain(); dismissRenameToast(); void dragDrop.undo(); }} />}
           {trashToast && <FolderTrashToast result={trashToast} onDone={dismissTrashToast} />}
         </div>
       </div>

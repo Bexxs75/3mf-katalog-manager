@@ -5,7 +5,7 @@ import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { ModelFile, Folder } from '../types';
 import { buildGroupedFolderTree, type GroupedFolderNode } from '../lib/groupedFolderTree';
 import { ModelList } from './ModelList';
-import { useT } from '../i18n/LanguageContext';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { NO_FOLDER_COLLAPSE_KEY, type useCollapsedFolders } from '../hooks/useCollapsedFolders';
 
 interface Props {
@@ -20,6 +20,7 @@ interface Props {
   onToggleBulkSelect: (id: string) => void;
   onDragFileStart?: (id: string) => void;
   draggedFileId?: string | null;
+  draggedFileCount?: number;
   draggedFileFolderId?: string | null;
   draggedFolderId: string | null;
   dragOverFolderId: string | null;
@@ -34,6 +35,7 @@ export function GroupedModelList({
   models,
   folders,
   draggedFileId = null,
+  draggedFileCount = 1,
   draggedFileFolderId = null,
   draggedFolderId,
   dragOverFolderId,
@@ -44,6 +46,7 @@ export function GroupedModelList({
   ...modelListProps
 }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { roots, noFolder } = useMemo(() => buildGroupedFolderTree(folders, models), [folders, models]);
 
   const folderDrag = useDragThreshold(onDragFolderStart);
@@ -72,7 +75,7 @@ export function GroupedModelList({
           <span className="text-body font-semibold">{displayName(node.folder.name)}</span>
           <span className="font-medium tabular-nums text-compact-meta text-[var(--ink-3)]">{node.totalCount}</span>
           <span className="flex-1 h-px bg-[var(--line)]" />
-          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
+          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{draggedFileId && draggedFileCount > 1 ? formatCount(t('dropHereMany'), draggedFileCount) : t('dropHereLabel')}</span>}
         </div>
         {!isCollapsed && (
           <div className="mt-2">

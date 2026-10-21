@@ -35,13 +35,14 @@ interface Props {
   folders: Folder[];
   totalModelCount: number;
   onCatalogRemoved?: () => void;
-  onFolderRenamed?: (info: { from: string; to: string; count: number }) => void;
+  onFolderRenamed?: (info: { id: string; from: string; to: string; count: number }) => void;
   onFolderTrashed?: (result: FolderTrashResult) => void;
   activeFolderId: string;
   onFolderSelect: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
   draggedFileId?: string | null;
   draggedFileFolderId?: string | null;
+  draggedFileCount?: number;
   dragOverCollectionId?: string | null;
   onCollectionMouseEnter?: (id: string) => void;
   onCollectionMouseLeave?: (id: string) => void;
@@ -94,6 +95,7 @@ export function Sidebar({
   onCreateFolder,
   draggedFileId = null,
   draggedFileFolderId = null,
+  draggedFileCount = 1,
   dragOverCollectionId = null,
   onCollectionMouseEnter,
   onCollectionMouseLeave,
@@ -282,6 +284,7 @@ export function Sidebar({
           onTrashed={onFolderTrashed}
           draggedFileId={draggedFileId}
           draggedFileFolderId={draggedFileFolderId}
+          draggedFileCount={draggedFileCount}
           dragOverFolderId={dragOverFolderId}
           draggedFolderId={draggedFolderId}
           onFolderMouseEnter={onFolderMouseEnter}
