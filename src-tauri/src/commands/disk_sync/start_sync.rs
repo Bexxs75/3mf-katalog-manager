@@ -63,10 +63,44 @@ pub struct StartSyncResult {
     pub(super) applied: Option<StartSyncApplied>,
 }
 
+/// Paths of new files that repeat the content of an earlier new file (by path order).
+/// The scan only compares new files with catalog entries, so two identical files dropped
+/// in together would both be taken over; only the first of them is. Files are grouped by
+/// size first and only groups of more than one are hashed. A file that cannot be read is
+/// never held back.
+fn repeated_new_files(scan: &DiskScan) -> HashSet<String> {
+    let mut by_size: HashMap<u64, Vec<(&str, PathBuf)>> = HashMap::new();
+    for entry in &scan.new_files {
+        let Some(disk_path) = scan.roots.iter().find(|r| r.stored == Path::new(&entry.root)).and_then(|r| r.resolve(Path::new(&entry.path)))
+        else {
+            continue;
+        };
+        if let Ok(meta) = std::fs::symlink_metadata(&disk_path) {
+            if meta.is_file() {
+                by_size.entry(meta.len()).or_default().push((entry.path.as_str(), disk_path));
+            }
+        }
+    }
+    let mut held_back = HashSet::new();
+    for mut group in by_size.into_values().filter(|group| group.len() > 1) {
+        group.sort_by(|a, b| a.0.cmp(b.0));
+        let mut seen = HashSet::new();
+        for (path, disk_path) in group {
+            if let Ok(hash) = files::compute_content_hash(&disk_path) {
+                if !seen.insert(hash) {
+                    held_back.insert(path.to_string());
+                }
+            }
+        }
+    }
+    held_back
+}
+
 /// Picks only what may happen without asking: new files (with the folders they need) and
-/// detected renames. Missing entries and copies of present models are left out on purpose.
-fn auto_selection(scan: &DiskScan, sensitive_dirs: Vec<PathBuf>) -> DiskSelection {
-    let files: Vec<&str> = scan.new_files.iter().map(|e| e.path.as_str()).collect();
+/// detected renames. Missing entries and copies of present models are left out on purpose,
+/// and so are repeats of another new file (`held_back`).
+fn auto_selection(scan: &DiskScan, held_back: &HashSet<String>, sensitive_dirs: Vec<PathBuf>) -> DiskSelection {
+    let files: Vec<&str> = scan.new_files.iter().map(|e| e.path.as_str()).filter(|p| !held_back.contains(*p)).collect();
     // A folder is only created for files that are actually taken over below it.
     let folders = scan
         .new_folders
@@ -116,7 +150,10 @@ pub(super) fn sync_at_start(
         ..Default::default()
     };
     if auto_add && (result.new_files > 0 || result.renamed > 0) {
-        let applied = apply_with_reader(conn, auto_selection(&scan, sensitive_dirs), read)?;
+        let held_back = repeated_new_files(&scan);
+        // They stay open for the manual sync, which then shows them as copies.
+        result.duplicates += held_back.len();
+        let applied = apply_with_reader(conn, auto_selection(&scan, &held_back, sensitive_dirs), read)?;
         result.applied = Some(StartSyncApplied {
             added: applied.file_ids.len(),
             renamed: applied.renamed_count,

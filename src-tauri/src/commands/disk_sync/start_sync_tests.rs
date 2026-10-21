@@ -228,3 +228,29 @@ fn serialized_result_uses_camel_case() {
         assert!(json.get(key).is_some(), "{key}");
     }
 }
+
+#[test]
+fn two_identical_new_files_are_taken_over_only_once() {
+    let mut w = World::new();
+    let same = "v 0 0 0\nv 7 0 0\nv 0 7 0\nf 1 2 3\n";
+    std::fs::write(w.root.join("b_twin.obj"), same).unwrap();
+    std::fs::write(w.root.join("a_twin.obj"), same).unwrap();
+    std::fs::write(w.root.join("other.obj"), "v 0 0 0\nv 8 0 0\nv 0 8 0\nf 1 2 3\n").unwrap();
+    w.settings(true, true);
+    let result = w.run();
+    assert_eq!(result.applied, Some(StartSyncApplied { added: 2, renamed: 0, failed: 0 }));
+    assert_eq!(result.duplicates, 1, "the held-back twin is reported as the same content");
+    let paths = w.paths();
+    let has = |name: &str| paths.iter().any(|p| Path::new(p) == w.root.join(name));
+    assert!(has("a_twin.obj") && has("other.obj"), "the first twin by path and the other file are taken over");
+    assert!(!has("b_twin.obj"), "the second twin is left for the manual sync");
+    // The manual sync now offers the twin as a copy of the one that was taken over.
+    let preview = scan(&w.conn).unwrap();
+    assert_eq!(preview.duplicate_files.len(), 1);
+    assert!(preview.duplicate_files[0].duplicate_of_path.ends_with("a_twin.obj"));
+    // Nothing more happens on the next start.
+    let before = w.paths();
+    let again = w.run();
+    assert_eq!(again.applied, Some(StartSyncApplied::default()));
+    assert_eq!(w.paths(), before);
+}

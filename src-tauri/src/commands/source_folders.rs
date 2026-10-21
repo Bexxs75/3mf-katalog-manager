@@ -378,7 +378,18 @@ pub async fn scan_source_folders(app: tauri::AppHandle) -> CmdResult<Vec<SourceS
 /// The files an import from source folders may take: a catalog folder must be set up
 /// (otherwise the import would register the files where they are instead of moving
 /// them) and every path must be listed by a fresh scan.
+#[cfg(test)]
 pub(super) fn accepted_import_paths(state: &AppState, requested: &[String], max_entries: usize) -> CmdResult<Vec<PathBuf>> {
+    accepted_import_selection(state, requested, max_entries).map(|(paths, _)| paths)
+}
+
+/// Like [`accepted_import_paths`], and also the source folders the files were listed
+/// under, which the import worker holds the files to.
+pub(super) fn accepted_import_selection(
+    state: &AppState,
+    requested: &[String],
+    max_entries: usize,
+) -> CmdResult<(Vec<PathBuf>, Vec<PathBuf>)> {
     {
         let conn = lock(&state.db)?;
         if db::printer_link::get_setting(&conn, folders::SETTING_CATALOG_BASE_DIR)?.is_none() {
@@ -390,7 +401,15 @@ pub(super) fn accepted_import_paths(state: &AppState, requested: &[String], max_
     if accepted.is_empty() {
         return Err(CmdError::expected("Es wurden keine Dateien ausgewählt."));
     }
-    Ok(accepted.into_iter().map(|(path, _)| path).collect())
+    // The scan lists files below the resolved folder, so that is the root that matters;
+    // the registered spelling is kept too in case it already was the resolved one.
+    let mut roots = Vec::new();
+    for scan in scans.iter().filter(|scan| !scan.unreachable) {
+        let registered = PathBuf::from(&scan.folder_path);
+        roots.extend(registered.canonicalize().ok());
+        roots.push(registered);
+    }
+    Ok((accepted.into_iter().map(|(path, _)| path).collect(), roots))
 }
 
 /// Takes the chosen files into the catalog through the normal import job, which moves
@@ -400,8 +419,8 @@ pub(super) fn accepted_import_paths(state: &AppState, requested: &[String], max_
 pub async fn import_source_files(app: tauri::AppHandle, paths: Vec<String>) -> CmdResult<StartedImport> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let paths = accepted_import_paths(&state, &paths, MAX_SCAN_ENTRIES)?;
-        let job = submit_models(&app, ImportSource::Files, paths, None, false)?;
+        let (paths, roots) = accepted_import_selection(&state, &paths, MAX_SCAN_ENTRIES)?;
+        let job = submit_models_confined(&app, ImportSource::Files, paths, None, false, roots)?;
         Ok(StartedImport { job_id: Some(job.id.clone()) })
     })
     .await

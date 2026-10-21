@@ -89,6 +89,34 @@ fn scan_candidates_observed(
     }
     out
 }
+/// True if `path` lies below one of `roots` and is reached without passing a link: every
+/// component below the root is looked at without following links, and the resolved
+/// path must still be inside the resolved root. A folder swapped for a link after a scan
+/// would otherwise lead the worker to a same-named file somewhere else, which the
+/// placement then moves out of its folder. The root itself may be reached through a link
+/// (the user registered it that way). No roots means no restriction.
+fn stays_below(path: &Path, roots: &[PathBuf]) -> bool {
+    if roots.is_empty() {
+        return true;
+    }
+    roots.iter().any(|root| {
+        let Ok(relative) = path.strip_prefix(root) else { return false };
+        let mut current = root.clone();
+        for component in relative.components() {
+            if !matches!(component, std::path::Component::Normal(_)) {
+                return false;
+            }
+            current.push(component);
+            if std::fs::symlink_metadata(&current).is_ok_and(|m| m.file_type().is_symlink()) {
+                return false;
+            }
+        }
+        match (path.canonicalize(), root.canonicalize()) {
+            (Ok(resolved), Ok(resolved_root)) => resolved.starts_with(resolved_root),
+            _ => false,
+        }
+    })
+}
 fn skip(job: &ImportJob, path: &Path, reason: &str) {
     job.data.lock().unwrap().groups.skipped.push(SkippedEntry {
         path: path.to_string_lossy().into_owned(),
@@ -235,6 +263,10 @@ pub(super) fn run_models(
             skip(job, path, "notStarted");
             continue;
         }
+        if !stays_below(path, &job.confine_to) {
+            skip(job, path, "unsafe");
+            continue;
+        }
         job.data.lock().unwrap().current = Some(path_string);
         match service.reader.read(path) {
             Ok(new_file) => {
@@ -287,6 +319,10 @@ pub(super) fn run_models(
             }
             let reason = if job.cancel.load(Ordering::Acquire) {
                 Some("cancelled")
+            } else if !stays_below(Path::new(&file.path), &job.confine_to) {
+                // The file may have been swapped since it was read; never move what
+                // is no longer the scanned file.
+                Some("moveFailed")
             } else {
                 let placed = database.with_conn(|conn| {
                     let target = if job.placement_required {

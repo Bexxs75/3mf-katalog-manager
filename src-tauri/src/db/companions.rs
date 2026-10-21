@@ -136,6 +136,29 @@ pub fn restore_companion(conn: &Connection, id: i64, path: &str) -> Result<(), D
     Ok(())
 }
 
+/// Like [`restore_companion`], but the file came back under a different name. All of it
+/// is one statement, so the row never shows a name that disagrees with its path.
+pub fn restore_companion_as(conn: &Connection, id: i64, name: &str, path: &str) -> Result<(), DbError> {
+    let affected = conn.execute(
+        "UPDATE companion_files SET deleted_at = NULL, trash_path = NULL, name = ?1, path = ?2 WHERE id = ?3",
+        params![name, path, id],
+    )?;
+    if affected == 0 {
+        return Err(DbError::Other(format!("keine Begleitdatei mit id {id} gefunden")));
+    }
+    Ok(())
+}
+
+/// True if a row other than `except` already holds `path` (trashed rows included: they
+/// keep their old path, which stays unique).
+pub fn path_held_by_other_row(conn: &Connection, path: &str, except: Option<i64>) -> Result<bool, DbError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM companion_files WHERE path = ?1 AND id IS NOT ?2)",
+        params![path, except],
+        |r| r.get(0),
+    )?)
+}
+
 pub fn update_companion_path(conn: &Connection, id: i64, path: &str) -> Result<(), DbError> {
     let affected = conn.execute("UPDATE companion_files SET path = ?1 WHERE id = ?2", params![path, id])?;
     if affected == 0 {
