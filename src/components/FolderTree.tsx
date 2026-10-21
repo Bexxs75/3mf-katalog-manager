@@ -194,6 +194,7 @@ export function FolderTree({
           onMouseEnter={() => { setHoveredId(node.id); onFolderMouseEnter?.(node.id); }}
           onMouseLeave={() => { setHoveredId((current) => current === node.id ? null : current); onFolderMouseLeave?.(node.id); }}
           style={{ paddingLeft: 6 + depth * 16 }}
+          title={node.missing ? t('folderMissingOnDisk') : undefined}
           className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer select-none text-small border ${
             node.id === activeFolderId
               ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold hover:text-[var(--ink)]'
@@ -214,7 +215,9 @@ export function FolderTree({
           >
             <Icon name="chevron" size={14} className={isOpen  ? '' : '-rotate-90'} />
           </span>
+          {node.missing && <span className="text-[var(--warn)] shrink-0 flex" data-testid="folder-missing-icon"><Icon name="warning" size={14} /></span>}
           <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{displayName(node.name)}</span>
+          {node.missing && <span className="shrink-0 rounded-full px-1.5 text-compact-meta bg-[var(--warn-soft)] text-[var(--warn)]">{t('folderMissingOnDisk')}</span>}
           <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{node.count}</span>
           {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
         </div>

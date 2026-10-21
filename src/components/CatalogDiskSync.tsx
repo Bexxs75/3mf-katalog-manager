@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { applyCatalogDiskSync, scanCatalogDisk, diskSyncError, type DiskSyncError, type DiskScan, type DiskApplied, type DiskEntry, type DiskFailedPath, type DiskPicked, type DiskRename } from '../lib/api/diskSync';
+import { applyCatalogDiskSync, scanCatalogDisk, diskSyncError, type DiskSyncError, type DiskScan, type DiskApplied, type DiskEntry, type DiskFolderEntry, type DiskFailedPath, type DiskPicked, type DiskRename } from '../lib/api/diskSync';
 import { Icon } from './Icon';
 
 const button = 'px-3 py-2 rounded border border-[var(--line)] bg-[var(--panel)] text-body cursor-pointer disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
@@ -32,7 +32,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   const [renameIds, setRenameIds] = useState<ReadonlySet<string>>(() => initialRenames(scan));
   useEffect(() => { setPaths(initialPaths(scan)); setRenameIds(initialRenames(scan)); }, [scan]);
   const selectable = !!scan && (scan.newFiles.length > 0 || scan.renamedFiles.length > 0 || scan.duplicateFiles.length > 0);
-  const hasMissing = !!scan && scan.missingFiles.length > 0;
+  const hasMissing = !!scan && (scan.missingFiles.length > 0 || scan.missingFolders.length > 0);
   // The reset effect runs after the render that drops the scan; do not trust stale ticks until then.
   const canApply = (!!scan && paths.size + renameIds.size > 0) || (remove && hasMissing);
   const ref = useModalDialog({ open: true, onClose, busy });
@@ -49,6 +49,20 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   </>;
   const group = (entries: DiskEntry[]) => <ul className="space-y-1">{entries.map(e => (
     <li key={e.path} title={displayName(e.path)} className="rounded bg-[var(--panel-2)] p-2 text-small">{rows(e)}</li>
+  ))}</ul>;
+  // Folders that are gone come first: they explain why many files below are missing.
+  const missingFolderRows = (entries: DiskFolderEntry[]) => <ul className="space-y-1 mb-1">{entries.map(e => (
+    <li key={e.path} title={displayName(e.path)} className="rounded bg-[var(--panel-2)] p-2 text-small">
+      <div className="flex gap-2">
+        <span className="w-[100px] shrink-0 text-[var(--ink-3)]">{t('diskSyncFolderLabel')}</span>
+        <span className="min-w-0 break-all font-code">{displayName(e.relativePath)} <span className="font-sans text-[var(--ink-2)]">({count(t('diskSyncFolderModels'), e.modelCount)})</span></span>
+      </div>
+      <div className="my-1.5 border-t border-[var(--line)]" />
+      <div className="flex gap-2">
+        <span className="w-[100px] shrink-0 text-[var(--ink-3)]">{t('diskSyncRootLabel')}</span>
+        <span className="min-w-0 break-all font-code">{displayName(e.root)}</span>
+      </div>
+    </li>
   ))}</ul>;
   // A real checkbox per file; the label spans the entry so the whole row is a click target.
   const pickable = <T extends DiskEntry,>(entries: T[], note?: (e: T) => string) => <ul className="space-y-1">{entries.map(e => (
@@ -86,6 +100,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
           <div className="flex flex-wrap gap-2">{([
             ...(scan.renamedFiles.length > 0 ? [count(t('diskSyncRenamed'), scan.renamedFiles.length)] : []),
             count(t('diskSyncNewFiles'), scan.newFiles.length), count(t('diskSyncNewFolders'), scan.newFolders.length), count(t('diskSyncMissing'), scan.missingFiles.length),
+            ...(scan.missingFolders.length > 0 ? [count(t('diskSyncMissingFolders'), scan.missingFolders.length)] : []),
             ...(scan.duplicateFiles.length > 0 ? [count(t('diskSyncDuplicates'), scan.duplicateFiles.length)] : []),
           ]).map(text => <span key={text} className="rounded-full px-3 py-1 bg-[var(--panel-2)] text-small">{text}</span>)}</div>
           {scan.skippedPaths.length > 0 && <section><h3 className="ui-label mb-2">{count(t('diskSyncSkipped'), scan.skippedPaths.length)}</h3><ul>{scan.skippedPaths.map(path => <li key={path} className="font-code break-all">{displayName(path)}</li>)}</ul></section>}
@@ -96,7 +111,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
           {scan.duplicateFiles.length > 0 && <section><h3 className="ui-label mb-2 flex flex-wrap gap-2 items-center">{t('diskSyncDuplicateHeading')}<span className={tag}>{t('diskSyncNotPreselected')}</span></h3>
             {pickable(scan.duplicateFiles, e => t('diskSyncDuplicateOf').replace('{name}', displayName(e.duplicateOfPath)))}
             <p className={hintBox}>{t('diskSyncDuplicateHint')}</p></section>}
-          {scan.missingFiles.length > 0 && <section><h3 className="ui-label mb-2">{t('diskSyncMissingHeading')}</h3>{group(scan.missingFiles)}
+          {hasMissing && <section><h3 className="ui-label mb-2">{t('diskSyncMissingHeading')}</h3>{scan.missingFolders.length > 0 && missingFolderRows(scan.missingFolders)}{group(scan.missingFiles)}
             <label className="flex gap-2 mt-4"><input type="checkbox" checked={remove} disabled={busy} onChange={e => setRemove(e.target.checked)} />{t('diskSyncRemove')}</label>
             <p className="text-small text-[var(--ink-2)] mt-2">{t('diskSyncRemoveHint')}</p>
           </section>}
@@ -110,7 +125,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   </div>, document.body);
 }
 
-export function CatalogDiskSync({ onApplied, active = true }: { onApplied?: () => Promise<unknown>; active?: boolean }) {
+export function CatalogDiskSync({ onApplied, onScanned, active = true }: { onApplied?: () => Promise<unknown>; onScanned?: () => unknown; active?: boolean }) {
   const t = useT(); const count = useFormatCount(); const { language } = useLanguage();
   const { jobActive } = useImportLock();
   const [busy, setBusy] = useState(false);
@@ -131,12 +146,14 @@ export function CatalogDiskSync({ onApplied, active = true }: { onApplied?: () =
       if (result.unreachableRoots.length) setError({ code: 'diskSyncRootUnreachable', paths: result.unreachableRoots });
       else {
         setLastScan(new Date());
-        if (result.newFiles.length || result.newFolders.length || result.renamedFiles.length || result.duplicateFiles.length || result.missingFiles.length || result.skippedPaths.length) setScan(result);
+        // The folder tree marks missing folders; it should not wait for the next reload to learn what the scan saw.
+        try { void Promise.resolve(onScanned?.()).catch(() => undefined); } catch { /* the scan result matters more */ }
+        if (result.newFiles.length || result.newFolders.length || result.renamedFiles.length || result.duplicateFiles.length || result.missingFiles.length || result.missingFolders.length || result.skippedPaths.length) setScan(result);
         else setToast(t('diskSyncCurrent'));
       }
     } catch (e) { setError(diskSyncError(e)); }
     finally { running.current = false; setBusy(false); }
-  }, [t, jobActive]);
+  }, [t, jobActive, onScanned]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (!active || event.key !== 'F5' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;

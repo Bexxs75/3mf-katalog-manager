@@ -74,6 +74,9 @@ export interface Translations {
   diskSyncNewFiles: PluralForms;
   diskSyncNewFolders: PluralForms;
   diskSyncMissing: PluralForms;
+  diskSyncMissingFolders: PluralForms;
+  diskSyncFolderLabel: string;
+  diskSyncFolderModels: PluralForms;
   diskSyncRemoved: PluralForms;
   diskSyncSkipped: PluralForms;
   diskSyncUnreadable: PluralForms;
@@ -414,6 +417,7 @@ export interface Translations {
   renameFolder: string;
   renameFolderLabel: string;
   renameFolderHint: PluralForms;
+  folderMissingOnDisk: string;
   renameFolderEmpty: string;
   renameFolderSeparator: string;
   folderRenamed: PluralForms;

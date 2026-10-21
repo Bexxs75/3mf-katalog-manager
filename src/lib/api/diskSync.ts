@@ -5,6 +5,8 @@ export interface DiskRename {
   id: string; oldPath: string; oldRelativePath: string; oldRoot: string;
   newPath: string; newRelativePath: string; root: string;
 }
+/** A catalog folder whose directory is gone from disk; `modelCount` includes subfolders, not the trash. */
+export interface DiskFolderEntry { id: string; path: string; relativePath: string; root: string; modelCount: number }
 export interface DiskDuplicate extends DiskEntry { duplicateOfName: string; duplicateOfPath: string }
 export interface DiskScan {
   newFolders: DiskEntry[];
@@ -12,6 +14,7 @@ export interface DiskScan {
   renamedFiles: DiskRename[];
   duplicateFiles: DiskDuplicate[];
   missingFiles: DiskEntry[];
+  missingFolders: DiskFolderEntry[];
   unreachableRoots: string[];
   skippedPaths: string[];
 }

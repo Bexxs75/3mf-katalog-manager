@@ -106,6 +106,8 @@ export interface Folder {
   path: string;
   parentId: string | null;
   count: number;
+  /** The directory is gone from disk (false when unknown, e.g. root not readable). */
+  missing?: boolean;
 }
 
 export type SkipReason = 'empty' | 'invalid' | 'failed';

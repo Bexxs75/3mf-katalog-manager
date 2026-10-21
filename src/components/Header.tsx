@@ -11,6 +11,7 @@ import { useT, useFormatCount } from '../i18n/LanguageContext';
 
 interface Props {
   onDiskSyncApplied?: () => Promise<unknown>;
+  onDiskSyncScanned?: () => unknown;
   detailPanel?: 'auto' | 'pinned';
   onDetailPanelChange?: (mode: 'auto' | 'pinned') => void;
   importTargetName?: string;
@@ -41,6 +42,7 @@ const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
 export function Header({
   onDiskSyncApplied,
+  onDiskSyncScanned,
   detailPanel = 'auto', onDetailPanelChange,
   importTargetName,
   importTargetIsRoot = false,
@@ -108,7 +110,7 @@ export function Header({
         )}
       </div>
 
-      <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} />
+      <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} onScanned={onDiskSyncScanned} />
       {mainView === 'catalog' && (
       <>
       <div ref={importRef} className="relative flex shrink-0">
