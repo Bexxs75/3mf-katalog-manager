@@ -76,6 +76,26 @@ pub(super) fn is_internal(path: &Path, base: Option<&Path>) -> bool {
         .is_some_and(|(base, path)| path.starts_with(base))
 }
 
+// Lets tests act as another program that touches the disk between a check and the
+// file operation that follows it.
+#[cfg(test)]
+type RaceHook = Box<dyn Fn(&str, &Path)>;
+#[cfg(test)]
+thread_local! {
+    static RACE: std::cell::RefCell<Option<RaceHook>> =
+        const { std::cell::RefCell::new(None) };
+}
+#[cfg(test)]
+fn race_point(stage: &str, path: &Path) {
+    RACE.with(|race| {
+        if let Some(hook) = race.borrow().as_ref() {
+            hook(stage, path);
+        }
+    });
+}
+#[cfg(not(test))]
+fn race_point(_stage: &str, _path: &Path) {}
+
 /// Only called for rows created by this import, never for rescans or manual moves.
 pub(super) fn place(
     conn: &Connection,
@@ -115,7 +135,6 @@ pub(super) fn place(
     let Some(original) = old.file_name().and_then(|name| name.to_str()) else {
         return Ok(());
     };
-    let same_directory = old.parent() == Some(dir.as_path());
     let mut number = 1;
     let new = loop {
         let name = import_name(original, prefix, number);
@@ -126,16 +145,10 @@ pub(super) fn place(
         if candidate == old {
             break candidate;
         }
-        if same_directory {
-            // Rename in place preserves file metadata, like manual renaming.
-            if candidate.symlink_metadata().is_ok() {
-                number += 1;
-                continue;
-            }
-            std::fs::rename(&old, &candidate).map_err(|e| e.to_string())?;
-            break candidate;
-        }
-        // The existing move helper reserves the target without overwriting it.
+        // `move_file` links instead of renaming, so a target that appeared since the
+        // name was chosen is reported as AlreadyExists, never replaced. In the same
+        // directory the link keeps the inode and thus all file metadata, like a rename.
+        race_point("before-move", &candidate);
         match move_file(&old, &candidate) {
             Ok(()) => break candidate,
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => number += 1,
@@ -155,10 +168,11 @@ pub(super) fn place(
         Ok(())
     })();
     if let Err(error) = updated {
+        race_point("before-rollback", &old);
+        // Never replaces a file that was created at the old path in the meantime; the
+        // failure is reported together with the location of the renamed file.
         let rollback = if new == old {
             Ok(())
-        } else if same_directory {
-            std::fs::rename(&new, &old)
         } else {
             move_file(&new, &old)
         };
@@ -353,6 +367,53 @@ mod tests {
                 .join("catalog")
                 .join(format!("{PREFIX}model.stl"))
                 .exists());
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    fn on_race(hook: impl Fn(&str, &Path) + 'static) {
+        RACE.with(|race| *race.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    #[test]
+    fn target_created_after_the_free_check_is_never_overwritten() {
+        for internal in [true, false] {
+            let (conn, root, source, folder, id) = fixture(internal);
+            let target = root.join("catalog").join(format!("{PREFIX}model.stl"));
+            let expected = target.clone();
+            on_race(move |stage, _| {
+                if stage == "before-move" && !expected.exists() {
+                    std::fs::write(&expected, b"created meanwhile").unwrap();
+                }
+            });
+            place(&conn, id, Some(folder), Some(PREFIX), &[]).unwrap();
+            RACE.with(|race| *race.borrow_mut() = None);
+            assert_eq!(std::fs::read(&target).unwrap(), b"created meanwhile");
+            let row = db::get_file(&conn, id).unwrap().unwrap();
+            assert_eq!(row.name, format!("{PREFIX}model (2).stl"));
+            assert_eq!(std::fs::read(&row.path).unwrap(), b"original");
+            assert!(!source.exists());
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn rollback_never_overwrites_a_source_recreated_meanwhile() {
+        for internal in [true, false] {
+            let (conn, root, source, folder, id) = fixture(internal);
+            conn.execute_batch("CREATE TRIGGER reject_import_name BEFORE UPDATE OF name ON files BEGIN SELECT RAISE(ABORT, 'injected'); END;").unwrap();
+            let recreated = source.clone();
+            on_race(move |stage, _| {
+                if stage == "before-rollback" {
+                    std::fs::write(&recreated, b"recreated meanwhile").unwrap();
+                }
+            });
+            let error = place(&conn, id, Some(folder), Some(PREFIX), &[]).unwrap_err();
+            RACE.with(|race| *race.borrow_mut() = None);
+            assert!(error.to_string().contains("Rollback"), "{error}");
+            assert_eq!(std::fs::read(&source).unwrap(), b"recreated meanwhile");
+            let moved = root.join("catalog").join(format!("{PREFIX}model.stl"));
+            assert_eq!(std::fs::read(moved).unwrap(), b"original");
             std::fs::remove_dir_all(root).unwrap();
         }
     }

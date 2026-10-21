@@ -324,6 +324,37 @@ fn verify_rename_rejects_a_target_whose_hash_changed_after_the_scan() {
 }
 
 #[test]
+fn target_replaced_while_other_models_are_read_leaves_the_row_untouched() {
+    let mut f = Fixture::new();
+    let old = f.add("Vase.obj", OBJ_A);
+    let new = f.root.join("Vase2.obj");
+    std::fs::rename(&old, &new).unwrap();
+    // A new model forces the (possibly minutes long) read after the first check.
+    let fresh = f.root.join("Fresh.obj");
+    std::fs::write(&fresh, OBJ_B).unwrap();
+    let selection = f.selection(false);
+    assert_eq!(selection.renames.len(), 1);
+    let target = new.clone();
+    let applied = apply_with_reader(&mut f.conn, selection, |path| {
+        // Another program puts a different model at the pairing target meanwhile.
+        std::fs::write(&target, OBJ_C).unwrap();
+        let mut file = files::read_import_model_file(path, None)?;
+        file.content_hash = Some(files::compute_content_hash(path)?);
+        Ok(file)
+    })
+    .unwrap();
+    assert_eq!(applied.renamed_count, 0);
+    assert_eq!(applied.failed_paths.len(), 1);
+    assert_eq!(applied.failed_paths[0].path, s(&new));
+    assert_eq!(applied.file_ids.len(), 1, "the other chosen model is still imported");
+    let row: String = f
+        .conn
+        .query_row("SELECT path FROM files WHERE path = ?1", [s(&old)], |r| r.get(0))
+        .unwrap();
+    assert_eq!(row, s(&old));
+}
+
+#[test]
 fn rename_to_an_unlisted_target_is_rejected() {
     let mut f = Fixture::new();
     let old = f.add("Vase.obj", OBJ_A);
@@ -439,6 +470,28 @@ fn partly_moved_folder_is_left_alone() {
         .query_row("SELECT folder_id FROM files WHERE path = ?1", [s(&f.root.join("Neu/wandert.obj"))], |r| r.get(0))
         .unwrap();
     assert_eq!(folder_id, new_folder.id);
+}
+
+#[test]
+fn folder_rows_stay_when_a_sibling_folder_still_exists_on_disk() {
+    let mut f = Fixture::new();
+    let moved = f.add("Alt/a.obj", OBJ_A);
+    // Empty catalogued subfolder: it is not offered by the scan but has a row.
+    let leer = f.root.join("Alt/Leer");
+    std::fs::create_dir(&leer).unwrap();
+    db::ensure_folder_path(&f.conn, &f.root, &leer).unwrap();
+    let alt = f.folder(&f.root.join("Alt")).unwrap();
+    let leer_row = f.folder(&leer).unwrap();
+    std::fs::create_dir(f.root.join("Neu")).unwrap();
+    std::fs::rename(&moved, f.root.join("Neu/a.obj")).unwrap();
+    let applied = f.apply_all();
+    assert_eq!(applied.renamed_count, 1);
+    // Alt and Alt/Leer are untouched on disk, so their rows must not move.
+    assert_eq!(f.folder(&f.root.join("Alt")).unwrap().id, alt.id);
+    assert_eq!(f.folder(&leer).unwrap().id, leer_row.id);
+    assert!(f.folder(&f.root.join("Neu/Leer")).is_none());
+    assert_ne!(f.folder(&f.root.join("Neu")).unwrap().id, alt.id);
+    assert!(db::list_files(&f.conn).unwrap()[0].path.ends_with("Neu/a.obj"));
 }
 
 #[test]
