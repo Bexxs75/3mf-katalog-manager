@@ -264,3 +264,41 @@ describe('refused folder drops', () => {
     } finally { errorLog.mockRestore(); }
   });
 });
+
+describe('dragging a mixed selection', () => {
+  const folders = [makeFolder({ id: 'a', path: '/A' }), makeFolder({ id: 'b', path: '/B' })];
+  const models = [
+    makeModelFile({ id: 'm1', name: 'One', folderId: 'a' }),
+    makeModelFile({ id: 'm2', name: 'Two', folderId: 'b' }),
+  ];
+
+  it('keeps the folder of one dragged file a valid target while another file is elsewhere', async () => {
+    vi.mocked(invoke).mockResolvedValue([
+      { id: 'm1', status: 'skipped_already_there' },
+      { id: 'm2', status: 'moved', fromFolderId: 'b', fromPath: '/B' },
+    ]);
+    const { result } = renderHook(() =>
+      useFolderDragAndDrop(models, folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }, undefined, null, new Set(['m1', 'm2'])),
+    );
+    act(() => result.current.onDragFileStart('m1'));
+    expect(result.current.draggedFilesFolderId).toBeNull();
+    act(() => result.current.handleFolderMouseEnter('a'));
+    expect(result.current.dragOverFolderId).toBe('a');
+    await act(async () => {
+      fireEvent.mouseUp(document);
+    });
+    expect(invoke).toHaveBeenCalledWith('move_files_to_folder', { fileIds: ['m1', 'm2'], folderId: 'a' });
+  });
+
+  it('refuses the target only when every dragged file is already in it', () => {
+    const { result } = renderHook(() =>
+      useFolderDragAndDrop(models, folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }, undefined, null, new Set(['m1'])),
+    );
+    act(() => result.current.onDragFileStart('m1'));
+    expect(result.current.draggedFilesFolderId).toBe('a');
+    act(() => result.current.handleFolderMouseEnter('a'));
+    expect(result.current.dragOverFolderId).toBeNull();
+    act(() => result.current.handleFolderMouseEnter('b'));
+    expect(result.current.dragOverFolderId).toBe('b');
+  });
+});

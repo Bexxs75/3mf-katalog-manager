@@ -81,3 +81,18 @@ export function folderMoveBlock(
   const clash = folders.some((f) => f.parentId === targetId && f.id !== folderId && pathBasename(f.path) === name);
   return clash ? 'nameTaken' : null;
 }
+
+/**
+ * The folder every given file already lies in, or null when they differ (or there are
+ * none). A drop target only counts as "already there" when ALL dragged files are in it:
+ * the backend skips those and still moves the rest.
+ */
+export function sharedFolderId(models: ReadonlyArray<{ id: string; folderId?: string | null }>, ids: readonly string[]): string | null {
+  let shared: string | null = null;
+  for (const [index, id] of ids.entries()) {
+    const folderId = models.find((model) => model.id === id)?.folderId ?? null;
+    if (folderId === null || (index > 0 && folderId !== shared)) return null;
+    shared = folderId;
+  }
+  return shared;
+}

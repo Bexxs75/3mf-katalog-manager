@@ -59,6 +59,8 @@ interface CatalogWorkspaceProps {
   setActiveFolderId: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
   draggedFileId?: string | null;
+  /** Folder all dragged files are in, or null when they are not all in the same one. */
+  draggedFileFolderId?: string | null;
   draggedFileCount?: number;
   dragOverCollectionId?: string | null;
   handleCollectionMouseEnter?: (id: string) => void;
@@ -173,6 +175,7 @@ export function CatalogWorkspace({
   setActiveFolderId,
   onCreateFolder,
   draggedFileId = null,
+  draggedFileFolderId = null,
   draggedFileCount = 1,
   dragOverCollectionId,
   handleCollectionMouseEnter,
@@ -397,7 +400,7 @@ export function CatalogWorkspace({
         dragOverFolderId={dragOverFolderId}
         draggedFolderId={draggedFolderId}
         draggedFileId={draggedFileId}
-        draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
+        draggedFileFolderId={draggedFileFolderId}
         draggedFileCount={draggedFileCount}
         onFolderMouseEnter={handleFolderMouseEnter}
         onFolderMouseLeave={handleFolderMouseLeave}
@@ -627,7 +630,7 @@ export function CatalogWorkspace({
                 onDragFileStart={jobActive ? undefined : onDragFileStart}
                 draggedFolderId={draggedFolderId}
                 draggedFileId={draggedFileId}
-                draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
+                draggedFileFolderId={draggedFileFolderId}
         draggedFileCount={draggedFileCount}
                 dragOverFolderId={dragOverFolderId}
                 onDragFolderStart={jobActive ? () => {} : onDragFolderStart}
@@ -649,7 +652,7 @@ export function CatalogWorkspace({
                 onDragFileStart={jobActive ? undefined : onDragFileStart}
                 draggedFolderId={draggedFolderId}
                 draggedFileId={draggedFileId}
-                draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
+                draggedFileFolderId={draggedFileFolderId}
         draggedFileCount={draggedFileCount}
                 dragOverFolderId={dragOverFolderId}
                 onDragFolderStart={jobActive ? () => {} : onDragFolderStart}

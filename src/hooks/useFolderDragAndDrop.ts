@@ -1,8 +1,8 @@
 import { dismissDragDropTip } from '../lib/dragDropTip';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as collectionsApi from '../lib/api/collections';
 import * as foldersApi from '../lib/api/folders';
-import { folderMoveBlock } from '../lib/folderTree';
+import { folderMoveBlock, sharedFolderId } from '../lib/folderTree';
 import { messageOf, toAppError } from '../lib/errors';
 import {
   groupByOldFolder, pushUndoStep, summarizeMoveResults, undoItemsFromResults,
@@ -36,6 +36,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const undoStack = useRef<UndoStep[]>([]);
   const [undoCount, setUndoCount] = useState(0);
   const undoBusy = useRef(false);
+  const draggedFilesFolderId = useMemo(() => sharedFolderId(models, draggedFileIds), [models, draggedFileIds]);
   // Last folder row under the pointer, valid or not: a refused drop still needs to say why.
   const hoveredFolderId = useRef<string | null>(null);
 
@@ -72,7 +73,9 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       if (!draggedFileId && !draggedFolderId) return;
       hoveredFolderId.current = id;
       setDragOverCollectionId(null);
-      if (draggedFileId && models.find((model) => model.id === draggedFileId)?.folderId === id) {
+      // Only when every dragged file is in this folder already; with a mixed selection
+      // the others still move and the ones already there are reported as skipped.
+      if (draggedFileId && sharedFolderId(models, draggedFileIds) === id) {
         setDragOverFolderId(null);
         return;
       }
@@ -82,7 +85,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       }
       setDragOverFolderId(id);
     },
-    [draggedFileId, draggedFolderId, folders, models, catalogBaseDir],
+    [draggedFileId, draggedFileIds, draggedFolderId, folders, models, catalogBaseDir],
   );
 
   // Only reset if no other row is the target already: a late mouseleave
@@ -269,6 +272,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   return {
     draggedFileId,
     draggedFileIds,
+    draggedFilesFolderId,
     draggedFolderId,
     dragOverFolderId,
     dragOverCollectionId,
