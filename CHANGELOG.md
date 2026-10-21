@@ -13,6 +13,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Import filenames:** optional date/time prefixes (`YYYY-MM-DD_HH-MM_`), off by default. New catalog models get collision-safe names with extension-preserving length limits; external files imported in place are not renamed. Existing entries, disk sync, backup restoration and archive extraction are unchanged.
 
+### Fixed
+
+- **Sync with disk:** Sync with disk no longer offers a file again as new when the catalog knows it under a symbolic-link path.
+
 ## [0.16.3] - 2026-10-21
 
 ### Fixed
@@ -649,6 +653,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Hinzugefügt
 
 - **Dateinamen beim Import:** optionaler Datums-/Uhrzeitpräfix (`JJJJ-MM-TT_HH-MM_`), standardmäßig aus. Neue Katalogmodelle erhalten kollisionsfreie Namen mit Längenbegrenzung und erhaltener Endung; externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt. Bestehende Einträge, Festplattenabgleich, Backup-Wiederherstellung und Archiv-Entpacken bleiben unverändert.
+
+### Behoben
+
+- **Abgleich mit der Festplatte:** Der Abgleich bietet eine Datei nicht mehr erneut als neu an, wenn der Katalog sie unter einem Pfad über einen symbolischen Link kennt.
 
 ## [0.16.3] - 2026-10-21
 
