@@ -339,13 +339,17 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (e.key !== 'Escape') return;
+      // The settings panel on top (or anything else that already took this Escape) closes
+      // first. The panel's own handler runs after this one, so its preventDefault alone
+      // would come too late.
+      if (e.defaultPrevented || settingsOpen) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       setDetailModelId(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [detailModelId]);
+  }, [detailModelId, settingsOpen]);
 
   useEffect(() => {
     bulk.clearBulkSelection();

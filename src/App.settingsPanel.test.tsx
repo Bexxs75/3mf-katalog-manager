@@ -156,4 +156,19 @@ describe('settings in the right-hand panel', () => {
     fireEvent.click(screen.getByRole('button', { name: de.pmOpen }));
     expect(settings()).toBeNull();
   });
+
+  it('closes only the settings with Escape when the detail view is open underneath', async () => {
+    await setup();
+    await act(async () => { fireEvent.doubleClick(tile('a')); });
+    const previous = () => screen.queryByRole('button', { name: de.detailPrevious });
+    expect(previous()).toBeInTheDocument();
+    fireEvent.click(gear());
+    expect(settings()).toBeVisible();
+    fireEvent.keyDown(screen.getByRole('tab', { name: de.settingsTabGeneral }), { key: 'Escape' });
+    expect(settings()).toBeNull();
+    expect(previous()).toBeInTheDocument();
+    // With the settings gone, Escape closes the detail view as before.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(previous()).toBeNull();
+  });
 });
