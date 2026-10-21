@@ -20,6 +20,7 @@ import { Header } from './components/Header';
 import { isWebGLUnavailable } from './lib/webglAvailability';
 import { nextRendererGeneration, snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
+import { SettingsPanel } from './components/SettingsPanel';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportProgressRow } from './components/ImportProgressRow';
@@ -146,6 +147,7 @@ export default function App() {
   const [tipsOpen, setTipsOpen] = useState(false);
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [generalTabRequest, setGeneralTabRequest] = useState(0);
   const sourceCheck = useSourceFolderCheck({
     ready: !store.initialLoading,
@@ -391,6 +393,49 @@ export default function App() {
     if (noWebGL && store.pendingSnapshotIds.length) store.skipSnapshots(store.pendingSnapshotIds);
   }, [noWebGL, store.pendingSnapshotIds, store.skipSnapshots]);
 
+  // The settings take the detail panel's place in the catalog and lie over the main area
+  // elsewhere, so every view reaches them from the same gear in the rail.
+  const renderSettingsPanel = (overlay: boolean) => (
+    <SettingsPanel
+      overlay={overlay}
+      onClose={closeSettings}
+      onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}
+      generalTabRequest={generalTabRequest}
+      singleKeyShortcuts={singleKeyShortcuts}
+      onSingleKeyShortcutsChange={setSingleKeyShortcuts}
+      onOpenTips={() => setTipsOpen(true)}
+      themeSetting={setting}
+      onThemeChange={setTheme}
+      detailPanel={detailPanel}
+      onDetailPanelChange={setDetailPanel}
+      uiDensity={density}
+      onUiDensityChange={setDensity}
+      displayPreference={displayPreference}
+      onDisplayPreferenceChange={setDisplayPreference}
+      slicers={slicers}
+      primarySlicerId={primaryId}
+      onAddSlicer={addSlicer}
+      addSlicerError={addSlicerError}
+      onRemoveSlicer={removeSlicer}
+      onSetPrimarySlicer={setPrimary}
+      onScanCatalogIssues={cleanup.scanCatalogIssues}
+      cleanupScanning={cleanup.cleanupScanning}
+      cleanupError={cleanup.cleanupError}
+      onExportCatalog={backup.exportCatalog}
+      // The backend already uses the new catalog: full reload, otherwise actions
+      // with stale IDs would hit the wrong records.
+      onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
+      catalogBackupError={backup.catalogBackupError}
+      onClearCatalogBackupError={backup.clearCatalogBackupError}
+      catalogBaseDir={catalogBaseDir}
+      catalogModelCount={store.models.length}
+      catalogFolderCount={store.folders.length}
+      onCatalogReset={finishCatalogReset}
+      onOpenCatalogSetup={() => setSetupDialogOpen(true)}
+      update={update}
+    />
+  );
+
   return (
     <ImportLockContext.Provider value={fileImport.jobActive}>
     <div
@@ -450,44 +495,11 @@ export default function App() {
       <NetworkFilesystemWarning />
       <div className="flex-1 flex flex-row min-h-0">
         <Rail
-          singleKeyShortcuts={singleKeyShortcuts}
-          onSingleKeyShortcutsChange={setSingleKeyShortcuts}
-          onOpenTips={() => setTipsOpen(true)}
           mainView={mainView}
           onMainViewChange={changeMainView}
           trashCount={store.trashModels.length}
           settingsOpen={settingsOpen}
-          generalTabRequest={generalTabRequest}
           onSettingsOpenChange={setSettingsOpen}
-          themeSetting={setting}
-          onThemeChange={setTheme}
-          detailPanel={detailPanel}
-          onDetailPanelChange={setDetailPanel}
-          uiDensity={density}
-          onUiDensityChange={setDensity}
-          displayPreference={displayPreference}
-          onDisplayPreferenceChange={setDisplayPreference}
-          slicers={slicers}
-          primarySlicerId={primaryId}
-          onAddSlicer={addSlicer}
-          addSlicerError={addSlicerError}
-          onRemoveSlicer={removeSlicer}
-          onSetPrimarySlicer={setPrimary}
-          onScanCatalogIssues={cleanup.scanCatalogIssues}
-          cleanupScanning={cleanup.cleanupScanning}
-          cleanupError={cleanup.cleanupError}
-          onExportCatalog={backup.exportCatalog}
-          // The backend already uses the new catalog: full reload, otherwise actions
-          // with stale IDs would hit the wrong records.
-          onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
-          catalogBackupError={backup.catalogBackupError}
-          onClearCatalogBackupError={backup.clearCatalogBackupError}
-          catalogBaseDir={catalogBaseDir}
-          catalogModelCount={store.models.length}
-          catalogFolderCount={store.folders.length}
-          onCatalogReset={finishCatalogReset}
-          onOpenCatalogSetup={() => setSetupDialogOpen(true)}
-          update={update}
         />
         <div className="relative flex-1 min-w-0 flex flex-col min-h-0">
           {mainView === 'downloads' && container ? (
@@ -506,7 +518,7 @@ export default function App() {
               displayPreference={displayPreference}
             />
           ) : mainView === 'catalog' ? (
-            <CatalogWorkspace detailPanel={detailPanel} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}
+            <CatalogWorkspace detailPanel={detailPanel} settingsPanel={settingsOpen ? renderSettingsPanel : undefined} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}
               onOpenTips={() => setTipsOpen(true)}
               catalogKey={catalogBaseDir}
               onNavigateDetail={navigateDetail}
@@ -640,6 +652,8 @@ export default function App() {
             <FilamentView printerLink={printerLink} printers={printers} onCatalogChanged={store.refreshFiles}
               printerContext={printerContext} onPrinterManager={printerId => changeMainView('printers', { printerId })} />
           )}
+
+          {settingsOpen && mainView !== 'catalog' && renderSettingsPanel(true)}
 
           {contextMenu && contextModel && (
             <ContextMenu
