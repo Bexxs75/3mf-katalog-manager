@@ -35,6 +35,8 @@ interface CatalogWorkspaceProps {
   initialLoadFailed?: boolean;
   detailPanel?: 'auto' | 'pinned';
   onCloseDetails?: () => void;
+  /** Settings panel; while given it takes the detail panel's place and the detail panel stays hidden. */
+  settingsPanel?: (overlay: boolean) => ReactNode;
   printerRefreshKey?: string;
   onOpenTips?: () => void;
   importRow?: ReactNode;
@@ -151,7 +153,7 @@ interface CatalogWorkspaceProps {
 
 export function CatalogWorkspace({
   initialLoading = false, initialLoadFailed = false,
-  detailPanel = 'auto', onCloseDetails, printerRefreshKey = '',
+  detailPanel = 'auto', onCloseDetails, settingsPanel, printerRefreshKey = '',
   onOpenTips,
   importRow,
   expansion,
@@ -273,7 +275,7 @@ export function CatalogWorkspace({
     return () => media.removeEventListener('change', update);
   }, []);
   const layouts = useContext(ModelLayoutContext);
-  const panelVisible = !detailModel && (detailPanel === 'pinned' || selectedId !== null);
+  const panelVisible = !detailModel && !settingsPanel && (detailPanel === 'pinned' || selectedId !== null);
   useLayoutEffect(() => {
     if (!selectedId || detailModel) return;
     // Let the grid measure its new width before locating the selected row.
@@ -298,14 +300,14 @@ export function CatalogWorkspace({
   }, [onCloseDetails, selectedId, layouts]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
+      if (event.key !== 'Escape' || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
         shouldIgnoreCatalogShortcut(event, { preserveEscapeSelection: true })) return;
       event.preventDefault();
       closeDetails();
     };
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
-  }, [detailPanel, selectedId, detailModel, selectedForBulk.size, closeDetails]);
+  }, [detailPanel, selectedId, detailModel, selectedForBulk.size, closeDetails, settingsPanel]);
   const containerRef = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(0);
   const wasDetail = useRef(false);
@@ -580,7 +582,7 @@ export function CatalogWorkspace({
         ) : (
           <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onClick={event => {
             const target = event.target;
-            if (detailPanel === 'auto' && selectedId && target instanceof Element &&
+            if (!settingsPanel && detailPanel === 'auto' && selectedId && target instanceof Element &&
               !target.closest('[data-model-id], button, input, a, [role="button"], [role="row"], [data-folder-header], [data-model-list-header], [data-navigation-menu]')) closeDetails();
           }} onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
             {initialLoading || collectionLoading ? <div role="status" className="p-6 text-body text-[var(--ink-2)]">
@@ -665,7 +667,7 @@ export function CatalogWorkspace({
         )}
       </main>
 
-      {!detailModel && (detailPanel === 'pinned' || selectedId !== null) && (
+      {settingsPanel ? settingsPanel(narrow || !!detailModel) : !detailModel && (detailPanel === 'pinned' || selectedId !== null) && (
         <div role="complementary" aria-label={t('detailPanelTitle')} className={`detail-panel-shell ${narrow ? 'detail-panel-overlay' : ''}`}>
         {detailPanel === 'auto' && <button type="button" className="detail-panel-close" aria-label={t('detailPanelClose')} title={`${t('detailPanelClose')} (Esc)`} onClick={closeDetails}><Icon name="close" size={16} /></button>}
         <DetailPanel
