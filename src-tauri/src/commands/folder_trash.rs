@@ -108,12 +108,56 @@ fn count_other_files(root: &Path, known: &HashSet<PathBuf>) -> (i64, bool) {
     (count, false)
 }
 
-fn folder_trash_summary_with_conn(conn: &Connection, folder_id: &str) -> CmdResult<FolderTrashSummary> {
+/// Why a catalog row must not be moved when its folder tree is deleted, or `None`.
+/// A row only has to agree with the folder by id, and a restored backup can set any
+/// path, so before anything is touched the file itself must prove that it is a model
+/// inside the folder being deleted. `root` is the resolved path of that folder.
+fn refusal_reason(file_path: &str, root: &Path, expanded_sensitive: &[PathBuf]) -> Option<&'static str> {
+    let path = Path::new(file_path);
+    // `..` can keep the textual folder prefix and still leave the folder.
+    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Some("outside_folder");
+    }
+    // Nothing on disk to move: the delete only soft-deletes the row.
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return None };
+    // The folder itself must be a reachable real directory, and the file's parent
+    // (symlinked directories resolved) must lie inside it, compared per component so
+    // `A2` is not inside `A`.
+    let Some(parent) = path.parent() else { return Some("outside_folder") };
+    let (Ok(resolved_parent), true) = (parent.canonicalize(), root.is_dir()) else { return Some("outside_folder") };
+    if !folders::comparison_path(&resolved_parent).starts_with(folders::comparison_path(root)) {
+        return Some("outside_folder");
+    }
+    if archives::check_managed_location(&resolved_parent, expanded_sensitive).is_err() {
+        return Some("outside_folder");
+    }
+    if !is_supported_extension(path) {
+        return Some("not_a_model");
+    }
+    if meta.file_type().is_symlink() {
+        return Some("symlink");
+    }
+    None
+}
+
+/// Resolved path of the folder row. An unresolvable folder yields a path that is not a
+/// directory, which makes `refusal_reason` refuse every file that exists on disk.
+fn resolved_root(folder: &db::models::FolderRecord) -> PathBuf {
+    Path::new(&folder.path).canonicalize().unwrap_or_else(|_| PathBuf::from("/nonexistent-unresolvable-folder"))
+}
+
+fn folder_trash_summary_with_conn(conn: &Connection, folder_id: &str, sensitive_dirs: &[PathBuf]) -> CmdResult<FolderTrashSummary> {
     let id = parse_id(folder_id)?;
     let all = db::list_folders(conn)?;
     let subtree = subtree_folders(&all, id);
     let root = subtree.first().ok_or_else(|| CmdError::expected("Ordner nicht gefunden."))?;
-    let files = active_files_in_subtree(conn, id)?;
+    // Same rule as the delete: rows it would refuse are not models of this folder.
+    let expanded = expand_sensitive_dirs(sensitive_dirs);
+    let resolved = resolved_root(root);
+    let files: Vec<(i64, String)> = active_files_in_subtree(conn, id)?
+        .into_iter()
+        .filter(|(_, p)| refusal_reason(p, &resolved, &expanded).is_none())
+        .collect();
     let known: HashSet<PathBuf> = files.iter().map(|(_, p)| folders::comparison_path(Path::new(p))).collect();
     let (other_file_count, other_file_count_truncated) = count_other_files(Path::new(&root.path), &known);
     Ok(FolderTrashSummary {
@@ -155,7 +199,13 @@ fn trash_folder_with_conn(
     // compensation applies; a failure must not stop the others.
     let mut trashed = 0i64;
     let mut failed = Vec::new();
+    let resolved = resolved_root(&subtree[0]);
     for (file_id, path) in active_files_in_subtree(conn, id)? {
+        if let Some(code) = refusal_reason(&path, &resolved, &expanded) {
+            log::warn!(target: "cleanup", "Ordner löschen, abgelehnt ({code}): {path}");
+            failed.push(FolderTrashFailure { file_id: file_id.to_string(), path, reason: code.to_string() });
+            continue;
+        }
         let outcome = match db::get_file(conn, file_id) {
             Ok(Some(file)) => trash::delete_file_with_conn(conn, &file, file_id, trash_dir),
             Ok(None) => continue,
@@ -250,7 +300,7 @@ pub async fn folder_trash_summary(app: tauri::AppHandle, folder_id: String) -> C
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = lock_db(&state)?;
-        folder_trash_summary_with_conn(&conn, &folder_id)
+        folder_trash_summary_with_conn(&conn, &folder_id, &state.sensitive_dirs)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -376,7 +426,7 @@ mod tests {
     }
 
     fn folder_summary(f: &Fixture, id: i64) -> FolderTrashSummary {
-        folder_trash_summary_with_conn(&f.conn, &id.to_string()).unwrap()
+        folder_trash_summary_with_conn(&f.conn, &id.to_string(), &f.sensitive).unwrap()
     }
 
     #[test]
@@ -430,6 +480,73 @@ mod tests {
         assert!(f.root.join("A").join("B").is_dir() && f.root.join("A").is_dir());
         assert!(!f.root.join("A").join("C").exists());
         assert!(result.kept_on_disk.iter().any(|p| Path::new(p) == f.root.join("A").join("B")));
+    }
+
+    /// Adds catalog rows to folder A that a crafted backup could contain, and returns
+    /// `(row path, expected reason, content)`. Everything that must survive sits outside
+    /// A or is not a model.
+    fn plant_manipulated_rows(f: &Fixture) -> Vec<(PathBuf, &'static str, Vec<u8>)> {
+        let outside = unique_test_dir("folder_trash_manip_outside");
+        let mut planted = Vec::new();
+        let mut add_row = |row: PathBuf, disk: PathBuf, reason: &'static str, content: &[u8]| {
+            std::fs::write(&disk, content).unwrap();
+            db::test_insert_minimal_file(&f.conn, &row.to_string_lossy(), Some(f.a)).unwrap();
+            planted.push((disk, reason, content.to_vec()));
+        };
+        let p = outside.join("Rechnung.pdf");
+        add_row(p.clone(), p, "outside_folder", b"invoice");
+        let p = outside.join("other.3mf");
+        add_row(p.clone(), p, "outside_folder", b"outside model");
+        // `..` keeps the textual prefix of the folder but leaves it.
+        add_row(f.root.join("A").join("..").join("escaped.3mf"), f.root.join("escaped.3mf"), "outside_folder", b"escaped");
+        // Inside the folder, but not a model.
+        let p = f.root.join("A").join("notes.txt");
+        add_row(p.clone(), p, "not_a_model", b"notes");
+        // Sibling folder whose name starts like the folder name.
+        std::fs::create_dir_all(f.root.join("A2")).unwrap();
+        let p = f.root.join("A2").join("x.3mf");
+        add_row(p.clone(), p, "outside_folder", b"sibling");
+        #[cfg(unix)]
+        {
+            let target = outside.join("linked.3mf");
+            std::fs::write(&target, b"link target").unwrap();
+            let link = f.root.join("A").join("link.3mf");
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            db::test_insert_minimal_file(&f.conn, &link.to_string_lossy(), Some(f.a)).unwrap();
+            planted.push((link, "symlink", Vec::new()));
+        }
+        planted
+    }
+
+    #[test]
+    fn manipulated_rows_never_move_files_outside_the_folder_or_non_models() {
+        let f = fixture("folder_trash_manipulated");
+        let planted = plant_manipulated_rows(&f);
+        let result = trash_folder_with_conn(&f.conn, &f.a.to_string(), &f.trash, &f.sensitive).unwrap();
+        assert_eq!(result.trashed_model_count, 3, "only the three real models move: {result:?}");
+        for (path, reason, content) in &planted {
+            assert!(std::fs::symlink_metadata(path).is_ok(), "{} must stay", path.display());
+            if *reason != "symlink" {
+                assert_eq!(&std::fs::read(path).unwrap(), content, "{} must be unchanged", path.display());
+            } else {
+                assert_eq!(std::fs::read(path).unwrap(), b"link target");
+            }
+            let failure = result.failed.iter().find(|x| Path::new(&x.path) == path.as_path() || (path.ends_with("escaped.3mf") && x.path.ends_with("escaped.3mf")));
+            assert_eq!(failure.map(|x| x.reason.as_str()), Some(*reason), "{}", path.display());
+        }
+        assert_eq!(std::fs::read_dir(&f.trash).unwrap().count(), 3, "nothing but the models in the trash");
+        // The folder that still holds refused rows keeps its row and directory.
+        assert!(f.root.join("A").is_dir());
+        let rows: i64 = f.conn.query_row("SELECT COUNT(*) FROM folders WHERE id = ?1", [f.a], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1);
+    }
+
+    #[test]
+    fn summary_counts_only_files_the_delete_would_really_move() {
+        let f = fixture("folder_trash_manipulated_summary");
+        plant_manipulated_rows(&f);
+        let summary = folder_summary(&f, f.a);
+        assert_eq!(summary.model_count, 3);
     }
 
     #[test]
