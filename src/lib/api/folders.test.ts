@@ -21,6 +21,11 @@ describe('folders api', () => {
     await foldersApi.moveFileToFolder('f1', 'folder1');
     expect(invoke).toHaveBeenCalledWith('move_file_to_folder', { fileId: 'f1', folderId: 'folder1' });
   });
+  it('moveFilesToFolder', async () => {
+    vi.mocked(invoke).mockResolvedValue([]);
+    await foldersApi.moveFilesToFolder(['f1', 'f2'], 'folder1');
+    expect(invoke).toHaveBeenCalledWith('move_files_to_folder', { fileIds: ['f1', 'f2'], folderId: 'folder1' });
+  });
   it('moveFolder', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
     await foldersApi.moveFolder('folder1', 'folder2');
