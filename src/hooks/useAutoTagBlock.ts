@@ -30,6 +30,7 @@ export function useAutoTagBlock(
   useEffect(() => {
     setNotice(null);
     setError(null);
+    undoTarget.current = null;
   }, [modelId]);
 
   useEffect(() => {
@@ -44,30 +45,44 @@ export function useAutoTagBlock(
     return () => { current = false; };
   }, [modelId, modelName]);
 
+  // The callbacks handed in are bound to the model that was shown when they were created.
+  // Keeping the ones from the moment an action starts makes a late answer or the undo act on
+  // that model, never on whichever model happens to be shown by then.
+  const latestModelId = useRef(modelId);
+  latestModelId.current = modelId;
+  const undoTarget = useRef<{ modelId: string | undefined; addTag: (tag: string) => void } | null>(null);
+
   const removeAndBlock = useCallback(async (tag: string) => {
+    const startedFor = modelId;
     setError(null);
     try {
       await api.blockAutoTag(tag);
     } catch (e) {
-      if (mounted.current) setError(toAppError(e));
+      if (mounted.current && latestModelId.current === startedFor) setError(toAppError(e));
       return;
     }
     onRemoveTag(tag);
-    if (mounted.current) setNotice({ tag, undone: false });
-  }, [onRemoveTag]);
+    // The user moved on while the call was running: the tag is gone from the model it was
+    // started for, but the undo hint would now sit next to a different model.
+    if (!mounted.current || latestModelId.current !== startedFor) return;
+    undoTarget.current = { modelId: startedFor, addTag: onAddTag };
+    setNotice({ tag, undone: false });
+  }, [modelId, onRemoveTag, onAddTag]);
 
   const undo = useCallback(async () => {
-    if (!notice || notice.undone) return;
+    const target = undoTarget.current;
+    if (!notice || notice.undone || !target || target.modelId !== latestModelId.current) return;
+    const { tag } = notice;
     setError(null);
     try {
-      await api.unblockAutoTag(notice.tag);
+      await api.unblockAutoTag(tag);
     } catch (e) {
-      if (mounted.current) setError(toAppError(e));
+      if (mounted.current && latestModelId.current === target.modelId) setError(toAppError(e));
       return;
     }
-    onAddTag(notice.tag);
-    if (mounted.current) setNotice({ tag: notice.tag, undone: true });
-  }, [notice, onAddTag]);
+    target.addTag(tag);
+    if (mounted.current && latestModelId.current === target.modelId) setNotice({ tag, undone: true });
+  }, [notice]);
 
   return { suggested, notice, error, removeAndBlock, undo };
 }
