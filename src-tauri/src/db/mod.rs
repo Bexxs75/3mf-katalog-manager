@@ -907,11 +907,34 @@ mod tests {
         let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
         // "grand format" (not "large"/"grande" - ambiguous, see above).
         add_tag_to_file(&conn, a, "grand format").expect("alias");
-        add_tag_to_file(&conn, a, "Vase").expect("other");
+        add_tag_to_file(&conn, a, "Zierde").expect("other");
 
         assert_eq!(merge_auto_tag_aliases(&mut conn).expect("first"), 1);
         assert_eq!(merge_auto_tag_aliases(&mut conn).expect("second"), 0);
-        assert_eq!(tags_of(&conn, a), vec!["Vase".to_string(), "grossformat".to_string()]);
+        assert_eq!(tags_of(&conn, a), vec!["Zierde".to_string(), "grossformat".to_string()]);
+    }
+
+    #[test]
+    fn merge_folds_hand_tags_named_like_new_dictionary_entries() {
+        let mut conn = connect_in_memory().expect("connect");
+        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+        let b = repository::test_insert_minimal_file(&conn, "/tmp/b.3mf", None).expect("b");
+        add_tag_to_file(&conn, a, "Lid").expect("lid");
+        add_tag_to_file(&conn, a, "deckel").expect("deckel");
+        add_tag_to_file(&conn, b, "couvercle").expect("couvercle");
+        add_tag_to_file(&conn, b, "Vase").expect("vase");
+        add_tag_to_file(&conn, b, "holder").expect("holder stays");
+
+        assert_eq!(merge_auto_tag_aliases(&mut conn).expect("first"), 3);
+        assert_eq!(merge_auto_tag_aliases(&mut conn).expect("second"), 0);
+
+        assert_eq!(tags_of(&conn, a), vec!["deckel".to_string()]);
+        let mut b_tags = tags_of(&conn, b);
+        b_tags.sort();
+        assert_eq!(b_tags, vec!["deckel".to_string(), "holder".to_string(), "vase".to_string()]);
+        let mut names = tag_names(&conn);
+        names.sort();
+        assert_eq!(names, vec!["deckel".to_string(), "holder".to_string(), "vase".to_string()]);
     }
 
     #[test]

@@ -11,13 +11,52 @@ describe('tagLabel', () => {
   });
 
   it('leaves other tags untouched', () => {
-    expect(tagLabel('Vase', 'en')).toBe('Vase');
+    expect(tagLabel('Vasenhalter', 'en')).toBe('Vasenhalter');
     expect(tagLabel('mini', 'en')).toBe('mini');
   });
 
   it('does not resolve inherited Object.prototype properties as tags', () => {
     expect(tagLabel('constructor', 'en')).toBe('constructor');
     expect(tagLabel('toString', 'en')).toBe('toString');
+  });
+});
+
+describe('dictionary entries for everyday terms', () => {
+  it.each([
+    ['deckel', 'lid', 'tapa', 'couvercle'],
+    ['schublade', 'drawer', 'cajón', 'tiroir'],
+    ['haken', 'hook', 'gancho', 'crochet'],
+    ['vase', 'vase', 'jarrón', 'vase'],
+    ['box', 'box', 'caja', 'boîte'],
+    ['organizer', 'organizer', 'organizador', 'organisateur'],
+    ['wandhalterung', 'wall mount', 'soporte de pared', 'support mural'],
+    ['schlüsselanhänger', 'keychain', 'llavero', 'porte-clés'],
+    ['spielzeug', 'toy', 'juguete', 'jouet'],
+    ['zahnrad', 'gear', 'engranaje', 'engrenage'],
+    ['werkzeug', 'tool', 'herramienta', 'outil'],
+    ['adapter', 'adapter', 'adaptador', 'adaptateur'],
+    ['ersatzteil', 'spare part', 'repuesto', 'pièce détachée'],
+    ['lampe', 'lamp', 'lámpara', 'lampe'],
+    ['klein', 'small', 'pequeño', 'petit'],
+  ])('shows %s in every language and maps each name back to it', (key, en, es, fr) => {
+    expect(tagLabel(key, 'de')).toBe(key);
+    expect(tagLabel(key, 'en')).toBe(en);
+    expect(tagLabel(key, 'es')).toBe(es);
+    expect(tagLabel(key, 'fr')).toBe(fr);
+    for (const name of [key, en, es, fr]) expect(canonicalTag(name)).toBe(key);
+  });
+
+  it('merges hand-typed names into the German key, ignoring case', () => {
+    expect(canonicalTag('Lid')).toBe('deckel');
+    expect(canonicalTag('  Couvercle')).toBe('deckel');
+    expect(canonicalTag('Wall Mount')).toBe('wandhalterung');
+    expect(canonicalTag('Vase')).toBe('vase');
+  });
+
+  it('does not touch holder/support/stand words that are deliberately not in the table', () => {
+    for (const word of ['holder', 'support', 'soporte', 'stand', 'halter', 'ständer']) {
+      expect(canonicalTag(word)).toBe(word);
+    }
   });
 });
 
@@ -32,7 +71,7 @@ describe('canonicalTag', () => {
   });
 
   it('returns other input unchanged', () => {
-    expect(canonicalTag('Vase')).toBe('Vase');
+    expect(canonicalTag('Vasenhalter')).toBe('Vasenhalter');
     expect(canonicalTag('minis')).toBe('minis');
   });
 });

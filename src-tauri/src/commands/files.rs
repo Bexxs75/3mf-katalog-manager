@@ -3927,7 +3927,7 @@ endsolid x
         let id = crate::db::test_insert_minimal_file(&conn, "/tmp/add_tag_alias.3mf", None).expect("insert");
 
         add_tag_with_conn(&conn, id, "Multipart").expect("add");
-        add_tag_with_conn(&conn, id, "Vase").expect("add");
+        add_tag_with_conn(&conn, id, "Zierde").expect("add");
 
         let mut tags: Vec<String> = crate::db::list_all_file_tags(&conn)
             .expect("tags")
@@ -3936,7 +3936,7 @@ endsolid x
             .map(|(_, t)| t)
             .collect();
         tags.sort();
-        assert_eq!(tags, vec!["Vase".to_string(), "mehrteilig".to_string()]);
+        assert_eq!(tags, vec!["Zierde".to_string(), "mehrteilig".to_string()]);
     }
     #[test]
     fn add_tag_still_maps_the_ambiguous_alias_mini_when_typed_by_hand() {
