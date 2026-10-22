@@ -2,5 +2,20 @@
   "mehrteilig": { "de": "mehrteilig", "en": "multipart", "es": "multipieza", "fr": "multipièce" },
   "miniatur": { "de": "miniatur", "en": "mini", "es": "miniatura", "fr": "miniature" },
   "grossformat": { "de": "grossformat", "en": "large", "es": "grande", "fr": "grand format" },
-  "mehrfarbig": { "de": "mehrfarbig", "en": "multicolor", "es": "multicolor", "fr": "multicolore" }
+  "mehrfarbig": { "de": "mehrfarbig", "en": "multicolor", "es": "multicolor", "fr": "multicolore" },
+  "klein": { "de": "klein", "en": "small", "es": "pequeño", "fr": "petit" },
+  "deckel": { "de": "deckel", "en": "lid", "es": "tapa", "fr": "couvercle" },
+  "schublade": { "de": "schublade", "en": "drawer", "es": "cajón", "fr": "tiroir" },
+  "haken": { "de": "haken", "en": "hook", "es": "gancho", "fr": "crochet" },
+  "vase": { "de": "vase", "en": "vase", "es": "jarrón", "fr": "vase" },
+  "box": { "de": "box", "en": "box", "es": "caja", "fr": "boîte" },
+  "organizer": { "de": "organizer", "en": "organizer", "es": "organizador", "fr": "organisateur" },
+  "wandhalterung": { "de": "wandhalterung", "en": "wall mount", "es": "soporte de pared", "fr": "support mural" },
+  "schlüsselanhänger": { "de": "schlüsselanhänger", "en": "keychain", "es": "llavero", "fr": "porte-clés" },
+  "spielzeug": { "de": "spielzeug", "en": "toy", "es": "juguete", "fr": "jouet" },
+  "zahnrad": { "de": "zahnrad", "en": "gear", "es": "engranaje", "fr": "engrenage" },
+  "werkzeug": { "de": "werkzeug", "en": "tool", "es": "herramienta", "fr": "outil" },
+  "adapter": { "de": "adapter", "en": "adapter", "es": "adaptador", "fr": "adaptateur" },
+  "ersatzteil": { "de": "ersatzteil", "en": "spare part", "es": "repuesto", "fr": "pièce détachée" },
+  "lampe": { "de": "lampe", "en": "lamp", "es": "lámpara", "fr": "lampe" }
 }
