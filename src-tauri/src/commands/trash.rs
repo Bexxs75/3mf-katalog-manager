@@ -177,7 +177,7 @@ fn restore_model_with_conn(
     let db_result = (|| -> Result<(), DbError> {
         let tx = conn.unchecked_transaction()?;
         db::restore_file(&tx, id, new_path_arg)?;
-        relink_restored_folder(&tx, id, target_path.parent(), !created_dirs.is_empty())?;
+        relink_restored_folder(&tx, id, target_path.parent(), created_dirs.first().map(|d| d.as_path()))?;
         tx.commit().map_err(DbError::from)
     })();
     if let Err(db_err) = db_result {
@@ -214,17 +214,19 @@ fn missing_parent_dirs(target: &std::path::Path) -> Vec<PathBuf> {
 }
 
 /// Puts a restored file back into the catalog folder tree. When the directory was
-/// recreated (`created`), the nearest cataloged ancestor (or the catalog base folder)
+/// recreated (`created_root` is the outermost new directory), the nearest cataloged ancestor (or the catalog base folder)
 /// is the anchor and the missing folder rows are inserted below it - the same way the
 /// disk sync attaches new folders. When the directory already existed, only a folder
 /// row for exactly that directory is reused: a row that is missing then may have been
 /// removed from the catalog on purpose, and a restore must not bring it back. A file
-/// whose folder is not found stays as it is.
+/// whose folder is not found stays as it is. When the recreated directory has no cataloged
+/// ancestor and lies outside the catalog base folder (a top-level catalog folder that was
+/// trashed), the outermost recreated directory becomes a new top-level folder row.
 fn relink_restored_folder(
     conn: &Connection,
     id: i64,
     dir: Option<&std::path::Path>,
-    created: bool,
+    created_root: Option<&std::path::Path>,
 ) -> Result<(), DbError> {
     let Some(dir) = dir else { return Ok(()) };
     let folders = db::list_folders(conn)?;
@@ -234,7 +236,7 @@ fn relink_restored_folder(
         .map(|f| f.id);
     let folder_id = match existing {
         Some(folder_id) => folder_id,
-        None if !created => return Ok(()),
+        None if created_root.is_none() => return Ok(()),
         None => {
             let anchor = match folders::find_catalog_parent(dir, &folders) {
                 Some(parent) => folders.iter().find(|f| f.id == parent).map(|f| PathBuf::from(&f.path)),
@@ -242,7 +244,7 @@ fn relink_restored_folder(
                     .map(PathBuf::from)
                     .filter(|base| folders::comparison_path(dir).starts_with(folders::comparison_path(base))),
             };
-            let Some(anchor) = anchor else { return Ok(()) };
+            let Some(anchor) = anchor.or_else(|| created_root.map(PathBuf::from)) else { return Ok(()) };
             db::ensure_folder_path(conn, &anchor, dir)?
         }
     };
@@ -594,6 +596,39 @@ mod restore_into_missing_folder_tests {
         conn.execute("UPDATE files SET deleted_at = '2026-01-01T00:00:00Z' WHERE id = ?1", [two]).unwrap();
         restore(&conn, two);
         assert_eq!(folder_of(&conn, two), Some(a));
+    }
+
+    #[test]
+    fn restore_recreates_a_trashed_top_level_folder_without_a_catalog_base() {
+        let tmp = unique_test_dir("restore_top_level_folder");
+        let trash = tmp.join("trash");
+        let technik = tmp.join("Technik2");
+        let sub = technik.join("Sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        // The trashed folder is a catalog root of its own; no base folder setting exists.
+        let t = db::insert_folder_with_parent(&conn, "Technik2", None, &technik.to_string_lossy()).unwrap();
+        let s = db::insert_folder_with_parent(&conn, "Sub", Some(t), &sub.to_string_lossy()).unwrap();
+        let path = sub.join("m.3mf");
+        std::fs::write(&path, b"bytes").unwrap();
+        let id = db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(s)).unwrap();
+        // The folder is the catalog root of the file; make it deletable by trashing the model with its rows.
+        super::super::folder_trash::trash_folder_for_test(&conn, t, &trash);
+        assert!(!technik.exists());
+        let file = db::get_file(&conn, id).unwrap().unwrap();
+        restore_file_with_conn(&conn, &file, id, &[]).unwrap();
+        assert!(path.exists());
+        let folder_id = db::get_file(&conn, id).unwrap().unwrap().folder_id.expect("assigned to a folder again");
+        let (name, parent): (String, Option<i64>) = conn
+            .query_row("SELECT name, parent_id FROM folders WHERE id = ?1", [folder_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(name, "Sub");
+        let parent = parent.expect("Sub hangs below the recreated Technik2");
+        let top: (String, Option<i64>) = conn
+            .query_row("SELECT name, parent_id FROM folders WHERE id = ?1", [parent], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(top, ("Technik2".to_string(), None));
     }
 
     #[test]
