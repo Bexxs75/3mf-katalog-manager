@@ -3086,6 +3086,29 @@ mod tests {
         assert_eq!(err.message, "Archiv enthält keine settings.json");
     }
 
+    /// Fixture written with the previous ZIP library and its default options,
+    /// exactly like `write_zip_atomically` produced it.
+    #[test]
+    fn read_catalog_archive_reads_a_backup_written_by_the_previous_library() {
+        let bytes = include_bytes!("testdata/backup_zip2.zip").to_vec();
+        let (db_bytes, settings_json) = read_catalog_archive(std::io::Cursor::new(bytes)).expect("legacy backup readable");
+        assert!(db_bytes.starts_with(b"SQLite format 3\0"));
+        assert_eq!(settings_json, r#"{"language":"de","theme":"dark"}"#);
+    }
+
+    #[test]
+    fn read_catalog_archive_enforces_the_size_limit_on_real_entries() {
+        let at_limit = vec![b' '; MAX_IMPORT_SETTINGS_BYTES as usize];
+        let ok = zip_bytes_with(&[("catalog.db", b"x"), ("settings.json", &at_limit)]);
+        assert!(read_catalog_archive(std::io::Cursor::new(ok)).is_ok());
+
+        let too_big = vec![b' '; MAX_IMPORT_SETTINGS_BYTES as usize + 1];
+        let bad = zip_bytes_with(&[("catalog.db", b"x"), ("settings.json", &too_big)]);
+        let err = read_catalog_archive(std::io::Cursor::new(bad)).unwrap_err();
+        assert!(err.expected);
+        assert!(err.message.contains("zu groß"), "{}", err.message);
+    }
+
     #[test]
     fn read_catalog_archive_returns_both_entries_when_present() {
         let buf = zip_bytes_with(&[("catalog.db", b"fake db bytes"), ("settings.json", br#"{"a":1}"#)]);

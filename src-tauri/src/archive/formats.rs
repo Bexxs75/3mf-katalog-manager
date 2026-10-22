@@ -52,9 +52,9 @@ pub(super) fn extract(path: &Path, format: ArchiveFormat, ex: &mut Extractor<'_>
 
 // ---------- ZIP ----------
 
-fn zip_meta(file: &zip::read::ZipFile<'_>) -> EntryMeta {
-    EntryMeta {
-        name: file.name().to_string(),
+fn zip_meta<R: std::io::Read>(file: &zip::read::ZipFile<'_, R>) -> Result<EntryMeta, ArchiveError> {
+    Ok(EntryMeta {
+        name: file.name().map_err(unreadable)?.into_owned(),
         size: file.size(),
         kind: if file.is_dir() {
             EntryKind::Directory
@@ -64,13 +64,13 @@ fn zip_meta(file: &zip::read::ZipFile<'_>) -> EntryMeta {
             EntryKind::File
         },
         encrypted: file.encrypted(),
-    }
+    })
 }
 
 /// Common methods only. LZMA/XZ in ZIP practically never appear in model
 /// downloads, but their decoders reserve memory according to the dictionary size
 /// in the header (up to 4 GB) - a crafted archive could crash the app that way.
-fn zip_method_allowed(file: &zip::read::ZipFile<'_>) -> bool {
+fn zip_method_allowed<R: std::io::Read>(file: &zip::read::ZipFile<'_, R>) -> bool {
     use zip::CompressionMethod;
     matches!(
         file.compression(),
@@ -82,7 +82,7 @@ fn zip_method_allowed(file: &zip::read::ZipFile<'_>) -> bool {
     )
 }
 
-fn check_zip_method(file: &zip::read::ZipFile<'_>) -> Result<(), ArchiveError> {
+fn check_zip_method<R: std::io::Read>(file: &zip::read::ZipFile<'_, R>) -> Result<(), ArchiveError> {
     if file.is_file() && !file.encrypted() && !zip_method_allowed(file) {
         return Err(ArchiveError::Unsupported(format!(
             "Kompressionsverfahren {:?}",
@@ -105,7 +105,7 @@ fn list_zip(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
         // by_index_raw neither decrypts nor decompresses - so it also works for encrypted entries.
         let file = archive.by_index_raw(index).map_err(unreadable)?;
         check_zip_method(&file)?;
-        out.push(zip_meta(&file));
+        out.push(zip_meta(&file)?);
     }
     Ok(out)
 }
@@ -116,7 +116,7 @@ fn extract_zip(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> 
         let meta = {
             let file = archive.by_index_raw(index).map_err(unreadable)?;
             check_zip_method(&file)?;
-            zip_meta(&file)
+            zip_meta(&file)?
         };
         if let Some(target) = ex.prepare(&meta)? {
             let mut file = archive.by_index(index).map_err(unreadable)?;
