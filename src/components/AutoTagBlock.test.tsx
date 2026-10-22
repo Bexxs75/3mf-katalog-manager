@@ -96,7 +96,9 @@ describe.each(['compact', 'comfort'])('tag chips in the %s detail panel', (densi
     fireEvent.click(screen.getByRole('menuitem', { name: de.autoTagRemoveAndBlock }));
     expect(await screen.findByRole('alert')).toHaveTextContent(de.autoTagBlockError);
     expect(onRemoveTag).not.toHaveBeenCalled();
-    expect(await removeAuto()).toHaveFocus();
+    // Focus returns to the button after the failed call settles, not synchronously.
+    const button = await removeAuto();
+    await waitFor(() => expect(button).toHaveFocus());
   });
 
   it('opens with ArrowDown, moves with the arrow keys and closes with Escape back onto the button', async () => {
@@ -115,7 +117,7 @@ describe.each(['compact', 'comfort'])('tag chips in the %s detail panel', (densi
     expect(second).toHaveFocus();
     fireEvent.keyDown(second, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
-    expect(button).toHaveFocus();
+    await waitFor(() => expect(button).toHaveFocus());
     expect(button).toHaveAttribute('aria-expanded', 'false');
   });
 
