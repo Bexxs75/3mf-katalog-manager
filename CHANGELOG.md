@@ -44,6 +44,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Catalog database:** The catalog database gets new tables for companion files and for remembered source folders; older catalogs are upgraded automatically (a copy is saved first).
 - **Catalog database:** The catalog database gets a new column for the colors of a spool (schema version 50); older catalogs are upgraded automatically (a copy is saved first).
 - **Robustness:** More robust handling of companion files, folder deletion and the start sync with unusual or oversized files.
+- **Selection bar:** The selection bar is always visible, grouped by purpose, with rarely used actions in a "More" menu, and no longer hidden by the detail panel.
 
 
 ## [0.16.3] - 2026-10-21
@@ -714,6 +715,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt neue Tabellen für Begleitdateien und für gemerkte Quellordner; ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt eine neue Spalte für die Farben einer Spule (Schema 50); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
 - **Robustheit:** Begleitdateien, Ordner löschen und der Abgleich beim Start kommen besser mit ungewöhnlichen oder sehr großen Dateien zurecht.
+- **Auswahlleiste:** Die Auswahlleiste ist immer sichtbar, nach Zweck gegliedert, selten genutzte Aktionen stehen im Menü „Mehr“, und der Detailbereich verdeckt sie nicht mehr.
 
 
 ## [0.16.3] - 2026-10-21
