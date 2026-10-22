@@ -229,6 +229,28 @@ export function BulkActionToolbar({
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [moreOpen]);
 
+  // The entries that open these surfaces disappear with the menu, taking focus with them,
+  // so the surface has to take it over. Without that, arrow keys would act on the page.
+  // The tag list is only reachable through the menu in the compact bar.
+  useEffect(() => {
+    if (!licenseOpen) return;
+    moreWrapRef.current?.querySelector<HTMLElement>('[data-license-popover] select')?.focus({ preventScroll: true });
+  }, [licenseOpen]);
+  useEffect(() => {
+    if (!removeTagMenuOpen || !compact) return;
+    const popover = moreWrapRef.current?.querySelector<HTMLElement>('[data-remove-tag-popover]');
+    (popover?.querySelector<HTMLElement>('button') ?? popover)?.focus({ preventScroll: true });
+  }, [removeTagMenuOpen, compact]);
+  // Picking a tag closes the list and removes the focused entry; focus goes back to the trigger
+  // instead of falling to the page. Escape already moves focus itself.
+  const wasRemoveTagOpen = useRef(false);
+  useEffect(() => {
+    const closed = wasRemoveTagOpen.current && !removeTagMenuOpen;
+    wasRemoveTagOpen.current = removeTagMenuOpen;
+    const active = document.activeElement;
+    if (closed && (!active || active === document.body)) removeTagFocusRef.current?.focus();
+  }, [removeTagMenuOpen, removeTagFocusRef]);
+
   const { language } = useLanguage();
 
   // Disabled actions stay focusable (aria-disabled) so that a screen reader can
@@ -261,7 +283,7 @@ export function BulkActionToolbar({
   ];
 
   const removeTagPopover = removeTagMenuOpen && (
-    <ViewportPopover fitHeight data-navigation-menu onKeyDown={navigateListMenu} className={`absolute top-9 ${compact ? 'right-0' : 'left-0'} min-w-[160px] max-w-[300px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40`}>
+    <ViewportPopover fitHeight data-navigation-menu data-remove-tag-popover tabIndex={-1} onKeyDown={navigateListMenu} className={`absolute top-9 ${compact ? 'right-0' : 'left-0'} min-w-[160px] max-w-[300px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40`}>
       {tagsInSelection.map((tag) => (
         <button
           key={tag}
@@ -445,7 +467,7 @@ export function BulkActionToolbar({
                 </div>
               </ViewportPopover>
             )}
-            {licenseOpen && onBulkSetLicense && <ViewportPopover data-navigation-menu className="absolute top-9 right-0 w-80 max-w-[85vw] px-3 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+            {licenseOpen && onBulkSetLicense && <ViewportPopover data-navigation-menu data-license-popover className="absolute top-9 right-0 w-80 max-w-[85vw] px-3 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
               <LicenseEditor value={null} bulk onSave={async value => { await onBulkSetLicense(value); setLicenseOpen(false); moreRef.current?.focus(); }} />
             </ViewportPopover>}
             {compact && removeTagPopover}

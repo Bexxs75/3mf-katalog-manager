@@ -512,3 +512,60 @@ describe('BulkActionToolbar groups and More menu', () => {
     expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(true);
   });
 });
+
+describe('BulkActionToolbar focus handover from the More menu', () => {
+  it('moves focus into the license editor and back to "Mehr" on Escape', () => {
+    renderToolbar({ onBulkSetLicense: vi.fn().mockResolvedValue(undefined) });
+    clickBulkMore('Lizenz setzen');
+    expect(screen.getByRole('combobox', { name: 'Lizenz' })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('combobox', { name: 'Lizenz' })).toBeNull();
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+  });
+
+  it('moves focus into the tag list in the compact bar and back to "Mehr" on Escape', () => {
+    const view = renderToolbar({ compact: true });
+    clickBulkMore('Tag entfernen');
+    expect(view.props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(true);
+    view.view.rerender(<LanguageProvider><BulkActionToolbar {...view.props} compact removeTagMenuOpen /></LanguageProvider>);
+    expect(screen.getByRole('button', { name: '#miniatur' })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+  });
+
+  it('focuses the empty tag list itself so Escape still works from there', () => {
+    renderToolbar({ compact: true, removeTagMenuOpen: true, tagsInSelection: [] });
+    expect(document.querySelector('[data-remove-tag-popover]')).toHaveFocus();
+  });
+
+  it('returns focus to "Mehr" after a tag was picked and the list closed', () => {
+    const view = renderToolbar({ compact: true, removeTagMenuOpen: true });
+    const tag = screen.getByRole('button', { name: '#miniatur' });
+    expect(tag).toHaveFocus();
+    view.view.rerender(<LanguageProvider><BulkActionToolbar {...view.props} compact removeTagMenuOpen={false} /></LanguageProvider>);
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+  });
+
+  it('keeps the focus return to "Mehr" after the date rename dialog is cancelled', () => {
+    renderToolbar({ selectedIds: ['a', 'b'], onDateRenamed: vi.fn() });
+    clickBulkMore('Mit Datum umbenennen …');
+    expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
+    fireEvent.keyDown(document.activeElement ?? window, { key: 'Escape' });
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+  });
+
+  it('moves focus to the confirmation Cancel button and back to "Mehr" for "Aus Katalog entfernen"', () => {
+    renderToolbar();
+    clickBulkMore('Aus Katalog entfernen');
+    const cancel = screen.getByRole('button', { name: 'Abbrechen' });
+    expect(cancel).toHaveFocus();
+    fireEvent.click(cancel);
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+  });
+
+  it('returns focus to "Mehr" after "Aus Sammlung entfernen"', () => {
+    renderToolbar({ activeCollection: 'c1' });
+    clickBulkMore('Aus Sammlung entfernen');
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+  });
+});
