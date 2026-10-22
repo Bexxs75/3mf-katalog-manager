@@ -219,7 +219,13 @@ fn trash_folder_with_conn(
             Err(e) => Err(CmdError::from(e.to_string())),
         };
         match outcome {
-            Ok(()) => trashed += 1,
+            Ok(()) => {
+                trashed += 1;
+                // Remember that the folder went with it, so a restore may recreate its rows.
+                if let Err(e) = conn.execute("INSERT OR IGNORE INTO folder_trash_origin (file_id) VALUES (?1)", [file_id]) {
+                    log::warn!(target: "cleanup", "Ordner löschen, Herkunft nicht gemerkt: {path} ({e})");
+                }
+            }
             Err(e) => {
                 log::warn!(target: "cleanup", "Ordner löschen, übersprungen: {path} ({e})");
                 failed.push(FolderTrashFailure { file_id: file_id.to_string(), path, reason: e.to_string() });

@@ -172,12 +172,16 @@ fn restore_model_with_conn(
         return Err(e.to_string().into());
     }
 
+    let from_folder_trash = conn
+        .query_row("SELECT 1 FROM folder_trash_origin WHERE file_id = ?1", [id], |_| Ok(()))
+        .is_ok();
     let new_path_str = target_path.to_string_lossy().to_string();
     let new_path_arg = if new_path_str == file.path { None } else { Some(new_path_str.as_str()) };
     let db_result = (|| -> Result<(), DbError> {
         let tx = conn.unchecked_transaction()?;
         db::restore_file(&tx, id, new_path_arg)?;
-        relink_restored_folder(&tx, id, target_path.parent(), created_dirs.first().map(|d| d.as_path()))?;
+        relink_restored_folder(&tx, id, target_path.parent(), created_dirs.first().map(|d| d.as_path()), from_folder_trash)?;
+        tx.execute("DELETE FROM folder_trash_origin WHERE file_id = ?1", [id])?;
         tx.commit().map_err(DbError::from)
     })();
     if let Err(db_err) = db_result {
@@ -222,11 +226,16 @@ fn missing_parent_dirs(target: &std::path::Path) -> Vec<PathBuf> {
 /// whose folder is not found stays as it is. When the recreated directory has no cataloged
 /// ancestor and lies outside the catalog base folder (a top-level catalog folder that was
 /// trashed), the outermost recreated directory becomes a new top-level folder row.
+/// A model that was trashed together with its folder (`from_folder_trash`) also gets
+/// its folder rows back when the directory stayed on disk because of a foreign file:
+/// there the row was removed by the folder trash, not by the user. Only catalog rows
+/// are written, below a cataloged ancestor or the catalog base folder.
 fn relink_restored_folder(
     conn: &Connection,
     id: i64,
     dir: Option<&std::path::Path>,
     created_root: Option<&std::path::Path>,
+    from_folder_trash: bool,
 ) -> Result<(), DbError> {
     let Some(dir) = dir else { return Ok(()) };
     let folders = db::list_folders(conn)?;
@@ -236,7 +245,7 @@ fn relink_restored_folder(
         .map(|f| f.id);
     let folder_id = match existing {
         Some(folder_id) => folder_id,
-        None if created_root.is_none() => return Ok(()),
+        None if created_root.is_none() && !from_folder_trash => return Ok(()),
         None => {
             let anchor = match folders::find_catalog_parent(dir, &folders) {
                 Some(parent) => folders.iter().find(|f| f.id == parent).map(|f| PathBuf::from(&f.path)),
@@ -633,18 +642,64 @@ mod restore_into_missing_folder_tests {
 
     #[test]
     fn restore_never_recreates_a_folder_row_the_user_removed_while_the_directory_exists() {
-        let (conn, base, [one, two]) = two_models_trashed("restore_removed_row");
-        // The directory comes back without a catalog row (e.g. made by hand), the user
-        // did not ask for it in the catalog.
+        // Single models trashed one by one (no folder trash), then the user removes the
+        // folder from the catalog; the directory still exists.
+        let tmp = unique_test_dir("restore_removed_row");
+        let base = tmp.join("catalog");
+        let trash = tmp.join("trash");
         std::fs::create_dir_all(base.join("A")).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        db::printer_link::set_setting(&conn, folders::SETTING_CATALOG_BASE_DIR, &base.to_string_lossy()).unwrap();
+        let base_id = db::insert_folder_with_parent(&conn, "catalog", None, &base.to_string_lossy()).unwrap();
+        let a = db::insert_folder_with_parent(&conn, "A", Some(base_id), &base.join("A").to_string_lossy()).unwrap();
+        let ids = ["one.3mf", "two.3mf"].map(|n| {
+            let path = base.join("A").join(n);
+            std::fs::write(&path, n.as_bytes()).unwrap();
+            let id = db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(a)).unwrap();
+            delete_file_with_conn(&conn, &db::get_file(&conn, id).unwrap().unwrap(), id, &trash).unwrap();
+            id
+        });
+        super::super::catalog_removal::remove_folder_with_conn(&conn, &a.to_string()).unwrap();
         let rows_before: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
-        restore(&conn, one);
-        restore(&conn, two);
+        for id in ids {
+            restore(&conn, id);
+        }
         let rows_after: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
         assert_eq!(rows_after, rows_before);
-        assert_eq!(folder_of(&conn, one), None);
-        assert_eq!(folder_of(&conn, two), None);
+        assert_eq!(folder_of(&conn, ids[0]), None);
+        assert_eq!(folder_of(&conn, ids[1]), None);
         assert!(base.join("A").join("one.3mf").exists() && base.join("A").join("two.3mf").exists());
+    }
+
+    #[test]
+    fn restore_after_folder_trash_with_a_foreign_file_recreates_the_folder_row() {
+        let tmp = unique_test_dir("restore_foreign_file_stays");
+        let base = tmp.join("catalog");
+        let trash = tmp.join("trash");
+        let dir = base.join("Werkstatt");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        db::printer_link::set_setting(&conn, folders::SETTING_CATALOG_BASE_DIR, &base.to_string_lossy()).unwrap();
+        let base_id = db::insert_folder_with_parent(&conn, "catalog", None, &base.to_string_lossy()).unwrap();
+        let w = db::insert_folder_with_parent(&conn, "Werkstatt", Some(base_id), &dir.to_string_lossy()).unwrap();
+        std::fs::write(dir.join("notiz.txt"), b"foreign").unwrap();
+        let path = dir.join("Prisma.stl");
+        std::fs::write(&path, b"bytes").unwrap();
+        let id = db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(w)).unwrap();
+        assert_eq!(super::super::folder_trash::trash_folder_for_test(&conn, w, &trash), 1);
+        assert!(dir.join("notiz.txt").exists(), "the directory stays because of the foreign file");
+        restore(&conn, id);
+        let folder_id = folder_of(&conn, id).expect("model must hang at a folder row again");
+        let (path_db, parent): (String, Option<i64>) = conn
+            .query_row("SELECT path, parent_id FROM folders WHERE id = ?1", [folder_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(PathBuf::from(path_db), dir);
+        assert_eq!(parent, Some(base_id));
+        assert_eq!(std::fs::read(dir.join("notiz.txt")).unwrap(), b"foreign");
+        let marks: i64 = conn.query_row("SELECT COUNT(*) FROM folder_trash_origin", [], |r| r.get(0)).unwrap();
+        assert_eq!(marks, 0, "the mark is used up by the restore");
     }
 
     #[test]

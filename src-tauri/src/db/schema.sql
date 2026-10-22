@@ -234,3 +234,11 @@ CREATE TABLE IF NOT EXISTS blocked_auto_tags (
     name TEXT PRIMARY KEY COLLATE NOCASE,
     blocked_at TEXT NOT NULL
 );
+
+-- Models moved to the trash by "folder to trash". Restoring such a model may bring
+-- its catalog folder rows back even if the directory stayed on disk (foreign file);
+-- a model removed from a folder some other way never does. A separate table so
+-- `files` and `folders` stay exactly as other tools read them.
+CREATE TABLE IF NOT EXISTS folder_trash_origin (
+    file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE
+);

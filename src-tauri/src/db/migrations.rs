@@ -141,6 +141,8 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(add_spool_color_list),
     // Blocked automatic tags. New table only, no existing data is touched.
     MigrationStep::Simple(add_blocked_auto_tags_table),
+    // Marks models trashed by "folder to trash". New table only, no existing data is touched.
+    MigrationStep::Simple(add_folder_trash_origin_table),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -191,6 +193,13 @@ fn add_blocked_auto_tags_table(conn: &Connection) -> Result<(), DbError> {
     exec(conn, "CREATE TABLE IF NOT EXISTS blocked_auto_tags (
         name TEXT PRIMARY KEY COLLATE NOCASE,
         blocked_at TEXT NOT NULL
+    )")
+}
+
+/// New table only; `IF NOT EXISTS` so a catalog that already got it from the base schema is left alone.
+fn add_folder_trash_origin_table(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS folder_trash_origin (
+        file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE
     )")
 }
 
@@ -783,7 +792,22 @@ mod tests {
         let rows: i64 = conn.query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |r| r.get(0)).unwrap();
         assert_eq!(rows, 0);
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, BLOCKED_AUTO_TAGS_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(CURRENT_SCHEMA_VERSION, BLOCKED_AUTO_TAGS_MIGRATION_VERSION + 1, "the folder trash origin table is the step after");
+    }
+
+    #[test]
+    fn the_folder_trash_origin_step_adds_an_empty_table_and_is_repeatable() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        conn.execute_batch("DROP TABLE folder_trash_origin").unwrap();
+        conn.pragma_update(None, "user_version", BLOCKED_AUTO_TAGS_MIGRATION_VERSION).unwrap();
+        run_migrations(&mut conn).unwrap();
+        assert!(table_exists(&conn, "folder_trash_origin"));
+        add_folder_trash_origin_table(&conn).unwrap();
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM folder_trash_origin", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0);
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
     }
 
@@ -1133,7 +1157,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 12);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 13);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.
