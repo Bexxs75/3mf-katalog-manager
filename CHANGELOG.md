@@ -11,6 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Import:** The result dialog after an import offers to show the newly added models.
 - **Source folders:** set up folders like Downloads, check them for new models (on request, optionally at app start) and move the chosen files into the catalog or decline them.
 - **Detail view:** for models downloaded from Makerworld, platform, model ID and profile ID are shown (read from the 3MF file); use 'Rescan metadata' to fill them for existing models.
 - **Import:** After an import, the notice offers a button to open the 'Recently added' view.
@@ -37,6 +38,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
+- **Automatic tags:** More automatic tags are shown in the app language: lid, drawer, hook, vase, box, organizer, wall mount, keychain, toy, gear, tool, adapter, spare part, lamp and small. The German name is still what is stored; hand-typed names such as 'lid' or 'couvercle' are merged with 'deckel'. Existing catalogs are otherwise unchanged.
 - **Settings:** Settings now open in the right-hand panel instead of a small window over the models and folders.
 - **Moving model files:** Moved model files keep the permissions and modification time of the original file.
 - **Trash:** Restoring a model from the trash now recreates its folder if it no longer exists, so models of a deleted folder can be brought back.
@@ -681,6 +683,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- **Import:** Auch der Ergebnisdialog nach einem Import bietet an, die neu hinzugefügten Modelle anzuzeigen.
 - **Quellordner:** Ordner wie Downloads einrichten, auf neue Modelle prüfen (auf Knopfdruck, optional beim Start) und die gewählten Dateien in den Katalog verschieben oder ablehnen.
 - **Detailansicht:** Bei von Makerworld heruntergeladenen Modellen werden Plattform, Modell-ID und Profil-ID angezeigt (aus der 3MF-Datei gelesen); über „Metadaten neu einlesen“ lassen sie sich für bestehende Modelle nachtragen.
 - **Import:** Nach einem Import bietet der Hinweis einen Knopf, der die Ansicht „Neu hinzugefügt“ öffnet.
@@ -707,6 +710,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Geändert
 
+- **Automatische Tags:** Mehr automatische Tags erscheinen in der App-Sprache: Deckel, Schublade, Haken, Vase, Box, Organizer, Wandhalterung, Schlüsselanhänger, Spielzeug, Zahnrad, Werkzeug, Adapter, Ersatzteil, Lampe und klein. Gespeichert wird weiter der deutsche Name; von Hand getippte Namen wie „lid“ oder „couvercle“ werden mit „deckel“ zusammengeführt. Bestehende Kataloge bleiben sonst unverändert.
 - **Einstellungen:** Die Einstellungen öffnen sich jetzt im rechten Bereich statt in einem kleinen Fenster über den Modellen und Ordnern.
 - **Modelldateien verschieben:** Verschobene Modelldateien behalten die Rechte und die Änderungszeit der Originaldatei.
 - **Papierkorb:** Beim Wiederherstellen eines Modells aus dem Papierkorb wird sein Ordner neu angelegt, falls er nicht mehr existiert; so lassen sich Modelle eines gelöschten Ordners zurückholen.
