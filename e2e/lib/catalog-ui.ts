@@ -26,6 +26,8 @@ export async function catalogCount(count: number) {
 
 export async function selectCards(names: string[]) {
   await closeDetails();
+  await detailPanel().waitForExist({ reverse: true });
+  await $('[role="toolbar"]').waitForDisplayed();
   for (const name of names) {
     const card = await cardByName(name);
     await hover(card);

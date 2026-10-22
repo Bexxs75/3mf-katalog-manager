@@ -1,5 +1,5 @@
 import { cardByName, openCatalog, waitForPlateViewer } from '../lib/app.js';
-import { byText, click } from '../lib/ui.js';
+import { byText, click, reveal } from '../lib/ui.js';
 
 describe('6 Plattenauswahl', () => {
   const group = () => $('[data-plate-selector]');
@@ -13,11 +13,15 @@ describe('6 Plattenauswahl', () => {
   };
 
   before(async function () {
-    await openCatalog();
-    const card = await cardByName('Dreiplatten.3mf');
-    await browser.action('pointer', { parameters: { pointerType: 'mouse' } })
-      .move({ origin: card }).down().up().pause(60).down().up().perform();
-    await $('h1=Dreiplatten.3mf').waitForDisplayed();
+    await openCatalog(1280, 800, { pinnedDetails: true });
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const card = await cardByName('Dreiplatten.3mf');
+      await reveal(card);
+      await browser.action('pointer', { parameters: { pointerType: 'mouse' } })
+        .move({ origin: card }).down().up().pause(60).down().up().perform();
+      if (await $('h1=Dreiplatten.3mf').waitForDisplayed({ timeout: 8000 }).catch(() => false)) break;
+      if (attempt === 3) throw new Error('Double click did not open Dreiplatten.3mf');
+    }
     await click((await byText('button', '3D-Ansicht'))!);
     if (!await waitForPlateViewer()) {
       console.warn('SKIP: PlateSelector only renders when the 3D viewer is ready; WebGL is unavailable on this runner.');

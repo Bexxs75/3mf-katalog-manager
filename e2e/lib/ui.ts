@@ -32,6 +32,7 @@ export const rightClick = (el: El) => click(el, 2);
 /** Only the move, so hover styles can be inspected. */
 export async function hover(el: El) {
   const target = await el;
+  await reveal(target);
   await browser.action('pointer', { parameters: { pointerType: 'mouse' } }).move({ origin: target }).perform();
 }
 
