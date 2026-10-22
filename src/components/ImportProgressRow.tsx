@@ -50,6 +50,6 @@ export function ImportProgressRow({ progress: p, meta, result, queued, onCancel,
       {state === 'finished' && archivesSkipped > 0 && <div className="import-meta">{formatCount(t('impArchivesSkipped'), archivesSkipped).replace('{import}', t('import')).replace('{files}', t('importFilesOption'))}</div>}
       <div className="import-counts">{([[importedTotal, 'impImported'], [counts.duplicate, 'impDuplicate'], [counts.skipped, 'impSkipped'], [counts.importedNotPlaced, 'impOfWhichNotPlaced'], [p.inFlight, 'impInFlight']] as const).map(([value, key]) => (value > 0 || key === 'impImported') && <span key={key} className={key === 'impSkipped' ? 'crit' : key === 'impDuplicate' || key === 'impOfWhichNotPlaced' ? 'warn' : undefined}><b>{n(value)}</b> {t(key)}</span>)}</div>
     </section>
-    {details && result && <ImportResultDialog result={result} onClose={() => setDetails(false)} returnFocus={detailsRef} onSelectModel={onSelectModel} />}
+    {details && result && <ImportResultDialog result={result} onClose={() => setDetails(false)} returnFocus={detailsRef} onSelectModel={onSelectModel} onShowNew={onShowNew && (() => { onShowNew(); onDismiss(); })} />}
   </>;
 }

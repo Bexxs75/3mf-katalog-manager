@@ -9,8 +9,10 @@ import './import.css';
 const reasons: Record<string, keyof Translations> = { empty: 'impEmpty', invalid: 'impInvalid', failed: 'impReadFailed', unsupported: 'impUnsupported', notStarted: 'impNotStarted', cancelled: 'impReasonCancelled', targetMissing: 'impTargetMissing', moveFailed: 'impMoveFailed', protected: 'impProtected', jobFailed: 'impJobFailed', unsafe: 'impUnsafe', blocked: 'impBlocked', existing: 'impExisting', path: 'impPath', hash: 'impHash' };
 const tabs = ['impTabSkipped', 'impTabDuplicate', 'impTabNotPlaced', 'impTabArchive'] as const;
 interface Row { path: string; reason: string; nested?: boolean; existingFileId?: string | null }
-interface Props { result: ImportJobResult; onClose: () => void; returnFocus?: RefObject<HTMLElement | null>; onSelectModel?: (id: string) => void }
-export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}: Props) {
+interface Props { result: ImportJobResult; onClose: () => void; returnFocus?: RefObject<HTMLElement | null>; onSelectModel?: (id: string) => void;
+  // Opens the "recently added" view; offered only when the job added models.
+  onShowNew?: () => void }
+export function ImportResultDialog({result, onClose, returnFocus, onSelectModel, onShowNew}: Props) {
   const t = useT(); const {language} = useLanguage(); const id = useId();
   const formatCount = useFormatCount();
   const counts = countsWithArchiveModels(result.counts, result.groups);
@@ -51,6 +53,6 @@ export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}
     }}>{i === 3 ? formatCount(t('archiveCountNoun'), result.groups.archive.length) : t(key)} <span>{n(i === 3 ? result.groups.archive.length : rows[i].length)}</span></button>)}</div>
     <div className="import-table-scroll" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}><table><thead><tr><th>{t('impFile')}</th><th>{t('impReason')}</th></tr></thead><tbody>{rows[tab].map((row,i) => <tr key={i} className={row.nested ? 'import-nested' : undefined}><td className="font-code">{row.nested && '↳ '}{displayName(row.path)}</td><td>{displayName(row.reason)}{row.existingFileId && onSelectModel && <button onClick={() => {onClose(); onSelectModel(row.existingFileId!);}}>{t('impExistingModel').replace('{id}', row.existingFileId)}</button>}</td></tr>)}</tbody></table></div>
     {fallback && <label>{t('impCopyFallback')}<textarea className="font-code" readOnly value={text} onFocus={e => e.currentTarget.select()} aria-label={t('impCopyFallback')} /></label>}
-    <footer><button onClick={() => void copy()}>{t('impCopy')}</button><span role="status">{copied ? t('impCopied') : ''}</span><button data-close onClick={onClose}>{t('impClose')}</button></footer>
+    <footer>{onShowNew && counts.imported + counts.importedNotPlaced > 0 && <button onClick={() => {onClose(); onShowNew();}}>{t('importShowNew')}</button>}<button onClick={() => void copy()}>{t('impCopy')}</button><span role="status">{copied ? t('impCopied') : ''}</span><button data-close onClick={onClose}>{t('impClose')}</button></footer>
   </div></div>;
 }

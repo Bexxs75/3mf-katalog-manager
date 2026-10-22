@@ -75,3 +75,20 @@ it('lists assigned and ignored companion files as rows of the archive', () => {
   expect(screen.getByText(/1 Datei ignoriert \(nicht erlaubter Typ\)/)).toBeVisible();
   expect(screen.queryByText(/weitere Datei/)).toBeNull();
 });
+
+it('offers "view recently added" in the result dialog when models were added, closes the dialog and calls back', () => {
+  const onShowNew = vi.fn(); const onClose = vi.fn();
+  render(<LanguageProvider><ImportResultDialog result={importResult} onClose={onClose} onShowNew={onShowNew} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Neu hinzugefügt ansehen'}));
+  expect(onShowNew).toHaveBeenCalledOnce(); expect(onClose).toHaveBeenCalledOnce();
+});
+
+it('hides "view recently added" in the result dialog when nothing new was imported or no handler is given', () => {
+  const none = {...importResult.counts, imported: 0, importedNotPlaced: 0};
+  const result = {...importResult, counts: none, groups: {...importResult.groups, importedNotPlaced: [], archive: []}};
+  const {unmount} = render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} onShowNew={vi.fn()} /></LanguageProvider>);
+  expect(screen.queryByRole('button', {name: 'Neu hinzugefügt ansehen'})).toBeNull();
+  unmount();
+  render(<LanguageProvider><ImportResultDialog result={importResult} onClose={vi.fn()} /></LanguageProvider>);
+  expect(screen.queryByRole('button', {name: 'Neu hinzugefügt ansehen'})).toBeNull();
+});
