@@ -4,7 +4,7 @@ import type { ComponentProps } from 'react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { UiDensityProvider } from '../hooks/UiDensityContext';
 import { ImportLockContext } from '../hooks/ImportLockContext';
-import { makeModelFile } from '../test/factories';
+import { makeModelFile, makePrinter } from '../test/factories';
 import { CatalogWorkspace } from './CatalogWorkspace';
 import { de } from '../i18n/de';
 vi.mock('./ModelDetailPage', () => ({ ModelDetailPage: () => <div data-testid="detail-page" /> }));
@@ -117,7 +117,7 @@ it('uses the same reset callback for the bar and empty card', () => {
   const props = filterWorkspace({query: 'missing', filtered: []});
   expect(screen.getByText('Kein Modell passt zu diesen Filtern')).toBeVisible();
   expect(screen.getByText('Entferne einen Filter oder setze alle zurück, um wieder alle 2 Modelle zu sehen.')).toBeVisible();
-  const buttons = screen.getAllByRole('button', {name: 'Alle löschen'});
+  const buttons = screen.getAllByRole('button', {name: de.filterBarClearAll});
   expect(buttons).toHaveLength(2);
   buttons.forEach(button => fireEvent.click(button));
   expect(props.onClearFilters).toHaveBeenCalledTimes(2);
@@ -129,7 +129,7 @@ it('keeps the tool empty text only for a tool without further filters', () => {
   filterWorkspace({toolView: 'favorites', filtered: []});
   expect(screen.queryByText('Kein Modell passt zu diesen Filtern')).toBeNull();
   expect(screen.getByText(de.toolViewEmpty)).toBeVisible();
-  expect(screen.getAllByRole('button', {name: 'Alle löschen'})).toHaveLength(1);
+  expect(screen.getAllByRole('button', {name: de.filterBarClearAll})).toHaveLength(1);
 });
 
 
@@ -202,4 +202,35 @@ it('uses the filter empty state for a tool combined with print status', () => {
   filterWorkspace({ toolView: 'favorites', printStatus: 'printed', filtered: [], setPrintStatus: vi.fn() });
   expect(screen.getByText(de.filterBarEmptyTitle)).toBeVisible();
   expect(screen.queryByText(de.toolViewEmpty)).toBeNull();
+});
+
+const fitPrinters = [makePrinter({ id: 'a', name: 'X1C' }), makePrinter({ id: 'b', name: 'NoBed', bedXMm: null }),
+  makePrinter({ id: 'c', name: 'Mini', bedXMm: 180, bedYMm: 180, bedZMm: 180 })];
+
+it('offers a "Fits on" filter with all printers that have a build volume and a removable chip', () => {
+  const setFitPrinterId = vi.fn();
+  filterWorkspace({ printers: fitPrinters, fitPrinterId: 'c', setFitPrinterId });
+  const select = screen.getByRole('combobox', { name: de.fitPrinterFilter });
+  expect(within(select).getAllByRole('option').map(option => option.textContent)).toEqual([de.fitPrinterAll, 'X1C', 'Mini']);
+  expect(select).toHaveValue('c');
+  fireEvent.change(select, { target: { value: 'a' } });
+  expect(setFitPrinterId).toHaveBeenLastCalledWith('a');
+  fireEvent.change(select, { target: { value: '' } });
+  expect(setFitPrinterId).toHaveBeenLastCalledWith(null);
+  const region = screen.getByRole('region', { name: de.filterBarAria });
+  const chip = region.querySelector('[data-filter-kind]')!.parentElement!;
+  expect(chip).toHaveTextContent(`${de.fitPrinterFilter}Mini`);
+  fireEvent.click(within(chip).getByRole('button', { name: de.chipRemove.replace('{label}', `${de.fitPrinterFilter} Mini`) }));
+  expect(setFitPrinterId).toHaveBeenLastCalledWith(null);
+});
+
+it('shows no "Fits on" chip for the default and no filter without printers that have a build volume', () => {
+  filterWorkspace({ printers: fitPrinters, fitPrinterId: null, setFitPrinterId: vi.fn() });
+  expect(screen.getByRole('combobox', { name: de.fitPrinterFilter })).toHaveValue('');
+  expect(screen.getByRole('region', { name: de.filterBarAria }).querySelector('[data-filter-kind]')).toBeNull();
+});
+
+it('hides the "Fits on" filter when no printer has a build volume', () => {
+  filterWorkspace({ printers: [fitPrinters[1]], setFitPrinterId: vi.fn() });
+  expect(screen.queryByRole('combobox', { name: de.fitPrinterFilter })).toBeNull();
 });

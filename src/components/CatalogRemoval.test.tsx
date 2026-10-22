@@ -9,6 +9,7 @@ function FolderTree(props: Omit<Parameters<typeof FolderTreeComponent>[0], 'expa
 }
 import { CatalogResetSection } from './CatalogResetSection';
 import { BulkActionToolbar } from './BulkActionToolbar';
+import { clickBulkMore } from '../test/bulkBar';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn().mockResolvedValue(undefined), info: vi.fn().mockResolvedValue(undefined) }));
@@ -36,7 +37,7 @@ describe('folder catalog removal', () => {
     vi.mocked(invoke).mockResolvedValueOnce({ name: 'Parts', subfolderCount: 0, modelCount: 4 }).mockRejectedValueOnce({ expected: true, message: 'Das ist der Speicherort des Katalogs. Zum Leeren „Katalog zurücksetzen“ in den Einstellungen verwenden.' });
     render(<Provider><FolderTree folders={folders} totalModelCount={4} activeFolderId="all" onSelect={() => {}} onRemoved={() => {}} /></Provider>);
     fireEvent.contextMenu(screen.getByText('Parts'));
-    fireEvent.click(screen.getByRole('menuitem'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus dem Katalog entfernen' }));
     await screen.findByRole('dialog');
     await screen.findByText('4 Modelle samt Tags und Einträgen im Druckprotokoll');
     fireEvent.click(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' }));
@@ -48,7 +49,7 @@ describe('folder catalog removal', () => {
     render(<Provider><FolderTree folders={folders} totalModelCount={4} activeFolderId="all" onSelect={() => {}} /></Provider>);
     const row = screen.getByText('Parts').closest('[tabindex]')!;
     fireEvent.contextMenu(row);
-    fireEvent.click(screen.getByRole('menuitem'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus dem Katalog entfernen' }));
     await screen.findByText('4 Modelle samt Tags und Einträgen im Druckprotokoll');
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -89,7 +90,7 @@ it('bulk toolbar confirms removal and calls its removal action', async () => {
     onBulkRemoveFromCollection={noop} onBulkSetPrintStatus={noop} onBulkDelete={noop} onBulkRemove={onRemove}
     allTags={[]} tagsInAllSelection={[]} addTagMenuOpen={false} onAddTagMenuOpenChange={noop} tagDraft="" onTagDraftChange={noop} onSubmitBulkAddTag={noop}
     removeTagMenuOpen={false} onRemoveTagMenuOpenChange={noop} tagsInSelection={[]} onBulkRemoveTag={noop} /></Provider>);
-  fireEvent.click(screen.getByText('Aus Katalog entfernen'));
+  clickBulkMore('Aus Katalog entfernen');
   expect(screen.getByText('3 Modelle aus dem Katalog entfernen?')).toBeTruthy();
   fireEvent.click(screen.getByText('Entfernen'));
   expect(onRemove).toHaveBeenCalledOnce();

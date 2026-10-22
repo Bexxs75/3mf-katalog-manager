@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { ImportSummaryBanner } from './ImportSummaryBanner';
 import type { ArchiveOutcome, SkippedFile } from '../types';
@@ -15,6 +15,8 @@ function outcome(overrides: Partial<ArchiveOutcome>): ArchiveOutcome {
     unsafeSkipped: 0,
     blockedSkipped: 0,
     otherFilesExtracted: 0,
+    companionsAssigned: 0,
+    companionsIgnored: 0,
     archiveDeleted: false,
     deleteError: null,
     error: null,
@@ -169,4 +171,66 @@ it.each(['error', 'deleteError'] as const)('exposes bidi file paths embedded in 
   renderBanner([archive]);
   expect(screen.getByText(/Cannot read \/models\/part\[U\+202E\]txt\.3mf/)).toBeVisible();
   expect(archive[field]).toBe(message);
+});
+
+describe('ImportSummaryBanner "view recently added" button', () => {
+  function renderWith(imported: number, onShowNew?: () => void, onClose: () => void = vi.fn()) {
+    render(
+      <LanguageProvider>
+        <ImportSummaryBanner imported={imported} duplicates={1} onClose={onClose} onShowNew={onShowNew} />
+      </LanguageProvider>,
+    );
+  }
+
+  it('is a real button that calls back and closes the notice', () => {
+    const onShowNew = vi.fn();
+    const onClose = vi.fn();
+    renderWith(3, onShowNew, onClose);
+    const button = screen.getByRole('button', { name: 'Neu hinzugefügt ansehen' });
+    button.focus();
+    expect(button).toHaveFocus();
+    fireEvent.click(button);
+    expect(onShowNew).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('is absent when only duplicates were found or no handler is given', () => {
+    renderWith(0, vi.fn());
+    expect(screen.queryByRole('button', { name: 'Neu hinzugefügt ansehen' })).not.toBeInTheDocument();
+    renderWith(3);
+    expect(screen.queryByRole('button', { name: 'Neu hinzugefügt ansehen' })).not.toBeInTheDocument();
+  });
+  it('reports assigned companion files and ignored files, without counting ignored ones twice', () => {
+    renderBanner([outcome({ companionsAssigned: 3, companionsIgnored: 1, otherFilesExtracted: 1 }), outcome({ path: '/dl/b.zip', companionsAssigned: 2 })]);
+    expect(screen.getByText('5 Begleitdateien wurden Modellen zugeordnet.')).toBeInTheDocument();
+    expect(screen.getByText(/1 Datei ignoriert \(nicht erlaubter Typ\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/weitere Datei/)).not.toBeInTheDocument();
+  });
+
+  it('still reports other files that are neither assigned nor ignored', () => {
+    renderBanner([outcome({ companionsIgnored: 1, otherFilesExtracted: 3 })]);
+    expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeInTheDocument();
+  });
+
+  it('uses the singular for one assigned companion file and keeps the banner for 15s', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    renderBanner([outcome({ companionsAssigned: 1 })], onClose);
+    expect(screen.getByText('1 Begleitdatei wurde dem Modell zugeordnet.')).toBeInTheDocument();
+    vi.advanceTimersByTime(6000);
+    expect(onClose).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(10000);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('shows the companion counts that the job summary passes in', () => {
+    render(
+      <LanguageProvider>
+        <ImportSummaryBanner imported={1} duplicates={0} companionsAssigned={3} companionsIgnored={2} otherFilesExtracted={2} onClose={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('3 Begleitdateien wurden Modellen zugeordnet.')).toBeInTheDocument();
+    expect(screen.getByText(/2 Dateien ignoriert/)).toBeInTheDocument();
+  });
 });

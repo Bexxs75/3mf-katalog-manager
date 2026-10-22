@@ -4,6 +4,9 @@ pub mod licenses;
 mod repository;
 mod collections;
 mod tag_fragments;
+pub mod companions;
+pub mod sources;
+pub mod blocked_tags;
 pub use tag_fragments::cleanup_tag_fragments;
 pub mod printers;
 // Printer connection: settings, connections, fetched prints.
@@ -11,6 +14,9 @@ pub mod printer_link;
 mod migrations;
 
 pub use migrations::run_migrations;
+// Used by the desktop backup tests.
+#[cfg(feature = "test-support")]
+pub use migrations::{BLOCKED_AUTO_TAGS_MIGRATION_VERSION, SOURCE_COLUMNS_MIGRATION_VERSION, SPOOL_COLOR_LIST_MIGRATION_VERSION};
 
 /// Schema version of this build (for tests that check the migration backup).
 #[cfg(any(test, feature = "test-support"))]
@@ -77,6 +83,17 @@ mod tests {
     use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool, NewPrintLogEntry};
     use std::collections::BTreeMap;
 
+    #[test]
+    fn insert_drops_blocked_tags_but_keeps_the_others() {
+        let mut conn = connect_in_memory().expect("connect");
+        blocked_tags::block_auto_tag(&conn, "miniatur").unwrap();
+        let mut file = sample_file();
+        file.tags = vec!["Miniature".into(), "miniatur".into(), "kabelhalter".into()];
+        let id = insert_file(&mut conn, &file).expect("insert");
+        let tags: Vec<String> = list_all_file_tags(&conn).unwrap().into_iter().filter(|(f, _)| *f == id).map(|(_, t)| t).collect();
+        assert_eq!(tags, vec!["kabelhalter".to_string()]);
+    }
+
     fn sample_file() -> NewFile {
         let mut metadata = BTreeMap::new();
         metadata.insert("Designer".to_string(), "Jane".to_string());
@@ -110,6 +127,7 @@ mod tests {
             custom_image_png: None,
             source_url: None,
             license: None,
+            source: Default::default(),
             queue_position: None,
             favorite: false,
             plate_count: None,
@@ -390,6 +408,7 @@ mod tests {
             price: Some(19.99),
             image_png: None,
             color_hex: Some("#1a1a1a".to_string()),
+            color_hexes: Vec::new(),
             kind: "filament".to_string(),
         }
     }
@@ -901,11 +920,34 @@ mod tests {
         let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
         // "grand format" (not "large"/"grande" - ambiguous, see above).
         add_tag_to_file(&conn, a, "grand format").expect("alias");
-        add_tag_to_file(&conn, a, "Vase").expect("other");
+        add_tag_to_file(&conn, a, "Zierde").expect("other");
 
         assert_eq!(merge_auto_tag_aliases(&mut conn).expect("first"), 1);
         assert_eq!(merge_auto_tag_aliases(&mut conn).expect("second"), 0);
-        assert_eq!(tags_of(&conn, a), vec!["Vase".to_string(), "grossformat".to_string()]);
+        assert_eq!(tags_of(&conn, a), vec!["Zierde".to_string(), "grossformat".to_string()]);
+    }
+
+    #[test]
+    fn merge_folds_hand_tags_named_like_new_dictionary_entries() {
+        let mut conn = connect_in_memory().expect("connect");
+        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+        let b = repository::test_insert_minimal_file(&conn, "/tmp/b.3mf", None).expect("b");
+        add_tag_to_file(&conn, a, "Lid").expect("lid");
+        add_tag_to_file(&conn, a, "deckel").expect("deckel");
+        add_tag_to_file(&conn, b, "couvercle").expect("couvercle");
+        add_tag_to_file(&conn, b, "Vase").expect("vase");
+        add_tag_to_file(&conn, b, "holder").expect("holder stays");
+
+        assert_eq!(merge_auto_tag_aliases(&mut conn).expect("first"), 3);
+        assert_eq!(merge_auto_tag_aliases(&mut conn).expect("second"), 0);
+
+        assert_eq!(tags_of(&conn, a), vec!["deckel".to_string()]);
+        let mut b_tags = tags_of(&conn, b);
+        b_tags.sort();
+        assert_eq!(b_tags, vec!["deckel".to_string(), "holder".to_string(), "vase".to_string()]);
+        let mut names = tag_names(&conn);
+        names.sort();
+        assert_eq!(names, vec!["deckel".to_string(), "holder".to_string(), "vase".to_string()]);
     }
 
     #[test]

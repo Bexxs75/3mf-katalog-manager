@@ -1,10 +1,12 @@
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ModelDetailPage } from './ModelDetailPage';
 import { LanguageProvider } from '../i18n/LanguageContext';
-import { makeModelFile } from '../test/factories';
+import { makeModelFile, makePrinter } from '../test/factories';
+import { de } from '../i18n/de';
+import { FILAMENT_USAGE_HELP_URL } from '../lib/filamentUsageHelp';
 
 vi.mock('./ModelPreview', () => ({ ModelPreview: () => <>
   <button>Viewer control</button>
@@ -222,4 +224,134 @@ it('offers original-file download only in the web build', () => {
   rerender(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>);
   expect(screen.getByRole('button', { name: 'Herunterladen' })).toBeVisible();
   vi.unstubAllEnvs();
+});
+
+it('asks before deleting and leaves the model alone when cancelled', () => {
+  const onDelete = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} /></LanguageProvider>);
+  const trigger = screen.getByRole('button', {name: 'Löschen'});
+  fireEvent.click(trigger);
+  expect(onDelete).not.toHaveBeenCalled();
+  expect(screen.getByText('Eintrag löschen?')).toBeVisible();
+  expect(screen.getByRole('button', {name: 'Abbrechen'})).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', {name: 'Abbrechen'}));
+  expect(onDelete).not.toHaveBeenCalled();
+  expect(screen.queryByText('Eintrag löschen?')).toBeNull();
+  expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+});
+
+it('cancels the delete question with Escape without closing the page', () => {
+  const onDelete = vi.fn();
+  const onClose = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} onClose={onClose} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.keyDown(screen.getByRole('button', {name: 'Abbrechen'}), {key: 'Escape'});
+  expect(screen.queryByText('Eintrag löschen?')).toBeNull();
+  expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+  expect(onDelete).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+it('cancels the delete question with Escape from outside the question without closing the page', () => {
+  const onClose = vi.fn();
+  const bubbled = vi.fn();
+  window.addEventListener('keydown', bubbled);
+  try {
+    render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onClose={onClose} /></LanguageProvider>);
+    fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+    const rescan = screen.getByRole('button', {name: 'Metadaten neu einlesen'});
+    rescan.focus();
+    fireEvent.keyDown(rescan, {key: 'Escape'});
+    expect(screen.queryByText('Eintrag löschen?')).toBeNull();
+    expect(bubbled).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+  } finally {
+    window.removeEventListener('keydown', bubbled);
+  }
+});
+
+it('deletes only after the question is confirmed', () => {
+  const onDelete = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  expect(onDelete).toHaveBeenCalledTimes(1);
+});
+
+
+it('shortens long tag chips but removes the full tag', () => {
+  const tag = 'a'.repeat(95);
+  const onRemoveTag = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} model={makeModelFile({ tags: [tag] })} hasPrevious={false} hasNext={false} onRemoveTag={onRemoveTag} /></LanguageProvider>);
+  const text = screen.getByText('#' + 'a'.repeat(28) + '…');
+  expect(text).toHaveClass('whitespace-nowrap');
+  expect(text.parentElement).toHaveAttribute('title', '#' + tag);
+  expect(text.parentElement).toHaveClass('max-w-full', 'min-w-0');
+  const remove = screen.getByRole('button', { name: tag + ' entfernen' });
+  expect(remove).toHaveClass('flex-none');
+  fireEvent.click(remove);
+  expect(onRemoveTag).toHaveBeenCalledWith(tag);
+});
+
+it('shows the companion files of the model on the detail page', async () => {
+  vi.mocked(invoke).mockImplementation((command: string) => Promise.resolve(command === 'list_companions'
+    ? [{ id: 'c1', fileId: 'model-1', name: 'Anleitung.pdf', path: '/c/Anleitung.pdf', kind: 'pdf', sizeBytes: 10, addedAt: '', deletedAt: null, missing: false }]
+    : []));
+  try {
+    render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>);
+    expect(await screen.findByRole('heading', { name: 'Begleitdateien (1)' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Anleitung.pdf öffnen' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Hinzufügen …' })).toBeEnabled();
+  } finally {
+    vi.mocked(invoke).mockImplementation(() => Promise.resolve([]));
+  }
+});
+
+const renderPage = (extra: Partial<React.ComponentProps<typeof ModelDetailPage>> = {}) => render(
+  <LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} {...extra} /></LanguageProvider>);
+const sliceInfo = { totalWeightG: 5, plates: [{ plateIndex: 1, weightG: 5, filaments: [{ type: 'PLA', color: null, usedG: 5, usedM: 1.6 }] }] };
+
+it('explains a missing filament usage for a loaded 3MF and links to the manual', () => {
+  renderPage({ model: makeModelFile({ path: '/c/a.3mf', sliceInfo: null }) });
+  const hint = screen.getByRole('status');
+  expect(hint).toHaveTextContent(de.filamentUsageMissingTitle);
+  expect(hint).toHaveTextContent(de.filamentUsageMissingBody);
+  expect(screen.getByRole('link', { name: de.filamentUsageMissingLink })).toHaveAttribute('href', FILAMENT_USAGE_HELP_URL);
+});
+
+it('shows the usage and no hint when the 3MF has slicer data', () => {
+  renderPage({ model: makeModelFile({ path: '/c/a.3mf', sliceInfo }) });
+  expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
+  expect(screen.getByText(de.sliceFilamentHeading)).toBeVisible();
+});
+
+it.each(['stl', 'obj', 'step'])('shows no usage hint for a %s file', extension => {
+  renderPage({ model: makeModelFile({ path: `/c/a.${extension}`, sliceInfo: null }) });
+  expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
+});
+
+it('shows no usage hint while only the list summary is loaded', () => {
+  renderPage({ model: makeModelFile({ path: '/c/a.3mf', sliceInfo: null, summaryOnly: true }) });
+  expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
+});
+
+it('lists the print bed verdict per printer on the detail page, without printers lacking a build volume', () => {
+  renderPage({
+    model: makeModelFile({ dimensionsMm: [220, 180, 140] }),
+    printers: [makePrinter({ id: 'a', name: 'X1C' }), makePrinter({ id: 'b', name: 'Mini', bedXMm: 180, bedYMm: 180, bedZMm: 180 }),
+      makePrinter({ id: 'c', name: 'NoBed', bedXMm: null })],
+  });
+  const section = screen.getByRole('region', { name: de.plateFitHeading });
+  expect(section).toHaveTextContent('Modell 220 × 180 × 140 mm');
+  const rows = within(section).getAllByRole('listitem');
+  expect(rows).toHaveLength(2);
+  expect(rows[0]).toHaveTextContent(`${de.plateFitFits}X1C (256 × 256 × 256)`);
+  expect(rows[1]).toHaveTextContent(`${de.plateFitTooLarge}Mini (180 × 180 × 180): 220 mm zu breit`);
+  expect(section).not.toHaveTextContent('NoBed');
+});
+
+it('shows no print bed section without printers that have a build volume', () => {
+  renderPage({ model: makeModelFile({ dimensionsMm: [10, 10, 10] }), printers: [makePrinter({ bedZMm: 0 })] });
+  expect(screen.queryByRole('region', { name: de.plateFitHeading })).toBeNull();
 });

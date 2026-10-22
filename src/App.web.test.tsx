@@ -61,7 +61,7 @@ it('starts and opens model details using only allowed read commands', async () =
   expect(commands).toContain('list_collection_files');
   await act(async () => fireEvent.click(screen.getByRole('button', { name: de.trashHeading })));
   await act(async () => fireEvent.click(screen.getByRole('button', { name: de.settingsTitle })));
-  await act(async () => fireEvent.click(screen.getByRole('button', { name: de.settingsTabInfo })));
+  await act(async () => fireEvent.click(screen.getByRole('tab', { name: de.settingsTabInfo })));
   expect(screen.getByRole('button', { name: de.railFilament })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: de.railPrinters })).toBeInTheDocument();
   const allowed = new Set<string>(WEB_READ_COMMANDS);

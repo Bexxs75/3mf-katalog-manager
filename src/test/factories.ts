@@ -1,4 +1,4 @@
-import type { ModelFile, ModelFileSummary, Folder } from '../types';
+import type { ModelFile, ModelFileSummary, Folder, Printer } from '../types';
 
 export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
   return {
@@ -30,6 +30,9 @@ export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
     renderSnapshotImage: null,
     sourceUrl: null,
     license: null,
+    sourcePlatform: null,
+    sourceModelId: null,
+    sourceProfileId: null,
     queuePosition: null,
     favorite: false,
     deletedAt: null,
@@ -68,6 +71,9 @@ export function makeModelFileSummary(
     lastViewedAt: m.lastViewedAt,
     contentHash: m.contentHash,
     license: m.license,
+    sourcePlatform: m.sourcePlatform,
+    sourceModelId: m.sourceModelId,
+    sourceProfileId: m.sourceProfileId,
   };
 }
 
@@ -78,6 +84,14 @@ export function makeFolder(overrides: Partial<Folder> = {}): Folder {
     path: '/catalog/Test Folder',
     parentId: null,
     count: 0,
+    ...overrides,
+  };
+}
+
+export function makePrinter(overrides: Partial<Printer> = {}): Printer {
+  return {
+    id: 'printer-1', name: 'X1C', kind: 'filament', units: [],
+    manufacturer: null, model: null, nozzleMm: null, bedXMm: 256, bedYMm: 256, bedZMm: 256,
     ...overrides,
   };
 }

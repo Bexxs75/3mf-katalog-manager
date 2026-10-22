@@ -10,9 +10,11 @@ import { UiDensityProvider } from "./hooks/UiDensityContext";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
 import { ErrorBoundary, CrashFallback } from "./diagnostics/ErrorBoundary";
 import { installContextMenuGuard } from "./lib/contextMenuGuard";
+import { installNumberInputWheelGuard } from "./lib/numberInputWheelGuard";
 import "./styles/theme.css";
 
 installContextMenuGuard(document, import.meta.env.DEV);
+installNumberInputWheelGuard(document);
 
 function StartupReady() {
   useEffect(showAfterPaint, []);

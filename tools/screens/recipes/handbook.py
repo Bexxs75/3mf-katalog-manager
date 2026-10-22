@@ -23,7 +23,7 @@ TX = {
                log_yes="Yes, attach the log file", update_now="Update now", reset="Reset catalog …", tags="TAGS",
                remove_folder_item="remove"),
 }
-VERSION, NEXT = "0.15.0", "0.15.1"
+VERSION, NEXT = "0.16.0", "0.16.1"
 DOCS = {"de": "/home/tester/Dokumente", "en": "/home/tester/Documents"}
 
 
@@ -44,8 +44,8 @@ async def to_catalog(s: Session, p, tags: str = "closed"):
 
 async def view_button(p, index: int):
     """The grid / folder / list switch in the header (language independent: by position)."""
-    await p.wait_for("[...document.querySelectorAll('button')].filter(b => b.getBoundingClientRect().y < 40 && b.getBoundingClientRect().x > 380 && b.getBoundingClientRect().x < 720 && !b.querySelector('svg')).length >= 3", 10)
-    ok = await p.js(f"""(() => {{ const bs = [...document.querySelectorAll('button')].filter(b => b.getBoundingClientRect().y < 40 && b.getBoundingClientRect().x > 380 && b.getBoundingClientRect().x < 720 && !b.querySelector('svg'))
+    await p.wait_for("[...document.querySelectorAll('button')].filter(b => b.getBoundingClientRect().y < 40 && b.getBoundingClientRect().x > 380 && b.getBoundingClientRect().x < 1000 && !b.querySelector('svg')).length >= 3", 10)
+    ok = await p.js(f"""(() => {{ const bs = [...document.querySelectorAll('button')].filter(b => b.getBoundingClientRect().y < 40 && b.getBoundingClientRect().x > 380 && b.getBoundingClientRect().x < 1000 && !b.querySelector('svg'))
       .sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x); if (bs.length < 3) return false; bs[{index}].click(); return true; }})()""")
     assert ok, "view switch not found"
     await asyncio.sleep(2.5)
@@ -205,11 +205,17 @@ async def archive(s):
 async def settings(s):
     """args: tab general|slicer|catalog|info."""
     t = tx(s)
-    p = await s.open(v15_fixture(s, "info") if s.args.get("v15") else None)
+    fx, prefs = (v15_fixture(s, "info") if s.args.get("v15") else None), None
+    if s.args["tab"] == "slicer":
+        # a default slicer and a fourth entry, as the manual describes the tab
+        fx = fx or s.fixture()
+        fx["list_registered_slicers"] = fx["list_registered_slicers"] + [{"executablePath": "/usr/bin/creality-print", "id": "4", "name": "Creality Print"}]
+        prefs = {"3mf-katalog-primary-slicer-id": "2"}
+    p = await s.open(fx, prefs)
     await js(p, f"__lbl({C(t['nav_settings'])}).click()", 1.0)
     await p.js(f"window.__GENERAL = {C(t['general'])}")
     await js(p, f"__tab({C(t[s.args['tab']])}).click()", 1.5)
-    await p.js("document.activeElement && document.activeElement.blur(); __unclamp()")
+    await p.js("document.activeElement && document.activeElement.blur(); __unclamp(); __curtain()")
     await asyncio.sleep(0.5)
     return await s.capture(p, {"panel": f"__box(__tab({C(t['general'])}))"})
 
@@ -236,7 +242,7 @@ def v15_fixture(s: Session, name: str, update=None) -> dict:
     fx["list_folders"] += [{"count": 2, "id": "7", "name": k, "parentId": "2", "path": parent["path"] + "/" + k},
                            {"count": 2, "id": "8", "name": b, "parentId": "2", "path": parent["path"] + "/" + b}]
     lines = [
-        (f"2026-10-03 10:00:00 INFO  [start] 3MF Katalog Manager {VERSION} (ohne STEP) · Windows 11 · Schema 39 · 15 Modelle\n", None),
+        (f"2026-10-03 10:00:00 INFO  [start] 3MF Katalog Manager {VERSION} (mit STEP) · Windows 11 · Schema 39 · 15 Modelle\n", None),
         ("2026-10-03 10:00:00 INFO  [start] Katalog: ", None), ("<katalog>", True), ("\n", None),
         ("2026-10-03 10:02:11 INFO  [import] 3 importiert, 1 Duplikate, 0 übersprungen, 0 Archive offen, 1.3 s\n", None),
         ("2026-10-03 10:05:42 INFO  [drucker] 1 Drucker abgefragt, 2 neue Drucke\n", None),
@@ -317,4 +323,182 @@ async def ordnername(s):
     for kind in ("rawKeyDown", "keyUp"):
         await p.send("Input.dispatchKeyEvent", type=kind, key="Enter", code="Enter", windowsVirtualKeyCode=13)
     await asyncio.sleep(1.5)
+    return await s.capture(p)
+
+
+# ---------- pictures new in the 0.16.0 manual ----------
+
+TX2 = {
+    "de": dict(refresh="Aktualisieren", cancel="Abbrechen", sovol="Sovol SV08", add_unit="Einheit hinzufügen", pm="Printer Manager", folder="Ordner...",
+               sort="Name", usage="Nutzung", rocket="Rakete.3mf", plate_model="Pflanztopf mit Untersetzer.3mf"),
+    "en": dict(refresh="Refresh", cancel="Cancel", sovol="Sovol SV08", add_unit="Add unit", pm="Printer Manager", folder="Folder...",
+               sort="Name", usage="Usage", rocket="Rocket.3mf", plate_model="Planter with Saucer.3mf"),
+}
+
+
+def area(x: float, y: float, w: float, h: float) -> str:
+    """JS expression for a fixed rectangle in CSS px (for crops)."""
+    return f"({{ getBoundingClientRect: () => ({{ x: {x}, y: {y}, width: {w}, height: {h}, right: {x + w}, bottom: {y + h} }}) }})"
+
+
+async def unfocus(p):
+    await p.js("document.activeElement && document.activeElement.blur()")
+    await p.send("Input.dispatchMouseEvent", type="mouseMoved", x=1890, y=1070)  # no hover highlight left from an earlier click
+    await asyncio.sleep(0.4)
+
+
+@recipe("hb-sync")
+async def sync(s):
+    """The "Refresh" button of the header (mode button, with a red frame) and the dialog it opens (mode dialog)."""
+    t = TX2[s.lang]
+    p = await s.open(f"sync-{s.lang}")
+    await to_catalog(s, p)
+    btn = f"__btn({C(t['refresh'])})"
+    if s.args["mode"] == "button":
+        assert await p.js(f"!__mark([[() => {btn}, 0]]).length")
+        await asyncio.sleep(0.3)
+        return await s.capture(p, {"crop": area(0, 0, 1000, 330)})
+    assert await p.js(f"(() => {{ const b = {btn}; if (!b) return false; b.click(); return true; }})()")
+    await asyncio.sleep(1.5)
+    await unfocus(p)
+    return await s.capture(p, {"dialog": "__dialog()"})
+
+
+@recipe("hb-license")
+async def license_(s):
+    """Detail panel of a model with a license (editor, usage badge) next to cards with usage badges."""
+    t = TX2[s.lang]
+    p = await s.open(f"lic-{s.lang}")
+    await to_catalog(s, p)
+    await click_card(p, t["rocket"])
+    await asyncio.sleep(3)
+    await unfocus(p)
+    return await s.capture(p)
+
+
+@recipe("hb-filter-sort")
+async def filter_sort(s):
+    """Two states one above the other: filter row with an active usage filter, and the opened sort menu."""
+    import io
+    from PIL import Image
+    from engine import Capture
+    t = TX2[s.lang]
+    p = await s.open(f"lic-{s.lang}")
+    await to_catalog(s, p)
+    await p.js(f"""(() => {{ const sel = document.querySelector('select[aria-label={json.dumps(t['usage'])}]');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, 'commercial'); sel.dispatchEvent(new Event('change', {{ bubbles: true }})); }})()""")
+    await asyncio.sleep(1.2)
+    await unfocus(p)
+    top = await s.capture(p)
+    sort_btn = f"[...document.querySelectorAll('button')].find(b => b.querySelector('svg') && b.innerText.trim().startsWith({C(t['sort'])}) && b.getBoundingClientRect().y < 40)"
+    await js(p, f"{sort_btn}.click()", 0.8)
+    menu = await s.capture(p)
+    sc = top.scale
+    W, H1, H2 = int(1300 * sc), int(100 * sc), int(400 * sc)
+    a = Image.open(io.BytesIO(top.png)).convert("RGB").crop((0, 0, W, H1))
+    b = Image.open(io.BytesIO(menu.png)).convert("RGB").crop((0, 0, W, H2))
+    gap = int(14 * sc)
+    out = Image.new("RGB", (W, H1 + gap + H2), (255, 255, 255))
+    out.paste(a, (0, 0)); out.paste(b, (0, H1 + gap))
+    buf = io.BytesIO(); out.save(buf, "PNG")
+    return Capture(buf.getvalue(), sc, {"crop": [0, 0, out.width / sc, out.height / sc]}, menu.unknown_commands)
+
+
+@recipe("hb-import-menu")
+async def import_menu(s):
+    t = tx(s)
+    p = await s.open()
+    await to_catalog(s, p)
+    imp = f"[...document.querySelectorAll('button')].find(b => b.querySelector('svg') && b.innerText.includes({C(t['import_'])}))"
+    await js(p, f"{imp}.click()", 1.0)
+    # the hint box of the menu explains the entry under the pointer: rest on "Folder contents"
+    pos = await p.js("""(() => { const e = [...document.querySelectorAll('[role=menuitem]')].pop(); const r = e.getBoundingClientRect(); return [r.x + 60, r.y + r.height / 2]; })()""")
+    await p.send("Input.dispatchMouseEvent", type="mouseMoved", x=pos[0], y=pos[1])
+    await asyncio.sleep(0.8)
+    return await s.capture(p, {"crop": union_expr([imp, "document.querySelector('[role=menu]')"], 20)})
+
+
+PROGRESS = {"jobId": "demo-job", "state": "importing", "scanComplete": True, "total": 40, "found": 40, "done": 17, "inFlight": 2,
+            "counts": {"imported": 15, "importedNotPlaced": 0, "duplicate": 2, "skipped": 0, "archive": 0, "known": 17},
+            "current": "Gartenbank.3mf", "elapsedMs": 21000}
+
+
+@recipe("hb-import-progress")
+async def import_progress(s):
+    t, t2 = tx(s), TX2[s.lang]
+    p = await s.open()
+    await to_catalog(s, p)
+    prog = {**PROGRESS, "current": "Gartenbank.3mf" if s.lang == "de" else "Garden Bench.3mf"}
+    imp = f"[...document.querySelectorAll('button')].find(b => b.querySelector('svg') && b.innerText.includes({C(t['import_'])}))"
+    await js(p, f"{imp}.click()", 0.8)
+    await js(p, f"__txt({C(t2['folder'])}, 'button, [role=menuitem], li, a, div, span').click()", 1.0)
+    await p.js(f"window.__demoImportProgress = {json.dumps(prog)}; window.__demoEmit('import://progress', {json.dumps(prog)});")
+    await asyncio.sleep(1.5)
+    await unfocus(p)
+    row = f"__txt({C(t2['cancel'])}, 'button').closest('section')"
+    return await s.capture(p, {"crop": row})
+
+
+@recipe("hb-3d-error")
+async def error_card(s):
+    """3D view of a model whose file is missing: the error card instead of the model."""
+    t = tx(s)
+    p = await s.open()
+    await to_catalog(s, p)
+    await p.js("window.__demoFailGeometry = true")
+    await click_card(p, TX2[s.lang]["rocket"], dbl=True)
+    await asyncio.sleep(3)
+    assert await p.click_text(t["view3d"])
+    await asyncio.sleep(3)
+    await unfocus(p)
+    return await s.capture(p)
+
+
+@recipe("hb-pm-unit")
+async def pm_unit(s):
+    """Printer Manager with the dialog "Add unit" for a connected printer."""
+    t = TX2[s.lang]
+    p = await s.open("tk16" if s.lang == "de" else "pm-en")
+    await to_catalog(s, p)
+    await js(p, f"__lbl({C(t['pm'])}).click()", 1.5)
+    await js(p, f"[...document.querySelectorAll('button')].find(b => (b.innerText || '').includes({C(t['sovol'])})).click()", 1.0)
+    await js(p, f"__has({C(t['add_unit'])}, 'button').click()", 1.2)
+    await unfocus(p)
+    return await s.capture(p)
+
+
+@recipe("hb-plates")
+async def plates(s):
+    """Detail page of a multi-plate model in the 3D view with the plate bar and the file colors."""
+    t = tx(s)
+    p = await s.open(f"plates-{s.lang}")
+    await to_catalog(s, p)
+    await click_card(p, TX2[s.lang]["plate_model"], dbl=True)
+    await asyncio.sleep(3)
+    assert await p.click_text(t["view3d"])
+    await asyncio.sleep(4)
+    # args: plate = "all" shows all plates together (the first button of the bar), default is plate 2
+    want = "null" if s.args.get("plate") == "all" else "'2'"
+    ok = await p.js("""(() => { const bar = document.querySelector('[data-plate-selector]'); if (!bar) return 'nobar';
+      const bs = [...bar.querySelectorAll('button')]; const w = %s; const b = w ? bs.find(b => (b.innerText || '').trim() === w) : bs[0]; if (!b) return 'nobutton'; b.click(); return 'ok'; })()""" % want)
+    assert ok == "ok", ok
+    await asyncio.sleep(2.5)
+    await unfocus(p)
+    return await s.capture(p)
+
+
+@recipe("hb-filterbar")
+async def filterbar(s):
+    """Active folder, tag and search filters above the models (with the usage and print status selectors)."""
+    t = tx(s)
+    p = await s.open()
+    await to_catalog(s, p, "open")
+    await sidebar(p, t["haushalt"])
+    tag = {"de": "#Funktional", "en": "#Functional"}[s.lang]
+    ok = await p.js(f"""(() => {{ const e = [...document.querySelectorAll('button, span, div')].find(e => (e.innerText || '').trim().startsWith({C(tag)}) && e.getBoundingClientRect().x < 320 && e.getBoundingClientRect().width > 0 && e.children.length < 3); if (!e) return false; e.click(); return true; }})()""")
+    assert ok, "tag"
+    await asyncio.sleep(1.0)
+    await p.js(f"""(() => {{ const i = [...document.querySelectorAll('input')].find(e => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().x < 320 && e.getBoundingClientRect().y < 120); __setInput(i, {C({"de": "halter", "en": "holder"}[s.lang])}); }})()""")
+    await asyncio.sleep(1.2)
+    await unfocus(p)
     return await s.capture(p)

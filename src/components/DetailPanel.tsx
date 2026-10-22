@@ -2,6 +2,7 @@ import { WebFileActions } from './WebFileActions';
 import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
 import { useCanEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
+import { TRASH_RETENTION_DAYS } from '../lib/trashRetention';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
@@ -11,22 +12,28 @@ import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
 import { Icon } from './Icon';
+import { CompanionSection } from './CompanionSection';
+import { BuildPlateFit } from './BuildPlateFit';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
 import { StatusBadges } from './StatusBadges';
-import type { FilamentCheck } from '../types';
+import type { FilamentCheck, Printer } from '../types';
 import type { LastPrinter } from '../lib/api/lastPrinter';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
+import { TagRemoveButton } from './TagRemoveButton';
+import { AutoTagBlockStatus } from './AutoTagBlockStatus';
+import { useAutoTagBlock } from '../hooks/useAutoTagBlock';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelPreview } from './ModelPreview';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
+import { SourcePlatformRows } from './SourcePlatformRows';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
-import { tagLabel } from '../lib/autoTags';
+import { shortTagLabel, tagLabel } from '../lib/autoTags';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
@@ -38,6 +45,8 @@ interface Props {
   tagHues?: Record<string, number>;
   model: ModelFile | null;
   trashMode?: boolean;
+  /** Printers of the Printer Manager, for the "print bed" section (those with a build volume). */
+  printers?: Printer[];
   onRestore?: () => void;
   onDeletePermanently?: () => void;
   onAddTag: (tag: string) => void;
@@ -62,6 +71,7 @@ export function DetailPanel({
   allTags,
   tagHues,
   trashMode,
+  printers = [],
   onRestore,
   onDeletePermanently,
   onAddTag,
@@ -87,6 +97,7 @@ export function DetailPanel({
   const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const autoTagBlock = useAutoTagBlock(trashMode || import.meta.env.VITE_TARGET === 'web' ? null : model, onRemoveTag, onAddTag);
   const {
     editing: editingSourceUrl,
     draft: sourceUrlDraft,
@@ -111,7 +122,7 @@ export function DetailPanel({
   if (trashMode) {
     const rows = buildMetaRows(model, t, language);
     const expiryDate = model.deletedAt
-      ? new Date(new Date(model.deletedAt).getTime() + 7 * 24 * 60 * 60 * 1000)
+      ? new Date(new Date(model.deletedAt).getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000)
       : null;
     return (
       <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
@@ -252,6 +263,7 @@ export function DetailPanel({
               <span className="flex-1 font-medium tabular-nums text-small text-right">{row.value}</span>
             </div>
           ))}
+          <SourcePlatformRows model={model} variant="compact" />
           <div className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]">
             <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">
               {t('metaSourceUrl')}
@@ -295,20 +307,22 @@ export function DetailPanel({
           <div className="text-compact-meta ui-label text-[var(--ink-3)] pb-2.5">
             {t('hashtagsHeading')}
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div data-tag-list className="flex min-w-0 flex-wrap gap-1.5">
             {model.tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-medium tabular-nums text-caption"
+                title={`#${tagLabel(tag, language)}`}
+                className="inline-flex max-w-full min-w-0 items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-medium tabular-nums text-caption"
               >
                 <TagDot hue={tagHues?.[tag]} />
-                #{tagLabel(tag, language)}
-                <>{canEdit && <span
-                  onClick={() => onRemoveTag(tag)}
-                  className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
-                >
-                  <Icon name="close" size={14} />
-                </span>}</>
+                <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+                {canEdit && <TagRemoveButton
+                  tag={tag}
+                  autoTag={autoTagBlock.suggested.has(tag)}
+                  onRemove={() => onRemoveTag(tag)}
+                  onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)}
+                  className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                />}
               </span>
             ))}
             <TagInput
@@ -320,7 +334,11 @@ export function DetailPanel({
               inputClassName="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-medium tabular-nums text-caption"
             />
           </div>
+          <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
         </div>
+
+        <BuildPlateFit model={model} printers={printers} variant="compact" />
+        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="compact" />}
       </div>
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
@@ -422,22 +440,24 @@ export function DetailPanel({
           </button>
         </div>
         <div className="px-[18px]"><StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} /></div>
-        <div className="px-[18px] pb-3.5 flex flex-wrap gap-1.5">
+        <div data-tag-list className="px-[18px] pb-3.5 flex min-w-0 flex-wrap gap-1.5">
           {model.tags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
+              title={`#${tagLabel(tag, language)}`}
+              className="inline-flex max-w-full min-w-0 items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
               <TagDot hue={tagHues?.[tag]} />
-              #{tagLabel(tag, language)}
-              <>{canEdit && <span
-                onClick={() => onRemoveTag(tag)}
-                className="w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+              <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+              {canEdit && <TagRemoveButton
+                tag={tag}
+                autoTag={autoTagBlock.suggested.has(tag)}
+                onRemove={() => onRemoveTag(tag)}
+                onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)}
+                className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 style={{ fontSize: 'var(--font-size-label)' }}
-              >
-                <Icon name="close" size={14} />
-              </span>}</>
+              />}
             </span>
           ))}
           <TagInput
@@ -449,6 +469,9 @@ export function DetailPanel({
             inputClassName="px-2.5 py-1 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
             inputStyle={{ fontSize: 'var(--font-size-meta)' }}
           />
+        </div>
+        <div className="px-[18px] empty:hidden pb-3.5">
+          <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
         </div>
 
         <div className="px-[18px] pb-4 border-t border-[var(--line)] pt-3.5">
@@ -469,6 +492,7 @@ export function DetailPanel({
               <span className="font-semibold">{row.value}</span>
             </div>
           ))}
+          <div style={{ fontSize: 'var(--font-size-body)' }}><SourcePlatformRows model={model} variant="comfort" /></div>
           <div className="flex justify-between items-center gap-2 py-2" style={{ fontSize: 'var(--font-size-body)' }}>
             <span className="text-[var(--ink-2)]">{t('metaSourceUrl')}</span>
             {editingSourceUrl ? (
@@ -508,6 +532,9 @@ export function DetailPanel({
             )}
           </div>
         </div>
+
+        <BuildPlateFit model={model} printers={printers} variant="comfort" />
+        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="comfort" />}
       </div>
 
       <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">

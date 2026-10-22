@@ -130,6 +130,17 @@ const MIGRATIONS: &[MigrationStep] = &[
     // positional table rebuilds above then moved their values.
     MigrationStep::Simple(repair_shifted_file_columns),
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE files ADD COLUMN license TEXT")),
+    // Platform and IDs of downloaded models. Only the columns are created here:
+    // existing entries get their values on the next metadata rescan, never in a
+    // bulk run while the catalog is being upgraded.
+    MigrationStep::Simple(add_source_columns),
+    // Companion files of a model and the remembered source folders (with the files
+    // the user declined). New tables only, no existing data is touched.
+    MigrationStep::Simple(add_companion_and_source_tables),
+    // Colour list of a spool (JSON array of up to four `#rrggbb` values); NULL means single-colour.
+    MigrationStep::Simple(add_spool_color_list),
+    // Blocked automatic tags. New table only, no existing data is touched.
+    MigrationStep::Simple(add_blocked_auto_tags_table),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -155,6 +166,71 @@ const DROP_SAVED_FILTERS_MIGRATION_VERSION: i64 = 38;
 /// Schema version after adding `printer_connections.clock_offset_s`.
 #[cfg(test)]
 const CLOCK_OFFSET_MIGRATION_VERSION: i64 = 39;
+
+/// Schema version after the source columns of `files` (the step before the companion tables).
+#[cfg(any(test, feature = "test-support"))]
+pub const SOURCE_COLUMNS_MIGRATION_VERSION: i64 = 48;
+
+/// Schema version after the companion and source-folder tables. Must stay 49: that is
+/// what every catalog written by the version that introduced them contains.
+#[cfg(test)]
+pub(crate) const COMPANION_TABLES_MIGRATION_VERSION: i64 = 49;
+
+/// Schema version after the spool colour list. Must stay 50: that is what every catalog
+/// written by the version that introduced the column contains.
+#[cfg(any(test, feature = "test-support"))]
+pub const SPOOL_COLOR_LIST_MIGRATION_VERSION: i64 = 50;
+
+/// Schema version after the blocked automatic tags table. Must stay 51: that is what
+/// every catalog written by the version that introduced the table contains.
+#[cfg(any(test, feature = "test-support"))]
+pub const BLOCKED_AUTO_TAGS_MIGRATION_VERSION: i64 = 51;
+
+/// New table only; `IF NOT EXISTS` so a catalog that already got it from the base schema is left alone.
+fn add_blocked_auto_tags_table(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS blocked_auto_tags (
+        name TEXT PRIMARY KEY COLLATE NOCASE,
+        blocked_at TEXT NOT NULL
+    )")
+}
+
+/// New nullable column only, so existing spools stay single-colour and keep every value.
+fn add_spool_color_list(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "ALTER TABLE filament_spools ADD COLUMN color_hexes TEXT")
+}
+
+fn add_companion_and_source_tables(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS companion_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text')),
+        size_bytes INTEGER,
+        added_at TEXT NOT NULL,
+        deleted_at TEXT,
+        trash_path TEXT
+    )")?;
+    exec(conn, "CREATE INDEX IF NOT EXISTS idx_companion_files_file_id ON companion_files (file_id)")?;
+    exec(conn, "CREATE TABLE IF NOT EXISTS source_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        added_at TEXT NOT NULL
+    )")?;
+    exec(conn, "CREATE TABLE IF NOT EXISTS source_rejected (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        size_bytes INTEGER NOT NULL,
+        rejected_at TEXT NOT NULL
+    )")
+}
+
+fn add_source_columns(conn: &Connection) -> Result<(), DbError> {
+    for column in ["source_platform", "source_model_id", "source_profile_id"] {
+        exec(conn, &format!("ALTER TABLE files ADD COLUMN {column} TEXT"))?;
+    }
+    Ok(())
+}
 
 /// Runs a single statement. The only tolerated error is "duplicate column name"
 /// (column already exists); everything else propagates.
@@ -438,7 +514,8 @@ mod tests {
         let mut conn = crate::db::connect_in_memory().unwrap();
         let id = crate::db::test_insert_minimal_file(&conn, "/model.3mf", None).unwrap();
         conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
-        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 1).unwrap();
+        // The license step is the one before the source-column step.
+        conn.pragma_update(None, "user_version", SOURCE_COLUMNS_MIGRATION_VERSION - 2).unwrap();
         run_migrations(&mut conn).unwrap();
         assert_eq!(crate::db::get_file(&conn, id).unwrap().unwrap().license, None);
         let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
@@ -509,6 +586,238 @@ mod tests {
         assert_eq!(read("p6"), (s(r#"{"total_weight_g":6.0}"#), None, None));
         assert_eq!(read("p7"), (None, None, s("/not/json")));
         assert_eq!(read("p8"), (None, None, s(r#"{"total_weight_g":"#)));
+    }
+
+    /// The columns the Docker companion reads; they must survive every migration unchanged.
+    const COMPANION_COLUMNS: &str = "id, name, path, file_type, file_size_bytes, thumbnail_png, folder_id, deleted_at";
+
+    #[test]
+    fn source_columns_are_added_to_a_previous_version_catalog_without_touching_its_data() {
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/model.3mf", None).unwrap();
+        conn.execute("UPDATE files SET creator = 'Jane', license = 'cc-by', source_url = 'https://example.com/m', favorite = 1 WHERE id = ?1", [id]).unwrap();
+        let snapshot = |conn: &Connection| -> String {
+            conn.query_row(
+                &format!("SELECT {COMPANION_COLUMNS}, creator, license, source_url, favorite, print_status, imported_at FROM files WHERE id = ?1"),
+                [id],
+                |r| {
+                    let mut parts = Vec::new();
+                    for i in 0..14 {
+                        parts.push(format!("{:?}", r.get_ref(i)?));
+                    }
+                    Ok(parts.join("|"))
+                },
+            ).unwrap()
+        };
+        let before = snapshot(&conn);
+
+        // The previous version's catalog: same data, none of the three columns, one step behind.
+        conn.execute_batch("ALTER TABLE files DROP COLUMN source_platform; ALTER TABLE files DROP COLUMN source_model_id; ALTER TABLE files DROP COLUMN source_profile_id").unwrap();
+        conn.pragma_update(None, "user_version", SOURCE_COLUMNS_MIGRATION_VERSION - 1).unwrap();
+        assert!(conn.prepare("SELECT source_platform FROM files").is_err(), "precondition: column is gone");
+
+        run_migrations(&mut conn).unwrap();
+
+        let row: (Option<String>, Option<String>, Option<String>) = conn
+            .query_row("SELECT source_platform, source_model_id, source_profile_id FROM files WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap();
+        assert_eq!(row, (None, None, None), "existing entries stay empty until the next rescan");
+        assert_eq!(snapshot(&conn), before, "no existing value may change");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn source_columns_exist_in_a_fresh_schema_and_the_step_is_repeatable() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        fresh.prepare("SELECT source_platform, source_model_id, source_profile_id FROM files").unwrap();
+        // A development catalog that already has the columns must not fail on the step.
+        add_source_columns(&fresh).unwrap();
+        fresh.prepare(&format!("SELECT {COMPANION_COLUMNS} FROM files")).unwrap();
+    }
+
+    /// A catalog as the previous version left it: the full old schema, none of the new
+    /// tables, one step behind, with data in several tables.
+    fn previous_version_catalog() -> (Connection, i64) {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let folder = crate::db::insert_folder(&conn, "root").unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/models/a.3mf", Some(folder)).unwrap();
+        conn.execute("UPDATE files SET creator = 'Jane', favorite = 1, license = 'cc-by' WHERE id = ?1", [id]).unwrap();
+        conn.execute("INSERT INTO tags (id, name, color_hue) VALUES (1, 'deko', 10)", []).unwrap();
+        conn.execute("INSERT INTO file_tags VALUES (?1, 1)", [id]).unwrap();
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('catalog_base_dir', '/models')", []).unwrap();
+        conn.execute_batch("DROP TABLE companion_files; DROP TABLE source_folders; DROP TABLE source_rejected;").unwrap();
+        conn.pragma_update(None, "user_version", COMPANION_TABLES_MIGRATION_VERSION - 1).unwrap();
+        (conn, id)
+    }
+
+    fn table_exists(conn: &Connection, name: &str) -> bool {
+        conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1", [name], |r| r.get::<_, i64>(0)).unwrap() == 1
+    }
+
+    #[test]
+    fn the_companion_and_source_step_stays_at_49_and_adds_only_tables() {
+        assert_eq!(COMPANION_TABLES_MIGRATION_VERSION, 49, "the step must stay where it shipped");
+        assert_eq!(COMPANION_TABLES_MIGRATION_VERSION, SOURCE_COLUMNS_MIGRATION_VERSION + 1);
+        assert_eq!(SPOOL_COLOR_LIST_MIGRATION_VERSION, COMPANION_TABLES_MIGRATION_VERSION + 1);
+    }
+
+    #[test]
+    fn a_previous_version_catalog_gets_the_new_tables_and_keeps_all_its_data() {
+        let (mut conn, id) = previous_version_catalog();
+        for table in ["companion_files", "source_folders", "source_rejected"] {
+            assert!(!table_exists(&conn, table), "precondition: {table} is not there yet");
+        }
+        let snapshot = |conn: &Connection| -> Vec<String> {
+            let mut rows = Vec::new();
+            for sql in [
+                "SELECT id || '|' || name || '|' || path || '|' || ifnull(creator, '') || '|' || favorite || '|' || ifnull(license, '') || '|' || ifnull(folder_id, '') FROM files",
+                "SELECT id || '|' || name || '|' || color_hue FROM tags",
+                "SELECT file_id || '|' || tag_id FROM file_tags",
+                "SELECT key || '|' || value FROM app_settings",
+                "SELECT id || '|' || name || '|' || path FROM folders",
+            ] {
+                let mut stmt = conn.prepare(sql).unwrap();
+                rows.extend(stmt.query_map([], |r| r.get::<_, String>(0)).unwrap().map(|r| r.unwrap()));
+            }
+            rows
+        };
+        let before = snapshot(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(snapshot(&conn), before, "no existing value may change");
+        for table in ["companion_files", "source_folders", "source_rejected"] {
+            assert!(table_exists(&conn, table), "{table}");
+            let rows: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert_eq!(rows, 0, "{table} starts empty");
+        }
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        // The new tables work: kinds are checked, paths are unique, and the rows follow their model.
+        conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'p.png', '/models/a_extras/p.png', 'image', 'now')", [id]).unwrap();
+        assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'x', '/other', 'exe', 'now')", [id]).is_err(), "kind is checked");
+        assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'p.png', '/models/a_extras/p.png', 'image', 'now')", [id]).is_err(), "path is unique");
+        conn.execute("DELETE FROM files WHERE id = ?1", [id]).unwrap();
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0, "deleting the model removes its companion rows");
+    }
+
+    #[test]
+    fn the_new_tables_exist_in_a_fresh_schema_and_the_step_is_repeatable() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        for table in ["companion_files", "source_folders", "source_rejected"] {
+            assert!(table_exists(&fresh, table), "{table}");
+        }
+        add_companion_and_source_tables(&fresh).unwrap();
+        add_companion_and_source_tables(&fresh).unwrap();
+    }
+
+    /// A catalog one step behind the colour list: spools with all their values, no `color_hexes` yet.
+    fn catalog_before_spool_color_list() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN color_hexes").unwrap();
+        conn.execute(
+            "INSERT INTO filament_spools (material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, created_at, color_hex)
+             VALUES ('PLA', 'Bambu', 'Rot', 1.75, 1000, 640.5, 'now', '#b03020')",
+            [],
+        ).unwrap();
+        conn.pragma_update(None, "user_version", SPOOL_COLOR_LIST_MIGRATION_VERSION - 1).unwrap();
+        conn
+    }
+
+    fn spool_snapshot(conn: &Connection) -> String {
+        conn.query_row(
+            "SELECT id || '|' || material || '|' || manufacturer || '|' || color || '|' || diameter_mm || '|' || original_weight_g
+                    || '|' || remaining_weight_g || '|' || color_hex || '|' || kind FROM filament_spools",
+            [],
+            |r| r.get(0),
+        ).unwrap()
+    }
+
+    #[test]
+    fn the_spool_color_list_step_adds_a_nullable_column_and_keeps_the_spools_unchanged() {
+        let mut conn = catalog_before_spool_color_list();
+        assert!(conn.prepare("SELECT color_hexes FROM filament_spools").is_err(), "precondition: no column yet");
+        let before = spool_snapshot(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(spool_snapshot(&conn), before, "no existing value may change");
+        let list: Option<String> = conn.query_row("SELECT color_hexes FROM filament_spools", [], |r| r.get(0)).unwrap();
+        assert_eq!(list, None, "old spools stay single-colour");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert!(version >= SPOOL_COLOR_LIST_MIGRATION_VERSION, "the step ran");
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    /// A catalog one step behind the blocked-tags table, with tags and spools to prove they stay as they were.
+    fn catalog_before_blocked_auto_tags() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("DROP TABLE blocked_auto_tags").unwrap();
+        conn.execute_batch("INSERT INTO tags (name, color_hue) VALUES ('miniatur', 12), ('mein-projekt', 200)").unwrap();
+        conn.pragma_update(None, "user_version", BLOCKED_AUTO_TAGS_MIGRATION_VERSION - 1).unwrap();
+        conn
+    }
+
+    fn tag_snapshot(conn: &Connection) -> String {
+        conn.query_row("SELECT group_concat(id || '|' || name || '|' || color_hue, ';') FROM (SELECT * FROM tags ORDER BY id)", [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn the_blocked_tags_step_adds_an_empty_table_and_keeps_the_tags_unchanged() {
+        let mut conn = catalog_before_blocked_auto_tags();
+        assert!(!table_exists(&conn, "blocked_auto_tags"), "precondition: no table yet");
+        let before = tag_snapshot(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(tag_snapshot(&conn), before, "no existing value may change");
+        assert!(table_exists(&conn, "blocked_auto_tags"));
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0);
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, BLOCKED_AUTO_TAGS_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn the_blocked_tags_step_is_repeatable_and_part_of_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        assert!(table_exists(&fresh, "blocked_auto_tags"));
+        fresh.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES ('miniatur', 'x')", []).unwrap();
+        add_blocked_auto_tags_table(&fresh).unwrap();
+        add_blocked_auto_tags_table(&fresh).unwrap();
+        let rows: i64 = fresh.query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1, "repeating the step keeps the entries");
+        assert!(
+            fresh.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES ('MINIATUR', 'y')", []).is_err(),
+            "names are unique without regard to case"
+        );
+    }
+
+    #[test]
+    fn the_spool_color_list_step_is_repeatable_and_part_of_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        fresh.prepare("SELECT color_hexes FROM filament_spools").unwrap();
+        add_spool_color_list(&fresh).unwrap();
+        add_spool_color_list(&fresh).unwrap();
+    }
+
+    #[test]
+    fn opening_a_previous_version_catalog_through_init_migrates_it() {
+        let (mut conn, id) = previous_version_catalog();
+        crate::db::repository::init(&mut conn).unwrap();
+        assert!(table_exists(&conn, "companion_files"));
+        assert!(crate::db::get_file(&conn, id).unwrap().is_some());
     }
 
     #[test]
@@ -824,7 +1133,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 8);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 12);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

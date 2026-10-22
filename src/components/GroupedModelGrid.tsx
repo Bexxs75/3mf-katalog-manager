@@ -6,7 +6,7 @@ import type { ModelFile, Folder } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { buildGroupedFolderTree, type GroupedFolderNode } from '../lib/groupedFolderTree';
 import { ModelGrid } from './ModelGrid';
-import { useT } from '../i18n/LanguageContext';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { NO_FOLDER_COLLAPSE_KEY, type useCollapsedFolders } from '../hooks/useCollapsedFolders';
 
 interface Props {
@@ -23,6 +23,7 @@ interface Props {
   displayPreference: DisplayPreference;
   onDragFileStart?: (id: string) => void;
   draggedFileId?: string | null;
+  draggedFileCount?: number;
   draggedFileFolderId?: string | null;
   draggedFolderId: string | null;
   dragOverFolderId: string | null;
@@ -37,6 +38,7 @@ export function GroupedModelGrid({
   models,
   folders,
   draggedFileId = null,
+  draggedFileCount = 1,
   draggedFileFolderId = null,
   draggedFolderId,
   dragOverFolderId,
@@ -47,6 +49,7 @@ export function GroupedModelGrid({
   ...modelGridProps
 }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { roots, noFolder } = useMemo(() => buildGroupedFolderTree(folders, models), [folders, models]);
 
   const folderDrag = useDragThreshold(onDragFolderStart);
@@ -75,12 +78,12 @@ export function GroupedModelGrid({
           <span className="text-body font-semibold">{displayName(node.folder.name)}</span>
           <span className="font-medium tabular-nums text-compact-meta text-[var(--ink-3)]">{node.totalCount}</span>
           <span className="flex-1 h-px bg-[var(--line)]" />
-          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
+          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{draggedFileId && draggedFileCount > 1 ? formatCount(t('dropHereMany'), draggedFileCount) : t('dropHereLabel')}</span>}
         </div>
         {!isCollapsed && (
           <div className="mt-2">
             {node.children.map((child) => renderNode(child, depth + 1))}
-            {node.files.length > 0 && <ModelGrid windowed={node.files.length > 60} models={node.files} {...modelGridProps} />}
+            {node.files.length > 0 && <ModelGrid windowed={node.files.length > 60} label={displayName(node.folder.name)} models={node.files} {...modelGridProps} />}
           </div>
         )}
       </div>
@@ -106,7 +109,7 @@ export function GroupedModelGrid({
           </div>
           {!noFolderCollapsed && (
             <div className="mt-2">
-              <ModelGrid windowed={noFolder.length > 60} models={noFolder} {...modelGridProps} />
+              <ModelGrid windowed={noFolder.length > 60} label={t('noFolderLabel')} models={noFolder} {...modelGridProps} />
             </div>
           )}
         </div>

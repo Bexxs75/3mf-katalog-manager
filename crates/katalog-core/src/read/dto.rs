@@ -28,6 +28,9 @@ pub struct ModelFileDto {
     pub render_snapshot_image: Option<String>,
     pub source_url: Option<String>,
     pub license: Option<String>,
+    pub source_platform: Option<String>,
+    pub source_model_id: Option<String>,
+    pub source_profile_id: Option<String>,
     pub queue_position: Option<i64>,
     pub favorite: bool,
     pub plate_count: Option<i64>,
@@ -233,6 +236,9 @@ pub fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord]) -> M
         render_snapshot_image,
         source_url: sanitize_source_url(file.source_url),
         license: file.license,
+        source_platform: file.source_platform,
+        source_model_id: file.source_model_id,
+        source_profile_id: file.source_profile_id,
         queue_position: file.queue_position,
         favorite: file.favorite,
         plate_count: file.plate_count,
@@ -261,6 +267,9 @@ mod tests {
         imported_at: &str,
     ) -> FileRecord {
         FileRecord {
+            source_platform: None,
+            source_model_id: None,
+            source_profile_id: None,
             id,
             name: format!("file-{id}.3mf"),
             path: format!("/tmp/file-{id}.3mf"),
@@ -301,6 +310,7 @@ mod tests {
         price: Option<f64>,
     ) -> db::models::FilamentSpoolRecord {
         db::models::FilamentSpoolRecord {
+            color_hexes: Vec::new(),
             id: 1,
             material: material.to_string(),
             manufacturer: None,

@@ -225,3 +225,56 @@ it.each(['#', 'x'.repeat(101)])('does not submit empty or overlong tags (%s)', a
   await act(async () => result.current.bulkAddTagAction(tag));
   expect(invoke).not.toHaveBeenCalled();
 });
+
+describe('bulkDelete failure reporting', () => {
+  function setupDelete(refetch: (ids: string[]) => Promise<readonly { id: string }[]>) {
+    const models = [makeModelFile({ id: 'm1', name: 'one' }), makeModelFile({ id: 'm2', name: 'locked' }), makeModelFile({ id: 'm3', name: 'three' })];
+    return renderHook(() => useBulkSelection({
+      models, setModels: vi.fn(), refreshFolders: vi.fn(), refreshTags: vi.fn(), refreshTrash: vi.fn(),
+      refetchAfterPartialDelete: refetch, bulkAddToCollection: vi.fn(), bulkRemoveFromCollection: vi.fn(),
+    }));
+  }
+
+  it('reports the names of files that survive a successful batch', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const { result } = setupDelete(async () => [{ id: 'm2' }]);
+    act(() => result.current.selectAllVisible(['m1', 'm2', 'm3']));
+    await act(async () => result.current.bulkDelete());
+    expect(result.current.deleteFailures).toEqual(['locked']);
+    act(() => result.current.dismissDeleteFailures());
+    expect(result.current.deleteFailures).toEqual([]);
+  });
+
+  it('reports nothing when every file is gone', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const { result } = setupDelete(async () => []);
+    act(() => result.current.selectAllVisible(['m1', 'm2']));
+    await act(async () => result.current.bulkDelete());
+    expect(result.current.deleteFailures).toEqual([]);
+  });
+
+  it('closes the confirmation and rethrows the reload error when the reload fails', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const { result } = setupDelete(async () => { throw new Error('reload failed'); });
+    act(() => result.current.selectAllVisible(['m1']));
+    await expect(act(async () => result.current.bulkDelete())).rejects.toThrow('reload failed');
+    expect(result.current.confirmBulkDelete).toBe(false);
+  });
+
+  it('does not let a reload failure hide the delete error', async () => {
+    vi.mocked(invoke).mockRejectedValue(new Error('delete failed'));
+    const { result } = setupDelete(async () => { throw new Error('reload failed'); });
+    act(() => result.current.selectAllVisible(['m1']));
+    await expect(act(async () => result.current.bulkDelete())).rejects.toThrow('delete failed');
+  });
+
+  it('lists the files still present after a failed delete call even though the reload worked', async () => {
+    vi.mocked(invoke).mockRejectedValue(new Error('delete failed'));
+    const { result } = setupDelete(async () => [{ id: 'm1' }, { id: 'm2' }]);
+    act(() => result.current.selectAllVisible(['m1', 'm2']));
+    let thrown: unknown;
+    await act(async () => { await result.current.bulkDelete().catch(error => { thrown = error; }); });
+    expect(thrown).toEqual(new Error('delete failed'));
+    expect(result.current.deleteFailures).toEqual(['one', 'locked']);
+  });
+});

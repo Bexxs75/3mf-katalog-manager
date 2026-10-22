@@ -332,16 +332,43 @@ pub fn install_app_update<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: St
     // Windows exits inside install() and the installer restarts the app; on macOS
     // and Linux the new bundle is in place and we restart into it. Off the main
     // thread (see the `async` attribute above), this still restarts reliably.
-    // The restart fallback can skip Exit; release the Unix lock before spawning
-    // the replacement process even when the event loop cannot accept the exit.
+    // The restart fallback can skip Exit; release the single-instance registration
+    // before spawning the replacement process even when the event loop cannot
+    // accept the exit.
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     if crate::single_instance::single_instance_enabled(
         cfg!(debug_assertions),
         std::env::var(crate::single_instance::ALLOW_MULTIPLE_ENV).ok().as_deref(),
     ) {
-        tauri_plugin_single_instance::destroy(&app);
+        release_single_instance(&app);
     }
     app.restart();
+}
+
+/// On Linux the single-instance plugin gives up its D-Bus name through zbus's
+/// blocking API, and zbus runs that through tokio's `Runtime::block_on`. This
+/// command executes on a tokio worker, where a nested `block_on` panics; with the
+/// release profile's `panic = "abort"` the app died right after the new AppImage
+/// had been written and never restarted. A plain thread has no runtime context,
+/// so the blocking call is allowed there.
+#[cfg(target_os = "linux")]
+fn release_single_instance<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if run_off_async_worker(|| tauri_plugin_single_instance::destroy(app)).is_err() {
+        log::warn!(target: "update", "Einzelinstanz-Sperre konnte vor dem Neustart nicht freigegeben werden");
+    }
+}
+
+/// macOS releases a socket file without any async runtime, so it can stay inline.
+#[cfg(target_os = "macos")]
+fn release_single_instance<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    tauri_plugin_single_instance::destroy(app);
+}
+
+/// Runs `f` on a fresh OS thread and waits for it, so code that blocks on its own
+/// async runtime can be called from inside a tokio task.
+#[cfg(any(target_os = "linux", test))]
+fn run_off_async_worker<T: Send>(f: impl FnOnce() -> T + Send) -> std::thread::Result<T> {
+    std::thread::scope(|scope| scope.spawn(f).join())
 }
 
 #[cfg(test)]
@@ -596,5 +623,17 @@ mod tests {
     fn a_broken_manifest_is_not_a_transport_error() {
         assert!(!is_transport_error(&tauri_plugin_updater::Error::ReleaseNotFound));
         assert!(!is_transport_error(&tauri_plugin_updater::Error::EmptyEndpoints));
+    }
+
+    // Mirrors the restart path: the install command runs as a tokio task and the
+    // Linux single-instance release blocks on an async runtime internally.
+    #[test]
+    fn blocking_on_a_runtime_works_off_the_async_worker() {
+        let blocking_call = || tauri::async_runtime::block_on(async { 7 });
+        let inline = tauri::async_runtime::block_on(tauri::async_runtime::spawn(async move { blocking_call() }));
+        assert!(inline.is_err(), "a nested block_on on a worker must fail, otherwise this test proves nothing");
+        let off_worker =
+            tauri::async_runtime::block_on(tauri::async_runtime::spawn(async move { run_off_async_worker(blocking_call) }));
+        assert_eq!(off_worker.expect("task must not panic").expect("thread must not panic"), 7);
     }
 }

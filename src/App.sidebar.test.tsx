@@ -107,7 +107,8 @@ it.each([false, true])('deletes through the sidebar hook, preserves models and r
   await act(async () => fireEvent.click(sidebar.getByRole('button', {name: 'Kitchen'})));
   if (galleryOpen) fireEvent.click(sidebar.getByText(de.viewAllCollectionsLabel));
   fireEvent.contextMenu(sidebar.getByRole('button', {name: 'Kitchen'}));
-  fireEvent.click(screen.getByRole('button', {name: de.delete}));
+  // The always-visible selection bar has its own (disabled) delete button.
+  fireEvent.click(screen.getAllByRole('button', {name: de.delete}).find(button => !button.closest('[role="toolbar"]'))!);
   await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: de.delete})));
   expect(invoke).toHaveBeenCalledWith('delete_collection', {collectionId: 'c1'});
   expect(sidebar.queryByRole('button', {name: 'Kitchen'})).toBeNull();

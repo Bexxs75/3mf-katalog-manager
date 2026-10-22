@@ -6,6 +6,7 @@ pub use katalog_core::db;
 pub mod diagnostics;
 pub use katalog_core::filament_check;
 pub use katalog_core::geometry;
+mod linux_menu;
 mod log_target;
 pub use katalog_core::obj;
 // Printer connection: connection and sync logic.
@@ -172,7 +173,7 @@ pub fn run() {
             if let Err(e) = db::delete_unused_tags(&conn) {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
-            commands::purge_expired_trash_on_startup(&conn);
+            commands::purge_expired_trash_on_startup(&conn, &trash_dir);
             let sensitive_dirs = sensitive_dirs(app.handle());
             app.manage(commands::AppState {
                 import_jobs: commands::ImportJobs::for_app(app.handle().clone()),
@@ -211,6 +212,7 @@ pub fn run() {
             app.manage(commands::DroppedImages::default());
             app.manage(commands::DiagnosticsState::default());
             app.manage(commands::UpdaterState::default());
+            commands::sync_linux_menu_path();
             startup::create_window(app)?;
             // Product name from the active config (differs for the preview variant) plus
             // the version, taken straight from Cargo.toml.
@@ -245,13 +247,34 @@ pub fn run() {
             commands::get_import_result,
             commands::get_import_state,
             commands::list_file_summaries,
+            commands::list_source_folders,
+            commands::add_source_folder,
+            commands::remove_source_folder,
+            commands::get_source_check_on_start,
+            commands::set_source_check_on_start,
+            commands::scan_source_folders,
+            commands::import_source_files,
+            commands::reject_source_files,
+            commands::list_rejected_count,
+            commands::reset_rejected_source_files,
+            commands::list_companions,
+            commands::pick_companion_files,
+            commands::add_companion,
+            commands::remove_companion,
+            commands::restore_companion,
+            commands::companion_open_info,
+            commands::open_companion,
+            commands::companion_image_data,
             commands::list_file_images,
             commands::list_all_file_tags,
             commands::list_files_by_ids,
             commands::list_folders,
             commands::create_folder,
             commands::move_file_to_folder,
+            commands::move_files_to_folder,
             commands::rename_file,
+            commands::preview_date_rename,
+            commands::apply_date_rename,
             commands::rename_folder,
             commands::move_folder,
             commands::pick_folder_path,
@@ -287,6 +310,8 @@ pub fn run() {
             commands::reorder_units,
             commands::load_spool,
             commands::unload_spool,
+            commands::get_import_rename_enabled,
+            commands::set_import_rename_enabled,
             commands::get_printer_link_enabled,
             commands::set_printer_link_enabled,
             commands::list_printer_connections,
@@ -302,6 +327,10 @@ pub fn run() {
             commands::read_dropped_image,
             commands::add_tag,
             commands::remove_tag,
+            commands::list_suggested_auto_tags,
+            commands::block_auto_tag,
+            commands::unblock_auto_tag,
+            commands::list_blocked_auto_tags,
             commands::delete_file,
             commands::set_print_status,
             commands::set_favorite,
@@ -336,10 +365,17 @@ pub fn run() {
             commands::scan_catalog_issues,
             commands::scan_catalog_disk,
             commands::apply_catalog_disk_sync,
+            commands::run_start_sync,
+            commands::get_sync_on_start,
+            commands::set_sync_on_start,
+            commands::get_sync_auto_add,
+            commands::set_sync_auto_add,
             commands::delete_files,
             commands::remove_files_from_catalog,
             commands::folder_removal_summary,
             commands::remove_folder_from_catalog,
+            commands::folder_trash_summary,
+            commands::trash_folder,
             commands::reset_catalog,
             commands::list_trash,
             commands::restore_file,
@@ -355,6 +391,9 @@ pub fn run() {
             commands::list_collection_files,
             commands::get_app_version,
             commands::is_preview_build,
+            commands::get_linux_menu_status,
+            commands::set_linux_menu_enabled,
+            commands::answer_linux_menu_prompt,
             commands::has_step_preview,
             commands::check_app_update,
             commands::get_update_channel,

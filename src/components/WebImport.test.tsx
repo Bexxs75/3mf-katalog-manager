@@ -66,7 +66,7 @@ it('shows the browser import entry only with permission and never offers native 
   const open = vi.fn();
   render(<LanguageProvider><Header mainView="catalog" view="grid" sort="name" sortDirection="asc" count={0}
     onSortDirectionChange={() => {}} onViewChange={() => {}} onSortChange={() => {}} allFoldersCollapsed={false} onToggleAllFolders={() => {}}
-    onImportFiles={open} onImportFolder={() => { throw new Error('native folder'); }} onImportFolderContents={() => { throw new Error('native contents'); }} /></LanguageProvider>);
+    onCheckSourceFolders={() => {}} onImportFiles={open} onImportFolder={() => { throw new Error('native folder'); }} onImportFolderContents={() => { throw new Error('native contents'); }} /></LanguageProvider>);
   expect(screen.queryByRole('button', { name: de.webUploadTitle })).toBeNull();
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ authenticated: true, writable: true, uploadable: true, csrfToken: 'new', mustChangePassword: false })));
   await act(async () => { await session.getSession(); });

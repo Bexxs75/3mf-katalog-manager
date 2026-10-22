@@ -338,7 +338,46 @@ pub fn set_folder_parent(conn: &Connection, folder_id: i64, parent_id: Option<i6
 
 /// Rewrites `folders.path` and `files.path` below `folder_id` by prefix
 /// replacement after its path changed from `old_path` to `new_path`.
+///
+/// Folders are followed through `parent_id`. Files are matched twice: by
+/// `folder_id` (rows of the folder subtree) and by their path (everything below
+/// `old_path` + separator). The path match is what keeps rows whose `folder_id` is
+/// NULL or stale (single dropped files, damaged backups) from pointing at a
+/// folder that no longer exists. It deliberately includes trash rows: `path` of a
+/// trashed row is the place "restore" moves the file back to, so it has to follow
+/// the folder too (the file itself sits at `trash_path` and is unaffected).
+///
+/// A new path that collides with an existing row fails on `UNIQUE(path)`; callers
+/// run this in a transaction and undo the move on disk when it errors.
+/// `new_path` must not lie below `old_path` (the callers rule that out).
 pub fn update_paths_under_folder(
+    conn: &Connection,
+    folder_id: i64,
+    old_path: &str,
+    new_path: &str,
+) -> Result<(), DbError> {
+    update_folder_subtree_paths(conn, folder_id, old_path, new_path)?;
+
+    // substr()/length() instead of LIKE: folder names may contain % and _, and
+    // "/a/Deko" must not match "/a/Deko2/x.3mf". The separator is the one the app
+    // writes into `path` (it stores native paths).
+    let sep = std::path::MAIN_SEPARATOR.to_string();
+    conn.execute(
+        "UPDATE files SET path = ?1 || substr(path, length(?2) + 1)
+         WHERE substr(path, 1, length(?2) + length(?3)) = ?2 || ?3",
+        params![new_path, old_path, sep],
+    )?;
+    // Companion files sit in `_extras` folders below the model's folder and move
+    // with it. Trashed rows follow too: their path is where a restore puts them.
+    conn.execute(
+        "UPDATE companion_files SET path = ?1 || substr(path, length(?2) + 1)
+         WHERE substr(path, 1, length(?2) + length(?3)) = ?2 || ?3",
+        params![new_path, old_path, sep],
+    )?;
+    Ok(())
+}
+
+fn update_folder_subtree_paths(
     conn: &Connection,
     folder_id: i64,
     old_path: &str,
@@ -367,7 +406,7 @@ pub fn update_paths_under_folder(
             )));
         };
         let child_new_path = format!("{new_path}{suffix}");
-        update_paths_under_folder(conn, child_id, &child_old_path, &child_new_path)?;
+        update_folder_subtree_paths(conn, child_id, &child_old_path, &child_new_path)?;
     }
     Ok(())
 }
@@ -543,8 +582,9 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
             volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
             print_status, last_viewed_at, creator, content_hash,
             render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-            plate_count, slice_info_json, license
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
+            plate_count, slice_info_json, license,
+            source_platform, source_model_id, source_profile_id
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31)",
         params![
             file.name,
             file.path,
@@ -574,6 +614,9 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
             file.plate_count,
             file.slice_info_json,
             file.license,
+            file.source.platform,
+            file.source.model_id,
+            file.source.profile_id,
         ],
     )?;
     let file_id = conn.last_insert_rowid();
@@ -592,7 +635,11 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
         )?;
     }
 
-    for tag_name in &file.tags {
+    // Every automatic assignment ends up here (import, folder sync, source folders,
+    // archives), so the block list is applied in this one place.
+    let mut tags = file.tags.clone();
+    super::blocked_tags::retain_unblocked(conn, &mut tags)?;
+    for tag_name in &tags {
         // Derived tags must never prevent importing the file itself.
         if tag_name.encode_utf16().take(101).count() > 100 {
             continue;
@@ -623,12 +670,14 @@ pub fn update_scanned_metadata(
         "UPDATE files SET
             dimension_x_mm = ?1, dimension_y_mm = ?2, dimension_z_mm = ?3,
             volume_cm3 = ?4, object_count = ?5, thumbnail_png = ?6,
-            plate_count = ?7, slice_info_json = ?8, file_size_bytes = ?9, content_hash = ?10, file_modified_at = ?12
+            plate_count = ?7, slice_info_json = ?8, file_size_bytes = ?9, content_hash = ?10, file_modified_at = ?12,
+            source_platform = ?13, source_model_id = ?14, source_profile_id = ?15
          WHERE id = ?11",
         params![
             dim_x, dim_y, dim_z, update.volume_cm3, update.object_count,
             update.thumbnail_png, update.plate_count, update.slice_info_json,
             update.file_size_bytes, update.content_hash, file_id, update.file_modified_at,
+            update.source.platform, update.source.model_id, update.source.profile_id,
         ],
     )?;
 
@@ -707,7 +756,8 @@ const TRASH_SELECT_COLUMNS: &str = "id, name, path, file_type, folder_id, origin
      volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
      print_status, last_viewed_at, creator, content_hash,
      render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-     plate_count, slice_info_json, deleted_at, trash_path, license";
+     plate_count, slice_info_json, deleted_at, trash_path, license,
+                    source_platform, source_model_id, source_profile_id";
 
 pub fn list_trash(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     let sql = format!("SELECT {TRASH_SELECT_COLUMNS} FROM files WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC");
@@ -756,7 +806,8 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
                     volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                     print_status, last_viewed_at, creator, content_hash,
                     render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                    plate_count, slice_info_json, deleted_at, trash_path, license
+                    plate_count, slice_info_json, deleted_at, trash_path, license,
+                    source_platform, source_model_id, source_profile_id
              FROM files WHERE id = ?1",
             params![id],
             row_to_file,
@@ -784,7 +835,8 @@ pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecor
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
                 render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                plate_count, slice_info_json, deleted_at, trash_path, license
+                plate_count, slice_info_json, deleted_at, trash_path, license,
+                    source_platform, source_model_id, source_profile_id
          FROM files WHERE id IN ({placeholders})"
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -812,7 +864,8 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
                 render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                plate_count, slice_info_json, deleted_at, trash_path, license
+                plate_count, slice_info_json, deleted_at, trash_path, license,
+                    source_platform, source_model_id, source_profile_id
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let mut files = stmt
@@ -830,6 +883,9 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
 /// Catalog metadata without image blobs or per-file child queries.
 pub struct FileSummary {
     pub license: Option<String>,
+    pub source_platform: Option<String>,
+    pub source_model_id: Option<String>,
+    pub source_profile_id: Option<String>,
     pub materials: Vec<MaterialRecord>,
     pub slice_info_json: Option<String>,
     pub id: i64,
@@ -862,7 +918,8 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 object_count, imported_at, print_status, favorite,
                 queue_position, thumbnail_png IS NOT NULL AS has_thumbnail,
                 render_snapshot_png IS NOT NULL AS has_render_snapshot, creator,
-                last_viewed_at, content_hash, file_modified_at, slice_info_json, license
+                last_viewed_at, content_hash, file_modified_at, slice_info_json, license,
+                source_platform, source_model_id, source_profile_id
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let mut rows = stmt
@@ -873,6 +930,9 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
             let file_type_str: String = row.get(3)?;
             Ok(FileSummary {
                 license: row.get(22)?,
+                source_platform: row.get(23)?,
+                source_model_id: row.get(24)?,
+                source_profile_id: row.get(25)?,
                 materials: Vec::new(),
                 slice_info_json: row.get(21)?,
                 id: row.get(0)?,
@@ -991,6 +1051,9 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         deleted_at: row.get(28)?,
         trash_path: row.get(29)?,
         license: row.get(30)?,
+        source_platform: row.get(31)?,
+        source_model_id: row.get(32)?,
+        source_profile_id: row.get(33)?,
     })
 }
 
@@ -1116,8 +1179,8 @@ pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> 
 pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Result<i64, DbError> {
     conn.execute(
         "INSERT INTO filament_spools
-            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at, color_hex, kind)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at, color_hex, kind, color_hexes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             spool.material,
             spool.manufacturer,
@@ -1129,8 +1192,9 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
             spool.price,
             spool.image_png,
             chrono::Utc::now().to_rfc3339(),
-            spool.color_hex,
+            crate::db::printers::primary_color_hex(&spool.color_hexes, spool.color_hex.as_deref()),
             spool.kind,
+            crate::db::printers::color_list_to_json(&spool.color_hexes),
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -1147,7 +1211,7 @@ pub fn list_filament_spools_with_images(conn: &Connection, include_images: bool)
 pub fn list_filament_spools_with_image_flags(conn: &Connection, include_images: bool) -> Result<Vec<(FilamentSpoolRecord, bool)>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, CASE WHEN ?1 THEN image_png ELSE NULL END,
-                color_hex, home_location, unit_id, slot_index, kind, image_png IS NOT NULL AS has_image
+                color_hex, home_location, unit_id, slot_index, kind, image_png IS NOT NULL AS has_image, color_hexes
          FROM filament_spools ORDER BY material, manufacturer",
     )?;
     let rows = stmt
@@ -1168,6 +1232,7 @@ pub fn list_filament_spools_with_image_flags(conn: &Connection, include_images: 
                 unit_id: row.get(12)?,
                 slot_index: row.get(13)?,
                 kind: row.get(14)?,
+                color_hexes: crate::db::printers::color_list_from_json(row.get::<_, Option<String>>(16)?.as_deref()),
             }, row.get(15)?))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1178,7 +1243,7 @@ pub fn list_filament_spools_with_image_flags(conn: &Connection, include_images: 
 pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRecord, DbError> {
     conn.query_row(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
-                color_hex, home_location, unit_id, slot_index, kind
+                color_hex, home_location, unit_id, slot_index, kind, color_hexes
          FROM filament_spools WHERE id = ?1",
         params![id],
         |row| {
@@ -1198,6 +1263,7 @@ pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRec
                 unit_id: row.get(12)?,
                 slot_index: row.get(13)?,
                 kind: row.get(14)?,
+                color_hexes: crate::db::printers::color_list_from_json(row.get::<_, Option<String>>(15)?.as_deref()),
             })
         },
     )
@@ -1227,16 +1293,18 @@ pub fn update_filament_spool_image_policy(conn: &Connection, id: i64, spool: &Ne
             "Die Art eines Eintrags im Drucker kann nicht geaendert werden - erst herausnehmen".to_string(),
         ));
     }
-    let image_assignment = if replace_image { ", image_png = ?12" } else { "" };
+    let image_assignment = if replace_image { ", image_png = ?13" } else { "" };
     let sql = format!("UPDATE filament_spools
          SET material = ?1, manufacturer = ?2, color = ?3,
              location = CASE WHEN unit_id IS NULL THEN ?4 ELSE location END,
              home_location = CASE WHEN unit_id IS NULL THEN home_location ELSE ?4 END,
              diameter_mm = ?5, original_weight_g = ?6, remaining_weight_g = ?7, price = ?8,
-             color_hex = ?10, kind = ?11{image_assignment}
+             color_hex = ?10, kind = ?11, color_hexes = ?12{image_assignment}
          WHERE id = ?9");
     let original_weight = crate::db::printers::round_tenth(spool.original_weight_g);
     let remaining_weight = crate::db::printers::round_tenth(spool.remaining_weight_g);
+    let primary_hex = crate::db::printers::primary_color_hex(&spool.color_hexes, spool.color_hex.as_deref());
+    let color_list = crate::db::printers::color_list_to_json(&spool.color_hexes);
     let mut values: Vec<&dyn rusqlite::ToSql> = vec![
             &spool.material,
             &spool.manufacturer,
@@ -1247,8 +1315,9 @@ pub fn update_filament_spool_image_policy(conn: &Connection, id: i64, spool: &Ne
             &remaining_weight,
             &spool.price,
             &id,
-            &spool.color_hex,
+            &primary_hex,
             &spool.kind,
+            &color_list,
         ];
     if replace_image {
         values.push(&spool.image_png);
@@ -1615,6 +1684,101 @@ mod tests {
 
         let result = update_paths_under_folder(&conn, parent_id, "/tmp/Katalog/A", "/tmp/Katalog/B");
         assert!(result.is_err());
+    }
+
+    fn file_path(conn: &Connection, id: i64) -> String {
+        conn.query_row("SELECT path FROM files WHERE id = ?1", params![id], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn update_paths_under_folder_also_carries_files_that_are_not_assigned_to_the_folder() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Katalog");
+        let deko = root.join("Deko");
+        let deko_sub = deko.join("Sub");
+        let other = root.join("Anderes");
+        let deko_id = insert_folder_with_parent(&conn, "Deko", None, &deko.to_string_lossy()).unwrap();
+        insert_folder_with_parent(&conn, "Sub", Some(deko_id), &deko_sub.to_string_lossy()).unwrap();
+        let other_id = insert_folder_with_parent(&conn, "Anderes", None, &other.to_string_lossy()).unwrap();
+
+        let assigned = test_insert_minimal_file(&conn, &deko.join("a.3mf").to_string_lossy(), Some(deko_id)).unwrap();
+        let loose = test_insert_minimal_file(&conn, &deko.join("loose.3mf").to_string_lossy(), None).unwrap();
+        let loose_deep = test_insert_minimal_file(&conn, &deko_sub.join("deep").join("d.3mf").to_string_lossy(), None).unwrap();
+        // folder_id points to an unrelated folder although the path lies below Deko.
+        let stale = test_insert_minimal_file(&conn, &deko_sub.join("stale.3mf").to_string_lossy(), Some(other_id)).unwrap();
+        let trashed = test_insert_minimal_file(&conn, &deko.join("gone.3mf").to_string_lossy(), None).unwrap();
+        soft_delete_file(&conn, trashed, Some("/trash/1-gone.3mf"), "2026-01-01T00:00:00Z").unwrap();
+        // Same name prefix, but a different folder: must stay untouched.
+        let sibling = test_insert_minimal_file(&conn, &root.join("Deko2").join("x.3mf").to_string_lossy(), None).unwrap();
+        let sibling_file = test_insert_minimal_file(&conn, &root.join("Deko.3mf").to_string_lossy(), None).unwrap();
+        let unrelated = test_insert_minimal_file(&conn, &other.join("o.3mf").to_string_lossy(), Some(other_id)).unwrap();
+
+        let new = root.join("Dekor");
+        update_paths_under_folder(&conn, deko_id, &deko.to_string_lossy(), &new.to_string_lossy()).unwrap();
+
+        assert_eq!(file_path(&conn, assigned), new.join("a.3mf").to_string_lossy());
+        assert_eq!(file_path(&conn, loose), new.join("loose.3mf").to_string_lossy());
+        assert_eq!(file_path(&conn, loose_deep), new.join("Sub").join("deep").join("d.3mf").to_string_lossy());
+        assert_eq!(file_path(&conn, stale), new.join("Sub").join("stale.3mf").to_string_lossy());
+        assert_eq!(file_path(&conn, trashed), new.join("gone.3mf").to_string_lossy());
+        let trash_path: Option<String> =
+            conn.query_row("SELECT trash_path FROM files WHERE id = ?1", params![trashed], |r| r.get(0)).unwrap();
+        assert_eq!(trash_path.as_deref(), Some("/trash/1-gone.3mf"), "the trashed file itself does not move");
+        assert_eq!(file_path(&conn, sibling), root.join("Deko2").join("x.3mf").to_string_lossy());
+        assert_eq!(file_path(&conn, sibling_file), root.join("Deko.3mf").to_string_lossy());
+        assert_eq!(file_path(&conn, unrelated), other.join("o.3mf").to_string_lossy());
+    }
+
+    #[test]
+    fn update_paths_under_folder_treats_like_wildcards_in_the_folder_name_literally() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Katalog");
+        let odd = root.join("100%_Deko");
+        let lookalike = root.join("100xyDeko");
+        let odd_id = insert_folder_with_parent(&conn, "100%_Deko", None, &odd.to_string_lossy()).unwrap();
+        let inside = test_insert_minimal_file(&conn, &odd.join("a.3mf").to_string_lossy(), None).unwrap();
+        let outside = test_insert_minimal_file(&conn, &lookalike.join("b.3mf").to_string_lossy(), None).unwrap();
+
+        let new = root.join("Neu");
+        update_paths_under_folder(&conn, odd_id, &odd.to_string_lossy(), &new.to_string_lossy()).unwrap();
+
+        assert_eq!(file_path(&conn, inside), new.join("a.3mf").to_string_lossy());
+        assert_eq!(file_path(&conn, outside), lookalike.join("b.3mf").to_string_lossy());
+    }
+
+    #[test]
+    fn update_paths_under_folder_follows_non_ascii_folder_names_for_unassigned_files() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Katalog");
+        let old = root.join("Dekoüß");
+        let id = insert_folder_with_parent(&conn, "Dekoüß", None, &old.to_string_lossy()).unwrap();
+        let loose = test_insert_minimal_file(&conn, &old.join("ä.3mf").to_string_lossy(), None).unwrap();
+
+        let new = root.join("Z");
+        update_paths_under_folder(&conn, id, &old.to_string_lossy(), &new.to_string_lossy()).unwrap();
+
+        assert_eq!(file_path(&conn, loose), new.join("ä.3mf").to_string_lossy());
+    }
+
+    #[test]
+    fn update_paths_under_folder_fails_without_skipping_when_a_new_path_is_already_taken() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Katalog");
+        let old = root.join("Alt");
+        let new = root.join("Neu");
+        let id = insert_folder_with_parent(&conn, "Alt", None, &old.to_string_lossy()).unwrap();
+        test_insert_minimal_file(&conn, &old.join("a.3mf").to_string_lossy(), None).unwrap();
+        // A row that already occupies the target path of a.3mf.
+        test_insert_minimal_file(&conn, &new.join("a.3mf").to_string_lossy(), None).unwrap();
+
+        let tx = conn.unchecked_transaction().unwrap();
+        let result = update_paths_under_folder(&tx, id, &old.to_string_lossy(), &new.to_string_lossy());
+        assert!(result.is_err(), "UNIQUE(path) must surface as an error");
+        drop(tx); // rollback
+
+        let folder_path: String =
+            conn.query_row("SELECT path FROM folders WHERE id = ?1", params![id], |r| r.get(0)).unwrap();
+        assert_eq!(folder_path, old.to_string_lossy());
     }
 
     #[test]

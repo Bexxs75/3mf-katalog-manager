@@ -2,7 +2,7 @@ use super::*;
 use rusqlite::OptionalExtension;
 use tauri::Manager;
 
-const SUBTREE: &str = "WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id = ?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id)";
+pub(super) const SUBTREE: &str = "WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id = ?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id)";
 const BASE_DIR_ERROR: &str = "Das ist der Speicherort des Katalogs. Zum Leeren „Katalog zurücksetzen“ in den Einstellungen verwenden.";
 
 #[derive(Debug, Serialize)]
@@ -20,7 +20,7 @@ pub struct CatalogRemovalCount {
     folder_count: i64,
 }
 
-fn parse_id(id: &str) -> CmdResult<i64> {
+pub(super) fn parse_id(id: &str) -> CmdResult<i64> {
     id.parse::<i64>()
         .ok()
         .filter(|id| *id > 0)
@@ -453,5 +453,50 @@ mod tests {
                 .as_deref(),
             Some("yes")
         );
+    }
+}
+
+#[cfg(test)]
+mod companion_tests {
+    use super::*;
+
+    #[test]
+    fn removing_from_the_catalog_forgets_the_companion_rows_and_leaves_the_files() {
+        let dir = unique_test_dir("catalog_remove_companions");
+        let conn = db::connect_in_memory().unwrap();
+        let model_path = dir.join("Foo.3mf");
+        std::fs::write(&model_path, b"model").unwrap();
+        let id = db::test_insert_minimal_file(&conn, &model_path.to_string_lossy(), None).unwrap();
+        let extras = dir.join("Foo_extras");
+        std::fs::create_dir(&extras).unwrap();
+        let companion = extras.join("pic.png");
+        std::fs::write(&companion, b"\x89PNG\r\n\x1a\n").unwrap();
+        db::companions::insert_companion(&conn, id, "pic.png", &companion.to_string_lossy(), "image", None, "now").unwrap();
+
+        remove_files_with_conn(&conn, vec![id.to_string()]).unwrap();
+
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0, "the rows go with the model entry");
+        assert!(companion.is_file() && model_path.is_file(), "nothing on disk is deleted");
+    }
+
+    #[test]
+    fn reset_and_folder_removal_keep_the_companion_files_on_disk_too() {
+        for mode in ["folder", "reset"] {
+            let dir = unique_test_dir(&format!("catalog_remove_companions_{mode}"));
+            let conn = db::connect_in_memory().unwrap();
+            let folder = db::insert_folder_with_parent(&conn, "f", None, &dir.to_string_lossy()).unwrap();
+            let model_path = dir.join("Foo.3mf");
+            std::fs::write(&model_path, b"model").unwrap();
+            let id = db::test_insert_minimal_file(&conn, &model_path.to_string_lossy(), Some(folder)).unwrap();
+            let companion = dir.join("Foo_extras").join("pic.png");
+            std::fs::create_dir(companion.parent().unwrap()).unwrap();
+            std::fs::write(&companion, b"\x89PNG\r\n\x1a\n").unwrap();
+            db::companions::insert_companion(&conn, id, "pic.png", &companion.to_string_lossy(), "image", None, "now").unwrap();
+            if mode == "folder" { remove_folder_with_conn(&conn, &folder.to_string()).unwrap(); } else { reset_with_conn(&conn).unwrap(); }
+            let rows: i64 = conn.query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
+            assert_eq!(rows, 0, "{mode}");
+            assert!(companion.is_file(), "{mode}");
+        }
     }
 }

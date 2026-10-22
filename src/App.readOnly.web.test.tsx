@@ -164,7 +164,7 @@ it('offers browser display preferences and read-only information without desktop
   for (const label of [de.settingsTabSlicer, de.settingsTabCatalog, de.singleKeyShortcutsTitle]) expect(screen.queryByText(label)).toBeNull();
   await click(screen.getByRole('button', { name: de.themeDark }));
   expect(document.documentElement.dataset.app).toBe('dark');
-  await click(screen.getByRole('button', { name: de.settingsTabInfo }));
+  await click(screen.getByRole('tab', { name: de.settingsTabInfo }));
   for (const name of ['GitHub', 'Discord', 'Open CASCADE', 'UnRAR']) {
     const link = screen.getByRole('link', { name });
     expect(link).toHaveAttribute('target', '_blank');

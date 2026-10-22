@@ -24,7 +24,7 @@ describe('useFolderDragAndDrop', () => {
   it('dragging a file onto a folder and releasing the mouse moves it', async () => {
     const folders = [makeFolder({ id: 'f1', path: '/Target' })];
     const models = [makeModelFile({ id: 'm1', name: 'Model' })];
-    vi.mocked(invoke).mockResolvedValue(undefined);
+    vi.mocked(invoke).mockResolvedValue([{ id: 'm1', status: 'moved', fromFolderId: 'old', fromPath: '/Old' }]);
     const refreshFolders = vi.fn();
     const refreshFiles = vi.fn();
     const { result } = renderHook(() =>
@@ -36,8 +36,8 @@ describe('useFolderDragAndDrop', () => {
     await act(async () => {
       fireEvent.mouseUp(document);
     });
-    expect(invoke).toHaveBeenCalledWith('move_file_to_folder', { fileId: 'm1', folderId: 'f1' });
-    await waitFor(() => expect(result.current.moveToast).toEqual({ from: 'Model', to: '/Target' }));
+    expect(invoke).toHaveBeenCalledWith('move_files_to_folder', { fileIds: ['m1'], folderId: 'f1' });
+    await waitFor(() => expect(result.current.moveToast).toMatchObject({ from: 'Model', to: '/Target', canUndo: true }));
     expect(result.current.draggedFileId).toBeNull();
     expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBe('true');
   });
@@ -165,15 +165,15 @@ it('keeps the drag tip after a failed collection add and uses the error toast', 
   expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
 });
 
-it.each(['root', 'parent'])('does not start dragging configured catalog %s', id => {
+it.each(['root', 'parent'])('never moves the configured catalog %s and explains why', id => {
   const folders = [makeFolder({id: 'parent', path: '/models'}), makeFolder({id: 'root', path: '/models/catalog', parentId: 'parent'}), makeFolder({id: 'target', path: '/other'})];
   const {result} = renderHook(() => useFolderDragAndDrop([], folders, {refreshFolders: vi.fn(), refreshFiles: vi.fn()}, undefined, '/models/catalog'));
   act(() => result.current.onDragFolderStart(id));
-  expect(result.current.draggedFolderId).toBeNull();
   act(() => result.current.handleFolderMouseEnter('target'));
   expect(result.current.dragOverFolderId).toBeNull();
-  fireEvent.mouseUp(document);
+  act(() => { fireEvent.mouseUp(document); });
   expect(invoke).not.toHaveBeenCalled();
+  expect(result.current.moveToast).toMatchObject({ error: true, blocked: 'catalogRoot' });
 });
 
 it('still moves a child of the configured root', async () => {
@@ -198,4 +198,107 @@ it.each([
   ['/models', '/models\\catalog', false],
 ])('checks catalog containment at path boundaries (%s, %s)', (path, root, expected) => {
   expect(containsCatalogRoot(path, root)).toBe(expected);
+});
+
+describe('refused folder drops', () => {
+  const folders = [
+    makeFolder({ id: 'root', name: 'Models', path: '/catalog/Models', parentId: null }),
+    makeFolder({ id: 'a', name: 'A', path: '/catalog/Models/A', parentId: 'root' }),
+    makeFolder({ id: 'a1', name: 'A1', path: '/catalog/Models/A/A1', parentId: 'a' }),
+    makeFolder({ id: 'b', name: 'B', path: '/catalog/Models/B', parentId: 'root' }),
+    makeFolder({ id: 'b-a1', name: 'A1', path: '/catalog/Models/B/A1', parentId: 'b' }),
+  ];
+
+  function dropOn(dragged: string, target: string, catalogBaseDir: string | null = '/catalog/Models/B') {
+    const { result } = renderHook(() => useFolderDragAndDrop([], folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }, undefined, catalogBaseDir));
+    act(() => result.current.onDragFolderStart(dragged));
+    act(() => result.current.handleFolderMouseEnter(target));
+    expect(result.current.dragOverFolderId).toBeNull();
+    act(() => { fireEvent.mouseUp(document); });
+    return result;
+  }
+
+  it.each([
+    ['a', 'a', 'self'],
+    ['a', 'a1', 'descendant'],
+    ['a1', 'a', 'alreadyThere'],
+    ['a1', 'b', 'nameTaken'],
+    ['root', 'a', 'catalogRoot'],
+    ['b', 'a', 'catalogRoot'],
+  ])('explains why dropping %s on %s does nothing (%s)', (dragged, target, blocked) => {
+    const result = dropOn(dragged, target);
+    expect(invoke).not.toHaveBeenCalled();
+    expect(result.current.moveToast).toMatchObject({ error: true, blocked });
+    expect(result.current.draggedFolderId).toBeNull();
+  });
+
+  it('stays quiet when the pointer was released outside every folder row', () => {
+    const { result } = renderHook(() => useFolderDragAndDrop([], folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }));
+    act(() => result.current.onDragFolderStart('a'));
+    act(() => result.current.handleFolderMouseEnter('b'));
+    act(() => result.current.handleFolderMouseLeave('b'));
+    act(() => { fireEvent.mouseUp(document); });
+    expect(result.current.moveToast).toBeNull();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('still moves a folder onto a valid target', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const { result } = renderHook(() => useFolderDragAndDrop([], folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }, undefined, null));
+    act(() => result.current.onDragFolderStart('a1'));
+    act(() => result.current.handleFolderMouseEnter('root'));
+    expect(result.current.dragOverFolderId).toBe('root');
+    await act(async () => { fireEvent.mouseUp(document); });
+    expect(invoke).toHaveBeenCalledWith('move_folder', { folderId: 'a1', newParentId: 'root' });
+  });
+
+  it('shows the backend message of a failed move unchanged', async () => {
+    vi.mocked(invoke).mockRejectedValue({ message: 'Zielordner existiert bereits: /x', expected: true });
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { result } = renderHook(() => useFolderDragAndDrop([], folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }, undefined, null));
+      act(() => result.current.onDragFolderStart('a1'));
+      act(() => result.current.handleFolderMouseEnter('root'));
+      await act(async () => { fireEvent.mouseUp(document); });
+      expect(result.current.moveToast).toMatchObject({ to: 'Zielordner existiert bereits: /x', error: true, unexpected: false });
+    } finally { errorLog.mockRestore(); }
+  });
+});
+
+describe('dragging a mixed selection', () => {
+  const folders = [makeFolder({ id: 'a', path: '/A' }), makeFolder({ id: 'b', path: '/B' })];
+  const models = [
+    makeModelFile({ id: 'm1', name: 'One', folderId: 'a' }),
+    makeModelFile({ id: 'm2', name: 'Two', folderId: 'b' }),
+  ];
+
+  it('keeps the folder of one dragged file a valid target while another file is elsewhere', async () => {
+    vi.mocked(invoke).mockResolvedValue([
+      { id: 'm1', status: 'skipped_already_there' },
+      { id: 'm2', status: 'moved', fromFolderId: 'b', fromPath: '/B' },
+    ]);
+    const { result } = renderHook(() =>
+      useFolderDragAndDrop(models, folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }, undefined, null, new Set(['m1', 'm2'])),
+    );
+    act(() => result.current.onDragFileStart('m1'));
+    expect(result.current.draggedFilesFolderId).toBeNull();
+    act(() => result.current.handleFolderMouseEnter('a'));
+    expect(result.current.dragOverFolderId).toBe('a');
+    await act(async () => {
+      fireEvent.mouseUp(document);
+    });
+    expect(invoke).toHaveBeenCalledWith('move_files_to_folder', { fileIds: ['m1', 'm2'], folderId: 'a' });
+  });
+
+  it('refuses the target only when every dragged file is already in it', () => {
+    const { result } = renderHook(() =>
+      useFolderDragAndDrop(models, folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }, undefined, null, new Set(['m1'])),
+    );
+    act(() => result.current.onDragFileStart('m1'));
+    expect(result.current.draggedFilesFolderId).toBe('a');
+    act(() => result.current.handleFolderMouseEnter('a'));
+    expect(result.current.dragOverFolderId).toBeNull();
+    act(() => result.current.handleFolderMouseEnter('b'));
+    expect(result.current.dragOverFolderId).toBe('b');
+  });
 });

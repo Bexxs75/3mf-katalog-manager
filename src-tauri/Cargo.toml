@@ -1,6 +1,6 @@
 [package]
 name = "mf-katalog-manager"
-version = "0.16.0-12"
+version = "0.17.0-2"
 description = "A Tauri App"
 authors = ["Bexxs75"]
 license = "MIT"
@@ -37,7 +37,7 @@ tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
-zip = "2"
+zip = "9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

@@ -42,12 +42,25 @@ pub struct StartedImport {
     pub job_id: Option<String>,
 }
 
-fn submit_models(
+pub(crate) fn submit_models(
     app: &tauri::AppHandle,
     source: ImportSource,
     paths: Vec<PathBuf>,
     target: Option<String>,
     allow_picker: bool,
+) -> CmdResult<Arc<ImportJob>> {
+    submit_models_confined(app, source, paths, target, allow_picker, Vec::new())
+}
+
+/// Like [`submit_models`], but the worker only takes files that still lie below one of
+/// `confine_to` (and are reached without a link) when it gets to them.
+pub(crate) fn submit_models_confined(
+    app: &tauri::AppHandle,
+    source: ImportSource,
+    paths: Vec<PathBuf>,
+    target: Option<String>,
+    allow_picker: bool,
+    confine_to: Vec<PathBuf>,
 ) -> CmdResult<Arc<ImportJob>> {
     use tauri::Manager;
     let state = app.state::<AppState>();
@@ -104,13 +117,14 @@ fn submit_models(
             (None, false)
         }
     };
-    let job = service.enqueue_checked(
+    let job = service.enqueue_confined(
         source,
         target,
         placement,
         None,
         JobInput::Models(paths),
         error,
+        confine_to,
     )?;
     kick(app.clone());
     Ok(job)

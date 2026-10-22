@@ -9,8 +9,7 @@ for printing, and managing your filament stock.
 > **About the screenshots in this guide:** screenshots show the app with its
 > interface set to English
 > and a made-up demo catalog (models like "Rocket" or "Spiral Vase", made-up filament spools, resin
-> bottles and brands) — no real user data. Existing screenshots will be updated; some layouts still show the earlier interface.
-> The additional screenshot motifs are listed in [NEUE-BILDER.md](NEUE-BILDER.md).
+> bottles and brands) — no real user data.
 
 ## Contents
 
@@ -136,7 +135,9 @@ file manager afterwards.
 ## Importing files
 
 The red "+ Import" button top left offers several ways in: pick individual files via a dialog,
-import an entire folder (including subfolders), or drag files straight from your file manager
+import an entire folder (including subfolders), import only the contents of a folder into your
+catalog folder ("Folder contents…", see [Importing folder contents](#importing-folder-contents)),
+or drag files straight from your file manager
 into the catalog window. On import, dimensions, volume, object count, and (if present in the
 file) material information are extracted automatically, and the app suggests matching hashtags
 that you're free to edit afterwards. Automatically assigned tags such as "multipart", "mini",
@@ -146,19 +147,36 @@ both names.
 If the app imports a file that's already present in the catalog content-wise (an exact duplicate
 check via content hash), it's recognized instead of being added a second time.
 
-The Import menu explains where files will go: files selected in the file dialog go to the active
-catalog folder or catalog location when one is configured. Without one, they stay in place.
-Folder imports and files dropped from outside the app keep their existing locations.
+The Import menu lists "Files...", "Folder..." and "Folder contents…". A hint box at its top
+explains where the files will go while you point at an entry: files selected in the file dialog go
+to the active catalog folder or catalog location when one is configured. Without one, they stay in
+place. Folder imports and files dropped from outside the app keep their existing locations. The
+target is fixed when the import starts — switching folders afterwards does not change it.
+
+![Import menu with the hint about where files go](bilder/en/43-import-menue.png)
+
 The progress row shows the current stage and offers "Cancel". Files already imported remain in
 the catalog. Additional imports wait in a queue; while scanning, the row shows how many files
 have been found. After completion, open "Details" to see files that were not imported, their
 reasons and files that were imported but could not be placed. "Copy list" copies the result list.
+
+![Import progress with "Cancel"](bilder/en/44-import-fortschritt.png)
 
 ![Import result with file names and reasons](bilder/en/36-import-ergebnisliste.png)
 
 To move catalog models, drag the grip on a card onto a folder. A preview follows the pointer,
 valid targets are highlighted, and collapsed folders with subfolders open when you hover over
 them. Dropping onto a collection adds the model to that collection.
+
+### Importing folder contents
+
+"Import → Folder contents…" imports all supported files from a folder you choose, including those
+in its subfolders, directly into the current target folder — the active catalog folder, or the
+catalog location when "All" is selected. In contrast to "Folder...", the structure of the source
+folder is not recreated in the catalog and the source folder itself is not added. Files are moved
+into the target folder just like with "Files..." (when a catalog location is configured). Files
+with the same name are not overwritten and stay in the source folder. Empty source folders are kept
+on disk. The progress row names this import "Folder contents".
 
 ### Extracting archives
 
@@ -190,6 +208,11 @@ single file over 1 GB, the whole archive fails (anything already extracted is re
 references in RAR archives (created with `rar -oi`) are not resolved: they are skipped, created as an
 empty file, or make the whole archive fail on a checksum error. Folder import still does not extract any archives it contains.
 
+If an archive also contains files that are not models (for example TXT or PDF), they are extracted
+too. The result notice and the "Archives" tab under "Details" then say how many other files were
+extracted but not added to the catalog (the catalog only shows models) and that they are in the
+target folder.
+
 ![Dialog for extracting archives](bilder/en/21-archiv-entpacken.png)
 
 ## Browsing and organizing your catalog
@@ -202,14 +225,23 @@ screenshot above), **folder**, and **list**:
 The list shows additional columns (tags, volume, file size) and can be sorted by clicking a
 column header.
 
-The filter bar above the models shows the active folder, tag, collection, search and tool view.
-Remove individual filters with their close buttons; "Clear all" resets them together.
+The filter bar above the models shows the active folder, tag, collection, search, tool view,
+usage and print status. Remove individual filters with their close buttons; "Reset filters" clears
+them all at once (no models are deleted).
 
 ![Active filters above the models](bilder/en/34-filterleiste.png)
 
-Under "Sort", choose "Modified date", "Import date", "Name", "File size", "Volume" or
-"Last viewed". Each supports both directions: for example "Oldest first" or "Newest first"
-for dates, and "A → Z" or "Z → A" for names.
+The same bar has two drop-downs: **Usage** ("All", "Commercial use allowed", "Private use only",
+"Not specified" — based on the model's [license](#license-and-usage)) and **Print status**
+("All", "Printed", "Not yet printed"). Both combine with each other and with folder, tag, search
+and the other filters; an active choice also appears as a chip that you can remove.
+
+![Usage and print status filters and the sort menu](bilder/en/42-filter-sortierung.png)
+
+Under "Sort", choose "Name", "Import date", "Modified date", "File size", "Volume",
+"Print status" or "Last viewed". Each supports both directions: for example "Oldest first" or
+"Newest first" for dates, "A → Z" or "Z → A" for names, and "Not yet printed first" or
+"Printed first" for print status. Within each print-status group, models are ordered by name.
 
 In the sidebar, "Filter tags …" searches the tag list. The button below the list also reveals
 tags used by only one model. When adding tags in the model details, typing
@@ -261,6 +293,47 @@ such as `/` and `?`; Ctrl/Cmd shortcuts remain available.
 
 ![Keyboard shortcuts and tips](bilder/en/37-tastenkuerzel-dialog.png)
 
+### Syncing with the disk
+
+If you add, move or delete files in your catalog folders outside the app (for example in your file
+manager), **Refresh** brings the catalog up to date. The button sits in the header next to
+"Import" and is only there in the catalog view; **F5** does the same while no dialog is open.
+Pointing at the button shows when the catalog was last checked ("Never" if it hasn't been yet). It
+is disabled while an import is running.
+
+![Refresh button in the header](bilder/en/39-festplatten-abgleich.png)
+
+Refresh first only looks — nothing changes until you confirm:
+
+- **Everything matches:** a short notice "Everything is up to date" appears at the bottom of the
+  window.
+- **Otherwise** the "Sync with disk" dialog opens. It counts "new files", "new folders" and
+  "missing files" and lists them under "New on disk" and "No longer on disk" (the path inside the
+  catalog folder, with the catalog folder below it). New folders appear only when they contain new
+  supported files; empty folders are left out. "Apply changes" adds the new files and folders to
+  the catalog, "Later" closes the dialog without changing anything.
+- **Missing files are kept by default.** Their entries stay in the catalog and still show up in the
+  catalog check (Settings → Catalog). To remove them, tick "Remove missing files from the
+  catalog"; the button then offers "Apply changes" (with new files) or "Remove" (only missing
+  files). Removed entries go to the [trash](#the-trash), so you can still restore them;
+  notes, tags and usage are lost once they are deleted permanently from there.
+- **Nothing to apply:** if there are no new files or folders and you have not ticked the removal
+  option, the dialog only offers "Close".
+- **Folders that cannot be read** are listed with their paths ("N folders could not be read"); the
+  rest is still compared. **Files that cannot be read** are skipped and shown with their paths
+  after applying ("N files could not be read"); all readable files are imported anyway.
+- **Unreachable catalog folder** (for example a network drive or USB drive that is not connected,
+  or an empty or unmounted folder): the sync stops with "A catalog folder is unreachable. Please
+  check the connection. Remove the folder from the catalog or reconnect it." and the path, and
+  the catalog stays unchanged. Files on such a folder are never treated as missing. "Try again"
+  repeats the check. Other messages: "The catalog has changed. Please scan again." (something
+  changed between preview and applying), "A path has changed. Please scan again.", "A file could
+  not be imported. The catalog is unchanged." and "The sync failed. Please try again."
+- **After applying,** a notice sums up "N new files · N new folders · N files removed", and the new
+  entries are briefly highlighted.
+
+![Dialog "Sync with disk" with new and missing files](bilder/en/40-festplatten-abgleich-dialog.png)
+
 ## Viewing a model in detail
 
 Double-clicking a model opens the full detail page:
@@ -288,15 +361,57 @@ are pending, choose "Keep editing" or "Discard and switch" before changing model
 
 The 3D preview offers "File colors" when color data is available, or "Single color".
 The legend explains the file colors. For multi-plate 3MF files from Bambu Studio, OrcaSlicer or
-Creality Print, the plate bar below the preview offers "All", individual plates and previous/next
-buttons. Selecting a plate fits it into view and limits the legend to that plate.
+Creality Print, the plate bar below the preview reads "All", previous arrow, plate numbers, next
+arrow. Pointing at a number shows "Plate n" and the plate's name. Selecting a plate fits it into
+view and limits the legend to that plate; the Left/Right arrow keys step through the plates while
+the bar has focus, and at the first or last plate the arrow turns grey. With more than 12 plates
+the numbers are replaced by a counter such as "3 / 14" with the plate name.
 
 ![3D preview with plate bar](bilder/en/35-platten-leiste.png)
 
 "Show in file manager" reveals the file from the detail page, detail panel or card context menu.
-On macOS it reads "Show in Finder", on Windows "Show in Explorer". If the preview cannot be
-shown, an error card explains whether the file is missing, unreadable, too large or WebGL is
-unavailable, and offers suitable next steps such as opening the file in a slicer.
+On macOS it reads "Show in Finder", on Windows "Show in Explorer".
+
+If the 3D preview cannot be shown, a card in the preview area explains why instead of leaving it
+empty (the stored image stays visible behind it when there is one):
+
+- **"The file was not found"** — check its location or remove the entry from the catalog. The card
+  shows the path and offers "Open in file manager" and "Remove from catalog".
+- **"The file cannot be read"** — it is damaged, locked or has no displayable geometry; check
+  whether another program has it open. The card offers "Open in slicer".
+- **"The model is too large for the 3D view"** — it exceeds the app's limits (for example binary
+  STL files with more than 3 million triangles, ASCII STL files over 256 MiB, OBJ files over
+  128 MiB, or 3MF models over 3 million triangles). Use the preview image or open it in your
+  slicer.
+- **"The 3D view is not supported on this computer"** — WebGL is unavailable. Use the preview image
+  or open the file in your slicer.
+- A file type without a 3D preview shows "This file type has no 3D preview". For unexpected
+  errors the card also offers "Report problem".
+
+![3D error card "The file was not found"](bilder/en/45-3d-fehlerkarte.png)
+
+### License and usage
+
+Each model can carry a **license**. In the detail panel and on the detail page, the "License"
+section has a drop-down. Its choices are "Not set", the Creative Commons presets (CC BY, CC BY-SA,
+CC BY-NC, CC BY-NC-SA, CC BY-ND, CC BY-NC-ND, CC0), "Personal use only", "Commercial use allowed /
+license purchased", "Own design" and "Other…". "Other…" opens a free text field "License text"
+(up to 200 characters). "Save license" stores it; on the detail page, a changed, unsaved license
+counts as an unsaved change and asks before "Next model" discards it.
+
+![License section of a model](bilder/en/41-lizenz.png)
+
+From the license, the app derives a **usage** badge: "Commercial use allowed" (CC BY, CC BY-SA, CC
+BY-ND, CC0, "Commercial use allowed / license purchased" and "Own design"), "Private use only" (CC
+BY-NC, CC BY-NC-SA, CC BY-NC-ND and "Personal use only") or "Not specified" (nothing set, or a free
+text). The badge appears on grid cards and list rows — not for "Not specified" — and, including
+"Not specified", next to the license field. Use the **Usage** filter to narrow the catalog (see
+[Browsing and organizing your catalog](#browsing-and-organizing-your-catalog)).
+
+To set the license of several models at once, select them and use "Set license" in the action bar
+of the multi-selection (see [Quick actions](#quick-actions-context-menu-and-multi-select)). It
+opens the same drop-down and applies the choice to all selected models. Existing tags are not
+changed.
 
 ## Quick actions: context menu and multi-select
 
@@ -491,7 +606,7 @@ If you choose "Resin" when adding a printer, it gets exactly one **resin vat** w
 bottle instead of the spool holder. The vat can't be renamed or deleted, and resin printers
 can't have any other units; the printer itself can be renamed and deleted like any other.
 
-![Manage printers with filament and resin printers](bilder/en/25-drucker-verwalten.png)
+![Printer Manager: a printer's material units under "Material assignment", with "Add unit" and "Edit"](bilder/en/25-drucker-verwalten.png)
 
 - In the "Resin" view of the stock, the resin printer appears in the right-hand column. The vat
   shows the inserted bottle with its color, the remaining ml and a fill bar.
@@ -618,7 +733,7 @@ There is no separate Printers tab. The connection switch is at the bottom of the
 addresses and connection tests are in the selected printer's "Connection & network" section
 (see [Printer connection](#printer-connection)).
 
-![Earlier settings view; printer controls are now in Printer Manager](bilder/en/28-einstellungen-drucker.png)
+![Settings → General with the hint "You can now find printers in Printer Manager in the left rail." and the link "Open Printer Manager"](bilder/en/28-einstellungen-drucker.png)
 
 ### Info
 
@@ -642,12 +757,12 @@ The following screenshots compare the **light** and **dark** themes:
 ![Catalog in dark theme](bilder/en/14-dark-mode.png)
 ![Catalog in light theme](bilder/en/15-hell-mode-bonus.png)
 
-Under Settings → Info, "Receive prerelease versions (Release Candidates)" enables release
-candidates and the later final version for your existing catalog. Enabling it opens a warning:
-a catalog migration may prevent returning to an older version without a backup. Choose
+Under Settings → Info, the checkbox "Receive prerelease versions (Release Candidates)" enables
+release candidates and the later final version for your existing catalog. Ticking it opens a
+warning: a catalog migration may prevent returning to an older version without a backup. Choose
 "Export catalog now", then "Enable now" after the export succeeds; "Enable anyway" proceeds
-without that export, and "Cancel" leaves the switch off. Turning it off does not uninstall an
-existing prerelease; it stays installed until a newer stable version is available.
+without that export, and "Cancel" leaves the checkbox unticked. Unticking it again does not
+uninstall an existing prerelease; it stays installed until a newer stable version is available.
 
 ![Warning when enabling prerelease updates](bilder/en/38-update-kanal-warnung.png)
 
@@ -657,7 +772,7 @@ The app runs only once. Launching it again brings the existing window to the fro
 
 ![Report a bug](bilder/en/30-fehler-melden.png)
 
-Settings → Info → **Report a bug** (or **Report problem** next to an unexpected error) opens a short dialog. First decide whether to send the log file. With **Yes** you see exactly what will be in it: user name, computer name, home folder and catalog paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names are replaced. **Save and open form** puts `3mf-katalog-log-<date>.txt` into your download folder and opens the form on 3mfkatalog.de with version and system filled in; attach the file there under "Log file". The app never sends anything by itself.
+Settings → Info → **Report a bug** (or **Report problem** next to an unexpected error) opens a short dialog. First decide whether to send the log file. With **Yes** you see exactly what will be in it: user name, computer name, home folder and catalog paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names are replaced. **Save and open form** puts `3mf-katalog-log-<date>.txt` into your download folder and opens the form on 3mfkatalog.de with version (in the screenshot: 0.16.0) and system filled in; attach the file there under "Log file". The app never sends anything by itself.
 
 **Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open log folder** (under **FOLDERS**, see [Info](#info)) shows the log files.
 
@@ -670,7 +785,8 @@ again" repeats the check any time.
 
 **On Windows, macOS, and the Linux AppImage**, when a newer version is found:
 
-1. **"Version X.Y.Z is available"** — "Update now" downloads it; the app checks its
+1. **"Version X.Y.Z is available"** (in the screenshot: 0.16.1, offered to an installation of
+   0.16.0) — "Update now" downloads it; the app checks its
    signature before the update can be installed; "What's new?" opens the release notes on GitHub.
 
    ![Update available](bilder/en/29-update-verfuegbar.png)
@@ -821,9 +937,7 @@ importierst, organisierst, druckfertig machst und deine Spulen im Material Manag
 > **Hinweis zu den Bildern in diesem Handbuch:** Die Screenshots zeigen die App
 > mit einem erfundenen
 > Demo-Katalog (Modelle wie "Rakete" oder "Spiralvase", erfundene Filamentspulen, Resin-Flaschen
-> und Hersteller) — keine echten Nutzerdaten. Vorhandene Bilder werden noch aktualisiert;
-> einige Ansichten zeigen die bisherige Oberfläche. Zusätzliche Bildmotive stehen in
-> [NEUE-BILDER.md](NEUE-BILDER.md).
+> und Hersteller) — keine echten Nutzerdaten.
 
 ## Inhalt
 
@@ -951,7 +1065,9 @@ Einrichtung direkt über den Katalog im Dateimanager.
 ## Dateien importieren
 
 Über den roten "+ Importieren"-Button oben links stehen mehrere Wege offen: einzelne Dateien per
-Dialog auswählen, einen ganzen Ordner (inklusive Unterordner) importieren, oder Dateien direkt per
+Dialog auswählen, einen ganzen Ordner (inklusive Unterordner) importieren, nur den Inhalt eines
+Ordners in deinen Katalogordner übernehmen („Ordnerinhalt…“, siehe
+[Ordnerinhalt importieren](#ordnerinhalt-importieren)), oder Dateien direkt per
 Drag & Drop aus deinem Dateimanager in das Katalog-Fenster ziehen. Beim Import werden Abmessungen,
 Volumen, Objektanzahl und (falls in der Datei vorhanden) Materialangaben automatisch ausgelesen,
 und die App schlägt passende Hashtags vor, die du danach frei bearbeiten kannst. Automatisch
@@ -961,20 +1077,39 @@ eingestellten Sprache der Oberfläche; die Suche findet sie unter beiden Namen.
 Importiert die App eine Datei, die inhaltlich bereits im Katalog vorhanden ist (exakter
 Duplikat-Abgleich per Inhalts-Hash), wird das erkannt, statt sie ein zweites Mal anzulegen.
 
-Das Import-Menü erklärt, wo die Dateien landen: Im Dateidialog ausgewählte Dateien kommen in den
-aktiven Katalogordner oder den eingerichteten Katalog-Speicherort. Ohne Speicherort bleiben sie
-an ihrem Ort. Beim Ordner-Import und beim Ziehen von Dateien von außen bleiben sie ebenfalls am bisherigen Ort.
+Das Import-Menü listet „Dateien...“, „Ordner...“ und „Ordnerinhalt…“. Ein Hinweisfeld oben im Menü
+erklärt, wo die Dateien landen, sobald du auf einen Eintrag zeigst: Im Dateidialog ausgewählte
+Dateien kommen in den aktiven Katalogordner oder den eingerichteten Katalog-Speicherort. Ohne
+Speicherort bleiben sie an ihrem Ort. Beim Ordner-Import und beim Ziehen von Dateien von außen
+bleiben sie ebenfalls am bisherigen Ort. Das Ziel wird beim Start des Imports festgehalten – ein
+Ordnerwechsel danach ändert nichts mehr.
+
+![Import-Menü mit dem Hinweis, wohin Dateien kommen](bilder/43-import-menue.png)
+
 Die Fortschrittszeile zeigt den aktuellen Schritt und bietet "Abbrechen". Bereits importierte
 Dateien bleiben im Katalog. Weitere Importe warten in einer Warteschlange. Während der Suche
 siehst du die Anzahl der bisher gefundenen Dateien. Öffne nach Abschluss "Details": Dort stehen
 nicht importierte Dateien mit Gründen sowie importierte Dateien, die nicht abgelegt werden konnten.
 "Liste kopieren" kopiert die Ergebnisliste.
 
+![Importfortschritt mit „Abbrechen“](bilder/44-import-fortschritt.png)
+
 ![Import-Ergebnis mit Dateinamen und Gründen](bilder/36-import-ergebnisliste.png)
 
 Zum Verschieben ziehst du ein Katalogmodell am Griff seiner Karte auf einen Ordner. Eine Vorschau
 folgt dem Mauszeiger, passende Ziele werden hervorgehoben. Zugeklappte Ordner mit Unterordnern
 öffnen sich beim Drüberhalten. Ziehst du ein Modell auf eine Sammlung, wird es ihr hinzugefügt.
+
+### Ordnerinhalt importieren
+
+„Importieren → Ordnerinhalt…“ übernimmt alle unterstützten Dateien eines gewählten Ordners, auch
+die aus seinen Unterordnern, direkt in den aktuellen Zielordner – den aktiven Katalogordner bzw.
+den Katalog-Speicherort, wenn „Alle“ gewählt ist. Anders als bei „Ordner...“ wird die Struktur des
+Quellordners im Katalog nicht nachgebaut, und der Quellordner selbst wird nicht übernommen. Die
+Dateien werden wie bei „Dateien...“ in den Zielordner verschoben (wenn ein Katalog-Speicherort
+eingerichtet ist). Dateien mit gleichem Namen werden nicht überschrieben und bleiben im Quellordner.
+Leere Quellordner bleiben auf der Festplatte erhalten. Die Fortschrittszeile nennt diesen Import
+„Ordnerinhalt“.
 
 ### Archive entpacken
 
@@ -1011,6 +1146,11 @@ werden übersprungen, als leere Datei angelegt oder lassen bei einem Prüfsummen
 Archiv scheitern. Der Ordner-Import entpackt weiterhin keine
 enthaltenen Archive.
 
+Enthält ein Archiv auch Dateien, die keine Modelle sind (z. B. TXT oder PDF), werden sie ebenfalls
+entpackt. Der Ergebnishinweis und der Reiter „Archive“ unter „Details“ nennen dann, wie viele
+weitere Dateien entpackt, aber nicht in den Katalog aufgenommen wurden (der Katalog zeigt nur
+Modelle) und dass sie im Zielordner liegen.
+
 ![Dialog zum Entpacken von Archiven](bilder/21-archiv-entpacken.png)
 
 ## Katalog durchsuchen und organisieren
@@ -1024,14 +1164,24 @@ Die Liste zeigt zusätzliche Spalten (Tags, Volumen, Dateigröße) und lässt si
 Spaltenüberschrift sortieren.
 
 Die Filterleiste über den Modellen zeigt aktive Ordner-, Tag-, Sammlungs- und Suchfilter sowie
-die gewählte Werkzeugansicht. Über die Schließen-Knöpfe entfernst du Filter einzeln.
-"Alle löschen" setzt sie gemeinsam zurück.
+die gewählte Werkzeugansicht, Nutzung und Druckstatus. Über die Schließen-Knöpfe entfernst du
+Filter einzeln. "Filter zurücksetzen" setzt sie gemeinsam zurück (es werden keine Modelle gelöscht).
 
 ![Aktive Filter über den Modellen](bilder/34-filterleiste.png)
 
-Unter "Sortieren" wählst du "Änderungsdatum", "Importdatum", "Name", "Dateigröße", "Volumen"
-oder "Zuletzt angesehen". Alle lassen sich in beide Richtungen sortieren: etwa "Älteste zuerst"
-oder "Neueste zuerst" für Datumswerte und "A → Z" oder "Z → A" für Namen.
+In derselben Leiste stehen zwei Auswahlfelder: **Nutzung** („Alle“, „Kommerziell erlaubt“, „Nur
+privat“, „Nicht angegeben“ – abgeleitet aus der [Lizenz](#lizenz-und-nutzung) des Modells) und
+**Druckstatus** („Alle“, „Gedruckt“, „Noch nicht gedruckt“). Beide lassen sich miteinander und mit
+Ordner, Tag, Suche und den übrigen Filtern kombinieren; eine aktive Auswahl erscheint zusätzlich
+als Chip, den du entfernen kannst.
+
+![Filter für Nutzung und Druckstatus und das Sortiermenü](bilder/42-filter-sortierung.png)
+
+Unter "Sortieren" wählst du "Name", "Importdatum", "Änderungsdatum", "Dateigröße", "Volumen",
+"Druckstatus" oder "Zuletzt angesehen". Alle lassen sich in beide Richtungen sortieren: etwa
+"Älteste zuerst" oder "Neueste zuerst" für Datumswerte, "A → Z" oder "Z → A" für Namen und
+"Noch nicht gedruckte zuerst" oder "Gedruckte zuerst" für den Druckstatus. Innerhalb jeder
+Druckstatus-Gruppe sind die Modelle nach Name geordnet.
 
 "Tags filtern …" durchsucht die Tag-Liste der Seitenleiste. Der Knopf unter der Liste blendet
 auch Tags mit nur einem Modell ein. Beim Hinzufügen von Tags in den
@@ -1085,6 +1235,51 @@ Strg/Cmd-Kürzel bleiben verfügbar.
 
 ![Tastenkürzel und Tipps](bilder/37-tastenkuerzel-dialog.png)
 
+### Mit der Festplatte abgleichen
+
+Legst du Dateien in deinen Katalogordnern außerhalb der App an, verschiebst oder löschst du sie
+(z. B. im Dateimanager), bringt **Aktualisieren** den Katalog auf den neuesten Stand. Der Knopf
+steht in der Kopfzeile neben „Importieren“ und nur in der Katalogansicht; **F5** macht dasselbe,
+solange kein Dialog offen ist. Wenn du auf den Knopf zeigst, siehst du, wann zuletzt abgeglichen
+wurde („Noch nie“, falls noch nicht). Während ein Import läuft, ist er deaktiviert.
+
+![Knopf „Aktualisieren“ in der Kopfzeile](bilder/39-festplatten-abgleich.png)
+
+Aktualisieren schaut zuerst nur nach – erst nach deiner Bestätigung ändert sich etwas:
+
+- **Alles stimmt überein:** Unten im Fenster erscheint kurz der Hinweis „Alles aktuell“.
+- **Sonst** öffnet sich der Dialog „Abgleich mit der Festplatte“. Er zählt „neue Dateien“, „neue
+  Ordner“ und „fehlende Dateien“ und listet sie unter „Neu auf der Festplatte“ und „Auf der
+  Festplatte nicht mehr vorhanden“ auf (der Pfad innerhalb des Katalogordners, darunter der
+  Katalogordner). Neue Ordner erscheinen nur, wenn sie neue unterstützte Dateien enthalten; leere
+  Ordner bleiben außen vor. „Änderungen übernehmen“ legt die neuen Dateien und Ordner im Katalog
+  an, „Später“ schließt den Dialog, ohne etwas zu ändern.
+- **Fehlende Dateien bleiben standardmäßig erhalten.** Ihre Einträge bleiben im Katalog und
+  tauchen weiterhin in der Katalogprüfung auf (Einstellungen → Katalog). Zum Entfernen setzt du
+  den Haken bei „Fehlende Dateien aus dem Katalog entfernen“; der Knopf heißt dann „Änderungen
+  übernehmen“ (mit neuen Dateien) oder „Entfernen“ (nur fehlende Dateien). Entfernte Einträge
+  landen im [Papierkorb](#der-papierkorb) und lassen sich dort wiederherstellen; Notizen, Tags und
+  Verbrauch gehen verloren, sobald sie von dort endgültig gelöscht werden.
+- **Nichts zu übernehmen:** Gibt es weder neue Dateien noch neue Ordner und hast du die
+  Entfernen-Option nicht angehakt, bietet der Dialog nur „Schließen“.
+- **Nicht lesbare Ordner** werden mit ihren Pfaden aufgelistet („N Ordner konnten nicht gelesen
+  werden“); der Rest wird trotzdem abgeglichen. **Nicht lesbare Dateien** werden übersprungen und
+  nach dem Übernehmen mit Pfad angezeigt („N Dateien konnten nicht gelesen werden“); alle lesbaren
+  Dateien werden trotzdem importiert.
+- **Nicht erreichbarer Katalogordner** (z. B. ein nicht verbundenes Netzlaufwerk oder USB-Laufwerk
+  oder ein leerer bzw. nicht eingebundener Ordner): Der Abgleich bricht mit „Ein Katalog-Ordner
+  ist nicht erreichbar. Bitte die Verbindung prüfen. Entferne den Ordner aus dem Katalog oder
+  verbinde ihn neu.“ und dem Pfad ab, und der Katalog bleibt unverändert. Dateien auf einem solchen
+  Ordner gelten nie als fehlend. „Erneut versuchen“ wiederholt die Prüfung. Weitere Meldungen: „Der
+  Katalog hat sich geändert. Bitte erneut abgleichen.“ (zwischen Vorschau und Übernehmen hat sich
+  etwas geändert), „Ein Pfad hat sich geändert. Bitte erneut abgleichen.“, „Eine Datei konnte nicht
+  eingelesen werden. Der Katalog bleibt unverändert.“ und „Der Abgleich ist fehlgeschlagen. Bitte
+  erneut versuchen.“
+- **Nach dem Übernehmen** fasst ein Hinweis „N neue Dateien · N neue Ordner · N Dateien entfernt“
+  zusammen, und die neuen Einträge werden kurz hervorgehoben.
+
+![Dialog „Abgleich mit der Festplatte“ mit neuen und fehlenden Dateien](bilder/40-festplatten-abgleich-dialog.png)
+
 ## Ein Modell im Detail ansehen
 
 Ein Doppelklick auf ein Modell öffnet die volle Detailseite:
@@ -1115,17 +1310,64 @@ Position. Bei laufenden Eingaben wählst du vor dem Wechsel "Weiter bearbeiten" 
 
 Die 3D-Vorschau bietet bei vorhandenen Farbdaten "Dateifarben" oder "Einfarbig".
 Die Legende erklärt die Dateifarben. Bei 3MF-Dateien mit mehreren Druckplatten aus Bambu Studio,
-OrcaSlicer oder Creality Print bietet die Plattenleiste unter der Vorschau "Alle", einzelne
-Platten und Knöpfe zum Vor- und Zurückblättern. Die gewählte Platte wird eingepasst; die Legende
-zeigt nur ihre Farben.
+OrcaSlicer oder Creality Print lautet die Plattenleiste unter der Vorschau „Alle“, Pfeil zurück,
+Plattennummern, Pfeil vor. Zeigst du auf eine Nummer, erscheinen „Platte n“ und der Name der
+Platte. Die gewählte Platte wird eingepasst und die Legende zeigt nur ihre Farben; solange die
+Leiste den Fokus hat, blättern die Pfeiltasten Links/Rechts durch die Platten, und bei der
+ersten oder letzten Platte wird der Pfeil grau. Bei mehr als 12 Platten ersetzt ein Zähler wie
+„3 / 14“ mit dem Plattennamen die Nummern.
 
 ![3D-Vorschau mit Plattenleiste](bilder/35-platten-leiste.png)
 
 "Im Dateimanager anzeigen" zeigt die Datei von der Detailseite, dem Detailbereich oder dem
 Karten-Kontextmenü aus an. Unter macOS heißt die Aktion "Im Finder anzeigen", unter Windows
-"Im Explorer anzeigen". Kann die Vorschau nicht angezeigt werden, erklärt eine Fehlerkarte,
-ob die Datei fehlt, nicht lesbar oder zu groß ist oder WebGL nicht verfügbar ist. Dazu bietet
-sie passende nächste Schritte an, etwa das Öffnen im Slicer.
+"Im Explorer anzeigen".
+
+Kann die 3D-Vorschau nicht angezeigt werden, erklärt eine Karte im Vorschaubereich den Grund,
+statt ihn leer zu lassen (das hinterlegte Bild bleibt dahinter sichtbar, falls es eines gibt):
+
+- **„Die Datei wurde nicht gefunden“** — prüfe den Speicherort oder entferne den Eintrag aus dem
+  Katalog. Die Karte zeigt den Pfad und bietet „Im Dateimanager öffnen“ und „Aus dem Katalog
+  entfernen“.
+- **„Die Datei lässt sich nicht lesen“** — sie ist beschädigt, gesperrt oder enthält keine
+  darstellbare Geometrie; prüfe, ob ein anderes Programm sie geöffnet hat. Die Karte bietet „Im
+  Slicer öffnen“.
+- **„Das Modell ist für die 3D-Ansicht zu groß“** — es überschreitet die Grenzen der App (zum
+  Beispiel binäre STL-Dateien mit mehr als 3 Millionen Dreiecken, ASCII-STL über 256 MiB, OBJ
+  über 128 MiB oder 3MF-Modelle mit mehr als 3 Millionen Dreiecken). Nutze das Vorschaubild oder
+  öffne es im Slicer.
+- **„Die 3D-Ansicht wird auf diesem Rechner nicht unterstützt“** — WebGL ist nicht verfügbar. Nutze
+  das Vorschaubild oder öffne die Datei im Slicer.
+- Ein Dateityp ohne 3D-Vorschau zeigt „Dieser Dateityp unterstützt keine 3D-Vorschau“. Bei
+  unerwarteten Fehlern bietet die Karte zusätzlich „Problem melden“.
+
+![3D-Fehlerkarte „Die Datei wurde nicht gefunden“](bilder/45-3d-fehlerkarte.png)
+
+### Lizenz und Nutzung
+
+Jedes Modell kann eine **Lizenz** tragen. Im Detailbereich und auf der Detailseite hat der
+Abschnitt „Lizenz“ ein Auswahlfeld. Zur Wahl stehen „Nicht gesetzt“, die Creative-Commons-Vorgaben
+(CC BY, CC BY-SA, CC BY-NC, CC BY-NC-SA, CC BY-ND, CC BY-NC-ND, CC0), „Nur private Nutzung“,
+„Kommerzielle Nutzung erlaubt / Lizenz erworben“, „Eigene Konstruktion“ und „Andere…“. „Andere…“
+öffnet ein freies Textfeld „Lizenztext“ (bis 200 Zeichen). „Lizenz speichern“ speichert sie; auf
+der Detailseite zählt eine geänderte, nicht gespeicherte Lizenz als ungespeicherte Änderung und
+fragt nach, bevor „Nächstes Modell“ sie verwirft.
+
+![Lizenz-Abschnitt eines Modells](bilder/41-lizenz.png)
+
+Aus der Lizenz leitet die App ein **Nutzungs**-Badge ab: „Kommerziell erlaubt“ (CC BY, CC BY-SA,
+CC BY-ND, CC0, „Kommerzielle Nutzung erlaubt / Lizenz erworben“ und „Eigene Konstruktion“), „Nur
+privat“ (CC BY-NC, CC BY-NC-SA, CC BY-NC-ND und „Nur private Nutzung“) oder „Nicht angegeben“
+(nichts gesetzt oder ein freier Text). Das Badge erscheint auf Rasterkacheln und Listenzeilen –
+nicht bei „Nicht angegeben“ – und, einschließlich „Nicht angegeben“, neben dem Lizenzfeld. Mit dem
+Filter **Nutzung** grenzt du den Katalog ein (siehe
+[Katalog durchsuchen und organisieren](#katalog-durchsuchen-und-organisieren)).
+
+Um die Lizenz mehrerer Modelle auf einmal zu setzen, wählst du sie aus und nutzt „Lizenz setzen“
+in der Aktionsleiste der Mehrfachauswahl (siehe
+[Schnelle Aktionen](#schnelle-aktionen-kontextmenü-und-mehrfachauswahl)). Es öffnet dasselbe
+Auswahlfeld und übernimmt die Wahl für alle ausgewählten Modelle. Vorhandene Tags bleiben
+unverändert.
 
 ## Schnelle Aktionen: Kontextmenü und Mehrfachauswahl
 
@@ -1329,7 +1571,7 @@ Wählst du beim Anlegen "Resin", bekommt der Drucker statt des Spulenhalters gen
 weitere Einheiten gibt es bei Resin-Druckern nicht; den Drucker selbst kannst du umbenennen und
 löschen wie jeden anderen.
 
-![Drucker verwalten mit Filament- und Resin-Druckern](bilder/25-drucker-verwalten.png)
+![Printer Manager: die Materialeinheiten eines Druckers unter „Materialzuordnung“, mit „Einheit hinzufügen“ und „Bearbeiten“](bilder/25-drucker-verwalten.png)
 
 - In der Ansicht "Resin" des Lagers steht der Resin-Drucker in der rechten Spalte. Die Wanne
   zeigt die eingesetzte Flasche mit Farbe, Rest in ml und Füllbalken.
@@ -1458,7 +1700,7 @@ Einen eigenen Reiter Drucker gibt es nicht. Der Schalter für die Anbindung steh
 Druckerliste. Adresse und Verbindungstest findest du beim gewählten Drucker unter
 "Anbindung & Netzwerk" (siehe [Druckeranbindung](#druckeranbindung)).
 
-![Bisherige Einstellungsansicht; Druckerfunktionen liegen jetzt im Printer Manager](bilder/28-einstellungen-drucker.png)
+![Einstellungen → Allgemein mit dem Hinweis „Drucker findest du jetzt im Printer Manager in der linken Leiste.“ und dem Link „Printer Manager öffnen“](bilder/28-einstellungen-drucker.png)
 
 ### Info
 
@@ -1484,13 +1726,13 @@ Die folgenden Screenshots zeigen das **Hell**- und **Dunkel**-Theme im Vergleich
 ![Katalog im Dunkel-Theme](bilder/14-dark-mode.png)
 ![Katalog im Hell-Theme](bilder/15-hell-mode-bonus.png)
 
-Unter Einstellungen → Info aktiviert "Vorab-Versionen (Release Candidates) erhalten" den
-Empfang von Release Candidates und der späteren finalen Version für deinen vorhandenen Katalog.
-Beim Einschalten erscheint eine Warnung: Eine Katalog-Migration kann den Rückweg ohne Sicherung
-verhindern. Wähle "Katalog jetzt exportieren" und nach erfolgreichem Export "Jetzt aktivieren".
-"Trotzdem aktivieren" fährt ohne diesen Export fort. "Abbrechen" lässt den Schalter ausgeschaltet.
-Ausschalten entfernt eine installierte Vorab-Version nicht. Sie bleibt installiert, bis eine
-neuere stabile Version verfügbar ist.
+Unter Einstellungen → Info schaltet das Kontrollkästchen "Vorab-Versionen (Release Candidates)
+erhalten" den Empfang von Release Candidates und der späteren finalen Version für deinen
+vorhandenen Katalog frei. Beim Anhaken erscheint eine Warnung: Eine Katalog-Migration kann den
+Rückweg ohne Sicherung verhindern. Wähle "Katalog jetzt exportieren" und nach erfolgreichem Export
+"Jetzt aktivieren". "Trotzdem aktivieren" fährt ohne diesen Export fort. "Abbrechen" lässt das
+Kontrollkästchen ohne Haken. Nimmst du den Haken wieder heraus, entfernt das eine installierte
+Vorab-Version nicht. Sie bleibt installiert, bis eine neuere stabile Version verfügbar ist.
 
 ![Warnung beim Aktivieren von Vorab-Versionen](bilder/38-update-kanal-warnung.png)
 
@@ -1500,7 +1742,7 @@ Die App läuft nur einmal. Ein zweiter Start holt das vorhandene Fenster nach vo
 
 ![Fehler melden](bilder/30-fehler-melden.png)
 
-Einstellungen → Info → **Fehler melden** (oder **Problem melden** neben einem unerwarteten Fehler) öffnet einen kurzen Dialog. Zuerst entscheidest du, ob die Logdatei mitgeht. Bei **Ja** siehst du genau, was drinsteht: Benutzername, Rechnername, Pfade im Benutzerordner und im Katalog, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen werden ersetzt. **Speichern und Formular öffnen** legt `3mf-katalog-log-<Datum>.txt` in deinen Download-Ordner und öffnet das Formular auf 3mfkatalog.de mit eingetragener Version und System; dort hängst du die Datei unter „Logdatei“ an. Die App selbst verschickt nichts.
+Einstellungen → Info → **Fehler melden** (oder **Problem melden** neben einem unerwarteten Fehler) öffnet einen kurzen Dialog. Zuerst entscheidest du, ob die Logdatei mitgeht. Bei **Ja** siehst du genau, was drinsteht: Benutzername, Rechnername, Pfade im Benutzerordner und im Katalog, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen werden ersetzt. **Speichern und Formular öffnen** legt `3mf-katalog-log-<Datum>.txt` in deinen Download-Ordner und öffnet das Formular auf 3mfkatalog.de mit eingetragener Version (im Bild: 0.16.0) und System; dort hängst du die Datei unter „Logdatei“ an. Die App selbst verschickt nichts.
 
 **Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Log-Ordner öffnen** (unter **ORDNER**, siehe [Info](#info-1)) zeigt die Protokolldateien.
 
@@ -1513,7 +1755,8 @@ suchen“ die Prüfung jederzeit wiederholt.
 
 **Unter Windows, macOS und der Linux-AppImage** läuft ein gefundenes Update so ab:
 
-1. **„Version X.Y.Z ist verfügbar“** — „Jetzt aktualisieren“ lädt es herunter; die App prüft
+1. **„Version X.Y.Z ist verfügbar“** (im Bild: 0.16.1, angeboten für eine Installation von
+   0.16.0) — „Jetzt aktualisieren“ lädt es herunter; die App prüft
    die Signatur, bevor das Update installiert werden kann; „Was ist neu?“ öffnet die Release-Notes auf GitHub.
 
    ![Update verfügbar](bilder/29-update-verfuegbar.png)

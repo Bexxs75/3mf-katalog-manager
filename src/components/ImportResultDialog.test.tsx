@@ -66,3 +66,29 @@ it.each([0, 2])('shows %s extracted non-model files in the archive group', other
   if (otherFilesExtracted) expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
   else expect(screen.queryByText(/weitere Dateien wurden entpackt/)).not.toBeInTheDocument();
 });
+it('lists assigned and ignored companion files as rows of the archive', () => {
+  const archive = importResult.groups.archive[1];
+  const result = {...importResult, groups: {...importResult.groups, archive: [{...archive, companionsAssigned: 3, companionsIgnored: 1, otherFilesExtracted: 1}]}};
+  render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} /></LanguageProvider>);
+  fireEvent.click(screen.getAllByRole('tab')[3]);
+  expect(screen.getByText('3 Begleitdateien wurden Modellen zugeordnet.')).toBeVisible();
+  expect(screen.getByText(/1 Datei ignoriert \(nicht erlaubter Typ\)/)).toBeVisible();
+  expect(screen.queryByText(/weitere Datei/)).toBeNull();
+});
+
+it('offers "view recently added" in the result dialog when models were added, closes the dialog and calls back', () => {
+  const onShowNew = vi.fn(); const onClose = vi.fn();
+  render(<LanguageProvider><ImportResultDialog result={importResult} onClose={onClose} onShowNew={onShowNew} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Neu hinzugefügt ansehen'}));
+  expect(onShowNew).toHaveBeenCalledOnce(); expect(onClose).toHaveBeenCalledOnce();
+});
+
+it('hides "view recently added" in the result dialog when nothing new was imported or no handler is given', () => {
+  const none = {...importResult.counts, imported: 0, importedNotPlaced: 0};
+  const result = {...importResult, counts: none, groups: {...importResult.groups, importedNotPlaced: [], archive: []}};
+  const {unmount} = render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} onShowNew={vi.fn()} /></LanguageProvider>);
+  expect(screen.queryByRole('button', {name: 'Neu hinzugefügt ansehen'})).toBeNull();
+  unmount();
+  render(<LanguageProvider><ImportResultDialog result={importResult} onClose={vi.fn()} /></LanguageProvider>);
+  expect(screen.queryByRole('button', {name: 'Neu hinzugefügt ansehen'})).toBeNull();
+});

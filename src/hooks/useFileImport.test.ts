@@ -166,6 +166,17 @@ it.each([0, 2])('renders the archive job result in the banner with %s other file
   else expect(screen.queryByText(/weitere Dateien wurden entpackt/)).not.toBeInTheDocument();
 });
 
+it('shows companion counts from an archive job even when no other files are left', async () => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  render(createElement(LanguageProvider, null, createElement(ImportBannerHarness)));
+  const archive = importResult.groups.archive[1];
+  if (archive.state === 'pending') throw new Error('expected completed fixture');
+  const value: ImportJobResult = {...finished(), source: 'archive', groups: {...finished().groups, archive: [{...archive, otherFilesExtracted: 1, companionsAssigned: 3, companionsIgnored: 1, unsafeSkipped: 0, models: {imported: [], skipped: [], duplicates: []}}]}};
+  await act(async () => events.handlers['import://finished']({payload: value}));
+  expect(screen.getByText('3 Begleitdateien wurden Modellen zugeordnet.')).toBeVisible();
+  expect(screen.getByText(/1 Datei ignoriert/)).toBeVisible();
+});
+
 it.each([false, true])('keeps an archive hint for 15 seconds, or until dismissed with problems (%s)', jobHasProblems => {
   vi.useFakeTimers();
   try {
@@ -240,4 +251,14 @@ it.each(['failed', 'existingSkipped', 'blockedSkipped'] as const)('keeps the arc
     act(() => vi.advanceTimersByTime(20000));
     expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
   } finally { vi.useRealTimers(); }
+});
+it('tracks a source folder import like any other job and hands start errors to the caller', async () => {
+  vi.mocked(invoke).mockImplementation(async cmd => cmd === 'import_source_files' ? { jobId: 'j7' } : cmd === 'get_import_state' ? progress('j7') : null);
+  const { result } = setup();
+  await act(async () => { await result.current.importSourceFiles(['/dl/a.3mf']); });
+  expect(invoke).toHaveBeenCalledWith('import_source_files', { paths: ['/dl/a.3mf'] });
+  expect(result.current.jobId).toBe('j7'); expect(result.current.jobActive).toBe(true);
+  vi.mocked(invoke).mockRejectedValueOnce({ message: 'Importlauf aktiv', expected: true });
+  await expect(act(async () => { await result.current.importSourceFiles(['/dl/b.3mf']); })).rejects.toMatchObject({ message: 'Importlauf aktiv' });
+  expect(result.current.error).toBeNull();
 });

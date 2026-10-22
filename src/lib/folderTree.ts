@@ -49,3 +49,50 @@ export function containsCatalogRoot(path: string, catalogBaseDir: string | null)
   const folder = normalize(path);
   return root === folder || root.startsWith(`${folder}/`);
 }
+
+export type FolderMoveBlock = 'catalogRoot' | 'self' | 'descendant' | 'alreadyThere' | 'nameTaken';
+
+function pathBasename(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? '';
+}
+
+/**
+ * Why moving `folderId` below `targetId` cannot work, or null when it can.
+ * Lets the UI explain a refused drop instead of silently doing nothing; the
+ * backend repeats the binding checks against the real disk. Name clashes are
+ * compared exactly: whether "a" and "A" clash depends on the file system, which
+ * only the backend can see.
+ */
+export function folderMoveBlock(
+  folderId: string,
+  targetId: string,
+  folders: Folder[],
+  catalogBaseDir: string | null,
+): FolderMoveBlock | null {
+  const folder = folders.find((f) => f.id === folderId);
+  const target = folders.find((f) => f.id === targetId);
+  if (!folder || !target) return null;
+  if (containsCatalogRoot(folder.path, catalogBaseDir)) return 'catalogRoot';
+  if (folderId === targetId) return 'self';
+  if (isFolderSelfOrDescendant(targetId, folderId, folders)) return 'descendant';
+  if (folder.parentId === targetId) return 'alreadyThere';
+  const name = pathBasename(folder.path);
+  const clash = folders.some((f) => f.parentId === targetId && f.id !== folderId && pathBasename(f.path) === name);
+  return clash ? 'nameTaken' : null;
+}
+
+/**
+ * The folder every given file already lies in, or null when they differ (or there are
+ * none). A drop target only counts as "already there" when ALL dragged files are in it:
+ * the backend skips those and still moves the rest.
+ */
+export function sharedFolderId(models: ReadonlyArray<{ id: string; folderId?: string | null }>, ids: readonly string[]): string | null {
+  let shared: string | null = null;
+  for (const [index, id] of ids.entries()) {
+    const folderId = models.find((model) => model.id === id)?.folderId ?? null;
+    if (folderId === null || (index > 0 && folderId !== shared)) return null;
+    shared = folderId;
+  }
+  return shared;
+}

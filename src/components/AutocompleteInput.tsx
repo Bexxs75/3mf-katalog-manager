@@ -145,7 +145,7 @@ export function AutocompleteInput({
       {open && filtered.length > 0 && (
         // A press on the list's scrollbar or padding must not move focus away from the input:
         // the blur would close the list before it can be scrolled (engines that blur on scrollbar presses).
-        <div id={listId} role="listbox" aria-label={listAriaLabel} onMouseDown={(e) => e.preventDefault()} className="absolute z-40 top-full left-0 right-0 mt-1 max-h-[220px] overflow-y-auto bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)]">
+        <div id={listId} role="listbox" aria-label={listAriaLabel} onMouseDown={(e) => e.preventDefault()} className="absolute z-40 top-full left-0 right-0 mt-1 max-h-[220px] overflow-y-auto overflow-x-hidden bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)]">
           {filtered.map((option, i) => (
             <div
               key={option}
@@ -158,7 +158,7 @@ export function AutocompleteInput({
                 selectOption(option);
               }}
               onMouseEnter={() => { keyboardMove.current = false; setHighlighted(i); }}
-              className={`px-2.5 py-1.5 text-body cursor-pointer ${
+              className={`w-full min-w-0 break-words whitespace-normal px-2.5 py-1.5 text-body cursor-pointer ${
                 i === highlighted ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'text-[var(--ink)]'
               }`}
             >

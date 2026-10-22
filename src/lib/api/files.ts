@@ -25,6 +25,20 @@ export function markFileViewed(fileId: string) {
 export function renameFile(fileId: string, name: string) {
   return invoke<void>('rename_file', { fileId, name });
 }
+export type DateRenameSource = 'modified' | 'imported';
+export type DateRenameStatus =
+  | 'rename' | 'skip_has_prefix' | 'skip_conflict' | 'skip_missing' | 'skip_trash'
+  | 'skip_too_long' | 'skip_external' | 'skip_no_date' | 'skip_invalid';
+export interface DateRenamePreview { id: string; oldName: string; newName: string; status: DateRenameStatus }
+export interface DateRenameResult { id: string; status: 'renamed' | 'failed'; reason?: string }
+// Mirrors the backend limit per call.
+export const DATE_RENAME_MAX_ITEMS = 5000;
+export function previewDateRename(fileIds: string[], dateSource: DateRenameSource) {
+  return invoke<DateRenamePreview[]>('preview_date_rename', { fileIds, dateSource });
+}
+export function applyDateRename(items: { id: string; newName: string }[]) {
+  return invoke<DateRenameResult[]>('apply_date_rename', { items });
+}
 export function deleteFile(fileId: string) {
   return invoke('delete_file', { fileId });
 }

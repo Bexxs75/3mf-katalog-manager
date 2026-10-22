@@ -12,7 +12,7 @@ import { ModelLayoutContext } from './hooks/ModelLayoutContext';
 import { useModelImages } from './hooks/useModelImages';
 import { ImportLockContext } from './hooks/ImportLockContext';
 import { PrinterManagerView } from './components/PrinterManagerView';
-import type { MainView, PrinterNavigation } from './types';
+import type { MainView, PrinterNavigation, FolderTrashResult } from './types';
 import { DragGhost } from './components/DragGhost';
 import { DragDropTip } from './components/DragDropTip';
 import { resolveDisplayImage } from './lib/resolveDisplayImage';
@@ -20,26 +20,37 @@ import { useFolderExpansion } from './hooks/useFolderExpansion';
 import { detailNeighbor, type DetailDirection } from './hooks/useDetailNavigation';
 import { useSidebarWidth } from './hooks/useSidebarWidth';
 import { invoke } from './lib/transport';
-import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { isWebGLUnavailable } from './lib/webglAvailability';
 import { nextRendererGeneration, snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
+import { SettingsPanel } from './components/SettingsPanel';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportProgressRow } from './components/ImportProgressRow';
 import { ErrorText } from './diagnostics/ErrorText';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
+import { BulkDeleteFailureBanner } from './components/BulkDeleteFailureBanner';
+import { DateRenameBanner } from './components/DateRenameBanner';
 import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { WebBackgroundSnapshots } from './components/WebBackgroundSnapshots';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { MoveToast } from './components/MoveToast';
+import { MoveTargetDialog } from './components/MoveTargetDialog';
+import { RenameToast } from './components/RenameToast';
+import { FolderTrashToast } from './components/FolderTrashToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
 import { MigrationBackupWarning } from './components/MigrationBackupWarning';
+import { NoticeStack } from './components/NoticeStack';
+import { StartSyncBanner } from './components/StartSyncBanner';
+import { useStartSync } from './hooks/useStartSync';
+import { requestDiskSync } from './lib/api/diskSync';
 import { UpdateToast } from './components/UpdateToast';
+import { LinuxMenuPrompt } from './components/LinuxMenuPrompt';
 import { useTheme } from './hooks/useTheme';
 import { useDetailPanel } from './hooks/useDetailPanel';
 import { useUiDensity } from './hooks/UiDensityContext';
@@ -47,12 +58,17 @@ import { useSlicers } from './hooks/useSlicers';
 import { useDisplayPreference } from './hooks/useDisplayPreference';
 import { useCatalogBaseDir, useRegisterCatalogBaseDirOnStartup } from './hooks/useCatalogBaseDir';
 import { licenseUsage } from './lib/licenses';
+import { modelMayFitBed } from './lib/buildPlateFit';
 import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { useCollections } from './hooks/useCollections';
 import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
 import { NO_FOLDER_COLLAPSE_KEY, useCollapsedFolders } from './hooks/useCollapsedFolders';
 import { useFileImport } from './hooks/useFileImport';
+import { useSourceFolderCheck } from './hooks/useSourceFolderCheck';
+import { SourceFolderNotice } from './components/SourceFolderNotice';
+import { SourceFilesDialog } from './components/SourceFilesDialog';
+import { rejectSourceFiles } from './lib/api/sourceFolders';
 import { useCatalogBackup } from './hooks/useCatalogBackup';
 import { useCatalogCleanup } from './hooks/useCatalogCleanup';
 import { useBulkSelection } from './hooks/useBulkSelection';
@@ -79,12 +95,8 @@ export default function App() {
   const store = useCatalogStore({ detailModelId, preselectFirst: detailPanel === 'pinned' });
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
   const { language } = useLanguage();
-  const filters = useCatalogFilters(store.models, store.folders, language);
+  const filters = useCatalogFilters(store.models, store.folders, language, printers.printers);
   const collections = useCollections();
-  const dragDrop = useFolderDragAndDrop(store.models, store.folders, {
-    refreshFolders: store.refreshFolders,
-    refreshFiles: store.refreshFiles,
-  }, collections, catalogBaseDir);
   const collapsedFolders = useCollapsedFolders();
   const expansion = useFolderExpansion();
   const sidebarWidth = useSidebarWidth();
@@ -134,12 +146,26 @@ export default function App() {
     bulkAddToCollection: collections.bulkAddToCollection,
     bulkRemoveFromCollection: collections.bulkRemoveFromCollection,
   });
+  const dragDrop = useFolderDragAndDrop(store.models, store.folders, {
+    refreshFolders: store.refreshFolders,
+    refreshFiles: store.refreshFiles,
+  }, collections, catalogBaseDir, bulk.selectedForBulk);
 
   const [uploadRefreshKey, setUploadRefreshKey] = useState(0);
   const [webImportOpen, setWebImportOpen] = useState(false);
   const [tipsOpen, setTipsOpen] = useState(false);
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const [generalTabRequest, setGeneralTabRequest] = useState(0);
+  // Source folders, start sync, companions, date rename, move history and the Linux menu have no web server command.
+  const web = import.meta.env.VITE_TARGET === 'web';
+  const sourceCheck = useSourceFolderCheck({
+    ready: !web && !store.initialLoading,
+    jobActive: fileImport.jobActive,
+    // Without a source folder the check has nothing to do; show where to add one.
+    onNoFolders: () => { setGeneralTabRequest(n => n + 1); setSettingsOpen(true); },
+  });
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
   const update = useUpdater();
 
@@ -147,6 +173,35 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
+  const reloadAfterDiskSync = () => Promise.all([
+    store.refreshFiles(), store.refreshFolders(), store.refreshTags(), store.refreshTrash(),
+    collections.refreshCollections(),
+    ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+  ]);
+  // Not while the first-run dialog is open, in the trash or other views, or during an import.
+  const startSync = useStartSync(
+    !web && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
+    reloadAfterDiskSync,
+  );
+  const [moveDialog, setMoveDialog] = useState<{ ids: string[] } | null>(null);
+  const moveReturnFocus = useRef<HTMLElement | null>(null);
+  const focusCatalogMain = () => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus();
+  const tileOf = (id: string) => document.querySelector<HTMLElement>(`[data-model-id="${CSS.escape(id)}"]`);
+  // Moving is a catalog action like any other: not while an import is running.
+  const openMoveDialog = (ids: string[], returnTo: HTMLElement | null) => {
+    if (fileImport.jobActive || ids.length === 0) return;
+    moveReturnFocus.current = returnTo;
+    setMoveDialog({ ids });
+  };
+  const confirmMove = async (folderId: string) => {
+    if (!moveDialog) return;
+    const { ids } = moveDialog;
+    setMoveDialog(null);
+    await dragDrop.moveFiles(ids, folderId);
+    // The tile the dialog was opened from may be gone after the move; keep focus inside the catalog.
+    if (!moveReturnFocus.current?.isConnected) focusCatalogMain();
+  };
+  useEffect(() => { dragDrop.clearUndo(); }, [catalogBaseDir, dragDrop.clearUndo]);
   const refreshAfterRemoval = (includeActiveCollection = true) => {
     store.setSelectedId(null);
     setDetailModelId(null);
@@ -175,6 +230,33 @@ export default function App() {
   };
   useEffect(() => subscribeFileOpsApplied(ids => dropSelection.current(ids)), []);
 
+  const [renameToast, setRenameToast] = useState<{ from: string; to: string; count: number } | null>(null);
+  const dismissRenameToast = useCallback(() => setRenameToast(null), []);
+  const hasMoveToast = !!dragDrop.moveToast;
+  useEffect(() => { if (hasMoveToast) setRenameToast(null); }, [hasMoveToast, dragDrop.moveToast]);
+  // Same reload as after move_folder: folder paths changed, and so did the paths of the models below it.
+  const onFolderRenamed = (info: { id: string; from: string; to: string; count: number }) => {
+    if (!web) dragDrop.recordFolderRename({ folderId: info.id, oldName: info.from, newName: info.to });
+    // One toast at a time, so an "Undo" button always belongs to the newest step.
+    dragDrop.dismissMoveToast();
+    setRenameToast(info);
+    void Promise.all([store.refreshFolders(), store.refreshFiles()])
+      .catch((e) => console.error('[folders] refresh after rename failed:', e));
+  };
+  const [trashToast, setTrashToast] = useState<FolderTrashResult | null>(null);
+  const dismissTrashToast = useCallback(() => setTrashToast(null), []);
+  // Models left the catalog list and entered the trash, so lists, selection and trash all reload.
+  const onFolderTrashed = (result: FolderTrashResult) => {
+    setTrashToast(result);
+    refreshAfterRemoval();
+  };
+  const [dateRenameOutcome, setDateRenameOutcome] = useState<{ renamed: number; failed: number } | null>(null);
+  const dismissDateRenameNotice = useCallback(() => setDateRenameOutcome(null), []);
+  // Names and paths changed on disk and in the catalog, so the list is reloaded rather than patched.
+  const onDateRenamed = (outcome: { renamed: number; failed: number }) => {
+    setDateRenameOutcome(outcome);
+    void store.refreshFiles().catch((e) => console.error('[files] refresh after date rename failed:', e));
+  };
   const removeCatalogModels = async (fileIds: string[]) => {
     if (!canEditMetadata()) return;
     try {
@@ -202,10 +284,25 @@ export default function App() {
     filters.setActiveTag(null);
     filters.setUsage(null);
     filters.setPrintStatus(null);
+    filters.setFitPrinterId(null);
     filters.setQuery('');
     filters.setToolView(null);
   };
+  // Same target as a click on the sidebar entry, but with filters cleared first:
+  // an active folder or search would otherwise hide the models just imported.
+  const showRecentlyAdded = () => {
+    clearCatalogFilters();
+    filters.setToolView('new');
+    setMainView('catalog');
+    // The import notice that held focus is closing; park focus on the main
+    // view (once it is rendered) instead of letting it fall back to <body>.
+    setTimeout(() => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus(), 0);
+  };
   const finishCatalogReset = () => {
+    // Undo steps point at folders and files that no longer exist.
+    dragDrop.clearUndo();
+    dragDrop.dismissMoveToast();
+    setMoveDialog(null);
     resetCatalogSetup();
     clearCatalogFilters();
     setContextMenu(null);
@@ -243,8 +340,9 @@ export default function App() {
       return current ? { ...model, license: current.license, printStatus: current.printStatus } : model;
     })
       .filter(model => !filters.printStatus || (model.printStatus === 'printed') === (filters.printStatus === 'printed'))
-      .filter(model => !filters.usage || licenseUsage(model.license) === filters.usage);
-  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printStatus, filters.usage, store.models]);
+      .filter(model => !filters.usage || licenseUsage(model.license) === filters.usage)
+      .filter(model => !filters.fitBed || modelMayFitBed(model.dimensionsMm, filters.fitBed));
+  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printStatus, filters.usage, filters.fitBed, store.models]);
   const filteredIds = displayedModels.map(model => model.id);
   const navigateDetail = (direction: DetailDirection) => {
     const id = detailNeighbor(filteredIds, detailModelId, direction);
@@ -266,6 +364,11 @@ export default function App() {
     openBulkDeleteConfirm: () => { if (!fileImport.jobActive) bulk.setConfirmBulkDelete(true); },
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
     toggleBulkSelect: bulk.toggleBulkSelect,
+    onMoveSelection: web ? undefined : () => {
+      const ids = bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
+      openMoveDialog(ids, ids.length === 1 ? tileOf(ids[0]) : (document.activeElement as HTMLElement | null));
+    },
+    onUndo: web || fileImport.jobActive ? undefined : () => void dragDrop.undo(),
   });
 
   useEffect(() => {
@@ -283,23 +386,32 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (e.key !== 'Escape') return;
+      // The settings panel on top (or anything else that already took this Escape) closes
+      // first. The panel's own handler runs after this one, so its preventDefault alone
+      // would come too late.
+      if (e.defaultPrevented || settingsOpen) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       setDetailModelId(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [detailModelId]);
+  }, [detailModelId, settingsOpen]);
 
   useEffect(() => {
     bulk.clearBulkSelection();
     // Deliberately depends only on filter/collection changes - bulk itself
     // is new on every render and would clear the selection right away.
+    // Usage, print-status and print-bed filters only hide models, so the selection
+    // cleanup for removed models does not cover them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filters.activeFolderId,
     filters.activeTag,
     filters.query,
+    filters.usage,
+    filters.printStatus,
+    filters.fitPrinterId,
     collections.activeCollection,
     collections.collectionsGalleryOpen,
   ]);
@@ -333,6 +445,49 @@ export default function App() {
     if (noWebGL && store.pendingSnapshotIds.length) store.skipSnapshots(store.pendingSnapshotIds);
   }, [noWebGL, store.pendingSnapshotIds, store.skipSnapshots]);
 
+  // The settings take the detail panel's place in the catalog and lie over the main area
+  // elsewhere, so every view reaches them from the same gear in the rail.
+  const renderSettingsPanel = (overlay: boolean) => (
+    <SettingsPanel
+      overlay={overlay}
+      onClose={closeSettings}
+      onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}
+      generalTabRequest={generalTabRequest}
+      singleKeyShortcuts={singleKeyShortcuts}
+      onSingleKeyShortcutsChange={setSingleKeyShortcuts}
+      onOpenTips={() => setTipsOpen(true)}
+      themeSetting={setting}
+      onThemeChange={setTheme}
+      detailPanel={detailPanel}
+      onDetailPanelChange={setDetailPanel}
+      uiDensity={density}
+      onUiDensityChange={setDensity}
+      displayPreference={displayPreference}
+      onDisplayPreferenceChange={setDisplayPreference}
+      slicers={slicers}
+      primarySlicerId={primaryId}
+      onAddSlicer={addSlicer}
+      addSlicerError={addSlicerError}
+      onRemoveSlicer={removeSlicer}
+      onSetPrimarySlicer={setPrimary}
+      onScanCatalogIssues={cleanup.scanCatalogIssues}
+      cleanupScanning={cleanup.cleanupScanning}
+      cleanupError={cleanup.cleanupError}
+      onExportCatalog={backup.exportCatalog}
+      // The backend already uses the new catalog: full reload, otherwise actions
+      // with stale IDs would hit the wrong records.
+      onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
+      catalogBackupError={backup.catalogBackupError}
+      onClearCatalogBackupError={backup.clearCatalogBackupError}
+      catalogBaseDir={catalogBaseDir}
+      catalogModelCount={store.models.length}
+      catalogFolderCount={store.folders.length}
+      onCatalogReset={finishCatalogReset}
+      onOpenCatalogSetup={() => setSetupDialogOpen(true)}
+      update={update}
+    />
+  );
+
   return (
     <ImportLockContext.Provider value={fileImport.jobActive}>
     <div
@@ -365,11 +520,8 @@ export default function App() {
       )}
       {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}
       <Header
-        onDiskSyncApplied={() => Promise.all([
-          store.refreshFiles(), store.refreshFolders(), store.refreshTags(), store.refreshTrash(),
-          collections.refreshCollections(),
-          ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
-        ])}
+        onDiskSyncScanned={store.refreshFolders}
+        onDiskSyncApplied={reloadAfterDiskSync}
         detailPanel={detailPanel} onDetailPanelChange={setDetailPanel}
         onOpenTips={() => setTipsOpen(true)}
         allFoldersCollapsed={allFoldersCollapsed}
@@ -389,6 +541,7 @@ export default function App() {
         onImportFiles={import.meta.env.VITE_TARGET === 'web' ? () => setWebImportOpen(true) : fileImport.importFiles}
         onImportFolder={fileImport.importFolder}
         onImportFolderContents={fileImport.importFolderContents}
+        onCheckSourceFolders={() => void sourceCheck.check()}
         mainView={mainView}
       />
 
@@ -396,43 +549,11 @@ export default function App() {
       <NetworkFilesystemWarning />
       <div className="flex-1 flex flex-row min-h-0">
         <Rail
-          singleKeyShortcuts={singleKeyShortcuts}
-          onSingleKeyShortcutsChange={setSingleKeyShortcuts}
-          onOpenTips={() => setTipsOpen(true)}
           mainView={mainView}
           onMainViewChange={changeMainView}
           trashCount={store.trashModels.length}
           settingsOpen={settingsOpen}
           onSettingsOpenChange={setSettingsOpen}
-          themeSetting={setting}
-          onThemeChange={setTheme}
-          detailPanel={detailPanel}
-          onDetailPanelChange={setDetailPanel}
-          uiDensity={density}
-          onUiDensityChange={setDensity}
-          displayPreference={displayPreference}
-          onDisplayPreferenceChange={setDisplayPreference}
-          slicers={slicers}
-          primarySlicerId={primaryId}
-          onAddSlicer={addSlicer}
-          addSlicerError={addSlicerError}
-          onRemoveSlicer={removeSlicer}
-          onSetPrimarySlicer={setPrimary}
-          onScanCatalogIssues={cleanup.scanCatalogIssues}
-          cleanupScanning={cleanup.cleanupScanning}
-          cleanupError={cleanup.cleanupError}
-          onExportCatalog={backup.exportCatalog}
-          // The backend already uses the new catalog: full reload, otherwise actions
-          // with stale IDs would hit the wrong records.
-          onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
-          catalogBackupError={backup.catalogBackupError}
-          onClearCatalogBackupError={backup.clearCatalogBackupError}
-          catalogBaseDir={catalogBaseDir}
-          catalogModelCount={store.models.length}
-          catalogFolderCount={store.folders.length}
-          onCatalogReset={finishCatalogReset}
-          onOpenCatalogSetup={() => setSetupDialogOpen(true)}
-          update={update}
         />
         <div className="relative flex-1 min-w-0 flex flex-col min-h-0">
           {mainView === 'downloads' && container ? (
@@ -451,7 +572,7 @@ export default function App() {
               displayPreference={displayPreference}
             />
           ) : mainView === 'catalog' ? (
-            <CatalogWorkspace detailPanel={detailPanel} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}
+            <CatalogWorkspace detailPanel={detailPanel} settingsPanel={settingsOpen ? renderSettingsPanel : undefined} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}
               onOpenTips={() => setTipsOpen(true)}
               catalogKey={catalogBaseDir}
               onNavigateDetail={navigateDetail}
@@ -465,6 +586,7 @@ export default function App() {
                   onCancel={fileImport.cancel}
                   onDismiss={fileImport.dismiss}
                   onSelectModel={setDetailModelId}
+                  onShowNew={showRecentlyAdded}
                 />}
                 {fileImport.error && <div role="alert"><ErrorText error={fileImport.error} /></div>}
               </>}
@@ -489,6 +611,8 @@ export default function App() {
               setActiveFolderId={filters.setActiveFolderId}
               onCreateFolder={dragDrop.onCreateFolder}
               draggedFileId={dragDrop.draggedFileId}
+              draggedFileFolderId={dragDrop.draggedFilesFolderId}
+              draggedFileCount={dragDrop.draggedFileIds.length}
               dragOverCollectionId={dragDrop.dragOverCollectionId}
               handleCollectionMouseEnter={dragDrop.handleCollectionMouseEnter}
               handleCollectionMouseLeave={dragDrop.handleCollectionMouseLeave}
@@ -512,8 +636,12 @@ export default function App() {
               confirmBulkDelete={bulk.confirmBulkDelete}
               setConfirmBulkDelete={bulk.setConfirmBulkDelete}
               bulkDelete={bulk.bulkDelete}
+              onBulkMove={web ? undefined : () => openMoveDialog([...bulk.selectedForBulk], document.activeElement as HTMLElement | null)}
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
               onCatalogRemoved={refreshAfterRemoval}
+              onFolderRenamed={onFolderRenamed}
+              onFolderTrashed={onFolderTrashed}
+              onDateRenamed={web ? undefined : onDateRenamed}
               onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
               selectAllVisible={() => bulk.selectAllVisible(filteredIds)}
               clearBulkSelection={bulk.clearBulkSelection}
@@ -548,6 +676,9 @@ export default function App() {
               setPrintStatus={filters.setPrintStatus}
               usage={filters.usage}
               setUsage={filters.setUsage}
+              printers={printers.printers}
+              fitPrinterId={filters.fitPrinterId}
+              setFitPrinterId={filters.setFitPrinterId}
               openInSlicer={slicerLauncher.openInSlicer}
               rescanMetadata={store.rescanMetadata}
               addModelToCollection={collections.addModelToCollection}
@@ -579,6 +710,8 @@ export default function App() {
               printerContext={printerContext} onPrinterManager={printerId => changeMainView('printers', { printerId })} />
           )}
 
+          {settingsOpen && mainView !== 'catalog' && renderSettingsPanel(true)}
+
           {contextMenu && contextModel && (
             <ContextMenu
               x={contextMenu.x}
@@ -598,17 +731,8 @@ export default function App() {
               fileId={contextModel.id}
               currentName={contextModel.name}
               onRename={(name) => store.renameFile(contextModel.id, name)}
-            />
-          )}
-
-          {fileImport.importBanner && (
-            <ImportSummaryBanner
-              imported={fileImport.importBanner.imported}
-              duplicates={fileImport.importBanner.duplicates}
-              skipped={fileImport.importBanner.skipped}
-              otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
-              jobHasProblems={fileImport.importBanner.jobHasProblems}
-              onClose={fileImport.dismissImportBanner}
+              onMove={web ? undefined : () => openMoveDialog(
+                bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
             />
           )}
 
@@ -621,8 +745,41 @@ export default function App() {
             />
           )}
 
+          {sourceCheck.dialogOpen && (
+            <SourceFilesDialog
+              scans={sourceCheck.scans}
+              onClose={sourceCheck.closeDialog}
+              onImport={fileImport.importSourceFiles}
+              onReject={rejectSourceFiles}
+              onRescan={sourceCheck.rescan}
+            />
+          )}
+
+          <NoticeStack>
+            {sourceCheck.notice && <SourceFolderNotice notice={sourceCheck.notice} onView={sourceCheck.openDialog} onClose={sourceCheck.dismissNotice} />}
+            {fileImport.importBanner && (
+              <ImportSummaryBanner
+                imported={fileImport.importBanner.imported}
+                duplicates={fileImport.importBanner.duplicates}
+                skipped={fileImport.importBanner.skipped}
+                otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
+                companionsAssigned={fileImport.importBanner.companionsAssigned}
+                companionsIgnored={fileImport.importBanner.companionsIgnored}
+                jobHasProblems={fileImport.importBanner.jobHasProblems}
+                onClose={fileImport.dismissImportBanner}
+                onShowNew={showRecentlyAdded}
+              />
+            )}
+
+            <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
+            <StartSyncBanner notice={startSync.notice} onView={() => { startSync.dismiss(); requestDiskSync(); }} onClose={() => { startSync.dismiss(); setTimeout(() => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus(), 0); }} />
+            <DateRenameBanner outcome={dateRenameOutcome} onClose={dismissDateRenameNotice} />
+            <UpdateToast view={update} />
+            {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
+          </NoticeStack>
+
           <MigrationBackupWarning />
-          <UpdateToast view={update} />
+          {!web && <LinuxMenuPrompt wait={setupDialogOpen} />}
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
             <CatalogCleanupDialog
@@ -632,18 +789,32 @@ export default function App() {
             />
           )}
 
-          {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
-          {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
+          {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} count={dragDrop.draggedFileIds.length} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
           {dragDrop.moveToast && (
             <MoveToast
               collection={dragDrop.moveToast.collection}
               from={dragDrop.moveToast.from}
               to={dragDrop.moveToast.to}
               error={dragDrop.moveToast.error}
+              blocked={dragDrop.moveToast.blocked}
               unexpected={dragDrop.moveToast.unexpected}
+              batch={dragDrop.moveToast.batch}
+              undo={dragDrop.moveToast.undo}
+              onUndo={dragDrop.moveToast.canUndo && !fileImport.jobActive ? () => {
+                // The button is about to disappear; park focus in the catalog instead of losing it.
+                focusCatalogMain();
+                void dragDrop.undo();
+              } : undefined}
               onDone={dragDrop.dismissMoveToast}
             />
           )}
+          {moveDialog && (
+            <MoveTargetDialog count={moveDialog.ids.length} folders={store.folders} returnFocus={moveReturnFocus}
+              onCancel={() => setMoveDialog(null)} onMove={(folderId) => void confirmMove(folderId)} />
+          )}
+          {renameToast && <RenameToast from={renameToast.from} to={renameToast.to} count={renameToast.count} onDone={dismissRenameToast}
+            onUndo={web || fileImport.jobActive ? undefined : () => { focusCatalogMain(); dismissRenameToast(); void dragDrop.undo(); }} />}
+          {trashToast && <FolderTrashToast result={trashToast} onDone={dismissTrashToast} />}
         </div>
       </div>
       {setupDialogOpen && (

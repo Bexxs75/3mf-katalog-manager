@@ -5,6 +5,10 @@ fn validate_color_hex(color_hex: &Option<String>) -> CmdResult<()> {
     katalog_core::write::manager::validate_color_hex(color_hex).map_err(Into::into)
 }
 
+fn validate_color_hexes(color_hexes: &[String]) -> CmdResult<()> {
+    katalog_core::write::manager::validate_color_hexes(color_hexes).map_err(Into::into)
+}
+
 fn validate_spool_kind(kind: &str) -> CmdResult<()> {
     katalog_core::write::manager::validate_spool_kind(kind).map_err(Into::into)
 }
@@ -26,6 +30,7 @@ pub fn add_filament_spool(
 ) -> CmdResult<FilamentSpoolDto> {
     validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
+    validate_color_hexes(&spool.color_hexes)?;
     let conn = lock_db(&state)?;
     katalog_core::write::manager::add_filament_spool(&conn, spool).map_err(Into::into)
 }
@@ -38,6 +43,7 @@ pub fn update_filament_spool(
 ) -> CmdResult<FilamentSpoolDto> {
     validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
+    validate_color_hexes(&spool.color_hexes)?;
     let conn = lock_db(&state)?;
     katalog_core::write::manager::update_filament_spool(&conn, spool).map_err(Into::into)
 }
@@ -52,7 +58,7 @@ pub(crate) const RESTOCK_MAX_COUNT: i64 = 20;
 
 /// Core logic of `restock_filament_spool` (test shell like other `*_with_conn`).
 /// Creates `count` new, full entries modeled on the template. Copies kind,
-/// material, manufacturer, color name, color value, image and diameter; does NOT
+/// material, manufacturer, color name, color value(s), image and diameter; does NOT
 /// copy the slot (`unit_id`/`slot_index`) or home location - new spools/bottles
 /// always go to storage. `weight` is grams (filament) or milliliters (resin),
 /// rounded to 0.1. All in ONE transaction: if one insert fails, nothing is created.
@@ -100,6 +106,7 @@ pub(crate) fn restock_filament_spool_with_conn(
         price,
         image_png: template.image_png,
         color_hex: template.color_hex,
+        color_hexes: template.color_hexes,
         kind: template.kind,
     };
     let mut created = Vec::with_capacity(count as usize);
@@ -224,6 +231,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: Some("#B03020".to_string()),
+                color_hexes: Vec::new(),
                 kind: "filament".to_string(),
             },
         )
@@ -302,6 +310,7 @@ mod tests {
             price: None,
             image_png: None,
             color_hex: None,
+            color_hexes: Vec::new(),
             kind: kind.into(),
         }
     }
@@ -312,7 +321,7 @@ mod tests {
             id: "1".into(), material: "PLA".into(), manufacturer: None, color: None,
             location: None, diameter_mm: 1.75, original_weight_g: 1000.0,
             remaining_weight_g: 1000.0, price: None, image_png: None,
-            color_hex: None, home_location: None, unit_id: None, slot_index: None,
+            color_hex: None, color_hexes: Vec::new(), home_location: None, unit_id: None, slot_index: None,
             kind: "filament".into(),
         };
         spool.image_png = Some("R0lGODlh".into());
@@ -382,6 +391,7 @@ mod tests {
                 price: Some(29.95),
                 image_png: Some(vec![1, 2, 3]),
                 color_hex: Some("#f07f1e".to_string()),
+                color_hexes: Vec::new(),
                 kind: kind.to_string(),
             },
         )
@@ -578,6 +588,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: Some("#b03020".into()),
+                color_hexes: Vec::new(),
                 kind: "resin".into(),
             },
         )
@@ -617,5 +628,92 @@ mod tests {
 
         assert_ne!(result[0].status, crate::filament_check::CheckStatus::Ok);
         assert!(result[0].needs[0].spools.is_empty());
+    }
+    fn dto_with_colors(color_hex: Option<&str>, color_hexes: &[&str]) -> FilamentSpoolDto {
+        FilamentSpoolDto {
+            id: "".into(), material: "PLA".into(), manufacturer: None, color: None,
+            location: None, diameter_mm: 1.75, original_weight_g: 1000.0,
+            remaining_weight_g: 1000.0, price: None, image_png: None,
+            color_hex: color_hex.map(String::from),
+            color_hexes: color_hexes.iter().map(|c| c.to_string()).collect(),
+            home_location: None, unit_id: None, slot_index: None, kind: "filament".into(),
+        }
+    }
+
+    #[test]
+    fn the_first_list_color_always_becomes_color_hex() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        // A stale single value sent next to the list must lose against the list.
+        let record = filament_dto_to_record(&dto_with_colors(Some("#111111"), &["#AA0000", "#00bb00"])).expect("record");
+        assert_eq!(record.color_hex.as_deref(), Some("#aa0000"));
+        assert_eq!(record.color_hexes, vec!["#aa0000", "#00bb00"]);
+        let id = crate::db::insert_filament_spool(&conn, &record).expect("insert");
+        let stored = crate::db::get_filament_spool(&conn, id).expect("get");
+        assert_eq!(stored.color_hex.as_deref(), Some("#aa0000"));
+        assert_eq!(stored.color_hexes, vec!["#aa0000", "#00bb00"]);
+
+        // Editing the list moves the single colour with it.
+        let edited = filament_dto_to_record(&dto_with_colors(Some("#aa0000"), &["#00bb00", "#aa0000"])).expect("record");
+        crate::db::update_filament_spool(&conn, id, &edited).expect("update");
+        let stored = crate::db::get_filament_spool(&conn, id).expect("get");
+        assert_eq!(stored.color_hex.as_deref(), Some("#00bb00"));
+        assert_eq!(spool_record_to_dto(stored).color_hexes, vec!["#00bb00", "#aa0000"]);
+    }
+
+    #[test]
+    fn an_empty_list_keeps_a_single_color_and_clears_an_old_list() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let multi = filament_dto_to_record(&dto_with_colors(None, &["#aa0000", "#00bb00"])).expect("record");
+        let id = crate::db::insert_filament_spool(&conn, &multi).expect("insert");
+
+        let single = filament_dto_to_record(&dto_with_colors(Some("#123456"), &[])).expect("record");
+        crate::db::update_filament_spool(&conn, id, &single).expect("update");
+        let stored = crate::db::get_filament_spool(&conn, id).expect("get");
+        assert_eq!(stored.color_hex.as_deref(), Some("#123456"));
+        assert!(stored.color_hexes.is_empty(), "back to single-colour");
+        let raw: Option<String> = conn.query_row("SELECT color_hexes FROM filament_spools", [], |r| r.get(0)).unwrap();
+        assert_eq!(raw, None, "single-colour spools store NULL");
+    }
+
+    #[test]
+    fn color_lists_are_validated() {
+        let ok = |list: &[&str]| validate_color_hexes(&list.iter().map(|c| c.to_string()).collect::<Vec<_>>()).is_ok();
+        assert!(ok(&[]));
+        assert!(ok(&["#ff0000", "#ff0000", "#00ff00", "#0000ff"]), "four entries, duplicates allowed");
+        assert!(!ok(&["#ff0000", "#ff0000", "#00ff00", "#0000ff", "#000000"]), "five entries are too many");
+        assert!(!ok(&["#ff0000", "red"]));
+        assert!(!ok(&["ff0000"]));
+        assert!(!ok(&["#ff0000; DROP"]));
+    }
+
+    #[test]
+    fn an_unreadable_stored_list_counts_as_single_color() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let id = crate::db::insert_filament_spool(&conn, &new_spool("filament")).expect("insert");
+        for bad in ["garbage", "[1,2]", r##"["#ff0000","x"]"##, r##"["#000000","#000000","#000000","#000000","#000000"]"##] {
+            conn.execute("UPDATE filament_spools SET color_hexes = ?1", [bad]).unwrap();
+            assert!(crate::db::get_filament_spool(&conn, id).expect("get").color_hexes.is_empty(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn restock_copies_the_color_list() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let template = filament_dto_to_record(&dto_with_colors(None, &["#aa0000", "#00bb00"])).expect("record");
+        let id = crate::db::insert_filament_spool(&conn, &template).expect("insert");
+        let created = restock_filament_spool_with_conn(&mut conn, &id.to_string(), 1, 1000.0, None, None).expect("restock");
+        assert_eq!(created[0].color_hexes, vec!["#aa0000", "#00bb00"]);
+        assert_eq!(created[0].color_hex.as_deref(), Some("#aa0000"));
+    }
+
+    #[test]
+    fn a_dto_without_a_color_list_is_single_color() {
+        let dto: FilamentSpoolDto = serde_json::from_value(serde_json::json!({
+            "id": "", "material": "PLA", "manufacturer": null, "color": null, "location": null,
+            "diameterMm": 1.75, "originalWeightG": 1000.0, "remainingWeightG": 1000.0,
+            "price": null, "imagePng": null, "colorHex": "#aa0000"
+        })).expect("deserialize");
+        assert!(dto.color_hexes.is_empty());
+        assert_eq!(filament_dto_to_record(&dto).unwrap().color_hex.as_deref(), Some("#aa0000"));
     }
 }

@@ -1,6 +1,6 @@
 // Navigation and lookup helpers shared by the specs.
 import { spawnSync } from 'node:child_process';
-import { click, byText, reveal, sleep, waitForText, xpathLiteral } from './ui.js';
+import { click, reveal, sleep, xpathLiteral } from './ui.js';
 
 export const T = {
   appHeader: '3MF KATALOG',
@@ -65,16 +65,28 @@ export async function railToAndWait(label: Parameters<typeof railTo>[0], ready: 
   throw new Error(`the view "${label}" did not appear`);
 }
 
+async function settingsTab(name: string) {
+  const el = await $(`//button[@role="tab"][normalize-space()=${xpathLiteral(name)}]`);
+  return (await el.isExisting()) ? el : null;
+}
+
+async function settingsTabAppears(name: string, timeout = 10000) {
+  const el = await $(`//button[@role="tab"][normalize-space()=${xpathLiteral(name)}]`);
+  await el.waitForExist({ timeout, timeoutMsg: `no settings tab "${name}"` });
+  return el;
+}
+
 export async function openSettings(tab?: 'Allgemein' | 'Slicer' | 'Katalog' | 'Info') {
   // A click right after startup is sometimes swallowed while the app still settles (slow CI runners):
   // open again when the view did not appear, never click while it is already open (that would close it).
   const probe = tab ?? 'Allgemein';
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (await byText('button', probe)) break;
-    await click(await $('[aria-label="Einstellungen"]'));
-    try { await waitForText('button', probe, 6000); break; } catch { /* try the click again */ }
+    if (await settingsTab(probe)) break;
+    // The panel itself is also labelled "Einstellungen"; only the rail button toggles it.
+    await click(await $('button[aria-label="Einstellungen"]'));
+    try { await settingsTabAppears(probe, 6000); break; } catch { /* try the click again */ }
   }
-  if (tab) await click(await waitForText('button', tab));
+  if (tab) await click(await settingsTabAppears(tab));
 }
 
 export async function closeSettings() {

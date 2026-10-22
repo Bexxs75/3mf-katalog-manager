@@ -231,10 +231,10 @@ mod tests {
     fn filename_filler_words_are_filtered_in_all_four_languages() {
         for (name, expected) in [
             ("Halter FÜR Kamera mit Fuß und Deckel.3mf", vec!["halter", "kamera", "fuß", "deckel"]),
-            ("Holder FOR camera WITH foot AND lid.3mf", vec!["holder", "camera", "foot", "lid"]),
-            ("Soporte PARA cámara CON pie SIN tapa.3mf", vec!["soporte", "cámara", "pie", "tapa"]),
+            ("Holder FOR camera WITH foot AND lid.3mf", vec!["holder", "camera", "foot", "deckel"]),
+            ("Soporte PARA cámara CON pie SIN tapa.3mf", vec!["soporte", "cámara", "pie", "deckel"]),
             ("Support POUR caméra AVEC pied SUR socle.3mf", vec!["support", "caméra", "pied", "socle"]),
-            ("top base lid.3mf", vec!["top", "base", "lid"]),
+            ("top base lid.3mf", vec!["top", "base", "deckel"]),
             ("Halter fu\u{308}r Kamera.3mf", vec!["halter", "kamera"]),
         ] {
             assert_eq!(filename_tags(name), expected, "{name}");
@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn auto_tag_table_is_consistent() {
         let table = auto_tags();
-        assert_eq!(table.len(), 4);
+        assert_eq!(table.len(), 19);
         let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         for (canonical, names) in table {
             assert_eq!(&names.de, canonical, "DE-Name muss der Kennung entsprechen");
@@ -391,6 +391,41 @@ mod tests {
     }
 
     #[test]
+    fn everyday_terms_map_from_every_language_to_the_german_key() {
+        for (key, names) in [
+            ("deckel", ["lid", "tapa", "couvercle"]),
+            ("schublade", ["drawer", "cajón", "tiroir"]),
+            ("haken", ["hook", "gancho", "crochet"]),
+            ("vase", ["Vase", "jarrón", "VASE"]),
+            ("box", ["Box", "caja", "boîte"]),
+            ("wandhalterung", ["wall mount", "soporte de pared", "support mural"]),
+            ("schlüsselanhänger", ["keychain", "llavero", "porte-clés"]),
+            ("ersatzteil", ["spare part", "repuesto", "pièce détachée"]),
+            ("klein", ["small", "pequeño", "petit"]),
+        ] {
+            for name in names {
+                assert_eq!(canonical_tag(name), key, "Alias {name}");
+                assert_eq!(canonical_tag_unambiguous(name), key, "Alias {name}");
+            }
+        }
+    }
+
+    #[test]
+    fn holder_support_and_stand_words_are_deliberately_not_aliases() {
+        // "support" also means print supports, "stand" also "Stand" (status): too
+        // risky to merge hand-made tags.
+        for word in ["holder", "support", "soporte", "stand", "halter", "ständer"] {
+            assert_eq!(canonical_tag(word), word, "{word}");
+        }
+    }
+
+    #[test]
+    fn filename_tokens_of_table_entries_become_the_german_key_other_words_stay() {
+        let tags = suggest_tags(&ctx("Cable holder with lid.3mf", None, None, &[]));
+        assert_eq!(tags, vec!["cable", "holder", "deckel"]);
+    }
+
+    #[test]
     fn canonical_tag_ignores_case_and_surrounding_whitespace() {
         assert_eq!(canonical_tag("  Multipart "), "mehrteilig");
         assert_eq!(canonical_tag("MULTIPIÈCE"), "mehrteilig");
@@ -399,7 +434,7 @@ mod tests {
 
     #[test]
     fn canonical_tag_leaves_other_tags_untouched() {
-        assert_eq!(canonical_tag("Vase"), "Vase");
+        assert_eq!(canonical_tag("Vasenhalter"), "Vasenhalter");
         assert_eq!(canonical_tag("pla-silk"), "pla-silk");
         assert_eq!(canonical_tag("minis"), "minis");
     }

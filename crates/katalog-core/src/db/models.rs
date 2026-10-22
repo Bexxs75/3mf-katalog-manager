@@ -36,6 +36,16 @@ pub struct MaterialRecord {
     pub display_color: Option<String>,
 }
 
+/// Where a model was downloaded from, as far as the file itself proves it.
+/// All three fields are `None` when the file carries no such proof.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SourceInfo {
+    /// Stable lowercase key (`makerworld`); the UI maps it to a display name.
+    pub platform: Option<String>,
+    pub model_id: Option<String>,
+    pub profile_id: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewFile {
     pub name: String,
@@ -63,6 +73,7 @@ pub struct NewFile {
     pub custom_image_png: Option<Vec<u8>>,
     pub source_url: Option<String>,
     pub license: Option<String>,
+    pub source: SourceInfo,
     pub queue_position: Option<i64>,
     pub favorite: bool,
     pub plate_count: Option<i64>,
@@ -82,6 +93,9 @@ pub struct ScannedMetadataUpdate {
     pub metadata: BTreeMap<String, String>,
     pub file_size_bytes: i64,
     pub content_hash: Option<String>,
+    /// Overwritten like the other scanned fields: a file that no longer carries
+    /// the data clears the columns.
+    pub source: SourceInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +139,9 @@ pub struct FileRecord {
     pub slice_info_json: Option<String>,
     pub deleted_at: Option<String>,
     pub trash_path: Option<String>,
+    pub source_platform: Option<String>,
+    pub source_model_id: Option<String>,
+    pub source_profile_id: Option<String>,
 }
 
 impl FileRecord {
@@ -181,6 +198,9 @@ pub struct FilamentSpoolRecord {
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
     pub color_hex: Option<String>,
+    /// Up to four colours of a multi-colour spool; empty means single-colour. When not
+    /// empty, `color_hex` is always its first entry (the slicer colour match reads that).
+    pub color_hexes: Vec<String>,
     /// Home location while the spool sits in a slot (otherwise `None`).
     pub home_location: Option<String>,
     pub unit_id: Option<i64>,
@@ -200,6 +220,8 @@ pub struct NewFilamentSpool {
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
     pub color_hex: Option<String>,
+    /// See `FilamentSpoolRecord::color_hexes`.
+    pub color_hexes: Vec<String>,
     pub kind: String,
 }
 
@@ -246,4 +268,36 @@ pub struct PrintLogEntryRecord {
     pub printed_at: String,
     pub note: Option<String>,
     pub photo_png: Option<Vec<u8>>,
+}
+
+/// An extra file of a model (picture, PDF, text note). `deleted_at`/`trash_path`
+/// are set while it sits in the app trash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionRecord {
+    pub id: i64,
+    pub file_id: i64,
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub size_bytes: Option<i64>,
+    pub added_at: String,
+    pub deleted_at: Option<String>,
+    pub trash_path: Option<String>,
+}
+
+/// A folder watched for new model files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceFolderRecord {
+    pub id: i64,
+    pub path: String,
+    pub added_at: String,
+}
+
+/// A source-folder file the user declined; matched by path and size.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RejectedSourceRecord {
+    pub id: i64,
+    pub path: String,
+    pub size_bytes: i64,
+    pub rejected_at: String,
 }

@@ -8,7 +8,7 @@ function spool(overrides: Partial<FilamentSpool>): FilamentSpool {
   return {
     id: 's1', material: 'PLA', manufacturer: null, color: 'Schwarz', location: null,
     diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 620, price: null, imagePng: null,
-    colorHex: '#1a1a1a', homeLocation: null, unitId: null, slotIndex: null, kind: 'filament', ...overrides,
+    colorHex: '#1a1a1a', colorHexes: [], homeLocation: null, unitId: null, slotIndex: null, kind: 'filament', ...overrides,
   };
 }
 
@@ -244,4 +244,45 @@ it('passes the selected printer ID to Printer Manager', () => {
 it('focuses a printer reached from Printer Manager', () => {
   renderColumn({ focusPrinterId: 'p1' });
   expect(screen.getByLabelText('X1C')).toHaveFocus();
+});
+
+describe('PrinterColumn slot menu suggestion', () => {
+  const twins = [
+    spool({ id: 't1', material: 'PLA', color: 'Schwarz', location: 'Regal A', remainingWeightG: 920 }),
+    spool({ id: 't2', material: 'PLA', color: 'Schwarz', location: 'Regal A', remainingWeightG: 120 }),
+    spool({ id: 't3', material: 'PLA', color: 'Schwarz', location: 'Regal A', remainingWeightG: 0 }),
+    spool({ id: 'lone', material: 'PETG', color: 'Rot', location: 'Regal 1', colorHex: '#c0392b', remainingWeightG: 80 }),
+  ];
+
+  it('marks the equal spool with the smallest usable rest as the suggestion', () => {
+    renderColumn({ spools: twins });
+    fireEvent.click(screen.getByTestId('slot-u1-1'));
+    const hints = screen.getAllByText('Vorschlag: geringster Rest');
+    expect(hints).toHaveLength(1);
+    expect(hints[0].closest('button')).toHaveTextContent('120,0 g');
+  });
+
+  it('shows the rest of every spool so equal ones can be told apart', () => {
+    renderColumn({ spools: twins });
+    fireEvent.click(screen.getByTestId('slot-u1-1'));
+    const buttons = screen.getAllByRole('button', { name: /PLA · Schwarz/ });
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      expect.stringContaining('920,0 g'),
+      expect.stringContaining('120,0 g'),
+      expect.stringContaining('0,0 g'),
+    ]);
+  });
+
+  it('only preselects: any spool can still be loaded', () => {
+    const { onLoad } = renderColumn({ spools: twins });
+    fireEvent.click(screen.getByTestId('slot-u1-1'));
+    fireEvent.click(screen.getAllByRole('button', { name: /PLA · Schwarz/ })[0]);
+    expect(onLoad).toHaveBeenCalledWith('t1', 'u1', 1);
+  });
+
+  it('suggests nothing for a spool without a twin', () => {
+    renderColumn({ spools: [twins[3]] });
+    fireEvent.click(screen.getByTestId('slot-u1-1'));
+    expect(screen.queryByText('Vorschlag: geringster Rest')).toBeNull();
+  });
 });

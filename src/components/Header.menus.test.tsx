@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { Header } from './Header';
+import { ImportLockContext } from '../hooks/ImportLockContext';
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 const props = { view: 'grid' as const, sort: 'name' as const, sortDirection: 'asc' as const, onSortDirectionChange: vi.fn(), mainView: 'catalog' as const,
-  count: 2, onViewChange: vi.fn(), onSortChange: vi.fn(), onImportFiles: vi.fn(), onImportFolder: vi.fn(), onImportFolderContents: vi.fn(), allFoldersCollapsed: false, onToggleAllFolders: vi.fn() };
+  count: 2, onViewChange: vi.fn(), onSortChange: vi.fn(), onImportFiles: vi.fn(), onImportFolder: vi.fn(), onImportFolderContents: vi.fn(), onCheckSourceFolders: vi.fn(), allFoldersCollapsed: false, onToggleAllFolders: vi.fn() };
 function setup() {
   return render(<LanguageProvider><Header {...props} /></LanguageProvider>);
 }
@@ -130,9 +131,24 @@ it('offers folder contents with explanation and keyboard activation', () => {
   fireEvent.keyDown(importButton(), { key: 'ArrowDown' });
   const item = screen.getByRole('menuitem', { name: 'Ordnerinhalt…' });
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'End' });
+  expect(screen.getByRole('menuitem', { name: 'Quellordner prüfen' })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' });
   expect(item).toHaveFocus();
   expect(item).toHaveAttribute('title', expect.stringContaining('auch aus Unterordnern'));
   fireEvent.click(item);
   expect(props.onImportFolderContents).toHaveBeenCalledOnce();
   expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+});
+
+it('offers the source folder check and locks it while an import runs', () => {
+  const onCheck = vi.fn();
+  const { unmount } = render(<LanguageProvider><Header {...props} onCheckSourceFolders={onCheck} /></LanguageProvider>);
+  fireEvent.click(importButton());
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Quellordner prüfen' }));
+  expect(onCheck).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  unmount();
+  render(<LanguageProvider><ImportLockContext.Provider value><Header {...props} onCheckSourceFolders={onCheck} /></ImportLockContext.Provider></LanguageProvider>);
+  fireEvent.click(importButton());
+  expect(screen.getByRole('menuitem', { name: 'Quellordner prüfen' })).toBeDisabled();
 });

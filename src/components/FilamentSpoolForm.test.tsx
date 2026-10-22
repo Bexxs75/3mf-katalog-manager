@@ -23,7 +23,7 @@ beforeEach(() => { vi.mocked(invoke).mockReset(); vi.mocked(invoke).mockResolved
 const LOADED: FilamentSpool = {
   id: 's1', material: 'PLA', manufacturer: 'Bambu Lab', color: 'Galaxy Black', location: null,
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 600, price: null, imagePng: null,
-  colorHex: '#1a1a1a', homeLocation: 'Regal 2', unitId: 'u1', slotIndex: 0, kind: 'filament',
+  colorHex: '#1a1a1a', colorHexes: [], homeLocation: 'Regal 2', unitId: 'u1', slotIndex: 0, kind: 'filament',
 };
 
 function renderForm(editing: FilamentSpool | null, defaultKind?: SpoolKind) {
@@ -363,4 +363,228 @@ it.each(['0.05', '0,05', '0.1'])('preserves positive weight rounding at the boun
   fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
   await waitFor(() => expect(onSaved).toHaveBeenCalled());
   expect(invoke).toHaveBeenCalledWith('update_filament_spool', expect.objectContaining({ spool: expect.objectContaining({ originalWeightG: 0.1, remainingWeightG: 0.1 }) }));
+});
+
+function spoolWith(over: Partial<FilamentSpool>): FilamentSpool {
+  return { ...LOADED, unitId: null, slotIndex: null, homeLocation: null, location: 'Regal 1', colorHex: null, ...over };
+}
+
+function renderFormWith(props: { editing?: FilamentSpool | null; knownSpools?: FilamentSpool[] }) {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  const onSaved = vi.fn();
+  render(
+    <LanguageProvider>
+      <FilamentSpoolForm
+        open
+        editing={props.editing ?? null}
+        knownSpools={props.knownSpools}
+        knownLocations={[]}
+        onClose={vi.fn()}
+        onSaved={onSaved}
+      />
+    </LanguageProvider>,
+  );
+  return onSaved;
+}
+
+function savedSpool(command: string): FilamentSpool {
+  const call = vi.mocked(invoke).mock.calls.find(([name]) => name === command)!;
+  return (call[1] as { spool: FilamentSpool }).spool;
+}
+
+describe('multi-color spools in the form', () => {
+  it('starts with the one color picker and offers "+ Farbe"', () => {
+    renderFormWith({});
+    expect(screen.getByRole('group', { name: 'Farben (max. 4)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ Farbe' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Farbe 2')).toBeNull();
+  });
+
+  it('adds up to four colors in total and then hides the add button', () => {
+    renderFormWith({});
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: '+ Farbe' }));
+    expect(screen.getByLabelText('Farbe 2')).toBeInTheDocument();
+    expect(screen.getByLabelText('Farbe 3')).toBeInTheDocument();
+    expect(screen.getByLabelText('Farbe 4')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Farbe' })).toBeNull();
+  });
+
+  it('focuses a new color field and returns focus to "+ Farbe" after removing one', () => {
+    renderFormWith({});
+    fireEvent.click(screen.getByRole('button', { name: '+ Farbe' }));
+    expect(screen.getByLabelText('Farbe 2')).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Farbe 2 entfernen' }));
+    expect(screen.queryByLabelText('Farbe 2')).toBeNull();
+    expect(screen.getByRole('button', { name: '+ Farbe' })).toHaveFocus();
+  });
+
+  it('sends the list with the first color as colorHex', async () => {
+    const onSaved = renderFormWith({});
+    fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'PLA' } });
+    fireEvent.click(screen.getByRole('radio', { name: '#c0392b' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Farbe' }));
+    fireEvent.change(screen.getByLabelText('Farbe 2'), { target: { value: '33AA66' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Farbe' }));
+    fireEvent.change(screen.getByLabelText('Farbe 3'), { target: { value: '#3366cc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const spool = savedSpool('add_filament_spool');
+    expect(spool.colorHexes).toEqual(['#c0392b', '#33aa66', '#3366cc']);
+    expect(spool.colorHex).toBe('#c0392b');
+  });
+
+  it('sends an empty list for a single color', async () => {
+    const onSaved = renderFormWith({});
+    fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'PLA' } });
+    fireEvent.click(screen.getByRole('radio', { name: '#27ae60' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Farbe' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const spool = savedSpool('add_filament_spool');
+    expect(spool.colorHexes).toEqual([]);
+    expect(spool.colorHex).toBe('#27ae60');
+  });
+
+  it('drops a removed color from the list', async () => {
+    const onSaved = renderFormWith({ editing: spoolWith({ colorHex: '#aa0000', colorHexes: ['#aa0000', '#00bb00', '#0000cc'] }) });
+    expect(screen.getByLabelText('Farbe 2')).toHaveValue('#00bb00');
+    expect(screen.getByLabelText('Farbe 3')).toHaveValue('#0000cc');
+    fireEvent.click(screen.getByRole('button', { name: 'Farbe 2 entfernen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(savedSpool('update_filament_spool').colorHexes).toEqual(['#aa0000', '#0000cc']);
+  });
+
+  it('keeps the remaining extra color when the first color is cleared', async () => {
+    const onSaved = renderFormWith({ editing: spoolWith({ colorHex: '#aa0000', colorHexes: ['#aa0000', '#00bb00'] }) });
+    const first = screen.getByRole('textbox', { name: 'Farbwert' });
+    fireEvent.change(first, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const spool = savedSpool('update_filament_spool');
+    expect(spool.colorHexes).toEqual([]);
+    expect(spool.colorHex).toBe('#00bb00');
+  });
+
+  it('keeps duplicate colors', async () => {
+    const onSaved = renderFormWith({ editing: spoolWith({ colorHex: '#aa0000', colorHexes: ['#aa0000', '#00bb00', '#aa0000'] }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(savedSpool('update_filament_spool').colorHexes).toEqual(['#aa0000', '#00bb00', '#aa0000']);
+  });
+
+  it('shows a preview swatch per color and no preview for invalid text', () => {
+    renderFormWith({ editing: spoolWith({ colorHex: '#aa0000', colorHexes: ['#aa0000', '#00bb00'] }) });
+    const input = screen.getByLabelText('Farbe 2');
+    const swatch = input.previousElementSibling as HTMLElement;
+    expect(swatch.style.backgroundColor).not.toBe('');
+    fireEvent.change(input, { target: { value: 'zzz' } });
+    expect((input.previousElementSibling as HTMLElement).style.backgroundColor).toBe('');
+  });
+
+  it('blocks saving an invalid color and explains it', async () => {
+    const onSaved = renderFormWith({});
+    fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'PLA' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Farbe' }));
+    fireEvent.change(screen.getByLabelText('Farbe 2'), { target: { value: 'rot' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    expect(screen.getByLabelText('Farbe 2')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Farbe 2')).toHaveFocus();
+    expect(screen.getByRole('alert')).toHaveTextContent('Farbwert');
+    expect(invoke).not.toHaveBeenCalledWith('add_filament_spool', expect.anything());
+    fireEvent.change(screen.getByLabelText('Farbe 2'), { target: { value: '#112233' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it('ignores a color field that was added but left empty', async () => {
+    const onSaved = renderFormWith({});
+    fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'PLA' } });
+    fireEvent.click(screen.getByRole('radio', { name: '#27ae60' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Farbe' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(savedSpool('add_filament_spool').colorHexes).toEqual([]);
+  });
+});
+
+describe('start weight of a new spool', () => {
+  const known = [
+    spoolWith({ id: '1', manufacturer: 'Polymaker', material: 'PLA', originalWeightG: 1000 }),
+    spoolWith({ id: '2', manufacturer: 'Polymaker', material: 'PLA', originalWeightG: 750 }),
+    spoolWith({ id: '3', manufacturer: 'Polymaker', material: 'PETG', originalWeightG: 500 }),
+  ];
+  const original = () => screen.getByLabelText('Ursprungsgewicht (g)') as HTMLInputElement;
+  const remaining = () => screen.getByLabelText('Restgewicht (g)') as HTMLInputElement;
+  const type = (placeholder: string, value: string) =>
+    fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value } });
+
+  it('starts with 1000 g and no hint', () => {
+    renderFormWith({ knownSpools: known });
+    expect(original().value).toBe('1000');
+    expect(remaining().value).toBe('1000');
+    expect(screen.queryByText(/zuletzt für/)).toBeNull();
+  });
+
+  it('takes the weight of the newest spool with this maker and material, for both fields', () => {
+    renderFormWith({ knownSpools: known });
+    type('Hersteller', 'Polymaker');
+    type('Material', 'PLA');
+    expect(original().value).toBe('750');
+    expect(remaining().value).toBe('750');
+    expect(screen.getByText('zuletzt für Polymaker PLA verwendet')).toBeInTheDocument();
+  });
+
+  it('falls back to the maker alone when the material is new', () => {
+    renderFormWith({ knownSpools: known });
+    type('Hersteller', 'Polymaker');
+    type('Material', 'ASA');
+    expect(original().value).toBe('500');
+    expect(screen.getByText('zuletzt für Polymaker verwendet')).toBeInTheDocument();
+  });
+
+  it('falls back to 1000 g for an unknown maker and drops the hint again', () => {
+    renderFormWith({ knownSpools: known });
+    type('Hersteller', 'Polymaker');
+    type('Material', 'PLA');
+    expect(original().value).toBe('750');
+    type('Hersteller', 'Unbekannt');
+    expect(original().value).toBe('1000');
+    expect(screen.queryByText(/zuletzt für/)).toBeNull();
+  });
+
+  it('does not overwrite a weight the user typed when maker or material change afterwards', () => {
+    renderFormWith({ knownSpools: known });
+    fireEvent.change(original(), { target: { value: '800' } });
+    type('Hersteller', 'Polymaker');
+    type('Material', 'PLA');
+    expect(original().value).toBe('800');
+    expect(remaining().value).toBe('750');
+    expect(screen.queryByText(/zuletzt für/)).toBeNull();
+  });
+
+  it('keeps a typed rest weight but still follows the suggestion for the original weight', () => {
+    renderFormWith({ knownSpools: known });
+    fireEvent.change(remaining(), { target: { value: '300' } });
+    type('Hersteller', 'Polymaker');
+    type('Material', 'PLA');
+    expect(remaining().value).toBe('300');
+    expect(original().value).toBe('750');
+  });
+
+  it('saves the suggested weight and stays editable', async () => {
+    const onSaved = renderFormWith({ knownSpools: known });
+    type('Hersteller', 'Polymaker');
+    type('Material', 'PLA');
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(savedSpool('add_filament_spool')).toMatchObject({ originalWeightG: 750, remainingWeightG: 750 });
+  });
+
+  it('does not touch the weights of an edited spool', () => {
+    renderFormWith({ knownSpools: known, editing: spoolWith({ manufacturer: 'Polymaker', material: 'PLA', originalWeightG: 1000, remainingWeightG: 400 }) });
+    expect(original().value).toBe('1000');
+    expect(remaining().value).toBe('400');
+    expect(screen.queryByText(/zuletzt für/)).toBeNull();
+  });
 });

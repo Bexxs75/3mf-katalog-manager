@@ -11,15 +11,15 @@ Der verlangte direkte Import einer automatischen `.db`-Sicherung ist im aktuelle
 
 **Dokumentierte Abweichung:** Das Handbuch beschreibt den ZIP-Katalog-Import Schritt für Schritt als eigenen Wiederherstellungsweg. Für automatische Datenbankkopien bleibt der manuelle Rückweg bei vollständig geschlossener App beschrieben. Ein direkter `.db`-Import wird nicht behauptet. App-Code wurde nicht geändert. Eine künftige Importfunktion für automatische Sicherungen wäre ein separater Produktauftrag.
 
-## Aufbewahrung: Changelog und Code unterscheiden sich
+## Aufbewahrung: Changelog und Code stimmen überein
 
-Der englische Unreleased-Eintrag zur Sicherung vor Migration nennt drei Kopien. `src-tauri/src/updater/backup.rs` setzt hingegen `KEEP_SCHEMA = 2`. Das Handbuch folgt wie im Auftrag verlangt dem Code: drei normale Update-Sicherungen, älteste und neueste Sicherung ausgehend von einer stabilen Version, zwei Schema-Sicherungen. Die gerade erzeugte Kopie ist geschützt; fremde Dateien werden nicht bereinigt. Die Bereinigung erkennt auch das alte Update-Namensformat.
+Der Changelog-Eintrag zur Sicherung vor Migration nennt inzwischen zwei Kopien, wie `src-tauri/src/updater/backup.rs` mit `KEEP_SCHEMA = 2`. Das Handbuch folgt dem Code: drei normale Update-Sicherungen, älteste und neueste Sicherung ausgehend von einer stabilen Version, zwei Schema-Sicherungen. Die gerade erzeugte Kopie ist geschützt; fremde Dateien werden nicht bereinigt. Die Bereinigung erkennt auch das alte Update-Namensformat.
 
 `src-tauri/src/db/repository.rs::backup_before_migration` protokolliert einen Kopierfehler und setzt den Start fort. Das Handbuch beschreibt die Schema-Sicherung deshalb nicht als garantierte Startsperre bei Fehlern.
 
 ## Tatsächliche Beschriftungen und Zuständigkeiten
 
-- `src/i18n/de.ts`: Der Filterknopf heißt "Alle löschen", nicht "Alle zurücksetzen"; die Ordneraktion heißt "Alle Ordner zuklappen".
+- `src/i18n/de.ts`: Der Filterknopf heißt "Filter zurücksetzen"; die Ordneraktion heißt "Alle Ordner zuklappen".
 - `src/components/PrinterManagerView.tsx`, `PrinterLinkControl.tsx`: Verwaltung und Verbindung liegen im Printer Manager. Der globale Schalter heißt "Anbindung" / "Connection".
 - `src/components/FilamentView.tsx`, `PrinterColumn.tsx`: Material einlegen und neue Drucke bestätigen bleiben im Material Manager. Seine Verwaltungslinks führen zum Printer Manager.
 - `src/components/Rail.tsx`: Vier Einstellungsreiter; der Verweis zum Printer Manager steht unter Allgemein.
@@ -38,4 +38,10 @@ Der englische Unreleased-Eintrag zur Sicherung vor Migration nennt drei Kopien. 
 | Schrift und Slicer | `src/styles/theme.css`; `src-tauri/src/slicers.rs` |
 | Beschriftungen und Plattformvarianten | `src/i18n/en.ts`, `de.ts`, `LanguageContext.tsx` |
 
-Die vorhandenen Screenshots bleiben referenziert und müssen später aktualisiert werden. Die zwölf neuen Bildverweise sind in `NEUE-BILDER.md` erfasst; Bilddateien oder Platzhalter wurden nicht angelegt.
+Die Bildverweise des Handbuchs (`bilder/` für Deutsch, `bilder/en/` für Englisch, Nummern 01 bis 45) werden aus dem Screenshot-Werkzeug unter `tools/screens` erzeugt und sind im Handbuch eingebunden. `NEUE-BILDER.md` stammt aus der Zeit vor dieser Erzeugung, nennt nur die Motive 33 bis 38 und ist damit überholt. Das Demo-GIF der README (`docs/assets/demo.gif`) hat laut `tools/screens/manifest.json` noch kein Rezept.
+
+## Prüfstand der Texte zu 0.16.0
+
+- Der Hinweistext zum Entfernen im Festplatten-Abgleich (`diskSyncRemoveHint`) nennt „Check catalog for issues“, der Knopf in den Einstellungen heißt aber „Scan catalog for issues“ (DE in beiden Fällen „Katalog auf Probleme prüfen“). Das Handbuch verweist deshalb auf die „Katalogprüfung (Einstellungen → Katalog)“. Die englische Abweichung liegt im App-Text, nicht im Handbuch.
+- Die Schwellen für „zu groß für die 3D-Ansicht“: Alle Schwellen sind im Code belegt: 3 Mio. Dreiecke bei 3MF (`src-tauri/src/threemf/model_xml.rs`, `MAX_PREVIEW_TRIANGLES`) sowie 3 Mio. Dreiecke binär bei STL, 256 MiB bei ASCII-STL und 128 MiB bei OBJ (`src-tauri/src/commands/files.rs`, `MAX_PREVIEW_TRIANGLES`, `MAX_ASCII_STL_PREVIEW_BYTES`, `MAX_OBJ_PREVIEW_BYTES`).
+

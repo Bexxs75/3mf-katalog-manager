@@ -6,7 +6,7 @@
 
 **Your 3MF, STL and STEP collection keeps growing? The 3MF Katalog Manager catalogs the folders you already have, finds any model in seconds, shows it in 3D and connects your files with filament, print queue and print history. Everything stays on your computer: no account, no cloud.**
 
-![Demo: search the catalog, open a model with slicer data, open it in the slicer, Material Manager with AMS slots](docs/assets/demo.gif)
+![Demo: search the catalog, open a model with slicer data, Material Manager with AMS slots, Printer Manager, syncing with the disk](docs/assets/demo.gif)
 
 - **100 % local** — no sign-up, no cloud, no tracking. Your files stay where they are.
 - **Your existing folders, searchable** — import folders, get automatic tags, real 3D previews and slicer data (weight, filament per plate).
@@ -48,6 +48,7 @@ From v0.16.0, there is one download per system: Windows `.msi`, macOS `.dmg` (In
 | Qidi Smart 3 | Stock Klipper | Print list and usage readable; the printer's clock was wrong | 🟡 From v0.15.0 |
 | Creality K2 Plus (with CFS) | Creality Klipper 1.1.6.1, rooted | Print list and usage readable; no material or weight from the slicer, so the spool is chosen by hand | ☑️ Test report checked |
 | Qidi Q1 Pro | Stock Klipper (Moonraker 0.7.1) | Print list and usage readable; material and weight come from the slicer (QIDISlicer) | ☑️ Test report checked |
+| Anycubic Kobra 3 V2 | Klipper with Rinkhals | Print list and usage readable; material (PETG) and weight come from the slicer data; the printer reports an ACE module, only one print with a single colour entry was checked | ☑️ Test report checked |
 
 *Confirmed in daily use*: tried with the app on a real printer. *Confirmed in long-term use*: used by users in everyday printing over a longer period and reported back. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
 

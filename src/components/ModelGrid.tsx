@@ -1,4 +1,5 @@
 import { useCanEditMetadata } from '../lib/webSession';
+import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
 import { licenseUsage, modelLicenseAriaLabel } from '../lib/licenses';
@@ -33,6 +34,8 @@ interface Props {
   reorderable?: boolean;
   onReorder?: (orderedIds: string[]) => void;
   onDragFileStart?: (id: string) => void;
+  // Accessible name of the grid; grouped views pass the folder name.
+  label?: string;
 }
 
 function CardTags({ tags, comfort }: { tags: string[]; comfort: boolean }) {
@@ -92,15 +95,15 @@ function CardMeta({ model, comfort }: { model: ModelFile; comfort: boolean }) {
   </div>;
 }
 
-export function ModelGrid({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder, onDragFileStart }: Props) {
+export function ModelGrid({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder, onDragFileStart, label }: Props) {
   const canEdit = useCanEditMetadata();
   const t = useT();
   const { density } = useUiDensity();
   const ids = useMemo(() => models.map(model => model.id), [models]);
-  // Web: tiles keep one fixed width. A stretching row (1fr) hands the leftover width to the tiles,
+  // Tiles keep one fixed width. A stretching row (1fr) hands the leftover width to the tiles,
   // so they grow and shrink every time the detail panel opens or the window changes.
-  const fixedTileWidth = import.meta.env.VITE_TARGET === 'web' ? (density === 'comfort' ? 232 : 190) : null;
-  const window = useModelWindow({ ids, containerRef, minWidth: fixedTileWidth ?? (density === 'comfort' ? 220 : 178), gap: 14,
+  const fixedTileWidth = density === 'comfort' ? 232 : 190;
+  const window = useModelWindow({ ids, containerRef, minWidth: fixedTileWidth, gap: 14,
     fallbackHeight: density === 'comfort' ? 350 : 265, disabled: reorderable || !windowed });
   const visible = models.slice(window.startIndex, window.endIndex);
   const images = useModelImages(ids.slice(window.imageStartIndex, window.imageEndIndex));
@@ -159,12 +162,21 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
     }
   };
 
-  function renderCompactCard(m: ModelFile) {
+  // Every card is a grid row with two cells (picture and details). aria-rowindex/aria-rowcount
+  // describe the full list, because the window only renders a slice of it.
+  const selectionAria = useRowSelectionAria(selectedId, selectedForBulk);
+  const rowAria = (m: ModelFile, index: number) => ({
+    role: 'row' as const,
+    'aria-rowindex': window.startIndex + index + 1,
+    ...selectionAria(m.id),
+  });
+
+  function renderCompactCard(m: ModelFile, index: number) {
     return (
       <div
         key={m.id}
         data-model-id={m.id}
-        role="group"
+        {...rowAria(m, index)}
         aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
         tabIndex={-1}
         onClick={() => onSelect(m.id)}
@@ -180,7 +192,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
           m.id === selectedId ? 'border-[var(--accent)]' : 'border-[var(--line)]'
         } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
       >
-        <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
+        <div role="gridcell" className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           {onDragFileStart && !readOnly && canEdit && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
           {!readOnly && canEdit && (
             <BulkCheckbox
@@ -245,7 +257,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             </button>
           )}
         </div>
-        <div data-card-metadata className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 }}>
+        <div data-card-metadata role="gridcell" className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 }}>
           <div className="select-none text-small font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
             {displayName(m.name)}
           </div>
@@ -257,21 +269,23 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   }
 
   return (
-    <div ref={window.rootRef} style={{ visibility: window.measured ? 'visible' : 'hidden' }}>
+    <div ref={window.rootRef} role="grid" data-catalog-grid aria-label={label ?? t('modelListLabel')} aria-multiselectable="true"
+      aria-rowcount={models.length} aria-colcount={2} style={{ visibility: window.measured ? 'visible' : 'hidden' }}>
       {window.emptyHeight !== null ? <div data-window-spacer="empty" style={{ height: window.emptyHeight }} /> : <>
       <div data-window-spacer="top" aria-hidden="true" style={{ height: window.topSpacer }} />
     <div
+      role="presentation"
       className="grid gap-3.5"
-      style={fixedTileWidth !== null && window.columns > 2
+      style={window.columns > 2
         ? { gridTemplateColumns: `repeat(${window.columns}, minmax(0, ${fixedTileWidth}px))`, justifyContent: 'start' }
         : { gridTemplateColumns: `repeat(${window.columns}, minmax(0, 1fr))` }}
     >
-      {visible.map((m) =>
+      {visible.map((m, index) =>
         density === 'comfort' ? (
           <div
             key={m.id}
             data-model-id={m.id}
-            role="group"
+            {...rowAria(m, index)}
             aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
             tabIndex={-1}
             onClick={() => onSelect(m.id)}
@@ -287,8 +301,8 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
               m.id === selectedId ? 'border-[var(--accent)]' : 'border-transparent'
             } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
           >
-            <div className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
-            <div className="relative aspect-square bg-[var(--plate)] overflow-hidden">
+            <div aria-hidden="true" className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
+            <div role="gridcell" className="relative aspect-square bg-[var(--plate)] overflow-hidden">
               {onDragFileStart && !readOnly && canEdit && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
               {!readOnly && canEdit && (
                 <BulkCheckbox
@@ -343,7 +357,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 </button>
               )}
             </div>
-            <div data-card-metadata className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)', height: 124 }}>
+            <div data-card-metadata role="gridcell" className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)', height: 124 }}>
               <div
                 className="select-none font-bold overflow-hidden text-ellipsis whitespace-nowrap shrink-0"
                 style={{ fontSize: 'var(--font-size-title)', height: 26, lineHeight: '26px' }}
@@ -355,7 +369,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             </div>
           </div>
         ) : (
-          renderCompactCard(m)
+          renderCompactCard(m, index)
         ),
       )}
     </div>

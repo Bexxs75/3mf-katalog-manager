@@ -34,6 +34,22 @@ ignore = [
     "RUSTSEC-2025-0100",
     # unic-ucd-version is unmaintained; same dependency chain as above.
     "RUSTSEC-2025-0098",
+    # zip: ZipArchive::extract / ZipStreamReader::extract keep SUID/SGID bits and follow
+    # symlinks (RUSTSEC-2026-0367, -0368, -0369; fixed in zip >= 9). Not reachable from
+    # our code: it never calls extract(), it only reads and writes archives with
+    # ZipArchive::new / ZipWriter and unpacks user archives with its own code
+    # (archive/extract.rs). zip 4.6.1 comes in via tauri-plugin-updater, which extracts
+    # only update packages whose signature was verified first. Move to zip >= 9 (own
+    # crate) and a newer plugin when the dependencies allow it.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+    # zvariant, zbus_names and zvariant_derive are unmaintained and have no safe upgrade;
+    # they come in transitively via zbus -> ashpd -> rfd -> tauri-plugin-dialog (the
+    # xdg-portal file dialog on Linux).
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0372",
 ]
 
 [licenses]

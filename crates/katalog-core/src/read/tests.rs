@@ -69,6 +69,7 @@ fn catalog() -> Catalog {
     db::insert_filament_spool(
         &conn,
         &db::models::NewFilamentSpool {
+            color_hexes: Vec::new(),
             material: "PLA".into(),
             manufacturer: None,
             color: None,
@@ -280,6 +281,9 @@ fn summary_keeps_card_values_after_rename_move_restore_and_metadata_reload() {
 #[test]
 fn summary_serialization_has_presence_flags_and_no_image_fields() {
     let summary = FileSummaryDto {
+        source_platform: None,
+        source_model_id: None,
+        source_profile_id: None,
         license: None,
         materials: Vec::new(),
         estimated_weight_g: None,
@@ -320,6 +324,7 @@ fn add_and_list_print_log_entry_roundtrips_through_dto() {
     // add_print_log_entry needs a real file_id.
 
     let new_file = crate::db::models::NewFile {
+        source: Default::default(),
         name: "cube.3mf".to_string(),
         path: "/tmp/print-log-test-cube.3mf".to_string(),
         file_type: FileType::ThreeMf,

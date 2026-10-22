@@ -6,7 +6,7 @@ pub(super) fn delete_missing_file_with_conn(conn: &Connection, id: i64) -> CmdRe
 }
 
 /// Core logic of `delete_file` with an already loaded `FileRecord`, without `State`, so it's testable.
-fn delete_file_with_conn(
+pub(super) fn delete_file_with_conn(
     conn: &Connection,
     file: &db::models::FileRecord,
     id: i64,
@@ -20,7 +20,10 @@ fn delete_file_with_conn(
             // Path unreachable (renamed folder, unmounted drive): nothing to move, but
             // still only soft-delete, because the file is usually not really gone. Other
             // errors like PermissionDenied go through the error path below.
-            return delete_missing_file_with_conn(conn, id);
+            let deleted_at = chrono::Utc::now().to_rfc3339();
+            db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| CmdError::from(e.to_string()))?;
+            companions::trash_with_model(conn, id, trash_dir, &deleted_at);
+            return Ok(());
         }
         Err(e) => return Err(e.to_string().into()),
         Ok(_) => {}
@@ -43,6 +46,9 @@ fn delete_file_with_conn(
         }
         return Err(db_err.to_string().into());
     }
+    // The companions follow the model into the trash under the same timestamp, so
+    // restoring the model finds exactly these. They cannot make the removal fail.
+    companions::trash_with_model(conn, id, trash_dir, &deleted_at);
     log::debug!(target: "datei", "in den Papierkorb: {}", file.path);
     Ok(())
 }
@@ -98,10 +104,25 @@ pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
     katalog_core::read::list_trash(&conn).map_err(Into::into)
 }
 /// Core logic of `restore_file` with an already loaded `FileRecord`, without `State`, so it's testable.
-fn restore_file_with_conn(
+pub(super) fn restore_file_with_conn(
     conn: &Connection,
     file: &db::models::FileRecord,
     id: i64,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    restore_model_with_conn(conn, file, id, sensitive_dirs)?;
+    // Companions that went to the trash together with the model come back with it.
+    if let Some(deleted_at) = &file.deleted_at {
+        companions::restore_with_model(conn, id, deleted_at, sensitive_dirs);
+    }
+    Ok(())
+}
+
+fn restore_model_with_conn(
+    conn: &Connection,
+    file: &db::models::FileRecord,
+    id: i64,
+    sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
     if file.deleted_at.is_none() {
         return Err("file is not in trash".into());
@@ -127,13 +148,43 @@ fn restore_file_with_conn(
         original.to_path_buf()
     };
 
-    move_file(std::path::Path::new(&trash_path), &target_path).map_err(|e| e.to_string())?;
+    // A folder moved to the trash takes its directories with it, so the target
+    // folder may be gone. Recreate it (only after the sensitive-path check, since
+    // the stored path can come from an imported backup) and remember which
+    // directories are new so a failed restore can undo them.
+    let created_dirs = missing_parent_dirs(&target_path);
+    if !created_dirs.is_empty() {
+        let parent = target_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        archives::check_managed_location(parent, &expand_sensitive_dirs(sensitive_dirs))?;
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let undo_dirs = || {
+        // Deepest first; remove_dir only ever removes an empty directory.
+        for dir in created_dirs.iter().rev() {
+            let _ = std::fs::remove_dir(dir);
+        }
+    };
+
+    if let Err(e) = move_file(std::path::Path::new(&trash_path), &target_path) {
+        undo_dirs();
+        return Err(e.to_string().into());
+    }
 
     let new_path_str = target_path.to_string_lossy().to_string();
     let new_path_arg = if new_path_str == file.path { None } else { Some(new_path_str.as_str()) };
-    if let Err(db_err) = db::restore_file(conn, id, new_path_arg) {
+    let db_result = (|| -> Result<(), DbError> {
+        let tx = conn.unchecked_transaction()?;
+        db::restore_file(&tx, id, new_path_arg)?;
+        relink_restored_folder(&tx, id, target_path.parent(), created_dirs.first().map(|d| d.as_path()))?;
+        tx.commit().map_err(DbError::from)
+    })();
+    if let Err(db_err) = db_result {
         // Back into the trash if the DB couldn't record the restore.
-        if let Err(rollback_err) = move_file(&target_path, std::path::Path::new(&trash_path)) {
+        let moved_back = move_file(&target_path, std::path::Path::new(&trash_path));
+        if moved_back.is_ok() {
+            undo_dirs();
+        }
+        if let Err(rollback_err) = moved_back {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback in den Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als geloescht",
                 target_path.display()
@@ -145,6 +196,62 @@ fn restore_file_with_conn(
     log::debug!(target: "datei", "wiederhergestellt: {} -> {}", trash_path, target_path.display());
     Ok(())
 }
+/// Directories above `target` that do not exist yet, outermost first.
+fn missing_parent_dirs(target: &std::path::Path) -> Vec<PathBuf> {
+    let mut missing = Vec::new();
+    let mut cursor = target.parent();
+    while let Some(dir) = cursor {
+        if dir.as_os_str().is_empty() || dir.exists() {
+            break;
+        }
+        missing.push(dir.to_path_buf());
+        cursor = dir.parent();
+    }
+    missing.reverse();
+    missing
+}
+
+/// Puts a restored file back into the catalog folder tree. When the directory was
+/// recreated (`created_root` is the outermost new directory), the nearest cataloged ancestor (or the catalog base folder)
+/// is the anchor and the missing folder rows are inserted below it - the same way the
+/// disk sync attaches new folders. When the directory already existed, only a folder
+/// row for exactly that directory is reused: a row that is missing then may have been
+/// removed from the catalog on purpose, and a restore must not bring it back. A file
+/// whose folder is not found stays as it is. When the recreated directory has no cataloged
+/// ancestor and lies outside the catalog base folder (a top-level catalog folder that was
+/// trashed), the outermost recreated directory becomes a new top-level folder row.
+fn relink_restored_folder(
+    conn: &Connection,
+    id: i64,
+    dir: Option<&std::path::Path>,
+    created_root: Option<&std::path::Path>,
+) -> Result<(), DbError> {
+    let Some(dir) = dir else { return Ok(()) };
+    let folders = db::list_folders(conn)?;
+    let existing = folders
+        .iter()
+        .find(|f| folders::comparison_path(std::path::Path::new(&f.path)) == folders::comparison_path(dir))
+        .map(|f| f.id);
+    let folder_id = match existing {
+        Some(folder_id) => folder_id,
+        None if created_root.is_none() => return Ok(()),
+        None => {
+            let anchor = match folders::find_catalog_parent(dir, &folders) {
+                Some(parent) => folders.iter().find(|f| f.id == parent).map(|f| PathBuf::from(&f.path)),
+                None => db::printer_link::get_setting(conn, folders::SETTING_CATALOG_BASE_DIR)?
+                    .map(PathBuf::from)
+                    .filter(|base| folders::comparison_path(dir).starts_with(folders::comparison_path(base))),
+            };
+            let Some(anchor) = anchor.or_else(|| created_root.map(PathBuf::from)) else { return Ok(()) };
+            db::ensure_folder_path(conn, &anchor, dir)?
+        }
+    };
+    conn.execute(
+        "UPDATE files SET folder_id = ?1 WHERE id = ?2 AND folder_id IS NOT ?1",
+        rusqlite::params![folder_id, id],
+    )?;
+    Ok(())
+}
 #[tauri::command]
 pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
     let _catalog_share = state.import_jobs.gate.exclusive()?;
@@ -153,14 +260,18 @@ pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
     let file = db::get_file(&conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
-    restore_file_with_conn(&conn, &file, id)
+    restore_file_with_conn(&conn, &file, id, &state.sensitive_dirs)
 }
 #[tauri::command]
 pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdResult<()> {
     let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    let file = db::get_file(&conn, id)
+    delete_file_permanently_with_conn(&conn, id, &state.trash_dir)
+}
+/// Core logic of `delete_file_permanently`, without `State`, so it's testable.
+pub(super) fn delete_file_permanently_with_conn(conn: &Connection, id: i64, trash_dir: &std::path::Path) -> CmdResult<()> {
+    let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
     if file.deleted_at.is_none() {
@@ -173,13 +284,19 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
             }
         }
     }
-    db::delete_file(&conn, id).map_err(|e| e.to_string().into())
+    // Its companions in the trash go with it; the rows follow by cascade.
+    companions::purge_trash_files_of_model(conn, id, trash_dir)?;
+    db::delete_file(conn, id).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
     let _catalog_share = state.import_jobs.gate.exclusive()?;
     let conn = lock_db(&state)?;
-    let files = db::list_trash(&conn).map_err(|e| e.to_string())?;
+    empty_trash_with_conn(&conn, &state.trash_dir)
+}
+/// Core logic of `empty_trash`, without `State`, so it's testable.
+pub(super) fn empty_trash_with_conn(conn: &Connection, trash_dir: &std::path::Path) -> CmdResult<()> {
+    let files = db::list_trash(conn).map_err(|e| e.to_string())?;
     for file in files {
         if let Some(trash_path) = &file.trash_path {
             if let Err(e) = std::fs::remove_file(trash_path) {
@@ -189,15 +306,21 @@ pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
                 }
             }
         }
-        if let Err(e) = db::delete_file(&conn, file.id) {
+        if let Err(e) = companions::purge_trash_files_of_model(conn, file.id, trash_dir) {
+            log::error!(target: "trash", "removing companions failed for file ID {}: {e}", file.id);
+            continue;
+        }
+        if let Err(e) = db::delete_file(conn, file.id) {
             log::error!(target: "trash", "could not delete DB row for file ID {}: {e}", file.id);
         }
     }
+    // Companions removed on their own from a model that is still in the catalog.
+    companions::purge_all_trashed(conn, trash_dir);
     Ok(())
 }
 /// At startup: removes trash entries older than 7 days. Single errors are
 /// logged and skipped.
-pub fn purge_expired_trash_on_startup(conn: &Connection) {
+pub fn purge_expired_trash_on_startup(conn: &Connection, trash_dir: &std::path::Path) {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
     let expired = match db::purge_expired_trash(conn, &cutoff) {
         Ok(files) => files,
@@ -215,10 +338,15 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
                 }
             }
         }
+        if let Err(e) = companions::purge_trash_files_of_model(conn, file.id, trash_dir) {
+            log::error!(target: "startup", "trash cleanup: companions failed for ID {}: {e}", file.id);
+            continue;
+        }
         if let Err(e) = db::delete_file(conn, file.id) {
             log::error!(target: "startup", "trash cleanup: DB row failed for ID {}: {e}", file.id);
         }
     }
+    companions::purge_expired_trashed(conn, trash_dir, &cutoff);
 }
 
 #[cfg(test)]
@@ -325,7 +453,7 @@ mod tests {
         .unwrap();
 
         let file = db::get_file(&conn, file_id).unwrap().unwrap();
-        let result = restore_file_with_conn(&conn, &file, file_id);
+        let result = restore_file_with_conn(&conn, &file, file_id, &[]);
 
         assert!(result.is_err(), "must surface the db::restore_file failure raised by the trigger");
         assert!(trash_path.exists(), "file must be moved back into the trash after db::restore_file failed");
@@ -358,9 +486,189 @@ mod catalog_removal_restore_tests {
         let trashed = db::get_file(&conn, id).unwrap().unwrap();
         assert_eq!(trashed.folder_id, None);
         assert!(trashed.deleted_at.is_some());
-        restore_file_with_conn(&conn, &trashed, id).unwrap();
+        restore_file_with_conn(&conn, &trashed, id, &[]).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"original model bytes");
         assert!(db::get_file(&conn, id).unwrap().unwrap().deleted_at.is_none());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod restore_into_missing_folder_tests {
+    use super::*;
+
+    /// Catalog base with folder rows base -> A -> B and one model in B, trashed together with its folders.
+    fn trashed_with_folders(name: &str) -> (Connection, PathBuf, PathBuf, i64, i64) {
+        let tmp = unique_test_dir(name);
+        let base = tmp.join("catalog");
+        let trash = tmp.join("trash");
+        let dir_b = base.join("A").join("B");
+        std::fs::create_dir_all(&dir_b).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        db::printer_link::set_setting(&conn, folders::SETTING_CATALOG_BASE_DIR, &base.to_string_lossy()).unwrap();
+        let base_id = db::insert_folder_with_parent(&conn, "catalog", None, &base.to_string_lossy()).unwrap();
+        let a = db::insert_folder_with_parent(&conn, "A", Some(base_id), &base.join("A").to_string_lossy()).unwrap();
+        let b = db::insert_folder_with_parent(&conn, "B", Some(a), &dir_b.to_string_lossy()).unwrap();
+        let path = dir_b.join("m.3mf");
+        std::fs::write(&path, b"bytes").unwrap();
+        let id = db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(b)).unwrap();
+        let result = super::super::folder_trash::trash_folder_for_test(&conn, a, &trash);
+        assert_eq!(result, 1);
+        assert!(!base.join("A").exists());
+        (conn, base, trash, id, a)
+    }
+
+    #[test]
+    fn restore_recreates_the_folder_on_disk_and_in_the_catalog() {
+        let (conn, base, _trash, id, _a) = trashed_with_folders("restore_missing_folder");
+        let file = db::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(file.folder_id, None);
+        restore_file_with_conn(&conn, &file, id, &[]).unwrap();
+        let path = base.join("A").join("B").join("m.3mf");
+        assert_eq!(std::fs::read(&path).unwrap(), b"bytes");
+        let restored = db::get_file(&conn, id).unwrap().unwrap();
+        assert!(restored.deleted_at.is_none());
+        let folder: (String, Option<i64>) = conn
+            .query_row(
+                "SELECT f.path, p.parent_id FROM folders f LEFT JOIN folders p ON p.id = f.parent_id WHERE f.id = ?1",
+                [restored.folder_id.expect("file must be assigned to a folder again")],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(PathBuf::from(folder.0), base.join("A").join("B"));
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 3, "base, A and B again, without duplicates");
+    }
+
+    /// Two models in A, trashed together with their folder.
+    fn two_models_trashed(name: &str) -> (Connection, PathBuf, [i64; 2]) {
+        let tmp = unique_test_dir(name);
+        let base = tmp.join("catalog");
+        let trash = tmp.join("trash");
+        std::fs::create_dir_all(base.join("A")).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        db::printer_link::set_setting(&conn, folders::SETTING_CATALOG_BASE_DIR, &base.to_string_lossy()).unwrap();
+        let base_id = db::insert_folder_with_parent(&conn, "catalog", None, &base.to_string_lossy()).unwrap();
+        let a = db::insert_folder_with_parent(&conn, "A", Some(base_id), &base.join("A").to_string_lossy()).unwrap();
+        let ids = ["one.3mf", "two.3mf"].map(|n| {
+            let path = base.join("A").join(n);
+            std::fs::write(&path, n.as_bytes()).unwrap();
+            db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(a)).unwrap()
+        });
+        assert_eq!(super::super::folder_trash::trash_folder_for_test(&conn, a, &trash), 2);
+        (conn, base, ids)
+    }
+
+    fn restore(conn: &Connection, id: i64) {
+        let file = db::get_file(conn, id).unwrap().unwrap();
+        restore_file_with_conn(conn, &file, id, &[]).unwrap();
+    }
+
+    fn folder_of(conn: &Connection, id: i64) -> Option<i64> {
+        db::get_file(conn, id).unwrap().unwrap().folder_id
+    }
+
+    #[test]
+    fn every_restored_model_of_a_deleted_folder_gets_its_folder_back() {
+        let (conn, base, [one, two]) = two_models_trashed("restore_two_models");
+        restore(&conn, one);
+        restore(&conn, two);
+        let first = folder_of(&conn, one).expect("first model is assigned");
+        assert_eq!(folder_of(&conn, two), Some(first), "the second model must join the recreated folder");
+        let path: String = conn.query_row("SELECT path FROM folders WHERE id = ?1", [first], |r| r.get(0)).unwrap();
+        assert_eq!(PathBuf::from(path), base.join("A"));
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 2, "base and A, no duplicates");
+    }
+
+    #[test]
+    fn restore_fixes_a_folder_assignment_that_points_to_another_folder() {
+        let (conn, base, [one, two]) = two_models_trashed("restore_stale_assignment");
+        restore(&conn, one);
+        let a = folder_of(&conn, one).unwrap();
+        let other = db::insert_folder_with_parent(&conn, "Other", None, &base.join("Other").to_string_lossy()).unwrap();
+        conn.execute("UPDATE files SET folder_id = ?1 WHERE id = ?2", [other, two]).unwrap();
+        conn.execute("UPDATE files SET deleted_at = '2026-01-01T00:00:00Z' WHERE id = ?1", [two]).unwrap();
+        restore(&conn, two);
+        assert_eq!(folder_of(&conn, two), Some(a));
+    }
+
+    #[test]
+    fn restore_recreates_a_trashed_top_level_folder_without_a_catalog_base() {
+        let tmp = unique_test_dir("restore_top_level_folder");
+        let trash = tmp.join("trash");
+        let technik = tmp.join("Technik2");
+        let sub = technik.join("Sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        // The trashed folder is a catalog root of its own; no base folder setting exists.
+        let t = db::insert_folder_with_parent(&conn, "Technik2", None, &technik.to_string_lossy()).unwrap();
+        let s = db::insert_folder_with_parent(&conn, "Sub", Some(t), &sub.to_string_lossy()).unwrap();
+        let path = sub.join("m.3mf");
+        std::fs::write(&path, b"bytes").unwrap();
+        let id = db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(s)).unwrap();
+        // The folder is the catalog root of the file; make it deletable by trashing the model with its rows.
+        super::super::folder_trash::trash_folder_for_test(&conn, t, &trash);
+        assert!(!technik.exists());
+        let file = db::get_file(&conn, id).unwrap().unwrap();
+        restore_file_with_conn(&conn, &file, id, &[]).unwrap();
+        assert!(path.exists());
+        let folder_id = db::get_file(&conn, id).unwrap().unwrap().folder_id.expect("assigned to a folder again");
+        let (name, parent): (String, Option<i64>) = conn
+            .query_row("SELECT name, parent_id FROM folders WHERE id = ?1", [folder_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(name, "Sub");
+        let parent = parent.expect("Sub hangs below the recreated Technik2");
+        let top: (String, Option<i64>) = conn
+            .query_row("SELECT name, parent_id FROM folders WHERE id = ?1", [parent], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(top, ("Technik2".to_string(), None));
+    }
+
+    #[test]
+    fn restore_never_recreates_a_folder_row_the_user_removed_while_the_directory_exists() {
+        let (conn, base, [one, two]) = two_models_trashed("restore_removed_row");
+        // The directory comes back without a catalog row (e.g. made by hand), the user
+        // did not ask for it in the catalog.
+        std::fs::create_dir_all(base.join("A")).unwrap();
+        let rows_before: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
+        restore(&conn, one);
+        restore(&conn, two);
+        let rows_after: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows_after, rows_before);
+        assert_eq!(folder_of(&conn, one), None);
+        assert_eq!(folder_of(&conn, two), None);
+        assert!(base.join("A").join("one.3mf").exists() && base.join("A").join("two.3mf").exists());
+    }
+
+    #[test]
+    fn restore_into_a_sensitive_missing_folder_is_refused() {
+        let (conn, base, trash, id, _a) = trashed_with_folders("restore_missing_sensitive");
+        let file = db::get_file(&conn, id).unwrap().unwrap();
+        let result = restore_file_with_conn(&conn, &file, id, std::slice::from_ref(&base));
+        assert!(result.is_err());
+        assert!(!base.join("A").exists(), "no directory may be created in a sensitive location");
+        assert!(db::get_file(&conn, id).unwrap().unwrap().deleted_at.is_some());
+        assert_eq!(std::fs::read_dir(trash).unwrap().count(), 1, "file stays in the trash");
+    }
+
+    #[test]
+    fn failed_restore_removes_the_directories_it_created() {
+        let (conn, base, trash, id, _a) = trashed_with_folders("restore_missing_rollback");
+        conn.execute_batch(
+            "CREATE TRIGGER block_restore BEFORE UPDATE ON files
+             WHEN NEW.deleted_at IS NULL AND OLD.deleted_at IS NOT NULL
+             BEGIN SELECT RAISE(ABORT, 'simulated restore failure'); END;",
+        )
+        .unwrap();
+        let file = db::get_file(&conn, id).unwrap().unwrap();
+        assert!(restore_file_with_conn(&conn, &file, id, &[]).is_err());
+        assert!(!base.join("A").exists(), "recreated directories must be undone");
+        assert_eq!(std::fs::read_dir(trash).unwrap().count(), 1);
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1, "only the base row remains");
     }
 }

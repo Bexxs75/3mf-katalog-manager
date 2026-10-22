@@ -260,6 +260,36 @@ fn zip_slip_entries_are_skipped_and_nothing_escapes() {
     assert!(dest.join("ok.stl").exists());
 }
 
+/// Written once with the previous ZIP library (default options, as the app
+/// always did): the current library must keep reading what older versions made.
+#[test]
+fn zip_written_by_the_previous_library_still_extracts() {
+    let dir = unique_dir("zip_legacy");
+    let archive = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/archive/testdata/archive_zip2.zip");
+    assert_eq!(inspect(&archive, is_model).status, InspectStatus::Ok);
+    let dest = dir.join("ziel");
+    let extraction = extract_archive(&archive, ArchiveFormat::Zip, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+    // The symlink entry is skipped, the directory entry is not counted as a file.
+    assert_eq!(extraction.stats.written_files, 2);
+    assert_eq!(extraction.stats.unsafe_skipped, 1);
+    assert_eq!(extraction.stripped_root.as_deref(), Some("Gartenhaus"));
+    assert_eq!(fs::read(dest.join("readme.txt")).unwrap(), b"hallo");
+    assert!(fs::read(dest.join("Größe-Übersicht.stl")).unwrap().starts_with(b"solid x"));
+    assert!(fs::symlink_metadata(dest.join("link.stl")).is_err());
+}
+
+#[test]
+fn zip_unpacked_size_limit_applies_with_a_counter_check() {
+    let dir = unique_dir("zip_budget");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, &[("big.stl", &[b'a'; 100])]);
+    let tight = extract_archive(&archive, ArchiveFormat::Zip, &dir.join("eng"), false, 10, &allow_all);
+    assert!(matches!(tight, Err(ArchiveError::LimitExceeded)));
+    // Counter-check: the same archive passes with enough budget.
+    let roomy = extract_archive(&archive, ArchiveFormat::Zip, &dir.join("weit"), false, 1000, &allow_all);
+    assert_eq!(roomy.unwrap().stats.written_files, 1);
+}
+
 #[test]
 fn tar_traversal_entry_is_skipped() {
     let dir = unique_dir("tarslip");

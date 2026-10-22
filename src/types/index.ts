@@ -63,9 +63,19 @@ export interface ModelFile {
   thumbnailImage: string | null;
   renderSnapshotImage: string | null;
   sourceUrl: string | null;
+  /** Stable lowercase key such as 'makerworld'; null when the file does not prove its origin. */
+  sourcePlatform: string | null;
+  sourceModelId: string | null;
+  sourceProfileId: string | null;
   queuePosition: number | null;
   favorite: boolean;
   deletedAt: string | null;
+  /**
+   * Set while this record only carries the list summary (fields such as
+   * `sliceInfo` are placeholders until the full record is loaded). Absent on
+   * full records, so UI that must tell "not loaded yet" from "really empty" can ask.
+   */
+  summaryOnly?: boolean;
 }
 
 /**
@@ -76,6 +86,10 @@ export interface ModelFile {
  */
 export interface ModelFileSummary {
   license: string | null;
+  /** Stable lowercase key such as 'makerworld'; null when the file does not prove its origin. */
+  sourcePlatform: string | null;
+  sourceModelId: string | null;
+  sourceProfileId: string | null;
   id: string;
   name: string;
   path: string;
@@ -106,6 +120,33 @@ export interface Folder {
   path: string;
   parentId: string | null;
   count: number;
+  /** The directory is gone from disk (false when unknown, e.g. root not readable). */
+  missing?: boolean;
+}
+
+export interface FolderTrashSummary {
+  name: string;
+  subfolderCount: number;
+  modelCount: number;
+  /** Files on disk the catalog does not know; only counted, never touched. */
+  otherFileCount: number;
+  /** The count stopped at its limit, so it means "at least". */
+  otherFileCountTruncated: boolean;
+  isCatalogRootOrAncestor: boolean;
+}
+
+export interface FolderTrashFailure {
+  fileId: string;
+  path: string;
+  reason: string;
+}
+
+export interface FolderTrashResult {
+  trashedModelCount: number;
+  failed: FolderTrashFailure[];
+  removedFolderCount: number;
+  /** Folders of the tree that still exist on disk. */
+  keptOnDisk: string[];
 }
 
 export type SkipReason = 'empty' | 'invalid' | 'failed';
@@ -154,6 +195,10 @@ export interface ArchiveOutcome {
   blockedSkipped: number;
   /** Non-model files (TXT, PDF, ...) that were extracted but not added to the catalog. */
   otherFilesExtracted: number;
+  /** Pictures, PDFs and text files that were moved into the companion folder of their model. */
+  companionsAssigned: number;
+  /** Extracted files of a type that is not allowed as a companion; they stay in the folder. */
+  companionsIgnored: number;
   archiveDeleted: boolean;
   deleteError: string | null;
   error: string | null;
@@ -207,6 +252,8 @@ export interface FilamentSpool {
   hasImage?: boolean;
   /** Color value `#rrggbb`; `color` stays the color name. */
   colorHex: string | null;
+  /** Up to four colors of a multi-color spool (`#rrggbb`); empty = single-color. `colorHex` is always the first entry. */
+  colorHexes: string[];
   /** Home location while the spool sits in a slot (then `location` is empty). */
   homeLocation: string | null;
   unitId: string | null;
@@ -437,3 +484,57 @@ export interface ImportProgress {
 export interface StartedImport { jobId: string | null }
 
 export type SortDirection = 'asc' | 'desc';
+
+export type CompanionKind = 'image' | 'pdf' | 'text';
+
+/** An extra file of a model (picture, PDF, text). Trashed ones have `deletedAt` set. */
+export interface Companion {
+  id: string;
+  fileId: string;
+  name: string;
+  path: string;
+  kind: CompanionKind;
+  sizeBytes: number | null;
+  addedAt: string;
+  deletedAt: string | null;
+  /** The file is gone from disk. A state of this entry only, never a catalog change. */
+  missing: boolean;
+}
+
+export interface CompanionOpenInfo {
+  id: string;
+  name: string;
+  path: string;
+  kind: CompanionKind;
+}
+
+/** A folder that is checked for new model files. */
+export interface SourceFolder {
+  id: string;
+  path: string;
+  addedAt: string;
+  /** The folder exists and still is the folder that was added. */
+  reachable: boolean;
+}
+
+export interface SourceFile {
+  path: string;
+  /** Path below the source folder, with `/` separators. */
+  relativePath: string;
+  sizeBytes: number;
+  /** Id of a catalog model with identical content, when it could be compared. */
+  duplicateOfId: string | null;
+}
+
+/** New model files of one source folder. */
+export interface SourceScan {
+  folderId: string;
+  folderPath: string;
+  files: SourceFile[];
+  /** Entries that could not be read and were left out. */
+  skipped: number;
+  /** The check stopped at its entry limit; there may be more files. */
+  truncated: boolean;
+  /** The folder could not be checked (missing, moved, or no longer allowed). */
+  unreachable: boolean;
+}

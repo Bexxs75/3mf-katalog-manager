@@ -15,7 +15,7 @@ base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
-zip = "2"
+zip = "9"
 # Extracting archives on import (see src/archive/). Deliberately pure Rust
 # decoders for xz/zstd (lzma-rust2, ruzstd), so no further C libraries end up in
 # the three platform builds.

@@ -6,7 +6,7 @@
 
 **Deine 3MF-, STL- und STEP-Sammlung wächst? Der 3MF Katalog Manager katalogisiert deine vorhandenen Ordner, findet jedes Modell in Sekunden, zeigt es in 3D und verbindet deine Dateien mit Filament, Druckwarteschlange und Druckprotokoll. Alles bleibt auf deinem Rechner: kein Konto, keine Cloud.**
 
-![Demo: Katalog durchsuchen, Modell mit Slicer-Daten öffnen, im Slicer öffnen, Material Manager mit AMS-Fächern](docs/assets/demo.gif)
+![Demo: Katalog durchsuchen, Modell mit Slicer-Daten öffnen, Material Manager mit AMS-Fächern, Printer Manager, Abgleich mit der Festplatte](docs/assets/demo.gif)
 
 - **100 % lokal** — keine Anmeldung, keine Cloud, kein Tracking. Deine Dateien bleiben, wo sie sind.
 - **Deine vorhandenen Ordner, durchsuchbar** — Ordner importieren, automatische Tags, echte 3D-Vorschau und Slicer-Daten (Gewicht, Filament je Platte).
@@ -48,6 +48,7 @@ Ab v0.16.0 gibt es einen Download pro System: Windows `.msi`, macOS `.dmg` (Inte
 | Qidi Smart 3 | Klipper ab Werk | Druckliste und Verbrauch lesbar; die Uhr des Druckers ging falsch | 🟡 Ab v0.15.0 |
 | Creality K2 Plus (mit CFS) | Creality-Klipper 1.1.6.1, gerootet | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer nicht, die Spule wird von Hand gewählt | ☑️ Testbericht geprüft |
 | Qidi Q1 Pro | Klipper ab Werk (Moonraker 0.7.1) | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer (QIDISlicer) | ☑️ Testbericht geprüft |
+| Anycubic Kobra 3 V2 | Klipper mit Rinkhals | Druckliste und Verbrauch lesbar; Material (PETG) und Gewicht kommen aus den Slicer-Daten; der Drucker meldet ein ACE-Modul, geprüft wurde nur ein Druck mit einem Farbeintrag | ☑️ Testbericht geprüft |
 
 *Im Alltag bestätigt*: mit der App am eigenen Drucker ausprobiert. *Im Dauereinsatz bestätigt*: von Nutzern über längere Zeit im Alltag eingesetzt und zurückgemeldet. *Testbericht geprüft*: die Daten aus dem anonymen [Testformular](https://3mfkatalog.de/druckertest.html) passen, ein Praxistest fehlt noch. Dein Drucker fehlt? Mit deinem Test kommt er dazu.
 

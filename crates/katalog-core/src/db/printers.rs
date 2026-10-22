@@ -86,6 +86,39 @@ pub fn is_valid_color_hex(value: &str) -> bool {
         && value[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Most colours a single spool can carry.
+pub const MAX_SPOOL_COLORS: usize = 4;
+
+/// Checks a spool colour list: at most [`MAX_SPOOL_COLORS`] entries, each `#rrggbb`.
+/// Duplicates are fine (a spool can repeat a colour in its pattern).
+pub fn validate_color_list(list: &[String]) -> Result<(), String> {
+    if list.len() > MAX_SPOOL_COLORS {
+        return Err(format!("hoechstens {MAX_SPOOL_COLORS} Farben je Spule erlaubt"));
+    }
+    match list.iter().find(|c| !is_valid_color_hex(c)) {
+        Some(bad) => Err(format!("ungueltiger Farbwert: {bad}")),
+        None => Ok(()),
+    }
+}
+
+/// Stored form of a colour list; `None` (NULL) for single-colour spools.
+pub fn color_list_to_json(list: &[String]) -> Option<String> {
+    (!list.is_empty()).then(|| serde_json::to_string(list).unwrap_or_default())
+}
+
+/// Reads the stored colour list. Anything unreadable counts as single-colour, so a
+/// damaged value can never keep the stock from loading.
+pub fn color_list_from_json(raw: Option<&str>) -> Vec<String> {
+    raw.and_then(|text| serde_json::from_str::<Vec<String>>(text).ok())
+        .filter(|list| validate_color_list(list).is_ok())
+        .unwrap_or_default()
+}
+
+/// The single colour that goes into `color_hex`: the first list entry when there is one.
+pub fn primary_color_hex(list: &[String], single: Option<&str>) -> Option<String> {
+    list.first().map(String::as_str).or(single).map(str::to_string)
+}
+
 /// Rounds to one decimal place (gram values in the filament stock).
 pub fn round_tenth(x: f64) -> f64 {
     (x * 10.0).round() / 10.0
@@ -584,6 +617,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: None,
+                color_hexes: Vec::new(),
                 kind: "filament".into(),
             },
         )
@@ -791,6 +825,7 @@ mod tests {
             price: None,
             image_png: None,
             color_hex: Some("#1a1a1a".into()),
+            color_hexes: Vec::new(),
             kind: "filament".into(),
         };
         crate::db::update_filament_spool(&conn, pla, &edited).unwrap();
@@ -811,6 +846,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: None,
+                color_hexes: Vec::new(),
                 kind: crate::db::models::SPOOL_KIND_RESIN.into(),
             },
         )
@@ -921,6 +957,7 @@ mod tests {
             price: None,
             image_png: None,
             color_hex: None,
+            color_hexes: Vec::new(),
             kind: "filament".into(),
         };
         assert!(crate::db::update_filament_spool(&conn, grey, &as_filament).is_err());

@@ -6,6 +6,7 @@ import { LanguageProviderWithDiagnostics } from './test/renderWithDiagnostics';
 import { UiDensityProvider } from './hooks/UiDensityContext';
 import { de } from './i18n/de';
 import { makeModelFile, makeModelFileSummary } from './test/factories';
+import { clickBulkMore } from './test/bulkBar';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -39,8 +40,8 @@ it('opens help from ?, the header button and the settings Info tab', async () =>
   fireEvent.keyDown(screen.getByRole('tab', { name: de.keyboardTab }), { key: 'Escape' }); expect(screen.queryByRole('dialog')).toBeNull();
   const headerButton = within(screen.getByRole('banner')).getByRole('button', { name: de.keyboardTipsTitle }); headerButton.focus(); fireEvent.click(headerButton);
   fireEvent.keyDown(screen.getByRole('tab', { name: de.keyboardTab }), { key: 'Escape' }); expect(headerButton).toHaveFocus();
-  fireEvent.click(screen.getByRole('button', { name: de.settingsTitle })); fireEvent.click(screen.getByRole('button', { name: de.settingsTabInfo }));
-  const infoButton = within(screen.getByRole('navigation')).getByRole('button', { name: de.keyboardTipsTitle }); infoButton.focus(); fireEvent.click(infoButton);
+  fireEvent.click(screen.getByRole('button', { name: de.settingsTitle })); fireEvent.click(screen.getByRole('tab', { name: de.settingsTabInfo }));
+  const infoButton = within(screen.getByRole('complementary', { name: de.settingsTitle })).getByRole('button', { name: de.keyboardTipsTitle }); infoButton.focus(); fireEvent.click(infoButton);
   expect(screen.getByRole('dialog', { name: de.keyboardTipsTitle })).toBeVisible(); fireEvent.keyDown(screen.getByRole('tab', { name: de.keyboardTab }), { key: 'Escape' }); expect(infoButton).toHaveFocus();
 });
 it('persists the General single-key switch and disables help', async () => {
@@ -115,7 +116,7 @@ it.each(['keyboard', 'toolbar'])('collection selection via %s sends only its vis
   fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
   if (mode === 'toolbar') fireEvent.click(screen.getByRole('button', { name: de.selectAllLabel }));
   expect(screen.getByText(de.bulkSelectedCount.replace('{count}', '1'))).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: de.licenseSet }));
+  clickBulkMore(de.licenseSet);
   fireEvent.change(screen.getByRole('combobox', { name: de.licenseHeading }), { target: { value: 'cc0' } });
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.licenseSave })); });
   expect(invoke).toHaveBeenCalledWith('set_license', { fileIds: ['a'], license: 'cc0' });

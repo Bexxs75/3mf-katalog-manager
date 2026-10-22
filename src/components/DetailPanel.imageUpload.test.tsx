@@ -86,3 +86,25 @@ it.each(['compact', 'comfort'])('edits licenses in the %s panel', async density 
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   expect(onSetLicense).toHaveBeenCalledWith(['model-1'], 'personal');
 });
+
+
+it.each(['compact', 'comfort'])('shortens long tag chips but removes the full tag (%s)', density => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  localStorage.setItem('3mf-katalog-density', density);
+  const tag = 'a'.repeat(95);
+  const onRemoveTag = vi.fn();
+  const noop = vi.fn();
+  render(<LanguageProvider><UiDensityProvider><DetailPanel model={makeModelFile({ tags: [tag] })} allTags={[]}
+    onAddTag={noop} onRemoveTag={onRemoveTag} onDelete={noop} onTogglePrintStatus={noop}
+    onToggleFavorite={noop} onToggleQueue={noop} onUploadImage={noop}
+    onSnapshotCaptured={noop} onSetSourceUrl={noop} onOpenInSlicer={noop} slicerError={null}
+  /></UiDensityProvider></LanguageProvider>);
+  const text = screen.getByText('#' + 'a'.repeat(28) + '…');
+  expect(text).toHaveClass('whitespace-nowrap');
+  expect(text.parentElement).toHaveAttribute('title', '#' + tag);
+  expect(text.parentElement).toHaveClass('max-w-full', 'min-w-0');
+  const remove = screen.getByRole('button', { name: tag + ' entfernen' });
+  expect(remove).toHaveClass('flex-none');
+  fireEvent.click(remove);
+  expect(onRemoveTag).toHaveBeenCalledWith(tag);
+});

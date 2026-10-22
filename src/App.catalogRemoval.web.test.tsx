@@ -75,7 +75,8 @@ it.each(['grid', 'list'])('removes through %s context menu only after confirmati
 it('removes a bulk selection with one request after confirmation', async () => {
   await start();
   fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
-  fireEvent.click(screen.getByRole('button', { name: de.removeCatalogShort }));
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(de.bulkMoreLabel) }));
+  fireEvent.click(screen.getByRole('menuitem', { name: de.removeCatalogShort }));
   expect(removals()).toHaveLength(0);
   fireEvent.mouseDown(screen.getByRole('button', { name: de.removeEntry }));
   fireEvent.click(screen.getByRole('button', { name: de.removeEntry }));

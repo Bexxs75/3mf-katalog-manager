@@ -350,6 +350,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: None,
+                color_hexes: Vec::new(),
                 kind: "filament".into(),
             },
         )
@@ -472,6 +473,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: None,
+                color_hexes: Vec::new(),
                 kind: "resin".into(),
             },
         )

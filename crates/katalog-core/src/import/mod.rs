@@ -1,6 +1,8 @@
 //! Serialized import jobs and their independent control path.
 pub mod files;
 pub mod placement;
+pub mod file_names;
+pub mod rename;
 mod error;
 mod worker;
 pub use error::ImportError;
@@ -260,6 +262,10 @@ pub struct ImportJob<A: ArchiveTypes = NoArchives> {
     pub placement_required: bool,
     pub parent_job_id: Option<String>,
     pub cancel: AtomicBool,
+    /// Folders the job's files must stay below (empty: no restriction). Set for imports
+    /// from source folders, where a folder swapped for a link after the scan must not
+    /// lead the worker to a file elsewhere.
+    confine_to: Vec<PathBuf>,
     control_state: AtomicU8,
     terminal_at: AtomicU64,
     input: JobInput<A::Request>,
@@ -499,8 +505,28 @@ impl<A: ArchiveTypes> ImportJobs<A> {
             BatchOptions { fixed_folder: Some(folder), transaction: rusqlite::TransactionBehavior::Immediate })
     }
     #[allow(clippy::too_many_arguments)]
+    pub fn enqueue_confined(
+        &self,
+        source: ImportSource,
+        target: Option<String>,
+        placement: bool,
+        parent: Option<String>,
+        input: JobInput<A::Request>,
+        error: Option<ImportJobError>,
+        confine_to: Vec<PathBuf>,
+    ) -> CmdResult<Arc<ImportJob<A>>> {
+        self.enqueue_with(source, target, placement, parent, input, error, BatchOptions::default(), confine_to)
+    }
+    #[allow(clippy::too_many_arguments)]
     pub fn enqueue_options(&self, source: ImportSource, target: Option<String>, placement: bool,
         parent: Option<String>, input: JobInput<A::Request>, error: Option<ImportJobError>, options: BatchOptions,
+    ) -> CmdResult<Arc<ImportJob<A>>> {
+        self.enqueue_with(source, target, placement, parent, input, error, options, Vec::new())
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn enqueue_with(&self, source: ImportSource, target: Option<String>, placement: bool,
+        parent: Option<String>, input: JobInput<A::Request>, error: Option<ImportJobError>, options: BatchOptions,
+        confine_to: Vec<PathBuf>,
     ) -> CmdResult<Arc<ImportJob<A>>> {
         if options.fixed_folder.is_some() && (placement || source != ImportSource::Files || !matches!(input, JobInput::Models(_))) {
             return Err(CmdError::expected("fixed folder requires explicit files without placement"));
@@ -522,6 +548,7 @@ impl<A: ArchiveTypes> ImportJobs<A> {
             target_folder_id: target,
             placement_required: placement,
             parent_job_id: parent,
+            confine_to,
             input,
             options,
             legacy: Mutex::new(None),
@@ -730,6 +757,13 @@ impl<A: ArchiveTypes> ImportJobs<A> {
     pub fn observe_picker(&self, path: &Path) {
         self.pickers
             .register(&[path.to_path_buf()], self.clock.now_ms(), 600_000);
+    }
+    /// Consumes the proof that the user chose `path` in a file dialog or dropped it on the
+    /// window. Single use, so a path is never accepted twice.
+    pub fn claim_user_selected(&self, path: &Path) -> bool {
+        let now = self.clock.now_ms();
+        let paths = [path.to_path_buf()];
+        self.pickers.claim(&paths, now) || self.drops.claim(&paths, now)
     }
 }
 

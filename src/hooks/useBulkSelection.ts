@@ -10,7 +10,8 @@ import type { ModelFile } from '../types';
 interface UseBulkSelectionArgs {
   models: ModelFile[];
   setModels: React.Dispatch<React.SetStateAction<ModelFile[]>>;
-  refetchAfterPartialDelete: (ids: string[]) => void | Promise<void>;
+  // Resolves with the reloaded list when the caller can provide it; used to tell which files survived.
+  refetchAfterPartialDelete: (ids: string[]) => void | Promise<void | readonly { id: string }[]>;
   refreshFolders: () => void;
   refreshTags: () => void | Promise<void>;
   refreshTrash: () => void;
@@ -28,6 +29,7 @@ export function useBulkSelection({
 }: UseBulkSelectionArgs) {
   const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [deleteFailures, setDeleteFailures] = useState<string[]>([]);
   // A single menu state prevents overlapping menus for every caller.
   const [openMenu, setOpenMenu] = useState<'collection' | 'addTag' | 'removeTag' | null>(null);
   const addToCollectionMenuOpen = openMenu === 'collection';
@@ -87,18 +89,43 @@ export function useBulkSelection({
     });
   }, [models]);
 
+  const dismissDeleteFailures = useCallback(() => setDeleteFailures([]), []);
+
   const bulkDelete = useCallback(async () => {
     if (!canManageFiles()) return Promise.resolve();
     const ids = Array.from(selectedForBulk);
+    const nameById = new Map(models.filter(model => selectedForBulk.has(model.id)).map(model => [model.id, model.name]));
+    setDeleteFailures([]);
+    let deleteError: unknown;
+    let deleteFailed = false;
     try {
       if (isReadOnly()) await fileOpsBatch('delete_files', ids);
       else await filesApi.deleteFiles(ids);
-    } finally {
-      // A successful batch can still contain skipped files; only the backend knows what remains.
-      await refetchAfterPartialDelete(ids);
-      setConfirmBulkDelete(false);
+    } catch (error) {
+      deleteFailed = true;
+      deleteError = error;
     }
-  }, [selectedForBulk, refetchAfterPartialDelete]);
+    // The backend skips files it cannot move (locked, read-only) without an
+    // error, so only the reloaded list shows what is still there. The reload
+    // runs even after a failed batch and its own failure must not replace the
+    // delete error or the list of files that survived.
+    let refreshFailed = false;
+    let refreshError: unknown;
+    let remaining: readonly { id: string }[] | void = undefined;
+    try {
+      remaining = await refetchAfterPartialDelete(ids);
+    } catch (error) {
+      refreshFailed = true;
+      refreshError = error;
+    }
+    setConfirmBulkDelete(false);
+    if (remaining) {
+      const stillThere = new Set(remaining.map(model => model.id));
+      setDeleteFailures(ids.filter(id => stillThere.has(id)).map(id => nameById.get(id) ?? id));
+    }
+    if (deleteFailed) throw deleteError;
+    if (refreshFailed) throw refreshError;
+  }, [models, selectedForBulk, refetchAfterPartialDelete]);
 
   const bulkAddToQueue = useCallback(() => {
     if (!canEditMetadata()) return Promise.resolve();
@@ -207,6 +234,8 @@ export function useBulkSelection({
     clearBulkSelection,
     deselectBulk,
     bulkDelete,
+    deleteFailures,
+    dismissDeleteFailures,
     bulkAddToQueue,
     bulkSetPrintStatus,
     bulkAddToCollectionAction,

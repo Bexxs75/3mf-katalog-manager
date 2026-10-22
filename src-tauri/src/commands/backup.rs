@@ -198,18 +198,25 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("files", &[
         "id", "name", "path", "file_type", "folder_id", "file_size_bytes",
         "imported_at", "deleted_at", "trash_path", "license",
+        "source_platform", "source_model_id", "source_profile_id",
     ]),
     ("folders", &["id", "name", "parent_id", "path"]),
     ("tags", &["id", "name", "color_hue"]),
     ("file_tags", &["file_id", "tag_id"]),
     ("file_metadata", &["file_id", "label", "value"]),
-    ("filament_spools", &["id", "material", "remaining_weight_g", "unit_id", "slot_index", "home_location", "color_hex", "kind"]),
+    ("filament_spools", &["id", "material", "remaining_weight_g", "unit_id", "slot_index", "home_location", "color_hex", "color_hexes", "kind"]),
     ("printers", &["id", "name", "position", "kind"]),
     ("material_units", &["id", "printer_id", "name", "kind", "slot_count", "bambu_ams_index", "position"]),
     ("collections", &["id", "name", "created_at"]),
     ("collection_files", &["collection_id", "file_id", "position"]),
     ("registered_slicers", &["id", "name", "executable_path", "is_auto_detected"]),
     ("app_settings", &["key", "value"]),
+    ("companion_files", &[
+        "id", "file_id", "name", "path", "kind", "size_bytes", "added_at", "deleted_at", "trash_path",
+    ]),
+    ("source_folders", &["id", "path", "added_at"]),
+    ("source_rejected", &["id", "path", "size_bytes", "rejected_at"]),
+    ("blocked_auto_tags", &["name", "blocked_at"]),
     ("printer_connections", &["printer_id", "kind", "address", "connected_since", "paused"]),
     ("printer_jobs", &[
         "id", "printer_id", "remote_id", "file_name", "outcome", "raw_status", "ended_at",
@@ -297,6 +304,9 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("files", "custom_image_png", ColType::Blob, true),
     ("files", "source_url", ColType::Text, true),
     ("files", "license", ColType::Text, true),
+    ("files", "source_platform", ColType::Text, true),
+    ("files", "source_model_id", ColType::Text, true),
+    ("files", "source_profile_id", ColType::Text, true),
     ("files", "queue_position", ColType::Integer, true),
     ("files", "favorite", ColType::Integer, false),
     ("files", "plate_count", ColType::Integer, true),
@@ -330,6 +340,7 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("filament_spools", "price", ColType::Real, true),
     ("filament_spools", "image_png", ColType::Blob, true),
     ("filament_spools", "color_hex", ColType::Text, true),
+    ("filament_spools", "color_hexes", ColType::Text, true),
     ("filament_spools", "home_location", ColType::Text, true),
     ("filament_spools", "unit_id", ColType::Integer, true),
     ("filament_spools", "slot_index", ColType::Integer, true),
@@ -355,6 +366,26 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("registered_slicers", "name", ColType::Text, false),
     ("registered_slicers", "executable_path", ColType::Text, false),
     ("registered_slicers", "is_auto_detected", ColType::Integer, false),
+    // companion_files, source_folders, source_rejected - see db/companions.rs and db/sources.rs.
+    ("companion_files", "id", ColType::Integer, false),
+    ("companion_files", "file_id", ColType::Integer, false),
+    ("companion_files", "name", ColType::Text, false),
+    ("companion_files", "path", ColType::Text, false),
+    ("companion_files", "kind", ColType::Text, false),
+    ("companion_files", "size_bytes", ColType::Integer, true),
+    ("companion_files", "added_at", ColType::Text, false),
+    ("companion_files", "deleted_at", ColType::Text, true),
+    ("companion_files", "trash_path", ColType::Text, true),
+    ("source_folders", "id", ColType::Integer, false),
+    ("source_folders", "path", ColType::Text, false),
+    ("source_folders", "added_at", ColType::Text, false),
+    ("source_rejected", "id", ColType::Integer, false),
+    ("source_rejected", "path", ColType::Text, false),
+    ("source_rejected", "size_bytes", ColType::Integer, false),
+    ("source_rejected", "rejected_at", ColType::Text, false),
+    // blocked_auto_tags - see db/blocked_tags.rs.
+    ("blocked_auto_tags", "name", ColType::Text, false),
+    ("blocked_auto_tags", "blocked_at", ColType::Text, false),
     // Printer connection - see db/printer_link.rs (connection_from_row, job_from_row).
     ("app_settings", "key", ColType::Text, false),
     ("app_settings", "value", ColType::Text, false),
@@ -504,6 +535,28 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
     if bad_colors > 0 {
         return Err("Katalog-Datenbank enthaelt ungueltige Farbwerte".to_string());
     }
+
+    // The colour list is parsed again on every load; a foreign backup must not bring
+    // oversized lists or text that is not a colour.
+    let mut color_lists = conn
+        .prepare("SELECT color_hexes, color_hex FROM filament_spools WHERE color_hexes IS NOT NULL")
+        .map_err(|e| e.to_string())?;
+    for row in color_lists
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)))
+        .map_err(|e| e.to_string())?
+    {
+        let (raw, single) = row.map_err(|e| e.to_string())?;
+        // The single colour (slicer matching) must equal the first list entry, as the
+        // app itself always stores it.
+        let valid = serde_json::from_str::<Vec<String>>(&raw).is_ok_and(|list| {
+            crate::db::printers::validate_color_list(&list).is_ok()
+                && list.first().is_none_or(|first| single.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(first)))
+        });
+        if !valid {
+            return Err("Katalog-Datenbank enthaelt ungueltige Farblisten".to_string());
+        }
+    }
+    drop(color_lists);
 
     // Resin only in a resin vat, filament never. A crafted backup can bring the
     // column without its CHECK.
@@ -670,6 +723,17 @@ fn validate_catalog_db_bytes(
                     .map_err(|e| e.to_string())?;
             }
             drop(licenses);
+            // Shown in the UI, so a foreign backup must not smuggle in oversized or control text.
+            let mut sources = conn.prepare(
+                "SELECT source_platform, source_model_id, source_profile_id FROM files
+                 WHERE source_platform IS NOT NULL OR source_model_id IS NOT NULL OR source_profile_id IS NOT NULL")
+                .map_err(|e| e.to_string())?;
+            for row in sources.query_map([], |row| Ok([row.get::<_, Option<String>>(0)?, row.get(1)?, row.get(2)?])).map_err(|e| e.to_string())? {
+                for value in row.map_err(|e| e.to_string())?.into_iter().flatten() {
+                    crate::threemf::source::validate_source_value(&value).map_err(|e| e.to_string())?;
+                }
+            }
+            drop(sources);
 
             // A DB with a current user_version skips every migration and can bring tables
             // without CHECK, FK and unique index. Without this check e.g.
@@ -780,6 +844,42 @@ fn validate_catalog_db_bytes(
                         .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 }
             }
+            // Companion rows decide which files the app moves, deletes or opens, so each
+            // must look like what the app itself writes: allowed kind, an `_extras`
+            // folder, no protected location, a trash file only inside the trash.
+            let mut stmt = conn
+                .prepare("SELECT name, path, kind, trash_path FROM companion_files")
+                .map_err(|e| e.to_string())?;
+            let companions = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            for (name, path, kind, trash_path) in companions {
+                validate_imported_path_length(&path, known_folders)?;
+                if let Some(path) = trash_path.as_ref().filter(|p| !p.trim().is_empty()) {
+                    validate_imported_path_length(path, known_folders)?;
+                }
+                companions::validate_stored_fields(&name, &path, &kind)
+                    .map_err(|why| format!("Begleitdatei-Eintrag im Archiv abgelehnt ({why})"))?;
+                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
+                    .map_err(|e| format!("Begleitdatei-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
+                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &trash_denylist)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                    reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
+                }
+            }
+            drop(stmt);
+            validate_blocked_auto_tags(&conn)?;
             Ok(())
         });
 
@@ -788,6 +888,25 @@ fn validate_catalog_db_bytes(
         log::warn!(target: "backup", "invalid catalog database: {e}");
         "Archiv enthält keine gültige Katalog-Datenbank.".to_string()
     })
+}
+/// The names are shown in the settings and compared with every new tag, so a
+/// foreign backup must not bring an endless list or oversized or control text.
+fn validate_blocked_auto_tags(conn: &Connection) -> Result<(), String> {
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    if count as usize > crate::db::blocked_tags::MAX_BLOCKED_TAGS {
+        return Err("Katalog-Datenbank enthaelt zu viele gesperrte Tags".to_string());
+    }
+    let names: Vec<String> = conn
+        .prepare("SELECT name FROM blocked_auto_tags")
+        .and_then(|mut s| s.query_map([], |r| r.get(0))?.collect())
+        .map_err(|e| e.to_string())?;
+    for name in names {
+        crate::db::blocked_tags::normalize_blocked_name(&name)
+            .map_err(|_| "Katalog-Datenbank enthaelt einen ungueltigen gesperrten Tag".to_string())?;
+    }
+    Ok(())
 }
 /// Boundary used by `import_catalog`: a rejected backup file (bad schema,
 /// corrupted DB, a path escaping the trash/sensitive-dir checks, ...) is always
@@ -1150,6 +1269,7 @@ mod tests {
             custom_image_png: None,
             source_url: None,
             license: None,
+            source: Default::default(),
             queue_position: None,
             favorite: false,
             plate_count: None,
@@ -1161,7 +1281,8 @@ mod tests {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
             crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
             conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+            // The license step is the one before the source-column step.
+            conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION - 2).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_ok());
         for (value, valid) in [(None, true), (Some("cc-by".to_string()), true),
@@ -1179,6 +1300,222 @@ mod tests {
             conn.execute("UPDATE files SET license = X'1234' WHERE id = ?1", [id]).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
+    }
+
+    fn state_with_catalog(name: &str) -> (AppState, PathBuf) {
+        let dir = unique_test_dir(name);
+        let db_path = dir.join("catalog.db");
+        let state = AppState {
+            import_jobs: ImportJobs::default(),
+            db: Mutex::new(db::connect(&db_path).unwrap()),
+            trash_dir: dir.join("trash"),
+            db_path,
+            sensitive_dirs: Vec::new(),
+        };
+        (state, dir)
+    }
+
+    fn stored_source(state: &AppState) -> Vec<(Option<String>, Option<String>, Option<String>)> {
+        let conn = state.db.lock().unwrap();
+        db::list_files(&conn).unwrap().into_iter()
+            .map(|f| (f.source_platform, f.source_model_id, f.source_profile_id)).collect()
+    }
+
+    #[test]
+    fn platform_and_ids_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_source_roundtrip_a");
+        {
+            let mut conn = source.db.lock().unwrap();
+            let mut file = sample_new_file_for_rescan_test(&dir.join("model.3mf"));
+            file.source = db::models::SourceInfo {
+                platform: Some("makerworld".into()),
+                model_id: Some("USfa963547e39de4".into()),
+                profile_id: Some("1067399466".into()),
+            };
+            db::insert_file(&mut conn, &file).unwrap();
+            let mut plain = sample_new_file_for_rescan_test(&dir.join("plain.3mf"));
+            plain.name = "plain.3mf".into();
+            db::insert_file(&mut conn, &plain).unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_source_roundtrip_b");
+        assert!(stored_source(&target).is_empty());
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let mut restored = stored_source(&target);
+        restored.sort();
+        assert_eq!(restored, vec![
+            (None, None, None),
+            (Some("makerworld".into()), Some("USfa963547e39de4".into()), Some("1067399466".into())),
+        ]);
+    }
+
+    #[test]
+    fn a_backup_from_before_the_source_columns_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_source_old_a");
+        {
+            let mut conn = old.db.lock().unwrap();
+            let mut file = sample_new_file_for_rescan_test(&dir.join("old.3mf"));
+            file.creator = Some("Jane".into());
+            db::insert_file(&mut conn, &file).unwrap();
+            conn.execute_batch("ALTER TABLE files DROP COLUMN source_platform; ALTER TABLE files DROP COLUMN source_model_id; ALTER TABLE files DROP COLUMN source_profile_id").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION - 1).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT source_platform FROM files").is_err(), "precondition: the backup has no such column");
+
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_source_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        assert_eq!(stored_source(&target), vec![(None, None, None)]);
+        let conn = target.db.lock().unwrap();
+        assert_eq!(db::list_files(&conn).unwrap()[0].creator.as_deref(), Some("Jane"));
+    }
+
+    fn spool_colors(state: &AppState) -> Vec<(Option<String>, Vec<String>)> {
+        let conn = state.db.lock().unwrap();
+        db::list_filament_spools(&conn).unwrap().into_iter().map(|s| (s.color_hex, s.color_hexes)).collect()
+    }
+
+    fn colour_spool(colors: &[&str]) -> db::models::NewFilamentSpool {
+        db::models::NewFilamentSpool {
+            material: "PLA".into(),
+            manufacturer: None,
+            color: None,
+            location: None,
+            diameter_mm: 1.75,
+            original_weight_g: 1000.0,
+            remaining_weight_g: 500.0,
+            price: None,
+            image_png: None,
+            color_hex: None,
+            color_hexes: colors.iter().map(|c| c.to_string()).collect(),
+            kind: "filament".into(),
+        }
+    }
+
+    #[test]
+    fn spool_color_lists_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_colors_roundtrip_a");
+        {
+            let conn = source.db.lock().unwrap();
+            db::insert_filament_spool(&conn, &colour_spool(&["#ff0000", "#00ff00", "#ff0000"])).unwrap();
+            db::insert_filament_spool(&conn, &colour_spool(&[])).unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_colors_roundtrip_b");
+        assert!(spool_colors(&target).is_empty());
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let mut restored = spool_colors(&target);
+        restored.sort();
+        assert_eq!(restored, vec![
+            (None, vec![]),
+            (Some("#ff0000".into()), vec!["#ff0000".into(), "#00ff00".into(), "#ff0000".into()]),
+        ]);
+    }
+
+    #[test]
+    fn a_backup_from_before_the_spool_color_list_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_colors_old_a");
+        {
+            let conn = old.db.lock().unwrap();
+            let mut spool = colour_spool(&[]);
+            spool.color_hex = Some("#b03020".into());
+            db::insert_filament_spool(&conn, &spool).unwrap();
+            conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN color_hexes").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SPOOL_COLOR_LIST_MIGRATION_VERSION - 1).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT color_hexes FROM filament_spools").is_err(), "precondition: the backup has no such column");
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_colors_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        assert_eq!(spool_colors(&target), vec![(Some("#b03020".into()), vec![])]);
+    }
+
+    #[test]
+    fn imported_spool_color_lists_are_checked() {
+        for (value, valid) in [
+            (r##"["#ff0000","#00ff00","#0000ff","#ffffff"]"##, true),
+            (r##"["#ff0000","#ff0000"]"##, true),
+            (r##"["#ff0000","#00ff00","#0000ff","#ffffff","#000000"]"##, false),
+            (r##"["#ff0000","red"]"##, false),
+            (r##"["#ff00001"]"##, false),
+            (r##"{"a":1}"##, false),
+            ("not json", false),
+        ] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                db::insert_filament_spool(conn, &colour_spool(&[])).unwrap();
+                conn.execute("UPDATE filament_spools SET color_hexes = ?1, color_hex = '#ff0000'", [value]).unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
+            assert_eq!(result.is_ok(), valid, "{value}: {result:?}");
+        }
+    }
+
+    #[test]
+    fn an_imported_color_list_must_start_with_the_single_color() {
+        for (single, valid) in [(Some("#ff0000"), true), (Some("#FF0000"), true), (Some("#0000ff"), false), (None, false)] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                db::insert_filament_spool(conn, &colour_spool(&[])).unwrap();
+                conn.execute(
+                    "UPDATE filament_spools SET color_hexes = '[\"#ff0000\",\"#00ff00\"]', color_hex = ?1",
+                    [single],
+                )
+                .unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
+            assert_eq!(result.is_ok(), valid, "{single:?}: {result:?}");
+        }
+    }
+
+    #[test]
+    fn imported_source_values_are_checked() {
+        for (column, value, valid) in [
+            ("source_platform", "makerworld".to_string(), true),
+            ("source_model_id", "é".repeat(128), true),
+            ("source_model_id", "é".repeat(129), false),
+            ("source_profile_id", "12\u{7}34".to_string(), false),
+            ("source_profile_id", "12\u{202E}34".to_string(), false),
+        ] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+                conn.execute(&format!("UPDATE files SET {column} = ?1 WHERE id = ?2"), rusqlite::params![value, id]).unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
+            assert_eq!(result.is_ok(), valid, "{column}: {result:?}");
+        }
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            conn.execute("UPDATE files SET source_model_id = X'1234' WHERE id = ?1", [id]).unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err(), "a BLOB is the wrong storage class");
     }
 
     #[test]
@@ -1866,6 +2203,7 @@ mod tests {
                     price: None,
                     image_png: None,
                     color_hex: Some("#1a1a1a".to_string()),
+                    color_hexes: Vec::new(),
                     kind: "filament".to_string(),
                 },
             )
@@ -2005,6 +2343,7 @@ mod tests {
             metadata.insert("Slicer".to_string(), "Bambu Studio".to_string());
             let new_file = NewFile {
                 license: None,
+                source: Default::default(),
                 name: "Gehaeuse.3mf".to_string(),
                 path: "/tmp/Projekte/Gehaeuse.3mf".to_string(),
                 file_type: FileType::ThreeMf,
@@ -2057,6 +2396,7 @@ mod tests {
                     price: Some(19.99),
                     image_png: Some(vec![9, 9, 9]),
                     color_hex: Some("#1a1a1a".to_string()),
+                    color_hexes: Vec::new(),
                     kind: "filament".to_string(),
                 },
             )
@@ -2770,6 +3110,29 @@ mod tests {
         assert_eq!(err.message, "Archiv enthält keine settings.json");
     }
 
+    /// Fixture written with the previous ZIP library and its default options,
+    /// exactly like `write_zip_atomically` produced it.
+    #[test]
+    fn read_catalog_archive_reads_a_backup_written_by_the_previous_library() {
+        let bytes = include_bytes!("testdata/backup_zip2.zip").to_vec();
+        let (db_bytes, settings_json) = read_catalog_archive(std::io::Cursor::new(bytes)).expect("legacy backup readable");
+        assert!(db_bytes.starts_with(b"SQLite format 3\0"));
+        assert_eq!(settings_json, r#"{"language":"de","theme":"dark"}"#);
+    }
+
+    #[test]
+    fn read_catalog_archive_enforces_the_size_limit_on_real_entries() {
+        let at_limit = vec![b' '; MAX_IMPORT_SETTINGS_BYTES as usize];
+        let ok = zip_bytes_with(&[("catalog.db", b"x"), ("settings.json", &at_limit)]);
+        assert!(read_catalog_archive(std::io::Cursor::new(ok)).is_ok());
+
+        let too_big = vec![b' '; MAX_IMPORT_SETTINGS_BYTES as usize + 1];
+        let bad = zip_bytes_with(&[("catalog.db", b"x"), ("settings.json", &too_big)]);
+        let err = read_catalog_archive(std::io::Cursor::new(bad)).unwrap_err();
+        assert!(err.expected);
+        assert!(err.message.contains("zu groß"), "{}", err.message);
+    }
+
     #[test]
     fn read_catalog_archive_returns_both_entries_when_present() {
         let buf = zip_bytes_with(&[("catalog.db", b"fake db bytes"), ("settings.json", br#"{"a":1}"#)]);
@@ -2927,6 +3290,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: None,
+                color_hexes: Vec::new(),
                 kind: "resin".to_string(),
             },
         )
@@ -3070,6 +3434,7 @@ mod tests {
             price: None,
             image_png: None,
             color_hex: None,
+            color_hexes: Vec::new(),
             kind: "resin".to_string(),
         }
     }
@@ -3128,5 +3493,251 @@ mod tests {
             .unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod companion_tests {
+    use super::*;
+
+    fn state_with_catalog(name: &str) -> (AppState, PathBuf) {
+        let dir = unique_test_dir(name);
+        let db_path = dir.join("catalog.db");
+        let state = AppState {
+            import_jobs: ImportJobs::default(),
+            db: Mutex::new(db::connect(&db_path).unwrap()),
+            trash_dir: dir.join("trash"),
+            db_path,
+            sensitive_dirs: Vec::new(),
+        };
+        (state, dir)
+    }
+
+    /// The bytes of a catalog database after `setup` ran on it, plus the trash folder to validate against.
+    fn catalog_bytes(setup: impl FnOnce(&Connection)) -> (Vec<u8>, PathBuf) {
+        let dir = unique_test_dir("backup_companion_bytes");
+        let path = dir.join("catalog.db");
+        {
+            let conn = crate::db::connect(&path).unwrap();
+            setup(&conn);
+        }
+        (std::fs::read(&path).unwrap(), dir.join("trash"))
+    }
+
+    fn with_companion(conn: &Connection, name: &str, path: &str, kind: &str, trash_path: Option<&str>) {
+        // A crafted backup need not carry the CHECK constraints.
+        conn.pragma_update(None, "ignore_check_constraints", true).unwrap();
+        let id = crate::db::test_insert_minimal_file(conn, "/catalog/Foo.3mf", None).unwrap();
+        conn.execute(
+            "INSERT INTO companion_files (file_id, name, path, kind, added_at, deleted_at, trash_path) VALUES (?1, ?2, ?3, ?4, 'now', ?5, ?6)",
+            rusqlite::params![id, name, path, kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path],
+        )
+        .unwrap();
+    }
+
+    fn validate(bytes: &[u8], trash: &Path) -> Result<(), String> {
+        validate_catalog_db_bytes(bytes, &[], trash, &[])
+    }
+
+    #[test]
+    fn companions_and_source_folders_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_companion_roundtrip_a");
+        {
+            let conn = source.db.lock().unwrap();
+            with_companion(&conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", None);
+            conn.execute("INSERT INTO source_folders (path, added_at) VALUES ('/downloads', 't')", []).unwrap();
+            conn.execute("INSERT INTO source_rejected (path, size_bytes, rejected_at) VALUES ('/downloads/x.stl', 12, 't')", []).unwrap();
+            crate::db::printer_link::set_setting(&conn, "source_check_on_start", "1").unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate(&db_bytes, &dir).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+
+        let (target, _target_dir) = state_with_catalog("backup_companion_roundtrip_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        let restored: (String, String, String) = conn
+            .query_row("SELECT name, path, kind FROM companion_files", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap();
+        assert_eq!(restored, ("pic.png".into(), "/catalog/Foo_extras/pic.png".into(), "image".into()));
+        let count = |table: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!((count("source_folders"), count("source_rejected")), (1, 1));
+        assert!(crate::db::sources::source_check_on_start(&conn).unwrap());
+    }
+
+    #[test]
+    fn a_backup_from_before_the_new_tables_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_companion_old_a");
+        {
+            let conn = old.db.lock().unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
+            conn.execute_batch("DROP TABLE companion_files; DROP TABLE source_folders; DROP TABLE source_rejected").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT * FROM companion_files").is_err(), "precondition: the backup has no such table");
+
+        validate(&db_bytes, &dir).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_companion_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        for table in ["companion_files", "source_folders", "source_rejected"] {
+            let rows: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert_eq!(rows, 0, "{table} exists and is empty");
+        }
+        assert_eq!(db::list_files(&conn).unwrap()[0].creator.as_deref(), Some("Jane"));
+    }
+
+    #[test]
+    fn a_well_formed_companion_row_is_accepted() {
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", None));
+        assert!(validate(&bytes, &trash).is_ok());
+    }
+
+    #[test]
+    fn crafted_companion_rows_are_rejected() {
+        let cases: [(&str, &str, &str, &str); 7] = [
+            ("not an _extras folder", "secret.png", "/home/user/.ssh/secret.png", "image"),
+            ("name does not match the path", "other.png", "/catalog/Foo_extras/pic.png", "image"),
+            ("a kind that does not exist", "pic.png", "/catalog/Foo_extras/pic.png", "exe"),
+            ("kind and extension disagree", "pic.png", "/catalog/Foo_extras/pic.png", "pdf"),
+            ("an executable as an image", "tool.exe", "/catalog/Foo_extras/tool.exe", "image"),
+            ("a parent reference", "pic.png", "/catalog/Foo_extras/../pic.png", "image"),
+            ("a relative path", "pic.png", "Foo_extras/pic.png", "image"),
+        ];
+        for (why, name, path, kind) in cases {
+            let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, name, path, kind, None));
+            assert!(validate(&bytes, &trash).is_err(), "{why}");
+        }
+    }
+
+    #[test]
+    fn a_companion_row_in_a_protected_folder_is_rejected() {
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "a.png", "/home/user/.config/autostart_extras/a.png", "image", None));
+        assert!(validate_catalog_db_bytes(&bytes, &[PathBuf::from("/home/user/.config")], &trash, &[]).is_err());
+        assert!(validate(&bytes, &trash).is_ok(), "counter-check: allowed when nothing is protected there");
+    }
+
+    #[test]
+    fn a_companion_trash_path_must_lie_inside_the_trash_folder() {
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", Some("/home/user/Documents/precious.png")));
+        assert!(validate(&bytes, &trash).is_err(), "a restored backup must not make the app delete a document");
+        let inside = trash.join("companion-1-pic.png");
+        let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", Some(&inside.to_string_lossy())));
+        let _ = trash;
+        assert!(validate(&bytes, inside.parent().unwrap()).is_ok(), "counter-check: inside the trash it is fine");
+    }
+
+    #[test]
+    fn blocked_auto_tags_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_blocked_tags_a");
+        {
+            let conn = source.db.lock().unwrap();
+            db::blocked_tags::block_auto_tag(&conn, "Miniature").unwrap();
+            db::blocked_tags::block_auto_tag(&conn, "kabelhalter").unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate(&db_bytes, &dir).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+
+        let (target, _target_dir) = state_with_catalog("backup_blocked_tags_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        assert_eq!(db::blocked_tags::list_blocked_auto_tags(&conn).unwrap(), vec!["kabelhalter", "miniatur"]);
+    }
+
+    #[test]
+    fn a_backup_from_before_the_blocked_tags_table_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_blocked_tags_old_a");
+        {
+            let conn = old.db.lock().unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
+            conn.execute_batch("DROP TABLE blocked_auto_tags").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::BLOCKED_AUTO_TAGS_MIGRATION_VERSION - 1).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT * FROM blocked_auto_tags").is_err(), "precondition: the backup has no such table");
+
+        validate(&db_bytes, &dir).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_blocked_tags_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        assert!(db::blocked_tags::list_blocked_auto_tags(&conn).unwrap().is_empty());
+        assert_eq!(db::list_files(&conn).unwrap()[0].creator.as_deref(), Some("Jane"));
+    }
+
+    #[test]
+    fn crafted_blocked_tag_rows_are_rejected() {
+        let long = "x".repeat(101);
+        for (why, name) in [("too long", long.as_str()), ("control character", "a\u{7}b"), ("empty", "  ")] {
+            let (bytes, trash) = catalog_bytes(|conn| {
+                conn.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES (?1, 't')", [name]).unwrap();
+            });
+            assert!(validate(&bytes, &trash).is_err(), "{why}");
+        }
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES ('miniatur', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_ok(), "counter-check: a normal entry passes");
+    }
+
+    #[test]
+    fn a_backup_with_too_many_blocked_tags_is_rejected() {
+        let limit = crate::db::blocked_tags::MAX_BLOCKED_TAGS;
+        for (rows, accepted) in [(limit, true), (limit + 1, false)] {
+            let (bytes, trash) = catalog_bytes(|conn| {
+                // One transaction: a commit per row makes this test take a minute.
+                conn.execute_batch("BEGIN").unwrap();
+                for i in 0..rows {
+                    conn.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES (?1, 't')", [format!("tag{i}")]).unwrap();
+                }
+                conn.execute_batch("COMMIT").unwrap();
+            });
+            assert_eq!(validate(&bytes, &trash).is_ok(), accepted, "{rows} rows");
+        }
+    }
+
+    #[test]
+    fn wrong_storage_classes_in_blocked_auto_tags_are_rejected() {
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES (X'1234', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_err());
+    }
+
+    #[test]
+    fn wrong_storage_classes_in_the_new_tables_are_rejected() {
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO source_rejected (path, size_bytes, rejected_at) VALUES ('/d/x.stl', 'big', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_err());
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO source_folders (path, added_at) VALUES (X'1234', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_err());
     }
 }

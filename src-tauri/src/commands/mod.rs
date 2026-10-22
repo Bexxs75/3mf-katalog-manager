@@ -10,6 +10,7 @@ mod archives;
 mod backup;
 mod imported_paths;
 mod collections;
+mod companions;
 mod diagnostics;
 mod dropped_image;
 mod error;
@@ -18,31 +19,42 @@ mod files;
 mod file_modified_backfill;
 pub(crate) use file_modified_backfill::backfill_file_modified_at;
 mod import_jobs;
+mod import_rename;
+mod date_rename;
 pub use import_jobs::*;
 mod filament;
 mod folders;
 mod rename;
+mod linux_menu;
 mod printer_link;
 mod printers;
 mod security;
 mod slicers;
+mod source_folders;
 mod trash;
+mod folder_trash;
 mod updater;
 
 pub use archives::*;
 pub use backup::*;
 pub use collections::*;
+pub use companions::*;
 pub use diagnostics::*;
 pub use dropped_image::*;
 pub use error::*;
 pub use files::*;
+pub use import_rename::*;
+pub use date_rename::*;
 pub use filament::*;
 pub use folders::*;
+pub use linux_menu::*;
 pub use printer_link::*;
 pub use printers::*;
 pub use security::*;
 pub use slicers::*;
+pub use source_folders::*;
 pub use trash::*;
+pub use folder_trash::*;
 pub use updater::*;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -79,13 +91,9 @@ use katalog_core::read::to_dto;
 pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::MutexGuard<'a, Connection>> {
     state.db.lock().map_err(|_| "database lock poisoned".into())
 }
-/// Moves a file without ever overwriting an existing target.
-///
-/// Always copies with `OpenOptions::create_new(true)` (O_EXCL/CREATE_NEW):
-/// `std::fs::rename` replaces an existing target on POSIX and Windows, a prior
-/// `exists()` check would be a TOCTOU window, and rename-no-replace only exists
-/// as three platform-specific syscalls. Not atomic as a whole: after a crash,
-/// source and target can briefly both exist.
+/// Moves a file without ever overwriting an existing target, keeping its
+/// permissions and modification time (hard link first, copy as fallback; see
+/// `katalog_core::import::placement::move_file`).
 pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     katalog_core::import::placement::move_file(from, to)
 }
@@ -157,6 +165,9 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
 #[cfg(test)]
 pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_at: &str) -> FileRecord {
     FileRecord {
+        source_platform: None,
+        source_model_id: None,
+        source_profile_id: None,
         id,
         name: format!("file-{id}.3mf"),
         path: format!("/tmp/file-{id}.3mf"),
@@ -195,23 +206,6 @@ pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_a
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[cfg(unix)]
-    #[test]
-    fn moved_files_are_private() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = unique_test_dir("move_private");
-        std::fs::create_dir_all(&dir).unwrap();
-        let from = dir.join("source");
-        let to = dir.join("target");
-        std::fs::write(&from, b"private model").unwrap();
-        std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644)).unwrap();
-        move_file(&from, &to).unwrap();
-        assert_eq!(std::fs::metadata(&to).unwrap().permissions().mode() & 0o777, 0o600);
-        assert_eq!(std::fs::read(&to).unwrap(), b"private model");
-        assert!(!from.exists());
-        std::fs::remove_dir_all(dir).unwrap();
-    }
 
     #[test]
     fn validate_source_url_accepts_http_and_https() {
@@ -301,7 +295,10 @@ mod tests {
 
         let result = move_file(&from, &to);
 
-        assert!(result.is_err(), "move_file must refuse to overwrite an existing destination");
+        assert_eq!(
+            result.expect_err("move_file must refuse to overwrite an existing destination").kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
         assert_eq!(
             std::fs::read(&to).unwrap(),
             b"EXISTING-DEST-CONTENT",
@@ -321,11 +318,14 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o000)).unwrap();
             let to = dir.join("dest.3mf");
-            let result = move_file(&from, &to);
+            // The hard-link path would succeed on an unreadable file, so force
+            // the copy path, where reading the source fails.
+            let result = katalog_core::import::placement::move_file_by_copy(&from, &to);
             // Reset permissions so the unique_test_dir cleanup (if any) isn't blocked.
             std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644)).unwrap();
             assert!(result.is_err());
             assert!(!to.exists(), "partially written destination must be cleaned up on copy failure");
+            assert!(from.exists(), "source must survive a failed copy");
         }
     }
 

@@ -97,7 +97,9 @@ jobs:
           # The author feed is public; a post that already carries this release URL
           # means the announcement went out (e.g. a manual re-run after a failure).
           FEED=$(curl -sS "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${BLUESKY_HANDLE}&limit=30&filter=posts_no_replies" || echo '{}')
-          if echo "$FEED" | jq -e --arg url "$POST_URL" '[.feed[]?.post.record.text // ""] | any(contains($url))' >/dev/null; then
+          # The URL must match as a whole: the release URL of v0.16.0 is also a prefix of
+          # the one of v0.16.0-12, which would wrongly count the stable release as posted.
+          if echo "$FEED" | jq -e --arg url "$POST_URL" '($url | gsub("[.]"; "\\.")) as $re | [.feed[]?.post.record.text // ""] | any(test($re + "($|[^-0-9A-Za-z.])"))' >/dev/null; then
             echo "already=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Release already posted on Bluesky ($POST_URL), skipping."
           else

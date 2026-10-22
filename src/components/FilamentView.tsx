@@ -9,9 +9,11 @@ import { formatVolumeMl, formatWeightG } from '../i18n/format';
 import type { FilamentSpool, SpoolKind } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { filamentStockStatus } from '../lib/filamentStatus';
-import { isValidColorHex } from '../lib/filamentColors';
+import { groupFilaments, singleSpoolGroups, type SpoolGroup } from '../lib/filamentGroups';
 import { restockSpoolLabel, roundTenth } from '../lib/filamentRestock';
+import { loadLayout, saveLayout, type LayoutMode } from '../lib/layoutPreference';
 import { loadSpoolKind, saveSpoolKind } from '../lib/spoolKindPreference';
+import { loadGroupMode, saveGroupMode, type GroupMode } from '../lib/groupModePreference';
 import { FilamentDashboard } from './FilamentDashboard';
 import { FilamentTable } from './FilamentTable';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
@@ -22,6 +24,7 @@ import { SpoolToast } from './SpoolToast';
 import { RestockPopover } from './RestockPopover';
 import { ConsumeResinPopover } from './ConsumeResinPopover';
 import { SegmentedControl } from './SegmentedControl';
+import { SpoolColorDot } from './SpoolColorDot';
 import type { PrintersState } from '../hooks/usePrinters';
 import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
 import * as printersApi from '../lib/api/printers';
@@ -29,14 +32,13 @@ import { isInStorage, spoolFitsUnit, spoolLabel } from '../lib/filamentSlots';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
-type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
 
 /** How long newly created entries keep their green outline. */
 const HIGHLIGHT_MS = 2500;
 
 type PopoverType = 'restock' | 'consume';
-type PopoverState = { type: PopoverType; spool: FilamentSpool; anchor: HTMLElement };
+type PopoverState = { type: PopoverType; spool: FilamentSpool; anchor: HTMLElement; choices?: FilamentSpool[] };
 
 type ToastState =
   | { type: 'unload'; spoolId: string; label: string; location: string | null }
@@ -60,7 +62,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
   const [error, setError] = useState<AppError | null>(null);
-  const [layout, setLayout] = useState<LayoutMode>('dashboard');
+  const [layout, setLayout] = useState<LayoutMode>(loadLayout);
+  const [groupMode, setGroupModeState] = useState<GroupMode>(loadGroupMode);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -98,6 +101,13 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
     setConfirmDeleteId(null);
   };
 
+  const changeGroupMode = (next: GroupMode) => {
+    setGroupModeState(next);
+    saveGroupMode(next);
+    setPopover(null);
+    setConfirmDeleteId(null);
+  };
+
   useEffect(() => {
     if (highlightIds.size === 0) return;
     const timer = setTimeout(() => setHighlightIds(new Set()), HIGHLIGHT_MS);
@@ -121,7 +131,13 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
     [spools],
   );
 
-  // Spools in a printer appear only in the right column, not in storage.
+  const formKind = editingSpool?.kind ?? kind;
+  const knownManufacturers = useMemo(
+    () => spools.filter(s => s.kind === formKind).map(s => s.manufacturer).filter((name): name is string => !!name),
+    [spools, formKind],
+  );
+
+  // Single view: spools in a printer appear only in the right column, not in storage.
   const storageSpools = useMemo(() => spools.filter((s) => isInStorage(s) && s.kind === kind), [spools, kind]);
 
   // The printer connection only knows filament (resin is never a booking target).
@@ -137,23 +153,52 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
     [spools, printers.printers],
   );
 
-  const filtered = useMemo(() => {
+  /** "X1C · AMS 1": printer and unit name of a loaded group. */
+  const unitLabel = useCallback(
+    (unitId: string) => {
+      const printer = printers.printers.find((p) => p.units.some((u) => u.id === unitId));
+      const unit = printer?.units.find((u) => u.id === unitId);
+      if (!printer || !unit) return '';
+      return `${printer.name} · ${unit.kind === 'resin_vat' ? t('printersKindResinVat') : unit.name}`;
+    },
+    [printers.printers, t],
+  );
+
+  const grouped = groupMode === 'grouped';
+  const ofKind = useMemo(() => spools.filter((s) => s.kind === kind), [spools, kind]);
+  // Grouped view also shows loaded spools, one group per printer unit; the single view
+  // keeps listing only what is on the shelf.
+  const allGroups = useMemo(() => groupFilaments(ofKind, unitLabel), [ofKind, unitLabel]);
+
+  const filteredGroups = useMemo<SpoolGroup[]>(() => {
     const needle = query.trim().toLowerCase();
-    return storageSpools.filter((s) => {
+    if (grouped) {
+      return allGroups.filter((g) => {
+        if (statusFilter && g.status !== statusFilter) return false;
+        if (!needle) return true;
+        const place = g.place.kind === 'unit' ? g.place.label : g.place.location;
+        return [g.first.material, g.first.manufacturer, g.first.color, place].some((v) => v?.toLowerCase().includes(needle));
+      });
+    }
+    const singles = storageSpools.filter((s) => {
       if (statusFilter && filamentStockStatus(s) !== statusFilter) return false;
       if (!needle) return true;
       return [s.material, s.manufacturer, s.color, s.location].some((v) => v?.toLowerCase().includes(needle));
     });
-  }, [storageSpools, query, statusFilter]);
+    return singleSpoolGroups(singles);
+  }, [grouped, allGroups, storageSpools, query, statusFilter]);
+  const filtered = useMemo(() => filteredGroups.flatMap((g) => g.spools), [filteredGroups]);
 
   const stats = useMemo(() => {
-    const ofKind = spools.filter((s) => s.kind === kind);
     const totalRemaining = roundTenth(ofKind.reduce((sum, s) => sum + s.remainingWeightG, 0));
     // Loaded spools keep their storage location in `homeLocation`.
     const locations = new Set(ofKind.map((s) => s.location ?? s.homeLocation).filter(Boolean)).size;
-    const attention = ofKind.filter((s) => filamentStockStatus(s) !== 'ok').length;
-    return { total: ofKind.length, totalRemaining, locations, attention };
-  }, [spools, kind]);
+    // The cards warn per group, so the grouped view counts groups; the single view counts spools.
+    const attention = grouped
+      ? allGroups.filter((g) => g.status !== 'ok').length
+      : ofKind.filter((s) => filamentStockStatus(s) !== 'ok').length;
+    return { total: ofKind.length, sorts: allGroups.length, totalRemaining, locations, attention };
+  }, [ofKind, allGroups, grouped]);
 
   const openAddPanel = () => {
     if (!canEditMetadata()) return;
@@ -226,8 +271,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
 
   const dismissToast = useCallback(() => setToast(null), []);
 
-  const togglePopover = (type: PopoverType, spool: FilamentSpool, anchor: HTMLElement) =>
-    !web && canEditMetadata() && setPopover((prev) => (prev?.type === type && prev.spool.id === spool.id ? null : { type, spool, anchor }));
+  const togglePopover = (type: PopoverType, spool: FilamentSpool, anchor: HTMLElement, choices?: FilamentSpool[]) =>
+    !web && canEditMetadata() && setPopover((prev) => (prev?.type === type && prev.spool.id === spool.id ? null : { type, spool, anchor, choices }));
   const closePopover = useCallback(() => setPopover(null), []);
   const handleRestocked = (created: FilamentSpool[]) => {
     const template = popover?.spool;
@@ -240,7 +285,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
     refresh();
   };
   const handleConsumed = (updated: FilamentSpool) => {
-    const before = popover?.spool;
+    // With several bottles to choose from, the one used may differ from the one opened.
+    const before = spools.find((s) => s.id === updated.id) ?? popover?.spool;
     setPopover(null);
     if (before) {
       const deducted = roundTenth(before.remainingWeightG - updated.remainingWeightG);
@@ -289,10 +335,14 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           <PrinterJobsBanner jobs={printerLink.jobs} onReview={() => setJobsOpen(true)} />
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2.5">
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
             <div className="text-compact-meta ui-label text-[var(--ink-3)] mb-1.5">{kind === 'resin' ? t('resinStatTotal') : t('filamentStatTotal')}</div>
             <div className="tabular-nums text-heading font-bold">{stats.total}</div>
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
+            <div className="text-compact-meta ui-label text-[var(--ink-3)] mb-1.5">{t('filamentStatSorts')}</div>
+            <div className="tabular-nums text-heading font-bold">{stats.sorts}</div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
             <div className="text-compact-meta ui-label text-[var(--ink-3)] mb-1.5">{t('filamentStatRemaining')}</div>
@@ -355,13 +405,23 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           </button>
 
           <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[8px] bg-[var(--panel-2)]">
-            <button onClick={() => setLayout('dashboard')} className={`${segBase} ${layout === 'dashboard' ? segActive : segInactive}`}>
+            <button onClick={() => { setLayout('dashboard'); saveLayout('dashboard'); }} className={`${segBase} ${layout === 'dashboard' ? segActive : segInactive}`}>
               {t('filamentViewDashboard')}
             </button>
-            <button onClick={() => setLayout('list')} className={`${segBase} ${layout === 'list' ? segActive : segInactive}`}>
+            <button onClick={() => { setLayout('list'); saveLayout('list'); }} className={`${segBase} ${layout === 'list' ? segActive : segInactive}`}>
               {t('filamentViewList')}
             </button>
           </div>
+
+          <SegmentedControl
+            label={t('filamentGroupModeLabel')}
+            options={[
+              { value: 'grouped', label: t('filamentGroupModeGrouped') },
+              { value: 'single', label: t('filamentGroupModeSingle') },
+            ]}
+            value={groupMode}
+            onChange={changeGroupMode}
+          />
 
           <button
             disabled={!canEdit}
@@ -382,6 +442,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           {layout === 'dashboard' ? (
             <FilamentDashboard
               spools={filtered}
+              groups={filteredGroups}
               confirmDeleteId={confirmDeleteId}
               onEdit={openEditPanel}
               onRequestDelete={requestDelete}
@@ -390,13 +451,15 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
               onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
               onRestock={web ? undefined : (spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={!web && popover?.type === 'restock' ? popover.spool.id : null}
-              onConsume={web ? undefined : (spool, anchor) => togglePopover('consume', spool, anchor)}
+              onConsume={web ? undefined : (spool, anchor, choices) => togglePopover('consume', spool, anchor, choices)}
               consumeOpenId={!web && popover?.type === 'consume' ? popover.spool.id : null}
               highlightIds={highlightIds}
             />
           ) : (
             <FilamentTable
               spools={filtered}
+              groups={filteredGroups}
+              showCount={grouped}
               confirmDeleteId={confirmDeleteId}
               onEdit={openEditPanel}
               onRequestDelete={requestDelete}
@@ -405,7 +468,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
               onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
               onRestock={web ? undefined : (spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={!web && popover?.type === 'restock' ? popover.spool.id : null}
-              onConsume={web ? undefined : (spool, anchor) => togglePopover('consume', spool, anchor)}
+              onConsume={web ? undefined : (spool, anchor, choices) => togglePopover('consume', spool, anchor, choices)}
               consumeOpenId={!web && popover?.type === 'consume' ? popover.spool.id : null}
               highlightIds={highlightIds}
               kind={kind}
@@ -439,9 +502,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           className="fixed z-50 pointer-events-none px-2.5 py-1.5 rounded-md border border-[var(--accent)] bg-[var(--panel)] shadow-[var(--shadow)] text-small font-semibold flex items-center gap-1.5 -rotate-2"
           style={{ left: drag.pointer.x + 12, top: drag.pointer.y + 12 }}
         >
-          {draggedSpool.colorHex && isValidColorHex(draggedSpool.colorHex) && (
-            <span className="w-3 h-3 rounded-full border border-[var(--line-strong)]" style={{ backgroundColor: draggedSpool.colorHex }} />
-          )}
+          <SpoolColorDot spool={draggedSpool} />
           {spoolLabel(draggedSpool)}
         </div>
       )}
@@ -474,6 +535,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
         <ConsumeResinPopover
           key={popover.spool.id}
           spool={popover.spool}
+          choices={popover.choices}
           anchor={popover.anchor}
           onClose={closePopover}
           onConsumed={handleConsumed}
@@ -483,6 +545,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
       <FilamentSpoolForm
         open={panelOpen && canEdit}
         editing={editingSpool}
+        knownManufacturers={knownManufacturers}
+        knownSpools={spools}
         knownLocations={knownLocations}
         onClose={() => setPanelOpen(false)}
         onSaved={refresh}

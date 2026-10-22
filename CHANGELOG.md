@@ -11,7 +11,89 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
-- **Docker (working, but possibly still unstable):** the Catalog Manager runs as a container with a browser desktop (Selkies), login protection, a companion page for the catalog in the browser and a published image. See `docker/README.md`.
+- **Import:** The result dialog after an import offers to show the newly added models.
+- **Accessibility:** Screen readers now announce model cards and list rows with name and selection state, and the number of selected models.
+- **Source folders:** set up folders like Downloads, check them for new models (on request, optionally at app start) and move the chosen files into the catalog or decline them.
+- **Detail view:** for models downloaded from Makerworld, platform, model ID and profile ID are shown (read from the 3MF file); use 'Rescan metadata' to fill them for existing models.
+- **Import:** After an import, the notice offers a button to open the 'Recently added' view.
+- **Folders:** Rename a folder from the folder tree (context menu or F2); the folder is renamed on disk too and its models are carried along.
+- **Folders:** Delete a folder from the folder tree: its models move to the app trash (7 days), other files and non-empty folders stay on disk.
+- **Import filenames:** optional date/time prefixes (`YYYY-MM-DD_HH-MM_`), off by default. New catalog models get collision-safe names with extension-preserving length limits; external files imported in place are not renamed. Existing entries, disk sync, backup restoration and archive extraction are unchanged.
+- **Rename with date:** the selection bar has a new entry "Rename with date …" that prefixes existing models with a date (`YYYY-MM-DD_HH-MM_`), taken from the file's modified date (default) or the import date. A preview lists every old and new name first; files that already have a date, whose target name is taken, that are missing, in the trash or outside the catalog folders are skipped, and nothing is renamed before you confirm. Files are renamed on disk and in the catalog together; a failure on one file does not stop the others.
+- **Sync with disk:** files that were renamed or moved outside the app (for example in the file manager, including a renamed folder) are recognised by their identical content and offered as "Renamed or moved", ticked by default. Applying keeps the existing catalog entry with its tags, favourite, notes, print log and collections instead of creating a second, empty one; when a whole folder was renamed, the folder entry follows. A match is only made when it is unambiguous and the file is unchanged. New files with the same content as a model already in the catalog are listed separately, not ticked by default. Every entry in the dialog now has its own checkbox.
+- **Folders:** Folders that no longer exist on disk are marked in the folder tree and listed by the sync with disk. They are only reported; "Remove missing files from the catalog" then also removes the folder entry together with its missing models (into the app trash).
+- **Moving models:** Several models can be moved at once, by dragging a selected card (all selected cards travel along, the folder shows the count) or with "Move to …" (selection bar, context menu or key M). The notice names the folder and says which files were skipped or failed.
+- **Undo:** Ctrl+Z (Cmd+Z on macOS) or the "Undo" button takes back moving models, moving folders and renaming folders, several steps in a row, as long as the app is running.
+- **Companion files:** add pictures, PDFs and text files to a model, show them and open them (pictures as thumbnails with an enlarged view, PDF and text with the default program). Archive imports assign them to their model automatically. They live in a folder `Name_extras` next to the model and go to the trash together with the model. Companion files removed by mistake can be restored from the notice or from the "Removed" list of the model for 7 days.
+- **Sync with disk on start:** optional setting that checks the catalog folders at start and shows a notice only when something changed; a second option adds new files and detected renames without asking (never removes anything, never adds duplicates).
+- **Detail page:** a 3MF without slicer data now explains why no filament usage is shown and how to export a sliced plate, with a link to the manual.
+- **Print bed:** the detail view lists, for every printer of the Printer Manager that has a build volume, whether the model fits (width and depth may swap when the model is turned on the plate; the height stays). A new filter "Fits on" in the filter bar shows only models that fit the chosen printer; models without known size stay visible.
+- **Material Manager:** equal spools are grouped into one card with the count, total rest and total target amount; a click shows the single spools, each with its own bar. Spools in a printer form a group per unit (for example "X1C · AMS 1"). Cards are sorted by remaining share, lowest first. A switch "Grouped / Single" (grouped by default, remembered) applies to the dashboard and the list; the header also shows the number of different kinds.
+- **Material Manager:** multi-color spools: up to four colors per spool, shown as a split color dot. The first color is used to match the slicer colors.
+- **Material Manager:** a new spool starts with the weight last used for the same manufacturer and material (otherwise the manufacturer, otherwise 1000 g); the field stays editable. When loading from the shelf into a printer or deducting resin by hand, the spool with the smallest rest that still suffices is suggested.
+- **Block automatic tags:** for a tag the app would assign to the model by itself, the ✕ in the detail view offers "Remove and do not assign automatically again". The tag is then no longer assigned automatically on new imports and syncs, in every language and regardless of upper or lower case; you can still add it by hand. Settings → Catalog lists all blocked tags under "Blocked automatic tags", and each block can be lifted with "Lift block".
+
+### Fixed
+
+- **Folders:** renaming or moving a folder now also carries files whose catalog entry is not assigned to that folder, and trashed entries below it, so they no longer point to a path that does not exist any more. If a new path is already taken by another entry, the rename or move is cancelled and nothing is changed.
+- **Sync with disk:** Sync with disk no longer offers a file again as new when the catalog knows it under a symbolic-link path.
+
+### Changed
+
+- **Automatic tags:** More automatic tags are shown in the app language: lid, drawer, hook, vase, box, organizer, wall mount, keychain, toy, gear, tool, adapter, spare part, lamp and small. The German name is still what is stored; hand-typed names such as 'lid' or 'couvercle' are merged with 'deckel'. Existing catalogs are otherwise unchanged.
+- **Settings:** Settings now open in the right-hand panel instead of a small window over the models and folders.
+- **Moving model files:** Moved model files keep the permissions and modification time of the original file.
+- **Trash:** Restoring a model from the trash now recreates its folder if it no longer exists, so models of a deleted folder can be brought back.
+- **Catalog database:** The catalog database gets three new columns for the platform and model ID of downloaded files; older catalogs are upgraded automatically (a copy is saved first).
+- **Catalog database:** The catalog database gets new tables for companion files and for remembered source folders; older catalogs are upgraded automatically (a copy is saved first).
+- **Catalog database:** The catalog database gets a new column for the colors of a spool (schema version 50); older catalogs are upgraded automatically (a copy is saved first).
+- **Catalog database:** The catalog database gets a new table that remembers blocked automatic tags (schema version 51); older catalogs are upgraded automatically (a copy is kept).
+- **Robustness:** More robust handling of companion files, folder deletion and the start sync with unusual or oversized files.
+- Updated the library used for catalog backups and archive import.
+- **Selection bar:** The selection bar is always visible, grouped by purpose, with rarely used actions in a "More" menu, and no longer hidden by the detail panel.
+
+
+## [0.16.3] - 2026-10-21
+
+### Fixed
+
+- **Material Manager:** the chosen view ("Dashboard" or "List") is now kept when you switch to the catalog and back.
+- **Tag suggestion list:** long tags now wrap, so the highlight spans the full width of the list instead of showing a horizontal scroll bar. The empty list no longer stops after 200 tags.
+- **Material Manager, manufacturers:** manufacturers you typed yourself now appear in the suggestion list for new and edited spools (filament and resin kept apart).
+- **Sync with disk:** each entry now shows the file path and the catalog folder on separate, labeled lines ("File" / "Catalog folder"), so they are no longer read as one split path.
+- **Long tags:** very long tags no longer run out of their chip in the detail panel, detail page, list and sidebar. The display is cut after 29 characters with “…”; the full tag shows as a tooltip and is stored unchanged.
+
+## [0.16.2] - 2026-10-19
+
+### Fixed
+
+- **Linux AppImage:** the start-menu entry now shows the app logo on KDE Plasma (the launcher file points at the icon file directly instead of a theme icon name); existing entries are updated on the next start.
+
+## [0.16.1] - 2026-10-19
+
+### Added
+
+- **Start-menu entry (Linux AppImage):** on request, the AppImage adds itself to the start menu. It asks once on the first start ("Yes" / "Not now" / "Never ask"); the switch "Show in start menu" in Settings → General adds or removes the entry later. Nothing is written without your consent, the entry follows the file if you move or replace it, and entries from other tools (for example AppImageLauncher) or foreign files of the same name are never touched. Not shown for package installs.
+
+### Changed
+
+- **Filter bar:** the button "Clear all" is now called "Reset filters", so it is clear that only the filters are reset and no models are deleted.
+
+### Fixed
+
+- **Delete on the detail page:** "Delete" now asks for confirmation first, like the list and the side panel; cancelling (button or Escape) changes nothing and returns focus to the "Delete" button.
+- **Deleting several models:** if a file cannot be deleted (for example because it is locked or read-only), a message now names how many files are left (with their names, shortened for long lists) and stays until dismissed. A failure while reloading the list no longer hides it.
+- **Moving into a missing folder:** if the target folder (or the file itself) no longer exists on disk, moving a model now explains this and suggests syncing the catalog with the disk, instead of showing a raw system error with a "Report problem" link.
+- **Moving folders:** a drop that cannot work now says why instead of doing nothing: onto the folder itself or one of its subfolders, onto the folder it is already in, onto a folder that already has a folder of the same name, or for the catalog root folder and the folders above it. If a folder is missing on disk, the message suggests syncing the catalog; the backend also checks the real locations on disk.
+- **Number fields:** turning the mouse wheel over a focused number field no longer changes its value while you scroll the page; the field simply loses focus and the page scrolls on.
+- **Docker, slicer links:** special characters in the file name (such as `+`, spaces or umlauts) no longer show up as `%2B`, `%20` or similar in the slicer. The name in the link is now simplified to plain characters (for example `Würfel Größe.3mf` becomes `Wurfel_Grosse.3mf`); the downloaded file keeps its real name.
+- **Update from within the app (Linux AppImage):** after "Restart and install" the app now starts again on its own. Before, the new version was installed and the catalog backed up, but the app closed and had to be started by hand. The update from 0.16.0 to 0.16.1 itself still runs with the old code, so start the app by hand once after it; from 0.16.1 on it restarts by itself.
+
+## [0.16.0] - 2026-10-17
+
+### Added
+
+- **Docker (working, but possibly still unstable):** the Catalog Manager runs as a container with a browser desktop (Selkies), login protection, a companion page for the catalog in the browser and a published image. It is experimental and in maintenance mode: only bug and security fixes, no new features. See `docker/README.md`.
 
 - **Archive import:** when a ZIP or other archive contains files that are not models (for example TXT or PDF), the import notice now says how many were extracted but not added to the catalog (the catalog only shows models) and that they are in the target folder.
 - **Automated UI tests:** expanded real mouse/keyboard coverage for disk sync, licenses and usage, print status, collection sorting, bulk tags, trash restoration and cancelling bug reports; updated printer/plate checks and excluded screenreader-only text from visual layout audits.
@@ -59,6 +141,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Grid tiles keep a fixed width instead of stretching to fill the row, so the grid no longer jumps when the details panel opens or closes.
+
 - Select all (Ctrl/Cmd+A and "Select all") in an open collection now selects only the models shown there. Before, models outside the collection were selected too, so bulk actions such as delete or set license reached them.
 - After a bulk delete the list is reloaded from the catalog, so models whose deletion was skipped (for example for missing file permissions) stay visible instead of disappearing until the next refresh.
 - An open details page keeps source, slicer info, cost estimate and plate count when an import finishes; before they were missing until the model was opened again.
@@ -82,6 +166,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Folder imports now report skipped archives and point to “Import → Files...”, even when no models were imported.
 
 - Disk sync on Windows and macOS no longer creates duplicate files or folders after case-only renames; existing catalog paths are preserved.
+
+- When syncing with the disk, files of an empty or unmounted folder (NAS/USB not mounted) and files on an unplugged removable drive are no longer treated as "missing"; they count as unreachable and are not offered for removal.
 
 - The import banner counted only models that had also been moved to the target folder, so it could say “0 models imported” although they were in the catalog. Models imported but not moved are now counted as imported and shown as “of which not placed”.
 - Large 3MF projects (model files up to 2 GiB unpacked, such as high-resolution Bambu Studio projects) can now be imported: model XML is read without loading the whole text into memory. Models above 3 million triangles show the translated size-limit explanation instead of opening the 3D preview.
@@ -120,6 +206,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Sturdier import, restore and anonymization of log files: unusual file and folder names are handled safely.
 - 3D preview of large slicer projects: projects with up to 128 part files (before: 32) now open in the 3D view; the catalog showed a size warning for them.
 - Catalogs from early development builds could keep slicer data (filament use per plate) in the wrong database column, which made the 3D view report an unsupported file type. The app repairs this at the first start (a safety copy of the catalog is made first), and the preview only follows the trash location for files that are really in the trash.
+
+## [0.15.4] - 2026-10-10
+
+### Fixed
+- 3MF projects from Bambu Studio and Orca Slicer with more than 32 part files could not be imported ("Too many referenced model files") and showed no 3D preview. The app now reads up to 128 part files per project.
 
 ## [0.15.4] - 2026-10-10
 
@@ -597,7 +688,89 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
-- **Docker (funktionsfähig, aber möglicherweise noch instabil):** der Katalog Manager läuft als Container mit Browser-Desktop (Selkies), Anmeldeschutz, Begleitseite für den Katalog im Browser und veröffentlichtem Image. Anleitung in `docker/README.md`.
+- **Import:** Auch der Ergebnisdialog nach einem Import bietet an, die neu hinzugefügten Modelle anzuzeigen.
+- **Barrierefreiheit:** Bildschirmleser sagen Modellkarten und Listenzeilen jetzt mit Name und Auswahlzustand an, außerdem die Anzahl der ausgewählten Modelle.
+- **Quellordner:** Ordner wie Downloads einrichten, auf neue Modelle prüfen (auf Knopfdruck, optional beim Start) und die gewählten Dateien in den Katalog verschieben oder ablehnen.
+- **Detailansicht:** Bei von Makerworld heruntergeladenen Modellen werden Plattform, Modell-ID und Profil-ID angezeigt (aus der 3MF-Datei gelesen); über „Metadaten neu einlesen“ lassen sie sich für bestehende Modelle nachtragen.
+- **Import:** Nach einem Import bietet der Hinweis einen Knopf, der die Ansicht „Neu hinzugefügt“ öffnet.
+- **Ordner:** Ordner lassen sich in der Ordnerliste umbenennen (Kontextmenü oder F2); der Ordner wird auch auf der Festplatte umbenannt und seine Modelle werden mitgeführt.
+- **Ordner:** Ordner lassen sich in der Ordnerliste löschen: Ihre Modelle wandern in den App-Papierkorb (7 Tage), andere Dateien und nicht leere Ordner bleiben auf der Festplatte.
+- **Dateinamen beim Import:** optionaler Datums-/Uhrzeitpräfix (`JJJJ-MM-TT_HH-MM_`), standardmäßig aus. Neue Katalogmodelle erhalten kollisionsfreie Namen mit Längenbegrenzung und erhaltener Endung; externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt. Bestehende Einträge, Festplattenabgleich, Backup-Wiederherstellung und Archiv-Entpacken bleiben unverändert.
+- **Mit Datum umbenennen:** Die Auswahlleiste hat den neuen Eintrag „Mit Datum umbenennen …“, der bestehenden Modellen ein Datum (`JJJJ-MM-TT_HH-MM_`) voranstellt, wahlweise aus dem Änderungsdatum der Datei (Standard) oder dem Importdatum. Eine Vorschau zeigt vorher alle alten und neuen Namen; Dateien mit schon vorhandenem Datum, vergebenem Zielnamen, fehlende, im Papierkorb liegende oder außerhalb der Katalogordner liegende Dateien werden übersprungen, und ohne Bestätigung wird nichts umbenannt. Datei auf der Festplatte und Katalogeintrag werden zusammen umbenannt; ein Fehler bei einer Datei hält die übrigen nicht auf.
+- **Abgleich mit der Festplatte:** Dateien, die außerhalb der App umbenannt oder verschoben wurden (z. B. im Dateimanager, auch ein umbenannter Ordner), werden am gleichen Inhalt erkannt und als „Umbenannt oder verschoben“ angeboten, standardmäßig angehakt. Beim Übernehmen bleibt der bestehende Katalogeintrag mit Tags, Favorit, Notizen, Druckprotokoll und Sammlungen erhalten, statt einen zweiten, leeren anzulegen; wurde ein ganzer Ordner umbenannt, zieht der Ordnereintrag mit. Eine Zuordnung erfolgt nur, wenn sie eindeutig ist und die Datei unverändert ist. Neue Dateien mit gleichem Inhalt wie ein Modell, das schon im Katalog ist, stehen in einer eigenen Gruppe und sind nicht vorausgewählt. Jeder Eintrag im Dialog hat jetzt eine eigene Checkbox.
+- **Ordner:** Ordner, die auf der Festplatte nicht mehr existieren, sind im Ordnerbaum markiert und werden vom Abgleich mit der Festplatte aufgelistet. Sie werden nur gemeldet; „Fehlende Dateien aus dem Katalog entfernen“ entfernt dann auch den Ordnereintrag samt seinen fehlenden Modellen (in den App-Papierkorb).
+- **Modelle verschieben:** Mehrere Modelle lassen sich auf einmal verschieben, durch Ziehen einer markierten Karte (alle markierten Karten ziehen mit, der Ordner zeigt die Anzahl) oder über „Verschieben nach …“ (Auswahlleiste, Kontextmenü oder Taste M). Der Hinweis nennt den Ordner und welche Dateien übersprungen wurden oder fehlgeschlagen sind.
+- **Rückgängig:** Strg+Z (Cmd+Z auf macOS) oder der Knopf „Rückgängig“ nimmt das Verschieben von Modellen, das Verschieben von Ordnern und das Umbenennen von Ordnern zurück, auch mehrere Schritte hintereinander, solange die App läuft.
+- **Begleitdateien:** Bilder, PDF- und Textdateien lassen sich einem Modell hinzufügen, anzeigen und öffnen (Bilder als Vorschau mit Großansicht, PDF und Text mit dem Standardprogramm). Beim Archiv-Import werden sie automatisch dem Modell zugeordnet. Sie liegen in einem Ordner `Name_extras` neben dem Modell und gehen mit dem Modell in den Papierkorb. Versehentlich entfernte Begleitdateien lassen sich 7 Tage lang über den Hinweis oder die Liste „Entfernt“ des Modells wiederherstellen.
+- **Abgleich mit der Festplatte beim Start:** Optionale Einstellung, die beim Start die Katalogordner prüft und nur bei Änderungen einen Hinweis zeigt; eine zweite Option nimmt neue Dateien und erkannte Umbenennungen ohne Rückfrage auf (entfernt nie etwas, nimmt nie Duplikate auf).
+- **Detailseite:** Eine 3MF ohne Slicer-Daten erklärt jetzt, warum kein Filamentverbrauch angezeigt wird und wie man eine geslicte Platte exportiert, mit Link zum Handbuch.
+- **Druckbett:** Die Detailansicht listet für jeden Drucker des Printer Managers mit Bauraum, ob das Modell passt (Breite und Tiefe dürfen vertauscht werden, wenn das Modell auf der Platte gedreht wird; die Höhe bleibt). Ein neuer Filter „Passt auf“ in der Filterleiste zeigt nur Modelle, die auf den gewählten Drucker passen; Modelle ohne bekannte Maße bleiben sichtbar.
+- **Material Manager:** Gleiche Spulen werden zu einer Karte mit Stückzahl, Gesamtrest und Gesamtsoll zusammengefasst; ein Klick zeigt die einzelnen Spulen, jede mit eigenem Balken. Spulen in einem Drucker bilden je Einheit eine eigene Gruppe (z. B. „X1C · AMS 1“). Die Karten sind nach Restbestand-Anteil sortiert, knappe zuerst. Ein Umschalter „Gruppiert / Einzeln“ (Standard gruppiert, wird gemerkt) gilt für Dashboard und Liste; die Kopfzahlen zeigen zusätzlich die Zahl der verschiedenen Sorten.
+- **Material Manager:** Mehrfarbige Spulen: bis zu vier Farben je Spule, als geteilter Farbpunkt dargestellt. Die erste Farbe gilt für den Abgleich mit den Slicer-Farben.
+- **Material Manager:** Eine neue Spule startet mit dem zuletzt genutzten Gewicht für denselben Hersteller und dasselbe Material (sonst für den Hersteller, sonst 1000 g); das Feld bleibt änderbar. Beim Einlegen aus dem Regal in einen Drucker und beim manuellen Abbuchen von Resin wird die Spule mit dem kleinsten noch ausreichenden Rest vorgeschlagen.
+- **Automatische Tags sperren:** Bei einem Tag, den die App für das Modell selbst vergeben würde, bietet das ✕ im Detailbereich „Entfernen und nicht mehr automatisch vergeben“ an. Der Tag wird dann bei neuen Importen und beim Abgleich nicht mehr automatisch vergeben, in allen Sprachen und ohne Groß-/Kleinschreibung; von Hand kannst du ihn weiterhin vergeben. Unter Einstellungen → Katalog listet „Gesperrte automatische Tags“ alle Sperren, jede lässt sich mit „Sperre aufheben“ lösen.
+
+### Behoben
+
+- **Ordner:** Beim Umbenennen oder Verschieben eines Ordners werden jetzt auch Dateien mitgeführt, deren Katalogeintrag diesem Ordner nicht zugeordnet ist, sowie Einträge im Papierkorb darunter; sie zeigen danach nicht mehr auf einen nicht mehr vorhandenen Pfad. Ist ein neuer Pfad bereits durch einen anderen Eintrag belegt, wird das Umbenennen oder Verschieben abgebrochen und nichts verändert.
+- **Abgleich mit der Festplatte:** Der Abgleich bietet eine Datei nicht mehr erneut als neu an, wenn der Katalog sie unter einem Pfad über einen symbolischen Link kennt.
+
+### Geändert
+
+- **Automatische Tags:** Mehr automatische Tags erscheinen in der App-Sprache: Deckel, Schublade, Haken, Vase, Box, Organizer, Wandhalterung, Schlüsselanhänger, Spielzeug, Zahnrad, Werkzeug, Adapter, Ersatzteil, Lampe und klein. Gespeichert wird weiter der deutsche Name; von Hand getippte Namen wie „lid“ oder „couvercle“ werden mit „deckel“ zusammengeführt. Bestehende Kataloge bleiben sonst unverändert.
+- **Einstellungen:** Die Einstellungen öffnen sich jetzt im rechten Bereich statt in einem kleinen Fenster über den Modellen und Ordnern.
+- **Modelldateien verschieben:** Verschobene Modelldateien behalten die Rechte und die Änderungszeit der Originaldatei.
+- **Papierkorb:** Beim Wiederherstellen eines Modells aus dem Papierkorb wird sein Ordner neu angelegt, falls er nicht mehr existiert; so lassen sich Modelle eines gelöschten Ordners zurückholen.
+- **Katalog-Datenbank:** Die Katalog-Datenbank bekommt drei neue Spalten für die Plattform und die Modell-ID heruntergeladener Dateien; ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
+- **Katalog-Datenbank:** Die Katalog-Datenbank bekommt neue Tabellen für Begleitdateien und für gemerkte Quellordner; ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
+- **Katalog-Datenbank:** Die Katalog-Datenbank bekommt eine neue Spalte für die Farben einer Spule (Schema 50); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
+- **Katalog-Datenbank:** Die Katalog-Datenbank bekommt eine neue Tabelle, die gesperrte automatische Tags merkt (Schema 51); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
+- **Robustheit:** Begleitdateien, Ordner löschen und der Abgleich beim Start kommen besser mit ungewöhnlichen oder sehr großen Dateien zurecht.
+- Die Bibliothek für Katalog-Backups und Archiv-Import wurde aktualisiert.
+- **Auswahlleiste:** Die Auswahlleiste ist immer sichtbar, nach Zweck gegliedert, selten genutzte Aktionen stehen im Menü „Mehr“, und der Detailbereich verdeckt sie nicht mehr.
+
+
+## [0.16.3] - 2026-10-21
+
+### Behoben
+
+- **Material Manager:** Die gewählte Ansicht („Dashboard“ oder „Liste“) bleibt erhalten, wenn du zum Katalog und zurück wechselst.
+- **Tag-Vorschlagsliste:** Lange Tags brechen jetzt um, damit der Treffer-Balken die volle Listenbreite hat und keine waagerechte Scroll-Leiste erscheint. Die leere Liste endet nicht mehr nach 200 Tags.
+- **Material Manager, Hersteller:** Selbst eingetippte Hersteller erscheinen jetzt in der Vorschlagsliste für neue und bearbeitete Spulen (Filament und Resin getrennt).
+- **Abgleich mit der Festplatte:** Pro Eintrag stehen Dateipfad und Katalogordner jetzt in getrennten, beschrifteten Zeilen („Datei“ / „Katalogordner“) und werden nicht mehr als ein geteilter Pfad gelesen.
+- **Lange Tags:** Sehr lange Tags laufen in Detailbereich, Detailseite, Liste und Seitenleiste nicht mehr aus dem Chip. Die Anzeige wird nach 29 Zeichen mit „…“ gekürzt; der volle Tag erscheint als Tooltip und bleibt unverändert gespeichert.
+
+## [0.16.2] - 2026-10-19
+
+### Behoben
+
+- **Linux-AppImage:** Der Startmenü-Eintrag zeigt unter KDE Plasma jetzt das App-Logo (die Starter-Datei verweist direkt auf die Symboldatei statt auf einen Symbolnamen aus dem Theme); bestehende Einträge werden beim nächsten Start aktualisiert.
+
+## [0.16.1] - 2026-10-19
+
+### Hinzugefügt
+
+- **Startmenü-Eintrag (Linux-AppImage):** Auf Wunsch trägt sich das AppImage selbst ins Startmenü ein. Beim ersten Start fragt es einmal nach („Ja“ / „Nicht jetzt“ / „Nie fragen“); mit dem Schalter „Im Startmenü anzeigen“ unter Einstellungen → Allgemein lässt sich der Eintrag später anlegen oder entfernen. Ohne deine Zustimmung wird nichts geschrieben, der Eintrag folgt der Datei, wenn du sie verschiebst oder ersetzt, und Einträge anderer Programme (zum Beispiel AppImageLauncher) oder fremde Dateien gleichen Namens bleiben unangetastet. Bei Paket-Installationen wird nichts davon angezeigt.
+
+### Geändert
+
+- **Filterleiste:** Der Knopf „Alle löschen“ heißt jetzt „Filter zurücksetzen“, damit klar ist, dass nur die Filter zurückgesetzt werden und keine Modelle gelöscht werden.
+
+### Behoben
+
+- **Löschen auf der Detailseite:** „Löschen“ fragt jetzt vorher nach, wie in der Liste und im Seitenbereich; Abbrechen (Knopf oder Escape) ändert nichts und setzt den Fokus zurück auf „Löschen“.
+- **Mehrere Modelle löschen:** Lässt sich eine Datei nicht löschen (zum Beispiel weil sie gesperrt oder schreibgeschützt ist), nennt eine Meldung jetzt, wie viele Dateien übrig geblieben sind (mit Namen, bei langen Listen gekürzt); sie bleibt, bis du sie schließt. Ein Fehler beim Neuladen der Liste überdeckt sie nicht mehr.
+- **Verschieben in einen fehlenden Ordner:** Existiert der Zielordner (oder die Datei selbst) auf der Festplatte nicht mehr, erklärt das Verschieben eines Modells das jetzt und empfiehlt, den Katalog mit der Festplatte abzugleichen, statt eine rohe Systemmeldung mit „Problem melden“ zu zeigen.
+- **Ordner verschieben:** Ein Ablegen, das nicht funktionieren kann, sagt jetzt, warum, statt nichts zu tun: auf den Ordner selbst oder einen seiner Unterordner, auf den Ordner, in dem er schon liegt, auf einen Ordner, der schon einen gleichnamigen Ordner enthält, oder beim Katalog-Stammordner und den Ordnern darüber. Fehlt ein Ordner auf der Festplatte, empfiehlt die Meldung den Abgleich des Katalogs; das Backend prüft außerdem die tatsächlichen Orte auf der Festplatte.
+- **Zahlenfelder:** Das Mausrad über einem fokussierten Zahlenfeld ändert beim Scrollen der Seite den Wert nicht mehr; das Feld verliert nur den Fokus, und die Seite scrollt weiter.
+- **Docker, Slicer-Links:** Sonderzeichen im Dateinamen (etwa `+`, Leerzeichen oder Umlaute) erscheinen im Slicer nicht mehr als `%2B`, `%20` o. Ä. Der Name im Link wird jetzt auf einfache Zeichen vereinfacht (zum Beispiel wird aus `Würfel Größe.3mf` `Wurfel_Grosse.3mf`); die heruntergeladene Datei behält ihren echten Namen.
+- **Update aus der App (Linux-AppImage):** Nach „Neu starten und installieren“ startet die App jetzt wieder von selbst. Bisher wurde die neue Version zwar installiert und der Katalog gesichert, die App schloss sich aber und musste von Hand gestartet werden. Das Update von 0.16.0 auf 0.16.1 selbst läuft noch mit dem alten Programmteil, daher danach einmal von Hand starten; ab 0.16.1 startet die App von selbst neu.
+
+## [0.16.0] - 2026-10-17
+
+### Hinzugefügt
+
+- **Docker (funktionsfähig, aber möglicherweise noch instabil):** der Katalog Manager läuft als Container mit Browser-Desktop (Selkies), Anmeldeschutz, Begleitseite für den Katalog im Browser und veröffentlichtem Image. Er ist experimentell und befindet sich im Wartungsmodus: nur noch Fehler- und Sicherheitskorrekturen, keine neuen Funktionen. Anleitung in `docker/README.md`.
 
 - **Archiv-Import:** Enthält ein ZIP oder anderes Archiv Dateien, die keine Modelle sind (zum Beispiel TXT oder PDF), nennt der Import-Hinweis jetzt, wie viele davon entpackt, aber nicht in den Katalog aufgenommen wurden (der Katalog zeigt nur Modelle), und dass sie im Zielordner liegen.
 - **Automatische Oberflächentests:** Tests mit echter Maus und Tastatur für Festplatten-Abgleich, Lizenzen und Nutzung, Druckstatus, Sammlungssortierung, Mehrfach-Tags, Wiederherstellen aus dem Papierkorb und Abbrechen von Fehlermeldungen erweitert; Drucker-/Plattenprüfungen aktualisiert und reine Screenreader-Texte aus visuellen Layout-Audits ausgenommen.
@@ -645,6 +818,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- Kacheln im Raster behalten eine feste Breite und werden nicht mehr zu einer Zeile gestreckt: Beim Öffnen und Schließen des Detailbereichs springt das Raster nicht mehr.
+
 - „Alles auswählen“ (Strg/Cmd+A und die Schaltfläche) in einer geöffneten Sammlung wählt nur noch die dort angezeigten Modelle aus. Vorher wurden auch Modelle außerhalb der Sammlung gewählt, sodass Sammelaktionen wie Löschen oder Lizenz setzen sie mit trafen.
 - Nach dem Sammellöschen wird die Liste aus dem Katalog neu geladen: Modelle, deren Löschen übersprungen wurde (zum Beispiel wegen fehlender Dateirechte), bleiben sichtbar, statt bis zur nächsten Aktualisierung zu verschwinden.
 - Eine geöffnete Detailseite behält beim Ende eines Imports Quelle, Slicer-Info, Kostenschätzung und Plattenzahl; vorher fehlten sie, bis das Modell neu geöffnet wurde.
@@ -659,6 +834,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Die 3D-Vorschau zeichnet nicht mehr dauernd neu, solange sich nichts bewegt. Auf Rechnern ohne Grafikkarte (zum Beispiel im Docker-Container) hielt eine offene Vorschau den Prozessor bei über 100 %; jetzt wird nur noch gezeichnet, wenn du das Modell bewegst, zoomst oder drehst oder sich etwas ändert. Die automatische Drehung zeichnet weiterhin laufend.
 - Der Dialog „Neue Drucke“ beendet die App nicht mehr, wenn hunderte Drucke warten: Vorschaubilder laden höchstens vier gleichzeitig, und ein HTTP-Client, der sich nicht anlegen lässt, beendet die Anfrage mit einem Fehler statt die App abzustürzen.
 - Lässt sich die App nicht starten (Datenordner nicht beschreibbar oder voll, Katalog aus einer neueren App-Version, Katalog beschädigt oder Migration fehlgeschlagen), zeigt sie jetzt eine Meldung mit Ordner und nächstem Schritt statt sich still zu beenden. Ein Log-Ordner, der sich nicht anlegen lässt, verhindert den Start nicht mehr; protokolliert wird dann nur auf der Fehlerausgabe. Der Katalog bleibt dabei unverändert.
+
+- Beim Abgleich mit der Festplatte gelten Dateien eines leeren oder nicht eingehängten Ordners (NAS/USB nicht eingehängt) sowie Dateien auf einem ausgesteckten Wechseldatenträger nicht mehr als „fehlend“, sondern als nicht erreichbar und werden nicht zum Entfernen angeboten.
 - Ein Import, der mit übersprungenen oder nicht eingeordneten Dateien endet, zeigt nicht mehr die grüne Zeile „Fertig“: Sie wechselt in die Warnfarbe und lautet „Fertig, mit Hinweisen“.
 - Vorschaubilder sehr großer Kataloge verbrauchen nicht mehr immer mehr Speicher, bis das Fenster einfriert. STL/OBJ/PLY-Dateien über 200 MB erhalten keine automatische Hintergrundvorschau mehr; ihre Kacheln zeigen einen Platzhalter.
 - Pfeiltasten blättern auch nach Fokus auf Vorschau, Link oder einfachem Knopf zwischen Modellen; Widgets wie die Plattenleiste behalten ihre eigene Pfeilsteuerung.
@@ -704,6 +881,11 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Robusterer Import, Wiederherstellen und Anonymisieren von Logdateien: ungewöhnliche Datei- und Ordnernamen werden sicher behandelt.
 - 3D-Vorschau großer Slicer-Projekte: Projekte mit bis zu 128 Teiledateien (vorher 32) öffnen jetzt in der 3D-Ansicht; für sie zeigte der Katalog einen Größenhinweis.
 - Kataloge aus frühen Entwicklungsständen konnten Slicer-Daten (Filamentverbrauch je Platte) in der falschen Datenbankspalte halten, wodurch die 3D-Ansicht „Dateityp nicht unterstützt“ meldete. Die App repariert das beim ersten Start (vorher entsteht eine Sicherungskopie des Katalogs), und die Vorschau folgt dem Papierkorb-Ort nur noch bei Dateien, die wirklich im Papierkorb liegen.
+
+## [0.15.4] - 2026-10-10
+
+### Behoben
+- 3MF-Projekte aus Bambu Studio und Orca Slicer mit mehr als 32 Teiledateien ließen sich nicht importieren („Zu viele referenzierte Modelldateien“) und zeigten keine 3D-Vorschau. Die App liest jetzt bis zu 128 Teiledateien je Projekt.
 
 ## [0.15.4] - 2026-10-10
 

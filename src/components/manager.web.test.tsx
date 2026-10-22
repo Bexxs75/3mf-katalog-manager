@@ -7,7 +7,7 @@ import { FilamentSpoolForm } from './FilamentSpoolForm';
 import { usePrinters } from '../hooks/usePrinters';
 import type { FilamentSpool } from '../types';
 
-const spool: FilamentSpool = { id: '1', kind: 'filament', material: 'PLA', manufacturer: null, color: null, colorHex: null, location: 'Shelf', homeLocation: null, unitId: null, slotIndex: null, diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 500, price: null, imagePng: null };
+const spool: FilamentSpool = { id: '1', kind: 'filament', material: 'PLA', manufacturer: null, color: null, colorHex: null, location: 'Shelf', homeLocation: null, unitId: null, slotIndex: null, diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 500, price: null, imagePng: null, colorHexes: [] };
 let calls: {command: string; args: any}[] = [];
 let writable = true;
 beforeEach(async () => {
@@ -121,7 +121,7 @@ it.each([false,true])('material controls and slot actions respect writable=%s, n
   calls = []; fireEvent.click(slot);
   fireEvent.click(screen.getByRole('button', {name: de.printersSlotMenuUnload}));
   await waitFor(() => expect(writes().map(c=>c.command)).toEqual(['unload_spool']));
-  calls = []; fireEvent.click(screen.getByRole('button', {name: de.deleteAriaLabel}));
+  calls = []; fireEvent.click(within(screen.getByTestId('spool-card-1')).getByRole('button', {name: de.deleteAriaLabel}));
   expect(screen.getByText(de.webManagerDeleteSpool)).toBeInTheDocument(); expect(writes()).toEqual([]);
   fireEvent.click(screen.getByRole('button', {name: de.delete}));
   await waitFor(() => expect(writes().map(c=>c.command)).toEqual(['delete_filament_spool']));

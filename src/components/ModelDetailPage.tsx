@@ -15,16 +15,20 @@ import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
 import { useModelImages } from '../hooks/useModelImages';
 import { useImportLock } from '../hooks/ImportLockContext';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import { Icon } from './Icon';
 import { useDetailNavigation, type DetailDirection } from '../hooks/useDetailNavigation';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
+import { TagRemoveButton } from './TagRemoveButton';
+import { AutoTagBlockStatus } from './AutoTagBlockStatus';
+import { useAutoTagBlock } from '../hooks/useAutoTagBlock';
 import { invoke } from '../lib/transport';
-import type { ModelFile, SlicerConfig, Collection } from '../types';
+import type { ModelFile, SlicerConfig, Collection, Printer } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
+import { SourcePlatformRows } from './SourcePlatformRows';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { ModelPreview } from './ModelPreview';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
@@ -33,10 +37,14 @@ import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 import { usePrintLog } from '../hooks/usePrintLog';
 import { useFilamentCheck } from '../hooks/useFilamentCheck';
 import { formatWeightG, formatLengthM, formatPrice } from '../i18n/format';
-import { tagLabel } from '../lib/autoTags';
+import { shortTagLabel, tagLabel } from '../lib/autoTags';
 import { FilamentCheckSection } from './FilamentCheckSection';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
+import { CompanionSection } from './CompanionSection';
+import { BuildPlateFit } from './BuildPlateFit';
+import { FilamentUsageMissing } from './FilamentUsageMissing';
+import { isFilamentUsageMissing } from '../lib/filamentUsageHelp';
 
 interface Props {
   allTags: string[];
@@ -63,6 +71,8 @@ interface Props {
   onRescanMetadata: () => void;
   onAddToCollection: (collectionId: string) => void;
   collections: Collection[];
+  /** Printers of the Printer Manager, for the "print bed" section (those with a build volume). */
+  printers?: Printer[];
   slicers: SlicerConfig[];
   slicerError: AppError | null;
   rescanError: AppError | null;
@@ -94,6 +104,7 @@ export function ModelDetailPage({
   onRescanMetadata,
   onAddToCollection,
   collections,
+  printers = [],
   slicers,
   slicerError,
   rescanError,
@@ -105,6 +116,36 @@ export function ModelDetailPage({
   const navigationTrigger = useRef<HTMLButtonElement | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const autoTagBlock = useAutoTagBlock(import.meta.env.VITE_TARGET === 'web' ? null : model, onRemoveTag, onAddTag);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerFocusPending = useRef(false);
+  // The trigger button is swapped for the confirmation, so focus would be lost
+  // without moving it explicitly: to Cancel when asking, back to Delete when cancelled.
+  useEffect(() => {
+    if (confirmDelete) cancelDeleteRef.current?.focus();
+    else if (deleteTriggerFocusPending.current) {
+      deleteTriggerFocusPending.current = false;
+      deleteTriggerRef.current?.focus();
+    }
+  }, [confirmDelete]);
+  // Focus is not trapped in the question, so Escape can arrive from any button
+  // on the page. A capture listener on window runs before the page-level
+  // Escape handler (which would close the whole detail page) and keeps it from
+  // running. An open modal dialog keeps priority, as in that handler.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.stopPropagation();
+      setConfirmDelete(false);
+      deleteTriggerFocusPending.current = true;
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [confirmDelete]);
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const imageUpload = useImageUpload(model?.id, onUploadImage);
@@ -271,6 +312,7 @@ export function ModelDetailPage({
               <span className="text-[var(--ink-3)]">{t('metaCreator')}</span>
               <span className="font-medium tabular-nums text-right">{model.creator ?? t('noValue')}</span>
             </div>
+            <SourcePlatformRows model={model} variant="page" />
             <div className="flex justify-between items-baseline gap-4 py-2 text-body">
               <span className="text-[var(--ink-3)]">{t('metaSourceUrl')}</span>
               {editingSource ? (
@@ -306,12 +348,12 @@ export function ModelDetailPage({
               <p className="ui-label text-[var(--ink-3)] mb-2">
                 {t('hashtagsHeading')}
               </p>
-              <div className="flex flex-wrap gap-1.5">
+              <div data-tag-list className="flex min-w-0 flex-wrap gap-1.5">
                 {model.tags.map((tag) => (
-                  <span key={tag} className="inline-flex items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
+                  <span key={tag} title={`#${tagLabel(tag, language)}`} className="inline-flex max-w-full min-w-0 items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
                     <TagDot hue={tagHues?.[tag]} />
-                    #{tagLabel(tag, language)}{' '}
-                    <>{canEdit && <button aria-label={t('chipRemove').replace('{label}', tag)} onClick={() => onRemoveTag(tag)} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="close" size={14} /></button>}</>
+                    <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
+                    {canEdit && <TagRemoveButton tag={tag} autoTag={autoTagBlock.suggested.has(tag)} onRemove={() => onRemoveTag(tag)} onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)} className="flex-none hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]" />}
                   </span>
                 ))}
                 <TagInput
@@ -323,6 +365,7 @@ export function ModelDetailPage({
                   inputClassName="font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-transparent border border-dashed border-[var(--line)] text-[var(--ink-3)] w-32"
                 />
               </div>
+              <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
             </div>
           </div>
 
@@ -353,6 +396,14 @@ export function ModelDetailPage({
           </div>
         </div>
       </div>
+
+      <BuildPlateFit model={model} printers={printers} variant="page" />
+
+      <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
+        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="page" />}
+      </div>
+
+      {isFilamentUsageMissing(model) && <FilamentUsageMissing />}
 
       {model.sliceInfo && (
         <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
@@ -522,9 +573,29 @@ export function ModelDetailPage({
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
         <span className="font-code text-small text-[var(--ink-3)] break-all">{displayName(model.path)}</span>
         <div className="flex gap-2.5 items-center flex-wrap min-w-0">
-          <>{!isReadOnly() && <button {...lockProps} onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
-            {t('delete')}
-          </button>}</>
+          {!isReadOnly() && (confirmDelete ? (
+            <div
+              role="group"
+              aria-labelledby="detail-delete-question"
+              className="flex gap-2.5 items-center flex-wrap"
+            >
+              <span id="detail-delete-question" className="text-body font-medium text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
+              <button
+                ref={cancelDeleteRef}
+                onClick={() => { setConfirmDelete(false); deleteTriggerFocusPending.current = true; }}
+                className="px-4 py-2 rounded-md border border-[var(--line-strong)] text-body font-semibold text-[var(--ink)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {t('cancel')}
+              </button>
+              <button {...lockProps} onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-4 py-2 rounded-md border border-red-400 text-body font-semibold text-red-400 hover:bg-[var(--panel-2)]">
+                {t('delete')}
+              </button>
+            </div>
+          ) : (
+            <button ref={deleteTriggerRef} {...lockProps} onClick={() => setConfirmDelete(true)} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
+              {t('delete')}
+            </button>
+          ))}
           <>{!isReadOnly() && <button
             onClick={onRescanMetadata}
             className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"

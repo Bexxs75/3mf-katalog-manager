@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { ImportProgressRow } from './ImportProgressRow';
@@ -110,4 +110,26 @@ it('shows a warning state when models were imported but not placed', () => {
   renderFinished({skipped: 0, importedNotPlaced: 2, imported: 4});
   expect(screen.getByText('Fertig, mit Hinweisen')).toBeVisible();
   expect(screen.getByRole('status')).toHaveClass('warn-done'); expect(screen.getByRole('status')).not.toHaveClass('done');
+});
+it('offers "view recently added" after an import that added models, closes the notice and calls back', () => {
+  const onShowNew = vi.fn(); const onDismiss = vi.fn();
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'finished' as ImportState}} meta={{jobId:'j1',source:'files'}} result={importResult} queued={0} onCancel={vi.fn()} onDismiss={onDismiss} onShowNew={onShowNew} /></LanguageProvider>);
+  const button = screen.getByRole('button',{name:'Neu hinzugefügt ansehen'});
+  button.focus(); expect(button).toHaveFocus();
+  fireEvent.click(button);
+  expect(onShowNew).toHaveBeenCalledOnce(); expect(onDismiss).toHaveBeenCalledOnce();
+});
+it('does not offer "view recently added" when nothing new was imported', () => {
+  const none: ImportCounts = {...importResult.counts, imported: 0, importedNotPlaced: 0};
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'finished' as ImportState,counts:none}} meta={{jobId:'j1',source:'files'}} result={{...importResult,counts:none,groups:{...importResult.groups,archive:[]}}} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} onShowNew={vi.fn()} /></LanguageProvider>);
+  expect(screen.queryByRole('button',{name:'Neu hinzugefügt ansehen'})).toBeNull();
+});
+
+it('offers "view recently added" in the details dialog and dismisses the row after the click', () => {
+  const onShowNew = vi.fn(); const onDismiss = vi.fn();
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'finished' as ImportState}} meta={{jobId:'j1',source:'files'}} result={importResult} queued={0} onCancel={vi.fn()} onDismiss={onDismiss} onShowNew={onShowNew} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button',{name:'Details'}));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Neu hinzugefügt ansehen'}));
+  expect(onShowNew).toHaveBeenCalledOnce(); expect(onDismiss).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });

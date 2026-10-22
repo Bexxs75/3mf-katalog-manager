@@ -66,6 +66,17 @@ beforeEach(() => {
 });
 
 describe('useCatalogStore', () => {
+  it('marks list summaries as summary-only until the full record is loaded', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1', sliceInfo: { totalWeightG: 5, plates: [] } })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    expect(result.current.models[0].summaryOnly).toBe(true);
+    expect(result.current.models[0].sliceInfo).toBeNull();
+    act(() => result.current.ensureFullModel('m1'));
+    await waitFor(() => expect(result.current.models[0].sliceInfo).not.toBeNull());
+    expect(result.current.models[0].summaryOnly).toBeFalsy();
+  });
+
   it('does not automatically select or queue an interrupted STEP preview, but permits a click', async () => {
     localStorage.setItem('3mf-katalog-preview-attempt:m1', '1');
     mockInitialLoad([makeModelFile({ id: 'm1', path: '/cat/model.step' })]);
@@ -273,6 +284,15 @@ describe('useCatalogStore', () => {
     await waitFor(() => expect(callCount('list_file_summaries')).toBe(2));
     expect(result.current.models.map((m) => m.id)).toEqual(['m1', 'm2']);
     expect(result.current.selectedId).toBeNull();
+  });
+
+  it('refetchAfterPartialDelete resolves with the reloaded models so callers can see what survived', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+    let reloaded: { id: string }[] = [];
+    await act(async () => { reloaded = await result.current.refetchAfterPartialDelete(['m1']); });
+    expect(reloaded.map((m) => m.id)).toEqual(['m1', 'm2']);
   });
 
   it('refetchAfterPartialDelete keeps the selection when the selected model was not affected', async () => {
@@ -720,6 +740,19 @@ it('recovers from a failed initial load after a successful refresh', async () =>
   await act(async () => { await result.current.refreshFiles(); });
   expect(result.current.initialLoadFailed).toBe(false);
   expect(result.current.models).toHaveLength(1);
+});
+
+it('carries platform and IDs from the summaries into the loaded models', async () => {
+  mockInitialLoad([
+    makeModelFile({ id: 'm1', sourcePlatform: 'makerworld', sourceModelId: 'USfa963547e39de4', sourceProfileId: '1067399466' }),
+    makeModelFile({ id: 'm2' }),
+  ]);
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(2));
+  const [withSource, without] = result.current.models;
+  expect([withSource.sourcePlatform, withSource.sourceModelId, withSource.sourceProfileId])
+    .toEqual(['makerworld', 'USfa963547e39de4', '1067399466']);
+  expect([without.sourcePlatform, without.sourceModelId, without.sourceProfileId]).toEqual([null, null, null]);
 });
 
 it('saves a selection in one command and keeps licenses unchanged on failure', async () => {

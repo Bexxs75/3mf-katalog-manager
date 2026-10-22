@@ -336,6 +336,7 @@ fn spool(a: &Value) -> Result<katalog_core::read::manager::FilamentSpoolDto, Box
         "price",
         "imagePng",
         "colorHex",
+        "colorHexes",
         "homeLocation",
         "unitId",
         "slotIndex",

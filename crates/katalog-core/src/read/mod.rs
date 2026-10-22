@@ -21,6 +21,9 @@ use std::collections::HashMap;
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
     pub license: Option<String>,
+    pub source_platform: Option<String>,
+    pub source_model_id: Option<String>,
+    pub source_profile_id: Option<String>,
     pub materials: Vec<MaterialDto>,
     pub estimated_weight_g: Option<f64>,
     pub weight_source: String,
@@ -86,6 +89,9 @@ pub fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
     };
     FileSummaryDto {
         license: s.license,
+        source_platform: s.source_platform,
+        source_model_id: s.source_model_id,
+        source_profile_id: s.source_profile_id,
         estimated_weight_g,
         weight_source: weight_source.into(),
         materials: s
@@ -135,6 +141,9 @@ pub struct FolderDto {
     pub path: String,
     pub parent_id: Option<String>,
     pub count: i64,
+    /// The directory is gone from disk. False also when that is unknown (root not readable).
+    /// This read never touches the disk; the desktop adapter fills it in.
+    pub missing: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -237,6 +246,7 @@ pub fn list_folders(conn: &Connection) -> ReadResult<Vec<FolderDto>> {
                 path: folder.path.clone(),
                 parent_id: folder.parent_id.map(|id| id.to_string()),
                 count,
+                missing: false,
             }
         })
         .collect();

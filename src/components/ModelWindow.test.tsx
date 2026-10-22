@@ -48,11 +48,15 @@ function Harness({ list = false, reorderable = false, grouped = false, count = 2
 }
 it('windows aligned grid rows, keeps selection and badges, and remeasures columns', async () => {
   const { container } = render(<Harness />);
-  await waitFor(() => expect(container.querySelectorAll('[data-model-id]').length).toBe(24));
+  // The first frame still uses the 600px default viewport (8 rows = 24 cards); the real 400px viewport is read one frame later and settles on 6 rows = 18 cards.
+  await waitFor(() => expect(container.querySelectorAll('[data-model-id]').length).toBe(18));
   expect(container.querySelector('[data-model-id="0"]')?.className).toContain('border-[var(--accent)]');
   expect(container.querySelector('[data-model-id="0"] input')).toBeChecked();
   expect(container.querySelector('[data-model-id="0"]')?.textContent).toContain('NEU');
-  expect(container.querySelector<HTMLElement>('[data-window-spacer="bottom"]')?.style.height).toBe('5016px');
+  // 200 cards at 3 columns are 67 rows of 114px; spacers and rendered rows always add up to that total.
+  const spacerHeight = (edge: 'top' | 'bottom') => parseFloat(container.querySelector<HTMLElement>(`[data-window-spacer="${edge}"]`)?.style.height ?? 'NaN');
+  expect(spacerHeight('top') + (container.querySelectorAll('[data-model-id]').length / 3) * 114 + spacerHeight('bottom')).toBe(67 * 114);
+  expect(container.querySelector<HTMLElement>('[data-window-spacer="bottom"]')?.style.height).toBe('6954px');
   fireEvent.click(container.querySelector('[data-model-id="0"]')!);
   expect(actions.onSelect).toHaveBeenCalledWith('0');
   const scroller = container.querySelector<HTMLElement>('[data-catalog-scroller]')!;
@@ -94,7 +98,7 @@ it.each(['compact', 'comfort'])('accounts exactly for all measured rows and gaps
   localStorage.setItem('3mf-katalog-density', density);
   const { container } = render(<Harness />);
   const cards = container.querySelectorAll('[data-model-id]');
-  const columns = density === 'comfort' ? 3 : 4;
+  const columns = 3; // 800px at fixed 190px (compact) or 232px (comfort) tiles
   const totalRows = Math.ceil(models.length / columns);
   const visibleRows = Math.ceil(cards.length / columns);
   const spacer = (position: string) => parseFloat(container.querySelector<HTMLElement>(`[data-window-spacer="${position}"]`)!.style.height);
@@ -111,14 +115,14 @@ it.each([false, true])('hides unmeasured grids until synchronous layout provides
   expect(grid.parentElement).toHaveStyle({ visibility: 'hidden' });
   act(() => { width = 800; resizeCallbacks.forEach(callback => callback()); });
   expect(grid.parentElement).toHaveStyle({ visibility: 'visible' });
-  expect(grid.style.gridTemplateColumns).toBe('repeat(4, minmax(0, 1fr))');
+  expect(grid.style.gridTemplateColumns).toBe('repeat(3, minmax(0, 190px))');
 });
 it('measures the first layout without waiting for ResizeObserver', () => {
   // Layout width is valid even when clientWidth has not supplied an initial value.
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(0);
   const { container } = render(<Harness />);
   const grid = container.querySelector<HTMLElement>('.grid.gap-3\\.5')!;
-  expect(grid.style.gridTemplateColumns).toBe('repeat(4, minmax(0, 1fr))');
+  expect(grid.style.gridTemplateColumns).toBe('repeat(3, minmax(0, 190px))');
   expect(grid.parentElement).toHaveStyle({ visibility: 'visible' });
 });
 

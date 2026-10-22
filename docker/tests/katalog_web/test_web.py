@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -13,7 +14,7 @@ import time
 import types
 import unittest
 from unittest.mock import patch
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 SCRIPT = Path(__file__).resolve().parents[2] / 'root/usr/local/libexec/3mf-katalog-web'
 
@@ -555,6 +556,50 @@ class WebTests(unittest.TestCase):
         for fid, kind, mime in [(3, 'obj', 'model/obj'), (4, 'stp', 'model/step'), (5, 'other', 'application/octet-stream')]:
             self.add_file(fid, 'file', kind)
             self.assertEqual(self.request(f'/katalog/download/{fid}')[1]['Content-Type'], mime)
+
+    def test_slicer_url_name_needs_no_percent_encoding(self):
+        convert = self.web.slicer_url_name
+        cases = {
+            'a+b.3mf': 'a+b.3mf',
+            'my model v2.3mf': 'my_model_v2.3mf',
+            'W\u00fcrfel Gr\u00f6\u00dfe.3mf': 'Wurfel_Grosse.3mf',
+            '\u00e6\u00f8 caf\u00e9.stl': 'aeo_cafe.stl',
+            '100%.3mf': '100.3mf',
+            'a#b?c.3mf': 'a_b_c.3mf',
+            'a/b\\c.3mf': 'a_b_c.3mf',
+            'say "hi" <x>.stl': 'say_hi_x.stl',
+            "a-b._~+()!$',;=@&.3mf": "a-b._~+()!$',;=@&.3mf",
+            '\u6a21\u578b.3mf': 'model.3mf',
+            '!!! ###.3mf': '!!!.3mf',
+            '###.3mf': 'model.3mf',
+            '..': 'model',
+            '': 'model',
+            'tab\tname.3mf': 'tab_name.3mf',
+        }
+        for name, expected in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(convert(name), expected)
+        for name in cases:
+            self.assertNotIn('%', quote(convert(name), safe="-._~+()!$',;=@&"))
+
+    def test_slicer_url_name_keeps_extension_and_limits_length(self):
+        result = self.web.slicer_url_name('x' * 500 + '.3mf')
+        self.assertEqual(result, 'x' * 100 + '.3mf')
+        self.assertEqual(self.web.slicer_url_name('\u6a21\u578b.STEP'), 'model.STEP')
+
+    def test_slicer_link_encodes_plus_once_and_route_accepts_it(self):
+        self.add_file(3, 'A+B W\u00fcrfel.3mf', '3mf')
+        html = self.request(headers={'X-Forwarded-Proto': 'https'})[2].decode()
+        links = [link for link in re.findall(r'bambustudioopen://([^"]+)"', html) if '%2F3%2F' in link]
+        self.assertEqual(len(links), 1)
+        # A single encoding level: "+" is %2B in the parameter, never %252B.
+        self.assertIn('%2B', links[0])
+        self.assertNotIn('%25', links[0])
+        url = unquote(links[0])
+        self.assertTrue(url.endswith('/A+B_Wurfel.3mf'), url)
+        path = urlsplit(url).path
+        self.assertRegex(path, r'/katalog/signed/' + self.web.ID + r'/[^/]+/[^/]+')
+        self.assertEqual(self.request(path)[0], 200)
 
     def test_html_escaping_slicers_and_origin(self):
         self.add_file(2, '<script>alert("x")</script>.stl')

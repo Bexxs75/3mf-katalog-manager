@@ -35,7 +35,7 @@ export function TagInput({ allTags, tags, onAddTag, inputClassName, inputStyle, 
   return <AutocompleteInput
     autoFocus={autoFocus}
     maxLength={100}
-    maxSuggestionsWhenEmpty={200}
+    maxSuggestionsWhenEmpty={Infinity}
     value={draft}
     onChange={setDraft}
     options={options}

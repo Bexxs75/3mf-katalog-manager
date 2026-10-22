@@ -19,6 +19,10 @@ pub struct FilamentSpoolDto {
     pub image_png: Option<String>,
     #[serde(default)]
     pub color_hex: Option<String>,
+    /// Up to four colours of a multi-colour spool, empty for single-colour. The backend keeps
+    /// `color_hex` equal to the first entry, so the slicer colour match stays unchanged.
+    #[serde(default)]
+    pub color_hexes: Vec<String>,
     /// Read-only: home location, unit and slot only change via `load_spool`/`unload_spool` (commands/printers.rs).
     #[serde(default)]
     pub home_location: Option<String>,
@@ -91,6 +95,7 @@ pub fn spool_record_to_dto(s: db::models::FilamentSpoolRecord) -> FilamentSpoolD
             .image_png
             .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes)),
         color_hex: s.color_hex,
+        color_hexes: s.color_hexes,
         home_location: s.home_location,
         unit_id: s.unit_id.map(|id| id.to_string()),
         slot_index: s.slot_index,

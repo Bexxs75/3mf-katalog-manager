@@ -3,6 +3,8 @@ name: Docker image
 # Builds the browser-desktop image from the AppImage of a published release.
 # Stable releases advance moving tags only when they are the newest release.
 # Release candidates publish the moving tag rc; they never touch latest.
+# Manual test mode (dockerfile_ref + image_suffix): builds the Dockerfile of a docker/* branch
+# against the AppImage of a published release and pushes only <image>:<image_suffix>.
 on:
   release:
     types: [published]
@@ -17,6 +19,16 @@ on:
         required: false
         type: boolean
         default: false
+      dockerfile_ref:
+        description: "Test mode: branch docker/... whose docker/ folder is built (empty: default branch)"
+        required: false
+        type: string
+        default: ""
+      image_suffix:
+        description: "Test mode: the only tag that is pushed, e.g. selkies-test (empty: normal tags)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -24,7 +36,7 @@ permissions:
 # One run per release tag; an image push is never interrupted half way.
 # Moving tags are decided right before the push, so run order does not matter.
 concurrency:
-  group: docker-image-${{ github.event.release.tag_name || inputs.tag }}
+  group: docker-image-${{ github.event.release.tag_name || inputs.tag }}-${{ inputs.image_suffix }}
   cancel-in-progress: false
 
 env:
@@ -43,12 +55,33 @@ jobs:
     outputs:
       publish: ${{ steps.release.outputs.publish }}
       version: ${{ steps.release.outputs.version }}
+      test_mode: ${{ steps.release.outputs.test_mode }}
     steps:
+      # Checked before anything is checked out: a test build may only use a docker/* branch
+      # and may never overwrite a version, latest or rc tag.
+      - name: Validate test mode inputs
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DOCKERFILE_REF: ${{ inputs.dockerfile_ref }}
+          IMAGE_SUFFIX: ${{ inputs.image_suffix }}
+        run: |
+          set -euo pipefail
+          [[ -n "$DOCKERFILE_REF$IMAGE_SUFFIX" ]] || exit 0
+          [[ "$EVENT_NAME" == workflow_dispatch ]] || { echo "Test mode is manual only"; exit 1; }
+          [[ -n "$DOCKERFILE_REF" && -n "$IMAGE_SUFFIX" ]] || { echo "Set dockerfile_ref and image_suffix together"; exit 1; }
+          [[ "$DOCKERFILE_REF" =~ ^docker/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ && "$DOCKERFILE_REF" != *..* ]] \
+            || { echo "dockerfile_ref must be a branch named docker/..."; exit 1; }
+          [[ "$IMAGE_SUFFIX" =~ ^[a-z0-9][a-z0-9._-]{0,39}$ ]] || { echo "Invalid image_suffix"; exit 1; }
+          [[ "$IMAGE_SUFFIX" != latest && "$IMAGE_SUFFIX" != rc && ! "$IMAGE_SUFFIX" =~ ^v?[0-9] ]] \
+            || { echo "image_suffix must not look like a version or a moving tag"; exit 1; }
+
       # The Dockerfile and the smoke test come from the default branch, so older
-      # tags without a docker/ folder can still get an image.
+      # tags without a docker/ folder can still get an image. Test mode takes them
+      # from the validated docker/* branch instead (qualified so a tag of that name never matches).
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ inputs.dockerfile_ref && format('refs/heads/{0}', inputs.dockerfile_ref) || github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Record source revision
@@ -64,6 +97,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_PUBLISH: ${{ inputs.publish }}
+          IMAGE_SUFFIX: ${{ inputs.image_suffix }}
           OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
@@ -87,7 +121,13 @@ jobs:
           SHA256="$(sha256sum "dl/$ASSET" | cut -d' ' -f1)"
           rm -rf dl
           IMAGE="ghcr.io/${OWNER,,}/3mf-katalog-manager"
+          # A test build keeps the base image of its own Dockerfile (pinned there by digest).
+          TEST_MODE=false
+          BASE_ARG="BASE_IMAGE=$BASE_IMAGE"
+          if [[ -n "$IMAGE_SUFFIX" ]]; then TEST_MODE=true; BASE_ARG=; fi
           {
+            echo "test_mode=$TEST_MODE"
+            echo "base_arg=$BASE_ARG"
             echo "version=$VERSION"
             echo "publish=$PUBLISH"
             echo "sha256=$SHA256"
@@ -107,7 +147,7 @@ jobs:
           load: true
           tags: candidate:test
           build-args: |
-            BASE_IMAGE=${{ env.BASE_IMAGE }}
+            ${{ steps.release.outputs.base_arg }}
             APP_URL=${{ steps.release.outputs.url }}
             APP_VERSION=${{ steps.release.outputs.version }}
             APP_SHA256=${{ steps.release.outputs.sha256 }}
@@ -143,10 +183,15 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           RC: ${{ steps.release.outputs.rc }}
           MAJOR_MINOR: ${{ steps.release.outputs.major_minor }}
+          TEST_MODE: ${{ steps.release.outputs.test_mode }}
+          IMAGE_SUFFIX: ${{ inputs.image_suffix }}
         run: |
           set -euo pipefail
           TAGS="$IMAGE:$VERSION"
-          if [[ "$RC" == true ]]; then
+          if [[ "$TEST_MODE" == true ]]; then
+            # Test builds never move a version, latest or rc tag.
+            TAGS="$IMAGE:$IMAGE_SUFFIX"
+          elif [[ "$RC" == true ]]; then
             TAGS+=$'\n'"$IMAGE:rc"
           else
             # Decided from the release list as it is now, so a newer stable release
@@ -166,7 +211,7 @@ jobs:
 
   compose:
     needs: image
-    if: needs.image.outputs.publish == 'true'
+    if: needs.image.outputs.publish == 'true' && needs.image.outputs.test_mode != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: write

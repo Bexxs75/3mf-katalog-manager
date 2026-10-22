@@ -59,6 +59,9 @@ fn prepare(s: &read::FilamentSpoolDto) -> WriteResult<db::models::NewFilamentSpo
     {
         return Err(invalid("Ungültiger Farbwert"));
     }
+    if p::validate_color_list(&s.color_hexes).is_err() {
+        return Err(invalid("Ungültiger Farbwert"));
+    }
     if !s.diameter_mm.is_finite()
         || (s.kind == "filament" && !(s.diameter_mm > 0.0 && s.diameter_mm <= 5.0))
     {

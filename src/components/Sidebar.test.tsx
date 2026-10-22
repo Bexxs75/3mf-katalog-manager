@@ -163,7 +163,7 @@ it('resets tag search only when the catalog changes and retains the active rare 
     width={242} setWidth={vi.fn()} resetWidth={vi.fn()} allFoldersCollapsed onToggleAllFolders={vi.fn()} /></LanguageProvider>;
   const {rerender} = render(page('one'));
   fireEvent.click(screen.getByText('Tags'));
-  expect(screen.getByText('#Rare')).toHaveClass('text-[var(--accent)]');
+  expect(screen.getByText('#Rare').closest('button')).toHaveClass('text-[var(--accent)]');
   fireEvent.change(screen.getByPlaceholderText('Tags filtern …'), {target: {value: 'Alpha'}});
   rerender(page('one'));
   expect(screen.getByPlaceholderText('Tags filtern …')).toHaveValue('Alpha');
@@ -289,7 +289,7 @@ it('reveals and hides single-model tags in alphabetical order with the correct c
   fireEvent.click(toggle);
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
   expect(toggle).toHaveTextContent('Nur Tags mit mindestens 2 Modellen anzeigen');
-  expect(Array.from(screen.getByText('#Alpha').parentElement!.querySelectorAll('button')).map(node => node.textContent?.replace(/[0-9]/g, '').trim())).toEqual(['#Alpha', '#Beta', '#Zulu']);
+  expect(Array.from(screen.getByText('#Alpha').closest('button')!.parentElement!.querySelectorAll('button')).map(node => node.textContent?.replace(/[0-9]/g, '').trim())).toEqual(['#Alpha', '#Beta', '#Zulu']);
   fireEvent.change(screen.getByPlaceholderText('Tags filtern …'), {target: {value: 'Alpha'}});
   expect(screen.queryByRole('button', {name: 'Nur Tags mit mindestens 2 Modellen anzeigen'})).toBeNull();
   expect(screen.getByText('#Alpha')).toBeVisible();
@@ -382,4 +382,22 @@ it('opens the folder-name dialog only on Enter, not when the field loses focus',
   fireEvent.keyDown(dialog, { key: 'Escape' });
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(baseProps.onCreateFolder).not.toHaveBeenCalled();
+});
+
+
+it('shortens long tag chips while preserving the count and full filter value', () => {
+  const tag = 'a'.repeat(95);
+  const onTagSelect = vi.fn();
+  render(<LanguageProvider><Sidebar {...baseProps} tags={[{ label: tag, count: 42, colorHue: 10 }]}
+    onTagSelect={onTagSelect} expansion={{expanded: new Set<string>(), toggle: vi.fn(), isExpanded: () => false, setAll: vi.fn(), expand: vi.fn()}}
+    width={242} setWidth={vi.fn()} resetWidth={vi.fn()} allFoldersCollapsed onToggleAllFolders={vi.fn()} /></LanguageProvider>);
+  fireEvent.click(screen.getByText('Tags'));
+  const text = screen.getByText('#' + 'a'.repeat(28) + '…');
+  expect(text).toHaveClass('truncate');
+  const chip = text.closest('button')!;
+  expect(chip).toHaveAttribute('title', '#' + tag);
+  expect(chip).toHaveClass('max-w-full', 'min-w-0');
+  expect(within(chip).getByText('42')).toHaveClass('flex-none');
+  fireEvent.click(chip);
+  expect(onTagSelect).toHaveBeenCalledWith(tag);
 });

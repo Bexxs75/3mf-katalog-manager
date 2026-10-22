@@ -10,9 +10,13 @@ interface Props {
   duplicates: number;
   archives?: ArchiveOutcome[];
   otherFilesExtracted?: number;
+  companionsAssigned?: number;
+  companionsIgnored?: number;
   jobHasProblems?: boolean;
   skipped?: SkippedFile[];
   onClose: () => void;
+  // Opens the "recently added" view; offered only when models were added.
+  onShowNew?: () => void;
 }
 
 // Names shown per reason; a large folder can hold hundreds of broken files.
@@ -28,7 +32,7 @@ function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-export function ImportSummaryBanner({ imported, duplicates, archives, skipped, otherFilesExtracted = 0, jobHasProblems = false, onClose }: Props) {
+export function ImportSummaryBanner({ imported, duplicates, archives, skipped, otherFilesExtracted = 0, companionsAssigned = 0, companionsIgnored = 0, jobHasProblems = false, onClose, onShowNew }: Props) {
   const t = useT();
   const formatCount = useFormatCount();
 
@@ -78,13 +82,19 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
     }
   }
 
-  const otherFiles = otherFilesExtracted + (archives ?? []).reduce((sum, a) => sum + a.otherFilesExtracted, 0);
+  const sum = (pick: (a: ArchiveOutcome) => number) => (archives ?? []).reduce((total, a) => total + pick(a), 0);
+  const assigned = companionsAssigned + sum((a) => a.companionsAssigned);
+  const ignored = companionsIgnored + sum((a) => a.companionsIgnored);
+  if (assigned > 0) lines.push({ key: 'companionsAssigned', text: formatCount(t('archiveSummaryCompanionsAssigned'), assigned) });
+  if (ignored > 0) lines.push({ key: 'companionsIgnored', text: formatCount(t('archiveSummaryCompanionsIgnored'), ignored) });
+  // The backend counts ignored files among the "other" ones; they have their own line now.
+  const otherFiles = otherFilesExtracted + sum((a) => a.otherFilesExtracted) - ignored;
   if (otherFiles > 0) lines.push({ key: 'otherFiles', text: formatCount(t('archiveSummaryOtherFiles'), otherFiles) });
 
   // Error messages stay until they are dismissed - otherwise a failed
   // archive would disappear unnoticed after 5 s. The note about non-model files
   // is a longer sentence the user has to be able to read first.
-  const hasOtherFilesNote = lines.some((line) => line.key === 'otherFiles');
+  const hasOtherFilesNote = lines.some((line) => ['otherFiles', 'companionsAssigned', 'companionsIgnored'].includes(line.key));
   useEffect(() => {
     if (hasProblems) return;
     const timer = setTimeout(onClose, hasOtherFilesNote ? 15000 : 5000);
@@ -92,7 +102,7 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
   }, [onClose, hasProblems, hasOtherFilesNote]);
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-start gap-2.5 px-3.5 py-2.5 rounded-[4px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] text-[length:var(--font-size-title)] text-[var(--ink)]">
+    <div className="pointer-events-auto max-w-[min(90vw,480px)] flex items-start gap-2.5 px-3.5 py-2.5 rounded-[4px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] text-[length:var(--font-size-title)] text-[var(--ink)]">
       <div className="flex flex-col gap-1">
         <span>
           {t('importSummaryText')
@@ -108,6 +118,15 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
               </li>
             ))}
           </ul>
+        )}
+        {onShowNew && imported > 0 && (
+          <button
+            type="button"
+            onClick={() => { onShowNew(); onClose(); }}
+            className="self-start px-2.5 py-1 rounded-[4px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[length:var(--font-size-meta)] font-semibold cursor-pointer hover:bg-[var(--panel-2)]"
+          >
+            {t('importShowNew')}
+          </button>
         )}
       </div>
       <span

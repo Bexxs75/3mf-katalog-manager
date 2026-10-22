@@ -1,11 +1,22 @@
 use super::*;
 
-pub(super) const SETTING_CATALOG_BASE_DIR: &str = "catalog_base_dir";
+pub(super) use katalog_core::import::file_names::SETTING_CATALOG_BASE_DIR;
 
 #[tauri::command]
 pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
-    let conn = lock_db(&state)?;
-    katalog_core::read::list_folders(&conn).map_err(Into::into)
+    let (mut dtos, folders) = {
+        let conn = lock_db(&state)?;
+        (
+            katalog_core::read::list_folders(&conn).map_err(CmdError::from)?,
+            db::list_folders(&conn).map_err(|e| e.to_string())?,
+        )
+    };
+    // Disk access happens after the catalog lock is released: a slow network drive must not block it.
+    let missing = disk_sync::missing_folder_ids(&folders);
+    for dto in &mut dtos {
+        dto.missing = dto.id.parse().is_ok_and(|id: i64| missing.contains(&id));
+    }
+    Ok(dtos)
 }
 /// `name` ends up in `join`/`with_file_name` and must be a single harmless path
 /// component: "../../etc/x" or "/etc/x" would otherwise create outside the
@@ -89,6 +100,7 @@ fn create_folder_with_conn(
         path: new_dir.to_string_lossy().to_string(),
         parent_id: parent.map(|p| p.to_string()),
         count: 0,
+        missing: false,
     })
 }
 fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
@@ -103,7 +115,7 @@ pub(super) fn comparison_path(path: &Path) -> PathBuf {
     katalog_core::import::placement::comparison_path(path)
 }
 
-fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {
+pub(super) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {
     let Some(base) = db::printer_link::get_setting(conn, SETTING_CATALOG_BASE_DIR)? else {
         return Ok(());
     };
@@ -117,7 +129,7 @@ fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<(
 }
 
 // Pure component comparison; callers resolve existing filesystem paths first.
-fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
+pub(super) fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
     let path = comparison_path(path);
     folders.iter()
         .filter_map(|folder| {
@@ -213,7 +225,10 @@ fn move_folder_with_conn(
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
 
-    if target == id || is_descendant(&folders, target, id) {
+    if target == id {
+        return Err(CmdError::expected("Ein Ordner kann nicht in sich selbst verschoben werden"));
+    }
+    if is_descendant(&folders, target, id) {
         return Err(CmdError::expected("Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden"));
     }
 
@@ -232,8 +247,27 @@ fn move_folder_with_conn(
     archives::check_managed_location(&old_path, &expanded)?;
     archives::check_managed_location(&new_path, &expanded)?;
 
+    // Without these checks a vanished folder would surface as a raw OS error.
+    let out_of_date = "Gleiche den Katalog mit der Festplatte ab und versuche es erneut.";
+    if !old_path.is_dir() {
+        return Err(CmdError::expected(format!("Der Ordner existiert auf der Festplatte nicht mehr: {}. {out_of_date}", old_path.display())));
+    }
+    let new_parent = Path::new(&new_parent_path);
+    if !new_parent.is_dir() {
+        return Err(CmdError::expected(format!("Der Zielordner existiert auf der Festplatte nicht mehr: {}. {out_of_date}", new_parent.display())));
+    }
+    // The ids can disagree with the disk (outdated catalog, symlinks, differing
+    // case on case-insensitive volumes), so the real locations are compared too.
+    if let (Ok(source), Ok(parent)) = (old_path.canonicalize(), new_parent.canonicalize()) {
+        if comparison_path(&parent).starts_with(comparison_path(&source)) {
+            return Err(CmdError::expected("Ein Ordner kann nicht in sich selbst oder einen eigenen Unterordner verschoben werden"));
+        }
+        if old_path.parent().and_then(|p| p.canonicalize().ok()).is_some_and(|current| comparison_path(&current) == comparison_path(&parent)) {
+            return Err(CmdError::expected("Der Ordner liegt bereits im Zielordner"));
+        }
+    }
     if new_path.exists() {
-        return Err(CmdError::expected(format!("Zielordner existiert bereits: {}", new_path.display())));
+        return Err(CmdError::expected(format!("Der Zielordner enthält bereits einen Ordner mit diesem Namen: {}", new_path.display())));
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
@@ -306,6 +340,7 @@ fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResu
         path: folder.path.clone(),
         parent_id: folder.parent_id.map(|p| p.to_string()),
         count: 0,
+        missing: false,
     })
 }
 /// Only folders the user picked or created in the app may become the catalog
@@ -364,6 +399,7 @@ pub(super) fn register_existing_catalog_base_dir_with_conn(conn: &Connection, di
         path: folder.path,
         parent_id: folder.parent_id.map(|id| id.to_string()),
         count: 0,
+        missing: false,
     };
     db::printer_link::set_setting(&tx, SETTING_CATALOG_BASE_DIR, &folder.path).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
@@ -378,21 +414,10 @@ pub fn register_existing_catalog_base_dir(state: State<AppState>, path: String) 
     register_existing_catalog_base_dir_with_conn(&conn, Path::new(&path), &state.sensitive_dirs)
 }
 
-// Windows forbids these in file names. They are rejected on every OS so a
-// catalog set up on Linux or macOS keeps working after a move to Windows.
-const FORBIDDEN_DIR_NAME_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
-
-// Device names Windows refuses as file or folder names, also with an extension.
-// Windows also treats the superscript digits ¹²³ like 1, 2, 3 here.
-pub(super) const WINDOWS_RESERVED_NAMES: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "COM¹", "COM²", "COM³", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹",
-    "LPT²", "LPT³",
-];
-
-// Most file systems allow at most 255 bytes per name component. Checked up front
-// so the user gets a clear message instead of an OS error.
-const MAX_DIR_NAME_BYTES: usize = 255;
+// Name rules shared with the import worker (date prefix on import).
+pub(super) use katalog_core::import::file_names::{FORBIDDEN_DIR_NAME_CHARS, MAX_DIR_NAME_BYTES};
+#[allow(unused_imports)]
+pub(super) use katalog_core::import::file_names::WINDOWS_RESERVED_NAMES;
 
 /// Name of a new catalog folder, typed freely by the user. Must be exactly one
 /// harmless path component, otherwise "../x" or "/etc/x" would create the folder
@@ -407,33 +432,7 @@ pub(super) fn validate_dir_name(name: &str, limit_length: bool) -> CmdResult<()>
 }
 
 pub(super) fn validate_name(name: &str, limit_length: bool, kind: &str) -> CmdResult<()> {
-    if name.trim().is_empty() {
-        return Err(CmdError::expected(format!("Der {kind} darf nicht leer sein")));
-    }
-    if let Some(c) = name.chars().find(|c| FORBIDDEN_DIR_NAME_CHARS.contains(c) || c.is_control()) {
-        let shown = if c.is_control() { format!("U+{:04X}", c as u32) } else { c.to_string() };
-        return Err(CmdError::expected(format!("Dieses Zeichen ist in {kind}n nicht erlaubt: {shown}")));
-    }
-    if limit_length && name.len() > MAX_DIR_NAME_BYTES {
-        return Err(CmdError::expected(format!("Der {kind} ist zu lang")));
-    }
-    if name == "." || name == ".." {
-        return Err(CmdError::expected(format!("Dieser {kind} ist nicht erlaubt")));
-    }
-    if name.ends_with('.') || name.ends_with(' ') {
-        return Err(CmdError::expected(format!("{kind}n dürfen nicht mit einem Punkt oder Leerzeichen enden")));
-    }
-    let stem = name.split('.').next().unwrap_or(name).trim_end().to_uppercase();
-    if WINDOWS_RESERVED_NAMES.contains(&stem.as_str()) {
-        return Err(CmdError::expected(format!("Dieser {kind} ist unter Windows reserviert")));
-    }
-    // Defence in depth: whatever slipped through above must still be a single
-    // plain component, never a root, prefix or parent reference.
-    let mut components = Path::new(name).components();
-    if !matches!((components.next(), components.next()), (Some(std::path::Component::Normal(_)), None)) {
-        return Err(CmdError::expected(format!("Dieser {kind} ist nicht erlaubt")));
-    }
-    Ok(())
+    katalog_core::import::file_names::validate_name(name, limit_length, kind).map_err(Into::into)
 }
 
 /// Places suggested by the app itself (the Documents folder) that may receive a
@@ -877,6 +876,91 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+    fn two_folders(name: &str) -> (PathBuf, Connection, i64, i64, PathBuf, PathBuf) {
+        let tmp = unique_test_dir(name);
+        let a_dir = tmp.join("A");
+        let b_dir = tmp.join("B");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        std::fs::create_dir_all(&b_dir).unwrap();
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).unwrap();
+        let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).unwrap();
+        (tmp, conn, a_id, b_id, a_dir, b_dir)
+    }
+    fn expected_message(result: CmdResult<()>) -> String {
+        let err = result.expect_err("move must be refused");
+        assert!(err.expected, "refusals are feedback, not faults: {}", err.message);
+        err.message
+    }
+    #[test]
+    fn move_folder_explains_moving_into_itself() {
+        let (tmp, conn, a_id, _, a_dir, _) = two_folders("move_folder_self");
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(a_id), &[]));
+        assert!(message.contains("in sich selbst"), "{message}");
+        assert!(a_dir.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_explains_a_target_that_already_has_the_name() {
+        let (tmp, conn, a_id, b_id, a_dir, b_dir) = two_folders("move_folder_name_taken");
+        std::fs::create_dir_all(b_dir.join("A")).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(message.contains("enthält bereits einen Ordner mit diesem Namen"), "{message}");
+        assert!(a_dir.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_explains_a_target_that_is_the_current_parent() {
+        let tmp = unique_test_dir("move_folder_already_there");
+        let a_dir = tmp.join("A");
+        let child = a_dir.join("child");
+        std::fs::create_dir_all(&child).unwrap();
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).unwrap();
+        let child_id = db::insert_folder_with_parent(&conn, "child", Some(a_id), &child.to_string_lossy()).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, child_id, Some(a_id), &[]));
+        assert!(message.contains("liegt bereits im Zielordner"), "{message}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_checks_real_locations_for_a_stale_parent_link() {
+        // The catalog lists B as a sibling of A, but B really lies inside A.
+        let tmp = unique_test_dir("move_folder_stale_nesting");
+        let a_dir = tmp.join("A");
+        let b_dir = a_dir.join("B");
+        std::fs::create_dir_all(&b_dir).unwrap();
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).unwrap();
+        let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(message.contains("eigenen Unterordner"), "{message}");
+        assert!(a_dir.is_dir() && b_dir.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_explains_a_target_missing_on_disk() {
+        let (tmp, conn, a_id, b_id, a_dir, b_dir) = two_folders("move_folder_missing_target");
+        std::fs::remove_dir_all(&b_dir).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(message.contains("Zielordner existiert auf der Festplatte nicht mehr"), "{message}");
+        assert!(a_dir.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_explains_a_source_missing_on_disk() {
+        let (tmp, conn, a_id, b_id, a_dir, _) = two_folders("move_folder_missing_source");
+        std::fs::remove_dir_all(&a_dir).unwrap();
+        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(message.contains("Der Ordner existiert auf der Festplatte nicht mehr"), "{message}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_folder_still_moves_into_a_valid_target() {
+        let (tmp, conn, a_id, b_id, a_dir, b_dir) = two_folders("move_folder_valid");
+        move_folder_with_conn(&conn, a_id, Some(b_id), &[]).unwrap();
+        assert!(!a_dir.exists() && b_dir.join("A").is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
     #[test]
     fn move_folder_rejects_none_target() {
         // move_folder(id, None) must be rejected (see move_folder_with_conn).
@@ -1227,6 +1311,91 @@ mod tests {
         assert!(!dir.join("Neu").is_dir() || std::fs::read_dir(dir.join("Neu")).unwrap().count() == 0);
     }
 
+    fn db_file_path(conn: &Connection, id: i64) -> String {
+        db::get_file(conn, id).unwrap().unwrap().path
+    }
+
+    #[test]
+    fn rename_folder_carries_files_that_are_not_assigned_to_the_folder() {
+        let tmp = unique_test_dir("rename_folder_unassigned_files");
+        let deko = tmp.join("Deko");
+        let deko2 = tmp.join("Deko2");
+        std::fs::create_dir_all(deko.join("Sub")).unwrap();
+        std::fs::create_dir_all(&deko2).unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let deko_id = db::insert_folder_with_parent(&conn, "Deko", None, &deko.to_string_lossy()).unwrap();
+        db::insert_folder_with_parent(&conn, "Deko2", None, &deko2.to_string_lossy()).unwrap();
+        let loose = db::test_insert_minimal_file(&conn, &deko.join("loose.3mf").to_string_lossy(), None).unwrap();
+        let loose_deep = db::test_insert_minimal_file(&conn, &deko.join("Sub").join("d.3mf").to_string_lossy(), None).unwrap();
+        let sibling = db::test_insert_minimal_file(&conn, &deko2.join("x.3mf").to_string_lossy(), None).unwrap();
+        let trashed = db::test_insert_minimal_file(&conn, &deko.join("gone.3mf").to_string_lossy(), None).unwrap();
+        db::soft_delete_file(&conn, trashed, Some("/trash/1-gone.3mf"), "2026-01-01T00:00:00Z").unwrap();
+
+        rename_folder_with_conn(&conn, deko_id, "Dekor".to_string(), &[]).expect("rename should succeed");
+
+        let new = tmp.join("Dekor");
+        assert_eq!(db_file_path(&conn, loose), new.join("loose.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, loose_deep), new.join("Sub").join("d.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, trashed), new.join("gone.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, sibling), deko2.join("x.3mf").to_string_lossy());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn move_folder_carries_files_that_are_not_assigned_to_the_folder() {
+        let tmp = unique_test_dir("move_folder_unassigned_files");
+        let b_dir = tmp.join("A").join("B");
+        let b2_dir = tmp.join("A").join("B2");
+        let x_dir = tmp.join("X");
+        std::fs::create_dir_all(b_dir.join("C")).unwrap();
+        std::fs::create_dir_all(&b2_dir).unwrap();
+        std::fs::create_dir_all(&x_dir).unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).unwrap();
+        let x_id = db::insert_folder_with_parent(&conn, "X", None, &x_dir.to_string_lossy()).unwrap();
+        let loose = db::test_insert_minimal_file(&conn, &b_dir.join("C").join("l.3mf").to_string_lossy(), None).unwrap();
+        let sibling = db::test_insert_minimal_file(&conn, &b2_dir.join("s.3mf").to_string_lossy(), None).unwrap();
+        let trashed = db::test_insert_minimal_file(&conn, &b_dir.join("gone.3mf").to_string_lossy(), None).unwrap();
+        db::soft_delete_file(&conn, trashed, None, "2026-01-01T00:00:00Z").unwrap();
+
+        move_folder_with_conn(&conn, b_id, Some(x_id), &[]).expect("move should succeed");
+
+        let new = x_dir.join("B");
+        assert_eq!(db_file_path(&conn, loose), new.join("C").join("l.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, trashed), new.join("gone.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, sibling), b2_dir.join("s.3mf").to_string_lossy());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn rename_folder_rolls_back_disk_and_catalog_when_a_file_path_is_already_taken() {
+        let tmp = unique_test_dir("rename_folder_path_collision");
+        std::fs::create_dir_all(tmp.join("Alt")).unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::insert_folder_with_parent(&conn, "Alt", None, &tmp.join("Alt").to_string_lossy()).unwrap();
+        let moving = db::test_insert_minimal_file(&conn, &tmp.join("Alt").join("a.3mf").to_string_lossy(), None).unwrap();
+        // Stale entry (no folder on disk or in the catalog) that already holds the new path.
+        let squatter = db::test_insert_minimal_file(&conn, &tmp.join("Neu").join("a.3mf").to_string_lossy(), None).unwrap();
+
+        let result = rename_folder_with_conn(&conn, id, "Neu".to_string(), &[]);
+
+        assert!(result.is_err(), "a colliding file path must fail the rename, not be skipped");
+        assert!(tmp.join("Alt").is_dir(), "the folder on disk must be renamed back");
+        assert!(!tmp.join("Neu").exists());
+        let folder = db::list_folders(&conn).unwrap().into_iter().find(|f| f.id == id).unwrap();
+        assert_eq!(folder.name, "Alt");
+        assert_eq!(folder.path, tmp.join("Alt").to_string_lossy());
+        assert_eq!(db_file_path(&conn, moving), tmp.join("Alt").join("a.3mf").to_string_lossy());
+        assert_eq!(db_file_path(&conn, squatter), tmp.join("Neu").join("a.3mf").to_string_lossy());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// Parent approved the way the dialog does it: picked in the folder dialog.
     fn picked_parent(name: &str) -> (PathBuf, ApprovedTargets, ApprovedCatalogParents) {
         let parent = unique_test_dir(name);
@@ -1400,5 +1569,79 @@ mod tests {
         let folder = register_picked_catalog_base_dir(&conn, &approved, &[], &dir).unwrap();
         assert_eq!(folder.path, dir.to_string_lossy());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod companion_tests {
+    use super::*;
+
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+
+    /// A folder tree `catalog/Deko/sub` with one model and one companion in `sub`, and a
+    /// sibling `catalog/Deko2` with a model of its own.
+    struct Tree {
+        conn: Connection,
+        catalog: PathBuf,
+        model: i64,
+        companion: i64,
+        other_companion: i64,
+        deko: i64,
+        target: i64,
+    }
+
+    fn tree(name: &str) -> Tree {
+        let catalog = unique_test_dir(name).canonicalize().unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let root = db::insert_folder_with_parent(&conn, "catalog", None, &catalog.to_string_lossy()).unwrap();
+        let folder = |parent: i64, relative: &str| {
+            let path = catalog.join(relative);
+            std::fs::create_dir_all(&path).unwrap();
+            db::insert_folder_with_parent(&conn, relative.rsplit('/').next().unwrap(), Some(parent), &path.to_string_lossy()).unwrap()
+        };
+        let deko = folder(root, "Deko");
+        let sub = folder(deko, "Deko/sub");
+        let deko2 = folder(root, "Deko2");
+        let target = folder(root, "Target");
+        let model = |folder_id: i64, relative: &str| {
+            let path = catalog.join(relative);
+            std::fs::write(&path, b"model").unwrap();
+            let id = db::test_insert_minimal_file(&conn, &path.to_string_lossy(), Some(folder_id)).unwrap();
+            let extras = path.with_file_name(format!("{}_extras", path.file_stem().unwrap().to_string_lossy()));
+            std::fs::create_dir_all(&extras).unwrap();
+            let companion = extras.join("pic.png");
+            std::fs::write(&companion, PNG).unwrap();
+            let row = db::companions::insert_companion(&conn, id, "pic.png", &companion.to_string_lossy(), "image", None, "now").unwrap();
+            (id, row)
+        };
+        let (model_id, companion) = model(sub, "Deko/sub/Foo.3mf");
+        let (_, other_companion) = model(deko2, "Deko2/Bar.3mf");
+        Tree { conn, catalog, model: model_id, companion, other_companion, deko, target }
+    }
+
+    fn path_of(tree: &Tree, companion: i64) -> PathBuf {
+        PathBuf::from(db::companions::get_companion(&tree.conn, companion).unwrap().unwrap().path)
+    }
+
+    #[test]
+    fn renaming_a_folder_carries_the_companion_paths_of_everything_below_it() {
+        let t = tree("folder_rename_companions");
+        rename_folder_with_conn(&t.conn, t.deko, "Decor".into(), &[]).unwrap();
+        let moved = path_of(&t, t.companion);
+        assert_eq!(moved, t.catalog.join("Decor/sub/Foo_extras/pic.png"));
+        assert!(moved.is_file(), "the file moved with its folder");
+        assert_eq!(path_of(&t, t.other_companion), t.catalog.join("Deko2/Bar_extras/pic.png"), "a folder with a similar name is untouched");
+        assert!(path_of(&t, t.other_companion).is_file());
+    }
+
+    #[test]
+    fn moving_a_folder_carries_the_companion_paths_too() {
+        let t = tree("folder_move_companions");
+        move_folder_with_conn(&t.conn, t.deko, Some(t.target), &[]).unwrap();
+        let moved = path_of(&t, t.companion);
+        assert_eq!(moved, t.catalog.join("Target/Deko/sub/Foo_extras/pic.png"));
+        assert!(moved.is_file());
+        let model = db::get_file(&t.conn, t.model).unwrap().unwrap();
+        assert!(Path::new(&model.path).is_file());
     }
 }

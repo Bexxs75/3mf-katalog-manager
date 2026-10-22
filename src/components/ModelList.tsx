@@ -1,4 +1,5 @@
 import { useCanEditMetadata } from '../lib/webSession';
+import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
 import { modelLicenseAriaLabel } from '../lib/licenses';
@@ -10,7 +11,7 @@ import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatVolumeCm3 } from '../i18n/format';
 import { BulkCheckbox } from './BulkCheckbox';
-import { tagLabel } from '../lib/autoTags';
+import { shortTagLabel, tagLabel } from '../lib/autoTags';
 
 interface Props {
   models: ModelFile[];
@@ -24,9 +25,11 @@ interface Props {
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
   onDragFileStart?: (id: string) => void;
+  // Accessible name of the grid; grouped views pass the folder name.
+  label?: string;
 }
 
-export function ModelList({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly, selectedForBulk, onToggleBulkSelect, onDragFileStart }: Props) {
+export function ModelList({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly, selectedForBulk, onToggleBulkSelect, onDragFileStart, label }: Props) {
   const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const t = useT();
@@ -35,26 +38,33 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
   const window = useModelWindow({ ids, containerRef, gap: 0, fallbackHeight: 43, disabled: !windowed });
   const visible = models.slice(window.startIndex, window.endIndex);
   const fileDrag = useDragThreshold(onDragFileStart);
+  const selectionAria = useRowSelectionAria(selectedId, selectedForBulk);
 
   return (
-    <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
+    // aria-rowcount includes the header row; the window renders only a slice of the data rows,
+    // so each row carries its absolute index.
+    <div role="grid" data-catalog-grid aria-label={label ?? t('modelListLabel')} aria-multiselectable="true"
+      aria-rowcount={models.length + 1} aria-colcount={5} className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
       <div
+        role="row" aria-rowindex={1}
         data-model-list-header className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] ui-label text-[var(--ink-3)]"
         style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
       >
-        <span />
-        <span>{t('columnName')}</span>
-        <span>{t('columnTags')}</span>
-        <span>{t('columnVolume')}</span>
-        <span>{t('columnSize')}</span>
+        <span role="columnheader"><span className="sr-only">{t('columnSelect')}</span></span>
+        <span role="columnheader">{t('columnName')}</span>
+        <span role="columnheader">{t('columnTags')}</span>
+        <span role="columnheader">{t('columnVolume')}</span>
+        <span role="columnheader">{t('columnSize')}</span>
       </div>
-      <div ref={window.rootRef}>
+      <div ref={window.rootRef} role="rowgroup">
       <div data-window-spacer="top" aria-hidden="true" style={{ height: window.topSpacer }} />
-      {visible.map((m) => (
+      {visible.map((m, index) => (
         <div
           key={m.id}
           data-model-id={m.id}
-          role="group"
+          role="row"
+          aria-rowindex={window.startIndex + index + 2}
+          {...selectionAria(m.id)}
           aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
           tabIndex={-1}
           onClick={() => onSelect(m.id)}
@@ -74,33 +84,35 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
         >
           {readOnly || !canEdit ? (
-            <span />
+            <span role="gridcell" />
           ) : (
             <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
               onToggle={() => onToggleBulkSelect(m.id)}
+              role="gridcell"
               className="justify-self-center"
             />
           )}
-          <span className="flex items-center gap-1.5 min-w-0">
+          <span role="gridcell" className="flex items-center gap-1.5 min-w-0">
             {onDragFileStart && !readOnly && canEdit && <DragGrip />}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
             <LicenseBadge license={m.license} />
           </span>
-          <span className="flex gap-1 overflow-hidden">
+          <span role="gridcell" className="flex min-w-0 gap-1 overflow-hidden">
             {m.tags.map((tag) => (
               <span
                 key={tag}
-                className="font-medium tabular-nums text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
+                title={`#${tagLabel(tag, language)}`}
+                className="inline-flex shrink-0 font-medium tabular-nums text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
               >
-                #{tagLabel(tag, language)}
+                <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
               </span>
             ))}
           </span>
-          <span className="font-medium tabular-nums text-caption text-[var(--ink-2)]">
+          <span role="gridcell" className="font-medium tabular-nums text-caption text-[var(--ink-2)]">
             {formatVolumeCm3(m.volumeCm3, language)}
           </span>
-          <span className="font-medium tabular-nums text-caption text-[var(--ink-2)]">
+          <span role="gridcell" className="font-medium tabular-nums text-caption text-[var(--ink-2)]">
             {formatBytes(m.fileSizeBytes, language)}
           </span>
         </div>

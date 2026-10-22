@@ -10,6 +10,9 @@ pub fn validate_color_hex(color_hex: &Option<String>) -> WriteResult<()> {
         _ => Ok(()),
     }
 }
+pub fn validate_color_hexes(color_hexes: &[String]) -> WriteResult<()> {
+    db::printers::validate_color_list(color_hexes).map_err(WriteError::expected)
+}
 pub fn validate_spool_kind(kind: &str) -> WriteResult<()> {
     if db::models::SPOOL_KINDS.contains(&kind) {
         Ok(())
@@ -38,6 +41,10 @@ pub fn filament_dto_to_record(
             Ok(bytes)
         })
         .transpose()?;
+    // Lower-case so equal colours always compare equal; the first list entry wins over a
+    // separately sent `color_hex`.
+    let color_hexes: Vec<String> = spool.color_hexes.iter().map(|c| c.to_lowercase()).collect();
+    let single_hex = spool.color_hex.as_ref().map(|c| c.to_lowercase());
     Ok(db::models::NewFilamentSpool {
         material: spool.material.clone(),
         manufacturer: spool.manufacturer.clone(),
@@ -48,7 +55,8 @@ pub fn filament_dto_to_record(
         remaining_weight_g: spool.remaining_weight_g,
         price: spool.price,
         image_png,
-        color_hex: spool.color_hex.as_ref().map(|c| c.to_lowercase()),
+        color_hex: db::printers::primary_color_hex(&color_hexes, single_hex.as_deref()),
+        color_hexes,
         kind: spool.kind.clone(),
     })
 }
@@ -58,12 +66,14 @@ pub fn add_filament_spool(
 ) -> WriteResult<FilamentSpoolDto> {
     validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
+    validate_color_hexes(&spool.color_hexes)?;
     let new_spool = filament_dto_to_record(&spool)?;
     let id = db::insert_filament_spool(conn, &new_spool).map_err(|e| e.to_string())?;
     // New spools always go to storage, even if the caller sends a slot.
     Ok(FilamentSpoolDto {
         id: id.to_string(),
         color_hex: new_spool.color_hex,
+        color_hexes: new_spool.color_hexes,
         home_location: None,
         unit_id: None,
         slot_index: None,
@@ -76,6 +86,7 @@ pub fn update_filament_spool(
 ) -> WriteResult<FilamentSpoolDto> {
     validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
+    validate_color_hexes(&spool.color_hexes)?;
     let id: i64 = spool
         .id
         .parse()

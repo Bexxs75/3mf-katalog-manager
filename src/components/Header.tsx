@@ -3,6 +3,7 @@ import { useCanUpload } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { CatalogDiskSync } from './CatalogDiskSync';
 import { useMenuKeyboard } from '../hooks/useMenuKeyboard';
+import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
 import { useDismissableMenu } from '../hooks/useDismissableMenu';
@@ -13,6 +14,7 @@ import { useT, useFormatCount } from '../i18n/LanguageContext';
 
 interface Props {
   onDiskSyncApplied?: () => Promise<unknown>;
+  onDiskSyncScanned?: () => unknown;
   detailPanel?: 'auto' | 'pinned';
   onDetailPanelChange?: (mode: 'auto' | 'pinned') => void;
   importTargetName?: string;
@@ -31,6 +33,7 @@ interface Props {
   onImportFiles: () => void;
   onImportFolder: () => void;
   onImportFolderContents: () => void;
+  onCheckSourceFolders: () => void;
   detailOpen?: boolean;
   onOpenTips?: () => void;
   mainView: MainView;
@@ -43,6 +46,7 @@ const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
 export function Header({
   onDiskSyncApplied,
+  onDiskSyncScanned,
   detailPanel = 'auto', onDetailPanelChange,
   importTargetName,
   importTargetIsRoot = false,
@@ -59,10 +63,13 @@ export function Header({
   onImportFiles,
   onImportFolder,
   onImportFolderContents,
+  onCheckSourceFolders,
   mainView, onOpenTips,
   detailOpen = false,
 }: Props) {
   const t = useT();
+  // Checking runs only while no import is active (the move would be refused anyway).
+  const { jobActive } = useImportLock();
   const formatCount = useFormatCount();
   const uploadable = useCanUpload();
   const [importSource, setImportSource] = useState<'files' | 'folder' | 'folderContents'>('files');
@@ -111,7 +118,7 @@ export function Header({
         )}
       </div>
 
-      {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} />}
+      {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} onScanned={onDiskSyncScanned} />}
       {mainView === 'catalog' && (
       <>
       {uploadable && <button className="h-8 px-3 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" onClick={onImportFiles}>{t('webUploadTitle')}</button>}
@@ -172,6 +179,18 @@ export function Header({
               className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
               {t('importFolderContentsOption')}
+            </button>
+            <button
+              role="menuitem" tabIndex={-1}
+              title={t('sfMenuHint')}
+              disabled={jobActive}
+              onClick={() => {
+                setImportMenuOpen(false);
+                onCheckSourceFolders();
+              }}
+              className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer disabled:opacity-50 disabled:cursor-default"
+            >
+              {t('sfMenuCheck')}
             </button>
           </div>
         )}
