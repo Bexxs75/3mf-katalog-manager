@@ -1,3 +1,4 @@
+import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
 import { licenseUsage, modelLicenseAriaLabel } from '../lib/licenses';
@@ -160,10 +161,11 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
 
   // Every card is a grid row with two cells (picture and details). aria-rowindex/aria-rowcount
   // describe the full list, because the window only renders a slice of it.
+  const selectionAria = useRowSelectionAria(selectedId, selectedForBulk);
   const rowAria = (m: ModelFile, index: number) => ({
     role: 'row' as const,
     'aria-rowindex': window.startIndex + index + 1,
-    'aria-selected': m.id === selectedId || selectedForBulk.has(m.id),
+    ...selectionAria(m.id),
   });
 
   function renderCompactCard(m: ModelFile, index: number) {
