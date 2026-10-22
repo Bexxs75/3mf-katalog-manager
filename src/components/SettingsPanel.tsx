@@ -2,6 +2,7 @@ import { displayName } from '../lib/displayName';
 import { ImportRenameSetting } from './ImportRenameSetting';
 import { SourceFoldersSettings } from './SourceFoldersSettings';
 import { DiskSyncSettings } from './DiskSyncSettings';
+import { BlockedAutoTagsSettings } from './BlockedAutoTagsSettings';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -334,6 +335,7 @@ export function SettingsPanel({
                 </div>
               )}
 
+              <BlockedAutoTagsSettings />
               <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBackupTitle')}</div>
               <button
                 onClick={onExportCatalog}

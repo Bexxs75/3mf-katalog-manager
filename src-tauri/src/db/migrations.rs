@@ -139,6 +139,8 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(add_companion_and_source_tables),
     // Colour list of a spool (JSON array of up to four `#rrggbb` values); NULL means single-colour.
     MigrationStep::Simple(add_spool_color_list),
+    // Blocked automatic tags. New table only, no existing data is touched.
+    MigrationStep::Simple(add_blocked_auto_tags_table),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -178,6 +180,19 @@ pub(crate) const COMPANION_TABLES_MIGRATION_VERSION: i64 = 49;
 /// written by the version that introduced the column contains.
 #[cfg(test)]
 pub(crate) const SPOOL_COLOR_LIST_MIGRATION_VERSION: i64 = 50;
+
+/// Schema version after the blocked automatic tags table. Must stay 51: that is what
+/// every catalog written by the version that introduced the table contains.
+#[cfg(test)]
+pub(crate) const BLOCKED_AUTO_TAGS_MIGRATION_VERSION: i64 = 51;
+
+/// New table only; `IF NOT EXISTS` so a catalog that already got it from the base schema is left alone.
+fn add_blocked_auto_tags_table(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS blocked_auto_tags (
+        name TEXT PRIMARY KEY COLLATE NOCASE,
+        blocked_at TEXT NOT NULL
+    )")
+}
 
 /// New nullable column only, so existing spools stay single-colour and keep every value.
 fn add_spool_color_list(conn: &Connection) -> Result<(), DbError> {
@@ -736,8 +751,56 @@ mod tests {
         let list: Option<String> = conn.query_row("SELECT color_hexes FROM filament_spools", [], |r| r.get(0)).unwrap();
         assert_eq!(list, None, "old spools stay single-colour");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, SPOOL_COLOR_LIST_MIGRATION_VERSION);
+        assert!(version >= SPOOL_COLOR_LIST_MIGRATION_VERSION, "the step ran");
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    /// A catalog one step behind the blocked-tags table, with tags and spools to prove they stay as they were.
+    fn catalog_before_blocked_auto_tags() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("DROP TABLE blocked_auto_tags").unwrap();
+        conn.execute_batch("INSERT INTO tags (name, color_hue) VALUES ('miniatur', 12), ('mein-projekt', 200)").unwrap();
+        conn.pragma_update(None, "user_version", BLOCKED_AUTO_TAGS_MIGRATION_VERSION - 1).unwrap();
+        conn
+    }
+
+    fn tag_snapshot(conn: &Connection) -> String {
+        conn.query_row("SELECT group_concat(id || '|' || name || '|' || color_hue, ';') FROM (SELECT * FROM tags ORDER BY id)", [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn the_blocked_tags_step_adds_an_empty_table_and_keeps_the_tags_unchanged() {
+        let mut conn = catalog_before_blocked_auto_tags();
+        assert!(!table_exists(&conn, "blocked_auto_tags"), "precondition: no table yet");
+        let before = tag_snapshot(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(tag_snapshot(&conn), before, "no existing value may change");
+        assert!(table_exists(&conn, "blocked_auto_tags"));
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0);
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, BLOCKED_AUTO_TAGS_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn the_blocked_tags_step_is_repeatable_and_part_of_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        assert!(table_exists(&fresh, "blocked_auto_tags"));
+        fresh.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES ('miniatur', 'x')", []).unwrap();
+        add_blocked_auto_tags_table(&fresh).unwrap();
+        add_blocked_auto_tags_table(&fresh).unwrap();
+        let rows: i64 = fresh.query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1, "repeating the step keeps the entries");
+        assert!(
+            fresh.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES ('MINIATUR', 'y')", []).is_err(),
+            "names are unique without regard to case"
+        );
     }
 
     #[test]
@@ -1070,7 +1133,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 11);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 12);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

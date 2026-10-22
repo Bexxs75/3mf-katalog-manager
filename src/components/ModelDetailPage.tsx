@@ -14,6 +14,9 @@ import { Icon } from './Icon';
 import { useDetailNavigation, type DetailDirection } from '../hooks/useDetailNavigation';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
+import { TagRemoveButton } from './TagRemoveButton';
+import { AutoTagBlockStatus } from './AutoTagBlockStatus';
+import { useAutoTagBlock } from '../hooks/useAutoTagBlock';
 import { invoke } from '@tauri-apps/api/core';
 import type { ModelFile, SlicerConfig, Collection, Printer } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
@@ -106,6 +109,7 @@ export function ModelDetailPage({
   const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const autoTagBlock = useAutoTagBlock(model, onRemoveTag, onAddTag);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const deleteTriggerFocusPending = useRef(false);
@@ -334,12 +338,12 @@ export function ModelDetailPage({
               <p className="ui-label text-[var(--ink-3)] mb-2">
                 {t('hashtagsHeading')}
               </p>
-              <div className="flex min-w-0 flex-wrap gap-1.5">
+              <div data-tag-list className="flex min-w-0 flex-wrap gap-1.5">
                 {model.tags.map((tag) => (
                   <span key={tag} title={`#${tagLabel(tag, language)}`} className="inline-flex max-w-full min-w-0 items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
                     <TagDot hue={tagHues?.[tag]} />
                     <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
-                    <button aria-label={t('chipRemove').replace('{label}', tag)} onClick={() => onRemoveTag(tag)} className="flex-none hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="close" size={14} /></button>
+                    <TagRemoveButton tag={tag} autoTag={autoTagBlock.suggested.has(tag)} onRemove={() => onRemoveTag(tag)} onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)} className="flex-none hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]" />
                   </span>
                 ))}
                 <TagInput
@@ -351,6 +355,7 @@ export function ModelDetailPage({
                   inputClassName="font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-transparent border border-dashed border-[var(--line)] text-[var(--ink-3)] w-32"
                 />
               </div>
+              <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
             </div>
           </div>
 

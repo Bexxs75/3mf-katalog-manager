@@ -596,7 +596,11 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
         )?;
     }
 
-    for tag_name in &file.tags {
+    // Every automatic assignment ends up here (import, folder sync, source folders,
+    // archives), so the block list is applied in this one place.
+    let mut tags = file.tags.clone();
+    super::blocked_tags::retain_unblocked(conn, &mut tags)?;
+    for tag_name in &tags {
         // Derived tags must never prevent importing the file itself.
         if tag_name.encode_utf16().take(101).count() > 100 {
             continue;

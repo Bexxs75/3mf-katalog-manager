@@ -6,6 +6,7 @@ mod collections;
 mod tag_fragments;
 pub mod companions;
 pub mod sources;
+pub mod blocked_tags;
 pub use tag_fragments::cleanup_tag_fragments;
 pub mod printers;
 // Printer connection: settings, connections, fetched prints.
@@ -14,7 +15,7 @@ mod migrations;
 
 pub use migrations::run_migrations;
 #[cfg(test)]
-pub(crate) use migrations::{SOURCE_COLUMNS_MIGRATION_VERSION, SPOOL_COLOR_LIST_MIGRATION_VERSION};
+pub(crate) use migrations::{BLOCKED_AUTO_TAGS_MIGRATION_VERSION, SOURCE_COLUMNS_MIGRATION_VERSION, SPOOL_COLOR_LIST_MIGRATION_VERSION};
 
 /// Schema version of this build (for tests that check the migration backup).
 #[cfg(test)]
@@ -80,6 +81,17 @@ mod tests {
     use super::*;
     use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool, NewPrintLogEntry};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn insert_drops_blocked_tags_but_keeps_the_others() {
+        let mut conn = connect_in_memory().expect("connect");
+        blocked_tags::block_auto_tag(&conn, "miniatur").unwrap();
+        let mut file = sample_file();
+        file.tags = vec!["Miniature".into(), "miniatur".into(), "kabelhalter".into()];
+        let id = insert_file(&mut conn, &file).expect("insert");
+        let tags: Vec<String> = list_all_file_tags(&conn).unwrap().into_iter().filter(|(f, _)| *f == id).map(|(_, t)| t).collect();
+        assert_eq!(tags, vec!["kabelhalter".to_string()]);
+    }
 
     fn sample_file() -> NewFile {
         let mut metadata = BTreeMap::new();

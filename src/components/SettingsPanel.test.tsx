@@ -193,3 +193,14 @@ describe('SettingsPanel content', () => {
     if (container) expect(await screen.findByText(/Daten unter \/config\/data/)).toBeVisible();
   });
 });
+
+describe('SettingsPanel blocked automatic tags', () => {
+  it('shows the blocked-tags list in the catalog tab', async () => {
+    vi.mocked(invoke).mockImplementation((async (command: string) => command === 'list_blocked_auto_tags' ? ['miniatur'] : { enabled: false, untilMs: null }) as typeof invoke);
+    renderPanel();
+    expect(screen.queryByText('Gesperrte automatische Tags')).toBeNull();
+    fireEvent.click(tab('Katalog'));
+    expect(screen.getByText('Gesperrte automatische Tags')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Sperre für #miniatur aufheben' })).toBeInTheDocument();
+  });
+});

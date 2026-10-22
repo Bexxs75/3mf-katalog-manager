@@ -45,3 +45,18 @@ export function tagMatches(tag: string, query: string, language: Language): bool
 export function sortTagsForDisplay(tags: TagCount[], language: Language): TagCount[] {
   return [...tags].sort((a, b) => tagLabel(a.label, language).localeCompare(tagLabel(b.label, language), language));
 }
+
+/** The names an automatic tag has in the other languages (without the displayed one), for hints. */
+export function otherTagNames(tag: string, language: Language): string[] {
+  const key = canonicalTag(tag);
+  if (!Object.prototype.hasOwnProperty.call(TABLE, key)) return [];
+  const shown = aliasKey(tagLabel(key, language));
+  const seen = new Set<string>([shown]);
+  const names: string[] = [];
+  for (const name of Object.values(TABLE[key])) {
+    if (seen.has(aliasKey(name))) continue;
+    seen.add(aliasKey(name));
+    names.push(name);
+  }
+  return names;
+}

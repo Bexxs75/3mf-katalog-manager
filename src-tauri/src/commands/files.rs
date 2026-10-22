@@ -319,7 +319,7 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
 /// Core logic of `add_tag`: names of automatic tags in any language are
 /// normalized to their key, so e.g. "Multipart" doesn't create a second tag next
 /// to "mehrteilig".
-fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
+pub(super) fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
     db::error::validate_text_length(tag, 100, "Tag").map_err(|e| CmdError::expected(e.to_string()))?;
     db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| match e {
         db::error::DbError::Invalid(message) => CmdError::expected(message),
@@ -341,6 +341,53 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
     // actually stored - normalizing would make an alias tag (e.g. the ambiguous
     // "mini") impossible to remove once it no longer matches the key.
     db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string().into())
+}
+fn blocked_tag_error(e: db::error::DbError) -> CmdError {
+    match e {
+        db::error::DbError::Invalid(message) => CmdError::expected(message),
+        other => other.to_string().into(),
+    }
+}
+
+/// Tags the app would suggest for this model today. The catalog does not record
+/// whether a tag was assigned automatically, so the detail view asks this to decide
+/// which tags may be blocked. Uses the stored dimensions, which for multi-plate
+/// models can differ slightly from the extent used at import.
+pub(super) fn suggested_auto_tags_with_conn(conn: &Connection, file_id: i64) -> CmdResult<Vec<String>> {
+    let file = db::get_file(conn, file_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| CmdError::expected("Datei nicht gefunden"))?;
+    Ok(tagging::suggest_tags(&TaggingContext {
+        file_name: &file.name,
+        dimensions_mm: file.dimensions_mm,
+        object_count: file.object_count,
+        materials: &file.materials,
+    }))
+}
+
+#[tauri::command]
+pub fn list_suggested_auto_tags(state: State<AppState>, file_id: String) -> CmdResult<Vec<String>> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    suggested_auto_tags_with_conn(&conn, id)
+}
+
+#[tauri::command]
+pub fn block_auto_tag(state: State<AppState>, tag: String) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    db::blocked_tags::block_auto_tag(&conn, &tag).map(|_| ()).map_err(blocked_tag_error)
+}
+
+#[tauri::command]
+pub fn unblock_auto_tag(state: State<AppState>, tag: String) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    db::blocked_tags::unblock_auto_tag(&conn, &tag).map_err(blocked_tag_error)
+}
+
+#[tauri::command]
+pub fn list_blocked_auto_tags(state: State<AppState>) -> CmdResult<Vec<String>> {
+    let conn = lock_db(&state)?;
+    db::blocked_tags::list_blocked_auto_tags(&conn).map_err(blocked_tag_error)
 }
 /// What `move_file_core` did for one file.
 #[derive(Debug, PartialEq, Eq)]

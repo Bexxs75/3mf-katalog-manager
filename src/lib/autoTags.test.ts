@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalTag, shortTagLabel, sortTagsForDisplay, tagLabel, tagMatches } from './autoTags';
+import { canonicalTag, otherTagNames, shortTagLabel, sortTagsForDisplay, tagLabel, tagMatches } from './autoTags';
 
 describe('tagLabel', () => {
   it('translates every auto tag into every language', () => {
@@ -92,5 +92,17 @@ describe('shortTagLabel', () => {
     ['#' + 'a'.repeat(27) + '😀z', '#' + 'a'.repeat(27) + '😀…'],
   ])('shortens the displayed label by codepoints: %s', (label, expected) => {
     expect(shortTagLabel(label)).toBe(expected);
+  });
+});
+
+describe('otherTagNames', () => {
+  it('lists the names in the other languages without the displayed one', () => {
+    expect(otherTagNames('mehrfarbig', 'de')).toEqual(['multicolor', 'multicolore']);
+    expect(otherTagNames('mehrfarbig', 'en')).toEqual(['mehrfarbig', 'multicolore']);
+  });
+  it('finds the entry from any language name and returns nothing for an ordinary tag', () => {
+    expect(otherTagNames('Multicolor', 'de')).toEqual(['multicolor', 'multicolore']);
+    expect(otherTagNames('kabelhalter', 'de')).toEqual([]);
+    expect(otherTagNames('constructor', 'de')).toEqual([]);
   });
 });

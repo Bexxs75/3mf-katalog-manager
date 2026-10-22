@@ -226,3 +226,11 @@ CREATE TABLE IF NOT EXISTS source_rejected (
     size_bytes INTEGER NOT NULL,
     rejected_at TEXT NOT NULL
 );
+
+-- Automatic tags the user removed for good ("do not assign automatically").
+-- Only the automatic assignment is blocked; tags typed by hand are unaffected.
+-- A separate table so `tags` and `file_tags` stay exactly as other tools read them.
+CREATE TABLE IF NOT EXISTS blocked_auto_tags (
+    name TEXT PRIMARY KEY COLLATE NOCASE,
+    blocked_at TEXT NOT NULL
+);

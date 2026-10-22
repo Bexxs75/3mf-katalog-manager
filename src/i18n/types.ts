@@ -885,6 +885,22 @@ export interface Translations {
   addToQueue: string;
   removeFromQueue: string;
   chipRemove: string;
+  chipRemoveWithMenu: string;
+  autoTagMenuAria: string;
+  autoTagRemoveOnly: string;
+  autoTagRemoveOnlyHint: string;
+  autoTagRemoveAndBlock: string;
+  autoTagRemoveAndBlockHint: string;
+  autoTagBlockedNotice: string;
+  autoTagUnblockedNotice: string;
+  autoTagBlockError: string;
+  blockedAutoTagsTitle: string;
+  blockedAutoTagsHint: string;
+  blockedAutoTagsEmpty: string;
+  blockedAutoTagsLoadError: string;
+  blockedAutoTagAlso: string;
+  blockedAutoTagUnblock: string;
+  blockedAutoTagUnblockAria: string;
 
   catalogCleanupTitle: string;
   catalogCleanupScanButton: string;
