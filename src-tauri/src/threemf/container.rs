@@ -505,8 +505,12 @@ mod tests {
         bytes[central + 24..central + 28].copy_from_slice(&4_u32.to_le_bytes());
         let mut archive = ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let mut total = 0;
+        // The ZIP library itself now refuses to read past the declared size, so
+        // a lying header ends in a read error before our own counter trips. Either
+        // way the entry is rejected and nothing beyond the limit is parsed.
         assert!(matches!(read_model_entry(&mut archive, "3D/Objects/object_1.model", 16_000, &mut total, false),
-            Err(ThreeMfError::EntryTooLarge { .. })));
+            Err(ThreeMfError::EntryTooLarge { .. } | ThreeMfError::Io(_))));
+        assert!(total <= 16_000, "no more than the limit may be consumed, got {total}");
     }
 
     #[test]
@@ -539,8 +543,10 @@ mod tests {
         bytes[local + 22..local + 26].copy_from_slice(&4_u32.to_le_bytes());
         let mut archive = ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let mut total = 0;
+        // See streaming_checks_remainder_after_malformed_xml: the library may reject first.
         assert!(matches!(read_model_entry(&mut archive, DEFAULT_MODEL_PATH, 1024, &mut total, false),
-            Err(ThreeMfError::EntryTooLarge { .. })));
+            Err(ThreeMfError::EntryTooLarge { .. } | ThreeMfError::Io(_))));
+        assert!(total <= 1024, "no more than the limit may be consumed, got {total}");
     }
 
     #[test]
