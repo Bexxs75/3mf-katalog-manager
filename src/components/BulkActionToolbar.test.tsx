@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { BulkActionToolbar } from './BulkActionToolbar';
 import { ImportLockContext } from '../hooks/ImportLockContext';
+import { clickBulkMore, openBulkMore } from '../test/bulkBar';
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -85,9 +86,9 @@ describe('BulkActionToolbar', () => {
 
   it('cancels remove confirmation without clearing until the next Escape', () => {
     const { props } = renderToolbar();
-    fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
+    clickBulkMore('Aus Katalog entfernen');
     fireEvent.keyDown(screen.getByRole('button', { name: 'Abbrechen' }), { key: 'Escape' });
-    expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Mehr/ })).toBeInTheDocument();
     expect(props.onClearSelection).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(props.onClearSelection).toHaveBeenCalledTimes(1);
@@ -95,14 +96,14 @@ describe('BulkActionToolbar', () => {
 
   it('cancels remove confirmation with focus outside the bar before clearing selection', () => {
     const { props } = renderToolbar();
-    fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
+    clickBulkMore('Aus Katalog entfernen');
     const outside = document.createElement('button');
     document.body.appendChild(outside);
     try {
       outside.focus();
       expect(outside).toHaveFocus();
       fireEvent.keyDown(outside, { key: 'Escape' });
-      expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Mehr/ })).toBeInTheDocument();
       expect(props.onClearSelection).not.toHaveBeenCalled();
       expect(props.onBulkRemove).not.toHaveBeenCalled();
       fireEvent.keyDown(outside, { key: 'Escape' });
@@ -118,7 +119,7 @@ describe('BulkActionToolbar', () => {
   ] as const)('closes open menus when the %s confirmation opens', (kind, overrides) => {
     const { props } = renderToolbar({ ...overrides, removeTagMenuOpen: kind === 'delete' });
     if (kind === 'remove') {
-      fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
+      clickBulkMore('Aus Katalog entfernen');
     }
     expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(false);
     expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
@@ -184,21 +185,19 @@ describe('BulkActionToolbar', () => {
     }
   });
 
-  it('wraps onto further rows so "remove from catalog" and "delete" stay reachable in narrow windows', () => {
+  it('wraps as a last resort so no action becomes unreachable in a very narrow window', () => {
     renderToolbar();
-    const remove = screen.getByRole('button', { name: 'Aus Katalog entfernen' });
-    const bar = remove.closest('div.flex-none');
-    expect(bar?.className).toContain('flex-wrap');
+    expect(screen.getByRole('toolbar')).toHaveClass('flex-wrap');
   });
 });
 
-it('focuses Cancel in the inline remove confirmation and restores the remove button on Escape', () => {
+it('focuses Cancel in the inline remove confirmation and restores focus to the More button on Escape', () => {
   const { props } = renderToolbar();
-  const trigger = screen.getByRole('button', { name: 'Aus Katalog entfernen' });
-  trigger.focus(); fireEvent.click(trigger);
+  clickBulkMore('Aus Katalog entfernen');
   expect(screen.getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-  expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toHaveFocus();
+  // The entry sits in the "More" menu, so focus goes back to the button that opens it.
+  expect(screen.getByRole('button', { name: /^Mehr/ })).toHaveFocus();
   expect(props.onBulkRemove).not.toHaveBeenCalled();
 });
 
@@ -253,26 +252,26 @@ it('uses the controlled draft when the apply button is clicked', () => {
 it('sets a bulk license, clears it, and closes its menu on Escape', async () => {
   const onBulkSetLicense = vi.fn().mockResolvedValue(undefined);
   const { props } = renderToolbar({ onBulkSetLicense });
-  fireEvent.click(screen.getByRole('button', { name: 'Lizenz setzen' }));
+  clickBulkMore('Lizenz setzen');
   fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'personal' } });
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   await waitFor(() => expect(onBulkSetLicense).toHaveBeenCalledWith('personal'));
   await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
-  fireEvent.click(screen.getByRole('button', { name: 'Lizenz setzen' }));
+  clickBulkMore('Lizenz setzen');
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   await waitFor(() => expect(onBulkSetLicense).toHaveBeenLastCalledWith(null));
   await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
-  fireEvent.click(screen.getByRole('button', { name: 'Lizenz setzen' }));
+  clickBulkMore('Lizenz setzen');
   fireEvent.keyDown(window, { key: 'Escape' });
   expect(screen.queryByRole('combobox')).toBeNull();
   expect(props.onClearSelection).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: 'Lizenz setzen' })).toHaveFocus();
+  expect(screen.getByRole('button', { name: /^Mehr/ })).toHaveFocus();
 });
 
 it('applies a custom license to the selection and reports errors without closing', async () => {
   const onBulkSetLicense = vi.fn().mockRejectedValueOnce(new Error('Disk full')).mockResolvedValue(undefined);
   renderToolbar({ onBulkSetLicense });
-  fireEvent.click(screen.getByRole('button', { name: 'Lizenz setzen' }));
+  clickBulkMore('Lizenz setzen');
   fireEvent.change(screen.getByRole('combobox'), { target: { value: '__other' } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Lizenztext' }), { target: { value: ' Agreement ' } });
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
@@ -357,4 +356,159 @@ it('disables the move button while an import runs', () => {
     }} />
   </ImportLockContext.Provider></LanguageProvider>);
   expect(screen.getByRole('button', { name: 'Verschieben …' })).toBeDisabled();
+});
+
+describe('BulkActionToolbar without a selection', () => {
+  const sampleProps = { onBulkMove: vi.fn(), onBulkSetLicense: vi.fn(async () => {}), selectedIds: ['1'], onDateRenamed: vi.fn() };
+
+  it('is shown with "Alle auswählen" usable and every bulk action unavailable with a reason', () => {
+    const { props } = renderToolbar({ selectedCount: 0, ...sampleProps });
+    const bar = screen.getByRole('toolbar', { name: 'Aktionen für die Auswahl' });
+    expect(within(bar).getByText('0 ausgewählt')).toBeInTheDocument();
+    const selectAll = within(bar).getByRole('button', { name: 'Alle auswählen' });
+    expect(selectAll).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(selectAll);
+    expect(props.onSelectAllVisible).toHaveBeenCalledTimes(1);
+
+    const unavailable = ['Auswahl aufheben', 'Tag hinzufügen', 'Tag entfernen', 'Zu Sammlung hinzufügen', 'Gedruckt', 'Verschieben …', 'Zur Warteschlange hinzufügen', /^Mehr/, 'Löschen'];
+    for (const name of unavailable) {
+      const button = within(bar).getByRole('button', { name });
+      // aria-disabled instead of disabled keeps the button focusable, so its reason can be read.
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button).toHaveAccessibleDescription('Wähle zuerst Modelle aus.');
+      fireEvent.click(button);
+    }
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+    expect(props.onBulkAddToQueue).not.toHaveBeenCalled();
+    expect(props.onBulkSetPrintStatus).not.toHaveBeenCalled();
+    expect(props.onConfirmBulkDeleteChange).not.toHaveBeenCalled();
+    expect(props.onAddTagMenuOpenChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('has the same classes with and without a selection, so the view does not jump', () => {
+    const { view } = renderToolbar({ selectedCount: 0 });
+    const empty = screen.getByRole('toolbar').className;
+    view.unmount();
+    renderToolbar({ selectedCount: 3 });
+    expect(screen.getByRole('toolbar').className).toBe(empty);
+    expect(empty).toContain('min-h-12');
+  });
+
+  it('does not clear anything with Escape', () => {
+    const { props } = renderToolbar({ selectedCount: 0 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it('keeps focus on "Auswahl aufheben" when it becomes unavailable after use', () => {
+    const { props, view } = renderToolbar({ selectedCount: 2 });
+    const clear = screen.getByRole('button', { name: 'Auswahl aufheben' });
+    clear.focus();
+    fireEvent.click(clear);
+    view.rerender(<LanguageProvider><BulkActionToolbar {...props} selectedCount={0} /></LanguageProvider>);
+    expect(screen.getByRole('button', { name: 'Auswahl aufheben' })).toHaveFocus();
+  });
+
+  it('closes an open menu and confirmation when the selection disappears', () => {
+    const { props, view } = renderToolbar({ selectedCount: 2, confirmBulkDelete: true, addTagMenuOpen: true });
+    view.rerender(<LanguageProvider><BulkActionToolbar {...props} selectedCount={0} /></LanguageProvider>);
+    expect(props.onConfirmBulkDeleteChange).toHaveBeenCalledWith(false);
+    expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('BulkActionToolbar groups and More menu', () => {
+  const extra = { onBulkMove: vi.fn(), onBulkSetLicense: vi.fn(async () => {}), selectedIds: ['1'], onDateRenamed: vi.fn(), activeCollection: 'c1' };
+  const names = (scope: HTMLElement, role: 'button' | 'menuitem') => within(scope).getAllByRole(role).map(el => el.textContent?.trim());
+
+  it('groups the actions by purpose and keeps "Löschen" apart', () => {
+    renderToolbar(extra);
+    const bar = screen.getByRole('toolbar');
+    expect(names(within(bar).getByRole('group', { name: 'Auswahl' }), 'button')).toEqual(['Alle auswählen', 'Auswahl aufheben']);
+    expect(names(within(bar).getByRole('group', { name: 'Bearbeiten' }), 'button')).toEqual(['Tag hinzufügen', 'Tag entfernen', 'Zu Sammlung hinzufügen', 'Gedruckt']);
+    expect(names(within(bar).getByRole('group', { name: 'Ablegen' }), 'button')).toEqual(['Verschieben …', 'Zur Warteschlange hinzufügen']);
+    const del = within(bar).getByRole('button', { name: 'Löschen' });
+    expect(del.closest('[role="group"]')).toBeNull();
+    expect(screen.getByText('2 ausgewählt')).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('puts the rarely used actions into the More menu', () => {
+    renderToolbar(extra);
+    const trigger = screen.getByRole('button', { name: /^Mehr/ });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    const menu = screen.getByRole('menu', { name: 'Mehr Aktionen' });
+    expect(names(menu, 'menuitem')).toEqual(['Lizenz setzen', 'Nicht gedruckt', 'Mit Datum umbenennen …', 'Aus Sammlung entfernen', 'Aus Katalog entfernen']);
+  });
+
+  it('lists "Aus Sammlung entfernen" only inside a collection', () => {
+    renderToolbar({ ...extra, activeCollection: null });
+    expect(names(openBulkMore(), 'menuitem')).not.toContain('Aus Sammlung entfernen');
+  });
+
+  it('opens with ArrowDown, moves with the arrow keys, closes with Escape and returns focus to the trigger', () => {
+    const { props } = renderToolbar(extra);
+    const trigger = screen.getByRole('button', { name: /^Mehr/ });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem');
+    expect(items[0]).toHaveFocus();
+    fireEvent.keyDown(items[0], { key: 'ArrowDown' });
+    expect(items[1]).toHaveFocus();
+    fireEvent.keyDown(items[1], { key: 'End' });
+    expect(items[items.length - 1]).toHaveFocus();
+    fireEvent.keyDown(items[items.length - 1], { key: 'ArrowUp' });
+    expect(items[items.length - 2]).toHaveFocus();
+    fireEvent.keyDown(items[1], { key: 'Home' });
+    expect(items[0]).toHaveFocus();
+    fireEvent.keyDown(items[0], { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger).toHaveFocus();
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it('closes on Tab and on a click outside', () => {
+    renderToolbar(extra);
+    const trigger = screen.getByRole('button', { name: /^Mehr/ });
+    openBulkMore();
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    openBulkMore();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger).toBeInTheDocument();
+  });
+
+  it('runs a menu action, closes the menu and keeps focus in the bar', () => {
+    const { props } = renderToolbar(extra);
+    fireEvent.click(within(openBulkMore()).getByRole('menuitem', { name: 'Nicht gedruckt' }));
+    expect(props.onBulkSetPrintStatus).toHaveBeenCalledWith('not_printed');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+    fireEvent.click(within(openBulkMore()).getByRole('menuitem', { name: 'Aus Sammlung entfernen' }));
+    expect(props.onBulkRemoveFromCollection).toHaveBeenCalledTimes(1);
+  });
+
+  // Every action of the former flat bar has to stay reachable, in both layouts.
+  const formerActions = ['Alle auswählen', 'Auswahl aufheben', 'Lizenz setzen', 'Zur Warteschlange hinzufügen', 'Zu Sammlung hinzufügen',
+    'Aus Sammlung entfernen', 'Tag hinzufügen', 'Tag entfernen', 'Gedruckt', 'Nicht gedruckt', 'Mit Datum umbenennen …', 'Verschieben …',
+    'Aus Katalog entfernen', 'Löschen'];
+  it.each([false, true])('keeps every former action reachable (compact=%s)', compact => {
+    renderToolbar({ ...extra, compact });
+    const inBar = within(screen.getByRole('toolbar')).getAllByRole('button').map(el => el.textContent?.trim());
+    const inMenu = names(openBulkMore(), 'menuitem');
+    for (const action of formerActions) expect([...inBar, ...inMenu], action).toContain(action);
+  });
+
+  it('moves "Tag entfernen" and "Gedruckt" into the menu in a narrow window and opens the tag list from there', () => {
+    const { props } = renderToolbar({ ...extra, compact: true });
+    const bar = screen.getByRole('toolbar');
+    expect(within(bar).queryByRole('button', { name: 'Gedruckt' })).toBeNull();
+    expect(within(bar).queryByRole('button', { name: 'Verschieben …' })).toBeNull();
+    fireEvent.click(within(openBulkMore()).getByRole('menuitem', { name: 'Tag entfernen' }));
+    expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(true);
+  });
 });

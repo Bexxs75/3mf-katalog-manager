@@ -208,7 +208,7 @@ html { font-family: 'Barlow', Helvetica, sans-serif; }
 .status-accent { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
 .status-material-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .detail-panel-shell { display: flex; flex: none; min-height: 0; position: relative; }
-.detail-panel-overlay { position: absolute; top: 0; right: 0; bottom: 0; width: min(340px, 92%); z-index: 20; box-shadow: var(--shadow); }
+.detail-panel-overlay { position: absolute; top: var(--detail-overlay-top, 0px); right: 0; bottom: 0; width: min(340px, 92%); z-index: 20; box-shadow: var(--shadow); }
 .detail-panel-overlay > aside { width: 100% !important; }
 .detail-panel-close { position: absolute; top: 4px; right: 4px; z-index: 21; width: 30px; height: 30px; display: grid; place-items: center; background: var(--panel); color: var(--ink-2); border-radius: 6px; cursor: pointer; }
 

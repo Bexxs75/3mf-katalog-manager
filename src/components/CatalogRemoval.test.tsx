@@ -9,6 +9,7 @@ function FolderTree(props: Omit<Parameters<typeof FolderTreeComponent>[0], 'expa
 }
 import { CatalogResetSection } from './CatalogResetSection';
 import { BulkActionToolbar } from './BulkActionToolbar';
+import { clickBulkMore } from '../test/bulkBar';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn().mockResolvedValue(undefined), info: vi.fn().mockResolvedValue(undefined) }));
@@ -89,7 +90,7 @@ it('bulk toolbar confirms removal and calls its removal action', async () => {
     onBulkRemoveFromCollection={noop} onBulkSetPrintStatus={noop} onBulkDelete={noop} onBulkRemove={onRemove}
     allTags={[]} tagsInAllSelection={[]} addTagMenuOpen={false} onAddTagMenuOpenChange={noop} tagDraft="" onTagDraftChange={noop} onSubmitBulkAddTag={noop}
     removeTagMenuOpen={false} onRemoveTagMenuOpenChange={noop} tagsInSelection={[]} onBulkRemoveTag={noop} /></Provider>);
-  fireEvent.click(screen.getByText('Aus Katalog entfernen'));
+  clickBulkMore('Aus Katalog entfernen');
   expect(screen.getByText('3 Modelle aus dem Katalog entfernen?')).toBeTruthy();
   fireEvent.click(screen.getByText('Entfernen'));
   expect(onRemove).toHaveBeenCalledOnce();

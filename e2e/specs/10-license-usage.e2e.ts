@@ -1,5 +1,5 @@
 import { cardByName, openCatalog } from '../lib/app.js';
-import { button, chooseOption, closeDetails, detailPanel, selectCards, selectModel } from '../lib/catalog-ui.js';
+import { button, moreAction, chooseOption, closeDetails, detailPanel, selectCards, selectModel } from '../lib/catalog-ui.js';
 import { click, waitForText } from '../lib/ui.js';
 
 describe('10 Lizenz und Nutzung', () => {
@@ -32,7 +32,7 @@ describe('10 Lizenz und Nutzung', () => {
   it('sets CC BY for two selected cards and removes their badges with Nicht gesetzt', async () => {
     await selectCards(names);
     for (const label of ['CC BY – Namensnennung', 'Nicht gesetzt']) {
-      await button('Lizenz setzen');
+      await moreAction('Lizenz setzen');
       const editor = $('[data-navigation-menu] section[aria-label="Lizenz"]');
       await editor.waitForDisplayed();
       await chooseOption(editor.$('select'), label);

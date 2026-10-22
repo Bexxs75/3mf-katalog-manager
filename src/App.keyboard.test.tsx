@@ -6,6 +6,7 @@ import { LanguageProviderWithDiagnostics } from './test/renderWithDiagnostics';
 import { UiDensityProvider } from './hooks/UiDensityContext';
 import { de } from './i18n/de';
 import { makeModelFile, makeModelFileSummary } from './test/factories';
+import { clickBulkMore } from './test/bulkBar';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -115,7 +116,7 @@ it.each(['keyboard', 'toolbar'])('collection selection via %s sends only its vis
   fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
   if (mode === 'toolbar') fireEvent.click(screen.getByRole('button', { name: de.selectAllLabel }));
   expect(screen.getByText(de.bulkSelectedCount.replace('{count}', '1'))).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: de.licenseSet }));
+  clickBulkMore(de.licenseSet);
   fireEvent.change(screen.getByRole('combobox', { name: de.licenseHeading }), { target: { value: 'cc0' } });
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.licenseSave })); });
   expect(invoke).toHaveBeenCalledWith('set_license', { fileIds: ['a'], license: 'cc0' });

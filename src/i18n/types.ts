@@ -902,6 +902,13 @@ export interface Translations {
 
   trashHeading: string;
   bulkSelectedCount: string;
+  bulkToolbarLabel: string;
+  bulkGroupSelection: string;
+  bulkGroupEdit: string;
+  bulkGroupFile: string;
+  bulkMoreLabel: string;
+  bulkMoreMenuLabel: string;
+  bulkNeedsSelectionHint: string;
   selectAllLabel: string;
   clearSelectionLabel: string;
   bulkDeleteConfirmQuestion: PluralForms;

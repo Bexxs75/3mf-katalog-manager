@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { cardByName, openCatalog } from '../lib/app.js';
-import { byText, click, rightClick, waitForText } from '../lib/ui.js';
+import { byText, click, rightClick } from '../lib/ui.js';
 
 describe('3 Rechtsklick-Menue und Umbenennen', () => {
   before(async () => { await openCatalog(); });
@@ -9,7 +9,8 @@ describe('3 Rechtsklick-Menue und Umbenennen', () => {
   it('opens the model menu on a real right click', async () => {
     await rightClick(await cardByName('Würfel 20mm.stl'));
     for (const entry of ['In Slicer öffnen', 'Im Dateimanager anzeigen', 'Umbenennen', 'Aus dem Katalog entfernen', 'Löschen']) {
-      await waitForText('button', entry, 5000);
+      // Outside the selection bar, which has its own "Löschen" button.
+      await $(`//button[normalize-space()="${entry}" and not(ancestor::*[@role="toolbar"])]`).waitForExist({ timeout: 5000, timeoutMsg: `no menu entry "${entry}"` });
     }
   });
 

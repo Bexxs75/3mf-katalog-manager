@@ -41,7 +41,7 @@ async function selectHiddenModel() {
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   await screen.findAllByText('Hidden.stl');
   fireEvent.click(screen.getAllByRole('checkbox')[0]);
-  expect(screen.getByText('Aus Katalog entfernen')).toBeTruthy();
+  expect(screen.getByText('1 ausgewählt')).toBeTruthy();
 }
 
 it.each([
@@ -52,5 +52,5 @@ it.each([
   fireEvent.change(screen.getByRole('combobox', { name: filterName }), { target: { value } });
   await waitFor(() => expect(screen.queryAllByText('Hidden.stl')).toHaveLength(0));
   expect(screen.getAllByText('Visible.stl').length).toBeGreaterThan(0);
-  expect(screen.queryByText('Aus Katalog entfernen')).toBeNull();
+  expect(screen.getByText('0 ausgewählt')).toBeTruthy();
 });
