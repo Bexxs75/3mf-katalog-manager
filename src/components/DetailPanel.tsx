@@ -17,6 +17,9 @@ import type { FilamentCheck, Printer } from '../types';
 import type { LastPrinter } from '../lib/api/lastPrinter';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
+import { TagRemoveButton } from './TagRemoveButton';
+import { AutoTagBlockStatus } from './AutoTagBlockStatus';
+import { useAutoTagBlock } from '../hooks/useAutoTagBlock';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelPreview } from './ModelPreview';
@@ -89,6 +92,7 @@ export function DetailPanel({
   const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const autoTagBlock = useAutoTagBlock(trashMode ? null : model, onRemoveTag, onAddTag);
   const {
     editing: editingSourceUrl,
     draft: sourceUrlDraft,
@@ -297,7 +301,7 @@ export function DetailPanel({
           <div className="text-compact-meta ui-label text-[var(--ink-3)] pb-2.5">
             {t('hashtagsHeading')}
           </div>
-          <div className="flex min-w-0 flex-wrap gap-1.5">
+          <div data-tag-list className="flex min-w-0 flex-wrap gap-1.5">
             {model.tags.map((tag) => (
               <span
                 key={tag}
@@ -306,14 +310,13 @@ export function DetailPanel({
               >
                 <TagDot hue={tagHues?.[tag]} />
                 <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
-                <button
-                  type="button"
-                  aria-label={t('chipRemove').replace('{label}', tag)}
-                  onClick={() => onRemoveTag(tag)}
+                <TagRemoveButton
+                  tag={tag}
+                  autoTag={autoTagBlock.suggested.has(tag)}
+                  onRemove={() => onRemoveTag(tag)}
+                  onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)}
                   className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
-                >
-                  <Icon name="close" size={14} />
-                </button>
+                />
               </span>
             ))}
             <TagInput
@@ -325,6 +328,7 @@ export function DetailPanel({
               inputClassName="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-medium tabular-nums text-caption"
             />
           </div>
+          <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
         </div>
 
         <BuildPlateFit model={model} printers={printers} variant="compact" />
@@ -428,7 +432,7 @@ export function DetailPanel({
           </button>
         </div>
         <div className="px-[18px]"><StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} /></div>
-        <div className="px-[18px] pb-3.5 flex min-w-0 flex-wrap gap-1.5">
+        <div data-tag-list className="px-[18px] pb-3.5 flex min-w-0 flex-wrap gap-1.5">
           {model.tags.map((tag) => (
             <span
               key={tag}
@@ -438,15 +442,14 @@ export function DetailPanel({
             >
               <TagDot hue={tagHues?.[tag]} />
               <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
-              <button
-                type="button"
-                aria-label={t('chipRemove').replace('{label}', tag)}
-                onClick={() => onRemoveTag(tag)}
+              <TagRemoveButton
+                tag={tag}
+                autoTag={autoTagBlock.suggested.has(tag)}
+                onRemove={() => onRemoveTag(tag)}
+                onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)}
                 className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 style={{ fontSize: 'var(--font-size-label)' }}
-              >
-                <Icon name="close" size={14} />
-              </button>
+              />
             </span>
           ))}
           <TagInput
@@ -458,6 +461,9 @@ export function DetailPanel({
             inputClassName="px-2.5 py-1 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
             inputStyle={{ fontSize: 'var(--font-size-meta)' }}
           />
+        </div>
+        <div className="px-[18px] empty:hidden pb-3.5">
+          <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
         </div>
 
         <div className="px-[18px] pb-4 border-t border-[var(--line)] pt-3.5">

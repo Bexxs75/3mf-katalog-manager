@@ -23,6 +23,8 @@ pub fn cleanup_tag_fragments(conn: &mut Connection) -> Result<Option<(usize, usi
                 "DELETE FROM file_tags WHERE file_id = ?1 AND tag_id = (SELECT id FROM tags WHERE name = ?2)",
             )?.execute(params![id, fragment])?;
         }
+        let mut correct = correct;
+        super::blocked_tags::retain_unblocked(&tx, &mut correct)?;
         for tag in correct {
             let exists: bool = tx.prepare_cached(
                 "SELECT EXISTS(SELECT 1 FROM file_tags ft JOIN tags t ON t.id = ft.tag_id WHERE ft.file_id = ?1 AND t.name = ?2)",

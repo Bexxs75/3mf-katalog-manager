@@ -31,6 +31,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Material Manager:** equal spools are grouped into one card with the count, total rest and total target amount; a click shows the single spools, each with its own bar. Spools in a printer form a group per unit (for example "X1C · AMS 1"). Cards are sorted by remaining share, lowest first. A switch "Grouped / Single" (grouped by default, remembered) applies to the dashboard and the list; the header also shows the number of different kinds.
 - **Material Manager:** multi-color spools: up to four colors per spool, shown as a split color dot. The first color is used to match the slicer colors.
 - **Material Manager:** a new spool starts with the weight last used for the same manufacturer and material (otherwise the manufacturer, otherwise 1000 g); the field stays editable. When loading from the shelf into a printer or deducting resin by hand, the spool with the smallest rest that still suffices is suggested.
+- **Block automatic tags:** for a tag the app would assign to the model by itself, the ✕ in the detail view offers "Remove and do not assign automatically again". The tag is then no longer assigned automatically on new imports and syncs, in every language and regardless of upper or lower case; you can still add it by hand. Settings → Catalog lists all blocked tags under "Blocked automatic tags", and each block can be lifted with "Lift block".
 
 ### Fixed
 
@@ -46,6 +47,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Catalog database:** The catalog database gets three new columns for the platform and model ID of downloaded files; older catalogs are upgraded automatically (a copy is saved first).
 - **Catalog database:** The catalog database gets new tables for companion files and for remembered source folders; older catalogs are upgraded automatically (a copy is saved first).
 - **Catalog database:** The catalog database gets a new column for the colors of a spool (schema version 50); older catalogs are upgraded automatically (a copy is saved first).
+- **Catalog database:** The catalog database gets a new table that remembers blocked automatic tags (schema version 51); older catalogs are upgraded automatically (a copy is kept).
 - **Robustness:** More robust handling of companion files, folder deletion and the start sync with unusual or oversized files.
 - Updated the library used for catalog backups and archive import.
 - **Selection bar:** The selection bar is always visible, grouped by purpose, with rarely used actions in a "More" menu, and no longer hidden by the detail panel.
@@ -706,6 +708,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Material Manager:** Gleiche Spulen werden zu einer Karte mit Stückzahl, Gesamtrest und Gesamtsoll zusammengefasst; ein Klick zeigt die einzelnen Spulen, jede mit eigenem Balken. Spulen in einem Drucker bilden je Einheit eine eigene Gruppe (z. B. „X1C · AMS 1“). Die Karten sind nach Restbestand-Anteil sortiert, knappe zuerst. Ein Umschalter „Gruppiert / Einzeln“ (Standard gruppiert, wird gemerkt) gilt für Dashboard und Liste; die Kopfzahlen zeigen zusätzlich die Zahl der verschiedenen Sorten.
 - **Material Manager:** Mehrfarbige Spulen: bis zu vier Farben je Spule, als geteilter Farbpunkt dargestellt. Die erste Farbe gilt für den Abgleich mit den Slicer-Farben.
 - **Material Manager:** Eine neue Spule startet mit dem zuletzt genutzten Gewicht für denselben Hersteller und dasselbe Material (sonst für den Hersteller, sonst 1000 g); das Feld bleibt änderbar. Beim Einlegen aus dem Regal in einen Drucker und beim manuellen Abbuchen von Resin wird die Spule mit dem kleinsten noch ausreichenden Rest vorgeschlagen.
+- **Automatische Tags sperren:** Bei einem Tag, den die App für das Modell selbst vergeben würde, bietet das ✕ im Detailbereich „Entfernen und nicht mehr automatisch vergeben“ an. Der Tag wird dann bei neuen Importen und beim Abgleich nicht mehr automatisch vergeben, in allen Sprachen und ohne Groß-/Kleinschreibung; von Hand kannst du ihn weiterhin vergeben. Unter Einstellungen → Katalog listet „Gesperrte automatische Tags“ alle Sperren, jede lässt sich mit „Sperre aufheben“ lösen.
 
 ### Behoben
 
@@ -721,6 +724,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt drei neue Spalten für die Plattform und die Modell-ID heruntergeladener Dateien; ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt neue Tabellen für Begleitdateien und für gemerkte Quellordner; ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt eine neue Spalte für die Farben einer Spule (Schema 50); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
+- **Katalog-Datenbank:** Die Katalog-Datenbank bekommt eine neue Tabelle, die gesperrte automatische Tags merkt (Schema 51); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert).
 - **Robustheit:** Begleitdateien, Ordner löschen und der Abgleich beim Start kommen besser mit ungewöhnlichen oder sehr großen Dateien zurecht.
 - Die Bibliothek für Katalog-Backups und Archiv-Import wurde aktualisiert.
 - **Auswahlleiste:** Die Auswahlleiste ist immer sichtbar, nach Zweck gegliedert, selten genutzte Aktionen stehen im Menü „Mehr“, und der Detailbereich verdeckt sie nicht mehr.

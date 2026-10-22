@@ -2377,3 +2377,6 @@ mod missing_folder_tests;
 
 #[cfg(test)]
 mod companion_tests;
+
+#[cfg(test)]
+mod blocked_tags_tests;

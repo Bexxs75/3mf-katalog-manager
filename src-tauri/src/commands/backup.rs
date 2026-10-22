@@ -216,6 +216,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ]),
     ("source_folders", &["id", "path", "added_at"]),
     ("source_rejected", &["id", "path", "size_bytes", "rejected_at"]),
+    ("blocked_auto_tags", &["name", "blocked_at"]),
     ("printer_connections", &["printer_id", "kind", "address", "connected_since", "paused"]),
     ("printer_jobs", &[
         "id", "printer_id", "remote_id", "file_name", "outcome", "raw_status", "ended_at",
@@ -382,6 +383,9 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("source_rejected", "path", ColType::Text, false),
     ("source_rejected", "size_bytes", ColType::Integer, false),
     ("source_rejected", "rejected_at", ColType::Text, false),
+    // blocked_auto_tags - see db/blocked_tags.rs.
+    ("blocked_auto_tags", "name", ColType::Text, false),
+    ("blocked_auto_tags", "blocked_at", ColType::Text, false),
     // Printer connection - see db/printer_link.rs (connection_from_row, job_from_row).
     ("app_settings", "key", ColType::Text, false),
     ("app_settings", "value", ColType::Text, false),
@@ -875,6 +879,7 @@ fn validate_catalog_db_bytes(
                 }
             }
             drop(stmt);
+            validate_blocked_auto_tags(&conn)?;
             Ok(())
         });
 
@@ -883,6 +888,25 @@ fn validate_catalog_db_bytes(
         log::warn!(target: "backup", "invalid catalog database: {e}");
         "Archiv enthält keine gültige Katalog-Datenbank.".to_string()
     })
+}
+/// The names are shown in the settings and compared with every new tag, so a
+/// foreign backup must not bring an endless list or oversized or control text.
+fn validate_blocked_auto_tags(conn: &Connection) -> Result<(), String> {
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    if count as usize > crate::db::blocked_tags::MAX_BLOCKED_TAGS {
+        return Err("Katalog-Datenbank enthaelt zu viele gesperrte Tags".to_string());
+    }
+    let names: Vec<String> = conn
+        .prepare("SELECT name FROM blocked_auto_tags")
+        .and_then(|mut s| s.query_map([], |r| r.get(0))?.collect())
+        .map_err(|e| e.to_string())?;
+    for name in names {
+        crate::db::blocked_tags::normalize_blocked_name(&name)
+            .map_err(|_| "Katalog-Datenbank enthaelt einen ungueltigen gesperrten Tag".to_string())?;
+    }
+    Ok(())
 }
 /// Boundary used by `import_catalog`: a rejected backup file (bad schema,
 /// corrupted DB, a path escaping the trash/sensitive-dir checks, ...) is always
@@ -3614,6 +3638,95 @@ mod companion_tests {
         let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "pic.png", "/catalog/Foo_extras/pic.png", "image", Some(&inside.to_string_lossy())));
         let _ = trash;
         assert!(validate(&bytes, inside.parent().unwrap()).is_ok(), "counter-check: inside the trash it is fine");
+    }
+
+    #[test]
+    fn blocked_auto_tags_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_blocked_tags_a");
+        {
+            let conn = source.db.lock().unwrap();
+            db::blocked_tags::block_auto_tag(&conn, "Miniature").unwrap();
+            db::blocked_tags::block_auto_tag(&conn, "kabelhalter").unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate(&db_bytes, &dir).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+
+        let (target, _target_dir) = state_with_catalog("backup_blocked_tags_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        assert_eq!(db::blocked_tags::list_blocked_auto_tags(&conn).unwrap(), vec!["kabelhalter", "miniatur"]);
+    }
+
+    #[test]
+    fn a_backup_from_before_the_blocked_tags_table_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_blocked_tags_old_a");
+        {
+            let conn = old.db.lock().unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
+            conn.execute_batch("DROP TABLE blocked_auto_tags").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::BLOCKED_AUTO_TAGS_MIGRATION_VERSION - 1).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT * FROM blocked_auto_tags").is_err(), "precondition: the backup has no such table");
+
+        validate(&db_bytes, &dir).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_blocked_tags_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        assert!(db::blocked_tags::list_blocked_auto_tags(&conn).unwrap().is_empty());
+        assert_eq!(db::list_files(&conn).unwrap()[0].creator.as_deref(), Some("Jane"));
+    }
+
+    #[test]
+    fn crafted_blocked_tag_rows_are_rejected() {
+        let long = "x".repeat(101);
+        for (why, name) in [("too long", long.as_str()), ("control character", "a\u{7}b"), ("empty", "  ")] {
+            let (bytes, trash) = catalog_bytes(|conn| {
+                conn.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES (?1, 't')", [name]).unwrap();
+            });
+            assert!(validate(&bytes, &trash).is_err(), "{why}");
+        }
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES ('miniatur', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_ok(), "counter-check: a normal entry passes");
+    }
+
+    #[test]
+    fn a_backup_with_too_many_blocked_tags_is_rejected() {
+        let limit = crate::db::blocked_tags::MAX_BLOCKED_TAGS;
+        for (rows, accepted) in [(limit, true), (limit + 1, false)] {
+            let (bytes, trash) = catalog_bytes(|conn| {
+                // One transaction: a commit per row makes this test take a minute.
+                conn.execute_batch("BEGIN").unwrap();
+                for i in 0..rows {
+                    conn.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES (?1, 't')", [format!("tag{i}")]).unwrap();
+                }
+                conn.execute_batch("COMMIT").unwrap();
+            });
+            assert_eq!(validate(&bytes, &trash).is_ok(), accepted, "{rows} rows");
+        }
+    }
+
+    #[test]
+    fn wrong_storage_classes_in_blocked_auto_tags_are_rejected() {
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO blocked_auto_tags (name, blocked_at) VALUES (X'1234', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_err());
     }
 
     #[test]
