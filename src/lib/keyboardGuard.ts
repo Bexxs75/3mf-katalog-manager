@@ -1,5 +1,10 @@
+// The model grid/list is a role="grid" so screen readers announce rows and selection, but
+// it is not a widget that owns the arrow keys: the catalog shortcuts drive it from the window.
+// Without this exemption a focused row would count as "inside an interactive widget" and
+// swallow every shortcut.
 const interactive = 'input, textarea, select, button, a[href], summary, [contenteditable]:not([contenteditable="false"]), ' +
-  ['button', 'menuitem', 'menuitemradio', 'menuitemcheckbox', 'option', 'tab', 'switch', 'checkbox', 'radio', 'combobox', 'slider', 'separator', 'tree', 'treeitem', 'listbox', 'spinbutton', 'grid', 'scrollbar', 'textbox', 'searchbox'].map(role => `[role="${role}"]`).join(', ');
+  ['button', 'menuitem', 'menuitemradio', 'menuitemcheckbox', 'option', 'tab', 'switch', 'checkbox', 'radio', 'combobox', 'slider', 'separator', 'tree', 'treeitem', 'listbox', 'spinbutton', 'grid', 'scrollbar', 'textbox', 'searchbox']
+    .map(role => role === 'grid' ? '[role="grid"]:not([data-catalog-grid])' : `[role="${role}"]`).join(', ');
 
 const TEXT_ENTRY = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="color"]):not([type="file"]), [contenteditable]:not([contenteditable="false"])';
 

@@ -2,11 +2,14 @@ interface Props {
   checked: boolean;
   onToggle: () => void;
   className?: string;
+  // Lets a list row expose the checkbox column as a grid cell without an extra wrapper element.
+  role?: string;
 }
 
-export function BulkCheckbox({ checked, onToggle, className = '' }: Props) {
+export function BulkCheckbox({ checked, onToggle, className = '', role }: Props) {
   return (
     <label
+      role={role}
       onClick={(e) => e.stopPropagation()}
       className={`cursor-pointer ${className}`}
     >

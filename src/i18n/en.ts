@@ -769,6 +769,10 @@ export const en: Translations = {
 
   sortLastViewed: 'Last viewed',
   cardMoreTags: { one: "{count} more tag", other: "{count} more tags" },
+  modelListLabel: "Models",
+  columnSelect: "Select",
+  selectionAnnounce: { one: "{count} model selected", other: "{count} models selected" },
+  selectionCleared: "Selection cleared",
   newBadge: 'NEW',
 
 

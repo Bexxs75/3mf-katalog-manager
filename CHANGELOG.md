@@ -11,6 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Accessibility:** Screen readers now announce model cards and list rows with name and selection state, and the number of selected models.
 - **Source folders:** set up folders like Downloads, check them for new models (on request, optionally at app start) and move the chosen files into the catalog or decline them.
 - **Detail view:** for models downloaded from Makerworld, platform, model ID and profile ID are shown (read from the 3MF file); use 'Rescan metadata' to fill them for existing models.
 - **Import:** After an import, the notice offers a button to open the 'Recently added' view.
@@ -681,6 +682,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- **Barrierefreiheit:** Bildschirmleser sagen Modellkarten und Listenzeilen jetzt mit Name und Auswahlzustand an, außerdem die Anzahl der ausgewählten Modelle.
 - **Quellordner:** Ordner wie Downloads einrichten, auf neue Modelle prüfen (auf Knopfdruck, optional beim Start) und die gewählten Dateien in den Katalog verschieben oder ablehnen.
 - **Detailansicht:** Bei von Makerworld heruntergeladenen Modellen werden Plattform, Modell-ID und Profil-ID angezeigt (aus der 3MF-Datei gelesen); über „Metadaten neu einlesen“ lassen sie sich für bestehende Modelle nachtragen.
 - **Import:** Nach einem Import bietet der Hinweis einen Knopf, der die Ansicht „Neu hinzugefügt“ öffnet.

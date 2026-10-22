@@ -80,7 +80,7 @@ export function GroupedModelList({
         {!isCollapsed && (
           <div className="mt-2">
             {node.children.map((child) => renderNode(child, depth + 1))}
-            {node.files.length > 0 && <ModelList windowed={node.files.length > 60} models={node.files} {...modelListProps} />}
+            {node.files.length > 0 && <ModelList windowed={node.files.length > 60} label={displayName(node.folder.name)} models={node.files} {...modelListProps} />}
           </div>
         )}
       </div>
@@ -106,7 +106,7 @@ export function GroupedModelList({
           </div>
           {!noFolderCollapsed && (
             <div className="mt-2">
-              <ModelList windowed={noFolder.length > 60} models={noFolder} {...modelListProps} />
+              <ModelList windowed={noFolder.length > 60} label={t('noFolderLabel')} models={noFolder} {...modelListProps} />
             </div>
           )}
         </div>
