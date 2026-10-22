@@ -26,7 +26,7 @@ export async function catalogCount(count: number) {
 
 export async function selectCards(names: string[]) {
   await closeDetails();
-  await detailPanel().waitForExist({ reverse: true });
+  // A pinned detail panel stays; the selection bar is the signal that the layout has settled.
   await $('[role="toolbar"]').waitForDisplayed();
   for (const name of names) {
     const card = await cardByName(name);
