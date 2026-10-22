@@ -38,7 +38,7 @@ describe.each(['compact', 'comfort', 'list'])('grid semantics (%s)', view => {
     expect(grid).toHaveAttribute('aria-multiselectable', 'true');
     const rows = within(grid).getAllByRole('row').filter(row => row.hasAttribute('data-model-id'));
     expect(rows).toHaveLength(3);
-    expect(rows.map(row => row.getAttribute('aria-selected'))).toEqual(['true', 'true', 'false']);
+    expect(rows.map(row => row.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
     expect(rows[0]).toHaveAccessibleName('Model a.stl');
     expect(within(rows[0]).getAllByRole('gridcell').length).toBeGreaterThan(0);
   });
@@ -137,4 +137,46 @@ it('keeps arrow, Space and focus working while a grid row has DOM focus', async 
   fireEvent.keyDown(row('b'), { key: ' ' });
   await waitFor(() => expect(container.querySelector('[data-selection-announcer]')).toHaveTextContent('1 Modell ausgewählt'));
   expect(document.activeElement).toBe(row('b'));
+});
+
+describe.each(['compact', 'comfort', 'list'])('aria-selected follows the batch selection (%s)', view => {
+  beforeEach(() => {
+    localStorage.setItem('3mf-katalog-density', view);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ top: 0, left: 0, width: 800, height: 100, right: 800, bottom: 100 } as DOMRect);
+  });
+  const ui = (selectedId: string | null, bulk: Set<string>) => wrap(<>
+    {view === 'list'
+      ? <ModelList {...base} models={three} selectedId={selectedId} selectedForBulk={bulk} windowed={false} />
+      : <ModelGrid {...base} models={three} selectedId={selectedId} selectedForBulk={bulk} windowed={false} />}
+    <SelectionAnnouncer count={bulk.size} />
+  </>);
+  const state = () => ['a', 'b', 'c'].map(id => {
+    const row = document.querySelector(`[data-model-id="${id}"]`)!;
+    return `${row.getAttribute('aria-selected')}/${row.getAttribute('aria-current') ?? '-'}`;
+  });
+
+  it('marks the open model as selected while there is no batch selection', () => {
+    render(ui('a', new Set()));
+    expect(state()).toEqual(['true/true', 'false/-', 'false/-']);
+  });
+
+  it('marks only the checked models once a batch selection exists', () => {
+    const { rerender } = render(ui('a', new Set()));
+    rerender(ui('a', new Set(['b'])));
+    expect(state()).toEqual(['false/true', 'true/-', 'false/-']);
+  });
+
+  it('leaves no row selected after the batch selection is cleared, and says so', () => {
+    const { rerender } = render(ui('a', new Set(['b'])));
+    rerender(ui('a', new Set()));
+    expect(state()).toEqual(['false/true', 'false/-', 'false/-']);
+    expect(document.querySelector('[data-selection-announcer]')).toHaveTextContent(de.selectionCleared);
+  });
+
+  it('selects the open model again once another model is opened after clearing', () => {
+    const { rerender } = render(ui('a', new Set(['b'])));
+    rerender(ui('a', new Set()));
+    rerender(ui('c', new Set()));
+    expect(state()).toEqual(['false/-', 'false/-', 'true/true']);
+  });
 });

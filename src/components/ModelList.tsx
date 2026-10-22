@@ -1,3 +1,4 @@
+import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
 import { modelLicenseAriaLabel } from '../lib/licenses';
@@ -35,6 +36,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
   const window = useModelWindow({ ids, containerRef, gap: 0, fallbackHeight: 43, disabled: !windowed });
   const visible = models.slice(window.startIndex, window.endIndex);
   const fileDrag = useDragThreshold(onDragFileStart);
+  const selectionAria = useRowSelectionAria(selectedId, selectedForBulk);
 
   return (
     // aria-rowcount includes the header row; the window renders only a slice of the data rows,
@@ -60,7 +62,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           data-model-id={m.id}
           role="row"
           aria-rowindex={window.startIndex + index + 2}
-          aria-selected={m.id === selectedId || selectedForBulk.has(m.id)}
+          {...selectionAria(m.id)}
           aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
           tabIndex={-1}
           onClick={() => onSelect(m.id)}
