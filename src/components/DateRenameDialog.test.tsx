@@ -4,6 +4,7 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import { DateRenameDialog } from './DateRenameDialog';
 import { DateRenameBanner } from './DateRenameBanner';
 import { BulkActionToolbar } from './BulkActionToolbar';
+import { clickBulkMore, openBulkMore } from '../test/bulkBar';
 import { ImportLockContext } from '../hooks/ImportLockContext';
 import { de } from '../i18n/de';
 import { en } from '../i18n/en';
@@ -168,8 +169,9 @@ describe('date rename entry in the selection bar', () => {
 
   it('opens the dialog, returns focus to the trigger on Escape and keeps the selection', async () => {
     const { noop } = renderBar();
-    const trigger = screen.getByRole('button', { name: 'Mit Datum umbenennen …' });
-    fireEvent.click(trigger);
+    // The entry lives in the "More" menu; focus returns to the button that opened it.
+    const trigger = screen.getByRole('button', { name: /^Mehr/ });
+    clickBulkMore('Mit Datum umbenennen …');
     await screen.findByText('2026-09-12_14-03_Halter.3mf');
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -179,7 +181,7 @@ describe('date rename entry in the selection bar', () => {
 
   it('closes the dialog and reports the outcome after applying', async () => {
     const { onDateRenamed } = renderBar();
-    fireEvent.click(screen.getByRole('button', { name: 'Mit Datum umbenennen …' }));
+    clickBulkMore('Mit Datum umbenennen …');
     await screen.findByText('2026-09-12_14-03_Halter.3mf');
     fireEvent.click(screen.getByRole('button', { name: '2 Dateien umbenennen' }));
     await waitFor(() => expect(onDateRenamed).toHaveBeenCalledWith({ renamed: 2, failed: 0 }));
@@ -199,7 +201,7 @@ describe('date rename entry in the selection bar', () => {
           onRemoveTagMenuOpenChange={noop} tagsInSelection={[]} onBulkRemoveTag={noop}
           selectedIds={['1']} onDateRenamed={noop} />
       </ImportLockContext.Provider></LanguageProvider>);
-    expect((screen.getByRole('button', { name: 'Mit Datum umbenennen …' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(openBulkMore()).getByRole('menuitem', { name: 'Mit Datum umbenennen …' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

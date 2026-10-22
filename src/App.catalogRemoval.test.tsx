@@ -6,6 +6,7 @@ import { LanguageProviderWithDiagnostics } from './test/renderWithDiagnostics';
 import { UiDensityProvider } from './hooks/UiDensityContext';
 import { de } from './i18n/de';
 import { makeModelFile, makeModelFileSummary } from './test/factories';
+import { clickBulkMore } from './test/bulkBar';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -81,10 +82,12 @@ it('removes a bulk selection through the new command and clears the toolbar', as
   });
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   fireEvent.click(screen.getAllByRole('checkbox')[0]);
-  fireEvent.click(screen.getByText('Aus Katalog entfernen'));
+  clickBulkMore('Aus Katalog entfernen');
   expect(screen.getByText('1 Modell aus dem Katalog entfernen?')).toBeTruthy();
   fireEvent.click(screen.getByText('Entfernen'));
   await waitFor(() => expect(screen.queryAllByText('Cube.stl')).toHaveLength(0));
-  expect(screen.queryByText('Aus Katalog entfernen')).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: 'Aus Katalog entfernen' })).toBeNull();
+  // Nothing is left to select, so the always-visible bar is gone as well.
+  expect(screen.queryByRole('toolbar')).toBeNull();
   expect(invoke).toHaveBeenCalledWith('remove_files_from_catalog', { fileIds: ['1'] });
 });

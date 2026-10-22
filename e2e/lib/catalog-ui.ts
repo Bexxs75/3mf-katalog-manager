@@ -7,6 +7,12 @@ export async function button(text: string) {
   await click(await waitForText('button', text));
 }
 
+/** Rarely used bulk actions live in the selection bar's "More" menu. */
+export async function moreAction(text: string) {
+  await click(await $('//*[@role="toolbar"]//button[@aria-haspopup="menu"]'));
+  await click(await $(`//*[@role="menu"]//button[@role="menuitem"][normalize-space()="${text}"]`));
+}
+
 export async function closeDetails() {
   const close = await $('button[aria-label="Details schließen"]');
   if (await close.isExisting()) await click(close);

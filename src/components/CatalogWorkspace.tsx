@@ -298,6 +298,24 @@ export function CatalogWorkspace({
     });
     return () => { cancelAnimationFrame(frame); cancelAnimationFrame(secondFrame); };
   }, [panelVisible, narrow, selectedId, detailModel, layouts]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const barWrapRef = useRef<HTMLDivElement>(null);
+  // The narrow-window detail panel floats over the catalog. It starts below the
+  // selection bar so the bar stays fully visible and usable at its full width.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const bar = barWrapRef.current;
+    const update = () => {
+      root.style.setProperty('--detail-overlay-top', bar ? `${bar.offsetTop + bar.offsetHeight}px` : '0px');
+    };
+    update();
+    if (!bar) return;
+    window.addEventListener('resize', update);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(bar);
+    return () => { window.removeEventListener('resize', update); observer?.disconnect(); };
+  });
   const closeDetails = useCallback(() => {
     const tile = selectedId ? document.querySelector<HTMLElement>(`[data-model-id="${CSS.escape(selectedId)}"]`) : null;
     onCloseDetails?.();
@@ -373,9 +391,12 @@ export function CatalogWorkspace({
       removeLabel: t('filterBarRemoveSearch').replace('{label}', query), remove: () => setQuery('')}] : []),
   ];
   const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
+  // Always shown (also without a selection) so "select all" can be found and the
+  // grid does not jump on the first checkbox; only views with nothing to select hide it.
+  const showBulkBar = !detailModel && (selectedForBulk.size > 0 || (!collectionsGalleryOpen && models.length > 0));
   const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && !fitPrinter;
   return (
-    <div className="relative flex-1 flex min-h-0">
+    <div ref={rootRef} className="relative flex-1 flex min-h-0">
       <Sidebar
         catalogKey={catalogKey}
         expansion={expansion}
@@ -511,8 +532,10 @@ export function CatalogWorkspace({
           </section>
         )}
 
-        {!detailModel && selectedForBulk.size > 0 && (
+        {showBulkBar && (
+          <div ref={barWrapRef} className="flex-none relative z-30">
           <BulkActionToolbar
+            compact={narrow}
             selectedCount={selectedForBulk.size}
             confirmBulkDelete={confirmBulkDelete}
             onConfirmBulkDeleteChange={setConfirmBulkDelete}
@@ -544,6 +567,7 @@ export function CatalogWorkspace({
             selectedIds={[...selectedForBulk]}
             onDateRenamed={onDateRenamed}
           />
+          </div>
         )}
 
         {collectionsGalleryOpen ? (
