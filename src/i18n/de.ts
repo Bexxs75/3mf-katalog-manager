@@ -769,6 +769,10 @@ export const de: Translations = {
 
   sortLastViewed: 'Zuletzt angesehen',
   cardMoreTags: { one: "{count} weiterer Tag", other: "{count} weitere Tags" },
+  modelListLabel: "Modelle",
+  columnSelect: "Auswahl",
+  selectionAnnounce: { one: "{count} Modell ausgewählt", other: "{count} Modelle ausgewählt" },
+  selectionCleared: "Auswahl aufgehoben",
   newBadge: 'NEU',
 
 

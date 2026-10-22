@@ -15,6 +15,7 @@ import { useMemo, useRef, useLayoutEffect, useEffect, useState, useCallback, use
 import { useCatalogScroll } from '../hooks/useCatalogScroll';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
+import { SelectionAnnouncer } from './SelectionAnnouncer';
 import { GroupedModelGrid } from './GroupedModelGrid';
 import { GroupedModelList } from './GroupedModelList';
 import { DetailPanel } from './DetailPanel';
@@ -463,6 +464,7 @@ export function CatalogWorkspace({
       />
 
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
+        <SelectionAnnouncer count={selectedForBulk.size} />
         {importRow}
         {(setUsage || setPrintStatus || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
           <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">

@@ -597,6 +597,10 @@ export interface Translations {
 
   sortLastViewed: string;
   cardMoreTags: PluralForms;
+  modelListLabel: string;
+  columnSelect: string;
+  selectionAnnounce: PluralForms;
+  selectionCleared: string;
   newBadge: string;
 
   filamentDialogTitle: string;

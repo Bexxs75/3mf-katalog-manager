@@ -83,7 +83,7 @@ export function GroupedModelGrid({
         {!isCollapsed && (
           <div className="mt-2">
             {node.children.map((child) => renderNode(child, depth + 1))}
-            {node.files.length > 0 && <ModelGrid windowed={node.files.length > 60} models={node.files} {...modelGridProps} />}
+            {node.files.length > 0 && <ModelGrid windowed={node.files.length > 60} label={displayName(node.folder.name)} models={node.files} {...modelGridProps} />}
           </div>
         )}
       </div>
@@ -109,7 +109,7 @@ export function GroupedModelGrid({
           </div>
           {!noFolderCollapsed && (
             <div className="mt-2">
-              <ModelGrid windowed={noFolder.length > 60} models={noFolder} {...modelGridProps} />
+              <ModelGrid windowed={noFolder.length > 60} label={t('noFolderLabel')} models={noFolder} {...modelGridProps} />
             </div>
           )}
         </div>
