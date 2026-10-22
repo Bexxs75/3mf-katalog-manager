@@ -87,6 +87,7 @@ describe('9 Festplatten-Abgleich', () => {
   });
 
   it('lists a real copy as "same content", leaves it unticked and does not import it on apply', async () => {
+    await railTo('Katalog');
     const copy = join(catalogDir, 'Haushalt', 'Kegel-Kopie.stl');
     copyFileSync(join(catalogDir, 'Haushalt', 'Kegel.stl'), copy);
     try {
