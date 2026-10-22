@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useFormatCount, useT } from '../i18n/LanguageContext';
 import { Icon } from './Icon';
 
@@ -6,18 +7,29 @@ interface Props {
   onClose: () => void;
 }
 
-/** Result of a date rename; stays until dismissed so a partial failure is not missed. */
+const AUTO_HIDE_MS = 5000;
+
+/** Result of a date rename. A clean result hides itself after a few seconds (hovering pauses it); a partial failure stays until dismissed so it is not missed. */
 export function DateRenameBanner({ outcome, onClose }: Props) {
   const t = useT();
   const formatCount = useFormatCount();
+  const [hovered, setHovered] = useState(false);
+  const shown = outcome !== null;
+  const failed = (outcome?.failed ?? 0) > 0;
+  useEffect(() => { if (!shown) setHovered(false); }, [shown]);
+  useEffect(() => {
+    if (!shown || failed || hovered) return;
+    const timer = window.setTimeout(onClose, AUTO_HIDE_MS);
+    return () => window.clearTimeout(timer);
+  }, [shown, failed, hovered, outcome, onClose]);
   if (!outcome) return null;
-  const failed = outcome.failed > 0;
   const text = [
     formatCount(t('dateRenameDone'), outcome.renamed),
     ...(failed ? [formatCount(t('dateRenameFailedCount'), outcome.failed)] : []),
   ].join(', ');
   return (
     <div role={failed ? 'alert' : 'status'}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       className={`pointer-events-auto max-w-[min(90vw,480px)] flex items-start gap-2.5 px-3.5 py-2.5 rounded-[4px] border bg-[var(--panel)] shadow-[var(--shadow)] text-[length:var(--font-size-title)] ${failed ? 'border-red-400 text-red-400' : 'border-[var(--line-strong)] text-[var(--ink)]'}`}>
       <p className="flex-1 min-w-0 break-words">{text}</p>
       <button type="button" onClick={onClose} aria-label={t('dateRenameNoticeDismiss')}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { Icon } from './Icon';
 import { ViewportPopover } from './ViewportPopover';
@@ -26,9 +26,27 @@ export function TagRemoveButton({ tag, autoTag, onRemove, onRemoveAndBlock, clas
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const hintId = useId();
+  // Right-aligned by default; flips to the left edge when the menu would be cut off by the
+  // scrolling panel (or the window) on the left.
+  const [alignStart, setAlignStart] = useState(false);
 
   // The menu closes when another model is shown or the tag stops being an automatic one.
   useEffect(() => { setOpen(false); }, [tag, autoTag]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const wrapper = wrapperRef.current;
+    const menu = menuRef.current?.parentElement;
+    if (!wrapper || !menu) return;
+    let limit = 0;
+    for (let el = wrapper.parentElement; el; el = el.parentElement) {
+      const overflowX = getComputedStyle(el).overflowX;
+      if (overflowX !== 'visible') { limit = Math.max(limit, el.getBoundingClientRect().left); break; }
+    }
+    const rect = wrapper.getBoundingClientRect();
+    const width = menu.getBoundingClientRect().width;
+    setAlignStart(rect.right - width < limit + 8);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -107,7 +125,7 @@ export function TagRemoveButton({ tag, autoTag, onRemove, onRemoveAndBlock, clas
       {open && (
         <ViewportPopover
           data-navigation-menu
-          className="absolute top-full right-0 mt-1 z-40 w-[250px] max-w-[calc(100vw-16px)] py-1 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] text-left font-normal text-[var(--ink)]"
+          className={`absolute top-full ${alignStart ? 'left-0' : 'right-0'} mt-1 z-40 w-[250px] max-w-[calc(100vw-16px)] py-1 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] text-left font-normal text-[var(--ink)]`}
         >
           <div ref={menuRef} role="menu" aria-label={t('autoTagMenuAria').replace('{label}', tag)} onKeyDown={onMenuKeyDown}>
             <button
