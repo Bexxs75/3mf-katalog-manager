@@ -153,7 +153,7 @@ pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, 
         if let Some(number) = package.plate_assignments.objects.get(&item.object_id) {
             for mesh in &mut collected.meshes[start..] {
                 mesh.plate = Some(*number);
-                mesh.plate_name = package.plate_assignments.plates.get(number).cloned().flatten();
+                mesh.plate_name = package.plate_assignments.plates.get(number).and_then(Option::as_deref).map(display_name);
             }
         }
     }
@@ -290,7 +290,7 @@ fn collect_render_meshes<'a>(
                 let (indices, groups, palette) = material_indices(model, object, mesh);
                 out.meshes.push(RenderMesh {
                     positions, indices, groups, palette,
-                    object_name: object.name.clone(),
+                    object_name: object.name.as_deref().map(display_name),
                     ..Default::default()
                 });
                 let in_group = |pid: Option<&str>| pid.is_some_and(|pid| model.color_groups.contains(pid));
@@ -329,6 +329,18 @@ fn collect_render_meshes<'a>(
     Ok(())
 }
 
+/// Longest name the legend shows. Names are copied into every rendered
+/// instance, so a huge name in a file must not multiply into gigabytes.
+const MAX_DISPLAY_NAME_CHARS: usize = 128;
+
+/// Name cut to `MAX_DISPLAY_NAME_CHARS` characters (never inside a UTF-8 character).
+fn display_name(name: &str) -> String {
+    match name.char_indices().nth(MAX_DISPLAY_NAME_CHARS) {
+        Some((end, _)) => name[..end].to_string(),
+        None => name.to_string(),
+    }
+}
+
 /// `#RRGGBB` or `#RRGGBBAA` as lowercase `#rrggbb`; the preview ignores alpha.
 fn normalize_color(c: &str) -> Option<String> {
     if !matches!(c.len(), 7 | 9) || !c.starts_with('#') || !c[1..].bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -356,7 +368,7 @@ fn material_indices(
             let material = pid.zip(index)
                 .and_then(|(pid, index)| model.material_groups.get(pid)?.get(index))?;
             let color = normalize_color(material.display_color.as_deref()?)?;
-            let color = RenderColor { name: material.name.clone(), color, filament: None };
+            let color = RenderColor { name: display_name(&material.name), color, filament: None };
             if let Some(index) = palette_indices.get(&color) { return Some(*index); }
             let index = palette.len();
             palette_indices.insert(color.clone(), index);
@@ -1467,6 +1479,33 @@ mod slicer_color_tests {
         // Extruder 1: filaments 2 and 3 tie at 3/8, the lower number wins.
         assert_eq!(colors(&meshes[1]), vec![(Some("#ffffff"), 1), (Some("#ff9016"), 1)]);
         assert!(meshes.iter().all(|m| m.paint_simplified && !m.colors_unresolved));
+    }
+
+    #[test]
+    fn long_names_are_cut_before_they_are_copied_into_every_instance() {
+        let long = "Ä".repeat(1 << 20);
+        let components = r#"<component objectid="1"/>"#.repeat(1000);
+        let root = format!(r##"<model {NS}><resources>
+            <basematerials id="9"><base name="{long}" displaycolor="#112233"/></basematerials>
+            <object id="1" type="model" name="{long}">{}</object>
+            <object id="2" type="model" pid="9" pindex="0">{}</object>
+            <object id="5" type="model"><components>{components}</components></object>
+            </resources><build><item objectid="5"/><item objectid="2"/></build></model>"##, mesh(&[""]), mesh(&[""]));
+        let filaments = format!(r##"{{"filament_colour": ["#FF9016"], "filament_type": ["{long}"]}}"##);
+        let plates = format!(r#"<config><plate><metadata key="plater_id" value="1"/><metadata key="plater_name" value="{long}"/>
+            <model_instance><metadata key="object_id" value="5"/></model_instance></plate></config>"#);
+        let meshes = render(&[("3D/3dmodel.model", &root), ("Metadata/project_settings.config", &filaments),
+            ("Metadata/model_settings.config", &plates)]);
+        assert_eq!(meshes.len(), 1001);
+        assert!(meshes[..1000].iter().all(|m| m.plate_name.as_deref() == Some(&*"Ä".repeat(MAX_DISPLAY_NAME_CHARS))));
+        let expected = "Ä".repeat(MAX_DISPLAY_NAME_CHARS);
+        // Standard basematerials win, so the slicer name is checked separately below.
+        assert!(meshes.iter().all(|m| m.object_name.as_deref().is_none_or(|n| n == expected)));
+        assert_eq!(meshes[1000].palette[0].name, expected);
+        let slicer = render(&[("3D/3dmodel.model", &root.replace(r#" pid="9" pindex="0""#, "")),
+            ("Metadata/project_settings.config", &filaments)]);
+        assert!(slicer.iter().all(|m| m.palette.len() == 1 && m.palette[0].name == expected));
+        assert_eq!(display_name("PLA"), "PLA");
     }
 
     #[test]

@@ -69,7 +69,7 @@ fn parse_filament_colors(json: &str) -> Vec<Option<RenderColor>> {
     let types = list("filament_type");
     list("filament_colour").iter().take(MAX_FILAMENTS).enumerate().map(|(index, color)| {
         let color = super::normalize_color(color.as_str()?.trim())?;
-        let name = types.get(index).and_then(serde_json::Value::as_str).unwrap_or("").trim().to_string();
+        let name = super::display_name(types.get(index).and_then(serde_json::Value::as_str).unwrap_or("").trim());
         Some(RenderColor { name, color, filament: Some(index as u32 + 1) })
     }).collect()
 }
