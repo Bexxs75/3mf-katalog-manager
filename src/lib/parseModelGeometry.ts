@@ -1,7 +1,8 @@
 // 4-byte LE header length, space-padded JSON { meshes, palette }, then
 // Float32 positions/normals and Uint32 indices, all 4-byte aligned.
 // The decoder also accepts the original array header (without colors).
-export interface GeometryColor { name: string; color: string }
+// `filament` is the slicer's filament slot for Bambu Studio / OrcaSlicer colors.
+export interface GeometryColor { name: string; color: string; filament?: number }
 export interface GeometryGroup { start: number; count: number; colorIndex: number | null }
 export interface ParsedMesh {
   position: Float32Array;
@@ -12,7 +13,15 @@ export interface ParsedMesh {
   groups?: GeometryGroup[];
 }
 export interface GeometryPlate { number: number; name: string | null }
-export interface ModelGeometry { meshes: ParsedMesh[]; palette: GeometryColor[]; plates: GeometryPlate[] }
+export interface ModelGeometry {
+  meshes: ParsedMesh[];
+  palette: GeometryColor[];
+  plates: GeometryPlate[];
+  // The file has color information the preview could not show.
+  colorsUnresolved: boolean;
+  // Subdivided painted triangles show only their main color.
+  paintSimplified: boolean;
+}
 interface MeshHeaderEntry {
   vertexCount: number;
   hasNormal: boolean;
@@ -41,5 +50,7 @@ export function decodeModelGeometry(buffer: ArrayBuffer): ModelGeometry {
     offset += index.byteLength;
     meshes.push({ position, normal, index, objectName: header.objectName, groups: header.groups, plate: header.plate });
   }
-  return { meshes, palette, plates: Array.isArray(raw) ? [] : raw.plates ?? [] };
+  const flags = Array.isArray(raw) ? {} : raw;
+  return { meshes, palette, plates: flags.plates ?? [],
+    colorsUnresolved: flags.colorsUnresolved === true, paintSimplified: flags.paintSimplified === true };
 }

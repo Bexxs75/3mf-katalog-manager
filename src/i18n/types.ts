@@ -158,6 +158,9 @@ export interface Translations {
   viewerFileColors: string;
   viewerSingleColor: string;
   viewerColorsLegend: string;
+  viewerFilamentSlot: string;
+  viewerColorsUnresolved: string;
+  viewerPaintSimplified: string;
   viewerFit: string;
   viewerReset: string;
   viewerNotFoundTitle: string;

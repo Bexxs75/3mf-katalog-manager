@@ -39,3 +39,15 @@ it('accepts optional plate metadata and missing fields from older backends', () 
   expect(old.plates).toEqual([]);
   expect(old.meshes[0].plate).toBeUndefined();
 });
+it('reads whole-file color flags and filament slots, defaulting to false', () => {
+  const palette = [{ name: 'PLA', color: '#f88343', filament: 1 }];
+  const result = decodeModelGeometry(geometryBuffer({ meshes: [mesh], palette, colorsUnresolved: true, paintSimplified: true }));
+  expect(result.palette[0].filament).toBe(1);
+  expect(result.colorsUnresolved).toBe(true);
+  expect(result.paintSimplified).toBe(true);
+  for (const header of [{ meshes: [mesh], palette: [] }, [mesh]]) {
+    const old = decodeModelGeometry(geometryBuffer(header));
+    expect(old.colorsUnresolved).toBe(false);
+    expect(old.paintSimplified).toBe(false);
+  }
+});
