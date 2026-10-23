@@ -29,16 +29,22 @@ function openMenu(buttonLeft: number) {
 describe('TagRemoveButton menu placement', () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('aligns to the left edge of the button when a right-aligned menu would leave the panel', () => {
+  it('keeps the menu inside the panel when a right-aligned menu would leave it on the left', () => {
     openMenu(310);
     const menu = screen.getByRole('menu').parentElement!;
-    expect(menu.className).toContain('left-0');
-    expect(menu.className).not.toContain('right-0');
+    expect(menu.style.left).toBe('-6px');
   });
 
-  it('stays right-aligned when there is room on the left', () => {
+  it('stays right-aligned with the button when there is room on both sides', () => {
     openMenu(600);
     const menu = screen.getByRole('menu').parentElement!;
-    expect(menu.className).toContain('right-0');
+    expect(menu.style.left).toBe('-230px');
+  });
+
+  it('pulls the menu back in when the button sits at the far right of the panel', () => {
+    openMenu(690);
+    const menu = screen.getByRole('menu').parentElement!;
+    // Panel spans 300..700; the menu may end at 696 at most.
+    expect(menu.style.left).toBe('-244px');
   });
 });
