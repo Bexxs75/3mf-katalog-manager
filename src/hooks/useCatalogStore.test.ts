@@ -175,6 +175,18 @@ describe('useCatalogStore', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm1', tag: 'mehrteilig' }));
   });
 
+  it('an addTag kept from before a removal still re-adds the removed tag', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1', tags: ['miniatur'] })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    const keptAddTag = result.current.addTag;
+    act(() => result.current.removeTag('m1', 'miniatur'));
+    expect(result.current.models[0].tags).toEqual([]);
+    act(() => keptAddTag('m1', 'miniatur'));
+    expect(result.current.models[0].tags).toEqual(['miniatur']);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm1', tag: 'miniatur' }));
+  });
+
   it('addTag does nothing if the model already has the canonical tag', async () => {
     mockInitialLoad([makeModelFile({ id: 'm1', tags: ['mehrteilig'] })]);
     const { result } = renderHook(() => useCatalogStore());

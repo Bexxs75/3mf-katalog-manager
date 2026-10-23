@@ -83,6 +83,10 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [models, setModels] = useState<ModelFile[]>([]);
+  // Read by callbacks that outlive a render (the undo of blocking an automatic tag calls the
+  // addTag of the moment the block started): a stale list would still contain the removed tag.
+  const modelsRef = useRef(models);
+  modelsRef.current = models;
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
@@ -376,7 +380,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       // identifier before updating optimistically - otherwise a second tag
       // flashes briefly until the backend has normalized it.
       const tag = canonicalTag(rawTag);
-      const current = models.find((m) => m.id === id);
+      const current = modelsRef.current.find((m) => m.id === id);
       if (!current || current.tags.includes(tag)) return;
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, tags: [...m.tags, tag] } : m)));
       const key = `tags:${id}`;
@@ -391,7 +395,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
           void endMutationAndResyncIfSettled(key, id);
         });
     },
-    [models, refreshTags],
+    [refreshTags],
   );
 
   // Deliberately NOT optimistic: the UI should be able to show a name
