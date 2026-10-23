@@ -224,6 +224,9 @@ export interface Translations {
   viewerFileColors: string;
   viewerSingleColor: string;
   viewerColorsLegend: string;
+  viewerFilamentSlot: string;
+  viewerColorsUnresolved: string;
+  viewerPaintSimplified: string;
   viewerFit: string;
   viewerReset: string;
   viewerNotFoundTitle: string;
@@ -396,6 +399,9 @@ export interface Translations {
   impPath: string;
   impHash: string;
   impExistingModel: string;
+  impSameContentAs: string;
+  impAlreadyInCatalog: string;
+  impShowExisting: string;
   impArchiveCancelled: string;
   impPending: string;
   impExtracted: string;

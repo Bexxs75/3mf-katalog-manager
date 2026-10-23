@@ -100,6 +100,8 @@ fn h1_import_rejects_hash_duplicate_in_catalog_folder_and_sync_offers_it_as_dupl
     assert_eq!(result.duplicate_count, 1);
     assert_eq!(result.duplicate_entries[0].kind, "hash");
     assert_eq!(result.duplicate_entries[0].path, s(&copy));
+    assert_eq!(result.duplicate_entries[0].existing_file_name.as_deref(), Some("original.obj"));
+    assert!(result.duplicate_entries[0].existing_file_id.is_some());
     assert!(copy.exists(), "the rejected file stays where it is");
 
     assert!(f.new_files().is_empty(), "a hash duplicate is not a plain new file");
@@ -408,6 +410,7 @@ fn h4_file_at_trashed_path_is_neither_imported_nor_offered() {
     let result = f.import(&[&path]);
     assert!(result.imported.is_empty());
     assert_eq!(result.duplicate_entries[0].kind, "path");
+    assert_eq!(result.duplicate_entries[0].existing_file_name, None, "a trashed row is not named as a catalog file");
     assert!(result.skipped.is_empty());
     assert!(f.new_files().is_empty());
 }

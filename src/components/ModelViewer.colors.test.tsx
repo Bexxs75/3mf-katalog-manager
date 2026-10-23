@@ -22,10 +22,10 @@ vi.mock('three', async (importOriginal) => {
       render: (s: THREE.Scene) => { scene = s; }, forceContextLoss, dispose: vi.fn() };
   } };
 });
-function buffer(colors = true) {
+function buffer(colors = true, extra: Record<string, unknown> = {}) {
   const header = { meshes: [{ vertexCount: 3, hasNormal: false, indexCount: 3,
     objectName: 'Topf', ...(colors ? { groups: [{ start: 0, count: 3, colorIndex: 0 }] } : {}) }],
-    palette: colors ? [{ name: 'Terrakotta', color: '#c8643c' }] : [] };
+    palette: colors ? [{ name: 'Terrakotta', color: '#c8643c' }] : [], ...extra };
   const json = new TextEncoder().encode(JSON.stringify(header));
   const length = Math.ceil(json.length / 4) * 4;
   const result = new ArrayBuffer(4 + length + 48);
@@ -103,6 +103,37 @@ describe('viewer colors and lifecycle', () => {
     await screen.findByRole('button', { name: 'Einpassen' });
     expect(screen.queryByRole('button', { name: 'Dateifarben' })).not.toBeInTheDocument();
     expect(screen.queryByText('Farben der Datei')).not.toBeInTheDocument();
+  });
+  it('names slicer filaments by slot and notes simplified painting', async () => {
+    vi.mocked(invoke).mockResolvedValue(buffer(true, { palette: [{ name: 'PLA', color: '#f88343', filament: 2 }], paintSimplified: true }));
+    render(page());
+    expect(await screen.findByText('Filament 2 · PLA')).toBeInTheDocument();
+    expect(screen.getByText(/Bemalung vereinfacht/)).toBeInTheDocument();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Einfarbig' }));
+    expect(screen.queryByText(/Bemalung vereinfacht/)).not.toBeInTheDocument();
+  });
+  it.each([true, false])('explains unread file colors in text (palette=%s)', async (colors) => {
+    vi.mocked(invoke).mockResolvedValue(buffer(colors, { colorsUnresolved: true }));
+    render(page());
+    const note = await screen.findByRole('note');
+    expect(note).toHaveTextContent('Nicht alle Farbangaben dieser Datei können angezeigt werden.');
+    if (colors) {
+      // Stays visible in single-color mode, where the legend is hidden.
+      fireEvent.click(screen.getByRole('button', { name: 'Einfarbig' }));
+      expect(screen.getByRole('note')).toBeInTheDocument();
+    }
+  });
+  it('shows no color note for single-color models or in the side panel', async () => {
+    vi.mocked(invoke).mockResolvedValue(buffer(false));
+    const view = render(page());
+    await screen.findByRole('button', { name: 'Einpassen' });
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    view.unmount();
+    vi.mocked(invoke).mockResolvedValue(buffer(false, { colorsUnresolved: true }));
+    render(page(false));
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
   });
   it('resets colors and disposes geometry on a model change while keeping the scene', async () => {
     const view = render(page());

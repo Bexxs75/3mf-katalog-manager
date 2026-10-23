@@ -161,7 +161,7 @@ mod logging_tests {
     fn skipped_logs_hide_names_until_verbose_mode_and_include_nested_duplicates() {
         let mut groups = ImportGroups::default();
         groups.skipped.push(SkippedEntry {path: "/private/broken.obj".into(), reason: "invalid".into()});
-        groups.duplicate.push(DuplicateEntry {path: "/private/same.stl".into(), kind: "hash".into(), existing_file_id: None});
+        groups.duplicate.push(DuplicateEntry {path: "/private/same.stl".into(), kind: "hash".into(), existing_file_id: None, existing_file_name: None});
         groups.archive.push(serde_json::json!({"models":{"skipped":[{"entryPath":"../unsafe.stl","reason":"unsafe"}],"duplicates":[]}}));
         assert_eq!(skipped_log_lines(&groups, false), ["übersprungen: 3 Dateien (einschließlich Duplikate)"]);
         assert_eq!(skipped_log_lines(&groups, true), [

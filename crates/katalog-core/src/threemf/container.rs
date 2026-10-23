@@ -70,6 +70,8 @@ pub struct PackageParts {
     pub plate_count: Option<u32>,
     pub plate_assignments: super::plates::PlateAssignments,
     pub slice_info: Option<super::slice_info::SliceInfo>,
+    /// Bambu Studio / OrcaSlicer filament colors; only read for the preview.
+    pub slicer_colors: super::slicer_colors::SlicerColors,
 }
 
 impl PackageParts {
@@ -196,6 +198,14 @@ fn read_package_inner<R: Read + Seek>(
     total_unpacked += slice_info_bytes;
     check_total_budget(total_unpacked)?;
 
+    let mut slicer_colors = super::slicer_colors::SlicerColors::default();
+    if geometry {
+        let (colors, bytes) = super::slicer_colors::read_slicer_colors(&mut archive);
+        slicer_colors = colors;
+        total_unpacked += bytes;
+        check_total_budget(total_unpacked)?;
+    }
+
     let (model_path, thumbnail_path, rels_bytes) = resolve_relationships(&mut archive);
     total_unpacked += rels_bytes;
     check_total_budget(total_unpacked)?;
@@ -271,6 +281,7 @@ fn read_package_inner<R: Read + Seek>(
         plate_assignments,
         slice_info,
         thumbnail,
+        slicer_colors,
     })
 }
 
@@ -373,7 +384,7 @@ fn read_model_entry_limited<R: Read + Seek>(
     reject_oversized_entry(path, file.size(), max)?;
     let mut source = ModelReader { inner: file, read: 0, max, total, exceeded_entry: false, exceeded_total: false };
     let result = if let Some(limits) = mesh_remaining {
-        super::model_xml::parse_model_xml_reader_with_limits(BufReader::new(&mut source), *limits)
+        super::model_xml::parse_model_xml_reader_with_limits(BufReader::new(&mut source), *limits, preview)
     } else if preview {
         parse_model_xml_reader_with_preview(BufReader::new(&mut source), true)
     } else {

@@ -156,6 +156,8 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
   const [autoRotating, setAutoRotating] = useState(false);
   const [fileColors, setFileColors] = useState(true);
   const [palette, setPalette] = useState<GeometryColor[]>([]);
+  const [colorsUnresolved, setColorsUnresolved] = useState(false);
+  const [paintSimplified, setPaintSimplified] = useState(false);
   const [plates, setPlates] = useState<GeometryPlate[]>([]);
   const [selectedPlate, setSelectedPlate] = useState<number | null>(null);
   const [legend, setLegend] = useState<{ colorIndex: number; objectName?: string; plate?: number | null }[]>([]);
@@ -317,6 +319,8 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     setError(null);
     setFileColors(true);
     setPalette([]);
+    setColorsUnresolved(false);
+    setPaintSimplified(false);
     setLegend([]);
     setPlates([]);
     setSelectedPlate(null);
@@ -336,8 +340,10 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     invoke<ArrayBuffer>('get_model_geometry', { fileId })
       .then((buffer) => {
         if (cancelled || contextLost) { finishAttempt(); return; }
-        const { meshes, palette, plates } = decodeModelGeometry(buffer);
+        const { meshes, palette, plates, colorsUnresolved, paintSimplified } = decodeModelGeometry(buffer);
         setPlates(plates);
+        setColorsUnresolved(colorsUnresolved);
+        setPaintSimplified(paintSimplified);
         ctx.colorMaterials = palette.map(color => new THREE.MeshStandardMaterial({
           color: color.color, roughness: 0.55, metalness: 0.05, flatShading: true,
         }));
@@ -444,6 +450,14 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     fitViewer(ctx);
   }, [selectedPlate, status]);
 
+  // Slicer filaments are named by slot so equal materials stay apart in text.
+  const colorName = (color: GeometryColor) => color.filament === undefined ? color.name
+    : `${t('viewerFilamentSlot').replace('{n}', String(color.filament))}${color.name ? ` · ${color.name}` : ''}`;
+  const legendVisible = palette.length > 0 && fileColors && (!compact || legendOpen);
+  // Spelled out as text: an uncolored model alone would not tell anyone that colors are missing.
+  const unresolvedNote = <p role="note" className="flex items-start gap-1.5 text-caption text-[var(--ink-2)]">
+    <Icon name="info" size={14} className="shrink-0 mt-px" />{t('viewerColorsUnresolved')}</p>;
+
   const visibleLegend = legend.filter(entry => selectedPlate === null || entry.plate === selectedPlate)
     .filter((entry, index, entries) => entries.findIndex(e => e.colorIndex === entry.colorIndex && e.objectName === entry.objectName) === index);
 
@@ -493,14 +507,17 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
           </div>
           {fileColors && compact && <button className="viewer-pill viewer-icon absolute bottom-12 left-3" aria-label={t('viewerLegend')} title={t('viewerLegend')}
             aria-expanded={legendOpen} onClick={() => setLegendOpen(open => !open)}><Icon name="info" size={14} /></button>}
-          {fileColors && (!compact || legendOpen) && <div className={`viewer-legend absolute left-3 ${compact ? 'bottom-20' : 'bottom-14'}`}>
+          {legendVisible && <div className={`viewer-legend absolute left-3 ${compact ? 'bottom-20' : 'bottom-14'}`}>
             <div className="ui-label text-[var(--ink-3)]">{t('viewerColorsLegend')}</div>
             {visibleLegend.map(entry => <div className="flex items-center gap-2" key={`${entry.colorIndex}:${entry.objectName}`}>
               <span className="w-3.5 h-3.5 rounded-full border border-[var(--line-strong)] shrink-0" style={{ background: palette[entry.colorIndex].color }} />
-              <span>{palette[entry.colorIndex].name}</span><small className="text-caption text-[var(--ink-3)]">{entry.objectName && displayName(entry.objectName)}</small>
+              <span>{colorName(palette[entry.colorIndex])}</span><small className="text-caption text-[var(--ink-3)]">{entry.objectName && displayName(entry.objectName)}</small>
             </div>)}
+            {paintSimplified && <p className="text-caption text-[var(--ink-3)]">{t('viewerPaintSimplified')}</p>}
+            {colorsUnresolved && unresolvedNote}
           </div>}
         </>}
+        {colorsUnresolved && !legendVisible && <div className={`viewer-legend absolute left-3 ${compact ? 'bottom-20' : 'bottom-14'}`}>{unresolvedNote}</div>}
       </>}
       {showRotationControls && status === 'ready' && (
         <div ref={controlsBarRef} className={`absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--panel-2)] border border-[var(--line)] rounded-full p-1 shadow-[var(--shadow)] ${compact ? 'viewer-controls-compact' : ''}`}>

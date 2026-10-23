@@ -2,8 +2,10 @@ pub mod container;
 pub mod error;
 pub mod geometry;
 pub mod model_xml;
+pub mod paint;
 pub mod plates;
 pub mod slice_info;
+pub mod slicer_colors;
 pub mod source;
 
 use std::collections::{BTreeMap, HashMap};
@@ -109,41 +111,149 @@ impl WorkBudget {
     }
 }
 
+/// What a render mesh needs for slicer colors once all meshes are known.
+struct SlicerSource<'a> {
+    mesh: &'a model_xml::Mesh,
+    extruder: u32,
+    /// The mesh references a `<colorgroup>`, which has no palette here.
+    unread_group: bool,
+}
+
+#[derive(Default)]
+struct Collected<'a> {
+    meshes: Vec<RenderMesh>,
+    sources: Vec<SlicerSource<'a>>,
+}
+
+/// Where a mesh sits in the slicer's object/part structure.
+#[derive(Clone, Copy)]
+struct SlicerScope<'a> {
+    /// Slicer metadata names build items of the root model only.
+    object: Option<&'a str>,
+    /// A direct component of the build item's object is a slicer part.
+    part: Option<&'a str>,
+    at_build_object: bool,
+}
+
 pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, ThreeMfError> {
-    let mut meshes = Vec::new();
+    let mut collected = Collected::default();
     let mut budget = WorkBudget::new();
     for item in &package.root_model.build_items {
         let transform = item.transform.unwrap_or_else(Matrix3x4::identity);
         let mut path = Vec::new();
-        let start = meshes.len();
+        let start = collected.meshes.len();
+        let scope = SlicerScope {
+            object: item.path.is_none().then_some(item.object_id.as_str()),
+            part: None,
+            at_build_object: true,
+        };
         collect_render_meshes(
             package,
             item.path.as_deref(),
             &item.object_id,
             &transform,
-            &mut meshes,
+            &mut collected,
             &mut path,
             &mut budget,
+            scope,
         )?;
         if let Some(number) = package.plate_assignments.objects.get(&item.object_id) {
-            for mesh in &mut meshes[start..] {
+            for mesh in &mut collected.meshes[start..] {
                 mesh.plate = Some(*number);
-                mesh.plate_name = package.plate_assignments.plates.get(number).cloned().flatten();
+                mesh.plate_name = package.plate_assignments.plates.get(number).and_then(Option::as_deref).map(display_name);
             }
         }
     }
-    Ok(meshes)
+    apply_slicer_colors(&package.slicer_colors, &mut collected);
+    Ok(collected.meshes)
+}
+
+/// Standard `<basematerials>` keep priority: slicer colors are only used when
+/// no mesh got a standard palette, so two sources are never mixed in one view.
+fn apply_slicer_colors(slicer: &slicer_colors::SlicerColors, collected: &mut Collected) {
+    let standard = collected.meshes.iter().any(|m| !m.palette.is_empty());
+    let has_colors = slicer.has_colors();
+    for (mesh, source) in collected.meshes.iter_mut().zip(&collected.sources) {
+        let painted = !source.mesh.paint.is_empty() || source.mesh.paint_split;
+        let mut unresolved = source.unread_group;
+        if !standard {
+            unresolved |= source.mesh.paint_unreadable;
+            if has_colors {
+                let (indices, groups, palette, missing) = slicer_indices(source, &slicer.filaments);
+                if !palette.is_empty() {
+                    mesh.indices = indices;
+                    mesh.groups = groups;
+                    mesh.palette = palette;
+                }
+                unresolved |= missing;
+                mesh.paint_simplified = source.mesh.paint_split;
+            } else {
+                // Paint or a second extruder without a color list cannot be shown.
+                unresolved |= painted || source.extruder > 1;
+            }
+        }
+        mesh.colors_unresolved = unresolved;
+    }
+}
+
+/// Buckets triangles by filament: a painted triangle uses its paint state,
+/// an unpainted one the extruder of its part. The last value reports
+/// triangles whose filament has no usable color.
+fn slicer_indices(
+    source: &SlicerSource,
+    filaments: &[Option<RenderColor>],
+) -> (Vec<[u32; 3]>, Vec<RenderGroup>, Vec<RenderColor>, bool) {
+    let mesh = source.mesh;
+    let mut palette = Vec::new();
+    // Resolved palette index per filament number, filled on first use. Fixed
+    // size: this runs once per rendered instance, and the color list is capped.
+    let mut resolved = [None::<Option<usize>>; slicer_colors::MAX_FILAMENTS + 1];
+    let mut buckets: BTreeMap<Option<usize>, Vec<[u32; 3]>> = BTreeMap::new();
+    let mut missing = false;
+    // Paint states are u8; a larger extruder keeps unpainted area as state 0,
+    // which then resolves to the extruder itself (and has no color).
+    let extruder = u8::try_from(source.extruder).unwrap_or(0);
+    let mut subdivided = mesh.paint_areas.iter().peekable();
+    for (i, tri) in mesh.triangles.iter().enumerate() {
+        let state = match subdivided.next_if(|(index, _)| *index as usize == i) {
+            Some((_, areas)) => paint::dominant(areas, extruder),
+            None => mesh.paint.get(i).copied().unwrap_or(0),
+        };
+        let filament = if state == 0 { source.extruder } else { u32::from(state) } as usize;
+        let color_index = match resolved.get_mut(filament) {
+            Some(Some(index)) => *index,
+            Some(slot) => {
+                let index = filaments.get(filament.wrapping_sub(1)).cloned().flatten().map(|color| {
+                    palette.push(color);
+                    palette.len() - 1
+                });
+                *slot = Some(index);
+                index
+            }
+            None => None,
+        };
+        missing |= color_index.is_none();
+        buckets.entry(color_index).or_default().push(*tri);
+    }
+    let mut indices = Vec::with_capacity(mesh.triangles.len());
+    let mut groups = Vec::new();
+    for (color_index, triangles) in buckets {
+        groups.push(RenderGroup { start: indices.len() * 3, count: triangles.len() * 3, color_index });
+        indices.extend(triangles);
+    }
+    (indices, groups, palette, missing)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn collect_render_meshes(
-    package: &PackageParts,
+fn collect_render_meshes<'a>(
+    package: &'a PackageParts,
     file: Option<&str>,
     object_id: &str,
     transform: &Matrix3x4,
-    out: &mut Vec<RenderMesh>,
+    out: &mut Collected<'a>,
     path: &mut Vec<(Option<String>, String)>,
     budget: &mut WorkBudget,
+    scope: SlicerScope<'a>,
 ) -> Result<(), ThreeMfError> {
     budget.visit()?;
     let key = (file.map(str::to_string), object_id.to_string());
@@ -185,11 +295,17 @@ fn collect_render_meshes(
                     Some(path) => &package.referenced_models[path],
                 };
                 let (indices, groups, palette) = material_indices(model, object, mesh);
-                out.push(RenderMesh {
+                out.meshes.push(RenderMesh {
                     positions, indices, groups, palette,
-                    plate: None, plate_name: None,
-                    normals: None,
-                    object_name: object.name.clone(),
+                    object_name: object.name.as_deref().map(display_name),
+                    ..Default::default()
+                });
+                let in_group = |pid: Option<&str>| pid.is_some_and(|pid| model.color_groups.contains(pid));
+                out.sources.push(SlicerSource {
+                    mesh,
+                    extruder: package.slicer_colors.extruder(scope.object, scope.part),
+                    unread_group: !model.color_groups.is_empty() && (in_group(object.pid.as_deref())
+                        || mesh.properties.iter().any(|(pid, _)| in_group(pid.as_deref()))),
                 });
             }
         }
@@ -199,6 +315,11 @@ fn collect_render_meshes(
         let child_transform =
             transform.compose(&component.transform.unwrap_or_else(Matrix3x4::identity));
         let child_file = component.path.as_deref().or(file);
+        let child_scope = SlicerScope {
+            part: if scope.at_build_object { Some(component.object_id.as_str()) } else { scope.part },
+            at_build_object: false,
+            ..scope
+        };
         collect_render_meshes(
             package,
             child_file,
@@ -207,11 +328,32 @@ fn collect_render_meshes(
             out,
             path,
             budget,
+            child_scope,
         )?;
     }
 
     path.pop();
     Ok(())
+}
+
+/// Longest name the legend shows. Names are copied into every rendered
+/// instance, so a huge name in a file must not multiply into gigabytes.
+const MAX_DISPLAY_NAME_CHARS: usize = 128;
+
+/// Name cut to `MAX_DISPLAY_NAME_CHARS` characters (never inside a UTF-8 character).
+fn display_name(name: &str) -> String {
+    match name.char_indices().nth(MAX_DISPLAY_NAME_CHARS) {
+        Some((end, _)) => name[..end].to_string(),
+        None => name.to_string(),
+    }
+}
+
+/// `#RRGGBB` or `#RRGGBBAA` as lowercase `#rrggbb`; the preview ignores alpha.
+fn normalize_color(c: &str) -> Option<String> {
+    if !matches!(c.len(), 7 | 9) || !c.starts_with('#') || !c[1..].bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(c[..7].to_ascii_lowercase())
 }
 
 fn material_indices(
@@ -232,12 +374,8 @@ fn material_indices(
         let color_index = *resolved.entry((pid, index)).or_insert_with(|| {
             let material = pid.zip(index)
                 .and_then(|(pid, index)| model.material_groups.get(pid)?.get(index))?;
-            let c = material.display_color.as_deref()?;
-            if !matches!(c.len(), 7 | 9) || !c.starts_with('#')
-                || !c[1..].bytes().all(|b| b.is_ascii_hexdigit()) {
-                return None;
-            }
-            let color = RenderColor { name: material.name.clone(), color: c[..7].to_ascii_lowercase() };
+            let color = normalize_color(material.display_color.as_deref()?)?;
+            let color = RenderColor { name: display_name(&material.name), color, filament: None };
             if let Some(index) = palette_indices.get(&color) { return Some(*index); }
             let index = palette.len();
             palette_indices.insert(color.clone(), index);
@@ -1120,14 +1258,15 @@ mod render_material_tests {
         </vertices><triangles>{triangles}</triangles></mesh></object></resources>
         <build><item objectid="3"/></build></model>"##);
         let package = PackageParts { root_model: model_xml::parse_model_xml(&xml).unwrap(),
-            referenced_models: Default::default(), thumbnail: None, plate_count: None, plate_assignments: Default::default(), slice_info: None };
+            referenced_models: Default::default(), thumbnail: None, plate_count: None, plate_assignments: Default::default(), slice_info: None,
+            slicer_colors: Default::default() };
         extract_render_meshes(&package).unwrap()
     }
 
     #[test]
     fn resolves_object_color_ignoring_alpha() {
         let meshes = render(r#"pid="1" pindex="0""#, r#"<triangle v1="0" v2="1" v3="2"/>"#);
-        assert_eq!(meshes[0].palette, vec![RenderColor { name: "Red".into(), color: "#ff0000".into() }]);
+        assert_eq!(meshes[0].palette, vec![RenderColor { name: "Red".into(), color: "#ff0000".into(), filament: None }]);
         assert_eq!(meshes[0].groups, vec![RenderGroup { start: 0, count: 3, color_index: Some(0) }]);
         assert_eq!(meshes[0].object_name.as_deref(), Some("Body"));
     }
@@ -1176,6 +1315,7 @@ mod instanced_triangle_tests {
             root_model: model_xml::parse_model_xml(&xml).unwrap(),
             referenced_models: Default::default(), thumbnail: None, plate_count: None,
             plate_assignments: Default::default(), slice_info: None,
+            slicer_colors: Default::default(),
         };
         let mut budget = WorkBudget::new();
         // Two complete instances fit; the third must fail before volume work.
@@ -1189,5 +1329,291 @@ mod instanced_triangle_tests {
         accumulate_object(&package, None, "2", &Matrix3x4::identity(),
             &mut BoundingBox::empty(), &mut 0.0, &mut Vec::new(), &mut budget).unwrap();
         assert_eq!(budget.triangles_left, 0);
+    }
+}
+
+#[cfg(test)]
+mod slicer_color_tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
+
+    const NS: &str = r#"xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06""#;
+    const FILAMENTS: &str = r##"{"filament_colour": ["#FF9016", "#FFFFFF", "#000000", "#00AE42"], "filament_type": ["PLA", "PLA", "PETG", "PLA"]}"##;
+
+    fn mesh(triangles: &[&str]) -> String {
+        let triangles: String = triangles.iter().map(|attrs| format!(r#"<triangle v1="0" v2="1" v3="2" {attrs}/>"#)).collect();
+        format!(r#"<mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/></vertices><triangles>{triangles}</triangles></mesh>"#)
+    }
+
+    fn package(entries: &[(&str, &str)]) -> PackageParts {
+        let mut bytes = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut bytes));
+            for (name, content) in entries {
+                zip.start_file(*name, SimpleFileOptions::default()).unwrap();
+                zip.write_all(content.as_bytes()).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        container::read_geometry_package(std::io::Cursor::new(bytes)).unwrap()
+    }
+
+    fn render(entries: &[(&str, &str)]) -> Vec<RenderMesh> {
+        extract_render_meshes(&package(entries)).unwrap()
+    }
+
+    /// (color, triangle count) per group, so tests read like the legend.
+    fn colors(mesh: &RenderMesh) -> Vec<(Option<&str>, usize)> {
+        mesh.groups.iter().map(|g| (g.color_index.map(|i| mesh.palette[i].color.as_str()), g.count / 3)).collect()
+    }
+
+    /// Bambu Studio keeps the parts of an object in a separate model file and
+    /// names each part by the object id of its component there.
+    fn parts_in_object_file(settings: &str, filaments: Option<&str>) -> Vec<RenderMesh> {
+        let root = format!(r#"<model {NS}><resources>
+            <object id="5" type="model"><components>
+              <component p:path="/3D/Objects/object_1.model" objectid="1"/>
+              <component p:path="/3D/Objects/object_1.model" objectid="2" transform="1 0 0 0 1 0 0 0 1 5 0 0"/>
+              <component p:path="/3D/Objects/object_1.model" objectid="3"/></components></object>
+            <object id="6" type="model"><components>
+              <component p:path="/3D/Objects/object_1.model" objectid="1"/></components></object>
+            </resources><build><item objectid="5"/><item objectid="6" transform="1 0 0 0 1 0 0 0 1 20 0 0"/></build></model>"#);
+        let parts = format!(r#"<model {NS}><resources>
+            <object id="1" type="model" name="Beak">{}</object>
+            <object id="2" type="model" name="Body">{}</object>
+            <object id="3" type="model" name="Eye">{}</object></resources><build/></model>"#,
+            mesh(&[""]), mesh(&["", ""]), mesh(&[""]));
+        let mut entries = vec![("3D/3dmodel.model", root.as_str()), ("3D/Objects/object_1.model", parts.as_str()),
+            ("Metadata/model_settings.config", settings)];
+        if let Some(filaments) = filaments { entries.push(("Metadata/project_settings.config", filaments)); }
+        render(&entries)
+    }
+
+    const DUCK_SETTINGS: &str = r#"<config>
+        <object id="5"><metadata key="extruder" value="1"/>
+          <part id="1" subtype="normal_part"><metadata key="extruder" value="1"/></part>
+          <part id="2" subtype="normal_part"><metadata key="extruder" value="2"/></part>
+          <part id="3" subtype="normal_part"><metadata key="extruder" value="3"/></part></object>
+        <object id="6"><metadata key="extruder" value="4"/>
+          <part id="1"><metadata key="extruder" value="0"/></part></object>
+        <plate><metadata key="plater_id" value="1"/><model_instance><metadata key="object_id" value="5"/></model_instance></plate>
+      </config>"#;
+
+    #[test]
+    fn part_extruders_pick_filament_colors() {
+        let meshes = parts_in_object_file(DUCK_SETTINGS, Some(FILAMENTS));
+        let found: Vec<_> = meshes.iter().map(|m| (m.object_name.as_deref().unwrap(), colors(m))).collect();
+        assert_eq!(found, vec![
+            ("Beak", vec![(Some("#ff9016"), 1)]),
+            ("Body", vec![(Some("#ffffff"), 2)]),
+            ("Eye", vec![(Some("#000000"), 1)]),
+            // Part extruder 0 inherits the object's extruder.
+            ("Beak", vec![(Some("#00ae42"), 1)]),
+        ]);
+        assert_eq!(meshes[2].palette[0], RenderColor { name: "PETG".into(), color: "#000000".into(), filament: Some(3) });
+        assert!(meshes.iter().all(|m| !m.colors_unresolved && !m.paint_simplified));
+        assert_eq!(meshes[1].positions[0], [5.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn extruders_without_filament_colors_raise_the_note() {
+        let meshes = parts_in_object_file(DUCK_SETTINGS, None);
+        assert!(meshes.iter().all(|m| m.palette.is_empty() && m.groups.is_empty()));
+        assert_eq!(meshes.iter().map(|m| m.colors_unresolved).collect::<Vec<_>>(), vec![false, true, true, true]);
+    }
+
+    #[test]
+    fn extruder_beyond_the_color_list_stays_uncolored_with_the_note() {
+        let meshes = parts_in_object_file(DUCK_SETTINGS, Some(r##"{"filament_colour": ["#FF9016", "#FFFFFF"]}"##));
+        assert!(meshes[2].palette.is_empty() && meshes[2].groups.is_empty());
+        assert!(meshes[2].colors_unresolved && meshes[3].colors_unresolved);
+        assert_eq!(colors(&meshes[1]), vec![(Some("#ffffff"), 2)]);
+        assert!(!meshes[0].colors_unresolved && !meshes[1].colors_unresolved);
+    }
+
+    /// Painted project as Bambu Studio writes it: inline part meshes, paint
+    /// states on triangles, a support blocker part that is not rendered.
+    fn painted(triangles: &[&str], filaments: Option<&str>) -> Vec<RenderMesh> {
+        let root = format!(r#"<model {NS}><resources>
+            <object id="1" type="model">{}</object>
+            <object id="2" type="model">{}</object>
+            <object id="3" type="other">{}</object>
+            <object id="4" type="model"><components><component objectid="1"/><component objectid="2"/><component objectid="3"/></components></object>
+            </resources><build><item objectid="4"/></build></model>"#,
+            mesh(&["", ""]), mesh(triangles), mesh(&[r#"paint_color="8""#]));
+        let settings = r#"<config><object id="4"><metadata key="extruder" value="1"/>
+            <part id="1"><metadata key="extruder" value="1"/></part><part id="2"><metadata key="extruder" value="2"/></part>
+            <part id="3" subtype="support_blocker"><metadata key="extruder" value="1"/></part></object></config>"#;
+        let mut entries = vec![("3D/3dmodel.model", root.as_str()), ("Metadata/model_settings.config", settings)];
+        if let Some(filaments) = filaments { entries.push(("Metadata/project_settings.config", filaments)); }
+        render(&entries)
+    }
+
+    #[test]
+    fn paint_states_override_the_part_extruder_per_triangle() {
+        let meshes = painted(&[r#"paint_color="0C""#, "", r#"paint_color="1C""#, r#"paint_color="8""#, r#"paint_color="4""#,
+            r#"paint_color="0C""#], Some(FILAMENTS));
+        assert_eq!(meshes.len(), 2);
+        assert_eq!(colors(&meshes[0]), vec![(Some("#ff9016"), 2)]);
+        // Unpainted and state 2 both use filament 2, the part's extruder.
+        let mut found = colors(&meshes[1]);
+        found.sort();
+        assert_eq!(found, vec![(Some("#000000"), 2), (Some("#00ae42"), 1), (Some("#ff9016"), 1), (Some("#ffffff"), 2)]);
+        assert_eq!(meshes[1].indices.len(), 6);
+        assert!(meshes.iter().all(|m| !m.colors_unresolved && !m.paint_simplified));
+    }
+
+    #[test]
+    fn subdivided_paint_shows_the_main_color_and_says_so() {
+        // Three-side split: three quarters state 4, one quarter unpainted.
+        let meshes = painted(&[r#"paint_color="1C1C1C03""#, ""], Some(FILAMENTS));
+        assert_eq!(colors(&meshes[1]), vec![(Some("#00ae42"), 1), (Some("#ffffff"), 1)]);
+        assert!(meshes[1].paint_simplified && !meshes[0].paint_simplified);
+        assert!(!meshes[1].colors_unresolved);
+    }
+
+    #[test]
+    fn unpainted_part_of_a_subdivided_triangle_counts_for_each_instance_extruder() {
+        // Shares: state 2 = 3/8, state 3 = 3/8, unpainted = 1/4. The same
+        // mesh is used by two objects whose parts have different extruders.
+        let root = format!(r#"<model {NS}><resources>
+            <object id="1" type="model">{}</object>
+            <object id="5" type="model"><components><component objectid="1"/></components></object>
+            <object id="6" type="model"><components><component objectid="1"/></components></object>
+            </resources><build><item objectid="5"/><item objectid="6"/></build></model>"#,
+            mesh(&[r#"paint_color="0C8100C83""#, ""]));
+        let settings = r#"<config><object id="5"><part id="1"><metadata key="extruder" value="3"/></part></object>
+            <object id="6"><part id="1"><metadata key="extruder" value="1"/></part></object></config>"#;
+        let meshes = render(&[("3D/3dmodel.model", &root), ("Metadata/model_settings.config", settings),
+            ("Metadata/project_settings.config", FILAMENTS)]);
+        // Extruder 3: filament 3 covers 5/8 of the painted triangle.
+        assert_eq!(colors(&meshes[0]), vec![(Some("#000000"), 2)]);
+        // Extruder 1: filaments 2 and 3 tie at 3/8, the lower number wins.
+        assert_eq!(colors(&meshes[1]), vec![(Some("#ffffff"), 1), (Some("#ff9016"), 1)]);
+        assert!(meshes.iter().all(|m| m.paint_simplified && !m.colors_unresolved));
+    }
+
+    #[test]
+    fn long_names_are_cut_before_they_are_copied_into_every_instance() {
+        // Half a MiB per name stays below the model parser's per-tag byte limit.
+        let long = "Ä".repeat(1 << 18);
+        let components = r#"<component objectid="1"/>"#.repeat(1000);
+        let root = format!(r##"<model {NS}><resources>
+            <basematerials id="9"><base name="{long}" displaycolor="#112233"/></basematerials>
+            <object id="1" type="model" name="{long}">{}</object>
+            <object id="2" type="model" pid="9" pindex="0">{}</object>
+            <object id="5" type="model"><components>{components}</components></object>
+            </resources><build><item objectid="5"/><item objectid="2"/></build></model>"##, mesh(&[""]), mesh(&[""]));
+        let filaments = format!(r##"{{"filament_colour": ["#FF9016"], "filament_type": ["{long}"]}}"##);
+        let plates = format!(r#"<config><plate><metadata key="plater_id" value="1"/><metadata key="plater_name" value="{long}"/>
+            <model_instance><metadata key="object_id" value="5"/></model_instance></plate></config>"#);
+        let meshes = render(&[("3D/3dmodel.model", &root), ("Metadata/project_settings.config", &filaments),
+            ("Metadata/model_settings.config", &plates)]);
+        assert_eq!(meshes.len(), 1001);
+        assert!(meshes[..1000].iter().all(|m| m.plate_name.as_deref() == Some(&*"Ä".repeat(MAX_DISPLAY_NAME_CHARS))));
+        let expected = "Ä".repeat(MAX_DISPLAY_NAME_CHARS);
+        // Standard basematerials win, so the slicer name is checked separately below.
+        assert!(meshes.iter().all(|m| m.object_name.as_deref().is_none_or(|n| n == expected)));
+        assert_eq!(meshes[1000].palette[0].name, expected);
+        let slicer = render(&[("3D/3dmodel.model", &root.replace(r#" pid="9" pindex="0""#, "")),
+            ("Metadata/project_settings.config", &filaments)]);
+        assert!(slicer.iter().all(|m| m.palette.len() == 1 && m.palette[0].name == expected));
+        assert_eq!(display_name("PLA"), "PLA");
+    }
+
+    #[test]
+    fn paint_without_colors_or_damaged_paint_raises_the_note() {
+        let meshes = painted(&[r#"paint_color="8""#], None);
+        assert!(meshes[1].colors_unresolved && meshes[1].palette.is_empty());
+        let meshes = painted(&[r#"paint_color="ZZ""#, ""], Some(FILAMENTS));
+        assert_eq!(colors(&meshes[1]), vec![(Some("#ffffff"), 2)]);
+        assert!(meshes[1].colors_unresolved);
+    }
+
+    #[test]
+    fn single_filament_projects_get_their_color_without_the_note() {
+        let root = format!(r#"<model {NS}><resources><object id="1" type="model">{}</object></resources><build><item objectid="1"/></build></model>"#, mesh(&[""]));
+        let meshes = render(&[("3D/3dmodel.model", &root), ("Metadata/project_settings.config", r##"{"filament_colour": ["#1E90FF"]}"##)]);
+        assert_eq!(colors(&meshes[0]), vec![(Some("#1e90ff"), 1)]);
+        assert!(!meshes[0].colors_unresolved);
+        let meshes = render(&[("3D/3dmodel.model", &root)]);
+        assert!(meshes[0].palette.is_empty() && !meshes[0].colors_unresolved);
+    }
+
+    #[test]
+    fn standard_basematerials_win_over_slicer_colors_unchanged() {
+        let root = format!(r##"<model {NS}><resources>
+            <basematerials id="10"><base name="Orange" displaycolor="#FF6A13FF"/><base name="Blau" displaycolor="#1E90FFFF"/></basematerials>
+            <object id="1" type="model" pid="10" pindex="0">{}</object>
+            <object id="2" type="model">{}</object></resources>
+            <build><item objectid="1"/><item objectid="2"/></build></model>"##,
+            mesh(&["", r#"pid="10" p1="1" paint_color="8""#]), mesh(&[r#"paint_color="0C""#]));
+        let settings = r#"<config><object id="1"><metadata key="extruder" value="2"/></object><object id="2"><metadata key="extruder" value="3"/></object></config>"#;
+        let plain = render(&[("3D/3dmodel.model", &root)]);
+        let with_slicer = render(&[("3D/3dmodel.model", &root), ("Metadata/model_settings.config", settings),
+            ("Metadata/project_settings.config", FILAMENTS)]);
+        assert_eq!(plain, with_slicer);
+        assert_eq!(colors(&plain[0]), vec![(Some("#ff6a13"), 1), (Some("#1e90ff"), 1)]);
+        assert!(plain[1].palette.is_empty() && plain.iter().all(|m| !m.colors_unresolved));
+    }
+
+    #[test]
+    fn color_groups_raise_the_note_without_a_palette() {
+        let root = format!(r##"<model {NS} xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02"><resources>
+            <m:colorgroup id="20"><m:color color="#FF0000FF"/></m:colorgroup>
+            <object id="1" type="model">{}</object><object id="2" type="model">{}</object></resources>
+            <build><item objectid="1"/><item objectid="2"/></build></model>"##,
+            mesh(&[r#"pid="20" p1="0""#]), mesh(&[""]));
+        let meshes = render(&[("3D/3dmodel.model", &root)]);
+        assert!(meshes.iter().all(|m| m.palette.is_empty()));
+        assert_eq!(meshes.iter().map(|m| m.colors_unresolved).collect::<Vec<_>>(), vec![true, false]);
+    }
+
+    #[test]
+    fn import_skips_paint_strings() {
+        let root = format!(r#"<model {NS}><resources><object id="1" type="model">{}</object></resources><build><item objectid="1"/></build></model>"#,
+            mesh(&[r#"paint_color="8""#]));
+        let mut bytes = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut bytes));
+            zip.start_file("3D/3dmodel.model", SimpleFileOptions::default()).unwrap();
+            zip.write_all(root.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let imported = container::read_package(std::io::Cursor::new(bytes)).unwrap();
+        assert!(imported.root_model.objects["1"].mesh.as_ref().unwrap().paint.is_empty());
+        assert!(!imported.slicer_colors.has_colors());
+    }
+
+    /// Manual check against real slicer projects that cannot live in the
+    /// repository: `THREEMF_COLOR_FILES=/path/a.3mf:/path/b.3mf cargo test
+    /// --no-default-features -- --ignored --nocapture real_slicer_projects`.
+    #[test]
+    #[ignore]
+    fn real_slicer_projects_report_their_colors() {
+        let Ok(files) = std::env::var("THREEMF_COLOR_FILES") else { return };
+        for file in files.split(':').filter(|f| !f.is_empty()) {
+            let started = std::time::Instant::now();
+            let meshes = extract_render_meshes_from_path(std::path::Path::new(file)).unwrap();
+            let elapsed = started.elapsed();
+            let mut per_color: BTreeMap<String, usize> = BTreeMap::new();
+            for mesh in &meshes {
+                for group in &mesh.groups {
+                    let key = group.color_index.map_or("(none)".to_string(), |i| {
+                        let c = &mesh.palette[i];
+                        format!("filament {:?} {} {}", c.filament, c.name, c.color)
+                    });
+                    *per_color.entry(key).or_default() += group.count / 3;
+                }
+                if mesh.groups.is_empty() { *per_color.entry("(no palette)".into()).or_default() += mesh.indices.len(); }
+            }
+            let peak = std::fs::read_to_string("/proc/self/status").ok()
+                .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM")).map(str::to_string));
+            println!("{file}: {} meshes in {elapsed:?}, {peak:?}, unresolved={}, simplified={}",
+                meshes.len(), meshes.iter().any(|m| m.colors_unresolved), meshes.iter().any(|m| m.paint_simplified));
+            for (color, triangles) in per_color { println!("  {color}: {triangles} triangles"); }
+        }
     }
 }

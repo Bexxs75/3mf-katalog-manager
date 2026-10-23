@@ -253,19 +253,15 @@ pub fn run_models<A: ArchiveTypes>(
         let path_string = path.to_string_lossy().into_owned();
         if job.options.fixed_folder.is_none() {
         match database.with_conn(|conn| {
-            db::file_exists_by_path(conn, &path_string).map_err(|e| format!("database: {e}").into())
+            db::find_existing_by_path(conn, &path_string).map_err(|e| format!("database: {e}").into())
         }) {
-            Ok(true) => {
+            Ok(found) if !found.is_empty() => {
                 job.data
                     .lock()
                     .unwrap()
                     .groups
                     .duplicate
-                    .push(DuplicateEntry {
-                        path: path_string,
-                        kind: "path".into(),
-                        existing_file_id: None,
-                    });
+                    .push(DuplicateEntry::new(path_string, "path", &found));
                 continue;
             }
             Err(e) => {

@@ -360,6 +360,9 @@ to move through the current model order. The position is shown beside the button
 are pending, choose "Keep editing" or "Discard and switch" before changing models.
 
 The 3D preview offers "File colors" when color data is available, or "Single color".
+Color data are standard 3MF materials or, for Bambu Studio and OrcaSlicer projects, the filament
+of each part and painted areas; a subdivided painted triangle shows its main color. If a file has
+colors the preview cannot show, the 3D view says so in a short note.
 The legend explains the file colors. For multi-plate 3MF files from Bambu Studio, OrcaSlicer or
 Creality Print, the plate bar below the preview reads "All", previous arrow, plate numbers, next
 arrow. Pointing at a number shows "Plate n" and the plate's name. Selecting a plate fits it into
@@ -1309,6 +1312,10 @@ Position. Bei laufenden Eingaben wählst du vor dem Wechsel "Weiter bearbeiten" 
 "Verwerfen und wechseln".
 
 Die 3D-Vorschau bietet bei vorhandenen Farbdaten "Dateifarben" oder "Einfarbig".
+Farbdaten sind Standard-3MF-Materialien oder, bei Projekten aus Bambu Studio und OrcaSlicer, das
+Filament jedes Teils und bemalte Flächen; ein unterteiltes bemaltes Dreieck zeigt seine
+überwiegende Farbe. Hat eine Datei Farben, die die Vorschau nicht darstellen kann, sagt die
+3D-Ansicht das in einem kurzen Hinweis.
 Die Legende erklärt die Dateifarben. Bei 3MF-Dateien mit mehreren Druckplatten aus Bambu Studio,
 OrcaSlicer oder Creality Print lautet die Plattenleiste unter der Vorschau „Alle“, Pfeil zurück,
 Plattennummern, Pfeil vor. Zeigst du auf eine Nummer, erscheinen „Platte n“ und der Name der

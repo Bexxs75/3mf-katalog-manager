@@ -7,7 +7,8 @@ import { click, waitForText } from '../lib/ui.js';
 describe('9 Festplatten-Abgleich', () => {
   const catalogDir = process.env.MFK_E2E_CATALOG!;
   const dialog = () => $('[role="dialog"][aria-label="Abgleich mit der Festplatte"]');
-  const removal = () => dialog().$('input[type="checkbox"]');
+  // Every new file has its own checkbox now, so pick the one of the removal option by its label.
+  const removal = () => dialog().$('//label[contains(normalize-space(), "Fehlende Dateien aus dem Katalog entfernen")]//input[@type="checkbox"]');
   before(async () => { await openCatalog(); });
 
   it('does not import a case-only rename again on Windows/macOS', async function () {
@@ -86,6 +87,7 @@ describe('9 Festplatten-Abgleich', () => {
   });
 
   it('lists a real copy as "same content", leaves it unticked and does not import it on apply', async () => {
+    await railTo('Katalog');
     const copy = join(catalogDir, 'Haushalt', 'Kegel-Kopie.stl');
     copyFileSync(join(catalogDir, 'Haushalt', 'Kegel.stl'), copy);
     try {

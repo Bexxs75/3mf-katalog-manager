@@ -37,9 +37,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - **Folders:** renaming or moving a folder now also carries files whose catalog entry is not assigned to that folder, and trashed entries below it, so they no longer point to a path that does not exist any more. If a new path is already taken by another entry, the rename or move is cancelled and nothing is changed.
 - **Sync with disk:** Sync with disk no longer offers a file again as new when the catalog knows it under a symbolic-link path.
+- **3D preview:** colors of Bambu Studio, OrcaSlicer and MakerWorld projects are now shown, with "File colors / Single color" and the legend: the filament of each object and part, and painted areas. A painted triangle that the slicer subdivided shows the color that covers most of it, and the legend says so. Files whose colors the preview cannot show (for example color groups, or paint without a filament color list) get a short note in the 3D view instead of a silent single color. Files with standard 3MF materials are shown as before.
 
 ### Changed
 
+- **Import:** For duplicates the app now names the catalog file it matches ("Same content as …" or "Already in the catalog: …"). If the catalog file is ambiguous or gone, the previous generic reason is shown.
 - **Automatic tags:** More automatic tags are shown in the app language: lid, drawer, hook, vase, box, organizer, wall mount, keychain, toy, gear, tool, adapter, spare part, lamp and small. The German name is still what is stored; hand-typed names such as 'lid' or 'couvercle' are merged with 'deckel'. Existing catalogs are otherwise unchanged.
 - **Settings:** Settings now open in the right-hand panel instead of a small window over the models and folders.
 - **Moving model files:** Moved model files keep the permissions and modification time of the original file.
@@ -714,9 +716,11 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 - **Ordner:** Beim Umbenennen oder Verschieben eines Ordners werden jetzt auch Dateien mitgeführt, deren Katalogeintrag diesem Ordner nicht zugeordnet ist, sowie Einträge im Papierkorb darunter; sie zeigen danach nicht mehr auf einen nicht mehr vorhandenen Pfad. Ist ein neuer Pfad bereits durch einen anderen Eintrag belegt, wird das Umbenennen oder Verschieben abgebrochen und nichts verändert.
 - **Abgleich mit der Festplatte:** Der Abgleich bietet eine Datei nicht mehr erneut als neu an, wenn der Katalog sie unter einem Pfad über einen symbolischen Link kennt.
+- **3D-Vorschau:** Farben aus Projekten von Bambu Studio, OrcaSlicer und MakerWorld werden jetzt angezeigt, mit „Dateifarben / Einfarbig“ und Legende: das Filament jedes Objekts und Teils sowie bemalte Flächen. Ein bemaltes Dreieck, das der Slicer unterteilt hat, zeigt die Farbe, die den größten Teil davon bedeckt, und die Legende weist darauf hin. Dateien, deren Farben die Vorschau nicht darstellen kann (zum Beispiel Farbgruppen oder Bemalung ohne Filament-Farbliste), bekommen in der 3D-Ansicht einen kurzen Hinweis statt einer kommentarlos einfarbigen Darstellung. Dateien mit Standard-3MF-Materialien werden wie bisher angezeigt.
 
 ### Geändert
 
+- **Import:** Bei Duplikaten nennt die App jetzt die Katalogdatei, mit der die Datei übereinstimmt („Gleicher Inhalt wie …“ bzw. „Schon im Katalog: …“). Ist die Katalogdatei nicht eindeutig oder nicht mehr vorhanden, bleibt der bisherige Hinweis.
 - **Automatische Tags:** Mehr automatische Tags erscheinen in der App-Sprache: Deckel, Schublade, Haken, Vase, Box, Organizer, Wandhalterung, Schlüsselanhänger, Spielzeug, Zahnrad, Werkzeug, Adapter, Ersatzteil, Lampe und klein. Gespeichert wird weiter der deutsche Name; von Hand getippte Namen wie „lid“ oder „couvercle“ werden mit „deckel“ zusammengeführt. Bestehende Kataloge bleiben sonst unverändert.
 - **Einstellungen:** Die Einstellungen öffnen sich jetzt im rechten Bereich statt in einem kleinen Fenster über den Modellen und Ordnern.
 - **Modelldateien verschieben:** Verschobene Modelldateien behalten die Rechte und die Änderungszeit der Originaldatei.
