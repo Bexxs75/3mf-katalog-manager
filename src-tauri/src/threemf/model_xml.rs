@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::BufRead;
 
 use quick_xml::events::{BytesStart, Event};
@@ -30,6 +30,13 @@ pub struct Mesh {
     pub vertices: Vec<[f64; 3]>,
     pub triangles: Vec<[u32; 3]>,
     pub properties: Vec<(Option<String>, Option<usize>)>,
+    /// Slicer paint state per triangle (see `paint`), empty when nothing is
+    /// painted. Only read for the preview.
+    pub paint: Vec<u8>,
+    /// At least one painted triangle was subdivided and is simplified.
+    pub paint_split: bool,
+    /// At least one paint string could not be decoded.
+    pub paint_unreadable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +76,8 @@ pub struct ParsedModel {
     pub metadata: BTreeMap<String, String>,
     pub materials: Vec<Material>,
     pub material_groups: HashMap<String, Vec<Material>>,
+    /// Ids of `<colorgroup>` resources, which the preview does not render.
+    pub color_groups: HashSet<String>,
 }
 
 fn local_name(qname: &[u8]) -> &str {
@@ -76,6 +85,34 @@ fn local_name(qname: &[u8]) -> &str {
     match s.rfind(':') {
         Some(idx) => &s[idx + 1..],
         None => s,
+    }
+}
+
+/// Paint strings are only needed by the preview, so the import skips them.
+fn record_paint(mesh: &mut Mesh, e: &BytesStart) {
+    let code = e.attributes().flatten().find_map(|a| {
+        matches!(local_name(a.key.as_ref()), "paint_color" | "mmu_segmentation")
+            .then(|| a.normalized_value(XmlVersion::Implicit1_0).ok().map(|v| v.into_owned()))
+            .flatten()
+    });
+    let state = match code.as_deref().map(str::trim).filter(|code| !code.is_empty()) {
+        None => 0,
+        Some(code) => match super::paint::dominant_state(code) {
+            Some(paint) => {
+                mesh.paint_split |= paint.split;
+                paint.state
+            }
+            None => {
+                mesh.paint_unreadable = true;
+                0
+            }
+        },
+    };
+    // Allocate only once the first painted triangle shows up; from then on
+    // every triangle gets an entry.
+    if state != 0 || !mesh.paint.is_empty() {
+        mesh.paint.resize(mesh.triangles.len() - 1, 0);
+        mesh.paint.push(state);
     }
 }
 
@@ -95,6 +132,7 @@ struct ParseCtx {
     vertices: usize,
     triangles: usize,
     limits: (usize, usize),
+    paint: bool,
     current_object: Option<(String, Object)>,
     current_mesh: Option<Mesh>,
     in_vertices: bool,
@@ -156,6 +194,9 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
                     };
                     mesh.triangles.push([index("v1")?, index("v2")?, index("v3")?]);
                     mesh.properties.push((get_attr(e, "pid"), get_attr(e, "p1").and_then(|v| v.parse().ok())));
+                    if ctx.paint {
+                        record_paint(mesh, e);
+                    }
                 }
             }
         }
@@ -188,6 +229,9 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
         "basematerials" => {
             ctx.basematerials_id = get_attr(e, "id").unwrap_or_default();
             ctx.current_basematerials = Some(Vec::new());
+        }
+        "colorgroup" => {
+            ctx.model.color_groups.insert(get_attr(e, "id").unwrap_or_default());
         }
         "base" => {
             if let Some(materials) = ctx.current_basematerials.as_mut() {
@@ -253,7 +297,7 @@ pub(super) fn parse_model_xml_reader_with_preview<R: BufRead>(source: R, preview
     let mut limits = mesh_limits();
     if preview { limits.1 = limits.1.min(MAX_PREVIEW_TRIANGLES); }
     let mut reader = Reader::from_reader(source);
-    let mut ctx = ParseCtx { limits, ..ParseCtx::default() };
+    let mut ctx = ParseCtx { limits, paint: preview, ..ParseCtx::default() };
     let mut buf = Vec::new();
 
     loop {

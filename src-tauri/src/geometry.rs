@@ -61,6 +61,10 @@ pub struct RenderMesh {
     pub plate_name: Option<String>,
     pub groups: Vec<RenderGroup>,
     pub palette: Vec<RenderColor>,
+    /// The file has color information for this mesh that the preview could not show.
+    pub colors_unresolved: bool,
+    /// Painted triangles were subdivided and show only their main color.
+    pub paint_simplified: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -75,6 +79,10 @@ pub struct RenderGroup {
 pub struct RenderColor {
     pub name: String,
     pub color: String,
+    /// Slicer filament slot (1-based), so the legend can tell equal
+    /// material names apart without relying on the swatch color.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filament: Option<u32>,
 }
 
 /// Flat normal per triangle for all three corners, like three.js'

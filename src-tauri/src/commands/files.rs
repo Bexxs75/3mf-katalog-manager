@@ -1934,6 +1934,9 @@ fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
     }).collect();
     let plates: std::collections::BTreeMap<_, _> = meshes.iter().filter_map(|m| m.plate.map(|n| (n, m.plate_name.clone()))).collect();
     let mut header = serde_json::json!({ "meshes": headers, "palette": palette });
+    // Whole-file flags: the viewer shows one note, not one per mesh.
+    if meshes.iter().any(|m| m.colors_unresolved) { header["colorsUnresolved"] = true.into(); }
+    if meshes.iter().any(|m| m.paint_simplified) { header["paintSimplified"] = true.into(); }
     if plates.len() >= 2 {
         header["plates"] = serde_json::json!(plates.into_iter().map(|(number, name)| serde_json::json!({"number": number, "name": name})).collect::<Vec<_>>());
     }
@@ -2472,8 +2475,8 @@ mod tests {
     #[test]
     fn encode_render_meshes_roundtrips_material_groups_and_global_palette() {
         use crate::geometry::{RenderColor, RenderGroup};
-        let red = RenderColor { name: "Rötlich".into(), color: "#ff0000".into() };
-        let blue = RenderColor { name: "Blue".into(), color: "#0000ff".into() };
+        let red = RenderColor { name: "Rötlich".into(), color: "#ff0000".into(), filament: None };
+        let blue = RenderColor { name: "Blue".into(), color: "#0000ff".into(), filament: Some(2) };
         let a = RenderMesh {
             positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             indices: vec![[0, 1, 2], [0, 2, 1]],
@@ -2500,6 +2503,16 @@ mod tests {
         assert_eq!(groups[0].color_index, Some(1));
         assert_eq!(groups[1].color_index, Some(0));
         assert_eq!(header["meshes"][0]["objectName"], "Töpfchen");
+        assert!(header["palette"][0].get("filament").is_none());
+        assert_eq!(header["palette"][1]["filament"], 2);
+        assert!(header.get("colorsUnresolved").is_none());
+        assert!(header.get("paintSimplified").is_none());
+        let flagged = RenderMesh { colors_unresolved: true, paint_simplified: true, ..a.clone() };
+        let bytes = encode_render_meshes(&[a.clone(), flagged]);
+        let length = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
+        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4+length]).unwrap();
+        assert_eq!(header["colorsUnresolved"], true);
+        assert_eq!(header["paintSimplified"], true);
     }
 
     #[test]

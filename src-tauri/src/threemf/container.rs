@@ -70,6 +70,8 @@ pub struct PackageParts {
     pub plate_count: Option<u32>,
     pub plate_assignments: super::plates::PlateAssignments,
     pub slice_info: Option<super::slice_info::SliceInfo>,
+    /// Bambu Studio / OrcaSlicer filament colors; only read for the preview.
+    pub slicer_colors: super::slicer_colors::SlicerColors,
 }
 
 impl PackageParts {
@@ -106,6 +108,14 @@ fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<Packa
     let (slice_info, slice_info_bytes) = super::slice_info::parse_slice_info(&mut archive);
     total_unpacked += slice_info_bytes;
     check_total_budget(total_unpacked)?;
+
+    let mut slicer_colors = super::slicer_colors::SlicerColors::default();
+    if geometry {
+        let (colors, bytes) = super::slicer_colors::read_slicer_colors(&mut archive);
+        slicer_colors = colors;
+        total_unpacked += bytes;
+        check_total_budget(total_unpacked)?;
+    }
 
     let (model_path, thumbnail_path, rels_bytes) = resolve_relationships(&mut archive);
     total_unpacked += rels_bytes;
@@ -182,6 +192,7 @@ fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<Packa
         plate_assignments,
         slice_info,
         thumbnail,
+        slicer_colors,
     })
 }
 
