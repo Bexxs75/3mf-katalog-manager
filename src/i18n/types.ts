@@ -329,6 +329,9 @@ export interface Translations {
   impPath: string;
   impHash: string;
   impExistingModel: string;
+  impSameContentAs: string;
+  impAlreadyInCatalog: string;
+  impShowExisting: string;
   impArchiveCancelled: string;
   impPending: string;
   impExtracted: string;

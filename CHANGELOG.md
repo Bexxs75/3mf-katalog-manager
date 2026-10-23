@@ -40,6 +40,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
+- **Import:** For duplicates the app now names the catalog file it matches ("Same content as …" or "Already in the catalog: …"). If the catalog file is ambiguous or gone, the previous generic reason is shown.
 - **Automatic tags:** More automatic tags are shown in the app language: lid, drawer, hook, vase, box, organizer, wall mount, keychain, toy, gear, tool, adapter, spare part, lamp and small. The German name is still what is stored; hand-typed names such as 'lid' or 'couvercle' are merged with 'deckel'. Existing catalogs are otherwise unchanged.
 - **Settings:** Settings now open in the right-hand panel instead of a small window over the models and folders.
 - **Moving model files:** Moved model files keep the permissions and modification time of the original file.
@@ -717,6 +718,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Geändert
 
+- **Import:** Bei Duplikaten nennt die App jetzt die Katalogdatei, mit der die Datei übereinstimmt („Gleicher Inhalt wie …“ bzw. „Schon im Katalog: …“). Ist die Katalogdatei nicht eindeutig oder nicht mehr vorhanden, bleibt der bisherige Hinweis.
 - **Automatische Tags:** Mehr automatische Tags erscheinen in der App-Sprache: Deckel, Schublade, Haken, Vase, Box, Organizer, Wandhalterung, Schlüsselanhänger, Spielzeug, Zahnrad, Werkzeug, Adapter, Ersatzteil, Lampe und klein. Gespeichert wird weiter der deutsche Name; von Hand getippte Namen wie „lid“ oder „couvercle“ werden mit „deckel“ zusammengeführt. Bestehende Kataloge bleiben sonst unverändert.
 - **Einstellungen:** Die Einstellungen öffnen sich jetzt im rechten Bereich statt in einem kleinen Fenster über den Modellen und Ordnern.
 - **Modelldateien verschieben:** Verschobene Modelldateien behalten die Rechte und die Änderungszeit der Originaldatei.

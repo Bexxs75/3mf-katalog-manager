@@ -30,7 +30,7 @@ pub use repository::{
     FileSummary,
     add_tag_to_file, attach_folder_to_parent_by_path, connect, connect_with_warning, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_unused_tags, ensure_folder_path,
-    file_exists_by_hash, file_exists_by_path, get_file, get_filament_spool,
+    find_existing_by_hash, find_existing_by_path, ExistingFileRef, get_file, get_filament_spool,
     get_registered_slicer,
     insert_file_within_tx,
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
@@ -75,6 +75,8 @@ pub use repository::SCHEMA_SQL;
 
 #[cfg(test)]
 pub use repository::{max_folder_id, remove_new_folder_rows};
+#[cfg(test)]
+pub use repository::{file_exists_by_hash, file_exists_by_path};
 
 #[cfg(test)]
 mod tests {
@@ -218,6 +220,45 @@ mod tests {
 
         assert!(file_exists_by_hash(&conn, "hash-a").expect("query"));
         assert!(!file_exists_by_hash(&conn, "hash-b").expect("query"));
+    }
+
+    #[test]
+    fn find_existing_returns_id_and_name_of_live_matches_only() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file = sample_file();
+        file.content_hash = Some("hash-a".to_string());
+        let id = insert_file(&mut conn, &file).expect("insert");
+
+        let by_hash = find_existing_by_hash(&conn, "hash-a").expect("query");
+        assert_eq!(by_hash, vec![ExistingFileRef { id, name: "cube.3mf".into() }]);
+        let by_path = find_existing_by_path(&conn, "/tmp/cube.3mf").expect("query");
+        assert_eq!(by_path, by_hash);
+        assert!(find_existing_by_hash(&conn, "hash-b").expect("query").is_empty());
+        assert!(find_existing_by_path(&conn, "/tmp/other.3mf").expect("query").is_empty());
+
+        conn.execute("UPDATE files SET deleted_at = '2026-01-01T00:00:00Z' WHERE id = ?1", [id]).unwrap();
+        assert!(find_existing_by_hash(&conn, "hash-a").expect("query").is_empty());
+        assert!(find_existing_by_path(&conn, "/tmp/cube.3mf").expect("query").is_empty());
+    }
+
+    #[test]
+    fn find_existing_by_hash_reports_every_match_up_to_two() {
+        let mut conn = connect_in_memory().expect("connect");
+        for (name, path) in [("a.3mf", "/tmp/a.3mf"), ("a(2).3mf", "/tmp/a(2).3mf"), ("a(3).3mf", "/tmp/a(3).3mf")] {
+            let mut file = sample_file();
+            file.name = name.into();
+            file.path = path.into();
+            file.content_hash = Some("same".into());
+            insert_file(&mut conn, &file).expect("insert");
+        }
+        let found = find_existing_by_hash(&conn, "same").expect("query");
+        assert_eq!(found.len(), 2, "callers only need to tell one from several");
+        let entry = crate::commands::DuplicateEntry::new("/x/a.3mf".into(), "hash", &found);
+        assert_eq!(entry.existing_file_name, None, "an ambiguous match must not be named");
+        assert_eq!(entry.existing_file_id, None);
+        let single = crate::commands::DuplicateEntry::new("/x/a.3mf".into(), "hash", &found[..1]);
+        assert_eq!(single.existing_file_name.as_deref(), Some("a.3mf"));
+        assert_eq!(single.existing_file_id, Some(found[0].id.to_string()));
     }
 
     #[test]

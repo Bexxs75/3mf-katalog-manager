@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { ImportResultDialog } from './ImportResultDialog';
 import { importResult } from '../test/importFixtures';
+import type { ImportJobResult } from '../types';
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 const setup = () => render(<LanguageProvider><ImportResultDialog result={importResult} onClose={vi.fn()} /></LanguageProvider>);
 it('switches tabs by click and keyboard and indents archive models', () => {
@@ -91,4 +92,34 @@ it('hides "view recently added" in the result dialog when nothing new was import
   unmount();
   render(<LanguageProvider><ImportResultDialog result={importResult} onClose={vi.fn()} /></LanguageProvider>);
   expect(screen.queryByRole('button', {name: 'Neu hinzugefügt ansehen'})).toBeNull();
+});
+
+const withDuplicates = (duplicate: ImportJobResult['groups']['duplicate']) => ({...importResult, groups: {...importResult.groups, skipped: [], importedNotPlaced: [], archive: [], duplicate}});
+it.each([
+  ['de', 'Gleicher Inhalt wie Modell (2).3mf', 'Schon im Katalog: Modell.3mf'],
+  ['en', 'Same content as Modell (2).3mf', 'Already in the catalog: Modell.3mf'],
+  ['es', 'Mismo contenido que Modell (2).3mf', 'Ya está en el catálogo: Modell.3mf'],
+  ['fr', 'Même contenu que Modell (2).3mf', 'Déjà dans le catalogue : Modell.3mf'],
+])('names the catalog file behind a duplicate in %s', (language, hash, path) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  const result = withDuplicates([
+    {path: '/neu/Modell.3mf', kind: 'hash', existingFileId: '7', existingFileName: 'Modell (2).3mf'},
+    {path: '/neu/Modell.3mf', kind: 'path', existingFileId: '8', existingFileName: 'Modell.3mf'},
+  ]);
+  render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} onSelectModel={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText(hash)).toBeVisible();
+  expect(screen.getByText(path)).toBeVisible();
+});
+it('keeps the generic reason when no catalog file is known and never invents a name', () => {
+  const result = withDuplicates([{path: '/neu/a.3mf', kind: 'hash', existingFileId: null, existingFileName: null}, {path: '/neu/b.3mf', kind: 'hash'}]);
+  render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} onSelectModel={vi.fn()} /></LanguageProvider>);
+  expect(screen.getAllByText('Gleicher Inhalt im Katalog oder Import')).toHaveLength(2);
+  expect(screen.queryByRole('button', {name: /Vorhandenes Modell/})).toBeNull();
+});
+it('offers a labelled button that opens the named catalog file', () => {
+  const onSelectModel = vi.fn(); const onClose = vi.fn();
+  const result = withDuplicates([{path: '/neu/a.3mf', kind: 'hash', existingFileId: '7', existingFileName: 'a (2).3mf'}]);
+  render(<LanguageProvider><ImportResultDialog result={result} onClose={onClose} onSelectModel={onSelectModel} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Vorhandenes Modell: a (2).3mf'}));
+  expect(onClose).toHaveBeenCalled(); expect(onSelectModel).toHaveBeenCalledWith('7');
 });

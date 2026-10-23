@@ -144,6 +144,26 @@ pub struct DuplicateEntry {
     pub path: String,
     pub kind: String,
     pub existing_file_id: Option<String>,
+    /// File name of the catalog entry that blocked this one; only set for
+    /// "path"/"hash" matches that resolve to exactly one live catalog file.
+    pub existing_file_name: Option<String>,
+}
+impl DuplicateEntry {
+    /// `matches` come from the catalog lookup. Several matches (or none, e.g.
+    /// the row sits in the trash) are ambiguous, so no name is shown rather
+    /// than a guessed one.
+    pub fn new(path: String, kind: &str, matches: &[crate::db::ExistingFileRef]) -> Self {
+        let single = match matches {
+            [one] => Some(one),
+            _ => None,
+        };
+        Self {
+            path,
+            kind: kind.into(),
+            existing_file_id: single.map(|m| m.id.to_string()),
+            existing_file_name: single.map(|m| m.name.clone()),
+        }
+    }
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct SkippedEntry {
@@ -967,7 +987,7 @@ mod logging_tests {
     fn skipped_logs_hide_names_until_verbose_mode_and_include_nested_duplicates() {
         let mut groups = ImportGroups::default();
         groups.skipped.push(SkippedEntry {path: "/private/broken.obj".into(), reason: "invalid".into()});
-        groups.duplicate.push(DuplicateEntry {path: "/private/same.stl".into(), kind: "hash".into(), existing_file_id: None});
+        groups.duplicate.push(DuplicateEntry {path: "/private/same.stl".into(), kind: "hash".into(), existing_file_id: None, existing_file_name: None});
         groups.archive.push(serde_json::json!({"models":{"skipped":[{"entryPath":"../unsafe.stl","reason":"unsafe"}],"duplicates":[]}}));
         assert_eq!(skipped_log_lines(&groups, false), ["übersprungen: 3 Dateien (einschließlich Duplikate)"]);
         assert_eq!(skipped_log_lines(&groups, true), [

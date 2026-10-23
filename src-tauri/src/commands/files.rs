@@ -1484,20 +1484,20 @@ pub(super) fn import_many_selected(
             }
             if mode != ImportMode::Atomic {
                 match db.with_conn(|conn| {
-                    db::file_exists_by_path(conn, &path_str).map_err(|e| e.to_string().into())
+                    db::find_existing_by_path(conn, &path_str).map_err(|e| e.to_string().into())
                 }) {
-                    Ok(true) => {
+                    Ok(found) if !found.is_empty() => {
                         result.duplicate_count += 1;
                         result
                             .duplicate_entries
-                            .push(super::import_jobs::DuplicateEntry {
-                                path: path_str.clone(),
-                                kind: "path".into(),
-                                existing_file_id: None,
-                            });
+                            .push(super::import_jobs::DuplicateEntry::new(
+                                path_str.clone(),
+                                "path",
+                                &found,
+                            ));
                         continue;
                     }
-                    Ok(false) => {}
+                    Ok(_) => {}
                     Err(e) => {
                         log::error!(target: "import", "duplicate check failed: {e}");
                         result.skip(path_str, SkipReason::Failed);
@@ -1523,20 +1523,20 @@ pub(super) fn import_many_selected(
             };
             if mode != ImportMode::Atomic {
                 match db.with_conn(|conn| {
-                    db::file_exists_by_hash(conn, &content_hash).map_err(|e| e.to_string().into())
+                    db::find_existing_by_hash(conn, &content_hash).map_err(|e| e.to_string().into())
                 }) {
-                    Ok(true) => {
+                    Ok(found) if !found.is_empty() => {
                         result.duplicate_count += 1;
                         result
                             .duplicate_entries
-                            .push(super::import_jobs::DuplicateEntry {
-                                path: path_str.clone(),
-                                kind: "hash".into(),
-                                existing_file_id: None,
-                            });
+                            .push(super::import_jobs::DuplicateEntry::new(
+                                path_str.clone(),
+                                "hash",
+                                &found,
+                            ));
                         continue;
                     }
-                    Ok(false) => {}
+                    Ok(_) => {}
                     Err(e) => {
                         log::error!(target: "import", "duplicate check (hash) failed: {e}");
                         result.skip(path_str, SkipReason::Failed);
@@ -1684,13 +1684,16 @@ fn store_transaction_controlled(
         for item in pending {
             if tx.query_row("SELECT EXISTS(SELECT 1 FROM files WHERE path = ?1)", [&item.new_file.path], |row| row.get::<_, bool>(0)).map_err(database_error)? {
                 local.duplicate_count += 1;
-                duplicates.push(super::import_jobs::DuplicateEntry { path: item.new_file.path.clone(), kind: "path".into(), existing_file_id: None });
+                // The row may be soft-deleted (still blocks the unique path); the live-only lookup then yields no name.
+                let found = db::find_existing_by_path(&tx, &item.new_file.path).map_err(database_error)?;
+                duplicates.push(super::import_jobs::DuplicateEntry::new(item.new_file.path.clone(), "path", &found));
                 continue;
             }
             if let Some(hash) = &item.new_file.content_hash {
-                if db::file_exists_by_hash(&tx, hash).map_err(database_error)? {
+                let found = db::find_existing_by_hash(&tx, hash).map_err(database_error)?;
+                if !found.is_empty() {
                     local.duplicate_count += 1;
-                    duplicates.push(super::import_jobs::DuplicateEntry { path: item.new_file.path.clone(), kind: "hash".into(), existing_file_id: None });
+                    duplicates.push(super::import_jobs::DuplicateEntry::new(item.new_file.path.clone(), "hash", &found));
                     continue;
                 }
             }

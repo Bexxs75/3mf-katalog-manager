@@ -739,6 +739,7 @@ pub fn purge_expired_trash(conn: &Connection, older_than: &str) -> Result<Vec<Fi
     Ok(files)
 }
 
+#[cfg(test)]
 pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbError> {
     let exists: Option<i64> = conn
         .query_row("SELECT 1 FROM files WHERE path = ?1 AND deleted_at IS NULL", params![path], |row| {
@@ -748,6 +749,7 @@ pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbErro
     Ok(exists.is_some())
 }
 
+#[cfg(test)]
 pub fn file_exists_by_hash(conn: &Connection, hash: &str) -> Result<bool, DbError> {
     let exists: Option<i64> = conn
         .query_row(
@@ -757,6 +759,32 @@ pub fn file_exists_by_hash(conn: &Connection, hash: &str) -> Result<bool, DbErro
         )
         .optional()?;
     Ok(exists.is_some())
+}
+
+/// Identity of a catalog row that blocks an import as a duplicate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExistingFileRef {
+    pub id: i64,
+    pub name: String,
+}
+
+// At most two rows are fetched: callers only need to tell "exactly one" from
+// "several", and an ambiguous match must not be presented as a single file.
+fn find_existing(conn: &Connection, column: &str, value: &str) -> Result<Vec<ExistingFileRef>, DbError> {
+    let sql = format!("SELECT id, name FROM files WHERE {column} = ?1 AND deleted_at IS NULL ORDER BY id LIMIT 2");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map(params![value], |row| Ok(ExistingFileRef { id: row.get(0)?, name: row.get(1)? }))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn find_existing_by_path(conn: &Connection, path: &str) -> Result<Vec<ExistingFileRef>, DbError> {
+    find_existing(conn, "path", path)
+}
+
+pub fn find_existing_by_hash(conn: &Connection, hash: &str) -> Result<Vec<ExistingFileRef>, DbError> {
+    find_existing(conn, "content_hash", hash)
 }
 
 pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbError> {

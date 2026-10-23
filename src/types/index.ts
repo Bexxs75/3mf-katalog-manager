@@ -460,7 +460,7 @@ export interface ImportJobResult {
   groups: {
     imported: { path: string; fileId: string; folderId: string | null }[];
     importedNotPlaced: { path: string; fileId: string; reason: 'cancelled' | 'targetMissing' | 'moveFailed' | 'protected' | 'jobFailed' }[];
-    duplicate: { path: string; kind: 'path' | 'hash'; existingFileId?: string | null }[];
+    duplicate: { path: string; kind: 'path' | 'hash'; existingFileId?: string | null; existingFileName?: string | null }[];
     skipped: { path: string; reason: SkipReason | 'unsupported' | 'notStarted' }[];
     archive: ImportArchiveResult[];
   };

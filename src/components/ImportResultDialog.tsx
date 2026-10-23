@@ -8,7 +8,7 @@ import { countsWithArchiveModels } from '../lib/importCounts';
 import './import.css';
 const reasons: Record<string, keyof Translations> = { empty: 'impEmpty', invalid: 'impInvalid', failed: 'impReadFailed', unsupported: 'impUnsupported', notStarted: 'impNotStarted', cancelled: 'impReasonCancelled', targetMissing: 'impTargetMissing', moveFailed: 'impMoveFailed', protected: 'impProtected', jobFailed: 'impJobFailed', unsafe: 'impUnsafe', blocked: 'impBlocked', existing: 'impExisting', path: 'impPath', hash: 'impHash' };
 const tabs = ['impTabSkipped', 'impTabDuplicate', 'impTabNotPlaced', 'impTabArchive'] as const;
-interface Row { path: string; reason: string; nested?: boolean; existingFileId?: string | null }
+interface Row { path: string; reason: string; nested?: boolean; existingFileId?: string | null; existingFileName?: string | null }
 interface Props { result: ImportJobResult; onClose: () => void; returnFocus?: RefObject<HTMLElement | null>; onSelectModel?: (id: string) => void;
   // Opens the "recently added" view; offered only when the job added models.
   onShowNew?: () => void }
@@ -21,7 +21,11 @@ export function ImportResultDialog({result, onClose, returnFocus, onSelectModel,
   const dialog = useModalDialog({open: true, onClose, returnFocus, initialFocus: '[data-close]'});
   const rows = useMemo(() => {
     const reason = (key: string) => reasons[key] ? t(reasons[key]) as string : key;
-    const duplicate = (r: {path: string; kind: string; existingFileId?: string | null}): Row => ({...r, reason: reason(r.kind) + (r.existingFileId ? ` · ${t('impExistingModel').replace('{id}', r.existingFileId)}` : '')});
+    // Naming the catalog file explains why a file counts as a duplicate (for example a renamed copy "X(2)"); without a name the generic reason stays.
+    const duplicate = (r: {path: string; kind: string; existingFileId?: string | null; existingFileName?: string | null}): Row => {
+      const named = r.existingFileName && (r.kind === 'hash' || r.kind === 'path') ? t(r.kind === 'hash' ? 'impSameContentAs' : 'impAlreadyInCatalog').replace('{name}', r.existingFileName) : null;
+      return {...r, reason: named ?? reason(r.kind) + (r.existingFileId ? ` · ${t('impExistingModel').replace('{name}', r.existingFileId)}` : '')};
+    };
     const archive: Row[] = [];
     for (const a of result.groups.archive) {
       archive.push({path: a.path, reason: a.state === 'pending' ? t('impPending') : a.error ? (a.error === 'cancelled' ? t('impArchiveCancelled') : reason(a.error)) : t('impExtracted').replace('{path}', a.extractedTo ?? '')});
@@ -51,7 +55,7 @@ export function ImportResultDialog({result, onClose, returnFocus, onSelectModel,
       const next = event.key === 'ArrowRight' ? (i+1)%4 : event.key === 'ArrowLeft' ? (i+3)%4 : event.key === 'Home' ? 0 : event.key === 'End' ? 3 : null;
       if (next !== null) { event.preventDefault(); setTab(next); buttons.current[next]?.focus(); }
     }}>{i === 3 ? formatCount(t('archiveCountNoun'), result.groups.archive.length) : t(key)} <span>{n(i === 3 ? result.groups.archive.length : rows[i].length)}</span></button>)}</div>
-    <div className="import-table-scroll" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}><table><thead><tr><th>{t('impFile')}</th><th>{t('impReason')}</th></tr></thead><tbody>{rows[tab].map((row,i) => <tr key={i} className={row.nested ? 'import-nested' : undefined}><td className="font-code">{row.nested && '↳ '}{displayName(row.path)}</td><td>{displayName(row.reason)}{row.existingFileId && onSelectModel && <button onClick={() => {onClose(); onSelectModel(row.existingFileId!);}}>{t('impExistingModel').replace('{id}', row.existingFileId)}</button>}</td></tr>)}</tbody></table></div>
+    <div className="import-table-scroll" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}><table><thead><tr><th>{t('impFile')}</th><th>{t('impReason')}</th></tr></thead><tbody>{rows[tab].map((row,i) => <tr key={i} className={row.nested ? 'import-nested' : undefined}><td className="font-code">{row.nested && '↳ '}{displayName(row.path)}</td><td>{displayName(row.reason)}{row.existingFileId && onSelectModel && <button aria-label={t('impExistingModel').replace('{name}', row.existingFileName ?? row.existingFileId)} onClick={() => {onClose(); onSelectModel(row.existingFileId!);}}>{row.existingFileName ? t('impShowExisting') : t('impExistingModel').replace('{name}', row.existingFileId)}</button>}</td></tr>)}</tbody></table></div>
     {fallback && <label>{t('impCopyFallback')}<textarea className="font-code" readOnly value={text} onFocus={e => e.currentTarget.select()} aria-label={t('impCopyFallback')} /></label>}
     <footer>{onShowNew && counts.imported + counts.importedNotPlaced > 0 && <button onClick={() => {onClose(); onShowNew();}}>{t('importShowNew')}</button>}<button onClick={() => void copy()}>{t('impCopy')}</button><span role="status">{copied ? t('impCopied') : ''}</span><button data-close onClick={onClose}>{t('impClose')}</button></footer>
   </div></div>;
