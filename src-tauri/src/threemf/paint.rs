@@ -12,13 +12,16 @@
 //! unpainted (the part's own filament), state n paints with filament n.
 //!
 //! The preview keeps the original mesh, so a subdivided triangle cannot show
-//! its sub-triangles. It gets the state covering the largest share of its
+//! its sub-triangles. It gets the filament covering the largest share of its
 //! area instead. Splits always cut at edge midpoints, which makes the child
-//! area shares exact for any triangle shape.
+//! area shares exact for any triangle shape. Unpainted areas belong to the
+//! part's filament, which is only known per rendered instance, so subdivided
+//! triangles keep their area shares until then.
 
 /// Longer strings are not plausible brush detail and are treated as damaged.
 const MAX_PAINT_DIGITS: usize = 16 * 1024;
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PaintState {
     /// Filament number covering most of the triangle; 0 = unpainted.
@@ -27,8 +30,44 @@ pub struct PaintState {
     pub split: bool,
 }
 
+/// Area share per state of one triangle.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Paint {
+    /// Non-empty states in ascending order, shares sum to 1.
+    pub areas: Vec<(u8, f32)>,
+    pub split: bool,
+}
+
+/// State covering the largest area once unpainted area (state 0) counts for
+/// `unpainted`, the part's filament. A tie goes to the lower number.
+pub fn dominant(areas: &[(u8, f32)], unpainted: u8) -> u8 {
+    let mut merged: Vec<(u8, f32)> = Vec::with_capacity(areas.len());
+    for &(state, area) in areas {
+        let state = if state == 0 { unpainted } else { state };
+        match merged.iter_mut().find(|(s, _)| *s == state) {
+            Some((_, total)) => *total += area,
+            None => merged.push((state, area)),
+        }
+    }
+    merged.sort_by_key(|(state, _)| *state);
+    let mut best = (0, -1.0f32);
+    for (state, area) in merged {
+        if area > best.1 {
+            best = (state, area);
+        }
+    }
+    best.0
+}
+
 /// `None` for an empty, overlong or malformed string.
+#[cfg(test)]
 pub fn dominant_state(code: &str) -> Option<PaintState> {
+    let paint = decode(code)?;
+    Some(PaintState { state: dominant(&paint.areas, 0), split: paint.split })
+}
+
+/// `None` for an empty, overlong or malformed string.
+pub fn decode(code: &str) -> Option<Paint> {
     let bytes = code.as_bytes();
     if bytes.is_empty() || bytes.len() > MAX_PAINT_DIGITS || !bytes.iter().all(u8::is_ascii_hexdigit) {
         return None;
@@ -68,13 +107,9 @@ pub fn dominant_state(code: &str) -> Option<PaintState> {
         };
         pending.extend(shares.iter().rev().map(|share| weight * share));
     }
-    let mut state = 0;
-    for (candidate, area) in areas.iter().enumerate() {
-        if *area > areas[state] {
-            state = candidate;
-        }
-    }
-    Some(PaintState { state: state as u8, split })
+    let areas = areas.iter().enumerate().filter(|(_, area)| **area > 0.0)
+        .map(|(state, area)| (state as u8, *area as f32)).collect();
+    Some(Paint { areas, split })
 }
 
 #[cfg(test)]
@@ -124,6 +159,19 @@ mod tests {
         // Root halves (0x1): first child splits again into halves of states
         // 1 and 2 (0x1, 4, 8), second child is state 2 (8): state 2 = 3/4.
         assert_eq!(dominant_state("88411"), Some(PaintState { state: 2, split: true }));
+    }
+
+    #[test]
+    fn unpainted_area_counts_for_the_part_filament() {
+        // Quarters of state 2, 3 and unpainted, plus a quarter halved into 2
+        // and 3: states 2 and 3 cover 3/8 each, unpainted 1/4.
+        let paint = decode("0C8100C83").unwrap();
+        assert!(paint.split);
+        assert_eq!(paint.areas, vec![(0, 0.25), (2, 0.375), (3, 0.375)]);
+        assert_eq!(dominant(&paint.areas, 3), 3);
+        assert_eq!(dominant(&paint.areas, 2), 2);
+        assert_eq!(dominant(&paint.areas, 1), 2);
+        assert_eq!(dominant(&paint.areas, 0), 2);
     }
 
     #[test]

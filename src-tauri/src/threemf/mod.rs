@@ -198,12 +198,20 @@ fn slicer_indices(
 ) -> (Vec<[u32; 3]>, Vec<RenderGroup>, Vec<RenderColor>, bool) {
     let mesh = source.mesh;
     let mut palette = Vec::new();
-    // Resolved palette index per filament number, filled on first use.
-    let mut resolved: Vec<Option<Option<usize>>> = vec![None; filaments.len() + 1];
+    // Resolved palette index per filament number, filled on first use. Fixed
+    // size: this runs once per rendered instance, and the color list is capped.
+    let mut resolved = [None::<Option<usize>>; slicer_colors::MAX_FILAMENTS + 1];
     let mut buckets: BTreeMap<Option<usize>, Vec<[u32; 3]>> = BTreeMap::new();
     let mut missing = false;
+    // Paint states are u8; a larger extruder keeps unpainted area as state 0,
+    // which then resolves to the extruder itself (and has no color).
+    let extruder = u8::try_from(source.extruder).unwrap_or(0);
+    let mut subdivided = mesh.paint_areas.iter().peekable();
     for (i, tri) in mesh.triangles.iter().enumerate() {
-        let state = mesh.paint.get(i).copied().unwrap_or(0);
+        let state = match subdivided.next_if(|(index, _)| *index as usize == i) {
+            Some((_, areas)) => paint::dominant(areas, extruder),
+            None => mesh.paint.get(i).copied().unwrap_or(0),
+        };
         let filament = if state == 0 { source.extruder } else { u32::from(state) } as usize;
         let color_index = match resolved.get_mut(filament) {
             Some(Some(index)) => *index,
@@ -1438,6 +1446,27 @@ mod slicer_color_tests {
         assert_eq!(colors(&meshes[1]), vec![(Some("#00ae42"), 1), (Some("#ffffff"), 1)]);
         assert!(meshes[1].paint_simplified && !meshes[0].paint_simplified);
         assert!(!meshes[1].colors_unresolved);
+    }
+
+    #[test]
+    fn unpainted_part_of_a_subdivided_triangle_counts_for_each_instance_extruder() {
+        // Shares: state 2 = 3/8, state 3 = 3/8, unpainted = 1/4. The same
+        // mesh is used by two objects whose parts have different extruders.
+        let root = format!(r#"<model {NS}><resources>
+            <object id="1" type="model">{}</object>
+            <object id="5" type="model"><components><component objectid="1"/></components></object>
+            <object id="6" type="model"><components><component objectid="1"/></components></object>
+            </resources><build><item objectid="5"/><item objectid="6"/></build></model>"#,
+            mesh(&[r#"paint_color="0C8100C83""#, ""]));
+        let settings = r#"<config><object id="5"><part id="1"><metadata key="extruder" value="3"/></part></object>
+            <object id="6"><part id="1"><metadata key="extruder" value="1"/></part></object></config>"#;
+        let meshes = render(&[("3D/3dmodel.model", &root), ("Metadata/model_settings.config", settings),
+            ("Metadata/project_settings.config", FILAMENTS)]);
+        // Extruder 3: filament 3 covers 5/8 of the painted triangle.
+        assert_eq!(colors(&meshes[0]), vec![(Some("#000000"), 2)]);
+        // Extruder 1: filaments 2 and 3 tie at 3/8, the lower number wins.
+        assert_eq!(colors(&meshes[1]), vec![(Some("#ffffff"), 1), (Some("#ff9016"), 1)]);
+        assert!(meshes.iter().all(|m| m.paint_simplified && !m.colors_unresolved));
     }
 
     #[test]

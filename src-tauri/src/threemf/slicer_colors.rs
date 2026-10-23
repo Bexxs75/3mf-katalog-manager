@@ -15,6 +15,9 @@ use crate::geometry::RenderColor;
 
 const PROJECT_SETTINGS_PATH: &str = "Metadata/project_settings.config";
 const MODEL_SETTINGS_PATH: &str = "Metadata/model_settings.config";
+/// Far above any real printer setup; bounds the per-instance work of the
+/// preview against a crafted color list. Later entries count as unusable.
+pub const MAX_FILAMENTS: usize = 256;
 
 #[derive(Debug, Clone, Default)]
 pub struct SlicerColors {
@@ -64,7 +67,7 @@ fn parse_filament_colors(json: &str) -> Vec<Option<RenderColor>> {
     let Ok(settings) = serde_json::from_str::<serde_json::Value>(json) else { return Vec::new() };
     let list = |key: &str| settings.get(key).and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
     let types = list("filament_type");
-    list("filament_colour").iter().enumerate().map(|(index, color)| {
+    list("filament_colour").iter().take(MAX_FILAMENTS).enumerate().map(|(index, color)| {
         let color = super::normalize_color(color.as_str()?.trim())?;
         let name = types.get(index).and_then(serde_json::Value::as_str).unwrap_or("").trim().to_string();
         Some(RenderColor { name, color, filament: Some(index as u32 + 1) })
@@ -140,6 +143,14 @@ mod tests {
         for json in ["", "[]", "{}", r##"{"filament_colour": "#FFFFFF"}"##, "{broken"] {
             assert!(parse_filament_colors(json).is_empty(), "{json}");
         }
+    }
+
+    #[test]
+    fn overlong_color_lists_are_cut_at_the_filament_limit() {
+        let json = format!(r##"{{"filament_colour": [{}"#FFFFFF"]}}"##, "null,".repeat(1_000_000));
+        let colors = parse_filament_colors(&json);
+        assert_eq!(colors.len(), MAX_FILAMENTS);
+        assert!(colors.iter().all(Option::is_none));
     }
 
     #[test]

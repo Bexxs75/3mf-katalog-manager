@@ -25,6 +25,9 @@ fn mesh_limits() -> (usize, usize) {
     (MAX_VERTICES, MAX_TRIANGLES)
 }
 
+/// Area share per paint state of one subdivided triangle.
+pub type PaintAreas = Box<[(u8, f32)]>;
+
 #[derive(Debug, Default, Clone)]
 pub struct Mesh {
     pub vertices: Vec<[f64; 3]>,
@@ -33,6 +36,9 @@ pub struct Mesh {
     /// Slicer paint state per triangle (see `paint`), empty when nothing is
     /// painted. Only read for the preview.
     pub paint: Vec<u8>,
+    /// Area shares of subdivided painted triangles by triangle index, kept
+    /// until the part's filament is known. Unsplit triangles need only `paint`.
+    pub paint_areas: Vec<(u32, PaintAreas)>,
     /// At least one painted triangle was subdivided and is simplified.
     pub paint_split: bool,
     /// At least one paint string could not be decoded.
@@ -97,11 +103,14 @@ fn record_paint(mesh: &mut Mesh, e: &BytesStart) {
     });
     let state = match code.as_deref().map(str::trim).filter(|code| !code.is_empty()) {
         None => 0,
-        Some(code) => match super::paint::dominant_state(code) {
-            Some(paint) => {
-                mesh.paint_split |= paint.split;
-                paint.state
+        Some(code) => match super::paint::decode(code) {
+            Some(paint) if paint.split => {
+                mesh.paint_split = true;
+                let state = super::paint::dominant(&paint.areas, 0);
+                mesh.paint_areas.push(((mesh.triangles.len() - 1) as u32, paint.areas.into_boxed_slice()));
+                state
             }
+            Some(paint) => paint.areas.first().map_or(0, |(state, _)| *state),
             None => {
                 mesh.paint_unreadable = true;
                 0
