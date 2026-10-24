@@ -52,5 +52,8 @@ services:
     #   # First-time password only (otherwise a random one is printed once in the log):
     #   - KATALOG_PASSWORD_FILE=/config/.kasmvnc-password   # reuse the desktop image's password
     read_only: true
+    # SQLite spills larger queries (e.g. the first catalog listing) to a temp file; without a writable /tmp the server reports "disk I/O error".
+    tmpfs:
+      - /tmp
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
