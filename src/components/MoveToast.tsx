@@ -6,6 +6,8 @@ import { Icon } from './Icon';
 import { useEffect } from 'react';
 import type { FolderMoveBlock } from '../lib/folderTree';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
+import { useFormatError } from '../diagnostics/useFormatError';
+import type { AppError } from '../lib/errors';
 
 const BLOCKED_MESSAGES: Record<FolderMoveBlock, 'folderMoveCatalogRoot' | 'folderMoveSelf' | 'folderMoveDescendant' | 'folderMoveAlreadyThere' | 'folderMoveNameTaken'> = {
   catalogRoot: 'folderMoveCatalogRoot',
@@ -44,6 +46,8 @@ interface Props {
   blocked?: FolderMoveBlock;
   /** Only meaningful together with `error`: offers "Report problem" for an unexpected error. */
   unexpected?: boolean;
+  /** The structured error of a failed action; shown in the chosen language instead of `to`. */
+  failure?: AppError;
   /** Result of moving files (one or many), replaces the plain "from → to" line. */
   batch?: MoveBatchInfo;
   /** Result of an undo step. */
@@ -73,9 +77,10 @@ export function UndoControl({ onUndo }: { onUndo: () => void }) {
  * folder; disappears after a few seconds (`onDone`), errors later. A new move restarts the
  * timer. With `error`, `to` carries the error message (no arrow, red accent).
  */
-export function MoveToast({ from, to, error = false, unexpected = false, collection, blocked, batch, undo, onUndo, onDone }: Props) {
+export function MoveToast({ from, to, error = false, unexpected = false, failure, collection, blocked, batch, undo, onUndo, onDone }: Props) {
   const t = useT();
   const formatCount = useFormatCount();
+  const formatError = useFormatError();
   const failed = !!batch && batch.summary.failed > 0;
   // Partial failures and refused undo steps interrupt (alert); plain errors keep their long-standing status role.
   const alerting = failed || (!!undo && !undo.ok);
@@ -83,9 +88,10 @@ export function MoveToast({ from, to, error = false, unexpected = false, collect
   useEffect(() => {
     const timer = setTimeout(onDone, duration);
     return () => clearTimeout(timer);
-  }, [from, to, error, collection, blocked, batch, undo, duration, onDone]);
+  }, [from, to, error, failure, collection, blocked, batch, undo, duration, onDone]);
 
-  const reasonText = (reason?: string) => reason ? (REASONS[reason] ? t(REASONS[reason]) : reason) : t('moveReasonError');
+  const reasonText = (reason?: string, failure?: AppError) => failure ? displayName(formatError(failure))
+    : reason ? (REASONS[reason] ? t(REASONS[reason]) : reason) : t('moveReasonError');
   const withCount = (text: string, count: number) => formatCount({ one: text, other: text }, count);
   const fill = (text: string, values: Record<string, string>) =>
     text.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
@@ -108,10 +114,10 @@ export function MoveToast({ from, to, error = false, unexpected = false, collect
     if (undo.kind === 'files') {
       message = undo.ok ? formatCount(t('undoDoneFiles'), undo.count ?? 0)
         : (undo.count ?? 0) > 0
-          ? fill(t('undoFilesPartial'), { done: String(undo.count), total: String(undo.total ?? 0), reason: reasonText(undo.reason) })
-          : fill(t('undoFailed'), { reason: reasonText(undo.reason) });
+          ? fill(t('undoFilesPartial'), { done: String(undo.count), total: String(undo.total ?? 0), reason: reasonText(undo.reason, undo.failure) })
+          : fill(t('undoFailed'), { reason: reasonText(undo.reason, undo.failure) });
     } else if (!undo.ok) {
-      message = fill(t('undoFailed'), { reason: reasonText(undo.reason) });
+      message = fill(t('undoFailed'), { reason: reasonText(undo.reason, undo.failure) });
     } else if (undo.kind === 'folderMove') {
       message = fill(t('undoDoneFolderMove'), { name: displayName(undo.name ?? '') });
     } else {
@@ -145,8 +151,8 @@ export function MoveToast({ from, to, error = false, unexpected = false, collect
           {/* Wraps instead of truncating: long paths without spaces break via break-words. */}
           <div className="min-w-0 break-words">
             <span className="font-semibold">{displayName(from)}:</span>{' '}
-            <span className="opacity-90">{blocked ? t(BLOCKED_MESSAGES[blocked]) : displayName(to)}</span>
-            {unexpected && <> <ReportProblemLink /></>}
+            <span className="opacity-90">{blocked ? t(BLOCKED_MESSAGES[blocked]) : failure ? displayName(formatError(failure)) : displayName(to)}</span>
+            {(failure ? failure.unexpected : unexpected) && <> <ReportProblemLink /></>}
           </div>
         </>
       ) : collection ? (

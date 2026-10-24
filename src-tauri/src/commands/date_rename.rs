@@ -143,7 +143,7 @@ fn plan_file(
     if new_name.len() > folders::MAX_DIR_NAME_BYTES {
         return skip(PreviewStatus::SkipTooLong);
     }
-    if folders::validate_name(&new_name, true, "Dateiname").is_err() {
+    if folders::validate_name(&new_name, true, folders::NameKind::File).is_err() {
         return skip(PreviewStatus::SkipInvalid);
     }
     let old_path = PathBuf::from(&file.path);

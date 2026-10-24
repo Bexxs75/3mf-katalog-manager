@@ -751,7 +751,7 @@ export default function App() {
               to={dragDrop.moveToast.to}
               error={dragDrop.moveToast.error}
               blocked={dragDrop.moveToast.blocked}
-              unexpected={dragDrop.moveToast.unexpected}
+              failure={dragDrop.moveToast.failure}
               batch={dragDrop.moveToast.batch}
               undo={dragDrop.moveToast.undo}
               onUndo={dragDrop.moveToast.canUndo && !fileImport.jobActive ? () => {

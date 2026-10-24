@@ -29,6 +29,21 @@ function renderMenu(onRename: (name: string) => Promise<void>, onClose = () => {
 }
 
 describe('ContextMenu rename', () => {
+  it('translates a coded backend error with its params in the chosen language', async () => {
+    localStorage.setItem('3mf-katalog-language', 'en');
+    try {
+      const onRename = vi.fn(() => Promise.reject({ message: 'fileNameForbiddenChar', expected: true, params: [':'] }));
+      renderMenu(onRename);
+      fireEvent.click(screen.getByText('Rename'));
+      const input = screen.getByDisplayValue('Wuerfel');
+      fireEvent.change(input, { target: { value: 'a:b' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(await screen.findByText('Rename failed: This character is not allowed in file names: :')).toBeInTheDocument();
+    } finally {
+      localStorage.removeItem('3mf-katalog-language');
+    }
+  });
+
   it('shows the message of a backend error object instead of [object Object]', async () => {
     const onRename = vi.fn(() =>
       Promise.reject({ message: 'Dateiname darf keine Pfad-Trennzeichen enthalten', expected: true }),

@@ -1,5 +1,6 @@
 import type { MoveFileResult } from './api/folders';
 import type { FolderMoveBlock } from './folderTree';
+import type { AppError } from './errors';
 
 /** Older steps are dropped: the list lives in memory only and should stay small. */
 export const MAX_UNDO_STEPS = 20;
@@ -70,15 +71,18 @@ export interface UndoOutcome {
   name?: string;
   /** For a rename: the name restored by the undo. */
   restoredName?: string;
-  /** A backend reason code or a plain backend message. */
+  /** A backend reason code, shown through the reason table. */
   reason?: string;
+  /** The error of a failed call, kept structured so the toast translates it. */
+  failure?: AppError;
 }
 
 export interface MoveToastState {
   from: string;
   to: string;
   error?: boolean;
-  unexpected?: boolean;
+  /** The error of a failed action; replaces `to` and decides whether "Report problem" is offered. */
+  failure?: AppError;
   collection?: 'added' | 'already';
   blocked?: FolderMoveBlock;
   batch?: MoveBatchInfo;

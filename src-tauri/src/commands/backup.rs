@@ -145,11 +145,11 @@ const MAX_IMPORT_SETTINGS_BYTES: u64 = 1024 * 1024;
 /// oversized entry is about the archive the user picked, not a fault here.
 fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> {
     if size > max {
-        return Err(CmdError::expected(format!(
-            "Eintrag \"{name}\" im Archiv ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
-            size as f64 / (1024.0 * 1024.0),
-            max / (1024 * 1024)
-        )));
+        // Whole megabytes, rounded up: a decimal separator would need the user's locale.
+        return Err(CmdError::coded_with(
+            ErrorCode::BackupEntryTooLarge,
+            [name.to_string(), size.div_ceil(1024 * 1024).to_string(), (max / (1024 * 1024)).to_string()],
+        ));
     }
     Ok(())
 }
@@ -162,13 +162,13 @@ fn read_catalog_archive<R: std::io::Read + std::io::Seek>(reader: R) -> CmdResul
     use std::io::Read as _;
 
     let mut archive = zip::ZipArchive::new(reader)
-        .map_err(|_| CmdError::expected("Die Datei ist kein gültiges Katalog-Backup (keine ZIP-Datei)"))?;
+        .map_err(|_| CmdError::coded(ErrorCode::BackupNotZip))?;
 
     let mut db_bytes = Vec::new();
     {
         let entry = archive
             .by_name("catalog.db")
-            .map_err(|_| CmdError::expected("Archiv enthält keine catalog.db"))?;
+            .map_err(|_| CmdError::coded_with(ErrorCode::BackupMissingEntry, ["catalog.db"]))?;
         reject_oversized_zip_entry("catalog.db", entry.size(), MAX_IMPORT_DB_BYTES)?;
         entry
             .take(MAX_IMPORT_DB_BYTES)
@@ -180,7 +180,7 @@ fn read_catalog_archive<R: std::io::Read + std::io::Seek>(reader: R) -> CmdResul
     {
         let entry = archive
             .by_name("settings.json")
-            .map_err(|_| CmdError::expected("Archiv enthält keine settings.json"))?;
+            .map_err(|_| CmdError::coded_with(ErrorCode::BackupMissingEntry, ["settings.json"]))?;
         reject_oversized_zip_entry("settings.json", entry.size(), MAX_IMPORT_SETTINGS_BYTES)?;
         entry
             .take(MAX_IMPORT_SETTINGS_BYTES)
@@ -188,7 +188,7 @@ fn read_catalog_archive<R: std::io::Read + std::io::Seek>(reader: R) -> CmdResul
             .map_err(|e| e.to_string())?;
     }
     let settings_json = String::from_utf8(settings_bytes)
-        .map_err(|_| CmdError::expected("settings.json im Archiv ist nicht gültiges UTF-8"))?;
+        .map_err(|_| CmdError::coded(ErrorCode::BackupSettingsNotUtf8))?;
 
     Ok((db_bytes, settings_json))
 }
@@ -644,7 +644,7 @@ fn validate_catalog_db_bytes(
     sensitive_dirs: &[PathBuf],
     trash_dir: &Path,
     known_folders: &[String],
-) -> Result<(), String> {
+) -> CmdResult<()> {
     let tmp_path = std::env::temp_dir().join(format!(
         "3mf-katalog-import-check-{}-{}.db",
         std::process::id(),
@@ -884,9 +884,11 @@ fn validate_catalog_db_bytes(
         });
 
     let _ = std::fs::remove_file(&tmp_path);
+    // Whatever the check found stays in the log; the user only learns that the
+    // file is not a usable catalog database.
     result.map_err(|e| {
         log::warn!(target: "backup", "invalid catalog database: {e}");
-        "Archiv enthält keine gültige Katalog-Datenbank.".to_string()
+        CmdError::coded(ErrorCode::BackupInvalidDatabase)
     })
 }
 /// The names are shown in the settings and compared with every new tag, so a
@@ -910,12 +912,12 @@ fn validate_blocked_auto_tags(conn: &Connection) -> Result<(), String> {
 }
 /// Boundary used by `import_catalog`: a rejected backup file (bad schema,
 /// corrupted DB, a path escaping the trash/sensitive-dir checks, ...) is always
-/// the user's file, not a fault here - hence `expected`, not a plain `?` (which
-/// would mark it a fault and log it at ERROR via `From<String>`). Extracted so
-/// this conversion is exercised by a test instead of only living inline in the
-/// `#[tauri::command]`.
+/// the user's file, not a fault here - hence an expected code, not a plain `?`
+/// (which would mark it a fault and log it at ERROR via `From<String>`).
+/// Extracted so this conversion is exercised by a test instead of only living
+/// inline in the `#[tauri::command]`.
 fn validate_backup_for_import(bytes: &[u8], sensitive_dirs: &[PathBuf], trash_dir: &Path, known_folders: &[String]) -> CmdResult<()> {
-    validate_catalog_db_bytes(bytes, sensitive_dirs, trash_dir, known_folders).map_err(CmdError::expected)
+    validate_catalog_db_bytes(bytes, sensitive_dirs, trash_dir, known_folders)
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1641,15 +1643,11 @@ mod tests {
         // Exercises the real boundary `import_catalog` calls, not a hand-copied
         // conversion: a bad backup file is the user's problem, not a fault, so it
         // must come out `expected`, not the default `expected: false` of a plain
-        // String, and the message must still be the validation text.
+        // String, and it is reported by its code.
         let err = validate_backup_for_import(b"this is not a sqlite database", &[], &std::env::temp_dir(), &[])
             .unwrap_err();
         assert!(err.expected, "a rejected backup file must be reported as expected, not a fault");
-        assert!(
-            err.message.contains("Katalog-Datenbank"),
-            "message should still be the validation text, was: {}",
-            err.message
-        );
+        assert!(err.is(ErrorCode::BackupInvalidDatabase, &[]), "{err:?}");
     }
     fn unique_test_db_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
@@ -1747,7 +1745,7 @@ mod tests {
     }
     /// Runs the validation on a thread; a query that never ends fails the test
     /// instead of hanging it.
-    fn validate_with_timeout(bytes: Vec<u8>) -> Result<(), String> {
+    fn validate_with_timeout(bytes: Vec<u8>) -> CmdResult<()> {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let _ = tx.send(validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]));
@@ -1877,7 +1875,7 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
         let err = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]).unwrap_err();
-        assert_eq!(err, "Archiv enthält keine gültige Katalog-Datenbank.");
+        assert!(err.is(ErrorCode::BackupInvalidDatabase, &[]), "{err:?}");
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_column() {
@@ -3071,6 +3069,10 @@ mod tests {
         assert!(reject_oversized_zip_entry("catalog.db", 100, 100).is_ok());
         let err = reject_oversized_zip_entry("catalog.db", 101, 100).unwrap_err();
         assert!(err.expected, "an oversized entry is about the user's archive, not a fault");
+        assert!(err.is(ErrorCode::BackupEntryTooLarge, &["catalog.db", "1", "0"]), "{err:?}");
+        // The size is rounded up to whole megabytes, so a 1.5 MB entry reads as 2 MB.
+        let err = reject_oversized_zip_entry("settings.json", 3 * 1024 * 1024 / 2, 1024 * 1024).unwrap_err();
+        assert!(err.is(ErrorCode::BackupEntryTooLarge, &["settings.json", "2", "1"]), "{err:?}");
     }
 
     fn zip_bytes_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -3092,6 +3094,7 @@ mod tests {
     fn read_catalog_archive_rejects_a_file_that_is_not_a_zip_at_all() {
         let err = read_catalog_archive(std::io::Cursor::new(b"not a zip file".to_vec())).unwrap_err();
         assert!(err.expected, "a non-ZIP file is the user's file, not a fault");
+        assert!(err.is(ErrorCode::BackupNotZip, &[]), "{err:?}");
     }
 
     #[test]
@@ -3099,7 +3102,7 @@ mod tests {
         let buf = zip_bytes_with(&[("settings.json", b"{}")]);
         let err = read_catalog_archive(std::io::Cursor::new(buf)).unwrap_err();
         assert!(err.expected, "a ZIP missing catalog.db is the user's file, not a fault");
-        assert_eq!(err.message, "Archiv enthält keine catalog.db");
+        assert!(err.is(ErrorCode::BackupMissingEntry, &["catalog.db"]), "{err:?}");
     }
 
     #[test]
@@ -3107,7 +3110,7 @@ mod tests {
         let buf = zip_bytes_with(&[("catalog.db", b"fake db bytes")]);
         let err = read_catalog_archive(std::io::Cursor::new(buf)).unwrap_err();
         assert!(err.expected, "a ZIP missing settings.json is the user's file, not a fault");
-        assert_eq!(err.message, "Archiv enthält keine settings.json");
+        assert!(err.is(ErrorCode::BackupMissingEntry, &["settings.json"]), "{err:?}");
     }
 
     /// Fixture written with the previous ZIP library and its default options,
@@ -3130,7 +3133,7 @@ mod tests {
         let bad = zip_bytes_with(&[("catalog.db", b"x"), ("settings.json", &too_big)]);
         let err = read_catalog_archive(std::io::Cursor::new(bad)).unwrap_err();
         assert!(err.expected);
-        assert!(err.message.contains("zu groß"), "{}", err.message);
+        assert!(err.is(ErrorCode::BackupEntryTooLarge, &["settings.json", "2", "1"]), "{err:?}");
     }
 
     #[test]
@@ -3535,7 +3538,7 @@ mod companion_tests {
         .unwrap();
     }
 
-    fn validate(bytes: &[u8], trash: &Path) -> Result<(), String> {
+    fn validate(bytes: &[u8], trash: &Path) -> CmdResult<()> {
         validate_catalog_db_bytes(bytes, &[], trash, &[])
     }
 

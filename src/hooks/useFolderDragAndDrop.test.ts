@@ -161,7 +161,7 @@ it('keeps the drag tip after a failed collection add and uses the error toast', 
   act(() => result.current.onDragFileStart('m1'));
   act(() => result.current.handleCollectionMouseEnter('c1'));
   await act(async () => fireEvent.mouseUp(document));
-  expect(result.current.moveToast).toMatchObject({ error: true, unexpected: true });
+  expect(result.current.moveToast).toMatchObject({ error: true, failure: { message: 'add failed', unexpected: true } });
   expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
 });
 
@@ -252,15 +252,15 @@ describe('refused folder drops', () => {
     expect(invoke).toHaveBeenCalledWith('move_folder', { folderId: 'a1', newParentId: 'root' });
   });
 
-  it('shows the backend message of a failed move unchanged', async () => {
-    vi.mocked(invoke).mockRejectedValue({ message: 'Zielordner existiert bereits: /x', expected: true });
+  it('keeps the code and params of a failed move so the toast can translate them', async () => {
+    vi.mocked(invoke).mockRejectedValue({ message: 'renameTargetFolderExists', expected: true, params: ['/x'] });
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const { result } = renderHook(() => useFolderDragAndDrop([], folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }, undefined, null));
       act(() => result.current.onDragFolderStart('a1'));
       act(() => result.current.handleFolderMouseEnter('root'));
       await act(async () => { fireEvent.mouseUp(document); });
-      expect(result.current.moveToast).toMatchObject({ to: 'Zielordner existiert bereits: /x', error: true, unexpected: false });
+      expect(result.current.moveToast).toMatchObject({ error: true, failure: { message: 'renameTargetFolderExists', params: ['/x'], unexpected: false } });
     } finally { errorLog.mockRestore(); }
   });
 });

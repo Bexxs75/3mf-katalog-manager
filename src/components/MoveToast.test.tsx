@@ -35,6 +35,25 @@ describe('MoveToast', () => {
     expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
   });
 
+  it('translates a structured failure instead of showing its code', () => {
+    renderToast({ from: 'Ordner', to: '', error: true, failure: { message: 'folderNameForbiddenChar', params: ['?'], unexpected: false } });
+    expect(screen.getByText('Dieses Zeichen ist in Ordnernamen nicht erlaubt: ?')).toBeInTheDocument();
+    expect(screen.queryByText('folderNameForbiddenChar')).not.toBeInTheDocument();
+    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
+  });
+
+  it('translates the failure of a refused undo step inside the undo message', () => {
+    renderToast({ from: 'A', to: '', error: true, undo: { kind: 'folderMove', ok: false, name: 'A', failure: { message: 'folderMoveNameTaken', params: ['/x/A'], unexpected: false } } });
+    expect(screen.getByRole('alert').textContent).toContain('Der Zielordner enthält bereits einen Ordner mit diesem Namen: /x/A');
+    expect(screen.getByRole('alert').textContent).not.toContain('folderMoveNameTaken');
+  });
+
+  it('shows an unexpected failure as technical text with the report link', () => {
+    renderToast({ to: '', error: true, failure: { message: 'DB-Update fehlgeschlagen', unexpected: true } });
+    expect(screen.getByText('DB-Update fehlgeschlagen')).toBeInTheDocument();
+    expect(screen.getByText('Problem melden')).toBeInTheDocument();
+  });
+
   it('shows the translated reason for a refused folder drop', () => {
     renderToast({ from: 'Ordner', to: '', error: true, blocked: 'nameTaken' });
     expect(screen.getByText('Der Zielordner enthält bereits einen Ordner mit diesem Namen.')).toBeInTheDocument();

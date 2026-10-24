@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as collectionsApi from '../lib/api/collections';
 import * as foldersApi from '../lib/api/folders';
 import { folderMoveBlock, sharedFolderId } from '../lib/folderTree';
-import { messageOf, toAppError } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
 import {
   groupByOldFolder, pushUndoStep, summarizeMoveResults, undoItemsFromResults,
   type MoveToastState, type UndoOutcome, type UndoStep,
@@ -115,7 +115,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
           console.error('[folders] creating failed:', e);
           // Show the error next to the folder tree; catalogBackupError would be invisible without an open panel.
           const err = toAppError(e);
-          setMoveToast({ from: name, to: err.message, error: true, unexpected: err.unexpected });
+          setMoveToast({ from: name, to: '', error: true, failure: err });
         }),
     [refreshFolders],
   );
@@ -141,7 +141,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     } catch (e) {
       console.error('[folders] moving files failed:', e);
       const err = toAppError(e);
-      setMoveToast({ from: nameOf(ids[0]), to: err.message, error: true, unexpected: err.unexpected });
+      setMoveToast({ from: nameOf(ids[0]), to: '', error: true, failure: err });
     }
   }, [folders, models, recordUndo, refreshFolders, refreshFiles]);
 
@@ -160,19 +160,20 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       if (step.kind === 'moveFiles') {
         let moved = 0;
         let reason: string | undefined;
+        let failure: AppError | undefined;
         for (const [folderId, fileIds] of groupByOldFolder(step.items)) {
           try {
             const results = await foldersApi.moveFilesToFolder(fileIds, folderId);
             for (const result of results) {
               if (result.status === 'moved') moved++;
-              else reason ??= result.status === 'skipped' ? 'name_exists' : result.reason;
+              else if (!reason && !failure) reason = result.status === 'skipped' ? 'name_exists' : result.reason;
             }
           } catch (e) {
             console.error('[folders] undo of file move failed:', e);
-            reason ??= messageOf(e);
+            if (!reason && !failure) failure = toAppError(e);
           }
         }
-        outcome = { kind: 'files', ok: moved === step.items.length, count: moved, total: step.items.length, reason };
+        outcome = { kind: 'files', ok: moved === step.items.length, count: moved, total: step.items.length, reason, failure };
       } else if (step.kind === 'moveFolder') {
         await foldersApi.moveFolder(step.folderId, step.fromParentId);
         outcome = { kind: 'folderMove', ok: true, name: step.name };
@@ -185,7 +186,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       outcome = {
         kind: step.kind === 'moveFolder' ? 'folderMove' : 'rename', ok: false,
         name: step.kind === 'moveFolder' ? step.name : step.kind === 'renameFolder' ? step.newName : undefined,
-        reason: messageOf(e),
+        failure: toAppError(e),
       };
     } finally {
       undoBusy.current = false;
@@ -219,7 +220,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
           setMoveToast({ from: file.name, to: target.name, collection: already ? 'already' : 'added' });
         }).catch(e => {
           const err = toAppError(e);
-          setMoveToast({ from: file.name, to: err.message, error: true, unexpected: err.unexpected });
+          setMoveToast({ from: file.name, to: '', error: true, failure: err });
         });
         return;
       }
@@ -262,7 +263,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         .catch((e) => {
           console.error('[folders] moving folder failed:', e);
           const err = toAppError(e);
-          setMoveToast({ from: folder.name, to: err.message, error: true, unexpected: err.unexpected });
+          setMoveToast({ from: folder.name, to: '', error: true, failure: err });
         });
     };
     document.addEventListener('mouseup', handleMouseUp);

@@ -13,7 +13,7 @@ pub(super) fn delete_file_with_conn(
     trash_dir: &std::path::Path,
 ) -> CmdResult<()> {
     if file.deleted_at.is_some() {
-        return Err(CmdError::expected("file is in trash"));
+        return Err(CmdError::coded(ErrorCode::FileInTrash));
     }
     match std::fs::metadata(&file.path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

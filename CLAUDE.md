@@ -17,7 +17,7 @@ npx tsc --noEmit && npx vitest run
 
 - Code comments are English and explain **why**. No ticket numbers, finding IDs, version numbers or review rounds in comments.
 - Every user-visible string goes through `src/i18n/` and needs German, English, Spanish and French entries plus the type in `types.ts`. Do not hard-code text in components.
-- Backend error messages are still German strings; translating them is a separate planned task. Follow the existing error patterns and do not build a new mechanism.
+- Expected backend errors of migrated actions are codes, not text: add a variant to `ErrorCode` (`src-tauri/src/commands/error_code.rs`), raise it with `CmdError::coded`/`coded_with` (`params` hold data only, never words), update `src/lib/errorCodes.json` (`cargo test regenerate_shared_list -- --ignored`) and add the `err<Code>` text in all four dictionaries. Many backend errors are still German strings (the remaining actions are planned); do not add new German error text to migrated modules.
 - README, CHANGELOG and the user guide are bilingual in one file, English first. Add changelog entries under `[Unreleased]`.
 - Keyboard use and screen readers are a requirement, not polish: real buttons, visible focus, ARIA names, and no focus loss after an action.
 - Touch only what the task needs. Do not redesign icons, branding or layout while fixing something else.

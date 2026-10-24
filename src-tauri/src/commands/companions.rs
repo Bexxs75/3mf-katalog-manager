@@ -162,11 +162,11 @@ fn companion_file_name(source: &Path) -> Option<String> {
         stem.pop();
     }
     let full = format!("{stem}.{extension}");
-    if folders::validate_name(&full, true, "Dateiname").is_ok() {
+    if folders::validate_name(&full, true, folders::NameKind::File).is_ok() {
         return Some(full);
     }
     let prefixed = format!("_{full}");
-    folders::validate_name(&prefixed, true, "Dateiname").is_ok().then_some(prefixed)
+    folders::validate_name(&prefixed, true, folders::NameKind::File).is_ok().then_some(prefixed)
 }
 
 /// Creates a new file under the first free `name`, `name (2)`, ... Never replaces and
@@ -217,7 +217,7 @@ fn resolve_extras_target(conn: &Connection, model_path: &Path, sensitive_dirs: &
     }
     let extras = extras_dir_for(model_path).ok_or_else(|| CmdError::expected("Der Pfad des Modells ist nicht gültig."))?;
     let extras_name = extras.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    folders::validate_name(&extras_name, true, "Ordnername")?;
+    folders::validate_name(&extras_name, true, folders::NameKind::Folder)?;
     reject_if_sensitive_path(&extras, sensitive_dirs)?;
     let parent = extras.parent().ok_or_else(|| CmdError::expected("Der Pfad des Modells ist nicht gültig."))?;
     let resolved_parent = parent
@@ -232,7 +232,7 @@ fn resolve_extras_target(conn: &Connection, model_path: &Path, sensitive_dirs: &
         return Err(CmdError::expected("Das Modell liegt nicht in einem Katalogordner. Begleitdateien können nur dort abgelegt werden."));
     }
     if let Some(problem) = extras_dir_problem(&extras, &extras) {
-        return Err(CmdError::expected(problem));
+        return Err(CmdError::coded(problem));
     }
     Ok(extras)
 }
@@ -257,23 +257,23 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 /// different route, would make a file operation land on someone else's file, because a
 /// check on the file alone follows links in its parent folders. A folder that does not
 /// exist is fine: there is nothing to touch.
-fn extras_dir_problem(dir: &Path, expected: &Path) -> Option<&'static str> {
+fn extras_dir_problem(dir: &Path, expected: &Path) -> Option<ErrorCode> {
     let meta = match std::fs::symlink_metadata(dir) {
         Ok(meta) => meta,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
-        Err(_) => return Some("Der Begleitdateien-Ordner kann nicht geprüft werden."),
+        Err(_) => return Some(ErrorCode::CompanionFolderUnverifiable),
     };
     if !meta.is_dir() {
-        return Some("Der Begleitdateien-Ordner ist kein echter Ordner (Verknüpfung oder Datei) und wird nicht verwendet.");
+        return Some(ErrorCode::CompanionFolderNotReal);
     }
     let (Some(model_dir), Some(name)) = (expected.parent(), expected.file_name()) else {
-        return Some("Der Pfad des Modells ist nicht gültig.");
+        return Some(ErrorCode::ModelPathInvalid);
     };
     let (Ok(resolved_dir), Ok(resolved_model_dir)) = (dir.canonicalize(), model_dir.canonicalize()) else {
-        return Some("Der Begleitdateien-Ordner kann nicht geprüft werden.");
+        return Some(ErrorCode::CompanionFolderUnverifiable);
     };
     if !same_dir(&resolved_dir, &resolved_model_dir.join(name)) {
-        return Some("Der Begleitdateien-Ordner liegt nicht neben dem Modell und wird nicht verwendet.");
+        return Some(ErrorCode::CompanionFolderElsewhere);
     }
     None
 }
@@ -288,7 +288,7 @@ fn ensure_row_folder_genuine(conn: &Connection, row: &CompanionRecord) -> CmdRes
         return Err(CmdError::expected("Die Begleitdatei liegt nicht im Begleitdateien-Ordner ihres Modells."));
     }
     match extras_dir_problem(dir, &expected) {
-        Some(problem) => Err(CmdError::expected(problem)),
+        Some(problem) => Err(CmdError::coded(problem)),
         None => Ok(()),
     }
 }
@@ -640,7 +640,7 @@ pub(super) fn restore_companion_with_conn(conn: &Connection, id: i64, sensitive_
         return Err(CmdError::expected(format!("Ein Modell kann höchstens {MAX_COMPANIONS_PER_MODEL} Begleitdateien haben.")));
     }
     // The stored name decides the new file name and path; make sure it is harmless first.
-    folders::validate_name(&row.name, true, "Dateiname")?;
+    folders::validate_name(&row.name, true, folders::NameKind::File)?;
     if lowercase_extension(&row.name).and_then(|e| kind_for_extension(&e)).is_none() {
         return Err(CmdError::expected("Diese Begleitdatei ist ungültig und wird nicht verwendet."));
     }
@@ -673,7 +673,7 @@ pub(super) fn restore_with_model(conn: &Connection, file_id: i64, model_deleted_
         }
     };
     for row in rows {
-        if let Err(e) = folders::validate_name(&row.name, true, "Dateiname").and_then(|_| restore_one(conn, &row, &extras)) {
+        if let Err(e) = folders::validate_name(&row.name, true, folders::NameKind::File).and_then(|_| restore_one(conn, &row, &extras)) {
             log::warn!(target: "datei", "Begleitdatei bleibt im Papierkorb ({}): {e}", row.name);
         }
     }
@@ -937,7 +937,7 @@ fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Pat
     // Files are only taken out of the genuine old folder; through a link they could belong
     // to someone else.
     if let Some(problem) = extras_dir_problem(&old_dir, &old_dir) {
-        return Err(CmdError::expected(problem));
+        return Err(CmdError::coded(problem));
     }
     let mut carried = Carried { old_dir: Some(old_dir.clone()), ..Default::default() };
     let fail = |carried: Carried, error: CmdError| -> CmdResult<Carried> {
@@ -976,10 +976,10 @@ fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Pat
     let movable: Vec<&CompanionRecord> = rows.iter().filter(|row| is_real_file(Path::new(&row.path))).collect();
     if !movable.is_empty() && !is_real_dir(&new_dir) {
         if std::fs::symlink_metadata(&new_dir).is_ok() {
-            return Err(CmdError::expected("Im Zielordner gibt es schon eine Datei oder Verknüpfung mit dem Namen des Begleitdateien-Ordners."));
+            return Err(CmdError::coded(ErrorCode::CompanionTargetFolderBlocked));
         }
         if let Err(e) = std::fs::create_dir(&new_dir) {
-            return Err(CmdError::expected(format!("Begleitdateien-Ordner konnte nicht angelegt werden: {e}")));
+            return Err(CmdError::coded_with(ErrorCode::CompanionTargetFolderCreateFailed, [e]));
         }
         carried.created_dir = Some(new_dir.clone());
     }
@@ -990,7 +990,7 @@ fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Pat
         if is_real_file(&old_path) {
             if let Err(e) = move_file(&old_path, &target) {
                 let error = if e.kind() == std::io::ErrorKind::AlreadyExists {
-                    CmdError::expected(format!("Im Zielordner gibt es schon eine Begleitdatei mit dem Namen {}.", row.name))
+                    CmdError::coded_with(ErrorCode::CompanionNameTaken, [&row.name])
                 } else {
                     CmdError::from(e.to_string())
                 };

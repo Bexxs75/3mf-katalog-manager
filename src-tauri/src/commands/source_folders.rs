@@ -57,13 +57,13 @@ fn source_dto(record: db::models::SourceFolderRecord) -> SourceFolderDto {
 /// (already resolved) path, and not in or around a protected place.
 fn resolve_source(stored: &str, expanded_sensitive: &[PathBuf]) -> CmdResult<PathBuf> {
     let path = Path::new(stored);
-    let meta = std::fs::symlink_metadata(path).map_err(|_| CmdError::expected("Der Ordner existiert nicht."))?;
+    let meta = std::fs::symlink_metadata(path).map_err(|_| CmdError::coded(ErrorCode::SourceFolderMissing))?;
     if !meta.is_dir() {
-        return Err(CmdError::expected("Das ist kein Ordner."));
+        return Err(CmdError::coded(ErrorCode::SourceNotAFolder));
     }
-    let canonical = path.canonicalize().map_err(|_| CmdError::expected("Der Ordner kann nicht gelesen werden."))?;
+    let canonical = path.canonicalize().map_err(|_| CmdError::coded(ErrorCode::SourceFolderUnreadable))?;
     if canonical != path {
-        return Err(CmdError::expected("Der Ordner liegt jetzt an einem anderen Ort."));
+        return Err(CmdError::coded(ErrorCode::SourceFolderMoved));
     }
     archives::check_managed_location(&canonical, expanded_sensitive)?;
     Ok(canonical)
@@ -76,15 +76,15 @@ fn same_or_inside(candidate: &Path, base: &Path) -> bool {
 /// Everything that makes a path unfit as a new source folder.
 fn validate_new_source(conn: &Connection, requested: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<PathBuf> {
     if !requested.is_absolute() || requested.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-        return Err(CmdError::expected("Der Pfad ist nicht gültig."));
+        return Err(CmdError::coded(ErrorCode::SourcePathInvalid));
     }
-    let meta = std::fs::metadata(requested).map_err(|_| CmdError::expected("Der Ordner existiert nicht."))?;
+    let meta = std::fs::metadata(requested).map_err(|_| CmdError::coded(ErrorCode::SourceFolderMissing))?;
     if !meta.is_dir() {
-        return Err(CmdError::expected("Das ist kein Ordner."));
+        return Err(CmdError::coded(ErrorCode::SourceNotAFolder));
     }
-    let canonical = requested.canonicalize().map_err(|_| CmdError::expected("Der Ordner kann nicht gelesen werden."))?;
+    let canonical = requested.canonicalize().map_err(|_| CmdError::coded(ErrorCode::SourceFolderUnreadable))?;
     archives::check_managed_location(&canonical, &expand_sensitive_dirs(sensitive_dirs))
-        .map_err(|_| CmdError::expected("Dieser Ordner liegt in einem geschützten Systembereich oder enthält einen und kann nicht verwendet werden."))?;
+        .map_err(|_| CmdError::coded(ErrorCode::SourceFolderProtected))?;
 
     // The catalog folder, and every folder tree the catalog already keeps in place: files
     // there are managed through the catalog, not "new".
@@ -96,16 +96,16 @@ fn validate_new_source(conn: &Connection, requested: &Path, sensitive_dirs: &[Pa
     for root in catalog_roots {
         let root = root.canonicalize().unwrap_or(root);
         if same_or_inside(&canonical, &root) || same_or_inside(&root, &canonical) {
-            return Err(CmdError::expected("Dieser Ordner gehört zum Katalog (Katalogordner, Ordner darin oder darüber) und kann kein Quellordner sein."));
+            return Err(CmdError::coded(ErrorCode::SourceFolderInCatalog));
         }
     }
     for existing in store::list_source_folders(conn)? {
         let existing = PathBuf::from(&existing.path);
         if folders::comparison_path(&existing) == folders::comparison_path(&canonical) {
-            return Err(CmdError::expected("Dieser Ordner ist schon ein Quellordner."));
+            return Err(CmdError::coded(ErrorCode::SourceFolderDuplicate));
         }
         if same_or_inside(&canonical, &existing) || same_or_inside(&existing, &canonical) {
-            return Err(CmdError::expected("Der Ordner liegt in einem anderen Quellordner oder enthält einen. Quellordner dürfen sich nicht überschneiden."));
+            return Err(CmdError::coded(ErrorCode::SourceFolderOverlap));
         }
     }
     Ok(canonical)
@@ -121,7 +121,7 @@ pub(super) fn add_source_folder_with_conn(conn: &Connection, requested: &Path, s
 
 /// Forgets the folder and the declined files below it. No file is touched.
 pub(super) fn remove_source_folder_with_conn(conn: &Connection, id: i64) -> CmdResult<()> {
-    let folder = store::get_source_folder(conn, id)?.ok_or_else(|| CmdError::expected("Quellordner nicht gefunden."))?;
+    let folder = store::get_source_folder(conn, id)?.ok_or_else(|| CmdError::coded(ErrorCode::SourceFolderNotFound))?;
     let root = PathBuf::from(&folder.path);
     let tx = conn.unchecked_transaction().map_err(DbError::from)?;
     store::delete_source_folder(&tx, id)?;
@@ -288,7 +288,7 @@ fn validate_requested(scans: &[SourceScanDto], requested: &[String]) -> CmdResul
     for path in requested {
         let size = listed
             .get(path.as_str())
-            .ok_or_else(|| CmdError::expected("Die Datei gehört nicht (mehr) zu den neuen Dateien eines Quellordners."))?;
+            .ok_or_else(|| CmdError::coded(ErrorCode::SourceFileNotNew))?;
         if seen.insert(path.as_str()) {
             accepted.push((PathBuf::from(path), *size));
         }
@@ -333,7 +333,7 @@ pub async fn add_source_folder(app: tauri::AppHandle, path: String) -> CmdResult
         let state = app.state::<AppState>();
         let _catalog_share = state.import_jobs.gate.exclusive()?;
         if !app.state::<ApprovedTargets>().contains(Path::new(&path)) {
-            return Err(CmdError::expected("Der Ordner wurde nicht in der App ausgewählt."));
+            return Err(CmdError::coded(ErrorCode::FolderNotPicked));
         }
         let conn = lock(&state.db)?;
         add_source_folder_with_conn(&conn, Path::new(&path), &state.sensitive_dirs)
