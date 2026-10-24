@@ -48,6 +48,15 @@ describe('MoveToast', () => {
     expect(screen.getByRole('alert').textContent).not.toContain('folderMoveNameTaken');
   });
 
+  it('offers the report link when an undo step failed unexpectedly, not when it was refused', () => {
+    const undo = (unexpected: boolean) => ({ kind: 'folderMove' as const, ok: false, name: 'A', failure: { message: unexpected ? 'disk error' : 'folderMoveAlreadyThere', unexpected } });
+    const first = render(<LanguageProvider><MoveToast from="A" to="" error undo={undo(true)} onDone={vi.fn()} /></LanguageProvider>);
+    expect(screen.getByText('Problem melden')).toBeInTheDocument();
+    first.unmount();
+    renderToast({ from: 'A', to: '', error: true, undo: undo(false) });
+    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
+  });
+
   it('shows an unexpected failure as technical text with the report link', () => {
     renderToast({ to: '', error: true, failure: { message: 'DB-Update fehlgeschlagen', unexpected: true } });
     expect(screen.getByText('DB-Update fehlgeschlagen')).toBeInTheDocument();

@@ -7,6 +7,7 @@ import { useT } from '../i18n/LanguageContext';
 import { splitFileName } from '../lib/fileName';
 import { toAppError, type AppError } from '../lib/errors';
 import { useFormatError } from '../diagnostics/useFormatError';
+import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
 interface Props {
   x: number;
@@ -54,6 +55,7 @@ function ModelContextMenu({
   const [extension, setExtension] = useState('');
   // Backend failures stay structured until shown, so the text follows the chosen language.
   const [menuError, setMenuError] = useState<{ text: string } | { error: AppError; renameFailed: boolean } | null>(null);
+  const renameUnexpected = menuError !== null && 'error' in menuError && menuError.error.unexpected;
   const renameError = menuError === null ? null
     : 'text' in menuError ? menuError.text
     : `${menuError.renameFailed ? `${t('renameError')} ` : ''}${formatError(menuError.error)}`;
@@ -96,7 +98,7 @@ function ModelContextMenu({
         <div className="px-3 py-2.5 max-w-[260px]" aria-busy={renaming}>
           <div className="text-small font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', displayName(currentName))}</div>
           <div className="text-caption leading-snug text-[var(--ink-2)] pb-2">{t('removeModelHint')}</div>
-          {renameError && <div role="alert" className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">{renameError}</div>}
+          {renameError && <div role="alert" className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">{renameError}{renameUnexpected && <> <ReportProblemLink /></>}</div>}
           <div className="flex gap-1.5">
             <button className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={renaming} onClick={() => setView('menu')}>{t('cancel')}</button>
             <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} {...lockProps} onClick={async () => {
@@ -157,7 +159,7 @@ function ModelContextMenu({
           </div>
           {renameError && (
             <div className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">
-              {renameError}
+              {renameError}{renameUnexpected && <> <ReportProblemLink /></>}
             </div>
           )}
           <div className="flex gap-1.5">

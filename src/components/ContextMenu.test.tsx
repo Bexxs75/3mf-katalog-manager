@@ -29,6 +29,19 @@ function renderMenu(onRename: (name: string) => Promise<void>, onClose = () => {
 }
 
 describe('ContextMenu rename', () => {
+  it.each([
+    ['expected', { message: 'fileNameEmpty', expected: true }, 'Umbenennen fehlgeschlagen: Der Dateiname darf nicht leer sein.', false],
+    ['unexpected', { message: 'DB-Update fehlgeschlagen', expected: false }, 'Umbenennen fehlgeschlagen: DB-Update fehlgeschlagen', true],
+  ])('offers the report link only for an unexpected rename error (%s)', async (_kind, rejection, text, report) => {
+    renderMenu(vi.fn(() => Promise.reject(rejection)));
+    fireEvent.click(screen.getByText('Umbenennen'));
+    const input = screen.getByDisplayValue('Wuerfel');
+    fireEvent.change(input, { target: { value: 'neu' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(!!screen.queryByText('Problem melden')).toBe(report);
+  });
+
   it('translates a coded backend error with its params in the chosen language', async () => {
     localStorage.setItem('3mf-katalog-language', 'en');
     try {

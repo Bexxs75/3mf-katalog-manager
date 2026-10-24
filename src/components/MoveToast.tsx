@@ -141,6 +141,7 @@ export function MoveToast({ from, to, error = false, unexpected = false, failure
         <>
           <div className="min-w-0 break-words">
             <span>{message}</span>
+            {undo?.failure?.unexpected && <> <ReportProblemLink /></>}
             {names && <span className="block opacity-80 font-normal">{names}</span>}
           </div>
           {undoButton}

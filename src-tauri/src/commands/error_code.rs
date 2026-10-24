@@ -245,20 +245,22 @@ mod tests {
         rest[..end].to_string()
     }
 
-    /// Free text handed to `CmdError::expected`: a string literal or `format!` that
-    /// is not one of the legacy codes. Such text would reach the interface
-    /// untranslated.
+    /// Every way a migrated function builds an expected error without a registered
+    /// code: the only `CmdError::expected` allowed is a call with one of the legacy
+    /// codes as a literal. Variables, constants, calls, `format!` and the function
+    /// used as a value (`map_err(CmdError::expected)`) are all reported, so nothing
+    /// unregistered can reach the interface through an indirect argument.
     fn free_text_errors(code: &str) -> Vec<String> {
+        let marker = "CmdError::expected";
         let mut found = Vec::new();
-        for (index, _) in code.match_indices("CmdError::expected(") {
-            let argument = code[index + "CmdError::expected(".len()..].trim_start();
-            if let Some(literal) = argument.strip_prefix('"') {
-                let text = literal.split('"').next().unwrap_or_default();
-                if !LEGACY_CODES.contains(&text) {
-                    found.push(format!("\"{text}\""));
-                }
-            } else if argument.starts_with("format!") {
-                found.push(argument.lines().next().unwrap_or_default().to_string());
+        for (index, _) in code.match_indices(marker) {
+            let rest = &code[index + marker.len()..];
+            let allowed = rest.strip_prefix('(')
+                .and_then(|argument| argument.trim_start().strip_prefix('"'))
+                .and_then(|literal| literal.split_once("\")"))
+                .is_some_and(|(text, _)| LEGACY_CODES.contains(&text));
+            if !allowed {
+                found.push(format!("{marker}{}", rest.lines().next().unwrap_or_default()));
             }
         }
         found
@@ -301,9 +303,20 @@ mod tests {
         let fixture = "fn a() {}\n#[cfg(test)]\npub(super) fn helper() -> u8 {\n    CmdError::expected(\"Nur im Test\");\n    1\n}\n\npub(super) fn production() {\n    return Err(CmdError::expected(\"Es fehlt etwas.\"));\n}\n#[cfg(test)]\n#[path = \"x_tests.rs\"]\nmod tests;\n";
         let production = production_part(fixture);
         assert!(!production.contains("Nur im Test"), "{production}");
-        assert_eq!(free_text_errors(&production), vec!["\"Es fehlt etwas.\"".to_string()]);
+        assert_eq!(free_text_errors(&production), vec!["CmdError::expected(\"Es fehlt etwas.\"));".to_string()]);
         let with_module = "fn b() {}\n#[cfg(test)]\nmod tests {\n    fn t() { CmdError::expected(\"Test\"); }\n}\nfn c() { CmdError::expected(\"Danach\"); }\n";
-        assert_eq!(free_text_errors(&production_part(with_module)), vec!["\"Danach\"".to_string()]);
+        assert_eq!(free_text_errors(&production_part(with_module)), vec!["CmdError::expected(\"Danach\"); }".to_string()]);
+    }
+
+    /// An unregistered code that is emitted through a variable must fail the real
+    /// contract check, the one the migrated modules are held to.
+    #[test]
+    fn an_unregistered_code_emitted_through_a_variable_fails_the_contract() {
+        let fixture = "fn migrated() -> CmdResult<()> {\n    let problem = \"unregisteredCode\";\n    Err(CmdError::expected(problem))\n}\n";
+        let violations = free_text_errors(&production_part(fixture));
+        assert_eq!(violations, vec!["CmdError::expected(problem))".to_string()]);
+        let via_constant = "const CODE: &str = \"alsoUnregistered\";\nfn f() { let _ = CmdError::expected(CODE); }\n";
+        assert_eq!(free_text_errors(&production_part(via_constant)).len(), 1);
     }
 
     /// The scanner itself must fail on free text and accept registered and legacy codes.
@@ -313,6 +326,9 @@ mod tests {
         assert_eq!(free_text_errors(r#"CmdError::expected(format!("x {}", 1))"#).len(), 1);
         assert!(free_text_errors(r#"CmdError::expected("cancelled")"#).is_empty());
         assert!(free_text_errors("CmdError::coded(ErrorCode::FolderNameEmpty)").is_empty());
-        assert!(free_text_errors("CmdError::expected(e.to_string())").is_empty());
+        // Indirect arguments cannot be told apart from free text, so they are refused too.
+        assert_eq!(free_text_errors("CmdError::expected(e.to_string())").len(), 1);
+        assert_eq!(free_text_errors("map_err(CmdError::expected)").len(), 1);
+        assert_eq!(free_text_errors(r#"CmdError::expected("cancelled" )"#).len(), 1);
     }
 }
