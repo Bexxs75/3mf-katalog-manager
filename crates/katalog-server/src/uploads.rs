@@ -849,13 +849,24 @@ impl HttpBody for EventBody {
         self.rx.poll_recv(cx).map(|v| v.map(|b| Ok(Frame::data(b))))
     }
 }
+/// Browsers send Sec-Fetch-* only to potentially trustworthy origins (HTTPS,
+/// localhost). Over plain HTTP with an IP or LAN name the header is absent;
+/// then origin_ok decides: a cross-origin EventSource is a CORS request and
+/// always carries Origin, a same-origin GET carries none. A present header must
+/// still be same-origin/none (cross-site, same-site, cross-origin stay 403).
+fn events_origin_ok(app: &App, headers: &HeaderMap) -> bool {
+    if !origin_ok(app, headers) {
+        return false;
+    }
+    let mut site = headers.get_all("sec-fetch-site").iter();
+    match (site.next(), site.next()) {
+        (None, _) => true,
+        (Some(v), None) => matches!(v.to_str(), Ok("same-origin" | "none")),
+        _ => false,
+    }
+}
 pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap) -> Response {
-    if !origin_ok(&app, headers)
-        || !matches!(
-            headers.get("sec-fetch-site").and_then(|h| h.to_str().ok()),
-            Some("same-origin" | "none")
-        )
-    {
+    if !events_origin_ok(&app, headers) {
         return error(403, "origin");
     }
     let rt = app.uploads.as_ref().unwrap().clone();

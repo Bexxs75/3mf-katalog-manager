@@ -312,6 +312,41 @@ async fn sse_snapshot_headers_origin_and_per_session_limit() {
         200
     );
 }
+#[tokio::test]
+async fn sse_over_plain_http_without_fetch_metadata_uses_origin_check() {
+    let f = Fixture::new(true);
+    // (drop Sec-Fetch-Site, Origin to send, Sec-Fetch-Site to send, status)
+    let cases: [(bool, Option<&str>, Option<&str>, u16); 6] = [
+        // plain HTTP via IP: no Sec-Fetch-*, no Origin on same-origin GET
+        (true, None, None, 200),
+        (true, Some("http://localhost:8080"), None, 200),
+        (true, Some("http://evil.test"), None, 403),
+        (true, Some("https://localhost:8080"), None, 403),
+        (false, None, Some("same-site"), 403),
+        (false, None, Some("cross-origin"), 403),
+    ];
+    for (drop_site, origin, site, expected) in cases {
+        let mut r = f.request("GET", "/api/events", Body::empty());
+        let h = r.headers_mut();
+        h.remove("origin");
+        if drop_site {
+            h.remove("sec-fetch-site");
+        }
+        if let Some(o) = origin {
+            h.insert("origin", o.parse().unwrap());
+        }
+        if let Some(s) = site {
+            h.insert("sec-fetch-site", s.parse().unwrap());
+        }
+        let status = f.send(r).await.status();
+        assert_eq!(status, expected, "origin={origin:?} site={site:?}");
+    }
+    let mut twice = f.request("GET", "/api/events", Body::empty());
+    twice
+        .headers_mut()
+        .append("sec-fetch-site", "cross-site".parse().unwrap());
+    assert_eq!(f.send(twice).await.status(), 403);
+}
 #[tokio::test(start_paused = true)]
 async fn sse_does_not_refresh_session_and_closes_on_expiration() {
     let f = Fixture::new(true);

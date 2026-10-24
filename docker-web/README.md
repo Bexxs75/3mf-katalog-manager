@@ -72,6 +72,12 @@ eine Stunde Gesamtdauer und 60 Sekunden ohne 64 KiB Fortschritt. SSE-Pings komme
 alle 15 Sekunden, verlängern aber nicht die Sitzung. Uploads erfordern CSRF,
 passenden Origin und Content-Length; Proxy darf diese Header nicht entfernen.
 
+Fortschrittsanzeige (`/api/events`) funktioniert auch über unverschlüsseltes HTTP mit
+IP-Adresse (z. B. `http://192.168.1.50:8080` oder Tailscale). Browser senden
+`Sec-Fetch-Site` nur an HTTPS bzw. localhost; fehlt der Header, entscheidet die
+Origin-Prüfung (kein Origin oder passender Origin: erlaubt, fremder Origin: 403).
+Ist `Sec-Fetch-Site` vorhanden, gilt nur `same-origin`/`none`.
+
 ### Browser upload and import (stage 5 backend, English)
 
 Uploads are disabled by default. Set `KATALOG_UPLOAD_DIR=/models/uploads` together
@@ -112,6 +118,12 @@ Set reverse-proxy body limits high enough (otherwise HTTP 413), enable streaming
 and disable SSE buffering. Upload deadlines are one hour total and 60 seconds
 without 64 KiB progress. SSE pings every 15 seconds do not refresh session activity.
 Preserve CSRF, Origin and Content-Length headers at the proxy.
+
+The progress view (`/api/events`) also works over plain HTTP with an IP address
+(for example `http://192.168.1.50:8080` or Tailscale). Browsers send
+`Sec-Fetch-Site` only to HTTPS or localhost; without it the Origin check decides
+(no Origin or a matching Origin: allowed, foreign Origin: 403). When
+`Sec-Fetch-Site` is present, only `same-origin`/`none` is accepted.
 
 SSE-Neuverbindungen erhalten einen Snapshot der aktiven Jobs, der letzten 32
 Job-Ergebnisse und der offenen Uploads (höchstens 500). Insgesamt bleiben die letzten
