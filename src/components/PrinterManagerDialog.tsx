@@ -5,7 +5,7 @@ import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
 export const pmButton = 'px-3 py-1.5 rounded border border-[var(--line-strong)] text-small cursor-pointer hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-50';
-export const pmField = 'w-full min-w-0 px-2 py-1.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
+export const pmField = 'w-full min-w-0 px-2 py-1.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)]';
 
 /** Mounted only while open, so draft and error state never leak to another printer. */
 export function PrinterManagerDialog({ title, children, onClose, onSubmit, submitLabel }: {

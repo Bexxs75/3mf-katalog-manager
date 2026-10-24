@@ -35,7 +35,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
-- **Search field and other inputs (macOS):** no more blue system focus frame inside the app's own highlight.
+- **Search field and all other inputs:** no more system focus frame (blue on macOS, black on Windows) inside or instead of the app's own highlight; this now includes tag entry, date and note on the detail page.
 - **Import menu:** the explanations of "Folder contents…" and "Check source folders" no longer appear a second time as a browser tooltip; the panel in the menu shows both.
 - **Companion files in the container:** "Open" now explains that the file cannot be opened inside the container and to open it on the Docker host.
 - **Folders:** renaming or moving a folder now also carries files whose catalog entry is not assigned to that folder, and trashed entries below it, so they no longer point to a path that does not exist any more. If a new path is already taken by another entry, the rename or move is cancelled and nothing is changed.
@@ -717,7 +717,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
-- **Suchfeld und weitere Eingabefelder (macOS):** kein blauer System-Fokusrahmen mehr innerhalb der eigenen Hervorhebung der App.
+- **Suchfeld und alle weiteren Eingabefelder:** kein System-Fokusrahmen mehr (blau auf macOS, schwarz auf Windows) innerhalb oder anstelle der eigenen Hervorhebung der App; das gilt jetzt auch für Tag-Eingabe, Datum und Notiz auf der Detailseite.
 - **Import-Menü:** Die Erklärungen zu „Ordnerinhalt…“ und „Quellordner prüfen“ erscheinen nicht mehr zusätzlich als Browser-Tooltip; das Feld im Menü zeigt beide.
 - **Begleitdateien im Container:** „Öffnen“ erklärt jetzt, dass sich die Datei im Container nicht öffnen lässt und auf dem Docker-Host geöffnet werden muss.
 - **Ordner:** Beim Umbenennen oder Verschieben eines Ordners werden jetzt auch Dateien mitgeführt, deren Katalogeintrag diesem Ordner nicht zugeordnet ist, sowie Einträge im Papierkorb darunter; sie zeigen danach nicht mehr auf einen nicht mehr vorhandenen Pfad. Ist ein neuer Pfad bereits durch einen anderen Eintrag belegt, wird das Umbenennen oder Verschieben abgebrochen und nichts verändert.
