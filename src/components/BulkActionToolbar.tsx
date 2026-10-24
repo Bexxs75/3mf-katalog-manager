@@ -381,7 +381,7 @@ export function BulkActionToolbar({
                     onAddTag={onSubmitBulkAddTag}
                     stripHash
                     autoFocus
-                    inputClassName="h-7 w-[140px] px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-small"
+                    inputClassName="h-7 w-[140px] px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-none text-small"
                   />
                   <button
                     onClick={() => onSubmitBulkAddTag()}

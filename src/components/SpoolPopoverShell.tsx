@@ -6,7 +6,7 @@ import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
 export const fieldClass =
-  'w-full min-w-0 h-7 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[var(--ink)] text-small outline-0 focus:border-[var(--accent)]';
+  'w-full min-w-0 h-7 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[var(--ink)] text-small outline-none focus:border-[var(--accent)]';
 export const buttonClass = 'h-[30px] px-3 rounded-md text-small font-semibold cursor-pointer border';
 
 interface Props {

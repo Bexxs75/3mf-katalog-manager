@@ -109,7 +109,7 @@ it.each(['de', 'en', 'es', 'fr'])('reserves all import hints in one grid cell in
   fireEvent.click(result.container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!);
   const hints = result.container.querySelector('[data-import-hints]')!;
   expect(hints).toHaveClass('grid');
-  expect(hints.children).toHaveLength(3);
+  expect(hints.children).toHaveLength(4);
   for (const child of hints.children) expect(child).toHaveClass('col-start-1', 'row-start-1');
   expect(hints.children[1]).toHaveClass('invisible');
   fireEvent.mouseEnter(screen.getAllByRole('menuitem')[1]);
@@ -118,7 +118,10 @@ it.each(['de', 'en', 'es', 'fr'])('reserves all import hints in one grid cell in
   fireEvent.mouseEnter(screen.getAllByRole('menuitem')[2]);
   expect(hints.children[1]).toHaveClass('invisible');
   expect(hints.children[2]).not.toHaveClass('invisible');
-  expect(hints.children).toHaveLength(3);
+  fireEvent.mouseEnter(screen.getAllByRole('menuitem')[3]);
+  expect(hints.children[2]).toHaveClass('invisible');
+  expect(hints.children[3]).not.toHaveClass('invisible');
+  expect(hints.children).toHaveLength(4);
 });
 it('does not announce zero files during initial loading', () => {
   render(<LanguageProvider><Header {...props} count={0} initialLoading /></LanguageProvider>);
@@ -134,7 +137,8 @@ it('offers folder contents with explanation and keyboard activation', () => {
   expect(screen.getByRole('menuitem', { name: 'Quellordner prüfen' })).toHaveFocus();
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' });
   expect(item).toHaveFocus();
-  expect(item).toHaveAttribute('title', expect.stringContaining('auch aus Unterordnern'));
+  expect(item).not.toHaveAttribute('title');
+  expect(screen.getByText(/auch aus Unterordnern/)).toBeVisible();
   fireEvent.click(item);
   expect(props.onImportFolderContents).toHaveBeenCalledOnce();
   expect(screen.queryByRole('menu')).not.toBeInTheDocument();

@@ -137,7 +137,7 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
             }}
             onBlur={() => setOpen(false)}
             style={popup}
-            className="z-[60] max-h-64 overflow-y-auto rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] py-1 outline-0"
+            className="z-[60] max-h-64 overflow-y-auto rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] py-1 outline-none"
           >
             {spools.map((s) => (
               <li

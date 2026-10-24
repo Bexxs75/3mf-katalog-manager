@@ -907,6 +907,7 @@ export interface Translations {
   companionsAdd: string;
   companionOpen: string;
   companionOpenNamed: string;
+  companionOpenContainer: string;
   companionMenu: string;
   companionReveal: string;
   companionRemove: string;

@@ -8,7 +8,7 @@ export function ErrorText({ error }: { error: AppError | null }) {
   if (!error) return null;
   const message = error.message === 'container' ? t('containerUpdates')
     : error.message === 'containerExternalUnavailable' || error.message === 'containerSlicerUnavailable' || error.message === 'containerFileManagerUnavailable' ? t(error.message)
-    : error.message === 'linuxMenuForeignFile' || error.message === 'linuxMenuThirdParty' ? t(error.message)
+    : error.message === 'companionOpenContainer' || error.message === 'linuxMenuForeignFile' || error.message === 'linuxMenuThirdParty' ? t(error.message)
     : error.message === 'imageUploadTooLarge' || error.message === 'imageUploadUnsupported' || error.message === 'imageUploadUnreadable'
     ? t(error.message)
     : error.message === 'importActive' ? t('importActiveError') : error.message;

@@ -95,7 +95,7 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
         aria-expanded
         aria-controls={`${uid}-listbox`}
         aria-activedescendant={domId(activeId)}
-        className="h-7 px-2 rounded border border-[var(--line-strong)] bg-[var(--panel-2)] text-small outline-0 focus:border-[var(--accent)]"
+        className="h-7 px-2 rounded border border-[var(--line-strong)] bg-[var(--panel-2)] text-small outline-none focus:border-[var(--accent)]"
       />
       <ul id={`${uid}-listbox`} role="listbox" aria-label={t('printerJobsColModel')} className="max-h-52 overflow-y-auto flex flex-col gap-0.5">
         <li

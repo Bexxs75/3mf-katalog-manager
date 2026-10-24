@@ -305,7 +305,10 @@ export function CompanionSection({ fileId, variant }: Props) {
   });
 
   const open = (item: Companion) => guarded(async () => {
-    try { await openCompanion(item.id); } catch (e) { setActionError(toAppError(e)); }
+    try { await openCompanion(item.id); } catch (e) {
+      const error = toAppError(e);
+      setActionError(error.message === 'containerExternalUnavailable' ? { ...error, message: 'companionOpenContainer' } : error);
+    }
   });
 
   const reveal = (item: Companion) => guarded(async () => {

@@ -329,7 +329,7 @@ function SlotMenu({ spool, storage, vat, onClose, onLoad, onUnload, onEdit, onCo
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={vat ? t('printersVatMenuSearch') : t('printersSlotMenuSearch')}
-          className="w-full h-7 px-2 rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small outline-0 focus:border-[var(--accent)]"
+          className="w-full h-7 px-2 rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small outline-none focus:border-[var(--accent)]"
         />
       </div>
       <div className="max-h-48 overflow-y-auto">

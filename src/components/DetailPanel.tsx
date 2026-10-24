@@ -277,7 +277,7 @@ export function DetailPanel({
                   onBlur={handleSourceUrlBlur}
                   autoFocus
                   placeholder={t('sourceUrlPlaceholder')}
-                  className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-medium tabular-nums text-small"
+                  className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-none font-medium tabular-nums text-small"
                 />
               ) : isSafeHttpUrl(model.sourceUrl) ? (
                 <ExternalLink url={model.sourceUrl} label={model.sourceUrl}
@@ -331,7 +331,7 @@ export function DetailPanel({
               tags={model.tags}
               onAddTag={onAddTag}
               stripHash
-              inputClassName="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-medium tabular-nums text-caption"
+              inputClassName="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-none font-medium tabular-nums text-caption"
             />
           </div>
           <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
@@ -466,7 +466,7 @@ export function DetailPanel({
             tags={model.tags}
             onAddTag={onAddTag}
             stripHash
-            inputClassName="px-2.5 py-1 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
+            inputClassName="px-2.5 py-1 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-none"
             inputStyle={{ fontSize: 'var(--font-size-meta)' }}
           />
         </div>
@@ -503,7 +503,7 @@ export function DetailPanel({
                 onBlur={handleSourceUrlBlur}
                 autoFocus
                 placeholder={t('sourceUrlPlaceholder')}
-                className="flex-1 min-w-0 px-2 py-1 rounded-md border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
+                className="flex-1 min-w-0 px-2 py-1 rounded-md border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-none"
               />
             ) : (
               <span className="flex-1 flex items-center justify-end gap-1.5 min-w-0">

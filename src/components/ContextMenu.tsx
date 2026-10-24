@@ -142,7 +142,7 @@ function ModelContextMenu({
               }}
               autoFocus
               disabled={renaming}
-              className="flex-1 min-w-0 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-small"
+              className="flex-1 min-w-0 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-none text-small"
             />
             {extension && (
               <span

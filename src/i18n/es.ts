@@ -881,6 +881,7 @@ export const es: Translations = {
   companionsAdd: "Añadir …",
   companionOpen: "Abrir",
   companionOpenNamed: "Abrir {name}",
+  companionOpenContainer: "El archivo no se puede abrir dentro del contenedor porque allí no hay ningún programa para abrirlo. Ábrelo directamente en tu host de Docker.",
   companionMenu: "Más acciones para {name}",
   companionReveal: "Mostrar en el gestor de archivos",
   companionRemove: "Quitar",

@@ -379,7 +379,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('filamentSearchPlaceholder')}
-              className="w-full h-8 pl-8 pr-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small outline-0 focus:border-[var(--accent)]"
+              className="w-full h-8 pl-8 pr-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small outline-none focus:border-[var(--accent)]"
             />
           </div>
 

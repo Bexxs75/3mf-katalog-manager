@@ -190,7 +190,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
         aria-modal="true"
         aria-labelledby="printer-jobs-title"
         tabIndex={-1}
-        className="w-full max-w-[1040px] max-h-[90vh] flex flex-col rounded-[10px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] outline-0"
+        className="w-full max-w-[1040px] max-h-[90vh] flex flex-col rounded-[10px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] outline-none"
       >
         <div className="flex items-start justify-between gap-4 px-[18px] py-4 border-b border-[var(--line)]">
           <div>
