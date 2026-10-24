@@ -393,13 +393,13 @@ pub(super) fn accepted_import_selection(
     {
         let conn = lock(&state.db)?;
         if db::printer_link::get_setting(&conn, folders::SETTING_CATALOG_BASE_DIR)?.is_none() {
-            return Err(CmdError::expected("Es ist noch kein Katalogordner eingerichtet. Ohne ihn können Dateien nicht aus einem Quellordner übernommen werden."));
+            return Err(CmdError::coded(ErrorCode::SourceNoCatalogFolder));
         }
     }
     let scans = scan_with_state(state, max_entries)?;
     let accepted = validate_requested(&scans, requested)?;
     if accepted.is_empty() {
-        return Err(CmdError::expected("Es wurden keine Dateien ausgewählt."));
+        return Err(CmdError::coded(ErrorCode::SourceNoFilesSelected));
     }
     // The scan lists files below the resolved folder, so that is the root that matters;
     // the registered spelling is kept too in case it already was the resolved one.

@@ -1314,4 +1314,6 @@ export const fr: Translations = {
   errBackupEntryTooLarge: "L’entrée « {0} » de l’archive est trop volumineuse ({1} Mo). Le maximum autorisé est de {2} Mo.",
   errBackupSettingsNotUtf8: "Le fichier settings.json de l’archive n’est pas un texte UTF-8 valide.",
   errBackupInvalidDatabase: "L’archive ne contient pas de base de données de catalogue valide.",
+  errSourceNoCatalogFolder: "Aucun dossier de catalogue n’a encore été configuré. Sans lui, les fichiers ne peuvent pas être repris depuis un dossier source.",
+  errSourceNoFilesSelected: "Aucun fichier n’a été sélectionné.",
 };

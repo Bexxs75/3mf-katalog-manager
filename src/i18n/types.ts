@@ -1354,6 +1354,8 @@ export interface Translations {
   errBackupEntryTooLarge: string;
   errBackupSettingsNotUtf8: string;
   errBackupInvalidDatabase: string;
+  errSourceNoCatalogFolder: string;
+  errSourceNoFilesSelected: string;
 }
 
 export function formatCount(forms: PluralForms, n: number, language: Language = 'de'): string {

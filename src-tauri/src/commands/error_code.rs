@@ -122,6 +122,8 @@ error_codes! {
     SourceFolderNotFound => "sourceFolderNotFound",
     SourceFileNotNew => "sourceFileNotNew",
     FolderNotPicked => "folderNotPicked",
+    SourceNoCatalogFolder => "sourceNoCatalogFolder",
+    SourceNoFilesSelected => "sourceNoFilesSelected",
     // Restoring a catalog backup.
     BackupNotZip => "backupNotZip",
     /// params: name of the missing entry.
@@ -205,21 +207,42 @@ mod tests {
         std::fs::write(path, shared_list_json()).unwrap();
     }
 
-    /// The production part of a source file (everything before its test module).
-    fn production_part(source: &str) -> &str {
-        source.split("#[cfg(test)]").next().unwrap_or(source)
+    /// The production code of a source file: everything except the items marked
+    /// `#[cfg(test)]` (test modules and test-only helpers), each skipped up to its
+    /// own end. Production code that follows a test-only helper stays in.
+    fn production_part(source: &str) -> String {
+        let mut kept = Vec::new();
+        let mut lines = source.lines();
+        while let Some(line) = lines.next() {
+            if line.trim() != "#[cfg(test)]" {
+                kept.push(line);
+                continue;
+            }
+            // The item starts after its further attributes; `mod x;` ends on its own
+            // line, anything else ends at the next closing brace in column 0.
+            let mut item = lines.next();
+            while item.is_some_and(|l| l.trim_start().starts_with("#[")) {
+                item = lines.next();
+            }
+            if item.is_some_and(|l| !l.trim_end().ends_with(';')) {
+                for rest in lines.by_ref() {
+                    if rest.starts_with('}') { break; }
+                }
+            }
+        }
+        kept.join("\n")
     }
 
     /// The body of `fn name`, up to the closing brace at column 0.
-    fn function_body<'a>(source: &'a str, name: &str) -> &'a str {
+    fn function_body(source: &str, name: &str) -> String {
         let production = production_part(source);
         let start = ["(", "<"].iter()
             .filter_map(|next| production.find(&format!("fn {name}{next}")))
             .min()
             .unwrap_or_else(|| panic!("fn {name} not found"));
         let rest = &production[start..];
-        let end = rest.find("\n}\n").map_or(rest.len(), |i| i + 3);
-        &rest[..end]
+        let end = rest.find("\n}").map_or(rest.len(), |i| i + 2);
+        rest[..end].to_string()
     }
 
     /// Free text handed to `CmdError::expected`: a string literal or `format!` that
@@ -245,7 +268,7 @@ mod tests {
     /// `files.rs` and `companions.rs` hold unrelated actions too, so only the
     /// functions of the migrated actions are scanned there.
     fn migrated_sources() -> Vec<(&'static str, String)> {
-        let whole = |name: &'static str, source: &str| (name, production_part(source).to_string());
+        let whole = |name: &'static str, source: &str| (name, production_part(source));
         let functions = |name: &'static str, source: &str, fns: &[&str]| {
             (name, fns.iter().map(|f| function_body(source, f)).collect::<Vec<_>>().join("\n"))
         };
@@ -270,6 +293,17 @@ mod tests {
         for (name, code) in migrated_sources() {
             assert_eq!(free_text_errors(&code), Vec::<String>::new(), "{name} still emits free text");
         }
+    }
+
+    /// Production code after a test-only helper must still be scanned.
+    #[test]
+    fn production_code_after_a_test_only_helper_is_scanned() {
+        let fixture = "fn a() {}\n#[cfg(test)]\npub(super) fn helper() -> u8 {\n    CmdError::expected(\"Nur im Test\");\n    1\n}\n\npub(super) fn production() {\n    return Err(CmdError::expected(\"Es fehlt etwas.\"));\n}\n#[cfg(test)]\n#[path = \"x_tests.rs\"]\nmod tests;\n";
+        let production = production_part(fixture);
+        assert!(!production.contains("Nur im Test"), "{production}");
+        assert_eq!(free_text_errors(&production), vec!["\"Es fehlt etwas.\"".to_string()]);
+        let with_module = "fn b() {}\n#[cfg(test)]\nmod tests {\n    fn t() { CmdError::expected(\"Test\"); }\n}\nfn c() { CmdError::expected(\"Danach\"); }\n";
+        assert_eq!(free_text_errors(&production_part(with_module)), vec!["\"Danach\"".to_string()]);
     }
 
     /// The scanner itself must fail on free text and accept registered and legacy codes.

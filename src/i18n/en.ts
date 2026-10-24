@@ -1314,4 +1314,6 @@ export const en: Translations = {
   errBackupEntryTooLarge: "The entry “{0}” in the archive is too large ({1} MB). At most {2} MB are allowed.",
   errBackupSettingsNotUtf8: "The settings.json in the archive is not valid UTF-8 text.",
   errBackupInvalidDatabase: "The archive does not contain a valid catalog database.",
+  errSourceNoCatalogFolder: "No catalog folder has been set up yet. Without one, files cannot be taken from a source folder.",
+  errSourceNoFilesSelected: "No files were selected.",
 };

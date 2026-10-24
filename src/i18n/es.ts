@@ -1314,4 +1314,6 @@ export const es: Translations = {
   errBackupEntryTooLarge: "La entrada «{0}» del archivo ZIP es demasiado grande ({1} MB). El máximo permitido es {2} MB.",
   errBackupSettingsNotUtf8: "El archivo settings.json del ZIP no es texto UTF-8 válido.",
   errBackupInvalidDatabase: "El archivo ZIP no contiene una base de datos de catálogo válida.",
+  errSourceNoCatalogFolder: "Todavía no se ha configurado ninguna carpeta del catálogo. Sin ella, no se pueden importar archivos desde una carpeta de origen.",
+  errSourceNoFilesSelected: "No se seleccionó ningún archivo.",
 };

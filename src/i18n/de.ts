@@ -1314,4 +1314,6 @@ export const de: Translations = {
   errBackupEntryTooLarge: "Der Eintrag „{0}“ im Archiv ist zu groß ({1} MB). Erlaubt sind höchstens {2} MB.",
   errBackupSettingsNotUtf8: "Die settings.json im Archiv ist kein gültiger UTF-8-Text.",
   errBackupInvalidDatabase: "Das Archiv enthält keine gültige Katalog-Datenbank.",
+  errSourceNoCatalogFolder: "Es ist noch kein Katalogordner eingerichtet. Ohne ihn können Dateien nicht aus einem Quellordner übernommen werden.",
+  errSourceNoFilesSelected: "Es wurden keine Dateien ausgewählt.",
 };

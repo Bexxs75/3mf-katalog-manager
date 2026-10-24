@@ -56,6 +56,8 @@
     "sourceFolderNotFound",
     "sourceFileNotNew",
     "folderNotPicked",
+    "sourceNoCatalogFolder",
+    "sourceNoFilesSelected",
     "backupNotZip",
     "backupMissingEntry",
     "backupEntryTooLarge",

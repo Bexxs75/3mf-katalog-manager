@@ -70,8 +70,15 @@ impl CmdError {
     {
         let params: Vec<String> = params.into_iter().map(|p| p.to_string()).collect();
         let at = std::panic::Location::caller();
-        log::info!(target: "cmd", "{} {params:?} ({}:{})", code.as_str(), at.file(), at.line());
+        log::info!(target: "cmd", "{} ({}:{})", Self::coded_log_text(code, &params), at.file(), at.line());
         Self { message: code.as_str().to_string(), expected: true, code: None, params }
+    }
+
+    /// Log text of a coded error. The params are written as they are, never with
+    /// `{:?}`: Debug doubles Windows backslashes, and the log anonymizer then no
+    /// longer recognizes the home and catalog paths in them.
+    fn coded_log_text(code: ErrorCode, params: &[String]) -> String {
+        if params.is_empty() { code.as_str().to_string() } else { format!("{}: {}", code.as_str(), params.join(" | ")) }
     }
 
     /// Test helper: whether this is exactly `code` with exactly these params.
@@ -176,6 +183,30 @@ mod tests {
         }));
         assert_eq!(serde_json::to_string(&CmdError::coded(ErrorCode::FolderNameEmpty)).unwrap(),
             r#"{"message":"folderNameEmpty","expected":true}"#);
+    }
+
+    #[test]
+    fn coded_log_text_keeps_paths_recognizable_for_the_anonymizer() {
+        use crate::diagnostics::anonymize::{anonymize, to_text, Context};
+        let params = vec![
+            r"C:\Users\Anna\Models\a.3mf".to_string(),
+            r"C:\PrivateClient\Catalog\Deko".to_string(),
+            r"\\?\D:\PrivateClient\Katalog\Deko".to_string(),
+        ];
+        let line = CmdError::coded_log_text(ErrorCode::FolderExists, &params);
+        assert!(line.contains(r"C:\PrivateClient\Catalog"), "{line}");
+        let ctx = Context {
+            home: Some(r"C:\Users\Anna".into()),
+            user: Some("Anna".into()),
+            catalog_roots: vec![r"C:\PrivateClient\Catalog".into(), r"D:\PrivateClient\Katalog".into()],
+            ..Context::default()
+        };
+        let out = to_text(&anonymize(&line, &ctx).unwrap());
+        assert!(!out.contains("PrivateClient"), "{out}");
+        assert!(!out.contains("Anna"), "{out}");
+        // The Debug form is what broke this: the doubled backslashes defeat the match.
+        let debug = format!("{params:?}");
+        assert!(to_text(&anonymize(&debug, &ctx).unwrap()).contains("PrivateClient"), "premise: Debug output is not anonymized");
     }
 
     #[test]
