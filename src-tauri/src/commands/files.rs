@@ -385,6 +385,18 @@ pub fn unblock_auto_tag(state: State<AppState>, tag: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
+pub fn get_auto_tagging(state: State<AppState>) -> CmdResult<bool> {
+    let conn = lock_db(&state)?;
+    db::blocked_tags::auto_tagging_enabled(&conn).map_err(blocked_tag_error)
+}
+
+#[tauri::command]
+pub fn set_auto_tagging(state: State<AppState>, enabled: bool) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    db::blocked_tags::set_auto_tagging_enabled(&conn, enabled).map_err(blocked_tag_error)
+}
+
+#[tauri::command]
 pub fn list_blocked_auto_tags(state: State<AppState>) -> CmdResult<Vec<String>> {
     let conn = lock_db(&state)?;
     db::blocked_tags::list_blocked_auto_tags(&conn).map_err(blocked_tag_error)

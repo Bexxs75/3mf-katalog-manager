@@ -910,6 +910,10 @@ export interface Translations {
   autoTagBlockedNotice: string;
   autoTagUnblockedNotice: string;
   autoTagBlockError: string;
+  autoTaggingLabel: string;
+  autoTaggingHint: string;
+  autoTaggingBlockedNote: string;
+  autoTaggingError: string;
   blockedAutoTagsTitle: string;
   blockedAutoTagsHint: string;
   blockedAutoTagsEmpty: string;

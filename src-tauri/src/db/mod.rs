@@ -95,6 +95,38 @@ mod tests {
         assert_eq!(tags, vec!["kabelhalter".to_string()]);
     }
 
+    #[test]
+    fn auto_tagging_is_on_by_default_and_insert_assigns_tags() {
+        let mut conn = connect_in_memory().expect("connect");
+        assert!(blocked_tags::auto_tagging_enabled(&conn).unwrap());
+        let mut file = sample_file();
+        file.tags = vec!["kabelhalter".into()];
+        let id = insert_file(&mut conn, &file).expect("insert");
+        assert_eq!(tags_of(&conn, id), vec!["kabelhalter".to_string()]);
+    }
+
+    #[test]
+    fn insert_assigns_no_tags_while_auto_tagging_is_off_and_keeps_existing_ones() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file = sample_file();
+        file.tags = vec!["kabelhalter".into()];
+        let before = insert_file(&mut conn, &file).expect("insert");
+        blocked_tags::set_auto_tagging_enabled(&conn, false).unwrap();
+        assert!(!blocked_tags::auto_tagging_enabled(&conn).unwrap());
+        file.path = "/tmp/other.3mf".into();
+        let after = insert_file(&mut conn, &file).expect("insert");
+        assert_eq!(tags_of(&conn, before), vec!["kabelhalter".to_string()], "existing tags stay");
+        assert!(tags_of(&conn, after).is_empty());
+        // Manual assignment and the block list keep working while the switch is off.
+        add_tag_to_file(&conn, after, "von-hand").unwrap();
+        blocked_tags::block_auto_tag(&conn, "miniatur").unwrap();
+        assert_eq!(tags_of(&conn, after), vec!["von-hand".to_string()]);
+        blocked_tags::set_auto_tagging_enabled(&conn, true).unwrap();
+        file.path = "/tmp/third.3mf".into();
+        let third = insert_file(&mut conn, &file).expect("insert");
+        assert_eq!(tags_of(&conn, third), vec!["kabelhalter".to_string()]);
+    }
+
     fn sample_file() -> NewFile {
         let mut metadata = BTreeMap::new();
         metadata.insert("Designer".to_string(), "Jane".to_string());
