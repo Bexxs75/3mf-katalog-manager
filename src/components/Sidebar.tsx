@@ -251,7 +251,7 @@ export function Sidebar({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={t('searchPlaceholder')}
-            className="flex-1 min-w-0 border-0 outline-0 bg-transparent text-[var(--ink)] text-[length:var(--font-size-body)]"
+            className="flex-1 min-w-0 border-0 outline-none bg-transparent text-[var(--ink)] text-[length:var(--font-size-body)]"
           />
         </div>
       </div>
@@ -316,7 +316,7 @@ export function Sidebar({
               }}
               autoFocus
               placeholder={t('newFolderPlaceholder')}
-              className="min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-caption"
+              className="min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-none text-caption"
             />
             {folderProblem && (
               <p id={folderProblemId} role="alert" className="text-caption text-[var(--ink-3)]">
@@ -407,7 +407,7 @@ export function Sidebar({
               }}
               autoFocus
               placeholder={t('newCollectionPlaceholder')}
-              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-caption"
+              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-none text-caption"
             />
           </div>
         ) : (

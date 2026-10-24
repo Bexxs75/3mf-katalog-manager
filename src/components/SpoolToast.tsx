@@ -53,7 +53,7 @@ export function SpoolToast({ label, location, knownLocations, onChangeLocation, 
                 onChange={setDraft}
                 options={knownLocations}
                 placeholder={t('printersLocationPlaceholder')}
-                className="w-full h-7 px-2 rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small outline-0"
+                className="w-full h-7 px-2 rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small outline-none"
               />
             </span>
             <button type="button" onClick={save} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] font-bold underline cursor-pointer">

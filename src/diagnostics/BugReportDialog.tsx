@@ -137,7 +137,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="bug-report-title"
         tabIndex={-1}
-        className="w-[620px] max-w-[92vw] max-h-[90vh] overflow-auto rounded-[6px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] p-5 text-[var(--ink)] outline-0"
+        className="w-[620px] max-w-[92vw] max-h-[90vh] overflow-auto rounded-[6px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] p-5 text-[var(--ink)] outline-none"
       >
         <h2 id="bug-report-title" className="flex items-center gap-2 text-title font-bold">
           <span className="text-[var(--accent)]">{BUG_ICON}</span>

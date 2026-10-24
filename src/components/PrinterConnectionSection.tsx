@@ -73,7 +73,7 @@ export function clockOffsetParts(offsetS: number): Array<[ClockUnit, number]> {
 }
 
 const fieldClass =
-  'h-8 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-0 text-small focus:border-[var(--accent)] min-w-0';
+  'h-8 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-none text-small focus:border-[var(--accent)] min-w-0';
 const smallButton =
   'max-[639px]:w-full h-8 px-3 rounded-[4px] border border-[var(--line-strong)] text-caption text-[var(--ink-2)] hover:border-[var(--accent)] cursor-pointer disabled:opacity-50';
 

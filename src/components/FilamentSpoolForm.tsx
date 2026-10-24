@@ -76,7 +76,7 @@ function normalizeHex(text: string): string {
 type NumericField = 'diameterMm' | 'price' | 'originalWeightG' | 'remainingWeightG';
 
 const fieldClass =
-  'w-full h-9 px-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-0 text-body focus:border-[var(--accent)]';
+  'w-full h-9 px-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-none text-body focus:border-[var(--accent)]';
 
 function toForm(spool: FilamentSpool): FormState {
   return {
@@ -444,7 +444,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
                           aria-label={t('filamentColorN').replace('{n}', String(n))}
                           aria-invalid={bad ? true : undefined}
                           aria-describedby={bad ? `${fieldId}-extra-${index}-error` : undefined}
-                          className={`w-28 h-8 px-2 rounded-md border bg-[var(--panel)] text-[var(--ink)] font-medium tabular-nums text-small outline-0 focus:border-[var(--accent)] ${bad ? 'border-[var(--crit)]' : 'border-[var(--line-strong)]'}`}
+                          className={`w-28 h-8 px-2 rounded-md border bg-[var(--panel)] text-[var(--ink)] font-medium tabular-nums text-small outline-none focus:border-[var(--accent)] ${bad ? 'border-[var(--crit)]' : 'border-[var(--line-strong)]'}`}
                         />
                         <button
                           type="button"
