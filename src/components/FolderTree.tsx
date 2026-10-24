@@ -184,7 +184,7 @@ export function FolderTree({
                   // Tabbing out cancels; a null relatedTarget (window switch, click) is left to the mousedown handler.
                   if (e.relatedTarget && !editRef.current?.contains(e.relatedTarget as Node)) cancelRename(false);
                 }}
-                className={`flex-1 min-w-0 h-6 px-1.5 rounded-[5px] border bg-[var(--panel)] text-[var(--ink)] text-small outline-none focus:shadow-[0_0_0_2px_var(--accent-soft)] ${renaming.error ? 'border-red-400' : 'border-[var(--accent)]'}`}
+                className={`flex-1 min-w-0 h-6 px-1.5 rounded-[5px] border bg-[var(--panel)] text-[var(--ink)] text-small outline-none focus:shadow-[0_0_0_2px_var(--accent-soft)] ${renaming.error ? 'border-red-400 focus:border-red-400' : 'border-[var(--accent)]'}`}
               />
             </div>
             <p id={hintId} className="pl-5 pb-1 text-caption text-[var(--ink-3)]">{formatCount(t('renameFolderHint'), node.count)}</p>

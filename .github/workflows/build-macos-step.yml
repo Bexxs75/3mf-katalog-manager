@@ -31,6 +31,8 @@ jobs:
           - target: x86_64-apple-darwin
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
+    # Normal runs take 9 to 18 minutes; a hung runner (seen once at 51 minutes) fails early.
+    timeout-minutes: 35
     env:
       APP_NAME: ${{ inputs.preview && '3MF Katalog Manager Preview' || '3MF Katalog Manager' }}
       PREVIEW_CONFIG: ${{ inputs.preview && '--config src-tauri/tauri.preview.conf.json' || '' }}

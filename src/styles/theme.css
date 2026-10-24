@@ -107,6 +107,14 @@ img[draggable="false"] { -webkit-user-drag: none; user-select: none; }
 code, pre, kbd, samp, button, input, select, textarea, option, input::placeholder, textarea::placeholder { font-family: inherit; }
 /* Portals and native controls inherit the same family as body despite the Tailwind reset. */
 html { font-family: 'Barlow', Helvetica, sans-serif; }
+
+/* Exactly one focus indicator per field: the accent border replaces the system
+   ring (WebKit paints its blue ring even at outline-width 0, which gave a frame
+   inside the app's own frame). Fields inside a focus-within wrapper have no
+   border of their own, so the wrapper stays the only highlight. :where keeps
+   the specificity low enough for focus: variants (error borders) to win. */
+input:where(:not([type="checkbox"], [type="radio"], [type="color"])):focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ui-icon { display: inline-block; vertical-align: middle; flex-shrink: 0; }
 
 :root {

@@ -4,7 +4,7 @@ import { ErrorText } from '../diagnostics/ErrorText';
 import { toAppError, type AppError } from '../lib/errors';
 import { getSyncAutoAdd, getSyncOnStart, setSyncAutoAdd, setSyncOnStart } from '../lib/api/diskSync';
 
-const box = 'mt-0.5 shrink-0 focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
+const box = 'mt-0.5 shrink-0';
 
 /** Settings for the sync with the disk at start (both off by default). */
 export function DiskSyncSettings() {

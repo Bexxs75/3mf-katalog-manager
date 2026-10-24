@@ -294,6 +294,18 @@ it('shortens long tag chips but removes the full tag', () => {
   expect(onRemoveTag).toHaveBeenCalledWith(tag);
 });
 
+it('gives the tag entry, date and note fields a border for the shared accent focus style', () => {
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: '+ Eintrag hinzufügen' }));
+  const date = document.querySelector<HTMLInputElement>('input[type="date"]');
+  const fields = [screen.getByLabelText('Tag hinzufügen'), date, screen.getByPlaceholderText('Notiz (optional)')];
+  for (const field of fields) {
+    // theme.css colors the border on focus; without one the field would have no indicator at all.
+    expect(field).toHaveClass('border');
+    expect(field).not.toHaveClass('outline-0');
+  }
+});
+
 it('shows the companion files of the model on the detail page', async () => {
   vi.mocked(invoke).mockImplementation((command: string) => Promise.resolve(command === 'list_companions'
     ? [{ id: 'c1', fileId: 'model-1', name: 'Anleitung.pdf', path: '/c/Anleitung.pdf', kind: 'pdf', sizeBytes: 10, addedAt: '', deletedAt: null, missing: false }]
