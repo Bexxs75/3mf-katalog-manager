@@ -79,6 +79,11 @@ export interface Translations {
   diskSyncFolderModels: PluralForms;
   diskSyncRemoved: PluralForms;
   diskSyncSkipped: PluralForms;
+  diskSyncTrashBlocked: PluralForms;
+  diskSyncSelectAll: string;
+  diskSyncSelectNone: string;
+  diskSyncSelectAllIn: string;
+  diskSyncSelectNoneIn: string;
   diskSyncUnreadable: PluralForms;
 
   railDownloads: string;

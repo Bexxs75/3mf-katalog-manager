@@ -18,6 +18,7 @@ const withToggled = (set: ReadonlySet<string>, value: string, on: boolean) => {
 // New files and renames start ticked; copies of existing models are opt-in.
 const initialPaths = (scan: DiskScan | null) => new Set(scan?.newFiles.map(e => e.path));
 const initialRenames = (scan: DiskScan | null) => new Set(scan?.renamedFiles.map(r => r.id));
+const linkButton = 'underline text-[var(--accent)] text-small cursor-pointer disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 const tag = 'rounded-full px-2 py-0.5 bg-[var(--accent-soft)] text-[var(--accent)] text-small font-semibold normal-case tracking-normal';
 const hintBox = 'rounded bg-[var(--panel-2)] px-2.5 py-1.5 mt-2 text-small text-[var(--ink-2)]';
 
@@ -35,6 +36,8 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   const hasMissing = !!scan && (scan.missingFiles.length > 0 || scan.missingFolders.length > 0);
   // The reset effect runs after the render that drops the scan; do not trust stale ticks until then.
   const canApply = (!!scan && paths.size + renameIds.size > 0) || (remove && hasMissing);
+  // The trash notice can be the only finding; then the all-zero counters would only add noise.
+  const hasFindings = !!scan && (selectable || hasMissing || scan.newFolders.length > 0 || scan.skippedPaths.length > 0);
   const ref = useModalDialog({ open: true, onClose, busy });
   const rows = (e: DiskEntry) => <>
     <div className="flex gap-2">
@@ -73,6 +76,16 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
       </label>
     </li>
   ))}</ul>;
+  // Only the entries of one section change, so the other section and the renames keep their ticks.
+  const setSection = (entries: DiskEntry[], on: boolean) => setPaths(prev => {
+    const next = new Set(prev);
+    for (const e of entries) { if (on) next.add(e.path); else next.delete(e.path); }
+    return next;
+  });
+  const sectionButtons = (entries: DiskEntry[], heading: string) => <div className="flex gap-3 mb-2">
+    <button type="button" className={linkButton} disabled={busy} aria-label={t('diskSyncSelectAllIn').replace('{section}', heading)} onClick={() => setSection(entries, true)}>{t('diskSyncSelectAll')}</button>
+    <button type="button" className={linkButton} disabled={busy} aria-label={t('diskSyncSelectNoneIn').replace('{section}', heading)} onClick={() => setSection(entries, false)}>{t('diskSyncSelectNone')}</button>
+  </div>;
   const renameNote = (r: DiskRename) => {
     const [from, to] = [folderOf(r.oldRelativePath), folderOf(r.newRelativePath)];
     const what = from === to ? t('diskSyncRenamedFileSub')
@@ -97,18 +110,21 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
       <div className="overflow-auto p-4 space-y-4 text-body">
         {failedPaths.length > 0 && <section><h3>{count(t('diskSyncUnreadable'), failedPaths.length)}</h3><ul>{failedPaths.map(({ path }) => <li key={path} className="font-code break-all">{displayName(path)}</li>)}</ul></section>}
         {error ? <div role="alert" className="text-[var(--crit)] whitespace-pre-wrap break-words">{error.paths.length > 0 && t('diskSyncError')}<div>{t(error.code)}</div><ul>{error.paths.map(path => <li key={path} className="font-code break-all">{displayName(path)}</li>)}</ul></div> : scan && <>
-          <div className="flex flex-wrap gap-2">{([
+          {hasFindings && <div className="flex flex-wrap gap-2">{([
             ...(scan.renamedFiles.length > 0 ? [count(t('diskSyncRenamed'), scan.renamedFiles.length)] : []),
             count(t('diskSyncNewFiles'), scan.newFiles.length), count(t('diskSyncNewFolders'), scan.newFolders.length), count(t('diskSyncMissing'), scan.missingFiles.length),
             ...(scan.missingFolders.length > 0 ? [count(t('diskSyncMissingFolders'), scan.missingFolders.length)] : []),
             ...(scan.duplicateFiles.length > 0 ? [count(t('diskSyncDuplicates'), scan.duplicateFiles.length)] : []),
-          ]).map(text => <span key={text} className="rounded-full px-3 py-1 bg-[var(--panel-2)] text-small">{text}</span>)}</div>
+          ]).map(text => <span key={text} className="rounded-full px-3 py-1 bg-[var(--panel-2)] text-small">{text}</span>)}</div>}
           {scan.skippedPaths.length > 0 && <section><h3 className="ui-label mb-2">{count(t('diskSyncSkipped'), scan.skippedPaths.length)}</h3><ul>{scan.skippedPaths.map(path => <li key={path} className="font-code break-all">{displayName(path)}</li>)}</ul></section>}
+          {scan.trashBlockedCount > 0 && <p role="status" className={hintBox}>{count(t('diskSyncTrashBlocked'), scan.trashBlockedCount)}</p>}
           {scan.renamedFiles.length > 0 && <section><h3 className="ui-label mb-2 flex flex-wrap gap-2 items-center">{t('diskSyncRenamedHeading')}<span className={tag}>{t('diskSyncPreselected')}</span></h3>{renamed(scan.renamedFiles)}<p className={hintBox}>{t('diskSyncRenamedHint')}</p></section>}
           {(scan.newFiles.length > 0 || scan.newFolders.length > 0) && <section><h3 className="ui-label mb-2">{t('diskSyncNewHeading')}</h3>
             {scan.newFolders.length > 0 && <div className="mb-1">{group(scan.newFolders)}</div>}
+            {scan.newFiles.length > 0 && sectionButtons(scan.newFiles, t('diskSyncNewHeading'))}
             {pickable(scan.newFiles)}</section>}
           {scan.duplicateFiles.length > 0 && <section><h3 className="ui-label mb-2 flex flex-wrap gap-2 items-center">{t('diskSyncDuplicateHeading')}<span className={tag}>{t('diskSyncNotPreselected')}</span></h3>
+            {sectionButtons(scan.duplicateFiles, t('diskSyncDuplicateHeading'))}
             {pickable(scan.duplicateFiles, e => t('diskSyncDuplicateOf').replace('{name}', displayName(e.duplicateOfPath)))}
             <p className={hintBox}>{t('diskSyncDuplicateHint')}</p></section>}
           {hasMissing && <section><h3 className="ui-label mb-2">{t('diskSyncMissingHeading')}</h3>{scan.missingFolders.length > 0 && missingFolderRows(scan.missingFolders)}{group(scan.missingFiles)}
@@ -148,7 +164,7 @@ export function CatalogDiskSync({ onApplied, onScanned, active = true }: { onApp
         setLastScan(new Date());
         // The folder tree marks missing folders; it should not wait for the next reload to learn what the scan saw.
         try { void Promise.resolve(onScanned?.()).catch(() => undefined); } catch { /* the scan result matters more */ }
-        if (result.newFiles.length || result.newFolders.length || result.renamedFiles.length || result.duplicateFiles.length || result.missingFiles.length || result.missingFolders.length || result.skippedPaths.length) setScan(result);
+        if (result.newFiles.length || result.newFolders.length || result.renamedFiles.length || result.duplicateFiles.length || result.missingFiles.length || result.missingFolders.length || result.skippedPaths.length || result.trashBlockedCount > 0) setScan(result);
         else setToast(t('diskSyncCurrent'));
       }
     } catch (e) { setError(diskSyncError(e)); }

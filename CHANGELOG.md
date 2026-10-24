@@ -11,6 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Sync with disk:** "Select all" and "None" for the lists of new files and copies of existing models. Files skipped because their path is still held by the trash are now counted in a notice (restore them or empty the trash, then sync again); the dialog also opens when that is the only finding.
 - **Import:** The result dialog after an import offers to show the newly added models.
 - **Accessibility:** Screen readers now announce model cards and list rows with name and selection state, and the number of selected models.
 - **Source folders:** set up folders like Downloads, check them for new models (on request, optionally at app start) and move the chosen files into the catalog or decline them.
@@ -693,6 +694,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- **Abgleich mit der Festplatte:** „Alle auswählen“ und „Keine“ für die Listen der neuen Dateien und der Kopien vorhandener Modelle. Dateien, die übersprungen werden, weil ihr Pfad noch im Papierkorb belegt ist, werden jetzt in einem Hinweis gezählt (dort wiederherstellen oder Papierkorb leeren, danach erneut abgleichen); der Dialog öffnet sich auch dann, wenn das der einzige Befund ist.
 - **Import:** Auch der Ergebnisdialog nach einem Import bietet an, die neu hinzugefügten Modelle anzuzeigen.
 - **Barrierefreiheit:** Bildschirmleser sagen Modellkarten und Listenzeilen jetzt mit Name und Auswahlzustand an, außerdem die Anzahl der ausgewählten Modelle.
 - **Quellordner:** Ordner wie Downloads einrichten, auf neue Modelle prüfen (auf Knopfdruck, optional beim Start) und die gewählten Dateien in den Katalog verschieben oder ablehnen.
