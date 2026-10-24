@@ -11,6 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Automatic tags:** new setting "Assign tags automatically" (Settings, Catalog; on by default). When it is off, import, folder sync and source folders assign no tags automatically. Existing tags stay; adding tags by hand and the list of blocked automatic tags keep working.
 - **Import:** The result dialog after an import offers to show the newly added models.
 - **Accessibility:** Screen readers now announce model cards and list rows with name and selection state, and the number of selected models.
 - **Source folders:** set up folders like Downloads, check them for new models (on request, optionally at app start) and move the chosen files into the catalog or decline them.
@@ -693,6 +694,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- **Automatische Tags:** Neue Einstellung „Tags automatisch vergeben“ (Einstellungen, Katalog; standardmäßig an). Ist sie aus, vergeben Import, Ordnerabgleich und Quellordner keine Tags mehr automatisch. Vorhandene Tags bleiben; Tags von Hand vergeben und die Liste der gesperrten automatischen Tags funktionieren weiter.
 - **Import:** Auch der Ergebnisdialog nach einem Import bietet an, die neu hinzugefügten Modelle anzuzeigen.
 - **Barrierefreiheit:** Bildschirmleser sagen Modellkarten und Listenzeilen jetzt mit Name und Auswahlzustand an, außerdem die Anzahl der ausgewählten Modelle.
 - **Quellordner:** Ordner wie Downloads einrichten, auf neue Modelle prüfen (auf Knopfdruck, optional beim Start) und die gewählten Dateien in den Katalog verschieben oder ablehnen.

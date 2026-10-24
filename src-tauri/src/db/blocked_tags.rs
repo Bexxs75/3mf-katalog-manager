@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use rusqlite::{params, Connection};
 
 use super::error::{validate_text_length, DbError};
+use super::printer_link::{get_setting, set_setting};
 
 /// Longest tag name the catalog accepts (UTF-16 units, like the tag input).
 pub const MAX_TAG_NAME_LEN: usize = 100;
@@ -70,6 +71,28 @@ pub fn list_blocked_auto_tags(conn: &Connection) -> Result<Vec<String>, DbError>
 
 fn blocked_set(conn: &Connection) -> Result<HashSet<String>, DbError> {
     Ok(list_blocked_auto_tags(conn)?.iter().map(|n| comparison_key(n)).collect())
+}
+
+/// `app_settings` key of the "assign tags automatically" switch. Only the value
+/// "0" turns it off, so a catalog without the row (every existing one) keeps today's behaviour.
+pub const SETTING_AUTO_TAGGING: &str = "auto_tagging";
+
+pub fn auto_tagging_enabled(conn: &Connection) -> Result<bool, DbError> {
+    Ok(get_setting(conn, SETTING_AUTO_TAGGING)?.as_deref() != Some("0"))
+}
+
+pub fn set_auto_tagging_enabled(conn: &Connection, enabled: bool) -> Result<(), DbError> {
+    set_setting(conn, SETTING_AUTO_TAGGING, if enabled { "1" } else { "0" })
+}
+
+/// The one gate for automatically derived tags: nothing at all while the switch
+/// is off, otherwise the list without the blocked tags. Existing tags are never touched.
+pub fn filter_auto_tags(conn: &Connection, tags: &mut Vec<String>) -> Result<(), DbError> {
+    if !auto_tagging_enabled(conn)? {
+        tags.clear();
+        return Ok(());
+    }
+    retain_unblocked(conn, tags)
 }
 
 /// Drops the blocked tags from a list of automatically derived ones. Tags a

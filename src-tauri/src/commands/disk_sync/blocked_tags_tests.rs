@@ -126,3 +126,43 @@ fn suggestions_for_a_model_are_recomputed_and_ignore_tags_added_by_hand() {
     assert_eq!(suggested, vec!["kabelhalter", "miniatur"]);
     assert!(files::suggested_auto_tags_with_conn(&f.conn, id + 1000).is_err());
 }
+
+#[test]
+fn import_assigns_no_automatic_tags_while_the_switch_is_off() {
+    let mut f = Fixture::new();
+    db::blocked_tags::set_auto_tagging_enabled(&f.conn, false).unwrap();
+    let path = f.model("Kabelhalter.obj");
+    files::import_many_with_conn(&mut f.conn, vec![path]).unwrap();
+    assert!(f.tags_of("Kabelhalter.obj").is_empty());
+}
+
+#[test]
+fn atomic_import_and_disk_sync_assign_no_automatic_tags_while_the_switch_is_off() {
+    let mut f = Fixture::new();
+    db::blocked_tags::set_auto_tagging_enabled(&f.conn, false).unwrap();
+    let path = f.model("Erstes.obj");
+    files::import_many_with_conn_atomic(&mut f.conn, vec![path]).unwrap();
+    assert!(f.tags_of("Erstes.obj").is_empty());
+    f.model("Kabelhalter.obj");
+    let preview = scan(&f.conn).unwrap();
+    let selection = DiskSelection {
+        new_paths: preview.new_folders.into_iter().chain(preview.new_files).map(|e| e.path).collect(),
+        ..Default::default()
+    };
+    apply(&mut f.conn, selection).unwrap();
+    assert!(f.tags_of("Kabelhalter.obj").is_empty());
+}
+
+#[test]
+fn switching_off_keeps_existing_tags_and_manual_tags_still_work() {
+    let mut f = Fixture::new();
+    let first = f.model("Erstes.obj");
+    files::import_many_with_conn(&mut f.conn, vec![first]).unwrap();
+    db::blocked_tags::set_auto_tagging_enabled(&f.conn, false).unwrap();
+    assert_eq!(f.tags_of("Erstes.obj"), vec!["erstes", "miniatur"]);
+    let second = f.model("Zweites.obj");
+    files::import_many_with_conn(&mut f.conn, vec![second]).unwrap();
+    let id = db::list_files(&f.conn).unwrap().into_iter().find(|x| x.name == "Zweites.obj").unwrap().id;
+    files::add_tag_with_conn(&f.conn, id, "Miniatur").unwrap();
+    assert_eq!(f.tags_of("Zweites.obj"), vec!["miniatur"]);
+}
