@@ -69,7 +69,7 @@ export function Header({
   // Checking runs only while no import is active (the move would be refused anyway).
   const { jobActive } = useImportLock();
   const formatCount = useFormatCount();
-  const [importSource, setImportSource] = useState<'files' | 'folder' | 'folderContents'>('files');
+  const [importSource, setImportSource] = useState<'files' | 'folder' | 'folderContents' | 'sourceFolders'>('files');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
@@ -135,11 +135,11 @@ export function Header({
         {importMenuOpen && (
           <div data-navigation-menu role="menu" onKeyDown={importKeyboard.onMenuKeyDown} className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
             <div data-import-hints className="grid m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-small text-[var(--ink-2)] leading-relaxed" aria-live="polite">
-              {(['files', 'folder', 'folderContents'] as const).map(source => <div key={source} aria-hidden={importSource !== source}
+              {(['files', 'folder', 'folderContents', 'sourceFolders'] as const).map(source => <div key={source} aria-hidden={importSource !== source}
                 className={`col-start-1 row-start-1 ${importSource !== source ? 'invisible' : ''}`}>
-                <b>{t(source === 'folderContents' ? 'impFolderContents' : source === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
-                {source === 'folderContents' ? t('importFolderContentsHint') : source === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{displayName(importTargetName)}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
-                <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{t(source !== 'folder' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
+                <b>{t(source === 'sourceFolders' ? 'sfMenuCheck' : source === 'folderContents' ? 'impFolderContents' : source === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
+                {source === 'sourceFolders' ? t('sfMenuHint') : source === 'folderContents' ? t('importFolderContentsHint') : source === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{displayName(importTargetName)}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
+                {source !== 'sourceFolders' && <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{t(source !== 'folder' ? 'impMenuFixed' : 'impMenuNoMove')}</div>}
               </div>)}
             </div>
             <button
@@ -166,7 +166,6 @@ export function Header({
             </button>
             <button
               role="menuitem" tabIndex={-1}
-              title={t('importFolderContentsHint')}
               onMouseEnter={() => setImportSource('folderContents')} onFocus={() => setImportSource('folderContents')}
               onClick={() => {
                 setImportMenuOpen(false);
@@ -178,7 +177,7 @@ export function Header({
             </button>
             <button
               role="menuitem" tabIndex={-1}
-              title={t('sfMenuHint')}
+              onMouseEnter={() => setImportSource('sourceFolders')} onFocus={() => setImportSource('sourceFolders')}
               disabled={jobActive}
               onClick={() => {
                 setImportMenuOpen(false);

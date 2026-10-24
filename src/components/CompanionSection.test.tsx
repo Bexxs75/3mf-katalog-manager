@@ -166,7 +166,7 @@ describe('CompanionSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Anleitung.pdf öffnen' }));
     expect(invokeMock).toHaveBeenCalledWith('open_companion', { companionId: 'c1' });
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(de.containerExternalUnavailable);
+    expect(alert).toHaveTextContent(de.companionOpenContainer);
   });
 
   it('reveals only the path from the open info, and not inside a container', async () => {
