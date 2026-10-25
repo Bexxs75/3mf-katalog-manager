@@ -79,6 +79,8 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "consume_resin",
     "set_render_snapshot",
     "set_auto_tagging",
+    "block_auto_tag",
+    "unblock_auto_tag",
 ];
 pub(crate) fn image_command(command: &str) -> bool {
     matches!(
@@ -485,6 +487,8 @@ pub(crate) fn execute(
             c,
             a.get("enabled").and_then(Value::as_bool).ok_or_else(bad)?,
         )),
+        "block_auto_tag" => encode(web::block_auto_tag(c, text(a, "tag")?)),
+        "unblock_auto_tag" => encode(web::unblock_auto_tag(c, text(a, "tag")?)),
         "mark_file_viewed" => encode(web::mark_file_viewed(c, id(a, "fileId")?)),
         "add_tag" => encode(web::add_tag(c, id(a, "fileId")?, text(a, "tag")?)),
         "remove_tag" => encode(web::remove_tag(c, id(a, "fileId")?, text(a, "tag")?)),
@@ -579,6 +583,22 @@ mod filament_audit_tests {
             progress.changes.store(3, Ordering::Relaxed);
             let line = progress.line(&audit);
             assert!(line.contains(&format!("command={command}")) && line.contains("changes=3"), "{line}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod auto_tag_audit_tests {
+    use super::*;
+    #[test]
+    fn block_and_unblock_are_audited_with_their_row_count() {
+        let headers = HeaderMap::new();
+        for command in ["block_auto_tag", "unblock_auto_tag"] {
+            let audit = WriteAudit::new(command, &headers, "katalog_session", 1);
+            let progress = WriteProgress::default();
+            progress.changes.store(1, Ordering::Relaxed);
+            let line = progress.line(&audit);
+            assert!(line.contains(&format!("command={command}")) && line.contains("changes=1"), "{line}");
         }
     }
 }

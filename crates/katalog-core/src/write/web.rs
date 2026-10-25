@@ -137,6 +137,29 @@ pub fn set_auto_tagging(c: &mut Connection, enabled: bool) -> WriteResult<Outcom
         Ok(outcome((), c.changes()))
     })
 }
+/// Adds a tag to the block list. The name is normalized by the shared catalog
+/// logic (length, control characters, language aliases) and the list is capped
+/// there. Blocking a tag that is already blocked succeeds and changes nothing, so
+/// a repeated request is idempotent. `changes` counts the rows really added.
+pub fn block_auto_tag(c: &mut Connection, tag: &str) -> WriteResult<Outcome<()>> {
+    transaction(c, |c| {
+        let before = blocked_count(c)?;
+        db::blocked_tags::block_auto_tag(c, tag)?;
+        Ok(outcome((), (blocked_count(c)? - before).max(0) as u64))
+    })
+}
+/// Takes a tag off the block list; an entry that is not there is not an error
+/// (idempotent). `changes` counts the rows really removed.
+pub fn unblock_auto_tag(c: &mut Connection, tag: &str) -> WriteResult<Outcome<()>> {
+    transaction(c, |c| {
+        let before = blocked_count(c)?;
+        db::blocked_tags::unblock_auto_tag(c, tag)?;
+        Ok(outcome((), (before - blocked_count(c)?).max(0) as u64))
+    })
+}
+fn blocked_count(c: &Connection) -> WriteResult<i64> {
+    Ok(c.query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |r| r.get(0))?)
+}
 pub fn set_source_url(
     c: &mut Connection,
     id: i64,

@@ -373,3 +373,38 @@ fn add_and_list_print_log_entry_roundtrips_through_dto() {
     assert_eq!(dtos[0].note.as_deref(), Some("Testdruck"));
     assert_eq!(dtos[0].photo_image, None);
 }
+
+#[test]
+fn suggested_auto_tags_match_the_tagging_rules_for_the_stored_file() {
+    let conn = db::connect_in_memory().unwrap();
+    let id = db::test_insert_minimal_file(&conn, "/Kabelhalter_v3_final.3mf", None).unwrap();
+    let file = db::get_file(&conn, id).unwrap().unwrap();
+    let expected = crate::tagging::suggest_tags(&crate::tagging::TaggingContext {
+        file_name: &file.name,
+        dimensions_mm: file.dimensions_mm,
+        object_count: file.object_count,
+        materials: &file.materials,
+    });
+    assert_eq!(expected, vec!["kabelhalter".to_string()]);
+    assert_eq!(suggested_auto_tags_with_conn(&conn, id).unwrap(), expected);
+    // Tags added by hand are not part of the suggestion.
+    db::add_tag_to_file(&conn, id, "mein-projekt").unwrap();
+    assert_eq!(suggested_auto_tags_with_conn(&conn, id).unwrap(), expected);
+}
+
+#[test]
+fn suggested_auto_tags_for_an_unknown_file_is_an_expected_error() {
+    let conn = db::connect_in_memory().unwrap();
+    let e = suggested_auto_tags_with_conn(&conn, 999).unwrap_err();
+    assert!(e.expected);
+    assert_eq!(e.message, "Datei nicht gefunden");
+}
+
+#[test]
+fn blocked_auto_tags_are_listed_sorted_as_stored() {
+    let conn = db::connect_in_memory().unwrap();
+    assert!(list_blocked_auto_tags(&conn).unwrap().is_empty());
+    db::blocked_tags::block_auto_tag(&conn, "Zahnrad").unwrap();
+    db::blocked_tags::block_auto_tag(&conn, "Multicolor").unwrap();
+    assert_eq!(list_blocked_auto_tags(&conn).unwrap(), vec!["mehrfarbig", "zahnrad"]);
+}

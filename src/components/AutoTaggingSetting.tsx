@@ -11,7 +11,7 @@ import { useCanEditMetadata } from '../lib/webSession';
 /** Settings switch: whether the app assigns tags automatically at all. */
 export function AutoTaggingSetting() {
   const t = useT();
-  // The web offers only the switch: the block list commands exist on the desktop only.
+  // In the web catalog tab the switch is the first block, so it needs no top margin.
   const web = isReadOnly();
   const canEdit = useCanEditMetadata();
   const [enabled, setEnabled] = useState(true);
@@ -52,12 +52,10 @@ export function AutoTaggingSetting() {
         )}
       </div>
       {/* Dimmed, not disabled: the list still applies if the switch is turned back on, and blocks can still be lifted. */}
-      {!web && (
-        <div className={enabled ? undefined : 'opacity-[0.45]'}>
-          <BlockedAutoTagsSettings />
-          {!enabled && <p className="mt-1 text-caption text-[var(--ink-3)]">{t('autoTaggingBlockedNote')}</p>}
-        </div>
-      )}
+      <div className={enabled ? undefined : 'opacity-[0.45]'}>
+        <BlockedAutoTagsSettings />
+        {!enabled && <p className="mt-1 text-caption text-[var(--ink-3)]">{t('autoTaggingBlockedNote')}</p>}
+      </div>
     </>
   );
 }

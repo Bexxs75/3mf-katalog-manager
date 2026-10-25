@@ -321,7 +321,7 @@ export function SettingsPanel({
             </>
           )}
 
-          {/* The web catalog tab holds only the switch: cleanup, backup and the block list need the desktop. */}
+          {/* The web catalog tab holds the switch and the block list: cleanup and backup need the desktop. */}
           {import.meta.env.VITE_TARGET === 'web' && activeSettingsTab === 'catalog' && <AutoTaggingSetting />}
 
           {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'catalog' && (

@@ -485,3 +485,41 @@ fn web_auto_tagging_switch_defaults_on_and_only_writes_the_setting() {
     set_auto_tagging(&mut c, true).unwrap();
     assert!(read::get_auto_tagging(&c).unwrap());
 }
+
+fn blocked(c: &Connection) -> Vec<String> {
+    db::blocked_tags::list_blocked_auto_tags(c).unwrap()
+}
+
+#[test]
+fn web_block_and_unblock_are_idempotent_and_count_only_real_changes() {
+    let mut c = db::connect_in_memory().unwrap();
+    // The stored name is the shared normalized form: case and language do not matter.
+    assert_eq!(block_auto_tag(&mut c, "Multicolor").unwrap().changes, 1);
+    assert_eq!(block_auto_tag(&mut c, " MEHRFARBIG ").unwrap().changes, 0);
+    assert_eq!(blocked(&c), vec!["mehrfarbig"]);
+    assert_eq!(unblock_auto_tag(&mut c, "multicolore").unwrap().changes, 1);
+    assert_eq!(unblock_auto_tag(&mut c, "multicolore").unwrap().changes, 0);
+    assert!(blocked(&c).is_empty());
+}
+
+#[test]
+fn web_block_rejects_bad_names_and_the_list_cap_without_changing_anything() {
+    let mut c = db::connect_in_memory().unwrap();
+    for bad in ["", "   ", "a\nb", "a\u{7}", &"x".repeat(101)] {
+        assert!(matches!(block_auto_tag(&mut c, bad), Err(WriteError::Invalid { .. })), "{bad:?}");
+        assert!(matches!(unblock_auto_tag(&mut c, bad), Err(WriteError::Invalid { .. })), "{bad:?}");
+    }
+    assert!(blocked(&c).is_empty());
+    block_auto_tag(&mut c, &"x".repeat(100)).unwrap();
+    for i in 1..db::blocked_tags::MAX_BLOCKED_TAGS {
+        block_auto_tag(&mut c, &format!("tag{i}")).unwrap();
+    }
+    assert_eq!(blocked(&c).len(), db::blocked_tags::MAX_BLOCKED_TAGS);
+    assert!(matches!(block_auto_tag(&mut c, "one-too-many"), Err(WriteError::Invalid { .. })));
+    // Blocking a tag that is already on the full list still succeeds.
+    assert_eq!(block_auto_tag(&mut c, "tag1").unwrap().changes, 0);
+    assert_eq!(blocked(&c).len(), db::blocked_tags::MAX_BLOCKED_TAGS);
+    // Lifting a block frees a slot.
+    unblock_auto_tag(&mut c, "tag1").unwrap();
+    block_auto_tag(&mut c, "one-too-many").unwrap();
+}

@@ -4,11 +4,13 @@ import { tagLabel, otherTagNames } from '../lib/autoTags';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import * as api from '../lib/api/autoTags';
+import { useCanEditMetadata } from '../lib/webSession';
 
 /** Settings section: automatic tags the app no longer assigns, each with a way to lift the block. */
 export function BlockedAutoTagsSettings() {
   const t = useT();
   const { language } = useLanguage();
+  const canEdit = useCanEditMetadata();
   const [tags, setTags] = useState<string[] | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -75,10 +77,10 @@ export function BlockedAutoTagsSettings() {
                   )}
                 </span>
                 <button
-                  type="button" data-unblock
+                  type="button" data-unblock disabled={!canEdit} title={canEdit ? undefined : t('webReadOnly')}
                   aria-label={t('blockedAutoTagUnblockAria').replace('{label}', label)}
                   onClick={() => void unblock(tag, index)}
-                  className="flex-none px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                  className="flex-none px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
                 >
                   {t('blockedAutoTagUnblock')}
                 </button>

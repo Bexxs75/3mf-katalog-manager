@@ -16,7 +16,8 @@ export const WEB_READ_COMMANDS = [
   'check_filament',
   'get_filament_spool_image',
   'get_auto_tagging',
-
+  'list_suggested_auto_tags',
+  'list_blocked_auto_tags',
 ] as const;
 
 /** Web write commands: the server remains the authority for each request. */
@@ -57,5 +58,6 @@ export const WEB_WRITE_COMMANDS = [
   'consume_resin',
   'set_render_snapshot',
   'set_auto_tagging',
-
+  'block_auto_tag',
+  'unblock_auto_tag',
 ] as const;

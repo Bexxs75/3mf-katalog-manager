@@ -136,8 +136,8 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 51);
-    assert_eq!(crate::READ_COMMANDS.len(), 25);
+    assert_eq!(WRITE_COMMANDS.len(), 53);
+    assert_eq!(crate::READ_COMMANDS.len(), 27);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
     }
@@ -1567,4 +1567,77 @@ async fn restock_and_consume_resin_need_write_mode_and_a_session() {
             .unwrap();
         assert_eq!(r.status(), 401, "{cmd}");
     }
+}
+
+#[tokio::test]
+async fn auto_tag_block_list_http_round_trip_and_strict_errors() {
+    let f = Fixture::new(true);
+    let list = || async { value(f.send("list_blocked_auto_tags", json!({})).await).await };
+    assert_eq!(list().await, json!([]));
+
+    // Blocking twice, in another language and case, ends in one entry (idempotent).
+    for tag in ["Multicolor", "MEHRFARBIG", "  multicolore "] {
+        assert_eq!(f.send("block_auto_tag", json!({"tag":tag})).await.status(), 200, "{tag}");
+    }
+    assert_eq!(f.send("block_auto_tag", json!({"tag":"Zahnrad"})).await.status(), 200);
+    assert_eq!(list().await, json!(["mehrfarbig", "zahnrad"]));
+
+    // Lifting a block that is not there is fine too.
+    assert_eq!(f.send("unblock_auto_tag", json!({"tag":"zahnrad"})).await.status(), 200);
+    assert_eq!(f.send("unblock_auto_tag", json!({"tag":"zahnrad"})).await.status(), 200);
+    assert_eq!(list().await, json!(["mehrfarbig"]));
+
+    let long = "x".repeat(101);
+    for (cmd, args, status) in [
+        ("block_auto_tag", json!({"tag":""}), 422),
+        ("block_auto_tag", json!({"tag":"   "}), 422),
+        ("block_auto_tag", json!({"tag":"a\nb"}), 422),
+        ("block_auto_tag", json!({"tag":long}), 422),
+        ("unblock_auto_tag", json!({"tag":""}), 422),
+        ("unblock_auto_tag", json!({"tag":long}), 422),
+        ("block_auto_tag", json!({"tag":5}), 400),
+        ("block_auto_tag", json!({"tag":null}), 400),
+        ("block_auto_tag", json!({}), 400),
+        ("unblock_auto_tag", json!({"tag":["a"]}), 400),
+        ("unblock_auto_tag", json!({}), 400),
+    ] {
+        assert_eq!(f.send(cmd, args.clone()).await.status(), status, "{cmd} {args}");
+    }
+    assert_eq!(list().await, json!(["mehrfarbig"]));
+}
+
+#[tokio::test]
+async fn suggested_auto_tags_http_reads_one_model_and_rejects_bad_ids() {
+    let f = Fixture::new(true);
+    let c = katalog_core::db::connect(&f.app.config.db_path).unwrap();
+    let id = katalog_core::db::test_insert_minimal_file(&c, "/Kabelhalter_v3.3mf", None).unwrap();
+    drop(c);
+    let r = f.send("list_suggested_auto_tags", json!({"fileId":id.to_string()})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await, json!(["kabelhalter"]));
+    for (args, status) in [
+        (json!({"fileId":"999999"}), 422),
+        (json!({"fileId":"abc"}), 400),
+        (json!({"fileId":1}), 400),
+        (json!({}), 400),
+    ] {
+        assert_eq!(f.send("list_suggested_auto_tags", args.clone()).await.status(), status, "{args}");
+    }
+}
+
+#[tokio::test]
+async fn auto_tag_block_commands_need_write_mode_and_a_session() {
+    let f = Fixture::new(false);
+    for cmd in ["block_auto_tag", "unblock_auto_tag"] {
+        assert_eq!(f.send(cmd, json!({"tag":"x"})).await.status(), 404, "{cmd}");
+    }
+    let f = Fixture::new(true);
+    for cmd in ["block_auto_tag", "unblock_auto_tag"] {
+        let r = router(f.app.clone())
+            .oneshot(f.request(cmd, Body::from(r#"{"tag":"x"}"#), None, Some("http://localhost:8080"), true))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 401, "{cmd}");
+    }
+    assert_eq!(value(f.send("list_blocked_auto_tags", json!({})).await).await, json!([]));
 }

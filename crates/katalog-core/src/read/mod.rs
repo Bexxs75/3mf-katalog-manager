@@ -191,6 +191,27 @@ pub fn get_auto_tagging(conn: &Connection) -> ReadResult<bool> {
     db::blocked_tags::auto_tagging_enabled(conn).map_err(ReadError::from)
 }
 
+/// Tags the app would suggest for this model today. The catalog does not record
+/// whether a tag was assigned automatically, so the detail view asks this to decide
+/// which tags may be blocked. Uses the stored dimensions, which for multi-plate
+/// models can differ slightly from the extent used at import.
+pub fn suggested_auto_tags_with_conn(conn: &Connection, file_id: i64) -> ReadResult<Vec<String>> {
+    let file = db::get_file(conn, file_id)
+        .map_err(ReadError::from)?
+        .ok_or_else(|| ReadError::expected("Datei nicht gefunden"))?;
+    Ok(crate::tagging::suggest_tags(&crate::tagging::TaggingContext {
+        file_name: &file.name,
+        dimensions_mm: file.dimensions_mm,
+        object_count: file.object_count,
+        materials: &file.materials,
+    }))
+}
+
+/// Automatic tags the user has blocked, as stored (internal names, sorted).
+pub fn list_blocked_auto_tags(conn: &Connection) -> ReadResult<Vec<String>> {
+    db::blocked_tags::list_blocked_auto_tags(conn).map_err(ReadError::from)
+}
+
 pub fn list_tag_counts(conn: &Connection) -> ReadResult<Vec<TagCountDto>> {
     let tags = db::list_tag_counts(conn).map_err(ReadError::from)?;
     Ok(tags

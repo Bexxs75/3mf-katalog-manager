@@ -163,6 +163,8 @@ pub const READ_COMMANDS: &[&str] = &[
     "check_filament",
     "get_filament_spool_image",
     "get_auto_tagging",
+    "list_suggested_auto_tags",
+    "list_blocked_auto_tags",
 ];
 
 // New summaries intentionally expose no server paths or SQLite error text.
@@ -263,7 +265,7 @@ pub async fn invoke(
             Ok(value) => Some(value),
             Err(error) => return *error,
         },
-        "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" => {
+        "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" | "list_suggested_auto_tags" => {
             match id(&args, "fileId") {
                 Ok(v) => Some(v),
                 Err(e) => return *e,
@@ -388,6 +390,11 @@ pub async fn invoke(
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
             "list_tag_counts" => encode(read::list_tag_counts(&conn)?),
             "get_auto_tagging" => encode(read::get_auto_tagging(&conn)?),
+            "list_blocked_auto_tags" => encode(read::list_blocked_auto_tags(&conn)?),
+            "list_suggested_auto_tags" => encode(read::suggested_auto_tags_with_conn(
+                &conn,
+                file_id.unwrap().parse().unwrap(),
+            )?),
             "list_print_log_entries" => {
                 encode(read::list_print_log_entries(&conn, file_id.unwrap())?)
             }

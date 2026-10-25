@@ -117,7 +117,7 @@ export function ModelDetailPage({
   const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const autoTagBlock = useAutoTagBlock(import.meta.env.VITE_TARGET === 'web' ? null : model, onRemoveTag, onAddTag);
+  const autoTagBlock = useAutoTagBlock(!canEdit ? null : model, onRemoveTag, onAddTag);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const deleteTriggerFocusPending = useRef(false);

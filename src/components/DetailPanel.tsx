@@ -97,7 +97,7 @@ export function DetailPanel({
   const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const autoTagBlock = useAutoTagBlock(trashMode || import.meta.env.VITE_TARGET === 'web' ? null : model, onRemoveTag, onAddTag);
+  const autoTagBlock = useAutoTagBlock(trashMode || !canEdit ? null : model, onRemoveTag, onAddTag);
   const {
     editing: editingSourceUrl,
     draft: sourceUrlDraft,

@@ -1,6 +1,5 @@
 use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use super::*;
-use crate::tagging::{self, TaggingContext};
 #[cfg(test)]
 use katalog_core::read::summary_to_dto;
 
@@ -149,20 +148,9 @@ fn blocked_tag_error(e: db::error::DbError) -> CmdError {
     }
 }
 
-/// Tags the app would suggest for this model today. The catalog does not record
-/// whether a tag was assigned automatically, so the detail view asks this to decide
-/// which tags may be blocked. Uses the stored dimensions, which for multi-plate
-/// models can differ slightly from the extent used at import.
+/// Thin desktop wrapper; the logic lives in `katalog_core::read`.
 pub(super) fn suggested_auto_tags_with_conn(conn: &Connection, file_id: i64) -> CmdResult<Vec<String>> {
-    let file = db::get_file(conn, file_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| CmdError::expected("Datei nicht gefunden"))?;
-    Ok(tagging::suggest_tags(&TaggingContext {
-        file_name: &file.name,
-        dimensions_mm: file.dimensions_mm,
-        object_count: file.object_count,
-        materials: &file.materials,
-    }))
+    katalog_core::read::suggested_auto_tags_with_conn(conn, file_id).map_err(Into::into)
 }
 
 #[tauri::command]
