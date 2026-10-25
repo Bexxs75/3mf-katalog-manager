@@ -359,7 +359,7 @@ fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
     }
     Ok(())
 }
-fn commit(c: &mut Connection, i: &FolderIntent) -> Result<()> {
+fn commit(c: &mut Connection, i: &FolderIntent, guard_companions: bool) -> Result<()> {
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
     if !matches(&tx, i, false)? {
         return Err(Error::Changed);
@@ -374,6 +374,12 @@ fn commit(c: &mut Connection, i: &FolderIntent) -> Result<()> {
             )?;
         }
         FolderOperation::Relocate => {
+            // A companion added after the early check must still stop the relocation;
+            // the caller moves the directory back on this error.
+            let ids: Vec<i64> = i.before.files.iter().map(|f| f.id).collect();
+            if guard_companions && operations::any_companions(&tx, &ids)? {
+                return Err(Error::HasCompanions);
+            }
             for f in &i.after.folders {
                 tx.execute(
                     "UPDATE folders SET name=?1,path=?2,parent_id=?3 WHERE id=?4",
@@ -517,7 +523,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.journal.folder_phase(&i.op_id, Phase::Renamed)?;
         #[cfg(test)]
         super::tests::before_mutation();
-        if let Err(e) = self.db.with_conn(|c| commit(c, &i)) {
+        if let Err(e) = self.db.with_conn(|c| commit(c, &i, false)) {
             if self.remove_created(&target, identity).is_err() {
                 return Err(self.journal.block(&i.op_id));
             }
@@ -593,6 +599,11 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.context
             .directory_chain(target.root, &target.parent, Some(identity))?;
         let old = self.db.with_conn(|c| tree(c, before.id))?;
+        // The directory move carries `_extras` folders along but not the paths in `companion_files`.
+        let ids: Vec<i64> = old.files.iter().map(|f| f.id).collect();
+        if self.db.with_conn(|c| operations::any_companions(c, &ids))? {
+            return Err(Error::HasCompanions);
+        }
         let mut after = old.clone();
         for f in &mut after.folders {
             f.path = rewrite(&f.path, &before.path, &path)?;
@@ -632,7 +643,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             return Err(e);
         }
         self.journal.folder_phase(&i.op_id, Phase::Renamed)?;
-        if let Err(e) = self.db.with_conn(|c| commit(c, &i)) {
+        if let Err(e) = self.db.with_conn(|c| commit(c, &i, true)) {
             if self.rename_directory(&target, &source, identity).is_err() {
                 return Err(self.journal.block(&i.op_id));
             }
@@ -756,7 +767,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             parent: None,
         };
         self.journal.add_folder(i.clone())?;
-        if let Err(e) = self.db.with_conn(|c| commit(c, &i)) {
+        if let Err(e) = self.db.with_conn(|c| commit(c, &i, false)) {
             self.journal.remove(&i.op_id)?;
             return Err(e);
         }
@@ -875,7 +886,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             source.parent.sync()?;
             target.parent.sync()?;
             if before {
-                self.db.with_conn(|c| commit(c, i))?;
+                self.db.with_conn(|c| commit(c, i, false))?;
             } else if !after {
                 return Err(Error::Changed);
             }

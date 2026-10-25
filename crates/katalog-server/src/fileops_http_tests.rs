@@ -658,3 +658,114 @@ async fn empty_trash_blocks_still_hit_the_daily_limit_with_real_retry_after() {
     assert_eq!(r.status(), 429);
     assert_eq!(r.headers()["retry-after"], "86400");
 }
+
+#[tokio::test]
+async fn rename_of_model_with_companion_is_rejected_with_has_companions() {
+    let f = Fixture::new(true).await;
+    let id = f.file("c.3mf");
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO companion_files (file_id, name, path, kind, size_bytes, added_at) VALUES (?1,'pic.png','/x/pic.png','image',1,'2026-01-01T00:00:00Z')",
+            [id.parse::<i64>().unwrap()],
+        )
+        .unwrap();
+    }
+    let r = f.invoke("rename_file", json!({"fileId":id,"name":"d"})).await;
+    assert_eq!(r.status(), 409);
+    let v = value(r).await;
+    assert_eq!(v["kind"], "has_companions");
+    assert_eq!(v["expected"], true);
+    assert!(f.dir.join("models/c.3mf").exists());
+    assert!(!f.dir.join("models/d.3mf").exists());
+}
+
+fn add_companion(f: &Fixture, file_id: i64) {
+    let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    conn.execute(
+        "INSERT INTO companion_files (file_id, name, path, kind, size_bytes, added_at) VALUES (?1,'pic.png','/x/pic.png','image',1,'2026-01-01T00:00:00Z')",
+        [file_id],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn batch_trash_reports_has_companions_per_item_and_empty_trash_skips_them() {
+    let f = Fixture::new(true).await;
+    let blocked = f.file("blocked.3mf");
+    let free = f.file("free.3mf");
+    add_companion(&f, blocked.parse().unwrap());
+    let r = value(f.invoke("delete_files", json!({"fileIds":[blocked,free]})).await).await;
+    assert_eq!(r[0]["ok"], false);
+    assert_eq!(r[0]["kind"], "has_companions");
+    assert_eq!(r[1]["ok"], true);
+    assert!(f.dir.join("models/blocked.3mf").exists());
+    assert!(!f.dir.join("models/free.3mf").exists());
+    // A trash entry with companions (e.g. trashed on the desktop) is neither counted nor offered.
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("UPDATE files SET deleted_at='2026-01-02T00:00:00Z' WHERE name='blocked.3mf'", []).unwrap();
+    }
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    assert_eq!(summary["blockedByCompanions"], 1);
+    assert_eq!(summary["count"], 1);
+    let free_only = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    let start = f
+        .invoke("empty_trash_start", json!({"expectedCount":free_only["count"],"maxDeletedAt":free_only["maxDeletedAt"],"password":"test-password-long"}))
+        .await;
+    assert_eq!(start.status(), 200);
+}
+
+#[tokio::test]
+async fn empty_trash_with_only_blocked_entries_ends_without_token_limit_or_backup() {
+    let f = Fixture::new(true).await;
+    let id = f.file("only.3mf");
+    add_companion(&f, id.parse().unwrap());
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("UPDATE files SET deleted_at='2026-01-02T00:00:00Z'", []).unwrap();
+    }
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    assert_eq!(summary["count"], 0);
+    assert_eq!(summary["blockedByCompanions"], 1);
+    let start = f
+        .invoke("empty_trash_start", json!({"expectedCount":0,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"}))
+        .await;
+    assert_eq!(start.status(), 200);
+    assert_eq!(value(start).await["remaining"], 0);
+    assert!(!f.dir.join("config/backups").exists());
+    assert!(f.dir.join("models/only.3mf").exists());
+}
+
+#[tokio::test]
+async fn folder_rename_and_move_with_companion_in_subtree_are_rejected() {
+    let f = Fixture::new(true).await;
+    let parent = {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute(
+            "INSERT INTO folders(name,path) VALUES('root',?1)",
+            [f.dir.join("models").to_str().unwrap()],
+        )
+        .unwrap();
+        c.last_insert_rowid().to_string()
+    };
+    let a = value(f.invoke("create_folder", json!({"parentId":parent,"name":"A"})).await).await;
+    let other = value(f.invoke("create_folder", json!({"parentId":parent,"name":"Other"})).await).await;
+    let folder_id: i64 = a.as_str().unwrap().parse().unwrap();
+    let model = f.dir.join("models/A/m.3mf");
+    std::fs::write(&model, b"model").unwrap();
+    let file_id = {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::test_insert_minimal_file(&c, model.to_str().unwrap(), Some(folder_id)).unwrap()
+    };
+    add_companion(&f, file_id);
+    for (cmd, args) in [
+        ("rename_folder", json!({"folderId":a,"name":"B"})),
+        ("move_folder", json!({"folderId":a,"newParentId":other})),
+    ] {
+        let r = f.invoke(cmd, args).await;
+        assert_eq!(r.status(), 409, "{cmd}");
+        assert_eq!(value(r).await["kind"], "has_companions", "{cmd}");
+    }
+    assert!(model.exists());
+}

@@ -63,7 +63,7 @@ fn core_error(e: fsops::Error) -> Box<Response> {
         match e {
             InvalidName | InvalidArguments => 400,
             NotFound => 404,
-            Protected => 409,
+            Protected | HasCompanions => 409,
             RestartRequired => 503,
             Internal => 500,
             NotStarted => 409,
@@ -434,6 +434,10 @@ fn execute(
                 .map_err(|_| err(503, "restart_required"))?
                 .reserve_empty_start(now)
                 .map_err(retry)?;
+            if snapshot.remaining() == 0 {
+                // Nothing emptiable (e.g. only entries with companions): no item limit, no backup, no token.
+                return Ok(json!({"token":"","remaining":0}));
+            }
             let cutoff_time = cutoff
                 .as_deref()
                 .map(chrono::DateTime::parse_from_rfc3339)
@@ -521,6 +525,8 @@ fn eligible(
     let mut count = 0;
     for id in ids {
         match ops.state(*id) {
+            // Blocked items only produce a refusal; they must not spend limits or backups.
+            Ok(_) if ops.has_companions(*id).map_err(core_error)? => (),
             Ok(row) => {
                 if trash {
                     if let Some(time) = row.deleted_at {

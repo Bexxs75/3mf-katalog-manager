@@ -25,6 +25,7 @@ pub enum Error {
     TrashConflict,
     PathUnresolvable,
     Protected,
+    HasCompanions,
     RestartRequired,
     NotStarted,
     Internal,
@@ -66,6 +67,8 @@ impl From<rusqlite::Error> for Error {
 mod journal;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod companion_gap_tests;
 pub use journal::*;
 mod operations;
 pub use operations::*;

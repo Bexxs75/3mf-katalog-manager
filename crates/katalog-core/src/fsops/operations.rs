@@ -68,6 +68,7 @@ impl TrashSnapshot {
 #[derive(Debug, Serialize)]
 pub struct TrashSummary {
     pub count: usize,
+    pub blocked_by_companions: usize,
     pub bytes: u64,
     pub max_deleted_at: Option<String>,
 }
@@ -107,10 +108,35 @@ fn available(c: &Connection, s: &FileState) -> Result<()> {
         Ok(())
     }
 }
-fn commit(c: &mut Connection, intent: &Intent) -> Result<()> {
+/// Counts every companion row, including soft-deleted ones: the web file
+/// operations move neither `<model>_extras` nor the paths in `companion_files`,
+/// so any row means a disk or path change would leave orphans or dead paths.
+pub(super) fn any_companions(c: &Connection, file_ids: &[i64]) -> Result<bool> {
+    let mut stmt = c.prepare("SELECT EXISTS(SELECT 1 FROM companion_files WHERE file_id=?1)")?;
+    for id in file_ids {
+        if stmt.query_row([id], |r| r.get::<_, bool>(0))? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+fn commit(c: &mut Connection, intent: &Intent, guard_companions: bool) -> Result<()> {
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     if read_state(&tx, intent.before.id)?.as_ref() != Some(&intent.before) {
         return Err(Error::Changed);
+    }
+    // A companion added after the early check must still stop a move that
+    // would strand it; the caller rolls the disk move back on this error.
+    // Recovery passes false because the disk side is already done, and Unlink
+    // is excluded because its file is already gone.
+    if guard_companions
+        && matches!(
+            intent.operation,
+            Operation::Rename | Operation::Move | Operation::Trash
+        )
+        && any_companions(&tx, &[intent.before.id])?
+    {
+        return Err(Error::HasCompanions);
     }
     if let Some(s) = &intent.after {
         available(&tx, s)?;
@@ -169,6 +195,18 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             Ok(s)
         }
     }
+    /// True when the model has any companion row; the web UI uses it to show
+    /// which trash entries can only be handled on the desktop.
+    pub fn has_companions(&mut self, id: i64) -> Result<bool> {
+        self.db.with_conn(|c| any_companions(c, &[id]))
+    }
+    fn reject_companions(&mut self, id: i64) -> Result<()> {
+        if self.db.with_conn(|c| any_companions(c, &[id]))? {
+            Err(Error::HasCompanions)
+        } else {
+            Ok(())
+        }
+    }
     fn check_source(&mut self, r: &Resolved, id: i64) -> Result<FileIdentity> {
         let identity = FileIdentity::read(r)?;
         if identity.dev != self.context.roots[r.root].identity.dev {
@@ -205,7 +243,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             after,
         };
         self.journal.add(intent.clone())?;
-        if let Err(e) = self.db.with_conn(|c| commit(c, &intent)) {
+        if let Err(e) = self.db.with_conn(|c| commit(c, &intent, false)) {
             self.journal.remove(&intent.op_id)?;
             return Err(e);
         }
@@ -283,7 +321,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             return self.transfer_failed(&intent, e);
         }
         self.journal.phase(&intent.op_id, Phase::Renamed)?;
-        if let Err(e) = self.db.with_conn(|c| commit(c, &intent)) {
+        if let Err(e) = self.db.with_conn(|c| commit(c, &intent, true)) {
             let rollback = if let Some(temp) = &temp {
                 rename_checked(&target, temp, identity)
                     .and_then(|()| rename_checked(temp, &source, identity))
@@ -316,6 +354,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if name == source.name {
             return Ok(());
         }
+        self.reject_companions(id)?;
         let path = std::path::Path::new(&before.path)
             .with_file_name(&name)
             .to_str()
@@ -354,10 +393,13 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if before.path == after.path {
             return self.db_only(before, Some(after));
         }
+        // Only a real disk move needs the check; database-only changes leave `_extras` where it is.
+        self.reject_companions(id)?;
         self.transfer(before, after, source, target, Operation::Move)
     }
     pub fn delete_file(&mut self, id: i64) -> Result<()> {
         let before = self.active(id)?;
+        self.reject_companions(id)?;
         let mut after = before.clone();
         after.deleted_at = Some(chrono::Utc::now().to_rfc3339());
         after.trash_path = None;
@@ -433,6 +475,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
     ) -> Result<DeleteOutcome> {
         let before = self.trashed(id)?;
+        self.reject_companions(id)?;
         if let Some(cutoff) = cutoff {
             let deleted = chrono::DateTime::parse_from_rfc3339(
                 before.deleted_at.as_deref().ok_or(Error::Changed)?,
@@ -488,7 +531,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             return Err(self.journal.block(&intent.op_id));
         }
         self.journal.phase(&intent.op_id, Phase::Unlinked)?;
-        if self.db.with_conn(|c| commit(c, &intent)).is_err() {
+        if self.db.with_conn(|c| commit(c, &intent, false)).is_err() {
             return Err(self.journal.block(&intent.op_id));
         }
         self.finish(&intent)?;
@@ -557,16 +600,25 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     pub fn empty_trash_summary(&mut self) -> Result<TrashSummary> {
         self.db.with_conn(|c| {
             let mut stmt = c.prepare(
-                "SELECT deleted_at,file_size_bytes FROM files WHERE deleted_at IS NOT NULL",
+                "SELECT deleted_at,file_size_bytes,EXISTS(SELECT 1 FROM companion_files WHERE file_id=files.id) FROM files WHERE deleted_at IS NOT NULL",
             )?;
-            let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+            let rows = stmt.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, bool>(2)?))
+            })?;
             let mut count = 0;
+            let mut blocked = 0;
             let mut bytes = 0u64;
             let mut max = None;
             for row in rows {
-                let (time, size) = row?;
+                let (time, size, has_companions) = row?;
                 let time =
                     chrono::DateTime::parse_from_rfc3339(&time).map_err(|_| Error::Changed)?;
+                // Entries with companions cannot be emptied here; counting them would
+                // spend limits and backups on results that are only refusals.
+                if has_companions {
+                    blocked += 1;
+                    continue;
+                }
                 count += 1;
                 bytes = bytes.saturating_add(size.max(0) as u64);
                 max = Some(
@@ -577,6 +629,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             }
             Ok(TrashSummary {
                 count,
+                blocked_by_companions: blocked,
                 bytes,
                 max_deleted_at: max.map(|t| t.to_rfc3339()),
             })
@@ -594,7 +647,8 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .map_err(|_| Error::InvalidArguments)?;
         self.db.with_conn(|c| {
             let mut stmt = c.prepare(
-                "SELECT id,deleted_at FROM files WHERE deleted_at IS NOT NULL ORDER BY id",
+                "SELECT id,deleted_at FROM files WHERE deleted_at IS NOT NULL
+                 AND NOT EXISTS(SELECT 1 FROM companion_files WHERE file_id=files.id) ORDER BY id",
             )?;
             let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
             let mut ids = Vec::new();
@@ -850,7 +904,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 if let Some(t) = target {
                     t.parent.sync()?;
                 }
-                self.db.with_conn(|c| commit(c, i))?;
+                self.db.with_conn(|c| commit(c, i, false))?;
                 self.journal.phase(&i.op_id, Phase::Committed)?;
                 Ok(true)
             }
@@ -860,7 +914,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                     target.as_ref().ok_or(Error::Changed)?,
                     identity,
                 )?;
-                self.db.with_conn(|c| commit(c, i))?;
+                self.db.with_conn(|c| commit(c, i, false))?;
                 self.journal.phase(&i.op_id, Phase::Committed)?;
                 Ok(true)
             }

@@ -169,27 +169,33 @@ pub const READ_COMMANDS: &[&str] = &[
 fn trash_summary(conn: &katalog_core::write::Connection) -> Result<Value, ReadError> {
     let internal = |_| ReadError::from("Zusammenfassung nicht verfügbar");
     let mut stmt = conn
-        .prepare("SELECT deleted_at,file_size_bytes FROM files WHERE deleted_at IS NOT NULL")
+        .prepare("SELECT deleted_at,file_size_bytes,EXISTS(SELECT 1 FROM companion_files WHERE file_id=files.id) FROM files WHERE deleted_at IS NOT NULL")
         .map_err(internal)?;
     let rows = stmt
         .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, bool>(2)?))
         })
         .map_err(internal)?;
     let mut count = 0usize;
+    let mut blocked = 0usize;
     let mut bytes = 0u64;
     let mut latest = None;
     for row in rows {
-        let (date, size) = row.map_err(internal)?;
+        let (date, size, has_companions) = row.map_err(internal)?;
         let parsed = chrono::DateTime::parse_from_rfc3339(&date)
             .map_err(|_| ReadError::from("Ungültiger Papierkorb-Zeitstempel"))?;
+        // Entries with companions cannot be emptied in the web version, so they are not offered.
+        if has_companions {
+            blocked += 1;
+            continue;
+        }
         count += 1;
         bytes = bytes.saturating_add(size.max(0) as u64);
         if latest.as_ref().is_none_or(|(current, _)| parsed > *current) {
             latest = Some((parsed, date));
         }
     }
-    Ok(json!({"count":count,"bytes":bytes,"maxDeletedAt":latest.map(|(_,date)|date)}))
+    Ok(json!({"count":count,"blockedByCompanions":blocked,"bytes":bytes,"maxDeletedAt":latest.map(|(_,date)|date)}))
 }
 fn folder_summary(
     conn: &katalog_core::write::Connection,
