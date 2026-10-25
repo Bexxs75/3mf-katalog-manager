@@ -54,9 +54,9 @@ suffix. Users of the former standard package receive it with their next in-app u
 
 | Platform | Download |
 |---|---|
-| Windows | `3MF-Katalog-Manager-0.16.0-Windows-x64.msi` |
-| macOS | `3MF-Katalog-Manager-0.16.0-macOS-universal.dmg` |
-| Linux | `3MF-Katalog-Manager-0.16.0-Linux-x86_64.AppImage` |
+| Windows | `3MF-Katalog-Manager-0.17.0-Windows-x64.msi` |
+| macOS | `3MF-Katalog-Manager-0.17.0-macOS-universal.dmg` |
+| Linux | `3MF-Katalog-Manager-0.17.0-Linux-x86_64.AppImage` |
 
 - **Linux:** download the `.AppImage` file, make it executable (right-click → Properties or
   `chmod +x`), and run it.
@@ -1211,9 +1211,9 @@ Die App steht für Linux, Windows und macOS zum Download bereit (siehe die
 
 | Plattform | Download |
 |---|---|
-| Windows | `3MF-Katalog-Manager-0.16.0-Windows-x64.msi` |
-| macOS | `3MF-Katalog-Manager-0.16.0-macOS-universal.dmg` |
-| Linux | `3MF-Katalog-Manager-0.16.0-Linux-x86_64.AppImage` |
+| Windows | `3MF-Katalog-Manager-0.17.0-Windows-x64.msi` |
+| macOS | `3MF-Katalog-Manager-0.17.0-macOS-universal.dmg` |
+| Linux | `3MF-Katalog-Manager-0.17.0-Linux-x86_64.AppImage` |
 
 - **Linux:** die `.AppImage`-Datei herunterladen, ausführbar machen (Rechtsklick → Eigenschaften
   oder `chmod +x`) und starten.
