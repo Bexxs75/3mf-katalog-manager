@@ -1641,3 +1641,213 @@ async fn auto_tag_block_commands_need_write_mode_and_a_session() {
     }
     assert_eq!(value(f.send("list_blocked_auto_tags", json!({})).await).await, json!([]));
 }
+
+mod request_id_tests {
+    use super::*;
+    const KEY: &str = "0123456789abcdef-key-one";
+    impl Fixture {
+        fn keyed(&self, cmd: &str, args: &Value, key: Option<&str>, session: &Session) -> Request {
+            let mut r = self.request(cmd, Body::from(args.to_string()), Some(session), Some("http://localhost:8080"), true);
+            if let Some(key) = key {
+                r.headers_mut().insert("x-request-id", key.parse().unwrap());
+            }
+            r
+        }
+        async fn send_keyed(&self, cmd: &str, args: Value, key: Option<&str>) -> Response {
+            router(self.app.clone()).oneshot(self.keyed(cmd, &args, key, &self.session)).await.unwrap()
+        }
+        async fn collections(&self) -> usize {
+            value(self.send("list_collections", json!({})).await).await.as_array().unwrap().len()
+        }
+    }
+    fn replayed(r: &Response) -> bool {
+        r.headers().get("x-idempotent-replay").is_some_and(|v| v == "1")
+    }
+
+    #[tokio::test]
+    async fn same_key_twice_creates_once_and_replays_identical_answer() {
+        let f = Fixture::new(true);
+        let first = f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        assert_eq!(first.status(), 200);
+        assert!(!replayed(&first));
+        let first = value(first).await;
+        let second = f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        assert_eq!(second.status(), 200);
+        assert!(replayed(&second));
+        assert_eq!(value(second).await, first);
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn counting_command_is_not_applied_twice() {
+        let f = Fixture::new(true);
+        let filament = value(f.send("add_filament_spool", json!({"spool":manager_spool()})).await).await;
+        let args = json!({"templateId":filament["id"],"count":2,"weight":750.0});
+        for _ in 0..2 {
+            assert_eq!(f.send_keyed("restock_filament_spool", args.clone(), Some(KEY)).await.status(), 200);
+        }
+        assert_eq!(value(f.send("list_filament_spools", json!({})).await).await.as_array().unwrap().len(), 3);
+    }
+    #[tokio::test]
+    async fn same_key_with_other_arguments_or_command_is_rejected() {
+        let f = Fixture::new(true);
+        f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        let r = f.send_keyed("create_collection", json!({"name":"two"}), Some(KEY)).await;
+        assert_eq!(r.status(), 422);
+        assert_eq!(value(r).await["kind"], "request_id_reused");
+        let r = f.send_keyed("add_printer", json!({"name":"one","holderName":"H"}), Some(KEY)).await;
+        assert_eq!(r.status(), 422);
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn different_keys_or_no_key_execute_each_time() {
+        let f = Fixture::new(true);
+        f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        f.send_keyed("create_collection", json!({"name":"one"}), Some("0123456789abcdef-key-two")).await;
+        assert_eq!(f.collections().await, 2);
+        for _ in 0..2 {
+            let r = f.send_keyed("create_collection", json!({"name":"one"}), None).await;
+            assert_eq!(r.status(), 200);
+            assert!(!replayed(&r));
+        }
+        assert_eq!(f.collections().await, 4);
+    }
+    #[tokio::test]
+    async fn malformed_or_repeated_header_is_rejected_before_any_work() {
+        let f = Fixture::new(true);
+        for key in ["short", "0123456789abcdef!!!!", &"a".repeat(65)] {
+            let r = f.send_keyed("create_collection", json!({"name":"one"}), Some(key)).await;
+            assert_eq!(r.status(), 400, "{key}");
+            assert_eq!(value(r).await["kind"], "request_id_invalid");
+        }
+        let mut req = f.keyed("create_collection", &json!({"name":"one"}), Some(KEY), &f.session);
+        req.headers_mut().append("x-request-id", "0123456789abcdef-key-two".parse().unwrap());
+        assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), 400);
+        assert_eq!(f.collections().await, 0);
+    }
+    #[tokio::test]
+    async fn access_checks_run_before_the_key_is_looked_at() {
+        let f = Fixture::new(true);
+        f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        let mut req = f.keyed("create_collection", &json!({"name":"one"}), Some(KEY), &f.session);
+        req.headers_mut().insert("x-csrf-token", "wrong".parse().unwrap());
+        let r = router(f.app.clone()).oneshot(req).await.unwrap();
+        assert_eq!(r.status(), 403);
+        assert!(!replayed(&r));
+    }
+    #[tokio::test]
+    async fn other_session_cannot_read_or_collide_with_a_foreign_key() {
+        let f = Fixture::new(true);
+        let first = value(f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await).await;
+        let second = new_session(&mut f.app.data.lock().unwrap(), "second", 100).unwrap();
+        let r = router(f.app.clone())
+            .oneshot(f.keyed("create_collection", &json!({"name":"one"}), Some(KEY), &second))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 200);
+        assert!(!replayed(&r));
+        assert_ne!(value(r).await["id"], first["id"]);
+        assert_eq!(f.collections().await, 2);
+    }
+    #[tokio::test]
+    async fn cancelled_request_finishes_in_background_and_retry_gets_that_result() {
+        let f = Fixture::new(true);
+        let conn = f.app.writer.as_ref().unwrap().conn.clone();
+        let holder = std::thread::spawn(move || {
+            let _g = conn.lock().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(600));
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let abandoned = tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            router(f.app.clone()).oneshot(f.keyed("create_collection", &json!({"name":"slow"}), Some(KEY), &f.session)),
+        )
+        .await;
+        assert!(abandoned.is_err(), "request must be cancelled while the database is busy");
+        let retry = f.send_keyed("create_collection", json!({"name":"slow"}), Some(KEY)).await;
+        assert_eq!(retry.status(), 200);
+        assert!(replayed(&retry));
+        holder.join().unwrap();
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn busy_database_answer_is_not_stored_so_the_retry_really_runs() {
+        let f = Fixture::new(true);
+        let conn = f.app.writer.as_ref().unwrap().conn.clone();
+        let holder = std::thread::spawn(move || {
+            let _g = conn.lock().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(5600));
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let busy = f.send_keyed("create_collection", json!({"name":"later"}), Some(KEY)).await;
+        assert_eq!(busy.status(), 503);
+        holder.join().unwrap();
+        let retry = f.send_keyed("create_collection", json!({"name":"later"}), Some(KEY)).await;
+        assert_eq!(retry.status(), 200);
+        assert!(!replayed(&retry));
+        assert_eq!(f.collections().await, 1);
+    }
+    fn holder(f: &Fixture, millis: u64) -> std::thread::JoinHandle<()> {
+        let conn = f.app.writer.as_ref().unwrap().conn.clone();
+        let (locked, ready) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let _g = conn.lock().unwrap();
+            locked.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(millis));
+        });
+        ready.recv().unwrap();
+        handle
+    }
+    #[tokio::test]
+    async fn concurrent_repeats_during_execution_run_the_work_once_and_share_the_answer() {
+        let f = Fixture::new(true);
+        let hold = holder(&f, 600);
+        let args = json!({"name":"shared"});
+        let (a, b, c) = tokio::join!(
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+        );
+        hold.join().unwrap();
+        let replays = [&a, &b, &c].iter().filter(|r| replayed(r)).count();
+        assert_eq!([a.status(), b.status(), c.status()], [200, 200, 200]);
+        assert_eq!(replays, 2);
+        let (a, b, c) = (value(a).await, value(b).await, value(c).await);
+        assert!(a == b && b == c);
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn server_error_while_others_wait_lets_exactly_one_waiter_run_again() {
+        let f = Fixture::new(true);
+        let hold = holder(&f, 5600);
+        let args = json!({"name":"again"});
+        let (a, b, c) = tokio::join!(
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+        );
+        hold.join().unwrap();
+        let mut outcomes: Vec<_> = [&a, &b, &c].iter().map(|r| (r.status().as_u16(), replayed(r))).collect();
+        outcomes.sort();
+        assert_eq!(outcomes, [(200, false), (200, true), (503, false)]);
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn answer_over_the_storage_limit_is_not_replayable_but_the_change_happened_once() {
+        use base64::Engine;
+        let f = Fixture::new(true);
+        let photo = base64::engine::general_purpose::STANDARD.encode({
+            let mut bytes = vec![1; 100_000];
+            bytes[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+            bytes
+        });
+        let args = json!({"fileId":f.id,"printedAt":"2026-10-16T00:00:00.000Z","photoBase64":photo});
+        let first = f.send_keyed("add_print_log_entry", args.clone(), Some(KEY)).await;
+        assert_eq!(first.status(), 200);
+        assert!(to_bytes(first.into_body(), 10 * 1024 * 1024).await.unwrap().len() > crate::idempotency::MAX_BODY_BYTES);
+        let second = f.send_keyed("add_print_log_entry", args, Some(KEY)).await;
+        assert_eq!(second.status(), 409);
+        assert_eq!(value(second).await["kind"], "request_id_result_unavailable");
+        let entries = value(f.send("list_print_log_entries", json!({"fileId":f.id})).await).await;
+        assert_eq!(entries.as_array().unwrap().len(), 1);
+    }
+}

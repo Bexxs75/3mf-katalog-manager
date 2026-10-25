@@ -101,6 +101,8 @@ pub(crate) struct WriteGate {
     pub conn: Arc<Mutex<Connection>>,
     pub admission: Arc<Semaphore>,
     pub worker: Arc<Semaphore>,
+    /// Lives with the gate because only write commands are replay-protected.
+    pub idem: Arc<crate::idempotency::Store>,
 }
 impl WriteGate {
     pub fn new(conn: Connection) -> Self {
@@ -108,6 +110,7 @@ impl WriteGate {
             conn: Arc::new(Mutex::new(conn)),
             admission: Arc::new(Semaphore::new(33)),
             worker: Arc::new(Semaphore::new(1)),
+            idem: Arc::default(),
         }
     }
 }
@@ -147,6 +150,8 @@ pub(crate) struct WriteAudit {
 pub(crate) struct WriteProgress {
     pub changes: AtomicU64,
     pub completed_items: AtomicU64,
+    /// Set when the answer came from the request-id store instead of a new execution.
+    pub replay: std::sync::atomic::AtomicBool,
     pub file_ids: Mutex<Vec<i64>>,
     pub audit: std::sync::OnceLock<WriteAudit>,
 }
@@ -220,7 +225,8 @@ impl WriteProgress {
         let detail = if audit.command == "empty_trash_start" {
             format!("count={} ids={:?}", ids.len(), &ids[..ids.len().min(10)])
         } else { format!("ids={:?}", *ids) };
-        format!("write time={} session={:08x} command={} status={} {} {}",audit.now,audit.session,audit.command,audit.status,metric,detail)
+        let replay=if self.replay.load(Ordering::Relaxed){" replay=1"}else{""};
+        format!("write time={} session={:08x} command={} status={} {} {}{}",audit.now,audit.session,audit.command,audit.status,metric,detail,replay)
     }
 }
 impl Drop for WriteProgress {
@@ -241,6 +247,14 @@ mod fileops_audit_tests {
         let progress=WriteProgress::default();progress.set_file_ids(&[12,34]);progress.completed_items.store(2,Ordering::Relaxed);
         let line=progress.line(&file);assert!(line.contains("ids=[12, 34]"));assert!(line.contains("completed_items=2"));assert!(!line.contains("changes="));
         assert!(!line.contains("secret-session"));assert!(!line.contains("private-model"));
+    }
+    #[test]
+    fn replayed_answer_is_marked_in_the_audit_line() {
+        let audit = WriteAudit { now: 1, session: 2, command: "create_collection", status: 200 };
+        let progress = WriteProgress::default();
+        assert!(!progress.line(&audit).contains("replay"));
+        progress.replay.store(true, Ordering::Relaxed);
+        assert!(progress.line(&audit).ends_with(" replay=1"));
     }
     #[test]
     fn empty_trash_start_logs_count_and_only_first_ten_ids() {

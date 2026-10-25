@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { login, logout, authenticationFailed, canEditMetadata, useCanEditMetadata, changePassword, getSession } from '../lib/webSession';
 import { WEB_READ_COMMANDS } from '../lib/readOnly';
-import { invoke } from '../lib/transport';
+import { invoke, lostAnswerRetry } from '../lib/transport';
 import { useCatalogStore } from './useCatalogStore';
 import { useCollections } from './useCollections';
 import { usePrintLog } from './usePrintLog';
@@ -47,7 +47,7 @@ const fetchMock = vi.fn(async (url: string, options?: RequestInit): Promise<Resp
 });
 beforeEach(async () => {
   vi.stubEnv('VITE_TARGET', 'web'); vi.stubGlobal('fetch', fetchMock); fetchMock.mockClear();
-  commands = []; failing = new Set(); writable = true; active = peak = 0; clearMetadataError();
+  lostAnswerRetry.delaysMs = []; commands = []; failing = new Set(); writable = true; active = peak = 0; clearMetadataError();
   await login('password');
 });
 afterEach(() => { cleanup(); authenticationFailed(401); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -151,14 +151,18 @@ it.each([429, 503])('retries %s once with Retry-After', async status => {
   await invoke('set_favorite', { id: '1', favorite: true });
   expect(fetchMock).toHaveBeenCalledTimes(3); // login + initial + retry
 });
-it('never retries an ambiguous network failure or a second busy response', async () => {
+it('repeats a lost answer with the same request id but never a second busy response', async () => {
+  lostAnswerRetry.delaysMs = [0];
   fetchMock.mockRejectedValueOnce(new TypeError('offline'));
-  await expect(invoke('create_collection')).rejects.toThrow('offline');
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  await invoke('create_collection');
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  const ids = fetchMock.mock.calls.slice(1).map(call => (call[1]?.headers as Record<string, string>)['X-Request-Id']);
+  expect(ids[0]).toBeTruthy();
+  expect(ids[1]).toBe(ids[0]);
   fetchMock.mockResolvedValueOnce(Response.json({ message: 'busy' }, { status: 503, headers: { 'Retry-After': '0' } }))
     .mockResolvedValueOnce(Response.json({ message: 'busy' }, { status: 503, headers: { 'Retry-After': '0' } }));
   await expect(invoke('create_collection')).rejects.toMatchObject({ message: 'busy' });
-  expect(fetchMock).toHaveBeenCalledTimes(4);
+  expect(fetchMock).toHaveBeenCalledTimes(5);
 });
 it('rejects oversized photos before reading and unsupported formats before sending', async () => {
   const read = vi.fn();

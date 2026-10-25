@@ -11,6 +11,7 @@ mod static_files;
 mod download;
 
 mod write;
+mod idempotency;
 pub use invoke::READ_COMMANDS;
 pub use write::WRITE_COMMANDS;
 

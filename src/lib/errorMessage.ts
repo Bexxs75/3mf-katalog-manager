@@ -24,6 +24,8 @@ const LEGACY_KEYS = {
   imageUploadUnsupported: 'imageUploadUnsupported',
   imageUploadUnreadable: 'imageUploadUnreadable',
   importActive: 'importActiveError',
+  // Server answer to a repeated write whose stored reply was too large to keep.
+  request_id_result_unavailable: 'requestResultLost',
 } as const satisfies Record<string, keyof Translations>;
 
 /** Dictionary key of a registered backend code: `folderNameEmpty` becomes `errFolderNameEmpty`. */

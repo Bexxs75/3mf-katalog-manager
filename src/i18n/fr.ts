@@ -419,6 +419,7 @@ export const fr: Translations = {
   impMenuFolderHint: "Les fichiers restent à leur emplacement ; les sous-dossiers sont ajoutés au catalogue.",
   impMenuNoMove: "Rien n’est déplacé ni copié.",
 
+  requestResultLost: 'L’action a été exécutée, mais la réponse s’est perdue. Veuillez actualiser l’affichage.',
   importActiveError: 'Importation en cours : veuillez patienter ou l’annuler.',
   pmConnected: "Connectée",
   pmConnectionError: "Erreur",

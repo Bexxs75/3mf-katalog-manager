@@ -7,6 +7,7 @@ import { UiDensityProvider } from '../hooks/UiDensityContext';
 vi.mock('./CatalogWorkspace', () => ({ CatalogWorkspace: () => null }));
 import { WebBackgroundSnapshots } from './WebBackgroundSnapshots';
 import { authenticationFailed, login } from '../lib/webSession';
+import { lostAnswerRetry } from '../lib/transport';
 import { useCatalogStore } from '../hooks/useCatalogStore';
 import { makeModelFile, makeModelFileSummary } from '../test/factories';
 vi.mock('./BackgroundSnapshotRenderer', () => ({ BackgroundSnapshotRenderer: (p: { fileId: string; onSnapshotCaptured: (id: string, b64: string) => void; onError: (id: string) => void; onContextLost: (id: string) => void }) => <div data-testid="renderer"><button onClick={() => p.onSnapshotCaptured(p.fileId, 'cG5n')}>{p.fileId}</button><button onClick={() => p.onError(p.fileId)}>error</button><button onClick={() => p.onContextLost(p.fileId)}>lost</button></div> }));
@@ -23,7 +24,7 @@ function Harness() {
 const flush = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0); }); };
 const next = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(250); }); };
 beforeEach(async () => {
-  vi.useFakeTimers(); writable = true; status = 200; saves = []; hold = false; release = undefined; noWebGL = false;
+  vi.useFakeTimers(); lostAnswerRetry.delaysMs = []; writable = true; status = 200; saves = []; hold = false; release = undefined; noWebGL = false;
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal('fetch', vi.fn(async (url: string, opts?: RequestInit) => {

@@ -426,6 +426,7 @@ export interface Translations {
   impMenuFolderHint: string;
   impMenuNoMove: string;
 
+  requestResultLost: string;
   importActiveError: string;
   pmConnected: string;
   pmConnectionError: string;

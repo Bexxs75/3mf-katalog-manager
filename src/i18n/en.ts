@@ -419,6 +419,7 @@ export const en: Translations = {
   impMenuFolderHint: "Files stay in their current location; subfolders are added as catalog folders.",
   impMenuNoMove: "Nothing is moved or copied.",
 
+  requestResultLost: 'The action was carried out, but the reply was lost. Please refresh the view.',
   importActiveError: 'Import in progress – please wait or cancel it.',
   pmConnected: "Connected",
   pmConnectionError: "Error",

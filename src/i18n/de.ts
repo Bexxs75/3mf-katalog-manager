@@ -419,6 +419,7 @@ export const de: Translations = {
   impMenuFolderHint: "Dateien bleiben an ihrem Ort, Unterordner werden als Katalogordner übernommen.",
   impMenuNoMove: "Nichts wird verschoben oder kopiert.",
 
+  requestResultLost: 'Die Aktion wurde ausgeführt, die Antwort ging aber verloren. Bitte die Ansicht aktualisieren.',
   importActiveError: 'Import läuft – bitte warten oder abbrechen.',
   pmConnected: "Verbunden",
   pmConnectionError: "Fehler",

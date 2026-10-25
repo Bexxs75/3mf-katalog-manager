@@ -419,6 +419,7 @@ export const es: Translations = {
   impMenuFolderHint: "Los archivos permanecen en su ubicación; las subcarpetas se añaden al catálogo.",
   impMenuNoMove: "No se mueve ni copia nada.",
 
+  requestResultLost: 'La acción se realizó, pero se perdió la respuesta. Actualiza la vista.',
   importActiveError: 'Importación en curso: espera o cancélala.',
   pmConnected: "Conectada",
   pmConnectionError: "Error",
