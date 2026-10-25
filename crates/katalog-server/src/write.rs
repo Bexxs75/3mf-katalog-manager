@@ -76,6 +76,7 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "load_spool",
     "unload_spool",
     "set_render_snapshot",
+    "set_auto_tagging",
 ];
 pub(crate) fn image_command(command: &str) -> bool {
     matches!(
@@ -462,6 +463,10 @@ pub(crate) fn execute(
             c,
             id(a, "fileId")?,
             text(a, "status")?,
+        )),
+        "set_auto_tagging" => encode(web::set_auto_tagging(
+            c,
+            a.get("enabled").and_then(Value::as_bool).ok_or_else(bad)?,
         )),
         "mark_file_viewed" => encode(web::mark_file_viewed(c, id(a, "fileId")?)),
         "add_tag" => encode(web::add_tag(c, id(a, "fileId")?, text(a, "tag")?)),

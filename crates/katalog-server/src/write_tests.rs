@@ -136,8 +136,8 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 48);
-    assert_eq!(crate::READ_COMMANDS.len(), 24);
+    assert_eq!(WRITE_COMMANDS.len(), 49);
+    assert_eq!(crate::READ_COMMANDS.len(), 25);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
     }

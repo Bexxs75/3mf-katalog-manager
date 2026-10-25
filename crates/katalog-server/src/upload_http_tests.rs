@@ -1111,3 +1111,50 @@ async fn catalog_removal_committed_with_journal_failure_is_healed_on_restart() {
     assert!(entries[0].result.is_none());
     assert_eq!(std::fs::read(f.dir.join("models/uploads/recovery.obj")).unwrap(),MODEL);
 }
+
+async fn import_upload(f: &Fixture, name: &str, bytes: &[u8]) -> Value {
+    let upload = f.upload(name, bytes).await;
+    let start = f
+        .invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]}))
+        .await;
+    assert_eq!(start.status(), 200);
+    let job = value(start).await["jobId"].clone();
+    let result = wait_result(f, &job).await;
+    assert_eq!(result["files"][0]["state"], "imported", "{result}");
+    result
+}
+async fn tag_names(f: &Fixture) -> Vec<String> {
+    let r = f.invoke("list_all_file_tags", json!({})).await;
+    assert_eq!(r.status(), 200);
+    value(r).await.as_object().unwrap().values().flat_map(|tags| tags.as_array().unwrap().iter().map(|t| t.as_str().unwrap().to_owned())).collect()
+}
+
+#[tokio::test]
+async fn upload_import_assigns_automatic_tags_only_while_the_switch_is_on() {
+    let f = Fixture::new(true);
+    let on = |s: &str| s == "kabelhalter";
+    // Default: the switch is on and the file name yields an automatic tag.
+    let r = f.invoke("get_auto_tagging", json!({})).await;
+    assert_eq!(value(r).await, json!(true));
+    import_upload(&f, "kabelhalter.obj", MODEL).await;
+    assert!(tag_names(&f).await.iter().any(|t| on(t)), "automatic tag expected while on");
+    // Switched off through the web command: the next upload gets no automatic tags,
+    // the tag that already exists stays.
+    let r = f.invoke("set_auto_tagging", json!({"enabled":false})).await;
+    assert_eq!(r.status(), 200);
+    let r = f.invoke("get_auto_tagging", json!({})).await;
+    assert_eq!(value(r).await, json!(false));
+    import_upload(&f, "schraubenschluessel.obj", b"v 0 0 0\nv 2 0 0\nv 0 2 0\nf 1 2 3\n").await;
+    let tags = tag_names(&f).await;
+    assert!(tags.iter().any(|t| on(t)), "existing tags are never removed");
+    assert!(!tags.iter().any(|t| t == "schraubenschluessel"), "no automatic tag while off: {tags:?}");
+    // Back on: automatic tags again.
+    assert_eq!(f.invoke("set_auto_tagging", json!({"enabled":true})).await.status(), 200);
+    import_upload(&f, "werkzeughalter.obj", b"v 0 0 0\nv 3 0 0\nv 0 3 0\nf 1 2 3\n").await;
+    assert!(tag_names(&f).await.iter().any(|t| t == "werkzeughalter"));
+    // Strict argument: anything but a boolean is refused and changes nothing.
+    assert_eq!(f.invoke("set_auto_tagging", json!({"enabled":"0"})).await.status(), 400);
+    assert_eq!(f.invoke("set_auto_tagging", json!({})).await.status(), 400);
+    let r = f.invoke("get_auto_tagging", json!({})).await;
+    assert_eq!(value(r).await, json!(true));
+}

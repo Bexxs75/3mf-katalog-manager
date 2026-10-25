@@ -25,7 +25,7 @@ import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
 
 type SettingsTab = 'general' | 'slicer' | 'catalog' | 'info';
-const TABS: readonly SettingsTab[] = import.meta.env.VITE_TARGET === 'web' ? ['general', 'info'] : ['general', 'slicer', 'catalog', 'info'];
+const TABS: readonly SettingsTab[] = import.meta.env.VITE_TARGET === 'web' ? ['general', 'catalog', 'info'] : ['general', 'slicer', 'catalog', 'info'];
 
 export interface SettingsPanelProps {
   /** Lay the panel over the main area instead of taking the detail panel's place in the layout. */
@@ -320,6 +320,9 @@ export function SettingsPanel({
               )}
             </>
           )}
+
+          {/* The web catalog tab holds only the switch: cleanup, backup and the block list need the desktop. */}
+          {import.meta.env.VITE_TARGET === 'web' && activeSettingsTab === 'catalog' && <AutoTaggingSetting />}
 
           {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'catalog' && (
             <>

@@ -186,6 +186,11 @@ pub fn list_files_by_ids(conn: &Connection, ids: Vec<String>) -> ReadResult<Vec<
     Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 
+/// Whether tags are assigned automatically at all (on unless the stored value is "0").
+pub fn get_auto_tagging(conn: &Connection) -> ReadResult<bool> {
+    db::blocked_tags::auto_tagging_enabled(conn).map_err(ReadError::from)
+}
+
 pub fn list_tag_counts(conn: &Connection) -> ReadResult<Vec<TagCountDto>> {
     let tags = db::list_tag_counts(conn).map_err(ReadError::from)?;
     Ok(tags

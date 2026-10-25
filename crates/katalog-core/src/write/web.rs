@@ -129,6 +129,14 @@ pub fn remove_tag(c: &mut Connection, id: i64, tag: &str) -> WriteResult<Outcome
         Ok(outcome((), changes))
     })
 }
+/// The switch for automatic tags. Only the switch itself is written: existing tags,
+/// manual tags and the block list stay untouched, and no file is read or moved.
+pub fn set_auto_tagging(c: &mut Connection, enabled: bool) -> WriteResult<Outcome<()>> {
+    transaction(c, |c| {
+        db::blocked_tags::set_auto_tagging_enabled(c, enabled)?;
+        Ok(outcome((), c.changes()))
+    })
+}
 pub fn set_source_url(
     c: &mut Connection,
     id: i64,

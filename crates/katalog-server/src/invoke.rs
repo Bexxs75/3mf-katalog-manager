@@ -162,6 +162,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "get_last_printer_for_file",
     "check_filament",
     "get_filament_spool_image",
+    "get_auto_tagging",
 ];
 
 // New summaries intentionally expose no server paths or SQLite error text.
@@ -380,6 +381,7 @@ pub async fn invoke(
             "list_all_file_tags" => encode(read::list_all_file_tags(&conn)?),
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
             "list_tag_counts" => encode(read::list_tag_counts(&conn)?),
+            "get_auto_tagging" => encode(read::get_auto_tagging(&conn)?),
             "list_print_log_entries" => {
                 encode(read::list_print_log_entries(&conn, file_id.unwrap())?)
             }

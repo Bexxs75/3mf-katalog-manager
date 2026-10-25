@@ -5,10 +5,15 @@ import { ErrorText } from '../diagnostics/ErrorText';
 import { ToggleSwitch } from './ToggleSwitch';
 import { BlockedAutoTagsSettings } from './BlockedAutoTagsSettings';
 import * as api from '../lib/api/autoTags';
+import { isReadOnly } from '../lib/readOnly';
+import { useCanEditMetadata } from '../lib/webSession';
 
 /** Settings switch: whether the app assigns tags automatically at all. */
 export function AutoTaggingSetting() {
   const t = useT();
+  // The web offers only the switch: the block list commands exist on the desktop only.
+  const web = isReadOnly();
+  const canEdit = useCanEditMetadata();
   const [enabled, setEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -34,10 +39,10 @@ export function AutoTaggingSetting() {
 
   return (
     <>
-      <div className="mt-4">
+      <div className={web ? undefined : 'mt-4'}>
         <div className="flex items-center justify-between gap-2 text-small">
           <span className="font-semibold">{t('autoTaggingLabel')}</span>
-          <ToggleSwitch checked={enabled} label={t('autoTaggingLabel')} disabled={busy} onChange={next => void change(next)} />
+          <ToggleSwitch checked={enabled} label={t('autoTaggingLabel')} disabled={busy || !canEdit} onChange={next => void change(next)} />
         </div>
         <p className="mt-1 text-small text-[var(--ink-2)]">{t('autoTaggingHint')}</p>
         {error && (
@@ -47,10 +52,12 @@ export function AutoTaggingSetting() {
         )}
       </div>
       {/* Dimmed, not disabled: the list still applies if the switch is turned back on, and blocks can still be lifted. */}
-      <div className={enabled ? undefined : 'opacity-[0.45]'}>
-        <BlockedAutoTagsSettings />
-        {!enabled && <p className="mt-1 text-caption text-[var(--ink-3)]">{t('autoTaggingBlockedNote')}</p>}
-      </div>
+      {!web && (
+        <div className={enabled ? undefined : 'opacity-[0.45]'}>
+          <BlockedAutoTagsSettings />
+          {!enabled && <p className="mt-1 text-caption text-[var(--ink-3)]">{t('autoTaggingBlockedNote')}</p>}
+        </div>
+      )}
     </>
   );
 }

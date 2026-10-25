@@ -15,6 +15,7 @@ export const WEB_READ_COMMANDS = [
   'get_last_printer_for_file',
   'check_filament',
   'get_filament_spool_image',
+  'get_auto_tagging',
 
 ] as const;
 
@@ -53,5 +54,6 @@ export const WEB_WRITE_COMMANDS = [
   'load_spool',
   'unload_spool',
   'set_render_snapshot',
+  'set_auto_tagging',
 
 ] as const;

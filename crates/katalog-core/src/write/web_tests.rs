@@ -463,3 +463,25 @@ fn snapshot_limits_formats_and_rollback() {
         max
     );
 }
+
+#[test]
+fn web_auto_tagging_switch_defaults_on_and_only_writes_the_setting() {
+    let mut c = db::connect_in_memory().unwrap();
+    assert!(read::get_auto_tagging(&c).unwrap());
+    let id = db::test_insert_minimal_file(&c, "/a.3mf", None).unwrap();
+    add_tag(&mut c, id, "von-hand").unwrap();
+    let blocked_before = db::blocked_tags::list_blocked_auto_tags(&c).unwrap();
+    set_auto_tagging(&mut c, false).unwrap();
+    assert!(!read::get_auto_tagging(&c).unwrap());
+    // Only the value "0" means off, the same wire format the desktop writes.
+    assert_eq!(
+        db::printer_link::get_setting(&c, db::blocked_tags::SETTING_AUTO_TAGGING).unwrap().as_deref(),
+        Some("0")
+    );
+    // Existing tags, manual tagging and the block list stay as they were.
+    assert_eq!(db::get_file(&c, id).unwrap().unwrap().tags, vec!["von-hand".to_string()]);
+    add_tag(&mut c, id, "noch-einer").unwrap();
+    assert_eq!(db::blocked_tags::list_blocked_auto_tags(&c).unwrap(), blocked_before);
+    set_auto_tagging(&mut c, true).unwrap();
+    assert!(read::get_auto_tagging(&c).unwrap());
+}
