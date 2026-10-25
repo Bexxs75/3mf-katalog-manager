@@ -329,10 +329,16 @@ fn disposition(name: &str) -> String {
     format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")
 }
 
-struct DownloadBody {
+pub(crate) struct DownloadBody {
     file: tokio::fs::File,
     remaining: u64,
     permit: Option<OwnedSemaphorePermit>,
+}
+impl DownloadBody {
+    /// Streams exactly `remaining` bytes and keeps `permit` until the stream ends or is dropped.
+    pub(crate) fn new(file: tokio::fs::File, remaining: u64, permit: OwnedSemaphorePermit) -> Self {
+        Self { file, remaining, permit: Some(permit) }
+    }
 }
 impl hyper::body::Body for DownloadBody {
     type Data = Bytes;

@@ -803,6 +803,8 @@ export const es: Translations = {
   rescanMetadataSuccess: 'Metadatos actualizados.',
   catalogBackupTitle: 'Copia de seguridad del catálogo',
   exportCatalogButton: 'Exportar catálogo',
+  catalogBackupWebHint: "Contiene la base de datos del catálogo y los ajustes, sin archivos de modelo, pero con todos los metadatos y las direcciones de las impresoras; guarda el archivo de forma segura. Restaurarla en el escritorio solo funciona en Linux o macOS con las mismas rutas de archivo, con la papelera web vacía, una base de datos de hasta 256 MiB y una versión del servidor no más reciente que la app de escritorio. En el escritorio de Windows no es posible.",
+  catalogBackupWebFailureHint: "Si la descarga falla, hay otra copia en curso, acabas de crear una, el servidor tiene poco espacio en disco o tu sesión ha caducado. Vuelve a iniciar sesión si hace falta, espera un minuto e inténtalo de nuevo.",
   importCatalogButton: 'Importar catálogo',
   importCatalogConfirmQuestion: 'Esto reemplaza todo tu catálogo actual. ¿Continuar?',
   importCatalogConfirmYes: 'Sí, reemplazar',

@@ -803,6 +803,8 @@ export const fr: Translations = {
   rescanMetadataSuccess: 'Métadonnées mises à jour.',
   catalogBackupTitle: 'Sauvegarde du catalogue',
   exportCatalogButton: 'Exporter le catalogue',
+  catalogBackupWebHint: "Contient la base de données du catalogue et les réglages, sans fichiers de modèles, mais toutes les métadonnées et les adresses des imprimantes ; conserve le fichier en lieu sûr. La restauration sur le bureau ne fonctionne que sous Linux ou macOS avec les mêmes chemins de fichiers, avec une corbeille web vide, une base de données de 256 Mio au plus et une version du serveur qui n'est pas plus récente que l'application de bureau. Elle est impossible sur un bureau Windows.",
+  catalogBackupWebFailureHint: "Si le téléchargement échoue, une autre sauvegarde est en cours, tu viens d'en créer une, le serveur manque d'espace disque ou ta session a expiré. Reconnecte-toi si besoin, attends une minute et réessaie.",
   importCatalogButton: 'Importer le catalogue',
   importCatalogConfirmQuestion: 'Cela remplace tout votre catalogue actuel. Continuer ?',
   importCatalogConfirmYes: 'Oui, remplacer',

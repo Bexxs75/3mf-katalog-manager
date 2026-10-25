@@ -166,10 +166,12 @@ it('offers browser display preferences and read-only information without desktop
   await click(screen.getByRole('button', { name: de.settingsTitle }));
   expect(screen.getByRole('button', { name: de.pmOpen })).toBeInTheDocument();
   for (const label of [de.settingsTabSlicer, de.singleKeyShortcutsTitle]) expect(screen.queryByText(label)).toBeNull();
-  // The web catalog tab holds only the automatic-tags switch: no cleanup, backup or block list.
+  // The web catalog tab holds the automatic-tags switch and the backup download: no cleanup or import.
   await click(screen.getByRole('tab', { name: de.settingsTabCatalog }));
   expect(await screen.findByRole('switch', { name: de.autoTaggingLabel })).toBeInTheDocument();
-  for (const label of [de.catalogCleanupTitle, de.catalogBackupTitle]) expect(screen.queryByText(label)).toBeNull();
+  expect(screen.queryByText(de.catalogCleanupTitle)).toBeNull();
+  expect(screen.queryByText(de.importCatalogButton)).toBeNull();
+  expect(screen.getByRole('link', { name: de.exportCatalogButton })).toHaveAttribute('href', '/api/backup/export');
   await click(screen.getByRole('tab', { name: de.settingsTabGeneral }));
   await click(screen.getByRole('button', { name: de.themeDark }));
   expect(document.documentElement.dataset.app).toBe('dark');

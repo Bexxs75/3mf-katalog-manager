@@ -20,6 +20,7 @@ import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
 import { LinuxMenuSettings } from './LinuxMenuSettings';
 import { InfoFolders } from '../diagnostics/InfoFolders';
 import type { AppError } from '../lib/errors';
+import { WebCatalogBackup } from './WebCatalogBackup';
 import { ErrorText } from '../diagnostics/ErrorText';
 import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
@@ -321,8 +322,13 @@ export function SettingsPanel({
             </>
           )}
 
-          {/* The web catalog tab holds the switch and the block list: cleanup and backup need the desktop. */}
-          {import.meta.env.VITE_TARGET === 'web' && activeSettingsTab === 'catalog' && <AutoTaggingSetting />}
+          {/* The web catalog tab holds the switch, the block list and the backup download: cleanup and import need the desktop. */}
+          {import.meta.env.VITE_TARGET === 'web' && activeSettingsTab === 'catalog' && (
+            <>
+              <AutoTaggingSetting />
+              <WebCatalogBackup />
+            </>
+          )}
 
           {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'catalog' && (
             <>

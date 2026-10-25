@@ -803,6 +803,8 @@ export const de: Translations = {
   rescanMetadataSuccess: 'Metadaten aktualisiert.',
   catalogBackupTitle: 'Katalog-Backup',
   exportCatalogButton: 'Katalog exportieren',
+  catalogBackupWebHint: "Enthält die Katalog-Datenbank und die Einstellungen, keine Modelldateien, dafür alle Metadaten und Druckeradressen; bewahre die Datei sicher auf. Die Wiederherstellung am Desktop geht nur unter Linux oder macOS mit denselben Dateipfaden, bei leerem Web-Papierkorb, einer Datenbank bis 256 MiB und einer Server-Version, die nicht neuer ist als die Desktop-App. Am Windows-Desktop ist sie nicht möglich.",
+  catalogBackupWebFailureHint: "Schlägt der Download fehl, läuft gerade eine andere Sicherung, du hast vor Kurzem eine erstellt, auf dem Server ist zu wenig Speicherplatz frei oder deine Sitzung ist abgelaufen. Melde dich dann bei Bedarf neu an, warte eine Minute und versuche es erneut.",
   importCatalogButton: 'Katalog importieren',
   importCatalogConfirmQuestion: 'Ersetzt den kompletten aktuellen Katalog. Fortfahren?',
   importCatalogConfirmYes: 'Ja, ersetzen',

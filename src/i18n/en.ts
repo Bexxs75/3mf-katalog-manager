@@ -803,6 +803,8 @@ export const en: Translations = {
   rescanMetadataSuccess: 'Metadata updated.',
   catalogBackupTitle: 'Catalog Backup',
   exportCatalogButton: 'Export catalog',
+  catalogBackupWebHint: "Contains the catalog database and the settings, no model files, but all metadata and printer addresses; keep the file safe. Restoring it on the desktop only works on Linux or macOS with the same file paths, with an empty web trash, a database of up to 256 MiB and a server version that is not newer than the desktop app. It is not possible on a Windows desktop.",
+  catalogBackupWebFailureHint: "If the download fails, another backup is running, you created one a moment ago, the server is low on disk space or your session has expired. Sign in again if needed, wait a minute and try again.",
   importCatalogButton: 'Import catalog',
   importCatalogConfirmQuestion: 'This replaces your entire current catalog. Continue?',
   importCatalogConfirmYes: 'Yes, replace',

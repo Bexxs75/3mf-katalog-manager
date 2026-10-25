@@ -12,6 +12,7 @@ pub mod tagging;
 pub mod filament_check;
 pub mod printer_link;
 pub mod backup;
+pub mod catalog_export;
 
 #[cfg(test)]
 pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {

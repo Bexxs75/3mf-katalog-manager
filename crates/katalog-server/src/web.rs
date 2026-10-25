@@ -296,6 +296,7 @@ struct App {
     changes: Arc<tokio::sync::Mutex<()>>,
     geometry: Arc<GeometryGate>,
     downloads: Arc<tokio::sync::Semaphore>,
+    export: crate::export::Runtime,
 }
 pub(crate) fn error(status: u16, message: &str) -> Response {
     (
@@ -365,6 +366,7 @@ pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
 }
 fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result<Router,String> {
     let uploads = uploads::initialize(&config.config)?;
+    crate::export::sweep_stale(&config.config.db_path);
     let fileops = if let Some(writer) = &writer {
         crate::fileops_startup::prepare(&config.config, writer.conn.clone(), uploads.as_ref().map(|r| r.store.clone()))?.map(|ops| Arc::new(fileops::Runtime::new(ops)))
     } else { crate::fileops_startup::check_readonly(&config.config)?; None };
@@ -385,6 +387,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result
         changes: Arc::new(tokio::sync::Mutex::new(())),
         geometry: Arc::new(GeometryGate::default()),
         downloads: Arc::new(tokio::sync::Semaphore::new(4)),
+        export: crate::export::Runtime::new(),
     });
     Ok(router(app))
 }
@@ -534,6 +537,12 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
                 error(403, "Origin nicht zugelassen")
             } else if upload {
                 tokio::time::timeout(std::time::Duration::from_secs(3600), next.run(req)).await.unwrap_or_else(|_| error(408,"upload_timeout"))
+            } else if req.uri().path() == "/api/backup/export" {
+                // Preparing the archive scales with the catalog size; only the
+                // response head is bounded here, the body streams afterwards.
+                tokio::time::timeout(std::time::Duration::from_secs(600), limited(req, next, limit))
+                    .await
+                    .unwrap_or_else(|_| error(408, "Zeitlimit für Anfrage überschritten"))
             } else if req.uri().path() == "/api/invoke/get_model_geometry" {
                 // Geometry processing has its own bounded admission; its body
                 // still has the same 15-second read deadline as other routes.
@@ -712,7 +721,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     if path == "/api" || path.starts_with("/api/") {
         if !matches!(
             path.as_str(),
-            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events"
+            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events" | "/api/backup/export"
         ) && !path.starts_with("/api/invoke/")
             && download_id.is_none()
         {
@@ -744,10 +753,12 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         }
         if method!=Method::POST{return error(405,"method")}
     }
-    if let Some(id) = download_id {
+    if download_id.is_some() || path == "/api/backup/export" {
         if method != Method::GET {
             return error(405, "Methode nicht erlaubt");
         }
+        // Same rule for both file-like routes: a session is required unless the
+        // server runs in the loopback-only no-login mode.
         if !app.config.allow_no_auth {
             if current.is_none() {
                 return error(401, "Anmeldung erforderlich");
@@ -763,6 +774,12 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 return (StatusCode::FORBIDDEN, Json(json!({"message":"Bitte zuerst ein neues Passwort setzen","expected":true,"code":"password_change_required"}))).into_response();
             }
         }
+        if path == "/api/backup/export" {
+            let key = current.as_ref().map_or(peer.clone(), |s| s.token.clone());
+            let session = current.as_ref().map_or(0, |s| crate::write::session_fingerprint(&s.token));
+            return crate::export::export(&app.export, app.config.db_path.clone(), app.writer.as_ref().map(|w| w.conn.clone()), &key, session, app.clock.monotonic(), now).await;
+        }
+        let id = download_id.unwrap();
         return crate::download::download(
             app.config.db_path.clone(),
             app.config.roots.clone(),

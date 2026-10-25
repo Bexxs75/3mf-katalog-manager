@@ -836,6 +836,8 @@ export interface Translations {
   rescanMetadataSuccess: string;
   catalogBackupTitle: string;
   exportCatalogButton: string;
+  catalogBackupWebHint: string;
+  catalogBackupWebFailureHint: string;
   importCatalogButton: string;
   importCatalogConfirmQuestion: string;
   importCatalogConfirmYes: string;
