@@ -13,6 +13,12 @@ import {
 } from '../lib/moveUndo';
 import type { ModelFile, Folder, Collection } from '../types';
 
+/** The toast of a failed action. The web also keeps the message as `to`, as it always did. */
+function failureToast(from: string, e: unknown): MoveToastState {
+  const failure = toAppError(e);
+  return { from, to: isReadOnly() ? failure.message : '', error: true, failure };
+}
+
 interface Refreshers {
   refreshFolders: () => void;
   refreshFiles: () => void;
@@ -123,8 +129,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         .catch((e) => {
           if (!isReadOnly()) console.error('[folders] creating failed:', e);
           // Show the error next to the folder tree; catalogBackupError would be invisible without an open panel.
-          const err = toAppError(e);
-          setMoveToast({ from: name, to: '', error: true, failure: err });
+          setMoveToast(failureToast(name, e));
         }),
     [refreshFolders],
   );
@@ -144,8 +149,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         dismissDragDropTip();
         setMoveToast({ from: label, to: target.name });
       } catch (e) {
-        const err = toAppError(e);
-        setMoveToast({ from: label, to: err.message, error: true, unexpected: err.unexpected });
+        setMoveToast(failureToast(label, e));
       }
       return;
     }
@@ -164,8 +168,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       setMoveToast({ from: names[0], to: target.path, batch: { names, total: ids.length, summary }, canUndo: items.length > 0 });
     } catch (e) {
       console.error('[folders] moving files failed:', e);
-      const err = toAppError(e);
-      setMoveToast({ from: nameOf(ids[0]), to: '', error: true, failure: err });
+      setMoveToast(failureToast(nameOf(ids[0]), e));
     }
   }, [folders, models, recordUndo, refreshFolders, refreshFiles]);
 
@@ -243,8 +246,8 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
           dismissDragDropTip();
           setMoveToast({ from: file.name, to: target.name, collection: already ? 'already' : 'added' });
         }).catch(e => {
-          if (isReadOnly()) { setMoveToast({ from: file.name, to: folderOpsMessages().failed, error: true, unexpected: false }); return; }
-          setMoveToast({ from: file.name, to: '', error: true, failure: toAppError(e) });
+          if (isReadOnly()) { setMoveToast({ from: file.name, to: folderOpsMessages().failed, error: true }); return; }
+          setMoveToast(failureToast(file.name, e));
         });
         return;
       }
@@ -292,8 +295,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         })
         .catch((e) => {
           if (!isReadOnly()) console.error('[folders] moving folder failed:', e);
-          const err = toAppError(e);
-          setMoveToast({ from: folder.name, to: '', error: true, failure: err });
+          setMoveToast(failureToast(folder.name, e));
         });
     };
     document.addEventListener('mouseup', handleMouseUp);
