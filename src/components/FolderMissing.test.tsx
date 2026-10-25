@@ -48,7 +48,7 @@ describe('folder tree: folders that are gone from disk', () => {
   });
 });
 
-const emptyScan: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [] };
+const emptyScan: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [], trashBlockedCount: 0 };
 const gone: DiskScan = {
   ...emptyScan,
   missingFiles: [{ path: '/m/loose.stl', relativePath: 'loose.stl', root: '/m', id: '5' }],

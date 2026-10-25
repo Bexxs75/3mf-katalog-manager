@@ -2,14 +2,18 @@
 export type GeometryErrorCode = 'notFound' | 'unreadable' | 'tooLarge' | 'unsupported';
 
 export interface AppError {
+  /** A registered error code, a legacy code or, for unexpected errors, technical text. */
   message: string;
   code?: GeometryErrorCode;
+  /** Values for the placeholders of the code's translated text (names, paths, numbers). */
+  params?: string[];
   unexpected: boolean;
 }
 
 interface CmdError {
   message: string;
   code?: GeometryErrorCode;
+  params?: unknown;
   expected: boolean;
 }
 
@@ -43,6 +47,9 @@ export function toAppError(e: unknown): AppError {
   const result: AppError = { message: messageOf(e), unexpected: isCmdError(e) ? !e.expected : true };
   if (isCmdError(e) && ['notFound', 'unreadable', 'tooLarge', 'unsupported'].includes(e.code ?? '')) {
     result.code = e.code;
+  }
+  if (isCmdError(e) && Array.isArray(e.params) && e.params.every((p) => typeof p === 'string') && e.params.length > 0) {
+    result.params = e.params as string[];
   }
   return result;
 }

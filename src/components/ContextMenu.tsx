@@ -9,7 +9,9 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { splitFileName } from '../lib/fileName';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
+import { useFormatError } from '../diagnostics/useFormatError';
+import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
 interface Props {
   x: number;
@@ -50,11 +52,17 @@ function ModelContextMenu({
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
   const t = useT();
+  const formatError = useFormatError();
   const [view, setView] = useState<View>('menu');
   const [baseNameDraft, setBaseNameDraft] = useState('');
   // Derived when the rename view opens; the extension is not editable.
   const [extension, setExtension] = useState('');
-  const [renameError, setRenameError] = useState<string | null>(null);
+  // Backend failures stay structured until shown, so the text follows the chosen language.
+  const [menuError, setMenuError] = useState<{ text: string } | { error: AppError; renameFailed: boolean } | null>(null);
+  const renameUnexpected = menuError !== null && 'error' in menuError && menuError.error.unexpected;
+  const renameError = menuError === null ? null
+    : 'text' in menuError ? menuError.text
+    : `${menuError.renameFailed ? `${t('renameError')} ` : ''}${formatError(menuError.error)}`;
   const [renaming, setRenaming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -66,7 +74,7 @@ function ModelContextMenu({
     if (lockProps.disabled) return;
     const trimmedBase = baseNameDraft.trim();
     if (!trimmedBase) {
-      setRenameError(t('renameEmptyNameError'));
+      setMenuError({ text: t('renameEmptyNameError') });
       return;
     }
     const fullName = `${trimmedBase}${extension}`;
@@ -75,33 +83,33 @@ function ModelContextMenu({
       return;
     }
     setRenaming(true);
-    setRenameError(null);
+    setMenuError(null);
     onRename(fullName)
       .then(() => onClose())
       .catch((e) => {
         setRenaming(false);
-        setRenameError(`${t('renameError')} ${messageOf(e)}`);
+        setMenuError({ error: toAppError(e), renameFailed: true });
       });
   };
 
   return (
     <ContextMenuFrame x={x} y={y} onClose={onClose} onEscape={() => {
       if (view === 'menu') onClose();
-      else { setView('menu'); setRenameError(null); }
+      else { setView('menu'); setMenuError(null); }
     }}>
     <div ref={ref}>
       {view === 'confirmRemove' ? (
         <div className="px-3 py-2.5 max-w-[260px]" aria-busy={renaming}>
           <div className="text-small font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', displayName(currentName))}</div>
           <div className="text-caption leading-snug text-[var(--ink-2)] pb-2">{t('removeModelHint')}</div>
-          {renameError && <div role="alert" className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">{renameError}</div>}
+          {renameError && <div role="alert" className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">{renameError}{renameUnexpected && <> <ReportProblemLink /></>}</div>}
           <div className="flex gap-1.5">
             <button className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={renaming} onClick={() => setView('menu')}>{t('cancel')}</button>
             <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} {...lockProps} onClick={async () => {
               if (!onRemove) return;
-              setRenaming(true); setRenameError(null);
+              setRenaming(true); setMenuError(null);
               try { await onRemove(); onClose(); }
-              catch (e) { setRenameError(messageOf(e)); setRenaming(false); }
+              catch (e) { setMenuError({ error: toAppError(e), renameFailed: false }); setRenaming(false); }
             }}>{t('removeEntry')}</button>
           </div>
         </div>
@@ -137,7 +145,7 @@ function ModelContextMenu({
                 if (e.key === 'Escape') {
                   e.stopPropagation();
                   setView('menu');
-                  setRenameError(null);
+                  setMenuError(null);
                 }
               }}
               autoFocus
@@ -155,14 +163,14 @@ function ModelContextMenu({
           </div>
           {renameError && (
             <div className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">
-              {renameError}
+              {renameError}{renameUnexpected && <> <ReportProblemLink /></>}
             </div>
           )}
           <div className="flex gap-1.5">
             <button
               onClick={() => {
                 setView('menu');
-                setRenameError(null);
+                setMenuError(null);
               }}
               disabled={renaming}
               className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
@@ -227,7 +235,7 @@ function ModelContextMenu({
           </button>}
           {onRemove && <>
             <div className="border-t border-[var(--line)]" />
-            <button {...lockProps} onClick={() => { setRenameError(null); setView('confirmRemove'); }}
+            <button {...lockProps} onClick={() => { setMenuError(null); setView('confirmRemove'); }}
               className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]">
               {t('removeCatalog')}
             </button>

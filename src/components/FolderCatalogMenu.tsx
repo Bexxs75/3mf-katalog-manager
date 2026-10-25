@@ -78,11 +78,7 @@ function DesktopFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, on
       <button className={`${catalogActionBase} hover:bg-[var(--panel-2)] hover:text-[var(--ink)] border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]`} disabled={busy || !summary} {...lockProps} onClick={async () => {
         setBusy(true); setError(null);
         try { await invoke('remove_folder_from_catalog', { folderId }); onRemoved(); onClose(); }
-        catch (e) {
-          const parsed = toAppError(e);
-          if (!parsed.unexpected && parsed.message.startsWith('Das ist der Speicherort des Katalogs.')) parsed.message = t('catalogBaseProtected');
-          setError(parsed); setBusy(false);
-        }
+        catch (e) { setError(toAppError(e)); setBusy(false); }
       }}>{t('removeCatalog')}</button>
     </div>
   </CatalogActionDialog>;

@@ -185,6 +185,18 @@ pub fn unblock_auto_tag(state: State<AppState>, tag: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
+pub fn get_auto_tagging(state: State<AppState>) -> CmdResult<bool> {
+    let conn = lock_db(&state)?;
+    db::blocked_tags::auto_tagging_enabled(&conn).map_err(blocked_tag_error)
+}
+
+#[tauri::command]
+pub fn set_auto_tagging(state: State<AppState>, enabled: bool) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    db::blocked_tags::set_auto_tagging_enabled(&conn, enabled).map_err(blocked_tag_error)
+}
+
+#[tauri::command]
 pub fn list_blocked_auto_tags(state: State<AppState>) -> CmdResult<Vec<String>> {
     let conn = lock_db(&state)?;
     db::blocked_tags::list_blocked_auto_tags(&conn).map_err(blocked_tag_error)
@@ -226,7 +238,7 @@ fn move_file_core(
         .map_err(|e| MoveRefusal::new("error", e.to_string()))?
         .ok_or_else(|| MoveRefusal::new("not_found", "file not found".to_string()))?;
     if file.deleted_at.is_some() {
-        return Err(MoveRefusal::new("in_trash", CmdError::expected("file is in trash")));
+        return Err(MoveRefusal::new("in_trash", CmdError::coded(ErrorCode::FileInTrash)));
     }
 
     let target_dir: std::path::PathBuf = match folder_id {
@@ -269,19 +281,13 @@ fn move_file_core(
     if !target_dir.is_dir() {
         return Err(MoveRefusal::new(
             "target_missing",
-            CmdError::expected(format!(
-                "Der Zielordner existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
-                target_dir.display()
-            )),
+            CmdError::coded_with(ErrorCode::TargetFolderMissingOnDisk, [target_dir.display()]),
         ));
     }
     if !old_path.is_file() {
         return Err(MoveRefusal::new(
             "source_missing",
-            CmdError::expected(format!(
-                "Die Datei existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
-                old_path.display()
-            )),
+            CmdError::coded_with(ErrorCode::FileMissingOnDisk, [old_path.display()]),
         ));
     }
     if let Err(e) = move_file(&old_path, &new_path) {
@@ -411,10 +417,7 @@ where
     C: std::ops::Deref<Target = Connection>,
 {
     if file_ids.len() > MAX_BATCH_MOVE_FILES {
-        return Err(CmdError::expected(format!(
-            "Zu viele Dateien auf einmal ({}, höchstens {MAX_BATCH_MOVE_FILES}).",
-            file_ids.len()
-        )));
+        return Err(CmdError::coded_with(ErrorCode::MoveTooManyFiles, [file_ids.len(), MAX_BATCH_MOVE_FILES]));
     }
     {
         // The target is the same for every file, so a wrong one fails the whole call
@@ -428,10 +431,7 @@ where
         let target_dir = std::path::PathBuf::from(&folder.path);
         reject_if_sensitive_path(&target_dir, sensitive_dirs)?;
         if !target_dir.is_dir() {
-            return Err(CmdError::expected(format!(
-                "Der Zielordner existiert auf der Festplatte nicht mehr: {}. Gleiche den Katalog mit der Festplatte ab und versuche es erneut.",
-                target_dir.display()
-            )));
+            return Err(CmdError::coded_with(ErrorCode::TargetFolderMissingOnDisk, [target_dir.display()]));
         }
     }
 
@@ -478,7 +478,7 @@ pub fn move_files_to_folder(
 /// `name` ends up in `with_file_name` and must be a single harmless path
 /// component (CWE-22, like `validate_folder_name`).
 fn validate_file_name(name: &str) -> CmdResult<()> {
-    folders::validate_name(name, true, "Dateiname")
+    folders::validate_name(name, true, folders::NameKind::File)
 }
 /// Core logic of `rename_file`, without `State`, so it's testable. Goes through
 /// `rename_file_on_disk`, which never replaces an existing target.
@@ -493,7 +493,7 @@ pub(super) fn rename_file_with_conn(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
     if file.deleted_at.is_some() {
-        return Err(CmdError::expected("file is in trash"));
+        return Err(CmdError::coded(ErrorCode::FileInTrash));
     }
 
     let old_path = PathBuf::from(&file.path);
@@ -505,15 +505,12 @@ pub(super) fn rename_file_with_conn(
         return Ok(());
     }
     if rename::target_collides(&old_path, &new_path).map_err(|e| e.to_string())? {
-        return Err(CmdError::expected(format!(
-            "Zieldatei existiert bereits: {}",
-            new_path.display()
-        )));
+        return Err(CmdError::coded_with(ErrorCode::FileTargetExists, [new_path.display()]));
     }
     rename::rename_file_on_disk(&old_path, &new_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
             // Created by someone else after the check above; reported like the early collision.
-            CmdError::expected(format!("Zieldatei existiert bereits: {}", new_path.display()))
+            CmdError::coded_with(ErrorCode::FileTargetExists, [new_path.display()])
         } else {
             e.to_string().into()
         }
@@ -1226,8 +1223,10 @@ mod tests {
             assert!(validate_file_name(name).is_err(), "{name:?}");
         }
         assert!(validate_file_name("normal..stl").is_ok());
-        assert_eq!(validate_file_name("a:b").unwrap_err().message,
-            "Dieses Zeichen ist in Dateinamen nicht erlaubt: :");
+        // Files get their own codes: the wording must not borrow words from the folder text.
+        assert!(validate_file_name("a:b").unwrap_err().is(ErrorCode::FileNameForbiddenChar, &[":"]));
+        assert!(validate_file_name("").unwrap_err().is(ErrorCode::FileNameEmpty, &[]));
+        assert!(validate_file_name("CON.3mf").unwrap_err().is(ErrorCode::FileNameWindowsReserved, &[]));
     }
 
     #[test]
@@ -1621,10 +1620,8 @@ mod tests {
             db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
 
         let result = rename_file_with_conn(&conn, file_id, "existiert-schon.3mf".to_string(), &[]);
-        assert!(
-            result.is_err(),
-            "rename_file_with_conn must reject a name that collides with an existing file"
-        );
+        let refusal = result.expect_err("rename_file_with_conn must reject a name that collides with an existing file");
+        assert!(refusal.is(ErrorCode::FileTargetExists, &[&existing_path.display().to_string()]), "{refusal:?}");
         assert!(
             old_path.exists(),
             "original file must be untouched after a rejected rename"
@@ -2213,9 +2210,15 @@ mod tests {
         let err = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]).unwrap_err();
 
         assert!(err.expected, "a vanished folder is feedback, not a fault");
-        assert!(err.message.contains("Zielordner existiert auf der Festplatte nicht mehr"), "{}", err.message);
+        assert!(err.is(ErrorCode::TargetFolderMissingOnDisk, &[&dir.join("gone").display().to_string()]), "{err:?}");
         assert!(src_path.exists(), "the file must stay where it was");
         assert_eq!(db::get_file(&conn, file_id).unwrap().unwrap().path, src_path.to_string_lossy());
+    }
+    #[test]
+    fn a_batch_over_the_limit_is_refused_with_the_numbers_as_params() {
+        let ids: Vec<String> = (0..=MAX_BATCH_MOVE_FILES).map(|i| i.to_string()).collect();
+        let err = move_files_to_folder_with(|| -> CmdResult<Box<Connection>> { unreachable!("refused before the first lock") }, &ids, 1, &[]).unwrap_err();
+        assert!(err.is(ErrorCode::MoveTooManyFiles, &[&ids.len().to_string(), &MAX_BATCH_MOVE_FILES.to_string()]), "{err:?}");
     }
     #[test]
     fn move_file_to_folder_explains_a_source_file_missing_on_disk() {
@@ -2230,7 +2233,7 @@ mod tests {
         let err = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]).unwrap_err();
 
         assert!(err.expected);
-        assert!(err.message.contains("Datei existiert auf der Festplatte nicht mehr"), "{}", err.message);
+        assert!(err.is(ErrorCode::FileMissingOnDisk, &[&src_path.display().to_string()]), "{err:?}");
         assert!(!dir.join("target/model.3mf").exists(), "no empty file may be left behind");
     }
     #[test]

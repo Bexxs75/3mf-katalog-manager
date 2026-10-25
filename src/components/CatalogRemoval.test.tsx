@@ -34,7 +34,7 @@ describe('folder catalog removal', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Alle Modelle/ }));
   });
   it('shows the translated expected storage-location error without Report problem', async () => {
-    vi.mocked(invoke).mockResolvedValueOnce({ name: 'Parts', subfolderCount: 0, modelCount: 4 }).mockRejectedValueOnce({ expected: true, message: 'Das ist der Speicherort des Katalogs. Zum Leeren „Katalog zurücksetzen“ in den Einstellungen verwenden.' });
+    vi.mocked(invoke).mockResolvedValueOnce({ name: 'Parts', subfolderCount: 0, modelCount: 4 }).mockRejectedValueOnce({ expected: true, message: 'catalogBaseDirProtected' });
     render(<Provider><FolderTree folders={folders} totalModelCount={4} activeFolderId="all" onSelect={() => {}} onRemoved={() => {}} /></Provider>);
     fireEvent.contextMenu(screen.getByText('Parts'));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Aus dem Katalog entfernen' }));

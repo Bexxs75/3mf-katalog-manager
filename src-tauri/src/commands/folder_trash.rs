@@ -6,7 +6,7 @@ use tauri::Manager;
 /// huge tree (e.g. a whole drive) must not block the dialog.
 const OTHER_FILES_SCAN_LIMIT: usize = 10_000;
 
-const ROOT_ERROR: &str = "Das ist der Speicherort des Katalogs oder ein übergeordneter Ordner davon und kann nicht gelöscht werden.";
+const ROOT_ERROR: ErrorCode = ErrorCode::CatalogRootNotDeletable;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -150,7 +150,7 @@ fn folder_trash_summary_with_conn(conn: &Connection, folder_id: &str, sensitive_
     let id = parse_id(folder_id)?;
     let all = db::list_folders(conn)?;
     let subtree = subtree_folders(&all, id);
-    let root = subtree.first().ok_or_else(|| CmdError::expected("Ordner nicht gefunden."))?;
+    let root = subtree.first().ok_or_else(|| CmdError::coded(ErrorCode::FolderNotFound))?;
     // Same rule as the delete: rows it would refuse are not models of this folder.
     let expanded = expand_sensitive_dirs(sensitive_dirs);
     let resolved = resolved_root(root);
@@ -191,10 +191,10 @@ fn trash_folder_with_conn(
     let all = db::list_folders(conn)?;
     let subtree = subtree_folders(&all, id);
     if subtree.is_empty() {
-        return Err(CmdError::expected("Ordner nicht gefunden."));
+        return Err(CmdError::coded(ErrorCode::FolderNotFound));
     }
     if is_catalog_root_or_ancestor(conn, &subtree) {
-        return Err(CmdError::expected(ROOT_ERROR));
+        return Err(CmdError::coded(ROOT_ERROR));
     }
     // A crafted backup can point any folder row anywhere, so every row is checked.
     let expanded = expand_sensitive_dirs(sensitive_dirs);
@@ -441,7 +441,7 @@ mod tests {
         let f = fixture("folder_trash_root");
         let root_id: i64 = f.conn.query_row("SELECT id FROM folders WHERE parent_id IS NULL", [], |r| r.get(0)).unwrap();
         let err = trash_folder_with_conn(&f.conn, &root_id.to_string(), &f.trash, &f.sensitive).unwrap_err();
-        assert_eq!(err.to_string(), ROOT_ERROR);
+        assert!(err.is(ROOT_ERROR, &[]), "{err:?}");
         assert_eq!(active_files(&f.conn), 3);
         assert!(f.root.join("A").join("a.3mf").exists());
         assert!(folder_summary(&f, root_id).is_catalog_root_or_ancestor);

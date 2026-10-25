@@ -105,7 +105,7 @@ fn create_folder_with_conn(
 }
 fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
     if error.kind() == std::io::ErrorKind::AlreadyExists {
-        CmdError::expected(format!("Ordner existiert bereits: {}", path.display()))
+        CmdError::coded_with(ErrorCode::FolderExists, [path.display()])
     } else {
         error.to_string().into()
     }
@@ -123,7 +123,7 @@ pub(super) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> 
     let source = resolve_path_for_sensitivity_check(path)?;
     // Relocating an ancestor also invalidates the persisted import destination.
     if comparison_path(&base).starts_with(comparison_path(&source)) {
-        return Err(CmdError::expected("Der Katalog-Stammordner und seine übergeordneten Ordner können nicht verschoben oder umbenannt werden."));
+        return Err(CmdError::coded(ErrorCode::CatalogRootProtected));
     }
     Ok(())
 }
@@ -163,7 +163,7 @@ fn rename_folder_with_conn(
         return Ok(());
     }
     if rename::target_collides(&old_path, &new_path).map_err(|e| e.to_string())? {
-        return Err(CmdError::expected(format!("Zielordner existiert bereits: {}", new_path.display())));
+        return Err(CmdError::coded_with(ErrorCode::RenameTargetFolderExists, [new_path.display()]));
     }
     rename::rename_on_disk(&old_path, &new_path).map_err(|e| e.to_string())?;
 
@@ -226,10 +226,10 @@ fn move_folder_with_conn(
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
 
     if target == id {
-        return Err(CmdError::expected("Ein Ordner kann nicht in sich selbst verschoben werden"));
+        return Err(CmdError::coded(ErrorCode::FolderMoveIntoSelf));
     }
     if is_descendant(&folders, target, id) {
-        return Err(CmdError::expected("Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden"));
+        return Err(CmdError::coded(ErrorCode::FolderMoveIntoDescendant));
     }
 
     let new_parent_path = folders
@@ -248,26 +248,25 @@ fn move_folder_with_conn(
     archives::check_managed_location(&new_path, &expanded)?;
 
     // Without these checks a vanished folder would surface as a raw OS error.
-    let out_of_date = "Gleiche den Katalog mit der Festplatte ab und versuche es erneut.";
     if !old_path.is_dir() {
-        return Err(CmdError::expected(format!("Der Ordner existiert auf der Festplatte nicht mehr: {}. {out_of_date}", old_path.display())));
+        return Err(CmdError::coded_with(ErrorCode::FolderMissingOnDisk, [old_path.display()]));
     }
     let new_parent = Path::new(&new_parent_path);
     if !new_parent.is_dir() {
-        return Err(CmdError::expected(format!("Der Zielordner existiert auf der Festplatte nicht mehr: {}. {out_of_date}", new_parent.display())));
+        return Err(CmdError::coded_with(ErrorCode::TargetFolderMissingOnDisk, [new_parent.display()]));
     }
     // The ids can disagree with the disk (outdated catalog, symlinks, differing
     // case on case-insensitive volumes), so the real locations are compared too.
     if let (Ok(source), Ok(parent)) = (old_path.canonicalize(), new_parent.canonicalize()) {
         if comparison_path(&parent).starts_with(comparison_path(&source)) {
-            return Err(CmdError::expected("Ein Ordner kann nicht in sich selbst oder einen eigenen Unterordner verschoben werden"));
+            return Err(CmdError::coded(ErrorCode::FolderMoveIntoSelfOrDescendant));
         }
         if old_path.parent().and_then(|p| p.canonicalize().ok()).is_some_and(|current| comparison_path(&current) == comparison_path(&parent)) {
-            return Err(CmdError::expected("Der Ordner liegt bereits im Zielordner"));
+            return Err(CmdError::coded(ErrorCode::FolderMoveAlreadyThere));
         }
     }
     if new_path.exists() {
-        return Err(CmdError::expected(format!("Der Zielordner enthält bereits einen Ordner mit diesem Namen: {}", new_path.display())));
+        return Err(CmdError::coded_with(ErrorCode::FolderMoveNameTaken, [new_path.display()]));
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
@@ -428,11 +427,50 @@ fn validate_new_catalog_dir_name(name: &str) -> CmdResult<()> {
 }
 
 pub(super) fn validate_dir_name(name: &str, limit_length: bool) -> CmdResult<()> {
-    validate_name(name, limit_length, "Ordnername")
+    validate_name(name, limit_length, NameKind::Folder)
 }
 
-pub(super) fn validate_name(name: &str, limit_length: bool, kind: &str) -> CmdResult<()> {
-    katalog_core::import::file_names::validate_name(name, limit_length, kind).map_err(Into::into)
+/// What a name is for. The messages differ in wording per kind, so the backend
+/// picks a code per kind instead of passing the kind as text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NameKind {
+    Folder,
+    File,
+}
+
+pub(super) fn validate_name(name: &str, limit_length: bool, kind: NameKind) -> CmdResult<()> {
+    let code = |folder: ErrorCode, file: ErrorCode| match kind {
+        NameKind::Folder => folder,
+        NameKind::File => file,
+    };
+    if name.trim().is_empty() {
+        return Err(CmdError::coded(code(ErrorCode::FolderNameEmpty, ErrorCode::FileNameEmpty)));
+    }
+    if let Some(c) = name.chars().find(|c| FORBIDDEN_DIR_NAME_CHARS.contains(c) || c.is_control()) {
+        let shown = if c.is_control() { format!("U+{:04X}", c as u32) } else { c.to_string() };
+        return Err(CmdError::coded_with(code(ErrorCode::FolderNameForbiddenChar, ErrorCode::FileNameForbiddenChar), [shown]));
+    }
+    if limit_length && name.len() > MAX_DIR_NAME_BYTES {
+        return Err(CmdError::coded(code(ErrorCode::FolderNameTooLong, ErrorCode::FileNameTooLong)));
+    }
+    let not_allowed = || CmdError::coded(code(ErrorCode::FolderNameNotAllowed, ErrorCode::FileNameNotAllowed));
+    if name == "." || name == ".." {
+        return Err(not_allowed());
+    }
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Err(CmdError::coded(code(ErrorCode::FolderNameEndsWithDotOrSpace, ErrorCode::FileNameEndsWithDotOrSpace)));
+    }
+    let stem = name.split('.').next().unwrap_or(name).trim_end().to_uppercase();
+    if WINDOWS_RESERVED_NAMES.contains(&stem.as_str()) {
+        return Err(CmdError::coded(code(ErrorCode::FolderNameWindowsReserved, ErrorCode::FileNameWindowsReserved)));
+    }
+    // Defence in depth: whatever slipped through above must still be a single
+    // plain component, never a root, prefix or parent reference.
+    let mut components = Path::new(name).components();
+    if !matches!((components.next(), components.next()), (Some(std::path::Component::Normal(_)), None)) {
+        return Err(not_allowed());
+    }
+    Ok(())
 }
 
 /// Places suggested by the app itself (the Documents folder) that may receive a
@@ -524,10 +562,10 @@ fn map_catalog_dir_io_error(e: std::io::Error) -> CmdError {
 
     let too_long = e.raw_os_error().is_some_and(|code| NAME_TOO_LONG.contains(&code));
     match e.kind() {
-        ErrorKind::PermissionDenied => CmdError::expected("Keine Berechtigung, dort einen Ordner anzulegen"),
-        _ if too_long => CmdError::expected("Der Name oder der ganze Pfad ist für dieses System zu lang"),
-        ErrorKind::InvalidFilename => CmdError::expected("Der Ordnername ist für dieses System ungültig"),
-        ErrorKind::AlreadyExists => CmdError::expected("Unter diesem Namen ist gerade etwas entstanden, bitte erneut versuchen"),
+        ErrorKind::PermissionDenied => CmdError::coded(ErrorCode::CatalogDirNoPermission),
+        _ if too_long => CmdError::coded(ErrorCode::CatalogDirNameTooLong),
+        ErrorKind::InvalidFilename => CmdError::coded(ErrorCode::CatalogDirNameInvalid),
+        ErrorKind::AlreadyExists => CmdError::coded(ErrorCode::CatalogDirRaced),
         _ => e.to_string().into(),
     }
 }
@@ -551,10 +589,10 @@ fn create_catalog_dir_at(
             log::info!(target: "setup", "Katalog-Ordner existiert bereits und wird verwendet");
         }
         CatalogDirState::ExistingFile => {
-            return Err(CmdError::expected("Unter diesem Namen gibt es dort schon eine Datei"));
+            return Err(CmdError::coded(ErrorCode::CatalogDirIsFile));
         }
         CatalogDirState::Link => {
-            return Err(CmdError::expected("Unter diesem Namen gibt es dort eine Verknüpfung"));
+            return Err(CmdError::coded(ErrorCode::CatalogDirIsLink));
         }
         CatalogDirState::New => {
             // create_dir, not create_dir_all: a parent deleted in the meantime must
@@ -696,7 +734,7 @@ mod tests {
         let path = Path::new("/catalog/child");
         let err = map_create_folder_error(std::io::ErrorKind::AlreadyExists.into(), path);
         assert!(err.expected);
-        assert_eq!(err.to_string(), format!("Ordner existiert bereits: {}", path.display()));
+        assert!(err.is(ErrorCode::FolderExists, &[&path.display().to_string()]), "{err:?}");
         assert!(!map_create_folder_error(std::io::ErrorKind::PermissionDenied.into(), path).expected);
     }
 
@@ -748,7 +786,7 @@ mod tests {
         let dir = unique_test_dir("create_existing");
         let err = create_folder_with_conn(&conn, None, "existing".into(), &dir, &[]).unwrap_err();
         assert!(err.expected, "{err}");
-        assert_eq!(err.to_string(), format!("Ordner existiert bereits: {}", dir.display()));
+        assert!(err.is(ErrorCode::FolderExists, &[&dir.display().to_string()]), "{err:?}");
         assert!(db::list_folders(&conn).unwrap().is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -887,16 +925,16 @@ mod tests {
         let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).unwrap();
         (tmp, conn, a_id, b_id, a_dir, b_dir)
     }
-    fn expected_message(result: CmdResult<()>) -> String {
+    fn expected_refusal(result: CmdResult<()>) -> CmdError {
         let err = result.expect_err("move must be refused");
         assert!(err.expected, "refusals are feedback, not faults: {}", err.message);
-        err.message
+        err
     }
     #[test]
     fn move_folder_explains_moving_into_itself() {
         let (tmp, conn, a_id, _, a_dir, _) = two_folders("move_folder_self");
-        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(a_id), &[]));
-        assert!(message.contains("in sich selbst"), "{message}");
+        let refusal = expected_refusal(move_folder_with_conn(&conn, a_id, Some(a_id), &[]));
+        assert!(refusal.is(ErrorCode::FolderMoveIntoSelf, &[]), "{refusal:?}");
         assert!(a_dir.is_dir());
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -904,8 +942,8 @@ mod tests {
     fn move_folder_explains_a_target_that_already_has_the_name() {
         let (tmp, conn, a_id, b_id, a_dir, b_dir) = two_folders("move_folder_name_taken");
         std::fs::create_dir_all(b_dir.join("A")).unwrap();
-        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
-        assert!(message.contains("enthält bereits einen Ordner mit diesem Namen"), "{message}");
+        let refusal = expected_refusal(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(refusal.is(ErrorCode::FolderMoveNameTaken, &[&b_dir.join("A").display().to_string()]), "{refusal:?}");
         assert!(a_dir.is_dir());
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -918,8 +956,8 @@ mod tests {
         let conn = crate::db::connect_in_memory().expect("connect");
         let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).unwrap();
         let child_id = db::insert_folder_with_parent(&conn, "child", Some(a_id), &child.to_string_lossy()).unwrap();
-        let message = expected_message(move_folder_with_conn(&conn, child_id, Some(a_id), &[]));
-        assert!(message.contains("liegt bereits im Zielordner"), "{message}");
+        let refusal = expected_refusal(move_folder_with_conn(&conn, child_id, Some(a_id), &[]));
+        assert!(refusal.is(ErrorCode::FolderMoveAlreadyThere, &[]), "{refusal:?}");
         let _ = std::fs::remove_dir_all(&tmp);
     }
     #[test]
@@ -932,8 +970,8 @@ mod tests {
         let conn = crate::db::connect_in_memory().expect("connect");
         let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).unwrap();
         let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).unwrap();
-        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
-        assert!(message.contains("eigenen Unterordner"), "{message}");
+        let refusal = expected_refusal(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(refusal.is(ErrorCode::FolderMoveIntoSelfOrDescendant, &[]), "{refusal:?}");
         assert!(a_dir.is_dir() && b_dir.is_dir());
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -941,8 +979,8 @@ mod tests {
     fn move_folder_explains_a_target_missing_on_disk() {
         let (tmp, conn, a_id, b_id, a_dir, b_dir) = two_folders("move_folder_missing_target");
         std::fs::remove_dir_all(&b_dir).unwrap();
-        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
-        assert!(message.contains("Zielordner existiert auf der Festplatte nicht mehr"), "{message}");
+        let refusal = expected_refusal(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(refusal.is(ErrorCode::TargetFolderMissingOnDisk, &[&b_dir.display().to_string()]), "{refusal:?}");
         assert!(a_dir.is_dir());
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -950,8 +988,8 @@ mod tests {
     fn move_folder_explains_a_source_missing_on_disk() {
         let (tmp, conn, a_id, b_id, a_dir, _) = two_folders("move_folder_missing_source");
         std::fs::remove_dir_all(&a_dir).unwrap();
-        let message = expected_message(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
-        assert!(message.contains("Der Ordner existiert auf der Festplatte nicht mehr"), "{message}");
+        let refusal = expected_refusal(move_folder_with_conn(&conn, a_id, Some(b_id), &[]));
+        assert!(refusal.is(ErrorCode::FolderMissingOnDisk, &[&a_dir.display().to_string()]), "{refusal:?}");
         let _ = std::fs::remove_dir_all(&tmp);
     }
     #[test]
@@ -986,15 +1024,19 @@ mod tests {
     #[test]
     fn folder_operations_explain_invalid_names() {
         let conn = db::connect_in_memory().unwrap();
-        for (name, expected) in [
-            ("Projekt: Test", "Dieses Zeichen ist in Ordnernamen nicht erlaubt: :"),
-            ("Neu.", "Ordnernamen dürfen nicht mit einem Punkt oder Leerzeichen enden"),
-            ("a?", "Dieses Zeichen ist in Ordnernamen nicht erlaubt: ?"),
-            ("CON", "Dieser Ordnername ist unter Windows reserviert"),
+        for (name, code, params) in [
+            ("Projekt: Test", ErrorCode::FolderNameForbiddenChar, vec![":"]),
+            ("Neu.", ErrorCode::FolderNameEndsWithDotOrSpace, vec![]),
+            ("a?", ErrorCode::FolderNameForbiddenChar, vec!["?"]),
+            ("CON", ErrorCode::FolderNameWindowsReserved, vec![]),
+            ("", ErrorCode::FolderNameEmpty, vec![]),
+            ("..", ErrorCode::FolderNameNotAllowed, vec![]),
         ] {
-            assert_eq!(validate_folder_name(name).unwrap_err().to_string(), expected);
-            assert_eq!(rename_folder_with_conn(&conn, 0, name.into(), &[]).unwrap_err().to_string(), expected);
+            assert!(validate_folder_name(name).unwrap_err().is(code, &params), "{name:?}");
+            assert!(rename_folder_with_conn(&conn, 0, name.into(), &[]).unwrap_err().is(code, &params), "{name:?}");
         }
+        // A control character is reported by code point, never as the raw character.
+        assert!(validate_folder_name("a\u{7}b").unwrap_err().is(ErrorCode::FolderNameForbiddenChar, &["U+0007"]));
         assert!(validate_folder_name("Projekt 2026").is_ok());
         assert!(validate_folder_name(&"a".repeat(256)).is_err());
         assert!(validate_new_catalog_dir_name(&"a".repeat(256)).is_err());
@@ -1422,11 +1464,8 @@ mod tests {
             let err = validate_new_catalog_dir_name(name).expect_err(name);
             assert!(err.expected, "{name} is a user mistake, not a fault");
         }
-        assert_eq!(
-            validate_new_catalog_dir_name("3D:Katalog").unwrap_err(),
-            "Dieses Zeichen ist in Ordnernamen nicht erlaubt: :"
-        );
-        assert_eq!(validate_new_catalog_dir_name(&too_long).unwrap_err(), "Der Ordnername ist zu lang");
+        assert!(validate_new_catalog_dir_name("3D:Katalog").unwrap_err().is(ErrorCode::FolderNameForbiddenChar, &[":"]));
+        assert!(validate_new_catalog_dir_name(&too_long).unwrap_err().is(ErrorCode::FolderNameTooLong, &[]));
     }
 
     #[test]
@@ -1533,7 +1572,7 @@ mod tests {
         {
             let err = map_catalog_dir_io_error(Error::from_raw_os_error(36)); // ENAMETOOLONG
             assert!(err.expected);
-            assert_eq!(err, "Der Name oder der ganze Pfad ist für dieses System zu lang");
+            assert!(err.is(ErrorCode::CatalogDirNameTooLong, &[]), "{err:?}");
         }
         assert!(!map_catalog_dir_io_error(Error::other("disk on fire")).expected);
     }

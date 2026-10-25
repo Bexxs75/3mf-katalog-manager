@@ -39,7 +39,7 @@ beforeEach(() => {
     if (cmd === 'register_existing_catalog_base_dir' || cmd === 'check_app_update' || cmd === 'get_last_printer_for_file') return null;
     if (cmd === 'list_folders') return folders;
     if (cmd === 'run_start_sync') return result;
-    if (cmd === 'scan_catalog_disk') return { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [] };
+    if (cmd === 'scan_catalog_disk') return { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [], trashBlockedCount: 0 };
     return [];
   });
 });

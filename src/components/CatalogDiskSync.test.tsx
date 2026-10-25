@@ -12,7 +12,7 @@ import { es } from '../i18n/es';
 import { fr } from '../i18n/fr';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-const empty: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [] };
+const empty: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [], trashBlockedCount: 0 };
 const changes: DiskScan = {
   ...empty,
   newFiles: [{ path: '/models/new.obj', relativePath: 'new.obj', root: '/models', id: null }],
@@ -123,6 +123,52 @@ describe('catalog disk sync', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(invoke).toHaveBeenCalledTimes(1);
   });
+  it('selects all or none per section without touching the other section or renames', async () => {
+    const file = (n: string) => ({ path: `/models/${n}`, relativePath: n, root: '/models', id: null });
+    vi.mocked(invoke).mockResolvedValue({
+      ...empty,
+      newFiles: [file('a.obj'), file('b.obj')],
+      duplicateFiles: [{ ...file('c.obj'), duplicateOfName: 'x', duplicateOfPath: '/models/x.obj' }, { ...file('d.obj'), duplicateOfName: 'y', duplicateOfPath: '/models/y.obj' }],
+      renamedFiles: [{ id: '7', oldPath: '/models/o.obj', oldRelativePath: 'o.obj', oldRoot: '/models', newPath: '/models/n.obj', newRelativePath: 'n.obj', root: '/models' }],
+    });
+    renderSync();
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
+    await screen.findByRole('dialog');
+    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
+    const checked = () => ['a.obj', 'b.obj', 'c.obj', 'd.obj', 'o.obj → n.obj'].map(n => box(n).checked);
+    expect(checked()).toEqual([true, true, false, false, true]);
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncSelectNoneIn.replace('{section}', de.diskSyncNewHeading) }));
+    expect(checked()).toEqual([false, false, false, false, true]);
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncSelectAllIn.replace('{section}', de.diskSyncDuplicateHeading) }));
+    expect(checked()).toEqual([false, false, true, true, true]);
+    // Single ticks keep working after a bulk action.
+    fireEvent.click(box('c.obj'));
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncSelectAllIn.replace('{section}', de.diskSyncNewHeading) }));
+    expect(checked()).toEqual([true, true, false, true, true]);
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncSelectNoneIn.replace('{section}', de.diskSyncDuplicateHeading) }));
+    expect(checked()).toEqual([true, true, false, false, true]);
+  });
+  it.each(Object.entries({ de, en, es, fr }))('opens the dialog with a trash hint when that is the only finding in %s', async (language, dictionary) => {
+    localStorage.setItem('3mf-katalog-language', language);
+    vi.mocked(invoke).mockResolvedValue({ ...empty, trashBlockedCount: 3 });
+    renderSync();
+    fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncRefresh }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent(dictionary.diskSyncTrashBlocked.other.replace('{count}', '3'));
+    expect(screen.queryByText(dictionary.diskSyncCurrent)).toBeNull();
+    expect(screen.queryByRole('button', { name: dictionary.diskSyncApply })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncClose }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+  it('shows the hint singular for one file and no hint for zero', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ ...empty, trashBlockedCount: 1 }).mockResolvedValueOnce({ ...changes });
+    renderSync();
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent(de.diskSyncTrashBlocked.one.replace('{count}', '1'));
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncClose }));
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
+    await screen.findByRole('dialog');
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('Papierkorb');
+  });
   it('shows the missing-only action only while removal is checked', async () => {
     vi.mocked(invoke).mockResolvedValue({ ...empty, missingFiles: changes.missingFiles });
     renderSync();
@@ -225,7 +271,7 @@ describe('catalog disk sync', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
     await screen.findByRole('dialog');
     const apply = screen.getByRole('button', { name: 'Änderungen übernehmen' }); apply.focus();
-    fireEvent.keyDown(document, { key: 'Tab' }); expect(screen.getByRole('checkbox', { name: 'new.obj' })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab' }); expect(screen.getByRole('button', { name: de.diskSyncSelectAllIn.replace('{section}', de.diskSyncNewHeading) })).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true }); expect(apply).toHaveFocus();
   });
   it('does not scan during an import or outside the catalog area', () => {

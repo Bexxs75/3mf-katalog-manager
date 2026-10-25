@@ -5,7 +5,8 @@ import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 import type { Collection } from '../types';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { TagInput } from './TagInput';
@@ -140,7 +141,7 @@ export function BulkActionToolbar({
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
   // Snapshot at opening: the preview must not reload when the selection prop is rebuilt.
   const [dateRenameIds, setDateRenameIds] = useState<string[] | null>(null);
   const hintId = useId();
@@ -316,13 +317,13 @@ export function BulkActionToolbar({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-small font-medium text-[var(--ink)]">{formatCount(t('removeModelsQuestion'), selectedCount)}</span>
           <span className="text-small text-[var(--ink-2)]">{t(isReadOnly() ? 'webRemoveModelHint' : 'removeModelHint')}</span>
-          {error && <span role="alert" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
+          {error && <span role="alert" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)]"><ErrorText error={error} /></span>}
           <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
           <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
             if (!onBulkRemove || !canEditMetadata() || busy) return;
             setBusy(true); setError(null);
             try { await onBulkRemove(); setConfirmRemove(false); }
-            catch (e) { setError(messageOf(e)); }
+            catch (e) { setError(toAppError(e)); }
             finally { setBusy(false); }
           }}>{t('removeEntry')}</button>
         </div>

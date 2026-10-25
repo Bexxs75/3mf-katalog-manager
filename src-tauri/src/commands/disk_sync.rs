@@ -26,6 +26,10 @@ pub struct DiskScan {
     missing_folders: Vec<DiskFolderEntry>,
     unreachable_roots: Vec<String>,
     skipped_paths: Vec<String>,
+    /// Supported files on disk that would be new but whose path is still held by a trash
+    /// row. The sync never restores them; the count only lets the dialog say why they
+    /// are not offered.
+    trash_blocked_count: usize,
     #[serde(skip)]
     roots: Vec<DiskRoot>,
 }
@@ -302,6 +306,8 @@ fn record_skipped(scan: &mut DiskScan, root: &DiskRoot, dir: &Path) {
 struct KnownPaths<'a> {
     folders: &'a HashSet<PathBuf>,
     files: &'a HashSet<PathBuf>,
+    /// Keys of files that exist only as trash rows; a subset of `files`.
+    trashed: &'a HashSet<PathBuf>,
     /// Companion folders of catalog models.
     extras: &'a HashSet<PathBuf>,
 }
@@ -348,6 +354,9 @@ fn walk(
                 let key = path_key(&path, case_insensitive);
                 seen_files.insert(key.clone());
                 if known.files.contains(&key) {
+                    if known.trashed.contains(&key) {
+                        scan.trash_blocked_count += 1;
+                    }
                     continue;
                 }
                 let stored = root
@@ -452,6 +461,17 @@ fn scan_with_path_mode(
         .iter()
         .map(|(_, p, _, _)| resolver.key(Path::new(p)))
         .collect();
+    let active_files: HashSet<PathBuf> = rows
+        .iter()
+        .filter(|(_, _, active, _)| *active)
+        .map(|(_, p, _, _)| resolver.key(Path::new(p)))
+        .collect();
+    let trashed_files: HashSet<PathBuf> = rows
+        .iter()
+        .filter(|(_, _, active, _)| !*active)
+        .map(|(_, p, _, _)| resolver.key(Path::new(p)))
+        .filter(|k| !active_files.contains(k))
+        .collect();
     // Companion folders of catalog models, by the model's name and by where the
     // companion rows actually are.
     let known_extras: HashSet<PathBuf> = rows
@@ -483,7 +503,7 @@ fn scan_with_path_mode(
             {
                 walk(
                     root,
-                    &KnownPaths { folders: &known_folders, files: &known_files, extras: &known_extras },
+                    &KnownPaths { folders: &known_folders, files: &known_files, trashed: &trashed_files, extras: &known_extras },
                     &mut result,
                     case_insensitive,
                     &mut seen_files,
@@ -573,6 +593,7 @@ fn scan_with_path_mode(
         result.new_folders.clear();
         result.new_files.clear();
         result.missing_files.clear();
+        result.trash_blocked_count = 0;
     }
     result.new_folders.sort_by(|a, b| a.path.cmp(&b.path));
     result.new_files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -1982,10 +2003,33 @@ mod tests {
         std::fs::write(f.root.join("docs/readme.txt"), "docs").unwrap();
         assert!(scan(&f.conn).unwrap().new_files.is_empty());
         assert!(scan(&f.conn).unwrap().new_folders.is_empty());
+        assert_eq!(scan(&f.conn).unwrap().trash_blocked_count, 1);
         let selection = f.select(false);
         let result = apply(&mut f.conn, selection).unwrap();
         assert!(result.folder_ids.is_empty());
         assert!(result.file_ids.is_empty());
+    }
+    #[test]
+    fn trash_blocked_count_covers_only_files_present_on_disk() {
+        let f = Fixture::new();
+        let held = f.root.join("held.obj");
+        std::fs::write(&held, "mesh").unwrap();
+        let held_id = db::test_insert_minimal_file(&f.conn, held.to_str().unwrap(), None).unwrap();
+        trash::delete_missing_file_with_conn(&f.conn, held_id).unwrap();
+        // A trash row whose file is gone from disk blocks nothing the scan could report.
+        let gone = f.root.join("gone.obj");
+        let gone_id = db::test_insert_minimal_file(&f.conn, gone.to_str().unwrap(), None).unwrap();
+        trash::delete_missing_file_with_conn(&f.conn, gone_id).unwrap();
+        // Unsupported files are ignored by the scan anyway.
+        std::fs::write(f.root.join("notes.txt"), "text").unwrap();
+        let preview = scan(&f.conn).unwrap();
+        assert_eq!(preview.trash_blocked_count, 1);
+        assert!(preview.new_files.is_empty());
+        // An ordinary new file is offered, not counted as blocked.
+        std::fs::write(f.root.join("fresh.obj"), "mesh").unwrap();
+        let preview = scan(&f.conn).unwrap();
+        assert_eq!(preview.trash_blocked_count, 1);
+        assert_eq!(preview.new_files.len(), 1);
     }
     #[cfg(unix)]
     #[test]

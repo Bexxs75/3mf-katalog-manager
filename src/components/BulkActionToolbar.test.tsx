@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { LanguageProvider } from '../i18n/LanguageContext';
+import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { BulkActionToolbar } from './BulkActionToolbar';
 import { ImportLockContext } from '../hooks/ImportLockContext';
 import { clickBulkMore, openBulkMore } from '../test/bulkBar';
@@ -92,6 +92,18 @@ describe('BulkActionToolbar', () => {
     expect(props.onClearSelection).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(props.onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['an expected error is translated without the report link', { message: 'modelNotFoundOrTrashed', expected: true }, 'Modell nicht gefunden oder bereits im Papierkorb.', false],
+    ['an unexpected error shows its text with the report link', { message: 'database is locked', expected: false }, 'database is locked', true],
+  ])('shows %s', async (_name, rejection, text, report) => {
+    const { props } = renderToolbar({ onBulkRemove: vi.fn(() => Promise.reject(rejection)) });
+    clickBulkMore('Aus Katalog entfernen');
+    fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }));
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(props.onBulkRemove).toHaveBeenCalled();
+    expect(!!screen.queryByText('Problem melden')).toBe(report);
   });
 
   it('cancels remove confirmation with focus outside the bar before clearing selection', () => {

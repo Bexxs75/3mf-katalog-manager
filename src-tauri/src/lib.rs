@@ -331,6 +331,8 @@ pub fn run() {
             commands::block_auto_tag,
             commands::unblock_auto_tag,
             commands::list_blocked_auto_tags,
+            commands::get_auto_tagging,
+            commands::set_auto_tagging,
             commands::delete_file,
             commands::set_print_status,
             commands::set_favorite,

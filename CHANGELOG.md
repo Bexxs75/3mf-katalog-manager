@@ -11,6 +11,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Sync with disk:** "Select all" and "None" for the lists of new files and copies of existing models. Files skipped because their path is still held by the trash are now counted in a notice (restore them or empty the trash, then sync again); the dialog also opens when that is the only finding.
+- **Automatic tags:** new setting "Assign tags automatically" (Settings, Catalog; on by default). When it is off, import, folder sync and source folders assign no tags automatically. Existing tags stay; adding tags by hand and the list of blocked automatic tags keep working.
 - **Import:** The result dialog after an import offers to show the newly added models.
 - **Accessibility:** Screen readers now announce model cards and list rows with name and selection state, and the number of selected models.
 - **Source folders:** set up folders like Downloads, check them for new models (on request, optionally at app start) and move the chosen files into the catalog or decline them.
@@ -56,6 +58,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Robustness:** More robust handling of companion files, folder deletion and the start sync with unusual or oversized files.
 - Updated the library used for catalog backups and archive import.
 - **Selection bar:** The selection bar is always visible, grouped by purpose, with rarely used actions in a "More" menu, and no longer hidden by the detail panel.
+- **Error messages:** The most common error messages (creating, renaming, moving and deleting folders, moving and renaming models, source folders, removing models from the catalog, restoring a backup) now appear in the selected language instead of always in German. Technical errors keep their original text and the "Report problem" link.
 
 
 ## [0.16.3] - 2026-10-21
@@ -693,6 +696,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- **Abgleich mit der Festplatte:** „Alle auswählen“ und „Keine“ für die Listen der neuen Dateien und der Kopien vorhandener Modelle. Dateien, die übersprungen werden, weil ihr Pfad noch im Papierkorb belegt ist, werden jetzt in einem Hinweis gezählt (dort wiederherstellen oder Papierkorb leeren, danach erneut abgleichen); der Dialog öffnet sich auch dann, wenn das der einzige Befund ist.
+- **Automatische Tags:** Neue Einstellung „Tags automatisch vergeben“ (Einstellungen, Katalog; standardmäßig an). Ist sie aus, vergeben Import, Ordnerabgleich und Quellordner keine Tags mehr automatisch. Vorhandene Tags bleiben; Tags von Hand vergeben und die Liste der gesperrten automatischen Tags funktionieren weiter.
 - **Import:** Auch der Ergebnisdialog nach einem Import bietet an, die neu hinzugefügten Modelle anzuzeigen.
 - **Barrierefreiheit:** Bildschirmleser sagen Modellkarten und Listenzeilen jetzt mit Name und Auswahlzustand an, außerdem die Anzahl der ausgewählten Modelle.
 - **Quellordner:** Ordner wie Downloads einrichten, auf neue Modelle prüfen (auf Knopfdruck, optional beim Start) und die gewählten Dateien in den Katalog verschieben oder ablehnen.
@@ -738,6 +743,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Robustheit:** Begleitdateien, Ordner löschen und der Abgleich beim Start kommen besser mit ungewöhnlichen oder sehr großen Dateien zurecht.
 - Die Bibliothek für Katalog-Backups und Archiv-Import wurde aktualisiert.
 - **Auswahlleiste:** Die Auswahlleiste ist immer sichtbar, nach Zweck gegliedert, selten genutzte Aktionen stehen im Menü „Mehr“, und der Detailbereich verdeckt sie nicht mehr.
+- **Fehlermeldungen:** Die häufigsten Fehlermeldungen (Ordner anlegen, umbenennen, verschieben und löschen, Modelle verschieben und umbenennen, Quellordner, Modelle aus dem Katalog entfernen, Backup wiederherstellen) erscheinen jetzt in der gewählten Sprache statt immer auf Deutsch. Technische Fehler behalten ihren Originaltext und den Link „Problem melden“.
 
 
 ## [0.16.3] - 2026-10-21

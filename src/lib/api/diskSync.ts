@@ -17,6 +17,8 @@ export interface DiskScan {
   missingFolders: DiskFolderEntry[];
   unreachableRoots: string[];
   skippedPaths: string[];
+  /** Files on disk that are not offered as new only because their path is held by a trash row. */
+  trashBlockedCount: number;
 }
 export interface DiskFailedPath { path: string; reason: string }
 export interface DiskApplied { fileIds: string[]; folderIds: string[]; renamedIds: string[]; renamedCount: number; removedCount: number; failedPaths: DiskFailedPath[] }

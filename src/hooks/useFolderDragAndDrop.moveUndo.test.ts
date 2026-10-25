@@ -146,9 +146,9 @@ describe('undo', () => {
       const { result, refreshFolders } = setup();
       act(() => result.current.recordFolderRename({ folderId: 'a', oldName: 'Parts', newName: 'New' }));
       act(() => result.current.recordFolderRename({ folderId: 'b', oldName: 'Old', newName: 'Newer' }));
-      vi.mocked(invoke).mockRejectedValueOnce({ message: 'Ein Ordner mit diesem Namen existiert schon.', expected: true });
+      vi.mocked(invoke).mockRejectedValueOnce({ message: 'renameTargetFolderExists', expected: true, params: ['/p/Old'] });
       await act(async () => { await result.current.undo(); });
-      expect(result.current.moveToast).toMatchObject({ error: true, undo: { ok: false, reason: 'Ein Ordner mit diesem Namen existiert schon.' } });
+      expect(result.current.moveToast).toMatchObject({ error: true, undo: { ok: false, failure: { message: 'renameTargetFolderExists', params: ['/p/Old'], unexpected: false } } });
       expect(result.current.undoCount).toBe(1);
       expect(refreshFolders).not.toHaveBeenCalled();
       // The step below is still reachable.
