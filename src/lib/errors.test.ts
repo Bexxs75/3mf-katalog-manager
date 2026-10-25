@@ -22,6 +22,12 @@ describe('errors', () => {
     expect(toAppError({ message: 'y', expected: false })).toEqual({ message: 'y', unexpected: true });
   });
 
+  it('keeps the string params of a coded error and drops anything else', () => {
+    expect(toAppError({ message: 'folderExists', expected: true, params: ['/a/b'] })).toEqual({ message: 'folderExists', unexpected: false, params: ['/a/b'] });
+    expect(toAppError({ message: 'x', expected: true, params: [1, 2] })).toEqual({ message: 'x', unexpected: false });
+    expect(toAppError({ message: 'x', expected: true, params: [] })).toEqual({ message: 'x', unexpected: false });
+  });
+
   it('treats plain strings and Error objects as unexpected', () => {
     expect(toAppError('boom')).toEqual({ message: 'boom', unexpected: true });
     expect(toAppError(new Error('bad'))).toEqual({ message: 'bad', unexpected: true });

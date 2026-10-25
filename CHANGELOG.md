@@ -58,6 +58,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Robustness:** More robust handling of companion files, folder deletion and the start sync with unusual or oversized files.
 - Updated the library used for catalog backups and archive import.
 - **Selection bar:** The selection bar is always visible, grouped by purpose, with rarely used actions in a "More" menu, and no longer hidden by the detail panel.
+- **Error messages:** The most common error messages (creating, renaming, moving and deleting folders, moving and renaming models, source folders, removing models from the catalog, restoring a backup) now appear in the selected language instead of always in German. Technical errors keep their original text and the "Report problem" link.
 
 
 ## [0.16.3] - 2026-10-21
@@ -742,6 +743,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Robustheit:** Begleitdateien, Ordner löschen und der Abgleich beim Start kommen besser mit ungewöhnlichen oder sehr großen Dateien zurecht.
 - Die Bibliothek für Katalog-Backups und Archiv-Import wurde aktualisiert.
 - **Auswahlleiste:** Die Auswahlleiste ist immer sichtbar, nach Zweck gegliedert, selten genutzte Aktionen stehen im Menü „Mehr“, und der Detailbereich verdeckt sie nicht mehr.
+- **Fehlermeldungen:** Die häufigsten Fehlermeldungen (Ordner anlegen, umbenennen, verschieben und löschen, Modelle verschieben und umbenennen, Quellordner, Modelle aus dem Katalog entfernen, Backup wiederherstellen) erscheinen jetzt in der gewählten Sprache statt immer auf Deutsch. Technische Fehler behalten ihren Originaltext und den Link „Problem melden“.
 
 
 ## [0.16.3] - 2026-10-21

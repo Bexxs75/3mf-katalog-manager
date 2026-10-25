@@ -157,7 +157,7 @@ pub(super) fn place(
     let mut number = 1;
     let new = loop {
         let name = import_name(original, prefix, number);
-        folders::validate_name(&name, true, "Dateiname")?;
+        folders::validate_name(&name, true, folders::NameKind::File)?;
         let candidate = dir.join(name);
         reject_if_sensitive_path(&candidate, sensitive)
             .map_err(|_| CmdError::expected("protected"))?;
@@ -238,7 +238,7 @@ mod tests {
                 assert!(result.starts_with(PREFIX));
                 assert!(result.ends_with(suffix));
                 assert!(result.len() <= 255);
-                folders::validate_name(&result, true, "Dateiname").unwrap();
+                folders::validate_name(&result, true, folders::NameKind::File).unwrap();
             }
         }
     }
@@ -340,7 +340,7 @@ mod tests {
         place(&conn, id, Some(folder), Some(PREFIX), &[]).unwrap();
         let row = db::get_file(&conn, id).unwrap().unwrap();
         assert!(row.name.ends_with(" (2).3mf"));
-        folders::validate_name(&row.name, true, "Dateiname").unwrap();
+        folders::validate_name(&row.name, true, folders::NameKind::File).unwrap();
         assert_eq!(std::fs::read(&row.path).unwrap(), b"original");
         assert_eq!(std::fs::read(collision).unwrap(), b"existing");
         assert!(!long_source.exists());

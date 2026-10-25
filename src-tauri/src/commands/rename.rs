@@ -267,7 +267,7 @@ mod tests {
                     let temporary = to.file_name().unwrap().to_str().unwrap();
                     assert!(!temporary.starts_with('.'));
                     assert!(temporary.contains(".3mf-rename-tmp-"));
-                    assert!(super::super::folders::validate_name(temporary, true, "Name").is_ok());
+                    assert!(super::super::folders::validate_name(temporary, true, super::super::folders::NameKind::File).is_ok());
                     if !directory {
                         assert_eq!(to.extension(), old.extension());
                     } else {
