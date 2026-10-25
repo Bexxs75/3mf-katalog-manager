@@ -47,7 +47,19 @@ pub(crate) fn session_key(token: &str) -> u64 {
 pub(crate) fn args_hash(args: &serde_json::Value) -> u64 {
     let mut h = HASHER.build_hasher();
     1u8.hash(&mut h);
-    args.to_string().hash(&mut h);
+    // Streamed into the hasher: an image command carries megabytes that must not be
+    // copied into a second string just to compare retries.
+    struct Feed<'a, H>(&'a mut H);
+    impl<H: Hasher> std::io::Write for Feed<'_, H> {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.write(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    serde_json::to_writer(Feed(&mut h), args).expect("a JSON value always serializes");
     h.finish()
 }
 

@@ -35,7 +35,7 @@ it.each([
 });
 
 it('keeps manager scope explicit and printer networking unavailable', () => {
-  expect(WEB_WRITE_COMMANDS).toHaveLength(53);
+  expect(WEB_WRITE_COMMANDS).toHaveLength(55);
   expect(WEB_READ_COMMANDS).toContain('get_filament_spool_image');
   for (const command of ['set_printer_link_enabled', 'test_printer_connection', 'remove_printer_connection', 'sync_printers_now', 'pick_and_read_image']) {
     expect([...WEB_READ_COMMANDS, ...WEB_WRITE_COMMANDS]).not.toContain(command);

@@ -136,7 +136,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 53);
+    assert_eq!(WRITE_COMMANDS.len(), 55);
     assert_eq!(crate::READ_COMMANDS.len(), 27);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
@@ -784,6 +784,7 @@ async fn photo_body_has_30_seconds_other_bodies_keep_15_seconds() {
         ("add_filament_spool", 30),
         ("update_filament_spool", 30),
         ("set_render_snapshot", 30),
+        ("set_custom_image", 30),
         ("set_favorite", 15),
         ("get_app_version", 15),
     ] {
@@ -1182,7 +1183,7 @@ async fn manager_http_images_large_bodies_chunked_overflow_and_strict_nested_dto
 }
 #[tokio::test(start_paused = true)]
 async fn manager_image_admission_rate_and_logout_during_body_wait() {
-    for cmd in ["add_filament_spool", "update_filament_spool", "set_render_snapshot"] {
+    for cmd in ["add_filament_spool", "update_filament_spool", "set_render_snapshot", "set_custom_image"] {
         let f = Fixture::new(true);
         let gate = f.app.writer.as_ref().unwrap();
         let permits = gate.admission.clone().acquire_many_owned(33).await.unwrap();
@@ -1849,5 +1850,275 @@ mod request_id_tests {
         assert_eq!(value(second).await["kind"], "request_id_result_unavailable");
         let entries = value(f.send("list_print_log_entries", json!({"fileId":f.id})).await).await;
         assert_eq!(entries.as_array().unwrap().len(), 1);
+    }
+}
+
+mod custom_image_and_rescan_tests {
+    use super::*;
+    use base64::Engine;
+    const OBJ: &[u8] = b"v 0 0 0\nv 10 0 0\nv 0 20 0\nf 1 2 3\n";
+    const KEY: &str = "0123456789abcdef-image-key";
+
+    fn png(extra: usize) -> String {
+        let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+        bytes.resize(8 + extra, 0);
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    }
+    impl Fixture {
+        fn catalog_path(&self, path: &std::path::Path) {
+            self.app.writer.as_ref().unwrap().conn.lock().unwrap()
+                .execute("UPDATE files SET path=?1 WHERE id=?2", [path.to_str().unwrap(), self.id.as_str()]).unwrap();
+        }
+        fn stored_image(&self) -> Option<Vec<u8>> {
+            db::get_file(&db::open_read_only(&self.app.config.db_path).unwrap(), self.id.parse().unwrap())
+                .unwrap().unwrap().custom_image_png
+        }
+        fn stored_hash(&self) -> Option<String> {
+            db::get_file(&db::open_read_only(&self.app.config.db_path).unwrap(), self.id.parse().unwrap())
+                .unwrap().unwrap().content_hash
+        }
+        async fn send_raw(&self, cmd: &str, body: String, key: Option<&str>) -> Response {
+            let mut r = self.request(cmd, Body::from(body), Some(&self.session), Some("http://localhost:8080"), true);
+            if let Some(key) = key { r.headers_mut().insert("x-request-id", key.parse().unwrap()); }
+            router(self.app.clone()).oneshot(r).await.unwrap()
+        }
+    }
+    fn replayed(r: &Response) -> bool {
+        r.headers().get("x-idempotent-replay").is_some_and(|v| v == "1")
+    }
+
+    #[tokio::test]
+    async fn both_commands_need_write_mode_and_a_session() {
+        let off = Fixture::new(false);
+        for cmd in ["set_custom_image", "rescan_file_metadata"] {
+            assert_eq!(off.send(cmd, json!({"fileId":off.id})).await.status(), 404, "{cmd}");
+        }
+        let f = Fixture::new(true);
+        for cmd in ["set_custom_image", "rescan_file_metadata"] {
+            for (session, csrf, status) in [(None, true, 401), (Some(&f.session), false, 403)] {
+                let req = f.request(cmd, Body::from(json!({"fileId":f.id,"imageBase64":png(0)}).to_string()), session, Some("http://localhost:8080"), csrf);
+                assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), status, "{cmd}");
+            }
+        }
+        assert_eq!(f.stored_image(), None);
+    }
+
+    #[tokio::test]
+    async fn custom_image_is_stored_served_by_the_image_listing_and_validated() {
+        let f = Fixture::new(true);
+        let ok = f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":png(0)})).await;
+        assert_eq!(ok.status(), 200);
+        // The answer stays small; the UI reloads the picture through the image listing.
+        assert_eq!(value(ok).await, Value::Null);
+        assert_eq!(f.stored_image().as_deref(), Some(&b"\x89PNG\r\n\x1a\n"[..]));
+        let images = value(f.send("list_file_images", json!({"ids":[f.id]})).await).await;
+        assert!(images[0]["customImage"].as_str().unwrap().starts_with("data:image/"));
+        for (args, status) in [
+            (json!({"fileId":"999","imageBase64":png(0)}), 404),
+            (json!({"fileId":f.id,"imageBase64":"!!"}), 422),
+            (json!({"fileId":f.id,"imageBase64":""}), 422),
+            (json!({"fileId":f.id,"imageBase64":base64::engine::general_purpose::STANDARD.encode(b"GIF89a")}), 422),
+            (json!({"fileId":f.id,"imageBase64":png(0),"extra":1}), 422),
+            (json!({"fileId":f.id}), 422),
+            (json!({"fileId":7,"imageBase64":png(0)}), 422),
+            (json!({"fileId":"abc","imageBase64":png(0)}), 400),
+        ] {
+            assert_eq!(f.send("set_custom_image", args.clone()).await.status(), status, "{args}");
+        }
+        let r = f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":""})).await;
+        assert_eq!(value(r).await["message"], "imageUploadUnsupported");
+        assert_eq!(f.stored_image().as_deref(), Some(&b"\x89PNG\r\n\x1a\n"[..]));
+    }
+
+    #[tokio::test]
+    async fn only_the_image_command_gets_the_larger_body_limit() {
+        let f = Fixture::new(true);
+        let base = crate::write::body_limit("set_favorite");
+        assert_eq!(base, 16 * 1024);
+        assert_eq!(crate::write::body_limit("set_custom_image"), crate::write::body_limit("set_render_snapshot"));
+        assert!(crate::write::body_limit("set_custom_image") > 5 * 1024 * 1024);
+        assert_eq!(crate::write::body_limit("rescan_file_metadata"), base);
+        // 200 KB of picture is far beyond the normal write limit but fine for a cover image.
+        assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":png(150_000)})).await.status(), 200);
+        for cmd in ["set_favorite", "rescan_file_metadata", "add_tag"] {
+            let padded = json!({"fileId":f.id,"padding":"x".repeat(base)}).to_string();
+            assert_eq!(f.send_raw(cmd, padded, None).await.status(), 413, "{cmd}");
+        }
+        // The full desktop limit works end to end, one byte more does not.
+        let mut max = vec![0; katalog_core::write::MAX_CUSTOM_IMAGE_BYTES];
+        max[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&max);
+        assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":encoded})).await.status(), 200);
+        assert_eq!(f.stored_image().unwrap().len(), max.len());
+        let too_big = base64::engine::general_purpose::STANDARD.encode(vec![0; max.len() + 1]);
+        let r = f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":too_big})).await;
+        assert_eq!(r.status(), 422);
+        assert_eq!(value(r).await["message"], "imageUploadTooLarge");
+        let body = " ".repeat(crate::write::body_limit("set_custom_image") + 1);
+        assert_eq!(f.send_raw("set_custom_image", body, None).await.status(), 413);
+        assert_eq!(f.stored_image().unwrap().len(), max.len());
+    }
+
+    #[tokio::test]
+    async fn repeating_the_image_request_with_the_same_key_applies_it_once() {
+        let f = Fixture::new(true);
+        let args = json!({"fileId":f.id,"imageBase64":png(0)}).to_string();
+        let first = f.send_raw("set_custom_image", args.clone(), Some(KEY)).await;
+        assert_eq!(first.status(), 200);
+        assert!(!replayed(&first));
+        // Out-of-band change: a second execution would overwrite it again.
+        f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+            .execute("UPDATE files SET custom_image_png=x'ffd8ff'", []).unwrap();
+        let second = f.send_raw("set_custom_image", args, Some(KEY)).await;
+        assert_eq!(second.status(), 200);
+        assert!(replayed(&second));
+        assert_eq!(f.stored_image().as_deref(), Some(&b"\xff\xd8\xff"[..]));
+        let other = json!({"fileId":f.id,"imageBase64":png(5)}).to_string();
+        assert_eq!(f.send_raw("set_custom_image", other, Some(KEY)).await.status(), 422);
+    }
+
+    #[tokio::test]
+    async fn rescan_reads_the_cataloged_file_and_returns_the_model() {
+        let f = Fixture::new(true);
+        let path = f.dir.join("model.obj");
+        std::fs::write(&path, OBJ).unwrap();
+        f.catalog_path(&path);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 200);
+        let model = value(r).await;
+        assert_eq!(model["id"], f.id.as_str());
+        assert_eq!(model["fileSizeBytes"], OBJ.len());
+        assert!(model["dimensionsMm"].is_array());
+        assert!(f.stored_hash().is_some());
+        // The same result a plain read returns for the model.
+        let listed = value(f.send("list_files_by_ids", json!({"ids":[f.id]})).await).await;
+        assert_eq!(listed[0]["contentHash"], model["contentHash"]);
+    }
+
+    #[tokio::test]
+    async fn rescan_refuses_bad_arguments_and_unreadable_files_without_leaking_paths() {
+        let f = Fixture::new(true);
+        let secret = f.dir.join("secret-name.obj");
+        // Not written: the file is gone.
+        f.catalog_path(&secret);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 404);
+        let text = value(r).await.to_string();
+        assert!(text.contains("rescan_file_unavailable"), "{text}");
+        assert!(!text.contains("secret-name") && !text.contains(f.dir.to_str().unwrap()), "{text}");
+        let outside = std::env::temp_dir().join(format!("outside-{}.obj", f.id));
+        std::fs::write(&outside, OBJ).unwrap();
+        f.catalog_path(&outside);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 404);
+        let text = value(r).await.to_string();
+        assert!(text.contains("rescan_file_unavailable") && !text.contains("outside-"), "{text}");
+        assert_eq!(f.stored_hash(), None, "a refused rescan must not touch the record");
+        let _ = std::fs::remove_file(&outside);
+        let step = f.dir.join("part.step");
+        std::fs::write(&step, b"ISO-10303-21;").unwrap();
+        f.catalog_path(&step);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 422);
+        assert_eq!(value(r).await["message"], "rescan_step_unavailable");
+        // Only the id is accepted from the client: a path argument is refused outright.
+        for args in [json!({"fileId":f.id,"path":"/etc/passwd"}), json!({}), json!({"fileId":"0"}), json!({"fileId":"x"})] {
+            assert_eq!(f.send("rescan_file_metadata", args.clone()).await.status(), 400, "{args}");
+        }
+        assert_eq!(f.send("rescan_file_metadata", json!({"fileId":"9999"})).await.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn repeating_the_rescan_with_the_same_key_reads_the_file_once() {
+        let f = Fixture::new(true);
+        let path = f.dir.join("again.obj");
+        std::fs::write(&path, OBJ).unwrap();
+        f.catalog_path(&path);
+        let args = json!({"fileId":f.id}).to_string();
+        let first = f.send_raw("rescan_file_metadata", args.clone(), Some(KEY)).await;
+        assert_eq!(first.status(), 200);
+        let first_hash = f.stored_hash();
+        std::fs::write(&path, [OBJ, b"v 5 5 5\n"].concat()).unwrap();
+        let replay = f.send_raw("rescan_file_metadata", args.clone(), Some(KEY)).await;
+        assert!(replayed(&replay));
+        assert_eq!(f.stored_hash(), first_hash);
+        let fresh = f.send_raw("rescan_file_metadata", args, Some("0123456789abcdef-image-other")).await;
+        assert_eq!(fresh.status(), 200);
+        assert_ne!(f.stored_hash(), first_hash);
+    }
+
+    #[tokio::test]
+    async fn slow_scan_does_not_block_writers_and_a_changed_file_is_refused() {
+        use crate::write::rescan_hook::{HOLD, REACHED};
+        use std::sync::atomic::Ordering::SeqCst;
+        let f = Fixture::new(true);
+        let path = f.dir.join("hold-model.obj");
+        std::fs::write(&path, OBJ).unwrap();
+        f.catalog_path(&path);
+        REACHED.store(false, SeqCst);
+        HOLD.store(true, SeqCst);
+        let request = f.request("rescan_file_metadata", Body::from(json!({"fileId":f.id}).to_string()), Some(&f.session), Some("http://localhost:8080"), true);
+        let scan = tokio::spawn(router(f.app.clone()).oneshot(request));
+        for _ in 0..1000 {
+            if REACHED.load(SeqCst) { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(REACHED.load(SeqCst), "scan never reached the parsed state");
+        // The file is parsed but the write connection is free: another write goes straight through.
+        assert_eq!(f.send("set_favorite", json!({"fileId":f.id,"favorite":true})).await.status(), 200);
+        assert!(f.favorite());
+        // Only one scan at a time; the waiting one is told to retry instead of queueing for ever.
+        let second = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(second.status(), 503);
+        assert!(second.headers().contains_key("retry-after"));
+        std::fs::write(&path, [OBJ, b"v 2 2 2\n"].concat()).unwrap();
+        HOLD.store(false, SeqCst);
+        let r = scan.await.unwrap().unwrap();
+        assert_eq!(r.status(), 409);
+        assert_eq!(value(r).await["message"], "rescan_file_changed");
+        assert_eq!(f.stored_hash(), None);
+        assert!(f.favorite(), "the interleaved write must survive");
+        // A fresh scan of the settled file succeeds and frees the place again.
+        let ok = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(ok.status(), 200);
+        assert!(f.stored_hash().is_some());
+    }
+
+    #[tokio::test]
+    async fn jpeg_and_webp_covers_are_accepted_over_http() {
+        let f = Fixture::new(true);
+        for bytes in [&b"\xff\xd8\xff\xe0\x00\x10JFIF"[..], &b"RIFF\x04\x00\x00\x00WEBPVP8 "[..]] {
+            let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+            assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":encoded})).await.status(), 200);
+            assert_eq!(f.stored_image().as_deref(), Some(bytes));
+        }
+    }
+
+    #[test]
+    fn audit_records_both_commands_with_status_and_without_contents() {
+        const CHILD: &str = "KATALOG_TEST_IMAGE_AUDIT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+                let f = Fixture::new(true);
+                let path = f.dir.join("audit-secret.obj");
+                std::fs::write(&path, OBJ).unwrap();
+                f.catalog_path(&path);
+                assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":png(0)})).await.status(), 200);
+                assert_eq!(f.send("rescan_file_metadata", json!({"fileId":f.id})).await.status(), 200);
+                assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":"!!"})).await.status(), 422);
+            });
+            return;
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "web::write_tests::custom_image_and_rescan_tests::audit_records_both_commands_with_status_and_without_contents", "--nocapture"])
+            .env(CHILD, "1").output().unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(output.status.success(), "{stderr}");
+        let lines: Vec<_> = stderr.lines().filter(|l| l.starts_with("write time=")).collect();
+        assert_eq!(lines.len(), 3, "{stderr}");
+        assert!(lines.iter().any(|l| l.contains("command=set_custom_image status=200")), "{stderr}");
+        assert!(lines.iter().any(|l| l.contains("command=rescan_file_metadata status=200")), "{stderr}");
+        assert!(lines.iter().any(|l| l.contains("command=set_custom_image status=422")), "{stderr}");
+        assert!(!stderr.contains("audit-secret") && !stderr.contains("iVBOR"), "{stderr}");
     }
 }

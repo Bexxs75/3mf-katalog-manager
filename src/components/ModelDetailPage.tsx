@@ -13,6 +13,7 @@ import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
+import { ImageUploadButton } from './ImageUploadButton';
 import { useModelImages } from '../hooks/useModelImages';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState } from 'react';
@@ -62,7 +63,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void | Promise<void>;
+  onUploadImage: (file?: File) => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
@@ -287,12 +288,7 @@ export function ModelDetailPage({
               </div>
             )}
           </div>
-          <>{!isReadOnly() && <button
-            onClick={imageUpload.uploadImage}
-            className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('uploadModelImageLabel')}
-          </button>}</>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]" />
           <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
         </div>
 
@@ -596,12 +592,13 @@ export function ModelDetailPage({
               {t('delete')}
             </button>
           ))}
-          <>{!isReadOnly() && <button
+          <button
             onClick={onRescanMetadata}
-            className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
+            className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)] disabled:opacity-40 disabled:cursor-default"
+            {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}
           >
             {t('rescanMetadataButton')}
-          </button>}</>
+          </button>
           <div className="relative">
             <>{canEdit && <button
               onClick={() => setAddToCollectionMenuOpen((prev) => !prev)}

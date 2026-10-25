@@ -57,6 +57,8 @@ export const WEB_WRITE_COMMANDS = [
   'restock_filament_spool',
   'consume_resin',
   'set_render_snapshot',
+  'set_custom_image',
+  'rescan_file_metadata',
   'set_auto_tagging',
   'block_auto_tag',
   'unblock_auto_tag',

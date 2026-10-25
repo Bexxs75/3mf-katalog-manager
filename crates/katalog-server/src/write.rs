@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use katalog_core::write::{web, Connection, WriteError};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -78,6 +78,8 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "restock_filament_spool",
     "consume_resin",
     "set_render_snapshot",
+    "set_custom_image",
+    "rescan_file_metadata",
     "set_auto_tagging",
     "block_auto_tag",
     "unblock_auto_tag",
@@ -85,7 +87,11 @@ pub const WRITE_COMMANDS: &[&str] = &[
 pub(crate) fn image_command(command: &str) -> bool {
     matches!(
         command,
-        "add_print_log_entry" | "add_filament_spool" | "update_filament_spool" | "set_render_snapshot"
+        "add_print_log_entry"
+            | "add_filament_spool"
+            | "update_filament_spool"
+            | "set_render_snapshot"
+            | "set_custom_image"
     )
 }
 pub(crate) fn body_limit(command: &str) -> usize {
@@ -103,6 +109,8 @@ pub(crate) struct WriteGate {
     pub worker: Arc<Semaphore>,
     /// Lives with the gate because only write commands are replay-protected.
     pub idem: Arc<crate::idempotency::Store>,
+    /// One file scan at a time: parsing is the only write-side work that needs real memory and CPU.
+    pub rescan: Arc<Semaphore>,
 }
 impl WriteGate {
     pub fn new(conn: Connection) -> Self {
@@ -111,6 +119,7 @@ impl WriteGate {
             admission: Arc::new(Semaphore::new(33)),
             worker: Arc::new(Semaphore::new(1)),
             idem: Arc::default(),
+            rescan: Arc::new(Semaphore::new(1)),
         }
     }
 }
@@ -403,21 +412,105 @@ pub(crate) fn removal_ids(args: &Value) -> Result<Vec<i64>, Box<Response>> {
     }
     args.file_ids.into_iter().map(|id| id_value(&Value::String(id)).map_err(|_| invalid())).collect()
 }
+/// What a write needs besides the database. Only the rescan reads from disk.
+pub(crate) struct ExecContext {
+    pub db_path: std::path::PathBuf,
+    pub roots: Vec<std::path::PathBuf>,
+    pub limits: katalog_core::import::files::WebImportLimits,
+}
+/// Test-only pause between reading the file and the write step, to prove that a slow scan
+/// neither blocks other writers nor can overwrite a file that changed meanwhile. Only files
+/// named `hold-*` pause, so unrelated parallel tests are unaffected.
+#[cfg(test)]
+pub(crate) mod rescan_hook {
+    use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+    pub static HOLD: AtomicBool = AtomicBool::new(false);
+    pub static REACHED: AtomicBool = AtomicBool::new(false);
+    pub fn after_parse(path: &std::path::Path) {
+        if !HOLD.load(SeqCst) || !path.file_name().is_some_and(|n| n.to_string_lossy().starts_with("hold-")) {
+            return;
+        }
+        REACHED.store(true, SeqCst);
+        let start = std::time::Instant::now();
+        while HOLD.load(SeqCst) && start.elapsed() < std::time::Duration::from_secs(10) {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+}
+/// Reads and parses the file for a rescan without the write connection. It uses its own
+/// read-only handle, so other writes keep running while a large model is parsed.
+pub(crate) fn prepare_rescan(
+    args: &Value,
+    ctx: &ExecContext,
+) -> Result<katalog_core::rescan::PreparedRescan, Box<Response>> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct RescanArgs { file_id: String }
+    let args = RescanArgs::deserialize(args).map_err(|_| bad())?;
+    let file_id = id_value(&Value::String(args.file_id))?;
+    let conn = katalog_core::db::open_read_only(&ctx.db_path).map_err(|_| {
+        eprintln!("write error_kind=rescan_read_open");
+        Box::new(super::web::error(500, "Interner Schreibfehler"))
+    })?;
+    let prepared = katalog_core::rescan::prepare_web_rescan(&conn, file_id, &ctx.roots, ctx.limits)
+        .map_err(rescan_error)?;
+    #[cfg(test)]
+    rescan_hook::after_parse(prepared.canonical_path());
+    Ok(prepared)
+}
+pub(crate) fn apply_rescan(
+    c: &mut Connection,
+    prepared: katalog_core::rescan::PreparedRescan,
+) -> Result<(Response, u64), Box<Response>> {
+    let dto = katalog_core::rescan::apply_web_rescan(c, prepared).map_err(rescan_error)?;
+    Ok((Json(dto).into_response(), 1))
+}
+/// The client only names the catalog entry; the path stays server-side and no message carries it.
+fn rescan_error(e: katalog_core::rescan::RescanError) -> Box<Response> {
+    use katalog_core::rescan::RescanError::*;
+    let (status, code) = match e {
+        NotInCatalog | Missing(_) | Outside => (404, "rescan_file_unavailable"),
+        Unsupported => (422, "rescan_file_unsupported"),
+        StepUnavailable => (422, "rescan_step_unavailable"),
+        TooLarge => (422, "rescan_file_too_large"),
+        Invalid => (422, "rescan_file_invalid"),
+        Changed => (409, "rescan_file_changed"),
+        Failed(_) => {
+            // The detail may be database text; only a fixed kind is logged.
+            eprintln!("write error_kind=rescan_failed");
+            return Box::new(super::web::error(500, "Interner Schreibfehler"));
+        }
+    };
+    Box::new(super::web::error(status, code))
+}
 pub(crate) fn execute(
     c: &mut Connection,
     cmd: &str,
     a: &Value,
+    _ctx: &ExecContext,
 ) -> Result<(Response, u64), Box<Response>> {
     match cmd {
+        "set_custom_image" => {
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct ImageArgs<'a> { file_id: String, image_base64: &'a str }
+            // Borrowed: the Base64 text can be megabytes and must not be copied again.
+            let args = ImageArgs::deserialize(a)
+                .map_err(|_| map_error(WriteError::expected("Ungültige Bildargumente")))?;
+            let file_id = id_value(&Value::String(args.file_id))?;
+            encode(web::set_custom_image(c, file_id, args.image_base64))
+        }
+        // Needs the two-step flow in `write_invoke` (parse first, write later).
+        "rescan_file_metadata" => Err(bad()),
         "remove_files_from_catalog" => encode(web::remove_files_from_catalog(c, &removal_ids(a)?)),
         "set_render_snapshot" => {
             #[derive(serde::Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct SnapshotArgs { file_id: String, image_base64: String }
-            let args: SnapshotArgs = serde_json::from_value(a.clone())
+            struct SnapshotArgs<'a> { file_id: String, image_base64: &'a str }
+            let args = SnapshotArgs::deserialize(a)
                 .map_err(|_| map_error(WriteError::expected("Ungültige Snapshot-Argumente")))?;
             let file_id = id_value(&Value::String(args.file_id))?;
-            encode(web::set_render_snapshot(c, file_id, &args.image_base64))
+            encode(web::set_render_snapshot(c, file_id, args.image_base64))
         }
         "add_filament_spool" => encode(web::add_filament_spool(c, spool(a)?)),
         "update_filament_spool" => {

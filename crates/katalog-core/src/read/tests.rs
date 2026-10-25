@@ -408,3 +408,23 @@ fn blocked_auto_tags_are_listed_sorted_as_stored() {
     db::blocked_tags::block_auto_tag(&conn, "Multicolor").unwrap();
     assert_eq!(list_blocked_auto_tags(&conn).unwrap(), vec!["mehrfarbig", "zahnrad"]);
 }
+
+#[test]
+fn image_budget_defers_later_entries_but_always_serves_the_first() {
+    let entry = |id: i64, size: usize| db::FileImages {
+        id,
+        thumbnail_png: None,
+        render_snapshot_png: None,
+        custom_image_png: Some(vec![1; size]),
+    };
+    let served = encode_file_images_budgeted(vec![entry(1, 300), entry(2, 300), entry(3, 10), entry(4, 300)], 500);
+    let deferred: Vec<_> = served.iter().map(|e| e.deferred).collect();
+    assert_eq!(deferred, [false, true, true, true]);
+    assert!(served[0].custom_image.is_some());
+    assert!(served[1].custom_image.is_none());
+    assert_eq!(served.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["1", "2", "3", "4"]);
+    // The first entry is served even when it alone exceeds the budget.
+    assert!(!encode_file_images_budgeted(vec![entry(1, 900)], 10)[0].deferred);
+    let json = serde_json::to_value(&served[0]).unwrap();
+    assert!(json.get("deferred").is_none());
+}

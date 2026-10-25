@@ -30,6 +30,8 @@ export interface ModelImages {
   thumbnailImage: string | null;
   renderSnapshotImage: string | null;
   customImage: string | null;
+  /** Web only: left out because the answer hit its size budget; request it again. */
+  deferred?: boolean;
 }
 
 export interface ModelFile {

@@ -120,7 +120,7 @@ interface CatalogWorkspaceProps {
   togglePrintStatus: (id: string) => void;
   toggleFavorite: (id: string) => void;
   addToQueue: (id: string) => void;
-  uploadCustomImage: (id: string) => void | Promise<void>;
+  uploadCustomImage: (id: string, file?: File) => void | Promise<void>;
   captureRenderSnapshot: (id: string, base64: string) => void;
   setModelLicenses?: (ids: string[], license: string | null) => Promise<void>;
   printStatus?: ModelFile['printStatus'] | null;
@@ -616,7 +616,7 @@ export function CatalogWorkspace({
             onToggleQueue={() =>
               detailModel.queuePosition !== null ? removeFromQueue(detailModel.id) : addToQueue(detailModel.id)
             }
-            onUploadImage={() => uploadCustomImage(detailModel.id)}
+            onUploadImage={(file) => uploadCustomImage(detailModel.id, file)}
             onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
             onSetLicense={setModelLicenses}
             onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
@@ -741,7 +741,7 @@ export function CatalogWorkspace({
           onToggleQueue={() =>
             selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
           }
-          onUploadImage={() => selected ? uploadCustomImage(selected.id) : undefined}
+          onUploadImage={(file) => selected ? uploadCustomImage(selected.id, file) : undefined}
           onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
           onSetLicense={setModelLicenses}
           onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}

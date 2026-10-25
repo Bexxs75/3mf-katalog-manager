@@ -74,10 +74,12 @@ it.each(['compact', 'comfort'])('exposes metadata but keeps filesystem controls 
   expect(screen.getByText(de.createCollectionLabel)).toBeVisible();
   expect(screen.queryByRole('button', { name: de.createFolderLabel })).toBeNull();
   expect(screen.getByRole('button', { name: new RegExp('^' + de.queueHeading) })).toBeVisible();
-  for (const label of [de.delete, de.uploadModelImageLabel, de.rescanMetadataButton, de.showInFileManager, de.openInSlicer, de.restoreLabel, de.emptyTrashButton]) {
+  for (const label of [de.delete, de.showInFileManager, de.openInSlicer, de.restoreLabel, de.emptyTrashButton]) {
     expect(screen.queryByRole('button', { name: label })).toBeNull();
   }
   expect(screen.getAllByRole('button', { name: de.favoriteRemove }).every(button => !(button as HTMLButtonElement).disabled)).toBe(true);
+  // Cover image and rescan are catalog writes the server accepts, so a writable session can use them.
+  expect(screen.getByRole('button', { name: de.uploadModelImageLabel })).toBeEnabled();
   const folder = screen.getByText('Other folder').closest<HTMLElement>('[role=button]')!;
   fireEvent.contextMenu(folder); fireEvent.keyDown(folder, { key: 'F10', shiftKey: true });
   expect(document.querySelector('[data-navigation-menu]')).toBeNull();
@@ -89,7 +91,9 @@ it.each(['compact', 'comfort'])('exposes metadata but keeps filesystem controls 
   expect(screen.getByRole('button', { name: de.printLogAddButton })).toBeVisible();
   await click(screen.getByRole('button', { name: de.printLogAddButton }));
   expect(screen.getByLabelText(de.printLogPhotoButton)).toHaveAttribute('type', 'file');
-  for (const label of [de.delete, de.uploadModelImageLabel, de.rescanMetadataButton, de.showInFileManager, de.openInSlicer]) {
+  expect(screen.getByRole('button', { name: de.rescanMetadataButton })).toBeEnabled();
+  expect(screen.getByRole('button', { name: de.uploadModelImageLabel })).toBeEnabled();
+  for (const label of [de.delete, de.showInFileManager, de.openInSlicer]) {
     expect(screen.queryByRole('button', { name: label })).toBeNull();
   }
   const writes = attempted.mock.calls.map(([command]) => command).filter(command => !(WEB_READ_COMMANDS as readonly string[]).includes(command));

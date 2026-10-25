@@ -7,6 +7,7 @@ pub mod step;
 pub mod archive;
 pub mod geometry;
 pub mod safe_file;
+pub mod rescan;
 pub mod tagging;
 pub mod filament_check;
 pub mod printer_link;

@@ -137,6 +137,8 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
         .collect()
 }
 
+/// Encoded picture bytes after which `list_file_images` defers the remaining entries.
+const IMAGE_RESPONSE_BUDGET: usize = 24 * 1024 * 1024;
 pub const READ_COMMANDS: &[&str] = &[
     "folder_removal_summary",
     "empty_trash_summary",
@@ -418,7 +420,8 @@ pub async fn invoke(
                     .collect::<Vec<_>>();
                 let images = read::load_file_images(&conn, &numeric)?;
                 drop(conn);
-                encode(read::encode_file_images(images))
+                // Up to 200 full-size covers could add up to hundreds of MiB in one answer.
+                encode(read::encode_file_images_budgeted(images, IMAGE_RESPONSE_BUDGET))
             }
             "get_model_geometry" => {
                 let source = read::load_geometry_source(&conn, &file_id.unwrap())?;

@@ -827,6 +827,12 @@ export interface Translations {
   queueFilamentShortLine: string;
   queueFilamentUnknownLine: string;
   rescanMetadataButton: string;
+  rescanFileUnavailable: string;
+  rescanFileUnsupported: string;
+  rescanStepUnavailable: string;
+  rescanFileTooLarge: string;
+  rescanFileInvalid: string;
+  rescanFileChanged: string;
   rescanMetadataSuccess: string;
   catalogBackupTitle: string;
   exportCatalogButton: string;

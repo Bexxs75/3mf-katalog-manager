@@ -397,6 +397,32 @@ pub fn set_render_snapshot(
     })
 }
 
+/// Own cover image chosen in the browser. Error texts are the translatable codes the
+/// desktop picker uses, so the UI shows the same wording in both targets.
+pub fn set_custom_image(
+    c: &mut Connection,
+    id: i64,
+    image_base64: &str,
+) -> WriteResult<Outcome<()>> {
+    use base64::Engine;
+    transaction(c, |c| {
+        exists(c, "files", id)?;
+        // Checked before decoding so an oversized string never allocates its decoded copy.
+        if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
+            return Err(invalid("imageUploadTooLarge"));
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(image_base64)
+            .map_err(|_| invalid("imageUploadUnreadable"))?;
+        if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
+            return Err(invalid("imageUploadTooLarge"));
+        }
+        super::validate_image_format(&bytes)?;
+        db::set_custom_image_png(c, id, &bytes)?;
+        Ok(outcome((), c.changes()))
+    })
+}
+
 /// Remove catalog records only; filesystem ownership remains with the upload journal.
 pub fn remove_files_from_catalog(c: &mut Connection, ids: &[i64]) -> WriteResult<Outcome<usize>> {
     if ids.len() > 200 {

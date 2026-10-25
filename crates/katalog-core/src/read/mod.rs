@@ -64,6 +64,9 @@ pub struct FileImagesDto {
     pub thumbnail_image: Option<String>,
     pub render_snapshot_image: Option<String>,
     pub custom_image: Option<String>,
+    /// Left out of this answer to respect the byte budget; ask for it again.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub deferred: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -316,6 +319,32 @@ pub fn encode_file_images(images: Vec<db::FileImages>) -> Vec<FileImagesDto> {
             thumbnail_image: encode_image(images.thumbnail_png),
             render_snapshot_image: encode_image(images.render_snapshot_png),
             custom_image: encode_image(images.custom_image_png),
+            deferred: false,
+        })
+        .collect()
+}
+
+/// Like [`encode_file_images`], but stops filling in pictures once the encoded size passes
+/// `max_base64_bytes`; the remaining entries come back as `deferred` placeholders. The
+/// first entry is always complete, so every request makes progress.
+pub fn encode_file_images_budgeted(images: Vec<db::FileImages>, max_base64_bytes: usize) -> Vec<FileImagesDto> {
+    let mut used = 0usize;
+    let mut full = false;
+    images
+        .into_iter()
+        .enumerate()
+        .map(|(index, images)| {
+            let raw: usize = [&images.thumbnail_png, &images.render_snapshot_png, &images.custom_image_png]
+                .into_iter()
+                .map(|png| png.as_ref().map_or(0, Vec::len))
+                .sum();
+            let size = raw.div_ceil(3) * 4;
+            full |= index > 0 && used + size > max_base64_bytes;
+            if full {
+                return FileImagesDto { id: images.id.to_string(), thumbnail_image: None, render_snapshot_image: None, custom_image: None, deferred: true };
+            }
+            used += size;
+            encode_file_images(vec![images]).remove(0)
         })
         .collect()
 }

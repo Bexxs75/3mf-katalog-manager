@@ -1166,10 +1166,38 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
     let gate = app.writer.as_ref().expect("write connection initialized");
     let started=std::time::Instant::now();
     let clock = app.clock.clone();
-    let Ok(Ok(worker)) = tokio::time::timeout(std::time::Duration::from_secs(5),gate.worker.clone().acquire_owned()).await else { return crate::write::retry(503); };
+    // A rescan parses a file before it needs the write connection, so it takes the single
+    // scan place first and only later the write place; all other writes take the latter at once.
+    let rescan = command == "rescan_file_metadata";
+    let (worker, scan_permit) = if rescan {
+        let Ok(Ok(scan)) = tokio::time::timeout(std::time::Duration::from_secs(1),gate.rescan.clone().acquire_owned()).await else { return crate::write::retry(503); };
+        (None, Some(scan))
+    } else {
+        let Ok(Ok(worker)) = tokio::time::timeout(std::time::Duration::from_secs(5),gate.worker.clone().acquire_owned()).await else { return crate::write::retry(503); };
+        (Some(worker), None)
+    };
     // Permits live with blocking work, including after HTTP timeout/disconnect.
+    let exec_ctx = crate::write::ExecContext {
+        db_path: app.config.db_path.clone(),
+        roots: app.config.roots.clone(),
+        limits: app.config.upload.as_ref().map(|u| u.limits).unwrap_or_default(),
+    };
     let work=tokio::task::spawn_blocking(move || {
-        let (_admission, _worker) = (admission, worker);
+        let (_admission, _scan) = (admission, scan_permit);
+        let mut worker = worker;
+        let prepared = if rescan {
+            let prepared = match crate::write::prepare_rescan(&args, &exec_ctx) { Ok(p) => p, Err(response) => return *response };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                match app.writer.as_ref().unwrap().worker.clone().try_acquire_owned() {
+                    Ok(permit) => { worker = Some(permit); break; }
+                    Err(_) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(5)),
+                    Err(_) => return crate::write::retry(503),
+                }
+            }
+            Some(prepared)
+        } else { None };
+        let _worker = worker;
         let removal_ids = if command == "remove_files_from_catalog" {
             match crate::write::removal_ids(&args) {
                 Ok(ids) => Some(ids),
@@ -1250,10 +1278,11 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         }
         let execution = if removal_ids.is_some() {
             let cancel = fileops::operation_cancellation(&app, &current);
-            let result=cancel.run(&mut conn,|c|crate::write::execute(c,&command,&args));
+            let result=cancel.run(&mut conn,|c|crate::write::execute(c,&command,&args,&exec_ctx));
             if cancel.interrupted(){return fileops::failure(409,"not_started")}
             match result {Ok(result)=>result,Err(())=>return fileops::failure(500,"internal")}
-        } else {crate::write::execute(&mut conn,&command,&args)};
+        } else if let Some(prepared) = prepared { crate::write::apply_rescan(&mut conn, prepared) }
+        else {crate::write::execute(&mut conn,&command,&args,&exec_ctx)};
         match execution {
             Ok((response, changes)) => {
                 drop(conn);

@@ -67,8 +67,12 @@ const click = async (element: HTMLElement) => { await act(async () => { fireEven
 const modelItem = (name = 'Alpha.stl') => within(screen.getByRole('main')).getByText(name);
 async function openDetail() { await act(async () => { fireEvent.click(modelItem()); fireEvent.doubleClick(modelItem()); }); }
 function noMutationControls() {
-  for (const label of [de.delete, de.uploadModelImageLabel, de.addToQueue, de.addToCollectionLabel, de.rescanMetadataButton, de.printLogAddButton, de.licenseSave, de.showInFileManager, de.openInSlicer, de.restoreLabel, de.emptyTrashButton]) {
+  for (const label of [de.delete, de.addToQueue, de.addToCollectionLabel, de.printLogAddButton, de.licenseSave, de.showInFileManager, de.openInSlicer, de.restoreLabel, de.emptyTrashButton]) {
     if (typeof label === 'string') expect(screen.queryByRole('button', { name: label })).toBeNull();
+  }
+  // Shown, but locked: without write mode nothing may be picked or sent.
+  for (const label of [de.uploadModelImageLabel, de.rescanMetadataButton]) {
+    for (const button of screen.queryAllByRole('button', { name: label })) expect(button).toBeDisabled();
   }
   expect(screen.queryByPlaceholderText(de.sourceUrlPlaceholder)).toBeNull();
   expect(screen.queryByRole('checkbox')).toBeNull();

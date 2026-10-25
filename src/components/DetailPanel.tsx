@@ -11,6 +11,7 @@ import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
+import { ImageUploadButton } from './ImageUploadButton';
 import { Icon } from './Icon';
 import { CompanionSection } from './CompanionSection';
 import { BuildPlateFit } from './BuildPlateFit';
@@ -55,7 +56,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void | Promise<void>;
+  onUploadImage: (file?: File) => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
@@ -201,12 +202,7 @@ export function DetailPanel({
           <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>
-          <>{!isReadOnly() && <button
-            onClick={imageUpload.uploadImage}
-            className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('uploadModelImageLabel')}
-          </button>}</>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]" />
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
@@ -417,13 +413,7 @@ export function DetailPanel({
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />
-          <>{!isReadOnly() && <button
-            onClick={imageUpload.uploadImage}
-            className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
-            style={{ fontSize: 'var(--font-size-meta)' }}
-          >
-            {t('uploadModelImageLabel')}
-          </button>}</>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]" style={{ fontSize: 'var(--font-size-meta)' }} />
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 

@@ -24,6 +24,13 @@ const LEGACY_KEYS = {
   imageUploadUnsupported: 'imageUploadUnsupported',
   imageUploadUnreadable: 'imageUploadUnreadable',
   importActive: 'importActiveError',
+  // Answers of the web server's rescan: it never reveals the stored path.
+  rescan_file_unavailable: 'rescanFileUnavailable',
+  rescan_file_unsupported: 'rescanFileUnsupported',
+  rescan_step_unavailable: 'rescanStepUnavailable',
+  rescan_file_too_large: 'rescanFileTooLarge',
+  rescan_file_invalid: 'rescanFileInvalid',
+  rescan_file_changed: 'rescanFileChanged',
   // Server answer to a repeated write whose stored reply was too large to keep.
   request_id_result_unavailable: 'requestResultLost',
 } as const satisfies Record<string, keyof Translations>;
