@@ -12,6 +12,8 @@ Interner Plan. Dieses Repository ist privat und wird bewusst still entwickelt: k
 - **Schlank:** kein gestreamter Desktop mehr (kein Selkies, kein WebKit im Container). Der Browser des Nutzers zeichnet Oberfläche und 3D-Vorschau (mit der GPU des Nutzers).
 - **Optional für Docker:** ein zweites, kleines Image bzw. ein Compose-Profil neben dem Desktop-Image.
 - Nicht-Ziele: Updater, „In Slicer öffnen“ auf dem Server, native Dateidialoge, Betriebssystem-Drag-and-drop, Mehrbenutzer-Rechte.
+- Zielgeräte: Desktop-Browser und Tablets. Smartphones sind kein Ziel; sie sehen einen weichen Hinweis mit „Trotzdem öffnen“ (`PhoneNotice`, Erkennung per User-Agent, Entscheidung vom 25.10.2026).
+- Druckeranbindung: Bambu und OctoPrint sind im Web ausdrücklich nicht vorgesehen (Entscheidung vom 25.10.2026: bei OctoPrint hat sich niemand gemeldet, Bambu lässt sich schlecht auslesen). Der Schwerpunkt liegt auf den Daten aus den 3MF-Dateien. Höchstens eine kleine, optionale Moonraker-Anbindung hinter einem eigenen Schalter, ohne Priorität.
 
 ## 2. Befund aus dem Code (dev/0.16.0; von Codex gegengeprüft)
 - Frontend (React/TypeScript, rund 25.000 Zeilen ohne Tests): spricht fast ausschließlich über `invoke`. **138 Commands sind registriert, 137 davon referenziert das Frontend** (35 Dateien; nur `rename_folder` nicht). Signaturen: **42 mit AppHandle/Window, 80 nur mit AppState, 16 sonstige.** Auch Commands ohne Handle können Desktop-Aktionen sein (z. B. in `commands/files.rs`). Wiederverwendbarkeit also **nach Verhalten bewerten, nicht nach Signatur**.
@@ -30,7 +32,7 @@ Interner Plan. Dieses Repository ist privat und wird bewusst still entwickelt: k
 ## 4. Stufen (überarbeitete Reihenfolge)
 0. **Core- und Build-Entkopplung, Funktionsmatrix.** Gemeinsamen Core herauslösen (inkl. Sicherungshelfer aus `updater`, `printer_link` entkoppeln); Desktop-Adapter und Server getrennt bauen, Tauri-Abhängigkeit des Servers entfernen. Funktionsmatrix: jeder der 138 Commands → Web / nur Desktop / ersetzt / entfällt, nach Verhalten.
 1. **Authentifizierter Read-only-Server** mit echtem Browser-Smoke-Test, eigener Read-only-Startpfad (kein Migrieren, kein Bereinigen, keine Backfills), automatische UI-Schreibzugriffe (Sichtungszeit, Snapshots) abschaltbar.
-2. **Liste, Details, Bilder, Download** (signierte Downloads als bewusste Ausnahme von der Anmeldung).
+2. **Liste, Details, Bilder, Download** (signierte Downloads als bewusste Ausnahme von der Anmeldung: geplant, aber nicht umgesetzt; der Download verlangt heute eine Sitzung, Stand 25.10.2026. Signierte Links gibt es nur auf der Docker-Begleitseite).
 3. **Begrenzte 3D-Vorschau** (Binärtransport erhalten, Parallelität der Parser begrenzen, Größenlimits).
 4. **Metadatenänderungen** (Tags, Favoriten, Druckstatus, Lizenz, Sammlungen); Papierkorb mit endgültigem Löschen separat.
 5. **Import und Ereignisse** (Upload im Browser, Fortschritt per SSE mit Wiederverbindung, Zustandsabgleich, begrenzten Warteschlangen; Upload- und Entpacklimits).

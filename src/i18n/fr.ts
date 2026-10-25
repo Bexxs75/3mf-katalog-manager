@@ -2,6 +2,9 @@ import type { Translations } from './types';
 
 export const fr: Translations = {
   webUploadTitle: "Téléverser des fichiers",
+  webPhoneTitle: "Conçu pour les navigateurs de bureau",
+  webPhoneBody: "Le Katalog Manager est conçu pour les navigateurs sur ordinateur ou tablette. L’interface n’est pas prévue pour les smartphones et l’aperçu 3D peut y être très lent ou échouer.",
+  webPhoneContinue: "Ouvrir quand même",
   webUploadChoose: "Choisir des fichiers de modèles",
   webUploadHint: "Déposez ou choisissez des fichiers : 3MF, STL, OBJ, STP, STEP. Aucun dossier ni archive. Les fichiers restent dans le dossier de téléversement du serveur.",
   webUploadArchives: "Archives : uniquement dans l’application de bureau.",

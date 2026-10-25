@@ -1,4 +1,5 @@
 import { WebAuthGate } from './components/WebAuthGate';
+import { PhoneNotice } from './components/PhoneNotice';
 import { RuntimeEnvironmentProvider } from './hooks/useRuntimeEnvironment';
 import { ModelLayoutProvider } from "./hooks/ModelLayoutContext";
 import React, { useEffect } from "react";
@@ -30,7 +31,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
           <DiagnosticsProvider>
             <ErrorBoundary fallback={(reload) => <CrashFallback onReload={reload} />}>
               {import.meta.env.VITE_TARGET === 'web'
-                ? <WebAuthGate><ModelLayoutProvider><App /></ModelLayoutProvider></WebAuthGate>
+                ? <PhoneNotice><WebAuthGate><ModelLayoutProvider><App /></ModelLayoutProvider></WebAuthGate></PhoneNotice>
                 : <ModelLayoutProvider><App /></ModelLayoutProvider>}
             </ErrorBoundary>
           </DiagnosticsProvider>

@@ -2,6 +2,9 @@ import type { Translations } from './types';
 
 export const de: Translations = {
   webUploadTitle: "Dateien hochladen",
+  webPhoneTitle: "Für Desktop-Browser gedacht",
+  webPhoneBody: "Der Katalog Manager ist für Browser am Rechner oder Tablet entwickelt. Auf dem Smartphone ist die Oberfläche nicht ausgelegt, und die 3D-Vorschau kann dort sehr langsam sein oder scheitern.",
+  webPhoneContinue: "Trotzdem öffnen",
   webUploadChoose: "Modelldateien auswählen",
   webUploadHint: "Dateien hier ablegen oder auswählen: 3MF, STL, OBJ, STP, STEP. Keine Ordner oder Archive. Die Dateien bleiben im Upload-Ordner auf dem Server.",
   webUploadArchives: "Archive: nur in der Desktop-App.",

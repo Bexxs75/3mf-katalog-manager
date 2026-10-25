@@ -2,6 +2,9 @@ import type { Translations } from './types';
 
 export const en: Translations = {
   webUploadTitle: "Upload files",
+  webPhoneTitle: "Designed for desktop browsers",
+  webPhoneBody: "The Katalog Manager is built for browsers on a computer or tablet. The interface is not designed for smartphones, and the 3D preview can be very slow or fail there.",
+  webPhoneContinue: "Open anyway",
   webUploadChoose: "Choose model files",
   webUploadHint: "Drop or choose files: 3MF, STL, OBJ, STP, STEP. No folders or archives. Files remain in the upload folder on the server.",
   webUploadArchives: "Archives: desktop app only.",

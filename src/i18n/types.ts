@@ -7,6 +7,9 @@ export interface PluralForms {
 
 export interface Translations {
   webUploadTitle: string;
+  webPhoneTitle: string;
+  webPhoneBody: string;
+  webPhoneContinue: string;
   webUploadChoose: string;
   webUploadHint: string;
   webUploadArchives: string;
