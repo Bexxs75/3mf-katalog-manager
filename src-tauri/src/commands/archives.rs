@@ -31,7 +31,7 @@ impl From<InspectStatus> for ArchiveStatusDto {
             InspectStatus::TooLarge => ArchiveStatusDto::TooLarge,
             InspectStatus::Encrypted => ArchiveStatusDto::Encrypted,
             InspectStatus::Unreadable => ArchiveStatusDto::Unreadable,
-            InspectStatus::Unsupported => ArchiveStatusDto::Unsupported,
+            InspectStatus::Unsupported | InspectStatus::MemoryLimit => ArchiveStatusDto::Unsupported,
         }
     }
 }

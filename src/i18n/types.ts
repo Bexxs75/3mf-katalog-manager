@@ -13,6 +13,16 @@ export interface Translations {
   webUploadChoose: string;
   webUploadHint: string;
   webUploadArchives: string;
+  webUploadArchiveEncrypted: string;
+  webUploadArchiveTooLarge: string;
+  webUploadArchiveUnreadable: string;
+  webUploadArchiveNoModels: string;
+  webUploadArchiveSummary: string;
+  webUploadSkipped: string;
+  webUploadArchiveTooMany: string;
+  webUploadArchiveMemory: string;
+  webUploadArchiveTimeout: string;
+  webUploadArchiveImported: string;
   webUploadFolders: string;
   webUploadType: string;
   webUploadInvalid: string;

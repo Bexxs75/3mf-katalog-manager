@@ -14,6 +14,8 @@ pub struct UploadConfig {
     pub dir: PathBuf,
     pub max_bytes: u64,
     pub max_files: usize,
+    /// Upper bound for what ONE uploaded archive may unpack to.
+    pub archive_max_bytes: u64,
     pub limits: katalog_core::import::files::WebImportLimits,
 }
 
@@ -155,6 +157,7 @@ impl Config {
         };
         let max_mb = positive_limit(&lookup, "KATALOG_UPLOAD_MAX_MB", 1024, 4096)?;
         let max_files = positive_limit(&lookup, "KATALOG_UPLOAD_MAX_FILES", 2, 32)?;
+        let archive_mb = positive_limit(&lookup, "KATALOG_ARCHIVE_MAX_MB", 1024, 4096)?;
         let mesh_mb = positive_limit(&lookup, "KATALOG_IMPORT_MAX_MESH_MB", 512, 512)?;
         let unpacked_mb = positive_limit(&lookup, "KATALOG_IMPORT_MAX_UNPACKED_MB", 1024, 1024)?;
         let vertices =
@@ -169,6 +172,7 @@ impl Config {
             dir: PathBuf::from(dir),
             max_bytes: max_mb * 1024 * 1024,
             max_files: max_files as usize,
+            archive_max_bytes: archive_mb * 1024 * 1024,
             limits: katalog_core::import::files::WebImportLimits {
                 max_file_bytes: max_mb * 1024 * 1024,
                 max_mesh_file_bytes: mesh_mb * 1024 * 1024,
@@ -250,6 +254,8 @@ pub fn validate_upload_config(config: &mut Config) -> Result<(), String> {
         || upload.max_bytes > 4096 * 1024 * 1024
         || upload.max_files == 0
         || upload.max_files > 32
+        || upload.archive_max_bytes == 0
+        || upload.archive_max_bytes > 4096 * 1024 * 1024
     {
         return Err("Ungültige Upload-Grenzen".into());
     }
@@ -489,6 +495,7 @@ mod tests {
         for key in [
             "KATALOG_UPLOAD_MAX_MB",
             "KATALOG_UPLOAD_MAX_FILES",
+            "KATALOG_ARCHIVE_MAX_MB",
             "KATALOG_IMPORT_MAX_MESH_MB",
             "KATALOG_IMPORT_MAX_UNPACKED_MB",
             "KATALOG_IMPORT_MAX_VERTICES",
@@ -500,6 +507,9 @@ mod tests {
         }
         assert!(config(&[("KATALOG_UPLOAD_MAX_MB", "4097")]).is_err());
         assert!(config(&[("KATALOG_UPLOAD_MAX_FILES", "33")]).is_err());
+        assert!(config(&[("KATALOG_ARCHIVE_MAX_MB", "4097")]).is_err());
+        assert!(config(&[("KATALOG_ARCHIVE_MAX_MB", "4096")]).is_ok());
+        assert!(config(&[("KATALOG_ARCHIVE_MAX_MB", "1")]).is_ok());
         assert!(config(&[("KATALOG_IMPORT_MAX_MESH_MB", "513")]).is_err());
         assert!(config(&[("KATALOG_UPLOAD_MAX_MB", "4096")]).is_ok());
         assert!(config(&[("KATALOG_UPLOAD_DIR", "/models")]).is_err());
@@ -542,6 +552,7 @@ mod tests {
         );
         assert_eq!(upload.max_bytes, 1024 * 1024 * 1024);
         assert_eq!(upload.max_files, 2);
+        assert_eq!(upload.archive_max_bytes, 1024 * 1024 * 1024);
         assert_eq!(std::fs::read_dir(&upload.dir).unwrap().count(), 0);
         assert!(make(&base.join("outside"), &models).is_err());
         let all = base.to_string_lossy();
@@ -607,6 +618,7 @@ mod tests {
             dir: PathBuf::from("/u"),
             max_bytes: 1,
             max_files: 1,
+            archive_max_bytes: 1,
             limits: katalog_core::import::files::WebImportLimits {
                 max_file_bytes: 1,
                 max_mesh_file_bytes: 1,

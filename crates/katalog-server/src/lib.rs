@@ -18,6 +18,7 @@ pub use invoke::READ_COMMANDS;
 pub use write::WRITE_COMMANDS;
 
 pub(crate) mod upload_store;
+pub(crate) mod upload_archive;
 
 pub(crate) mod fileops_startup;
 pub(crate) mod fileops_config;

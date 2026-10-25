@@ -30,3 +30,4 @@ katalog-core = { path = "../katalog-core", default-features = false, features = 
 http-body-util = "0.1"
 sha2 = "0.10"
 zip = "9"
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util", "compress", "aes256"] }

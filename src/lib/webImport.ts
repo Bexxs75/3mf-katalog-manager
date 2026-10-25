@@ -3,9 +3,20 @@ import { authenticationFailed, canUpload, getSnapshot, readResponse, subscribe }
 
 export type UploadTextKey = { [K in keyof Translations]: Translations[K] extends string ? K : never }[keyof Translations];
 
-export const MODEL_UPLOAD_ACCEPT = '.3mf,.stl,.obj,.stp,.step';
-export interface WebUpload { uploadId: string; name: string; size: number; time: number; state: 'uploaded' | 'duplicate' | 'invalid'; result: unknown }
-export interface WebImportFile { uploadId: string; name: string; state: string; fileId: string | null; existingFileId: string | null; kind: string | null }
+export const MODEL_UPLOAD_ACCEPT = '.3mf,.stl,.obj,.stp,.step,.zip,.7z';
+// Formats the server recognises but does not unpack in the browser (desktop app only).
+const UNPACKED_ELSEWHERE = /\.(rar|tar|tgz|tbz2|txz|tzst)$|\.tar\.(gz|bz2|xz|zst)$/i;
+// Why an upload or archive was set aside, as reported by the server in `kind`.
+const REASON_KEYS: Record<string, UploadTextKey> = {
+  archive_encrypted: 'webUploadArchiveEncrypted', archive_too_large: 'webUploadArchiveTooLarge',
+  archive_unreadable: 'webUploadArchiveUnreadable', archive_no_models: 'webUploadArchiveNoModels',
+  archive_too_many_models: 'webUploadArchiveTooMany', archive_memory_limit: 'webUploadArchiveMemory',
+  archive_timeout: 'webUploadArchiveTimeout', archive_format_unsupported: 'webUploadArchives', import_or_discard_first: 'webUploadConflict',
+  no_space: 'webUploadNoSpace', upload_io: 'webUploadFailed',
+};
+export const reasonKey = (kind: string | null | undefined): UploadTextKey | null => (kind && REASON_KEYS[kind]) || null;
+export interface WebUpload { uploadId: string; name: string; size: number; time: number; state: 'uploaded' | 'duplicate' | 'invalid' | 'imported'; result: unknown; archive?: boolean }
+export interface WebImportFile { uploadId: string; name: string; state: string; fileId: string | null; existingFileId: string | null; kind: string | null; models?: number; skipped?: number }
 export interface WebImportJob { jobId: string; state: string; current: string | null; total: number; done: number; files: WebImportFile[]; kind: string | null }
 export interface UploadRow { id: number; name: string; percent: number; state: 'queued' | 'uploading' | 'retrying' | 'uploaded' | 'cancelled' | 'error'; error?: UploadTextKey }
 interface View { queue: UploadRow[]; uploads: WebUpload[]; jobs: WebImportJob[]; connection: 'connecting' | 'connected' | 'disconnected'; error: UploadTextKey | null; busy: boolean; result: WebImportJob | null }
@@ -13,7 +24,7 @@ interface Failure { status?: number; kind?: string; code?: string; retryAfter?: 
 export const importFinished = (job: WebImportJob) => ['completed', 'cancelled', 'failed'].includes(job.state);
 export function uploadErrorKey(error: unknown): UploadTextKey {
   const e = (error ?? {}) as Failure;
-  if (e.kind === 'archive_desktop_only') return 'webUploadArchives';
+  if (e.kind === 'archive_format_unsupported') return 'webUploadArchives';
   if (e.kind === 'folders') return 'webUploadFolders';
   if (e.kind === 'cancelled') return 'webUploadCancelled';
   if (e.status === 503 && !e.retryAfter) return 'webUploadRestart';
@@ -183,8 +194,8 @@ export class WebImportController {
     for (const file of files) {
       const id = ++this.serial;
       const error: UploadTextKey | undefined = file.webkitRelativePath ? 'webUploadFolders'
-        : /\.(zip|7z|rar)$/i.test(file.name) ? 'webUploadArchives'
-        : !/\.(3mf|stl|obj|stp|step)$/i.test(file.name) ? 'webUploadType' : undefined;
+        : UNPACKED_ELSEWHERE.test(file.name) ? 'webUploadArchives'
+        : !/\.(3mf|stl|obj|stp|step|zip|7z)$/i.test(file.name) ? 'webUploadType' : undefined;
       this.patch({ queue: [...this.view.queue, { id, name: file.name, percent: 0, state: error ? 'error' : 'queued', error }] });
       if (!error) this.pending.set(id, { file, abort: new AbortController() });
     }

@@ -44,6 +44,8 @@ services:
     #   - KATALOG_UPLOAD_DIR=/models/uploads
     #   - KATALOG_UPLOAD_MAX_MB=1024
     #   - KATALOG_UPLOAD_MAX_FILES=2
+    #   # ZIP/7z uploads: largest size ONE archive may unpack to (MiB, 1-4096):
+    #   - KATALOG_ARCHIVE_MAX_MB=1024
     #   # Lower-only parser limits (MiB/counts):
     #   - KATALOG_IMPORT_MAX_MESH_MB=512
     #   - KATALOG_IMPORT_MAX_UNPACKED_MB=1024

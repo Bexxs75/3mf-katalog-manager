@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useT } from '../i18n/LanguageContext';
 import { useCanUpload } from '../lib/webSession';
-import { importFinished, MODEL_UPLOAD_ACCEPT, WebImportController, type WebImportJob, type UploadTextKey } from '../lib/webImport';
+import { importFinished, MODEL_UPLOAD_ACCEPT, reasonKey, WebImportController, type WebImportFile, type WebImportJob, type UploadTextKey } from '../lib/webImport';
 import './import.css';
 
 interface Props { refreshKey?: number; open: boolean; onClose: () => void; onImported: () => void | Promise<unknown> }
@@ -71,7 +71,8 @@ function WebImportSurface({ controller, open, onClose }: Props & { controller: W
         <section><h3>{t('webUploadOpen')}</h3><p className="text-small">{t('webUploadDiscardHint')}</p>
           {ready.length > 1 && <button disabled={active || state.busy} onClick={() => void controller.start(ready.map(u => u.uploadId))}>{t('webUploadImportAll')}</button>}
           <ul>{state.uploads.map(upload => <li key={upload.uploadId} className="flex flex-wrap items-center gap-2 py-1">
-            <span className="break-all">{upload.name}</span><span>{label(upload.state)}</span>
+            <span className="break-all">{upload.name}</span><span>{upload.state === 'imported' ? t('webUploadArchiveImported') : label(upload.state)}</span>
+            {upload.state === 'invalid' && <UploadReason kind={(upload.result as { kind?: string } | null)?.kind} />}
             {upload.state === 'uploaded' && <button disabled={active || state.busy} onClick={() => void controller.start([upload.uploadId])}>{t('webUploadImport')}</button>}
             <button disabled={state.busy} onClick={() => void controller.discard(upload.uploadId)}>{t('webUploadDiscard')}</button>
           </li>)}</ul>
@@ -88,19 +89,34 @@ function WebImportSurface({ controller, open, onClose }: Props & { controller: W
     {result && <WebImportResult result={result} onClose={() => setResult(null)} />}
   </>;
 }
+function UploadReason({ kind }: { kind?: string | null }) {
+  const t = useT(); const key = reasonKey(kind);
+  return key ? <span className="text-small">{t(key)}</span> : null;
+}
+function FileOutcome({ file }: { file: WebImportFile }) {
+  const t = useT();
+  if (file.kind === 'archive') return <>{t('webUploadArchiveSummary').replace('{models}', String(file.models ?? 0)).replace('{skipped}', String(file.skipped ?? 0))}</>;
+  // "uploaded" with a reason: the archive was handed back after a temporary failure.
+  const reason = file.state === 'invalid' || file.state === 'uploaded' ? reasonKey(file.kind) : null;
+  return <>{reason ? t(reason) : t(statusKeys[file.state] ?? 'webUploadFailed')}</>;
+}
 function WebImportResult({ result, onClose }: { result: WebImportJob; onClose: () => void }) {
   const t = useT(); const id = useId();
   const dialog = useModalDialog({ open: true, onClose });
+  // An unpacked archive is a container: its models are listed as files of their own.
+  const models = result.files.filter(file => file.kind !== 'archive');
+  const skipped = result.files.reduce((sum, file) => sum + (file.kind === 'archive' ? file.skipped ?? 0 : 0), 0);
   return <div className="import-backdrop"><div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} className="import-result" tabIndex={-1}>
     <h2 id={`${id}-title`}>{t('webImportResultTitle')}</h2>
     <p>{t(statusKeys[result.state] ?? 'webUploadFailed')}</p>
     <div className="import-counts">{(['imported', 'duplicate', 'invalid'] as const).map(state => <span key={state}>
-      <b>{result.files.filter(file => file.state === state || (state === 'imported' && file.state === 'imported_not_placed')).length}</b> {t(statusKeys[state])}
-    </span>)}</div>
+      <b>{models.filter(file => file.state === state || (state === 'imported' && file.state === 'imported_not_placed')).length}</b> {t(statusKeys[state])}
+    </span>)}
+      {skipped > 0 && <span><b>{skipped}</b> {t('webUploadSkipped')}</span>}</div>
     {(result.state !== 'completed' || result.files.some(file => file.state === 'uploaded')) && <p>{t('webUploadPartial')}</p>}
     {result.kind && <p role="alert">{t(result.kind === 'restart_required' || result.kind === 'journal' ? 'webUploadRestart' : 'webUploadFailed')}</p>}
     <div className="import-table-scroll"><table><thead><tr><th>{t('impFile')}</th><th>{t('impReason')}</th></tr></thead><tbody>
-      {result.files.map(file => <tr key={file.uploadId}><td className="break-all">{file.name}</td><td>{t(statusKeys[file.state] ?? 'webUploadFailed')}
+      {result.files.map(file => <tr key={file.uploadId}><td className="break-all">{file.name}</td><td><FileOutcome file={file} />
         {file.existingFileId && <> · {t('impExistingModel').replace('{id}', file.existingFileId)}</>}
       </td></tr>)}
     </tbody></table></div><footer><button onClick={onClose}>{t('impClose')}</button></footer>

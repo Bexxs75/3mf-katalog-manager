@@ -25,11 +25,12 @@ async function start(uploadable: boolean) {
 it('hides the entire upload surface without uploadable even when writable', async () => {
   await start(false); expect(screen.queryByRole('dialog')).toBeNull(); expect(document.querySelector('input[type=file]')).toBeNull();
 });
-it('uses the browser file chooser and rejects archive selections and dropped directories visibly', async () => {
+it('uses the browser file chooser and rejects unsupported archives and dropped directories visibly', async () => {
   await start(true);
   const input = await screen.findByLabelText(de.webUploadChoose);
-  expect(input).toHaveAttribute('multiple'); expect(input).toHaveAttribute('accept', '.3mf,.stl,.obj,.stp,.step');
-  fireEvent.change(input, { target: { files: [new File(['a'], 'archive.zip')] } });
+  expect(input).toHaveAttribute('multiple'); expect(input).toHaveAttribute('accept', '.3mf,.stl,.obj,.stp,.step,.zip,.7z');
+  expect(screen.getByText(/ZIP.*7z/)).toBeVisible();
+  fireEvent.change(input, { target: { files: [new File(['a'], 'archive.rar')] } });
   expect(screen.getByText(de.webUploadArchives)).toBeVisible();
   fireEvent.drop(screen.getByTestId('web-upload-drop'), { dataTransfer: { items: [{ kind: 'file', webkitGetAsEntry: () => ({ isDirectory: true }) }], files: [] } });
   expect(screen.getByRole('alert')).toHaveTextContent(de.webUploadFolders);
@@ -53,6 +54,48 @@ it('shows partial results after cancellation and reloads the catalog once', asyn
   await waitFor(() => expect(screen.getByRole('dialog', { name: de.webImportResultTitle })).toBeVisible());
   expect(screen.getByText('done.stl')).toBeVisible(); expect(screen.getByText('waiting.stl')).toBeVisible();
   expect(screen.getByText(de.webUploadPartial)).toBeVisible();
+});
+it('lists the models of an unpacked archive and how many files were skipped', async () => {
+  await start(true);
+  await act(async () => Events.latest.emit({ jobId: 'job', state: 'completed', total: 4, done: 4, current: null, kind: null, files: [
+    { uploadId: 'z', name: 'paket.zip', state: 'imported', fileId: null, existingFileId: null, kind: 'archive', models: 2, skipped: 3 },
+    { uploadId: 'a', name: 'a.stl', state: 'imported', fileId: '1', existingFileId: null, kind: null },
+    { uploadId: 'b', name: 'b.stl', state: 'imported', fileId: '2', existingFileId: null, kind: null },
+    { uploadId: 'c', name: 'geheim.zip', state: 'invalid', fileId: null, existingFileId: null, kind: 'archive_encrypted' },
+  ] }));
+  const dialog = await screen.findByRole('dialog', { name: de.webImportResultTitle });
+  expect(dialog).toHaveTextContent(de.webUploadArchiveSummary.replace('{models}', '2').replace('{skipped}', '3'));
+  expect(dialog).toHaveTextContent(de.webUploadArchiveEncrypted);
+  // The archive row is a container: only the two models count as imported, 3 files are reported as skipped.
+  const counts = dialog.querySelector('.import-counts')!;
+  expect(counts.textContent).toContain(`2 ${de.impImported}`);
+  expect(counts.textContent).toContain(`3 ${de.webUploadSkipped}`);
+});
+it('says why an archive stays in the open uploads', async () => {
+  await start(true);
+  await act(async () => Events.latest.emit({ snapshot: true, jobs: [], uploads: [
+    { uploadId: 'c', name: 'geheim.zip', state: 'invalid', size: 12, time: 1, result: { kind: 'archive_encrypted' } },
+  ] }));
+  expect(screen.getByText(de.webUploadArchiveEncrypted)).toBeVisible();
+});
+it('keeps a handled archive in the list: not importable, but discardable, with the models staying', async () => {
+  await start(true);
+  await act(async () => Events.latest.emit({ snapshot: true, jobs: [], uploads: [
+    { uploadId: 'z', name: 'paket.zip', state: 'imported', archive: true, size: 12, time: 1, result: null },
+  ] }));
+  expect(screen.getByText(de.webUploadArchiveImported)).toBeVisible();
+  expect(screen.queryByRole('button', { name: de.webUploadImport })).toBeNull();
+  expect(screen.getByRole('button', { name: de.webUploadDiscard })).toBeEnabled();
+});
+it('explains an archive handed back after a temporary failure and one with too many models', async () => {
+  await start(true);
+  await act(async () => Events.latest.emit({ jobId: 'job', state: 'completed', total: 2, done: 2, current: null, kind: null, files: [
+    { uploadId: 'a', name: 'knapp.zip', state: 'uploaded', fileId: null, existingFileId: null, kind: 'no_space' },
+    { uploadId: 'b', name: 'viele.zip', state: 'invalid', fileId: null, existingFileId: null, kind: 'archive_too_many_models' },
+  ] }));
+  const dialog = await screen.findByRole('dialog', { name: de.webImportResultTitle });
+  expect(dialog).toHaveTextContent(de.webUploadNoSpace);
+  expect(dialog).toHaveTextContent(de.webUploadArchiveTooMany);
 });
 it('does not interrupt navigation with historical results from a reconnect snapshot', async () => {
   await start(true);

@@ -729,3 +729,284 @@ fn stripping_does_not_unblock_executable_bundles_or_protected_targets() {
     assert_eq!(extraction.stats.written_files, 1);
     assert!(!dest.join("geschuetzt").exists());
 }
+
+// ---------- Restrictions for server use (ExtractOptions) ----------
+
+/// One SOLID 7z block, unlike `make_7z`, which writes one block per file.
+fn make_solid_7z(path: &Path, entries: &[(&str, &[u8])]) {
+    let mut writer = sevenz_rust2::ArchiveWriter::create(path).unwrap();
+    let headers = entries
+        .iter()
+        .map(|(name, _)| sevenz_rust2::ArchiveEntry::new_file(name))
+        .collect();
+    let readers = entries
+        .iter()
+        .map(|(_, data)| sevenz_rust2::SourceReader::new(std::io::Cursor::new(data.to_vec())))
+        .collect();
+    writer.push_archive_entries(headers, readers).unwrap();
+    writer.finish().unwrap();
+}
+
+const MIXED: &[(&str, &[u8])] = &[
+    ("a.stl", b"solid a\nendsolid a\n"),
+    ("bild.png", b"\x89PNG not really a picture but long enough to matter"),
+    ("sub/c.3mf", b"PK\x03\x04 pretend 3mf"),
+];
+
+fn only_models(path: &Path) -> bool {
+    is_model(path)
+}
+
+#[test]
+fn keep_filter_skips_payload_in_zip_and_counts_it() {
+    let dir = unique_dir("keep_zip");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, MIXED);
+    let dest = dir.join("ziel");
+    let mut options = ExtractOptions::new(MAX_UNPACKED_BYTES);
+    options.keep = Some(&only_models);
+    let extraction = extract_archive_with(&archive, ArchiveFormat::Zip, &dest, false, &options, &allow_all).unwrap();
+    assert_eq!(extraction.stats.written_files, 2);
+    assert_eq!(extraction.stats.filtered_skipped, 1);
+    assert!(!dest.join("bild.png").exists());
+    assert_eq!(fs::read(dest.join("sub/c.3mf")).unwrap(), MIXED[2].1);
+}
+
+#[test]
+fn keep_filter_in_a_solid_7z_block_does_not_shift_later_entries() {
+    let dir = unique_dir("keep_solid_7z");
+    let archive = dir.join("a.7z");
+    make_solid_7z(&archive, MIXED);
+    let dest = dir.join("ziel");
+    let mut options = ExtractOptions::new(MAX_UNPACKED_BYTES);
+    options.keep = Some(&only_models);
+    let extraction = extract_archive_with(&archive, ArchiveFormat::SevenZ, &dest, false, &options, &allow_all).unwrap();
+    assert_eq!(extraction.stats.filtered_skipped, 1);
+    assert_eq!(fs::read(dest.join("a.stl")).unwrap(), MIXED[0].1);
+    // The PNG sits between the models inside the one compressed block.
+    assert_eq!(fs::read(dest.join("sub/c.3mf")).unwrap(), MIXED[2].1);
+}
+
+#[test]
+fn skipped_blocked_entry_in_a_solid_7z_does_not_shift_later_entries() {
+    let dir = unique_dir("blocked_solid_7z");
+    let archive = dir.join("a.7z");
+    make_solid_7z(
+        &archive,
+        &[("x.stl", b"solid x\nendsolid x\n"), ("evil.exe", b"MZ0123456789"), ("y.stl", b"solid y\nendsolid y\n")],
+    );
+    let dest = dir.join("ziel");
+    let extraction =
+        extract_archive(&archive, ArchiveFormat::SevenZ, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+    assert_eq!(extraction.stats.blocked_skipped, 1);
+    assert_eq!(fs::read(dest.join("y.stl")).unwrap(), b"solid y\nendsolid y\n");
+}
+
+#[test]
+fn inspect_reports_the_size_of_the_model_entries() {
+    let dir = unique_dir("model_bytes");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, MIXED);
+    let summary = inspect(&archive, is_model);
+    assert_eq!(summary.model_count, 2);
+    assert_eq!(summary.model_bytes, (MIXED[0].1.len() + MIXED[2].1.len()) as u64);
+    assert_eq!(summary.unpacked_size, MIXED.iter().map(|(_, d)| d.len() as u64).sum::<u64>());
+}
+
+#[test]
+fn sevenz_decoder_memory_bound_is_enforced_before_anything_is_written() {
+    let dir = unique_dir("sevenz_memory");
+    let archive = dir.join("a.7z");
+    make_7z(&archive, SAMPLE, None);
+    // The default writer declares a multi-MiB LZMA2 dictionary.
+    assert_eq!(inspect_with(&archive, is_model, Some(64 * 1024)).status, InspectStatus::MemoryLimit);
+    assert_eq!(inspect_with(&archive, is_model, Some(256 * 1024 * 1024)).status, InspectStatus::Ok);
+    let dest = dir.join("ziel");
+    let mut options = ExtractOptions::new(MAX_UNPACKED_BYTES);
+    options.sevenz_memory_limit = Some(64 * 1024);
+    let result = extract_archive_with(&archive, ArchiveFormat::SevenZ, &dest, false, &options, &allow_all);
+    assert!(matches!(result, Err(ArchiveError::MemoryLimit)));
+    assert!(!dest.exists());
+}
+
+#[test]
+fn sevenz_decoder_memory_adds_up_over_a_coder_chain() {
+    use sevenz_rust2::encoder_options::{Lzma2Options, LzmaOptions};
+    use sevenz_rust2::EncoderConfiguration;
+    let dir = unique_dir("sevenz_chain");
+    let archive = dir.join("a.7z");
+    let mut lzma2 = Lzma2Options::from_level(1);
+    lzma2.set_dictionary_size(4 * 1024 * 1024);
+    let mut lzma = LzmaOptions::from_level(1);
+    lzma.set_dictionary_size(4 * 1024 * 1024);
+    let mut writer = sevenz_rust2::ArchiveWriter::create(&archive).unwrap();
+    writer.set_content_methods(vec![
+        EncoderConfiguration::from(lzma2),
+        EncoderConfiguration::from(lzma),
+    ]);
+    writer
+        .push_archive_entry(
+            sevenz_rust2::ArchiveEntry::new_file("a.stl"),
+            Some(std::io::Cursor::new(b"solid a\nendsolid a\n".to_vec())),
+        )
+        .unwrap();
+    writer.finish().unwrap();
+    // Each coder alone reserves 4 MiB; both run at once while the block is decoded.
+    assert_eq!(inspect_with(&archive, is_model, Some(6 * 1024 * 1024)).status, InspectStatus::MemoryLimit);
+    assert_eq!(inspect_with(&archive, is_model, Some(9 * 1024 * 1024)).status, InspectStatus::Ok);
+}
+
+#[test]
+fn an_expired_deadline_stops_extraction_and_cleans_up() {
+    let dir = unique_dir("deadline");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, MIXED);
+    let dest = dir.join("ziel");
+    let mut options = ExtractOptions::new(MAX_UNPACKED_BYTES);
+    options.deadline = Some(std::time::Instant::now());
+    let result = extract_archive_with(&archive, ArchiveFormat::Zip, &dest, false, &options, &allow_all);
+    assert!(matches!(result, Err(ArchiveError::TimedOut)));
+    assert!(!dest.exists());
+}
+
+#[test]
+fn restricted_callers_refuse_a_7z_header_that_could_hold_millions_of_entries() {
+    let dir = unique_dir("sevenz_header");
+    let archive = dir.join("viele.7z");
+    let mut writer = sevenz_rust2::ArchiveWriter::create(&archive).unwrap();
+    // 4,000 empty files with 400-character names: far below the entry limit, but a
+    // header of about 3 MiB once decoded.
+    for i in 0..4_000 {
+        let name = format!("{}-{i:06}.stl", "n".repeat(390));
+        writer
+            .push_archive_entry::<&[u8]>(sevenz_rust2::ArchiveEntry::new_file(&name), None)
+            .unwrap();
+    }
+    writer.finish().unwrap();
+    assert_eq!(inspect_with(&archive, is_model, Some(256 * 1024 * 1024)).status, InspectStatus::TooLarge);
+    // Without a bound (desktop) the header is still accepted up to its own limit.
+    assert_eq!(inspect(&archive, is_model).status, InspectStatus::Ok);
+}
+
+#[test]
+fn a_raised_cancel_flag_stops_before_anything_is_created() {
+    let dir = unique_dir("cancel_before");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, MIXED);
+    let dest = dir.join("ziel");
+    let cancel = std::sync::atomic::AtomicBool::new(true);
+    let mut options = ExtractOptions::new(MAX_UNPACKED_BYTES);
+    options.cancel = Some(&cancel);
+    let result = extract_archive_with(&archive, ArchiveFormat::Zip, &dest, false, &options, &allow_all);
+    assert!(matches!(result, Err(ArchiveError::Cancelled)));
+    assert!(!dest.exists());
+}
+
+#[test]
+fn cancelling_in_the_middle_removes_what_was_already_written() {
+    let dir = unique_dir("cancel_middle");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, MIXED);
+    let dest = dir.join("ziel");
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    // The filter runs for every file entry; raising the flag on the second one
+    // happens after the first file was written completely.
+    let calls = std::cell::Cell::new(0);
+    let keep = |_: &Path| {
+        calls.set(calls.get() + 1);
+        if calls.get() == 2 {
+            cancel.store(true, std::sync::atomic::Ordering::Release);
+        }
+        true
+    };
+    let mut options = ExtractOptions::new(MAX_UNPACKED_BYTES);
+    options.cancel = Some(&cancel);
+    options.keep = Some(&keep);
+    let result = extract_archive_with(&archive, ArchiveFormat::Zip, &dest, false, &options, &allow_all);
+    assert!(matches!(result, Err(ArchiveError::Cancelled)));
+    assert_eq!(calls.get(), 2);
+    assert!(!dest.exists());
+}
+
+#[test]
+fn zip_with_more_declared_entries_than_allowed_is_refused_from_the_end_record() {
+    let dir = unique_dir("zip_declared");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, MIXED);
+    // Forge the entry count in the end record; the real directory stays tiny, so
+    // only the pre-check can be what refuses it before the zip library parses.
+    let mut bytes = fs::read(&archive).unwrap();
+    let eocd = bytes.windows(4).rposition(|w| w == b"PK\x05\x06").unwrap();
+    bytes[eocd + 10..eocd + 12].copy_from_slice(&60_000u16.to_le_bytes());
+    fs::write(&archive, bytes).unwrap();
+    assert!(matches!(list_entries(&archive, ArchiveFormat::Zip), Err(ArchiveError::TooManyEntries)));
+}
+
+// ---------- Memory peak of 7z decoding ----------
+
+#[cfg(target_os = "linux")]
+fn vm_hwm_kb() -> u64 {
+    fs::read_to_string("/proc/self/status")
+        .unwrap()
+        .lines()
+        .find_map(|line| line.strip_prefix("VmHWM:"))
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|kb| kb.parse().ok())
+        .unwrap()
+}
+
+/// Runs in a process of its own (see the test below): the peak resident size of a
+/// process only ever grows, so inside the shared test process earlier tests would
+/// hide what this extraction costs.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "child of sevenz_extraction_does_not_multiply_memory_with_worker_threads"]
+fn rss_child_extract_7z() {
+    let archive = PathBuf::from(std::env::var("KATALOG_RSS_ARCHIVE").unwrap());
+    let dest = PathBuf::from(std::env::var("KATALOG_RSS_DEST").unwrap());
+    let before = vm_hwm_kb();
+    let mut options = ExtractOptions::new(MAX_UNPACKED_BYTES);
+    options.sevenz_memory_limit = Some(256 * 1024 * 1024);
+    extract_archive_with(&archive, ArchiveFormat::SevenZ, &dest, false, &options, &allow_all).unwrap();
+    println!("RSS_DELTA_KB={}", vm_hwm_kb().saturating_sub(before));
+}
+
+/// 256 MiB of zeros in a few KiB of 7z, compressed as independent LZMA2 packets:
+/// the shape for which the library starts one decoding worker per CPU, each
+/// holding its packet fully decoded in memory.
+#[cfg(target_os = "linux")]
+#[test]
+fn sevenz_extraction_does_not_multiply_memory_with_worker_threads() {
+    use std::io::Read;
+    let dir = unique_dir("rss");
+    let archive = dir.join("nullen.7z");
+    let mut writer = sevenz_rust2::ArchiveWriter::create(&archive).unwrap();
+    writer.set_content_methods(vec![sevenz_rust2::encoder_options::Lzma2Options::from_level_mt(6, 4, 64 * 1024 * 1024).into()]);
+    let zeros = std::io::repeat(0).take(256 * 1024 * 1024);
+    writer
+        .push_archive_entry(sevenz_rust2::ArchiveEntry::new_file("nullen.bin"), Some(zeros))
+        .unwrap();
+    writer.finish().unwrap();
+    let dest = dir.join("ziel");
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "archive::tests::rss_child_extract_7z", "--ignored", "--nocapture", "--test-threads=1"])
+        .env("KATALOG_RSS_ARCHIVE", &archive)
+        .env("KATALOG_RSS_DEST", &dest)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{text}{}", String::from_utf8_lossy(&output.stderr));
+    // The harness prints "test <name> ... " in front of the child's own output.
+    let delta: u64 = text
+        .split("RSS_DELTA_KB=")
+        .nth(1)
+        .expect("child reports its peak")
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    println!("7z extraction peak growth: {} MiB", delta / 1024);
+    assert_eq!(fs::metadata(dest.join("nullen.bin")).unwrap().len(), 256 * 1024 * 1024);
+    assert!(delta < 64 * 1024, "peak resident memory grew by {} MiB", delta / 1024);
+}

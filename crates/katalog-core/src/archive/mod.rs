@@ -14,11 +14,12 @@ mod formats;
 mod origin;
 mod paths;
 
-pub use extract::extract_archive;
+pub use extract::{extract_archive, extract_archive_with};
 pub use paths::{safe_folder_name, safe_relative_path};
 
 use std::fmt;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 /// Limit for the total unpacked size of ONE archive. Checked in `inspect` against
 /// the header values and again while writing against the bytes actually written
@@ -54,6 +55,42 @@ pub fn is_blocked_path(rel: &Path) -> bool {
             .and_then(|e| e.to_str())
             .is_some_and(|e| BLOCKED_EXTENSIONS.contains(&e))
     })
+}
+
+/// Optional restrictions for callers that run untrusted uploads on a server
+/// (`extract_archive_with` / `inspect_with`). The defaults reproduce the
+/// behaviour of the plain functions used by the desktop app.
+#[derive(Clone, Copy)]
+pub struct ExtractOptions<'a> {
+    /// Hard limit for the bytes actually written.
+    pub byte_limit: u64,
+    /// Upper bound for the memory ONE 7z decoder may reserve (LZMA/LZMA2
+    /// dictionary, PPMd model). The 7z library allocates the dictionary named in
+    /// the coder properties up front - independent of how much data the block
+    /// really holds - so a tiny crafted archive could otherwise ask for 4 GiB.
+    /// `None` = no check (desktop).
+    pub sevenz_memory_limit: Option<u64>,
+    /// Polled between entries and while copying; when set, extraction stops with
+    /// `ArchiveError::Cancelled` and everything created so far is removed.
+    pub cancel: Option<&'a AtomicBool>,
+    /// File entries (safe relative path) for which this returns `false` are not
+    /// written at all. Lets a server skip payload it would never use.
+    pub keep: Option<&'a dyn Fn(&Path) -> bool>,
+    /// Wall-clock limit for the whole extraction; checked at the same places as
+    /// `cancel`. A hostile archive can be cheap to store and slow to decode.
+    pub deadline: Option<std::time::Instant>,
+}
+
+impl<'a> ExtractOptions<'a> {
+    pub fn new(byte_limit: u64) -> Self {
+        ExtractOptions {
+            byte_limit,
+            sevenz_memory_limit: None,
+            cancel: None,
+            keep: None,
+            deadline: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,6 +190,12 @@ pub enum ArchiveError {
     Unreadable(String),
     LimitExceeded,
     TooManyEntries,
+    /// The caller's cancel flag was raised.
+    Cancelled,
+    /// The caller's deadline passed.
+    TimedOut,
+    /// A 7z coder chain would reserve more decoder memory than allowed.
+    MemoryLimit,
     Io(std::io::Error),
 }
 
@@ -170,6 +213,9 @@ impl fmt::Display for ArchiveError {
             ArchiveError::TooManyEntries => {
                 write!(f, "Archiv hat mehr als {MAX_ENTRIES} Eintraege")
             }
+            ArchiveError::Cancelled => write!(f, "Entpacken abgebrochen"),
+            ArchiveError::TimedOut => write!(f, "Entpacken dauert zu lange"),
+            ArchiveError::MemoryLimit => write!(f, "Archiv braucht mehr Arbeitsspeicher beim Entpacken als erlaubt"),
             ArchiveError::Io(e) => write!(f, "Schreibfehler: {e}"),
         }
     }
@@ -184,7 +230,16 @@ impl From<std::io::Error> for ArchiveError {
 /// Lists the entries (at most `MAX_ENTRIES + 1`, so an archive with millions of
 /// tiny entries doesn't fill up memory).
 pub fn list_entries(path: &Path, format: ArchiveFormat) -> Result<Vec<EntryMeta>, ArchiveError> {
-    formats::list(path, format)
+    formats::list(path, format, None)
+}
+
+/// Like `list_entries`, with the 7z decoder memory bound of `ExtractOptions`.
+pub fn list_entries_with(
+    path: &Path,
+    format: ArchiveFormat,
+    sevenz_memory_limit: Option<u64>,
+) -> Result<Vec<EntryMeta>, ArchiveError> {
+    formats::list(path, format, sevenz_memory_limit)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,6 +250,8 @@ pub enum InspectStatus {
     Encrypted,
     Unreadable,
     Unsupported,
+    /// 7z decoder memory above the caller's bound (only with a bound set).
+    MemoryLimit,
 }
 
 #[derive(Debug, Clone)]
@@ -202,26 +259,42 @@ pub struct InspectSummary {
     pub status: InspectStatus,
     pub model_count: u32,
     pub entry_count: u32,
+    /// Entries of kind file (links, devices and folders not included).
+    pub file_count: u32,
     pub unpacked_size: u64,
+    /// Header size of the entries counted in `model_count`.
+    pub model_bytes: u64,
 }
 
 /// Checks an archive WITHOUT writing anything. `is_model` decides which entries
 /// count as catalogable models (passed in by the caller, so this module doesn't
 /// need to know the import rules).
 pub fn inspect(path: &Path, is_model: impl Fn(&Path) -> bool) -> InspectSummary {
+    inspect_with(path, is_model, None)
+}
+
+/// `inspect` with the 7z decoder memory bound of `ExtractOptions`.
+pub fn inspect_with(
+    path: &Path,
+    is_model: impl Fn(&Path) -> bool,
+    sevenz_memory_limit: Option<u64>,
+) -> InspectSummary {
     let empty = |status| InspectSummary {
         status,
         model_count: 0,
         entry_count: 0,
+        file_count: 0,
         unpacked_size: 0,
+        model_bytes: 0,
     };
     let Some(format) = detect_format(path) else {
         return empty(InspectStatus::Unsupported);
     };
-    let entries = match list_entries(path, format) {
+    let entries = match list_entries_with(path, format, sevenz_memory_limit) {
         Ok(entries) => entries,
         Err(ArchiveError::Encrypted) => return empty(InspectStatus::Encrypted),
         Err(ArchiveError::Unsupported(_)) => return empty(InspectStatus::Unsupported),
+        Err(ArchiveError::MemoryLimit) => return empty(InspectStatus::MemoryLimit),
         Err(ArchiveError::LimitExceeded | ArchiveError::TooManyEntries) => {
             return empty(InspectStatus::TooLarge)
         }
@@ -230,15 +303,19 @@ pub fn inspect(path: &Path, is_model: impl Fn(&Path) -> bool) -> InspectSummary 
 
     let files: Vec<&EntryMeta> = entries.iter().filter(|e| e.kind == EntryKind::File).collect();
     let unpacked_size = files.iter().fold(0u64, |sum, e| sum.saturating_add(e.size));
-    let model_count = files
+    let models: Vec<&&EntryMeta> = files
         .iter()
         .filter(|e| safe_relative_path(&e.name).is_some_and(|p| is_model(&p)))
-        .count() as u32;
+        .collect();
+    let model_count = models.len() as u32;
+    let model_bytes = models.iter().fold(0u64, |sum, e| sum.saturating_add(e.size));
     let summary = |status| InspectSummary {
         status,
         model_count,
         entry_count: entries.len() as u32,
+        file_count: files.len() as u32,
         unpacked_size,
+        model_bytes,
     };
 
     if files.iter().any(|e| e.encrypted) {

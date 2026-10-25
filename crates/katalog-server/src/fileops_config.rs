@@ -274,6 +274,7 @@ mod tests {
             state: crate::upload_store::UploadState::Imported,
             job_id: None,
             result: Some(serde_json::json!({"fileId":"1"})),
+            archive: false,
         };
         std::fs::write(
             f.path.join("auth/web-uploads.json"),

@@ -34,8 +34,15 @@ Backend zusammen mit `KATALOG_WRITE=1`, Anmeldung und einer expliziten
 `KATALOG_ALLOWED_HOSTS`-Liste. Die Browser-Oberfläche folgt separat in Teil C.
 **Upload legt Dateien dauerhaft auf dem Server ab: nur im Heimnetz oder über VPN
 betreiben.** Desktop und Webserver dürfen niemals gleichzeitig dieselbe DB nutzen.
-Nur `.3mf`, `.stl`, `.obj`, `.stp` und `.step` sind erlaubt; Archive (ZIP/7z/RAR)
-bleiben der Desktop-App vorbehalten. Dateien bleiben im Upload-Ordner, ohne
+Erlaubt sind `.3mf`, `.stl`, `.obj`, `.stp`, `.step` sowie die Archive `.zip` und
+`.7z`; RAR und tar bleiben der Desktop-App vorbehalten (Fehler
+`archive_format_unsupported`). Aus einem Archiv werden nur die darin enthaltenen
+Modelle übernommen und wie einzelne Uploads importiert (Parsergrenzen,
+Duplikaterkennung, Journal); alle anderen Dateien, ausführbare Dateien, Links und
+verschachtelte Archive werden übersprungen und im Ergebnis gezählt. Verschlüsselte
+Archive (`archive_encrypted`) werden abgelehnt. Das Archiv selbst bleibt als Upload
+liegen, wird nicht automatisch gelöscht und lässt sich in der Liste verwerfen (löscht nur das
+Archiv, nicht die Modelle). Dateien bleiben im Upload-Ordner, ohne
 Zielordner-Auswahl und ohne Kopieren/Verschieben beim Import. STEP wird ohne
 OCCT/`step-preview` importiert: keine STEP-Metadaten oder Vorschau im Server.
 
@@ -57,6 +64,19 @@ Upload. Ein Import-Job verarbeitet sequenziell; die Grenzen sind keine RSS-Grenz
 Parser, XML, Mesh und Metadaten können mehrere Kopien benötigen. Mehrere GiB freien
 RAM einplanen und bei knappen Containern die Grenzen senken; gemessener
 Spitzenspeicher hängt von den Dateien ab.
+
+`KATALOG_ARCHIVE_MAX_MB` (Standard 1024, 1–4096) begrenzt, wie groß ein Archiv
+entpackt höchstens sein darf; dazu gilt die Grenze von 10.000 Einträgen. Das Archiv
+wird vor dem Entpacken geprüft (Größen laut Kopfdaten, Eintragszahl, Verschlüsselung);
+Plattenreserve und das Kontingent offener Uploads werden vorab auf die enthaltenen
+Modelle angerechnet. ZIP wird Eintrag für Eintrag gelesen, 7z als Datenstrom; ein 7z
+mit mehr als 256 MiB Wörterbuch- bzw. PPMd-Speicher je Dekoder wird abgelehnt. Es
+wird nur ein Archiv gleichzeitig entpackt. Dabei entsteht ein versteckter Ordner
+`.archive-staging-…` im Upload-Ordner; Reste eines Absturzes entfernt der nächste Start.
+Ein Archiv darf höchstens 30 Minuten entpackt werden (`archive_timeout`).
+Die Modelle erscheinen anschließend als normale Uploads (höchstens 200 offene Uploads)
+und liegen flach im Upload-Ordner, die Ordnerstruktur des Archivs entfällt; bei gleichem
+Namen folgt der Zusatz „ (2)“.
 
 Nicht importierte Uploads sind auf 200 Dateien/20 GiB begrenzt, zusätzlich bleiben
 256 MiB Speicherplatzreserve. Das dauerhafte Journal `web-uploads.json` liegt neben
@@ -85,7 +105,13 @@ with `KATALOG_WRITE=1`, authentication and an explicit `KATALOG_ALLOWED_HOSTS` l
 The browser interface follows separately in part C. **Uploads store files permanently
 on the server: use a home network or VPN only.** Never run the desktop app and web
 server against the same database concurrently. Supported files are `.3mf`, `.stl`,
-`.obj`, `.stp`, `.step`; ZIP/7z/RAR archives require the desktop app. Files remain in
+`.obj`, `.stp`, `.step` plus `.zip` and `.7z` archives; RAR and tar require the
+desktop app (error `archive_format_unsupported`). Only the models inside an archive
+are taken over and imported like single uploads (parser limits, duplicate detection,
+journal); every other file, executables, links and nested archives are skipped and
+counted in the result. Encrypted archives (`archive_encrypted`) are refused. The
+archive itself stays as an upload, is never deleted automatically and can be discarded
+from the list (removes only the archive, not the models). Files remain in
 the upload directory: import neither copies nor moves them and has no target-folder
 selection. The server excludes OCCT/`step-preview`, so STEP metadata and preview
 are unavailable.
@@ -106,6 +132,17 @@ configuration fails startup even with uploads disabled. Only one import job runs
 parsing sequentially. These limits do not cap RSS: parser/XML/mesh/metadata copies
 can require several GiB RAM. Lower limits for small containers; measured peak
 memory depends on the files.
+
+`KATALOG_ARCHIVE_MAX_MB` (default 1024, range 1–4096) caps what one archive may
+unpack to, on top of the 10,000-entry limit. An archive is checked before unpacking
+(header sizes, entry count, encryption); free-space reserve and the open-upload quota
+are charged up front for the models it contains. ZIP is read entry by entry and 7z
+as a stream; a 7z whose decoder dictionary or PPMd memory exceeds 256 MiB is refused.
+Only one archive unpacks at a time, into a hidden `.archive-staging-…` folder inside
+the upload directory; the next start removes leftovers of a crash. Unpacking one archive may take 30 minutes
+at most (`archive_timeout`). The models then
+appear as ordinary uploads (at most 200 open uploads) and sit flat in the upload
+directory, the archive's folder structure is dropped; equal names get a " (2)" suffix.
 
 Pending uploads are limited to 200 files/20 GiB with a 256 MiB disk-space reserve.
 The durable `web-uploads.json` journal (0600) sits beside `KATALOG_AUTH_FILE`; back
