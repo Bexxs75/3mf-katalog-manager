@@ -102,3 +102,132 @@ pub fn delete_filament_spool(conn: &Connection, spool_id: String) -> WriteResult
         .map_err(|_| "invalid spool id".to_string())?;
     db::delete_filament_spool(conn, id).map_err(|e| e.to_string().into())
 }
+
+/// Limit for "Restock" (1 to 20).
+pub const RESTOCK_MAX_COUNT: i64 = 20;
+
+fn missing_template() -> WriteError {
+    WriteError::expected("Vorlage nicht gefunden (die Spule wurde inzwischen geloescht)")
+}
+
+/// Creates `count` new, full entries modeled on the template inside the caller's
+/// transaction (all or nothing). Copies kind, material, manufacturer, color name,
+/// color value(s), image and diameter; does NOT copy the slot (`unit_id`/`slot_index`)
+/// or home location - new spools/bottles always go to storage. `weight` is grams
+/// (filament) or milliliters (resin), rounded to 0.1. Argument validation is the
+/// caller's job; only the template lookup is checked here.
+pub fn restock_in(
+    tx: &Connection,
+    template_id: i64,
+    count: i64,
+    weight: f64,
+    price: Option<f64>,
+    location: Option<String>,
+) -> WriteResult<Vec<FilamentSpoolDto>> {
+    let template = match db::get_filament_spool(tx, template_id) {
+        Ok(record) => record,
+        Err(db::error::DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows)) => {
+            return Err(missing_template())
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let weight = db::printers::round_tenth(weight);
+    let location = location
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty());
+    let new_spool = db::models::NewFilamentSpool {
+        material: template.material,
+        manufacturer: template.manufacturer,
+        color: template.color,
+        location,
+        diameter_mm: template.diameter_mm,
+        original_weight_g: weight,
+        remaining_weight_g: weight,
+        price,
+        image_png: template.image_png,
+        color_hex: template.color_hex,
+        color_hexes: template.color_hexes,
+        kind: template.kind,
+    };
+    let mut created = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let id = db::insert_filament_spool(tx, &new_spool)?;
+        created.push(spool_record_to_dto(db::get_filament_spool(tx, id)?));
+    }
+    Ok(created)
+}
+
+/// Desktop "Restock": validates, then runs `restock_in` in one transaction.
+pub fn restock_filament_spool(
+    conn: &mut Connection,
+    template_id: &str,
+    count: i64,
+    weight: f64,
+    price: Option<f64>,
+    location: Option<String>,
+) -> WriteResult<Vec<FilamentSpoolDto>> {
+    let template_id: i64 = template_id
+        .parse()
+        .map_err(|_| "invalid spool id".to_string())?;
+    if !(1..=RESTOCK_MAX_COUNT).contains(&count) {
+        return Err(WriteError::expected(format!(
+            "Anzahl muss zwischen 1 und {RESTOCK_MAX_COUNT} liegen"
+        )));
+    }
+    let weight = db::printers::round_tenth(weight);
+    if !weight.is_finite() || weight <= 0.0 {
+        return Err(WriteError::expected("Menge muss groesser als 0 sein"));
+    }
+    if let Some(value) = price {
+        if !value.is_finite() || value < 0.0 {
+            return Err(WriteError::expected("ungueltiger Preis"));
+        }
+    }
+    let tx = conn.transaction()?;
+    let created = restock_in(&tx, template_id, count, weight, price, location)?;
+    tx.commit()?;
+    Ok(created)
+}
+
+/// Subtracts `amount_ml` (rounded to 0.1 ml, > 0) from a resin bottle's remainder,
+/// never below 0, inside the caller's transaction. Resin only (filament is tracked
+/// via prints/the form). The amount must already be validated.
+pub fn consume_resin_in(tx: &Connection, id: i64, amount: f64) -> WriteResult<FilamentSpoolDto> {
+    let spool = match db::get_filament_spool(tx, id) {
+        Ok(record) => record,
+        Err(db::error::DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows)) => {
+            return Err(WriteError::expected(
+                "Flasche nicht gefunden (wurde sie inzwischen geloescht?)",
+            ))
+        }
+        Err(e) => return Err(e.into()),
+    };
+    if spool.kind != db::models::SPOOL_KIND_RESIN {
+        return Err("Verbrauch abbuchen gibt es nur fuer Resin".to_string().into());
+    }
+    let remaining = db::printers::round_tenth((spool.remaining_weight_g - amount).max(0.0));
+    tx.execute(
+        "UPDATE filament_spools SET remaining_weight_g = ?1 WHERE id = ?2",
+        rusqlite::params![remaining, id],
+    )?;
+    Ok(spool_record_to_dto(db::get_filament_spool(tx, id)?))
+}
+
+/// Desktop "- Use": validates, then runs `consume_resin_in` in one transaction.
+pub fn consume_resin(
+    conn: &mut Connection,
+    spool_id: &str,
+    amount_ml: f64,
+) -> WriteResult<FilamentSpoolDto> {
+    let id: i64 = spool_id
+        .parse()
+        .map_err(|_| "invalid spool id".to_string())?;
+    let amount = db::printers::round_tenth(amount_ml);
+    if !amount.is_finite() || amount <= 0.0 {
+        return Err(WriteError::expected("Verbrauch muss groesser als 0 sein"));
+    }
+    let tx = conn.transaction()?;
+    let updated = consume_resin_in(&tx, id, amount)?;
+    tx.commit()?;
+    Ok(updated)
+}

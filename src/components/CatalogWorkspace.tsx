@@ -360,8 +360,8 @@ export function CatalogWorkspace({
     view, sort, language, query, usage, printStatus, fitPrinterId, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
-  const queueFilament = useFilamentCheck(import.meta.env.VITE_TARGET === 'web' ? [] : queue.map(m => m.id), refreshKey);
-  const selectedFilament = useFilamentCheck(import.meta.env.VITE_TARGET !== 'web' && selected ? [selected.id] : [], refreshKey);
+  const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
+  const selectedFilament = useFilamentCheck(selected ? [selected.id] : [], refreshKey);
   const lastPrinter = useLastPrinter(import.meta.env.VITE_TARGET === 'web' ? null : selected?.id ?? null, printerRefreshKey);
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);

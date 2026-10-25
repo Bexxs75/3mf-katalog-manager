@@ -252,9 +252,10 @@ function SpoolRow({
           <DeleteConfirm id={spool.id} onCancelDelete={a.onCancelDelete} onConfirmDelete={a.onConfirmDelete} />
         ) : (
           <span className="inline-flex items-center gap-1">
-            {import.meta.env.VITE_TARGET !== 'web' && a.onConsume && spool.kind === 'resin' && (
+            {a.onConsume && spool.kind === 'resin' && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onConsume?.(spool, e.currentTarget)}
                 aria-label={`${t('resinConsumeButton')}${rowLabel}`}
                 title={t('resinConsumeButton')}
@@ -265,9 +266,10 @@ function SpoolRow({
                 <Icon name="minus" size={14} />
               </button>
             )}
-            {import.meta.env.VITE_TARGET !== 'web' && a.onRestock && !nested && (
+            {a.onRestock && !nested && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onRestock?.(spool, e.currentTarget)}
                 aria-label={t('filamentRestockButton')}
                 title={t('filamentRestockButton')}
@@ -370,9 +372,10 @@ function GroupRows({ group, kind, ...a }: { group: SpoolGroup; kind: SpoolKind }
         </td>
         <td className={`${cell} text-right whitespace-nowrap`}>
           <span className="inline-flex items-center gap-1">
-            {import.meta.env.VITE_TARGET !== 'web' && a.onConsume && first.kind === 'resin' && (
+            {a.onConsume && first.kind === 'resin' && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onConsume?.(suggestSpool(group.spools) ?? first, e.currentTarget, group.spools)}
                 aria-label={`${t('resinConsumeButton')}: ${groupName}`}
                 title={t('resinConsumeButton')}
@@ -383,9 +386,10 @@ function GroupRows({ group, kind, ...a }: { group: SpoolGroup; kind: SpoolKind }
                 <Icon name="minus" size={14} />
               </button>
             )}
-            {import.meta.env.VITE_TARGET !== 'web' && a.onRestock && (
+            {a.onRestock && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onRestock?.(first, e.currentTarget)}
                 aria-label={`${t('filamentRestockButton')}: ${groupName}`}
                 title={t('filamentRestockButton')}

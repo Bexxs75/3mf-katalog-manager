@@ -272,7 +272,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const dismissToast = useCallback(() => setToast(null), []);
 
   const togglePopover = (type: PopoverType, spool: FilamentSpool, anchor: HTMLElement, choices?: FilamentSpool[]) =>
-    !web && canEditMetadata() && setPopover((prev) => (prev?.type === type && prev.spool.id === spool.id ? null : { type, spool, anchor, choices }));
+    canEditMetadata() && setPopover((prev) => (prev?.type === type && prev.spool.id === spool.id ? null : { type, spool, anchor, choices }));
   const closePopover = useCallback(() => setPopover(null), []);
   const handleRestocked = (created: FilamentSpool[]) => {
     const template = popover?.spool;
@@ -449,10 +449,10 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
               onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
-              onRestock={web ? undefined : (spool, anchor) => togglePopover('restock', spool, anchor)}
-              restockOpenId={!web && popover?.type === 'restock' ? popover.spool.id : null}
-              onConsume={web ? undefined : (spool, anchor, choices) => togglePopover('consume', spool, anchor, choices)}
-              consumeOpenId={!web && popover?.type === 'consume' ? popover.spool.id : null}
+              onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
+              restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
+              onConsume={(spool, anchor, choices) => togglePopover('consume', spool, anchor, choices)}
+              consumeOpenId={popover?.type === 'consume' ? popover.spool.id : null}
               highlightIds={highlightIds}
             />
           ) : (
@@ -466,10 +466,10 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
               onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
-              onRestock={web ? undefined : (spool, anchor) => togglePopover('restock', spool, anchor)}
-              restockOpenId={!web && popover?.type === 'restock' ? popover.spool.id : null}
-              onConsume={web ? undefined : (spool, anchor, choices) => togglePopover('consume', spool, anchor, choices)}
-              consumeOpenId={!web && popover?.type === 'consume' ? popover.spool.id : null}
+              onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
+              restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
+              onConsume={(spool, anchor, choices) => togglePopover('consume', spool, anchor, choices)}
+              consumeOpenId={popover?.type === 'consume' ? popover.spool.id : null}
               highlightIds={highlightIds}
               kind={kind}
             />
@@ -489,7 +489,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
         onLoad={loadSpool}
         onUnload={unloadSpool}
         onEditSpool={openEditPanel}
-        onConsume={web ? undefined : (spool, anchor) => togglePopover('consume', spool, anchor)}
+        onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
         onManage={id => onPrinterManager?.(id)}
         focusPrinterId={printerContext?.printerId}
         printerLink={printerLink}
@@ -520,7 +520,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
         <SpoolToast label={toast.label} location={null} knownLocations={[]} onDone={dismissToast} />
       )}
 
-      {!web && popover?.type === 'restock' && (
+      {popover?.type === 'restock' && (
         <RestockPopover
           key={popover.spool.id}
           spool={popover.spool}
@@ -531,7 +531,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
         />
       )}
 
-      {!web && popover?.type === 'consume' && (
+      {popover?.type === 'consume' && (
         <ConsumeResinPopover
           key={popover.spool.id}
           spool={popover.spool}

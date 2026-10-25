@@ -167,7 +167,7 @@ export function ModelDetailPage({
 
   const rows = buildMetaRows(model, t, language);
   const filamentCheck = useFilamentCheck(
-    import.meta.env.VITE_TARGET !== 'web' && model.sliceInfo ? [model.id] : [],
+    model.sliceInfo ? [model.id] : [],
     JSON.stringify(model.sliceInfo ?? null),
   );
 

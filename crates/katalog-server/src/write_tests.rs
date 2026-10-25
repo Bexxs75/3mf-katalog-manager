@@ -136,7 +136,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 49);
+    assert_eq!(WRITE_COMMANDS.len(), 51);
     assert_eq!(crate::READ_COMMANDS.len(), 25);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
@@ -1034,8 +1034,6 @@ async fn manager_http_all_writes_round_trip_and_rejected_commands_stay_closed() 
         json!([])
     );
     for cmd in [
-        "restock_filament_spool",
-        "consume_resin",
         "set_printer_link_enabled",
         "test_printer_connection",
         "remove_printer_connection",
@@ -1507,4 +1505,66 @@ async fn catalog_removal_rolls_back_delete_failure_and_counts_only_main_rows() {
     let result=katalog_core::write::web::remove_files_from_catalog(&mut c,&[1,1,2]).unwrap();
     assert_eq!(result.value,2);
     assert_eq!(result.changes,2);
+}
+
+#[tokio::test]
+async fn restock_and_consume_resin_http_round_trip_and_strict_errors() {
+    let f = Fixture::new(true);
+    let filament = value(f.send("add_filament_spool", json!({"spool":manager_spool()})).await).await;
+    let mut resin = manager_spool();
+    resin["kind"] = json!("resin");
+    resin["diameterMm"] = json!(0);
+    resin["remainingWeightG"] = json!(100);
+    let bottle = value(f.send("add_filament_spool", json!({"spool":resin})).await).await;
+
+    let r = f.send("restock_filament_spool", json!({"templateId":filament["id"],"count":2,"weight":750.04,"price":null,"location":" Shelf B "})).await;
+    assert_eq!(r.status(), 200);
+    let created = value(r).await;
+    assert_eq!(created.as_array().unwrap().len(), 2);
+    assert_eq!(created[0]["originalWeightG"], json!(750.0));
+    assert_eq!(created[0]["location"], json!("Shelf B"));
+    assert_eq!(value(f.send("list_filament_spools", json!({})).await).await.as_array().unwrap().len(), 4);
+
+    let r = f.send("consume_resin", json!({"spoolId":bottle["id"],"amountMl":25.44})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await["remainingWeightG"], json!(74.6));
+
+    for (cmd, args, status) in [
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":21,"weight":1}), 422),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":0,"weight":1}), 422),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1,"weight":0}), 422),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1,"weight":1,"price":-1}), 422),
+        ("restock_filament_spool", json!({"templateId":"999999","count":1,"weight":1}), 404),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1.5,"weight":1}), 400),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":"1","weight":1}), 400),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1,"weight":"1"}), 400),
+        ("restock_filament_spool", json!({"templateId":1,"count":1,"weight":1}), 400),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1}), 400),
+        ("consume_resin", json!({"spoolId":bottle["id"],"amountMl":0}), 422),
+        ("consume_resin", json!({"spoolId":bottle["id"],"amountMl":-3}), 422),
+        ("consume_resin", json!({"spoolId":bottle["id"],"amountMl":"3"}), 400),
+        ("consume_resin", json!({"spoolId":filament["id"],"amountMl":3}), 422),
+        ("consume_resin", json!({"spoolId":"999999","amountMl":3}), 404),
+        ("consume_resin", json!({"spoolId":"abc","amountMl":3}), 400),
+        ("consume_resin", json!({"amountMl":3}), 400),
+    ] {
+        assert_eq!(f.send(cmd, args.clone()).await.status(), status, "{cmd} {args}");
+    }
+    assert_eq!(value(f.send("list_filament_spools", json!({})).await).await.as_array().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn restock_and_consume_resin_need_write_mode_and_a_session() {
+    let f = Fixture::new(false);
+    for cmd in ["restock_filament_spool", "consume_resin"] {
+        assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
+    }
+    let f = Fixture::new(true);
+    for cmd in ["restock_filament_spool", "consume_resin"] {
+        let r = router(f.app.clone())
+            .oneshot(f.request(cmd, Body::from("{}"), None, Some("http://localhost:8080"), true))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 401, "{cmd}");
+    }
 }

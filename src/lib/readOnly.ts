@@ -53,6 +53,8 @@ export const WEB_WRITE_COMMANDS = [
   'reorder_units',
   'load_spool',
   'unload_spool',
+  'restock_filament_spool',
+  'consume_resin',
   'set_render_snapshot',
   'set_auto_tagging',
 

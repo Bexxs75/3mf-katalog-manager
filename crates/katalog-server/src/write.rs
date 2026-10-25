@@ -75,6 +75,8 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "reorder_units",
     "load_spool",
     "unload_spool",
+    "restock_filament_spool",
+    "consume_resin",
     "set_render_snapshot",
     "set_auto_tagging",
 ];
@@ -278,6 +280,9 @@ fn optional(v: &Value, key: &str) -> Result<Option<String>, Box<Response>> {
         _ => Err(bad()),
     }
 }
+fn number(v: &Value, key: &str) -> Result<f64, Box<Response>> {
+    v.get(key).and_then(Value::as_f64).ok_or_else(bad)
+}
 fn id_value(v: &Value) -> Result<i64, Box<Response>> {
     v.as_str()
         .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
@@ -405,6 +410,18 @@ pub(crate) fn execute(
             encode(web::update_filament_spool(c, id, s, a["spool"].as_object().expect("validated spool").contains_key("imagePng")))
         }
         "delete_filament_spool" => encode(web::delete_filament_spool(c, id(a, "spoolId")?)),
+        "restock_filament_spool" => encode(web::restock_filament_spool(
+            c,
+            id(a, "templateId")?,
+            a.get("count").and_then(Value::as_i64).ok_or_else(bad)?,
+            number(a, "weight")?,
+            match a.get("price") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(v.as_f64().ok_or_else(bad)?),
+            },
+            optional(a, "location")?,
+        )),
+        "consume_resin" => encode(web::consume_resin(c, id(a, "spoolId")?, number(a, "amountMl")?)),
         "add_printer" => encode(web::add_printer(
             c,
             text(a, "name")?,
@@ -547,5 +564,21 @@ mod tests {
             a.session,
             WriteAudit::new("set_favorite", &headers, "__Host-katalog_session", 100).session
         );
+    }
+}
+
+#[cfg(test)]
+mod filament_audit_tests {
+    use super::*;
+    #[test]
+    fn restock_and_consume_are_audited_with_their_row_count() {
+        let headers = HeaderMap::new();
+        for command in ["restock_filament_spool", "consume_resin"] {
+            let audit = WriteAudit::new(command, &headers, "katalog_session", 1);
+            let progress = WriteProgress::default();
+            progress.changes.store(3, Ordering::Relaxed);
+            let line = progress.line(&audit);
+            assert!(line.contains(&format!("command={command}")) && line.contains("changes=3"), "{line}");
+        }
     }
 }
