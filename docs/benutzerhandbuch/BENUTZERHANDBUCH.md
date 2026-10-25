@@ -142,10 +142,23 @@ into the catalog window. On import, dimensions, volume, object count, and (if pr
 file) material information are extracted automatically, and the app suggests matching hashtags
 that you're free to edit afterwards. Automatically assigned tags such as "multipart", "mini",
 "large" and "multicolor" appear in the interface language you selected; search finds them under
-both names.
+both names. Under Settings → Catalog, the switch "Assign tags automatically" (on by default) controls
+this: when it is off, import, [syncing with the disk](#syncing-with-the-disk) and
+[source folders](#source-folders) assign no tags automatically. Tags that already exist stay, and
+you can still add tags by hand. See [Automatic tags](#automatic-tags) for blocking single tags.
 
 If the app imports a file that's already present in the catalog content-wise (an exact duplicate
-check via content hash), it's recognized instead of being added a second time.
+check via content hash), it's recognized instead of being added a second time. In the result list,
+the reason names the catalog file the duplicate matches ("Same content as …" or "Already in the
+catalog: …"), with a "Show" button. If the catalog file is ambiguous or no longer exists, a general
+reason is shown instead.
+
+**Date in the file name:** under Settings → General, the switch "Rename files on import" is off by
+default. When it is on, new model files that go into the catalog get the local date and time as a
+prefix, for example `2026-10-12_14-41_Model.3mf` (format `YYYY-MM-DD_HH-MM_`). External files that
+stay in their current location are not renamed. Existing entries are not changed; to add a date to
+models that are already in the catalog, use "Rename with date …" (see
+[Quick actions](#quick-actions-context-menu-and-multi-select)).
 
 The Import menu lists "Files...", "Folder..." and "Folder contents…". A hint box at its top
 explains where the files will go while you point at an entry: files selected in the file dialog go
@@ -159,6 +172,9 @@ The progress row shows the current stage and offers "Cancel". Files already impo
 the catalog. Additional imports wait in a queue; while scanning, the row shows how many files
 have been found. After completion, open "Details" to see files that were not imported, their
 reasons and files that were imported but could not be placed. "Copy list" copies the result list.
+After an import that added models, the progress row, the result dialog and the notice offer "View
+recently added", which opens the "Recently added" view (see
+[Tools in the sidebar](#tools-in-the-sidebar)).
 
 ![Import progress with "Cancel"](bilder/en/44-import-fortschritt.png)
 
@@ -166,7 +182,9 @@ reasons and files that were imported but could not be placed. "Copy list" copies
 
 To move catalog models, drag the grip on a card onto a folder. A preview follows the pointer,
 valid targets are highlighted, and collapsed folders with subfolders open when you hover over
-them. Dropping onto a collection adds the model to that collection.
+them. Dropping onto a collection adds the model to that collection. See
+[Moving models and managing folders](#moving-models-and-managing-folders) for moving several
+models at once.
 
 ### Importing folder contents
 
@@ -177,6 +195,29 @@ folder is not recreated in the catalog and the source folder itself is not added
 into the target folder just like with "Files..." (when a catalog location is configured). Files
 with the same name are not overwritten and stay in the source folder. Empty source folders are kept
 on disk. The progress row names this import "Folder contents".
+
+### Source folders
+
+Source folders are folders where new models show up, for example your Downloads folder. The app
+looks into them on request and moves the files you choose into the catalog. Nothing happens by
+itself.
+
+- **Set up:** Settings → General → "Source folders". "Add folder …" adds a folder, "Remove" takes
+  it off the list. A source folder must not be the catalog folder itself or inside it, and must
+  not be a system folder. While an import is running, the list cannot be changed.
+- **Check:** "Import → Check source folders" looks for new models in all source folders. A notice
+  reports the result ("N new files in the source folder …", "No new files in the source folders");
+  "View" opens the list, "Later" closes the notice. Nothing is moved before you confirm.
+- **Check at start:** the switch "Check when the app starts" (off by default) lets the app check
+  once after it starts. It then only shows a notice.
+- **Dialog "New files in the source folder":** tick the files you want. "Move N to the catalog"
+  moves them into the catalog folder like a normal import. "Decline selected" leaves the files
+  where they are and the app does not offer them again. Files with the same content as a model in
+  the catalog are not ticked in advance.
+- **Declined files:** the settings show "Declined files: N". "Reset list" makes the app offer
+  them again.
+- A source folder that is not reachable is marked "not reachable". If the check stops because of
+  very many entries, a notice says there may be more files.
 
 ### Extracting archives
 
@@ -236,6 +277,11 @@ The same bar has two drop-downs: **Usage** ("All", "Commercial use allowed", "Pr
 ("All", "Printed", "Not yet printed"). Both combine with each other and with folder, tag, search
 and the other filters; an active choice also appears as a chip that you can remove.
 
+A further drop-down, **Fits on**, appears once at least one printer of the Printer Manager has a
+build volume entered. It lists those printers ("All" shows everything). With a printer chosen, only models that fit its print bed stay
+visible; models whose size is not known stay visible too. How the fit is judged is described under
+[Print bed](#print-bed).
+
 ![Usage and print status filters and the sort menu](bilder/en/42-filter-sortierung.png)
 
 Under "Sort", choose "Name", "Import date", "Modified date", "File size", "Volume",
@@ -289,9 +335,58 @@ Tab navigation has a visible focus indicator. Ctrl+A (Cmd+A on macOS) selects al
 models. Escape clears the selection or closes a menu or dialog; in search it leaves the field
 without clearing the query. Open "Keyboard shortcuts and tips" with `?`, the help icon in the
 header or Settings → Info. Settings → General → "Single-key shortcuts" disables shortcuts
-such as `/` and `?`; Ctrl/Cmd shortcuts remain available.
+such as `/` and `?`; Ctrl/Cmd shortcuts remain available. With single-key shortcuts enabled, `M`
+moves the selected models to a folder. `F2` renames the focused folder in the folder tree, and
+Ctrl+Z (Cmd+Z on macOS) undoes the last move or folder rename (see
+[Moving models and managing folders](#moving-models-and-managing-folders)).
+
+Screen readers announce model cards and list rows with the name and the selection state, and
+announce the number of selected models.
 
 ![Keyboard shortcuts and tips](bilder/en/37-tastenkuerzel-dialog.png)
+
+### Automatic tags
+
+On import, the app assigns tags by itself where it can recognize something about a model, such as
+"multipart", "mini", "large" or "multicolor". More of these automatic tags now appear in the app
+language: lid, drawer, hook, vase, box, organizer, wall mount, keychain, toy, gear, tool, adapter,
+spare part, lamp and small. The German name is what is stored; names you typed by hand, such as
+"lid" or "couvercle", are merged with "deckel".
+
+- **Turn off:** Settings → Catalog → "Assign tags automatically". When it is off, import, syncing
+  with the disk and source folders assign no tags automatically. Existing tags stay, and you can
+  still add tags by hand.
+- **Block a single tag:** for a tag the app would assign to the model by itself, the ✕ in the
+  detail view offers two choices: "Remove only" (other models can get the tag automatically again)
+  and "Remove and do not assign automatically again". The blocked tag is no longer assigned on new
+  imports and syncs, in every language and regardless of upper or lower case. You can still add
+  it by hand.
+- **Lift a block:** Settings → Catalog lists all blocked tags under "Blocked automatic tags".
+  "Lift block" ends a block. The list stays in force if you turn "Assign tags automatically" off
+  and on again.
+
+### Moving models and managing folders
+
+- **Move several models at once:** drag one of the selected cards onto a folder; all selected
+  cards travel along and the folder shows the count. Alternatively use "Move to …" (selection
+  bar: "Move …", context menu, or key `M`), which opens a dialog with the folder tree: choose a
+  folder with the arrow keys, Enter moves, Esc cancels. The notice names the folder and says which
+  files were skipped or failed (for example because a file with the same name is in the target
+  folder or the file is missing on disk). Moved files keep the permissions and modification time
+  of the original.
+- **Undo:** "Undo" in the notice, or Ctrl+Z (Cmd+Z on macOS), takes back moving models, moving
+  folders and renaming folders, several steps in a row, as long as the app is running.
+- **Rename a folder:** in the folder tree, right-click a folder and choose "Rename", or press
+  `F2`. The folder is renamed on disk too, and its models are carried along. The name must not
+  contain "/" or "\". Renaming or moving a folder also carries files whose catalog entry is not
+  assigned to that folder and trashed entries below it. If the new path is already taken by
+  another entry, the rename or move is cancelled and nothing changes.
+- **Delete a folder:** right-click a folder and choose "Move to trash …". Its models go to the
+  app [trash](#the-trash) (7 days, restorable). Other files in the folder, such as images or
+  notes, stay on disk and are not touched; the folder itself is only removed from disk when it is
+  empty. The catalog folder and the folders above it cannot be moved to the trash.
+- **Folders missing on disk:** a folder that no longer exists on disk is marked "missing on disk"
+  in the folder tree and reported by [syncing with the disk](#syncing-with-the-disk).
 
 ### Syncing with the disk
 
@@ -312,11 +407,28 @@ Refresh first only looks — nothing changes until you confirm:
   catalog folder, with the catalog folder below it). New folders appear only when they contain new
   supported files; empty folders are left out. "Apply changes" adds the new files and folders to
   the catalog, "Later" closes the dialog without changing anything.
+- **Renamed or moved:** files that were renamed or moved outside the app (for example in the file
+  manager, including a renamed folder) are recognised by their identical content and listed under
+  "Renamed or moved", ticked by default. Applying keeps the existing catalog entry with its tags,
+  favourite, notes, print log and collections instead of creating a second, empty one; when a
+  whole folder was renamed, the folder entry follows. A match is only made when it is unambiguous
+  and the file is unchanged. Otherwise the file stays under "new" and "missing".
+- **Same content as an existing model:** new files with the same content as a model already in
+  the catalog are listed separately, not ticked by default. Adding one creates a second model with
+  the same data. If you do not add it, it stays in the folder and is shown again at every sync.
+- **Select all / None:** every entry has its own checkbox. "Select all" and "None" tick or untick
+  all entries of the lists of new files and of files with the same content as an existing model.
+- **Files in the trash:** a new file whose path is still held by the [trash](#the-trash) is
+  skipped. A notice counts these files: restore them there, or empty the trash, and sync again.
+  The dialog also opens when this is the only finding.
 - **Missing files are kept by default.** Their entries stay in the catalog and still show up in the
   catalog check (Settings → Catalog). To remove them, tick "Remove missing files from the
   catalog"; the button then offers "Apply changes" (with new files) or "Remove" (only missing
   files). Removed entries go to the [trash](#the-trash), so you can still restore them;
-  notes, tags and usage are lost once they are deleted permanently from there.
+  notes, tags and usage are lost once they are deleted permanently from there. Folders that no
+  longer exist on disk are only reported ("N missing folders", marked "missing on disk" in the
+  folder tree); with this option ticked, the folder entry is removed together with its missing
+  models (into the trash).
 - **Nothing to apply:** if there are no new files or folders and you have not ticked the removal
   option, the dialog only offers "Close".
 - **Folders that cannot be read** are listed with their paths ("N folders could not be read"); the
@@ -331,6 +443,14 @@ Refresh first only looks — nothing changes until you confirm:
   not be imported. The catalog is unchanged." and "The sync failed. Please try again."
 - **After applying,** a notice sums up "N new files · N new folders · N files removed", and the new
   entries are briefly highlighted.
+
+**Sync at start:** under Settings → General → "Sync with disk", the switch "Sync at start" lets the
+app check your catalog folders in the background when it starts. A notice appears only when
+something changed ("Found at start: …"); otherwise nothing happens. With large catalogs or network
+drives this can take a while. The second switch, "Add new files automatically", takes over new
+files and detected renames at start without asking. It only works together with "Sync at start",
+never removes anything from the catalog and never adds files with the same content as an existing
+model; you decide those in the sync dialog (F5).
 
 ![Dialog "Sync with disk" with new and missing files](bilder/en/40-festplatten-abgleich-dialog.png)
 
@@ -349,8 +469,12 @@ the option to add or remove more. If the file has already been sliced in OrcaSli
 Studio, the app reads the real filament weight straight from the slicer's metadata instead of
 only roughly estimating it — including a breakdown per print plate and filament, plus an
 estimated material-cost total if matching spools are on record in the Material Manager. The
-"Re-scan metadata" button re-fetches these values later on, in case you sliced an already
+"Rescan metadata" button re-fetches these values later on, in case you sliced an already
 cataloged file after the fact.
+
+For models downloaded from Makerworld, the metadata also lists the **Platform**, the **Model ID**
+and the **Profile ID**. The app reads them from the 3MF file; nothing is shown for files without a
+platform. For models that are already in the catalog, "Rescan metadata" fills them in.
 
 At the bottom left you can mark the model as **printed** and add it to the **queue**. The **heart**
 marks it as a favorite; you find all favorites under "Tools → Favorites".
@@ -416,6 +540,51 @@ of the multi-selection (see [Quick actions](#quick-actions-context-menu-and-mult
 opens the same drop-down and applies the choice to all selected models. Existing tags are not
 changed.
 
+### Print bed
+
+For every printer of the Printer Manager that has a build volume entered (Printer Manager →
+"Edit" → "Build volume X × Y × Z"), the detail panel and the detail page show under "Print bed"
+whether the model fits. The line "Model" gives the size of the model. Each printer is marked "fits"
+or "does not fit"; for a model that does not fit, the excess is named, for example "12 mm too
+wide", "too deep" or "too tall". If the size of the model is not known, the entry reads "size
+unknown". The check allows the model to be turned on the plate, so width and depth may swap; the
+height stays the height. Printers without a build volume are not listed. The filter "Fits on" in
+the filter bar uses the same check (see
+[Browsing and organizing your catalog](#browsing-and-organizing-your-catalog)).
+
+### Companion files
+
+Under "Companion files" in the detail panel and on the detail page, you can attach pictures, PDFs
+and text files to a model, for example assembly instructions or print notes.
+
+- **Add:** "Add …" opens a file dialog. When you import an archive, companion files in it are
+  assigned to their model automatically (see [Extracting archives](#extracting-archives)).
+- **Show and open:** pictures appear as thumbnails; a click shows an enlarged view. PDF and text
+  files open with your default program via "Open". Each entry also has a menu ("More actions for
+  …") with "Show in file manager" and "Remove". A file that was deleted outside the app is marked
+  "File missing".
+- **Where they live:** companion files are stored in a folder `Name_extras` next to the model file
+  and go to the trash together with the model.
+- **Removed by mistake:** a removed companion file stays in the app trash for 7 days. Restore it
+  from the notice or from the "Removed (N)" list of the model with "Restore".
+- **Docker:** inside the container, "Open" cannot start a program. The app says so and asks you to
+  open the file on the Docker host.
+
+### Filament usage is missing
+
+On the detail page of a 3MF file, a box "Filament usage" with the hint "No usage given." appears
+when the file contains no slicer data. The app then does not know how much filament the model
+needs, so it shows no usage. This is not an error of the app. Without usage data,
+[Is there enough filament?](#is-there-enough-filament) stays "unclear".
+
+It happens with 3MF files that were not exported from a slicer as a sliced plate, for example a
+file downloaded directly from a model page. Only 3MF files can carry slicer data, so the hint does
+not appear for STL, OBJ or STEP files.
+
+To get the usage, open the file in your slicer (for example Bambu Studio or OrcaSlicer), slice the
+plate and export it as a sliced plate, that is a 3MF with slicer data. The detail page then shows
+the real usage. For a file that is already in the catalog, "Rescan metadata" re-reads the values.
+
 ## Quick actions: context menu and multi-select
 
 Right-clicking a model opens a context menu with the most important actions:
@@ -433,6 +602,27 @@ every tag present in the selection), mark it printed/not printed, or delete it t
 multi-selection active, the Delete/Backspace key also opens the delete confirmation directly:
 
 ![Multi-select with action bar](bilder/en/06-mehrfachauswahl.png)
+
+The selection bar is always visible and no longer hidden by the detail panel. Its actions are
+grouped by purpose ("Selection", "Edit", "File away"), and rarely used ones are in the "More" menu:
+"Set license", "Not printed", "Rename with date …" and "Remove from catalog". "Move …" moves the
+selection to a folder (see [Moving models and managing folders](#moving-models-and-managing-folders)).
+Screen readers announce the number of selected models.
+
+### Rename with date
+
+"More → Rename with date …" in the selection bar adds a date prefix (`YYYY-MM-DD_HH-MM_`) to the
+file names of the selected models. Under "Date" you choose the source: "File modified date"
+(default) or "Import date". A preview lists every old and new name first; nothing is renamed before
+you confirm with "Rename N files". Files are renamed on disk and in the catalog together. Programs
+that know the old name will no longer find the files.
+
+Some files are skipped, each with its reason in the preview: they already have a date, the target
+name is taken, the file is missing on disk, it is in the trash, it is outside the catalog folders,
+the new name would be too long, no date is available, or the name or location is not allowed.
+If renaming fails for one file, the others are still renamed; the notice reports how many files
+were renamed and how many failed. At most 5000 models can be renamed at once; with a larger selection
+the dialog asks you to select fewer.
 
 ### Remove from catalog
 
@@ -504,10 +694,17 @@ catalog. You reach it via the second icon in the navigation rail on the far left
 ![Material Manager dashboard](bilder/en/08-filament-dashboard.png)
 
 At the top is a stats bar (total spools, total remaining weight, occupied storage locations,
-spools with low/empty stock). Each spool card shows material, manufacturer, color, storage
+spools with low/empty stock, and the number of "Different kinds"). Each spool card shows material, manufacturer, color, storage
 location, remaining weight as a bar and percentage, and a status: **In stock** (green), **Low**
 (orange, once stock is running low), or **Empty**. The "Low"/"Empty" filter buttons or the search
 field help you find spools that need reordering soon.
+
+**Grouped or single:** the switch "View" with "Grouped" and "Single" (grouped by default, your
+choice is remembered) applies to the dashboard and the list. Grouped, equal spools form one card
+with the number of spools, the total remaining amount and the total target amount; a click on
+"Show spools" shows the single spools, each with its own bar. Spools in a printer form a group per
+unit (for example "X1C · AMS 1"). Cards are sorted by remaining share, lowest first. "Single"
+shows every spool on its own card.
 
 As an alternative to the tile view, there's a sortable list view ("List" next to "Dashboard"):
 
@@ -521,11 +718,17 @@ Besides the usual fields (material, manufacturer, color, storage location, diame
 original/remaining weight, optionally a photo), you can also set a **quantity** here: adding,
 say, three identical PLA spools at once still gives each one its own, independently tracked
 remaining weight. Weights are stored to 0.1 g. For material, manufacturer, and storage location,
-the app suggests previously used values as you type (autocomplete). Pick the photo by clicking
+the app suggests previously used values as you type (autocomplete). A new spool starts with the
+weight last used for the same manufacturer and material (otherwise the manufacturer, otherwise
+1000 g); the field stays editable. Pick the photo by clicking
 the image field, or drag it straight from your file manager onto the field (one PNG, JPG or WebP
 file, up to 5 MB). If an image doesn't fit, the notice appears right below the image field and
 the form stays open when you save: choose another image or close the notice with ✕ to save
 without it.
+
+**Multi-color spools:** under "Colors (max. 4)", a spool can have up to four colors ("+ Color",
+"Remove color N"); they are shown as a split color dot, and such a spool is labeled "multicolor".
+The first color is used to match the slicer colors.
 
 **Edit with a double-click:** Double-clicking a card or a row in the list opens the same form as
 the pencil ✎.
@@ -589,6 +792,9 @@ Loading spools or resin bottles and confirming new prints remain in Material Man
 2. In Material Manager, load a spool by dragging a card or row from the stock onto a slot — or click the slot and pick
    a spool from the list. If the slot is already occupied, the spool already in it returns to
    its home location.
+   The spool with the smallest rest that still suffices is suggested ("Suggested: smallest rest").
+   The same applies when you deduct resin by hand with "− Use": the bottle with the smallest rest
+   that is still enough is suggested.
 3. Unloading: drag the spool from the slot back into the stock area, or choose "Unload" from
    the slot's menu. It automatically returns to its home location; the notice lets you change
    that location.
@@ -674,9 +880,16 @@ during that time:
 
 "Empty trash" top right removes everything it contains immediately and permanently.
 
+Models of a folder that you moved to the trash with "Move to trash …" and models you removed with
+the sync appear here as well. Restoring a model recreates its folder if it no longer exists, so
+models of a deleted folder can be brought back. Companion files go to the trash together with their
+model; companion files removed on their own are restored from the model (see
+[Companion files](#companion-files)).
+
 ## Settings
 
-The gear icon at the bottom of the navigation rail opens Settings. They're split into four tabs:
+The gear icon at the bottom of the navigation rail opens Settings in the right-hand panel, next to
+your models and folders. They're split into four tabs:
 **General**, **Slicer**, **Catalog**, and **Info**.
 
 ### General
@@ -691,6 +904,12 @@ The gear icon at the bottom of the navigation rail opens Settings. They're split
   background, one file after another. With "Image", this happens for files without an image of
   their own (e.g. STL, OBJ).
 - **Language** — German, English, Spanish, or French, effective immediately without a restart.
+- **Rename files on import** — off by default; prefixes new catalog files with the date and time
+  (see [Importing files](#importing-files)).
+- **Sync with disk** — "Sync at start" and "Add new files automatically" (see
+  [Syncing with the disk](#syncing-with-the-disk)).
+- **Source folders** — folders that are checked for new models (see
+  [Source folders](#source-folders)).
 
 ### Slicer
 
@@ -708,6 +927,10 @@ including self-built or modified versions. The radio button sets which slicer is
 - **Check catalog** — a manually triggered scan finds orphaned file paths (a file listed in the
   catalog but no longer present on disk) and inventory duplicates, with cleanup via a selection
   dialog.
+- **Assign tags automatically** — on by default. When it is off, import, syncing with the disk and
+  source folders assign no tags automatically (see [Automatic tags](#automatic-tags)).
+- **Blocked automatic tags** — lists tags that the app no longer assigns by itself; "Lift block"
+  ends a block.
 - **Catalog backup** — see the next section.
 - **Catalog location** — shows the current base directory and lets you change it or open it
   directly in the file manager. Changing it opens the same dialog as the initial setup.
@@ -776,6 +999,10 @@ The app runs only once. Launching it again brings the existing window to the fro
 ![Report a bug](bilder/en/30-fehler-melden.png)
 
 Settings → Info → **Report a bug** (or **Report problem** next to an unexpected error) opens a short dialog. First decide whether to send the log file. With **Yes** you see exactly what will be in it: user name, computer name, home folder and catalog paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names are replaced. **Save and open form** puts `3mf-katalog-log-<date>.txt` into your download folder and opens the form on 3mfkatalog.de with version (in the screenshot: 0.16.0) and system filled in; attach the file there under "Log file". The app never sends anything by itself.
+
+Common error messages (creating, renaming, moving and deleting folders, moving and renaming
+models, source folders, removing models from the catalog, restoring a backup) appear in the
+language you selected. Technical errors keep their original text and the "Report problem" link.
 
 **Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open log folder** (under **FOLDERS**, see [Info](#info)) shows the log files.
 
@@ -1075,10 +1302,26 @@ Drag & Drop aus deinem Dateimanager in das Katalog-Fenster ziehen. Beim Import w
 Volumen, Objektanzahl und (falls in der Datei vorhanden) Materialangaben automatisch ausgelesen,
 und die App schlägt passende Hashtags vor, die du danach frei bearbeiten kannst. Automatisch
 vergebene Tags wie „mehrteilig“, „miniatur“, „grossformat“ und „mehrfarbig“ erscheinen in der
-eingestellten Sprache der Oberfläche; die Suche findet sie unter beiden Namen.
+eingestellten Sprache der Oberfläche; die Suche findet sie unter beiden Namen. Der Schalter „Tags
+automatisch vergeben“ unter Einstellungen → Katalog (standardmäßig an) steuert das: Ist er aus,
+vergeben Import, [Abgleich mit der Festplatte](#mit-der-festplatte-abgleichen) und
+[Quellordner](#quellordner) keine Tags automatisch. Vorhandene Tags bleiben, von Hand kannst du
+weiterhin Tags vergeben. Wie du einzelne Tags sperrst, steht unter
+[Automatische Tags](#automatische-tags).
 
 Importiert die App eine Datei, die inhaltlich bereits im Katalog vorhanden ist (exakter
-Duplikat-Abgleich per Inhalts-Hash), wird das erkannt, statt sie ein zweites Mal anzulegen.
+Duplikat-Abgleich per Inhalts-Hash), wird das erkannt, statt sie ein zweites Mal anzulegen. In der
+Ergebnisliste nennt der Grund die Katalogdatei, zu der das Duplikat passt („Gleicher Inhalt wie …“
+oder „Schon im Katalog: …“), mit einem Knopf „Anzeigen“. Ist die Katalogdatei nicht eindeutig oder
+nicht mehr vorhanden, steht stattdessen der allgemeine Grund.
+
+**Datum im Dateinamen:** Unter Einstellungen → Allgemein ist der Schalter „Dateien beim Import
+umbenennen“ standardmäßig aus. Ist er an, bekommen neue Modelldateien, die in den Katalog kommen,
+das lokale Datum und die Uhrzeit als Präfix, z. B. `2026-10-12_14-41_Modell.3mf` (Format
+`JJJJ-MM-TT_HH-MM_`). Externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt.
+Vorhandene Einträge ändern sich dadurch nicht; um Modellen, die schon im Katalog sind, ein Datum
+voranzustellen, nutzt du „Mit Datum umbenennen …“ (siehe
+[Schnelle Aktionen](#schnelle-aktionen-kontextmenü-und-mehrfachauswahl)).
 
 Das Import-Menü listet „Dateien...“, „Ordner...“ und „Ordnerinhalt…“. Ein Hinweisfeld oben im Menü
 erklärt, wo die Dateien landen, sobald du auf einen Eintrag zeigst: Im Dateidialog ausgewählte
@@ -1094,6 +1337,9 @@ Dateien bleiben im Katalog. Weitere Importe warten in einer Warteschlange. Währ
 siehst du die Anzahl der bisher gefundenen Dateien. Öffne nach Abschluss "Details": Dort stehen
 nicht importierte Dateien mit Gründen sowie importierte Dateien, die nicht abgelegt werden konnten.
 "Liste kopieren" kopiert die Ergebnisliste.
+Nach einem Import, der Modelle hinzugefügt hat, bieten die Fortschrittszeile, der Ergebnisdialog
+und der Hinweis „Neu hinzugefügt ansehen“ an; das öffnet die Ansicht „Neu hinzugefügt“ (siehe
+[Werkzeuge in der Seitenleiste](#werkzeuge-in-der-seitenleiste)).
 
 ![Importfortschritt mit „Abbrechen“](bilder/44-import-fortschritt.png)
 
@@ -1102,6 +1348,8 @@ nicht importierte Dateien mit Gründen sowie importierte Dateien, die nicht abge
 Zum Verschieben ziehst du ein Katalogmodell am Griff seiner Karte auf einen Ordner. Eine Vorschau
 folgt dem Mauszeiger, passende Ziele werden hervorgehoben. Zugeklappte Ordner mit Unterordnern
 öffnen sich beim Drüberhalten. Ziehst du ein Modell auf eine Sammlung, wird es ihr hinzugefügt.
+Mehrere Modelle auf einmal zu verschieben steht unter
+[Modelle verschieben und Ordner verwalten](#modelle-verschieben-und-ordner-verwalten).
 
 ### Ordnerinhalt importieren
 
@@ -1113,6 +1361,32 @@ Dateien werden wie bei „Dateien...“ in den Zielordner verschoben (wenn ein K
 eingerichtet ist). Dateien mit gleichem Namen werden nicht überschrieben und bleiben im Quellordner.
 Leere Quellordner bleiben auf der Festplatte erhalten. Die Fortschrittszeile nennt diesen Import
 „Ordnerinhalt“.
+
+### Quellordner
+
+Quellordner sind Ordner, in denen neue Modelle auftauchen, z. B. dein Downloads-Ordner. Die App
+schaut auf Anforderung hinein und verschiebt die Dateien, die du auswählst, in den Katalog. Von
+selbst passiert nichts.
+
+- **Einrichten:** Einstellungen → Allgemein → „Quellordner“. „Ordner hinzufügen …“ fügt einen
+  Ordner hinzu, „Entfernen“ nimmt ihn aus der Liste. Ein Quellordner darf nicht der Katalogordner
+  selbst oder darin liegen und kein Systemordner sein. Während ein Import läuft, lässt sich die
+  Liste nicht ändern.
+- **Prüfen:** „Importieren → Quellordner prüfen“ sucht in allen Quellordnern nach neuen Modellen.
+  Ein Hinweis nennt das Ergebnis („N neue Dateien im Quellordner …“, „Keine neuen Dateien in den
+  Quellordnern“); „Ansehen“ öffnet die Liste, „Später“ schließt den Hinweis. Vor deiner
+  Bestätigung wird nichts verschoben.
+- **Beim Start prüfen:** Der Schalter „Beim Start der App prüfen“ (standardmäßig aus) lässt die App
+  einmal nach dem Start prüfen. Sie zeigt dann nur einen Hinweis.
+- **Dialog „Neue Dateien im Quellordner“:** Hake die gewünschten Dateien an. „N in den Katalog
+  verschieben“ verschiebt sie wie bei einem normalen Import in den Katalogordner. „Ausgewählte
+  ablehnen“ lässt die Dateien, wo sie sind, und die App bietet sie nicht mehr an. Dateien mit
+  gleichem Inhalt wie ein Modell im Katalog sind nicht vorausgewählt.
+- **Abgelehnte Dateien:** Die Einstellungen zeigen „Abgelehnte Dateien: N“. „Liste zurücksetzen“
+  sorgt dafür, dass die App sie wieder anbietet.
+- Ein Quellordner, der nicht erreichbar ist, ist mit „nicht erreichbar“ markiert. Bricht die
+  Prüfung bei sehr vielen Einträgen ab, weist ein Hinweis darauf hin, dass es weitere Dateien geben
+  kann.
 
 ### Archive entpacken
 
@@ -1180,6 +1454,12 @@ als Chip, den du entfernen kannst.
 
 ![Filter für Nutzung und Druckstatus und das Sortiermenü](bilder/42-filter-sortierung.png)
 
+Ein weiteres Auswahlfeld, **Passt auf**, erscheint, sobald bei mindestens einem Drucker des Printer
+Managers ein Bauraum eingetragen ist. Es listet diese Drucker („Alle“ zeigt alles). Ist ein Drucker
+gewählt, bleiben nur Modelle sichtbar, die auf dessen Druckbett passen; Modelle mit unbekannter
+Größe bleiben ebenfalls sichtbar. Wie die Passung beurteilt wird, steht unter
+[Druckbett](#druckbett).
+
 Unter "Sortieren" wählst du "Name", "Importdatum", "Änderungsdatum", "Dateigröße", "Volumen",
 "Druckstatus" oder "Zuletzt angesehen". Alle lassen sich in beide Richtungen sortieren: etwa
 "Älteste zuerst" oder "Neueste zuerst" für Datumswerte, "A → Z" oder "Z → A" für Namen und
@@ -1234,9 +1514,63 @@ sichtbaren Modelle aus. Escape hebt die Auswahl auf oder schließt ein Menü ode
 Im Suchfeld verlässt Escape das Feld, ohne den Suchtext zu löschen. "Tastenkürzel und Tipps"
 öffnest du mit `?`, dem Hilfesymbol in der Kopfzeile oder unter Einstellungen → Info.
 Einstellungen → Allgemein → "Einzeltasten-Kürzel" schaltet Kürzel wie `/` und `?` ab.
-Strg/Cmd-Kürzel bleiben verfügbar.
+Strg/Cmd-Kürzel bleiben verfügbar. Sind Einzeltasten-Kürzel eingeschaltet, verschiebt `M` die
+ausgewählten Modelle in einen Ordner. `F2` benennt den fokussierten Ordner im Ordnerbaum um, und
+Strg+Z (Cmd+Z unter macOS) macht das letzte Verschieben oder Umbenennen eines Ordners rückgängig
+(siehe [Modelle verschieben und Ordner verwalten](#modelle-verschieben-und-ordner-verwalten)).
+
+Screenreader sagen Modellkarten und Listenzeilen mit Namen und Auswahlstatus an und nennen die
+Anzahl der ausgewählten Modelle.
 
 ![Tastenkürzel und Tipps](bilder/37-tastenkuerzel-dialog.png)
+
+### Automatische Tags
+
+Beim Import vergibt die App selbst Tags, wo sie etwas an einem Modell erkennt, etwa „mehrteilig“,
+„miniatur“, „grossformat“ oder „mehrfarbig“. Weitere dieser automatischen Tags erscheinen jetzt in
+der App-Sprache: Deckel, Schublade, Haken, Vase, Box, Organizer, Wandhalterung, Schlüsselanhänger,
+Spielzeug, Zahnrad, Werkzeug, Adapter, Ersatzteil, Lampe und klein. Gespeichert wird der deutsche
+Name; von Hand getippte Namen wie „lid“ oder „couvercle“ werden mit „deckel“ zusammengeführt.
+
+- **Ausschalten:** Einstellungen → Katalog → „Tags automatisch vergeben“. Ist der Schalter aus,
+  vergeben Import, Abgleich mit der Festplatte und Quellordner keine Tags automatisch. Vorhandene
+  Tags bleiben, von Hand kannst du weiterhin Tags vergeben.
+- **Einzelnen Tag sperren:** Bei einem Tag, den die App dem Modell selbst vergeben würde, bietet
+  das ✕ in der Detailansicht zwei Möglichkeiten: „Nur entfernen“ (bei anderen Modellen kann der Tag
+  wieder automatisch vergeben werden) und „Entfernen und nicht mehr automatisch vergeben“. Der
+  gesperrte Tag wird bei neuen Importen und Abgleichen nicht mehr vergeben, in jeder Sprache und
+  unabhängig von Groß- und Kleinschreibung. Von Hand kannst du ihn weiterhin vergeben.
+- **Sperre aufheben:** Einstellungen → Katalog listet alle gesperrten Tags unter „Gesperrte
+  automatische Tags“. „Sperre aufheben“ beendet eine Sperre. Die Sperrliste gilt weiter, falls du
+  „Tags automatisch vergeben“ aus- und wieder einschaltest.
+
+### Modelle verschieben und Ordner verwalten
+
+- **Mehrere Modelle auf einmal verschieben:** Zieh eine der ausgewählten Karten auf einen Ordner;
+  alle ausgewählten Karten wandern mit, und der Ordner zeigt die Anzahl. Alternativ nutzt du
+  „Verschieben nach …“ (Auswahlleiste: „Verschieben …“, Kontextmenü oder Taste `M`). Das öffnet
+  einen Dialog mit dem Ordnerbaum: Mit den Pfeiltasten einen Ordner wählen, Enter verschiebt, Esc
+  bricht ab. Der Hinweis nennt den Ordner und sagt, welche Dateien übersprungen wurden oder
+  fehlschlugen (z. B. weil im Zielordner schon eine Datei gleichen Namens liegt oder die Datei auf
+  der Festplatte fehlt). Verschobene Dateien behalten Berechtigungen und Änderungszeit der
+  Originaldatei.
+- **Rückgängig:** „Rückgängig“ im Hinweis oder Strg+Z (Cmd+Z unter macOS) nimmt das Verschieben
+  von Modellen, das Verschieben von Ordnern und das Umbenennen von Ordnern zurück, auch mehrere
+  Schritte hintereinander, solange die App läuft.
+- **Ordner umbenennen:** Im Ordnerbaum einen Ordner per Rechtsklick auf „Umbenennen“ wählen oder
+  `F2` drücken. Der Ordner wird auch auf der Festplatte umbenannt, seine Modelle wandern mit. Der
+  Name darf weder „/“ noch „\“ enthalten. Beim Umbenennen oder Verschieben eines Ordners wandern
+  auch Dateien mit, deren Katalogeintrag nicht diesem Ordner zugeordnet ist, sowie Einträge im
+  Papierkorb darunter. Ist der neue Pfad schon von einem anderen Eintrag belegt, wird das
+  Umbenennen bzw. Verschieben abgebrochen und nichts geändert.
+- **Ordner löschen:** Rechtsklick auf einen Ordner und „In den Papierkorb legen …“. Seine Modelle
+  kommen in den App-[Papierkorb](#der-papierkorb) (7 Tage, wiederherstellbar). Andere Dateien im
+  Ordner, etwa Bilder oder Notizen, bleiben auf der Festplatte liegen und werden nicht angefasst;
+  der Ordner selbst wird nur von der Festplatte entfernt, wenn er leer ist. Der Katalogordner und
+  die Ordner darüber lassen sich nicht in den Papierkorb legen.
+- **Auf der Festplatte fehlende Ordner:** Ein Ordner, den es auf der Festplatte nicht mehr gibt,
+  ist im Ordnerbaum mit „fehlt auf der Festplatte“ markiert und wird vom
+  [Abgleich mit der Festplatte](#mit-der-festplatte-abgleichen) gemeldet.
 
 ### Mit der Festplatte abgleichen
 
@@ -1257,12 +1591,33 @@ Aktualisieren schaut zuerst nur nach – erst nach deiner Bestätigung ändert s
   Katalogordner). Neue Ordner erscheinen nur, wenn sie neue unterstützte Dateien enthalten; leere
   Ordner bleiben außen vor. „Änderungen übernehmen“ legt die neuen Dateien und Ordner im Katalog
   an, „Später“ schließt den Dialog, ohne etwas zu ändern.
+- **Umbenannt oder verschoben:** Dateien, die außerhalb der App umbenannt oder verschoben wurden
+  (z. B. im Dateimanager, auch ein umbenannter Ordner), erkennt die App am identischen Inhalt und
+  listet sie unter „Umbenannt oder verschoben“, standardmäßig angehakt. Beim Übernehmen bleibt der
+  vorhandene Katalogeintrag mit Tags, Favorit, Notizen, Druckprotokoll und Sammlungen erhalten,
+  statt einen zweiten, leeren anzulegen; wurde ein ganzer Ordner umbenannt, folgt der Ordnereintrag.
+  Eine Zuordnung erfolgt nur, wenn sie eindeutig und die Datei unverändert ist. Sonst bleibt die
+  Datei unter „neu“ und „fehlt“.
+- **Gleicher Inhalt wie ein vorhandenes Modell:** Neue Dateien mit dem gleichen Inhalt wie ein
+  Modell, das schon im Katalog ist, stehen getrennt und sind standardmäßig nicht angehakt. Sie
+  aufzunehmen erzeugt ein zweites Modell mit denselben Daten. Nimmst du sie nicht auf, bleiben sie
+  im Ordner und werden bei jedem Abgleich wieder gezeigt.
+- **Alle auswählen / Keine:** Jeder Eintrag hat ein eigenes Kästchen. „Alle auswählen“ und „Keine“
+  haken alle Einträge der Listen für neue Dateien und für Dateien mit gleichem Inhalt wie ein
+  vorhandenes Modell an bzw. ab.
+- **Dateien im Papierkorb:** Eine neue Datei, deren Pfad noch vom [Papierkorb](#der-papierkorb)
+  belegt ist, wird übersprungen. Ein Hinweis zählt diese Dateien: Stelle sie dort wieder her oder
+  leere den Papierkorb und gleiche danach erneut ab. Der Dialog öffnet sich auch, wenn das der
+  einzige Befund ist.
 - **Fehlende Dateien bleiben standardmäßig erhalten.** Ihre Einträge bleiben im Katalog und
   tauchen weiterhin in der Katalogprüfung auf (Einstellungen → Katalog). Zum Entfernen setzt du
   den Haken bei „Fehlende Dateien aus dem Katalog entfernen“; der Knopf heißt dann „Änderungen
   übernehmen“ (mit neuen Dateien) oder „Entfernen“ (nur fehlende Dateien). Entfernte Einträge
   landen im [Papierkorb](#der-papierkorb) und lassen sich dort wiederherstellen; Notizen, Tags und
-  Verbrauch gehen verloren, sobald sie von dort endgültig gelöscht werden.
+  Verbrauch gehen verloren, sobald sie von dort endgültig gelöscht werden. Ordner, die es auf der
+  Festplatte nicht mehr gibt, werden nur gemeldet („N Ordner fehlen“, im Ordnerbaum mit „fehlt auf
+  der Festplatte“ markiert); ist die Option angehakt, wird der Ordnereintrag zusammen mit seinen
+  fehlenden Modellen entfernt (in den Papierkorb).
 - **Nichts zu übernehmen:** Gibt es weder neue Dateien noch neue Ordner und hast du die
   Entfernen-Option nicht angehakt, bietet der Dialog nur „Schließen“.
 - **Nicht lesbare Ordner** werden mit ihren Pfaden aufgelistet („N Ordner konnten nicht gelesen
@@ -1280,6 +1635,15 @@ Aktualisieren schaut zuerst nur nach – erst nach deiner Bestätigung ändert s
   erneut versuchen.“
 - **Nach dem Übernehmen** fasst ein Hinweis „N neue Dateien · N neue Ordner · N Dateien entfernt“
   zusammen, und die neuen Einträge werden kurz hervorgehoben.
+
+**Beim Start abgleichen:** Unter Einstellungen → Allgemein → „Abgleich mit der Festplatte“ lässt
+der Schalter „Beim Start abgleichen“ die App beim Start im Hintergrund deine Katalogordner prüfen.
+Ein Hinweis erscheint nur, wenn sich etwas geändert hat („Beim Start gefunden: …“); sonst passiert
+nichts. Bei großen Katalogen oder Netzlaufwerken kann das etwas dauern. Der zweite Schalter, „Neue
+Dateien automatisch aufnehmen“, übernimmt neue Dateien und erkannte Umbenennungen beim Start ohne
+Rückfrage. Er wirkt nur zusammen mit „Beim Start abgleichen“, entfernt nie etwas aus dem Katalog und
+nimmt keine Dateien mit gleichem Inhalt wie ein vorhandenes Modell auf; die entscheidest du weiter
+im Abgleich-Dialog (F5).
 
 ![Dialog „Abgleich mit der Festplatte“ mit neuen und fehlenden Dateien](bilder/40-festplatten-abgleich-dialog.png)
 
@@ -1301,6 +1665,11 @@ Aufschlüsselung pro Druckplatte und Filament sowie einer geschätzten Materialk
 passende Spulen im Material Manager hinterlegt sind. Über den "Metadaten neu einlesen"-Knopf holst du
 diese Werte nachträglich nach, falls du eine bereits katalogisierte Datei erst später im Slicer
 nachgesliced hast.
+
+Bei Modellen, die von Makerworld heruntergeladen wurden, nennen die Metadaten zusätzlich die
+**Plattform**, die **Modell-ID** und die **Profil-ID**. Die App liest sie aus der 3MF-Datei; bei
+Dateien ohne Plattform wird nichts angezeigt. Bei Modellen, die schon im Katalog sind, füllt
+„Metadaten neu einlesen“ sie nach.
 
 Unten links kannst du das Modell als **gedruckt** markieren und es zur **Warteschlange**
 hinzufügen. Mit dem **Herz** markierst du es als Favorit; alle Favoriten findest du unter
@@ -1376,6 +1745,55 @@ in der Aktionsleiste der Mehrfachauswahl (siehe
 Auswahlfeld und übernimmt die Wahl für alle ausgewählten Modelle. Vorhandene Tags bleiben
 unverändert.
 
+### Druckbett
+
+Für jeden Drucker des Printer Managers, bei dem ein Bauraum eingetragen ist (Printer Manager →
+„Bearbeiten“ → „Bauraum X × Y × Z“), zeigen Detailbereich und Detailseite unter „Druckbett“, ob das
+Modell passt. Die Zeile „Modell“ nennt die Größe des Modells. Jeder Drucker ist mit „passt“ oder
+„passt nicht“ markiert; passt ein Modell nicht, wird das Übermaß genannt, z. B. „12 mm zu breit“,
+„zu tief“ oder „zu hoch“. Ist die Größe des Modells nicht bekannt, steht dort „Maße unbekannt“.
+Die Prüfung erlaubt, das Modell auf der Platte zu drehen, daher können Breite und Tiefe
+vertauscht werden; die Höhe bleibt die Höhe. Drucker ohne Bauraum werden nicht aufgeführt. Der
+Filter „Passt auf“ in der Filterleiste nutzt dieselbe Prüfung (siehe
+[Katalog durchsuchen und organisieren](#katalog-durchsuchen-und-organisieren)).
+
+### Begleitdateien
+
+Unter „Begleitdateien“ im Detailbereich und auf der Detailseite hängst du einem Modell Bilder,
+PDFs und Textdateien an, z. B. Bauanleitungen oder Druck-Notizen.
+
+- **Hinzufügen:** „Hinzufügen …“ öffnet einen Dateidialog. Beim Import eines Archivs werden darin
+  enthaltene Begleitdateien automatisch ihrem Modell zugeordnet (siehe
+  [Archive entpacken](#archive-entpacken)).
+- **Anzeigen und öffnen:** Bilder erscheinen als Vorschaubilder; ein Klick zeigt eine Großansicht.
+  PDF- und Textdateien öffnen sich über „Öffnen“ mit deinem Standardprogramm. Jeder Eintrag hat
+  außerdem ein Menü („Weitere Aktionen für …“) mit „Im Dateimanager zeigen“ und „Entfernen“. Eine
+  Datei, die außerhalb der App gelöscht wurde, ist mit „Datei fehlt“ markiert.
+- **Wo sie liegen:** Begleitdateien liegen in einem Ordner `Name_extras` neben der Modelldatei und
+  wandern zusammen mit dem Modell in den Papierkorb.
+- **Versehentlich entfernt:** Eine entfernte Begleitdatei bleibt 7 Tage im App-Papierkorb. Stelle
+  sie über den Hinweis oder über die Liste „Entfernt (N)“ des Modells mit „Wiederherstellen“
+  wieder her.
+- **Docker:** Im Container kann „Öffnen“ kein Programm starten. Die App sagt das und bittet dich,
+  die Datei auf dem Docker-Host zu öffnen.
+
+### Filamentverbrauch fehlt
+
+Auf der Detailseite einer 3MF-Datei erscheint ein Kasten „Filamentverbrauch“ mit dem Hinweis
+„Kein Verbrauch angegeben.“, wenn die Datei keine Slicer-Daten enthält. Die App weiß dann nicht,
+wie viel Filament das Modell braucht, und zeigt deshalb keinen Verbrauch. Das ist kein Fehler der
+App. Ohne Verbrauchsdaten bleibt [Reicht das Filament?](#reicht-das-filament) „unklar“.
+
+Das passiert bei 3MF-Dateien, die nicht als geslicte Platte aus einem Slicer exportiert wurden,
+z. B. bei einer Datei, die direkt von einer Modellseite heruntergeladen wurde. Nur 3MF-Dateien
+können Slicer-Daten enthalten; bei STL-, OBJ- oder STEP-Dateien erscheint der Hinweis deshalb
+nicht.
+
+Um den Verbrauch zu bekommen, öffnest du die Datei in deinem Slicer (z. B. Bambu Studio oder
+OrcaSlicer), slicest die Platte und exportierst sie als geslicte Platte, also als 3MF mit
+Slicer-Daten. Die Detailseite zeigt dann den echten Verbrauch. Bei einer Datei, die schon im
+Katalog ist, liest „Metadaten neu einlesen“ die Werte neu ein.
+
 ## Schnelle Aktionen: Kontextmenü und Mehrfachauswahl
 
 Rechtsklick auf ein Modell öffnet ein Kontextmenü mit den wichtigsten Aktionen:
@@ -1395,6 +1813,30 @@ der Auswahl vorkommenden Tags), als gedruckt/nicht gedruckt markieren oder lösc
 aktiver Mehrfachauswahl öffnet auch die Taste Entf/Rücktaste direkt die Löschen-Bestätigung:
 
 ![Mehrfachauswahl mit Aktionsleiste](bilder/06-mehrfachauswahl.png)
+
+Die Auswahlleiste ist immer sichtbar und wird nicht mehr vom Detailbereich verdeckt. Ihre Aktionen
+sind nach Zweck gruppiert („Auswahl“, „Bearbeiten“, „Ablegen“), selten genutzte stehen im Menü
+„Mehr“: „Lizenz setzen“, „Nicht gedruckt“, „Mit Datum umbenennen …“ und „Aus Katalog entfernen“.
+„Verschieben …“ verschiebt die Auswahl in einen Ordner (siehe
+[Modelle verschieben und Ordner verwalten](#modelle-verschieben-und-ordner-verwalten)).
+Screenreader nennen die Anzahl der ausgewählten Modelle.
+
+### Mit Datum umbenennen
+
+„Mehr → Mit Datum umbenennen …“ in der Auswahlleiste stellt den Dateinamen der ausgewählten
+Modelle ein Datum voran (`JJJJ-MM-TT_HH-MM_`). Unter „Datum“ wählst du die Quelle:
+„Änderungsdatum der Datei“ (Standard) oder „Importdatum“. Eine Vorschau listet zuerst jeden alten
+und neuen Namen auf; vor deiner Bestätigung mit „N Dateien umbenennen“ wird nichts umbenannt. Die
+Dateien werden auf der Festplatte und im Katalog gemeinsam umbenannt. Programme, die den alten
+Namen kennen, finden die Dateien dann nicht mehr.
+
+Manche Dateien werden übersprungen, jeweils mit Grund in der Vorschau: Sie haben schon ein Datum,
+der Zielname ist vergeben, die Datei fehlt auf der Festplatte, sie liegt im Papierkorb oder
+außerhalb der Katalogordner, der neue Name wäre zu lang, es ist kein Datum vorhanden, oder Name
+oder Ort sind nicht erlaubt. Schlägt das Umbenennen bei einer Datei fehl, werden die übrigen
+trotzdem umbenannt; der Hinweis nennt, wie viele Dateien umbenannt wurden und wie viele
+fehlschlugen. Es lassen sich höchstens 5000 Modelle auf einmal umbenennen; bei einer größeren
+Auswahl bittet der Dialog, weniger auszuwählen.
 
 ### Aus dem Katalog entfernen
 
@@ -1470,11 +1912,18 @@ Modell-Katalog. Du erreichst ihn über das zweite Symbol in der Navigationsleist
 ![Material Manager Dashboard](bilder/08-filament-dashboard.png)
 
 Oben siehst du eine Statistik-Leiste (Spulen gesamt, Restbestand gesamt, belegte Lagerplätze,
-Spulen mit niedrigem/leerem Bestand). Jede Spulen-Karte zeigt Material, Hersteller, Farbe,
+Spulen mit niedrigem/leerem Bestand und die Zahl der „Verschiedenen Sorten“). Jede Spulen-Karte zeigt Material, Hersteller, Farbe,
 Lagerort, verbleibendes Gewicht als Balken und Prozentwert sowie einen Status: **Vorrätig**
 (grün), **Niedrig** (orange, wenn der Bestand knapp wird) oder **Leer**. Über die
 Filterknöpfe "Niedrig"/"Leer" oder das Suchfeld findest du gezielt Spulen, die bald nachbestellt
 werden müssen.
+
+**Gruppiert oder einzeln:** Der Schalter „Ansicht“ mit „Gruppiert“ und „Einzeln“ (standardmäßig
+gruppiert, deine Wahl wird gemerkt) gilt für Dashboard und Liste. Gruppiert bilden gleiche Spulen
+eine Karte mit der Spulenzahl, der gesamten Restmenge und der gesamten Sollmenge; ein Klick auf
+„Spulen anzeigen“ zeigt die einzelnen Spulen, jede mit eigenem Balken. Spulen in einem Drucker
+bilden je Einheit eine Gruppe (z. B. „X1C · AMS 1“). Die Karten sind nach Restanteil sortiert, der
+niedrigste zuerst. „Einzeln“ zeigt jede Spule auf einer eigenen Karte.
 
 Alternativ zur Kachel-Ansicht gibt es eine sortierbare Listenansicht ("Liste" neben "Dashboard"):
 
@@ -1489,10 +1938,16 @@ Ursprungs-/Restgewicht, optional ein Foto) lässt sich hier auch die **Anzahl** 
 z. B. drei identische PLA-Spulen gleichzeitig an, erhält jede davon trotzdem ihren eigenen,
 unabhängig verfolgten Restbestand. Gewichte speichert die App auf 0,1 g genau. Für Material,
 Hersteller und Lagerort schlägt die App beim Tippen bereits verwendete Werte vor (Autocomplete).
+Eine neue Spule startet mit dem Gewicht, das zuletzt für denselben Hersteller und dasselbe
+Material verwendet wurde (sonst für den Hersteller, sonst 1000 g); das Feld bleibt editierbar.
 Das Foto wählst du per Klick auf das Bildfeld aus oder ziehst es direkt aus dem Dateimanager
 darauf (eine PNG-, JPG- oder WebP-Datei, höchstens 5 MB). Passt ein Bild nicht, steht der Hinweis
 direkt unter dem Bildfeld und das Formular bleibt beim Speichern offen: Wähl ein anderes Bild oder
 schließ den Hinweis mit ✕, um ohne dieses Bild zu speichern.
+
+**Mehrfarbige Spulen:** Unter „Farben (max. 4)“ kann eine Spule bis zu vier Farben haben
+(„+ Farbe“, „Farbe N entfernen“); sie erscheinen als geteilter Farbpunkt, und eine solche Spule ist
+mit „mehrfarbig“ beschriftet. Die erste Farbe gilt für den Abgleich mit den Slicer-Farben.
 
 **Bearbeiten per Doppelklick:** Ein Doppelklick auf eine Karte oder eine Zeile der Liste öffnet
 dasselbe Formular wie der Stift ✎.
@@ -1556,7 +2011,10 @@ Spulen oder Resin-Flaschen einlegen und neue Drucke bestätigen kannst du weiter
    Drucker-Verwaltung.
 2. Im Material Manager eine Spule einlegen: Karte oder Zeile aus dem Lager auf ein Fach ziehen — oder das Fach
    anklicken und eine Spule aus der Liste auswählen. Ist das Fach bereits belegt, kehrt die
-   Spule, die schon im Fach steckt, an ihren Stammplatz zurück.
+   Spule, die schon im Fach steckt, an ihren Stammplatz zurück. Vorgeschlagen wird die Spule mit
+   dem geringsten Rest, der noch reicht („Vorschlag: geringster Rest“). Dasselbe gilt, wenn du
+   Resin von Hand mit „− Verbrauch“ abbuchst: Vorgeschlagen wird die Flasche mit dem geringsten
+   Rest, der noch reicht.
 3. Herausnehmen: die Spule aus dem Fach zurück in den Lagerbereich ziehen, oder über das
    Fach-Menü "Herausnehmen" wählen. Sie kehrt automatisch an ihren Stammplatz zurück; im
    Hinweis dazu lässt sich der Ort noch ändern.
@@ -1644,9 +2102,16 @@ lassen sich in dieser Zeit wiederherstellen:
 
 Über "Papierkorb leeren" oben rechts entfernst du alle enthaltenen Modelle sofort und endgültig.
 
+Hier erscheinen auch Modelle eines Ordners, den du mit „In den Papierkorb legen …“ gelöscht hast,
+und Modelle, die der Abgleich entfernt hat. Stellst du ein Modell wieder her, legt die App seinen
+Ordner neu an, falls es ihn nicht mehr gibt; so lassen sich Modelle eines gelöschten Ordners
+zurückholen. Begleitdateien wandern zusammen mit ihrem Modell in den Papierkorb; einzeln entfernte
+Begleitdateien stellst du über das Modell wieder her (siehe [Begleitdateien](#begleitdateien)).
+
 ## Einstellungen
 
-Über das Zahnrad-Symbol unten in der Navigationsleiste öffnest du die Einstellungen. Sie sind in
+Über das Zahnrad-Symbol unten in der Navigationsleiste öffnest du die Einstellungen im rechten
+Bereich neben deinen Modellen und Ordnern. Sie sind in
 vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
 
 ### Allgemein
@@ -1661,6 +2126,12 @@ vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
   nachgerendert, eine Datei nach der anderen. Bei „Bild“ passiert das für Dateien ohne eigenes Bild
   (z. B. STL, OBJ).
 - **Sprache** — Deutsch, Englisch, Spanisch oder Französisch, sofort wirksam ohne Neustart.
+- **Dateien beim Import umbenennen** — standardmäßig aus; stellt neuen Katalogdateien Datum und
+  Uhrzeit voran (siehe [Dateien importieren](#dateien-importieren)).
+- **Abgleich mit der Festplatte** — „Beim Start abgleichen“ und „Neue Dateien automatisch
+  aufnehmen“ (siehe [Mit der Festplatte abgleichen](#mit-der-festplatte-abgleichen)).
+- **Quellordner** — Ordner, die auf neue Modelle geprüft werden (siehe
+  [Quellordner](#quellordner)).
 
 ### Slicer
 
@@ -1678,6 +2149,11 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
 - **Katalog prüfen** — ein manuell auslösbarer Scan findet verwaiste Dateipfade (Datei im Katalog
   eingetragen, aber auf der Festplatte nicht mehr vorhanden) und Bestands-Duplikate, mit
   Bereinigung per Auswahl-Dialog.
+- **Tags automatisch vergeben** — standardmäßig an. Ist der Schalter aus, vergeben Import,
+  Abgleich mit der Festplatte und Quellordner keine Tags automatisch (siehe
+  [Automatische Tags](#automatische-tags)).
+- **Gesperrte automatische Tags** — listet Tags, die die App nicht mehr selbst vergibt; „Sperre
+  aufheben“ beendet eine Sperre.
 - **Katalog-Backup** — siehe nächster Abschnitt.
 - **Katalog-Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
   im Dateimanager zu öffnen. Ändern öffnet denselben Dialog wie bei der Ersteinrichtung.
@@ -1750,6 +2226,11 @@ Die App läuft nur einmal. Ein zweiter Start holt das vorhandene Fenster nach vo
 ![Fehler melden](bilder/30-fehler-melden.png)
 
 Einstellungen → Info → **Fehler melden** (oder **Problem melden** neben einem unerwarteten Fehler) öffnet einen kurzen Dialog. Zuerst entscheidest du, ob die Logdatei mitgeht. Bei **Ja** siehst du genau, was drinsteht: Benutzername, Rechnername, Pfade im Benutzerordner und im Katalog, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen werden ersetzt. **Speichern und Formular öffnen** legt `3mf-katalog-log-<Datum>.txt` in deinen Download-Ordner und öffnet das Formular auf 3mfkatalog.de mit eingetragener Version (im Bild: 0.16.0) und System; dort hängst du die Datei unter „Logdatei“ an. Die App selbst verschickt nichts.
+
+Häufige Fehlermeldungen (Ordner anlegen, umbenennen, verschieben und löschen, Modelle verschieben
+und umbenennen, Quellordner, Modelle aus dem Katalog entfernen, Sicherung wiederherstellen)
+erscheinen in der gewählten Sprache. Technische Fehler behalten ihren Originaltext und den Link
+„Problem melden“.
 
 **Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Log-Ordner öffnen** (unter **ORDNER**, siehe [Info](#info-1)) zeigt die Protokolldateien.
 
