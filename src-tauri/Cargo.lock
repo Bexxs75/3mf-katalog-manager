@@ -2588,7 +2588,7 @@ dependencies = [
 
 [[package]]
 name = "mf-katalog-manager"
-version = "0.17.0-9"
+version = "0.17.0-10"
 dependencies = [
  "base64 0.22.1",
  "bzip2",
