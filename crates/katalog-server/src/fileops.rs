@@ -54,6 +54,28 @@ pub(super) fn failure(status: u16, kind: &str) -> Response {
     )
         .into_response()
 }
+/// The folder list for the file dialogs: the plain read plus `moveTarget`, cleared with the
+/// Core's own move rule. While a file action runs the runtime is busy; then every folder stays
+/// offered and the operation itself refuses a protected one.
+pub(super) async fn list_folders(app: &App) -> Option<Response> {
+    let rt = app.fileops.clone().filter(|_| app.config.file_ops)?;
+    let db_path = app.config.db_path.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let conn = katalog_core::db::open_read_only(&db_path).map_err(|e| e.to_string())?;
+        let mut folders = katalog_core::read::list_folders(&conn).map_err(|e| e.to_string())?;
+        if let Ok(state) = rt.state.try_lock() {
+            for folder in &mut folders {
+                folder.move_target = state.ops.context.accepts_moves_into(&folder.path);
+            }
+        }
+        Ok::<_, String>(folders)
+    })
+    .await;
+    Some(match result {
+        Ok(Ok(folders)) => Json(folders).into_response(),
+        _ => failure(500, "internal"),
+    })
+}
 fn err(status: u16, kind: &str) -> Box<Response> {
     Box::new(failure(status, kind))
 }

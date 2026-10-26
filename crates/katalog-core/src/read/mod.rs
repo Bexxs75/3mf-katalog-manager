@@ -147,6 +147,9 @@ pub struct FolderDto {
     /// The directory is gone from disk. False also when that is unknown (root not readable).
     /// This read never touches the disk; the desktop adapter fills it in.
     pub missing: bool,
+    /// Files may be moved into this folder. This read cannot tell; the web server clears it
+    /// for folders the move would refuse as protected.
+    pub move_target: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -276,6 +279,7 @@ pub fn list_folders(conn: &Connection) -> ReadResult<Vec<FolderDto>> {
                 parent_id: folder.parent_id.map(|id| id.to_string()),
                 count,
                 missing: false,
+                move_target: true,
             }
         })
         .collect();

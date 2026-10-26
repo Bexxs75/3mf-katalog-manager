@@ -959,6 +959,11 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 let key = current.as_ref().map_or_else(|| format!("p{peer}"), |s| format!("s{}", crate::idempotency::session_key(&s.token)));
                 return crate::slicer::mint(app.slicer.as_ref().expect("checked above"), crate::slicer::Catalog { db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &key, now, &args).await;
             }
+            if command == "list_folders" {
+                if let Some(response) = fileops::list_folders(&app).await {
+                    return response;
+                }
+            }
             invoke(
                 app.config.db_path.clone(),
                 app.config.roots.clone(),

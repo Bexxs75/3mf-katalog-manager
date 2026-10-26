@@ -175,6 +175,16 @@ impl FsContext {
             .max_by_key(|(i, _)| self.roots[*i].path.components().count())
             .ok_or(Error::PathUnresolvable)
     }
+    /// Whether a file may be moved into this folder. Uses the move's own target check, so the
+    /// folder list never offers a destination the operation would refuse as protected.
+    /// Folders that cannot be inspected (missing, outside the roots) stay open to the operation.
+    pub fn accepts_moves_into(&self, folder_path: &str) -> bool {
+        let probe = Path::new(folder_path).join(".move-target-probe");
+        let Some(probe) = probe.to_str() else {
+            return true;
+        };
+        !matches!(self.resolve(probe, Access::MoveTarget), Err(Error::Protected))
+    }
     pub fn resolve(&self, path: &str, access: Access) -> Result<Resolved> {
         let (root, relative) = self.locate(path)?;
         self.resolve_relative(root, &relative, access)
@@ -352,6 +362,35 @@ mod tests {
             ctx.resolve(root.join("catalog/x").to_str().unwrap(), Access::Source),
             Err(Error::CrossDevice)
         ));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn move_targets_follow_the_move_rule() {
+        let root = crate::unique_test_dir("fsops_move_targets");
+        std::fs::create_dir_all(root.join("parent/upload/sub")).unwrap();
+        std::fs::create_dir_all(root.join("catalog/child")).unwrap();
+        let ctx = FsContext::for_test(
+            std::slice::from_ref(&root),
+            &[
+                (root.join("parent/upload"), Protection::Upload),
+                (root.join("catalog"), Protection::CatalogBase),
+            ],
+        )
+        .unwrap();
+        let ok = |p: &str| ctx.accepts_moves_into(root.join(p).to_str().unwrap());
+        assert!(ok("catalog/child"));
+        assert!(ok("catalog"));
+        assert!(ok("parent"));
+        assert!(!ok("parent/upload"));
+        assert!(!ok("parent/upload/sub"));
+        assert!(!ok(TRASH));
+        // Unknown or missing folders are left to the operation itself.
+        assert!(ok("missing"));
+        // The answer matches what a real move target resolution says.
+        for p in ["catalog/child", "parent/upload", "parent/upload/sub", TRASH] {
+            let real = ctx.resolve(root.join(p).join("x").to_str().unwrap(), Access::MoveTarget);
+            assert_eq!(ok(p), !matches!(real, Err(Error::Protected)), "{p}");
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]

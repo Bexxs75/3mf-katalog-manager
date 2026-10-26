@@ -127,3 +127,41 @@ it('adds no companion lines for a server without companion counts or with none',
   expect(screen.queryByText(/Begleitdateien/)).toBeNull();
   expect(screen.queryByText(/Desktop-Papierkorb/)).toBeNull();
 });
+
+it('keeps the permanent-delete dialog open after a wrong password, shows the error and refocuses an empty field', async () => {
+  response = () => Response.json({ kind: 'password_invalid' }, { status: 403 }); mount({ trash: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Endgültig löschen' }));
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'wrong' } });
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Endgültig löschen' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Das Passwort ist falsch.');
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  const field = screen.getByLabelText('Passwort zur Bestätigung');
+  expect(field).toHaveValue('');
+  await waitFor(() => expect(field).toHaveFocus());
+  fireEvent.change(field, { target: { value: 'right' } });
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Endgültig löschen' })).toBeEnabled();
+});
+it('keeps the empty-trash dialog open after a wrong password', async () => {
+  response = command => command === 'empty_trash_summary' ? { count: 1, bytes: 5, maxDeletedAt: '2026-10-01T00:00:00Z' } : Response.json({ kind: 'password_invalid' }, { status: 403 });
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('Dateien / Bytes: 1 / 5');
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'wrong' } });
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Papierkorb leeren' }));
+  expect(await screen.findByText('Das Passwort ist falsch.')).toBeInTheDocument();
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByLabelText('Passwort zur Bestätigung')).toHaveFocus());
+});
+it('disables destinations the server marks as no move target and says why', async () => {
+  response = command => command === 'list_folders' ? [
+    { id: '42', name: 'Target', path: '/p', parentId: null, moveTarget: true },
+    { id: '43', name: 'Uploads', path: '/u', parentId: null, moveTarget: false },
+    { id: '44', name: 'Old', path: '/o', parentId: null },
+  ] : null;
+  mount(); fireEvent.click(screen.getByRole('button', { name: 'Verschieben' }));
+  const blocked = await screen.findByRole('option', { name: /Uploads/ });
+  expect(blocked).toBeDisabled();
+  expect(blocked).toHaveTextContent('geschützt');
+  expect(screen.getByRole('option', { name: 'Target (#42)' })).toBeEnabled();
+  expect(screen.getByRole('option', { name: 'Old (#44)' })).toBeEnabled();
+  expect(screen.getByText(/nicht als Ziel verfügbar|gelten nicht als Ziel/)).toBeInTheDocument();
+});

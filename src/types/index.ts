@@ -126,6 +126,8 @@ export interface Folder {
   count: number;
   /** The directory is gone from disk (false when unknown, e.g. root not readable). */
   missing?: boolean;
+  /** Web server: files may be moved into this folder (false for protected ones; absent = unknown, allowed). */
+  moveTarget?: boolean;
 }
 
 export interface FolderTrashSummary {

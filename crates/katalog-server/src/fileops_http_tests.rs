@@ -1000,3 +1000,39 @@ async fn restore_reports_companions_that_stayed_in_the_trash() {
     assert!(f.dir.join("models/c.3mf").exists());
     assert!(!f.dir.join("models/c_extras/pic.png").exists());
 }
+
+#[tokio::test]
+async fn folder_list_marks_protected_move_targets_like_the_move_does() {
+    let f = Fixture::new(true).await;
+    let id = f.file("m.3mf");
+    std::fs::create_dir_all(f.dir.join("models/sub")).unwrap();
+    let paths = ["models/sub", "models/uploads", "models/.katalog-papierkorb"];
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        for (i, p) in paths.iter().enumerate() {
+            c.execute("INSERT INTO folders(name,path) VALUES(?1,?2)", [&format!("f{i}"), f.dir.join(p).to_str().unwrap()]).unwrap();
+        }
+    }
+    let list = value(f.invoke("list_folders", json!({})).await).await;
+    let flag = |name: &str| list.as_array().unwrap().iter().find(|x| x["name"] == name).unwrap()["moveTarget"].clone();
+    assert_eq!(flag("f0"), true, "{list}");
+    assert_eq!(flag("f1"), false, "{list}");
+    assert_eq!(flag("f2"), false, "{list}");
+    let ids: Vec<String> = list.as_array().unwrap().iter().map(|x| x["id"].as_str().unwrap().to_owned()).collect();
+    for i in [1, 2] {
+        let r = f.invoke("move_files_to_folder", json!({"fileIds":[id],"folderId":ids[i]})).await;
+        let body = value(r).await;
+        assert_ne!(body[0]["ok"], true, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn folder_list_keeps_every_target_without_file_management() {
+    let f = Fixture::new(false).await;
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("INSERT INTO folders(name,path) VALUES('u',?1)", [f.dir.join("models/uploads").to_str().unwrap()]).unwrap();
+    }
+    let list = value(f.invoke("list_folders", json!({})).await).await;
+    assert_eq!(list[0]["moveTarget"], true, "{list}");
+}
