@@ -33,6 +33,7 @@ function ImageTile({ item, src, onVisible, onOpen, onDownload }: {
   onOpen: (button: HTMLButtonElement) => void; onDownload: () => void;
 }) {
   const t = useT();
+  const { language } = useLanguage();
   const ref = useVisibleOnce<HTMLButtonElement>(onVisible);
   const name = displayName(item.name);
   return (
@@ -50,6 +51,7 @@ function ImageTile({ item, src, onVisible, onOpen, onDownload }: {
           : <span aria-hidden="true" className="text-[var(--ink-3)]"><Icon name="model" size={18} /></span>}
       </button>
       <span className="text-compact-meta text-[var(--ink-3)] break-words" style={{ overflowWrap: 'anywhere' }}>{name}</span>
+      {item.sizeBytes !== null && <span className="text-compact-meta text-[var(--ink-3)] tabular-nums">{formatBytes(item.sizeBytes, language)}</span>}
       <button type="button" aria-label={t('companionDownloadNamed').replace('{name}', name)} onClick={onDownload} className={buttonClass}>
         {t('companionDownload')}
       </button>

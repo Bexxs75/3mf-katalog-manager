@@ -123,7 +123,7 @@ export function Header({
       {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} onScanned={onDiskSyncScanned} />}
       {mainView === 'catalog' && (
       <>
-      {uploadable && <button className="h-8 px-3 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" onClick={onImportFiles}>{t('webUploadTitle')}</button>}
+      {uploadable && <button className="h-8 px-3 shrink-0 whitespace-nowrap flex items-center gap-2 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" title={t('webUploadTitle')} onClick={onImportFiles}><span className="min-[1100px]:hidden" aria-hidden="true"><Icon name="plus" size={14} /></span><span className="max-[1099px]:sr-only">{t('webUploadTitle')}</span></button>}
       {import.meta.env.VITE_TARGET !== 'web' && <div ref={importRef} className="relative flex shrink-0">
         <button
           ref={importTriggerRef}

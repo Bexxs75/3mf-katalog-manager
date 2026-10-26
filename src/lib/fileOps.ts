@@ -31,6 +31,11 @@ function affectedIds(command: string, args: Record<string, unknown>, result: unk
   }
   return [];
 }
+/** After a failure only what the server reported as done: the ok items of a partial batch or trash block. */
+function appliedDespiteFailure(command: string, outcome: unknown): string[] {
+  if (Array.isArray(outcome)) return (outcome as ItemResult[]).filter(item => item.ok).map(item => String(item.id));
+  return command === 'empty_trash_block' ? affectedIds(command, {}, outcome) : [];
+}
 // The error slot holds one message; repeating the same text from nested layers adds nothing.
 function reportOnce(reason: unknown) {
   if (getMetadataError() !== messageOf(reason)) reportMetadataError(reason);
@@ -65,7 +70,8 @@ export async function fileOp<T = unknown>(command: string, args: Record<string, 
     failed = true;
     const error = fileOpsError(reason); reportOnce(error); throw error;
   } finally {
-    const ids = affectedIds(command, args, outcome);
+    // A refused action changed nothing it names; announcing its IDs would clear the selection and tear down the dialog showing the refusal.
+    const ids = failed ? appliedDespiteFailure(command, outcome) : affectedIds(command, args, outcome);
     if (ids.length) appliedListeners.forEach(listener => listener(ids));
     // A failed reload must not hide the action's own error.
     await refreshAfterFileOps(!failed);

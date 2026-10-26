@@ -98,6 +98,14 @@ it('announces applied IDs for delete, restore and purge, and block results, but 
   await fileOp('delete_file_permanently', { fileId: '4', confirm: true, password: 'x' }); await fileOp('rename_file', { fileId: '5', name: 'n' });
   expect(seen).toEqual([['1', '2'], ['3'], ['4']]); off();
 });
+it('announces nothing when the action was refused, but still the items a partial batch did apply', async () => {
+  const seen: string[][] = []; const off = subscribeFileOpsApplied(ids => seen.push(ids));
+  respond = () => Response.json({ kind: 'password_invalid' }, { status: 403 });
+  await expect(fileOp('delete_file_permanently', { fileId: '4', confirm: true, password: 'bad' })).rejects.toBeDefined();
+  respond = () => Response.json([{ id: '1', ok: true }, { id: '2', ok: false, kind: 'conflict' }]);
+  await expect(fileOp('delete_files', { fileIds: ['1', '2'] })).rejects.toBeDefined();
+  expect(seen).toEqual([['1']]); off();
+});
 it('announces the deleted IDs of each trash block', async () => {
   const seen: string[][] = []; const off = subscribeFileOpsApplied(ids => seen.push(ids));
   respond = command => Response.json(command === 'empty_trash_start' ? { token: 's', remaining: 1 } : { results: [{ id: '9', ok: true }, { id: '10', ok: false, kind: 'conflict' }], remaining: 0 });

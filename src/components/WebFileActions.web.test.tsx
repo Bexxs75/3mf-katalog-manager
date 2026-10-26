@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { WebFileActions, webFileNameParts } from './WebFileActions';
 import { LanguageProvider } from '../i18n/LanguageContext';
+import { subscribeFileOpsApplied } from '../lib/fileOps';
+import { useEffect, useState } from 'react';
 import { authenticationFailed, getSession, login } from '../lib/webSession';
 let calls: { command: string; args: Record<string, unknown> }[];
 let enabled: boolean;
@@ -118,7 +120,7 @@ it('shows how many companion files the emptied trash takes along and warns about
   mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
   await screen.findByText('Dateien / Bytes: 2 / 456');
   expect(screen.getByText('davon 3 Begleitdateien im Papierkorb')).toBeInTheDocument();
-  expect(screen.getByText(/1 Einträge aus dem Desktop-Papierkorb können hier nicht endgültig gelöscht werden/)).toBeInTheDocument();
+  expect(screen.getByText(/1 Eintrag aus dem Desktop-Papierkorb kann hier nicht endgültig gelöscht werden/)).toBeInTheDocument();
 });
 it('adds no companion lines for a server without companion counts or with none', async () => {
   response = command => command === 'empty_trash_summary' ? { count: 1, bytes: 456, maxDeletedAt: '2026-10-01T00:00:00Z' } : {};
@@ -164,4 +166,21 @@ it('disables destinations the server marks as no move target and says why', asyn
   expect(screen.getByRole('option', { name: 'Target (#42)' })).toBeEnabled();
   expect(screen.getByRole('option', { name: 'Old (#44)' })).toBeEnabled();
   expect(screen.getByText(/nicht als Ziel verfügbar|gelten nicht als Ziel/)).toBeInTheDocument();
+});
+
+it('keeps the permanent-delete dialog open when the surrounding panel drops its selection on every applied action', async () => {
+  // Mirrors the detail panel: the app clears the selection (and so unmounts this panel) when an action touched the file.
+  function Panel() {
+    const [selected, setSelected] = useState<string | null>('7');
+    useEffect(() => subscribeFileOpsApplied(ids => setSelected(prev => prev && ids.includes(prev) ? null : prev)), []);
+    return selected ? <WebFileActions key={selected} fileIds={[selected]} name="model.gcode.3mf" trash /> : null;
+  }
+  response = () => Response.json({ kind: 'password_invalid' }, { status: 403 });
+  render(<LanguageProvider><Panel /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Endgültig löschen' }));
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'wrong' } });
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Endgültig löschen' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Das Passwort ist falsch.');
+  await new Promise(resolve => setTimeout(resolve, 300));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
 });
