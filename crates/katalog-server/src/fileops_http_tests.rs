@@ -1670,3 +1670,24 @@ async fn the_session_tells_the_browser_how_big_a_companion_file_may_be() {
     let v = value(router(f.app.clone()).oneshot(req).await.unwrap()).await;
     assert_eq!(v["companionMaxBytes"].as_u64(), Some(f.app.config.companion_max_bytes));
 }
+
+#[tokio::test]
+async fn a_blocked_journal_names_only_entries_that_wait_for_a_person_not_an_upload_under_way() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let bytes = png_of(900_000);
+    let (tx, mut task) = f.start_fed_upload(&id, "big.png", bytes.len());
+    tx.send(bytes[..300_000].to_vec().into()).await.unwrap();
+    f.wait_for_temporary("Foo", &mut task).await;
+    let rt = f.app.fileops.as_ref().unwrap();
+    assert_eq!(rt.pending_entries_for_test(), 1, "the upload is journalled in Prepared");
+    rt.block_journal_for_test();
+    let r = f.invoke("rename_file", json!({"fileId": f.file("Bar.3mf"), "name": "Baz"})).await;
+    assert_eq!(r.status(), 503);
+    let v = value(r).await;
+    assert_eq!(v["kind"], "restart_required");
+    assert_eq!(v["opIds"], json!([]), "recovery rolls the upload back itself; naming it would make the ACK fail");
+    tx.send(bytes[300_000..].to_vec().into()).await.unwrap();
+    drop(tx);
+    assert_eq!(task.await.unwrap().status(), 503, "the upload is left for recovery");
+}

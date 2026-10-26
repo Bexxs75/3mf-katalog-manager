@@ -421,7 +421,7 @@ impl Journal {
         self.folders.retain(|i| i.op_id != id);
         self.persist()
     }
-    pub(crate) fn block(&mut self, id: &str) -> Error {
+    pub fn block(&mut self, id: &str) -> Error {
         self.blocked = true;
         if let Some(i) = self.intents.iter_mut().find(|i| i.op_id == id) {
             i.phase = Phase::Manual;

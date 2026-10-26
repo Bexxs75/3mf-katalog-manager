@@ -43,6 +43,17 @@ impl Runtime {
     pub(super) fn block_for_test(&self) {
         self.blocked.store(true, Ordering::Release);
     }
+    #[cfg(test)]
+    pub(super) fn pending_entries_for_test(&self) -> usize {
+        self.state.lock().unwrap().ops.journal.pending_op_ids().len()
+    }
+    /// Blocks the journal the way a failed operation does, without touching any entry.
+    #[cfg(test)]
+    pub(super) fn block_journal_for_test(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.ops.journal.block("no-such-entry");
+        note_journal(self, &state);
+    }
     pub(super) fn available(&self) -> bool {
         !self.blocked.load(Ordering::Acquire)
     }
