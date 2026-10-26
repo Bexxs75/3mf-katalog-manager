@@ -1,6 +1,6 @@
 import { invoke } from './transport';
 import { canManageFiles, getSnapshot, blockFileOperations } from './webSession';
-import { getMetadataError, reportMetadataError } from './metadataErrors';
+import { clearMetadataError, getMetadataError, reportMetadataError } from './metadataErrors';
 import { messageOf } from './errors';
 import { fileOpsError, fileOpsMessage, isDomainRejection } from './fileOpsErrors';
 export interface ItemResult { id: string; ok: boolean; kind?: string; kept_on_disk?: boolean; companions_moved?: number; companions_kept_in_trash?: number }
@@ -37,8 +37,15 @@ function appliedDespiteFailure(command: string, outcome: unknown): string[] {
   return command === 'empty_trash_block' ? affectedIds(command, {}, outcome) : [];
 }
 // The error slot holds one message; repeating the same text from nested layers adds nothing.
+// Remembered so a later success can take down exactly this message and nobody else's.
+let ownReport = '';
 function reportOnce(reason: unknown) {
   if (getMetadataError() !== messageOf(reason)) reportMetadataError(reason);
+  ownReport = getMetadataError() === messageOf(reason) ? messageOf(reason) : '';
+}
+function clearOwnReport() {
+  if (ownReport && getMetadataError() === ownReport) clearMetadataError();
+  ownReport = '';
 }
 /** Display names by file ID, so a refusal can say which file it is about. */
 export type FileLabels = Record<string, string>;
@@ -64,6 +71,7 @@ export async function fileOp<T = unknown>(command: string, args: Record<string, 
       if ((result as {kind?: unknown}).kind === 'restart_required') blockFileOperations();
       throw result;
     }
+    clearOwnReport();
     if (!options.quietKept && result && typeof result === 'object' && 'kept_on_disk' in result && result.kept_on_disk) reportOnce(fileOpsMessage('kept'));
     return result;
   } catch (reason) {
