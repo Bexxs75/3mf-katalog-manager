@@ -681,6 +681,10 @@ fn the_recovery_decision_follows_the_table() {
                             seen.insert(d);
                             if d == Committed {
                                 assert!(db_after, "{f:?}");
+                                assert!(!(purge && file_any && file_at_source), "{f:?}");
+                            }
+                            if d == UnlinkThenFinishPurge {
+                                assert!(purge && db_after && file_any && file_at_source, "{f:?}");
                             }
                             if d == Rollback {
                                 assert!(!purge && db_before && !db_after && file_any && file_at_target, "{f:?}");
@@ -712,6 +716,10 @@ fn the_recovery_decision_follows_the_table() {
         Committed
     );
     assert_eq!(companion_edit_decision(CompanionEditFacts { db_before: false, db_after: true, ..base }), Manual);
+    assert_eq!(
+        companion_edit_decision(CompanionEditFacts { purge: true, db_before: false, db_after: true, ..base }),
+        UnlinkThenFinishPurge
+    );
     assert_eq!(
         companion_edit_decision(CompanionEditFacts { purge: true, file_at_source: false, file_at_target: true, ..base }),
         FinishPurge
@@ -893,6 +901,32 @@ fn a_purge_crash_after_a_rename_of_the_model_goes_forward() {
     assert!(f.reopen_and_recover().manual.is_empty());
     assert_eq!(count(&f, "companion_files"), 1);
     assert!(raw_trash_names(&f).is_empty());
+}
+
+#[test]
+fn a_purge_whose_row_vanished_before_the_unlink_still_removes_its_own_file_after_a_crash() {
+    let mut f = removed_first();
+    run_at("before_unlink", 0, PointAction::Crash);
+    assert_eq!(f.ops.purge_loose_companion(1, None), Err(Error::RestartRequired));
+    assert_eq!(raw_trash_names(&f).len(), 1, "the file is still in the trash");
+    other_connection(&f).execute("DELETE FROM companion_files WHERE id=1", []).unwrap();
+    let report = f.reopen_and_recover();
+    assert!(report.manual.is_empty() && f.ops.journal.is_empty());
+    assert!(raw_trash_names(&f).is_empty(), "no orphan is left in the trash");
+}
+
+#[test]
+fn a_foreign_file_under_a_purged_rows_trash_name_is_not_removed() {
+    let mut f = removed_first();
+    run_at("before_unlink", 0, PointAction::Crash);
+    assert_eq!(f.ops.purge_loose_companion(1, None), Err(Error::RestartRequired));
+    other_connection(&f).execute("DELETE FROM companion_files WHERE id=1", []).unwrap();
+    let name = raw_trash_names(&f).remove(0);
+    let path = f.p(&format!(".katalog-papierkorb/{name}"));
+    fs::remove_file(&path).unwrap();
+    fs::write(&path, b"somebody else").unwrap();
+    assert!(f.reopen_and_recover().manual.is_empty());
+    assert_eq!(fs::read(&path).unwrap(), b"somebody else");
 }
 
 #[test]

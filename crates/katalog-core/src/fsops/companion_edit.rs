@@ -30,6 +30,9 @@ pub enum CompanionEditDecision {
     Committed,
     /// A permanent delete already unlinked the file: remove the row.
     FinishPurge,
+    /// A permanent delete lost its row to someone else before it unlinked the file: the
+    /// journal names that very file by inode, so it is removed now and nothing is left over.
+    UnlinkThenFinishPurge,
     Manual,
 }
 
@@ -54,11 +57,15 @@ pub const COMPANION_EDIT_TABLE: &[(CompanionEditDecision, &str)] = &[
     (CompanionEditDecision::Discard, "row before and the file still at its source (or no file)"),
     (CompanionEditDecision::Rollback, "row before and the file already at its destination"),
     (CompanionEditDecision::FinishPurge, "permanent delete: row before and the file already unlinked"),
+    (CompanionEditDecision::UnlinkThenFinishPurge, "permanent delete: row already gone but the journal's own file (same inode) is still there"),
 ];
 
 pub fn companion_edit_decision(f: CompanionEditFacts) -> CompanionEditDecision {
     use CompanionEditDecision::*;
     if f.db_after {
+        if f.purge && f.file_any && f.file_at_source {
+            return UnlinkThenFinishPurge;
+        }
         // A purge deletes the row last, so a missing row means the file went first.
         return if f.purge || !f.file_any || f.file_at_target { Committed } else { Manual };
     }
@@ -362,6 +369,10 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             self.journal.remove(&intent.op_id)?;
             return Err(e);
         }
+        #[cfg(test)]
+        if super::tests::at_point("before_unlink", 0) {
+            return Err(self.journal.simulate_crash());
+        }
         if let (Some(relative), Some((_, identity))) = (&intent.companions[0].source, &file) {
             if let Err(e) = self.unlink_companion(s.root, relative, *identity) {
                 self.journal.remove(&intent.op_id)?;
@@ -442,6 +453,15 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 self.journal.remove(&i.op_id)
             }
             CompanionEditDecision::Committed => self.finish_companion_edit(i),
+            CompanionEditDecision::UnlinkThenFinishPurge => {
+                let relative = step.source.as_deref().ok_or(Error::Changed)?;
+                let identity = step.identity.ok_or(Error::Changed)?;
+                // Identity-checked: a file that is not the journal's own is never removed.
+                self.unlink_companion(root, relative, identity)?;
+                let place = self.context.resolve_relative(root, relative, Access::Trash)?;
+                place.parent.sync()?;
+                self.finish_companion_edit(i)
+            }
             CompanionEditDecision::FinishPurge => {
                 self.db.with_conn(|c| commit_companion_edit(c, i))?;
                 self.finish_companion_edit(i)

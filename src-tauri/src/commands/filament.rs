@@ -12,7 +12,8 @@ fn validate_color_hexes(color_hexes: &[String]) -> CmdResult<()> {
 fn validate_spool_kind(kind: &str) -> CmdResult<()> {
     katalog_core::write::manager::validate_spool_kind(kind).map_err(Into::into)
 }
-/// Builds the DTO from the real database state (see `update_filament_spool`).
+// Only the tests build a DTO here; the commands get theirs from the shared read layer.
+#[cfg(test)]
 use katalog_core::read::manager::spool_record_to_dto;
 #[cfg(test)]
 fn filament_dto_to_record(spool: &FilamentSpoolDto) -> CmdResult<db::models::NewFilamentSpool> {

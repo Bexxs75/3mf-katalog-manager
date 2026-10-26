@@ -60,6 +60,23 @@ Modellfreigaben können lesend bleiben.
 höchstens ein Begleitdatei-Upload gleichzeitig, und der freie Platz muss die
 Dateigröße plus 256 MiB Reserve übersteigen.
 
+Begleitdatei-Upload (Deutsch): Das Hochladen einzelner Begleitdateien (Bilder, PDF, TXT, MD)
+braucht `KATALOG_WRITE=1` und `KATALOG_FILE_OPS=1`, aber keinen `[upload]`-Bereich. Die Route
+`POST /api/companion-upload` nimmt den Inhalt als rohen Body; die Größengrenze nennt der Server
+dem Browser, der zu große oder leere Dateien vorher abweist. Ein Reverse Proxy muss den Body
+bis zu dieser Grenze durchlassen und darf ihn nicht puffern, sonst scheitert der Upload mit 413
+oder bricht ab (nginx: `client_max_body_size` mindestens `KATALOG_COMPANION_MAX_MB`, dazu
+`proxy_request_buffering off`; Caddy: `request_body { max_size … }`; Traefik: Buffering-
+Middleware mit `maxRequestBodyBytes` oder ohne Puffer). Ein Upload bricht nach 60 Sekunden ohne
+Fortschritt ab und räumt seine Teildatei weg; die Sitzung wird vor dem Abschluss noch einmal
+geprüft. Einzelne Begleitdateien lassen sich im Web entfernen und wiederherstellen: „Entfernen“
+verschiebt die Datei in den Web-Papierkorb (`.katalog-papierkorb/companion-<id>-…`), „Wiederherstellen“
+holt sie zurück (ein belegter Name bekommt eine Nummer). Beides ist journalisiert; hartes
+Löschen gibt es nur über „Papierkorb leeren“, das auch einzeln entfernte Begleitdateien
+mitnimmt (mit Passwort wie bei Modellen, in Blöcken). Der Abgleich am Desktop
+meldet im Bericht „Begleitdateien ohne Datei“ auch Web-Begleitdateien, deren Datei außerhalb
+fehlt.
+
 `KATALOG_UPLOAD_MAX_MB` ist die Dateigrenze in MiB (Standard 1024, 1–4096),
 `KATALOG_UPLOAD_MAX_FILES` begrenzt gleichzeitig laufende Uploads (Standard 2,
 1–32). STL/OBJ sind zusätzlich auf 512 MiB begrenzt. Niedrigere Parsergrenzen:
@@ -134,6 +151,22 @@ download) in MiB (default 1024, range 1–4096); it applies with `KATALOG_FILE_O
 only. Companion files are streamed straight into the `<model>_extras` folder and are
 not collected in memory; at most one companion upload runs at a time, and free space
 must exceed the file size plus a 256 MiB reserve.
+
+Companion upload (English): uploading single companion files (images, PDF, TXT, MD) needs
+`KATALOG_WRITE=1` and `KATALOG_FILE_OPS=1` but no `[upload]` section. `POST /api/companion-upload`
+takes the content as a raw body; the server tells the browser the size limit, and the browser
+rejects oversized or empty files before sending. A reverse proxy must let the body through up to
+that limit and must not buffer it, otherwise the upload fails with 413 or breaks off (nginx:
+`client_max_body_size` at least `KATALOG_COMPANION_MAX_MB`, plus `proxy_request_buffering off`;
+Caddy: `request_body { max_size … }`; Traefik: buffering middleware with `maxRequestBodyBytes`
+or none). An upload stops after 60 seconds without progress and removes its partial file; the
+session is checked once more before the file is finalised. Single companion files can be
+removed and restored on the web: "Remove" moves the file into the web trash
+(`.katalog-papierkorb/companion-<id>-…`), "Restore" brings it back (a taken name gets a
+number). Both are journalled; permanent deletion only happens through "Empty trash", which
+also takes individually removed companion files along (with the password, in blocks, as for
+models). The desktop's disk sync report "Companion files without a file" also
+lists web companions whose file went missing outside.
 
 `KATALOG_UPLOAD_MAX_MB` sets the per-file MiB limit (default 1024, range 1–4096);
 `KATALOG_UPLOAD_MAX_FILES` limits concurrent uploads (default 2, range 1–32).
