@@ -2,6 +2,7 @@ import { WebAccountMenu } from './WebAccountMenu';
 import { useCanUpload } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { CatalogDiskSync } from './CatalogDiskSync';
+import { CatalogDiskReport } from './CatalogDiskReport';
 import { useMenuKeyboard } from '../hooks/useMenuKeyboard';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
@@ -118,6 +119,7 @@ export function Header({
         )}
       </div>
 
+      {import.meta.env.VITE_TARGET === 'web' && <CatalogDiskReport active={mainView === 'catalog'} />}
       {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} onScanned={onDiskSyncScanned} />}
       {mainView === 'catalog' && (
       <>

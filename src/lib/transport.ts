@@ -68,7 +68,7 @@ async function webInvoke<T>(command: string, args?: Record<string, unknown>): Pr
   };
   let response = requestId === null ? await send() : await sendRepeating();
   // Only explicit rate/busy responses are safe to retry without a request id, never a lost response.
-  const managerRead = ['list_filament_spools', 'get_filament_spool_image', 'list_printers', 'list_printer_history', 'get_last_printer_for_file', 'check_filament', 'companion_image_data', 'list_companions'].includes(command);
+  const managerRead = ['list_filament_spools', 'get_filament_spool_image', 'list_printers', 'list_printer_history', 'get_last_printer_for_file', 'check_filament', 'companion_image_data', 'list_companions', 'disk_sync_report'].includes(command);
   if ((writing || managerRead || command === 'get_model_geometry') && [429, 503].includes(response.status)) {
     const body = fileOperation ? await response.clone().json().catch(() => ({})) : null;
     const safe = !fileOperation || body.kind === 'rate_limited' || (!body.kind && body.message === 'Schreibzugriff derzeit ausgelastet');

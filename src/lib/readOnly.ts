@@ -20,6 +20,7 @@ export const WEB_READ_COMMANDS = [
   'list_blocked_auto_tags',
   'list_companions',
   'companion_image_data',
+  'disk_sync_report',
 ] as const;
 
 /** Web write commands: the server remains the authority for each request. */

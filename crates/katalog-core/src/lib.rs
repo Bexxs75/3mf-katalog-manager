@@ -10,6 +10,7 @@ pub mod safe_file;
 pub mod companions;
 pub mod companion_read;
 pub mod rescan;
+pub mod disk_report;
 pub mod tagging;
 pub mod filament_check;
 pub mod printer_link;

@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use katalog_core::{
-    companion_read, db,
+    companion_read, db, disk_report,
     read::{self, GeometryErrorCode, ReadError},
 };
 use serde::Serialize;
@@ -16,6 +16,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub struct GeometryGate {
     workers: Arc<Semaphore>,
     manager_reads: Arc<Semaphore>,
+    /// One disk comparison at a time: each walks the roots.
+    disk_reports: Arc<Semaphore>,
     admission: Arc<Semaphore>,
 }
 impl Default for GeometryGate {
@@ -23,6 +25,7 @@ impl Default for GeometryGate {
         Self {
             workers: Arc::new(Semaphore::new(2)),
             manager_reads: Arc::new(Semaphore::new(4)),
+            disk_reports: Arc::new(Semaphore::new(1)),
             admission: Arc::new(Semaphore::new(10)),
         }
     }
@@ -169,6 +172,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "list_blocked_auto_tags",
     "list_companions",
     "companion_image_data",
+    "disk_sync_report",
 ];
 
 /// Companion refusals reach the client as plain statements: no path, no SQLite text.
@@ -238,7 +242,7 @@ pub async fn invoke(
     }
     if matches!(
         command.as_str(),
-        "folder_removal_summary" | "empty_trash_summary"
+        "folder_removal_summary" | "empty_trash_summary" | "disk_sync_report"
     ) {
         let allowed: &[&str] = if command == "folder_removal_summary" {
             &["folderId"]
@@ -340,6 +344,7 @@ pub async fn invoke(
             | "get_filament_spool_image"
             | "companion_image_data"
             | "list_companions"
+            | "disk_sync_report"
     ) {
         match gate.manager_reads.clone().try_acquire_owned() {
             Ok(p) => Some(p),
@@ -350,6 +355,18 @@ pub async fn invoke(
                     true,
                 );
                 r.headers_mut().insert("retry-after", "1".parse().unwrap());
+                return r;
+            }
+        }
+    } else {
+        None
+    };
+    let report_permit = if command == "disk_sync_report" {
+        match gate.disk_reports.clone().try_acquire_owned() {
+            Ok(p) => Some(p),
+            Err(_) => {
+                let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, "Abgleich läuft bereits", true);
+                r.headers_mut().insert("retry-after", "5".parse().unwrap());
                 return r;
             }
         }
@@ -368,6 +385,7 @@ pub async fn invoke(
         // The permits belong to this closure: cancelling HTTP does not release a running parser.
         let _permits = permits;
         let _manager_permit = manager_permit;
+        let _report_permit = report_permit;
         let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
         match command.as_str() {
             "list_filament_spools" => encode(read::manager::list_filament_spools_web(&conn)?),
@@ -389,6 +407,12 @@ pub async fn invoke(
             )?),
             "check_filament" => encode(read::manager::check_filament_with_conn(&conn, &check_ids)?),
 
+            "disk_sync_report" => {
+                // The database is only read for the copy; the disk scan runs without it.
+                let snapshot = disk_report::snapshot(&conn).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
+                drop(conn);
+                encode(disk_report::build_report(&snapshot, &roots, disk_report::Limits::default()))
+            }
             "list_companions" => encode(
                 companion_read::list_for_web(&conn, file_id.unwrap().parse().unwrap(), &roots).map_err(companion_error)?,
             ),
@@ -550,6 +574,22 @@ mod tests {
         }
         drop(held);
         let r = invoke(c.db.clone(), vec![c.dir.clone()], "list_companions".into(), json!({"fileId": c.id}), gate).await;
+        assert_eq!(r.status(), StatusCode::OK);
+    }
+    #[tokio::test]
+    async fn only_one_disk_report_runs_at_a_time_and_it_shares_the_manager_gate() {
+        let c = catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let running = gate.disk_reports.clone().try_acquire_owned().unwrap();
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(r.headers().contains_key("retry-after"));
+        drop(running);
+        let held: Vec<_> = (0..4).map(|_| gate.manager_reads.clone().try_acquire_owned().unwrap()).collect();
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        drop(held);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate).await;
         assert_eq!(r.status(), StatusCode::OK);
     }
     async fn body(response: Response) -> Vec<u8> {
