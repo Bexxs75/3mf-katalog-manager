@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { canManageFiles, useCanManageFiles } from '../lib/webSession';
-import { emptyWebTrash, fileOp, fileOpsBatch, type TrashSummary } from '../lib/fileOps';
+import { emptyWebTrash, fileOp, fileOpsBatch, type FileLabels, type TrashSummary } from '../lib/fileOps';
 import { invoke } from '../lib/transport';
 import { messageOf } from '../lib/errors';
 import { webFileNameParts } from '../lib/webFileName';
@@ -74,15 +74,21 @@ export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, tra
     setAction(value); setError(null); setNotice(null); setPassword(''); setTarget('');
     setSummary(null); setProgress(null); setBase(webFileNameParts(name ?? '').base);
   };
+  // Names for the refusal text; the selection's names run parallel to its IDs, anything else stays unnamed.
+  const labelsOf = (): FileLabels => {
+    const list = ids.current; const names = snapshotNames.current.names;
+    if (list.length === 1 && name) return { [list[0]]: name };
+    return names.length === list.length ? Object.fromEntries(list.map((id, i) => [id, names[i]]).filter(([id, label]) => label !== id)) : {};
+  };
   const submit = async () => {
     if (!action || submitting.current || !canManageFiles() || lockProps.disabled) return;
     submitting.current = true; cancelRequested.current = false; setCancelling(false); setBusy(true); setError(null);
     const secret = password; setPassword('');
     try {
-      if (action === 'rename') await fileOp('rename_file', { fileId: ids.current[0], name: base });
-      if (action === 'move') await fileOpsBatch('move_files_to_folder', ids.current, { folderId: target }, () => cancelRequested.current);
-      if (action === 'trash') await fileOpsBatch('delete_files', ids.current, {}, () => cancelRequested.current);
-      if (action === 'restore') await fileOp('restore_file', { fileId: ids.current[0] });
+      if (action === 'rename') await fileOp('rename_file', { fileId: ids.current[0], name: base }, { labels: labelsOf() });
+      if (action === 'move') await fileOpsBatch('move_files_to_folder', ids.current, { folderId: target }, () => cancelRequested.current, labelsOf());
+      if (action === 'trash') await fileOpsBatch('delete_files', ids.current, {}, () => cancelRequested.current, labelsOf());
+      if (action === 'restore') await fileOp('restore_file', { fileId: ids.current[0] }, { labels: labelsOf() });
       if (action === 'permanent') {
         const result = await fileOp<{ kept_on_disk: boolean }>('delete_file_permanently', { fileId: ids.current[0], confirm: true, password: secret }, { quietKept: true });
         if (result.kept_on_disk) { setNotice(c.kept); return; }
@@ -102,8 +108,9 @@ export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, tra
     finally { submitting.current = false; cancelRequested.current = false; setCancelling(false); setBusy(false); }
   };
   const actions: Action[] = empty ? ['empty'] : trash ? ['restore', 'permanent'] : [...(fileIds.length === 1 && name ? ['rename' as const] : []), 'move', 'trash'];
-  return <div className="flex flex-wrap gap-2">
-    {allowed && actions.map(value => <button key={value} type="button" className={catalogActionButton} disabled={busy || lockProps.disabled || (!empty && !fileIds.length)} aria-haspopup="dialog" onClick={event => open(value, event.currentTarget)}>{labels[value]}</button>)}
+  // `contents`: the buttons join the caller's (wrapping) action row; the dialog is portalled anyway.
+  return <div className="contents">
+    {allowed && actions.map(value => <button key={value} type="button" className={`${catalogActionButton} whitespace-nowrap`} disabled={busy || lockProps.disabled || (!empty && !fileIds.length)} aria-haspopup="dialog" onClick={event => open(value, event.currentTarget)}>{labels[value]}</button>)}
     {action && <CatalogActionDialog title={labels[action]} onClose={close} returnFocus={opener}>
       <div aria-busy={busy || loading} className="space-y-3">
         {['trash', 'restore', 'permanent', 'empty'].includes(action) && <p>{c[action as 'trash' | 'restore' | 'permanent' | 'empty']}</p>}

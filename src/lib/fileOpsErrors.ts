@@ -11,6 +11,10 @@ export function fileOpsMessage(kind: string): string {
   const key = ['target_exists','conflict','trash_conflict','cycle','path_unresolvable','snapshot_mismatch'].includes(kind) ? 'conflict' : ['protected_path','protected_location'].includes(kind) ? 'protected' : ['invalid_name','invalid_arguments'].includes(kind) ? 'invalid' : kind === 'restart_required' ? 'restart' : kind;
   return m[key as keyof typeof m] ?? m.generic;
 }
+// Answers that say what is wrong with the request itself. They need no "reload the catalog"
+// framing; technical or unknown kinds keep it.
+const DOMAIN_KINDS = new Set(['has_companions', 'conflict', 'target_exists', 'trash_conflict', 'cycle', 'path_unresolvable', 'snapshot_mismatch', 'protected', 'protected_path', 'protected_location', 'invalid', 'invalid_name', 'invalid_arguments', 'cross_device', 'unsupported', 'trash_foreign', 'trash_missing', 'password_invalid', 'rate_limited', 'busy']);
+export const isDomainRejection = (kind: unknown): boolean => typeof kind === 'string' && DOMAIN_KINDS.has(kind);
 /** Seconds from a Retry-After header (delta seconds or HTTP date); null when absent or unusable. */
 export function retryAfterSeconds(raw: unknown): number | null {
   if (raw === null || raw === undefined || raw === '') return null;
@@ -28,12 +32,12 @@ export function fileOpsWait(seconds: number): string {
   const minutes = Math.ceil(seconds / 60);
   return minutes === 1 ? m.minute : m.minutes.replace('{n}', String(minutes));
 }
-export function fileOpsError(reason: unknown): {message:string; expected:true; kind?:string; retryAfter?:number} {
-  const value = reason && typeof reason === 'object' ? reason as {kind?:string; opIds?:unknown; fileOpsMessage?:string; retryAfter?:unknown} : {};
+export function fileOpsError(reason: unknown): {message:string; expected:true; kind?:string; retryAfter?:number; plain?:true} {
+  const value = reason && typeof reason === 'object' ? reason as {kind?:string; opIds?:unknown; fileOpsMessage?:string; retryAfter?:unknown; plain?:boolean} : {};
   const wait = retryAfterSeconds(value.retryAfter);
-  if (value.fileOpsMessage) return {message:value.fileOpsMessage, expected:true, kind:value.kind, ...(wait === null ? {} : {retryAfter:wait})};
+  if (value.fileOpsMessage) return {message:value.fileOpsMessage, expected:true, kind:value.kind, ...(value.plain ? {plain:true as const} : {}), ...(wait === null ? {} : {retryAfter:wait})};
   const ids = Array.isArray(value.opIds) ? value.opIds.filter((id): id is string => typeof id === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(id)) : [];
   // A wait is only named for rate/busy answers; other kinds never carry a meaningful Retry-After.
   const waitable = wait !== null && wait > 0 && (value.kind === undefined || value.kind === 'rate_limited' || value.kind === 'busy');
-  return { message: fileOpsMessage(value.kind ?? 'generic') + (ids.length ? ` (${ids.join(', ')})` : '') + (waitable ? ' ' + table().wait.replace('{wait}', fileOpsWait(wait)) : ''), expected:true, kind:value.kind, ...(waitable ? {retryAfter:wait} : {}) };
+  return { message: fileOpsMessage(value.kind ?? 'generic') + (ids.length ? ` (${ids.join(', ')})` : '') + (waitable ? ' ' + table().wait.replace('{wait}', fileOpsWait(wait)) : ''), expected:true, kind:value.kind, ...(isDomainRejection(value.kind) ? {plain:true as const} : {}), ...(waitable ? {retryAfter:wait} : {}) };
 }

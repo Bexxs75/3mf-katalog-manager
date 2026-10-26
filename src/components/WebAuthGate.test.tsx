@@ -39,3 +39,16 @@ it('unmounts children on session expiry without redirect', async () => {
   expect(screen.queryByText('APP')).toBeNull();
   expect(screen.getByRole('button', { name: 'Anmelden' })).toBeInTheDocument();
 });
+
+it('logs in through the form submission that Enter in the password field triggers', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ authenticated: false, mustChangePassword: false, csrfToken: null }))
+    .mockResolvedValueOnce(Response.json({ authenticated: true, mustChangePassword: false, csrfToken: 'a' })));
+  await act(async () => { render(<LanguageProvider><WebAuthGate><div>APP</div></WebAuthGate></LanguageProvider>); });
+  const field = screen.getByLabelText('Passwort');
+  // Browsers submit a form on Enter only when it has a submit button; jsdom does not emulate the key itself.
+  const form = field.closest('form')!;
+  expect(form.querySelector('button[type="submit"]')).not.toBeNull();
+  fireEvent.change(field, { target: { value: 'ein passwort' } });
+  await act(async () => { fireEvent.submit(form); });
+  expect(screen.getByText('APP')).toBeInTheDocument();
+});

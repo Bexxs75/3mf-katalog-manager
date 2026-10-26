@@ -43,6 +43,12 @@ it('does not suggest importing or editing in an empty web catalog', () => {
   expect(screen.getByText(de.webReadOnly)).toBeInTheDocument(); expect(screen.queryByText(de.emptyContextTitle)).toBeNull();
 });
 
+it('points an empty web catalog at the upload when the server allows it', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: true, uploadable: true, csrfToken: 'csrf' })));
+  await login('test');
+  render(<LanguageProviderWithDiagnostics><EmptyCatalogTips onOpenTips={vi.fn()} /></LanguageProviderWithDiagnostics>);
+  expect(screen.getByText(de.webEmptyCatalogUpload)).toBeInTheDocument(); expect(screen.queryByText(de.webReadOnly)).toBeNull();
+});
 it('opens confirmed web file actions only with fileOps capability', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: true, fileOps: true, csrfToken: 'csrf' })));
   await login('test');

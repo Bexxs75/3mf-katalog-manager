@@ -81,6 +81,6 @@ it('shows a translated failed-item result without exposing a raw server path', a
   act(() => result.current.handleFolderMouseEnter('3'));
   await act(async () => { fireEvent.mouseUp(document); });
   expect(result.current.moveToast?.error).toBe(true);
-  expect(result.current.moveToast?.to).toContain('1:');
+  expect(result.current.moveToast?.to).toBe('Verschieben ist nur innerhalb einer Wurzel und desselben Dateisystems möglich.');
   expect(result.current.moveToast?.to).not.toContain('/private');
 });

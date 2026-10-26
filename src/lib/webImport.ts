@@ -13,10 +13,11 @@ const REASON_KEYS: Record<string, UploadTextKey> = {
   archive_too_many_models: 'webUploadArchiveTooMany', archive_memory_limit: 'webUploadArchiveMemory',
   archive_timeout: 'webUploadArchiveTimeout', archive_format_unsupported: 'webUploadArchives', import_or_discard_first: 'webUploadConflict',
   no_space: 'webUploadNoSpace', upload_io: 'webUploadFailed',
+  invalid: 'webUploadReasonUnreadable', database: 'webUploadReasonDatabase',
 };
 export const reasonKey = (kind: string | null | undefined): UploadTextKey | null => (kind && REASON_KEYS[kind]) || null;
 export interface WebUpload { uploadId: string; name: string; size: number; time: number; state: 'uploaded' | 'duplicate' | 'invalid' | 'imported'; result: unknown; archive?: boolean }
-export interface WebImportFile { uploadId: string; name: string; state: string; fileId: string | null; existingFileId: string | null; kind: string | null; models?: number; skipped?: number }
+export interface WebImportFile { uploadId: string; name: string; state: string; fileId: string | null; existingFileId: string | null; existingFileName?: string | null; kind: string | null; models?: number; skipped?: number }
 export interface WebImportJob { jobId: string; state: string; current: string | null; total: number; done: number; files: WebImportFile[]; kind: string | null }
 export interface UploadRow { id: number; name: string; percent: number; state: 'queued' | 'uploading' | 'retrying' | 'uploaded' | 'cancelled' | 'error'; error?: UploadTextKey }
 interface View { queue: UploadRow[]; uploads: WebUpload[]; jobs: WebImportJob[]; connection: 'connecting' | 'connected' | 'disconnected'; error: UploadTextKey | null; busy: boolean; result: WebImportJob | null }

@@ -344,7 +344,8 @@ export function DetailPanel({
             {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
-        <div className="flex gap-2">
+        {/* Web adds several action buttons that must wrap instead of squeezing each other; the desktop row keeps its fixed layout. */}
+        <div className={`flex gap-2${import.meta.env.VITE_TARGET === 'web' ? ' flex-wrap' : ''}`}>
           {confirmDelete ? (
             <>
               <span className="flex-1 flex items-center text-small font-medium text-[var(--ink)]">

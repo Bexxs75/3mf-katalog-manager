@@ -18,7 +18,9 @@ export interface Translations {
   webUploadArchiveUnreadable: string;
   webUploadArchiveNoModels: string;
   webUploadArchiveSummary: string;
-  webUploadSkipped: string;
+  webUploadSkipped: PluralForms;
+  webUploadReasonUnreadable: string;
+  webUploadReasonDatabase: string;
   webUploadArchiveTooMany: string;
   webUploadArchiveMemory: string;
   webUploadArchiveTimeout: string;
@@ -72,6 +74,7 @@ export interface Translations {
   webPhotoTooLarge: string;
   webPhotoFormat: string;
   webReadOnly: string;
+  webEmptyCatalogUpload: string;
   webUnavailable: string;
   webSessionChecking: string;
   webLogin: string;

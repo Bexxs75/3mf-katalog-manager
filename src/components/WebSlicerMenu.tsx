@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { createSlicerLink } from '../lib/api/slicer';
 import { buildSlicerUrl, fileTypeOfName, slicersFor, type WebSlicer } from '../lib/slicerLinks';
@@ -16,6 +16,7 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [alignRight, setAlignRight] = useState(false);
   const request = useRef(0);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -26,6 +27,12 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
     request.current++; setOpen(false); setBusy(false); setError('');
     return () => { request.current++; };
   }, [fileId]);
+  // Opens towards the free side so the popover is never cut off by the panel or the window edge.
+  useLayoutEffect(() => {
+    if (!open || !trigger.current) return;
+    const rect = trigger.current.getBoundingClientRect();
+    setAlignRight(rect.left + 256 > window.innerWidth - 8 && rect.right - 256 >= 8);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
@@ -67,14 +74,14 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
       if (request.current === current) setBusy(false);
     }
   };
-  return <div ref={root} className="relative flex-1 min-w-0">
+  return <div ref={root} className="relative flex-none">
     <button ref={trigger} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} disabled={busy}
-      className={className ?? 'w-full h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50'}
+      className={className ?? 'h-8 px-3 whitespace-nowrap rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50'}
       onClick={() => setOpen(value => !value)}>
       {t('openInSlicer')} <Icon name="external" size={14} />
     </button>
     {open && <div ref={menu} id={menuId} role="menu" aria-label={t('openInSlicer')} aria-describedby={hintId} onKeyDown={navigate}
-      className="absolute bottom-full left-0 z-20 mb-1 w-64 max-w-[80vw] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] p-1 shadow-lg">
+      className={`absolute bottom-full ${alignRight ? 'right-0' : 'left-0'} z-20 mb-1 w-64 max-w-[calc(100vw-1rem)] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] p-1 shadow-lg`}>
       {slicers.map(slicer => <button key={slicer.id} role="menuitem" tabIndex={-1} disabled={busy}
         className="block w-full px-3 py-1.5 text-left text-small text-[var(--ink)] hover:bg-[var(--panel-2)] hover:text-[var(--accent)] disabled:opacity-50"
         onClick={() => void launch(slicer)}>{slicer.name}</button>)}

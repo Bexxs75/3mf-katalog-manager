@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { useT } from '../i18n/LanguageContext';
+import { useFormatCount, useT } from '../i18n/LanguageContext';
 import { useCanUpload } from '../lib/webSession';
 import { importFinished, MODEL_UPLOAD_ACCEPT, reasonKey, WebImportController, type WebImportFile, type WebImportJob, type UploadTextKey } from '../lib/webImport';
 import './import.css';
@@ -43,7 +43,7 @@ function WebImportSurface({ controller, open, onClose }: Props & { controller: W
     {!open && (active || uploading || state.connection === 'disconnected' || state.error) && <div className="p-2 border-b border-[var(--line)]" role="status">
       {state.error ? t(state.error) : state.connection === 'disconnected' ? t('webUploadDisconnected') : uploading ? t('webUploadSending') : t('webUploadImporting')}
     </div>}
-    {open && !result && <div className="import-backdrop"><div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} tabIndex={-1} className="import-result space-y-3">
+    {open && !result && <div className="import-backdrop"><div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} tabIndex={-1} className="import-result web-import space-y-3">
       <h2 id={`${id}-title`}>{t('webUploadTitle')}</h2>
       <div data-testid="web-upload-drop" className="p-4 border border-dashed border-[var(--line-strong)] rounded"
         onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
@@ -101,23 +101,24 @@ function FileOutcome({ file }: { file: WebImportFile }) {
   return <>{reason ? t(reason) : t(statusKeys[file.state] ?? 'webUploadFailed')}</>;
 }
 function WebImportResult({ result, onClose }: { result: WebImportJob; onClose: () => void }) {
-  const t = useT(); const id = useId();
+  const t = useT(); const formatCount = useFormatCount(); const id = useId();
   const dialog = useModalDialog({ open: true, onClose });
   // An unpacked archive is a container: its models are listed as files of their own.
   const models = result.files.filter(file => file.kind !== 'archive');
   const skipped = result.files.reduce((sum, file) => sum + (file.kind === 'archive' ? file.skipped ?? 0 : 0), 0);
-  return <div className="import-backdrop"><div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} className="import-result" tabIndex={-1}>
+  return <div className="import-backdrop"><div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} className="import-result web-import" tabIndex={-1}>
     <h2 id={`${id}-title`}>{t('webImportResultTitle')}</h2>
     <p>{t(statusKeys[result.state] ?? 'webUploadFailed')}</p>
     <div className="import-counts">{(['imported', 'duplicate', 'invalid'] as const).map(state => <span key={state}>
       <b>{models.filter(file => file.state === state || (state === 'imported' && file.state === 'imported_not_placed')).length}</b> {t(statusKeys[state])}
     </span>)}
-      {skipped > 0 && <span><b>{skipped}</b> {t('webUploadSkipped')}</span>}</div>
+      {skipped > 0 && <span>{formatCount(t('webUploadSkipped'), skipped)}</span>}</div>
     {(result.state !== 'completed' || result.files.some(file => file.state === 'uploaded')) && <p>{t('webUploadPartial')}</p>}
     {result.kind && <p role="alert">{t(result.kind === 'restart_required' || result.kind === 'journal' ? 'webUploadRestart' : 'webUploadFailed')}</p>}
     <div className="import-table-scroll"><table><thead><tr><th>{t('impFile')}</th><th>{t('impReason')}</th></tr></thead><tbody>
       {result.files.map(file => <tr key={file.uploadId}><td className="break-all">{file.name}</td><td><FileOutcome file={file} />
-        {file.existingFileId && <> · {t('impExistingModel').replace('{id}', file.existingFileId)}</>}
+        {/* Only the display name travels with the result; without a unique match there is nothing honest to show. */}
+        {file.existingFileName && <> · {t('impExistingModel').replace('{name}', file.existingFileName)}</>}
       </td></tr>)}
     </tbody></table></div><footer><button onClick={onClose}>{t('impClose')}</button></footer>
   </div></div>;

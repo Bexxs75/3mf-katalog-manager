@@ -2,7 +2,7 @@ import { invoke } from './transport';
 import { canManageFiles, getSnapshot, blockFileOperations } from './webSession';
 import { getMetadataError, reportMetadataError } from './metadataErrors';
 import { messageOf } from './errors';
-import { fileOpsError, fileOpsMessage } from './fileOpsErrors';
+import { fileOpsError, fileOpsMessage, isDomainRejection } from './fileOpsErrors';
 export interface ItemResult { id: string; ok: boolean; kind?: string; kept_on_disk?: boolean }
 export interface TrashSummary { count: number; bytes: number; maxDeletedAt: string | null }
 const refreshers = new Set<() => void | Promise<unknown>>();
@@ -34,21 +34,25 @@ function affectedIds(command: string, args: Record<string, unknown>, result: unk
 function reportOnce(reason: unknown) {
   if (getMetadataError() !== messageOf(reason)) reportMetadataError(reason);
 }
-function checkResults(results: ItemResult[]) {
+/** Display names by file ID, so a refusal can say which file it is about. */
+export type FileLabels = Record<string, string>;
+function checkResults(results: ItemResult[], labels: FileLabels = {}) {
   const failures = results.filter(result => !result.ok);
   if (failures.some(result => result.kind === 'restart_required')) blockFileOperations();
+  // A raw ID means nothing to the user; with a single result there is nothing to tell apart anyway.
+  const who = (id: string) => labels[id] ? `${labels[id]}: ` : results.length > 1 ? `${id}: ` : '';
   const kept = results.filter(result => result.kept_on_disk);
-  if (kept.length) reportOnce(kept.map(result => `${result.id}: ${fileOpsMessage('kept')}`).join('\n'));
-  if (failures.length) throw { fileOpsMessage: results.map(result => `${result.id}: ${result.ok ? '✓' : fileOpsMessage(result.kind ?? 'generic')}`).join('\n'), kind: failures[0].kind };
+  if (kept.length) reportOnce(kept.map(result => `${who(result.id)}${fileOpsMessage('kept')}`).join('\n'));
+  if (failures.length) throw { fileOpsMessage: results.map(result => `${who(result.id)}${result.ok ? '✓' : fileOpsMessage(result.kind ?? 'generic')}`).join('\n'), kind: failures[0].kind, plain: failures.every(result => isDomainRejection(result.kind)) };
 }
 /** `quietKept`: the caller explains kept-on-disk itself (the confirmation dialog does). */
-export async function fileOp<T = unknown>(command: string, args: Record<string, unknown>, options: { quietKept?: boolean } = {}): Promise<T> {
+export async function fileOp<T = unknown>(command: string, args: Record<string, unknown>, options: { quietKept?: boolean; labels?: FileLabels } = {}): Promise<T> {
   if (!canManageFiles()) throw fileOpsError({kind:'revoked'});
   let failed = false; let outcome: unknown;
   try {
     const result = await invoke<T>(command, args);
     outcome = result;
-    if (Array.isArray(result)) checkResults(result as ItemResult[]);
+    if (Array.isArray(result)) checkResults(result as ItemResult[], options.labels);
     else if (result && typeof result === 'object' && 'kind' in result) {
       // A single object with a kind is an error shape even on HTTP 200.
       if ((result as {kind?: unknown}).kind === 'restart_required') blockFileOperations();
@@ -67,19 +71,19 @@ export async function fileOp<T = unknown>(command: string, args: Record<string, 
   }
 }
 const cancelled = (pending: string[]) => ({ message: [fileOpsMessage('cancelled'), ...pending.map(id => `${id}: ${fileOpsMessage('not_started')}`)].join('\n'), expected: true as const, kind: 'cancelled' });
-export async function fileOpsBatch(command: string, ids: string[], extra: Record<string, unknown> = {}, shouldStop: () => boolean = () => false): Promise<void> {
+export async function fileOpsBatch(command: string, ids: string[], extra: Record<string, unknown> = {}, shouldStop: () => boolean = () => false, labels?: FileLabels): Promise<void> {
   const initiatingToken = getSnapshot().csrfToken;
   const unique = [...new Set(ids)];
   for (let offset = 0; offset < unique.length; offset += 200) {
     if (!canManageFiles() || getSnapshot().csrfToken !== initiatingToken) throw fileOpsError({kind:'revoked'});
     // Stops between chunks only; a chunk already sent is never aborted halfway.
     if (shouldStop()) { const error = cancelled(unique.slice(offset)); reportOnce(error); throw error; }
-    try { await fileOp(command, { ...extra, fileIds: unique.slice(offset, offset + 200) }); }
+    try { await fileOp(command, { ...extra, fileIds: unique.slice(offset, offset + 200) }, { labels }); }
     catch (reason) {
       const pending = unique.slice(offset + 200);
       if (!pending.length) throw reason;
       const message = (reason as {message:string}).message + '\n' + pending.map(id => `${id}: ${fileOpsMessage('not_started')}`).join('\n');
-      const error = {message, expected:true}; reportOnce(error); throw error;
+      const error = {message, expected:true, ...((reason as {plain?: true}).plain ? {plain: true as const} : {})}; reportOnce(error); throw error;
     }
   }
 }

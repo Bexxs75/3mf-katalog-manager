@@ -451,6 +451,8 @@ async fn import_duplicate_results_persist_files_stay_and_only_pending_can_be_dis
     }
     let result = wait_result(&f, &second_job).await;
     assert_eq!(result["files"][0]["state"], "duplicate");
+    // Only the display name of the blocking model is reported, never its path.
+    assert_eq!(result["files"][0]["existingFileName"], "first.obj");
     assert_eq!(f.files(), 2);
     assert_eq!(
         f.invoke("discard_upload", json!({"uploadId":second["uploadId"]}))

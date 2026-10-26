@@ -72,11 +72,11 @@ it('restores only after confirmation', async () => {
   expect(calls).toEqual([]); await confirm('Wiederherstellen');
   expect(calls[0]).toEqual({ command: 'restore_file', args: { fileId: '7' } });
 });
-it('shows per-ID failures and keeps the confirmation open', async () => {
+it('names the file in per-file failures and keeps the confirmation open', async () => {
   response = () => [{ id: '7', ok: false, kind: 'cross_device' }]; mount();
   fireEvent.click(screen.getByRole('button', { name: 'In den Papierkorb' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'In den Papierkorb' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('7');
+  expect(await screen.findByRole('alert')).toHaveTextContent('model.gcode.3mf: ');
   expect(screen.getByRole('dialog')).toBeInTheDocument();
 });
 it('loads trash count and bytes before password confirmation and uses the snapshot protocol', async () => {

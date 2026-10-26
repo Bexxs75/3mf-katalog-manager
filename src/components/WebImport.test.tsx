@@ -69,7 +69,7 @@ it('lists the models of an unpacked archive and how many files were skipped', as
   // The archive row is a container: only the two models count as imported, 3 files are reported as skipped.
   const counts = dialog.querySelector('.import-counts')!;
   expect(counts.textContent).toContain(`2 ${de.impImported}`);
-  expect(counts.textContent).toContain(`3 ${de.webUploadSkipped}`);
+  expect(counts.textContent).toContain(de.webUploadSkipped.other.replace('{count}', '3'));
 });
 it('says why an archive stays in the open uploads', async () => {
   await start(true);
@@ -123,4 +123,27 @@ it('explains interrupted uploads on the login screen after session expiry', asyn
   act(() => session.authenticationFailed(401));
   expect(screen.getByRole('alert')).toHaveTextContent(de.webUploadSessionEnded);
   expect(screen.getByRole('button', { name: de.webLogin })).toBeVisible();
+});
+
+it('names the existing model of a duplicate and says why a file is invalid', async () => {
+  await start(true);
+  await act(async () => Events.latest.emit({ jobId: 'job', state: 'completed', total: 3, done: 3, current: null, kind: null, files: [
+    { uploadId: 'a', name: 'kopie.stl', state: 'duplicate', fileId: null, existingFileId: '7', existingFileName: 'original.stl', kind: 'hash' },
+    { uploadId: 'b', name: 'kaputt.stl', state: 'invalid', fileId: null, existingFileId: null, kind: 'invalid' },
+    { uploadId: 'c', name: 'db.stl', state: 'invalid', fileId: null, existingFileId: null, kind: 'database' },
+  ] }));
+  const dialog = await screen.findByRole('dialog', { name: de.webImportResultTitle });
+  expect(dialog).toHaveTextContent(de.impExistingModel.replace('{name}', 'original.stl'));
+  expect(dialog.textContent).not.toContain('{');
+  expect(dialog).toHaveTextContent(de.webUploadReasonUnreadable);
+  expect(dialog).toHaveTextContent(de.webUploadReasonDatabase);
+});
+it('uses the singular for a single skipped file', async () => {
+  await start(true);
+  await act(async () => Events.latest.emit({ jobId: 'job', state: 'completed', total: 2, done: 2, current: null, kind: null, files: [
+    { uploadId: 'z', name: 'paket.zip', state: 'imported', fileId: null, existingFileId: null, kind: 'archive', models: 1, skipped: 1 },
+    { uploadId: 'a', name: 'a.stl', state: 'imported', fileId: '1', existingFileId: null, kind: null },
+  ] }));
+  const dialog = await screen.findByRole('dialog', { name: de.webImportResultTitle });
+  expect(dialog.querySelector('.import-counts')!.textContent).toContain('1 Datei übersprungen');
 });

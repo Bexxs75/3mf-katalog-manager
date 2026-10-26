@@ -354,6 +354,7 @@ impl UploadStore {
                     "uploadId": entry.id, "name": entry.name, "state": entry.state,
                     "fileId": entry.result.as_ref().and_then(|r| r.get("fileId")),
                     "existingFileId": entry.result.as_ref().and_then(|r| r.get("existingFileId")),
+                    "existingFileName": entry.result.as_ref().and_then(|r| r.get("existingFileName")),
                     "kind": entry.result.as_ref().and_then(|r| r.get("kind")),
                 })).collect();
             let done = files

@@ -396,9 +396,10 @@ export function ModelDetailPage({
 
       <BuildPlateFit model={model} printers={printers} variant="page" />
 
-      <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
-        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="page" />}
-      </div>
+      {/* The web build has no companion section; its card would stay an empty box. */}
+      {import.meta.env.VITE_TARGET !== 'web' && <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
+        <CompanionSection key={model.id} fileId={model.id} variant="page" />
+      </div>}
 
       {isFilamentUsageMissing(model) && <FilamentUsageMissing />}
 
