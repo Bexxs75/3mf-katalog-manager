@@ -327,7 +327,7 @@ export function CatalogWorkspace({
   }, [onCloseDetails, selectedId, layouts]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
+      if (event.key !== 'Escape' || event.defaultPrevented || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
         shouldIgnoreCatalogShortcut(event, { preserveEscapeSelection: true })) return;
       event.preventDefault();
       closeDetails();

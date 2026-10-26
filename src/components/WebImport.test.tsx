@@ -64,7 +64,7 @@ it('lists the models of an unpacked archive and how many files were skipped', as
     { uploadId: 'c', name: 'geheim.zip', state: 'invalid', fileId: null, existingFileId: null, kind: 'archive_encrypted' },
   ] }));
   const dialog = await screen.findByRole('dialog', { name: de.webImportResultTitle });
-  expect(dialog).toHaveTextContent(de.webUploadArchiveSummary.replace('{models}', '2').replace('{skipped}', '3'));
+  expect(dialog).toHaveTextContent('2 Modelle übernommen, 3 Dateien übersprungen');
   expect(dialog).toHaveTextContent(de.webUploadArchiveEncrypted);
   // The archive row is a container: only the two models count as imported, 3 files are reported as skipped.
   const counts = dialog.querySelector('.import-counts')!;
@@ -146,4 +146,13 @@ it('uses the singular for a single skipped file', async () => {
   ] }));
   const dialog = await screen.findByRole('dialog', { name: de.webImportResultTitle });
   expect(dialog.querySelector('.import-counts')!.textContent).toContain('1 Datei übersprungen');
+});
+
+it('uses the singular in the archive summary line', async () => {
+  await start(true);
+  await act(async () => Events.latest.emit({ jobId: 'job', state: 'completed', total: 2, done: 2, current: null, kind: null, files: [
+    { uploadId: 'z', name: 'paket.zip', state: 'imported', fileId: null, existingFileId: null, kind: 'archive', models: 1, skipped: 1 },
+    { uploadId: 'a', name: 'a.stl', state: 'imported', fileId: '1', existingFileId: null, kind: null },
+  ] }));
+  expect(await screen.findByRole('dialog', { name: de.webImportResultTitle })).toHaveTextContent('1 Modell übernommen, 1 Datei übersprungen');
 });

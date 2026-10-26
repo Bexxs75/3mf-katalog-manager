@@ -94,8 +94,8 @@ function UploadReason({ kind }: { kind?: string | null }) {
   return key ? <span className="text-small">{t(key)}</span> : null;
 }
 function FileOutcome({ file }: { file: WebImportFile }) {
-  const t = useT();
-  if (file.kind === 'archive') return <>{t('webUploadArchiveSummary').replace('{models}', String(file.models ?? 0)).replace('{skipped}', String(file.skipped ?? 0))}</>;
+  const t = useT(); const formatCount = useFormatCount();
+  if (file.kind === 'archive') return <>{formatCount(t('webUploadModelsTaken'), file.models ?? 0)}, {formatCount(t('webUploadSkipped'), file.skipped ?? 0)}</>;
   // "uploaded" with a reason: the archive was handed back after a temporary failure.
   const reason = file.state === 'invalid' || file.state === 'uploaded' ? reasonKey(file.kind) : null;
   return <>{reason ? t(reason) : t(statusKeys[file.state] ?? 'webUploadFailed')}</>;

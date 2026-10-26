@@ -169,3 +169,15 @@ it('says that nothing happens when the slicer is not installed', async () => {
   server({ slicerLinks: true }); await show(); openMenu();
   expect(screen.getByText(/nicht installiert, passiert nichts/)).toBeVisible();
 });
+
+it('handles Escape itself: the key stays unhandled for window shortcuts and the focus returns to the button', async () => {
+  server({ slicerLinks: true }); await show(); openMenu();
+  const reached: boolean[] = [];
+  const probe = (event: KeyboardEvent) => reached.push(event.defaultPrevented);
+  window.addEventListener('keydown', probe);
+  fireEvent.keyDown(screen.getAllByRole('menuitem')[0], { key: 'Escape' });
+  window.removeEventListener('keydown', probe);
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(reached).toEqual([true]);
+  expect(screen.getByRole('button', { name: /In Slicer öffnen/ })).toHaveFocus();
+});

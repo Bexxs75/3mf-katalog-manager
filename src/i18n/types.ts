@@ -17,7 +17,7 @@ export interface Translations {
   webUploadArchiveTooLarge: string;
   webUploadArchiveUnreadable: string;
   webUploadArchiveNoModels: string;
-  webUploadArchiveSummary: string;
+  webUploadModelsTaken: PluralForms;
   webUploadSkipped: PluralForms;
   webUploadReasonUnreadable: string;
   webUploadReasonDatabase: string;

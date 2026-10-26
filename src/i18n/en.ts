@@ -15,7 +15,7 @@ export const en: Translations = {
   webUploadArchiveMemory: "The 7z archive would need too much memory to unpack (server limit).",
   webUploadArchiveTimeout: "Unpacking took too long and was stopped.",
   webUploadArchiveImported: "Archive, imported. Discarding removes only the archive; the models stay.",
-  webUploadArchiveSummary: "{models} models taken over, {skipped} files skipped",
+  webUploadModelsTaken: { one: "{count} model taken over", other: "{count} models taken over" },
   webUploadArchiveNoModels: "The archive contains no importable models.",
   webUploadArchiveUnreadable: "The archive is damaged or cannot be read.",
   webUploadArchiveTooLarge: "The archive is too large when unpacked or has too many entries (server limit).",
@@ -50,7 +50,7 @@ export const en: Translations = {
   webUploadImporting: "Importing",
   webUploadCancelling: "Cancelling import…",
   webUploadCompleted: "Completed",
-  webUploadInvalidFile: "Invalid",
+  webUploadInvalidFile: "invalid",
   webUploadPartial: "Cancelled or failed jobs may contain imported files. Unprocessed files remain available as pending uploads.",
   webUploadResults: "Show result",
 

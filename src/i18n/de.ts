@@ -15,7 +15,7 @@ export const de: Translations = {
   webUploadArchiveMemory: "Das 7z-Archiv bräuchte beim Entpacken zu viel Arbeitsspeicher (Serverlimit).",
   webUploadArchiveTimeout: "Das Entpacken hat zu lange gedauert und wurde abgebrochen.",
   webUploadArchiveImported: "Archiv, importiert. Verwerfen löscht nur das Archiv, die Modelle bleiben erhalten.",
-  webUploadArchiveSummary: "{models} Modelle übernommen, {skipped} Dateien übersprungen",
+  webUploadModelsTaken: { one: "{count} Modell übernommen", other: "{count} Modelle übernommen" },
   webUploadArchiveNoModels: "Das Archiv enthält keine importierbaren Modelle.",
   webUploadArchiveUnreadable: "Das Archiv ist beschädigt oder kann nicht gelesen werden.",
   webUploadArchiveTooLarge: "Das Archiv ist entpackt zu groß oder enthält zu viele Einträge (Serverlimit).",

@@ -15,7 +15,7 @@ export const fr: Translations = {
   webUploadArchiveMemory: "L’archive 7z nécessiterait trop de mémoire pour être décompressée (limite du serveur).",
   webUploadArchiveTimeout: "La décompression a pris trop de temps et a été arrêtée.",
   webUploadArchiveImported: "Archive importée. Rejeter ne supprime que l’archive ; les modèles sont conservés.",
-  webUploadArchiveSummary: "{models} modèles repris, {skipped} fichiers ignorés",
+  webUploadModelsTaken: { one: "{count} modèle repris", other: "{count} modèles repris" },
   webUploadArchiveNoModels: "L’archive ne contient aucun modèle importable.",
   webUploadArchiveUnreadable: "L’archive est endommagée ou illisible.",
   webUploadArchiveTooLarge: "L’archive est trop volumineuse une fois décompressée ou contient trop d’entrées (limite du serveur).",

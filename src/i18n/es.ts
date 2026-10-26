@@ -15,7 +15,7 @@ export const es: Translations = {
   webUploadArchiveMemory: "El archivo 7z necesitaría demasiada memoria para descomprimirse (límite del servidor).",
   webUploadArchiveTimeout: "La descompresión tardó demasiado y se detuvo.",
   webUploadArchiveImported: "Archivo comprimido, importado. Descartarlo solo elimina el archivo; los modelos se conservan.",
-  webUploadArchiveSummary: "{models} modelos importados, {skipped} archivos omitidos",
+  webUploadModelsTaken: { one: "{count} modelo importado", other: "{count} modelos importados" },
   webUploadArchiveNoModels: "El archivo comprimido no contiene modelos importables.",
   webUploadArchiveUnreadable: "El archivo comprimido está dañado o no se puede leer.",
   webUploadArchiveTooLarge: "El archivo comprimido es demasiado grande al descomprimirlo o tiene demasiadas entradas (límite del servidor).",

@@ -102,6 +102,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
+  const trashModelsRef = useRef(trashModels);
+  trashModelsRef.current = trashModels;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // IDs whose full data is already loaded; refreshFiles() resets the list
   // back to summaries.
@@ -332,7 +334,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     (id: string) => {
       setSelectedId(id);
       ensureFullModel(id);
-      if (!canEditMetadata()) return;
+      // A trashed entry has no live row to stamp; asking would only produce a 404.
+      if (!canEditMetadata() || trashModelsRef.current.some((m) => m.id === id)) return;
       const now = new Date().toISOString();
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
       const key = `lastViewedAt:${id}`;
@@ -340,6 +343,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       filesApi
         .markFileViewed(id)
         .catch((e) => {
+          // A refused request (4xx, e.g. the entry vanished meanwhile) is a silent background miss, not a banner-worthy failure.
+          if ((e as { expected?: unknown } | null)?.expected === true) return;
           console.error('[last-viewed] update failed:', e); mutationFailed(key, e);
         })
         .finally(() => {

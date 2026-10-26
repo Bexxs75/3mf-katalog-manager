@@ -39,6 +39,8 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
     const close = (event: Event) => {
       if (event.type === 'keydown') {
         if ((event as KeyboardEvent<Element> & globalThis.KeyboardEvent).key !== 'Escape') return;
+        // Marks the key as handled so window-level Escape shortcuts (closing the detail panel) leave it alone.
+        event.preventDefault();
         setOpen(false); trigger.current?.focus();
       } else if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
