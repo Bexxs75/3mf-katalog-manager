@@ -143,6 +143,7 @@ export interface Translations {
   diskReportTruncatedTime: string;
   diskReportRootUnreachable: string;
   diskReportRootEmpty: string;
+  diskReportRootMostlyMissing: string;
   diskReportOutside: PluralForms;
   diskReportFailed: string;
   diskReportRootLabel: string;

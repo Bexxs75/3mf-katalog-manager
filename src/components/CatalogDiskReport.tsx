@@ -30,6 +30,7 @@ function ReportDialog({ report, error, busy, onClose, onRetry }: {
   const showRoot = (report?.roots.length ?? 0) > 1;
   const outside = report ? report.modelsOutsideRoots + report.companionsOutsideRoots : 0;
   const skipped = report?.roots.filter(r => r.status !== 'ok') ?? [];
+  const partial = report?.roots.filter(r => r.mostlyMissing) ?? [];
   const found = !!report && (report.missingModels.length + report.newFiles.length + report.danglingCompanions.length > 0);
   const complete = !!report && !report.truncated && skipped.length === 0 && outside === 0;
   const truncatedText = (by: DiskReport['truncatedBy'][number]) => t(by === 'items' ? 'diskReportTruncatedItems' : by === 'entries' ? 'diskReportTruncatedEntries' : 'diskReportTruncatedTime');
@@ -43,6 +44,7 @@ function ReportDialog({ report, error, busy, onClose, onRetry }: {
         {report && <>
           {report.truncatedBy.map(by => <p key={by} role="status" className="rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{truncatedText(by)}</p>)}
           {skipped.map(r => <p key={r.name + r.status} className="rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{t(r.status === 'empty' ? 'diskReportRootEmpty' : 'diskReportRootUnreachable').replace('{name}', r.name)}</p>)}
+          {partial.map(r => <p key={r.name + 'partial'} role="status" className="rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{t('diskReportRootMostlyMissing').replace('{name}', r.name)}</p>)}
           {outside > 0 && <p className="rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{count(t('diskReportOutside'), outside)}</p>}
           {!found && complete && <p role="status">{t('diskReportAllGood')}</p>}
           {report.missingModels.length > 0 && <section><h3 className="ui-label mb-2">{t('diskReportMissingHeading')}</h3>

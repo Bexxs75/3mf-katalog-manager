@@ -20,19 +20,26 @@ const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
 
 /// Upper bounds of one report. Whatever is exceeded ends the work and marks the report
 /// as truncated.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Limits {
     /// Entries per list (missing models, new files, dangling companions).
     pub max_items: usize,
     /// Directory entries looked at while walking the roots.
     pub max_entries: usize,
     pub max_duration: Duration,
+    /// Called with each directory right before it is read. For tests that need to act (or
+    /// stall) while the scan is running; `None` in production.
+    pub walk_hook: Option<&'static (dyn Fn(&Path) + Sync)>,
 }
 impl Default for Limits {
     fn default() -> Self {
-        Self { max_items: 500, max_entries: 200_000, max_duration: Duration::from_secs(20) }
+        Self { max_items: 500, max_entries: 200_000, max_duration: Duration::from_secs(20), walk_hook: None }
     }
 }
+
+/// A root with at least this many active models, more than half of them gone, is probably
+/// only partly mounted.
+const MOSTLY_MISSING_MIN_MODELS: usize = 10;
 
 #[derive(Debug, Clone)]
 pub struct ModelRow {
@@ -95,6 +102,9 @@ pub struct RootInfo {
     /// Last path component only.
     pub name: String,
     pub status: RootStatus,
+    /// More than half of the root's active models are missing (and there are at least ten):
+    /// the volume may be only partly mounted, so the list below may be a symptom, not a cleanup list.
+    pub mostly_missing: bool,
 }
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -247,17 +257,27 @@ fn open_roots(configured: &[PathBuf]) -> Vec<Root> {
         .collect();
     // Shallow roots first, so a nested or duplicate root is attributed to the one above it.
     roots.sort_by_key(|r| r.canonical.components().count());
+    roots
+}
+
+/// Whether an earlier, usable root already walks each root. Run after the status checks:
+/// a root that turned out empty or unreachable covers nothing.
+fn mark_covered(roots: &mut [Root]) {
     for index in 0..roots.len() {
         let covered = roots[..index].iter().any(|r| r.status == RootStatus::Ok && roots[index].canonical.starts_with(&r.canonical));
         roots[index].covered = covered && roots[index].status == RootStatus::Ok;
     }
-    roots
 }
 
 /// The root a stored path belongs to and its path below it.
 fn locate(roots: &[Root], path: &str) -> Option<(usize, PathBuf)> {
     let path = Path::new(path);
-    roots.iter().enumerate().filter(|(_, r)| r.status != RootStatus::Unreachable).find_map(|(i, r)| r.relative(path).map(|rel| (i, rel)))
+    // A usable root wins; a row that lies only below an unreachable root still belongs to it
+    // (so it is not mistaken for a row outside every root) and is skipped by the callers.
+    let find = |usable: bool| {
+        roots.iter().enumerate().filter(|(_, r)| (r.status != RootStatus::Unreachable) == usable).find_map(|(i, r)| r.relative(path).map(|rel| (i, rel)))
+    };
+    find(true).or_else(|| find(false))
 }
 
 /// Compares the snapshot with the disk below `configured`. Never fails: whatever cannot
@@ -282,13 +302,13 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
             }
         }
     }
-    report.roots = roots
-        .iter()
-        .map(|r| RootInfo { name: r.stored.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), status: r.status })
-        .collect();
+    mark_covered(&mut roots);
 
+    // What the catalog knows is built first and without the clock: it is only database data,
+    // and a walk must never list a known file as new because the checks below ran out of time.
     let mut known = HashSet::new();
     let mut companion_dirs = HashSet::new();
+    let mut model_checks = Vec::new();
     for model in &snapshot.models {
         match locate(&roots, &model.path) {
             None => {
@@ -298,19 +318,13 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
             }
             Some((index, relative)) => {
                 known.insert(key(&roots[index].canonical.join(&relative)));
-                if !model.active || roots[index].status != RootStatus::Ok {
-                    continue;
-                }
-                if budget.out_of_time() {
-                    break;
-                }
-                if presence(&roots[index].canonical, &relative) == Presence::Missing && budget.room(report.missing_models.len()) {
-                    report.missing_models.push(MissingModel { id: model.id.to_string(), root: index, relative_path: shown(&relative) });
+                if model.active && roots[index].status == RootStatus::Ok {
+                    model_checks.push((model.id, index, relative));
                 }
             }
         }
     }
-
+    let mut companion_checks = Vec::new();
     for row in &snapshot.companions {
         let Some((index, relative)) = locate(&roots, &row.path) else {
             report.companions_outside_roots += 1;
@@ -319,9 +333,40 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
         if let Some(dir) = roots[index].canonical.join(&relative).parent() {
             companion_dirs.insert(key(dir));
         }
-        if roots[index].status != RootStatus::Ok {
-            continue;
+        if roots[index].status == RootStatus::Ok {
+            companion_checks.push((row, index, relative));
         }
+    }
+
+    let mut checked = vec![0usize; roots.len()];
+    let mut gone = vec![0usize; roots.len()];
+    let mut all_checked = true;
+    for (id, index, relative) in model_checks {
+        if budget.out_of_time() {
+            all_checked = false;
+            break;
+        }
+        checked[index] += 1;
+        if presence(&roots[index].canonical, &relative) == Presence::Missing {
+            gone[index] += 1;
+            if budget.room(report.missing_models.len()) {
+                report.missing_models.push(MissingModel { id: id.to_string(), root: index, relative_path: shown(&relative) });
+            }
+        }
+    }
+    let mostly_missing: Vec<bool> =
+        (0..roots.len()).map(|i| all_checked && checked[i] >= MOSTLY_MISSING_MIN_MODELS && gone[i] * 2 > checked[i]).collect();
+    report.roots = roots
+        .iter()
+        .enumerate()
+        .map(|(i, r)| RootInfo {
+            name: r.stored.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            status: r.status,
+            mostly_missing: mostly_missing[i],
+        })
+        .collect();
+
+    for (row, index, relative) in companion_checks {
         if budget.out_of_time() {
             break;
         }
@@ -342,7 +387,9 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
         }
     }
 
-    for (index, root) in roots.iter().enumerate() {
+    // After a timeout the walk is skipped altogether; `truncated` already says so.
+    let walkable = !budget.out_of_time();
+    for (index, root) in roots.iter().enumerate().filter(|_| walkable) {
         if root.status != RootStatus::Ok || root.covered {
             continue;
         }
@@ -371,8 +418,13 @@ fn walk(
 ) -> bool {
     let mut pending = vec![root.canonical.clone()];
     while let Some(dir) = pending.pop() {
+        if let Some(hook) = budget.limits.walk_hook {
+            hook(&dir);
+        }
         let Ok(read) = std::fs::read_dir(&dir) else { continue };
-        let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
+        // Never hold more than the remaining entry budget plus one (which trips the limit below).
+        let room = budget.limits.max_entries.saturating_sub(report.scanned_entries);
+        let mut entries: Vec<_> = read.filter_map(Result::ok).take(room.saturating_add(1)).collect();
         entries.sort_by_key(|e| e.file_name());
         let mut subdirs = Vec::new();
         for entry in entries {

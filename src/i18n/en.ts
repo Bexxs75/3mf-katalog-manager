@@ -137,6 +137,7 @@ export const en: Translations = {
   diskReportTruncatedTime: "Truncated: the check took too long and was stopped. The report is incomplete.",
   diskReportRootUnreachable: "Folder not reachable, not checked: {name}",
   diskReportRootEmpty: "Folder is empty although the catalog holds models there (not mounted?), not checked: {name}",
+  diskReportRootMostlyMissing: "More than half of the models in this folder are missing. It may not be fully mounted, so read the list with care: {name}",
   diskReportOutside: {"one": "{count} entry lies outside the allowed folders and was not checked", "other": "{count} entries lie outside the allowed folders and were not checked"},
   diskReportFailed: "The check failed.",
   diskReportRootLabel: "Folder",

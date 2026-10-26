@@ -137,6 +137,7 @@ export const es: Translations = {
   diskReportTruncatedTime: "Truncado: la comprobación tardó demasiado y se detuvo. El informe está incompleto.",
   diskReportRootUnreachable: "Carpeta no accesible, no comprobada: {name}",
   diskReportRootEmpty: "La carpeta está vacía aunque el catálogo tiene modelos allí (¿no montada?), no comprobada: {name}",
+  diskReportRootMostlyMissing: "Falta más de la mitad de los modelos de esta carpeta. Quizá no esté completamente montada; lee la lista con cuidado: {name}",
   diskReportOutside: {"one": "{count} entrada está fuera de las carpetas permitidas y no se comprobó", "other": "{count} entradas están fuera de las carpetas permitidas y no se comprobaron"},
   diskReportFailed: "La comprobación ha fallado.",
   diskReportRootLabel: "Carpeta",

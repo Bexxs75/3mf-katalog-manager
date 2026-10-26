@@ -13,12 +13,12 @@ vi.mock('../lib/api/diskSync', () => ({ diskSyncReport: api.report }));
 import { CatalogDiskReport } from './CatalogDiskReport';
 
 const clean: DiskReport = {
-  roots: [{ name: 'models', status: 'ok' }], missingModels: [], newFiles: [], danglingCompanions: [],
+  roots: [{ name: 'models', status: 'ok', mostlyMissing: false }], missingModels: [], newFiles: [], danglingCompanions: [],
   modelsOutsideRoots: 0, companionsOutsideRoots: 0, scannedEntries: 3, truncated: false, truncatedBy: [],
 };
 const findings: DiskReport = {
   ...clean,
-  roots: [{ name: 'models', status: 'ok' }, { name: 'archive', status: 'ok' }],
+  roots: [{ name: 'models', status: 'ok', mostlyMissing: false }, { name: 'archive', status: 'ok', mostlyMissing: false }],
   missingModels: [{ id: '2', root: 0, relativePath: 'a/gone.3mf' }],
   newFiles: [{ root: 1, relativePath: 'b/new.stl' }],
   danglingCompanions: [
@@ -71,13 +71,20 @@ describe('CatalogDiskReport', () => {
   });
 
   it('names unreachable and empty folders and counts rows outside the folders', async () => {
-    api.report.mockResolvedValue({ ...clean, roots: [{ name: 'usb', status: 'unreachable' }, { name: 'nas', status: 'empty' }], modelsOutsideRoots: 2, companionsOutsideRoots: 1 });
+    api.report.mockResolvedValue({ ...clean, roots: [{ name: 'usb', status: 'unreachable', mostlyMissing: false }, { name: 'nas', status: 'empty', mostlyMissing: false }], modelsOutsideRoots: 2, companionsOutsideRoots: 1 });
     show();
     const dialog = await open();
     expect(await within(dialog).findByText(de.diskReportRootUnreachable.replace('{name}', 'usb'))).toBeTruthy();
     expect(within(dialog).getByText(de.diskReportRootEmpty.replace('{name}', 'nas'))).toBeTruthy();
     expect(within(dialog).getByText(de.diskReportOutside.other.replace('{count}', '3'))).toBeTruthy();
     expect(within(dialog).queryByText(de.diskReportAllGood)).toBeNull();
+  });
+
+  it('warns when a folder misses most of its models', async () => {
+    api.report.mockResolvedValue({ ...clean, roots: [{ name: 'nas', status: 'ok', mostlyMissing: true }] });
+    show();
+    const dialog = await open();
+    expect(await within(dialog).findByText(de.diskReportRootMostlyMissing.replace('{name}', 'nas'))).toBeTruthy();
   });
 
   it('shows a failure with a retry that asks again', async () => {
@@ -108,5 +115,6 @@ describe('CatalogDiskReport', () => {
     const dialog = await screen.findByRole('dialog', { name: dictionary.diskReportTitle });
     expect(await within(dialog).findByText(dictionary.diskReportMissingHeading)).toBeTruthy();
     expect(within(dialog).getByText(dictionary.diskReportReadOnly)).toBeTruthy();
+    expect(dictionary.diskReportRootMostlyMissing).toContain('{name}');
   });
 });

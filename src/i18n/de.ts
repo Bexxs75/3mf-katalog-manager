@@ -137,6 +137,7 @@ export const de: Translations = {
   diskReportTruncatedTime: "Abgeschnitten: Die Prüfung hat zu lange gedauert und wurde abgebrochen. Der Bericht ist unvollständig.",
   diskReportRootUnreachable: "Ordner nicht erreichbar, nicht geprüft: {name}",
   diskReportRootEmpty: "Ordner ist leer, obwohl der Katalog dort Modelle führt (nicht eingebunden?), nicht geprüft: {name}",
+  diskReportRootMostlyMissing: "Mehr als die Hälfte der Modelle in diesem Ordner fehlt. Evtl. ist er nicht vollständig eingehängt, die Liste mit Vorsicht lesen: {name}",
   diskReportOutside: {"one": "{count} Eintrag liegt außerhalb der freigegebenen Ordner und wurde nicht geprüft", "other": "{count} Einträge liegen außerhalb der freigegebenen Ordner und wurden nicht geprüft"},
   diskReportFailed: "Die Prüfung ist fehlgeschlagen.",
   diskReportRootLabel: "Ordner",

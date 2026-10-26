@@ -176,3 +176,142 @@ fn snapshot_reads_active_companions_of_active_models_only() {
     assert_eq!(s.companions.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), vec!["p.png"]);
     assert!(conn.is_autocommit());
 }
+
+fn files(root: &Path, dir: &str, count: usize) {
+    for i in 0..count {
+        touch(&root.join(dir).join(format!("f{i:04}.stl")));
+    }
+}
+fn leak(hook: impl Fn(&Path) + Sync + 'static) -> &'static (dyn Fn(&Path) + Sync) {
+    Box::leak(Box::new(hook))
+}
+
+#[test]
+fn a_directory_far_beyond_the_entry_limit_stops_at_the_limit() {
+    let root = dir("dr-wide");
+    files(&root, "", 3000);
+    let limits = Limits { max_entries: 10, ..Limits::default() };
+    let r = build_report(&Snapshot::default(), std::slice::from_ref(&root), limits);
+    assert!(r.truncated_by.contains(&TruncatedBy::Entries));
+    assert!(r.scanned_entries <= 10 && r.new_files.len() <= 10);
+}
+
+#[test]
+fn the_walk_checks_the_clock_itself() {
+    let root = dir("dr-walkclock");
+    files(&root, "d", 300);
+    // The first directory (the root) is read at once, the second one only after the budget is spent.
+    let calls: &'static std::sync::atomic::AtomicUsize = Box::leak(Box::new(std::sync::atomic::AtomicUsize::new(0)));
+    let hook = leak(move |_| {
+        if calls.fetch_add(1, Ordering::SeqCst) == 1 {
+            std::thread::sleep(Duration::from_millis(400));
+        }
+    });
+    use std::sync::atomic::Ordering;
+    let limits = Limits { max_duration: Duration::from_millis(250), walk_hook: Some(hook), ..Limits::default() };
+    let r = build_report(&Snapshot::default(), std::slice::from_ref(&root), limits);
+    assert!(r.truncated_by.contains(&TruncatedBy::Time), "{:?}", r.truncated_by);
+    assert!(r.scanned_entries > 0 && r.new_files.len() < 300, "walk ran on after the deadline: {}", r.new_files.len());
+}
+
+#[test]
+fn known_files_never_show_up_as_new_after_a_timeout() {
+    let root = dir("dr-known-timeout");
+    let mut models = Vec::new();
+    for i in 0..5 {
+        touch(&root.join(format!("k{i}.3mf")));
+        models.push(model(i, &root.join(format!("k{i}.3mf")), true));
+    }
+    let limits = Limits { max_duration: Duration::ZERO, ..Limits::default() };
+    let r = build_report(&Snapshot { models, companions: vec![] }, std::slice::from_ref(&root), limits);
+    assert!(r.truncated_by.contains(&TruncatedBy::Time));
+    assert!(r.new_files.is_empty(), "{:?}", r.new_files);
+}
+
+#[test]
+fn companion_folders_and_extras_folders_are_not_scanned_for_new_files() {
+    let root = dir("dr-extras");
+    touch(&root.join("a.3mf"));
+    touch(&root.join("a_extras/part.stl"));
+    touch(&root.join("pics/x.3mf"));
+    touch(&root.join("pics/p.png"));
+    let snapshot = Snapshot { models: vec![model(1, &root.join("a.3mf"), true)], companions: vec![companion(1, 1, &root.join("pics/p.png"))] };
+    let r = report(&snapshot, &[&root]);
+    assert!(r.new_files.is_empty(), "{:?}", r.new_files);
+}
+
+#[test]
+fn an_empty_root_without_models_is_fine() {
+    let root = dir("dr-empty-ok");
+    let r = report(&Snapshot::default(), &[&root]);
+    assert_eq!(r.roots[0].status, RootStatus::Ok);
+}
+
+#[test]
+fn rows_with_dot_dot_leave_no_trace_and_count_as_outside() {
+    let root = dir("dr-dots");
+    touch(&root.join("keep.stl"));
+    let sneaky = format!("{}/../outside/x.3mf", root.display());
+    let snapshot = Snapshot {
+        models: vec![ModelRow { id: 1, path: sneaky.clone(), active: true }, ModelRow { id: 2, path: format!("{}/./keep.stl", root.display()), active: true }],
+        companions: vec![CompanionRow { id: 1, file_id: 1, name: "n".into(), path: sneaky }],
+    };
+    let r = report(&snapshot, &[&root]);
+    assert_eq!((r.models_outside_roots, r.companions_outside_roots), (1, 1));
+    assert!(r.missing_models.is_empty() && r.dangling_companions.is_empty());
+    assert!(!serde_json::to_string(&r).unwrap().contains("outside"));
+}
+
+#[test]
+fn rows_below_an_unreachable_root_are_not_counted_as_outside() {
+    let gone = dir("dr-unreach2").join("unmounted");
+    let snapshot = Snapshot { models: vec![model(1, &gone.join("a.3mf"), true)], companions: vec![companion(1, 1, &gone.join("a_extras/c.png"))] };
+    let r = report(&snapshot, &[&gone]);
+    assert_eq!(r.roots[0].status, RootStatus::Unreachable);
+    assert_eq!((r.models_outside_roots, r.companions_outside_roots), (0, 0));
+    assert!(r.missing_models.is_empty() && r.dangling_companions.is_empty());
+}
+
+fn models_with_missing(root: &Path, total: i64, missing: i64) -> Snapshot {
+    touch(&root.join("stray.txt"));
+    let models = (0..total)
+        .map(|i| {
+            let path = root.join(format!("m{i}.3mf"));
+            if i >= missing {
+                touch(&path);
+            }
+            model(i, &path, true)
+        })
+        .collect();
+    Snapshot { models, companions: vec![] }
+}
+
+#[test]
+fn a_root_missing_most_of_its_models_is_flagged_as_perhaps_partly_mounted() {
+    let (a, b, c) = (dir("dr-mm-a"), dir("dr-mm-b"), dir("dr-mm-c"));
+    assert!(report(&models_with_missing(&a, 10, 6), &[&a]).roots[0].mostly_missing);
+    assert!(!report(&models_with_missing(&b, 10, 5), &[&b]).roots[0].mostly_missing, "exactly half is not more than half");
+    assert!(!report(&models_with_missing(&c, 9, 9), &[&c]).roots[0].mostly_missing, "too few models to say");
+}
+
+#[test]
+fn a_writer_can_commit_while_the_disk_is_scanned() {
+    let root = dir("dr-writer");
+    touch(&root.join("a.stl"));
+    let db_path = root.join("c.db");
+    let conn = db::connect(&db_path).unwrap();
+    db::test_insert_minimal_file(&conn, root.join("a.stl").to_str().unwrap(), None).unwrap();
+    let snap = snapshot(&conn).unwrap();
+    // Even the connection that took the snapshot is still open; the walk must not depend on it.
+    let committed: &'static std::sync::atomic::AtomicBool = Box::leak(Box::new(std::sync::atomic::AtomicBool::new(false)));
+    let path = db_path.clone();
+    let hook = leak(move |_| {
+        let writer = db::connect(&path).unwrap();
+        writer.execute("UPDATE files SET path = path", []).unwrap();
+        committed.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+    let limits = Limits { walk_hook: Some(hook), ..Limits::default() };
+    let r = build_report(&snap, std::slice::from_ref(&root), limits);
+    assert!(committed.load(std::sync::atomic::Ordering::SeqCst), "the walk never ran the hook");
+    assert!(!r.truncated);
+}

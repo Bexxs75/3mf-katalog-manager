@@ -137,6 +137,7 @@ export const fr: Translations = {
   diskReportTruncatedTime: "Tronqué : la vérification a pris trop de temps et a été arrêtée. Le rapport est incomplet.",
   diskReportRootUnreachable: "Dossier inaccessible, non vérifié : {name}",
   diskReportRootEmpty: "Le dossier est vide alors que le catalogue y contient des modèles (non monté ?), non vérifié : {name}",
+  diskReportRootMostlyMissing: "Plus de la moitié des modèles de ce dossier manquent. Il n’est peut-être pas entièrement monté, lisez la liste avec prudence : {name}",
   diskReportOutside: {"one": "{count} entrée se trouve en dehors des dossiers autorisés et n’a pas été vérifiée", "other": "{count} entrées se trouvent en dehors des dossiers autorisés et n’ont pas été vérifiées"},
   diskReportFailed: "La vérification a échoué.",
   diskReportRootLabel: "Dossier",

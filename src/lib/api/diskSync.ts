@@ -74,7 +74,7 @@ export const onDiskSyncRequest = (handler: () => void) => {
 // Web: read-only comparison of the catalog with the disk. Paths are relative to a configured folder, `root` indexes `roots`.
 export type DiskReportRootStatus = 'ok' | 'unreachable' | 'empty';
 export interface DiskReport {
-  roots: { name: string; status: DiskReportRootStatus }[];
+  roots: { name: string; status: DiskReportRootStatus; mostlyMissing: boolean }[];
   missingModels: { id: string; root: number; relativePath: string }[];
   newFiles: { root: number; relativePath: string }[];
   danglingCompanions: { id: string; fileId: string; name: string; root: number; relativePath: string; reason: 'missing' | 'notFile' }[];

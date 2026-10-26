@@ -123,13 +123,3 @@ async fn takes_no_arguments() {
     let f = Fx::new(false).await;
     assert_eq!(f.invoke(json!({"path": "/etc"}), None).await.0, 422);
 }
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_writer_is_not_blocked_while_the_report_runs() {
-    let f = Fx::new(false).await;
-    let writer = db::connect(&f.dir.join("catalog.db")).unwrap();
-    writer.execute_batch("BEGIN IMMEDIATE").unwrap();
-    // The report only reads; a pending write transaction must neither block it nor be blocked by it.
-    assert_eq!(f.invoke(json!({}), None).await.0, 200);
-    writer.execute_batch("CREATE TABLE probe (a); COMMIT").unwrap();
-}
