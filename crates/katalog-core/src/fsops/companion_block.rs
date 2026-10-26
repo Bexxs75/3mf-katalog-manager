@@ -116,6 +116,32 @@ pub fn companion_block(f: CompanionFacts) -> Verdict {
     Verdict::Carry
 }
 
+/// What the pre-check of a folder rename or move found among the companion rows of the
+/// folder's subtree. The folder moves as one directory entry, so every `_extras` folder
+/// inside travels with it; only the stored paths have to follow.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FolderCompanionFacts {
+    /// Rows of the tree's models and rows whose path lies in the tree.
+    pub rows_total: usize,
+    /// A path outside the folder, or a row of a model that is not part of the tree.
+    pub rows_outside: usize,
+    /// A trash path that is not in the web trash of the model's root.
+    pub rows_foreign_trash: usize,
+    /// An active row whose file is a link, has several names, is no regular file, lies on
+    /// another device, or whose path runs through a link.
+    pub rows_unsafe: usize,
+}
+
+pub fn folder_block(f: FolderCompanionFacts) -> Verdict {
+    if f.rows_total == 0 {
+        return Verdict::Unaffected;
+    }
+    if f.rows_outside > 0 || f.rows_foreign_trash > 0 || f.rows_unsafe > 0 {
+        return Verdict::Blocked;
+    }
+    Verdict::Carry
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,5 +239,31 @@ mod tests {
         assert_eq!(Verdict::Carry.into_result(), Ok(true));
         assert_eq!(Verdict::Blocked.into_result(), Err(Error::HasCompanions));
         assert_eq!(Verdict::Conflict.into_result(), Err(Error::CompanionsConflict));
+    }
+
+    #[test]
+    fn folder_truth_table() {
+        for total in [0usize, 2] {
+            for outside in [0usize, 1] {
+                for trash in [0usize, 1] {
+                    for unsafe_rows in [0usize, 1] {
+                        let f = FolderCompanionFacts {
+                            rows_total: total,
+                            rows_outside: outside,
+                            rows_foreign_trash: trash,
+                            rows_unsafe: unsafe_rows,
+                        };
+                        let want = if total == 0 {
+                            Verdict::Unaffected
+                        } else if outside + trash + unsafe_rows > 0 {
+                            Verdict::Blocked
+                        } else {
+                            Verdict::Carry
+                        };
+                        assert_eq!(folder_block(f), want, "{f:?}");
+                    }
+                }
+            }
+        }
     }
 }

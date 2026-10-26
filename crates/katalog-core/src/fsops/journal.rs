@@ -123,8 +123,8 @@ impl Intent {
 }
 /// Format 1 predates companion data. Entries with companion data are written as
 /// version 2 so an older binary refuses the file instead of ignoring the new fields.
-fn document_version(intents: &[Intent]) -> u32 {
-    if intents.iter().any(Intent::has_companion_data) {
+fn document_version(intents: &[Intent], folders: &[FolderIntent]) -> u32 {
+    if intents.iter().any(Intent::has_companion_data) || folders.iter().any(FolderIntent::has_companion_data) {
         2
     } else {
         1
@@ -169,7 +169,7 @@ impl Journal {
                 let doc: Document =
                     serde_json::from_reader(file).map_err(|_| Error::RestartRequired)?;
                 // A version-1 file never carries companion data; one that does was not written by us.
-                if !matches!(doc.version, 1 | 2) || (doc.version == 1 && document_version(&doc.intents) != 1) {
+                if !matches!(doc.version, 1 | 2) || (doc.version == 1 && document_version(&doc.intents, &doc.folders) != 1) {
                     return Err(Error::RestartRequired);
                 }
                 let mut ids = std::collections::HashSet::new();
@@ -276,7 +276,7 @@ impl Journal {
     }
     pub(super) fn check_capacity(&self) -> Result<()> {
         let bytes = serde_json::to_vec(&Document {
-            version: document_version(&self.intents),
+            version: document_version(&self.intents, &self.folders),
             intents: self.intents.clone(),
             folders: self.folders.clone(),
         })
@@ -294,7 +294,7 @@ impl Journal {
             serde_json::to_writer(
                 &mut file,
                 &Document {
-                    version: document_version(&self.intents),
+                    version: document_version(&self.intents, &self.folders),
                     intents: self.intents.clone(),
                     folders: self.folders.clone(),
                 },

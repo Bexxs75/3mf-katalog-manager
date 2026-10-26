@@ -10,9 +10,14 @@ pub struct FolderState {
     pub parent_id: Option<i64>,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FolderTree {
     folders: Vec<FolderState>,
     files: Vec<FileState>,
+    /// Companion rows that belong to the models of this tree or whose path lies in it.
+    /// Absent from journals written without companions, so they keep their format.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    companions: Vec<CompanionState>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -150,7 +155,27 @@ fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
             files.push(f);
         }
     }
-    Ok(FolderTree { folders, files })
+    // A model's companions sit in `<model>_extras` inside its folder and move with it; the
+    // rows hold absolute paths, so every row of a tree model and every row whose path lies
+    // in the tree is part of the tree. The caller decides which of them it may rewrite.
+    let mut rows = std::collections::BTreeMap::new();
+    for f in &files {
+        for row in carry::read_companion_rows(c, f.id)? {
+            rows.insert(row.id, row);
+        }
+    }
+    let mut stmt = c.prepare(
+        "SELECT id,file_id,name,path,deleted_at,trash_path FROM companion_files WHERE path>=?1||'/' AND path<?1||'0' ORDER BY id",
+    )?;
+    for row in stmt.query_map([&root.path], carry::companion_from_row)? {
+        let row = row?;
+        rows.insert(row.id, row);
+    }
+    Ok(FolderTree {
+        folders,
+        files,
+        companions: rows.into_values().collect(),
+    })
 }
 fn anchor(i: &FolderIntent) -> Result<&FolderState> {
     if i.operation == FolderOperation::Create {
@@ -165,6 +190,9 @@ fn anchor(i: &FolderIntent) -> Result<&FolderState> {
     }
 }
 impl FolderIntent {
+    pub(crate) fn has_companion_data(&self) -> bool {
+        !self.before.companions.is_empty() || !self.after.companions.is_empty()
+    }
     fn source_absolute(&self) -> Option<String> {
         self.source.as_ref().map(|s| {
             Path::new(&self.root_path)
@@ -178,7 +206,11 @@ impl FolderIntent {
         for tree in [&self.before, &self.after] {
             let folder_ids: HashSet<_> = tree.folders.iter().map(|f| f.id).collect();
             let file_ids: HashSet<_> = tree.files.iter().map(|f| f.id).collect();
-            if folder_ids.len() != tree.folders.len() || file_ids.len() != tree.files.len() {
+            let companion_ids: HashSet<_> = tree.companions.iter().map(|c| c.id).collect();
+            if folder_ids.len() != tree.folders.len()
+                || file_ids.len() != tree.files.len()
+                || companion_ids.len() != tree.companions.len()
+            {
                 return Err(Error::Changed);
             }
         }
@@ -241,6 +273,9 @@ impl FolderIntent {
                 }
                 for f in &mut expected.files {
                     f.path = rewrite(&f.path, &root.path, path)?;
+                }
+                for row in &mut expected.companions {
+                    row.path = rewrite(&row.path, &root.path, path)?;
                 }
                 if expected != self.after || self.identity.is_none() {
                     return Err(Error::Changed);
@@ -308,6 +343,18 @@ fn matches(c: &Connection, i: &FolderIntent, after: bool) -> Result<bool> {
             return Ok(false);
         }
     }
+    let companion_ids: HashSet<_> = i
+        .before
+        .companions
+        .iter()
+        .chain(&i.after.companions)
+        .map(|r| r.id)
+        .collect();
+    for id in companion_ids {
+        if carry::read_companion(c, id)?.as_ref() != expected.companions.iter().find(|r| r.id == id) {
+            return Ok(false);
+        }
+    }
     if i.operation == FolderOperation::Relocate
         || (i.operation == FolderOperation::Remove && !after)
     {
@@ -348,6 +395,30 @@ fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
             return Err(Error::Conflict);
         }
     }
+    // Stale rows of the destination subtree (files and companions) would end up inside the
+    // moved tree without belonging to it; refuse before anything moves.
+    if i.operation == FolderOperation::Relocate {
+        if let Some(target) = &i.target {
+            let path = Path::new(&i.root_path).join(target);
+            let path = path.to_str().ok_or(Error::PathUnresolvable)?;
+            for (table, ids) in [
+                ("files", i.after.files.iter().map(|f| f.id).collect::<HashSet<_>>()),
+                ("companion_files", i.after.companions.iter().map(|r| r.id).collect()),
+            ] {
+                let mut stmt = c.prepare(&format!(
+                    "SELECT id,path FROM {table} WHERE path>=?1||'/' AND path<?1||'0'"
+                ))?;
+                for row in stmt.query_map([path], |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+                })? {
+                    let (id, candidate) = row?;
+                    if under(&candidate, path) && !ids.contains(&id) {
+                        return Err(Error::Conflict);
+                    }
+                }
+            }
+        }
+    }
     for f in &i.after.files {
         if c.query_row(
             "SELECT EXISTS(SELECT 1 FROM files WHERE path=?1 AND id<>?2)",
@@ -357,9 +428,14 @@ fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
             return Err(Error::Conflict);
         }
     }
+    for row in &i.after.companions {
+        if carry::path_held(c, &row.path, row.id)? {
+            return Err(Error::Conflict);
+        }
+    }
     Ok(())
 }
-fn commit(c: &mut Connection, i: &FolderIntent, guard_companions: bool) -> Result<()> {
+fn commit(c: &mut Connection, i: &FolderIntent) -> Result<()> {
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
     if !matches(&tx, i, false)? {
         return Err(Error::Changed);
@@ -374,12 +450,6 @@ fn commit(c: &mut Connection, i: &FolderIntent, guard_companions: bool) -> Resul
             )?;
         }
         FolderOperation::Relocate => {
-            // A companion added after the early check must still stop the relocation;
-            // the caller moves the directory back on this error.
-            let ids: Vec<i64> = i.before.files.iter().map(|f| f.id).collect();
-            if guard_companions && operations::any_companions(&tx, &ids)? {
-                return Err(Error::HasCompanions);
-            }
             for f in &i.after.folders {
                 tx.execute(
                     "UPDATE folders SET name=?1,path=?2,parent_id=?3 WHERE id=?4",
@@ -390,6 +460,14 @@ fn commit(c: &mut Connection, i: &FolderIntent, guard_companions: bool) -> Resul
                 tx.execute(
                     "UPDATE files SET path=?1 WHERE id=?2",
                     params![f.path, f.id],
+                )?;
+            }
+            // Same transaction: the folder's files and their companions change paths together.
+            // A row added or changed after the pre-check fails `matches` above instead.
+            for row in &i.after.companions {
+                tx.execute(
+                    "UPDATE companion_files SET path=?1 WHERE id=?2",
+                    params![row.path, row.id],
                 )?;
             }
         }
@@ -496,6 +574,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                     parent_id,
                 }],
                 files: vec![],
+                companions: vec![],
             },
             parent: Some(parent),
         };
@@ -523,7 +602,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.journal.folder_phase(&i.op_id, Phase::Renamed)?;
         #[cfg(test)]
         super::tests::before_mutation();
-        if let Err(e) = self.db.with_conn(|c| commit(c, &i, false)) {
+        if let Err(e) = self.db.with_conn(|c| commit(c, &i)) {
             if self.remove_created(&target, identity).is_err() {
                 return Err(self.journal.block(&i.op_id));
             }
@@ -599,11 +678,10 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.context
             .directory_chain(target.root, &target.parent, Some(identity))?;
         let old = self.db.with_conn(|c| tree(c, before.id))?;
-        // The directory move carries `_extras` folders along but not the paths in `companion_files`.
-        let ids: Vec<i64> = old.files.iter().map(|f| f.id).collect();
-        if self.db.with_conn(|c| operations::any_companions(c, &ids))? {
-            return Err(Error::HasCompanions);
-        }
+        // The directory move carries every `_extras` folder along; the paths in
+        // `companion_files` follow in the commit. Cases that cannot be vouched for stay refused.
+        let facts = self.folder_companion_facts(&old, &before.path, source.root)?;
+        companion_block::folder_block(facts).into_result()?;
         let mut after = old.clone();
         for f in &mut after.folders {
             f.path = rewrite(&f.path, &before.path, &path)?;
@@ -616,6 +694,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         for f in &mut after.files {
             f.path = rewrite(&f.path, &before.path, &path)?;
+        }
+        for row in &mut after.companions {
+            row.path = rewrite(&row.path, &before.path, &path)?;
         }
         let r = &self.context.roots[source.root];
         let i = FolderIntent {
@@ -643,7 +724,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             return Err(e);
         }
         self.journal.folder_phase(&i.op_id, Phase::Renamed)?;
-        if let Err(e) = self.db.with_conn(|c| commit(c, &i, true)) {
+        if let Err(e) = self.db.with_conn(|c| commit(c, &i)) {
             if self.rename_directory(&target, &source, identity).is_err() {
                 return Err(self.journal.block(&i.op_id));
             }
@@ -651,6 +732,55 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             return Err(e);
         }
         self.folder_finish(&i)
+    }
+    /// Looks at every companion row of the tree. Rows that are the folder's own business
+    /// (active ones in `_extras` inside it, or rows in the web trash of this root) are
+    /// rewritten; anything else is counted so the caller can refuse.
+    fn folder_companion_facts(
+        &self,
+        tree: &FolderTree,
+        root_path: &str,
+        root: usize,
+    ) -> Result<companion_block::FolderCompanionFacts> {
+        let root_dev = self.context.roots[root].identity.dev;
+        let model_ids: HashSet<i64> = tree.files.iter().map(|f| f.id).collect();
+        let mut facts = companion_block::FolderCompanionFacts {
+            rows_total: tree.companions.len(),
+            ..Default::default()
+        };
+        for row in &tree.companions {
+            let inside = valid_path(&row.path).is_ok()
+                && under(&row.path, root_path)
+                && row.path != root_path;
+            if !inside || !model_ids.contains(&row.file_id) {
+                facts.rows_outside += 1;
+                continue;
+            }
+            if let Some(trash) = &row.trash_path {
+                match self.context.resolve(trash, Access::Trash) {
+                    Ok(r) if r.root == root && r.name.starts_with(&companion_trash_prefix(row.id)) => (),
+                    Err(Error::Internal) => return Err(Error::Internal),
+                    _ => facts.rows_foreign_trash += 1,
+                }
+                continue;
+            }
+            if row.deleted_at.is_some() {
+                // Removed without a file to look after: only the restore path is stored.
+                continue;
+            }
+            match self.context.resolve(&row.path, Access::Source) {
+                Ok(r) => match FileIdentity::read(&r) {
+                    Ok(fi) if fi.dev == root_dev => (),
+                    Err(Error::NotFound) => (),
+                    Err(Error::Internal) => return Err(Error::Internal),
+                    _ => facts.rows_unsafe += 1,
+                },
+                Err(Error::NotFound) => (),
+                Err(Error::Internal) => return Err(Error::Internal),
+                Err(_) => facts.rows_unsafe += 1,
+            }
+        }
+        Ok(facts)
     }
     fn rename_directory(&self, source: &Resolved, target: &Resolved, id: Identity) -> Result<()> {
         if self.context.directory_identity(source)? != id {
@@ -767,7 +897,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             parent: None,
         };
         self.journal.add_folder(i.clone())?;
-        if let Err(e) = self.db.with_conn(|c| commit(c, &i, false)) {
+        if let Err(e) = self.db.with_conn(|c| commit(c, &i)) {
             self.journal.remove(&i.op_id)?;
             return Err(e);
         }
@@ -886,7 +1016,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             source.parent.sync()?;
             target.parent.sync()?;
             if before {
-                self.db.with_conn(|c| commit(c, i, false))?;
+                self.db.with_conn(|c| commit(c, i))?;
             } else if !after {
                 return Err(Error::Changed);
             }

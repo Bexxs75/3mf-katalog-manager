@@ -51,6 +51,27 @@ impl CarryObservation {
     }
 }
 
+pub(super) fn companion_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CompanionState> {
+    Ok(CompanionState {
+        id: r.get(0)?,
+        file_id: r.get(1)?,
+        name: r.get(2)?,
+        path: r.get(3)?,
+        deleted_at: r.get(4)?,
+        trash_path: r.get(5)?,
+    })
+}
+
+pub(super) fn read_companion(c: &Connection, id: i64) -> Result<Option<CompanionState>> {
+    use rusqlite::OptionalExtension;
+    Ok(c.query_row(
+        "SELECT id,file_id,name,path,deleted_at,trash_path FROM companion_files WHERE id=?1",
+        [id],
+        companion_from_row,
+    )
+    .optional()?)
+}
+
 pub(super) fn read_companion_rows(c: &Connection, file_id: i64) -> Result<Vec<CompanionState>> {
     let mut stmt = c.prepare(
         "SELECT id,file_id,name,path,deleted_at,trash_path FROM companion_files WHERE file_id=?1 ORDER BY id",

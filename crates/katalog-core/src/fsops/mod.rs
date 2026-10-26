@@ -81,6 +81,8 @@ mod companion_gap_tests;
 mod companion_carry_tests;
 #[cfg(test)]
 mod companion_trash_tests;
+#[cfg(test)]
+mod companion_folder_tests;
 pub use journal::*;
 mod operations;
 pub use operations::*;

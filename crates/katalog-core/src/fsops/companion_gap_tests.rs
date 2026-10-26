@@ -1,17 +1,17 @@
 //! Die Web-Dateiverwaltung zieht Begleitdateien (`companion_files`, Ordner
 //! `<Modell>_extras`) beim Umbenennen, Verschieben, in den Papierkorb, beim
 //! Wiederherstellen und beim endgueltigen Loeschen einzelner Modelle mit.
-//! Ordneroperationen lehnt sie weiter ab, solange ein betroffenes Modell
-//! Begleitdateien hat. Die Ordnertests am Ende dieser Datei halten diese Sperre fest.
+//! Ordneroperationen ziehen die Pfade der Begleitdateien in `companion_files` mit
+//! (siehe `companion_folder_tests.rs`); die Ordnertests hier halten den Grundfall fest.
 use super::*;
 use std::{fs, path::PathBuf};
 
-const PNG: &[u8] = &[
+pub(super) const PNG: &[u8] = &[
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52,
 ];
 
 #[derive(Default)]
-struct Ledger;
+pub(super) struct Ledger;
 impl UploadLedger for Ledger {
     fn reset_imported(&mut self, _: &[i64]) -> Result<()> {
         Ok(())
@@ -21,10 +21,10 @@ impl UploadLedger for Ledger {
     }
 }
 
-struct Fx {
-    dir: PathBuf,
-    ops: FileOps<rusqlite::Connection, Ledger>,
-    companion_id: i64,
+pub(super) struct Fx {
+    pub(super) dir: PathBuf,
+    pub(super) ops: FileOps<rusqlite::Connection, Ledger>,
+    pub(super) companion_id: i64,
 }
 impl Drop for Fx {
     fn drop(&mut self) {
@@ -32,20 +32,20 @@ impl Drop for Fx {
     }
 }
 impl Fx {
-    fn root(&self) -> PathBuf {
+    pub(super) fn root(&self) -> PathBuf {
         self.dir.join("root")
     }
-    fn extras(&self) -> PathBuf {
+    pub(super) fn extras(&self) -> PathBuf {
         self.root().join("Foo_extras")
     }
-    fn companion_path(&mut self) -> String {
+    pub(super) fn companion_path(&mut self) -> String {
         let id = self.companion_id;
         self.ops
             .db
             .query_row("SELECT path FROM companion_files WHERE id=?1", [id], |r| r.get(0))
             .unwrap()
     }
-    fn companion_rows(&mut self) -> i64 {
+    pub(super) fn companion_rows(&mut self) -> i64 {
         self.ops
             .db
             .query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0))
@@ -54,7 +54,7 @@ impl Fx {
 }
 
 /// Modell `Foo.3mf` mit `Foo_extras/pic.png` und passendem companion_files-Eintrag.
-fn fixture() -> Fx {
+pub(super) fn fixture() -> Fx {
     let dir = crate::unique_test_dir("fsops_companion_gap");
     let db = crate::db::connect_in_memory().unwrap();
     build(dir, db, true)
@@ -62,14 +62,14 @@ fn fixture() -> Fx {
 
 /// Datei-Datenbank ohne Begleitdatei, damit ein Test zwischen Vorpruefung und
 /// Commit ueber eine zweite Verbindung eine Begleitdatei einfuegen kann.
-fn fixture_on_file() -> (Fx, PathBuf) {
+pub(super) fn fixture_on_file() -> (Fx, PathBuf) {
     let dir = crate::unique_test_dir("fsops_companion_gap");
     let path = dir.join("catalog.db");
     let db = crate::db::connect(&path).unwrap();
     (build(dir, db, false), path)
 }
 
-fn insert_companion_via_second_connection(db_path: &std::path::Path, file_id: i64, pic: &std::path::Path) {
+pub(super) fn insert_companion_via_second_connection(db_path: &std::path::Path, file_id: i64, pic: &std::path::Path) {
     let other = crate::db::connect(db_path).unwrap();
     crate::db::companions::insert_companion(
         &other,
@@ -125,7 +125,7 @@ fn build(dir: PathBuf, db: rusqlite::Connection, with_companion: bool) -> Fx {
     }
 }
 
-fn exists(p: &std::path::Path) -> bool {
+pub(super) fn exists(p: &std::path::Path) -> bool {
     p.exists()
 }
 
@@ -320,7 +320,7 @@ fn verschieben_nur_in_der_datenbank_bleibt_erlaubt() {
 // ---- Ordner ----
 
 /// Ordner `a` (id 2) mit Unterordner `a/b` (id 3), darin `Deep.3mf` (id 3).
-fn add_nested(f: &mut Fx, with_companion: bool) {
+pub(super) fn add_nested(f: &mut Fx, with_companion: bool) {
     let a = f.root().join("a");
     let b = a.join("b");
     fs::create_dir_all(&b).unwrap();
@@ -365,16 +365,20 @@ fn add_nested(f: &mut Fx, with_companion: bool) {
 }
 
 #[test]
-fn ordner_umbenennen_und_verschieben_gesperrt_bei_begleitdatei_im_unterordner() {
+fn ordner_umbenennen_und_verschieben_zieht_begleitdatei_im_unterordner_mit() {
     let mut f = fixture();
     add_nested(&mut f, true);
-    assert_eq!(f.ops.rename_folder(2, "neu"), Err(Error::HasCompanions));
-    assert_eq!(f.ops.move_folder(2, Some(1)), Err(Error::HasCompanions));
-    assert!(exists(&f.root().join("a/b/Deep_extras/pic.png")));
-    assert!(!exists(&f.root().join("neu")));
-    assert!(!exists(&f.root().join("sub/a")));
-    let p: String = f.ops.db.query_row("SELECT path FROM folders WHERE id=2", [], |r| r.get(0)).unwrap();
-    assert_eq!(p, f.root().join("a").to_str().unwrap());
+    f.ops.rename_folder(2, "neu").unwrap();
+    let renamed = f.root().join("neu/b/Deep_extras/pic.png");
+    assert!(exists(&renamed));
+    let row: String = f.ops.db.query_row("SELECT path FROM companion_files WHERE file_id=3", [], |r| r.get(0)).unwrap();
+    assert_eq!(row, renamed.to_str().unwrap());
+    f.ops.move_folder(2, Some(1)).unwrap();
+    let moved = f.root().join("sub/neu/b/Deep_extras/pic.png");
+    assert!(exists(&moved));
+    let row: String = f.ops.db.query_row("SELECT path FROM companion_files WHERE file_id=3", [], |r| r.get(0)).unwrap();
+    assert_eq!(row, moved.to_str().unwrap());
+    assert!(f.ops.journal.is_empty());
 }
 
 #[test]
@@ -451,19 +455,6 @@ fn verschieben_ohne_pfadaenderung_bleibt_mit_begleitdatei_erlaubt() {
 }
 
 #[test]
-fn ordner_gesperrt_wenn_papierkorb_modell_mit_begleitdatei_im_teilbaum_liegt() {
-    let mut f = fixture();
-    add_nested(&mut f, true);
-    f.ops
-        .db
-        .execute("UPDATE files SET deleted_at='2026-01-02T00:00:00Z' WHERE id=3", [])
-        .unwrap();
-    assert_eq!(f.ops.rename_folder(2, "neu"), Err(Error::HasCompanions));
-    assert_eq!(f.ops.move_folder(2, Some(1)), Err(Error::HasCompanions));
-    assert!(exists(&f.root().join("a/b/Deep_extras/pic.png")));
-}
-
-#[test]
 fn begleitdatei_nach_vorpruefung_rollt_umbenennen_zurueck() {
     let (mut f, db_path) = fixture_on_file();
     let pic = f.extras().join("pic.png");
@@ -497,7 +488,7 @@ fn begleitdatei_nach_vorpruefung_rollt_ordner_umbenennen_zurueck() {
             insert_companion_via_second_connection(&db_path, 3, &pic)
         }));
     });
-    assert_eq!(f.ops.rename_folder(2, "neu"), Err(Error::HasCompanions));
+    assert_eq!(f.ops.rename_folder(2, "neu"), Err(Error::Changed));
     assert!(exists(&f.root().join("a/b/Deep.3mf")), "Ordner zurueck am alten Ort");
     assert!(!exists(&f.root().join("neu")));
     let p: String = f.ops.db.query_row("SELECT path FROM folders WHERE id=2", [], |r| r.get(0)).unwrap();

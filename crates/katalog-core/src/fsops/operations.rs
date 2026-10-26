@@ -127,18 +127,6 @@ fn available(c: &Connection, s: &FileState) -> Result<()> {
         Ok(())
     }
 }
-/// Counts every companion row, including soft-deleted ones: the web file
-/// operations move neither `<model>_extras` nor the paths in `companion_files`,
-/// so any row means a disk or path change would leave orphans or dead paths.
-pub(super) fn any_companions(c: &Connection, file_ids: &[i64]) -> Result<bool> {
-    let mut stmt = c.prepare("SELECT EXISTS(SELECT 1 FROM companion_files WHERE file_id=?1)")?;
-    for id in file_ids {
-        if stmt.query_row([id], |r| r.get::<_, bool>(0))? {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
 /// Operations that move, trash, restore or delete a model must see the companion rows
 /// exactly as the journal remembers them; a database-only move leaves `_extras` alone.
 fn touches_companions(intent: &Intent) -> bool {

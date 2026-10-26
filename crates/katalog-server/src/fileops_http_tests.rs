@@ -808,7 +808,7 @@ async fn empty_trash_with_only_blocked_entries_ends_without_token_limit_or_backu
 }
 
 #[tokio::test]
-async fn folder_rename_and_move_with_companion_in_subtree_are_rejected() {
+async fn folder_rename_and_move_with_a_companion_row_outside_the_folder_are_rejected() {
     let f = Fixture::new(true).await;
     let parent = {
         let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
@@ -838,6 +838,67 @@ async fn folder_rename_and_move_with_companion_in_subtree_are_rejected() {
         assert_eq!(value(r).await["kind"], "has_companions", "{cmd}");
     }
     assert!(model.exists());
+}
+
+#[tokio::test]
+async fn folder_rename_and_move_carry_companions_and_rewrite_their_paths() {
+    let f = Fixture::new(true).await;
+    let parent = {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("INSERT INTO folders(name,path) VALUES('root',?1)", [f.dir.join("models").to_str().unwrap()]).unwrap();
+        c.last_insert_rowid().to_string()
+    };
+    let a = value(f.invoke("create_folder", json!({"parentId":parent,"name":"A"})).await).await;
+    let other = value(f.invoke("create_folder", json!({"parentId":parent,"name":"Other"})).await).await;
+    let folder_id: i64 = a.as_str().unwrap().parse().unwrap();
+    let model = f.dir.join("models/A/m.3mf");
+    std::fs::write(&model, b"model").unwrap();
+    let file_id = {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::test_insert_minimal_file(&c, model.to_str().unwrap(), Some(folder_id)).unwrap()
+    };
+    let (cid, _) = add_real_companion(&f, &file_id.to_string(), "A/m_extras", "pic.png");
+    let r = f.invoke("rename_folder", json!({"folderId":a,"name":"B"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(companion_path(&f, cid), f.dir.join("models/B/m_extras/pic.png").to_str().unwrap());
+    let r = f.invoke("move_folder", json!({"folderId":a,"newParentId":other})).await;
+    assert_eq!(r.status(), 200);
+    let moved = f.dir.join("models/Other/B/m_extras/pic.png");
+    assert!(moved.is_file());
+    assert_eq!(companion_path(&f, cid), moved.to_str().unwrap());
+    let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    let model_path: String = conn.query_row("SELECT path FROM files WHERE id=?1", [file_id], |r| r.get(0)).unwrap();
+    assert_eq!(model_path, f.dir.join("models/Other/B/m.3mf").to_str().unwrap());
+}
+
+#[tokio::test]
+async fn folder_rename_with_a_symlinked_extras_folder_stays_a_409_has_companions() {
+    let f = Fixture::new(true).await;
+    let parent = {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("INSERT INTO folders(name,path) VALUES('root',?1)", [f.dir.join("models").to_str().unwrap()]).unwrap();
+        c.last_insert_rowid().to_string()
+    };
+    let a = value(f.invoke("create_folder", json!({"parentId":parent,"name":"A"})).await).await;
+    let folder_id: i64 = a.as_str().unwrap().parse().unwrap();
+    let model = f.dir.join("models/A/m.3mf");
+    std::fs::write(&model, b"model").unwrap();
+    let file_id = {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::test_insert_minimal_file(&c, model.to_str().unwrap(), Some(folder_id)).unwrap()
+    };
+    let (cid, real) = add_real_companion(&f, &file_id.to_string(), "real", "pic.png");
+    std::os::unix::fs::symlink(real.parent().unwrap(), f.dir.join("models/A/m_extras")).unwrap();
+    let linked = f.dir.join("models/A/m_extras/pic.png");
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("UPDATE companion_files SET path=?1 WHERE id=?2", rusqlite::params![linked.to_str().unwrap(), cid]).unwrap();
+    }
+    let r = f.invoke("rename_folder", json!({"folderId":a,"name":"B"})).await;
+    assert_eq!(r.status(), 409);
+    assert_eq!(value(r).await["kind"], "has_companions");
+    assert!(model.exists() && !f.dir.join("models/B").exists());
+    assert_eq!(companion_path(&f, cid), linked.to_str().unwrap());
 }
 
 fn trash_names(f: &Fixture) -> Vec<String> {
