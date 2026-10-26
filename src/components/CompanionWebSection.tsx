@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useFormatCount, useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import { displayName } from '../lib/displayName';
 import { toAppError, type AppError } from '../lib/errors';
 import { getSession, useCanManageFiles } from '../lib/webSession';
 import { ErrorText } from '../diagnostics/ErrorText';
-import { companionDownloadUrl, companionImageData, listWebCompanions, removeWebCompanion, restoreWebCompanion } from '../lib/api/companions';
+import { COMPANION_ACCEPT, companionDownloadUrl, companionSizeProblem, maxCompanionBytes, companionImageData, isAllowedCompanionName, listWebCompanions, removeWebCompanion, restoreWebCompanion, uploadWebCompanion } from '../lib/api/companions';
+import { fileOpsError } from '../lib/fileOpsErrors';
 import type { WebCompanion } from '../types';
 import { Icon } from './Icon';
 import { ImageLightbox, buttonClass, kindIcon, useVisibleOnce } from './CompanionSection';
@@ -82,6 +83,15 @@ export function CompanionWebSection({ fileId, variant }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<AppError | null>(null);
   const [actionError, setActionError] = useState<AppError | null>(null);
+  const formatCount = useFormatCount();
+  const addButton = useRef<HTMLButtonElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const focusAdd = useRef(false);
+  const currentFile = useRef(fileId);
+  currentFile.current = fileId;
+  const [uploading, setUploading] = useState<{ name: string; index: number; total: number; percent: number } | null>(null);
+  const [failures, setFailures] = useState<{ name: string; error: AppError }[]>([]);
+  const [dragging, setDragging] = useState(false);
   const [images, setImages] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<{ id: string; name: string } | null>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -90,7 +100,7 @@ export function CompanionWebSection({ fileId, variant }: Props) {
   useEffect(() => {
     let current = true;
     setItems([]); setLoaded(false); setLoadError(null); setActionError(null); setImages({}); setPreview(null);
-    setNotice(''); setUndoTarget(null); setRestoreError(null);
+    setNotice(''); setUndoTarget(null); setRestoreError(null); setFailures([]); setDragging(false);
     requestedImages.current = new Set();
     listWebCompanions(fileId, canManage).then((list) => {
       if (current) setItems(Array.isArray(list) ? list : []);
@@ -101,6 +111,11 @@ export function CompanionWebSection({ fileId, variant }: Props) {
     });
     return () => { current = false; };
   }, [fileId, canManage]);
+
+  // The button is disabled while files go up; the focus can only return once it is enabled again.
+  useEffect(() => {
+    if (!busy && focusAdd.current) { focusAdd.current = false; addButton.current?.focus(); }
+  }, [busy]);
 
   // The undo offer is short-lived, like on the desktop.
   useEffect(() => {
@@ -143,6 +158,46 @@ export function CompanionWebSection({ fileId, variant }: Props) {
     } catch (e) { setRestoreError(toAppError(e)); }
   });
 
+  // The files go up one after the other; each failure is named, the others still go through.
+  const addFiles = async (files: File[]) => {
+    if (busy || files.length === 0 || !canManage) return;
+    const target = fileId;
+    setBusy(true); setActionError(null); setRestoreError(null); setNotice(''); setUndoTarget(null); setFailures([]);
+    const failed: { name: string; error: AppError }[] = [];
+    let added = 0;
+    try {
+      for (const [index, file] of files.entries()) {
+        if (currentFile.current !== target) return;
+        setUploading({ name: file.name, index: index + 1, total: files.length, percent: 0 });
+        try {
+          if (!isAllowedCompanionName(file.name)) throw fileOpsError({ kind: 'companion_type' });
+          const problem = companionSizeProblem(file);
+          if (problem === 'empty') throw fileOpsError({ plain: true, fileOpsMessage: t('companionEmpty').replace('{name}', file.name) });
+          if (problem === 'too_large') throw fileOpsError({ plain: true, fileOpsMessage: t('companionTooLarge').replace('{name}', file.name).replace('{size}', formatBytes(file.size, language)).replace('{max}', formatBytes(maxCompanionBytes(), language)) });
+          await uploadWebCompanion(target, file, (percent) => setUploading((u) => (u ? { ...u, percent } : u)));
+          added++;
+        } catch (e) { failed.push({ name: file.name, error: toAppError(e) }); }
+      }
+    } finally {
+      if (currentFile.current === target) {
+        setUploading(null); setFailures(failed);
+        if (added > 0) setNotice(formatCount(t('companionsAdded'), added));
+        await reload();
+        focusAdd.current = true;
+        setBusy(false);
+      }
+    }
+  };
+  const dropProps = canManage ? {
+    onDragOver: (event: React.DragEvent) => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); setDragging(true); } },
+    onDragLeave: (event: React.DragEvent) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); },
+    onDrop: (event: React.DragEvent) => {
+      if (!event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault(); setDragging(false);
+      void addFiles(Array.from(event.dataTransfer.files));
+    },
+  } : {};
+
   // Pictures are fetched one by one when their tile shows up, never with the list.
   const loadImage = useCallback((item: WebCompanion) => {
     if (!item.previewable || requestedImages.current.has(item.id)) return;
@@ -168,10 +223,34 @@ export function CompanionWebSection({ fileId, variant }: Props) {
   const rowItems = live.filter((item) => item.kind !== 'image' || item.missing);
 
   return (
-    <section aria-labelledby={headingId} className={wrapperClass}>
-      <h3 id={headingId} ref={headingRef} tabIndex={-1} className={`pb-2 outline-none ${headingClass}`} style={headingStyle}>
-        {t('companionsHeading')}{live.length > 0 && ` (${live.length})`}
-      </h3>
+    <section aria-labelledby={headingId} className={`${wrapperClass}${dragging ? ' outline outline-2 outline-dashed outline-[var(--accent)] -outline-offset-2' : ''}`} {...dropProps}>
+      <div className="flex items-center gap-2 pb-2">
+        <h3 id={headingId} ref={headingRef} tabIndex={-1} className={`flex-1 outline-none ${headingClass}`} style={headingStyle}>
+          {t('companionsHeading')}{live.length > 0 && ` (${live.length})`}
+        </h3>
+        {canManage && (
+          <>
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              accept={COMPANION_ACCEPT}
+              tabIndex={-1}
+              aria-hidden="true"
+              className="sr-only"
+              onChange={(event) => {
+                const files = Array.from(event.currentTarget.files ?? []);
+                event.currentTarget.value = '';
+                void addFiles(files);
+              }}
+            />
+            <button ref={addButton} type="button" disabled={busy} onClick={() => fileInput.current?.click()} className={buttonClass}>
+              {t('companionsAdd')}
+            </button>
+          </>
+        )}
+      </div>
+      {canManage && live.length === 0 && loaded && !uploading && <p className="pb-1 text-compact-meta text-[var(--ink-3)]">{t('companionDropHint')}</p>}
 
       {loaded && !loadError && live.length === 0 && (
         <p className="text-small text-[var(--ink-3)]">{t('companionsEmpty')}</p>
@@ -251,6 +330,17 @@ export function CompanionWebSection({ fileId, variant }: Props) {
         </div>
       )}
 
+      {uploading && (
+        <div role="status" className="pt-2 text-small text-[var(--ink-2)] break-words">
+          {t('companionUploading').replace('{name}', displayName(uploading.name)).replace('{index}', String(uploading.index)).replace('{total}', String(uploading.total)).replace('{percent}', String(uploading.percent))}
+          <progress value={uploading.percent} max={100} aria-label={displayName(uploading.name)} className="block w-full h-1.5 mt-1" />
+        </div>
+      )}
+      {failures.map((failure, index) => (
+        <p key={index} role="alert" className="pt-2 text-small text-[var(--accent)] break-words">
+          {t('companionAddFailed').replace('{name}', displayName(failure.name))} <ErrorText error={failure.error} />
+        </p>
+      ))}
       {notice && (
         <p role="status" className="pt-2 text-small text-[var(--ink-2)] break-words">
           {notice}

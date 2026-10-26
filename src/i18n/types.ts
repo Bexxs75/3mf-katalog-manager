@@ -974,6 +974,10 @@ export interface Translations {
   companionAddFailed: string;
   companionsLoadFailed: string;
   companionsAdded: PluralForms;
+  companionUploading: string;
+  companionTooLarge: string;
+  companionEmpty: string;
+  companionDropHint: string;
   companionRestoreFailed: string;
   companionsRemovedToggle: string;
   companionRemovedDaysLeft: PluralForms;

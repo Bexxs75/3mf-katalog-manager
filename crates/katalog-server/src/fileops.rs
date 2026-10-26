@@ -11,6 +11,8 @@ pub(super) struct Runtime {
     pub(super) state: Mutex<RuntimeState>,
     blocked: AtomicBool,
     op_ids: Mutex<Vec<String>>,
+    /// One companion upload at a time, so at most one temporary file of up to the maximum size is being written.
+    pub(super) companion_slot: Arc<tokio::sync::Semaphore>,
 }
 pub(super) struct RuntimeState {
     ops: Ops,
@@ -25,6 +27,7 @@ struct Snapshot {
 impl Runtime {
     pub(super) fn new(ops: Ops) -> Self {
         Self {
+            companion_slot: Arc::new(tokio::sync::Semaphore::new(1)),
             blocked: AtomicBool::new(ops.journal.is_blocked()),
             op_ids: Mutex::new(ops.journal.pending_op_ids()),
             state: Mutex::new(RuntimeState {
@@ -79,20 +82,29 @@ pub(super) async fn list_folders(app: &App) -> Option<Response> {
 fn err(status: u16, kind: &str) -> Box<Response> {
     Box::new(failure(status, kind))
 }
-fn core_error(e: fsops::Error) -> Box<Response> {
+pub(super) fn core_error(e: fsops::Error) -> Box<Response> {
     use fsops::Error::*;
     err(
         match e {
             InvalidName | InvalidArguments => 400,
             NotFound => 404,
             Protected | HasCompanions | CompanionsConflict | CompanionsChanged => 409,
-            CompanionLimit => 422,
+            CompanionLimit | CompanionContent => 422,
+            CompanionType => 415,
+            CompanionTooLarge => 413,
+            UploadTimeout => 408,
+            UploadLength => 400,
+            InsufficientStorage => 507,
             RestartRequired => 503,
             Internal => 500,
             NotStarted => 409,
             _ => 409,
         },
-        &e.to_string(),
+        // The upload route names its two body errors like the model upload does.
+        &match e {
+            fsops::Error::UploadLength => "length_mismatch".to_owned(),
+            _ => e.to_string(),
+        },
     )
 }
 pub(super) fn retry(seconds: u64) -> Box<Response> {
@@ -370,7 +382,7 @@ pub(super) async fn invoke(
             cancellation,
         );
         if state.ops.journal.is_blocked() {
-            *rt.op_ids.lock().unwrap() = state.ops.journal.pending_op_ids();
+            *rt.op_ids.lock().unwrap() = state.ops.journal.pending_manual_op_ids();
             rt.blocked.store(true, Ordering::Release)
         }
         if let Some(upload) = &app.uploads {
@@ -671,5 +683,222 @@ mod deadline_tests {
         assert!(c.allowed());
         valid.store(false, std::sync::atomic::Ordering::Release);
         assert!(!c.allowed());
+    }
+}
+
+/// Reads the pieces of a streamed body that the async side hands over.
+struct BodyReader {
+    chunks: tokio::sync::mpsc::Receiver<std::io::Result<axum::body::Bytes>>,
+    current: axum::body::Bytes,
+}
+impl std::io::Read for BodyReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            if !self.current.is_empty() {
+                let n = self.current.len().min(buf.len());
+                buf[..n].copy_from_slice(&self.current.split_to(n));
+                return Ok(n);
+            }
+            match self.chunks.blocking_recv() {
+                Some(Ok(bytes)) => self.current = bytes,
+                Some(Err(e)) => return Err(e),
+                None => return Ok(0),
+            }
+        }
+    }
+}
+
+/// Hands the body to the blocking side piece by piece. Waiting for the runtime does not
+/// count as idle time; a body that sends nothing for a minute, or that breaks off, ends
+/// the stream with an error the core turns into `upload_timeout` / `length_mismatch`.
+async fn pump(body: Body, chunks: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>, idle: Duration) {
+    use hyper::body::Body as _;
+    use std::io::{Error, ErrorKind};
+    let mut body = body;
+    let end = tokio::time::Instant::now() + Duration::from_secs(6 * 3600);
+    loop {
+        let frame = tokio::time::timeout_at(
+            (tokio::time::Instant::now() + idle).min(end),
+            std::future::poll_fn(|cx| std::pin::Pin::new(&mut body).poll_frame(cx)),
+        )
+        .await;
+        let data = match frame {
+            Err(_) => {
+                let _ = chunks.send(Err(Error::from(ErrorKind::TimedOut))).await;
+                return;
+            }
+            Ok(None) => return,
+            Ok(Some(Err(_))) => {
+                let _ = chunks.send(Err(Error::from(ErrorKind::ConnectionReset))).await;
+                return;
+            }
+            Ok(Some(Ok(frame))) => match frame.into_data() {
+                Ok(data) => data,
+                Err(_) => continue,
+            },
+        };
+        if chunks.send(Ok(data)).await.is_err() {
+            return;
+        }
+    }
+}
+
+/// How long a body may stall before the upload is given up.
+pub(super) const COMPANION_IDLE: Duration = Duration::from_secs(60);
+
+/// The import gate: file operations and imports exclude each other. `wait` allows a short
+/// wait for it, used where giving up would throw away an upload that is already on disk.
+fn import_gate(app: &App, rt: &Runtime, wait: bool) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, Box<Response>> {
+    let Some(upload) = &app.uploads else { return Ok(None) };
+    let mut tries = if wait { 300 } else { 1 };
+    let permit = loop {
+        match upload.active.clone().try_acquire_owned() {
+            Ok(p) => break p,
+            Err(_) if tries > 1 => {
+                tries -= 1;
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(_) => return Err(Box::new(crate::write::retry(503))),
+        }
+    };
+    match upload.store.has_importing() {
+        Ok(false) => Ok(Some(permit)),
+        Ok(true) => Err(Box::new(crate::write::retry(503))),
+        Err(_) => {
+            rt.blocked.store(true, Ordering::Release);
+            Err(Box::new(rt.blocked_response()))
+        }
+    }
+}
+
+/// Writes one uploaded companion file. The runtime and the import gate are held only to
+/// start the job and to finish it; the body itself streams into the temporary file with
+/// neither held, so other file operations go on while a large file arrives.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn add_companion(
+    app: Arc<App>,
+    current: Session,
+    file_id: i64,
+    name: String,
+    length: u64,
+    body: Body,
+    progress: Arc<WriteProgress>,
+    admission: tokio::sync::OwnedSemaphorePermit,
+    idle: Duration,
+) -> Response {
+    if !app.config.file_ops {
+        return failure(404, "fileops_disabled");
+    }
+    let Some(rt) = app.fileops.clone() else {
+        return failure(503, "restart_required");
+    };
+    if !rt.available() {
+        return rt.blocked_response();
+    }
+    let Ok(slot) = rt.companion_slot.clone().try_acquire_owned() else {
+        let mut r = failure(503, "upload_busy");
+        r.headers_mut().insert(header::RETRY_AFTER, "5".parse().unwrap());
+        return r;
+    };
+    progress.set_file_ids(&[file_id]);
+    let (sender, chunks) = tokio::sync::mpsc::channel(4);
+    let pumping = tokio::spawn(pump(body, sender, idle));
+    let max = app.config.companion_max_bytes;
+    let worker_rt = rt.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let rt = worker_rt;
+        let (_admission, _slot) = (admission, slot);
+        let mut reader = BodyReader { chunks, current: Default::default() };
+        // The name and the head of the body are judged before anything is locked or made.
+        if let Err(e) = fsops::prepare_companion_name(&name, length, max) {
+            return *core_error(e);
+        }
+        let head = match fsops::read_companion_head(length, &mut reader) {
+            Ok(h) => h,
+            Err(e) => return *core_error(e),
+        };
+        let mut pending = {
+            let _import = match import_gate(&app, &rt, false) {
+                Ok(p) => p,
+                Err(r) => return *r,
+            };
+            if !valid_session(&app, &current) {
+                return failure(401, "session_expired");
+            }
+            let mut state = match rt.state.try_lock() {
+                Ok(s) => s,
+                Err(std::sync::TryLockError::WouldBlock) => return crate::write::retry(503),
+                Err(_) => {
+                    rt.blocked.store(true, Ordering::Release);
+                    return rt.blocked_response();
+                }
+            };
+            if !rt.available() || state.ops.journal.is_blocked() {
+                return rt.blocked_response();
+            }
+            let begun = state.ops.begin_companion_add(file_id, &name, length, max, &head);
+            note_journal(&rt, &state);
+            match begun {
+                Ok(p) => p,
+                Err(e) => return *core_error(e),
+            }
+        };
+        let streamed = fsops::stream_companion(&mut pending, &mut reader);
+        // Also for an undo: it may remove a folder, which an import must not see half-way. If the gate
+        // stays busy the undo goes ahead without it, since it only touches the upload's own files.
+        let gate = import_gate(&app, &rt, true);
+        let mut state = match rt.state.lock() {
+            Ok(s) => s,
+            Err(_) => {
+                rt.blocked.store(true, Ordering::Release);
+                return rt.blocked_response();
+            }
+        };
+        let result = match (streamed, gate) {
+            (Err(e), _) => Err(state.ops.abort_companion_add(pending, e)),
+            (Ok(()), Err(busy)) => {
+                state.ops.abort_companion_add(pending, fsops::Error::NotStarted);
+                note_journal(&rt, &state);
+                return *busy;
+            }
+            (Ok(()), Ok(_import)) if state.ops.journal.is_blocked() => return rt.blocked_response(),
+            (Ok(()), Ok(_import)) => {
+                // A session that ended during the upload must not leave a file behind.
+                let mut allowed = || valid_session(&app, &current);
+                state.ops.place_companion(pending, &mut allowed)
+            }
+        };
+        note_journal(&rt, &state);
+        match result {
+            Ok(added) => {
+                progress.set_companion_ids(&[added.id]);
+                progress.completed_items.store(1, Ordering::Relaxed);
+                Json(json!({
+                    "id": added.id.to_string(),
+                    "fileId": added.file_id.to_string(),
+                    "name": added.name,
+                    "kind": added.kind.as_str(),
+                    "sizeBytes": added.size,
+                }))
+                .into_response()
+            }
+            Err(fsops::Error::NotStarted) if !valid_session(&app, &current) => failure(401, "session_expired"),
+            Err(e) => *core_error(e),
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        rt.blocked.store(true, Ordering::Release);
+        failure(503, "restart_required")
+    });
+    pumping.abort();
+    result
+}
+
+/// Tells the runtime when the journal gave up, so that the next request is refused.
+fn note_journal(rt: &Runtime, state: &RuntimeState) {
+    if state.ops.journal.is_blocked() {
+        *rt.op_ids.lock().unwrap() = state.ops.journal.pending_manual_op_ids();
+        rt.blocked.store(true, Ordering::Release)
     }
 }

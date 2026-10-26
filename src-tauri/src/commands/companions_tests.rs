@@ -134,6 +134,25 @@ fn text_with_a_nul_byte_or_invalid_utf8_is_refused() {
 }
 
 #[test]
+fn a_text_file_is_checked_beyond_the_inspected_head_when_it_is_copied() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let mut late_nul = vec![b'a'; CONTENT_CHECK_BYTES + 500];
+    late_nul[CONTENT_CHECK_BYTES + 100] = 0;
+    let mut late_bad = vec![b'a'; CONTENT_CHECK_BYTES + 500];
+    late_bad[CONTENT_CHECK_BYTES + 100] = 0xff;
+    for (name, bytes) in [("nul.txt", late_nul), ("bad.md", late_bad)] {
+        let source = f.source(name, &bytes);
+        assert!(add_companion_with_conn(&f.conn, id, &source, &[]).is_err(), "{name}");
+    }
+    assert!(!f.root.join("Foo_extras").exists(), "nothing was made for a refused file");
+    let mut fine = vec![b'a'; CONTENT_CHECK_BYTES - 1];
+    fine.extend("\u{20ac}\u{20ac}".as_bytes());
+    let row = f.add(id, "fine.txt", &fine);
+    assert_eq!(std::fs::read(&row.path).unwrap(), fine, "a long text with a character across the head boundary is copied whole");
+}
+
+#[test]
 fn a_multibyte_character_cut_by_the_inspected_block_is_not_an_error() {
     let mut cut = vec![b'a'; CONTENT_CHECK_BYTES - 1];
     cut.push(0xC3);
@@ -682,6 +701,20 @@ fn a_symlinked_companion_is_neither_opened_nor_previewed() {
     assert!(image_data_with_conn(&f.conn, pic.id, &[]).is_err());
     assert!(remove_companion_with_conn(&f.conn, pic.id, &f.trash).is_err());
     assert!(real.exists());
+}
+
+#[test]
+fn a_file_bigger_than_the_adding_limit_can_still_be_opened_but_not_added() {
+    // The web interface accepts much bigger files than the desktop adds; such a row opens fine here.
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let doc = f.add(id, "doc.pdf", PDF);
+    sparse_file(Path::new(&doc.path), PDF, MAX_COMPANION_BYTES + 1);
+    assert_eq!(open_info_with_conn(&f.conn, doc.id, &[]).unwrap().kind, "pdf");
+    sparse_file(Path::new(&doc.path), PDF, MAX_OPEN_BYTES + 1);
+    assert!(open_info_with_conn(&f.conn, doc.id, &[]).is_err(), "above even the web limit");
+    sparse_file(&f.outside.join("huge.pdf"), PDF, MAX_COMPANION_BYTES + 1);
+    assert!(add_companion_with_conn(&f.conn, id, &f.outside.join("huge.pdf"), &[]).is_err(), "adding keeps 50 MiB");
 }
 
 #[test]

@@ -292,6 +292,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: carry.steps,
             extras_dir: None,
             companion_rows: carry.rows,
+            companion_add: None,
         };
         self.journal.add(intent.clone())?;
         #[cfg(test)]
@@ -353,6 +354,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: carry.steps,
             extras_dir: carry.extras_dir,
             companion_rows: carry.rows,
+            companion_add: None,
         };
         let temp = intent
             .temporary
@@ -614,6 +616,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: carry.steps,
             extras_dir: None,
             companion_rows: carry.rows,
+            companion_add: None,
         };
         self.journal.add(intent.clone())?;
         #[cfg(test)]

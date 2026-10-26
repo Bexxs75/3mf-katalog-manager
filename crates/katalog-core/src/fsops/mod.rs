@@ -32,6 +32,18 @@ pub enum Error {
     CompanionsChanged,
     /// The model already has the most companion files it may have.
     CompanionLimit,
+    /// An uploaded companion file has an extension that is not on the allowlist.
+    CompanionType,
+    /// An uploaded companion file's content does not match its extension, or is empty.
+    CompanionContent,
+    /// An uploaded companion file is larger than a companion file may be.
+    CompanionTooLarge,
+    /// An upload's body stalled for too long.
+    UploadTimeout,
+    /// An upload's body is shorter or longer than announced, or broke off.
+    UploadLength,
+    /// Writing the upload would leave too little free space.
+    InsufficientStorage,
     RestartRequired,
     NotStarted,
     Internal,
@@ -58,6 +70,8 @@ impl From<std::io::Error> for Error {
             Some(libc::EEXIST | libc::ENOTEMPTY) => Self::Conflict,
             Some(libc::ENOENT) => Self::NotFound,
             Some(libc::ELOOP | libc::ENOTDIR) => Self::PathUnresolvable,
+            // Out of space or quota: the caller can free some, so it is not an internal fault.
+            Some(libc::ENOSPC | libc::EDQUOT | libc::EFBIG) => Self::InsufficientStorage,
             _ => Self::Internal,
         }
     }
@@ -71,6 +85,7 @@ impl From<rusqlite::Error> for Error {
     }
 }
 mod carry;
+mod companion_add;
 mod companion_edit;
 mod companion_block;
 mod trash_carry;
@@ -88,10 +103,13 @@ mod companion_trash_tests;
 mod companion_folder_tests;
 #[cfg(test)]
 mod companion_edit_tests;
+#[cfg(test)]
+mod companion_add_tests;
 pub use journal::*;
 mod operations;
 pub use operations::*;
 pub use companion_block::*;
+pub use companion_add::*;
 pub use companion_edit::*;
 pub use trash_view::*;
 

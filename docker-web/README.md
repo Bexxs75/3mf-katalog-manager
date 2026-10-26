@@ -53,6 +53,13 @@ braucht dort sowie bei DB und Auth-Datei Schreibrechte. Upload-Dateien erhalten
 mit DB-, Auth-, Trash- oder Static-Verzeichnissen verhindern den Start. Andere
 Modellfreigaben können lesend bleiben.
 
+`KATALOG_COMPANION_MAX_MB` ist die Größengrenze einer einzelnen Begleitdatei
+(Hochladen und Herunterladen) in MiB (Standard 1024, 1–4096); sie gilt nur mit
+`KATALOG_FILE_OPS=1`. Begleitdateien werden beim Hochladen direkt in den
+`<Modell>_extras`-Ordner gestreamt und nicht im Speicher gesammelt; es läuft
+höchstens ein Begleitdatei-Upload gleichzeitig, und der freie Platz muss die
+Dateigröße plus 256 MiB Reserve übersteigen.
+
 `KATALOG_UPLOAD_MAX_MB` ist die Dateigrenze in MiB (Standard 1024, 1–4096),
 `KATALOG_UPLOAD_MAX_FILES` begrenzt gleichzeitig laufende Uploads (Standard 2,
 1–32). STL/OBJ sind zusätzlich auf 512 MiB begrenzt. Niedrigere Parsergrenzen:
@@ -121,6 +128,12 @@ Create the upload directory first (0755) and mount it writable. It must be under
 access there and to DB/auth storage. Uploaded files use 0644. Startup rejects an
 upload directory symlink or any ancestor/descendant overlap with DB, auth, trash
 or static directories. Other model shares can remain read-only.
+
+`KATALOG_COMPANION_MAX_MB` sets the size limit of one companion file (upload and
+download) in MiB (default 1024, range 1–4096); it applies with `KATALOG_FILE_OPS=1`
+only. Companion files are streamed straight into the `<model>_extras` folder and are
+not collected in memory; at most one companion upload runs at a time, and free space
+must exceed the file size plus a 256 MiB reserve.
 
 `KATALOG_UPLOAD_MAX_MB` sets the per-file MiB limit (default 1024, range 1–4096);
 `KATALOG_UPLOAD_MAX_FILES` limits concurrent uploads (default 2, range 1–32).

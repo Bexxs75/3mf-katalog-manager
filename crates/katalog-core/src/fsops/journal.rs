@@ -31,11 +31,13 @@ pub enum Operation {
     CompanionRestore,
     /// One companion file that was removed on its own is unlinked for good (empty trash).
     CompanionPurge,
+    /// A new companion file is written next to a model; the model stays.
+    CompanionAdd,
 }
 impl Operation {
     /// Operations of format version 3: they act on a single companion, not on a model.
     pub fn is_companion_edit(self) -> bool {
-        matches!(self, Self::CompanionTrash | Self::CompanionRestore | Self::CompanionPurge)
+        matches!(self, Self::CompanionTrash | Self::CompanionRestore | Self::CompanionPurge | Self::CompanionAdd)
     }
 }
 /// One `companion_files` row as the journal remembers it, so recovery can tell
@@ -58,6 +60,26 @@ pub struct CompanionStep {
     pub after: Option<CompanionState>,
     pub source: Option<String>,
     pub target: Option<String>,
+    pub identity: Option<FileIdentity>,
+}
+/// The new companion file of a `CompanionAdd` entry. The row id only exists after the
+/// insert, so the entry names the row by what it will hold (`file_id`, `added_at`).
+/// `temp_inode` is recorded right after the temporary file was created, before any byte
+/// is written, `identity` once the bytes are on disk; recovery only ever removes the
+/// very inodes it finds recorded here.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompanionAdd {
+    pub file_id: i64,
+    pub name: String,
+    pub kind: String,
+    pub size: u64,
+    pub added_at: String,
+    /// Root-relative: `<extras>/.fsops-<op_id>.part`.
+    pub temporary: String,
+    /// Root-relative: `<extras>/<free name>`.
+    pub target: String,
+    pub temp_inode: Option<(u64, u64)>,
     pub identity: Option<FileIdentity>,
 }
 /// A companion folder this operation created. Its inode is only known after
@@ -127,6 +149,9 @@ pub struct Intent {
     /// Every row of the model before the operation (trashed ones included).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub companion_rows: Vec<CompanionState>,
+    /// Only for `CompanionAdd`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub companion_add: Option<CompanionAdd>,
 }
 impl Intent {
     pub(crate) fn has_companion_data(&self) -> bool {
@@ -192,6 +217,10 @@ impl Journal {
                     || (doc.version == 2 && needed > 2)
                     || (doc.version == 3 && needed != 3)
                 {
+                    return Err(Error::RestartRequired);
+                }
+                // The add-specific record belongs to exactly the add operation.
+                if doc.intents.iter().any(|i| (i.operation == Operation::CompanionAdd) != i.companion_add.is_some()) {
                     return Err(Error::RestartRequired);
                 }
                 let mut ids = std::collections::HashSet::new();
@@ -266,6 +295,17 @@ impl Journal {
             .iter()
             .map(|i| i.op_id.clone())
             .chain(self.folders.iter().map(|i| i.op_id.clone()))
+            .collect()
+    }
+    /// Only the entries that wait for a person. An entry still running (a long upload) or one
+    /// that recovery rolls back by itself is not acknowledged, and naming it would make the
+    /// acknowledgement fail at the next start.
+    pub fn pending_manual_op_ids(&self) -> Vec<String> {
+        self.intents
+            .iter()
+            .filter(|i| i.phase == Phase::Manual)
+            .map(|i| i.op_id.clone())
+            .chain(self.folders.iter().filter(|i| i.phase == Phase::Manual).map(|i| i.op_id.clone()))
             .collect()
     }
     /// Read-only startup must reject any pending intent, even when fileops is disabled.

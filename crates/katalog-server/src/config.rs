@@ -32,6 +32,8 @@ pub struct Config {
     pub write: bool,
     pub file_ops: bool,
     pub file_ops_daily_limit: u64,
+    /// Largest single companion file the web accepts and serves, in bytes.
+    pub companion_max_bytes: u64,
     pub file_ops_ack: Vec<String>,
     pub file_roots: Vec<PathBuf>,
     /// Lifetime in seconds of "open in slicer" links; `None` leaves the feature off.
@@ -183,6 +185,7 @@ impl Config {
                 max_triangles: triangles as usize,
             },
         });
+        let companion_mb = positive_limit(&lookup, "KATALOG_COMPANION_MAX_MB", 1024, 4096)?;
         let file_ops = lookup("KATALOG_FILE_OPS").as_deref() == Some("1");
         let file_ops_daily_limit = positive_limit(&lookup, "KATALOG_FILE_OPS_DAILY_LIMIT", 2000, u64::MAX)?;
         let file_ops_ack = lookup("KATALOG_FILE_OPS_ACK").map(|v| v.split(',').map(str::to_owned).collect()).unwrap_or_default();
@@ -202,7 +205,7 @@ impl Config {
         };
         let mut config = Self {
             slicer_links,
-            file_ops, file_ops_daily_limit, file_ops_ack, file_roots,
+            file_ops, file_ops_daily_limit, companion_max_bytes: companion_mb * 1024 * 1024, file_ops_ack, file_roots,
             static_dir,
             db_path,
             roots,
@@ -519,6 +522,16 @@ mod tests {
     fn fileops_requires_explicit_write_and_auth_configuration() {
         assert!(config(&[("KATALOG_FILE_OPS", "1")]).is_err());
         assert!(config(&[("KATALOG_FILE_OPS_DAILY_LIMIT", "0")]).is_err());
+    }
+
+    #[test]
+    fn the_companion_limit_defaults_to_1024_mib_and_is_validated() {
+        assert_eq!(config(&[]).unwrap().companion_max_bytes, 1024 * 1024 * 1024);
+        assert_eq!(config(&[("KATALOG_COMPANION_MAX_MB", "1")]).unwrap().companion_max_bytes, 1024 * 1024);
+        assert_eq!(config(&[("KATALOG_COMPANION_MAX_MB", "4096")]).unwrap().companion_max_bytes, 4096 * 1024 * 1024);
+        for bad in ["", "0", "-1", "+1", " 1", "1.5", "4097", "abc", "999999999999999999999999"] {
+            assert!(config(&[("KATALOG_COMPANION_MAX_MB", bad)]).is_err(), "{bad}");
+        }
     }
 
     #[test]

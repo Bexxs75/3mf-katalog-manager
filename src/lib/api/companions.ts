@@ -1,9 +1,14 @@
 import { invoke } from '../transport';
 import { companionFileOp } from '../fileOps';
+import { isReadOnly } from '../readOnly';
+import { getSnapshot } from '../webSession';
+export { uploadCompanion as uploadWebCompanion, COMPANION_ACCEPT, isAllowedCompanionName, companionSizeProblem } from '../companionUpload';
 import type { Companion, CompanionOpenInfo, WebCompanion } from '../../types';
 
 // Limits mirrored from the backend, for hints in the UI. The backend enforces them.
-export const MAX_COMPANION_BYTES = 50 * 1024 * 1024;
+const DESKTOP_MAX_COMPANION_BYTES = 50 * 1024 * 1024;
+// The web server announces its own, configurable limit with the session.
+export const maxCompanionBytes = (): number => (isReadOnly() ? getSnapshot().companionMaxBytes ?? DESKTOP_MAX_COMPANION_BYTES : DESKTOP_MAX_COMPANION_BYTES);
 export const MAX_COMPANIONS_PER_MODEL = 100;
 
 // All companions of a model, trashed ones included (they carry `deletedAt`).

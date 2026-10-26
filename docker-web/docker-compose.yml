@@ -38,6 +38,8 @@ services:
     # Requires write mode, authentication and allowed hosts; see README warnings.
     #   - KATALOG_FILE_OPS=1
     #   - KATALOG_FILE_OPS_DAILY_LIMIT=2000
+    #   # Largest single companion file (upload and download) in MiB, 1-4096:
+    #   - KATALOG_COMPANION_MAX_MB=1024
     # Only after manual journal inspection, one restart, then remove:
     #   - KATALOG_FILE_OPS_ACK=<opId[,<opId>…]>
     #   # Optional upload/import backend (also requires authentication + allowed hosts):

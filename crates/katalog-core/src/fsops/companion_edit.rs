@@ -76,6 +76,9 @@ pub fn companion_edit_decision(f: CompanionEditFacts) -> CompanionEditDecision {
 
 /// The commit of a single-companion entry, inside one immediate transaction.
 pub(super) fn commit_companion_edit(c: &mut Connection, i: &Intent) -> Result<()> {
+    if i.operation == Operation::CompanionAdd {
+        return super::companion_add::commit_companion_add(c, i).map(|_| ());
+    }
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let step = i.companions.first().ok_or(Error::Internal)?;
     if i.operation == Operation::CompanionPurge {
@@ -163,6 +166,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: vec![step],
             extras_dir,
             companion_rows: s.rows.clone(),
+            companion_add: None,
         }
     }
 
@@ -383,6 +387,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     /// Settles an interrupted single-companion entry. Errors leave the entry for the
     /// caller to block.
     pub(super) fn recover_companion_edit(&mut self, i: &Intent) -> Result<()> {
+        if i.operation == Operation::CompanionAdd {
+            return self.recover_companion_add(i);
+        }
         let purge = i.operation == Operation::CompanionPurge;
         let root = self
             .context

@@ -258,6 +258,7 @@ mod tests {
             companions: Vec::new(),
             extras_dir: None,
             companion_rows: Vec::new(),
+            companion_add: None,
         };
         let journal = f.path.join("auth/web-fsops.json");
         std::fs::write(

@@ -88,6 +88,9 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "block_auto_tag",
     "unblock_auto_tag",
 ];
+/// Writes that have their own route instead of an invoke command (a streamed body); they
+/// are audited and replay-protected like a command but never reach `/api/invoke/`.
+pub const ROUTE_WRITES: &[&str] = &["add_companion"];
 /// File operations that act on one companion file and are safe to repeat: the second
 /// request of the same id gets the stored answer instead of "already in the trash".
 pub(crate) fn companion_edit_command(command: &str) -> bool {
@@ -222,6 +225,7 @@ impl WriteAudit {
             session: session_fingerprint(token),
             command: WRITE_COMMANDS
                 .iter()
+                .chain(ROUTE_WRITES)
                 .copied()
                 .find(|c| *c == command)
                 .expect("allowlisted audit"),
@@ -238,7 +242,7 @@ impl WriteProgress {
     pub fn set_file_ids(&self,ids:&[i64]) { *self.file_ids.lock().unwrap()=ids.to_vec(); }
     pub fn set_companion_ids(&self,ids:&[i64]) { *self.companion_ids.lock().unwrap()=ids.to_vec(); }
     fn line(&self,audit:&WriteAudit)->String {
-        let metric=if FILE_OPS_COMMANDS.contains(&audit.command) {
+        let metric=if FILE_OPS_COMMANDS.contains(&audit.command) || ROUTE_WRITES.contains(&audit.command) {
             // Completed logical items include successful no-ops, not changed rows.
             format!("completed_items={}",self.completed_items.load(Ordering::Relaxed))
         }else{format!("changes={}",self.changes.load(Ordering::Relaxed))};
@@ -283,6 +287,17 @@ mod fileops_audit_tests {
             assert!(!line.contains("changes=")&&!line.contains("pic.png")&&!line.contains("secret-session"));
         }
         assert!(!companion_edit_command("delete_files"));
+    }
+    #[test]
+    fn a_companion_upload_is_audited_by_model_and_row_id_without_the_file_name() {
+        let mut headers=HeaderMap::new();headers.insert("cookie","katalog_session=secret-session".parse().unwrap());
+        headers.insert("x-upload-name","private-plan.pdf".parse().unwrap());
+        assert!(ROUTE_WRITES.contains(&"add_companion")&&!WRITE_COMMANDS.contains(&"add_companion"));
+        let audit=WriteAudit::new("add_companion",&headers,"katalog_session",100);
+        let progress=WriteProgress::default();progress.set_file_ids(&[7]);progress.set_companion_ids(&[31]);progress.completed_items.store(1,Ordering::Relaxed);
+        let line=progress.line(&audit);
+        assert!(line.contains("command=add_companion")&&line.contains("completed_items=1")&&line.contains("ids=[7]")&&line.contains("companions=[31]"),"{line}");
+        assert!(!line.contains("private-plan")&&!line.contains("secret-session")&&!line.contains("changes="));
     }
     #[test]
     fn companion_row_ids_are_logged_apart_from_model_ids() {

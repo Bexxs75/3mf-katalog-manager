@@ -316,3 +316,24 @@ async fn download_slots_are_held_until_the_body_ends_or_is_dropped() {
     drop(held.pop());
     assert_eq!(f.download(&id).await.status(), 200);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_companion_bigger_than_the_old_50_mib_limit_still_downloads_in_ranges() {
+    use std::io::{Seek, Write};
+    let f = Fx::new(false).await;
+    let size: u64 = 60 * 1024 * 1024;
+    let path = f.dir.join("models/Foo_extras/big.pdf");
+    let mut file = std::fs::File::create(&path).unwrap();
+    file.write_all(PDF).unwrap();
+    file.seek(std::io::SeekFrom::Start(size - 3)).unwrap();
+    file.write_all(b"END").unwrap();
+    drop(file);
+    let model: i64 = f.conn().query_row("SELECT id FROM files LIMIT 1", [], |r| r.get(0)).unwrap();
+    let id = katalog_core::db::companions::insert_companion(&f.conn(), model, "big.pdf", path.to_str().unwrap(), "pdf", Some(size as i64), "now").unwrap();
+    let r = f.download_with(&id.to_string(), None, Some("bytes=-3")).await;
+    assert_eq!(r.status(), 206);
+    assert_eq!(bytes(r).await, b"END");
+    let whole = f.download(&id.to_string()).await;
+    assert_eq!(whole.status(), 200);
+    assert_eq!(whole.headers()["content-length"], size.to_string());
+}

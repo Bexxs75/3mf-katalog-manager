@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 /// Largest single companion file.
 pub const MAX_COMPANION_BYTES: u64 = 50 * 1024 * 1024;
+/// The largest limit a server may configure for a single companion upload (4 GiB).
+pub const MAX_COMPANION_BYTES_CONFIGURABLE: u64 = 4096 * 1024 * 1024;
 /// Most companion files one model can have (trashed ones do not count).
 pub const MAX_COMPANIONS_PER_MODEL: i64 = 100;
 /// How much of a file is inspected to decide whether its content matches its type.
@@ -100,6 +102,81 @@ pub fn classify(name: &str, head: &[u8]) -> Result<CompanionKind, Refusal> {
     }
 }
 
+/// Like [`classify`], but for a file that is held completely in memory: a text file
+/// is checked from its first to its last byte, because anything in it that is not
+/// valid UTF-8 (or a NUL byte past the inspected head) shows up later when the file is
+/// opened as text.
+pub fn classify_full(name: &str, bytes: &[u8]) -> Result<CompanionKind, Refusal> {
+    let kind = classify(name, &bytes[..bytes.len().min(CONTENT_CHECK_BYTES)])?;
+    if kind == CompanionKind::Text && (bytes.contains(&0) || std::str::from_utf8(bytes).is_err()) {
+        return Err(Refusal::Content);
+    }
+    Ok(kind)
+}
+
+/// Checks UTF-8 and NUL over a stream, chunk by chunk; a character cut at a chunk's end
+/// is completed by the next chunk.
+#[derive(Default)]
+pub struct TextScan {
+    pending: Vec<u8>,
+}
+
+impl TextScan {
+    pub fn feed(&mut self, chunk: &[u8]) -> bool {
+        if chunk.contains(&0) {
+            return false;
+        }
+        let joined;
+        let data: &[u8] = if self.pending.is_empty() {
+            chunk
+        } else {
+            joined = [self.pending.as_slice(), chunk].concat();
+            &joined
+        };
+        let (rest_from, ok) = match std::str::from_utf8(data) {
+            Ok(_) => (data.len(), true),
+            Err(e) if e.error_len().is_none() => (e.valid_up_to(), true),
+            Err(_) => (0, false),
+        };
+        if !ok {
+            return false;
+        }
+        self.pending = data[rest_from..].to_vec();
+        true
+    }
+
+    /// False when the stream ended in the middle of a character.
+    pub fn finish(&self) -> bool {
+        self.pending.is_empty()
+    }
+}
+
+/// A harmless single-component name for a user-chosen file: forbidden and control
+/// characters become `_`, the extension is lowercased, dots and blanks around the stem
+/// go, an empty stem becomes `datei`, and room is left for a collision counter. `None`
+/// when the name has no extension or no valid form.
+pub fn companion_file_name(original: &str) -> Option<String> {
+    use crate::import::file_names::{validate_name, FORBIDDEN_DIR_NAME_CHARS, MAX_DIR_NAME_BYTES};
+    let cleaned: String =
+        original.chars().map(|c| if c.is_control() || FORBIDDEN_DIR_NAME_CHARS.contains(&c) { '_' } else { c }).collect();
+    let extension = lowercase_extension(&cleaned)?;
+    let stem = &cleaned[..cleaned.len() - extension.len() - 1];
+    let mut stem = stem.trim_matches(|c: char| c == '.' || c == ' ').to_string();
+    if stem.is_empty() {
+        stem = "datei".to_string();
+    }
+    // Leave room for a collision counter and the folder's own limit.
+    while stem.len() + extension.len() + 8 > MAX_DIR_NAME_BYTES {
+        stem.pop();
+    }
+    let full = format!("{stem}.{extension}");
+    if validate_name(&full, true, "Dateiname").is_ok() {
+        return Some(full);
+    }
+    let prefixed = format!("_{full}");
+    validate_name(&prefixed, true, "Dateiname").is_ok().then_some(prefixed)
+}
+
 /// The folder next to a model that holds its companions. It is derived from the
 /// file stem, so `Foo.3mf` and `Foo.stl` share `Foo_extras`.
 pub fn extras_dir_for(model_path: &Path) -> Option<PathBuf> {
@@ -164,6 +241,43 @@ mod tests {
         assert_eq!(validate_stored_fields("a.png", "/c/Foo_extras/b.png", "image"), Err("name"));
         assert_eq!(validate_stored_fields("a.png", "/c/Foo/a.png", "image"), Err("location"));
         assert_eq!(validate_stored_fields("a.png", "/c/x_extras/../a.png", "image"), Err("location"));
+    }
+
+    #[test]
+    fn a_text_file_is_checked_to_its_last_byte() {
+        let mut long = vec![b'a'; CONTENT_CHECK_BYTES + 10];
+        assert_eq!(classify_full("n.txt", &long), Ok(CompanionKind::Text));
+        long[CONTENT_CHECK_BYTES + 5] = 0;
+        assert_eq!(classify("n.txt", &long[..CONTENT_CHECK_BYTES]), Ok(CompanionKind::Text), "the head alone looks fine");
+        assert_eq!(classify_full("n.txt", &long), Err(Refusal::Content));
+        let mut bad = vec![b'a'; CONTENT_CHECK_BYTES + 10];
+        bad[CONTENT_CHECK_BYTES + 3] = 0xff;
+        assert_eq!(classify_full("n.md", &bad), Err(Refusal::Content));
+        assert_eq!(classify_full("p.png", b"\x89PNG\r\n\x1a\n"), Ok(CompanionKind::Image));
+    }
+
+    #[test]
+    fn a_text_scan_spans_chunks() {
+        let euro = "\u{20ac}".as_bytes();
+        let mut scan = TextScan::default();
+        assert!(scan.feed(&euro[..1]) && scan.feed(&euro[1..2]) && scan.feed(&euro[2..]) && scan.finish());
+        let mut cut = TextScan::default();
+        assert!(cut.feed(&euro[..2]) && !cut.finish(), "ended inside a character");
+        let mut bad = TextScan::default();
+        assert!(bad.feed(b"ok") && !bad.feed(&[0xff]));
+        assert!(!TextScan::default().feed(b"a\0"));
+    }
+
+    #[test]
+    fn companion_names_are_one_harmless_component() {
+        assert_eq!(companion_file_name("Bild.PNG").as_deref(), Some("Bild.png"));
+        assert_eq!(companion_file_name("a/b:c.txt").as_deref(), Some("a_b_c.txt"));
+        assert_eq!(companion_file_name("..png.md").as_deref(), Some("png.md"));
+        assert_eq!(companion_file_name(".md"), None, "a bare dot file has no extension");
+        assert_eq!(companion_file_name("CON.txt").as_deref(), Some("_CON.txt"));
+        assert_eq!(companion_file_name("noextension"), None);
+        let long = format!("{}.png", "x".repeat(400));
+        assert!(companion_file_name(&long).unwrap().len() <= 247 + 4);
     }
 
     #[test]

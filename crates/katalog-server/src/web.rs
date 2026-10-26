@@ -502,12 +502,14 @@ async fn limited(req: Request, next: Next, limit: usize) -> Response {
 }
 async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> Response {
     let command = req.uri().path().strip_prefix("/api/invoke/").unwrap_or("").to_owned();
-    let fileops_disabled = crate::write::FILE_OPS_COMMANDS.contains(&command.as_str()) && !app.config.file_ops;
+    let companion_upload = req.uri().path() == COMPANION_UPLOAD;
+    let fileops_disabled = (crate::write::FILE_OPS_COMMANDS.contains(&command.as_str()) || companion_upload) && !app.config.file_ops;
     let upload = req.uri().path() == "/api/upload" && app.uploads.is_some();
     let write_command = WRITE_COMMANDS.contains(&command.as_str());
-    let write = (write_command || upload) && app.config.write;
+    let write = (write_command || upload || companion_upload) && app.config.write;
     let limit = if upload { app.config.upload.as_ref().unwrap().max_bytes as usize } else if write { body_limit(&command) } else { 65536 };
-    let mut audit = (write && !upload).then(|| AuditCompletion::new(&command, req.headers(), cookie_name(secure(&app, req.headers())), app.clock.now()));
+    let audit_name = if companion_upload { crate::write::ROUTE_WRITES[0] } else { command.as_str() };
+    let mut audit = (write && !upload).then(|| AuditCompletion::new(audit_name, req.headers(), cookie_name(secure(&app, req.headers())), app.clock.now()));
     if let Some(audit) = &audit { req.extensions_mut().insert(audit.progress.clone()); }
 
     let upload_audit_name=if uploads::command(&command){Some(command.as_str())}else{match req.uri().path(){"/api/upload"=>Some("upload"),"/api/uploads"=>Some("list_uploads"),"/api/events"=>Some("events"),_=>None}};
@@ -538,6 +540,9 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
                 && (!origin_ok(&app, req.headers()) || (write && app.config.write && !req.headers().contains_key(header::ORIGIN)))
             {
                 error(403, "Origin nicht zugelassen")
+            } else if companion_upload {
+                // The body streams to disk with its own idle limit; a huge file may take hours.
+                tokio::time::timeout(std::time::Duration::from_secs(6 * 3600 + 60), next.run(req)).await.unwrap_or_else(|_| error(408, "upload_timeout"))
             } else if upload {
                 tokio::time::timeout(std::time::Duration::from_secs(3600), next.run(req)).await.unwrap_or_else(|_| error(408,"upload_timeout"))
             } else if req.uri().path() == "/api/backup/export" {
@@ -711,6 +716,8 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let method = req.method().clone();
     let command = path.strip_prefix("/api/invoke/").unwrap_or("");
     if crate::write::FILE_OPS_COMMANDS.contains(&command) && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
+    if path == COMPANION_UPLOAD && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
+    if path == COMPANION_UPLOAD && !app.config.write { return error(404, "Befehl im Web nicht verfügbar"); }
     let is_write = WRITE_COMMANDS.contains(&command);
     let upload_route=matches!(path.as_str(),"/api/upload"|"/api/uploads"|"/api/events")||uploads::command(command);
     if upload_route && app.uploads.is_none(){return error(404,"upload_disabled");}
@@ -739,7 +746,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     if path == "/api" || path.starts_with("/api/") {
         if !matches!(
             path.as_str(),
-            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events" | "/api/backup/export"
+            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events" | "/api/backup/export" | COMPANION_UPLOAD
         ) && !path.starts_with("/api/invoke/")
             && download_id.is_none()
             && companion_id.is_none()
@@ -802,6 +809,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             return crate::download::companion(
                 app.config.db_path.clone(),
                 app.config.roots.clone(),
+                app.config.companion_max_bytes,
                 id,
                 &headers,
                 app.downloads.clone(),
@@ -822,7 +830,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         let must_change = current.is_some() && app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change);
         return match path.as_str() {
             "/api/health"=>Json(json!({"ok":true})).into_response(),
-            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"fileOps":fileops::capability(&app) && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"slicerLinks":app.slicer.is_some() && (app.config.allow_no_auth || current.is_some()) && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
+            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"fileOps":fileops::capability(&app) && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"slicerLinks":app.slicer.is_some() && (app.config.allow_no_auth || current.is_some()) && !must_change,"companionMaxBytes":app.config.companion_max_bytes,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
             "/"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8")],include_str!("../static/index.html")).into_response(),
             "/static/app.js"=>([(header::CONTENT_TYPE,"application/javascript; charset=utf-8")],include_str!("../static/app.js")).into_response(),
             "/static/app.css"=>([(header::CONTENT_TYPE,"text/css; charset=utf-8")],include_str!("../static/app.css")).into_response(),
@@ -849,6 +857,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         }
     }
     if path == "/api/upload" { return uploads::upload(app,current.unwrap(),req).await; }
+    if path == COMPANION_UPLOAD { return companion_upload(app, current.expect("authenticated fileops"), req).await; }
     if path == "/api/logout" {
         if let Err(e) = read_body(req.into_body()).await {
             return *e;
@@ -1074,7 +1083,7 @@ async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value)
         Ok(s) => s,
         Err(e) => return *e,
     };
-    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"fileOps":fileops::capability(&app) && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"slicerLinks":app.slicer.is_some() && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
+    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"fileOps":fileops::capability(&app) && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"slicerLinks":app.slicer.is_some() && !d.auth.as_ref().unwrap().must_change,"companionMaxBytes":app.config.companion_max_bytes,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
 }
 async fn change_password(
     app: Arc<App>,
@@ -1176,7 +1185,7 @@ async fn change_password(
         },
     );
     with_cookie(
-        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"fileOps":fileops::capability(&app),"uploadable":app.uploads.is_some(),"slicerLinks":app.slicer.is_some(),"csrfToken":csrf})).into_response(),
+        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"fileOps":fileops::capability(&app),"uploadable":app.uploads.is_some(),"slicerLinks":app.slicer.is_some(),"companionMaxBytes":app.config.companion_max_bytes,"csrfToken":csrf})).into_response(),
         &token,
         secure,
         false,
@@ -1196,6 +1205,90 @@ fn admit_write(app: &App, current: &Session) -> Result<tokio::sync::OwnedSemapho
         if !session.bucket.take(app.clock.now()) { return Err(Box::new(crate::write::retry(429))); }
     }
     gate.admission.clone().try_acquire_owned().map_err(|_| Box::new(crate::write::retry(503)))
+}
+const COMPANION_UPLOAD: &str = "/api/companion-upload";
+
+/// Strict percent-decoding of the file name header (the browser sends `encodeURIComponent`).
+fn decode_upload_name(raw: &str) -> Option<String> {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let h = (*bytes.get(i + 1)? as char).to_digit(16)?;
+            let l = (*bytes.get(i + 2)? as char).to_digit(16)?;
+            out.push((h * 16 + l) as u8);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// `POST /api/companion-upload`: one companion file as a raw body (`Content-Length`
+/// required), the model in `X-File-Id`, the name percent-encoded in `X-Upload-Name`.
+/// Everything that can be judged from the headers is refused before a byte is read.
+async fn companion_upload(app: Arc<App>, current: Session, req: Request) -> Response {
+    if req.method() != Method::POST {
+        return error(405, "Methode nicht erlaubt");
+    }
+    if app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change) {
+        return (StatusCode::FORBIDDEN, Json(json!({"message":"Bitte zuerst ein neues Passwort setzen","expected":true,"code":"password_change_required"}))).into_response();
+    }
+    let headers = req.headers().clone();
+    if headers.get(header::CONTENT_TYPE).and_then(|h| h.to_str().ok()) != Some("application/octet-stream") {
+        return fileops::failure(400, "content_type");
+    }
+    let Some(length) = headers.get(header::CONTENT_LENGTH) else { return fileops::failure(411, "length_required") };
+    let Some(length) = length.to_str().ok().filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())).and_then(|s| s.parse::<u64>().ok()) else {
+        return fileops::failure(400, "length_invalid");
+    };
+    let Some(file_id) = headers
+        .get("x-file-id")
+        .and_then(|h| h.to_str().ok())
+        .filter(|s| !s.is_empty() && s.len() < 19 && s.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|s| s.parse::<i64>().ok())
+        .filter(|id| *id > 0)
+    else {
+        return fileops::failure(400, "invalid_arguments");
+    };
+    let Some(name) = headers.get("x-upload-name").and_then(|h| h.to_str().ok()).filter(|s| s.len() <= 3072).and_then(decode_upload_name) else {
+        return fileops::failure(400, "name_invalid");
+    };
+    if let Err(e) = katalog_core::fsops::prepare_companion_name(&name, length, app.config.companion_max_bytes) {
+        return *fileops::core_error(e);
+    }
+    let mut ids = headers.get_all(crate::idempotency::HEADER).iter();
+    let request_id = match (ids.next(), ids.next()) {
+        (None, _) => None,
+        (Some(v), None) => match v.to_str().ok().filter(|s| crate::idempotency::valid_key(s)) {
+            Some(s) => Some(s.to_owned()),
+            None => return fileops::failure(400, "request_id_invalid"),
+        },
+        _ => return fileops::failure(400, "request_id_invalid"),
+    };
+    let audit = req.extensions().get::<Arc<WriteProgress>>().cloned().expect("companion upload audit");
+    let admission = match admit_write(&app, &current) {
+        Ok(permit) => permit,
+        Err(response) => return *response,
+    };
+    let body = req.into_body();
+    let Some(request_id) = request_id else {
+        return fileops::add_companion(app, current, file_id, name, length, body, audit, admission, fileops::COMPANION_IDLE).await;
+    };
+    // The client sends a fresh request id for every attempt (a chosen file is one attempt), so the
+    // key only recognises a network-level resend of the very same request. Hashing the content
+    // would mean reading the whole body twice, so file, name and length stand in for it.
+    let args_hash = crate::idempotency::args_hash(&json!({"fileId": file_id, "name": name, "length": length}));
+    let (app2, current2, audit2) = (app.clone(), current.clone(), audit.clone());
+    run_once(&app, &current, &request_id, crate::write::ROUTE_WRITES[0], args_hash, &Some(audit), Some(admission), move |guard, permit| async move {
+        let clock = app2.clock.clone();
+        let work = tokio::spawn(fileops::add_companion(app2, current2, file_id, name, length, body, audit2, permit, fileops::COMPANION_IDLE));
+        record_outcome(guard, work, clock).await
+    })
+    .await
 }
 /// Runs a write at most once per (session, request id). A repeat of a finished
 /// request is answered from the stored result; a repeat of a running one waits

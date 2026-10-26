@@ -34,6 +34,7 @@ impl Fixture {
             "KATALOG_FILE_OPS" if enabled => Some("1".into()),
             "KATALOG_UPLOAD_DIR" => Some(dir.join("models/uploads").to_string_lossy().into_owned()),
             "KATALOG_UPLOAD_MAX_MB" => Some("1".into()),
+            "KATALOG_COMPANION_MAX_MB" => Some("1".into()),
             "KATALOG_WRITE" => Some("1".into()),
             "KATALOG_ALLOWED_HOSTS" => Some("localhost:8080".into()),
             _ => None,
@@ -1340,4 +1341,332 @@ async fn emptying_only_removed_companions_still_makes_a_backup_at_start_and_per_
     let token = value(started).await["token"].clone();
     assert_eq!(f.invoke("empty_trash_block", json!({"token": token})).await.status(), 200);
     assert!(backups.exists(), "the block counts them too");
+}
+
+// ---- Begleitdatei hochladen (POST /api/companion-upload) ----
+
+/// A body that hands out its frames and then either ends or never delivers another byte.
+struct Scripted {
+    frames: std::collections::VecDeque<Result<axum::body::Bytes, std::io::Error>>,
+    stall: bool,
+}
+impl hyper::body::Body for Scripted {
+    type Data = axum::body::Bytes;
+    type Error = std::io::Error;
+    fn poll_frame(mut self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>> {
+        match self.frames.pop_front() {
+            Some(Ok(b)) => std::task::Poll::Ready(Some(Ok(hyper::body::Frame::data(b)))),
+            Some(Err(e)) => std::task::Poll::Ready(Some(Err(e))),
+            None if self.stall => std::task::Poll::Pending,
+            None => std::task::Poll::Ready(None),
+        }
+    }
+}
+
+fn png_of(len: usize) -> Vec<u8> {
+    let mut v = PNG.to_vec();
+    v.resize(len.max(PNG.len()), 9);
+    v
+}
+
+impl Fixture {
+    fn upload_request(&self, file_id: &str, name: &str, length: Option<usize>, body: Body) -> Request {
+        let mut req = self.request("POST", "/api/companion-upload", body);
+        let h = req.headers_mut();
+        h.insert("content-type", "application/octet-stream".parse().unwrap());
+        h.insert("x-file-id", file_id.parse().unwrap());
+        h.insert("x-upload-name", name.parse().unwrap());
+        if let Some(n) = length {
+            h.insert("content-length", n.to_string().parse().unwrap());
+        }
+        req
+    }
+    async fn upload(&self, file_id: &str, name: &str, bytes: Vec<u8>) -> Response {
+        let req = self.upload_request(file_id, name, Some(bytes.len()), Body::from(bytes));
+        router(self.app.clone()).oneshot(req).await.unwrap()
+    }
+    fn extras(&self, model_stem: &str) -> std::path::PathBuf {
+        self.dir.join("models").join(format!("{model_stem}_extras"))
+    }
+    fn companion_count(&self) -> i64 {
+        self.app.writer.as_ref().unwrap().conn.lock().unwrap().query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap()
+    }
+}
+
+#[tokio::test]
+async fn a_companion_is_uploaded_into_the_extras_folder_and_listed() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let bytes = png_of(5000);
+    let r = f.upload(&id, "Bild%20%C3%A4.PNG", bytes.clone()).await;
+    assert_eq!(r.status(), 200);
+    let v = value(r).await;
+    assert_eq!((v["name"].as_str(), v["kind"].as_str(), v["sizeBytes"].as_u64(), v["fileId"].as_str()), (Some("Bild \u{e4}.png"), Some("image"), Some(5000), Some(id.as_str())));
+    assert_eq!(std::fs::read(f.extras("Foo").join("Bild \u{e4}.png")).unwrap(), bytes);
+    assert_eq!(f.companion_count(), 1);
+    let listed = value(f.invoke("list_companions", json!({"fileId": id})).await).await;
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    // The same name again gets a number; nothing is replaced.
+    let again = value(f.upload(&id, "Bild%20%C3%A4.png", png_of(10)).await).await;
+    assert_eq!(again["name"], "Bild \u{e4} (2).png");
+    // A download of what was uploaded works and carries the whole body.
+    let cid = v["id"].as_str().unwrap();
+    let req = f.request("GET", &format!("/api/companions/{cid}/download"), Body::empty());
+    let d = router(f.app.clone()).oneshot(req).await.unwrap();
+    assert_eq!(d.status(), 200);
+    assert_eq!(to_bytes(d.into_body(), 1 << 20).await.unwrap().len(), 5000);
+}
+
+#[tokio::test]
+async fn the_upload_route_has_the_same_gates_as_the_other_writes() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    for (remove, status) in [("cookie", 401), ("x-csrf-token", 403), ("origin", 403)] {
+        let mut req = f.upload_request(&id, "a.png", Some(20), Body::from(png_of(20)));
+        req.headers_mut().remove(remove);
+        assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), status, "{remove}");
+    }
+    let mut req = f.upload_request(&id, "a.png", Some(20), Body::from(png_of(20)));
+    req.headers_mut().insert("host", "evil.example".parse().unwrap());
+    assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), 403);
+    let req = f.request("GET", "/api/companion-upload", Body::empty());
+    assert_ne!(router(f.app.clone()).oneshot(req).await.unwrap().status(), 200);
+    assert_eq!(f.companion_count(), 0);
+    assert!(!f.extras("Foo").exists());
+    // Without file management on the server the route does not exist.
+    let g = Fixture::new(false).await;
+    let gid = g.file("Foo.3mf");
+    assert_eq!(g.upload(&gid, "a.png", png_of(20)).await.status(), 404);
+    assert!(!g.extras("Foo").exists());
+}
+
+#[tokio::test]
+async fn headers_and_content_are_refused_with_their_own_codes_before_anything_is_written() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let kind = |r: Response| async move { (r.status().as_u16(), value(r).await["kind"].as_str().unwrap().to_owned()) };
+    // Wrong content type, missing or bad length.
+    let mut req = f.upload_request(&id, "a.png", Some(20), Body::from(png_of(20)));
+    req.headers_mut().insert("content-type", "application/json".parse().unwrap());
+    assert_eq!(kind(router(f.app.clone()).oneshot(req).await.unwrap()).await, (400, "content_type".into()));
+    let req = f.upload_request(&id, "a.png", None, Body::from(png_of(20)));
+    assert_eq!(kind(router(f.app.clone()).oneshot(req).await.unwrap()).await, (411, "length_required".into()));
+    let mut req = f.upload_request(&id, "a.png", Some(20), Body::from(png_of(20)));
+    req.headers_mut().insert("content-length", "2x".parse().unwrap());
+    assert_eq!(kind(router(f.app.clone()).oneshot(req).await.unwrap()).await, (400, "length_invalid".into()));
+    for bad in ["0", "-1", "x", "", "1 2"] {
+        let mut req = f.upload_request(&id, "a.png", Some(20), Body::from(png_of(20)));
+        req.headers_mut().insert("x-file-id", bad.parse().unwrap());
+        assert_eq!(kind(router(f.app.clone()).oneshot(req).await.unwrap()).await, (400, "invalid_arguments".into()), "{bad}");
+    }
+    for bad in ["%zz", "%C3", "%FF%FE"] {
+        assert_eq!(kind(f.upload(&id, bad, png_of(20)).await).await, (400, "name_invalid".into()), "{bad}");
+    }
+    // Size limit (1 MiB in this fixture): exactly at it is fine, one byte over is refused unread.
+    assert_eq!(kind(f.upload(&id, "big.png", png_of(1024 * 1024 + 1)).await).await, (413, "companion_too_large".into()));
+    assert!(!f.extras("Foo").exists());
+    assert_eq!(kind(f.upload(&id, "x.exe", b"MZ".to_vec()).await).await, (415, "companion_type".into()));
+    assert_eq!(kind(f.upload(&id, "x.svg", b"<svg/>".to_vec()).await).await, (415, "companion_type".into()));
+    assert_eq!(kind(f.upload(&id, "x.jpg", png_of(30)).await).await, (422, "companion_content".into()));
+    assert_eq!(kind(f.upload(&id, "x.txt", b"a\0b".to_vec()).await).await, (422, "companion_content".into()));
+    assert_eq!(kind(f.upload(&id, "x.txt", Vec::new()).await).await, (422, "companion_content".into()));
+    assert_eq!(kind(f.upload("99999", "x.png", png_of(30)).await).await, (404, "not_found".into()));
+    assert!(!f.extras("Foo").exists() && f.companion_count() == 0);
+    assert_eq!(f.upload(&id, "big.png", png_of(1024 * 1024)).await.status(), 200, "exactly the limit");
+}
+
+#[tokio::test]
+async fn a_body_that_does_not_match_its_length_or_breaks_off_leaves_nothing_behind() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let code = |r: Response| async move { (r.status().as_u16(), value(r).await["kind"].as_str().unwrap().to_owned()) };
+    // Shorter than announced, longer than announced.
+    let req = f.upload_request(&id, "a.png", Some(100), Body::from(png_of(60)));
+    assert_eq!(code(router(f.app.clone()).oneshot(req).await.unwrap()).await, (400, "length_mismatch".into()));
+    let req = f.upload_request(&id, "a.png", Some(60), Body::from(png_of(100)));
+    assert_eq!(code(router(f.app.clone()).oneshot(req).await.unwrap()).await, (400, "length_mismatch".into()));
+    // The connection breaks after the head and a part of the body.
+    let frames = [Ok(axum::body::Bytes::from(png_of(300))), Err(std::io::Error::from(std::io::ErrorKind::ConnectionReset))].into_iter().collect();
+    let req = f.upload_request(&id, "a.png", Some(100_000), Body::new(Scripted { frames, stall: false }));
+    assert_eq!(code(router(f.app.clone()).oneshot(req).await.unwrap()).await, (400, "length_mismatch".into()));
+    assert_eq!(f.companion_count(), 0);
+    let left: Vec<_> = std::fs::read_dir(f.dir.join("models")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert!(!left.iter().any(|n| n.ends_with("_extras")), "{left:?}");
+    // The runtime is free again afterwards.
+    assert_eq!(f.upload(&id, "ok.png", png_of(50)).await.status(), 200);
+}
+
+#[tokio::test]
+async fn a_body_that_stalls_is_given_up_and_cleaned_away() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let frames = [Ok(axum::body::Bytes::from(png_of(300)))].into_iter().collect();
+    let progress = Arc::new(WriteProgress::default());
+    let admission = f.app.writer.as_ref().unwrap().admission.clone().try_acquire_owned().unwrap();
+    let response = fileops::add_companion(
+        f.app.clone(),
+        f.session.clone(),
+        id.parse().unwrap(),
+        "a.png".into(),
+        100_000,
+        Body::new(Scripted { frames, stall: true }),
+        progress,
+        admission,
+        std::time::Duration::from_millis(150),
+    )
+    .await;
+    assert_eq!(response.status(), 408);
+    assert_eq!(value(response).await["kind"], "upload_timeout");
+    assert_eq!(f.companion_count(), 0);
+    assert!(!f.extras("Foo").exists(), "the folder made for it is gone");
+    assert_eq!(f.upload(&id, "ok.png", png_of(50)).await.status(), 200, "the slot and the runtime are free again");
+}
+
+#[tokio::test]
+async fn only_one_companion_upload_runs_at_a_time() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let slot = f.app.fileops.as_ref().unwrap().companion_slot.clone().try_acquire_owned().unwrap();
+    let r = f.upload(&id, "a.png", png_of(50)).await;
+    assert_eq!(r.status(), 503);
+    assert!(r.headers().contains_key("retry-after"));
+    assert_eq!(value(r).await["kind"], "upload_busy");
+    drop(slot);
+    assert_eq!(f.upload(&id, "a.png", png_of(50)).await.status(), 200);
+}
+
+#[tokio::test]
+async fn a_repeated_request_id_gets_the_stored_answer_and_adds_nothing_twice() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let send = |name: &'static str, rid: &'static str| {
+        let mut req = f.upload_request(&id, name, Some(50), Body::from(png_of(50)));
+        req.headers_mut().insert("x-request-id", rid.parse().unwrap());
+        let app = f.app.clone();
+        async move { router(app).oneshot(req).await.unwrap() }
+    };
+    let first = value(send("a.png", "11111111-1111-4111-8111-111111111111").await).await;
+    let replay = send("a.png", "11111111-1111-4111-8111-111111111111").await;
+    assert_eq!(replay.status(), 200);
+    assert_eq!(value(replay).await, first);
+    assert_eq!(f.companion_count(), 1);
+    assert!(!f.extras("Foo").join("a (2).png").exists());
+    let reused = send("b.png", "11111111-1111-4111-8111-111111111111").await;
+    assert_eq!(reused.status(), 422);
+    assert_eq!(value(reused).await["kind"], "request_id_reused");
+    let mut bad = f.upload_request(&id, "a.png", Some(50), Body::from(png_of(50)));
+    bad.headers_mut().insert("x-request-id", "not a key".parse().unwrap());
+    assert_eq!(router(f.app.clone()).oneshot(bad).await.unwrap().status(), 400);
+    // Without a request id the upload still works (the browser always sends one).
+    assert_eq!(f.upload(&id, "c.png", png_of(50)).await.status(), 200);
+}
+
+#[tokio::test]
+async fn a_blocked_runtime_and_a_full_model_are_reported_not_hidden() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    for n in 0..100 {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::companions::insert_companion(&conn, id.parse().unwrap(), &format!("n{n}.png"), &format!("{}/n{n}.png", f.extras("Foo").display()), "image", Some(1), "t").unwrap();
+    }
+    let r = f.upload(&id, "x.png", png_of(50)).await;
+    assert_eq!((r.status().as_u16(), value(r).await["kind"].as_str().unwrap().to_owned()), (422, "companion_limit".into()));
+    f.app.fileops.as_ref().unwrap().block_for_test();
+    assert_eq!(f.upload(&id, "x.png", png_of(50)).await.status(), 503);
+}
+
+// ---- Lange Uploads halten weder Laufzeit noch Import-Gate ----
+
+/// A body fed from the test: frames arrive when the test sends them, and it ends when the sender is dropped.
+struct Fed(tokio::sync::mpsc::Receiver<axum::body::Bytes>);
+impl hyper::body::Body for Fed {
+    type Data = axum::body::Bytes;
+    type Error = std::io::Error;
+    fn poll_frame(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>> {
+        self.0.poll_recv(cx).map(|b| b.map(|b| Ok(hyper::body::Frame::data(b))))
+    }
+}
+
+impl Fixture {
+    /// Starts an upload whose body the test feeds; returns the sender and the pending response.
+    fn start_fed_upload(&self, id: &str, name: &str, length: usize) -> (tokio::sync::mpsc::Sender<axum::body::Bytes>, tokio::task::JoinHandle<Response>) {
+        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        let (app, session, id, name) = (self.app.clone(), self.session.clone(), id.parse().unwrap(), name.to_owned());
+        let admission = self.app.writer.as_ref().unwrap().admission.clone().try_acquire_owned().unwrap();
+        let task = tokio::spawn(async move {
+            fileops::add_companion(app, session, id, name, length as u64, Body::new(Fed(rx)), Arc::new(WriteProgress::default()), admission, std::time::Duration::from_secs(30)).await
+        });
+        (tx, task)
+    }
+    /// Waits until the upload has made its temporary file.
+    async fn wait_for_temporary(&self, stem: &str, task: &mut tokio::task::JoinHandle<Response>) {
+        for _ in 0..200 {
+            let found = std::fs::read_dir(self.extras(stem)).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().starts_with(".fsops-"));
+            if found {
+                return;
+            }
+            if task.is_finished() {
+                let r = task.await.unwrap();
+                panic!("the upload ended before it made its file: {} {:?}", r.status(), value(r).await);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        panic!("the upload never started");
+    }
+}
+
+#[tokio::test]
+async fn other_file_operations_run_while_a_companion_body_is_still_arriving() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let other = f.file("Bar.3mf");
+    let bytes = png_of(900_000);
+    let (tx, mut task) = f.start_fed_upload(&id, "big.png", bytes.len());
+    tx.send(bytes[..300_000].to_vec().into()).await.unwrap();
+    f.wait_for_temporary("Foo", &mut task).await;
+    let rt = f.app.fileops.as_ref().unwrap();
+    assert!(rt.state.try_lock().is_ok(), "the runtime is not held while the body streams");
+    if let Some(u) = &f.app.uploads {
+        assert_eq!(u.active.available_permits(), 1, "the import gate is free");
+    }
+    let r = f.invoke("rename_file", json!({"fileId": other, "name": "Baz"})).await;
+    assert_eq!(r.status(), 200, "{:?}", value(r).await);
+    tx.send(bytes[300_000..].to_vec().into()).await.unwrap();
+    drop(tx);
+    let response = task.await.unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(std::fs::read(f.extras("Foo").join("big.png")).unwrap(), bytes);
+    assert_eq!(f.companion_count(), 1);
+}
+
+#[tokio::test]
+async fn a_session_that_ends_during_the_upload_leaves_no_file_and_no_row() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let bytes = png_of(900_000);
+    let (tx, mut task) = f.start_fed_upload(&id, "big.png", bytes.len());
+    tx.send(bytes[..300_000].to_vec().into()).await.unwrap();
+    f.wait_for_temporary("Foo", &mut task).await;
+    f.app.data.lock().unwrap().sessions.remove(&f.session.token);
+    tx.send(bytes[300_000..].to_vec().into()).await.unwrap();
+    drop(tx);
+    let response = task.await.unwrap();
+    assert_eq!(response.status(), 401);
+    assert_eq!(value(response).await["kind"], "session_expired");
+    assert_eq!(f.companion_count(), 0);
+    assert!(!f.extras("Foo").exists(), "neither the file nor the folder made for it");
+}
+
+#[test]
+fn a_full_disk_is_reported_as_507() {
+    let e = katalog_core::fsops::Error::from(std::io::Error::from_raw_os_error(28));
+    assert_eq!(fileops::core_error(e).status(), 507);
+}
+
+#[tokio::test]
+async fn the_session_tells_the_browser_how_big_a_companion_file_may_be() {
+    let f = Fixture::new(true).await;
+    let req = f.request("GET", "/api/session", Body::empty());
+    let v = value(router(f.app.clone()).oneshot(req).await.unwrap()).await;
+    assert_eq!(v["companionMaxBytes"].as_u64(), Some(f.app.config.companion_max_bytes));
 }

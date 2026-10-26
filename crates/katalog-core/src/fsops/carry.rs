@@ -369,10 +369,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         })
     }
 
-    /// Creates the destination folder if needed and moves the companions. On any
-    /// failure it has already put everything back (or blocked the journal), so the
-    /// caller returns the error without touching the journal.
-    pub(super) fn carry_forward(&mut self, i: &mut Intent, root: usize) -> Result<()> {
+    /// Creates the companion folder this entry names and records its inode in the
+    /// journal. On failure it has already undone what it could (or blocked the journal).
+    pub(super) fn make_extras(&mut self, i: &mut Intent, root: usize) -> Result<()> {
         if let Some(d) = i.extras_dir.clone() {
             let made = self
                 .context
@@ -412,6 +411,16 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             if super::tests::at_point("after_mkdir", 0) {
                 return Err(self.journal.simulate_crash());
             }
+        }
+        Ok(())
+    }
+
+    /// Creates the destination folder if needed and moves the companions. On any
+    /// failure it has already put everything back (or blocked the journal), so the
+    /// caller returns the error without touching the journal.
+    pub(super) fn carry_forward(&mut self, i: &mut Intent, root: usize) -> Result<()> {
+        if i.extras_dir.is_some() {
+            self.make_extras(i, root)?;
         }
         let (from, to) = step_access(i.operation);
         for (k, step) in i.companions.iter().enumerate() {

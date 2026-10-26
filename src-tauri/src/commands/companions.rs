@@ -12,7 +12,7 @@ use std::io::{Read, Write};
 
 pub(super) use katalog_core::companions::validate_stored_fields;
 pub(crate) use katalog_core::companions::{
-    classify, extras_dir_for, is_extras_dir_name, CompanionKind, Refusal, MAX_COMPANIONS_PER_MODEL, MAX_COMPANION_BYTES,
+    classify, extras_dir_for, is_extras_dir_name, CompanionKind, Refusal, MAX_COMPANIONS_PER_MODEL, MAX_COMPANION_BYTES, MAX_COMPANION_BYTES_CONFIGURABLE,
 };
 use katalog_core::companion_read::{self, FolderProblem, RowError};
 pub(super) use katalog_core::companion_read::{read_head, same_dir_with, MAX_PREVIEW_BYTES};
@@ -36,27 +36,10 @@ impl RefusalText for Refusal {
     }
 }
 
-/// A harmless single-component name for the copy of a user-chosen file.
+/// A harmless single-component name for the copy of a user-chosen file; the rule itself
+/// lives in `katalog_core::companions`, shared with the web upload.
 fn companion_file_name(source: &Path) -> Option<String> {
-    let original = source.file_name()?.to_string_lossy().into_owned();
-    let cleaned: String =
-        original.chars().map(|c| if c.is_control() || folders::FORBIDDEN_DIR_NAME_CHARS.contains(&c) { '_' } else { c }).collect();
-    let extension = Path::new(&cleaned).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase)?;
-    let stem = &cleaned[..cleaned.len() - extension.len() - 1];
-    let mut stem = stem.trim_matches(|c: char| c == '.' || c == ' ').to_string();
-    if stem.is_empty() {
-        stem = "datei".to_string();
-    }
-    // Leave room for a collision counter and the folder's own limit.
-    while stem.len() + extension.len() + 8 > folders::MAX_DIR_NAME_BYTES {
-        stem.pop();
-    }
-    let full = format!("{stem}.{extension}");
-    if folders::validate_name(&full, true, folders::NameKind::File).is_ok() {
-        return Some(full);
-    }
-    let prefixed = format!("_{full}");
-    folders::validate_name(&prefixed, true, folders::NameKind::File).is_ok().then_some(prefixed)
+    katalog_core::companions::companion_file_name(&source.file_name()?.to_string_lossy())
 }
 
 /// Creates a new file under the first free `name`, `name (2)`, ... Never replaces and
@@ -274,6 +257,25 @@ pub(super) fn add_companion_with_conn(
     let head = read_head(&mut input).map_err(|_| CmdError::expected("Die Datei kann nicht gelesen werden."))?;
     let kind = classify(source_name, &head).map_err(|r| CmdError::expected(r.message()))?;
     let name = companion_file_name(source).ok_or_else(|| CmdError::expected("Der Dateiname ist nicht verwendbar."))?;
+    // A text file is valid from its first to its last byte, not just in the inspected head.
+    if kind == CompanionKind::Text {
+        use std::io::Seek;
+        let mut scan = katalog_core::companions::TextScan::default();
+        let mut ok = scan.feed(&head);
+        let mut buffer = vec![0u8; 64 * 1024];
+        let mut limited = Read::by_ref(&mut input).take(MAX_COMPANION_BYTES + 1 - head.len() as u64);
+        while ok {
+            let n = limited.read(&mut buffer).map_err(|_| CmdError::expected("Die Datei kann nicht gelesen werden."))?;
+            if n == 0 {
+                break;
+            }
+            ok = scan.feed(&buffer[..n]);
+        }
+        if !ok || !scan.finish() {
+            return Err(CmdError::expected(Refusal::Content.message()));
+        }
+        input.seek(std::io::SeekFrom::Start(head.len() as u64)).map_err(|_| CmdError::expected("Die Datei kann nicht gelesen werden."))?;
+    }
 
     let extras = resolve_extras_target(conn, Path::new(&model.path), sensitive_dirs)?;
     let created_dir = if is_real_dir(&extras) {
@@ -936,10 +938,14 @@ pub async fn restore_companion(app: tauri::AppHandle, companion_id: String) -> C
     .await
 }
 
+/// Rows added through the web interface may be as big as it accepts; the desktop opens them,
+/// although it adds nothing above `MAX_COMPANION_BYTES` itself.
+const MAX_OPEN_BYTES: u64 = MAX_COMPANION_BYTES_CONFIGURABLE;
+
 /// Path and kind of a companion, only if it still passes every check for an allowed type.
 pub(super) fn open_info_with_conn(conn: &Connection, id: i64, sensitive_dirs: &[PathBuf]) -> CmdResult<CompanionOpenInfoDto> {
     let row = load_row(conn, id)?;
-    let (kind, _, _) = open_checked(conn, &row, sensitive_dirs, MAX_COMPANION_BYTES)?;
+    let (kind, _, _) = open_checked(conn, &row, sensitive_dirs, MAX_OPEN_BYTES)?;
     Ok(CompanionOpenInfoDto { id: row.id.to_string(), name: row.name, path: row.path, kind: kind.as_str().to_string() })
 }
 

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { isReadOnly } from './readOnly';
 /** Browser session and CSRF token live only in memory. */
-export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean; uploadable?: boolean; fileOps?: boolean; slicerLinks?: boolean }
+export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean; uploadable?: boolean; fileOps?: boolean; slicerLinks?: boolean; companionMaxBytes?: number }
 let session: WebSession = { authenticated: false, mustChangePassword: false, csrfToken: null };
 let sessionEpoch = 0;
 const subscribers = new Set<() => void>();

@@ -198,6 +198,7 @@ fn serve(
 pub async fn companion(
     db_path: PathBuf,
     roots: Vec<PathBuf>,
+    max_bytes: u64,
     id: &str,
     headers: &HeaderMap,
     slots: Arc<Semaphore>,
@@ -221,7 +222,7 @@ pub async fn companion(
             &conn,
             numeric_id,
             &roots,
-            katalog_core::companions::MAX_COMPANION_BYTES,
+            max_bytes,
         );
         drop(conn);
         let (row, kind, mut file, _) = opened.map_err(crate::invoke::companion_error)?;
