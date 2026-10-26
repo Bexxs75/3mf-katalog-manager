@@ -383,6 +383,17 @@ async fn wait_result(f: &Fixture, job: &Value) -> Value {
             result["state"].as_str(),
             Some("completed" | "failed" | "cancelled")
         ) {
+            // The job view reports its final state before run_job persists the
+            // result and releases the import permit; follow-up commands that need
+            // the permit (e.g. catalog removal) would otherwise race it.
+            if let Some(rt) = f.app.uploads.as_ref() {
+                for _ in 0..500 {
+                    if rt.active.available_permits() > 0 {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            }
             return result;
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
