@@ -437,8 +437,8 @@ fn a_companion_row_pointing_outside_the_trash_never_causes_a_delete() {
     let f = Fixture::new();
     let (id, _) = f.model("Foo.3mf");
     let precious = f.source("precious.png", PNG);
-    let planted = |f: &Fixture| {
-        let row = db::companions::insert_companion(&f.conn, id, "x.png", &f.root.join("Foo_extras").join("x.png").to_string_lossy(), "image", None, "now").unwrap();
+    let planted = |f: &Fixture, name: &str| {
+        let row = db::companions::insert_companion(&f.conn, id, name, &f.root.join("Foo_extras").join(name).to_string_lossy(), "image", None, "now").unwrap();
         f.conn
             .execute(
                 "UPDATE companion_files SET deleted_at = '2000-01-01T00:00:00+00:00', trash_path = ?1 WHERE id = ?2",
@@ -446,12 +446,59 @@ fn a_companion_row_pointing_outside_the_trash_never_causes_a_delete() {
             )
             .unwrap();
     };
-    planted(&f);
+    planted(&f, "x.png");
     trash::empty_trash_with_conn(&f.conn, &f.trash).unwrap();
     assert!(precious.exists(), "emptying the trash");
-    planted(&f);
+    // The refused row stays (fail-closed), so the second plant needs its own name.
+    planted(&f, "y.png");
     trash::purge_expired_trash_on_startup(&f.conn, &f.trash);
     assert!(precious.exists(), "the startup cleanup");
+}
+
+/// A companion the web version moved into `<root>/.katalog-papierkorb` for a model.
+fn web_trashed_companion(f: &Fixture, model: i64, name: &str) -> (i64, PathBuf) {
+    let dir = f.root.join(".katalog-papierkorb");
+    std::fs::create_dir_all(&dir).unwrap();
+    let row = db::companions::insert_companion(&f.conn, model, name, &f.root.join("Foo_extras").join(name).to_string_lossy(), "image", None, "now").unwrap();
+    let file = dir.join(format!("companion-{row}-abcd1234-{name}"));
+    std::fs::write(&file, PNG).unwrap();
+    f.conn
+        .execute(
+            "UPDATE companion_files SET deleted_at = '2026-01-01T00:00:00+00:00', trash_path = ?1 WHERE id = ?2",
+            rusqlite::params![file.to_string_lossy(), row],
+        )
+        .unwrap();
+    (row, file)
+}
+
+#[test]
+fn a_companion_in_the_web_trash_goes_with_its_model_when_it_is_deleted_for_good() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    f.trash_model(id);
+    let (_, file) = web_trashed_companion(&f, id, "pic.png");
+    trash::delete_file_permanently_with_conn(&f.conn, id, &f.trash).unwrap();
+    assert!(!file.exists(), "no orphan is left in the web trash");
+    assert!(db::get_file(&f.conn, id).unwrap().is_none());
+}
+
+#[test]
+fn a_file_outside_every_trash_keeps_the_model_entry_instead_of_being_ignored() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    f.trash_model(id);
+    let precious = f.source("precious.png", PNG);
+    let (row, web) = web_trashed_companion(&f, id, "pic.png");
+    // Planted: the right folder name does not help a file that is not in it, nor a wrong row id.
+    f.conn.execute("UPDATE companion_files SET trash_path = ?1 WHERE id = ?2", rusqlite::params![precious.to_string_lossy(), row]).unwrap();
+    assert!(trash::delete_file_permanently_with_conn(&f.conn, id, &f.trash).is_err());
+    assert!(precious.exists() && web.exists());
+    assert!(db::get_file(&f.conn, id).unwrap().is_some(), "the entry stays, nothing is orphaned silently");
+    let foreign = f.root.join(".katalog-papierkorb").join("companion-9999-x-pic.png");
+    std::fs::write(&foreign, PNG).unwrap();
+    f.conn.execute("UPDATE companion_files SET trash_path = ?1 WHERE id = ?2", rusqlite::params![foreign.to_string_lossy(), row]).unwrap();
+    assert!(trash::delete_file_permanently_with_conn(&f.conn, id, &f.trash).is_err());
+    assert!(foreign.exists());
 }
 
 #[test]

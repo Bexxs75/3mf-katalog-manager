@@ -1,5 +1,5 @@
-//! Which operations may carry a model's companion files, and which stay refused
-//! with `HasCompanions`. The decision is a pure function of facts gathered from
+//! Which operations may carry a model's companion files, and which cases stay
+//! refused with `HasCompanions`. The decision is a pure function of facts gathered from
 //! the database and the disk, so every combination can be tested without a
 //! filesystem.
 
@@ -13,13 +13,6 @@ pub enum CompanionOp {
     Trash,
     Restore,
     DeletePermanently,
-}
-
-impl CompanionOp {
-    /// Whether the companions travel with the model for this operation.
-    fn carries(self) -> bool {
-        matches!(self, Self::Rename | Self::Move)
-    }
 }
 
 /// State of a folder as the pre-check found it.
@@ -52,6 +45,10 @@ pub struct CompanionFacts {
     pub unsafe_files: usize,
     /// Files to carry whose name is already taken at the destination.
     pub names_taken: usize,
+    /// Rows the operation can neither carry nor leave alone without stranding a file:
+    /// an active row outside the model's folder when the model goes to the trash, or
+    /// a row of the desktop trash or an active row when the model is deleted for good.
+    pub rows_unhandled: usize,
 }
 
 impl CompanionFacts {
@@ -65,6 +62,7 @@ impl CompanionFacts {
             new_dir: DirState::Absent,
             unsafe_files: 0,
             names_taken: 0,
+            rows_unhandled: 0,
         }
     }
 }
@@ -92,13 +90,13 @@ impl Verdict {
     }
 }
 
-/// Operations that do not carry companions yet stay refused for any model that
-/// has a row, exactly as before; a model without rows is never affected.
+/// A model without rows is never affected. A row that would be stranded blocks the
+/// operation before anything moves; unwatched places never become a reason to guess.
 pub fn companion_block(f: CompanionFacts) -> Verdict {
     if f.rows_total == 0 {
         return Verdict::Unaffected;
     }
-    if !f.op.carries() {
+    if f.rows_unhandled > 0 {
         return Verdict::Blocked;
     }
     if f.rows_to_carry == 0 {
@@ -131,6 +129,7 @@ mod tests {
             new_dir: DirState::Absent,
             unsafe_files: 0,
             names_taken: 0,
+            rows_unhandled: 0,
         }
     }
 
@@ -142,12 +141,35 @@ mod tests {
     }
 
     #[test]
-    fn operations_that_do_not_carry_yet_stay_refused() {
-        for op in [CompanionOp::Trash, CompanionOp::Restore, CompanionOp::DeletePermanently] {
-            let f = CompanionFacts { op, ..base() };
+    fn a_stranded_row_blocks_every_operation() {
+        for op in [CompanionOp::Rename, CompanionOp::Move, CompanionOp::Trash, CompanionOp::Restore, CompanionOp::DeletePermanently] {
+            let f = CompanionFacts { op, rows_unhandled: 1, ..base() };
             assert_eq!(companion_block(f), Verdict::Blocked, "{op:?}");
-            assert_eq!(companion_block(CompanionFacts::rows_only(op, 1)), Verdict::Blocked, "{op:?}");
+            // Even when nothing else would travel.
+            let f = CompanionFacts { op, rows_unhandled: 1, rows_to_carry: 0, ..base() };
+            assert_eq!(companion_block(f), Verdict::Blocked, "{op:?}");
         }
+    }
+
+    #[test]
+    fn rows_that_are_none_of_our_business_do_not_block_trash_restore_or_delete() {
+        for op in [CompanionOp::Trash, CompanionOp::Restore, CompanionOp::DeletePermanently] {
+            assert_eq!(companion_block(CompanionFacts::rows_only(op, 3)), Verdict::Unaffected, "{op:?}");
+        }
+    }
+
+    #[test]
+    fn trash_restore_and_delete_carry_like_rename_when_everything_is_plain() {
+        for op in [CompanionOp::Trash, CompanionOp::Restore, CompanionOp::DeletePermanently] {
+            assert_eq!(companion_block(CompanionFacts { op, ..base() }), Verdict::Carry, "{op:?}");
+            // The model's folder, a link or a foreign inode stops trash and restore alike.
+            assert_eq!(companion_block(CompanionFacts { op, old_dir: DirState::Unsafe, ..base() }), Verdict::Blocked, "{op:?}");
+            assert_eq!(companion_block(CompanionFacts { op, unsafe_files: 1, ..base() }), Verdict::Blocked, "{op:?}");
+        }
+        assert_eq!(
+            companion_block(CompanionFacts { op: CompanionOp::Restore, old_dir: DirState::Absent, new_dir: DirState::Unsafe, ..base() }),
+            Verdict::Conflict
+        );
     }
 
     #[test]

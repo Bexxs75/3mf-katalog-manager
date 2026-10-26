@@ -8,10 +8,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const PNG: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52];
+pub(super) const PNG: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52];
 
 #[derive(Default)]
-struct Ledger;
+pub(super) struct Ledger;
 impl UploadLedger for Ledger {
     fn reset_imported(&mut self, _: &[i64]) -> Result<()> {
         Ok(())
@@ -21,10 +21,10 @@ impl UploadLedger for Ledger {
     }
 }
 
-struct Fx {
-    dir: PathBuf,
-    db_path: PathBuf,
-    ops: FileOps<rusqlite::Connection, Ledger>,
+pub(super) struct Fx {
+    pub(super) dir: PathBuf,
+    pub(super) db_path: PathBuf,
+    pub(super) ops: FileOps<rusqlite::Connection, Ledger>,
 }
 impl Drop for Fx {
     fn drop(&mut self) {
@@ -35,10 +35,10 @@ impl Drop for Fx {
 }
 
 impl Fx {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::with_protected(&[])
     }
-    fn with_protected(protected: &[(&str, Protection)]) -> Self {
+    pub(super) fn with_protected(protected: &[(&str, Protection)]) -> Self {
         let dir = crate::unique_test_dir("fsops_companion_carry");
         fs::create_dir_all(dir.join("root/sub")).unwrap();
         fs::create_dir(dir.join("journal")).unwrap();
@@ -58,14 +58,14 @@ impl Fx {
         let journal = Journal::open(&dir.join("journal")).unwrap();
         Fx { dir: dir.clone(), db_path, ops: FileOps::new(context, journal, db, Ledger) }
     }
-    fn root(&self) -> PathBuf {
+    pub(super) fn root(&self) -> PathBuf {
         self.dir.join("root")
     }
-    fn p(&self, rel: &str) -> PathBuf {
+    pub(super) fn p(&self, rel: &str) -> PathBuf {
         self.root().join(rel)
     }
     /// Model file `rel` (relative to the root) with a catalog row.
-    fn model(&mut self, id: i64, rel: &str) {
+    pub(super) fn model(&mut self, id: i64, rel: &str) {
         let path = self.p(rel);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, format!("model {id}")).unwrap();
@@ -79,14 +79,14 @@ impl Fx {
             .unwrap();
     }
     /// A companion row with a real file at `rel`.
-    fn companion(&mut self, model: i64, rel: &str) -> i64 {
+    pub(super) fn companion(&mut self, model: i64, rel: &str) -> i64 {
         let path = self.p(rel);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, PNG).unwrap();
         self.row_for(model, &path)
     }
     /// A companion row without any file on disk.
-    fn row_for(&mut self, model: i64, path: &Path) -> i64 {
+    pub(super) fn row_for(&mut self, model: i64, path: &Path) -> i64 {
         let name = path.file_name().unwrap().to_str().unwrap();
         crate::db::companions::insert_companion(
             &self.ops.db,
@@ -99,18 +99,18 @@ impl Fx {
         )
         .unwrap()
     }
-    fn cpath(&self, id: i64) -> String {
+    pub(super) fn cpath(&self, id: i64) -> String {
         self.ops
             .db
             .query_row("SELECT path FROM companion_files WHERE id=?1", [id], |r| r.get(0))
             .unwrap()
     }
-    fn mpath(&self, id: i64) -> String {
+    pub(super) fn mpath(&self, id: i64) -> String {
         self.ops.db.query_row("SELECT path FROM files WHERE id=?1", [id], |r| r.get(0)).unwrap()
     }
     /// Disk tree and database rows, paths relative to the root: two equal snapshots
     /// mean the same state.
-    fn snapshot(&self) -> String {
+    pub(super) fn snapshot(&self) -> String {
         let mut lines = Vec::new();
         walk(&self.root(), &self.root(), &mut lines);
         let strip = |s: String| s.replace(self.root().to_str().unwrap(), "");
@@ -155,14 +155,14 @@ impl Fx {
         lines.join("\n")
     }
     /// Every active companion row points at a regular file that exists.
-    fn assert_rows_match_disk(&self) {
+    pub(super) fn assert_rows_match_disk(&self) {
         let mut stmt = self.ops.db.prepare("SELECT path FROM companion_files WHERE deleted_at IS NULL").unwrap();
         for p in stmt.query_map([], |r| r.get::<_, String>(0)).unwrap() {
             let p = p.unwrap();
             assert!(Path::new(&p).is_file(), "row without file: {p}");
         }
     }
-    fn reopen_and_recover(&mut self) -> RecoveryReport {
+    pub(super) fn reopen_and_recover(&mut self) -> RecoveryReport {
         self.ops.journal = Journal::open(&self.dir.join("journal")).unwrap();
         let report = self.ops.recover().unwrap();
         if report.manual.is_empty() {
@@ -170,12 +170,12 @@ impl Fx {
         }
         report
     }
-    fn journal_text(&self) -> String {
+    pub(super) fn journal_text(&self) -> String {
         fs::read_to_string(self.dir.join("journal/web-fsops.json")).unwrap()
     }
 }
 
-fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
+pub(super) fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
     let mut entries: Vec<_> = fs::read_dir(dir).unwrap().flatten().collect();
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
@@ -197,7 +197,7 @@ fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
 }
 
 /// Foo.3mf (id 1) with two companions in Foo_extras, plus an unrelated model.
-fn standard() -> Fx {
+pub(super) fn standard() -> Fx {
     let mut f = Fx::new();
     f.model(1, "Foo.3mf");
     f.companion(1, "Foo_extras/pic.png");
@@ -432,17 +432,6 @@ fn the_upload_area_keeps_companions_blocked() {
     let before = f.snapshot();
     assert_eq!(f.ops.rename_file(1, "Bar"), Err(Error::HasCompanions));
     assert_eq!(f.snapshot(), before);
-}
-
-#[test]
-fn trash_and_permanent_delete_stay_blocked() {
-    let mut f = standard();
-    assert_eq!(f.ops.delete_file(1), Err(Error::HasCompanions));
-    f.ops
-        .db
-        .execute("UPDATE files SET deleted_at='2026-01-02T00:00:00Z', trash_path=NULL WHERE id=1", [])
-        .unwrap();
-    assert_eq!(f.ops.delete_file_permanently(1), Err(Error::HasCompanions));
 }
 
 // ---- Rennen zwischen Pruefung und Commit ----

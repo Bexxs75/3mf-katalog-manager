@@ -561,14 +561,25 @@ pub(super) fn restore_with_model(conn: &Connection, file_id: i64, model_deleted_
     }
 }
 
+/// The web version keeps its trash in `<root>/.katalog-papierkorb` and names a
+/// companion there `companion-<row id>-...`. Such a file is ours to delete: otherwise a
+/// model deleted for good here would leave it behind with no row to find it by. The
+/// folder must be a real folder (no link), and only the row's own name qualifies.
+fn is_web_trash_file(row_id: i64, path: &Path) -> bool {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str())) else { return false };
+    dir.file_name().is_some_and(|n| n == ".katalog-papierkorb")
+        && name.starts_with(&format!("companion-{row_id}-"))
+        && std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir())
+}
+
 /// Deletes the trash file of a row, but only inside the trash folder: a row from a
 /// restored backup must never make the app delete anything elsewhere.
 fn remove_trash_file(row: &CompanionRecord, trash_dir: &Path) -> Result<(), String> {
     let Some(trash_path) = row.trash_path.as_deref().filter(|p| !p.trim().is_empty()) else { return Ok(()) };
     let resolved_trash = resolve_path_for_sensitivity_check(trash_dir).map_err(|e| e.message)?;
-    if reject_if_outside_trash_dir(Path::new(trash_path), &resolved_trash).is_err() {
+    if reject_if_outside_trash_dir(Path::new(trash_path), &resolved_trash).is_err() && !is_web_trash_file(row.id, Path::new(trash_path)) {
         log::warn!(target: "trash", "Begleitdatei außerhalb des Papierkorbs wird nicht gelöscht (ID {})", row.id);
-        return Ok(());
+        return Err("Die Begleitdatei liegt außerhalb des Papierkorbs und wird nicht gelöscht".into());
     }
     match std::fs::remove_file(trash_path) {
         Ok(()) => Ok(()),

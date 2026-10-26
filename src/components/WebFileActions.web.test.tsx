@@ -111,3 +111,19 @@ it('refreshes a conflicting trash summary and requires a new password confirmati
   expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Papierkorb leeren' })).toBeDisabled();
   expect(calls.map(c => c.command)).toEqual(['empty_trash_summary', 'empty_trash_start', 'empty_trash_summary']);
 });
+
+it('shows how many companion files the emptied trash takes along and warns about desktop entries', async () => {
+  response = command => command === 'empty_trash_summary'
+    ? { count: 2, bytes: 456, maxDeletedAt: '2026-10-01T00:00:00Z', companionCount: 3, blockedByCompanions: 1 } : {};
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('Dateien / Bytes: 2 / 456');
+  expect(screen.getByText('davon 3 Begleitdateien im Papierkorb')).toBeInTheDocument();
+  expect(screen.getByText(/1 Einträge aus dem Desktop-Papierkorb können hier nicht endgültig gelöscht werden/)).toBeInTheDocument();
+});
+it('adds no companion lines for a server without companion counts or with none', async () => {
+  response = command => command === 'empty_trash_summary' ? { count: 1, bytes: 456, maxDeletedAt: '2026-10-01T00:00:00Z' } : {};
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('Dateien / Bytes: 1 / 456');
+  expect(screen.queryByText(/Begleitdateien/)).toBeNull();
+  expect(screen.queryByText(/Desktop-Papierkorb/)).toBeNull();
+});

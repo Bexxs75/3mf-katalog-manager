@@ -371,7 +371,13 @@ fn execute(
     let unit = |r: fsops::Result<()>| r.map(|_| Value::Null).map_err(core_error);
     match parsed {
         Command::Rename(id, name) => unit(ops.rename_file(id, &name)),
-        Command::Restore(id) => unit(ops.restore_file(id)),
+        Command::Restore(id) => ops.restore_file(id).map_err(core_error).map(|()| {
+            // Companions that stayed in the trash are the one thing the caller must hear about.
+            match ops.outcome.kept_in_trash {
+                0 => Value::Null,
+                n => json!({"companions_kept_in_trash": n}),
+            }
+        }),
         Command::Move(ids, folder) => ops
             .move_files_to_folder(&ids, folder, allowed)
             .map(|r| json!(r))
@@ -526,7 +532,7 @@ fn eligible(
     for id in ids {
         match ops.state(*id) {
             // Blocked items only produce a refusal; they must not spend limits or backups.
-            Ok(_) if ops.has_companions(*id).map_err(core_error)? => (),
+            Ok(_) if ops.blocked_by_companions(*id).map_err(core_error)? => (),
             Ok(row) => {
                 if trash {
                     if let Some(time) = row.deleted_at {

@@ -70,6 +70,8 @@ impl From<rusqlite::Error> for Error {
 }
 mod carry;
 mod companion_block;
+mod trash_carry;
+mod trash_view;
 mod journal;
 #[cfg(test)]
 mod tests;
@@ -77,10 +79,13 @@ mod tests;
 mod companion_gap_tests;
 #[cfg(test)]
 mod companion_carry_tests;
+#[cfg(test)]
+mod companion_trash_tests;
 pub use journal::*;
 mod operations;
 pub use operations::*;
 pub use companion_block::*;
+pub use trash_view::*;
 
 pub fn fs_rename_file<D: FsDatabase, L: UploadLedger>(
     ops: &mut FileOps<D, L>,

@@ -3,8 +3,9 @@ import { canManageFiles, getSnapshot, blockFileOperations } from './webSession';
 import { getMetadataError, reportMetadataError } from './metadataErrors';
 import { messageOf } from './errors';
 import { fileOpsError, fileOpsMessage, isDomainRejection } from './fileOpsErrors';
-export interface ItemResult { id: string; ok: boolean; kind?: string; kept_on_disk?: boolean }
-export interface TrashSummary { count: number; bytes: number; maxDeletedAt: string | null }
+export interface ItemResult { id: string; ok: boolean; kind?: string; kept_on_disk?: boolean; companions_moved?: number; companions_kept_in_trash?: number }
+/** `companionCount` and `blockedByCompanions` are absent from servers that predate companion handling. */
+export interface TrashSummary { count: number; bytes: number; maxDeletedAt: string | null; companionCount?: number; blockedByCompanions?: number }
 const refreshers = new Set<() => void | Promise<unknown>>();
 export function subscribeFileOpsRefresh(refresh: () => void | Promise<unknown>) {
   refreshers.add(refresh); return () => { refreshers.delete(refresh); };

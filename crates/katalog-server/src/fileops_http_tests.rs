@@ -839,3 +839,103 @@ async fn folder_rename_and_move_with_companion_in_subtree_are_rejected() {
     }
     assert!(model.exists());
 }
+
+fn trash_names(f: &Fixture) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(f.dir.join("models/.katalog-papierkorb"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_str().unwrap().to_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+fn count(f: &Fixture, table: &str) -> i64 {
+    let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap()
+}
+
+#[tokio::test]
+async fn trash_restore_and_permanent_delete_take_companions_along() {
+    let f = Fixture::new(true).await;
+    let id = f.file("c.3mf");
+    let (cid, old) = add_real_companion(&f, &id, "c_extras", "pic.png");
+
+    let r = f.invoke("delete_files", json!({"fileIds":[id]})).await;
+    assert_eq!(r.status(), 200);
+    let v = value(r).await;
+    assert_eq!(v[0]["ok"], true, "{v}");
+    assert_eq!(v[0]["companions_moved"], 1);
+    assert!(!old.exists() && !f.dir.join("models/c_extras").exists());
+    assert_eq!(trash_names(&f).len(), 2);
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    assert_eq!((summary["count"].clone(), summary["companionCount"].clone(), summary["blockedByCompanions"].clone()), (json!(1), json!(1), json!(0)));
+    // The minimal model row records no size; the 8 bytes are the companion file.
+    assert_eq!(summary["bytes"], 8);
+
+    let r = f.invoke("restore_file", json!({"fileId":id})).await;
+    assert_eq!(r.status(), 200);
+    assert!(old.is_file() && f.dir.join("models/c.3mf").exists());
+    assert_eq!(companion_path(&f, cid), old.to_str().unwrap());
+    assert!(trash_names(&f).is_empty());
+
+    assert_eq!(f.invoke("delete_files", json!({"fileIds":[id]})).await.status(), 200);
+    let r = f.invoke("delete_file_permanently", json!({"fileId":id,"confirm":true,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert!(trash_names(&f).is_empty());
+    // The real server connection enforces the cascade: no row outlives its model.
+    let fk: i64 = f.app.writer.as_ref().unwrap().conn.lock().unwrap().query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+    assert_eq!(fk, 1);
+    assert_eq!((count(&f, "files"), count(&f, "companion_files")), (0, 0));
+}
+
+#[tokio::test]
+async fn empty_trash_removes_companions_and_leaves_desktop_entries_blocked() {
+    let f = Fixture::new(true).await;
+    let web = f.file("web.3mf");
+    add_real_companion(&f, &web, "web_extras", "pic.png");
+    let desk = f.file("desk.3mf");
+    add_real_companion(&f, &desk, "desk_extras", "d.png");
+    assert_eq!(f.invoke("delete_files", json!({"fileIds":[web]})).await.status(), 200);
+    {
+        // The desktop moved this one to its own trash.
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("UPDATE files SET deleted_at='2026-01-02T00:00:00Z', trash_path='/desktop/trash/2-desk.3mf' WHERE name='desk.3mf'", []).unwrap();
+        c.execute("UPDATE companion_files SET deleted_at='2026-01-02T00:00:00Z', trash_path='/desktop/trash/companion-2-d.png' WHERE name='d.png'", []).unwrap();
+    }
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    assert_eq!((summary["count"].clone(), summary["companionCount"].clone(), summary["blockedByCompanions"].clone()), (json!(1), json!(1), json!(1)));
+    let r = f.invoke("delete_file_permanently", json!({"fileId":desk,"confirm":true,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 409);
+    assert_eq!(value(r).await["kind"], "has_companions");
+    let start = value(
+        f.invoke("empty_trash_start", json!({"expectedCount":1,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"})).await,
+    )
+    .await;
+    let block = f.invoke("empty_trash_block", json!({"token":start["token"]})).await;
+    assert_eq!(block.status(), 200);
+    let block = value(block).await;
+    assert_eq!(block["remaining"], 0);
+    assert_eq!(block["results"][0]["ok"], true);
+    assert_eq!(block["results"][0]["companions_moved"], 1);
+    assert!(trash_names(&f).is_empty());
+    assert_eq!((count(&f, "files"), count(&f, "companion_files")), (1, 1));
+    assert!(f.dir.join("models/desk_extras/d.png").is_file(), "the desktop entry's file is not touched");
+}
+
+#[tokio::test]
+async fn restore_reports_companions_that_stayed_in_the_trash() {
+    let f = Fixture::new(true).await;
+    let id = f.file("c.3mf");
+    add_real_companion(&f, &id, "c_extras", "pic.png");
+    assert_eq!(f.invoke("delete_files", json!({"fileIds":[id]})).await.status(), 200);
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("UPDATE companion_files SET trash_path='/desktop/trash/companion-1-pic.png'", []).unwrap();
+    }
+    let r = f.invoke("restore_file", json!({"fileId":id})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await["companions_kept_in_trash"], 1);
+    assert!(f.dir.join("models/c.3mf").exists());
+    assert!(!f.dir.join("models/c_extras/pic.png").exists());
+}

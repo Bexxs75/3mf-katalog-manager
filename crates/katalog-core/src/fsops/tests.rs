@@ -481,6 +481,19 @@ fn recovery_table_has_a_test_for_each_decision() {
                 ..base
             },
         ),
+        (
+            RecoveryDecision::FinishUnlink,
+            RecoveryFacts {
+                unlink: true,
+                source_matches: true,
+                source_absent: false,
+                companions_any: true,
+                companions_all_source: false,
+                companions_all_target: false,
+                companions_mixed: true,
+                ..base
+            },
+        ),
     ];
     for ((decision, _), (expected, facts)) in RECOVERY_TABLE.iter().zip(rows) {
         assert_eq!(*decision, expected);

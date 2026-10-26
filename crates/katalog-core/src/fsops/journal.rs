@@ -445,6 +445,10 @@ pub const RECOVERY_TABLE: &[(RecoveryDecision, &str)] = &[
         RecoveryDecision::RollbackCompanions,
         "DB before, model at its source, companions partly or fully at their targets",
     ),
+    (
+        RecoveryDecision::FinishUnlink,
+        "delete with companions: DB before, some file already unlinked; the rest follows",
+    ),
 ];
 pub fn recovery_decision(f: RecoveryFacts) -> RecoveryDecision {
     use RecoveryDecision::*;
@@ -476,6 +480,17 @@ pub fn recovery_decision(f: RecoveryFacts) -> RecoveryDecision {
     }
     if f.db_only {
         return Discard;
+    }
+    if f.unlink && f.companions_any {
+        // A companion that is already unlinked cannot come back, so a delete never
+        // goes backwards once the first file is gone.
+        if !f.companions_db_before || !(f.companions_all_source || f.companions_all_target || f.companions_mixed) {
+            return Manual;
+        }
+        if f.source_matches && f.companions_all_source {
+            return Discard;
+        }
+        return if f.source_matches || f.source_absent { FinishUnlink } else { Manual };
     }
     if f.source_matches && !f.target_matches {
         if f.companions_all_source {

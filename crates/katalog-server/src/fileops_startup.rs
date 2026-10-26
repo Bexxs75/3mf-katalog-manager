@@ -231,6 +231,7 @@ pub(crate) fn prepare(
         journal,
         db: DbAdapter::new(db),
         ledger,
+        outcome: Default::default(),
     };
     let report = ops
         .recover()

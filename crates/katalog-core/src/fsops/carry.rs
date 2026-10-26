@@ -1,4 +1,4 @@
-//! Companion files travelling with their model on rename and move.
+//! Companion files travelling with their model on rename, move, trash and restore.
 //!
 //! Every companion is its own journalled step: the files move first, the model
 //! last, then one database commit rewrites `files` and `companion_files`
@@ -6,7 +6,8 @@
 //! theirs", and the model's rename is the point after which recovery goes
 //! forward instead of back. The `_extras` folder itself is never renamed:
 //! `Foo.3mf` and `Foo.stl` share `Foo_extras`, and only the files that belong
-//! to the moved model may leave it.
+//! to the moved model may leave it. A permanent delete is the same sequence with
+//! unlinks instead of renames, where recovery can only go forward.
 
 use super::operations::{observe, rename_checked, Observed};
 use super::*;
@@ -20,6 +21,10 @@ pub(super) struct CarryPlan {
     pub rows: Vec<CompanionState>,
     pub steps: Vec<CompanionStep>,
     pub extras_dir: Option<ExtrasDir>,
+    /// Restore: rows that stay in the trash because their file is not ours to move.
+    pub kept_in_trash: usize,
+    /// Delete: a trash file that is not a plain file of ours stays where it is.
+    pub kept_on_disk: bool,
 }
 
 /// How the companions of a journal entry sit on disk right now.
@@ -87,16 +92,42 @@ pub(super) fn apply_steps(c: &Connection, steps: &[CompanionStep]) -> Result<()>
     Ok(())
 }
 
-struct Probe {
-    state: DirState,
-    identity: Option<Identity>,
-    handle: Option<Directory>,
+pub(super) struct Probe {
+    pub state: DirState,
+    pub identity: Option<Identity>,
+    pub handle: Option<Directory>,
+}
+
+/// Where each side of a companion step lives: renames and moves stay in the
+/// catalog, the trash takes files from it, a restore brings them back.
+pub(super) fn step_access(op: Operation) -> (Access, Access) {
+    match op {
+        Operation::Trash => (Access::Source, Access::Trash),
+        Operation::Restore => (Access::Trash, Access::MoveTarget),
+        Operation::Unlink => (Access::Trash, Access::Trash),
+        _ => (Access::Source, Access::MoveTarget),
+    }
+}
+
+/// The absolute source and target a step must have for this operation, so a
+/// journal that names other places is never followed.
+fn step_places(op: Operation, step: &CompanionStep) -> Result<(&str, Option<&str>)> {
+    let after = step.after.as_ref();
+    match op {
+        Operation::Trash => Ok((&step.before.path, Some(after.ok_or(Error::Changed)?.trash_path.as_deref().ok_or(Error::Changed)?))),
+        Operation::Restore => Ok((
+            step.before.trash_path.as_deref().ok_or(Error::Changed)?,
+            Some(&after.ok_or(Error::Changed)?.path),
+        )),
+        Operation::Unlink => Ok((step.before.trash_path.as_deref().ok_or(Error::Changed)?, None)),
+        _ => Ok((&step.before.path, Some(&after.ok_or(Error::Changed)?.path))),
+    }
 }
 
 impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     /// Looks at a companion folder through the pinned handles. A protected place is
     /// reported as `Protected`; links, files and other devices as `Unsafe`.
-    fn probe_dir(&self, path: &str, source: Option<Identity>) -> Result<Probe> {
+    pub(super) fn probe_dir(&self, path: &str, source: Option<Identity>) -> Result<Probe> {
         let unsafe_dir = Probe {
             state: DirState::Unsafe,
             identity: None,
@@ -137,6 +168,46 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         })
     }
 
+    /// For each row: the identity of its file when it is a plain file inside `dir`,
+    /// `None` when it is gone, and a count of the ones that cannot be trusted.
+    pub(super) fn locate_present(
+        &self,
+        rows: &[&CompanionState],
+        dir: &Probe,
+        root_dev: u64,
+        unsafe_files: &mut usize,
+    ) -> Result<Vec<Option<FileIdentity>>> {
+        let mut present = Vec::new();
+        for row in rows {
+            let mut found = None;
+            if dir.state == DirState::Plain {
+                match self.context.resolve(&row.path, Access::Source) {
+                    Ok(r) => {
+                        if Some(Identity::of(&r.parent)?) != dir.identity
+                            || Path::new(&row.path).file_name().and_then(|n| n.to_str()) != Some(&row.name)
+                            || r.name != row.name
+                        {
+                            *unsafe_files += 1;
+                        } else {
+                            match FileIdentity::read(&r) {
+                                Ok(fi) if fi.dev == root_dev => found = Some(fi),
+                                Ok(_) => *unsafe_files += 1,
+                                Err(Error::NotFound) => (),
+                                Err(Error::Internal) => return Err(Error::Internal),
+                                Err(_) => *unsafe_files += 1,
+                            }
+                        }
+                    }
+                    Err(Error::NotFound) => (),
+                    Err(Error::Internal) => return Err(Error::Internal),
+                    Err(_) => *unsafe_files += 1,
+                }
+            }
+            present.push(found);
+        }
+        Ok(present)
+    }
+
     /// Read-only pre-check for a rename or move of `before` to `new_model_path`. It
     /// decides whether the companions travel, are refused, or are not affected, and
     /// returns the steps to journal. Nothing is changed.
@@ -174,8 +245,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             new_dir: DirState::Absent,
             unsafe_files: 0,
             names_taken: 0,
+            rows_unhandled: 0,
         };
-        if travelling.is_empty() || !matches!(op, CompanionOp::Rename | CompanionOp::Move) {
+        if travelling.is_empty() {
             companion_block(facts).into_result()?;
             return Ok(CarryPlan {
                 rows,
@@ -200,34 +272,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         let _ = super::tests::at_point("plan_files", 0);
 
         // Where each file is: present (identity known), gone from disk, or untrustworthy.
-        let mut present: Vec<Option<FileIdentity>> = Vec::new();
-        for row in &travelling {
-            let mut found = None;
-            if old.state == DirState::Plain {
-                match self.context.resolve(&row.path, Access::Source) {
-                    Ok(r) => {
-                        if Some(Identity::of(&r.parent)?) != old.identity
-                            || Path::new(&row.path).file_name().and_then(|n| n.to_str()) != Some(&row.name)
-                            || r.name != row.name
-                        {
-                            facts.unsafe_files += 1;
-                        } else {
-                            match FileIdentity::read(&r) {
-                                Ok(fi) if fi.dev == root_dev => found = Some(fi),
-                                Ok(_) => facts.unsafe_files += 1,
-                                Err(Error::NotFound) => (),
-                                Err(Error::Internal) => return Err(Error::Internal),
-                                Err(_) => facts.unsafe_files += 1,
-                            }
-                        }
-                    }
-                    Err(Error::NotFound) => (),
-                    Err(Error::Internal) => return Err(Error::Internal),
-                    Err(_) => facts.unsafe_files += 1,
-                }
-            }
-            present.push(found);
-        }
+        let present = self.locate_present(&travelling, &old, root_dev, &mut facts.unsafe_files)?;
         let any_present = present.iter().any(Option::is_some);
         let new_state;
         {
@@ -299,6 +344,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             rows,
             steps,
             extras_dir,
+            ..CarryPlan::default()
         })
     }
 
@@ -346,17 +392,16 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 return Err(self.journal.simulate_crash());
             }
         }
+        let (from, to) = step_access(i.operation);
         for (k, step) in i.companions.iter().enumerate() {
             let (Some(s), Some(t), Some(identity)) = (&step.source, &step.target, step.identity) else {
                 continue;
             };
             let moved = self
                 .context
-                .resolve_relative(root, s, Access::Source)
+                .resolve_relative(root, s, from)
                 .and_then(|src| {
-                    let tgt = self
-                        .context
-                        .resolve_relative(root, t, Access::MoveTarget)?;
+                    let tgt = self.context.resolve_relative(root, t, to)?;
                     rename_checked(&src, &tgt, identity)
                 });
             if let Err(e) = moved {
@@ -388,7 +433,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
     }
 
-    fn observe_rel(
+    pub(super) fn observe_rel(
         &self,
         root: usize,
         relative: &str,
@@ -406,19 +451,25 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     /// removes the folder this operation created. A file is only moved when its
     /// identity matches the journal; anything else is left for manual review.
     pub(super) fn rollback_carry(&mut self, i: &Intent, root: usize) -> Result<()> {
-        for step in i.companions.iter().rev() {
+        let (from, to) = step_access(i.operation);
+        for (step_index, step) in i.companions.iter().enumerate().rev() {
             let (Some(s), Some(t), Some(identity)) = (&step.source, &step.target, step.identity) else {
                 continue;
             };
-            let at_source = self.observe_rel(root, s, Access::Source, identity)?;
-            let at_target = self.observe_rel(root, t, Access::MoveTarget, identity)?;
+            let at_source = self.observe_rel(root, s, from, identity)?;
+            let at_target = self.observe_rel(root, t, to, identity)?;
             match (at_source, at_target) {
                 // Untouched at its source, whether or not it changed in place meanwhile.
                 (Observed::Matches, _) | (Observed::Foreign, Observed::Absent) => (),
                 (Observed::Absent, Observed::Matches) => {
-                    let src = self.context.resolve_relative(root, s, Access::Source)?;
-                    let tgt = self.context.resolve_relative(root, t, Access::MoveTarget)?;
+                    let src = self.context.resolve_relative(root, s, from)?;
+                    let tgt = self.context.resolve_relative(root, t, to)?;
                     rename_checked(&tgt, &src, identity)?;
+                    #[cfg(test)]
+                    if super::tests::at_point("recovery_rollback", step_index) {
+                        return Err(Error::RestartRequired);
+                    }
+                    let _ = step_index;
                 }
                 _ => return Err(Error::Changed),
             }
@@ -449,10 +500,13 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
     }
 
-    /// After a finished rename or move the old companion folder is usually empty.
-    /// Removing it is best effort and not journalled: at worst an empty folder stays.
+    /// After a finished rename, move or trash the old companion folder is usually
+    /// empty. Removing it is best effort and not journalled: at worst an empty folder
+    /// stays. A restore fills the folder instead, so it never gets here.
     pub(super) fn cleanup_old_extras(&mut self, i: &Intent) {
-        if !i.companions.iter().any(|s| s.source.is_some()) {
+        if !matches!(i.operation, Operation::Rename | Operation::Move | Operation::Trash)
+            || !i.companions.iter().any(|s| s.source.is_some())
+        {
             return;
         }
         let Some(old) = extras_dir_for(Path::new(&i.before.path)) else {
@@ -469,9 +523,14 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     }
 
     /// Recovery's picture of the companions: database against the journal, and each
-    /// travelling file at its source, its target, or neither.
+    /// file at its source, its target, or neither. For a delete "at the target" means
+    /// "already unlinked".
     pub(super) fn observe_carry(&mut self, i: &Intent, root: usize) -> Result<CarryObservation> {
-        if !matches!(i.operation, Operation::Rename | Operation::Move) {
+        let companion_op = matches!(
+            i.operation,
+            Operation::Rename | Operation::Move | Operation::Trash | Operation::Restore | Operation::Unlink
+        ) || (i.operation == Operation::DbOnly && i.has_companion_data());
+        if !companion_op {
             return Ok(CarryObservation::none());
         }
         let rows = self.db.with_conn(|c| read_companion_rows(c, i.before.id))?;
@@ -482,22 +541,48 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .iter()
             .filter_map(|s| s.after.as_ref())
             .all(|a| rows.iter().find(|r| r.id == a.id) == Some(a));
-        let root_path = self.context.roots[root].path.clone();
+        let root_path = self.context.roots.get(root).map(|r| r.path.clone());
+        let unlink = i.operation == Operation::Unlink;
+        let (from, to) = step_access(i.operation);
         let (mut at_source, mut at_target, mut invalid) = (0usize, 0usize, false);
         let mut seen = std::collections::HashSet::new();
         for step in &i.companions {
-            let after = step.after.as_ref().ok_or(Error::Changed)?;
-            if step.before.file_id != i.before.id || after.id != step.before.id || !seen.insert(step.before.id) {
+            // The same rule as for the model: after a delete the row is gone, otherwise it keeps its id.
+            if step.before.file_id != i.before.id
+                || step.after.as_ref().is_some_and(|a| a.id != step.before.id)
+                || step.after.is_none() != (unlink || i.operation == Operation::DbOnly && i.after.is_none())
+                || !seen.insert(step.before.id)
+            {
                 return Err(Error::Changed);
             }
-            let (Some(s), Some(t), Some(identity)) = (&step.source, &step.target, step.identity) else {
+            let (Some(s), Some(identity)) = (&step.source, step.identity) else {
                 continue;
             };
-            if root_path.join(s) != Path::new(&step.before.path) || root_path.join(t) != Path::new(&after.path) {
+            let (source_abs, target_abs) = step_places(i.operation, step)?;
+            let root_path = root_path.as_ref().ok_or(Error::Changed)?;
+            if root_path.join(s) != Path::new(source_abs) {
                 return Err(Error::Changed);
             }
-            let so = self.observe_rel(root, s, Access::Source, identity)?;
-            let to = self.observe_rel(root, t, Access::MoveTarget, identity)?;
+            if unlink {
+                if step.target.is_some() {
+                    return Err(Error::Changed);
+                }
+                obs.any = true;
+                match self.observe_rel(root, s, from, identity)? {
+                    Observed::Matches => at_source += 1,
+                    Observed::Absent => at_target += 1,
+                    Observed::Foreign => invalid = true,
+                }
+                continue;
+            }
+            let (Some(t), Some(target_abs)) = (&step.target, target_abs) else {
+                continue;
+            };
+            if root_path.join(t) != Path::new(target_abs) {
+                return Err(Error::Changed);
+            }
+            let so = self.observe_rel(root, s, from, identity)?;
+            let to = self.observe_rel(root, t, to, identity)?;
             obs.any = true;
             match (so, to) {
                 // A source that changed in place but did not move is untouched, as in the rollback.

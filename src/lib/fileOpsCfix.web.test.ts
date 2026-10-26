@@ -163,7 +163,15 @@ it('explains has_companions in every language and never falls back to the generi
     document.documentElement.lang = 'de';
     expect(fileOpsMessage('has_companions')).not.toBe(fileOpsMessage('unknown_kind'));
     expect(fileOpsMessage('has_companions')).toContain('Ein betroffenes Modell hat Begleitdateien');
+    // Trash, restore and delete carry companions now; the remaining reasons are named.
+    expect(fileOpsMessage('has_companions')).toContain('Desktop-Papierkorb');
+    expect(fileOpsMessage('has_companions')).not.toContain('Löschen, Papierkorb');
     document.documentElement.lang = 'fr';
     expect(fileOpsMessage('has_companions')).toContain('fichiers associés');
+    expect(fileOpsMessage('has_companions')).toContain('corbeille du bureau');
+    document.documentElement.lang = 'en';
+    expect(fileOpsMessage('has_companions')).toContain('desktop trash');
+    document.documentElement.lang = 'es';
+    expect(fileOpsMessage('has_companions')).toContain('papelera del escritorio');
   } finally { document.documentElement.lang = original; }
 });

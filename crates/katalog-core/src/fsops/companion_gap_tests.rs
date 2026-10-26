@@ -1,8 +1,8 @@
 //! Die Web-Dateiverwaltung zieht Begleitdateien (`companion_files`, Ordner
-//! `<Modell>_extras`) beim Umbenennen und Verschieben einzelner Modelle mit.
-//! Papierkorb, endgueltiges Loeschen und Ordneroperationen lehnt sie weiter ab,
-//! solange ein betroffenes Modell Begleitdateien hat. Die `#[ignore]`-Tests
-//! beschreiben den Sollzustand fuer das spaetere Mitziehen dieser Operationen.
+//! `<Modell>_extras`) beim Umbenennen, Verschieben, in den Papierkorb, beim
+//! Wiederherstellen und beim endgueltigen Loeschen einzelner Modelle mit.
+//! Ordneroperationen lehnt sie weiter ab, solange ein betroffenes Modell
+//! Begleitdateien hat. Die Ordnertests am Ende dieser Datei halten diese Sperre fest.
 use super::*;
 use std::{fs, path::PathBuf};
 
@@ -164,33 +164,40 @@ fn soll_move_zieht_extras_mit() {
 // ---- (c) Papierkorb ----
 
 #[test]
-fn sperre_trash_mit_begleitdatei() {
-    let mut f = fixture();
-    let old = f.companion_path();
-    assert_eq!(f.ops.delete_file(1), Err(Error::HasCompanions));
-    assert!(exists(&f.root().join("Foo.3mf")));
-    assert!(exists(&f.extras().join("pic.png")));
-    assert_eq!(f.companion_path(), old);
-    let deleted: Option<String> = f
-        .ops
-        .db
-        .query_row("SELECT deleted_at FROM companion_files WHERE id=?1", [f.companion_id], |r| r.get(0))
-        .unwrap();
-    assert!(deleted.is_none(), "Begleitdatei nicht als gelöscht markiert");
-}
-
-#[test]
-#[ignore = "Sperre aktiv; Mitziehen noch nicht umgesetzt"]
 fn soll_trash_nimmt_extras_aus_dem_katalogordner() {
     let mut f = fixture();
+    let old = f.companion_path();
     f.ops.delete_file(1).unwrap();
     assert!(!exists(&f.extras()), "Foo_extras darf nicht verwaist liegen bleiben");
-    let deleted: Option<String> = f
+    let (deleted, trash_path, path): (Option<String>, Option<String>, String) = f
         .ops
         .db
-        .query_row("SELECT deleted_at FROM companion_files WHERE id=?1", [f.companion_id], |r| r.get(0))
+        .query_row(
+            "SELECT deleted_at,trash_path,path FROM companion_files WHERE id=?1",
+            [f.companion_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    let model_deleted: Option<String> = f
+        .ops
+        .db
+        .query_row("SELECT deleted_at FROM files WHERE id=1", [], |r| r.get(0))
         .unwrap();
     assert!(deleted.is_some(), "Begleitdatei als gelöscht markiert");
+    assert_eq!(deleted, model_deleted, "gleicher Zeitstempel wie das Modell");
+    assert_eq!(path, old, "der alte Pfad bleibt für die Wiederherstellung");
+    let trash_path = trash_path.expect("Papierkorbpfad");
+    let expected_dir = f.root().join(TRASH);
+    let p = std::path::Path::new(&trash_path);
+    assert_eq!(p.parent().unwrap(), expected_dir);
+    assert!(p
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .starts_with(&format!("companion-{}-", f.companion_id)));
+    assert!(p.is_file());
+    assert!(f.ops.journal.is_empty());
 }
 
 // ---- (d) Endgueltig loeschen ----
@@ -199,7 +206,8 @@ fn soll_trash_nimmt_extras_aus_dem_katalogordner() {
 fn sperre_delete_permanently_mit_begleitdatei() {
     let mut f = fixture();
     let old = f.companion_path();
-    // Papierkorb-Zustand direkt herstellen, weil delete_file selbst gesperrt ist.
+    // Alter Zustand: Modell nur in der Datenbank als gelöscht markiert, die Begleitdatei
+    // liegt noch aktiv im Katalogordner. Ein Löschen würde sie verwaisen lassen.
     f.ops
         .db
         .execute(
@@ -216,7 +224,6 @@ fn sperre_delete_permanently_mit_begleitdatei() {
 }
 
 #[test]
-#[ignore = "Sperre aktiv; Mitziehen noch nicht umgesetzt"]
 fn soll_delete_permanently_raeumt_extras_auf() {
     let mut f = fixture();
     f.ops.delete_file(1).unwrap();
@@ -224,6 +231,7 @@ fn soll_delete_permanently_raeumt_extras_auf() {
     assert!(!exists(&f.extras()), "Foo_extras darf nicht verwaist bleiben");
     assert_eq!(f.companion_rows(), 0);
     assert!(!contains_file_named(&f.root(), "pic.png"), "auch im Papierkorb darf pic.png nicht liegen");
+    assert!(f.ops.journal.is_empty());
 }
 
 // ---- Freie Modelle, Stapel, Datenbankpfad ----
@@ -256,15 +264,15 @@ fn modell_ohne_begleitdatei_bleibt_bedienbar() {
 }
 
 #[test]
-fn stapel_loeschen_sperrt_nur_das_betroffene_modell() {
+fn stapel_loeschen_nimmt_die_begleitdateien_mit() {
     let mut f = fixture();
     add_free(&mut f);
     let r = f.ops.delete_files(&[1, 2], || true).unwrap();
-    assert!(!r[0].ok);
-    assert_eq!(r[0].kind, Some(Error::HasCompanions));
-    assert!(r[1].ok);
-    assert!(exists(&f.root().join("Foo.3mf")));
+    assert!(r[0].ok && r[1].ok);
+    assert_eq!((r[0].companions_moved, r[1].companions_moved), (1, 0));
+    assert!(!exists(&f.root().join("Foo.3mf")));
     assert!(!exists(&f.root().join("Free.3mf")));
+    assert!(!exists(&f.extras()));
 }
 
 #[test]
@@ -284,6 +292,7 @@ fn papierkorb_leeren_laesst_gesperrtes_modell_unberuehrt() {
     let mut f = fixture();
     add_free(&mut f);
     f.ops.delete_file(2).unwrap();
+    // Modell 1 steht nur in der Datenbank im Papierkorb, die Begleitdatei ist noch aktiv.
     f.ops
         .db
         .execute(
@@ -401,7 +410,7 @@ fn contains_file_named(dir: &std::path::Path, name: &str) -> bool {
 // ---- Nachbesserungen ----
 
 #[test]
-fn getrennt_entfernte_begleitdatei_sperrt_umbenennen_nicht_aber_den_papierkorb() {
+fn getrennt_entfernte_begleitdatei_sperrt_weder_umbenennen_noch_den_papierkorb() {
     let mut f = fixture();
     let id = f.companion_id;
     f.ops
@@ -413,7 +422,10 @@ fn getrennt_entfernte_begleitdatei_sperrt_umbenennen_nicht_aber_den_papierkorb()
     assert!(exists(&f.root().join("Bar.3mf")));
     assert_eq!(f.companion_path(), old, "die entfernte Zeile bleibt unveraendert");
     assert!(exists(&f.extras().join("pic.png")), "ihre Datei wird nicht angefasst");
-    assert_eq!(f.ops.delete_file(1), Err(Error::HasCompanions));
+    // Auch der Papierkorb lässt sie liegen und wird von ihr nicht gesperrt.
+    f.ops.delete_file(1).unwrap();
+    assert_eq!(f.companion_path(), old);
+    assert!(exists(&f.extras().join("pic.png")));
 }
 
 #[test]
@@ -507,6 +519,22 @@ fn papierkorb_zaehlung_und_snapshot_lassen_gesperrte_eintraege_aus() {
         .empty_trash_snapshot(1, Some("2030-01-01T00:00:00Z"))
         .unwrap();
     assert_eq!(snap.ids(), &[2]);
-    assert_eq!(f.ops.has_companions(1), Ok(true));
-    assert_eq!(f.ops.has_companions(2), Ok(false));
+    assert_eq!(f.ops.blocked_by_companions(1), Ok(true));
+    assert_eq!(f.ops.blocked_by_companions(2), Ok(false));
+}
+
+#[test]
+fn papierkorb_zaehlung_zaehlt_web_papierkorb_begleitdateien_mit() {
+    let mut f = fixture();
+    add_free(&mut f);
+    f.ops.delete_file(1).unwrap();
+    f.ops.delete_file(2).unwrap();
+    let s = f.ops.empty_trash_summary().unwrap();
+    assert_eq!((s.count, s.blocked_by_companions, s.companion_count), (2, 0, 1));
+    let snap = f
+        .ops
+        .empty_trash_snapshot(2, Some("2030-01-01T00:00:00Z"))
+        .unwrap();
+    assert_eq!(snap.ids(), &[1, 2]);
+    assert_eq!(f.ops.blocked_by_companions(1), Ok(false));
 }
