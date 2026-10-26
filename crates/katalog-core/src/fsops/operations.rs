@@ -69,16 +69,34 @@ pub struct TrashSnapshot {
     ids: Vec<i64>,
     offset: usize,
     cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
+    /// Companion files removed on their own; they follow the models, block by block.
+    loose: Vec<i64>,
+    loose_offset: usize,
 }
 impl TrashSnapshot {
     pub fn ids(&self) -> &[i64] { &self.ids }
+    /// Model ids of the next block; empty once every model is done.
     pub fn next_block_ids(&self) -> &[i64] {
         let end = self.offset.saturating_add(200).min(self.ids.len());
         self.ids.get(self.offset..end).unwrap_or(&[])
     }
-
+    /// Companion row ids of the next block; only offered after the last model block,
+    /// so one block never mixes the two kinds.
+    pub fn next_loose_block_ids(&self) -> &[i64] {
+        if self.offset < self.ids.len() {
+            return &[];
+        }
+        let end = self.loose_offset.saturating_add(200).min(self.loose.len());
+        self.loose.get(self.loose_offset..end).unwrap_or(&[])
+    }
+    pub fn loose_ids(&self) -> &[i64] {
+        &self.loose
+    }
+    pub fn loose_count(&self) -> usize {
+        self.loose.len()
+    }
     pub fn remaining(&self) -> usize {
-        self.ids.len().saturating_sub(self.offset)
+        self.ids.len().saturating_sub(self.offset) + self.loose.len().saturating_sub(self.loose_offset)
     }
 }
 #[derive(Debug, Serialize)]
@@ -87,6 +105,9 @@ pub struct TrashSummary {
     pub blocked_by_companions: usize,
     /// Companion files in the web trash that go with the counted entries.
     pub companion_count: usize,
+    /// Companion files removed on their own that emptying the trash deletes as well.
+    pub loose_companion_count: usize,
+    pub loose_companion_bytes: u64,
     pub bytes: u64,
     pub max_deleted_at: Option<String>,
 }
@@ -139,6 +160,9 @@ fn touches_companions(intent: &Intent) -> bool {
     }
 }
 fn commit(c: &mut Connection, intent: &Intent) -> Result<()> {
+    if intent.operation.is_companion_edit() {
+        return super::companion_edit::commit_companion_edit(c, intent);
+    }
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     if read_state(&tx, intent.before.id)?.as_ref() != Some(&intent.before) {
         return Err(Error::Changed);
@@ -676,7 +700,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         Ok(place)
     }
     /// Removes one companion from the trash, but only the very inode the journal names.
-    fn unlink_companion(&mut self, root: usize, relative: &str, identity: FileIdentity) -> Result<()> {
+    pub(super) fn unlink_companion(&mut self, root: usize, relative: &str, identity: FileIdentity) -> Result<()> {
         let r = self.context.resolve_relative(root, relative, Access::Trash)?;
         if FileIdentity::read(&r) != Ok(identity) {
             return Err(Error::Changed);
@@ -759,6 +783,16 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         expected_count: usize,
         max_deleted_at: Option<&str>,
     ) -> Result<TrashSnapshot> {
+        self.empty_trash_snapshot_with(expected_count, 0, max_deleted_at)
+    }
+    /// `expected_loose` is the number of individually removed companion files the
+    /// caller was shown; the snapshot refuses a different number.
+    pub fn empty_trash_snapshot_with(
+        &mut self,
+        expected_count: usize,
+        expected_loose: usize,
+        max_deleted_at: Option<&str>,
+    ) -> Result<TrashSnapshot> {
         self.ready()?;
         let cutoff = max_deleted_at
             .map(chrono::DateTime::parse_from_rfc3339)
@@ -778,10 +812,23 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             if ids.len() != expected_count {
                 return Err(Error::Conflict);
             }
+            let mut loose = Vec::new();
+            for entry in loose_companions(c, &roots)? {
+                let time = chrono::DateTime::parse_from_rfc3339(&entry.deleted_at)
+                    .map_err(|_| Error::Changed)?;
+                if cutoff.is_some_and(|t| time <= t) {
+                    loose.push(entry.id);
+                }
+            }
+            if loose.len() != expected_loose {
+                return Err(Error::Conflict);
+            }
             Ok(TrashSnapshot {
                 ids,
                 offset: 0,
                 cutoff,
+                loose,
+                loose_offset: 0,
             })
         })
     }
@@ -790,6 +837,21 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         snapshot: &mut TrashSnapshot,
         allowed: impl FnMut() -> bool,
     ) -> Result<Vec<ItemResult>> {
+        if snapshot.offset >= snapshot.ids.len() && snapshot.loose_offset < snapshot.loose.len() {
+            let cutoff = snapshot.cutoff;
+            let mut result = self.batch(snapshot.next_loose_block_ids(), allowed, |s, id| {
+                s.purge_loose_companion(id, cutoff).map(|()| None)
+            })?;
+            snapshot.loose_offset += result
+                .iter()
+                .take_while(|r| r.kind != Some(Error::NotStarted))
+                .count();
+            // Row ids of companion files are not model ids; a prefix keeps clients from mixing them up.
+            for r in &mut result {
+                r.id = format!("c{}", r.id);
+            }
+            return Ok(result);
+        }
         let result = self.batch(snapshot.next_block_ids(), allowed, |s, id| {
             s.delete_permanently_before(id, snapshot.cutoff)
                 .map(|r| Some(r.kept_on_disk))
@@ -874,6 +936,11 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.ready()
     }
     fn recover_one(&mut self, i: &Intent) -> Result<bool> {
+        if i.operation.is_companion_edit() {
+            // The model stays as it is, so nothing is detached from the upload ledger.
+            self.recover_companion_edit(i)?;
+            return Ok(false);
+        }
         let current = self.db.with_conn(|c| read_state(c, i.before.id))?;
         let db_before = current.as_ref() == Some(&i.before);
         let db_after = current == i.after;
@@ -1114,7 +1181,7 @@ mod snapshot_accessor_tests {
     use super::*;
     #[test]
     fn snapshot_blocks_come_only_from_its_own_ids_and_never_underflow() {
-        let mut s = TrashSnapshot { ids: (0..450).collect(), offset: 0, cutoff: None };
+        let mut s = TrashSnapshot { ids: (0..450).collect(), offset: 0, cutoff: None, loose: Vec::new(), loose_offset: 0 };
         assert_eq!(s.next_block_ids().len(), 200);
         assert_eq!(s.remaining(), 450);
         s.offset = 400;

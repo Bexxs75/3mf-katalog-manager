@@ -138,7 +138,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 55);
+    assert_eq!(WRITE_COMMANDS.len(), 57);
     assert_eq!(crate::READ_COMMANDS.len(), 30);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
@@ -1049,7 +1049,10 @@ async fn manager_http_all_writes_round_trip_and_rejected_commands_stay_closed() 
 #[tokio::test]
 async fn manager_http_auth_csrf_and_nonimage_body_limits_cover_every_write() {
     let f = Fixture::new(true);
-    for cmd in &WRITE_COMMANDS[18..] {
+    // Selected by name, not by position: file operations and the commands named here are
+    // exercised with their own bodies elsewhere.
+    let own_tests = ["remove_files_from_catalog", "start_upload_import", "discard_upload", "cancel_import", "set_favorite", "set_print_status", "add_tag"];
+    for cmd in WRITE_COMMANDS.iter().filter(|c| !crate::write::FILE_OPS_COMMANDS.contains(c) && !own_tests.contains(c)) {
         for (session, csrf, status) in [(None, false, 401), (Some(&f.session), false, 403)] {
             let request = f.request(
                 cmd,

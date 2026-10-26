@@ -86,6 +86,7 @@ fn core_error(e: fsops::Error) -> Box<Response> {
             InvalidName | InvalidArguments => 400,
             NotFound => 404,
             Protected | HasCompanions | CompanionsConflict | CompanionsChanged => 409,
+            CompanionLimit => 422,
             RestartRequired => 503,
             Internal => 500,
             NotStarted => 409,
@@ -113,12 +114,14 @@ enum Command {
     Trash(Vec<i64>),
     Restore(i64),
     Permanent(i64, String),
-    Start(usize, Option<String>, String),
+    Start(usize, usize, Option<String>, String),
     Block(String),
     Create(i64, String),
     RenameFolder(i64, String),
     MoveFolder(i64, Option<i64>),
     RemoveFolder(i64),
+    CompanionTrash(i64),
+    CompanionRestore(i64),
 }
 fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
     let obj = v.as_object().ok_or_else(|| err(400, "invalid_arguments"))?;
@@ -128,12 +131,13 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "delete_files" => &["fileIds"],
         "restore_file" => &["fileId"],
         "delete_file_permanently" => &["fileId", "confirm", "password"],
-        "empty_trash_start" => &["expectedCount", "maxDeletedAt", "password"],
+        "empty_trash_start" => &["expectedCount", "expectedCompanions", "maxDeletedAt", "password"],
         "empty_trash_block" => &["token"],
         "create_folder" => &["parentId", "name"],
         "rename_folder" => &["folderId", "name"],
         "move_folder" => &["folderId", "newParentId"],
         "remove_folder_from_catalog" => &["folderId"],
+        "remove_companion" | "restore_companion" => &["companionId"],
         _ => return Err(err(404, "unknown_command")),
     };
     if obj.keys().any(|k| !keys.contains(&k.as_str())) {
@@ -205,6 +209,15 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
                 .and_then(Value::as_u64)
                 .and_then(|x| usize::try_from(x).ok())
                 .ok_or_else(|| err(400, "invalid_arguments"))?,
+            // Absent for a client that does not know removed companion files; it then
+            // confirms none, and the snapshot refuses if there are some.
+            match v.get("expectedCompanions") {
+                None => 0,
+                Some(x) => x
+                    .as_u64()
+                    .and_then(|x| usize::try_from(x).ok())
+                    .ok_or_else(|| err(400, "invalid_arguments"))?,
+            },
             match v.get("maxDeletedAt") {
                 Some(Value::Null) => None,
                 Some(Value::String(s)) => Some(s.clone()),
@@ -217,6 +230,8 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "rename_folder" => Command::RenameFolder(id("folderId")?, text("name")?),
         "move_folder" => Command::MoveFolder(id("folderId")?, nullable("newParentId")?),
         "remove_folder_from_catalog" => Command::RemoveFolder(id("folderId")?),
+        "remove_companion" => Command::CompanionTrash(id("companionId")?),
+        "restore_companion" => Command::CompanionRestore(id("companionId")?),
         _ => unreachable!(),
     })
 }
@@ -292,7 +307,7 @@ pub(super) async fn invoke(
         Command::Move(ids, _) | Command::Trash(ids) => progress.set_file_ids(ids),
         _ => (),
     }
-    if let Command::Permanent(_, pw) | Command::Start(_, _, pw) = &parsed {
+    if let Command::Permanent(_, pw) | Command::Start(_, _, _, pw) = &parsed {
         let hash = app
             .data
             .lock()
@@ -387,7 +402,7 @@ fn execute(
 ) -> Result<Value, Box<Response>> {
     let now = app.clock.now();
     let ops = &mut state.ops;
-    if matches!(&parsed, Command::Rename(..) | Command::Restore(..) | Command::Move(..) | Command::Create(..) | Command::RenameFolder(..) | Command::MoveFolder(..)) && !allowed() {
+    if matches!(&parsed, Command::Rename(..) | Command::Restore(..) | Command::Move(..) | Command::Create(..) | Command::RenameFolder(..) | Command::MoveFolder(..) | Command::CompanionRestore(..)) && !allowed() {
         return Err(err(409, "not_started"));
     }
     let unit = |r: fsops::Result<()>| r.map(|_| Value::Null).map_err(core_error);
@@ -453,9 +468,30 @@ fn execute(
             }
             result.map(|v| json!(v)).map_err(core_error)
         }
-        Command::Start(count, cutoff, _) => {
+        Command::CompanionTrash(id) => {
+            // Refusals (unknown, already removed, model in the trash) spend no budget or backup.
+            let (row, model) = ops.companion_subject(id).map_err(core_error)?;
+            if row.deleted_at.is_some() || model.deleted_at.is_some() {
+                return Err(core_error(fsops::Error::Conflict));
+            }
+            reserve(app, DestructiveKind::Trash, 1)?;
+            backup(app, 1, false)?;
+            if !allowed() {
+                return Err(err(409, "not_started"));
+            }
+            progress.set_file_ids(&[model.id]);
+            progress.set_companion_ids(&[id]);
+            unit(ops.trash_companion(id))
+        }
+        Command::CompanionRestore(id) => {
+            let (_, model) = ops.companion_subject(id).map_err(core_error)?;
+            progress.set_file_ids(&[model.id]);
+            progress.set_companion_ids(&[id]);
+            unit(ops.restore_companion(id))
+        }
+        Command::Start(count, companions, cutoff, _) => {
             let snapshot = ops
-                .empty_trash_snapshot(count, cutoff.as_deref())
+                .empty_trash_snapshot_with(count, companions, cutoff.as_deref())
                 .map_err(core_error)?;
             app.fileops_safety
                 .lock()
@@ -473,7 +509,8 @@ fn execute(
                 .map_err(|_| err(400, "invalid_arguments"))?;
             let ids = snapshot.ids();
             progress.set_file_ids(ids);
-            backup(app, count, true)?;
+            progress.set_companion_ids(snapshot.loose_ids());
+            backup(app, count + companions, true)?;
             if !allowed() {
                 return Err(err(409, "not_started"));
             }
@@ -493,7 +530,7 @@ fn execute(
                     cutoff: cutoff_time,
                 },
             );
-            Ok(json!({"token":token,"remaining":count}))
+            Ok(json!({"token":token,"remaining":count + companions}))
         }
         Command::Block(token) => {
             let snap = state
@@ -502,6 +539,7 @@ fn execute(
                 .filter(|s| s.session == current.token && now.saturating_sub(s.created) < 3600)
                 .ok_or_else(|| err(404, "snapshot_not_found"))?;
             progress.set_file_ids(snap.snapshot.next_block_ids());
+            progress.set_companion_ids(snap.snapshot.next_loose_block_ids());
             app.fileops_safety
                 .lock()
                 .map_err(|_| err(503, "restart_required"))?
@@ -512,11 +550,13 @@ fn execute(
                 .map_err(|_| err(503, "restart_required"))?
                 .reserve_empty_block_items(snap.snapshot.remaining().min(200), now)
                 .map_err(budget_error)?;
-            let count = eligible(ops, snap.snapshot.next_block_ids(), snap.cutoff, true)?;
+            let count = eligible(ops, snap.snapshot.next_block_ids(), snap.cutoff, true)?
+                + snap.snapshot.next_loose_block_ids().len();
             backup(app, count, false)?;
             let results = ops
                 .empty_trash(&mut snap.snapshot, allowed)
                 .map_err(core_error)?;
+            // Companion row ids ("c<id>" in the results) were logged with the block, before it ran.
             let ids: Vec<i64> = results.iter().filter_map(|r| r.id.parse().ok()).collect();
             progress.set_file_ids(&ids);
             let remaining = snap.snapshot.remaining();

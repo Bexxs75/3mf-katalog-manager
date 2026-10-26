@@ -1036,3 +1036,308 @@ async fn folder_list_keeps_every_target_without_file_management() {
     let list = value(f.invoke("list_folders", json!({})).await).await;
     assert_eq!(list[0]["moveTarget"], true, "{list}");
 }
+
+// ---- Einzelne Begleitdateien: entfernen, wiederherstellen, Papierkorb leeren ----
+
+const PNG: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52];
+
+impl Fixture {
+    /// A model with one companion picture; returns (model id, companion id).
+    fn with_companion(&self, model: &str, name: &str) -> (String, String) {
+        let id = self.file(model);
+        let stem = model.trim_end_matches(".3mf");
+        let extras = self.dir.join("models").join(format!("{stem}_extras"));
+        std::fs::create_dir_all(&extras).unwrap();
+        let path = extras.join(name);
+        std::fs::write(&path, PNG).unwrap();
+        let conn = self.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        let cid = db::companions::insert_companion(&conn, id.parse().unwrap(), name, path.to_str().unwrap(), "image", Some(PNG.len() as i64), "2026-01-01T00:00:00Z").unwrap();
+        (id, cid.to_string())
+    }
+    async fn invoke_id(&self, cmd: &str, args: Value, request_id: &str) -> Response {
+        let mut req = self.request("POST", &format!("/api/invoke/{cmd}"), Body::from(args.to_string()));
+        req.headers_mut().insert("content-type", "application/json".parse().unwrap());
+        req.headers_mut().insert("x-request-id", request_id.parse().unwrap());
+        router(self.app.clone()).oneshot(req).await.unwrap()
+    }
+    fn row(&self, cid: &str) -> (Option<String>, Option<String>, String) {
+        let conn = self.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.query_row("SELECT deleted_at,trash_path,path FROM companion_files WHERE id=?1", [cid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+    }
+    fn trash_entries(&self) -> Vec<String> {
+        std::fs::read_dir(self.dir.join("models").join(katalog_core::fsops::TRASH))
+            .map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+            .unwrap_or_default()
+    }
+}
+
+#[tokio::test]
+async fn a_companion_is_removed_and_restored_with_a_backup_and_a_counted_budget() {
+    let f = Fixture::new(true).await;
+    let (_, cid) = f.with_companion("a.3mf", "pic.png");
+    let r = f.invoke("remove_companion", json!({"companionId": cid})).await;
+    assert_eq!(r.status(), 200);
+    assert!(!f.dir.join("models/a_extras/pic.png").exists());
+    let (deleted, trash, _) = f.row(&cid);
+    assert!(deleted.is_some() && trash.is_some());
+    assert_eq!(f.trash_entries().len(), 1);
+    assert!(f.dir.join("config/backups").exists(), "a backup comes before the removal");
+    let r = f.invoke("restore_companion", json!({"companionId": cid})).await;
+    assert_eq!(r.status(), 200);
+    assert!(f.dir.join("models/a_extras/pic.png").is_file());
+    assert_eq!(f.row(&cid).0, None);
+    assert!(f.trash_entries().is_empty());
+}
+
+#[tokio::test]
+async fn the_removal_counts_against_the_deletion_budget_and_a_refusal_costs_nothing() {
+    let f = Fixture::new(true).await;
+    *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(1);
+    let (_, a) = f.with_companion("a.3mf", "pic.png");
+    let (_, b) = f.with_companion("b.3mf", "pic.png");
+    // Refusals first: unknown and already restored rows must not spend the budget.
+    assert_eq!(f.invoke("remove_companion", json!({"companionId": "999999"})).await.status(), 404);
+    assert_eq!(f.invoke("remove_companion", json!({"companionId": a})).await.status(), 200);
+    assert_eq!(f.invoke("remove_companion", json!({"companionId": a})).await.status(), 409, "already removed");
+    let denied = f.invoke("remove_companion", json!({"companionId": b})).await;
+    assert!(matches!(denied.status().as_u16(), 422 | 429), "{}", denied.status());
+    assert!(f.dir.join("models/b_extras/pic.png").is_file(), "the second file is untouched");
+    assert_eq!(f.row(&b).0, None);
+}
+
+#[tokio::test]
+async fn companion_edit_arguments_and_conflicts_have_their_own_codes() {
+    let f = Fixture::new(true).await;
+    let (model, cid) = f.with_companion("a.3mf", "pic.png");
+    for (cmd, args, status, kind) in [
+        ("remove_companion", json!({"companionId": cid, "extra": 1}), 422, "unknown_argument"),
+        ("remove_companion", json!({}), 400, "invalid_arguments"),
+        ("remove_companion", json!({"companionId": 5}), 400, "invalid_arguments"),
+        ("remove_companion", json!({"companionId": "0"}), 400, "invalid_arguments"),
+        ("remove_companion", json!({"companionId": "x1"}), 400, "invalid_arguments"),
+        ("restore_companion", json!({"companionId": cid}), 409, "conflict"),
+        ("restore_companion", json!({"companionId": "424242"}), 404, "not_found"),
+    ] {
+        let r = f.invoke(cmd, args).await;
+        assert_eq!(r.status(), status, "{cmd}");
+        assert_eq!(value(r).await["kind"], kind);
+    }
+    // The model in the trash: neither remove nor restore of its companions.
+    assert_eq!(f.invoke("delete_files", json!({"fileIds":[model]})).await.status(), 200);
+    assert_eq!(value(f.invoke("remove_companion", json!({"companionId": cid})).await).await["kind"], "conflict");
+    // A file the desktop trashed stays the desktop's.
+    let (_, other) = f.with_companion("b.3mf", "pic.png");
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("UPDATE companion_files SET deleted_at='2026-01-02T00:00:00Z', trash_path='/desktop/trash/companion-9-x.png' WHERE id=?1", [&other]).unwrap();
+    }
+    let r = f.invoke("restore_companion", json!({"companionId": other})).await;
+    assert_eq!((r.status().as_u16(), value(r).await["kind"].clone()), (409, json!("trash_foreign")));
+}
+
+#[tokio::test]
+async fn a_full_model_refuses_a_restore_with_companion_limit() {
+    let f = Fixture::new(true).await;
+    let (model, cid) = f.with_companion("a.3mf", "pic.png");
+    assert_eq!(f.invoke("remove_companion", json!({"companionId": cid})).await.status(), 200);
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        for n in 0..100 {
+            let path = f.dir.join(format!("models/a_extras/n{n}.png"));
+            db::companions::insert_companion(&conn, model.parse().unwrap(), &format!("n{n}.png"), path.to_str().unwrap(), "image", None, "t").unwrap();
+        }
+    }
+    let r = f.invoke("restore_companion", json!({"companionId": cid})).await;
+    assert_eq!((r.status().as_u16(), value(r).await["kind"].clone()), (422, json!("companion_limit")));
+    assert_eq!(f.trash_entries().len(), 1);
+}
+
+#[tokio::test]
+async fn companion_edits_need_a_session_csrf_and_origin() {
+    let f = Fixture::new(true).await;
+    let (_, cid) = f.with_companion("a.3mf", "pic.png");
+    for cmd in ["remove_companion", "restore_companion"] {
+        for (remove, status) in [("cookie", 401), ("x-csrf-token", 403), ("origin", 403)] {
+            let mut req = f.request("POST", &format!("/api/invoke/{cmd}"), Body::from(json!({"companionId": cid}).to_string()));
+            req.headers_mut().insert("content-type", "application/json".parse().unwrap());
+            req.headers_mut().remove(remove);
+            assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), status, "{cmd} without {remove}");
+        }
+    }
+    assert!(f.dir.join("models/a_extras/pic.png").is_file());
+    assert_eq!(f.row(&cid).0, None);
+}
+
+#[tokio::test]
+async fn companion_edits_are_not_available_with_writing_off() {
+    let f = Fixture::new(false).await;
+    for cmd in ["remove_companion", "restore_companion"] {
+        assert_eq!(f.invoke(cmd, json!({"companionId": "1"})).await.status(), 404, "{cmd}");
+    }
+}
+
+#[tokio::test]
+async fn a_repeated_request_id_gets_the_stored_answer_and_does_nothing_twice() {
+    let f = Fixture::new(true).await;
+    let (_, cid) = f.with_companion("a.3mf", "pic.png");
+    let first = f.invoke_id("remove_companion", json!({"companionId": cid}), "11111111-1111-4111-8111-111111111111").await;
+    assert_eq!(first.status(), 200);
+    let again = f.invoke_id("remove_companion", json!({"companionId": cid}), "11111111-1111-4111-8111-111111111111").await;
+    assert_eq!(again.status(), 200, "a plain retry would have been 'already removed'");
+    assert_eq!(f.trash_entries().len(), 1);
+    // The same id for other arguments, or for the other command, is a mistake.
+    let reused = f.invoke_id("remove_companion", json!({"companionId": "77"}), "11111111-1111-4111-8111-111111111111").await;
+    assert_eq!(reused.status(), 422);
+    assert_eq!(value(reused).await["kind"], "request_id_reused");
+    let other = f.invoke_id("restore_companion", json!({"companionId": cid}), "11111111-1111-4111-8111-111111111111").await;
+    assert_eq!(other.status(), 422);
+    assert_eq!(f.trash_entries().len(), 1);
+    // A new id restores; its retry does not make a second copy.
+    let restore = f.invoke_id("restore_companion", json!({"companionId": cid}), "22222222-2222-4222-8222-222222222222").await;
+    assert_eq!(restore.status(), 200);
+    let restore_again = f.invoke_id("restore_companion", json!({"companionId": cid}), "22222222-2222-4222-8222-222222222222").await;
+    assert_eq!(restore_again.status(), 200);
+    assert!(f.dir.join("models/a_extras/pic.png").is_file());
+    assert!(!f.dir.join("models/a_extras/pic (2).png").exists());
+    // A malformed id is refused before anything runs.
+    let bad = f.invoke_id("remove_companion", json!({"companionId": cid}), "no spaces allowed").await;
+    assert_eq!(bad.status(), 400);
+    assert_eq!(value(bad).await["kind"], "request_id_invalid");
+    assert!(f.dir.join("models/a_extras/pic.png").is_file());
+}
+
+#[tokio::test]
+async fn emptying_the_trash_takes_removed_companions_along_and_checks_their_number() {
+    let f = Fixture::new(true).await;
+    let (_, cid) = f.with_companion("a.3mf", "pic.png");
+    let (_, keep) = f.with_companion("b.3mf", "keep.png");
+    assert_eq!(f.invoke("remove_companion", json!({"companionId": cid})).await.status(), 200);
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    assert_eq!((summary["count"].clone(), summary["looseCompanionCount"].clone()), (json!(0), json!(1)));
+    assert_eq!(summary["looseCompanionBytes"], PNG.len());
+    let start = |expected: Option<u64>| {
+        let mut args = json!({"expectedCount":0,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"});
+        if let Some(n) = expected {
+            args["expectedCompanions"] = json!(n);
+        }
+        f.invoke("empty_trash_start", args)
+    };
+    // A client that does not know the field, or the wrong number: nothing starts.
+    let r = start(None).await;
+    assert_eq!((r.status().as_u16(), value(r).await["kind"].clone()), (409, json!("conflict")));
+    f.time.0.store(200, Ordering::SeqCst);
+    let r = start(Some(2)).await;
+    assert_eq!(r.status(), 409);
+    f.time.0.store(300, Ordering::SeqCst);
+    let started = start(Some(1)).await;
+    assert_eq!(started.status(), 200);
+    let started = value(started).await;
+    assert_eq!(started["remaining"], 1);
+    let block = value(f.invoke("empty_trash_block", json!({"token": started["token"]})).await).await;
+    assert_eq!(block["remaining"], 0);
+    assert_eq!(block["results"][0]["ok"], true);
+    assert!(f.trash_entries().is_empty());
+    let count: i64 = f.app.writer.as_ref().unwrap().conn.lock().unwrap().query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
+    assert_eq!(count, 1, "only the active companion of the other model is left");
+    assert_eq!(f.row(&keep).0, None);
+}
+
+#[tokio::test]
+async fn the_listing_shows_removed_companions_with_their_state_but_no_path() {
+    let f = Fixture::new(true).await;
+    let (model, cid) = f.with_companion("a.3mf", "pic.png");
+    {
+        let path = f.dir.join("models/a_extras/two.png");
+        std::fs::write(&path, PNG).unwrap();
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::companions::insert_companion(&conn, model.parse().unwrap(), "two.png", path.to_str().unwrap(), "image", None, "t").unwrap();
+    }
+    assert_eq!(f.invoke("remove_companion", json!({"companionId": cid})).await.status(), 200);
+    let plain = f.invoke("list_companions", json!({"fileId": model})).await;
+    assert!(!serde_json::to_string(&value(plain).await).unwrap().contains("deletedAt"), "the plain listing hides removed files");
+    let r = f.invoke("list_companions", json!({"fileId": model, "includeRemoved": true})).await;
+    assert_eq!(r.status(), 200);
+    let text = serde_json::to_string(&value(r).await).unwrap();
+    assert!(text.contains("deletedAt") && text.contains("\"restorable\":true"), "{text}");
+    assert!(!text.contains(f.dir.to_str().unwrap()) && !text.contains("trash_path"));
+}
+
+// ---- Nachprüfung: Audit, Berechtigung der Liste, Backup-Zählung ----
+
+impl Fixture {
+    /// Runs a file operation directly so the test can read what the audit would log.
+    async fn invoke_audited(&self, cmd: &str, args: Value) -> (Response, Arc<crate::write::WriteProgress>) {
+        let progress = Arc::new(crate::write::WriteProgress::default());
+        let permit = self.app.writer.as_ref().unwrap().admission.clone().try_acquire_owned().unwrap();
+        let response = fileops::invoke(self.app.clone(), self.session.clone(), "peer".into(), cmd.into(), args, permit, progress.clone()).await;
+        (response, progress)
+    }
+}
+
+#[tokio::test]
+async fn the_audit_names_model_and_companion_ids_for_removals_and_for_emptying() {
+    let f = Fixture::new(true).await;
+    let (model, cid) = f.with_companion("a.3mf", "pic.png");
+    let (r, p) = f.invoke_audited("remove_companion", json!({"companionId": cid})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(*p.file_ids.lock().unwrap(), vec![model.parse::<i64>().unwrap()]);
+    assert_eq!(*p.companion_ids.lock().unwrap(), vec![cid.parse::<i64>().unwrap()]);
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    let (r, p) = f
+        .invoke_audited("empty_trash_start", json!({"expectedCount":0,"expectedCompanions":1,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"}))
+        .await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(*p.companion_ids.lock().unwrap(), vec![cid.parse::<i64>().unwrap()]);
+    let token = value(r).await["token"].clone();
+    f.time.0.store(500, Ordering::SeqCst);
+    let (r, p) = f.invoke_audited("empty_trash_block", json!({"token": token})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(*p.companion_ids.lock().unwrap(), vec![cid.parse::<i64>().unwrap()]);
+    assert!(p.file_ids.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_refused_block_still_logs_which_companion_files_it_was_about() {
+    let f = Fixture::new(true).await;
+    let (_, cid) = f.with_companion("a.3mf", "pic.png");
+    let model = f.file("b.3mf");
+    assert_eq!(f.invoke("remove_companion", json!({"companionId": cid})).await.status(), 200);
+    assert_eq!(f.invoke("delete_files", json!({"fileIds":[model]})).await.status(), 200);
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    let token = value(f.invoke("empty_trash_start", json!({"expectedCount":1,"expectedCompanions":1,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"})).await).await["token"].clone();
+    f.time.0.store(500, Ordering::SeqCst);
+    assert_eq!(f.invoke("empty_trash_block", json!({"token": token})).await.status(), 200, "the model block");
+    // Only the companion file is left, and the next block comes too soon.
+    let (r, p) = f.invoke_audited("empty_trash_block", json!({"token": token})).await;
+    assert_eq!(r.status(), 429);
+    assert_eq!(*p.companion_ids.lock().unwrap(), vec![cid.parse::<i64>().unwrap()]);
+}
+
+#[tokio::test]
+async fn the_removed_part_of_the_listing_needs_file_management_on_the_server() {
+    let f = Fixture::new(false).await;
+    let (model, cid) = f.with_companion("a.3mf", "pic.png");
+    f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+        .execute("UPDATE companion_files SET deleted_at='2026-01-02T00:00:00Z' WHERE id=?1", [&cid]).unwrap();
+    let r = f.invoke("list_companions", json!({"fileId": model, "includeRemoved": true})).await;
+    assert_eq!(r.status(), 200);
+    assert!(!serde_json::to_string(&value(r).await).unwrap().contains("deletedAt"));
+}
+
+#[tokio::test]
+async fn emptying_only_removed_companions_still_makes_a_backup_at_start_and_per_block() {
+    let f = Fixture::new(true).await;
+    let (_, cid) = f.with_companion("a.3mf", "pic.png");
+    assert_eq!(f.invoke("remove_companion", json!({"companionId": cid})).await.status(), 200);
+    let backups = f.dir.join("config/backups");
+    std::fs::remove_dir_all(&backups).unwrap();
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    let started = f.invoke("empty_trash_start", json!({"expectedCount":0,"expectedCompanions":1,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"})).await;
+    assert_eq!(started.status(), 200);
+    assert!(backups.exists(), "start counts the companion files");
+    std::fs::remove_dir_all(&backups).unwrap();
+    f.time.0.store(500, Ordering::SeqCst);
+    let token = value(started).await["token"].clone();
+    assert_eq!(f.invoke("empty_trash_block", json!({"token": token})).await.status(), 200);
+    assert!(backups.exists(), "the block counts them too");
+}

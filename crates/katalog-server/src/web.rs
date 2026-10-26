@@ -890,7 +890,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     // Uploads and file operations carry their own operation journal, so the
     // request id only applies to plain catalog writes. Format errors surface
     // before any work is admitted.
-    let idempotent = is_write && !uploads::command(command) && !crate::write::FILE_OPS_COMMANDS.contains(&command);
+    let idempotent = is_write && !uploads::command(command) && (!crate::write::FILE_OPS_COMMANDS.contains(&command) || crate::write::companion_edit_command(command));
     let request_id = if idempotent {
         let mut values = headers.get_all(crate::idempotency::HEADER).iter();
         match (values.next(), values.next()) {
@@ -945,6 +945,9 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         p if p.starts_with("/api/invoke/") => {
             if uploads::command(command){let command=command.to_owned();return tokio::spawn(async move{uploads::invoke(app,current.unwrap(),&command,args).await}).await.unwrap_or_else(|_|error(500,"import_internal"));}
             if crate::write::FILE_OPS_COMMANDS.contains(&command) {
+                if let (true, Some(request_id)) = (crate::write::companion_edit_command(command), request_id.clone()) {
+                    return idempotent_fileop(app, current.expect("authenticated fileops"), peer.clone(), command.to_owned(), args, audit.expect("fileops audit"), admission.unwrap(), request_id).await;
+                }
                 return fileops::invoke(app, current.expect("authenticated fileops"), peer.clone(), command.to_owned(), args, admission.unwrap(), audit.expect("fileops audit")).await;
             }
             if is_write {
@@ -958,6 +961,13 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 // Hashed so the raw session token never sits in another table.
                 let key = current.as_ref().map_or_else(|| format!("p{peer}"), |s| format!("s{}", crate::idempotency::session_key(&s.token)));
                 return crate::slicer::mint(app.slicer.as_ref().expect("checked above"), crate::slicer::Catalog { db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &key, now, &args).await;
+            }
+            // The removed-files part of the companion list belongs to file management only.
+            let mut args = args;
+            if command == "list_companions" && !(app.config.file_ops && app.config.write) {
+                if let Some(object) = args.as_object_mut() {
+                    object.remove("includeRemoved");
+                }
             }
             if command == "list_folders" {
                 if let Some(response) = fileops::list_folders(&app).await {
@@ -1190,21 +1200,33 @@ fn admit_write(app: &App, current: &Session) -> Result<tokio::sync::OwnedSemapho
 /// Runs a write at most once per (session, request id). A repeat of a finished
 /// request is answered from the stored result; a repeat of a running one waits
 /// for it, so a client retry after a timeout never applies the change twice.
-async fn idempotent_write(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: Option<tokio::sync::OwnedSemaphorePermit>, request_id: String) -> Response {
+/// `work` receives the guard that records the outcome and the admission place.
+#[allow(clippy::too_many_arguments)]
+async fn run_once<F, Fut>(
+    app: &Arc<App>,
+    current: &Session,
+    request_id: &str,
+    name: &'static str,
+    args_hash: u64,
+    audit: &Option<Arc<WriteProgress>>,
+    mut admission: Option<tokio::sync::OwnedSemaphorePermit>,
+    work: F,
+) -> Response
+where
+    F: FnOnce(crate::idempotency::Guard, tokio::sync::OwnedSemaphorePermit) -> Fut,
+    Fut: std::future::Future<Output = Response>,
+{
     use crate::idempotency::{self, Begin};
     let store = app.writer.as_ref().expect("write connection initialized").idem.clone();
     let session = idempotency::session_key(&current.token);
-    let args_hash = idempotency::args_hash(&args);
-    let name = WRITE_COMMANDS.iter().copied().find(|c| *c == command).expect("allowlisted write");
-    let mut admission = admission;
     loop {
-        match store.begin(session, &request_id, name, args_hash, app.clock.monotonic()) {
+        match store.begin(session, request_id, name, args_hash, app.clock.monotonic()) {
             Begin::Run(guard) => {
                 let permit = match admission.take() {
                     Some(p) => p,
-                    None => match admit_write(&app, &current) { Ok(p) => p, Err(r) => return *r },
+                    None => match admit_write(app, current) { Ok(p) => p, Err(r) => return *r },
                 };
-                return write_invoke(app, current, command, args, audit, permit, Some(guard)).await;
+                return work(guard, permit).await;
             }
             Begin::Wait(mut finished) => {
                 // Do not hold an admission place while another request does the work.
@@ -1212,13 +1234,54 @@ async fn idempotent_write(app: Arc<App>, current: Session, command: String, args
                 let _ = finished.changed().await;
             }
             Begin::Replay(stored) => {
-                if let Some(audit) = &audit { audit.replay.store(true, std::sync::atomic::Ordering::Relaxed); }
+                if let Some(audit) = audit { audit.replay.store(true, std::sync::atomic::Ordering::Relaxed); }
                 return stored.to_response().unwrap_or_else(|| fileops::failure(409, "request_id_result_unavailable"));
             }
             Begin::Reused => return fileops::failure(422, "request_id_reused"),
             Begin::Full => return crate::write::retry(503),
         }
     }
+}
+async fn idempotent_write(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: Option<tokio::sync::OwnedSemaphorePermit>, request_id: String) -> Response {
+    let args_hash = crate::idempotency::args_hash(&args);
+    let name = WRITE_COMMANDS.iter().copied().find(|c| *c == command).expect("allowlisted write");
+    let (app2, current2, audit2) = (app.clone(), current.clone(), audit.clone());
+    run_once(&app, &current, &request_id, name, args_hash, &audit, admission, move |guard, permit| {
+        write_invoke(app2, current2, command, args, audit2, permit, Some(guard))
+    })
+    .await
+}
+/// The same guarantee for a file operation that runs in its own task: the outcome is
+/// recorded even when the HTTP request is dropped before the operation ends.
+#[allow(clippy::too_many_arguments)]
+async fn idempotent_fileop(app: Arc<App>, current: Session, peer: String, command: String, args: Value, audit: Arc<WriteProgress>, admission: tokio::sync::OwnedSemaphorePermit, request_id: String) -> Response {
+    let args_hash = crate::idempotency::args_hash(&args);
+    let name = WRITE_COMMANDS.iter().copied().find(|c| *c == command).expect("allowlisted write");
+    let (app2, current2, audit2) = (app.clone(), current.clone(), Some(audit.clone()));
+    run_once(&app, &current, &request_id, name, args_hash, &audit2.clone(), Some(admission), move |guard, permit| async move {
+        let clock = app2.clock.clone();
+        let work = tokio::spawn(fileops::invoke(app2, current2, peer, command, args, permit, audit));
+        record_outcome(guard, work, clock).await
+    })
+    .await
+}
+/// Records the finished answer under the request id from a detached task, so a retry
+/// finds it even if the HTTP future was dropped by the request timeout.
+async fn record_outcome(guard: crate::idempotency::Guard, work: tokio::task::JoinHandle<Response>, clock: Arc<dyn Clock>) -> Response {
+    let (reply, delivered) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let response = work.await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"));
+        let (parts, body) = response.into_parts();
+        let response = match axum::body::to_bytes(body, usize::MAX).await {
+            Ok(bytes) => {
+                guard.finish(parts.status.as_u16(), parts.headers.get(header::CONTENT_TYPE).cloned(), bytes.clone(), clock.monotonic());
+                Response::from_parts(parts, Body::from(bytes))
+            }
+            Err(_) => error(500, "Interner Schreibfehler"),
+        };
+        let _ = reply.send(response);
+    });
+    delivered.await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"))
 }
 async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit, replay: Option<crate::idempotency::Guard>) -> Response {
     let gate = app.writer.as_ref().expect("write connection initialized");
@@ -1361,23 +1424,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
     let Some(guard) = replay else {
         return work.await.unwrap_or_else(|_|error(500,"Interner Schreibfehler"));
     };
-    // The HTTP future may be dropped by the request timeout at any await point.
-    // A detached task therefore records the outcome, so a retry finds the
-    // finished result instead of running the command again.
-    let (reply, delivered) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        let response = work.await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"));
-        let (parts, body) = response.into_parts();
-        let response = match axum::body::to_bytes(body, usize::MAX).await {
-            Ok(bytes) => {
-                guard.finish(parts.status.as_u16(), parts.headers.get(header::CONTENT_TYPE).cloned(), bytes.clone(), clock.monotonic());
-                Response::from_parts(parts, Body::from(bytes))
-            }
-            Err(_) => error(500, "Interner Schreibfehler"),
-        };
-        let _ = reply.send(response);
-    });
-    delivered.await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"))
+    record_outcome(guard, work, clock).await
 }
 
 #[cfg(test)]

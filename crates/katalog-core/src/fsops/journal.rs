@@ -25,6 +25,18 @@ pub enum Operation {
     Restore,
     Unlink,
     DbOnly,
+    /// One companion file goes to the web trash on its own; the model stays.
+    CompanionTrash,
+    /// One companion file comes back from the web trash on its own.
+    CompanionRestore,
+    /// One companion file that was removed on its own is unlinked for good (empty trash).
+    CompanionPurge,
+}
+impl Operation {
+    /// Operations of format version 3: they act on a single companion, not on a model.
+    pub fn is_companion_edit(self) -> bool {
+        matches!(self, Self::CompanionTrash | Self::CompanionRestore | Self::CompanionPurge)
+    }
 }
 /// One `companion_files` row as the journal remembers it, so recovery can tell
 /// "database still as before" from "commit already happened" row by row.
@@ -123,8 +135,12 @@ impl Intent {
 }
 /// Format 1 predates companion data. Entries with companion data are written as
 /// version 2 so an older binary refuses the file instead of ignoring the new fields.
+/// Version 3 is only written while an entry acts on a single companion file; an older
+/// binary then stops with `RestartRequired` instead of meeting an unknown operation.
 fn document_version(intents: &[Intent], folders: &[FolderIntent]) -> u32 {
-    if intents.iter().any(Intent::has_companion_data) || folders.iter().any(FolderIntent::has_companion_data) {
+    if intents.iter().any(|i| i.operation.is_companion_edit()) {
+        3
+    } else if intents.iter().any(Intent::has_companion_data) || folders.iter().any(FolderIntent::has_companion_data) {
         2
     } else {
         1
@@ -168,8 +184,14 @@ impl Journal {
                 }
                 let doc: Document =
                     serde_json::from_reader(file).map_err(|_| Error::RestartRequired)?;
-                // A version-1 file never carries companion data; one that does was not written by us.
-                if !matches!(doc.version, 1 | 2) || (doc.version == 1 && document_version(&doc.intents, &doc.folders) != 1) {
+                // A file never carries data of a newer format than its version says, and a
+                // version-3 file exists only while it holds a single-companion entry.
+                let needed = document_version(&doc.intents, &doc.folders);
+                if !matches!(doc.version, 1..=3)
+                    || (doc.version == 1 && needed != 1)
+                    || (doc.version == 2 && needed > 2)
+                    || (doc.version == 3 && needed != 3)
+                {
                     return Err(Error::RestartRequired);
                 }
                 let mut ids = std::collections::HashSet::new();

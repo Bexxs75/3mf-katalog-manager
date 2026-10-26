@@ -24,6 +24,8 @@ pub const FILE_OPS_COMMANDS: &[&str] = &[
     "rename_folder",
     "move_folder",
     "remove_folder_from_catalog",
+    "remove_companion",
+    "restore_companion",
 ];
 pub const WRITE_COMMANDS: &[&str] = &[
     "rename_file",
@@ -37,6 +39,8 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "rename_folder",
     "move_folder",
     "remove_folder_from_catalog",
+    "remove_companion",
+    "restore_companion",
 
     "remove_files_from_catalog",
     "start_upload_import",
@@ -84,6 +88,11 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "block_auto_tag",
     "unblock_auto_tag",
 ];
+/// File operations that act on one companion file and are safe to repeat: the second
+/// request of the same id gets the stored answer instead of "already in the trash".
+pub(crate) fn companion_edit_command(command: &str) -> bool {
+    matches!(command, "remove_companion" | "restore_companion")
+}
 pub(crate) fn image_command(command: &str) -> bool {
     matches!(
         command,
@@ -162,6 +171,8 @@ pub(crate) struct WriteProgress {
     /// Set when the answer came from the request-id store instead of a new execution.
     pub replay: std::sync::atomic::AtomicBool,
     pub file_ids: Mutex<Vec<i64>>,
+    /// Row ids of companion files an operation touched; never names or paths.
+    pub companion_ids: Mutex<Vec<i64>>,
     pub audit: std::sync::OnceLock<WriteAudit>,
 }
 /// Finalizes only once access checks have returned or the request was cancelled.
@@ -225,6 +236,7 @@ pub(crate) fn session_fingerprint(token:&str)->u64 {
 }
 impl WriteProgress {
     pub fn set_file_ids(&self,ids:&[i64]) { *self.file_ids.lock().unwrap()=ids.to_vec(); }
+    pub fn set_companion_ids(&self,ids:&[i64]) { *self.companion_ids.lock().unwrap()=ids.to_vec(); }
     fn line(&self,audit:&WriteAudit)->String {
         let metric=if FILE_OPS_COMMANDS.contains(&audit.command) {
             // Completed logical items include successful no-ops, not changed rows.
@@ -234,6 +246,8 @@ impl WriteProgress {
         let detail = if audit.command == "empty_trash_start" {
             format!("count={} ids={:?}", ids.len(), &ids[..ids.len().min(10)])
         } else { format!("ids={:?}", *ids) };
+        let companions = self.companion_ids.lock().unwrap();
+        let detail = if companions.is_empty() { detail } else { format!("{detail} companions={:?}", &companions[..companions.len().min(10)]) };
         let replay=if self.replay.load(Ordering::Relaxed){" replay=1"}else{""};
         format!("write time={} session={:08x} command={} status={} {} {}{}",audit.now,audit.session,audit.command,audit.status,metric,detail,replay)
     }
@@ -256,6 +270,29 @@ mod fileops_audit_tests {
         let progress=WriteProgress::default();progress.set_file_ids(&[12,34]);progress.completed_items.store(2,Ordering::Relaxed);
         let line=progress.line(&file);assert!(line.contains("ids=[12, 34]"));assert!(line.contains("completed_items=2"));assert!(!line.contains("changes="));
         assert!(!line.contains("secret-session"));assert!(!line.contains("private-model"));
+    }
+    #[test]
+    fn companion_edits_are_audited_as_file_operations_by_model_id_without_names() {
+        let mut headers=HeaderMap::new();headers.insert("cookie","katalog_session=secret-session".parse().unwrap());
+        for command in ["remove_companion","restore_companion"] {
+            assert!(FILE_OPS_COMMANDS.contains(&command)&&WRITE_COMMANDS.contains(&command)&&companion_edit_command(command));
+            let audit=WriteAudit::new(command,&headers,"katalog_session",100);
+            let progress=WriteProgress::default();progress.set_file_ids(&[7]);progress.completed_items.store(1,Ordering::Relaxed);
+            let line=progress.line(&audit);
+            assert!(line.contains(&format!("command={command}"))&&line.contains("completed_items=1")&&line.contains("ids=[7]"),"{line}");
+            assert!(!line.contains("changes=")&&!line.contains("pic.png")&&!line.contains("secret-session"));
+        }
+        assert!(!companion_edit_command("delete_files"));
+    }
+    #[test]
+    fn companion_row_ids_are_logged_apart_from_model_ids() {
+        let audit = WriteAudit { now: 1, session: 2, command: "empty_trash_block", status: 200 };
+        let progress = WriteProgress::default();
+        progress.set_file_ids(&[4]);
+        assert!(!progress.line(&audit).contains("companions"));
+        progress.set_companion_ids(&[9, 11]);
+        let line = progress.line(&audit);
+        assert!(line.contains("ids=[4]") && line.contains("companions=[9, 11]"), "{line}");
     }
     #[test]
     fn replayed_answer_is_marked_in_the_audit_line() {

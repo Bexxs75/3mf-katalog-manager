@@ -269,10 +269,22 @@ pub struct WebCompanion {
     pub missing: bool,
     /// An image small enough for `companion_image_data`.
     pub previewable: bool,
+    /// Set for a file that was removed on its own and still waits in the trash.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
+    /// Only for removed files: the web can bring it back (the desktop's trash is its own).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restorable: Option<bool>,
 }
 
-/// Active companions of a live model. A trashed model lists none.
+/// Active companions of a live model, then the ones removed on their own. A trashed
+/// model lists none.
 pub fn list_for_web(conn: &Connection, file_id: i64, roots: &[PathBuf]) -> Result<Vec<WebCompanion>, RowError> {
+    list_for_web_with(conn, file_id, roots, false)
+}
+
+/// `include_removed` appends the files that were removed on their own, for the file-management UI.
+pub fn list_for_web_with(conn: &Connection, file_id: i64, roots: &[PathBuf], include_removed: bool) -> Result<Vec<WebCompanion>, RowError> {
     let model = db::get_file(conn, file_id).map_err(|_| RowError::ModelMissing)?.ok_or(RowError::ModelMissing)?;
     if model.deleted_at.is_some() {
         return Ok(Vec::new());
@@ -293,6 +305,28 @@ pub fn list_for_web(conn: &Connection, file_id: i64, roots: &[PathBuf]) -> Resul
             size_bytes: row.size_bytes,
             added_at: row.added_at,
             name: row.name,
+            deleted_at: None,
+            restorable: None,
+        });
+    }
+    if !include_removed {
+        return Ok(out);
+    }
+    let removed = db::companions::list_trashed_files_of_model(conn, file_id).map_err(|_| RowError::ModelMissing)?;
+    for row in removed.into_iter().take(MAX_COMPANIONS_PER_MODEL as usize) {
+        let Ok(kind) = validate_stored_fields(&row.name, &row.path, &row.kind) else { continue };
+        let restorable = crate::fsops::web_restorable(roots, &model.path, row.id, row.trash_path.as_deref());
+        out.push(WebCompanion {
+            id: row.id.to_string(),
+            file_id: row.file_id.to_string(),
+            kind: kind.as_str().to_owned(),
+            previewable: false,
+            missing: false,
+            size_bytes: row.size_bytes,
+            added_at: row.added_at,
+            name: row.name,
+            deleted_at: row.deleted_at,
+            restorable: Some(restorable),
         });
     }
     Ok(out)
@@ -462,11 +496,24 @@ mod tests {
         let trashed = f.add("c.txt", b"hi");
         f.conn.execute("UPDATE companion_files SET deleted_at='x' WHERE id=?1", [trashed]).unwrap();
         std::fs::remove_file(f.extras.join("a.pdf")).unwrap();
-        let list = list_for_web(&f.conn, f.model, &f.roots()).unwrap();
-        assert_eq!(list.iter().map(|c| (c.name.as_str(), c.missing)).collect::<Vec<_>>(), vec![("a.pdf", true), ("b.png", false)]);
+        let plain = list_for_web(&f.conn, f.model, &f.roots()).unwrap();
+        assert_eq!(plain.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), vec!["a.pdf", "b.png"], "the plain listing hides removed rows");
+        let list = list_for_web_with(&f.conn, f.model, &f.roots(), true).unwrap();
+        // The removed one is listed last, with its timestamp and without any path.
+        assert_eq!(
+            list.iter().map(|c| (c.name.as_str(), c.missing)).collect::<Vec<_>>(),
+            vec![("a.pdf", true), ("b.png", false), ("c.txt", false)]
+        );
+        assert_eq!(list[2].deleted_at.as_deref(), Some("x"));
+        assert_eq!(list[2].restorable, Some(true), "no trash file: only the row comes back");
+        assert!(list[0].deleted_at.is_none() && list[0].restorable.is_none());
+        f.conn
+            .execute("UPDATE companion_files SET trash_path='/desktop/trash/companion-3-x.txt' WHERE id=?1", [trashed])
+            .unwrap();
+        assert_eq!(list_for_web_with(&f.conn, f.model, &f.roots(), true).unwrap()[2].restorable, Some(false), "the desktop's trash");
         assert_eq!(list[1].id, a.to_string());
         assert_eq!(list[0].id, gone.to_string());
-        assert!(list[1].previewable && !list[0].previewable);
+        assert!(list[1].previewable && !list[0].previewable && !list[2].previewable);
         assert!(!serde_json::to_string(&list).unwrap().contains(f.dir.to_str().unwrap()));
         assert_eq!(list_for_web(&f.conn, 424242, &f.roots()).err(), Some(RowError::ModelMissing));
     }

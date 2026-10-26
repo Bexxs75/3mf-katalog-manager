@@ -13,7 +13,7 @@ use crate::companions::{extras_dir_for, kind_for_extension, lowercase_extension}
 use std::path::Path;
 
 /// What a row's `trash_path` turned out to be.
-enum TrashFile {
+pub(super) enum TrashFile {
     /// A plain file of ours in the web trash.
     Present(String, FileIdentity),
     /// Our place in the web trash, but nothing there any more.
@@ -40,7 +40,7 @@ fn numbered(name: &str, attempt: u32) -> String {
 
 impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     /// Root-relative form of `path`, which must lie in the same root as the model.
-    fn relative_in(&self, root: usize, path: &str) -> Result<String> {
+    pub(super) fn relative_in(&self, root: usize, path: &str) -> Result<String> {
         let (r, relative) = self.context.locate(path)?;
         if r != root {
             return Err(Error::CrossDevice);
@@ -48,7 +48,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         Ok(relative)
     }
 
-    fn classify_trash_file(&self, root: usize, row: &CompanionState, trash_path: &str) -> Result<TrashFile> {
+    pub(super) fn classify_trash_file(&self, root: usize, row: &CompanionState, trash_path: &str) -> Result<TrashFile> {
         let r = match self.context.resolve(trash_path, Access::Trash) {
             Ok(r) => r,
             Err(Error::Internal) => return Err(Error::Internal),
@@ -258,7 +258,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
 
     /// The first name that is free on disk, in the table (the path is unique, and a
     /// row's own old path counts as free for itself) and among the names chosen so far.
-    fn free_name(
+    pub(super) fn free_name(
         &mut self,
         dir: &Probe,
         new_dir: &Path,

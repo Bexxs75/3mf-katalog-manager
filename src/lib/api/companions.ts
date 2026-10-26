@@ -1,4 +1,5 @@
 import { invoke } from '../transport';
+import { companionFileOp } from '../fileOps';
 import type { Companion, CompanionOpenInfo, WebCompanion } from '../../types';
 
 // Limits mirrored from the backend, for hints in the UI. The backend enforces them.
@@ -38,8 +39,15 @@ export function companionImageData(companionId: string) {
 }
 
 // Web build only (read only): the live companions of a model, without server paths.
-export function listWebCompanions(fileId: string) {
-  return invoke<WebCompanion[]>('list_companions', { fileId });
+export function listWebCompanions(fileId: string, includeRemoved = false) {
+  return invoke<WebCompanion[]>('list_companions', includeRemoved ? { fileId, includeRemoved: true } : { fileId });
+}
+// Web build: remove one companion into the server trash, and bring it back. Both are safe to repeat.
+export function removeWebCompanion(companionId: string) {
+  return companionFileOp('remove_companion', companionId);
+}
+export function restoreWebCompanion(companionId: string) {
+  return companionFileOp('restore_companion', companionId);
 }
 // Same-origin download link; the browser sends the session cookie and saves it as an attachment.
 export function companionDownloadUrl(companionId: string) {

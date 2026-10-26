@@ -963,6 +963,8 @@ export interface Translations {
   companionOpenContainer: string;
   companionMenu: string;
   companionReveal: string;
+  companionRemoveNamed: string;
+  companionRestoreAtDesktop: string;
   companionRemove: string;
   companionMissing: string;
   companionViewImage: string;

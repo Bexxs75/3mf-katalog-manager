@@ -93,6 +93,24 @@ it('loads trash count and bytes before password confirmation and uses the snapsh
   expect(calls[2]).toEqual({ command: 'empty_trash_block', args: { token: 'frozen' } });
 });
 
+it('names the individually removed companion files, lets only them be emptied and confirms their number', async () => {
+  response = command => command === 'empty_trash_summary' ? { count: 0, bytes: 0, maxDeletedAt: '2026-10-01T00:00:00Z', looseCompanionCount: 2, looseCompanionBytes: 20 }
+    : command === 'empty_trash_start' ? { token: 'frozen', remaining: 2 } : { results: [{ id: 'c3', ok: true }, { id: 'c4', ok: true }], remaining: 0 };
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('und 2 einzeln entfernte Begleitdateien');
+  expect(screen.getByText('Dateien / Bytes: 0 / 20')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'secret' } });
+  await confirm('Papierkorb leeren');
+  expect(calls[1]).toEqual({ command: 'empty_trash_start', args: { expectedCount: 0, expectedCompanions: 2, maxDeletedAt: '2026-10-01T00:00:00Z', password: 'secret' } });
+});
+it('keeps the empty button disabled when nothing at all is in the trash', async () => {
+  response = command => command === 'empty_trash_summary' ? { count: 0, bytes: 0, maxDeletedAt: null, looseCompanionCount: 0 } : null;
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('Dateien / Bytes: 0 / 0');
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'secret' } });
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Papierkorb leeren' })).toBeDisabled();
+});
+
 it('opens keyboard-requested trash confirmation without issuing a request', async () => {
   const closed = vi.fn();
   mount({ requestTrashConfirm: true, onConfirmationClosed: closed });

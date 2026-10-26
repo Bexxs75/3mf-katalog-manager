@@ -3,9 +3,9 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import { displayName } from '../lib/displayName';
 import { toAppError, type AppError } from '../lib/errors';
-import { getSession } from '../lib/webSession';
+import { getSession, useCanManageFiles } from '../lib/webSession';
 import { ErrorText } from '../diagnostics/ErrorText';
-import { companionDownloadUrl, companionImageData, listWebCompanions } from '../lib/api/companions';
+import { companionDownloadUrl, companionImageData, listWebCompanions, removeWebCompanion, restoreWebCompanion } from '../lib/api/companions';
 import type { WebCompanion } from '../types';
 import { Icon } from './Icon';
 import { ImageLightbox, buttonClass, kindIcon, useVisibleOnce } from './CompanionSection';
@@ -15,6 +15,9 @@ interface Props {
   /** Matches the spacing of the side panel densities and of the detail page. */
   variant: 'compact' | 'comfort' | 'page';
 }
+
+// Long enough to find the button and decide (same as on the desktop).
+const UNDO_DURATION_MS = 15000;
 
 /** Starts the browser download of one companion. The session is checked first so an expired login shows the login page. */
 async function startDownload(id: string) {
@@ -28,9 +31,9 @@ async function startDownload(id: string) {
   link.remove();
 }
 
-function ImageTile({ item, src, onVisible, onOpen, onDownload }: {
+function ImageTile({ item, src, onVisible, onOpen, onDownload, onRemove, busy }: {
   item: WebCompanion; src: string | undefined; onVisible: () => void;
-  onOpen: (button: HTMLButtonElement) => void; onDownload: () => void;
+  onOpen: (button: HTMLButtonElement) => void; onDownload: () => void; onRemove?: () => void; busy?: boolean;
 }) {
   const t = useT();
   const { language } = useLanguage();
@@ -55,15 +58,26 @@ function ImageTile({ item, src, onVisible, onOpen, onDownload }: {
       <button type="button" aria-label={t('companionDownloadNamed').replace('{name}', name)} onClick={onDownload} className={buttonClass}>
         {t('companionDownload')}
       </button>
+      {onRemove && (
+        <button type="button" disabled={busy} aria-label={t('companionRemoveNamed').replace('{name}', name)} onClick={onRemove} className={buttonClass}>
+          {t('companionRemove')}
+        </button>
+      )}
     </li>
   );
 }
 
-/** Read-only companion list for the web build: name, kind, size, download and a picture preview. */
+/** Companion list for the web build: name, kind, size, download and a picture preview. With the file-management right, a file can also be removed (and brought back). */
 export function CompanionWebSection({ fileId, variant }: Props) {
   const t = useT();
   const { language } = useLanguage();
+  const canManage = useCanManageFiles();
   const headingId = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [undoTarget, setUndoTarget] = useState<{ id: string; name: string } | null>(null);
+  const [restoreError, setRestoreError] = useState<AppError | null>(null);
   const [items, setItems] = useState<WebCompanion[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<AppError | null>(null);
@@ -76,8 +90,9 @@ export function CompanionWebSection({ fileId, variant }: Props) {
   useEffect(() => {
     let current = true;
     setItems([]); setLoaded(false); setLoadError(null); setActionError(null); setImages({}); setPreview(null);
+    setNotice(''); setUndoTarget(null); setRestoreError(null);
     requestedImages.current = new Set();
-    listWebCompanions(fileId).then((list) => {
+    listWebCompanions(fileId, canManage).then((list) => {
       if (current) setItems(Array.isArray(list) ? list : []);
     }).catch((e) => {
       if (current) setLoadError(toAppError(e));
@@ -85,7 +100,48 @@ export function CompanionWebSection({ fileId, variant }: Props) {
       if (current) setLoaded(true);
     });
     return () => { current = false; };
-  }, [fileId]);
+  }, [fileId, canManage]);
+
+  // The undo offer is short-lived, like on the desktop.
+  useEffect(() => {
+    if (!undoTarget) return;
+    const timer = window.setTimeout(() => { setUndoTarget(null); setNotice(''); }, UNDO_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [undoTarget]);
+
+  const reload = useCallback(async (): Promise<void> => {
+    try {
+      const list = await listWebCompanions(fileId, canManage);
+      setItems(Array.isArray(list) ? list : []);
+      setLoadError(null);
+    } catch (e) { setLoadError(toAppError(e)); }
+  }, [fileId, canManage]);
+
+  // One action at a time; afterwards the list is read again and the focus moves to the heading,
+  // because the button that was used is gone.
+  const act = async (run: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true); setActionError(null); setRestoreError(null);
+    try { await run(); } finally {
+      await reload();
+      setBusy(false);
+      headingRef.current?.focus();
+    }
+  };
+  const remove = (item: WebCompanion) => act(async () => {
+    try {
+      await removeWebCompanion(item.id);
+      setNotice(t('companionRemoved').replace('{name}', displayName(item.name)));
+      setUndoTarget({ id: item.id, name: item.name });
+    } catch (e) { setActionError(toAppError(e)); }
+  });
+  const restore = (item: { id: string; name: string }) => act(async () => {
+    try {
+      await restoreWebCompanion(item.id);
+      setNotice(t('companionRestored').replace('{name}', displayName(item.name)));
+      setUndoTarget(null);
+    } catch (e) { setRestoreError(toAppError(e)); }
+  });
 
   // Pictures are fetched one by one when their tile shows up, never with the list.
   const loadImage = useCallback((item: WebCompanion) => {
@@ -106,16 +162,18 @@ export function CompanionWebSection({ fileId, variant }: Props) {
   const wrapperClass = variant === 'compact' ? 'px-4 pt-3.5 pb-3 border-t border-[var(--line)]'
     : variant === 'comfort' ? 'px-[18px] pt-3.5 pb-4 border-t border-[var(--line)]'
     : '';
-  const imageItems = items.filter((item) => item.kind === 'image' && !item.missing);
-  const rowItems = items.filter((item) => item.kind !== 'image' || item.missing);
+  const live = items.filter((item) => !item.deletedAt);
+  const removed = canManage ? items.filter((item) => item.deletedAt) : [];
+  const imageItems = live.filter((item) => item.kind === 'image' && !item.missing);
+  const rowItems = live.filter((item) => item.kind !== 'image' || item.missing);
 
   return (
     <section aria-labelledby={headingId} className={wrapperClass}>
-      <h3 id={headingId} className={`pb-2 ${headingClass}`} style={headingStyle}>
-        {t('companionsHeading')}{items.length > 0 && ` (${items.length})`}
+      <h3 id={headingId} ref={headingRef} tabIndex={-1} className={`pb-2 outline-none ${headingClass}`} style={headingStyle}>
+        {t('companionsHeading')}{live.length > 0 && ` (${live.length})`}
       </h3>
 
-      {loaded && !loadError && items.length === 0 && (
+      {loaded && !loadError && live.length === 0 && (
         <p className="text-small text-[var(--ink-3)]">{t('companionsEmpty')}</p>
       )}
       {loadError && (
@@ -134,6 +192,8 @@ export function CompanionWebSection({ fileId, variant }: Props) {
               onVisible={() => loadImage(item)}
               onOpen={(button) => { opener.current = button; loadImage(item); setPreview({ id: item.id, name: item.name }); }}
               onDownload={() => download(item)}
+              onRemove={canManage ? () => void remove(item) : undefined}
+              busy={busy}
             />
           ))}
         </ul>
@@ -158,11 +218,58 @@ export function CompanionWebSection({ fileId, variant }: Props) {
                   {t('companionDownload')}
                 </button>
               )}
+              {canManage && (
+                <button type="button" disabled={busy} aria-label={t('companionRemoveNamed').replace('{name}', displayName(item.name))}
+                  onClick={() => void remove(item)} className={buttonClass}>
+                  {t('companionRemove')}
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
 
+      {removed.length > 0 && (
+        <div className="pt-2">
+          <h4 className="pb-1 text-compact-meta ui-label text-[var(--ink-3)]">{t('companionsRemovedToggle').replace('{count}', String(removed.length))}</h4>
+          <ul>
+            {removed.map((item) => (
+              <li key={item.id} className="flex items-center gap-2 py-1.5 border-b border-[var(--line)]">
+                <div className="flex-1 min-w-0">
+                  <div className="text-small break-words text-[var(--ink-2)]" style={{ overflowWrap: 'anywhere' }}>{displayName(item.name)}</div>
+                  {item.restorable === false && <div className="text-compact-meta text-[var(--ink-3)]">{t('companionRestoreAtDesktop')}</div>}
+                </div>
+                {item.restorable !== false && (
+                  <button type="button" disabled={busy} aria-label={t('companionRestoreNamed').replace('{name}', displayName(item.name))}
+                    onClick={() => void restore(item)} className={buttonClass}>
+                    {t('companionRestore')}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {notice && (
+        <p role="status" className="pt-2 text-small text-[var(--ink-2)] break-words">
+          {notice}
+          {undoTarget && (
+            <>
+              {' '}
+              <button type="button" disabled={busy} onClick={() => void restore(undoTarget)}
+                className="font-semibold text-[var(--accent)] underline cursor-pointer disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+                {t('undoButton')}
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {restoreError && (
+        <p role="alert" className="pt-2 text-small text-[var(--accent)] break-words">
+          {t('companionRestoreFailed')} <ErrorText error={restoreError} />
+        </p>
+      )}
       {actionError && (
         <p role="alert" className="pt-2 text-small text-[var(--accent)] break-words"><ErrorText error={actionError} /></p>
       )}

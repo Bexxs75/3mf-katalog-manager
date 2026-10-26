@@ -937,6 +937,8 @@ export const en: Translations = {
   companionOpenContainer: "The file cannot be opened inside the container because no program runs there to open it. Open it directly on your Docker host.",
   companionMenu: "More actions for {name}",
   companionReveal: "Show in file manager",
+  companionRemoveNamed: "Remove {name}",
+  companionRestoreAtDesktop: "This entry is in the desktop trash. Please restore it on the desktop.",
   companionRemove: "Remove",
   companionMissing: "File missing",
   companionViewImage: "View image {name} enlarged",

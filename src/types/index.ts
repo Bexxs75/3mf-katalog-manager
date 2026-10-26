@@ -519,6 +519,10 @@ export interface WebCompanion {
   missing: boolean;
   /** An image small enough for `companionImageData`. */
   previewable: boolean;
+  /** Set for a file that was removed on its own and waits in the trash (web build only). */
+  deletedAt?: string;
+  /** Only with `deletedAt`: false when the file sits in the desktop's trash and can only be restored there. */
+  restorable?: boolean;
 }
 
 export interface CompanionOpenInfo {

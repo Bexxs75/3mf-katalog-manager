@@ -5,7 +5,7 @@ import { messageOf } from './errors';
 import { fileOpsError, fileOpsMessage, isDomainRejection } from './fileOpsErrors';
 export interface ItemResult { id: string; ok: boolean; kind?: string; kept_on_disk?: boolean; companions_moved?: number; companions_kept_in_trash?: number }
 /** `companionCount` and `blockedByCompanions` are absent from servers that predate companion handling. */
-export interface TrashSummary { count: number; bytes: number; maxDeletedAt: string | null; companionCount?: number; blockedByCompanions?: number }
+export interface TrashSummary { count: number; bytes: number; maxDeletedAt: string | null; companionCount?: number; blockedByCompanions?: number; looseCompanionCount?: number; looseCompanionBytes?: number }
 const refreshers = new Set<() => void | Promise<unknown>>();
 export function subscribeFileOpsRefresh(refresh: () => void | Promise<unknown>) {
   refreshers.add(refresh); return () => { refreshers.delete(refresh); };
@@ -27,7 +27,7 @@ function affectedIds(command: string, args: Record<string, unknown>, result: unk
   if (command === 'delete_files') return Array.isArray(args.fileIds) ? args.fileIds.map(String) : [];
   if (command === 'restore_file' || command === 'delete_file_permanently') return args.fileId === undefined ? [] : [String(args.fileId)];
   if (command === 'empty_trash_block' && result && typeof result === 'object' && Array.isArray((result as {results?: unknown}).results)) {
-    return ((result as {results: ItemResult[]}).results).filter(item => item.ok).map(item => item.id);
+    return ((result as {results: ItemResult[]}).results).filter(item => item.ok && /^\d+$/.test(item.id)).map(item => item.id);
   }
   return [];
 }
@@ -107,18 +107,21 @@ const progressText = (done: number, total: number) => fileOpsMessage('progress')
 /** The token is memory-only. A failed/ambiguous block is never advanced or replayed here. */
 export async function emptyWebTrash(summary: TrashSummary, password: string, onProgress: (completed: number, total: number) => void, shouldStop: () => boolean = () => false): Promise<void> {
   const initiatingToken = getSnapshot().csrfToken;
+  // Individually removed companion files are emptied after the models and counted in the same progress.
+  const looseCompanions = summary.looseCompanionCount ?? 0;
+  const total = summary.count + looseCompanions;
   let start: {token:string; remaining:number};
   try {
     if (shouldStop()) throw cancelled([]);
-    start = await fileOp('empty_trash_start', { expectedCount: summary.count, maxDeletedAt: summary.maxDeletedAt, password });
+    start = await fileOp('empty_trash_start', { expectedCount: summary.count, ...(looseCompanions > 0 ? { expectedCompanions: looseCompanions } : {}), maxDeletedAt: summary.maxDeletedAt, password });
   } finally { password = ''; }
   if (!start || typeof start.token !== 'string' || !validRemaining(start.remaining)) { const error = fileOpsError({kind:'not_started'}); reportOnce(error); throw error; }
   let remaining = start.remaining;
-  onProgress(summary.count - remaining, summary.count);
+  onProgress(total - remaining, total);
   while (remaining > 0) {
     if (!canManageFiles() || getSnapshot().csrfToken !== initiatingToken) throw fileOpsError({kind:'revoked'});
     if (shouldStop()) {
-      const error = { message: progressText(summary.count - remaining, summary.count) + ' ' + fileOpsMessage('cancelled'), expected: true as const, kind: 'cancelled' };
+      const error = { message: progressText(total - remaining, total) + ' ' + fileOpsMessage('cancelled'), expected: true as const, kind: 'cancelled' };
       reportOnce(error); throw error;
     }
     let block: {results:ItemResult[]; remaining:number};
@@ -127,15 +130,25 @@ export async function emptyWebTrash(summary: TrashSummary, password: string, onP
       const error = fileOpsError(reason);
       if (error.retryAfter === undefined) throw error;
       // A long wait ends the run; the snapshot token is dropped with this function, so nothing resumes unseen.
-      const paused = { message: progressText(summary.count - remaining, summary.count) + ' ' + fileOpsMessage('paused') + ' ' + error.message, expected: true as const, kind: error.kind };
+      const paused = { message: progressText(total - remaining, total) + ' ' + fileOpsMessage('paused') + ' ' + error.message, expected: true as const, kind: error.kind };
       reportOnce(paused); throw paused;
     }
     if (!block || !Array.isArray(block.results) || !validRemaining(block.remaining)) { const error = fileOpsError({kind:'not_started'}); reportOnce(error); throw error; }
-    onProgress(summary.count - block.remaining, summary.count);
+    onProgress(total - block.remaining, total);
     try { checkResults(block.results); }
     catch (reason) { const error = fileOpsError(reason); reportOnce(error); throw error; }
     if (block.remaining >= remaining) throw fileOpsError({kind:'not_started'});
     remaining = block.remaining;
     if (remaining > 0) await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+}
+
+/** Removes or restores one companion file. Unlike `fileOp` it leaves the catalog views alone: nothing in them changes. */
+export async function companionFileOp(command: 'remove_companion' | 'restore_companion', companionId: string): Promise<void> {
+  if (!canManageFiles()) throw fileOpsError({ kind: 'revoked' });
+  try { await invoke(command, { companionId }); }
+  catch (reason) {
+    if ((reason as { kind?: unknown } | null)?.kind === 'restart_required') blockFileOperations();
+    throw fileOpsError(reason);
   }
 }

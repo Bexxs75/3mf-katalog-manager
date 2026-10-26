@@ -36,6 +36,8 @@ export const WEB_WRITE_COMMANDS = [
   'rename_folder',
   'move_folder',
   'remove_folder_from_catalog',
+  'remove_companion',
+  'restore_companion',
   'remove_files_from_catalog',
   'start_upload_import', 'discard_upload', 'cancel_import',
   'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'set_license',

@@ -7,12 +7,14 @@ import { WEB_READ_COMMANDS, WEB_WRITE_COMMANDS } from './readOnly';
 import { retryAfterSeconds } from './fileOpsErrors';
 import { canEditMetadata, canManageFiles, canOpenInSlicerLink, getSnapshot, readResponse } from './webSession';
 
-export const FILE_OPS_COMMANDS = ['rename_file', 'move_files_to_folder', 'delete_files', 'restore_file', 'delete_file_permanently', 'empty_trash_start', 'empty_trash_block', 'create_folder', 'rename_folder', 'move_folder', 'remove_folder_from_catalog'] as const;
+export const FILE_OPS_COMMANDS = ['rename_file', 'move_files_to_folder', 'delete_files', 'restore_file', 'delete_file_permanently', 'empty_trash_start', 'empty_trash_block', 'create_folder', 'rename_folder', 'move_folder', 'remove_folder_from_catalog', 'remove_companion', 'restore_companion'] as const;
 
 const FILE_OPS_MAX_AUTO_RETRY_SECONDS = 5;
 
 // Uploads and file operations track their own operation ids; only plain catalog writes are replay-protected by the server.
 const OWN_OPERATION_COMMANDS: readonly string[] = [...FILE_OPS_COMMANDS, 'start_upload_import', 'discard_upload', 'cancel_import'];
+// File operations on a single companion file are repeatable: the server answers the second request of the same id from the stored result.
+const REPEATABLE_FILE_OPS: readonly string[] = ['remove_companion', 'restore_companion'];
 // Waits before the automatic repeats after a lost or timed-out answer. The server may still be finishing the first attempt, which the shared request id makes safe.
 // Mutable only so UI tests of failure paths do not have to wait through the backoff.
 export const lostAnswerRetry = { delaysMs: [1000, 3000] };
@@ -43,7 +45,7 @@ async function webInvoke<T>(command: string, args?: Record<string, unknown>): Pr
   const initiatingToken = getSnapshot().csrfToken;
   const writing = (WEB_WRITE_COMMANDS as readonly string[]).includes(command);
   // One key per user action, reused by every automatic repeat of it.
-  const requestId = writing && !OWN_OPERATION_COMMANDS.includes(command) ? newRequestId() : null;
+  const requestId = writing && (!OWN_OPERATION_COMMANDS.includes(command) || REPEATABLE_FILE_OPS.includes(command)) ? newRequestId() : null;
   // Serialized once so every repeat carries byte-identical arguments even if the caller mutates the object meanwhile; a differing body would be rejected as a reused key.
   const payload = JSON.stringify(args ?? {});
   const send = () => fetch('/api/invoke/' + encodeURIComponent(command), {
@@ -60,7 +62,7 @@ async function webInvoke<T>(command: string, args?: Record<string, unknown>): Pr
       if ('response' in outcome && !LOST_ANSWER_STATUSES.includes(outcome.response.status)) return outcome.response;
       if (attempt < lostAnswerRetry.delaysMs.length) {
         await new Promise(resolve => setTimeout(resolve, lostAnswerRetry.delaysMs[attempt]));
-        if (getSnapshot().csrfToken === initiatingToken && canEditMetadata()) continue;
+        if (getSnapshot().csrfToken === initiatingToken && (fileOperation ? canManageFiles() : canEditMetadata())) continue;
       }
       if ('error' in outcome) throw outcome.error;
       return outcome.response;

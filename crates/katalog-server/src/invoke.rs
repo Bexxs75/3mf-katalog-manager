@@ -205,6 +205,8 @@ fn trash_summary(conn: &katalog_core::write::Connection, roots: &[PathBuf]) -> R
         "count": summary.count,
         "blockedByCompanions": summary.blocked_by_companions,
         "companionCount": summary.companion_count,
+        "looseCompanionCount": summary.loose_companion_count,
+        "looseCompanionBytes": summary.loose_companion_bytes,
         "bytes": summary.bytes,
         "maxDeletedAt": summary.max_deleted_at,
     }))
@@ -312,6 +314,8 @@ pub async fn invoke(
         "is_preview_build" | "has_step_preview" => return Json(json!(false)).into_response(),
         _ => {}
     }
+    // The file-management UI asks for the individually removed files as well; the plain listing stays as it was.
+    let include_removed = args.get("includeRemoved") == Some(&Value::Bool(true));
     let check_ids = if command == "check_filament" {
         let Some(values) = args.get("fileIds").and_then(Value::as_array) else {
             return *error(
@@ -444,7 +448,7 @@ pub async fn invoke(
             "check_filament" => encode(read::manager::check_filament_with_conn(&conn, &check_ids)?),
 
             "list_companions" => encode(
-                companion_read::list_for_web(&conn, file_id.unwrap().parse().unwrap(), &roots).map_err(companion_error)?,
+                companion_read::list_for_web_with(&conn, file_id.unwrap().parse().unwrap(), &roots, include_removed).map_err(companion_error)?,
             ),
             "companion_image_data" => {
                 let opened = companion_read::open_for_web(

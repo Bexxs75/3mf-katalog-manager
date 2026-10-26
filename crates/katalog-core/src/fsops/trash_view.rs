@@ -51,6 +51,81 @@ fn place(root: &Path, path: &str, row_id: i64) -> Place {
     }
 }
 
+/// Whether the web can bring a removed companion back: its file sits in this root's web
+/// trash under its own name, or is gone / was never moved (only the row is restored).
+/// A desktop-trash path or anything unsafe is left to the desktop.
+pub fn web_restorable(roots: &[PathBuf], model_path: &str, row_id: i64, trash_path: Option<&str>) -> bool {
+    let Some(root) = roots
+        .iter()
+        .filter(|r| Path::new(model_path).starts_with(r))
+        .max_by_key(|r| r.components().count())
+    else {
+        return false;
+    };
+    match trash_path {
+        None => true,
+        Some(p) => matches!(place(root, p, row_id), Place::Present | Place::Gone),
+    }
+}
+
+/// A companion file that was removed on its own while its model is still in the
+/// catalog. Emptying the trash deletes these for good.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LooseCompanion {
+    pub id: i64,
+    pub deleted_at: String,
+    /// Bytes of the file when it sits in this root's web trash, else 0.
+    pub bytes: u64,
+}
+
+/// Removed companion files of live models whose trash file is ours (or already gone).
+/// A row in the desktop's trash or under a foreign name is left to the desktop.
+pub fn loose_companions(c: &Connection, roots: &[PathBuf]) -> Result<Vec<LooseCompanion>> {
+    let mut stmt = c.prepare(
+        "SELECT c.id,c.deleted_at,c.trash_path,c.size_bytes,f.path,c.name,c.path,c.kind FROM companion_files c
+         JOIN files f ON f.id=c.file_id WHERE c.deleted_at IS NOT NULL AND f.deleted_at IS NULL ORDER BY c.id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, Option<String>>(2)?,
+            r.get::<_, Option<i64>>(3)?,
+            r.get::<_, String>(4)?,
+            r.get::<_, String>(5)?,
+            r.get::<_, String>(6)?,
+            r.get::<_, String>(7)?,
+        ))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (id, deleted_at, trash_path, size, model_path, name, path, kind) = row?;
+        // The same checks the removal itself makes: a row it would refuse is neither counted nor offered.
+        if crate::companions::validate_stored_fields(&name, &path, &kind).is_err()
+            || chrono::DateTime::parse_from_rfc3339(&deleted_at).is_err()
+        {
+            continue;
+        }
+        let Some(root) = roots
+            .iter()
+            .filter(|r| Path::new(&model_path).starts_with(r))
+            .max_by_key(|r| r.components().count())
+        else {
+            continue;
+        };
+        let bytes = match trash_path {
+            None => 0,
+            Some(p) => match place(root, &p, id) {
+                Place::Present => size.unwrap_or(0).max(0) as u64,
+                Place::Gone => 0,
+                Place::Unsafe | Place::Outside => continue,
+            },
+        };
+        out.push(LooseCompanion { id, deleted_at, bytes });
+    }
+    Ok(out)
+}
+
 pub fn trash_entries(c: &Connection, roots: &[PathBuf]) -> Result<Vec<TrashEntry>> {
     let mut companions: HashMap<i64, (bool, usize, u64)> = HashMap::new();
     let mut stmt = c.prepare(
@@ -114,6 +189,8 @@ pub fn trash_summary(c: &Connection, roots: &[PathBuf]) -> Result<TrashSummary> 
         count: 0,
         blocked_by_companions: 0,
         companion_count: 0,
+        loose_companion_count: 0,
+        loose_companion_bytes: 0,
         bytes: 0,
         max_deleted_at: None,
     };
@@ -130,6 +207,14 @@ pub fn trash_summary(c: &Connection, roots: &[PathBuf]) -> Result<TrashSummary> 
         summary.bytes = summary.bytes.saturating_add(entry.bytes);
         if max.as_ref().is_none_or(|(old, _)| time > *old) {
             max = Some((time, entry.deleted_at));
+        }
+    }
+    for loose in loose_companions(c, roots)? {
+        let time = chrono::DateTime::parse_from_rfc3339(&loose.deleted_at).map_err(|_| Error::Changed)?;
+        summary.loose_companion_count += 1;
+        summary.loose_companion_bytes = summary.loose_companion_bytes.saturating_add(loose.bytes);
+        if max.as_ref().is_none_or(|(old, _)| time > *old) {
+            max = Some((time, loose.deleted_at));
         }
     }
     summary.max_deleted_at = max.map(|(_, text)| text);

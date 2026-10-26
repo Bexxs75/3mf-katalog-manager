@@ -16,7 +16,7 @@ fn norm(name: &str) -> String {
     v.join("-")
 }
 
-fn trash_listing(f: &Fx) -> Vec<String> {
+pub(super) fn trash_listing(f: &Fx) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(f.p(TRASH))
         .unwrap()
         .flatten()
@@ -26,7 +26,7 @@ fn trash_listing(f: &Fx) -> Vec<String> {
     names
 }
 
-fn raw_trash_names(f: &Fx) -> Vec<String> {
+pub(super) fn raw_trash_names(f: &Fx) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(f.p(TRASH))
         .unwrap()
         .flatten()
@@ -38,7 +38,7 @@ fn raw_trash_names(f: &Fx) -> Vec<String> {
 
 /// Disk, trash and both tables, with timestamps reduced to "set or not" and trash
 /// names to their stable part.
-fn view(f: &Fx) -> String {
+pub(super) fn view(f: &Fx) -> String {
     let mut lines = Vec::new();
     walk(&f.root(), &f.root(), &mut lines);
     for n in trash_listing(f) {
@@ -87,7 +87,7 @@ fn view(f: &Fx) -> String {
     lines.join("\n")
 }
 
-fn crow(f: &Fx, id: i64) -> (String, String, Option<String>, Option<String>) {
+pub(super) fn crow(f: &Fx, id: i64) -> (String, String, Option<String>, Option<String>) {
     f.ops
         .db
         .query_row("SELECT name,path,deleted_at,trash_path FROM companion_files WHERE id=?1", [id], |r| {
@@ -96,11 +96,11 @@ fn crow(f: &Fx, id: i64) -> (String, String, Option<String>, Option<String>) {
         .unwrap()
 }
 
-fn model_deleted_at(f: &Fx, id: i64) -> Option<String> {
+pub(super) fn model_deleted_at(f: &Fx, id: i64) -> Option<String> {
     f.ops.db.query_row("SELECT deleted_at FROM files WHERE id=?1", [id], |r| r.get(0)).unwrap()
 }
 
-fn count(f: &Fx, table: &str) -> i64 {
+pub(super) fn count(f: &Fx, table: &str) -> i64 {
     f.ops.db.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap()
 }
 

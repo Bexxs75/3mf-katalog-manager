@@ -123,9 +123,9 @@ pub(super) struct Probe {
 /// catalog, the trash takes files from it, a restore brings them back.
 pub(super) fn step_access(op: Operation) -> (Access, Access) {
     match op {
-        Operation::Trash => (Access::Source, Access::Trash),
-        Operation::Restore => (Access::Trash, Access::MoveTarget),
-        Operation::Unlink => (Access::Trash, Access::Trash),
+        Operation::Trash | Operation::CompanionTrash => (Access::Source, Access::Trash),
+        Operation::Restore | Operation::CompanionRestore => (Access::Trash, Access::MoveTarget),
+        Operation::Unlink | Operation::CompanionPurge => (Access::Trash, Access::Trash),
         _ => (Access::Source, Access::MoveTarget),
     }
 }
@@ -135,12 +135,12 @@ pub(super) fn step_access(op: Operation) -> (Access, Access) {
 fn step_places(op: Operation, step: &CompanionStep) -> Result<(&str, Option<&str>)> {
     let after = step.after.as_ref();
     match op {
-        Operation::Trash => Ok((&step.before.path, Some(after.ok_or(Error::Changed)?.trash_path.as_deref().ok_or(Error::Changed)?))),
-        Operation::Restore => Ok((
+        Operation::Trash | Operation::CompanionTrash => Ok((&step.before.path, Some(after.ok_or(Error::Changed)?.trash_path.as_deref().ok_or(Error::Changed)?))),
+        Operation::Restore | Operation::CompanionRestore => Ok((
             step.before.trash_path.as_deref().ok_or(Error::Changed)?,
             Some(&after.ok_or(Error::Changed)?.path),
         )),
-        Operation::Unlink => Ok((step.before.trash_path.as_deref().ok_or(Error::Changed)?, None)),
+        Operation::Unlink | Operation::CompanionPurge => Ok((step.before.trash_path.as_deref().ok_or(Error::Changed)?, None)),
         _ => Ok((&step.before.path, Some(&after.ok_or(Error::Changed)?.path))),
     }
 }
@@ -525,7 +525,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     /// empty. Removing it is best effort and not journalled: at worst an empty folder
     /// stays. A restore fills the folder instead, so it never gets here.
     pub(super) fn cleanup_old_extras(&mut self, i: &Intent) {
-        if !matches!(i.operation, Operation::Rename | Operation::Move | Operation::Trash)
+        if !matches!(i.operation, Operation::Rename | Operation::Move | Operation::Trash | Operation::CompanionTrash)
             || !i.companions.iter().any(|s| s.source.is_some())
         {
             return;
@@ -549,7 +549,14 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     pub(super) fn observe_carry(&mut self, i: &Intent, root: usize) -> Result<CarryObservation> {
         let companion_op = matches!(
             i.operation,
-            Operation::Rename | Operation::Move | Operation::Trash | Operation::Restore | Operation::Unlink
+            Operation::Rename
+                | Operation::Move
+                | Operation::Trash
+                | Operation::Restore
+                | Operation::Unlink
+                | Operation::CompanionTrash
+                | Operation::CompanionRestore
+                | Operation::CompanionPurge
         ) || (i.operation == Operation::DbOnly && i.has_companion_data());
         if !companion_op {
             return Ok(CarryObservation::none());
@@ -563,7 +570,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .filter_map(|s| s.after.as_ref())
             .all(|a| rows.iter().find(|r| r.id == a.id) == Some(a));
         let root_path = self.context.roots.get(root).map(|r| r.path.clone());
-        let unlink = i.operation == Operation::Unlink;
+        let unlink = matches!(i.operation, Operation::Unlink | Operation::CompanionPurge);
         let (from, to) = step_access(i.operation);
         let (mut at_source, mut at_target, mut invalid) = (0usize, 0usize, false);
         let mut seen = std::collections::HashSet::new();
