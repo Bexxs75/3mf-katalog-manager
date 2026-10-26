@@ -465,6 +465,47 @@ fn snapshot_limits_formats_and_rollback() {
 }
 
 #[test]
+fn custom_image_accepts_the_three_formats_and_rejects_everything_else() {
+    use base64::Engine;
+    let mut c = db::connect_in_memory().unwrap();
+    let id = db::test_insert_minimal_file(&c, "/cover.stl", None).unwrap();
+    let encode = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+    let stored = |c: &Connection| db::get_file(c, id).unwrap().unwrap().custom_image_png;
+    for bytes in [&b"\x89PNG\r\n\x1a\n"[..], &b"\xff\xd8\xff"[..], &b"RIFF0000WEBP"[..]] {
+        assert_eq!(set_custom_image(&mut c, id, &encode(bytes)).unwrap().changes, 1);
+        assert_eq!(stored(&c).as_deref(), Some(bytes));
+    }
+    let code = |r: WriteResult<Outcome<()>>| match r {
+        Err(WriteError::Invalid { message }) => message,
+        other => panic!("unexpected {other:?}"),
+    };
+    assert_eq!(code(set_custom_image(&mut c, id, "")), "imageUploadUnsupported");
+    assert_eq!(code(set_custom_image(&mut c, id, &encode(b"GIF89a"))), "imageUploadUnsupported");
+    assert_eq!(code(set_custom_image(&mut c, id, "!!")), "imageUploadUnreadable");
+    assert_eq!(
+        code(set_custom_image(&mut c, id, &"!".repeat(MAX_RENDER_SNAPSHOT_BASE64_BYTES + 1))),
+        "imageUploadTooLarge"
+    );
+    assert_eq!(
+        code(set_custom_image(&mut c, id, &encode(&vec![0; MAX_CUSTOM_IMAGE_BYTES + 1]))),
+        "imageUploadTooLarge"
+    );
+    // Every rejection leaves the previous image untouched.
+    assert_eq!(stored(&c).as_deref(), Some(&b"RIFF0000WEBP"[..]));
+    assert!(c.is_autocommit());
+    let mut max = vec![0; MAX_CUSTOM_IMAGE_BYTES];
+    max[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+    set_custom_image(&mut c, id, &encode(&max)).unwrap();
+    assert_eq!(stored(&c).unwrap(), max);
+    assert!(matches!(
+        set_custom_image(&mut c, 999, &encode(b"\xff\xd8\xff")),
+        Err(WriteError::NotFound { .. })
+    ));
+    // The render snapshot is a different column and must stay untouched.
+    assert!(db::get_file(&c, id).unwrap().unwrap().render_snapshot_png.is_none());
+}
+
+#[test]
 fn web_auto_tagging_switch_defaults_on_and_only_writes_the_setting() {
     let mut c = db::connect_in_memory().unwrap();
     assert!(read::get_auto_tagging(&c).unwrap());
@@ -484,4 +525,42 @@ fn web_auto_tagging_switch_defaults_on_and_only_writes_the_setting() {
     assert_eq!(db::blocked_tags::list_blocked_auto_tags(&c).unwrap(), blocked_before);
     set_auto_tagging(&mut c, true).unwrap();
     assert!(read::get_auto_tagging(&c).unwrap());
+}
+
+fn blocked(c: &Connection) -> Vec<String> {
+    db::blocked_tags::list_blocked_auto_tags(c).unwrap()
+}
+
+#[test]
+fn web_block_and_unblock_are_idempotent_and_count_only_real_changes() {
+    let mut c = db::connect_in_memory().unwrap();
+    // The stored name is the shared normalized form: case and language do not matter.
+    assert_eq!(block_auto_tag(&mut c, "Multicolor").unwrap().changes, 1);
+    assert_eq!(block_auto_tag(&mut c, " MEHRFARBIG ").unwrap().changes, 0);
+    assert_eq!(blocked(&c), vec!["mehrfarbig"]);
+    assert_eq!(unblock_auto_tag(&mut c, "multicolore").unwrap().changes, 1);
+    assert_eq!(unblock_auto_tag(&mut c, "multicolore").unwrap().changes, 0);
+    assert!(blocked(&c).is_empty());
+}
+
+#[test]
+fn web_block_rejects_bad_names_and_the_list_cap_without_changing_anything() {
+    let mut c = db::connect_in_memory().unwrap();
+    for bad in ["", "   ", "a\nb", "a\u{7}", &"x".repeat(101)] {
+        assert!(matches!(block_auto_tag(&mut c, bad), Err(WriteError::Invalid { .. })), "{bad:?}");
+        assert!(matches!(unblock_auto_tag(&mut c, bad), Err(WriteError::Invalid { .. })), "{bad:?}");
+    }
+    assert!(blocked(&c).is_empty());
+    block_auto_tag(&mut c, &"x".repeat(100)).unwrap();
+    for i in 1..db::blocked_tags::MAX_BLOCKED_TAGS {
+        block_auto_tag(&mut c, &format!("tag{i}")).unwrap();
+    }
+    assert_eq!(blocked(&c).len(), db::blocked_tags::MAX_BLOCKED_TAGS);
+    assert!(matches!(block_auto_tag(&mut c, "one-too-many"), Err(WriteError::Invalid { .. })));
+    // Blocking a tag that is already on the full list still succeeds.
+    assert_eq!(block_auto_tag(&mut c, "tag1").unwrap().changes, 0);
+    assert_eq!(blocked(&c).len(), db::blocked_tags::MAX_BLOCKED_TAGS);
+    // Lifting a block frees a slot.
+    unblock_auto_tag(&mut c, "tag1").unwrap();
+    block_auto_tag(&mut c, "one-too-many").unwrap();
 }

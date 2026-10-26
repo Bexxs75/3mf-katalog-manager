@@ -121,6 +121,61 @@ pub fn delete_filament_spool(c: &mut Connection, id: i64) -> WriteResult<Outcome
         Ok(outcome((), c.changes()))
     })
 }
+/// Web "Restock": same row creation as the desktop, but bounded by the web spool
+/// quota and strict value limits. Every call creates `count` more rows, so a
+/// repeated request creates them again (not idempotent).
+pub fn restock_filament_spool(
+    c: &mut Connection,
+    template_id: i64,
+    count: i64,
+    weight: f64,
+    price: Option<f64>,
+    location: Option<String>,
+) -> WriteResult<Outcome<Vec<read::FilamentSpoolDto>>> {
+    if !(1..=m::RESTOCK_MAX_COUNT).contains(&count) {
+        return Err(invalid("Ungültige Anzahl"));
+    }
+    if !weight.is_finite()
+        || weight > MAX_WEIGHT
+        || p::round_tenth(weight) <= 0.0
+        || price.is_some_and(|v| !v.is_finite() || !(0.0..=MAX_WEIGHT).contains(&v))
+    {
+        return Err(invalid("Ungültige Menge"));
+    }
+    optional_text(&location)?;
+    transaction(c, |c| {
+        exists(c, "filament_spools", template_id)?;
+        let n: i64 = c.query_row("SELECT count(*) FROM filament_spools", [], |r| r.get(0))?;
+        if n + count > MAX_SPOOLS {
+            return Err(invalid("Web-Obergrenze erreicht"));
+        }
+        let created = m::restock_in(c, template_id, count, weight, price, location)?;
+        // c.changes() would only report the last insert; the audit counts all rows.
+        let rows = created.len() as u64;
+        Ok(outcome(created, rows))
+    })
+}
+/// Web "Use": subtracts from the current remainder (clamped at 0), so repeating a
+/// request subtracts again (not idempotent).
+pub fn consume_resin(
+    c: &mut Connection,
+    id: i64,
+    amount_ml: f64,
+) -> WriteResult<Outcome<read::FilamentSpoolDto>> {
+    if !amount_ml.is_finite() || amount_ml > MAX_WEIGHT || p::round_tenth(amount_ml) <= 0.0 {
+        return Err(invalid("Ungültige Menge"));
+    }
+    transaction(c, |c| {
+        exists(c, "filament_spools", id)?;
+        let kind: String =
+            c.query_row("SELECT kind FROM filament_spools WHERE id=?1", [id], |r| r.get(0))?;
+        if kind != db::models::SPOOL_KIND_RESIN {
+            return Err(invalid("Verbrauch abbuchen gibt es nur für Resin"));
+        }
+        let updated = m::consume_resin_in(c, id, p::round_tenth(amount_ml))?;
+        Ok(outcome(updated, c.changes()))
+    })
+}
 pub fn add_printer(
     c: &mut Connection,
     name: &str,

@@ -32,7 +32,10 @@ pub(super) fn command(name: &str) -> bool {
 }
 fn fail(e: StoreError) -> Response {
     let message = match e.kind {
-        "archive_desktop_only" => "Archive: nur in der Desktop-App",
+        "archive_format_unsupported" => "Archivformat nicht unterstützt (nur ZIP und 7z)",
+        "archive_too_many_models" => "Archiv enthält zu viele Modelle",
+        "archive_memory_limit" => "Archiv braucht zu viel Arbeitsspeicher beim Entpacken",
+        "archive_timeout" => "Entpacken dauert zu lange",
         "pending_limit" | "pending_quota" | "import_or_discard_first" => {
             "Erst importieren oder verwerfen"
         }
@@ -56,7 +59,15 @@ struct FileResult {
     state: String,
     file_id: Option<String>,
     existing_file_id: Option<String>,
+    /// Display name only (never a path) of the single catalog file that blocked a duplicate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    existing_file_name: Option<String>,
     kind: Option<String>,
+    /// Only for an unpacked archive: models taken over, files left out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    models: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    skipped: Option<u32>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,7 +155,21 @@ impl Runtime {
     }
 }
 fn public_entries(store: &UploadStore) -> Vec<Value> {
-    store.pending_list().unwrap_or_default().iter().map(|e|json!({"uploadId":e.id,"name":e.name,"size":e.size,"time":e.time,"state":e.state,"result":e.result})).collect()
+    store.pending_list().unwrap_or_default().iter().map(|e|json!({"uploadId":e.id,"name":e.name,"size":e.size,"time":e.time,"state":e.state,"result":e.result,"archive":e.archive})).collect()
+}
+/// Why the upload journal would be refused (see `Directory::read_private`): it must be
+/// mode 0600 and not hard-linked (ownership is checked by the store itself). Names the file, never its path.
+fn journal_problem(journal: &Path) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::symlink_metadata(journal).ok()?;
+    let mode = meta.mode() & 0o777;
+    if mode != 0o600 {
+        Some(format!("web-uploads.json hat die Rechte {mode:04o}, nötig sind 0600"))
+    } else if meta.nlink() != 1 {
+        Some("web-uploads.json ist mehrfach verlinkt".to_string())
+    } else {
+        None
+    }
 }
 pub(super) fn initialize(config: &Config) -> Result<Option<Arc<Runtime>>, String> {
     let Some(c) = &config.upload else {
@@ -161,15 +186,21 @@ pub(super) fn initialize(config: &Config) -> Result<Option<Arc<Runtime>>, String
         .db_path
         .canonicalize()
         .map_err(|_| "upload_database".to_string())?;
+    let journal = auth_parent.join("web-uploads.json");
     let store = UploadStore::load(
         c.dir.clone(),
-        auth_parent.join("web-uploads.json"),
+        journal.clone(),
         database.parent().ok_or("upload_database")?.to_path_buf(),
         c.max_bytes,
         c.max_files,
         &HashMap::new(),
     )
-    .map_err(|e| e.kind.to_string())?;
+    .map_err(|e| match (e.kind, journal_problem(&journal)) {
+        // The store reports every I/O failure as `upload_io`; the strict journal
+        // check is the one cause an operator can fix without reading the source.
+        ("upload_io", Some(cause)) => format!("upload_io: {cause}"),
+        _ => e.kind.to_string(),
+    })?;
     Ok(Some(Arc::new(Runtime {
         store,
         active: Arc::new(Semaphore::new(1)),
@@ -551,11 +582,12 @@ fn run_job(
     app: Arc<App>,
     rt: Arc<Runtime>,
     job: Arc<Job>,
-    entries: Vec<Entry>,
+    mut entries: Vec<Entry>,
     _permit: OwnedSemaphorePermit,
 ) {
+    // `entries` grows while the job runs: an unpacked archive adds its models.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        run_inner(&app, &rt, &job, &entries)
+        run_inner(&app, &rt, &job, &mut entries)
     }));
     let failed = !matches!(result, Ok(Ok(())));
     let id = job.view.lock().unwrap().job_id.clone();
@@ -589,7 +621,10 @@ fn run_job(
                         .into(),
                     file_id: None,
                     existing_file_id: None,
+                    existing_file_name: None,
                     kind: Some("not_started".into()),
+                    models: None,
+                    skipped: None,
                 });
             }
         }
@@ -655,12 +690,84 @@ fn reconcile_commits(app: &App, rt: &Runtime, job: &Job, entries: &[Entry]) -> R
             .iter()
             .any(|f| f.upload_id == entry.id)
         {
-            record(&mut records, &entry, "imported", Some(id), None, None);
+            record(&mut records, &entry, "imported", Some(id), None, None, None);
         }
     }
     record_batch(rt, job, records)
 }
-fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &[Entry]) -> Result<(), ()> {
+fn archive_result(entry: &Entry, models: u32, skipped: u32) -> FileResult {
+    FileResult {
+        upload_id: entry.id.clone(),
+        name: entry.name.clone(),
+        state: "imported".into(),
+        file_id: None,
+        existing_file_id: None,
+        existing_file_name: None,
+        kind: Some("archive".into()),
+        models: Some(models),
+        skipped: Some(skipped),
+    }
+}
+/// Unpacks every archive of the job into separate uploads and appends them to
+/// `entries`. The heavy work (`upload_archive::expand`) holds neither the database
+/// connection nor any journal lock; only the final journal write is serialized.
+fn expand_archives(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &mut Vec<Entry>) -> Result<(), ()> {
+    let archives: Vec<Entry> = entries
+        .iter()
+        .filter(|e| crate::upload_store::is_archive_name(&e.name))
+        .cloned()
+        .collect();
+    let upload = app.config.upload.as_ref().unwrap();
+    let job_id = job.view.lock().unwrap().job_id.clone();
+    for archive in archives {
+        if job.cancel.load(Ordering::Acquire) {
+            break;
+        }
+        job.view.lock().unwrap().current = Some(archive.name.clone());
+        rt.publish(job, false);
+        let context = crate::upload_archive::Context {
+            store: &rt.store,
+            upload,
+            db_path: &app.config.db_path,
+            cancel: &job.cancel,
+            job_id: &job_id,
+            timeout: crate::upload_archive::ARCHIVE_TIMEOUT,
+        };
+        let summary = |models, skipped| serde_json::to_value(archive_result(&archive, models, skipped)).unwrap();
+        match crate::upload_archive::expand(&context, &archive, &summary) {
+            Ok(done) => {
+                entries.extend(done.children);
+                let mut view = job.view.lock().unwrap();
+                view.files.push(archive_result(&archive, done.models, done.skipped));
+                view.done = view.files.len();
+                view.total = entries.len();
+                drop(view);
+                rt.publish(job, false);
+            }
+            Err(crate::upload_archive::Failure::Cancelled) => break,
+            // A property of the archive: it will never import, the user discards it.
+            Err(crate::upload_archive::Failure::Invalid(kind)) => {
+                let mut records = Vec::new();
+                record(&mut records, &archive, "invalid", None, None, None, Some(kind));
+                record_batch(rt, job, records)?;
+            }
+            // Space, quota or I/O: nothing wrong with the archive, so it goes back to
+            // "uploaded" and the import can simply be started again.
+            Err(crate::upload_archive::Failure::Store(e)) => {
+                rt.store.reopen(&archive.id).map_err(|_| ())?;
+                let mut records = Vec::new();
+                record(&mut records, &archive, "uploaded", None, None, None, Some(e.kind));
+                let mut view = job.view.lock().unwrap();
+                view.files.extend(records);
+                view.done = view.files.len();
+                drop(view);
+                rt.publish(job, false);
+            }
+        }
+    }
+    Ok(())
+}
+fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &mut Vec<Entry>) -> Result<(), ()> {
     let root = app.config.upload.as_ref().unwrap().dir.clone();
     let folder = {
         let mut db = Database {
@@ -679,6 +786,9 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &[Entry]) -> Resu
         cancel: &job.cancel,
         folder: FixedFolder { id: folder, root },
     };
+    job.view.lock().unwrap().state = "importing".into();
+    expand_archives(app, rt, job, entries)?;
+    let entries: &[Entry] = entries;
     let reader = Reader {
         rt: rt.clone(),
         entries: entries.to_vec(),
@@ -687,8 +797,12 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &[Entry]) -> Resu
     let mut batch = Vec::new();
     let mut records = Vec::new();
     let mut batch_bytes = 0;
-    job.view.lock().unwrap().state = "importing".into();
-    for (index, entry) in entries.iter().enumerate() {
+    // Archives were handled above; what remains are the models to import.
+    for (index, entry) in entries
+        .iter()
+        .filter(|e| !crate::upload_store::is_archive_name(&e.name))
+        .enumerate()
+    {
         if job.cancel.load(Ordering::Acquire) {
             break;
         }
@@ -716,7 +830,7 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &[Entry]) -> Resu
                     new_file,
                 });
             }
-            Err(_) => record(&mut records, entry, "invalid", None, None, Some("invalid")),
+            Err(_) => record(&mut records, entry, "invalid", None, None, None, Some("invalid")),
         }
         if (index + 1) % 20 == 0 || batch_bytes >= 16 * 1024 * 1024 {
             flush(&mut database, rt, job, entries, &mut batch, &mut records)?;
@@ -731,6 +845,7 @@ fn record(
     state: &str,
     file_id: Option<String>,
     existing_file_id: Option<String>,
+    existing_file_name: Option<String>,
     kind: Option<&str>,
 ) {
     let value = FileResult {
@@ -739,7 +854,10 @@ fn record(
         state: state.into(),
         file_id,
         existing_file_id,
+        existing_file_name,
         kind: kind.map(str::to_string),
+        models: None,
+        skipped: None,
     };
     records.push(value);
 }
@@ -792,7 +910,7 @@ fn flush(
             .iter()
             .find(|e| rt.store.path(e).to_string_lossy() == file.path)
             .ok_or(())?;
-        record(records, e, "imported", Some(file.id), None, None);
+        record(records, e, "imported", Some(file.id), None, None, None);
     }
     for file in duplicates {
         let e = entries
@@ -805,6 +923,7 @@ fn flush(
             "duplicate",
             None,
             file.existing_file_id,
+            file.existing_file_name,
             Some(&file.kind),
         );
     }
@@ -813,7 +932,7 @@ fn flush(
             .iter()
             .find(|e| rt.store.path(e).to_string_lossy() == file.path)
             .ok_or(())?;
-        record(records, e, "invalid", None, None, Some("database"));
+        record(records, e, "invalid", None, None, None, Some("database"));
     }
     record_batch(rt, job, std::mem::take(records))?;
     outcome.map_err(|_| ())
@@ -988,5 +1107,26 @@ impl Drop for RequestAudit {
 }
 
 fn pending_entries(store: &UploadStore) -> Vec<Value> {
-    store.pending_list().unwrap_or_default().iter().map(|e|json!({"uploadId":e.id,"name":e.name,"size":e.size,"time":e.time,"state":e.state,"result":e.result})).collect()
+    store.pending_list().unwrap_or_default().iter().map(|e|json!({"uploadId":e.id,"name":e.name,"size":e.size,"time":e.time,"state":e.state,"result":e.result,"archive":e.archive})).collect()
+}
+
+#[cfg(test)]
+mod journal_problem_tests {
+    use super::journal_problem;
+    use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn names_loose_permissions_without_a_path() {
+        let dir = std::env::temp_dir().join(format!("jp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("web-uploads.json");
+        assert_eq!(journal_problem(&file), None, "a missing journal is not a permission problem");
+        std::fs::write(&file, b"{}").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let cause = journal_problem(&file).unwrap();
+        assert!(cause.contains("0644") && cause.contains("0600"));
+        assert!(!cause.contains(dir.to_str().unwrap()));
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(journal_problem(&file), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

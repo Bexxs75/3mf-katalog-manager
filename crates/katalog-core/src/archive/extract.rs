@@ -1,10 +1,11 @@
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::{
     formats, is_blocked_path, origin, safe_relative_path, ArchiveError, ArchiveFormat, EntryKind,
-    EntryMeta, MAX_ENTRIES,
+    EntryMeta, ExtractOptions, MAX_ENTRIES,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -17,6 +18,8 @@ pub struct ExtractStats {
     pub unsafe_skipped: u32,
     /// Blocked file types (executables, shortcuts, ...).
     pub blocked_skipped: u32,
+    /// Safe file entries the caller's `keep` filter declined to write.
+    pub filtered_skipped: u32,
 }
 
 /// Result of a successful extraction. Keeps the list of all paths created in
@@ -116,6 +119,10 @@ pub(super) struct Extractor<'g> {
     /// `false` = the path is in a protected area (decided by the caller, see
     /// `commands::reject_if_sensitive_path`).
     guard: &'g dyn Fn(&Path) -> bool,
+    cancel: Option<&'g AtomicBool>,
+    deadline: Option<std::time::Instant>,
+    keep: Option<&'g dyn Fn(&Path) -> bool>,
+    sevenz_memory_limit: Option<u64>,
     /// Origin mark of the archive, copied onto every file.
     origin_mark: Option<Vec<u8>>,
     created: Vec<PathBuf>,
@@ -126,7 +133,7 @@ impl<'g> Extractor<'g> {
     fn new(
         root: &Path,
         merge: bool,
-        byte_limit: u64,
+        options: &ExtractOptions<'g>,
         guard: &'g dyn Fn(&Path) -> bool,
         origin_mark: Option<Vec<u8>>,
     ) -> Result<Self, ArchiveError> {
@@ -139,10 +146,14 @@ impl<'g> Extractor<'g> {
         let mut extractor = Extractor {
             root: root.to_path_buf(),
             stripped_root: None,
-            byte_limit,
+            byte_limit: options.byte_limit,
             written_bytes: 0,
             entries_seen: 0,
             guard,
+            cancel: options.cancel,
+            deadline: options.deadline,
+            keep: options.keep,
+            sevenz_memory_limit: options.sevenz_memory_limit,
             origin_mark,
             created: Vec::new(),
             stats: ExtractStats::default(),
@@ -190,6 +201,7 @@ impl<'g> Extractor<'g> {
     /// created here directly. Counts EVERY entry against `MAX_ENTRIES` - even though
     /// `inspect` already checked, the archive may have been replaced since.
     pub(super) fn prepare(&mut self, meta: &EntryMeta) -> Result<Option<PathBuf>, ArchiveError> {
+        self.check_cancel()?;
         self.entries_seen += 1;
         if self.entries_seen > MAX_ENTRIES {
             return Err(ArchiveError::TooManyEntries);
@@ -241,6 +253,10 @@ impl<'g> Extractor<'g> {
         if meta.encrypted {
             return Err(ArchiveError::Encrypted);
         }
+        if self.keep.is_some_and(|keep| !keep(&rel)) {
+            self.stats.filtered_skipped += 1;
+            return Ok(None);
+        }
         if let Some(parent) = rel.parent() {
             if !self.ensure_dir(parent)? {
                 self.stats.unsafe_skipped += 1;
@@ -275,6 +291,7 @@ impl<'g> Extractor<'g> {
         self.created.push(target.to_path_buf());
         let mut buf = vec![0u8; 64 * 1024];
         loop {
+            self.check_cancel()?;
             let n = reader.read(&mut buf)?;
             if n == 0 {
                 break;
@@ -288,6 +305,33 @@ impl<'g> Extractor<'g> {
         drop(file);
         self.finish_file(target);
         Ok(())
+    }
+
+    pub(super) fn check_cancel(&self) -> Result<(), ArchiveError> {
+        if self.cancel.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+            return Err(ArchiveError::Cancelled);
+        }
+        if self.deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return Err(ArchiveError::TimedOut);
+        }
+        Ok(())
+    }
+
+    pub(super) fn sevenz_memory_limit(&self) -> Option<u64> {
+        self.sevenz_memory_limit
+    }
+
+    /// Reads and discards the data of an entry that is not written. Some formats
+    /// (7z solid blocks) deliver all entries of a block through ONE decoder, so
+    /// unread data of a skipped entry would shift every following entry.
+    pub(super) fn drain(&self, reader: &mut dyn Read) -> Result<(), ArchiveError> {
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            self.check_cancel()?;
+            if reader.read(&mut buf)? == 0 {
+                return Ok(());
+            }
+        }
     }
 
     fn finish_file(&mut self, target: &Path) {
@@ -325,12 +369,24 @@ pub fn extract_archive(
     byte_limit: u64,
     guard: &dyn Fn(&Path) -> bool,
 ) -> Result<Extraction, ArchiveError> {
-    let entries = formats::list(archive, format)?;
+    extract_archive_with(archive, format, dest, merge, &ExtractOptions::new(byte_limit), guard)
+}
+
+/// `extract_archive` with the extra restrictions of `ExtractOptions`.
+pub fn extract_archive_with(
+    archive: &Path,
+    format: ArchiveFormat,
+    dest: &Path,
+    merge: bool,
+    options: &ExtractOptions<'_>,
+    guard: &dyn Fn(&Path) -> bool,
+) -> Result<Extraction, ArchiveError> {
+    let entries = formats::list(archive, format, options.sevenz_memory_limit)?;
     if entries.len() > MAX_ENTRIES {
         return Err(ArchiveError::TooManyEntries);
     }
     let stripped_root = single_root(&entries);
-    let mut extractor = Extractor::new(dest, merge, byte_limit, guard, origin::read(archive))?;
+    let mut extractor = Extractor::new(dest, merge, options, guard, origin::read(archive))?;
     extractor.stripped_root = stripped_root;
     match formats::extract(archive, format, &mut extractor) {
         Ok(()) => Ok(Extraction {

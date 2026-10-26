@@ -38,17 +38,25 @@ services:
     # Requires write mode, authentication and allowed hosts; see README warnings.
     #   - KATALOG_FILE_OPS=1
     #   - KATALOG_FILE_OPS_DAILY_LIMIT=2000
+    #   # Largest single companion file (upload and download) in MiB, 1-4096:
+    #   - KATALOG_COMPANION_MAX_MB=1024
     # Only after manual journal inspection, one restart, then remove:
     #   - KATALOG_FILE_OPS_ACK=<opId[,<opId>…]>
     #   # Optional upload/import backend (also requires authentication + allowed hosts):
     #   - KATALOG_UPLOAD_DIR=/models/uploads
     #   - KATALOG_UPLOAD_MAX_MB=1024
     #   - KATALOG_UPLOAD_MAX_FILES=2
+    #   # ZIP/7z uploads: largest size ONE archive may unpack to (MiB, 1-4096):
+    #   - KATALOG_ARCHIVE_MAX_MB=1024
     #   # Lower-only parser limits (MiB/counts):
     #   - KATALOG_IMPORT_MAX_MESH_MB=512
     #   - KATALOG_IMPORT_MAX_UNPACKED_MB=1024
     #   - KATALOG_IMPORT_MAX_VERTICES=2000000
     #   - KATALOG_IMPORT_MAX_TRIANGLES=3000000
+    #   # "Open in slicer" via signed, short-lived download links (works in read-only mode, too):
+    #   - KATALOG_SLICER_LINKS=1
+    #   # Link lifetime in seconds (60-86400):
+    #   - KATALOG_SLICER_LINK_TTL_SECONDS=3600
     #   # First-time password only (otherwise a random one is printed once in the log):
     #   - KATALOG_PASSWORD_FILE=/config/.kasmvnc-password   # reuse the desktop image's password
     read_only: true

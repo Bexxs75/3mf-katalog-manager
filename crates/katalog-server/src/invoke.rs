@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use katalog_core::{
-    db,
+    companion_read, db, disk_report,
     read::{self, GeometryErrorCode, ReadError},
 };
 use serde::Serialize;
@@ -13,9 +13,17 @@ use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+/// How long a request waits for the disk comparison. A hanging mount can block a directory read
+/// for good, which no in-process limit can interrupt; the request is answered instead.
+const DISK_REPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 pub struct GeometryGate {
     workers: Arc<Semaphore>,
     manager_reads: Arc<Semaphore>,
+    /// One disk comparison at a time: each walks the roots.
+    disk_reports: Arc<Semaphore>,
+    report_limits: disk_report::Limits,
+    report_timeout: std::time::Duration,
     admission: Arc<Semaphore>,
 }
 impl Default for GeometryGate {
@@ -23,6 +31,9 @@ impl Default for GeometryGate {
         Self {
             workers: Arc::new(Semaphore::new(2)),
             manager_reads: Arc::new(Semaphore::new(4)),
+            disk_reports: Arc::new(Semaphore::new(1)),
+            report_limits: disk_report::Limits::default(),
+            report_timeout: DISK_REPORT_TIMEOUT,
             admission: Arc::new(Semaphore::new(10)),
         }
     }
@@ -137,6 +148,8 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
         .collect()
 }
 
+/// Encoded picture bytes after which `list_file_images` defers the remaining entries.
+const IMAGE_RESPONSE_BUDGET: usize = 24 * 1024 * 1024;
 pub const READ_COMMANDS: &[&str] = &[
     "folder_removal_summary",
     "empty_trash_summary",
@@ -163,33 +176,40 @@ pub const READ_COMMANDS: &[&str] = &[
     "check_filament",
     "get_filament_spool_image",
     "get_auto_tagging",
+    "list_suggested_auto_tags",
+    "list_blocked_auto_tags",
+    "list_companions",
+    "companion_image_data",
+    "disk_sync_report",
 ];
 
-// New summaries intentionally expose no server paths or SQLite error text.
-fn trash_summary(conn: &katalog_core::write::Connection) -> Result<Value, ReadError> {
-    let internal = |_| ReadError::from("Zusammenfassung nicht verfügbar");
-    let mut stmt = conn
-        .prepare("SELECT deleted_at,file_size_bytes FROM files WHERE deleted_at IS NOT NULL")
-        .map_err(internal)?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })
-        .map_err(internal)?;
-    let mut count = 0usize;
-    let mut bytes = 0u64;
-    let mut latest = None;
-    for row in rows {
-        let (date, size) = row.map_err(internal)?;
-        let parsed = chrono::DateTime::parse_from_rfc3339(&date)
-            .map_err(|_| ReadError::from("Ungültiger Papierkorb-Zeitstempel"))?;
-        count += 1;
-        bytes = bytes.saturating_add(size.max(0) as u64);
-        if latest.as_ref().is_none_or(|(current, _)| parsed > *current) {
-            latest = Some((parsed, date));
-        }
+/// Companion refusals reach the client as plain statements: no path, no SQLite text.
+pub(crate) fn companion_error(e: companion_read::RowError) -> ReadError {
+    use companion_read::RowError as R;
+    match e {
+        R::TooLarge => ReadError::expected("Die Begleitdatei ist zu groß").with_code(GeometryErrorCode::TooLarge),
+        // Everything else looks the same from outside: no hint which check failed.
+        _ => ReadError::expected("Begleitdatei nicht gefunden").with_code(GeometryErrorCode::NotFound),
     }
-    Ok(json!({"count":count,"bytes":bytes,"maxDeletedAt":latest.map(|(_,date)|date)}))
+}
+
+// New summaries intentionally expose no server paths or SQLite error text.
+fn trash_summary(conn: &katalog_core::write::Connection, roots: &[PathBuf]) -> Result<Value, ReadError> {
+    // Entries a permanent delete would refuse are counted apart and not offered for emptying.
+    let summary = katalog_core::fsops::trash_summary(conn, roots)
+        .map_err(|e| match e {
+            katalog_core::fsops::Error::Changed => ReadError::from("Ungültiger Papierkorb-Zeitstempel"),
+            _ => ReadError::from("Zusammenfassung nicht verfügbar"),
+        })?;
+    Ok(json!({
+        "count": summary.count,
+        "blockedByCompanions": summary.blocked_by_companions,
+        "companionCount": summary.companion_count,
+        "looseCompanionCount": summary.loose_companion_count,
+        "looseCompanionBytes": summary.loose_companion_bytes,
+        "bytes": summary.bytes,
+        "maxDeletedAt": summary.max_deleted_at,
+    }))
 }
 fn folder_summary(
     conn: &katalog_core::write::Connection,
@@ -232,7 +252,7 @@ pub async fn invoke(
     }
     if matches!(
         command.as_str(),
-        "folder_removal_summary" | "empty_trash_summary"
+        "folder_removal_summary" | "empty_trash_summary" | "disk_sync_report"
     ) {
         let allowed: &[&str] = if command == "folder_removal_summary" {
             &["folderId"]
@@ -257,13 +277,17 @@ pub async fn invoke(
             Ok(value) => Some(value),
             Err(error) => return *error,
         },
-        "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" => {
+        "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" | "list_suggested_auto_tags" | "list_companions" => {
             match id(&args, "fileId") {
                 Ok(v) => Some(v),
                 Err(e) => return *e,
             }
         }
         "list_printer_history" => match id(&args, "printerId") {
+            Ok(v) => Some(v),
+            Err(e) => return *e,
+        },
+        "companion_image_data" => match id(&args, "companionId") {
             Ok(v) => Some(v),
             Err(e) => return *e,
         },
@@ -290,6 +314,8 @@ pub async fn invoke(
         "is_preview_build" | "has_step_preview" => return Json(json!(false)).into_response(),
         _ => {}
     }
+    // The file-management UI asks for the individually removed files as well; the plain listing stays as it was.
+    let include_removed = args.get("includeRemoved") == Some(&Value::Bool(true));
     let check_ids = if command == "check_filament" {
         let Some(values) = args.get("fileIds").and_then(Value::as_array) else {
             return *error(
@@ -328,6 +354,9 @@ pub async fn invoke(
             | "get_last_printer_for_file"
             | "check_filament"
             | "get_filament_spool_image"
+            | "companion_image_data"
+            | "list_companions"
+            | "disk_sync_report"
     ) {
         match gate.manager_reads.clone().try_acquire_owned() {
             Ok(p) => Some(p),
@@ -344,6 +373,46 @@ pub async fn invoke(
     } else {
         None
     };
+    let report_permit = if command == "disk_sync_report" {
+        match gate.disk_reports.clone().try_acquire_owned() {
+            Ok(p) => Some(p),
+            Err(_) => {
+                let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, "Abgleich läuft bereits", true);
+                r.headers_mut().insert("retry-after", "5".parse().unwrap());
+                return r;
+            }
+        }
+    } else {
+        None
+    };
+    if command == "disk_sync_report" {
+        let (limits, wait) = (gate.report_limits, gate.report_timeout);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        // A thread of its own, not the blocking pool: the scan may never return. The permits
+        // move into it on purpose and are released only when it ends, so a stuck scan keeps
+        // blocking further ones (single flight, manager gate) instead of piling up new threads.
+        let started = std::thread::Builder::new().name("disk-report".into()).spawn(move || {
+            let _held = (manager_permit, report_permit);
+            let outcome = (|| -> Result<Value, ReadError> {
+                let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
+                // The database is only read for the copy; the disk scan runs without it.
+                let snapshot = disk_report::snapshot(&conn).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
+                drop(conn);
+                serde_json::to_value(disk_report::build_report(&snapshot, &roots, limits))
+                    .map_err(|_| ReadError::from("Antwort konnte nicht kodiert werden"))
+            })();
+            let _ = tx.send(outcome);
+        });
+        if started.is_err() {
+            return *error(StatusCode::SERVICE_UNAVAILABLE, "Abgleich derzeit nicht möglich", true);
+        }
+        return match tokio::time::timeout(wait, rx).await {
+            Ok(Ok(Ok(value))) => Json(value).into_response(),
+            Ok(Ok(Err(e))) => read_error(e),
+            Ok(Err(_)) => *error(StatusCode::INTERNAL_SERVER_ERROR, "Anfrage konnte nicht verarbeitet werden", false),
+            Err(_) => *error(StatusCode::GATEWAY_TIMEOUT, "Der Abgleich dauert zu lange (ein Laufwerk antwortet nicht). Bitte später erneut versuchen.", true),
+        };
+    }
     let permits = if command == "get_model_geometry" {
         match gate.acquire().await {
             Ok(p) => Some(p),
@@ -356,6 +425,7 @@ pub async fn invoke(
         // The permits belong to this closure: cancelling HTTP does not release a running parser.
         let _permits = permits;
         let _manager_permit = manager_permit;
+        let _report_permit = report_permit;
         let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
         match command.as_str() {
             "list_filament_spools" => encode(read::manager::list_filament_spools_web(&conn)?),
@@ -377,11 +447,33 @@ pub async fn invoke(
             )?),
             "check_filament" => encode(read::manager::check_filament_with_conn(&conn, &check_ids)?),
 
+            "list_companions" => encode(
+                companion_read::list_for_web_with(&conn, file_id.unwrap().parse().unwrap(), &roots, include_removed).map_err(companion_error)?,
+            ),
+            "companion_image_data" => {
+                let opened = companion_read::open_for_web(
+                    &conn,
+                    file_id.unwrap().parse().unwrap(),
+                    &roots,
+                    companion_read::MAX_PREVIEW_BYTES,
+                );
+                drop(conn);
+                let (row, kind, mut file, head) = opened.map_err(companion_error)?;
+                if kind != katalog_core::companions::CompanionKind::Image {
+                    return Err(companion_error(companion_read::RowError::Invalid));
+                }
+                encode(companion_read::image_data_uri(&mut file, head, &row.name).map_err(companion_error)?)
+            }
             "list_file_summaries" => encode(read::list_file_summaries(&conn)?),
             "list_all_file_tags" => encode(read::list_all_file_tags(&conn)?),
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
             "list_tag_counts" => encode(read::list_tag_counts(&conn)?),
             "get_auto_tagging" => encode(read::get_auto_tagging(&conn)?),
+            "list_blocked_auto_tags" => encode(read::list_blocked_auto_tags(&conn)?),
+            "list_suggested_auto_tags" => encode(read::suggested_auto_tags_with_conn(
+                &conn,
+                file_id.unwrap().parse().unwrap(),
+            )?),
             "list_print_log_entries" => {
                 encode(read::list_print_log_entries(&conn, file_id.unwrap())?)
             }
@@ -391,7 +483,7 @@ pub async fn invoke(
                 encode(read::list_collection_files(&conn, file_id.unwrap())?)
             }
             "list_trash" => encode(read::list_trash(&conn)?),
-            "empty_trash_summary" => encode(trash_summary(&conn)?),
+            "empty_trash_summary" => encode(trash_summary(&conn, &roots)?),
             "folder_removal_summary" => {
                 match folder_summary(&conn, file_id.unwrap().parse().unwrap())? {
                     Some(summary) => encode(summary),
@@ -405,7 +497,8 @@ pub async fn invoke(
                     .collect::<Vec<_>>();
                 let images = read::load_file_images(&conn, &numeric)?;
                 drop(conn);
-                encode(read::encode_file_images(images))
+                // Up to 200 full-size covers could add up to hundreds of MiB in one answer.
+                encode(read::encode_file_images_budgeted(images, IMAGE_RESPONSE_BUDGET))
             }
             "get_model_geometry" => {
                 let source = read::load_geometry_source(&conn, &file_id.unwrap())?;
@@ -504,6 +597,80 @@ mod tests {
         )
         .await
     }
+    #[tokio::test]
+    async fn companion_reads_share_the_manager_gate() {
+        let c = catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let held: Vec<_> = (0..4).map(|_| gate.manager_reads.clone().try_acquire_owned().unwrap()).collect();
+        for (command, args) in [("list_companions", json!({"fileId": c.id})), ("companion_image_data", json!({"companionId": "1"}))] {
+            let r = invoke(c.db.clone(), vec![c.dir.clone()], command.into(), args, gate.clone()).await;
+            assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE, "{command}");
+        }
+        drop(held);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "list_companions".into(), json!({"fileId": c.id}), gate).await;
+        assert_eq!(r.status(), StatusCode::OK);
+    }
+    #[tokio::test]
+    async fn only_one_disk_report_runs_at_a_time_and_it_shares_the_manager_gate() {
+        let c = catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let running = gate.disk_reports.clone().try_acquire_owned().unwrap();
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(r.headers().contains_key("retry-after"));
+        drop(running);
+        let held: Vec<_> = (0..4).map(|_| gate.manager_reads.clone().try_acquire_owned().unwrap()).collect();
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        drop(held);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate).await;
+        assert_eq!(r.status(), StatusCode::OK);
+    }
+    #[tokio::test]
+    async fn a_scan_that_hangs_is_answered_with_a_timeout_and_keeps_its_permits_until_it_ends() {
+        let c = catalog();
+        let hook: &'static (dyn Fn(&std::path::Path) + Sync) = Box::leak(Box::new(|_: &std::path::Path| std::thread::sleep(std::time::Duration::from_millis(700))));
+        let gate = Arc::new(GeometryGate {
+            report_timeout: std::time::Duration::from_millis(150),
+            report_limits: disk_report::Limits { walk_hook: Some(hook), ..Default::default() },
+            ..Default::default()
+        });
+        let started = std::time::Instant::now();
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert!(started.elapsed() < std::time::Duration::from_millis(600));
+        let text = String::from_utf8(body(r).await).unwrap();
+        assert!(text.contains("dauert zu lange") && !text.contains(c.dir.to_str().unwrap()), "{text}");
+        // The scan thread still owns the single-flight permit and one manager permit.
+        assert_eq!(gate.disk_reports.available_permits(), 0);
+        assert_eq!(gate.manager_reads.available_permits(), 3);
+        let again = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate.clone()).await;
+        assert_eq!(again.status(), StatusCode::SERVICE_UNAVAILABLE);
+        for _ in 0..100 {
+            if gate.disk_reports.available_permits() == 1 && gate.manager_reads.available_permits() == 4 {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        panic!("permits were never released");
+    }
+
+    #[tokio::test]
+    async fn a_writer_commits_while_the_disk_scan_is_running() {
+        let c = catalog();
+        let db = c.db.clone();
+        let committed: &'static std::sync::atomic::AtomicBool = Box::leak(Box::new(std::sync::atomic::AtomicBool::new(false)));
+        let hook: &'static (dyn Fn(&std::path::Path) + Sync) = Box::leak(Box::new(move |_: &std::path::Path| {
+            let writer = db::connect(&db).unwrap();
+            writer.execute("UPDATE files SET path = path", []).unwrap();
+            committed.store(true, std::sync::atomic::Ordering::SeqCst);
+        }));
+        let gate = GeometryGate { report_limits: disk_report::Limits { walk_hook: Some(hook), ..Default::default() }, ..Default::default() };
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), Arc::new(gate)).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(committed.load(std::sync::atomic::Ordering::SeqCst), "the walk never ran");
+    }
+
     async fn body(response: Response) -> Vec<u8> {
         response
             .into_body()
@@ -803,12 +970,12 @@ mod fileops_summary_tests {
         db::test_insert_minimal_file(&conn, "/one", None).unwrap();
         db::test_insert_minimal_file(&conn, "/two", None).unwrap();
         conn.execute("UPDATE files SET deleted_at=CASE id WHEN 1 THEN '2026-01-01T01:00:00+02:00' ELSE '2026-01-01T00:00:00+00:00' END",[]).unwrap();
-        let summary = trash_summary(&conn).unwrap();
+        let summary = trash_summary(&conn, &[]).unwrap();
         assert_eq!(summary["count"], 2);
         assert_eq!(summary["maxDeletedAt"], "2026-01-01T00:00:00+00:00");
         conn.execute("UPDATE files SET deleted_at='invalid' WHERE id=1", [])
             .unwrap();
-        assert!(trash_summary(&conn).is_err());
+        assert!(trash_summary(&conn, &[]).is_err());
     }
     #[test]
     fn folder_summary_counts_only_active_models_and_excludes_root() {

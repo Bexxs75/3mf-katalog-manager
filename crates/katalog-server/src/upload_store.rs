@@ -18,13 +18,18 @@ use std::{
 const RESERVE: u64 = 256 * 1024 * 1024;
 const PENDING_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 const CHECK_INTERVAL: u64 = 64 * 1024 * 1024;
+/// Hidden folder inside the upload folder an archive is unpacked into. Leftovers of
+/// a crash are removed at startup; nothing ever looks inside one.
+pub(crate) const STAGING_PREFIX: &str = ".archive-staging-";
+/// Open uploads (everything not yet imported) the store accepts at most.
+pub(crate) const MAX_PENDING_UPLOADS: u64 = 200;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreError {
     pub status: u16,
     pub kind: &'static str,
 }
 impl StoreError {
-    fn new(status: u16, kind: &'static str) -> Self {
+    pub(crate) fn new(status: u16, kind: &'static str) -> Self {
         Self { status, kind }
     }
 }
@@ -59,6 +64,11 @@ pub struct Entry {
     pub state: UploadState,
     pub job_id: Option<String>,
     pub result: Option<Value>,
+    /// Set once an uploaded archive has been unpacked into separate uploads. Such an
+    /// entry has no catalog row of its own, so recovery must not mistake it for an
+    /// interrupted import.
+    #[serde(default)]
+    pub archive: bool,
 }
 #[derive(Default, Clone, Serialize, Deserialize)]
 struct Journal {
@@ -93,7 +103,9 @@ impl Journal {
         let mut imported: Vec<_> = self
             .entries
             .values()
-            .filter(|e| e.state == UploadState::Imported)
+            // Archive entries are the only record of a file that still occupies disk
+            // space and can be discarded; dropping them would orphan the file.
+            .filter(|e| e.state == UploadState::Imported && !e.archive)
             .map(|e| (e.time, e.id.clone()))
             .collect();
         imported.sort();
@@ -109,6 +121,10 @@ struct Inner {
     active: usize,
     reserved: u64,
     active_bytes: u64,
+    /// Models an archive is being unpacked into: they are not uploads yet, but
+    /// already count against the pending quota and the free-space reserve.
+    extracting_bytes: u64,
+    extracting_models: u64,
 }
 pub struct UploadStore {
     dir: Directory,
@@ -125,6 +141,9 @@ pub struct UploadStore {
     pub sync_hook: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
     #[cfg(test)]
     pub persist_count: std::sync::atomic::AtomicUsize,
+    /// Simulates the process dying after the models were linked and before the journal write.
+    #[cfg(test)]
+    pub crash_after_link: AtomicBool,
 }
 fn now() -> u64 {
     SystemTime::now()
@@ -157,7 +176,23 @@ pub fn sanitize_name(encoded: &str) -> Result<String, StoreError> {
         }
     }
     let decoded = String::from_utf8(decoded).map_err(|_| bad())?;
-    let name=upload_fs::nfc(&decoded).chars().filter(|c| !c.is_control() && !matches!(*c, '\u{ad}'|'\u{600}'..='\u{605}'|'\u{61c}'|'\u{6dd}'|'\u{70f}'|'\u{890}'..='\u{891}'|'\u{8e2}'|'\u{180e}'|'\u{200b}'..='\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2060}'..='\u{206f}'|'\u{feff}'|'\u{fff9}'..='\u{fffb}'|'\u{110bd}'|'\u{110cd}'|'\u{13430}'..='\u{13455}'|'\u{1bca0}'..='\u{1bca3}'|'\u{1d173}'..='\u{1d17a}'|'\u{e0001}'|'\u{e0020}'..='\u{e007f}')).collect::<String>();
+    let name = clean_name(&decoded)?;
+    let ext = extension(&name);
+    if is_archive_name(&name) || is_model_extension(&ext) {
+        return Ok(name);
+    }
+    // rar, tar and friends are recognised so the user learns the format is the
+    // problem rather than a generic "wrong type".
+    if katalog_core::archive::detect_format(std::path::Path::new(&name)).is_some() {
+        return Err(StoreError::new(415, "archive_format_unsupported"));
+    }
+    Err(StoreError::new(415, "unsupported_type"))
+}
+/// Name rules shared by uploads and files taken out of an archive: everything
+/// except the decision which extensions are acceptable.
+pub(crate) fn clean_name(decoded: &str) -> Result<String, StoreError> {
+    let bad = || StoreError::new(400, "invalid_name");
+    let name=upload_fs::nfc(decoded).chars().filter(|c| !c.is_control() && !matches!(*c, '\u{ad}'|'\u{600}'..='\u{605}'|'\u{61c}'|'\u{6dd}'|'\u{70f}'|'\u{890}'..='\u{891}'|'\u{8e2}'|'\u{180e}'|'\u{200b}'..='\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2060}'..='\u{206f}'|'\u{feff}'|'\u{fff9}'..='\u{fffb}'|'\u{110bd}'|'\u{110cd}'|'\u{13430}'..='\u{13455}'|'\u{1bca0}'..='\u{1bca3}'|'\u{1d173}'..='\u{1d17a}'|'\u{e0001}'|'\u{e0020}'..='\u{e007f}')).collect::<String>();
     let name = name.trim_end_matches([' ', '.']).to_owned();
     if name.is_empty()
         || name.len() > 255
@@ -180,16 +215,16 @@ pub fn sanitize_name(encoded: &str) -> Result<String, StoreError> {
     {
         return Err(bad());
     }
-    let ext = extension(&name);
-    if matches!(ext.as_str(), "zip" | "7z" | "rar") {
-        return Err(StoreError::new(415, "archive_desktop_only"));
-    }
-    if !matches!(ext.as_str(), "3mf" | "stl" | "obj" | "stp" | "step") {
-        return Err(StoreError::new(415, "unsupported_type"));
-    }
     Ok(name)
 }
-fn extension(name: &str) -> String {
+pub(crate) fn is_model_extension(ext: &str) -> bool {
+    matches!(ext, "3mf" | "stl" | "obj" | "stp" | "step")
+}
+/// Archives the web upload unpacks itself; every other archive format is refused.
+pub(crate) fn is_archive_name(name: &str) -> bool {
+    matches!(extension(name).as_str(), "zip" | "7z")
+}
+pub(crate) fn extension(name: &str) -> String {
     name.rsplit('.').next().unwrap_or("").to_ascii_lowercase()
 }
 /// Same bound as the filesystem-operation journal.
@@ -236,6 +271,8 @@ impl UploadStore {
             sync_hook: Mutex::new(None),
             #[cfg(test)]
             persist_count: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            crash_after_link: AtomicBool::new(false),
             inner: Mutex::new(Inner {
                 journal,
                 ..Inner::default()
@@ -271,12 +308,17 @@ impl UploadStore {
         let mut inner = self.lock()?;
         let mut journal = inner.journal.clone();
         let (dir, journal_dir, path) = (&self.dir, &self.journal_dir, &self.path);
+        // First: files hard-linked out of a staging folder have two names until it is
+        // gone, and the check below insists on a single one.
+        self.remove_stale_staging(&journal)?;
         journal.entries.retain(|_, e| {
             if dir.checked(&e.name, e.dev, e.ino).is_err()
             {
                 return false;
             }
-            if known.contains(&e.id)
+            if e.archive && e.state == UploadState::Imported {
+                // Unpacked into separate uploads; the archive file itself is never catalogued.
+            } else if known.contains(&e.id)
                 || catalogued
                     .get(&path.join(&e.name))
                     .and_then(|hash| hash.as_ref())
@@ -312,6 +354,7 @@ impl UploadStore {
                     "uploadId": entry.id, "name": entry.name, "state": entry.state,
                     "fileId": entry.result.as_ref().and_then(|r| r.get("fileId")),
                     "existingFileId": entry.result.as_ref().and_then(|r| r.get("existingFileId")),
+                    "existingFileName": entry.result.as_ref().and_then(|r| r.get("existingFileName")),
                     "kind": entry.result.as_ref().and_then(|r| r.get("kind")),
                 })).collect();
             let done = files
@@ -508,12 +551,13 @@ impl UploadStore {
             .values()
             .filter(|e| e.state != UploadState::Imported)
             .collect();
-        if pending.len() + inner.active >= 200
+        if pending.len() + inner.active + inner.extracting_models as usize >= 200
             || pending
                 .iter()
                 .map(|e| e.size)
                 .sum::<u64>()
                 .saturating_add(inner.active_bytes)
+                .saturating_add(inner.extracting_bytes)
                 .saturating_add(length)
                 > PENDING_BYTES
         {
@@ -539,6 +583,225 @@ impl UploadStore {
             released: false,
         })
     }
+    /// Removes unpacking leftovers of an earlier run. Runs only at startup, when no
+    /// job exists in this process, so every staging folder is a leftover (a second
+    /// server instance on the same upload folder is not supported: the journal is
+    /// shared as well). Only real folders with the exact name pattern are touched;
+    /// a symlink or file of that name is left alone.
+    ///
+    /// A crash between hard-linking a model out of staging and writing the journal
+    /// leaves a second name for the staged file in the upload folder that nothing
+    /// knows. Such names are recognised by sharing the inode with a staged file and
+    /// removed first; the archive is still `Importing` in the journal and becomes
+    /// importable again.
+    fn remove_stale_staging(&self, journal: &Journal) -> Result<(), StoreError> {
+        let names = self.dir.names()?;
+        let mut staging = Vec::new();
+        for name in &names {
+            let Some(id) = name.strip_prefix(STAGING_PREFIX) else {
+                continue;
+            };
+            if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+                continue;
+            }
+            let path = self.path.join(name);
+            if std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink()) {
+                staging.push(path);
+            }
+        }
+        if staging.is_empty() {
+            return Ok(());
+        }
+        let mut staged: HashSet<(u64, u64)> = HashSet::new();
+        let mut stack = staging.clone();
+        while let Some(dir) = stack.pop() {
+            let Ok(read) = std::fs::read_dir(&dir) else { continue };
+            for item in read.flatten() {
+                let Ok(meta) = std::fs::symlink_metadata(item.path()) else { continue };
+                if meta.is_dir() {
+                    stack.push(item.path());
+                } else if meta.is_file() {
+                    staged.insert((meta.dev(), meta.ino()));
+                }
+            }
+        }
+        let journalled: HashSet<&str> = journal.entries.values().map(|e| e.name.as_str()).collect();
+        for name in &names {
+            if name.starts_with(STAGING_PREFIX) || journalled.contains(name.as_str()) {
+                continue;
+            }
+            let Ok(meta) = std::fs::symlink_metadata(self.path.join(name)) else { continue };
+            if meta.is_file() && meta.nlink() == 2 && staged.contains(&(meta.dev(), meta.ino())) {
+                self.dir.unlink(name)?;
+            }
+        }
+        for path in staging {
+            if std::fs::remove_dir_all(&path).is_err() {
+                eprintln!("upload recovery: an unpacking leftover could not be removed");
+            }
+        }
+        Ok(())
+    }
+    /// Reserves room for the models of an archive BEFORE they are written: they
+    /// count against the pending-upload quota and the free-space reserve from this
+    /// moment on, so concurrent uploads cannot use the same space. `parent_id` is the
+    /// archive itself; it leaves the pending set once unpacked, so it is not counted.
+    pub fn begin_extraction(
+        self: &Arc<Self>,
+        parent_id: &str,
+        model_bytes: u64,
+        model_count: u64,
+    ) -> Result<ExtractionReservation, StoreError> {
+        let mut inner = self.lock()?;
+        let pending: Vec<_> = inner
+            .journal
+            .entries
+            .values()
+            .filter(|e| e.state != UploadState::Imported && e.id != parent_id)
+            .collect();
+        let pending_bytes = pending.iter().map(|e| e.size).sum::<u64>();
+        if pending.len() as u64 + inner.active as u64 + inner.extracting_models + model_count > MAX_PENDING_UPLOADS
+            || pending_bytes
+                .saturating_add(inner.active_bytes)
+                .saturating_add(inner.extracting_bytes)
+                .saturating_add(model_bytes)
+                > PENDING_BYTES
+        {
+            return Err(StoreError::new(409, "import_or_discard_first"));
+        }
+        self.space(&inner, model_bytes)?;
+        inner.extracting_bytes += model_bytes;
+        inner.extracting_models += model_count;
+        inner.reserved += model_bytes;
+        Ok(ExtractionReservation {
+            store: Arc::clone(self),
+            bytes: model_bytes,
+            models: model_count,
+        })
+    }
+    /// Turns the models unpacked into a staging folder into ordinary uploads and
+    /// marks the archive as handled, in ONE journal write: a crash leaves either the
+    /// untouched archive (retry possible) or the finished state, never a mixture.
+    /// The files are hard-linked out of staging, so no data is copied and every
+    /// name the journal knows already exists when it is written. The staging names
+    /// disappear when the caller removes the staging folder afterwards.
+    pub fn adopt_extracted(
+        &self,
+        parent_id: &str,
+        job_id: &str,
+        staged: &[StagedModel],
+        occupied: &HashSet<PathBuf>,
+        summary: Value,
+    ) -> Result<Vec<Entry>, StoreError> {
+        let mut inner = self.lock()?;
+        let parent = inner
+            .journal
+            .entries
+            .get(parent_id)
+            .ok_or(StoreError::new(404, "upload_unknown"))?;
+        if parent.state != UploadState::Importing || parent.job_id.as_deref() != Some(job_id) {
+            return Err(StoreError::new(409, "upload_state"));
+        }
+        let mut linked: Vec<String> = Vec::new();
+        let mut entries: Vec<Entry> = Vec::new();
+        let result = (|| {
+            let mut taken: HashSet<String> = HashSet::new();
+            for model in staged {
+                let source_dir = Directory::open(&model.dir)?;
+                let source = source_dir.read(&model.file)?;
+                let meta = source.metadata()?;
+                if meta.nlink() != 1 {
+                    return Err(StoreError::new(409, "upload_changed"));
+                }
+                source.set_permissions(std::fs::Permissions::from_mode(0o644))?;
+                let (stem, ext) = model
+                    .name
+                    .rsplit_once('.')
+                    .ok_or(StoreError::new(400, "invalid_name"))?;
+                let mut final_name = None;
+                for n in 1..=1000 {
+                    let name = if n == 1 {
+                        model.name.clone()
+                    } else {
+                        let suffix = format!(" ({n}).{ext}");
+                        let mut cut = stem.len().min(255 - suffix.len());
+                        while !stem.is_char_boundary(cut) {
+                            cut -= 1;
+                        }
+                        format!("{}{suffix}", &stem[..cut])
+                    };
+                    // Names that differ only in case would collide on a case-insensitive catalog volume.
+                    if taken.contains(&name.to_lowercase())
+                        || self.catalogued.contains(&self.path.join(&name))
+                        || occupied.contains(&self.path.join(&name))
+                    {
+                        continue;
+                    }
+                    match self.dir.link_from(&source_dir, &model.file, &name) {
+                        Ok(()) => {
+                            final_name = Some(name);
+                            break;
+                        }
+                        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+                let name = final_name.ok_or(StoreError::new(409, "name_conflict"))?;
+                taken.insert(name.to_lowercase());
+                linked.push(name.clone());
+                // Two names now (staging and upload folder). The staging name is only
+                // removed AFTER the journal knows the upload name: a crash in between
+                // must leave the staged file recognisable (see `remove_stale_staging`).
+                let linked_meta = self.dir.read(&name)?.metadata()?;
+                if linked_meta.dev() != meta.dev() || linked_meta.ino() != meta.ino() || linked_meta.nlink() != 2 {
+                    return Err(StoreError::new(409, "upload_changed"));
+                }
+                entries.push(Entry {
+                    id: random_id()?,
+                    name,
+                    size: meta.len(),
+                    dev: meta.dev(),
+                    ino: meta.ino(),
+                    time: now(),
+                    state: UploadState::Importing,
+                    job_id: Some(job_id.to_owned()),
+                    result: None,
+                    archive: false,
+                });
+            }
+            self.dir.sync()?;
+            #[cfg(test)]
+            if self.crash_after_link.load(Ordering::SeqCst) {
+                return Err(StoreError::new(500, "test_crash"));
+            }
+            let mut next = inner.journal.clone();
+            for entry in &entries {
+                next.entries.insert(entry.id.clone(), entry.clone());
+            }
+            let parent = next.entries.get_mut(parent_id).unwrap();
+            parent.state = UploadState::Imported;
+            parent.archive = true;
+            parent.result = Some(summary);
+            self.persist(&next)?;
+            inner.journal = next;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => Ok(entries),
+            Err(e) => {
+                // A simulated crash does not get to clean up.
+                #[cfg(test)]
+                if self.crash_after_link.load(Ordering::SeqCst) {
+                    return Err(e);
+                }
+                for name in &linked {
+                    let _ = self.dir.unlink(name);
+                }
+                let _ = self.dir.sync();
+                Err(e)
+            }
+        }
+    }
     pub fn list(&self) -> Result<Vec<Entry>, StoreError> {
         Ok(self.lock()?.journal.entries.values().cloned().collect())
     }
@@ -548,7 +811,9 @@ impl UploadStore {
             .journal
             .entries
             .values()
-            .filter(|entry| entry.state != UploadState::Imported)
+            // An unpacked archive stays listed: its file occupies disk space and is
+            // the user's to discard.
+            .filter(|entry| entry.state != UploadState::Imported || entry.archive)
             .take(500)
             .cloned()
             .collect())
@@ -568,14 +833,17 @@ impl UploadStore {
             .entries
             .get(id)
             .ok_or(StoreError::new(404, "upload_unknown"))?;
-        if !matches!(
-            e.state,
-            UploadState::Uploaded | UploadState::Duplicate | UploadState::Invalid
-        ) {
+        let handled_archive = e.archive && e.state == UploadState::Imported;
+        if !handled_archive
+            && !matches!(
+                e.state,
+                UploadState::Uploaded | UploadState::Duplicate | UploadState::Invalid
+            )
+        {
             return Err(StoreError::new(409, "upload_state"));
         }
         let metadata = self.dir.entry_identity(&e.name);
-        let removable = matches!(e.state, UploadState::Duplicate | UploadState::Invalid);
+        let removable = handled_archive || matches!(e.state, UploadState::Duplicate | UploadState::Invalid);
         match metadata {
             Ok((dev, ino)) if dev == e.dev && ino == e.ino => {
                 self.dir.unlink(&e.name)?;
@@ -833,8 +1101,64 @@ impl UploadStore {
         inner.journal = next;
         Ok(())
     }
+    /// Hands one archive back after a transient failure (no space, quota, I/O) so the
+    /// user can start the import again; other entries of the job are left alone.
+    pub fn reopen(&self, id: &str) -> Result<(), StoreError> {
+        let mut inner = self.lock()?;
+        let mut next = inner.journal.clone();
+        if let Some(e) = next.entries.get_mut(id) {
+            if e.state == UploadState::Importing {
+                e.state = UploadState::Uploaded;
+                e.job_id = None;
+            }
+        }
+        self.persist(&next)?;
+        inner.journal = next;
+        Ok(())
+    }
     pub fn job_result(&self, id: &str) -> Result<Option<Value>, StoreError> {
         Ok(self.lock()?.journal.jobs.get(id).cloned())
+    }
+}
+/// A model unpacked into a staging folder, waiting to become an upload.
+pub struct StagedModel {
+    /// Folder holding the file (inside the staging folder).
+    pub dir: PathBuf,
+    pub file: String,
+    /// Wanted upload name (already validated).
+    pub name: String,
+}
+/// Releases the quota and space reservation of `begin_extraction` when dropped.
+pub struct ExtractionReservation {
+    store: Arc<UploadStore>,
+    bytes: u64,
+    models: u64,
+}
+impl Drop for ExtractionReservation {
+    fn drop(&mut self) {
+        let mut inner = self
+            .store
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        inner.extracting_bytes = inner.extracting_bytes.saturating_sub(self.bytes);
+        inner.extracting_models = inner.extracting_models.saturating_sub(self.models);
+        inner.reserved = inner.reserved.saturating_sub(self.bytes);
+    }
+}
+/// Content check on the first bytes, so a renamed executable or a text file with
+/// an archive extension never reaches a parser or unpacker.
+pub(crate) fn signature_ok(ext: &str, head: &[u8]) -> bool {
+    match ext {
+        "3mf" => head.starts_with(b"PK\x03\x04"),
+        // An empty zip consists of the end record alone.
+        "zip" => head.starts_with(b"PK\x03\x04") || head.starts_with(b"PK\x05\x06"),
+        "7z" => head.starts_with(b"7z\xBC\xAF\x27\x1C"),
+        "stp" | "step" => head
+            .iter()
+            .position(|b| !b.is_ascii_whitespace())
+            .is_some_and(|p| head[p..].starts_with(b"ISO-10303-21")),
+        _ => !head.starts_with(b"MZ") && !head.starts_with(b"\x7fELF") && !head.starts_with(b"#!"),
     }
 }
 pub struct PendingUpload {
@@ -887,20 +1211,7 @@ impl PendingUpload {
         if self.written != self.length {
             return Err(StoreError::new(400, "length_mismatch"));
         }
-        let valid = match extension(&self.name).as_str() {
-            "3mf" => self.head.starts_with(b"PK\x03\x04"),
-            "stp" | "step" => self
-                .head
-                .iter()
-                .position(|b| !b.is_ascii_whitespace())
-                .is_some_and(|p| self.head[p..].starts_with(b"ISO-10303-21")),
-            _ => {
-                !self.head.starts_with(b"MZ")
-                    && !self.head.starts_with(b"\x7fELF")
-                    && !self.head.starts_with(b"#!")
-            }
-        };
-        if !valid {
+        if !signature_ok(&extension(&self.name), &self.head) {
             return Err(StoreError::new(400, "invalid_signature"));
         }
         #[cfg(test)]
@@ -975,6 +1286,7 @@ impl PendingUpload {
                 state: UploadState::Uploaded,
                 job_id: None,
                 result: None,
+                archive: false,
             };
             let mut next = inner.journal.clone();
             next.entries.insert(e.id.clone(), e.clone());

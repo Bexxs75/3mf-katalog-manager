@@ -7,6 +7,11 @@ import { isReadOnly } from '../lib/readOnly';
 import { hasInterruptedPreviewAttempt } from '../lib/snapshotQueue';
 import { isStepFilePath } from '../lib/stepFile';
 import { clearModelImages, invalidateModelImages } from './useModelImages';
+import { readImageFile } from '../lib/printLogPhoto';
+
+/** The server's answer to a repeated write whose stored reply was too large to keep. */
+const isLostAnswer = (e: unknown) => typeof e === 'object' && e !== null
+  && ((e as { message?: unknown }).message === 'request_id_result_unavailable' || (e as { kind?: unknown }).kind === 'request_id_result_unavailable');
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
@@ -24,6 +29,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     id: s.id,
     name: s.name,
     path: s.path,
+    fileType: s.fileType,
     folderId: s.folderId,
     tags: [],
     origin: 'local',
@@ -96,6 +102,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
+  const trashModelsRef = useRef(trashModels);
+  trashModelsRef.current = trashModels;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // IDs whose full data is already loaded; refreshFiles() resets the list
   // back to summaries.
@@ -326,7 +334,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     (id: string) => {
       setSelectedId(id);
       ensureFullModel(id);
-      if (!canEditMetadata()) return;
+      // A trashed entry has no live row to stamp; asking would only produce a 404.
+      if (!canEditMetadata() || trashModelsRef.current.some((m) => m.id === id)) return;
       const now = new Date().toISOString();
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
       const key = `lastViewedAt:${id}`;
@@ -334,6 +343,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       filesApi
         .markFileViewed(id)
         .catch((e) => {
+          // A refused request (4xx, e.g. the entry vanished meanwhile) is a silent background miss, not a banner-worthy failure.
+          if ((e as { expected?: unknown } | null)?.expected === true) return;
           console.error('[last-viewed] update failed:', e); mutationFailed(key, e);
         })
         .finally(() => {
@@ -591,8 +602,19 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     [models, refreshFiles],
   );
 
-  const uploadCustomImage = useCallback((id: string) => {
-    if (isReadOnly()) return Promise.resolve();
+  const uploadCustomImage = useCallback((id: string, file?: File) => {
+    if (isReadOnly()) {
+      if (!file || !canEditMetadata()) return Promise.resolve();
+      // The answer is empty; the picture itself is reloaded through the image listing.
+      return readImageFile(file)
+        .then((base64) => filesApi.setCustomImage(id, base64))
+        .then(() => invalidateModelImages(id))
+        .catch((e) => {
+          // The server did the work but cannot repeat its (large) answer: just reload the picture.
+          if (!isLostAnswer(e)) throw e;
+          invalidateModelImages(id);
+        });
+    }
     return filesApi
       .uploadCustomImage(id)
       .then((customImage) => {
@@ -712,17 +734,21 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   }, []);
 
   const rescanMetadata = useCallback((id: string) => {
-    if (isReadOnly()) return Promise.resolve();
+    if (!canEditMetadata()) return Promise.resolve();
     setRescanFeedback(null);
+    const apply = (updated: ModelFile) => {
+      invalidateModelImages(id);
+      setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
+      // The rescan answer and a plain reload both carry the full ModelFile record.
+      setFullyLoadedIds((prev) => new Set(prev).add(id));
+      setRescanFeedback({ fileId: id, status: 'success' });
+    };
     filesApi
       .rescanFileMetadata(id)
-      .then((updated) => {
-        invalidateModelImages(id);
-        setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
-        // rescan_file_metadata already returns the full ModelFile record.
-        setFullyLoadedIds((prev) => new Set(prev).add(id));
-        setRescanFeedback({ fileId: id, status: 'success' });
-      })
+      // A repeated request whose stored answer was too large: the scan itself succeeded, so
+      // reading the model again gives the same result as the lost answer.
+      .catch((e) => (isLostAnswer(e) ? filesApi.listFilesByIds([id]).then(([fresh]) => fresh ?? Promise.reject(e)) : Promise.reject(e)))
+      .then(apply)
       .catch((e) => {
         console.error('[rescan] rescan failed:', e); reportMetadataError(e);
         const err = toAppError(e);

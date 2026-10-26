@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { WebFileActions, webFileNameParts } from './WebFileActions';
 import { LanguageProvider } from '../i18n/LanguageContext';
+import { subscribeFileOpsApplied } from '../lib/fileOps';
+import { useEffect, useState } from 'react';
 import { authenticationFailed, getSession, login } from '../lib/webSession';
 let calls: { command: string; args: Record<string, unknown> }[];
 let enabled: boolean;
@@ -72,11 +74,11 @@ it('restores only after confirmation', async () => {
   expect(calls).toEqual([]); await confirm('Wiederherstellen');
   expect(calls[0]).toEqual({ command: 'restore_file', args: { fileId: '7' } });
 });
-it('shows per-ID failures and keeps the confirmation open', async () => {
+it('names the file in per-file failures and keeps the confirmation open', async () => {
   response = () => [{ id: '7', ok: false, kind: 'cross_device' }]; mount();
   fireEvent.click(screen.getByRole('button', { name: 'In den Papierkorb' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'In den Papierkorb' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('7');
+  expect(await screen.findByRole('alert')).toHaveTextContent('model.gcode.3mf: ');
   expect(screen.getByRole('dialog')).toBeInTheDocument();
 });
 it('loads trash count and bytes before password confirmation and uses the snapshot protocol', async () => {
@@ -89,6 +91,24 @@ it('loads trash count and bytes before password confirmation and uses the snapsh
   await confirm('Papierkorb leeren');
   expect(calls[1]).toEqual({ command: 'empty_trash_start', args: { expectedCount: 1, maxDeletedAt: '2026-10-01T00:00:00Z', password: 'secret' } });
   expect(calls[2]).toEqual({ command: 'empty_trash_block', args: { token: 'frozen' } });
+});
+
+it('names the individually removed companion files, lets only them be emptied and confirms their number', async () => {
+  response = command => command === 'empty_trash_summary' ? { count: 0, bytes: 0, maxDeletedAt: '2026-10-01T00:00:00Z', looseCompanionCount: 2, looseCompanionBytes: 20 }
+    : command === 'empty_trash_start' ? { token: 'frozen', remaining: 2 } : { results: [{ id: 'c3', ok: true }, { id: 'c4', ok: true }], remaining: 0 };
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('und 2 einzeln entfernte Begleitdateien');
+  expect(screen.getByText('Dateien / Bytes: 0 / 20')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'secret' } });
+  await confirm('Papierkorb leeren');
+  expect(calls[1]).toEqual({ command: 'empty_trash_start', args: { expectedCount: 0, expectedCompanions: 2, maxDeletedAt: '2026-10-01T00:00:00Z', password: 'secret' } });
+});
+it('keeps the empty button disabled when nothing at all is in the trash', async () => {
+  response = command => command === 'empty_trash_summary' ? { count: 0, bytes: 0, maxDeletedAt: null, looseCompanionCount: 0 } : null;
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('Dateien / Bytes: 0 / 0');
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'secret' } });
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Papierkorb leeren' })).toBeDisabled();
 });
 
 it('opens keyboard-requested trash confirmation without issuing a request', async () => {
@@ -110,4 +130,75 @@ it('refreshes a conflicting trash summary and requires a new password confirmati
   expect(screen.getByLabelText('Passwort zur Bestätigung')).toHaveValue('');
   expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Papierkorb leeren' })).toBeDisabled();
   expect(calls.map(c => c.command)).toEqual(['empty_trash_summary', 'empty_trash_start', 'empty_trash_summary']);
+});
+
+it('shows how many companion files the emptied trash takes along and warns about desktop entries', async () => {
+  response = command => command === 'empty_trash_summary'
+    ? { count: 2, bytes: 456, maxDeletedAt: '2026-10-01T00:00:00Z', companionCount: 3, blockedByCompanions: 1 } : {};
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('Dateien / Bytes: 2 / 456');
+  expect(screen.getByText('davon 3 Begleitdateien im Papierkorb')).toBeInTheDocument();
+  expect(screen.getByText(/1 Eintrag aus dem Desktop-Papierkorb kann hier nicht endgültig gelöscht werden/)).toBeInTheDocument();
+});
+it('adds no companion lines for a server without companion counts or with none', async () => {
+  response = command => command === 'empty_trash_summary' ? { count: 1, bytes: 456, maxDeletedAt: '2026-10-01T00:00:00Z' } : {};
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('Dateien / Bytes: 1 / 456');
+  expect(screen.queryByText(/Begleitdateien/)).toBeNull();
+  expect(screen.queryByText(/Desktop-Papierkorb/)).toBeNull();
+});
+
+it('keeps the permanent-delete dialog open after a wrong password, shows the error and refocuses an empty field', async () => {
+  response = () => Response.json({ kind: 'password_invalid' }, { status: 403 }); mount({ trash: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Endgültig löschen' }));
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'wrong' } });
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Endgültig löschen' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Das Passwort ist falsch.');
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  const field = screen.getByLabelText('Passwort zur Bestätigung');
+  expect(field).toHaveValue('');
+  await waitFor(() => expect(field).toHaveFocus());
+  fireEvent.change(field, { target: { value: 'right' } });
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Endgültig löschen' })).toBeEnabled();
+});
+it('keeps the empty-trash dialog open after a wrong password', async () => {
+  response = command => command === 'empty_trash_summary' ? { count: 1, bytes: 5, maxDeletedAt: '2026-10-01T00:00:00Z' } : Response.json({ kind: 'password_invalid' }, { status: 403 });
+  mount({ empty: true }); fireEvent.click(screen.getByRole('button', { name: 'Papierkorb leeren' }));
+  await screen.findByText('Dateien / Bytes: 1 / 5');
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'wrong' } });
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Papierkorb leeren' }));
+  expect(await screen.findByText('Das Passwort ist falsch.')).toBeInTheDocument();
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByLabelText('Passwort zur Bestätigung')).toHaveFocus());
+});
+it('disables destinations the server marks as no move target and says why', async () => {
+  response = command => command === 'list_folders' ? [
+    { id: '42', name: 'Target', path: '/p', parentId: null, moveTarget: true },
+    { id: '43', name: 'Uploads', path: '/u', parentId: null, moveTarget: false },
+    { id: '44', name: 'Old', path: '/o', parentId: null },
+  ] : null;
+  mount(); fireEvent.click(screen.getByRole('button', { name: 'Verschieben' }));
+  const blocked = await screen.findByRole('option', { name: /Uploads/ });
+  expect(blocked).toBeDisabled();
+  expect(blocked).toHaveTextContent('geschützt');
+  expect(screen.getByRole('option', { name: 'Target (#42)' })).toBeEnabled();
+  expect(screen.getByRole('option', { name: 'Old (#44)' })).toBeEnabled();
+  expect(screen.getByText(/nicht als Ziel verfügbar|gelten nicht als Ziel/)).toBeInTheDocument();
+});
+
+it('keeps the permanent-delete dialog open when the surrounding panel drops its selection on every applied action', async () => {
+  // Mirrors the detail panel: the app clears the selection (and so unmounts this panel) when an action touched the file.
+  function Panel() {
+    const [selected, setSelected] = useState<string | null>('7');
+    useEffect(() => subscribeFileOpsApplied(ids => setSelected(prev => prev && ids.includes(prev) ? null : prev)), []);
+    return selected ? <WebFileActions key={selected} fileIds={[selected]} name="model.gcode.3mf" trash /> : null;
+  }
+  response = () => Response.json({ kind: 'password_invalid' }, { status: 403 });
+  render(<LanguageProvider><Panel /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Endgültig löschen' }));
+  fireEvent.change(screen.getByLabelText('Passwort zur Bestätigung'), { target: { value: 'wrong' } });
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Endgültig löschen' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Das Passwort ist falsch.');
+  await new Promise(resolve => setTimeout(resolve, 300));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
 });

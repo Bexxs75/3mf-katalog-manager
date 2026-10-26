@@ -69,12 +69,12 @@ use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::db::error::DbError;
-use crate::db::models::{MaterialRecord, NewFile, ScannedMetadataUpdate};
+use crate::db::models::NewFile;
+#[cfg(test)] use crate::db::models::MaterialRecord;
 #[cfg(test)] use crate::db::models::FileType;
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::detect_slicers;
-use crate::{obj, stl, threemf};
 
 pub struct AppState {
     pub import_jobs: ImportJobs,

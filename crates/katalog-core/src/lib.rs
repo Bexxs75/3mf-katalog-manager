@@ -7,10 +7,15 @@ pub mod step;
 pub mod archive;
 pub mod geometry;
 pub mod safe_file;
+pub mod companions;
+pub mod companion_read;
+pub mod rescan;
+pub mod disk_report;
 pub mod tagging;
 pub mod filament_check;
 pub mod printer_link;
 pub mod backup;
+pub mod catalog_export;
 
 #[cfg(test)]
 pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {

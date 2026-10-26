@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import * as session from './webSession';
-import { WebImportController, uploadErrorKey } from './webImport';
+import { WebImportController, reasonKey, uploadErrorKey } from './webImport';
 
 class Xhr {
   static requests: Xhr[] = [];
@@ -56,11 +56,33 @@ it('sends files sequentially as File bodies, encodes the name and starts only su
   expect(controller.getSnapshot().queue[1].error).toBe('webUploadInvalid');
   expect(calls.find(c => c.url.endsWith('start_upload_import'))?.args).toEqual({ uploadIds: ['u1'] });
 });
-it('rejects archives, wrong extensions and directory selections before sending', async () => {
+it('rejects unsupported archive formats, wrong extensions and directory selections before sending', async () => {
   const folderFile = new File(['a'], 'nested.stl'); Object.defineProperty(folderFile, 'webkitRelativePath', { value: 'folder/nested.stl' });
-  controller.addFiles([new File(['a'], 'file.zip'), new File(['a'], 'x.3mf.exe'), folderFile]); await flush();
+  controller.addFiles([new File(['a'], 'file.rar'), new File(['a'], 'x.tar.gz'), new File(['a'], 'x.3mf.exe'), folderFile]); await flush();
   expect(Xhr.requests).toHaveLength(0);
-  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual(['webUploadArchives', 'webUploadType', 'webUploadFolders']);
+  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual(['webUploadArchives', 'webUploadArchives', 'webUploadType', 'webUploadFolders']);
+});
+it('uploads zip and 7z archives like any other file, whatever the letter case', async () => {
+  controller.addFiles([new File(['a'], 'Paket.ZIP'), new File(['b'], 'paket.7z')]);
+  expect(Xhr.requests).toHaveLength(1);
+  expect(Xhr.requests[0].headers['X-Upload-Name']).toBe('Paket.ZIP');
+  Xhr.requests[0].respond(); await flush();
+  expect(Xhr.requests).toHaveLength(2);
+  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual([undefined, undefined]);
+});
+it('maps the archive failure codes of the server to their own texts', () => {
+  expect(uploadErrorKey({ status: 415, kind: 'archive_format_unsupported' })).toBe('webUploadArchives');
+  expect(reasonKey('archive_encrypted')).toBe('webUploadArchiveEncrypted');
+  expect(reasonKey('archive_too_large')).toBe('webUploadArchiveTooLarge');
+  expect(reasonKey('archive_unreadable')).toBe('webUploadArchiveUnreadable');
+  expect(reasonKey('archive_no_models')).toBe('webUploadArchiveNoModels');
+  expect(reasonKey('import_or_discard_first')).toBe('webUploadConflict');
+  expect(reasonKey('no_space')).toBe('webUploadNoSpace');
+  expect(reasonKey('archive_too_many_models')).toBe('webUploadArchiveTooMany');
+  expect(reasonKey('archive_memory_limit')).toBe('webUploadArchiveMemory');
+  expect(reasonKey('archive_timeout')).toBe('webUploadArchiveTimeout');
+  expect(reasonKey('not_started')).toBeNull();
+  expect(reasonKey(null)).toBeNull();
 });
 it('cancels an active file and a queued file without uploading the latter', async () => {
   controller.addFiles([new File(['a'], 'one.stl'), new File(['b'], 'two.stl')]);

@@ -78,6 +78,9 @@ export function reorderQueue(updates: { fileId: string; position: number }[]) {
 export function uploadCustomImage(fileId: string) {
   return invoke<string | null>('upload_custom_image', { fileId });
 }
+export function setCustomImage(fileId: string, imageBase64: string) {
+  return invoke('set_custom_image', { fileId, imageBase64 });
+}
 export function setRenderSnapshot(fileId: string, imageBase64: string) {
   return invoke('set_render_snapshot', { fileId, imageBase64 });
 }

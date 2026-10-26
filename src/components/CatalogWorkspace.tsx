@@ -120,7 +120,7 @@ interface CatalogWorkspaceProps {
   togglePrintStatus: (id: string) => void;
   toggleFavorite: (id: string) => void;
   addToQueue: (id: string) => void;
-  uploadCustomImage: (id: string) => void | Promise<void>;
+  uploadCustomImage: (id: string, file?: File) => void | Promise<void>;
   captureRenderSnapshot: (id: string, base64: string) => void;
   setModelLicenses?: (ids: string[], license: string | null) => Promise<void>;
   printStatus?: ModelFile['printStatus'] | null;
@@ -327,7 +327,7 @@ export function CatalogWorkspace({
   }, [onCloseDetails, selectedId, layouts]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
+      if (event.key !== 'Escape' || event.defaultPrevented || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
         shouldIgnoreCatalogShortcut(event, { preserveEscapeSelection: true })) return;
       event.preventDefault();
       closeDetails();
@@ -360,8 +360,8 @@ export function CatalogWorkspace({
     view, sort, language, query, usage, printStatus, fitPrinterId, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
-  const queueFilament = useFilamentCheck(import.meta.env.VITE_TARGET === 'web' ? [] : queue.map(m => m.id), refreshKey);
-  const selectedFilament = useFilamentCheck(import.meta.env.VITE_TARGET !== 'web' && selected ? [selected.id] : [], refreshKey);
+  const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
+  const selectedFilament = useFilamentCheck(selected ? [selected.id] : [], refreshKey);
   const lastPrinter = useLastPrinter(import.meta.env.VITE_TARGET === 'web' ? null : selected?.id ?? null, printerRefreshKey);
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
@@ -616,7 +616,7 @@ export function CatalogWorkspace({
             onToggleQueue={() =>
               detailModel.queuePosition !== null ? removeFromQueue(detailModel.id) : addToQueue(detailModel.id)
             }
-            onUploadImage={() => uploadCustomImage(detailModel.id)}
+            onUploadImage={(file) => uploadCustomImage(detailModel.id, file)}
             onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
             onSetLicense={setModelLicenses}
             onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
@@ -741,7 +741,7 @@ export function CatalogWorkspace({
           onToggleQueue={() =>
             selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
           }
-          onUploadImage={() => selected ? uploadCustomImage(selected.id) : undefined}
+          onUploadImage={(file) => selected ? uploadCustomImage(selected.id, file) : undefined}
           onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
           onSetLicense={setModelLicenses}
           onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}

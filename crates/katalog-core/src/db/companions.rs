@@ -71,6 +71,17 @@ pub fn list_active_companions(conn: &Connection, file_id: i64) -> Result<Vec<Com
     )
 }
 
+/// Rows of a model that are not in the trash, in display order, at most `limit`.
+pub fn list_active_companions_limited(conn: &Connection, file_id: i64, limit: i64) -> Result<Vec<CompanionRecord>, DbError> {
+    collect(
+        conn,
+        &format!(
+            "SELECT {COLUMNS} FROM companion_files WHERE file_id = ?1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE, id LIMIT ?2"
+        ),
+        params![file_id, limit],
+    )
+}
+
 pub fn count_active_companions(conn: &Connection, file_id: i64) -> Result<i64, DbError> {
     Ok(conn.query_row(
         "SELECT COUNT(*) FROM companion_files WHERE file_id = ?1 AND deleted_at IS NULL",

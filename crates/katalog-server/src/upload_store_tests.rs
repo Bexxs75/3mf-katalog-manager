@@ -60,10 +60,13 @@ fn name_boundary() {
         assert_eq!(sanitize_name(s).unwrap_err().status, 400, "{s}");
     }
     assert_eq!(sanitize_name("x.3mf.exe").unwrap_err().status, 415);
-    assert_eq!(
-        sanitize_name("x.zip").unwrap_err().kind,
-        "archive_desktop_only"
-    );
+    assert_eq!(sanitize_name("x.zip").unwrap(), "x.zip");
+    assert_eq!(sanitize_name("X.7Z").unwrap(), "X.7Z");
+    for unsupported in ["x.rar", "x.tar", "x.tar.gz", "x.tgz", "x.tar.xz"] {
+        let e = sanitize_name(unsupported).unwrap_err();
+        assert_eq!((e.status, e.kind), (415, "archive_format_unsupported"), "{unsupported}");
+    }
+    assert_eq!(sanitize_name("x.gz").unwrap_err().kind, "unsupported_type");
     assert_eq!(
         sanitize_name(&format!("{}.3mf", "é".repeat(126)))
             .unwrap_err()
@@ -886,4 +889,229 @@ fn journal_with_loose_mode_hard_link_or_excess_size_is_refused_on_load() {
     // Above the size limit, even with valid mode.
     File::options().write(true).open(&journal).unwrap().set_len(MAX_JOURNAL_BYTES + 1).unwrap();
     assert!(open().is_err());
+}
+
+fn kind_of<T>(result: Result<T, StoreError>) -> &'static str {
+    result.err().expect("an error").kind
+}
+fn staging_name() -> String {
+    format!("{STAGING_PREFIX}{}", random_id().unwrap())
+}
+fn age(path: &Path, seconds: u64) {
+    let file = std::fs::File::open(path).unwrap();
+    file.set_modified(SystemTime::now() - std::time::Duration::from_secs(seconds)).unwrap();
+}
+
+#[test]
+fn leftover_staging_folders_are_removed_at_startup_but_nothing_else() {
+    let f = Fixture::new();
+    let uploads = f.root.join("uploads");
+    // A crash in the middle of unpacking: real folder, pattern name, nested content.
+    let stale = uploads.join(staging_name());
+    std::fs::create_dir_all(stale.join("a/b")).unwrap();
+    std::fs::write(stale.join("a/b/x.stl"), b"solid").unwrap();
+    age(&stale, 3600);
+    // Fresh ones go too: at startup no job of this process exists.
+    let fresh = uploads.join(staging_name());
+    std::fs::create_dir(&fresh).unwrap();
+    // Look-alikes that must not be touched: wrong id length, a file, a symlink.
+    let short = uploads.join(format!("{STAGING_PREFIX}abc"));
+    std::fs::create_dir(&short).unwrap();
+    age(&short, 3600);
+    let file = uploads.join(staging_name());
+    std::fs::write(&file, b"not a folder").unwrap();
+    let target = f.root.join("precious");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("keep"), b"x").unwrap();
+    let link = uploads.join(staging_name());
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let _store = Fixture::open(&f.root, &HashSet::new());
+    assert!(!stale.exists());
+    assert!(!fresh.exists());
+    assert!(short.exists() && file.exists());
+    assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+    assert_eq!(std::fs::read(target.join("keep")).unwrap(), b"x");
+}
+
+#[test]
+fn extraction_reservation_counts_against_the_pending_quota_until_released() {
+    let f = Fixture::new();
+    let reservation = f.store.begin_extraction("none", 1000, 200).unwrap();
+    assert_eq!(kind_of(f.store.begin(4, "a.3mf")), "import_or_discard_first");
+    // A second archive does not fit either, models would exceed 200 in total.
+    assert_eq!(kind_of(f.store.begin_extraction("none", 1, 1)), "import_or_discard_first");
+    drop(reservation);
+    let mut p = f.store.begin(4, "a.3mf").unwrap();
+    p.write(b"PK\x03\x04").unwrap();
+    p.finish().unwrap();
+}
+
+#[test]
+fn extraction_is_refused_before_unpacking_when_models_exceed_quota_or_free_space() {
+    let f = Fixture::new();
+    assert_eq!(kind_of(f.store.begin_extraction("none", 1, 201)), "import_or_discard_first");
+    assert_eq!(kind_of(f.store.begin_extraction("none", 21 * 1024 * 1024 * 1024, 1)), "import_or_discard_first");
+    // The 256 MiB reserve counts on top of the models: asking for all free space must fail.
+    let available = Directory::open(&f.root.join("uploads")).unwrap().available().unwrap();
+    if available < PENDING_BYTES {
+        assert_eq!(kind_of(f.store.begin_extraction("none", available, 1)), "no_space");
+    }
+    // Open uploads already consume the quota: one at 1 MiB leaves room for 199 more models, not 200.
+    let mut p = f.store.begin(4, "a.3mf").unwrap();
+    p.write(b"PK\x03\x04").unwrap();
+    p.finish().unwrap();
+    assert_eq!(kind_of(f.store.begin_extraction("none", 10, 200)), "import_or_discard_first");
+    assert!(f.store.begin_extraction("none", 10, 199).is_ok());
+}
+
+#[test]
+fn adopting_models_links_them_without_overwriting_and_updates_the_journal_once() {
+    let f = Fixture::new();
+    let mut p = f.store.begin(4, "paket.zip").unwrap();
+    p.write(b"PK\x03\x04").unwrap();
+    let archive = p.finish().unwrap();
+    let entry = f.store.begin_import(std::slice::from_ref(&archive.id), "job").unwrap().remove(0);
+    let staging = f.root.join("uploads").join(staging_name());
+    std::fs::create_dir_all(staging.join("x")).unwrap();
+    std::fs::create_dir_all(staging.join("y")).unwrap();
+    std::fs::write(staging.join("x/m.stl"), b"solid x").unwrap();
+    std::fs::write(staging.join("y/m.stl"), b"solid y").unwrap();
+    std::fs::write(f.root.join("uploads/m.stl"), b"vorhanden").unwrap();
+    let staged = vec![
+        StagedModel { dir: staging.join("x"), file: "m.stl".into(), name: "m.stl".into() },
+        StagedModel { dir: staging.join("y"), file: "m.stl".into(), name: "m.stl".into() },
+    ];
+    let before = f.store.persist_count.load(Ordering::Relaxed);
+    let children = f.store.adopt_extracted(&entry.id, "job", &staged, &HashSet::new(), serde_json::json!({"kind":"archive"})).unwrap();
+    assert_eq!(f.store.persist_count.load(Ordering::Relaxed), before + 1);
+    let names: Vec<_> = children.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["m (2).stl", "m (3).stl"]);
+    assert_eq!(std::fs::read(f.root.join("uploads/m.stl")).unwrap(), b"vorhanden");
+    assert_eq!(std::fs::read(f.root.join("uploads/m (3).stl")).unwrap(), b"solid y");
+    // The staging names go with the staging folder, after the journal write; only then
+    // the journal's single-link check holds.
+    assert!(f.store.checked_file(&children[0]).is_err());
+    std::fs::remove_dir_all(&staging).unwrap();
+    for child in &children {
+        f.store.checked_file(child).unwrap();
+        assert_eq!(child.state, UploadState::Importing);
+    }
+    let listed = f.store.list().unwrap();
+    let parent = listed.iter().find(|e| e.id == archive.id).unwrap();
+    assert!(parent.archive && parent.state == UploadState::Imported);
+    // A second hand-over for the same archive is refused: it is no longer importing.
+    assert_eq!(f.store.adopt_extracted(&entry.id, "job", &staged, &HashSet::new(), serde_json::json!({})).unwrap_err().kind, "upload_state");
+}
+
+fn archive_upload(f: &Fixture) -> Entry {
+    let mut p = f.store.begin(4, "paket.zip").unwrap();
+    p.write(b"PK\x03\x04").unwrap();
+    p.finish().unwrap()
+}
+fn stage(f: &Fixture, files: &[(&str, &[u8])]) -> Vec<StagedModel> {
+    let staging = f.root.join("uploads").join(staging_name());
+    std::fs::create_dir_all(&staging).unwrap();
+    files
+        .iter()
+        .map(|(name, data)| {
+            std::fs::write(staging.join(name), data).unwrap();
+            StagedModel { dir: staging.clone(), file: (*name).into(), name: (*name).into() }
+        })
+        .collect()
+}
+
+#[test]
+fn a_crash_between_link_and_journal_leaves_no_unjournalled_model_and_the_archive_importable() {
+    let f = Fixture::new();
+    let archive = archive_upload(&f);
+    let entry = f.store.begin_import(std::slice::from_ref(&archive.id), "job").unwrap().remove(0);
+    let staged = stage(&f, &[("m.stl", b"solid m")]);
+    f.store.crash_after_link.store(true, Ordering::SeqCst);
+    assert!(f.store.adopt_extracted(&entry.id, "job", &staged, &HashSet::new(), serde_json::json!({})).is_err());
+    // The process died here: the upload folder has a second name for the staged file.
+    assert!(f.root.join("uploads/m.stl").exists());
+    let restarted = Fixture::open(&f.root, &HashSet::new());
+    assert!(!f.root.join("uploads/m.stl").exists(), "unjournalled link removed");
+    let names: Vec<_> = std::fs::read_dir(f.root.join("uploads")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(names, ["paket.zip"], "staging folder gone as well");
+    let listed = restarted.pending_list().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].state, UploadState::Uploaded);
+    // Importing again yields the plain name, not " (2)".
+    let entry = restarted.begin_import(std::slice::from_ref(&archive.id), "job2").unwrap().remove(0);
+    let staged = stage(&f, &[("m.stl", b"solid m")]);
+    let children = restarted.adopt_extracted(&entry.id, "job2", &staged, &HashSet::new(), serde_json::json!({})).unwrap();
+    assert_eq!(children[0].name, "m.stl");
+}
+
+#[test]
+fn a_crash_after_the_journal_write_keeps_the_models_and_clears_the_staging_names() {
+    let f = Fixture::new();
+    let archive = archive_upload(&f);
+    let entry = f.store.begin_import(std::slice::from_ref(&archive.id), "job").unwrap().remove(0);
+    let staged = stage(&f, &[("m.stl", b"solid m")]);
+    f.store.adopt_extracted(&entry.id, "job", &staged, &HashSet::new(), serde_json::json!({})).unwrap();
+    // Dies before the staging folder is removed: the journalled file still has two names.
+    let restarted = Fixture::open(&f.root, &HashSet::new());
+    let pending = restarted.pending_list().unwrap();
+    let model = pending.iter().find(|e| e.name == "m.stl").expect("model survives");
+    assert_eq!(model.state, UploadState::Uploaded);
+    restarted.checked_file(model).unwrap();
+}
+
+#[test]
+fn a_handled_archive_is_listed_and_discarding_it_only_removes_its_own_file() {
+    let f = Fixture::new();
+    let archive = archive_upload(&f);
+    let entry = f.store.begin_import(std::slice::from_ref(&archive.id), "job").unwrap().remove(0);
+    let staged = stage(&f, &[("m.stl", b"solid m")]);
+    let children = f.store.adopt_extracted(&entry.id, "job", &staged, &HashSet::new(), serde_json::json!({})).unwrap();
+    std::fs::remove_dir_all(staged[0].dir.clone()).unwrap();
+    let listed = f.store.pending_list().unwrap();
+    assert!(listed.iter().any(|e| e.id == archive.id && e.archive && e.state == UploadState::Imported));
+    // It cannot be imported again.
+    assert_eq!(kind_of(f.store.begin_import(std::slice::from_ref(&archive.id), "again")), "upload_state");
+    f.store.discard(&archive.id).unwrap();
+    assert!(!f.root.join("uploads/paket.zip").exists());
+    assert!(f.root.join("uploads/m.stl").exists(), "models are not touched");
+    assert!(f.store.list().unwrap().iter().all(|e| e.id != archive.id));
+    assert!(f.store.list().unwrap().iter().any(|e| e.id == children[0].id));
+}
+
+#[test]
+fn pruning_never_forgets_a_handled_archive_that_is_still_on_disk() {
+    let mut journal = Journal::default();
+    let entry = |n: usize, archive: bool| Entry {
+        id: format!("{n:032x}"),
+        name: format!("e{n}"),
+        size: 1,
+        dev: 1,
+        ino: n as u64,
+        time: n as u64,
+        state: UploadState::Imported,
+        job_id: None,
+        result: None,
+        archive,
+    };
+    journal.entries.insert(entry(0, true).id, entry(0, true));
+    for n in 1..=1005 {
+        journal.entries.insert(entry(n, false).id, entry(n, false));
+    }
+    journal.prune();
+    assert!(journal.entries.contains_key(&entry(0, true).id), "oldest entry is the archive");
+    assert_eq!(journal.entries.values().filter(|e| !e.archive).count(), 1000);
+}
+
+#[test]
+fn reopening_one_archive_leaves_the_other_entries_of_the_job_alone() {
+    let f = Fixture::new();
+    let a = archive_upload(&f);
+    let mut p = f.store.begin(4, "b.3mf").unwrap();
+    p.write(b"PK\x03\x04").unwrap();
+    let b = p.finish().unwrap();
+    f.store.begin_import(&[a.id.clone(), b.id.clone()], "job").unwrap();
+    f.store.reopen(&a.id).unwrap();
+    let listed = f.store.list().unwrap();
+    assert_eq!(listed.iter().find(|e| e.id == a.id).unwrap().state, UploadState::Uploaded);
+    assert_eq!(listed.iter().find(|e| e.id == b.id).unwrap().state, UploadState::Importing);
 }

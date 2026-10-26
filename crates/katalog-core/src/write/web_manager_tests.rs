@@ -498,3 +498,94 @@ fn manager_omitted_image_never_updates_blob_and_web_list_flags_match() {
     assert_eq!(list[1]["hasImage"], false);
     assert!(list.iter().all(|s| s.get("imagePng").is_none()));
 }
+fn resin_bottle(c: &mut Connection, remaining: f64) -> i64 {
+    let mut s = spool();
+    s.kind = "resin".into();
+    s.diameter_mm = 0.0;
+    s.original_weight_g = 1000.0;
+    s.remaining_weight_g = remaining;
+    s.image_png = None;
+    add_filament_spool(c, s).unwrap().value.id.parse().unwrap()
+}
+fn spool_count(c: &Connection) -> i64 {
+    c.query_row("SELECT count(*) FROM filament_spools", [], |r| r.get(0))
+        .unwrap()
+}
+#[test]
+fn restock_creates_full_copies_in_storage_and_leaves_the_template_alone() {
+    let (mut c, _, unit, template) = setup();
+    load_spool(&mut c, template, unit, 0).unwrap();
+    let out = restock_filament_spool(&mut c, template, 3, 750.04, Some(24.5), Some("  Shelf B ".into())).unwrap();
+    assert_eq!(out.value.len(), 3);
+    assert_eq!(out.changes, 3, "the audit counts every created row");
+    for s in &out.value {
+        assert_eq!(s.original_weight_g, 750.0);
+        assert_eq!(s.remaining_weight_g, 750.0);
+        assert_eq!(s.location.as_deref(), Some("Shelf B"));
+        assert_eq!((s.unit_id.as_deref(), s.slot_index), (None, None));
+        assert_eq!(s.material, "PLA");
+        assert_eq!(s.image_png.as_deref(), Some("iVBORw0KGgo="));
+    }
+    assert_eq!(spool_count(&c), 4);
+    let original = db::get_filament_spool(&c, template).unwrap();
+    assert_eq!(original.remaining_weight_g, 800.0);
+    assert_eq!(original.unit_id, Some(unit));
+}
+#[test]
+fn restock_boundaries_missing_template_and_nothing_created_on_rejection() {
+    let (mut c, _, _, template) = setup();
+    assert_eq!(restock_filament_spool(&mut c, template, 20, 1.0, None, None).unwrap().value.len(), 20);
+    for (count, weight, price) in [
+        (0, 1000.0, None),
+        (21, 1000.0, None),
+        (-1, 1000.0, None),
+        (1, 0.0, None),
+        (1, 0.04, None),
+        (1, -5.0, None),
+        (1, f64::NAN, None),
+        (1, f64::INFINITY, None),
+        (1, MAX_WEIGHT * 2.0, None),
+        (1, 1000.0, Some(-1.0)),
+        (1, 1000.0, Some(f64::NAN)),
+        (1, 1000.0, Some(f64::INFINITY)),
+    ] {
+        invalid(restock_filament_spool(&mut c, template, count, weight, price, None));
+    }
+    invalid(restock_filament_spool(&mut c, template, 1, 1000.0, None, Some("x".repeat(121))));
+    missing(restock_filament_spool(&mut c, 999_999, 1, 1000.0, None, None));
+    assert_eq!(spool_count(&c), 21);
+}
+#[test]
+fn restock_respects_the_total_spool_quota_without_partial_creation() {
+    let (mut c, _, _, template) = setup();
+    c.execute_batch("WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<4998) INSERT INTO filament_spools(material,diameter_mm,original_weight_g,remaining_weight_g,created_at) SELECT 'PLA',1.75,1000,1000,'' FROM seq;").unwrap();
+    assert_eq!(spool_count(&c), 4999);
+    invalid(restock_filament_spool(&mut c, template, 2, 1000.0, None, None));
+    assert_eq!(spool_count(&c), 4999);
+    restock_filament_spool(&mut c, template, 1, 1000.0, None, None).unwrap();
+    assert_eq!(spool_count(&c), 5000);
+}
+#[test]
+fn consume_resin_deducts_rounded_clamps_at_zero_and_is_not_idempotent() {
+    let (mut c, _, _, _) = setup();
+    let bottle = resin_bottle(&mut c, 100.0);
+    let out = consume_resin(&mut c, bottle, 25.44).unwrap();
+    assert_eq!(out.value.remaining_weight_g, 74.6);
+    assert_eq!(out.value.original_weight_g, 1000.0);
+    assert_eq!(out.changes, 1);
+    let again = consume_resin(&mut c, bottle, 25.44).unwrap();
+    assert_eq!(again.value.remaining_weight_g, 49.2, "a repeated request subtracts again");
+    assert_eq!(consume_resin(&mut c, bottle, 500.0).unwrap().value.remaining_weight_g, 0.0);
+}
+#[test]
+fn consume_resin_rejects_bad_amounts_filament_and_missing_bottles() {
+    let (mut c, _, _, filament) = setup();
+    let bottle = resin_bottle(&mut c, 100.0);
+    for amount in [0.0, 0.04, -1.0, f64::NAN, f64::INFINITY, MAX_WEIGHT * 2.0] {
+        invalid(consume_resin(&mut c, bottle, amount));
+    }
+    invalid(consume_resin(&mut c, filament, 10.0));
+    missing(consume_resin(&mut c, 999_999, 10.0));
+    assert_eq!(db::get_filament_spool(&c, bottle).unwrap().remaining_weight_g, 100.0);
+    assert_eq!(db::get_filament_spool(&c, filament).unwrap().remaining_weight_g, 800.0);
+}

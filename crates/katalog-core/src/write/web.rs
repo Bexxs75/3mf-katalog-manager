@@ -137,6 +137,29 @@ pub fn set_auto_tagging(c: &mut Connection, enabled: bool) -> WriteResult<Outcom
         Ok(outcome((), c.changes()))
     })
 }
+/// Adds a tag to the block list. The name is normalized by the shared catalog
+/// logic (length, control characters, language aliases) and the list is capped
+/// there. Blocking a tag that is already blocked succeeds and changes nothing, so
+/// a repeated request is idempotent. `changes` counts the rows really added.
+pub fn block_auto_tag(c: &mut Connection, tag: &str) -> WriteResult<Outcome<()>> {
+    transaction(c, |c| {
+        let before = blocked_count(c)?;
+        db::blocked_tags::block_auto_tag(c, tag)?;
+        Ok(outcome((), (blocked_count(c)? - before).max(0) as u64))
+    })
+}
+/// Takes a tag off the block list; an entry that is not there is not an error
+/// (idempotent). `changes` counts the rows really removed.
+pub fn unblock_auto_tag(c: &mut Connection, tag: &str) -> WriteResult<Outcome<()>> {
+    transaction(c, |c| {
+        let before = blocked_count(c)?;
+        db::blocked_tags::unblock_auto_tag(c, tag)?;
+        Ok(outcome((), (before - blocked_count(c)?).max(0) as u64))
+    })
+}
+fn blocked_count(c: &Connection) -> WriteResult<i64> {
+    Ok(c.query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |r| r.get(0))?)
+}
 pub fn set_source_url(
     c: &mut Connection,
     id: i64,
@@ -370,6 +393,32 @@ pub fn set_render_snapshot(
         }
         super::validate_image_format(&bytes)?;
         db::set_render_snapshot_png(c, id, &bytes)?;
+        Ok(outcome((), c.changes()))
+    })
+}
+
+/// Own cover image chosen in the browser. Error texts are the translatable codes the
+/// desktop picker uses, so the UI shows the same wording in both targets.
+pub fn set_custom_image(
+    c: &mut Connection,
+    id: i64,
+    image_base64: &str,
+) -> WriteResult<Outcome<()>> {
+    use base64::Engine;
+    transaction(c, |c| {
+        exists(c, "files", id)?;
+        // Checked before decoding so an oversized string never allocates its decoded copy.
+        if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
+            return Err(invalid("imageUploadTooLarge"));
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(image_base64)
+            .map_err(|_| invalid("imageUploadUnreadable"))?;
+        if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
+            return Err(invalid("imageUploadTooLarge"));
+        }
+        super::validate_image_format(&bytes)?;
+        db::set_custom_image_png(c, id, &bytes)?;
         Ok(outcome((), c.changes()))
     })
 }

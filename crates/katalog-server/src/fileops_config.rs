@@ -255,6 +255,10 @@ mod tests {
             }),
             before,
             after: Some(after),
+            companions: Vec::new(),
+            extras_dir: None,
+            companion_rows: Vec::new(),
+            companion_add: None,
         };
         let journal = f.path.join("auth/web-fsops.json");
         std::fs::write(
@@ -274,6 +278,7 @@ mod tests {
             state: crate::upload_store::UploadState::Imported,
             job_id: None,
             result: Some(serde_json::json!({"fileId":"1"})),
+            archive: false,
         };
         std::fs::write(
             f.path.join("auth/web-uploads.json"),

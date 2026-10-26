@@ -3,7 +3,7 @@ vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { authenticationFailed, canManageFiles, login } from './webSession';
 import { emptyWebTrash, fileOp, fileOpsBatch, subscribeFileOpsApplied, subscribeFileOpsRefresh } from './fileOps';
 import { clearMetadataError, getMetadataError, subscribeMetadataErrors } from './metadataErrors';
-import { fileOpsError, retryAfterSeconds } from './fileOpsErrors';
+import { fileOpsError, fileOpsMessage, isDomainRejection, retryAfterSeconds } from './fileOpsErrors';
 let calls: { command: string; args: Record<string, unknown> }[];
 let respond: (command: string) => Response;
 beforeEach(async () => {
@@ -98,6 +98,26 @@ it('announces applied IDs for delete, restore and purge, and block results, but 
   await fileOp('delete_file_permanently', { fileId: '4', confirm: true, password: 'x' }); await fileOp('rename_file', { fileId: '5', name: 'n' });
   expect(seen).toEqual([['1', '2'], ['3'], ['4']]); off();
 });
+it('announces nothing when the action was refused, but still the items a partial batch did apply', async () => {
+  const seen: string[][] = []; const off = subscribeFileOpsApplied(ids => seen.push(ids));
+  respond = () => Response.json({ kind: 'password_invalid' }, { status: 403 });
+  await expect(fileOp('delete_file_permanently', { fileId: '4', confirm: true, password: 'bad' })).rejects.toBeDefined();
+  respond = () => Response.json([{ id: '1', ok: true }, { id: '2', ok: false, kind: 'conflict' }]);
+  await expect(fileOp('delete_files', { fileIds: ['1', '2'] })).rejects.toBeDefined();
+  expect(seen).toEqual([['1']]); off();
+});
+it('takes its own error banner down after the same action succeeds, but leaves foreign errors alone', async () => {
+  const { reportMetadataError } = await import('./metadataErrors');
+  respond = () => Response.json({ kind: 'password_invalid' }, { status: 403 });
+  await expect(fileOp('delete_file_permanently', { fileId: '4', confirm: true, password: 'bad' })).rejects.toBeDefined();
+  expect(getMetadataError()).toBe('Das Passwort ist falsch.');
+  respond = () => Response.json({ kept_on_disk: false });
+  await fileOp('delete_file_permanently', { fileId: '4', confirm: true, password: 'good' }, { quietKept: true });
+  expect(getMetadataError()).toBe('');
+  reportMetadataError('Fremder Fehler');
+  await fileOp('delete_file_permanently', { fileId: '5', confirm: true, password: 'good' }, { quietKept: true });
+  expect(getMetadataError()).toBe('Fremder Fehler');
+});
 it('announces the deleted IDs of each trash block', async () => {
   const seen: string[][] = []; const off = subscribeFileOpsApplied(ids => seen.push(ids));
   respond = command => Response.json(command === 'empty_trash_start' ? { token: 's', remaining: 1 } : { results: [{ id: '9', ok: true }, { id: '10', ok: false, kind: 'conflict' }], remaining: 0 });
@@ -126,4 +146,52 @@ it('reports an error and kept_on_disk exactly once', async () => {
   await expect(fileOpsBatch('delete_files', ids)).rejects.toBeDefined();
   expect(listener).toHaveBeenCalledTimes(2); // fileOp's error, then the batch's merged message superseding it; never a third
   off();
+});
+
+it('explains the companion kinds in every language, as domain answers and never with the generic text', () => {
+  const original = document.documentElement.lang;
+  try {
+    for (const kind of ['companions_conflict', 'companions_changed']) {
+      const seen = new Set<string>();
+      for (const lang of ['de', 'en', 'es', 'fr']) {
+        document.documentElement.lang = lang;
+        const text = fileOpsMessage(kind);
+        seen.add(text);
+        expect(text).not.toBe(fileOpsMessage('unknown_kind'));
+        expect(fileOpsError({ kind }).message).toBe(text);
+        expect(isDomainRejection(kind)).toBe(true);
+      }
+      expect(seen.size).toBe(4);
+    }
+    document.documentElement.lang = 'de';
+    expect(fileOpsMessage('companions_conflict')).toContain('Begleitdatei');
+    document.documentElement.lang = 'fr';
+    expect(fileOpsMessage('companions_changed')).toContain('fichiers associés');
+  } finally { document.documentElement.lang = original; }
+});
+
+it('explains has_companions in every language and never falls back to the generic text', () => {
+  const original = document.documentElement.lang;
+  try {
+    const seen = new Set<string>();
+    for (const lang of ['de', 'en', 'es', 'fr']) {
+      document.documentElement.lang = lang;
+      seen.add(fileOpsMessage('has_companions'));
+      expect(fileOpsError({ kind: 'has_companions' }).message).toBe(fileOpsMessage('has_companions'));
+    }
+    expect(seen.size).toBe(4);
+    document.documentElement.lang = 'de';
+    expect(fileOpsMessage('has_companions')).not.toBe(fileOpsMessage('unknown_kind'));
+    expect(fileOpsMessage('has_companions')).toContain('Ein betroffenes Modell hat Begleitdateien');
+    // Trash, restore and delete carry companions now; the remaining reasons are named.
+    expect(fileOpsMessage('has_companions')).toContain('Desktop-Papierkorb');
+    expect(fileOpsMessage('has_companions')).not.toContain('Löschen, Papierkorb');
+    document.documentElement.lang = 'fr';
+    expect(fileOpsMessage('has_companions')).toContain('fichiers associés');
+    expect(fileOpsMessage('has_companions')).toContain('corbeille du bureau');
+    document.documentElement.lang = 'en';
+    expect(fileOpsMessage('has_companions')).toContain('desktop trash');
+    document.documentElement.lang = 'es';
+    expect(fileOpsMessage('has_companions')).toContain('papelera del escritorio');
+  } finally { document.documentElement.lang = original; }
 });

@@ -22,6 +22,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new(enabled: bool) -> Self {
+        Self::with_env(enabled, &[])
+    }
+    fn with_env(enabled: bool, extra: &[(&str, &str)]) -> Self {
         let mut random = [0; 16];
         getrandom::fill(&mut random).unwrap();
         let dir = std::env::temp_dir().join(format!(
@@ -34,6 +37,9 @@ impl Fixture {
         let path = dir.join("config/catalog.db");
         drop(db::connect(&path).unwrap());
         let config = Config::from_lookup(|key| match key {
+            _ if extra.iter().any(|(k, _)| *k == key) => {
+                extra.iter().find(|(k, _)| *k == key).map(|(_, v)| (*v).to_owned())
+            }
             "KATALOG_DB" => Some(path.to_string_lossy().into_owned()),
             "KATALOG_ROOTS" => Some(dir.join("models").to_string_lossy().into_owned()),
             "KATALOG_STATIC_DIR" => Some(dir.join("static").to_string_lossy().into_owned()),
@@ -70,6 +76,8 @@ impl Fixture {
             changes: Arc::new(tokio::sync::Mutex::new(())),
             geometry: Arc::new(GeometryGate::default()),
             downloads: Arc::new(tokio::sync::Semaphore::new(4)),
+            export: crate::export::Runtime::new(),
+            slicer: None,
         });
         Self {
             app,
@@ -181,8 +189,10 @@ async fn upload_length_signature_and_size_failures_leave_no_files() {
             .status(),
         400
     );
-    for name in ["x.3mf.exe", "x.zip", "x.7z", "x.rar"] {
-        assert_eq!(f.send(f.upload_request(name, MODEL)).await.status(), 415);
+    assert_eq!(f.send(f.upload_request("x.3mf.exe", MODEL)).await.status(), 415);
+    // Archives are accepted by name, but only with the matching signature.
+    for name in ["x.zip", "x.7z"] {
+        assert_eq!(f.send(f.upload_request(name, MODEL)).await.status(), 400);
     }
     assert_eq!(f.files(), 0);
 }
@@ -373,6 +383,17 @@ async fn wait_result(f: &Fixture, job: &Value) -> Value {
             result["state"].as_str(),
             Some("completed" | "failed" | "cancelled")
         ) {
+            // The job view reports its final state before run_job persists the
+            // result and releases the import permit; follow-up commands that need
+            // the permit (e.g. catalog removal) would otherwise race it.
+            if let Some(rt) = f.app.uploads.as_ref() {
+                for _ in 0..500 {
+                    if rt.active.available_permits() > 0 {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            }
             return result;
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
@@ -430,6 +451,8 @@ async fn import_duplicate_results_persist_files_stay_and_only_pending_can_be_dis
     }
     let result = wait_result(&f, &second_job).await;
     assert_eq!(result["files"][0]["state"], "duplicate");
+    // Only the display name of the blocking model is reported, never its path.
+    assert_eq!(result["files"][0]["existingFileName"], "first.obj");
     assert_eq!(f.files(), 2);
     assert_eq!(
         f.invoke("discard_upload", json!({"uploadId":second["uploadId"]}))
@@ -1157,4 +1180,441 @@ async fn upload_import_assigns_automatic_tags_only_while_the_switch_is_on() {
     assert_eq!(f.invoke("set_auto_tagging", json!({})).await.status(), 400);
     let r = f.invoke("get_auto_tagging", json!({})).await;
     assert_eq!(value(r).await, json!(true));
+}
+
+// ---------- Archive uploads (zip / 7z) ----------
+
+fn obj(n: u32) -> Vec<u8> {
+    format!("v 0 0 {n}\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").into_bytes()
+}
+fn zip_bytes(entries: &[(&str, Vec<u8>)]) -> Vec<u8> {
+    use std::io::Write;
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default();
+    for (name, data) in entries {
+        zip.start_file(*name, options).unwrap();
+        zip.write_all(data).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+/// One solid block, like the 7-Zip default.
+fn sevenz_bytes(entries: &[(&str, Vec<u8>)]) -> Vec<u8> {
+    let mut writer = sevenz_rust2::ArchiveWriter::new(std::io::Cursor::new(Vec::new())).unwrap();
+    let headers = entries.iter().map(|(n, _)| sevenz_rust2::ArchiveEntry::new_file(n)).collect();
+    let readers = entries
+        .iter()
+        .map(|(_, d)| sevenz_rust2::SourceReader::new(std::io::Cursor::new(d.clone())))
+        .collect();
+    writer.push_archive_entries(headers, readers).unwrap();
+    writer.finish().unwrap().into_inner()
+}
+fn upload_names(f: &Fixture) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(f.dir.join("models/uploads"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+async fn run_archive(f: &Fixture, name: &str, bytes: &[u8]) -> (Value, Value) {
+    let upload = f.upload(name, bytes).await;
+    let start = f
+        .invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]}))
+        .await;
+    assert_eq!(start.status(), 200);
+    let job = value(start).await["jobId"].clone();
+    let result = wait_result(f, &job).await;
+    (upload, result)
+}
+fn archive_row(result: &Value) -> &Value {
+    result["files"].as_array().unwrap().iter().find(|file| file["kind"] == "archive").expect("archive row")
+}
+fn states(result: &Value, state: &str) -> usize {
+    result["files"].as_array().unwrap().iter().filter(|file| file["state"] == state && file["kind"] != "archive").count()
+}
+
+#[tokio::test]
+async fn zip_with_two_models_and_a_picture_imports_two_and_reports_one_skipped() {
+    let f = Fixture::new(true);
+    let bytes = zip_bytes(&[("Modell/a.obj", obj(1)), ("Modell/b.obj", obj(2)), ("Modell/vorschau.png", b"\x89PNG....".to_vec())]);
+    let (_, result) = run_archive(&f, "paket.zip", &bytes).await;
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(archive_row(&result)["models"], 2);
+    assert_eq!(archive_row(&result)["skipped"], 1);
+    assert_eq!(states(&result, "imported"), 2);
+    // The archive stays; the models are ordinary files next to it. No staging folder is left.
+    assert_eq!(upload_names(&f), ["a.obj", "b.obj", "paket.zip"]);
+    assert!(!result.to_string().contains(&f.dir.to_string_lossy().to_string()));
+    let mode = std::fs::metadata(f.dir.join("models/uploads/a.obj")).unwrap();
+    assert_eq!(std::os::unix::fs::PermissionsExt::mode(&mode.permissions()) & 0o777, 0o644);
+    // The archive is no longer importable but stays listed (and discardable) as handled.
+    let pending = f.app.uploads.as_ref().unwrap().store.pending_list().unwrap();
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    assert!(pending[0].archive && pending[0].state == crate::upload_store::UploadState::Imported);
+}
+
+#[tokio::test]
+async fn solid_7z_with_two_models_and_a_picture_imports_two_and_reports_one_skipped() {
+    let f = Fixture::new(true);
+    // The picture sits between the models inside one compressed block.
+    let bytes = sevenz_bytes(&[("a.obj", obj(1)), ("bild.png", b"\x89PNG....".to_vec()), ("b.obj", obj(2))]);
+    let (_, result) = run_archive(&f, "paket.7z", &bytes).await;
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(archive_row(&result)["models"], 2);
+    assert_eq!(archive_row(&result)["skipped"], 1);
+    assert_eq!(states(&result, "imported"), 2, "{result}");
+    assert_eq!(std::fs::read(f.dir.join("models/uploads/b.obj")).unwrap(), obj(2));
+}
+
+#[tokio::test]
+async fn archive_names_other_than_zip_and_7z_are_refused_with_their_own_code() {
+    let f = Fixture::new(true);
+    for name in ["x.rar", "x.tar", "x.tar.gz", "x.tgz"] {
+        let r = f.send(f.upload_request(name, b"Rar!\x1a\x07\x00")).await;
+        assert_eq!(r.status(), 415, "{name}");
+        assert_eq!(value(r).await["kind"], "archive_format_unsupported", "{name}");
+    }
+    assert!(upload_names(&f).is_empty());
+}
+
+#[tokio::test]
+async fn archive_extension_needs_the_matching_signature() {
+    let f = Fixture::new(true);
+    let zip = zip_bytes(&[("a.obj", obj(1))]);
+    let seven = sevenz_bytes(&[("a.obj", obj(1))]);
+    for (name, bytes) in [("text.zip", b"hello, not an archive".to_vec()), ("nicht.7z", zip.clone()), ("nicht.zip", seven), ("exe.zip", b"MZ\x90\x00".to_vec())] {
+        let r = f.send(f.upload_request(name, &bytes)).await;
+        assert_eq!(r.status(), 400, "{name}");
+        assert_eq!(value(r).await["kind"], "invalid_signature");
+    }
+    // An empty zip is just the end-of-central-directory record.
+    let empty = zip_bytes(&[]);
+    assert_eq!(f.send(f.upload_request("leer.zip", &empty)).await.status(), 200);
+    assert_eq!(upload_names(&f), ["leer.zip"]);
+}
+
+#[tokio::test]
+async fn hostile_paths_never_write_outside_the_upload_folder() {
+    let f = Fixture::new(true);
+    let long_ok = format!("{}tief.obj", "d/".repeat(150));
+    let too_deep = format!("{}zu_tief.obj", "dd/".repeat(3000));
+    let bytes = zip_bytes(&[
+        ("../evil.obj", obj(10)),
+        ("..\\evil2.obj", obj(11)),
+        ("/etc/abs.obj", obj(12)),
+        ("C:/drive.obj", obj(13)),
+        ("ok/CON.obj", obj(14)),
+        ("ok/ctl\u{7}name.obj", obj(15)),
+        ("A/gleich.obj", obj(16)),
+        ("a/Gleich.obj", obj(17)),
+        ("tools/run.exe", b"MZ".to_vec()),
+        ("tools/install.sh", b"#!/bin/sh".to_vec()),
+        (long_ok.as_str(), obj(18)),
+    ]);
+    let (_, result) = run_archive(&f, "feindlich.zip", &bytes).await;
+    assert_eq!(result["state"], "completed", "{result}");
+    // 4 traversal/absolute entries and 2 blocked files are skipped; the other 5 are models.
+    assert_eq!(archive_row(&result)["models"], 5, "{result}");
+    assert_eq!(archive_row(&result)["skipped"], 6, "{result}");
+    assert!(!f.dir.join("models/evil.obj").exists());
+    assert!(!f.dir.join("evil.obj").exists());
+    assert!(!f.dir.join("models/evil2.obj").exists());
+    let names = upload_names(&f);
+    assert!(names.contains(&"_CON.obj".to_owned()), "{names:?}");
+    assert!(names.contains(&"ctl_name.obj".to_owned()), "{names:?}");
+    assert!(names.contains(&"tief.obj".to_owned()), "{names:?}");
+    // Names that differ only in case never collide on a case-insensitive volume.
+    assert!(names.contains(&"gleich.obj".to_owned()) && names.contains(&"Gleich (2).obj".to_owned()) || names.contains(&"Gleich.obj".to_owned()) && names.contains(&"gleich (2).obj".to_owned()), "{names:?}");
+    assert!(names.iter().all(|n| !n.starts_with(".archive-staging-") && !n.ends_with(".exe") && !n.ends_with(".sh")), "{names:?}");
+    // A path no file system accepts makes the whole archive unusable, without residue.
+    let f = Fixture::new(true);
+    let (_, result) = run_archive(&f, "tief.zip", &zip_bytes(&[("x.obj", obj(1)), (too_deep.as_str(), obj(2))])).await;
+    assert_eq!(result["files"][0]["state"], "invalid", "{result}");
+    assert_eq!(result["files"][0]["kind"], "archive_unreadable");
+    assert_eq!(upload_names(&f), ["tief.zip"]);
+}
+
+#[tokio::test]
+async fn symlink_entries_are_skipped() {
+    use std::io::Write;
+    let f = Fixture::new(true);
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default();
+    zip.add_symlink("passwd.obj", "/etc/passwd", options).unwrap();
+    zip.start_file("echt.obj", options).unwrap();
+    zip.write_all(&obj(1)).unwrap();
+    let bytes = zip.finish().unwrap().into_inner();
+    let (_, result) = run_archive(&f, "link.zip", &bytes).await;
+    assert_eq!(archive_row(&result)["models"], 1, "{result}");
+    assert_eq!(upload_names(&f), ["echt.obj", "link.zip"]);
+}
+
+#[tokio::test]
+async fn archives_beyond_the_entry_or_size_limits_are_refused_before_unpacking() {
+    // More than 10,000 entries.
+    let f = Fixture::new(true);
+    let many: Vec<(String, Vec<u8>)> = (0..=10_000).map(|i| (format!("n{i}.txt"), Vec::new())).collect();
+    let refs: Vec<(&str, Vec<u8>)> = many.iter().map(|(n, d)| (n.as_str(), d.clone())).collect();
+    let bytes = zip_bytes(&refs);
+    assert!(bytes.len() < 1024 * 1024);
+    let (_, result) = run_archive(&f, "viele.zip", &bytes).await;
+    assert_eq!(result["files"][0]["state"], "invalid", "{result}");
+    assert_eq!(result["files"][0]["kind"], "archive_too_large");
+    assert_eq!(upload_names(&f), ["viele.zip"]);
+    // A small archive that claims 3 MiB while the limit is 1 MiB (zip bomb shape).
+    let f = Fixture::with_env(true, &[("KATALOG_ARCHIVE_MAX_MB", "1")]);
+    let bomb = zip_bytes(&[("a.obj", obj(1)), ("nullen.bin", vec![0u8; 3 * 1024 * 1024])]);
+    assert!(bomb.len() < 100 * 1024, "compresses to almost nothing");
+    let (_, result) = run_archive(&f, "bombe.zip", &bomb).await;
+    assert_eq!(result["files"][0]["kind"], "archive_too_large", "{result}");
+    assert_eq!(upload_names(&f), ["bombe.zip"]);
+}
+
+#[tokio::test]
+async fn encrypted_and_empty_archives_fail_with_their_own_codes() {
+    use std::io::Write;
+    let f = Fixture::new(true);
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default().with_aes_encryption(zip::AesMode::Aes256, "pw");
+    zip.start_file("geheim.obj", options).unwrap();
+    zip.write_all(&obj(1)).unwrap();
+    let (upload, result) = run_archive(&f, "geheim.zip", &zip.finish().unwrap().into_inner()).await;
+    assert_eq!(result["files"][0]["kind"], "archive_encrypted", "{result}");
+    // The failed archive stays an open, discardable upload.
+    assert_eq!(f.invoke("discard_upload", json!({"uploadId":upload["uploadId"]})).await.status(), 200);
+    assert!(upload_names(&f).is_empty());
+
+    let (_, result) = run_archive(&f, "nur-bilder.zip", &zip_bytes(&[("a.png", b"x".to_vec())])).await;
+    assert_eq!(result["files"][0]["kind"], "archive_no_models", "{result}");
+}
+
+#[tokio::test]
+async fn a_name_conflict_never_overwrites_or_merges() {
+    let f = Fixture::new(true);
+    import_upload(&f, "a.obj", &obj(1)).await;
+    let existing = std::fs::read(f.dir.join("models/uploads/a.obj")).unwrap();
+    // A folder with the archive's name exists already and must stay untouched.
+    std::fs::create_dir(f.dir.join("models/uploads/paket")).unwrap();
+    std::fs::write(f.dir.join("models/uploads/paket/keep.txt"), b"mein").unwrap();
+    let bytes = zip_bytes(&[("x/a.obj", obj(2)), ("y/a.obj", obj(3))]);
+    let (_, result) = run_archive(&f, "paket.zip", &bytes).await;
+    assert_eq!(states(&result, "imported"), 2, "{result}");
+    let names = upload_names(&f);
+    for expected in ["a (2).obj", "a (3).obj", "paket", "paket.zip"] {
+        assert!(names.contains(&expected.to_owned()), "{expected} in {names:?}");
+    }
+    assert_eq!(std::fs::read(f.dir.join("models/uploads/a.obj")).unwrap(), existing);
+    assert_eq!(std::fs::read(f.dir.join("models/uploads/paket/keep.txt")).unwrap(), b"mein");
+}
+
+#[tokio::test]
+async fn repeating_the_import_start_is_refused_and_leaves_nothing_behind() {
+    let f = Fixture::new(true);
+    let (upload, result) = run_archive(&f, "paket.zip", &zip_bytes(&[("a.obj", obj(1))])).await;
+    assert_eq!(archive_row(&result)["models"], 1);
+    let before = upload_names(&f);
+    for _ in 0..2 {
+        let again = f.invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]})).await;
+        assert_eq!(again.status(), 409);
+    }
+    assert_eq!(upload_names(&f), before);
+}
+
+#[tokio::test]
+async fn an_archive_and_a_plain_upload_can_share_one_job() {
+    let f = Fixture::new(true);
+    let archive = f.upload("paket.zip", &zip_bytes(&[("a.obj", obj(1))])).await;
+    let single = f.upload("einzeln.obj", &obj(2)).await;
+    let job = value(f.invoke("start_upload_import", json!({"uploadIds":[archive["uploadId"], single["uploadId"]]})).await).await;
+    let result = wait_result(&f, &job["jobId"]).await;
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(states(&result, "imported"), 2);
+    assert_eq!(result["total"], 3);
+    assert_eq!(result["done"], 3);
+}
+
+#[tokio::test]
+async fn cancelling_after_unpacking_removes_the_staging_folder_and_reopens_the_archive() {
+    let f = Fixture::new(true);
+    let upload = f.upload("paket.zip", &zip_bytes(&[("a.obj", obj(1))])).await;
+    let rt = f.app.uploads.as_ref().unwrap();
+    let id = upload["uploadId"].as_str().unwrap().to_owned();
+    let entry = rt.store.begin_import(std::slice::from_ref(&id), "job").unwrap().remove(0);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let upload_cfg = f.app.config.upload.as_ref().unwrap();
+    let context = crate::upload_archive::Context { store: &rt.store, upload: upload_cfg, db_path: &f.app.config.db_path, cancel: &cancel, job_id: "job", timeout: crate::upload_archive::ARCHIVE_TIMEOUT };
+    let seen_staging = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let probe = seen_staging.clone();
+    let raise = cancel.clone();
+    let dir = f.dir.join("models/uploads");
+    crate::upload_archive::AFTER_EXTRACT.with(|hook| {
+        *hook.borrow_mut() = Some(Box::new(move || {
+            let staged = std::fs::read_dir(&dir).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().starts_with(".archive-staging-"));
+            probe.store(staged, std::sync::atomic::Ordering::SeqCst);
+            raise.store(true, std::sync::atomic::Ordering::SeqCst);
+        }));
+    });
+    let outcome = crate::upload_archive::expand(&context, &entry, &|_, _| json!({}));
+    crate::upload_archive::AFTER_EXTRACT.with(|hook| *hook.borrow_mut() = None);
+    assert!(matches!(outcome, Err(crate::upload_archive::Failure::Cancelled)));
+    assert!(seen_staging.load(std::sync::atomic::Ordering::SeqCst), "the models were unpacked into staging");
+    assert_eq!(upload_names(&f), ["paket.zip"]);
+    rt.store.reset_importing("job").unwrap();
+    assert_eq!(rt.store.pending_list().unwrap()[0].state, crate::upload_store::UploadState::Uploaded);
+}
+
+#[tokio::test]
+async fn after_a_restart_an_unpacked_archive_stays_handled_and_its_models_are_open_uploads() {
+    let f = Fixture::new(true);
+    let rt = f.app.uploads.as_ref().unwrap();
+    let upload = f.upload("paket.zip", &zip_bytes(&[("a.obj", obj(1)), ("b.obj", obj(2))])).await;
+    let entry = rt.store.begin_import(&[upload["uploadId"].as_str().unwrap().to_owned()], "job").unwrap().remove(0);
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let context = crate::upload_archive::Context { store: &rt.store, upload: f.app.config.upload.as_ref().unwrap(), db_path: &f.app.config.db_path, cancel: &cancel, job_id: "job", timeout: crate::upload_archive::ARCHIVE_TIMEOUT };
+    let done = crate::upload_archive::expand(&context, &entry, &|_, _| json!({"state":"imported","kind":"archive"})).unwrap();
+    assert_eq!(done.models, 2);
+    // The process dies here: the models are journalled as importing, no catalog row exists.
+    let restarted = uploads::initialize(&f.app.config).unwrap().unwrap();
+    uploads::reconcile(&f.app.config, Some(&restarted)).unwrap();
+    let pending = restarted.store.pending_list().unwrap();
+    // Two open models plus the handled archive.
+    assert_eq!(pending.len(), 3, "{pending:?}");
+    assert_eq!(pending.iter().filter(|e| e.state == crate::upload_store::UploadState::Uploaded).count(), 2);
+    let all = restarted.store.list().unwrap();
+    let archive = all.iter().find(|e| e.name == "paket.zip").unwrap();
+    assert_eq!(archive.state, crate::upload_store::UploadState::Imported);
+    assert!(archive.archive);
+}
+
+// ---------- Archive failures, cancellation, time limit and leftovers ----------
+
+fn set_hook(name: &str, hook: crate::upload_archive::Hook) {
+    let mut hooks = crate::upload_archive::HOOKS.lock().unwrap();
+    hooks.retain(|(n, _)| n != name);
+    hooks.push((name.to_owned(), hook));
+}
+fn clear_hook(name: &str) {
+    crate::upload_archive::HOOKS.lock().unwrap().retain(|(n, _)| n != name);
+}
+async fn wait_long(f: &Fixture, job: &Value) -> Value {
+    for _ in 0..1000 {
+        let result = value(f.invoke("get_import_result", json!({"jobId":job})).await).await;
+        if matches!(result["state"].as_str(), Some("completed" | "failed" | "cancelled")) {
+            return result;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("import job did not complete");
+}
+async fn open_uploads(f: &Fixture) -> Value {
+    value(f.send(f.request("GET", "/api/uploads", Body::empty())).await).await
+}
+
+#[tokio::test]
+async fn more_models_than_the_open_upload_limit_get_their_own_code() {
+    let f = Fixture::new(true);
+    let many: Vec<(String, Vec<u8>)> = (0..201).map(|i| (format!("m{i}.obj"), obj(i))).collect();
+    let refs: Vec<(&str, Vec<u8>)> = many.iter().map(|(n, d)| (n.as_str(), d.clone())).collect();
+    let (_, result) = run_archive(&f, "zuviele.zip", &zip_bytes(&refs)).await;
+    assert_eq!(result["files"][0]["state"], "invalid", "{result}");
+    assert_eq!(result["files"][0]["kind"], "archive_too_many_models");
+    assert_eq!(upload_names(&f), ["zuviele.zip"]);
+}
+
+#[tokio::test]
+async fn a_transient_store_failure_hands_the_archive_back_and_the_import_can_be_repeated() {
+    let f = Fixture::new(true);
+    let name = "knapp.zip";
+    set_hook(name, crate::upload_archive::Hook { fail_before_adopt: Some(crate::upload_store::StoreError::new(507, "no_space")), ..Default::default() });
+    let (upload, result) = run_archive(&f, name, &zip_bytes(&[("a.obj", obj(1))])).await;
+    assert_eq!(result["files"][0]["state"], "uploaded", "{result}");
+    assert_eq!(result["files"][0]["kind"], "no_space");
+    assert_eq!(upload_names(&f), [name], "staging removed, no model left");
+    assert_eq!(open_uploads(&f).await[0]["state"], "uploaded");
+    clear_hook(name);
+    let start = f.invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]})).await;
+    assert_eq!(start.status(), 200);
+    let job = value(start).await["jobId"].clone();
+    let again = wait_long(&f, &job).await;
+    assert_eq!(archive_row(&again)["models"], 1, "{again}");
+}
+
+#[tokio::test]
+async fn a_checksum_error_while_unpacking_means_a_damaged_archive() {
+    use std::io::Write;
+    let f = Fixture::new(true);
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    zip.start_file("a.obj", options).unwrap();
+    zip.write_all(&obj(1)).unwrap();
+    let mut bytes = zip.finish().unwrap().into_inner();
+    let at = bytes.windows(7).position(|w| w == b"v 1 0 0").unwrap();
+    bytes[at] = b'w';
+    let (_, result) = run_archive(&f, "kaputt.zip", &bytes).await;
+    assert_eq!(result["files"][0]["state"], "invalid", "{result}");
+    assert_eq!(result["files"][0]["kind"], "archive_unreadable");
+    assert_eq!(upload_names(&f), ["kaputt.zip"]);
+}
+
+#[tokio::test]
+async fn unpacking_that_takes_too_long_is_stopped_and_cleaned_up() {
+    let f = Fixture::new(true);
+    let name = "langsam.zip";
+    set_hook(name, crate::upload_archive::Hook { delay_per_entry: Some(std::time::Duration::from_millis(300)), timeout: Some(std::time::Duration::from_millis(500)), ..Default::default() });
+    let bytes = zip_bytes(&[("a.obj", obj(1)), ("b.obj", obj(2)), ("c.obj", obj(3)), ("d.obj", obj(4))]);
+    let (_, result) = run_archive(&f, name, &bytes).await;
+    clear_hook(name);
+    assert_eq!(result["files"][0]["kind"], "archive_timeout", "{result}");
+    assert_eq!(upload_names(&f), [name]);
+}
+
+#[tokio::test]
+async fn cancelling_over_http_in_the_middle_of_unpacking_leaves_nothing_behind() {
+    let f = Fixture::new(true);
+    let name = "abbruch.zip";
+    set_hook(name, crate::upload_archive::Hook { delay_per_entry: Some(std::time::Duration::from_millis(400)), ..Default::default() });
+    let bytes = zip_bytes(&[("a.obj", obj(1)), ("b.obj", obj(2)), ("c.obj", obj(3)), ("d.obj", obj(4)), ("e.obj", obj(5))]);
+    let upload = f.upload(name, &bytes).await;
+    let job = value(f.invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]})).await).await["jobId"].clone();
+    // Wait until the staging folder shows that unpacking is under way.
+    for _ in 0..500 {
+        if upload_names(&f).iter().any(|n| n.starts_with(".archive-staging-")) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(upload_names(&f).iter().any(|n| n.starts_with(".archive-staging-")), "unpacking started");
+    assert_eq!(f.invoke("cancel_import", json!({"jobId":job})).await.status(), 200);
+    let result = wait_long(&f, &job).await;
+    clear_hook(name);
+    assert_eq!(result["state"], "cancelled", "{result}");
+    assert_eq!(upload_names(&f), [name], "staging removed, no model linked");
+    assert_eq!(open_uploads(&f).await[0]["state"], "uploaded");
+    // And the archive can be imported afterwards.
+    let (_, again) = run_archive_again(&f, &upload).await;
+    assert_eq!(archive_row(&again)["models"], 5, "{again}");
+}
+async fn run_archive_again(f: &Fixture, upload: &Value) -> ((), Value) {
+    let job = value(f.invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]})).await).await["jobId"].clone();
+    ((), wait_long(f, &job).await)
+}
+
+#[tokio::test]
+async fn a_handled_archive_stays_listed_and_can_be_discarded_without_touching_its_models() {
+    let f = Fixture::new(true);
+    let (upload, result) = run_archive(&f, "paket.zip", &zip_bytes(&[("a.obj", obj(1))])).await;
+    assert_eq!(states(&result, "imported"), 1);
+    let listed = open_uploads(&f).await;
+    let row = listed.as_array().unwrap().iter().find(|e| e["name"] == "paket.zip").expect("archive listed");
+    assert_eq!(row["state"], "imported");
+    assert_eq!(row["archive"], true);
+    // It cannot be imported again, but it can be discarded.
+    assert_eq!(f.invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]})).await.status(), 409);
+    assert_eq!(f.invoke("discard_upload", json!({"uploadId":upload["uploadId"]})).await.status(), 200);
+    assert_eq!(upload_names(&f), ["a.obj"]);
+    let listed = open_uploads(&f).await;
+    assert!(listed.as_array().unwrap().iter().all(|e| e["name"] != "paket.zip"));
+    // The imported model keeps working in the catalog.
+    let file_id = result["files"].as_array().unwrap().iter().find(|x| x["name"] == "a.obj").unwrap()["fileId"].clone();
+    assert!(file_id.is_string());
 }

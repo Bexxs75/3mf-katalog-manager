@@ -18,6 +18,8 @@ getrandom = "0.3"
 base64 = "0.22"
 log = "0.4"
 rusqlite = { version = "0.40.2", features = ["hooks"] }
+sha2 = "0.10"
+unicode-normalization = "0.1.25"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 hyper = { version = "1", default-features = false, features = ["server", "http1"] }
@@ -28,4 +30,5 @@ tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["test-util"] }
 katalog-core = { path = "../katalog-core", default-features = false, features = ["test-support"] }
 http-body-util = "0.1"
-sha2 = "0.10"
+zip = "9"
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util", "compress", "aes256"] }

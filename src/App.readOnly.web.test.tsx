@@ -67,8 +67,12 @@ const click = async (element: HTMLElement) => { await act(async () => { fireEven
 const modelItem = (name = 'Alpha.stl') => within(screen.getByRole('main')).getByText(name);
 async function openDetail() { await act(async () => { fireEvent.click(modelItem()); fireEvent.doubleClick(modelItem()); }); }
 function noMutationControls() {
-  for (const label of [de.delete, de.uploadModelImageLabel, de.addToQueue, de.addToCollectionLabel, de.rescanMetadataButton, de.printLogAddButton, de.licenseSave, de.showInFileManager, de.openInSlicer, de.restoreLabel, de.emptyTrashButton]) {
+  for (const label of [de.delete, de.addToQueue, de.addToCollectionLabel, de.printLogAddButton, de.licenseSave, de.showInFileManager, de.openInSlicer, de.restoreLabel, de.emptyTrashButton]) {
     if (typeof label === 'string') expect(screen.queryByRole('button', { name: label })).toBeNull();
+  }
+  // Shown, but locked: without write mode nothing may be picked or sent.
+  for (const label of [de.uploadModelImageLabel, de.rescanMetadataButton]) {
+    for (const button of screen.queryAllByRole('button', { name: label })) expect(button).toBeDisabled();
   }
   expect(screen.queryByPlaceholderText(de.sourceUrlPlaceholder)).toBeNull();
   expect(screen.queryByRole('checkbox')).toBeNull();
@@ -162,10 +166,12 @@ it('offers browser display preferences and read-only information without desktop
   await click(screen.getByRole('button', { name: de.settingsTitle }));
   expect(screen.getByRole('button', { name: de.pmOpen })).toBeInTheDocument();
   for (const label of [de.settingsTabSlicer, de.singleKeyShortcutsTitle]) expect(screen.queryByText(label)).toBeNull();
-  // The web catalog tab holds only the automatic-tags switch: no cleanup, backup or block list.
+  // The web catalog tab holds the automatic-tags switch and the backup download: no cleanup or import.
   await click(screen.getByRole('tab', { name: de.settingsTabCatalog }));
   expect(await screen.findByRole('switch', { name: de.autoTaggingLabel })).toBeInTheDocument();
-  for (const label of [de.catalogCleanupTitle, de.catalogBackupTitle]) expect(screen.queryByText(label)).toBeNull();
+  expect(screen.queryByText(de.catalogCleanupTitle)).toBeNull();
+  expect(screen.queryByText(de.importCatalogButton)).toBeNull();
+  expect(screen.getByRole('link', { name: de.exportCatalogButton })).toHaveAttribute('href', '/api/backup/export');
   await click(screen.getByRole('tab', { name: de.settingsTabGeneral }));
   await click(screen.getByRole('button', { name: de.themeDark }));
   expect(document.documentElement.dataset.app).toBe('dark');

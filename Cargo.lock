@@ -2547,11 +2547,14 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sevenz-rust2",
  "sha2 0.10.9",
  "subtle",
  "tokio",
  "tower",
  "tower-http",
+ "unicode-normalization",
+ "zip 9.0.5",
 ]
 
 [[package]]

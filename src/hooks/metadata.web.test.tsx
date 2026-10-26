@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { login, logout, authenticationFailed, canEditMetadata, useCanEditMetadata, changePassword, getSession } from '../lib/webSession';
 import { WEB_READ_COMMANDS } from '../lib/readOnly';
-import { invoke } from '../lib/transport';
+import { invoke, lostAnswerRetry } from '../lib/transport';
 import { useCatalogStore } from './useCatalogStore';
 import { useCollections } from './useCollections';
 import { usePrintLog } from './usePrintLog';
@@ -16,6 +16,8 @@ import { MetadataError } from '../components/MetadataError';
 import { clearMetadataError } from '../lib/metadataErrors';
 import { ContextMenu } from '../components/ContextMenu';
 import { readPrintLogPhoto, MAX_CUSTOM_IMAGE_BYTES } from '../lib/printLogPhoto';
+// jsdom has no canvas; the shrinking itself is covered in coverImage.test.ts.
+vi.mock('../lib/coverImage', async importOriginal => ({ ...await importOriginal<typeof import('../lib/coverImage')>(), prepareCoverImage: async (file: Blob) => file }));
 // Explicit metadata contract, independent of the full write allowlist's order.
 const METADATA_COMMANDS = [
   'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'set_license',
@@ -47,7 +49,7 @@ const fetchMock = vi.fn(async (url: string, options?: RequestInit): Promise<Resp
 });
 beforeEach(async () => {
   vi.stubEnv('VITE_TARGET', 'web'); vi.stubGlobal('fetch', fetchMock); fetchMock.mockClear();
-  commands = []; failing = new Set(); writable = true; active = peak = 0; clearMetadataError();
+  lostAnswerRetry.delaysMs = []; commands = []; failing = new Set(); writable = true; active = peak = 0; clearMetadataError();
   await login('password');
 });
 afterEach(() => { cleanup(); authenticationFailed(401); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -85,7 +87,7 @@ it('still blocks filesystem handlers, deletion shortcuts and folder drag while w
   await act(async () => {
     const s = store.result.current;
     await s.deleteModel('1'); await s.renameFile('1', 'new'); await s.restoreModel('1'); await s.deleteModelPermanently('1'); await s.emptyTrashAction();
-    await s.uploadCustomImage('1'); await s.rescanMetadata('1');
+    await s.uploadCustomImage('1');
     await s.captureRenderSnapshot('1', 'x');
     expect(writes()).toEqual([{ command: 'set_render_snapshot', args: { fileId: '1', imageBase64: 'x' } }]);
     commands = [];
@@ -97,7 +99,7 @@ it('still blocks filesystem handlers, deletion shortcuts and folder drag while w
   fireEvent.keyDown(window, { key: 'Backspace', metaKey: true });
   fireEvent.keyDown(window, { key: 'a', ctrlKey: true }); fireEvent.keyDown(window, { key: ' ' });
   expect(remove).not.toHaveBeenCalled(); expect(select).toHaveBeenCalled(); expect(writes()).toEqual([]);
-  for (const command of ['delete_file', 'rename_file', 'restore_file', 'empty_trash', 'create_folder', 'move_file_to_folder', 'move_folder', 'start_import', 'rescan_file_metadata', 'upload_custom_image', 'pick_and_read_image']) {
+  for (const command of ['delete_file', 'rename_file', 'restore_file', 'empty_trash', 'create_folder', 'move_file_to_folder', 'move_folder', 'start_import', 'upload_custom_image', 'pick_and_read_image']) {
     await expect(invoke(command)).rejects.toMatchObject({ expected: true });
   }
   expect(writes()).toEqual([]);
@@ -108,6 +110,50 @@ it('still blocks filesystem handlers, deletion shortcuts and folder drag while w
   await act(async () => store.result.current.captureRenderSnapshot('1', 'x'));
   await expect(invoke('remove_files_from_catalog', { fileIds: ['1'] })).rejects.toMatchObject({ expected: true });
   await expect(invoke('set_render_snapshot', { fileId: '1', imageBase64: 'x' })).rejects.toMatchObject({ expected: true });
+  expect(writes()).toEqual([]);
+});
+it.each([false, true])('sends the cover image and the rescan only when writable=%s, with the picked file as Base64', async enabled => {
+  writable = enabled; await getSession();
+  const store = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(store.result.current.initialLoading).toBe(false)); commands = [];
+  const png = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'cover.png', { type: 'image/png' });
+  await act(async () => { await store.result.current.uploadCustomImage('1', png); store.result.current.rescanMetadata('1'); await new Promise(resolve => setTimeout(resolve, 15)); });
+  expect(writes()).toEqual(enabled ? [
+    { command: 'set_custom_image', args: { fileId: '1', imageBase64: 'iVBORw0KGgo=' } },
+    { command: 'rescan_file_metadata', args: { fileId: '1' } },
+  ] : []);
+  // Without a picked file (the desktop dialog path) the web build never calls the desktop command.
+  commands = [];
+  await act(async () => { await store.result.current.uploadCustomImage('1'); });
+  expect(writes()).toEqual([]);
+});
+it('treats a repeated cover upload or rescan whose stored answer is gone as done and reloads', async () => {
+  const store = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(store.result.current.initialLoading).toBe(false));
+  const lost = { message: 'request_id_result_unavailable', expected: true };
+  const png = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'cover.png', { type: 'image/png' });
+  commands = []; failing = new Set();
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url, options) => {
+    const command = String(url).split('/').pop()!;
+    if (command === 'set_custom_image' || command === 'rescan_file_metadata') {
+      commands.push({ command, args: JSON.parse(options?.body as string || '{}') });
+      return Response.json(lost, { status: 409 });
+    }
+    return original(url, options);
+  });
+  try {
+    await act(async () => { await store.result.current.uploadCustomImage('1', png); });
+    await act(async () => { store.result.current.rescanMetadata('1'); await new Promise(resolve => setTimeout(resolve, 30)); });
+    expect(store.result.current.rescanFeedback).toEqual({ fileId: '1', status: 'success' });
+    expect(commands.filter(c => c.command === 'list_files_by_ids').length).toBeGreaterThan(0);
+  } finally { fetchMock.mockImplementation(original); }
+});
+it('rejects an unsupported or oversized cover image locally with the translatable codes', async () => {
+  const store = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(store.result.current.initialLoading).toBe(false)); commands = [];
+  await expect(store.result.current.uploadCustomImage('1', new File(['GIF89a'], 'x.gif'))).rejects.toEqual({ message: 'imageUploadUnsupported', expected: true });
+  await expect(store.result.current.uploadCustomImage('1', { size: MAX_CUSTOM_IMAGE_BYTES + 1 } as File)).rejects.toEqual({ message: 'imageUploadTooLarge', expected: true });
   expect(writes()).toEqual([]);
 });
 it('reactively resets capabilities on logout, 401 and password requirement; reads all three auth responses', async () => {
@@ -151,14 +197,18 @@ it.each([429, 503])('retries %s once with Retry-After', async status => {
   await invoke('set_favorite', { id: '1', favorite: true });
   expect(fetchMock).toHaveBeenCalledTimes(3); // login + initial + retry
 });
-it('never retries an ambiguous network failure or a second busy response', async () => {
+it('repeats a lost answer with the same request id but never a second busy response', async () => {
+  lostAnswerRetry.delaysMs = [0];
   fetchMock.mockRejectedValueOnce(new TypeError('offline'));
-  await expect(invoke('create_collection')).rejects.toThrow('offline');
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  await invoke('create_collection');
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  const ids = fetchMock.mock.calls.slice(1).map(call => (call[1]?.headers as Record<string, string>)['X-Request-Id']);
+  expect(ids[0]).toBeTruthy();
+  expect(ids[1]).toBe(ids[0]);
   fetchMock.mockResolvedValueOnce(Response.json({ message: 'busy' }, { status: 503, headers: { 'Retry-After': '0' } }))
     .mockResolvedValueOnce(Response.json({ message: 'busy' }, { status: 503, headers: { 'Retry-After': '0' } }));
   await expect(invoke('create_collection')).rejects.toMatchObject({ message: 'busy' });
-  expect(fetchMock).toHaveBeenCalledTimes(4);
+  expect(fetchMock).toHaveBeenCalledTimes(5);
 });
 it('rejects oversized photos before reading and unsupported formats before sending', async () => {
   const read = vi.fn();

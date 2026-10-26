@@ -133,7 +133,7 @@ describe('LinuxMenuPrompt', () => {
     expect(screen.getByRole('dialog', { name: de.linuxMenuAddedTitle })).toBeVisible();
     expect(api.answerLinuxMenuPrompt).toHaveBeenCalledWith('yes');
     // The answer button is gone; focus must land on the new close button, not on the page.
-    expect(screen.getByRole('button', { name: de.impClose })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('button', { name: de.impClose })).toHaveFocus());
   });
 
   it('does not ask while another first-run dialog is open, and asks once it is done', async () => {

@@ -192,9 +192,10 @@ function SpoolCard({ spool, group, ...a }: { spool: FilamentSpool; group?: Spool
         ) : (
           <div className="flex items-center justify-end gap-1">
             <span className="mr-auto inline-flex items-center gap-1">
-              {import.meta.env.VITE_TARGET !== 'web' && a.onConsume && spool.kind === 'resin' && (
+              {a.onConsume && spool.kind === 'resin' && (
                 <button
                   type="button"
+                  disabled={!canEdit}
                   onClick={(e) => a.onConsume?.(spool, e.currentTarget)}
                   aria-haspopup="dialog"
                   aria-expanded={a.consumeOpenId === spool.id}
@@ -204,9 +205,10 @@ function SpoolCard({ spool, group, ...a }: { spool: FilamentSpool; group?: Spool
                   {t('resinConsumeButton')}
                 </button>
               )}
-              {import.meta.env.VITE_TARGET !== 'web' && a.onRestock && (
+              {a.onRestock && (
                 <button
                   type="button"
+                  disabled={!canEdit}
                   onClick={(e) => a.onRestock?.(spool, e.currentTarget)}
                   aria-haspopup="dialog"
                   aria-expanded={a.restockOpenId === spool.id}
@@ -337,9 +339,10 @@ function GroupCard({ group, ...a }: { group: SpoolGroup } & CardActions) {
             <Icon name="chevron" size={14} className={expanded ? 'rotate-180' : ''} />
           </button>
           <span className="inline-flex items-center gap-1">
-            {import.meta.env.VITE_TARGET !== 'web' && a.onConsume && first.kind === 'resin' && (
+            {a.onConsume && first.kind === 'resin' && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onConsume?.(suggestSpool(group.spools) ?? first, e.currentTarget, group.spools)}
                 aria-haspopup="dialog"
                 aria-expanded={a.consumeOpenId !== null && a.consumeOpenId !== undefined && group.spools.some((s) => s.id === a.consumeOpenId)}
@@ -349,9 +352,10 @@ function GroupCard({ group, ...a }: { group: SpoolGroup } & CardActions) {
                 {t('resinConsumeButton')}
               </button>
             )}
-            {import.meta.env.VITE_TARGET !== 'web' && a.onRestock && (
+            {a.onRestock && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onRestock?.(first, e.currentTarget)}
                 aria-haspopup="dialog"
                 aria-expanded={a.restockOpenId === first.id}
@@ -408,9 +412,10 @@ function GroupSpoolRow({ spool, loaded, ...a }: { spool: FilamentSpool; loaded: 
         <ConfirmDelete id={spool.id} onCancelDelete={a.onCancelDelete} onConfirmDelete={a.onConfirmDelete} />
       ) : (
         <div className="flex items-center justify-end gap-1">
-          {import.meta.env.VITE_TARGET !== 'web' && a.onConsume && spool.kind === 'resin' && (
+          {a.onConsume && spool.kind === 'resin' && (
             <button
               type="button"
+              disabled={!canEdit}
               onClick={(e) => a.onConsume?.(spool, e.currentTarget)}
               aria-label={`${t('resinConsumeButton')}: ${where}, ${amount}`}
               aria-haspopup="dialog"

@@ -1,6 +1,5 @@
 use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use super::*;
-use crate::tagging::{self, TaggingContext};
 #[cfg(test)]
 use katalog_core::read::summary_to_dto;
 
@@ -149,20 +148,9 @@ fn blocked_tag_error(e: db::error::DbError) -> CmdError {
     }
 }
 
-/// Tags the app would suggest for this model today. The catalog does not record
-/// whether a tag was assigned automatically, so the detail view asks this to decide
-/// which tags may be blocked. Uses the stored dimensions, which for multi-plate
-/// models can differ slightly from the extent used at import.
+/// Thin desktop wrapper; the logic lives in `katalog_core::read`.
 pub(super) fn suggested_auto_tags_with_conn(conn: &Connection, file_id: i64) -> CmdResult<Vec<String>> {
-    let file = db::get_file(conn, file_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| CmdError::expected("Datei nicht gefunden"))?;
-    Ok(tagging::suggest_tags(&TaggingContext {
-        file_name: &file.name,
-        dimensions_mm: file.dimensions_mm,
-        object_count: file.object_count,
-        materials: &file.materials,
-    }))
+    katalog_core::read::suggested_auto_tags_with_conn(conn, file_id).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -735,6 +723,7 @@ fn backfill_hashes_with_reader(
 /// The check comes before `is_dir()`, because `is_dir()` follows symlinks.
 #[cfg(test)]
 pub(super) use katalog_core::import::files::collect_supported_files;
+#[cfg(test)]
 use katalog_core::import::files::step_metadata;
 /// Geometry for the STEP preview; without the feature the view shows the placeholder.
 #[cfg(feature = "step-preview")]
@@ -811,110 +800,17 @@ fn store_model_file(conn: &Connection, new_file: &NewFile) -> CmdResult<ModelFil
     Ok(to_dto(file, &spools))
 }
 /// Re-reads a cataloged file and overwrites all columns derived from it, e.g.
-/// after it was re-sliced. If the file is missing, it aborts before the DB is
-/// changed.
+/// after it was re-sliced. The logic lives in the core so the web server shares it.
 pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFileDto> {
-    let existing = db::get_file(conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Datei nicht im Katalog gefunden".to_string())?;
-    let path = Path::new(&existing.path);
-    if !path.exists() {
-        return Err(CmdError::expected(format!("Datei nicht gefunden: {}", existing.path)));
-    }
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase());
-
-    let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
-    let content_hash = compute_content_hash(path).ok();
-
-    let update = match extension.as_deref() {
-        Some("3mf") => {
-            let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
-            let source = threemf::source::detect_source(&doc.metadata);
-            ScannedMetadataUpdate {
-                source,
-                dimensions_mm: doc.dimensions_mm,
-                volume_cm3: doc.volume_cm3,
-                object_count: Some(doc.object_count as i64),
-                thumbnail_png: doc.thumbnail_png,
-                plate_count: doc.plate_count.map(|c| c as i64),
-                slice_info_json: doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
-                materials: doc
-                    .materials
-                    .into_iter()
-                    .map(|m| MaterialRecord {
-                        name: m.name,
-                        display_color: m.display_color,
-                    })
-                    .collect(),
-                metadata: doc.metadata,
-                file_size_bytes,
-                file_modified_at: disk_modified_at(path),
-                content_hash,
-            }
-        }
-        Some("stl") => {
-            let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
-            ScannedMetadataUpdate {
-                dimensions_mm: doc.dimensions_mm,
-                volume_cm3: doc.volume_cm3,
-                object_count: None,
-                thumbnail_png: None,
-                plate_count: None,
-                slice_info_json: None,
-                materials: Vec::new(),
-                metadata: BTreeMap::new(),
-                source: Default::default(),
-                file_size_bytes,
-                file_modified_at: disk_modified_at(path),
-                content_hash,
-            }
-        }
-        Some("stp") | Some("step") => {
-            let (dimensions_mm, volume_cm3, object_count) = step_metadata(path);
-            ScannedMetadataUpdate {
-                dimensions_mm,
-                volume_cm3,
-                object_count,
-                thumbnail_png: None,
-                plate_count: None,
-                slice_info_json: None,
-                materials: Vec::new(),
-                metadata: BTreeMap::new(),
-                source: Default::default(),
-                file_size_bytes,
-                file_modified_at: disk_modified_at(path),
-                content_hash,
-            }
-        }
-        Some("obj") => {
-            let doc = obj::parse_obj_file(path).map_err(|e| e.to_string())?;
-            ScannedMetadataUpdate {
-                dimensions_mm: doc.dimensions_mm,
-                volume_cm3: doc.volume_cm3,
-                object_count: None,
-                thumbnail_png: None,
-                plate_count: None,
-                slice_info_json: None,
-                materials: Vec::new(),
-                metadata: BTreeMap::new(),
-                source: Default::default(),
-                file_size_bytes,
-                file_modified_at: disk_modified_at(path),
-                content_hash,
-            }
-        }
-        _ => return Err(CmdError::expected("nicht unterstütztes Dateiformat")),
-    };
-
-    db::update_scanned_metadata(conn, id, &update).map_err(|e| e.to_string())?;
-    let file = db::get_file(conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Datei nach Aktualisierung nicht mehr gefunden".to_string())?;
-    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
-    Ok(to_dto(file, &spools))
+    use katalog_core::rescan::RescanError;
+    katalog_core::rescan::rescan_file(conn, id).map_err(|e| match e {
+        RescanError::NotInCatalog => "Datei nicht im Katalog gefunden".to_string().into(),
+        RescanError::Missing(path) => CmdError::expected(format!("Datei nicht gefunden: {path}")),
+        RescanError::Unsupported => CmdError::expected("nicht unterstütztes Dateiformat"),
+        RescanError::Failed(message) => message.into(),
+        // Only the web variant produces the remaining kinds.
+        other => format!("{other:?}").into(),
+    })
 }
 #[tauri::command]
 pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResult<ModelFileDto> {

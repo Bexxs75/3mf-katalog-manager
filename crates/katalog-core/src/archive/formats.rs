@@ -32,10 +32,14 @@ fn unreadable(e: impl std::fmt::Display) -> ArchiveError {
     ArchiveError::Unreadable(e.to_string())
 }
 
-pub(super) fn list(path: &Path, format: ArchiveFormat) -> Result<Vec<EntryMeta>, ArchiveError> {
+pub(super) fn list(
+    path: &Path,
+    format: ArchiveFormat,
+    sevenz_memory_limit: Option<u64>,
+) -> Result<Vec<EntryMeta>, ArchiveError> {
     match format {
         ArchiveFormat::Zip => list_zip(path),
-        ArchiveFormat::SevenZ => list_7z(path),
+        ArchiveFormat::SevenZ => list_7z(path, sevenz_memory_limit),
         ArchiveFormat::Rar => list_rar(path),
         _ => list_tar(path, format),
     }
@@ -92,7 +96,55 @@ fn check_zip_method<R: std::io::Read>(file: &zip::read::ZipFile<'_, R>) -> Resul
     Ok(())
 }
 
+/// Entry count declared by the end-of-central-directory record (zip64 aware),
+/// `None` if no record is found - then the zip library reports the real problem.
+/// `ZipArchive::new` parses the WHOLE central directory into memory before
+/// anything can be limited, so a crafted archive with millions of tiny entries
+/// has to be refused first.
+fn zip_declared_entries(file: &mut File) -> std::io::Result<Option<u64>> {
+    const EOCD_LEN: u64 = 22;
+    let len = file.seek(SeekFrom::End(0))?;
+    let tail_len = len.min(EOCD_LEN + u64::from(u16::MAX));
+    let tail_start = len - tail_len;
+    file.seek(SeekFrom::Start(tail_start))?;
+    let mut tail = vec![0u8; tail_len as usize];
+    file.read_exact(&mut tail)?;
+    let Some(at) = tail
+        .windows(4)
+        .enumerate()
+        .rev()
+        .find(|(i, w)| *w == b"PK\x05\x06" && *i as u64 + EOCD_LEN <= tail_len)
+        .map(|(i, _)| i)
+    else {
+        return Ok(None);
+    };
+    let count = u64::from(u16::from_le_bytes([tail[at + 10], tail[at + 11]]));
+    if count != u64::from(u16::MAX) {
+        return Ok(Some(count));
+    }
+    // zip64: the locator sits directly in front of the EOCD record.
+    if at < 20 || &tail[at - 20..at - 16] != b"PK\x06\x07" {
+        return Ok(Some(count));
+    }
+    let offset = u64::from_le_bytes(tail[at - 12..at - 4].try_into().unwrap());
+    if offset.saturating_add(56) > len {
+        return Ok(Some(count));
+    }
+    file.seek(SeekFrom::Start(offset))?;
+    let mut record = [0u8; 56];
+    file.read_exact(&mut record)?;
+    if &record[..4] != b"PK\x06\x06" {
+        return Ok(Some(count));
+    }
+    Ok(Some(u64::from_le_bytes(record[32..40].try_into().unwrap())))
+}
+
 fn open_zip(path: &Path) -> Result<zip::ZipArchive<BufReader<File>>, ArchiveError> {
+    let mut probe = File::open(path)?;
+    if zip_declared_entries(&mut probe)?.is_some_and(|n| n > MAX_ENTRIES as u64) {
+        return Err(ArchiveError::TooManyEntries);
+    }
+    drop(probe);
     let file = BufReader::new(File::open(path)?);
     zip::ZipArchive::new(file).map_err(unreadable)
 }
@@ -275,6 +327,11 @@ fn sevenz_meta(entry: &sevenz_rust2::ArchiveEntry, encrypted: bool) -> EntryMeta
 // Header decoding happens inside ArchiveReader::new, before entry limits can
 // apply. Keep both its input and the sum of declared coder outputs bounded.
 const MAX_7Z_HEADER_BYTES: u64 = 16 * 1024 * 1024;
+/// Tighter bound when the caller restricts decoder memory (server use): the
+/// parsed header holds one record per entry, so a 16 MiB header can mean
+/// millions of entries and hundreds of MiB before the entry limit is checkable.
+/// 2 MiB comfortably covers the 10,000 entries the importer accepts.
+const MAX_7Z_HEADER_BYTES_RESTRICTED: u64 = 2 * 1024 * 1024;
 
 struct SevenZHeader<'a> {
     bytes: &'a [u8],
@@ -380,7 +437,12 @@ impl SevenZHeader<'_> {
     }
 }
 
+#[cfg(test)]
 fn check_7z_encoded_header(bytes: &[u8]) -> Result<(), ArchiveError> {
+    check_7z_encoded_header_with(bytes, MAX_7Z_HEADER_BYTES)
+}
+
+fn check_7z_encoded_header_with(bytes: &[u8], max_bytes: u64) -> Result<(), ArchiveError> {
     let mut header = SevenZHeader { bytes };
     header.expect(0x17)?; // kEncodedHeader
     let mut section = header.byte()?;
@@ -411,14 +473,19 @@ fn check_7z_encoded_header(bytes: &[u8]) -> Result<(), ArchiveError> {
     let mut unpacked = 0u64;
     for _ in 0..outputs {
         unpacked = unpacked.checked_add(header.number()?).ok_or(ArchiveError::LimitExceeded)?;
-        if unpacked > MAX_7Z_HEADER_BYTES { return Err(ArchiveError::LimitExceeded); }
+        if unpacked > max_bytes { return Err(ArchiveError::LimitExceeded); }
     }
     // The remaining CRC/substream metadata cannot increase coder output sizes;
     // let the library validate it, including ordinary solid-header layouts.
     Ok(())
 }
 
+#[cfg(test)]
 fn check_7z_header<R: Read + Seek>(reader: &mut R) -> Result<(), ArchiveError> {
+    check_7z_header_with(reader, MAX_7Z_HEADER_BYTES)
+}
+
+fn check_7z_header_with<R: Read + Seek>(reader: &mut R, max_bytes: u64) -> Result<(), ArchiveError> {
     let mut signature = [0u8; 32];
     reader.read_exact(&mut signature)?;
     if &signature[..6] != b"7z\xbc\xaf\x27\x1c" || signature[6] != 0 {
@@ -426,7 +493,7 @@ fn check_7z_header<R: Read + Seek>(reader: &mut R) -> Result<(), ArchiveError> {
     }
     let offset = u64::from_le_bytes(signature[12..20].try_into().unwrap());
     let size = u64::from_le_bytes(signature[20..28].try_into().unwrap());
-    if size > MAX_7Z_HEADER_BYTES { return Err(ArchiveError::LimitExceeded); }
+    if size > max_bytes { return Err(ArchiveError::LimitExceeded); }
     // A missing start header enables the library's recovery scan, whose guessed
     // header would not have passed this check.
     if size == 0 { return Err(unreadable("missing 7z next header")); }
@@ -438,16 +505,51 @@ fn check_7z_header<R: Read + Seek>(reader: &mut R) -> Result<(), ArchiveError> {
     reader.seek(SeekFrom::Start(start))?;
     let mut header = vec![0; size as usize];
     reader.read_exact(&mut header)?;
-    if header[0] == 0x17 { check_7z_encoded_header(&header)?; }
+    if header[0] == 0x17 { check_7z_encoded_header_with(&header, max_bytes)?; }
     reader.rewind()?;
     Ok(())
 }
 
-fn open_7z(path: &Path) -> Result<(sevenz_rust2::ArchiveReader<BufReader<File>>, bool), ArchiveError> {
+/// Upper bound for the memory the decoder of `coder` may reserve, `None` for
+/// methods that need no noteworthy amount (copy, filters, bzip2). Read from the
+/// coder properties like the library does: the LZMA/LZMA2 dictionary and the PPMd
+/// model are sized by what the header declares, so the declared value is the
+/// number to bound (a decoder may use less, e.g. a dictionary capped by the data).
+fn sevenz_coder_memory(coder: &sevenz_rust2::Coder) -> Option<u64> {
+    use sevenz_rust2::EncoderMethod;
+    let props = coder.properties();
+    let id = coder.encoder_method_id();
+    if id == EncoderMethod::ID_LZMA2 {
+        let bits = u64::from(*props.first()?);
+        return Some(match bits {
+            40.. => u64::from(u32::MAX),
+            _ => (2 | (bits & 1)) << (bits / 2 + 11),
+        });
+    }
+    if id == EncoderMethod::ID_LZMA {
+        let dict = props.get(1..5)?;
+        return Some(u64::from(u32::from_le_bytes(dict.try_into().ok()?)));
+    }
+    if id == EncoderMethod::ID_PPMD {
+        let mem = props.get(1..5)?;
+        return Some(u64::from(u32::from_le_bytes(mem.try_into().ok()?)));
+    }
+    None
+}
+
+fn open_7z(
+    path: &Path,
+    memory_limit: Option<u64>,
+) -> Result<(sevenz_rust2::ArchiveReader<BufReader<File>>, bool), ArchiveError> {
     let mut file = BufReader::new(File::open(path)?);
-    check_7z_header(&mut file)?;
-    let reader =
+    let header_bytes = if memory_limit.is_some() { MAX_7Z_HEADER_BYTES_RESTRICTED } else { MAX_7Z_HEADER_BYTES };
+    check_7z_header_with(&mut file, header_bytes)?;
+    let mut reader =
         sevenz_rust2::ArchiveReader::new(file, sevenz_rust2::Password::empty()).map_err(sevenz_error)?;
+    // The library defaults to one worker per CPU for LZMA2. Each worker decodes a
+    // whole packet into its own buffer, so a few KiB of zeros can cost hundreds of
+    // MiB of resident memory. A single thread streams through the dictionary only.
+    reader.set_thread_count(1);
     // LZMA/LZMA2 reserve memory up to the unpacked size of the block (at most the
     // dictionary size). So limit the block sizes BEFORE decoding - `sevenz-rust2`
     // itself has no memory limit.
@@ -460,6 +562,23 @@ fn open_7z(path: &Path) -> Result<(sevenz_rust2::ArchiveReader<BufReader<File>>,
     if too_large {
         return Err(ArchiveError::LimitExceeded);
     }
+    // The coders of one block run as a chain at the same time, so their memory
+    // adds up; blocks are decoded one after the other, so the largest block counts.
+    // A malformed property (too short to read) is rejected by the library at
+    // decode time; only the declared sizes matter here.
+    if let Some(limit) = memory_limit {
+        let hungry = reader.archive().blocks.iter().any(|block| {
+            block
+                .coders
+                .iter()
+                .filter_map(sevenz_coder_memory)
+                .fold(0u64, u64::saturating_add)
+                > limit
+        });
+        if hungry {
+            return Err(ArchiveError::MemoryLimit);
+        }
+    }
     let encrypted = reader.archive().blocks.iter().any(|block| {
         block
             .coders
@@ -469,8 +588,8 @@ fn open_7z(path: &Path) -> Result<(sevenz_rust2::ArchiveReader<BufReader<File>>,
     Ok((reader, encrypted))
 }
 
-fn list_7z(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
-    let (reader, encrypted) = open_7z(path)?;
+fn list_7z(path: &Path, memory_limit: Option<u64>) -> Result<Vec<EntryMeta>, ArchiveError> {
+    let (reader, encrypted) = open_7z(path, memory_limit)?;
     Ok(reader
         .archive()
         .files
@@ -481,7 +600,7 @@ fn list_7z(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
 }
 
 fn extract_7z(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
-    let (mut reader, encrypted) = open_7z(path)?;
+    let (mut reader, encrypted) = open_7z(path, ex.sevenz_memory_limit())?;
     if encrypted {
         return Err(ArchiveError::Encrypted);
     }
@@ -492,7 +611,7 @@ fn extract_7z(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
         let meta = sevenz_meta(entry, false);
         let outcome = match ex.prepare(&meta) {
             Ok(Some(target)) => ex.write_from(&target, data),
-            Ok(None) => Ok(()),
+            Ok(None) => ex.drain(data),
             Err(e) => Err(e),
         };
         match outcome {
@@ -645,7 +764,7 @@ mod tests {
         // No compressed payload or valid CRC: reaching the decoder would return
         // Unreadable, so LimitExceeded proves rejection before decoding.
         std::fs::write(&path, encoded_header_fixture(&[33_554_432])).unwrap();
-        let result = open_7z(&path);
+        let result = open_7z(&path, None);
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(matches!(result, Err(ArchiveError::LimitExceeded)));
     }

@@ -34,8 +34,15 @@ Backend zusammen mit `KATALOG_WRITE=1`, Anmeldung und einer expliziten
 `KATALOG_ALLOWED_HOSTS`-Liste. Die Browser-Oberfläche folgt separat in Teil C.
 **Upload legt Dateien dauerhaft auf dem Server ab: nur im Heimnetz oder über VPN
 betreiben.** Desktop und Webserver dürfen niemals gleichzeitig dieselbe DB nutzen.
-Nur `.3mf`, `.stl`, `.obj`, `.stp` und `.step` sind erlaubt; Archive (ZIP/7z/RAR)
-bleiben der Desktop-App vorbehalten. Dateien bleiben im Upload-Ordner, ohne
+Erlaubt sind `.3mf`, `.stl`, `.obj`, `.stp`, `.step` sowie die Archive `.zip` und
+`.7z`; RAR und tar bleiben der Desktop-App vorbehalten (Fehler
+`archive_format_unsupported`). Aus einem Archiv werden nur die darin enthaltenen
+Modelle übernommen und wie einzelne Uploads importiert (Parsergrenzen,
+Duplikaterkennung, Journal); alle anderen Dateien, ausführbare Dateien, Links und
+verschachtelte Archive werden übersprungen und im Ergebnis gezählt. Verschlüsselte
+Archive (`archive_encrypted`) werden abgelehnt. Das Archiv selbst bleibt als Upload
+liegen, wird nicht automatisch gelöscht und lässt sich in der Liste verwerfen (löscht nur das
+Archiv, nicht die Modelle). Dateien bleiben im Upload-Ordner, ohne
 Zielordner-Auswahl und ohne Kopieren/Verschieben beim Import. STEP wird ohne
 OCCT/`step-preview` importiert: keine STEP-Metadaten oder Vorschau im Server.
 
@@ -45,6 +52,30 @@ braucht dort sowie bei DB und Auth-Datei Schreibrechte. Upload-Dateien erhalten
 0644. Ein Symlink als Upload-Ordner und Überschneidungen (gleich, Eltern-/Kindpfad)
 mit DB-, Auth-, Trash- oder Static-Verzeichnissen verhindern den Start. Andere
 Modellfreigaben können lesend bleiben.
+
+`KATALOG_COMPANION_MAX_MB` ist die Größengrenze einer einzelnen Begleitdatei
+(Hochladen und Herunterladen) in MiB (Standard 1024, 1–4096); sie gilt nur mit
+`KATALOG_FILE_OPS=1`. Begleitdateien werden beim Hochladen direkt in den
+`<Modell>_extras`-Ordner gestreamt und nicht im Speicher gesammelt; es läuft
+höchstens ein Begleitdatei-Upload gleichzeitig, und der freie Platz muss die
+Dateigröße plus 256 MiB Reserve übersteigen.
+
+Begleitdatei-Upload (Deutsch): Das Hochladen einzelner Begleitdateien (Bilder, PDF, TXT, MD)
+braucht `KATALOG_WRITE=1` und `KATALOG_FILE_OPS=1`, aber keinen `[upload]`-Bereich. Die Route
+`POST /api/companion-upload` nimmt den Inhalt als rohen Body; die Größengrenze nennt der Server
+dem Browser, der zu große oder leere Dateien vorher abweist. Ein Reverse Proxy muss den Body
+bis zu dieser Grenze durchlassen und darf ihn nicht puffern, sonst scheitert der Upload mit 413
+oder bricht ab (nginx: `client_max_body_size` mindestens `KATALOG_COMPANION_MAX_MB`, dazu
+`proxy_request_buffering off`; Caddy: `request_body { max_size … }`; Traefik: Buffering-
+Middleware mit `maxRequestBodyBytes` oder ohne Puffer). Ein Upload bricht nach 60 Sekunden ohne
+Fortschritt ab und räumt seine Teildatei weg; die Sitzung wird vor dem Abschluss noch einmal
+geprüft. Einzelne Begleitdateien lassen sich im Web entfernen und wiederherstellen: „Entfernen“
+verschiebt die Datei in den Web-Papierkorb (`.katalog-papierkorb/companion-<id>-…`), „Wiederherstellen“
+holt sie zurück (ein belegter Name bekommt eine Nummer). Beides ist journalisiert; hartes
+Löschen gibt es nur über „Papierkorb leeren“, das auch einzeln entfernte Begleitdateien
+mitnimmt (mit Passwort wie bei Modellen, in Blöcken). Der Abgleich am Desktop
+meldet im Bericht „Begleitdateien ohne Datei“ auch Web-Begleitdateien, deren Datei außerhalb
+fehlt.
 
 `KATALOG_UPLOAD_MAX_MB` ist die Dateigrenze in MiB (Standard 1024, 1–4096),
 `KATALOG_UPLOAD_MAX_FILES` begrenzt gleichzeitig laufende Uploads (Standard 2,
@@ -57,6 +88,19 @@ Upload. Ein Import-Job verarbeitet sequenziell; die Grenzen sind keine RSS-Grenz
 Parser, XML, Mesh und Metadaten können mehrere Kopien benötigen. Mehrere GiB freien
 RAM einplanen und bei knappen Containern die Grenzen senken; gemessener
 Spitzenspeicher hängt von den Dateien ab.
+
+`KATALOG_ARCHIVE_MAX_MB` (Standard 1024, 1–4096) begrenzt, wie groß ein Archiv
+entpackt höchstens sein darf; dazu gilt die Grenze von 10.000 Einträgen. Das Archiv
+wird vor dem Entpacken geprüft (Größen laut Kopfdaten, Eintragszahl, Verschlüsselung);
+Plattenreserve und das Kontingent offener Uploads werden vorab auf die enthaltenen
+Modelle angerechnet. ZIP wird Eintrag für Eintrag gelesen, 7z als Datenstrom; ein 7z
+mit mehr als 256 MiB Wörterbuch- bzw. PPMd-Speicher je Dekoder wird abgelehnt. Es
+wird nur ein Archiv gleichzeitig entpackt. Dabei entsteht ein versteckter Ordner
+`.archive-staging-…` im Upload-Ordner; Reste eines Absturzes entfernt der nächste Start.
+Ein Archiv darf höchstens 30 Minuten entpackt werden (`archive_timeout`).
+Die Modelle erscheinen anschließend als normale Uploads (höchstens 200 offene Uploads)
+und liegen flach im Upload-Ordner, die Ordnerstruktur des Archivs entfällt; bei gleichem
+Namen folgt der Zusatz „ (2)“.
 
 Nicht importierte Uploads sind auf 200 Dateien/20 GiB begrenzt, zusätzlich bleiben
 256 MiB Speicherplatzreserve. Das dauerhafte Journal `web-uploads.json` liegt neben
@@ -85,7 +129,13 @@ with `KATALOG_WRITE=1`, authentication and an explicit `KATALOG_ALLOWED_HOSTS` l
 The browser interface follows separately in part C. **Uploads store files permanently
 on the server: use a home network or VPN only.** Never run the desktop app and web
 server against the same database concurrently. Supported files are `.3mf`, `.stl`,
-`.obj`, `.stp`, `.step`; ZIP/7z/RAR archives require the desktop app. Files remain in
+`.obj`, `.stp`, `.step` plus `.zip` and `.7z` archives; RAR and tar require the
+desktop app (error `archive_format_unsupported`). Only the models inside an archive
+are taken over and imported like single uploads (parser limits, duplicate detection,
+journal); every other file, executables, links and nested archives are skipped and
+counted in the result. Encrypted archives (`archive_encrypted`) are refused. The
+archive itself stays as an upload, is never deleted automatically and can be discarded
+from the list (removes only the archive, not the models). Files remain in
 the upload directory: import neither copies nor moves them and has no target-folder
 selection. The server excludes OCCT/`step-preview`, so STEP metadata and preview
 are unavailable.
@@ -95,6 +145,28 @@ Create the upload directory first (0755) and mount it writable. It must be under
 access there and to DB/auth storage. Uploaded files use 0644. Startup rejects an
 upload directory symlink or any ancestor/descendant overlap with DB, auth, trash
 or static directories. Other model shares can remain read-only.
+
+`KATALOG_COMPANION_MAX_MB` sets the size limit of one companion file (upload and
+download) in MiB (default 1024, range 1–4096); it applies with `KATALOG_FILE_OPS=1`
+only. Companion files are streamed straight into the `<model>_extras` folder and are
+not collected in memory; at most one companion upload runs at a time, and free space
+must exceed the file size plus a 256 MiB reserve.
+
+Companion upload (English): uploading single companion files (images, PDF, TXT, MD) needs
+`KATALOG_WRITE=1` and `KATALOG_FILE_OPS=1` but no `[upload]` section. `POST /api/companion-upload`
+takes the content as a raw body; the server tells the browser the size limit, and the browser
+rejects oversized or empty files before sending. A reverse proxy must let the body through up to
+that limit and must not buffer it, otherwise the upload fails with 413 or breaks off (nginx:
+`client_max_body_size` at least `KATALOG_COMPANION_MAX_MB`, plus `proxy_request_buffering off`;
+Caddy: `request_body { max_size … }`; Traefik: buffering middleware with `maxRequestBodyBytes`
+or none). An upload stops after 60 seconds without progress and removes its partial file; the
+session is checked once more before the file is finalised. Single companion files can be
+removed and restored on the web: "Remove" moves the file into the web trash
+(`.katalog-papierkorb/companion-<id>-…`), "Restore" brings it back (a taken name gets a
+number). Both are journalled; permanent deletion only happens through "Empty trash", which
+also takes individually removed companion files along (with the password, in blocks, as for
+models). The desktop's disk sync report "Companion files without a file" also
+lists web companions whose file went missing outside.
 
 `KATALOG_UPLOAD_MAX_MB` sets the per-file MiB limit (default 1024, range 1–4096);
 `KATALOG_UPLOAD_MAX_FILES` limits concurrent uploads (default 2, range 1–32).
@@ -106,6 +178,17 @@ configuration fails startup even with uploads disabled. Only one import job runs
 parsing sequentially. These limits do not cap RSS: parser/XML/mesh/metadata copies
 can require several GiB RAM. Lower limits for small containers; measured peak
 memory depends on the files.
+
+`KATALOG_ARCHIVE_MAX_MB` (default 1024, range 1–4096) caps what one archive may
+unpack to, on top of the 10,000-entry limit. An archive is checked before unpacking
+(header sizes, entry count, encryption); free-space reserve and the open-upload quota
+are charged up front for the models it contains. ZIP is read entry by entry and 7z
+as a stream; a 7z whose decoder dictionary or PPMd memory exceeds 256 MiB is refused.
+Only one archive unpacks at a time, into a hidden `.archive-staging-…` folder inside
+the upload directory; the next start removes leftovers of a crash. Unpacking one archive may take 30 minutes
+at most (`archive_timeout`). The models then
+appear as ordinary uploads (at most 200 open uploads) and sit flat in the upload
+directory, the archive's folder structure is dropped; equal names get a " (2)" suffix.
 
 Pending uploads are limited to 200 files/20 GiB with a 256 MiB disk-space reserve.
 The durable `web-uploads.json` journal (0600) sits beside `KATALOG_AUTH_FILE`; back
@@ -288,3 +371,23 @@ Alte Upload-Journale können importierte oder gerade importierende Einträge ohn
 `fileId` enthalten. Sind Uploads dabei deaktiviert, verweigert der Server den Start,
 weil die Zuordnung nicht sicher rekonstruiert werden kann. Für die Recovery einmalig
 die ursprüngliche Upload-Konfiguration einschließlich `KATALOG_UPLOAD_DIR` aktivieren.
+
+### Slicer-Links: „In Slicer öffnen“ (Deutsch)
+
+`KATALOG_SLICER_LINKS=1` schaltet ein Menü „In Slicer öffnen“ ein (Standard: aus; jeder andere Wert außer `0` oder `1` verhindert den Start). Der Browser kann kein Programm starten, deshalb erzeugt der Server auf Wunsch einen **signierten Download-Link** (`/dl/<id>/<Ablauf>.<Revision>.<Signatur>/<Dateiname>`), und die Seite übergibt ihn über das Link-Schema des Slicers (OrcaSlicer, Bambu Studio nur für 3MF, Creality Print, ElegooSlicer, Cura, Lychee, SuperSlicer). Das Feature braucht keinen Schreibmodus.
+
+- **Der Link ist ein Zugangsschlüssel.** Wer ihn kennt, kann die eine Datei bis zum Ablauf ohne Anmeldung herunterladen; er taucht im Verlauf des Slicers und in Proxy-Protokollen auf. Deshalb gilt er nur kurz (`KATALOG_SLICER_LINK_TTL_SECONDS`, Standard 3600, 60–86400), wird nie verlängert und ist an die Datei und ihren Zustand gebunden: Ändert oder ersetzt jemand die Datei, wird der Link ungültig. Der Signaturschlüssel liegt nur im Arbeitsspeicher; **ein Neustart macht alle Links ungültig.** Ein Passwortwechsel erneuert den Schlüssel ebenfalls: alle bis dahin ausgestellten Links sind danach ungültig. Abmelden ändert nichts an bestehenden Links.
+- **Grenzen der Bindung an die Datei:** Wird dieselbe Datei wieder an ihren Platz gelegt (Wiederherstellen aus dem Papierkorb per Umbenennen) oder an Ort und Stelle mit gleicher Größe und gleichem Änderungszeitpunkt ersetzt, bleiben Inode, Größe, Zeit und Hash gleich, und ein früher ausgestellter Link gilt bis zu seinem Ablauf wieder. Der Ablauf nutzt die Systemuhr des Servers: wird sie zurückgestellt, verlängern sich die Links entsprechend.
+- Abgerufen werden kann nur über `GET`/`HEAD` (mit Bereichsanfragen) und nur für Hosts aus `KATALOG_ALLOWED_HOSTS`. Papierkorb, fehlende Dateien, Symlinks und Pfade außerhalb von `KATALOG_ROOTS` werden nicht ausgeliefert. Ungültige Anfragen werden je Quelladresse begrenzt (20 pro Minute, danach 429); gültige Links derselben Adresse werden dadurch nicht gesperrt. Höchstens 4 solche Downloads gleichzeitig; ein einzelner Download endet nach 2 Stunden insgesamt oder 120 Sekunden ohne Lesefortschritt; 60 neue Links pro Minute und Sitzung. Hinter einem Proxy `KATALOG_TRUST_PROXY=1` nur mit korrektem `X-Forwarded-For` setzen, sonst teilen sich alle Clients ein Limit.
+- Das Betriebsprotokoll (stderr) enthält je Abruf eine Zeile `slicer_dl time=… file_id=… status=… size=…` – ohne Link, Signatur oder Pfad.
+- **Voraussetzung:** Der Slicer läuft auf dem PC des Benutzers und muss den Server unter derselben Adresse erreichen wie der Browser. Bei HTTPS mit selbstsigniertem Zertifikat lehnen viele Slicer den Link ab: im Heimnetz `http://` oder einen Reverse Proxy mit gültigem Zertifikat verwenden. Unter Linux muss das URL-Schema des Slicers registriert sein. Nicht mit echten Slicern getestet.
+
+### Slicer links: "Open in slicer" (English)
+
+`KATALOG_SLICER_LINKS=1` enables an "Open in slicer" menu (default: off; any value other than `0` or `1` stops the server from starting). A browser cannot start a program, so on request the server creates a **signed download link** (`/dl/<id>/<expiry>.<revision>.<signature>/<file name>`), and the page hands it to the slicer through its link scheme (OrcaSlicer, Bambu Studio for 3MF only, Creality Print, ElegooSlicer, Cura, Lychee, SuperSlicer). The feature does not need write mode.
+
+- **The link is an access key.** Whoever knows it can download that one file without signing in until it expires; it shows up in the slicer's history and in proxy logs. It is therefore short-lived (`KATALOG_SLICER_LINK_TTL_SECONDS`, default 3600, 60-86400), never extended, and bound to the file and its state: if the file is changed or replaced, the link stops working. The signing key lives in memory only; **a restart invalidates every link.** A password change also renews the key: every link issued before it is invalid afterwards. Logging out does not affect existing links.
+- **Limits of the binding to the file:** if the same file is put back (restored from the trash by renaming) or replaced in place with the same size and modification time, inode, size, time and hash stay the same, and an earlier link works again until it expires. Expiry uses the server's system clock: setting it back extends the links accordingly.
+- Links are served for `GET`/`HEAD` only (range requests included) and only for hosts in `KATALOG_ALLOWED_HOSTS`. Trash entries, missing files, symlinks and paths outside `KATALOG_ROOTS` are not served. Invalid requests are limited per source address (20 per minute, then 429); valid links from the same address are not blocked by this. At most 4 such downloads run at once; a single download ends after 2 hours in total or 120 seconds without read progress; 60 new links per minute and session. Behind a proxy set `KATALOG_TRUST_PROXY=1` only with a correct `X-Forwarded-For`, otherwise all clients share one limit.
+- The operation log (stderr) has one line per request, `slicer_dl time=... file_id=... status=... size=...`, without link, signature or path.
+- **Requirement:** the slicer runs on the user's PC and must reach the server at the same address as the browser. Many slicers reject links over HTTPS with a self-signed certificate: use `http://` on a home network or a reverse proxy with a valid certificate. On Linux the slicer's URL scheme must be registered. Not tested with real slicers.

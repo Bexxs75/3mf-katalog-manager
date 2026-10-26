@@ -14,6 +14,8 @@ pub struct UploadConfig {
     pub dir: PathBuf,
     pub max_bytes: u64,
     pub max_files: usize,
+    /// Upper bound for what ONE uploaded archive may unpack to.
+    pub archive_max_bytes: u64,
     pub limits: katalog_core::import::files::WebImportLimits,
 }
 
@@ -30,8 +32,12 @@ pub struct Config {
     pub write: bool,
     pub file_ops: bool,
     pub file_ops_daily_limit: u64,
+    /// Largest single companion file the web accepts and serves, in bytes.
+    pub companion_max_bytes: u64,
     pub file_ops_ack: Vec<String>,
     pub file_roots: Vec<PathBuf>,
+    /// Lifetime in seconds of "open in slicer" links; `None` leaves the feature off.
+    pub slicer_links: Option<u64>,
     pub upload: Option<UploadConfig>,
     pub password: Option<String>,
     pub password_file: Option<PathBuf>,
@@ -155,6 +161,7 @@ impl Config {
         };
         let max_mb = positive_limit(&lookup, "KATALOG_UPLOAD_MAX_MB", 1024, 4096)?;
         let max_files = positive_limit(&lookup, "KATALOG_UPLOAD_MAX_FILES", 2, 32)?;
+        let archive_mb = positive_limit(&lookup, "KATALOG_ARCHIVE_MAX_MB", 1024, 4096)?;
         let mesh_mb = positive_limit(&lookup, "KATALOG_IMPORT_MAX_MESH_MB", 512, 512)?;
         let unpacked_mb = positive_limit(&lookup, "KATALOG_IMPORT_MAX_UNPACKED_MB", 1024, 1024)?;
         let vertices =
@@ -169,6 +176,7 @@ impl Config {
             dir: PathBuf::from(dir),
             max_bytes: max_mb * 1024 * 1024,
             max_files: max_files as usize,
+            archive_max_bytes: archive_mb * 1024 * 1024,
             limits: katalog_core::import::files::WebImportLimits {
                 max_file_bytes: max_mb * 1024 * 1024,
                 max_mesh_file_bytes: mesh_mb * 1024 * 1024,
@@ -177,14 +185,27 @@ impl Config {
                 max_triangles: triangles as usize,
             },
         });
+        let companion_mb = positive_limit(&lookup, "KATALOG_COMPANION_MAX_MB", 1024, 4096)?;
         let file_ops = lookup("KATALOG_FILE_OPS").as_deref() == Some("1");
         let file_ops_daily_limit = positive_limit(&lookup, "KATALOG_FILE_OPS_DAILY_LIMIT", 2000, u64::MAX)?;
         let file_ops_ack = lookup("KATALOG_FILE_OPS_ACK").map(|v| v.split(',').map(str::to_owned).collect()).unwrap_or_default();
         if file_ops && (!write || allow_no_auth || lookup("KATALOG_ALLOWED_HOSTS").is_none_or(|v| v.trim().is_empty())) {
             return Err("Dateiverwaltung erfordert Schreibmodus, Anmeldung und explizite Hostliste".into());
         }
+        let slicer_links = match lookup("KATALOG_SLICER_LINKS").as_deref() {
+            None | Some("0") => None,
+            Some("1") => Some(ranged_limit(
+                &lookup,
+                "KATALOG_SLICER_LINK_TTL_SECONDS",
+                crate::slicer::DEFAULT_TTL_SECONDS,
+                crate::slicer::MIN_TTL_SECONDS,
+                crate::slicer::MAX_TTL_SECONDS,
+            )?),
+            Some(_) => return Err("KATALOG_SLICER_LINKS muss 0 oder 1 sein".into()),
+        };
         let mut config = Self {
-            file_ops, file_ops_daily_limit, file_ops_ack, file_roots,
+            slicer_links,
+            file_ops, file_ops_daily_limit, companion_max_bytes: companion_mb * 1024 * 1024, file_ops_ack, file_roots,
             static_dir,
             db_path,
             roots,
@@ -201,6 +222,24 @@ impl Config {
         validate_upload_config(&mut config)?;
         validate_fileops_config(&config)?;
         Ok(config)
+    }
+}
+
+/// Like `positive_limit` with a lower bound; the bounds are part of the message.
+fn ranged_limit(
+    lookup: &impl Fn(&str) -> Option<String>,
+    key: &str,
+    default: u64,
+    min: u64,
+    max: u64,
+) -> Result<u64, String> {
+    match lookup(key) {
+        None => Ok(default),
+        Some(value) => value
+            .parse::<u64>()
+            .ok()
+            .filter(|n| value.bytes().all(|b| b.is_ascii_digit()) && (min..=max).contains(n))
+            .ok_or_else(|| format!("{key} muss eine ganze Zahl zwischen {min} und {max} sein")),
     }
 }
 
@@ -250,6 +289,8 @@ pub fn validate_upload_config(config: &mut Config) -> Result<(), String> {
         || upload.max_bytes > 4096 * 1024 * 1024
         || upload.max_files == 0
         || upload.max_files > 32
+        || upload.archive_max_bytes == 0
+        || upload.archive_max_bytes > 4096 * 1024 * 1024
     {
         return Err("Ungültige Upload-Grenzen".into());
     }
@@ -484,11 +525,22 @@ mod tests {
     }
 
     #[test]
+    fn the_companion_limit_defaults_to_1024_mib_and_is_validated() {
+        assert_eq!(config(&[]).unwrap().companion_max_bytes, 1024 * 1024 * 1024);
+        assert_eq!(config(&[("KATALOG_COMPANION_MAX_MB", "1")]).unwrap().companion_max_bytes, 1024 * 1024);
+        assert_eq!(config(&[("KATALOG_COMPANION_MAX_MB", "4096")]).unwrap().companion_max_bytes, 4096 * 1024 * 1024);
+        for bad in ["", "0", "-1", "+1", " 1", "1.5", "4097", "abc", "999999999999999999999999"] {
+            assert!(config(&[("KATALOG_COMPANION_MAX_MB", bad)]).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
     fn upload_limits_are_validated_even_when_disabled() {
         assert!(config(&[]).unwrap().upload.is_none());
         for key in [
             "KATALOG_UPLOAD_MAX_MB",
             "KATALOG_UPLOAD_MAX_FILES",
+            "KATALOG_ARCHIVE_MAX_MB",
             "KATALOG_IMPORT_MAX_MESH_MB",
             "KATALOG_IMPORT_MAX_UNPACKED_MB",
             "KATALOG_IMPORT_MAX_VERTICES",
@@ -500,6 +552,9 @@ mod tests {
         }
         assert!(config(&[("KATALOG_UPLOAD_MAX_MB", "4097")]).is_err());
         assert!(config(&[("KATALOG_UPLOAD_MAX_FILES", "33")]).is_err());
+        assert!(config(&[("KATALOG_ARCHIVE_MAX_MB", "4097")]).is_err());
+        assert!(config(&[("KATALOG_ARCHIVE_MAX_MB", "4096")]).is_ok());
+        assert!(config(&[("KATALOG_ARCHIVE_MAX_MB", "1")]).is_ok());
         assert!(config(&[("KATALOG_IMPORT_MAX_MESH_MB", "513")]).is_err());
         assert!(config(&[("KATALOG_UPLOAD_MAX_MB", "4096")]).is_ok());
         assert!(config(&[("KATALOG_UPLOAD_DIR", "/models")]).is_err());
@@ -542,6 +597,7 @@ mod tests {
         );
         assert_eq!(upload.max_bytes, 1024 * 1024 * 1024);
         assert_eq!(upload.max_files, 2);
+        assert_eq!(upload.archive_max_bytes, 1024 * 1024 * 1024);
         assert_eq!(std::fs::read_dir(&upload.dir).unwrap().count(), 0);
         assert!(make(&base.join("outside"), &models).is_err());
         let all = base.to_string_lossy();
@@ -607,6 +663,7 @@ mod tests {
             dir: PathBuf::from("/u"),
             max_bytes: 1,
             max_files: 1,
+            archive_max_bytes: 1,
             limits: katalog_core::import::files::WebImportLimits {
                 max_file_bytes: 1,
                 max_mesh_file_bytes: 1,

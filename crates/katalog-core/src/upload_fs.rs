@@ -145,6 +145,22 @@ impl Directory {
         })?;
         Ok(())
     }
+    /// Hard-links `source` of another directory into this one under `target`.
+    /// Fails with `AlreadyExists` instead of replacing; never follows a symlink
+    /// at `source`.
+    pub fn link_from(&self, source_dir: &Directory, source: &str, target: &str) -> io::Result<()> {
+        let (source, target) = (cstring(source)?, cstring(target)?);
+        cvt(unsafe {
+            libc::linkat(
+                source_dir.0.as_raw_fd(),
+                source.as_ptr(),
+                self.0.as_raw_fd(),
+                target.as_ptr(),
+                0,
+            )
+        })?;
+        Ok(())
+    }
     pub fn unlink(&self, name: &str) -> io::Result<()> {
         let name = cstring(name)?;
         cvt(unsafe { libc::unlinkat(self.0.as_raw_fd(), name.as_ptr(), 0) })?;

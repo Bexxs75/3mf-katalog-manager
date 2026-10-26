@@ -7,9 +7,24 @@ export interface PluralForms {
 
 export interface Translations {
   webUploadTitle: string;
+  webPhoneTitle: string;
+  webPhoneBody: string;
+  webPhoneContinue: string;
   webUploadChoose: string;
   webUploadHint: string;
   webUploadArchives: string;
+  webUploadArchiveEncrypted: string;
+  webUploadArchiveTooLarge: string;
+  webUploadArchiveUnreadable: string;
+  webUploadArchiveNoModels: string;
+  webUploadModelsTaken: PluralForms;
+  webUploadSkipped: PluralForms;
+  webUploadReasonUnreadable: string;
+  webUploadReasonDatabase: string;
+  webUploadArchiveTooMany: string;
+  webUploadArchiveMemory: string;
+  webUploadArchiveTimeout: string;
+  webUploadArchiveImported: string;
   webUploadFolders: string;
   webUploadType: string;
   webUploadInvalid: string;
@@ -59,6 +74,7 @@ export interface Translations {
   webPhotoTooLarge: string;
   webPhotoFormat: string;
   webReadOnly: string;
+  webEmptyCatalogUpload: string;
   webUnavailable: string;
   webSessionChecking: string;
   webLogin: string;
@@ -110,6 +126,27 @@ export interface Translations {
   diskSyncRunning: string;
   diskSyncFileLabel: string;
   diskSyncRootLabel: string;
+  diskReportOpen: string;
+  diskReportTitle: string;
+  diskReportReadOnly: string;
+  diskReportRunning: string;
+  diskReportAllGood: string;
+  diskReportMissingHeading: string;
+  diskReportNewHeading: string;
+  diskReportCompanionHeading: string;
+  diskReportMissing: PluralForms;
+  diskReportNew: PluralForms;
+  diskReportCompanions: PluralForms;
+  diskReportNotFile: string;
+  diskReportTruncatedItems: string;
+  diskReportTruncatedEntries: string;
+  diskReportTruncatedTime: string;
+  diskReportRootUnreachable: string;
+  diskReportRootEmpty: string;
+  diskReportRootMostlyMissing: string;
+  diskReportOutside: PluralForms;
+  diskReportFailed: string;
+  diskReportRootLabel: string;
   diskSyncTitle: string;
   diskSyncCurrent: string;
   diskSyncLast: string;
@@ -423,6 +460,7 @@ export interface Translations {
   impMenuFolderHint: string;
   impMenuNoMove: string;
 
+  requestResultLost: string;
   importActiveError: string;
   pmConnected: string;
   pmConnectionError: string;
@@ -637,6 +675,9 @@ export interface Translations {
   cancel: string;
   delete: string;
   openInSlicer: string;
+  webSlicerHint: string;
+  webSlicerError: string;
+  webSlicerNotInstalled: string;
   renameLabel: string;
   renameError: string;
   renameEmptyNameError: string;
@@ -823,9 +864,17 @@ export interface Translations {
   queueFilamentShortLine: string;
   queueFilamentUnknownLine: string;
   rescanMetadataButton: string;
+  rescanFileUnavailable: string;
+  rescanFileUnsupported: string;
+  rescanStepUnavailable: string;
+  rescanFileTooLarge: string;
+  rescanFileInvalid: string;
+  rescanFileChanged: string;
   rescanMetadataSuccess: string;
   catalogBackupTitle: string;
   exportCatalogButton: string;
+  catalogBackupWebHint: string;
+  catalogBackupWebFailureHint: string;
   importCatalogButton: string;
   importCatalogConfirmQuestion: string;
   importCatalogConfirmYes: string;
@@ -914,6 +963,8 @@ export interface Translations {
   companionOpenContainer: string;
   companionMenu: string;
   companionReveal: string;
+  companionRemoveNamed: string;
+  companionRestoreAtDesktop: string;
   companionRemove: string;
   companionMissing: string;
   companionViewImage: string;
@@ -923,6 +974,10 @@ export interface Translations {
   companionAddFailed: string;
   companionsLoadFailed: string;
   companionsAdded: PluralForms;
+  companionUploading: string;
+  companionTooLarge: string;
+  companionEmpty: string;
+  companionDropHint: string;
   companionRestoreFailed: string;
   companionsRemovedToggle: string;
   companionRemovedDaysLeft: PluralForms;
@@ -931,6 +986,8 @@ export interface Translations {
   companionRestoreNamed: string;
   companionsRemovedHint: string;
   companionRestored: string;
+  companionDownload: string;
+  companionDownloadNamed: string;
   archiveSummaryCompanionsAssigned: PluralForms;
   archiveSummaryCompanionsIgnored: PluralForms;
   archiveSummaryUnsafeSkipped: PluralForms;

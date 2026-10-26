@@ -182,6 +182,10 @@ pub(crate) fn prepare(
     // Legacy entries lack IDs: resolve only against the original upload path,
     // retaining the journal identity for the Core's pre-mutation check.
     for e in ledger.entries().map_err(|_| "Upload-Journal ungültig")? {
+        // An unpacked archive never owns a catalog row.
+        if e.archive {
+            continue;
+        }
         if e.result
             .as_ref()
             .and_then(|r| r.get("fileId"))
@@ -227,6 +231,7 @@ pub(crate) fn prepare(
         journal,
         db: DbAdapter::new(db),
         ledger,
+        outcome: Default::default(),
     };
     let report = ops
         .recover()

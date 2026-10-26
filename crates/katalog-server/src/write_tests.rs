@@ -59,6 +59,8 @@ impl Fixture {
             changes: Arc::new(tokio::sync::Mutex::new(())),
             geometry: Arc::new(GeometryGate::default()),
             downloads: Arc::new(tokio::sync::Semaphore::new(4)),
+            export: crate::export::Runtime::new(),
+            slicer: None,
         });
         Self {
             app,
@@ -136,8 +138,10 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 49);
-    assert_eq!(crate::READ_COMMANDS.len(), 25);
+    assert_eq!(WRITE_COMMANDS.len(), 57);
+    assert_eq!(crate::write::ROUTE_WRITES, &["add_companion"]);
+    assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
+    assert_eq!(crate::READ_COMMANDS.len(), 30);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
     }
@@ -784,6 +788,7 @@ async fn photo_body_has_30_seconds_other_bodies_keep_15_seconds() {
         ("add_filament_spool", 30),
         ("update_filament_spool", 30),
         ("set_render_snapshot", 30),
+        ("set_custom_image", 30),
         ("set_favorite", 15),
         ("get_app_version", 15),
     ] {
@@ -1034,8 +1039,6 @@ async fn manager_http_all_writes_round_trip_and_rejected_commands_stay_closed() 
         json!([])
     );
     for cmd in [
-        "restock_filament_spool",
-        "consume_resin",
         "set_printer_link_enabled",
         "test_printer_connection",
         "remove_printer_connection",
@@ -1048,7 +1051,10 @@ async fn manager_http_all_writes_round_trip_and_rejected_commands_stay_closed() 
 #[tokio::test]
 async fn manager_http_auth_csrf_and_nonimage_body_limits_cover_every_write() {
     let f = Fixture::new(true);
-    for cmd in &WRITE_COMMANDS[18..] {
+    // Selected by name, not by position: file operations and the commands named here are
+    // exercised with their own bodies elsewhere.
+    let own_tests = ["remove_files_from_catalog", "start_upload_import", "discard_upload", "cancel_import", "set_favorite", "set_print_status", "add_tag"];
+    for cmd in WRITE_COMMANDS.iter().filter(|c| !crate::write::FILE_OPS_COMMANDS.contains(c) && !own_tests.contains(c)) {
         for (session, csrf, status) in [(None, false, 401), (Some(&f.session), false, 403)] {
             let request = f.request(
                 cmd,
@@ -1184,7 +1190,7 @@ async fn manager_http_images_large_bodies_chunked_overflow_and_strict_nested_dto
 }
 #[tokio::test(start_paused = true)]
 async fn manager_image_admission_rate_and_logout_during_body_wait() {
-    for cmd in ["add_filament_spool", "update_filament_spool", "set_render_snapshot"] {
+    for cmd in ["add_filament_spool", "update_filament_spool", "set_render_snapshot", "set_custom_image"] {
         let f = Fixture::new(true);
         let gate = f.app.writer.as_ref().unwrap();
         let permits = gate.admission.clone().acquire_many_owned(33).await.unwrap();
@@ -1507,4 +1513,619 @@ async fn catalog_removal_rolls_back_delete_failure_and_counts_only_main_rows() {
     let result=katalog_core::write::web::remove_files_from_catalog(&mut c,&[1,1,2]).unwrap();
     assert_eq!(result.value,2);
     assert_eq!(result.changes,2);
+}
+
+#[tokio::test]
+async fn restock_and_consume_resin_http_round_trip_and_strict_errors() {
+    let f = Fixture::new(true);
+    let filament = value(f.send("add_filament_spool", json!({"spool":manager_spool()})).await).await;
+    let mut resin = manager_spool();
+    resin["kind"] = json!("resin");
+    resin["diameterMm"] = json!(0);
+    resin["remainingWeightG"] = json!(100);
+    let bottle = value(f.send("add_filament_spool", json!({"spool":resin})).await).await;
+
+    let r = f.send("restock_filament_spool", json!({"templateId":filament["id"],"count":2,"weight":750.04,"price":null,"location":" Shelf B "})).await;
+    assert_eq!(r.status(), 200);
+    let created = value(r).await;
+    assert_eq!(created.as_array().unwrap().len(), 2);
+    assert_eq!(created[0]["originalWeightG"], json!(750.0));
+    assert_eq!(created[0]["location"], json!("Shelf B"));
+    assert_eq!(value(f.send("list_filament_spools", json!({})).await).await.as_array().unwrap().len(), 4);
+
+    let r = f.send("consume_resin", json!({"spoolId":bottle["id"],"amountMl":25.44})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await["remainingWeightG"], json!(74.6));
+
+    for (cmd, args, status) in [
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":21,"weight":1}), 422),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":0,"weight":1}), 422),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1,"weight":0}), 422),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1,"weight":1,"price":-1}), 422),
+        ("restock_filament_spool", json!({"templateId":"999999","count":1,"weight":1}), 404),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1.5,"weight":1}), 400),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":"1","weight":1}), 400),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1,"weight":"1"}), 400),
+        ("restock_filament_spool", json!({"templateId":1,"count":1,"weight":1}), 400),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1}), 400),
+        ("consume_resin", json!({"spoolId":bottle["id"],"amountMl":0}), 422),
+        ("consume_resin", json!({"spoolId":bottle["id"],"amountMl":-3}), 422),
+        ("consume_resin", json!({"spoolId":bottle["id"],"amountMl":"3"}), 400),
+        ("consume_resin", json!({"spoolId":filament["id"],"amountMl":3}), 422),
+        ("consume_resin", json!({"spoolId":"999999","amountMl":3}), 404),
+        ("consume_resin", json!({"spoolId":"abc","amountMl":3}), 400),
+        ("consume_resin", json!({"amountMl":3}), 400),
+    ] {
+        assert_eq!(f.send(cmd, args.clone()).await.status(), status, "{cmd} {args}");
+    }
+    assert_eq!(value(f.send("list_filament_spools", json!({})).await).await.as_array().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn restock_and_consume_resin_need_write_mode_and_a_session() {
+    let f = Fixture::new(false);
+    for cmd in ["restock_filament_spool", "consume_resin"] {
+        assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
+    }
+    let f = Fixture::new(true);
+    for cmd in ["restock_filament_spool", "consume_resin"] {
+        let r = router(f.app.clone())
+            .oneshot(f.request(cmd, Body::from("{}"), None, Some("http://localhost:8080"), true))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 401, "{cmd}");
+    }
+}
+
+#[tokio::test]
+async fn auto_tag_block_list_http_round_trip_and_strict_errors() {
+    let f = Fixture::new(true);
+    let list = || async { value(f.send("list_blocked_auto_tags", json!({})).await).await };
+    assert_eq!(list().await, json!([]));
+
+    // Blocking twice, in another language and case, ends in one entry (idempotent).
+    for tag in ["Multicolor", "MEHRFARBIG", "  multicolore "] {
+        assert_eq!(f.send("block_auto_tag", json!({"tag":tag})).await.status(), 200, "{tag}");
+    }
+    assert_eq!(f.send("block_auto_tag", json!({"tag":"Zahnrad"})).await.status(), 200);
+    assert_eq!(list().await, json!(["mehrfarbig", "zahnrad"]));
+
+    // Lifting a block that is not there is fine too.
+    assert_eq!(f.send("unblock_auto_tag", json!({"tag":"zahnrad"})).await.status(), 200);
+    assert_eq!(f.send("unblock_auto_tag", json!({"tag":"zahnrad"})).await.status(), 200);
+    assert_eq!(list().await, json!(["mehrfarbig"]));
+
+    let long = "x".repeat(101);
+    for (cmd, args, status) in [
+        ("block_auto_tag", json!({"tag":""}), 422),
+        ("block_auto_tag", json!({"tag":"   "}), 422),
+        ("block_auto_tag", json!({"tag":"a\nb"}), 422),
+        ("block_auto_tag", json!({"tag":long}), 422),
+        ("unblock_auto_tag", json!({"tag":""}), 422),
+        ("unblock_auto_tag", json!({"tag":long}), 422),
+        ("block_auto_tag", json!({"tag":5}), 400),
+        ("block_auto_tag", json!({"tag":null}), 400),
+        ("block_auto_tag", json!({}), 400),
+        ("unblock_auto_tag", json!({"tag":["a"]}), 400),
+        ("unblock_auto_tag", json!({}), 400),
+    ] {
+        assert_eq!(f.send(cmd, args.clone()).await.status(), status, "{cmd} {args}");
+    }
+    assert_eq!(list().await, json!(["mehrfarbig"]));
+}
+
+#[tokio::test]
+async fn suggested_auto_tags_http_reads_one_model_and_rejects_bad_ids() {
+    let f = Fixture::new(true);
+    let c = katalog_core::db::connect(&f.app.config.db_path).unwrap();
+    let id = katalog_core::db::test_insert_minimal_file(&c, "/Kabelhalter_v3.3mf", None).unwrap();
+    drop(c);
+    let r = f.send("list_suggested_auto_tags", json!({"fileId":id.to_string()})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await, json!(["kabelhalter"]));
+    for (args, status) in [
+        (json!({"fileId":"999999"}), 422),
+        (json!({"fileId":"abc"}), 400),
+        (json!({"fileId":1}), 400),
+        (json!({}), 400),
+    ] {
+        assert_eq!(f.send("list_suggested_auto_tags", args.clone()).await.status(), status, "{args}");
+    }
+}
+
+#[tokio::test]
+async fn auto_tag_block_commands_need_write_mode_and_a_session() {
+    let f = Fixture::new(false);
+    for cmd in ["block_auto_tag", "unblock_auto_tag"] {
+        assert_eq!(f.send(cmd, json!({"tag":"x"})).await.status(), 404, "{cmd}");
+    }
+    let f = Fixture::new(true);
+    for cmd in ["block_auto_tag", "unblock_auto_tag"] {
+        let r = router(f.app.clone())
+            .oneshot(f.request(cmd, Body::from(r#"{"tag":"x"}"#), None, Some("http://localhost:8080"), true))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 401, "{cmd}");
+    }
+    assert_eq!(value(f.send("list_blocked_auto_tags", json!({})).await).await, json!([]));
+}
+
+mod request_id_tests {
+    use super::*;
+    const KEY: &str = "0123456789abcdef-key-one";
+    impl Fixture {
+        fn keyed(&self, cmd: &str, args: &Value, key: Option<&str>, session: &Session) -> Request {
+            let mut r = self.request(cmd, Body::from(args.to_string()), Some(session), Some("http://localhost:8080"), true);
+            if let Some(key) = key {
+                r.headers_mut().insert("x-request-id", key.parse().unwrap());
+            }
+            r
+        }
+        async fn send_keyed(&self, cmd: &str, args: Value, key: Option<&str>) -> Response {
+            router(self.app.clone()).oneshot(self.keyed(cmd, &args, key, &self.session)).await.unwrap()
+        }
+        async fn collections(&self) -> usize {
+            value(self.send("list_collections", json!({})).await).await.as_array().unwrap().len()
+        }
+    }
+    fn replayed(r: &Response) -> bool {
+        r.headers().get("x-idempotent-replay").is_some_and(|v| v == "1")
+    }
+
+    #[tokio::test]
+    async fn same_key_twice_creates_once_and_replays_identical_answer() {
+        let f = Fixture::new(true);
+        let first = f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        assert_eq!(first.status(), 200);
+        assert!(!replayed(&first));
+        let first = value(first).await;
+        let second = f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        assert_eq!(second.status(), 200);
+        assert!(replayed(&second));
+        assert_eq!(value(second).await, first);
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn counting_command_is_not_applied_twice() {
+        let f = Fixture::new(true);
+        let filament = value(f.send("add_filament_spool", json!({"spool":manager_spool()})).await).await;
+        let args = json!({"templateId":filament["id"],"count":2,"weight":750.0});
+        for _ in 0..2 {
+            assert_eq!(f.send_keyed("restock_filament_spool", args.clone(), Some(KEY)).await.status(), 200);
+        }
+        assert_eq!(value(f.send("list_filament_spools", json!({})).await).await.as_array().unwrap().len(), 3);
+    }
+    #[tokio::test]
+    async fn same_key_with_other_arguments_or_command_is_rejected() {
+        let f = Fixture::new(true);
+        f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        let r = f.send_keyed("create_collection", json!({"name":"two"}), Some(KEY)).await;
+        assert_eq!(r.status(), 422);
+        assert_eq!(value(r).await["kind"], "request_id_reused");
+        let r = f.send_keyed("add_printer", json!({"name":"one","holderName":"H"}), Some(KEY)).await;
+        assert_eq!(r.status(), 422);
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn different_keys_or_no_key_execute_each_time() {
+        let f = Fixture::new(true);
+        f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        f.send_keyed("create_collection", json!({"name":"one"}), Some("0123456789abcdef-key-two")).await;
+        assert_eq!(f.collections().await, 2);
+        for _ in 0..2 {
+            let r = f.send_keyed("create_collection", json!({"name":"one"}), None).await;
+            assert_eq!(r.status(), 200);
+            assert!(!replayed(&r));
+        }
+        assert_eq!(f.collections().await, 4);
+    }
+    #[tokio::test]
+    async fn malformed_or_repeated_header_is_rejected_before_any_work() {
+        let f = Fixture::new(true);
+        for key in ["short", "0123456789abcdef!!!!", &"a".repeat(65)] {
+            let r = f.send_keyed("create_collection", json!({"name":"one"}), Some(key)).await;
+            assert_eq!(r.status(), 400, "{key}");
+            assert_eq!(value(r).await["kind"], "request_id_invalid");
+        }
+        let mut req = f.keyed("create_collection", &json!({"name":"one"}), Some(KEY), &f.session);
+        req.headers_mut().append("x-request-id", "0123456789abcdef-key-two".parse().unwrap());
+        assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), 400);
+        assert_eq!(f.collections().await, 0);
+    }
+    #[tokio::test]
+    async fn access_checks_run_before_the_key_is_looked_at() {
+        let f = Fixture::new(true);
+        f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await;
+        let mut req = f.keyed("create_collection", &json!({"name":"one"}), Some(KEY), &f.session);
+        req.headers_mut().insert("x-csrf-token", "wrong".parse().unwrap());
+        let r = router(f.app.clone()).oneshot(req).await.unwrap();
+        assert_eq!(r.status(), 403);
+        assert!(!replayed(&r));
+    }
+    #[tokio::test]
+    async fn other_session_cannot_read_or_collide_with_a_foreign_key() {
+        let f = Fixture::new(true);
+        let first = value(f.send_keyed("create_collection", json!({"name":"one"}), Some(KEY)).await).await;
+        let second = new_session(&mut f.app.data.lock().unwrap(), "second", 100).unwrap();
+        let r = router(f.app.clone())
+            .oneshot(f.keyed("create_collection", &json!({"name":"one"}), Some(KEY), &second))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 200);
+        assert!(!replayed(&r));
+        assert_ne!(value(r).await["id"], first["id"]);
+        assert_eq!(f.collections().await, 2);
+    }
+    #[tokio::test]
+    async fn cancelled_request_finishes_in_background_and_retry_gets_that_result() {
+        let f = Fixture::new(true);
+        let conn = f.app.writer.as_ref().unwrap().conn.clone();
+        let holder = std::thread::spawn(move || {
+            let _g = conn.lock().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(600));
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let abandoned = tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            router(f.app.clone()).oneshot(f.keyed("create_collection", &json!({"name":"slow"}), Some(KEY), &f.session)),
+        )
+        .await;
+        assert!(abandoned.is_err(), "request must be cancelled while the database is busy");
+        let retry = f.send_keyed("create_collection", json!({"name":"slow"}), Some(KEY)).await;
+        assert_eq!(retry.status(), 200);
+        assert!(replayed(&retry));
+        holder.join().unwrap();
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn busy_database_answer_is_not_stored_so_the_retry_really_runs() {
+        let f = Fixture::new(true);
+        let conn = f.app.writer.as_ref().unwrap().conn.clone();
+        let holder = std::thread::spawn(move || {
+            let _g = conn.lock().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(5600));
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let busy = f.send_keyed("create_collection", json!({"name":"later"}), Some(KEY)).await;
+        assert_eq!(busy.status(), 503);
+        holder.join().unwrap();
+        let retry = f.send_keyed("create_collection", json!({"name":"later"}), Some(KEY)).await;
+        assert_eq!(retry.status(), 200);
+        assert!(!replayed(&retry));
+        assert_eq!(f.collections().await, 1);
+    }
+    fn holder(f: &Fixture, millis: u64) -> std::thread::JoinHandle<()> {
+        let conn = f.app.writer.as_ref().unwrap().conn.clone();
+        let (locked, ready) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let _g = conn.lock().unwrap();
+            locked.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(millis));
+        });
+        ready.recv().unwrap();
+        handle
+    }
+    #[tokio::test]
+    async fn concurrent_repeats_during_execution_run_the_work_once_and_share_the_answer() {
+        let f = Fixture::new(true);
+        let hold = holder(&f, 600);
+        let args = json!({"name":"shared"});
+        let (a, b, c) = tokio::join!(
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+        );
+        hold.join().unwrap();
+        let replays = [&a, &b, &c].iter().filter(|r| replayed(r)).count();
+        assert_eq!([a.status(), b.status(), c.status()], [200, 200, 200]);
+        assert_eq!(replays, 2);
+        let (a, b, c) = (value(a).await, value(b).await, value(c).await);
+        assert!(a == b && b == c);
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn server_error_while_others_wait_lets_exactly_one_waiter_run_again() {
+        let f = Fixture::new(true);
+        let hold = holder(&f, 5600);
+        let args = json!({"name":"again"});
+        let (a, b, c) = tokio::join!(
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+            f.send_keyed("create_collection", args.clone(), Some(KEY)),
+        );
+        hold.join().unwrap();
+        let mut outcomes: Vec<_> = [&a, &b, &c].iter().map(|r| (r.status().as_u16(), replayed(r))).collect();
+        outcomes.sort();
+        assert_eq!(outcomes, [(200, false), (200, true), (503, false)]);
+        assert_eq!(f.collections().await, 1);
+    }
+    #[tokio::test]
+    async fn answer_over_the_storage_limit_is_not_replayable_but_the_change_happened_once() {
+        use base64::Engine;
+        let f = Fixture::new(true);
+        let photo = base64::engine::general_purpose::STANDARD.encode({
+            let mut bytes = vec![1; 100_000];
+            bytes[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+            bytes
+        });
+        let args = json!({"fileId":f.id,"printedAt":"2026-10-16T00:00:00.000Z","photoBase64":photo});
+        let first = f.send_keyed("add_print_log_entry", args.clone(), Some(KEY)).await;
+        assert_eq!(first.status(), 200);
+        assert!(to_bytes(first.into_body(), 10 * 1024 * 1024).await.unwrap().len() > crate::idempotency::MAX_BODY_BYTES);
+        let second = f.send_keyed("add_print_log_entry", args, Some(KEY)).await;
+        assert_eq!(second.status(), 409);
+        assert_eq!(value(second).await["kind"], "request_id_result_unavailable");
+        let entries = value(f.send("list_print_log_entries", json!({"fileId":f.id})).await).await;
+        assert_eq!(entries.as_array().unwrap().len(), 1);
+    }
+}
+
+mod custom_image_and_rescan_tests {
+    use super::*;
+    use base64::Engine;
+    const OBJ: &[u8] = b"v 0 0 0\nv 10 0 0\nv 0 20 0\nf 1 2 3\n";
+    const KEY: &str = "0123456789abcdef-image-key";
+
+    fn png(extra: usize) -> String {
+        let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+        bytes.resize(8 + extra, 0);
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    }
+    impl Fixture {
+        fn catalog_path(&self, path: &std::path::Path) {
+            self.app.writer.as_ref().unwrap().conn.lock().unwrap()
+                .execute("UPDATE files SET path=?1 WHERE id=?2", [path.to_str().unwrap(), self.id.as_str()]).unwrap();
+        }
+        fn stored_image(&self) -> Option<Vec<u8>> {
+            db::get_file(&db::open_read_only(&self.app.config.db_path).unwrap(), self.id.parse().unwrap())
+                .unwrap().unwrap().custom_image_png
+        }
+        fn stored_hash(&self) -> Option<String> {
+            db::get_file(&db::open_read_only(&self.app.config.db_path).unwrap(), self.id.parse().unwrap())
+                .unwrap().unwrap().content_hash
+        }
+        async fn send_raw(&self, cmd: &str, body: String, key: Option<&str>) -> Response {
+            let mut r = self.request(cmd, Body::from(body), Some(&self.session), Some("http://localhost:8080"), true);
+            if let Some(key) = key { r.headers_mut().insert("x-request-id", key.parse().unwrap()); }
+            router(self.app.clone()).oneshot(r).await.unwrap()
+        }
+    }
+    fn replayed(r: &Response) -> bool {
+        r.headers().get("x-idempotent-replay").is_some_and(|v| v == "1")
+    }
+
+    #[tokio::test]
+    async fn both_commands_need_write_mode_and_a_session() {
+        let off = Fixture::new(false);
+        for cmd in ["set_custom_image", "rescan_file_metadata"] {
+            assert_eq!(off.send(cmd, json!({"fileId":off.id})).await.status(), 404, "{cmd}");
+        }
+        let f = Fixture::new(true);
+        for cmd in ["set_custom_image", "rescan_file_metadata"] {
+            for (session, csrf, status) in [(None, true, 401), (Some(&f.session), false, 403)] {
+                let req = f.request(cmd, Body::from(json!({"fileId":f.id,"imageBase64":png(0)}).to_string()), session, Some("http://localhost:8080"), csrf);
+                assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), status, "{cmd}");
+            }
+        }
+        assert_eq!(f.stored_image(), None);
+    }
+
+    #[tokio::test]
+    async fn custom_image_is_stored_served_by_the_image_listing_and_validated() {
+        let f = Fixture::new(true);
+        let ok = f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":png(0)})).await;
+        assert_eq!(ok.status(), 200);
+        // The answer stays small; the UI reloads the picture through the image listing.
+        assert_eq!(value(ok).await, Value::Null);
+        assert_eq!(f.stored_image().as_deref(), Some(&b"\x89PNG\r\n\x1a\n"[..]));
+        let images = value(f.send("list_file_images", json!({"ids":[f.id]})).await).await;
+        assert!(images[0]["customImage"].as_str().unwrap().starts_with("data:image/"));
+        for (args, status) in [
+            (json!({"fileId":"999","imageBase64":png(0)}), 404),
+            (json!({"fileId":f.id,"imageBase64":"!!"}), 422),
+            (json!({"fileId":f.id,"imageBase64":""}), 422),
+            (json!({"fileId":f.id,"imageBase64":base64::engine::general_purpose::STANDARD.encode(b"GIF89a")}), 422),
+            (json!({"fileId":f.id,"imageBase64":png(0),"extra":1}), 422),
+            (json!({"fileId":f.id}), 422),
+            (json!({"fileId":7,"imageBase64":png(0)}), 422),
+            (json!({"fileId":"abc","imageBase64":png(0)}), 400),
+        ] {
+            assert_eq!(f.send("set_custom_image", args.clone()).await.status(), status, "{args}");
+        }
+        let r = f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":""})).await;
+        assert_eq!(value(r).await["message"], "imageUploadUnsupported");
+        assert_eq!(f.stored_image().as_deref(), Some(&b"\x89PNG\r\n\x1a\n"[..]));
+    }
+
+    #[tokio::test]
+    async fn only_the_image_command_gets_the_larger_body_limit() {
+        let f = Fixture::new(true);
+        let base = crate::write::body_limit("set_favorite");
+        assert_eq!(base, 16 * 1024);
+        assert_eq!(crate::write::body_limit("set_custom_image"), crate::write::body_limit("set_render_snapshot"));
+        assert!(crate::write::body_limit("set_custom_image") > 5 * 1024 * 1024);
+        assert_eq!(crate::write::body_limit("rescan_file_metadata"), base);
+        // 200 KB of picture is far beyond the normal write limit but fine for a cover image.
+        assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":png(150_000)})).await.status(), 200);
+        for cmd in ["set_favorite", "rescan_file_metadata", "add_tag"] {
+            let padded = json!({"fileId":f.id,"padding":"x".repeat(base)}).to_string();
+            assert_eq!(f.send_raw(cmd, padded, None).await.status(), 413, "{cmd}");
+        }
+        // The full desktop limit works end to end, one byte more does not.
+        let mut max = vec![0; katalog_core::write::MAX_CUSTOM_IMAGE_BYTES];
+        max[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&max);
+        assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":encoded})).await.status(), 200);
+        assert_eq!(f.stored_image().unwrap().len(), max.len());
+        let too_big = base64::engine::general_purpose::STANDARD.encode(vec![0; max.len() + 1]);
+        let r = f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":too_big})).await;
+        assert_eq!(r.status(), 422);
+        assert_eq!(value(r).await["message"], "imageUploadTooLarge");
+        let body = " ".repeat(crate::write::body_limit("set_custom_image") + 1);
+        assert_eq!(f.send_raw("set_custom_image", body, None).await.status(), 413);
+        assert_eq!(f.stored_image().unwrap().len(), max.len());
+    }
+
+    #[tokio::test]
+    async fn repeating_the_image_request_with_the_same_key_applies_it_once() {
+        let f = Fixture::new(true);
+        let args = json!({"fileId":f.id,"imageBase64":png(0)}).to_string();
+        let first = f.send_raw("set_custom_image", args.clone(), Some(KEY)).await;
+        assert_eq!(first.status(), 200);
+        assert!(!replayed(&first));
+        // Out-of-band change: a second execution would overwrite it again.
+        f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+            .execute("UPDATE files SET custom_image_png=x'ffd8ff'", []).unwrap();
+        let second = f.send_raw("set_custom_image", args, Some(KEY)).await;
+        assert_eq!(second.status(), 200);
+        assert!(replayed(&second));
+        assert_eq!(f.stored_image().as_deref(), Some(&b"\xff\xd8\xff"[..]));
+        let other = json!({"fileId":f.id,"imageBase64":png(5)}).to_string();
+        assert_eq!(f.send_raw("set_custom_image", other, Some(KEY)).await.status(), 422);
+    }
+
+    #[tokio::test]
+    async fn rescan_reads_the_cataloged_file_and_returns_the_model() {
+        let f = Fixture::new(true);
+        let path = f.dir.join("model.obj");
+        std::fs::write(&path, OBJ).unwrap();
+        f.catalog_path(&path);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 200);
+        let model = value(r).await;
+        assert_eq!(model["id"], f.id.as_str());
+        assert_eq!(model["fileSizeBytes"], OBJ.len());
+        assert!(model["dimensionsMm"].is_array());
+        assert!(f.stored_hash().is_some());
+        // The same result a plain read returns for the model.
+        let listed = value(f.send("list_files_by_ids", json!({"ids":[f.id]})).await).await;
+        assert_eq!(listed[0]["contentHash"], model["contentHash"]);
+    }
+
+    #[tokio::test]
+    async fn rescan_refuses_bad_arguments_and_unreadable_files_without_leaking_paths() {
+        let f = Fixture::new(true);
+        let secret = f.dir.join("secret-name.obj");
+        // Not written: the file is gone.
+        f.catalog_path(&secret);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 404);
+        let text = value(r).await.to_string();
+        assert!(text.contains("rescan_file_unavailable"), "{text}");
+        assert!(!text.contains("secret-name") && !text.contains(f.dir.to_str().unwrap()), "{text}");
+        let outside = std::env::temp_dir().join(format!("outside-{}.obj", f.id));
+        std::fs::write(&outside, OBJ).unwrap();
+        f.catalog_path(&outside);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 404);
+        let text = value(r).await.to_string();
+        assert!(text.contains("rescan_file_unavailable") && !text.contains("outside-"), "{text}");
+        assert_eq!(f.stored_hash(), None, "a refused rescan must not touch the record");
+        let _ = std::fs::remove_file(&outside);
+        let step = f.dir.join("part.step");
+        std::fs::write(&step, b"ISO-10303-21;").unwrap();
+        f.catalog_path(&step);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 422);
+        assert_eq!(value(r).await["message"], "rescan_step_unavailable");
+        // Only the id is accepted from the client: a path argument is refused outright.
+        for args in [json!({"fileId":f.id,"path":"/etc/passwd"}), json!({}), json!({"fileId":"0"}), json!({"fileId":"x"})] {
+            assert_eq!(f.send("rescan_file_metadata", args.clone()).await.status(), 400, "{args}");
+        }
+        assert_eq!(f.send("rescan_file_metadata", json!({"fileId":"9999"})).await.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn repeating_the_rescan_with_the_same_key_reads_the_file_once() {
+        let f = Fixture::new(true);
+        let path = f.dir.join("again.obj");
+        std::fs::write(&path, OBJ).unwrap();
+        f.catalog_path(&path);
+        let args = json!({"fileId":f.id}).to_string();
+        let first = f.send_raw("rescan_file_metadata", args.clone(), Some(KEY)).await;
+        assert_eq!(first.status(), 200);
+        let first_hash = f.stored_hash();
+        std::fs::write(&path, [OBJ, b"v 5 5 5\n"].concat()).unwrap();
+        let replay = f.send_raw("rescan_file_metadata", args.clone(), Some(KEY)).await;
+        assert!(replayed(&replay));
+        assert_eq!(f.stored_hash(), first_hash);
+        let fresh = f.send_raw("rescan_file_metadata", args, Some("0123456789abcdef-image-other")).await;
+        assert_eq!(fresh.status(), 200);
+        assert_ne!(f.stored_hash(), first_hash);
+    }
+
+    #[tokio::test]
+    async fn slow_scan_does_not_block_writers_and_a_changed_file_is_refused() {
+        use crate::write::rescan_hook::{HOLD, REACHED};
+        use std::sync::atomic::Ordering::SeqCst;
+        let f = Fixture::new(true);
+        let path = f.dir.join("hold-model.obj");
+        std::fs::write(&path, OBJ).unwrap();
+        f.catalog_path(&path);
+        REACHED.store(false, SeqCst);
+        HOLD.store(true, SeqCst);
+        let request = f.request("rescan_file_metadata", Body::from(json!({"fileId":f.id}).to_string()), Some(&f.session), Some("http://localhost:8080"), true);
+        let scan = tokio::spawn(router(f.app.clone()).oneshot(request));
+        for _ in 0..1000 {
+            if REACHED.load(SeqCst) { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(REACHED.load(SeqCst), "scan never reached the parsed state");
+        // The file is parsed but the write connection is free: another write goes straight through.
+        assert_eq!(f.send("set_favorite", json!({"fileId":f.id,"favorite":true})).await.status(), 200);
+        assert!(f.favorite());
+        // Only one scan at a time; the waiting one is told to retry instead of queueing for ever.
+        let second = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(second.status(), 503);
+        assert!(second.headers().contains_key("retry-after"));
+        std::fs::write(&path, [OBJ, b"v 2 2 2\n"].concat()).unwrap();
+        HOLD.store(false, SeqCst);
+        let r = scan.await.unwrap().unwrap();
+        assert_eq!(r.status(), 409);
+        assert_eq!(value(r).await["message"], "rescan_file_changed");
+        assert_eq!(f.stored_hash(), None);
+        assert!(f.favorite(), "the interleaved write must survive");
+        // A fresh scan of the settled file succeeds and frees the place again.
+        let ok = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(ok.status(), 200);
+        assert!(f.stored_hash().is_some());
+    }
+
+    #[tokio::test]
+    async fn jpeg_and_webp_covers_are_accepted_over_http() {
+        let f = Fixture::new(true);
+        for bytes in [&b"\xff\xd8\xff\xe0\x00\x10JFIF"[..], &b"RIFF\x04\x00\x00\x00WEBPVP8 "[..]] {
+            let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+            assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":encoded})).await.status(), 200);
+            assert_eq!(f.stored_image().as_deref(), Some(bytes));
+        }
+    }
+
+    #[test]
+    fn audit_records_both_commands_with_status_and_without_contents() {
+        const CHILD: &str = "KATALOG_TEST_IMAGE_AUDIT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+                let f = Fixture::new(true);
+                let path = f.dir.join("audit-secret.obj");
+                std::fs::write(&path, OBJ).unwrap();
+                f.catalog_path(&path);
+                assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":png(0)})).await.status(), 200);
+                assert_eq!(f.send("rescan_file_metadata", json!({"fileId":f.id})).await.status(), 200);
+                assert_eq!(f.send("set_custom_image", json!({"fileId":f.id,"imageBase64":"!!"})).await.status(), 422);
+            });
+            return;
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "web::write_tests::custom_image_and_rescan_tests::audit_records_both_commands_with_status_and_without_contents", "--nocapture"])
+            .env(CHILD, "1").output().unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(output.status.success(), "{stderr}");
+        let lines: Vec<_> = stderr.lines().filter(|l| l.starts_with("write time=")).collect();
+        assert_eq!(lines.len(), 3, "{stderr}");
+        assert!(lines.iter().any(|l| l.contains("command=set_custom_image status=200")), "{stderr}");
+        assert!(lines.iter().any(|l| l.contains("command=rescan_file_metadata status=200")), "{stderr}");
+        assert!(lines.iter().any(|l| l.contains("command=set_custom_image status=422")), "{stderr}");
+        assert!(!stderr.contains("audit-secret") && !stderr.contains("iVBOR"), "{stderr}");
+    }
 }

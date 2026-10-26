@@ -64,6 +64,9 @@ pub struct FileImagesDto {
     pub thumbnail_image: Option<String>,
     pub render_snapshot_image: Option<String>,
     pub custom_image: Option<String>,
+    /// Left out of this answer to respect the byte budget; ask for it again.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub deferred: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -144,6 +147,9 @@ pub struct FolderDto {
     /// The directory is gone from disk. False also when that is unknown (root not readable).
     /// This read never touches the disk; the desktop adapter fills it in.
     pub missing: bool,
+    /// Files may be moved into this folder. This read cannot tell; the web server clears it
+    /// for folders the move would refuse as protected.
+    pub move_target: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -189,6 +195,27 @@ pub fn list_files_by_ids(conn: &Connection, ids: Vec<String>) -> ReadResult<Vec<
 /// Whether tags are assigned automatically at all (on unless the stored value is "0").
 pub fn get_auto_tagging(conn: &Connection) -> ReadResult<bool> {
     db::blocked_tags::auto_tagging_enabled(conn).map_err(ReadError::from)
+}
+
+/// Tags the app would suggest for this model today. The catalog does not record
+/// whether a tag was assigned automatically, so the detail view asks this to decide
+/// which tags may be blocked. Uses the stored dimensions, which for multi-plate
+/// models can differ slightly from the extent used at import.
+pub fn suggested_auto_tags_with_conn(conn: &Connection, file_id: i64) -> ReadResult<Vec<String>> {
+    let file = db::get_file(conn, file_id)
+        .map_err(ReadError::from)?
+        .ok_or_else(|| ReadError::expected("Datei nicht gefunden"))?;
+    Ok(crate::tagging::suggest_tags(&crate::tagging::TaggingContext {
+        file_name: &file.name,
+        dimensions_mm: file.dimensions_mm,
+        object_count: file.object_count,
+        materials: &file.materials,
+    }))
+}
+
+/// Automatic tags the user has blocked, as stored (internal names, sorted).
+pub fn list_blocked_auto_tags(conn: &Connection) -> ReadResult<Vec<String>> {
+    db::blocked_tags::list_blocked_auto_tags(conn).map_err(ReadError::from)
 }
 
 pub fn list_tag_counts(conn: &Connection) -> ReadResult<Vec<TagCountDto>> {
@@ -252,6 +279,7 @@ pub fn list_folders(conn: &Connection) -> ReadResult<Vec<FolderDto>> {
                 parent_id: folder.parent_id.map(|id| id.to_string()),
                 count,
                 missing: false,
+                move_target: true,
             }
         })
         .collect();
@@ -295,6 +323,32 @@ pub fn encode_file_images(images: Vec<db::FileImages>) -> Vec<FileImagesDto> {
             thumbnail_image: encode_image(images.thumbnail_png),
             render_snapshot_image: encode_image(images.render_snapshot_png),
             custom_image: encode_image(images.custom_image_png),
+            deferred: false,
+        })
+        .collect()
+}
+
+/// Like [`encode_file_images`], but stops filling in pictures once the encoded size passes
+/// `max_base64_bytes`; the remaining entries come back as `deferred` placeholders. The
+/// first entry is always complete, so every request makes progress.
+pub fn encode_file_images_budgeted(images: Vec<db::FileImages>, max_base64_bytes: usize) -> Vec<FileImagesDto> {
+    let mut used = 0usize;
+    let mut full = false;
+    images
+        .into_iter()
+        .enumerate()
+        .map(|(index, images)| {
+            let raw: usize = [&images.thumbnail_png, &images.render_snapshot_png, &images.custom_image_png]
+                .into_iter()
+                .map(|png| png.as_ref().map_or(0, Vec::len))
+                .sum();
+            let size = raw.div_ceil(3) * 4;
+            full |= index > 0 && used + size > max_base64_bytes;
+            if full {
+                return FileImagesDto { id: images.id.to_string(), thumbnail_image: None, render_snapshot_image: None, custom_image: None, deferred: true };
+            }
+            used += size;
+            encode_file_images(vec![images]).remove(0)
         })
         .collect()
 }

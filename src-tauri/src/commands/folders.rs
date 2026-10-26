@@ -101,6 +101,7 @@ fn create_folder_with_conn(
         parent_id: parent.map(|p| p.to_string()),
         count: 0,
         missing: false,
+        move_target: true,
     })
 }
 fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
@@ -340,6 +341,7 @@ fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResu
         parent_id: folder.parent_id.map(|p| p.to_string()),
         count: 0,
         missing: false,
+        move_target: true,
     })
 }
 /// Only folders the user picked or created in the app may become the catalog
@@ -399,6 +401,7 @@ pub(super) fn register_existing_catalog_base_dir_with_conn(conn: &Connection, di
         parent_id: folder.parent_id.map(|id| id.to_string()),
         count: 0,
         missing: false,
+        move_target: true,
     };
     db::printer_link::set_setting(&tx, SETTING_CATALOG_BASE_DIR, &folder.path).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;

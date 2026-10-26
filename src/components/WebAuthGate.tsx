@@ -51,7 +51,7 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
         <input className="block w-full p-2 border rounded bg-[var(--panel-2)]" type="password" autoComplete="new-password" required minLength={12} maxLength={128} value={next} onChange={e => setNext(e.target.value)} />
       </label>}
       {error && <p role="alert">{error}</p>}
-      <button className="p-2 border rounded" disabled={busy}>{t(changing ? 'webChangePassword' : 'webLogin')}</button>
+      <button type="submit" className="p-2 border rounded" disabled={busy}>{t(changing ? 'webChangePassword' : 'webLogin')}</button>
       {editing && !state.mustChangePassword && <button type="button" onClick={() => { setEditing(false); setPassword(''); setNext(''); }}>{t('webCancel')}</button>}
       {!state.authenticated && error && <button type="button" onClick={check}>{t('webRetry')}</button>}
     </form>

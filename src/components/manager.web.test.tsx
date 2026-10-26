@@ -99,12 +99,12 @@ it.each([false, true])('all nine printer/unit mutations dispatch exactly their c
     if (enabled) expect(calls[calls.length - 1]?.command).toBe('list_printers');
   }
 });
-it.each([false,true])('material controls and slot actions respect writable=%s, networking and restock stay hidden', async enabled => {
+it.each([false,true])('material controls, slot actions and restock respect writable=%s, networking stays hidden', async enabled => {
   writable = enabled; await login('password'); mockManager(); managers('material');
   const slot = await screen.findByTestId('slot-u1-0');
   await screen.findByTestId('spool-card-1');
-  expect(screen.queryByRole('button', {name: de.filamentRestockButton})).toBeNull();
-  expect(screen.queryByRole('button', {name: de.resinConsumeButton})).toBeNull();
+  const restock = screen.getAllByRole('button', {name: de.filamentRestockButton});
+  expect(restock.every(button => (button as HTMLButtonElement).disabled === !enabled)).toBe(true);
   expect(screen.getByRole('button', {name: de.filamentOpenAddPanelButton})).toHaveProperty('disabled', !enabled);
   calls = []; fireEvent.click(slot);
   if (!enabled) {
@@ -204,7 +204,7 @@ it('shows a failed reorder and a failed reload without optimistic ordering', asy
   cleanup(); clearMetadataError(); calls=[]; failRead=true;
   managers('printers'); await screen.findAllByText('offline');
 });
-it.each(['restock_filament_spool','consume_resin','set_printer_link_enabled','test_printer_connection','remove_printer_connection','sync_printers_now','preview_printer_job','get_printer_job_thumbnail','confirm_printer_jobs','ignore_printer_job','pick_and_read_image'])('never sends forbidden %s even in write mode', async command => {
+it.each(['set_printer_link_enabled','test_printer_connection','remove_printer_connection','sync_printers_now','preview_printer_job','get_printer_job_thumbnail','confirm_printer_jobs','ignore_printer_job','pick_and_read_image'])('never sends forbidden %s even in write mode', async command => {
   await expect(invoke(command,{})).rejects.toBeDefined(); expect(calls).toEqual([]);
 });
 it('waits for image validation before saving and never silently drops a selected image', async () => {

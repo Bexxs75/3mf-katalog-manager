@@ -1,8 +1,14 @@
 import { invoke } from '../transport';
-import type { Companion, CompanionOpenInfo } from '../../types';
+import { companionFileOp } from '../fileOps';
+import { isReadOnly } from '../readOnly';
+import { getSnapshot } from '../webSession';
+export { uploadCompanion as uploadWebCompanion, COMPANION_ACCEPT, isAllowedCompanionName, companionSizeProblem } from '../companionUpload';
+import type { Companion, CompanionOpenInfo, WebCompanion } from '../../types';
 
 // Limits mirrored from the backend, for hints in the UI. The backend enforces them.
-export const MAX_COMPANION_BYTES = 50 * 1024 * 1024;
+const DESKTOP_MAX_COMPANION_BYTES = 50 * 1024 * 1024;
+// The web server announces its own, configurable limit with the session.
+export const maxCompanionBytes = (): number => (isReadOnly() ? getSnapshot().companionMaxBytes ?? DESKTOP_MAX_COMPANION_BYTES : DESKTOP_MAX_COMPANION_BYTES);
 export const MAX_COMPANIONS_PER_MODEL = 100;
 
 // All companions of a model, trashed ones included (they carry `deletedAt`).
@@ -35,4 +41,20 @@ export function openCompanion(companionId: string) {
 // The picture as a data URI (images only, size-capped).
 export function companionImageData(companionId: string) {
   return invoke<string>('companion_image_data', { companionId });
+}
+
+// Web build only (read only): the live companions of a model, without server paths.
+export function listWebCompanions(fileId: string, includeRemoved = false) {
+  return invoke<WebCompanion[]>('list_companions', includeRemoved ? { fileId, includeRemoved: true } : { fileId });
+}
+// Web build: remove one companion into the server trash, and bring it back. Both are safe to repeat.
+export function removeWebCompanion(companionId: string) {
+  return companionFileOp('remove_companion', companionId);
+}
+export function restoreWebCompanion(companionId: string) {
+  return companionFileOp('restore_companion', companionId);
+}
+// Same-origin download link; the browser sends the session cookie and saves it as an attachment.
+export function companionDownloadUrl(companionId: string) {
+  return `/api/companions/${encodeURIComponent(companionId)}/download`;
 }

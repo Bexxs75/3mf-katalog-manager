@@ -204,3 +204,13 @@ describe('SettingsPanel blocked automatic tags', () => {
     expect(await screen.findByRole('button', { name: 'Sperre für #miniatur aufheben' })).toBeInTheDocument();
   });
 });
+
+describe('SettingsPanel catalog backup on the desktop', () => {
+  it('keeps the export button that calls the backend and shows no web download link', () => {
+    const { props } = renderPanel();
+    fireEvent.click(tab('Katalog'));
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog exportieren' }));
+    expect(props.onExportCatalog).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('link', { name: 'Katalog exportieren' })).toBeNull();
+  });
+});

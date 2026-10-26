@@ -11,6 +11,7 @@ pub enum Phase {
     Prepared,
     TmpRenamed,
     Renamed,
+    CompanionsMoved,
     Unlinked,
     Committed,
     Manual,
@@ -24,6 +25,70 @@ pub enum Operation {
     Restore,
     Unlink,
     DbOnly,
+    /// One companion file goes to the web trash on its own; the model stays.
+    CompanionTrash,
+    /// One companion file comes back from the web trash on its own.
+    CompanionRestore,
+    /// One companion file that was removed on its own is unlinked for good (empty trash).
+    CompanionPurge,
+    /// A new companion file is written next to a model; the model stays.
+    CompanionAdd,
+}
+impl Operation {
+    /// Operations of format version 3: they act on a single companion, not on a model.
+    pub fn is_companion_edit(self) -> bool {
+        matches!(self, Self::CompanionTrash | Self::CompanionRestore | Self::CompanionPurge | Self::CompanionAdd)
+    }
+}
+/// One `companion_files` row as the journal remembers it, so recovery can tell
+/// "database still as before" from "commit already happened" row by row.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompanionState {
+    pub id: i64,
+    pub file_id: i64,
+    pub name: String,
+    pub path: String,
+    pub deleted_at: Option<String>,
+    pub trash_path: Option<String>,
+}
+/// A companion file that travels with its model. `source`/`target` are root-relative
+/// and absent when the file is gone from disk and only its row is rewritten.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompanionStep {
+    pub before: CompanionState,
+    pub after: Option<CompanionState>,
+    pub source: Option<String>,
+    pub target: Option<String>,
+    pub identity: Option<FileIdentity>,
+}
+/// The new companion file of a `CompanionAdd` entry. The row id only exists after the
+/// insert, so the entry names the row by what it will hold (`file_id`, `added_at`).
+/// `temp_inode` is recorded right after the temporary file was created, before any byte
+/// is written, `identity` once the bytes are on disk; recovery only ever removes the
+/// very inodes it finds recorded here.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompanionAdd {
+    pub file_id: i64,
+    pub name: String,
+    pub kind: String,
+    pub size: u64,
+    pub added_at: String,
+    /// Root-relative: `<extras>/.fsops-<op_id>.part`.
+    pub temporary: String,
+    /// Root-relative: `<extras>/<free name>`.
+    pub target: String,
+    pub temp_inode: Option<(u64, u64)>,
+    pub identity: Option<FileIdentity>,
+}
+/// A companion folder this operation created. Its inode is only known after
+/// `mkdir` returned; recovery never removes a folder whose inode was not recorded.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtrasDir {
+    pub relative: String,
+    pub identity: Option<Identity>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileState {
@@ -75,6 +140,36 @@ pub struct Intent {
     pub identity: Option<FileIdentity>,
     pub before: FileState,
     pub after: Option<FileState>,
+    /// Companion data only appears for operations that carry companions; an entry
+    /// without it is byte-identical to the format before companions existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub companions: Vec<CompanionStep>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extras_dir: Option<ExtrasDir>,
+    /// Every row of the model before the operation (trashed ones included).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub companion_rows: Vec<CompanionState>,
+    /// Only for `CompanionAdd`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub companion_add: Option<CompanionAdd>,
+}
+impl Intent {
+    pub(crate) fn has_companion_data(&self) -> bool {
+        !self.companions.is_empty() || self.extras_dir.is_some() || !self.companion_rows.is_empty()
+    }
+}
+/// Format 1 predates companion data. Entries with companion data are written as
+/// version 2 so an older binary refuses the file instead of ignoring the new fields.
+/// Version 3 is only written while an entry acts on a single companion file; an older
+/// binary then stops with `RestartRequired` instead of meeting an unknown operation.
+fn document_version(intents: &[Intent], folders: &[FolderIntent]) -> u32 {
+    if intents.iter().any(|i| i.operation.is_companion_edit()) {
+        3
+    } else if intents.iter().any(Intent::has_companion_data) || folders.iter().any(FolderIntent::has_companion_data) {
+        2
+    } else {
+        1
+    }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -114,7 +209,18 @@ impl Journal {
                 }
                 let doc: Document =
                     serde_json::from_reader(file).map_err(|_| Error::RestartRequired)?;
-                if doc.version != 1 {
+                // A file never carries data of a newer format than its version says, and a
+                // version-3 file exists only while it holds a single-companion entry.
+                let needed = document_version(&doc.intents, &doc.folders);
+                if !matches!(doc.version, 1..=3)
+                    || (doc.version == 1 && needed != 1)
+                    || (doc.version == 2 && needed > 2)
+                    || (doc.version == 3 && needed != 3)
+                {
+                    return Err(Error::RestartRequired);
+                }
+                // The add-specific record belongs to exactly the add operation.
+                if doc.intents.iter().any(|i| (i.operation == Operation::CompanionAdd) != i.companion_add.is_some()) {
                     return Err(Error::RestartRequired);
                 }
                 let mut ids = std::collections::HashSet::new();
@@ -191,6 +297,17 @@ impl Journal {
             .chain(self.folders.iter().map(|i| i.op_id.clone()))
             .collect()
     }
+    /// Only the entries that wait for a person. An entry still running (a long upload) or one
+    /// that recovery rolls back by itself is not acknowledged, and naming it would make the
+    /// acknowledgement fail at the next start.
+    pub fn pending_manual_op_ids(&self) -> Vec<String> {
+        self.intents
+            .iter()
+            .filter(|i| i.phase == Phase::Manual)
+            .map(|i| i.op_id.clone())
+            .chain(self.folders.iter().filter(|i| i.phase == Phase::Manual).map(|i| i.op_id.clone()))
+            .collect()
+    }
     /// Read-only startup must reject any pending intent, even when fileops is disabled.
     pub fn check_startup(&self, write_mode: bool) -> Result<()> {
         if !write_mode && !self.is_empty() {
@@ -221,7 +338,7 @@ impl Journal {
     }
     pub(super) fn check_capacity(&self) -> Result<()> {
         let bytes = serde_json::to_vec(&Document {
-            version: 1,
+            version: document_version(&self.intents, &self.folders),
             intents: self.intents.clone(),
             folders: self.folders.clone(),
         })
@@ -239,7 +356,7 @@ impl Journal {
             serde_json::to_writer(
                 &mut file,
                 &Document {
-                    version: 1,
+                    version: document_version(&self.intents, &self.folders),
                     intents: self.intents.clone(),
                     folders: self.folders.clone(),
                 },
@@ -284,6 +401,13 @@ impl Journal {
         self.persist()?;
         self.checkpoint(phase)
     }
+    /// Stops the process at an arbitrary point as a crash would: nothing is
+    /// rolled back and the journal stays blocked.
+    #[cfg(test)]
+    pub(super) fn simulate_crash(&mut self) -> Error {
+        self.blocked = true;
+        Error::RestartRequired
+    }
     pub(super) fn checkpoint(&mut self, _phase: Phase) -> Result<()> {
         #[cfg(test)]
         if self.crash_at == Some(_phase) {
@@ -297,7 +421,7 @@ impl Journal {
         self.folders.retain(|i| i.op_id != id);
         self.persist()
     }
-    pub(crate) fn block(&mut self, id: &str) -> Error {
+    pub fn block(&mut self, id: &str) -> Error {
         self.blocked = true;
         if let Some(i) = self.intents.iter_mut().find(|i| i.op_id == id) {
             i.phase = Phase::Manual;
@@ -321,6 +445,8 @@ pub enum RecoveryDecision {
     FinishUnlink,
     FinishTemporary,
     RollbackTemporary,
+    /// The model is still at its source but some companions already moved: put them back.
+    RollbackCompanions,
     Committed,
     Manual,
 }
@@ -335,6 +461,18 @@ pub struct RecoveryFacts {
     pub temporary_matches: bool,
     pub unlink: bool,
     pub db_only: bool,
+    /// The model's companion rows equal the journal's picture from before the operation.
+    pub companions_db_before: bool,
+    /// Every row the operation rewrites already has its new state.
+    pub companions_db_after: bool,
+    /// Every companion that travels on disk is still at its source (true when none travels).
+    pub companions_all_source: bool,
+    /// Every companion that travels on disk is at its target (true when none travels).
+    pub companions_all_target: bool,
+    /// Each companion is at its source or its target, but not all at the same side.
+    pub companions_mixed: bool,
+    /// At least one companion travels on disk.
+    pub companions_any: bool,
 }
 pub const RECOVERY_TABLE: &[(RecoveryDecision, &str)] = &[
     (
@@ -365,6 +503,14 @@ pub const RECOVERY_TABLE: &[(RecoveryDecision, &str)] = &[
         RecoveryDecision::FinishUnlink,
         "DB before and unlink source absent",
     ),
+    (
+        RecoveryDecision::RollbackCompanions,
+        "DB before, model at its source, companions partly or fully at their targets",
+    ),
+    (
+        RecoveryDecision::FinishUnlink,
+        "delete with companions: DB before, some file already unlinked; the rest follows",
+    ),
 ];
 pub fn recovery_decision(f: RecoveryFacts) -> RecoveryDecision {
     use RecoveryDecision::*;
@@ -372,30 +518,61 @@ pub fn recovery_decision(f: RecoveryFacts) -> RecoveryDecision {
         return Manual;
     }
     if f.db_after
+        && f.companions_db_after
         && (f.db_only
             || (f.unlink && f.source_absent)
-            || (!f.unlink && f.source_absent && f.target_matches))
+            || (!f.unlink && f.source_absent && f.target_matches && f.companions_all_target))
     {
         return Committed;
     }
     if f.temporary_matches && f.source_absent {
-        return if f.db_before {
-            FinishTemporary
-        } else {
-            RollbackTemporary
-        };
+        if f.db_before {
+            // The model only reaches its temporary name after every companion moved.
+            return if f.companions_db_before && f.companions_all_target {
+                FinishTemporary
+            } else {
+                Manual
+            };
+        }
+        // Moving only the model back would strand companions at the target.
+        return if f.companions_any { Manual } else { RollbackTemporary };
     }
     if !f.db_before {
         return Manual;
     }
-    if f.db_only || (f.source_matches && !f.target_matches) {
+    if f.db_only {
         return Discard;
+    }
+    if f.unlink && f.companions_any {
+        // A companion that is already unlinked cannot come back, so a delete never
+        // goes backwards once the first file is gone.
+        if !f.companions_db_before || !(f.companions_all_source || f.companions_all_target || f.companions_mixed) {
+            return Manual;
+        }
+        if f.source_matches && f.companions_all_source {
+            return Discard;
+        }
+        return if f.source_matches || f.source_absent { FinishUnlink } else { Manual };
+    }
+    if f.source_matches && !f.target_matches {
+        if f.companions_all_source {
+            return Discard;
+        }
+        return if f.companions_mixed || f.companions_all_target {
+            RollbackCompanions
+        } else {
+            Manual
+        };
     }
     if f.unlink && f.source_absent {
         return FinishUnlink;
     }
     if f.source_absent && f.target_matches {
-        return Finish;
+        return if f.companions_all_target && f.companions_db_before {
+            Finish
+        } else {
+            Manual
+        };
     }
     Manual
 }

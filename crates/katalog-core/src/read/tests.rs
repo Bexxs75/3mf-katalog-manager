@@ -373,3 +373,58 @@ fn add_and_list_print_log_entry_roundtrips_through_dto() {
     assert_eq!(dtos[0].note.as_deref(), Some("Testdruck"));
     assert_eq!(dtos[0].photo_image, None);
 }
+
+#[test]
+fn suggested_auto_tags_match_the_tagging_rules_for_the_stored_file() {
+    let conn = db::connect_in_memory().unwrap();
+    let id = db::test_insert_minimal_file(&conn, "/Kabelhalter_v3_final.3mf", None).unwrap();
+    let file = db::get_file(&conn, id).unwrap().unwrap();
+    let expected = crate::tagging::suggest_tags(&crate::tagging::TaggingContext {
+        file_name: &file.name,
+        dimensions_mm: file.dimensions_mm,
+        object_count: file.object_count,
+        materials: &file.materials,
+    });
+    assert_eq!(expected, vec!["kabelhalter".to_string()]);
+    assert_eq!(suggested_auto_tags_with_conn(&conn, id).unwrap(), expected);
+    // Tags added by hand are not part of the suggestion.
+    db::add_tag_to_file(&conn, id, "mein-projekt").unwrap();
+    assert_eq!(suggested_auto_tags_with_conn(&conn, id).unwrap(), expected);
+}
+
+#[test]
+fn suggested_auto_tags_for_an_unknown_file_is_an_expected_error() {
+    let conn = db::connect_in_memory().unwrap();
+    let e = suggested_auto_tags_with_conn(&conn, 999).unwrap_err();
+    assert!(e.expected);
+    assert_eq!(e.message, "Datei nicht gefunden");
+}
+
+#[test]
+fn blocked_auto_tags_are_listed_sorted_as_stored() {
+    let conn = db::connect_in_memory().unwrap();
+    assert!(list_blocked_auto_tags(&conn).unwrap().is_empty());
+    db::blocked_tags::block_auto_tag(&conn, "Zahnrad").unwrap();
+    db::blocked_tags::block_auto_tag(&conn, "Multicolor").unwrap();
+    assert_eq!(list_blocked_auto_tags(&conn).unwrap(), vec!["mehrfarbig", "zahnrad"]);
+}
+
+#[test]
+fn image_budget_defers_later_entries_but_always_serves_the_first() {
+    let entry = |id: i64, size: usize| db::FileImages {
+        id,
+        thumbnail_png: None,
+        render_snapshot_png: None,
+        custom_image_png: Some(vec![1; size]),
+    };
+    let served = encode_file_images_budgeted(vec![entry(1, 300), entry(2, 300), entry(3, 10), entry(4, 300)], 500);
+    let deferred: Vec<_> = served.iter().map(|e| e.deferred).collect();
+    assert_eq!(deferred, [false, true, true, true]);
+    assert!(served[0].custom_image.is_some());
+    assert!(served[1].custom_image.is_none());
+    assert_eq!(served.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["1", "2", "3", "4"]);
+    // The first entry is served even when it alone exceeds the budget.
+    assert!(!encode_file_images_budgeted(vec![entry(1, 900)], 10)[0].deferred);
+    let json = serde_json::to_value(&served[0]).unwrap();
+    assert!(json.get("deferred").is_none());
+}

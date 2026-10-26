@@ -9,10 +9,13 @@ import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { WebSlicerMenu } from './WebSlicerMenu';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
+import { ImageUploadButton } from './ImageUploadButton';
 import { Icon } from './Icon';
 import { CompanionSection } from './CompanionSection';
+import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
@@ -55,7 +58,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void | Promise<void>;
+  onUploadImage: (file?: File) => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
@@ -97,7 +100,7 @@ export function DetailPanel({
   const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const autoTagBlock = useAutoTagBlock(trashMode || import.meta.env.VITE_TARGET === 'web' ? null : model, onRemoveTag, onAddTag);
+  const autoTagBlock = useAutoTagBlock(trashMode || !canEdit ? null : model, onRemoveTag, onAddTag);
   const {
     editing: editingSourceUrl,
     draft: sourceUrlDraft,
@@ -201,12 +204,7 @@ export function DetailPanel({
           <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>
-          <>{!isReadOnly() && <button
-            onClick={imageUpload.uploadImage}
-            className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('uploadModelImageLabel')}
-          </button>}</>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]" />
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
@@ -338,7 +336,9 @@ export function DetailPanel({
         </div>
 
         <BuildPlateFit model={model} printers={printers} variant="compact" />
-        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="compact" />}
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="compact" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="compact" />}
       </div>
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
@@ -347,7 +347,8 @@ export function DetailPanel({
             {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
-        <div className="flex gap-2">
+        {/* Web adds several action buttons that must wrap instead of squeezing each other; the desktop row keeps its fixed layout. */}
+        <div className={`flex gap-2${import.meta.env.VITE_TARGET === 'web' ? ' flex-wrap' : ''}`}>
           {confirmDelete ? (
             <>
               <span className="flex-1 flex items-center text-small font-medium text-[var(--ink)]">
@@ -372,6 +373,7 @@ export function DetailPanel({
           ) : (
             <>
               <RevealFileButton fileId={model.id} compact />
+              <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} />
               <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
@@ -417,13 +419,7 @@ export function DetailPanel({
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />
-          <>{!isReadOnly() && <button
-            onClick={imageUpload.uploadImage}
-            className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
-            style={{ fontSize: 'var(--font-size-meta)' }}
-          >
-            {t('uploadModelImageLabel')}
-          </button>}</>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]" style={{ fontSize: 'var(--font-size-meta)' }} />
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
@@ -534,7 +530,9 @@ export function DetailPanel({
         </div>
 
         <BuildPlateFit model={model} printers={printers} variant="comfort" />
-        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="comfort" />}
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="comfort" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="comfort" />}
       </div>
 
       <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
@@ -569,6 +567,7 @@ export function DetailPanel({
         ) : (
           <>
             <RevealFileButton fileId={model.id} compact />
+              <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} />
             <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}

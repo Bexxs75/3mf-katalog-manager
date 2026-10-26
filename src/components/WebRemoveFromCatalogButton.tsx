@@ -19,7 +19,7 @@ export function WebRemoveFromCatalogButton({ name, onRemove, onRemoved, classNam
   if (import.meta.env.VITE_TARGET !== 'web' || !allowed || !onRemove) return null;
   const close = () => { if (!busy) setConfirmRemove(false); };
   return <>
-    <button type="button" ref={button} className={className} aria-haspopup="dialog" onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalog')}</button>
+    <button type="button" ref={button} className={`${className} whitespace-nowrap`} aria-haspopup="dialog" onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalog')}</button>
     {confirmRemove && <CatalogActionDialog title={t('removeModelQuestion').replace('{name}', displayName(name))} onClose={close} returnFocus={button}>
       <p>{t('webRemoveModelHint')}</p>
       {error && <p role="alert">{error}</p>}

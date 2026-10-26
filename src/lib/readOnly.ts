@@ -16,7 +16,11 @@ export const WEB_READ_COMMANDS = [
   'check_filament',
   'get_filament_spool_image',
   'get_auto_tagging',
-
+  'list_suggested_auto_tags',
+  'list_blocked_auto_tags',
+  'list_companions',
+  'companion_image_data',
+  'disk_sync_report',
 ] as const;
 
 /** Web write commands: the server remains the authority for each request. */
@@ -32,6 +36,8 @@ export const WEB_WRITE_COMMANDS = [
   'rename_folder',
   'move_folder',
   'remove_folder_from_catalog',
+  'remove_companion',
+  'restore_companion',
   'remove_files_from_catalog',
   'start_upload_import', 'discard_upload', 'cancel_import',
   'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'set_license',
@@ -53,7 +59,12 @@ export const WEB_WRITE_COMMANDS = [
   'reorder_units',
   'load_spool',
   'unload_spool',
+  'restock_filament_spool',
+  'consume_resin',
   'set_render_snapshot',
+  'set_custom_image',
+  'rescan_file_metadata',
   'set_auto_tagging',
-
+  'block_auto_tag',
+  'unblock_auto_tag',
 ] as const;

@@ -1,5 +1,5 @@
 use super::*;
-fn forbidden(c: char) -> bool {
+pub(super) fn forbidden(c: char) -> bool {
     c.is_control()
         || matches!(c, '\u{ad}'|'\u{600}'..='\u{605}'|'\u{61c}'|'\u{6dd}'|'\u{70f}'|'\u{890}'..='\u{891}'|'\u{8e2}'|'\u{180e}'|'\u{200b}'..='\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2060}'..='\u{206f}'|'\u{feff}'|'\u{fff9}'..='\u{fffb}'|'\u{110bd}'|'\u{110cd}'|'\u{13430}'..='\u{13455}'|'\u{1bca0}'..='\u{1bca3}'|'\u{1d173}'..='\u{1d17a}'|'\u{e0001}'|'\u{e0020}'..='\u{e007f}')
 }
@@ -33,6 +33,19 @@ pub fn rename_name(old: &str, base: &str) -> Result<String> {
     validate_name(&format!("{}{}", validate_name(base)?, extension(old)))
 }
 pub fn trash_name(id: i64, op: &str, disk: &str) -> Result<String> {
+    trash_entry_name(&format!("{id}-"), op, disk)
+}
+/// Name of a companion file in the one-level web trash. The `companion-` prefix keeps
+/// it apart from trashed models (`<id>-...`), and the row id keeps names of different
+/// companions apart even when their file names are equal.
+pub fn companion_trash_name(id: i64, op: &str, disk: &str) -> Result<String> {
+    trash_entry_name(&format!("companion-{id}-"), op, disk)
+}
+/// The prefix every trash name of the companion with this row id starts with.
+pub fn companion_trash_prefix(id: i64) -> String {
+    format!("companion-{id}-")
+}
+fn trash_entry_name(label: &str, op: &str, disk: &str) -> Result<String> {
     if op.len() < 8 || !op.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(Error::Internal);
     }
@@ -47,7 +60,7 @@ pub fn trash_name(id: i64, op: &str, disk: &str) -> Result<String> {
         })
         .collect();
     let ext = extension(&clean);
-    let prefix = format!("{id}-{}-", &op[..8]);
+    let prefix = format!("{label}{}-", &op[..8]);
     let budget = 255usize
         .checked_sub(prefix.len() + ext.len())
         .filter(|b| *b > 0)

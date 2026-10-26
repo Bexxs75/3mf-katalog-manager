@@ -104,6 +104,11 @@ use crate::write::{AuditCompletion, WriteProgress, WriteGate, WRITE_COMMANDS, bo
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> u64;
+    /// Seconds from a clock that never jumps; expiry that must not be fooled by
+    /// a wall-clock change uses this one. Tests that fake `now` get it for free.
+    fn monotonic(&self) -> u64 {
+        self.now()
+    }
 }
 pub struct SystemClock;
 impl Clock for SystemClock {
@@ -112,6 +117,10 @@ impl Clock for SystemClock {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs()
+    }
+    fn monotonic(&self) -> u64 {
+        static START: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
+        START.elapsed().as_secs()
     }
 }
 /// Tests can provide both time and a peer without opening any sockets.
@@ -287,6 +296,8 @@ struct App {
     changes: Arc<tokio::sync::Mutex<()>>,
     geometry: Arc<GeometryGate>,
     downloads: Arc<tokio::sync::Semaphore>,
+    export: crate::export::Runtime,
+    slicer: Option<Arc<crate::slicer::Slicer>>,
 }
 pub(crate) fn error(status: u16, message: &str) -> Response {
     (
@@ -356,12 +367,15 @@ pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
 }
 fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result<Router,String> {
     let uploads = uploads::initialize(&config.config)?;
+    crate::export::sweep_stale(&config.config.db_path);
     let fileops = if let Some(writer) = &writer {
         crate::fileops_startup::prepare(&config.config, writer.conn.clone(), uploads.as_ref().map(|r| r.store.clone()))?.map(|ops| Arc::new(fileops::Runtime::new(ops)))
     } else { crate::fileops_startup::check_readonly(&config.config)?; None };
     uploads::reconcile(&config.config, uploads.as_ref())?;
     let fileops_safety = Mutex::new(crate::fileops_safety::FileOpsSafety::new(config.config.file_ops_daily_limit as usize));
+    let slicer = config.config.slicer_links.map(|ttl| crate::slicer::Slicer::new(ttl).map(Arc::new)).transpose()?;
     let app = Arc::new(App {
+        slicer,
         fileops, fileops_safety,
         uploads,
         writer,
@@ -376,6 +390,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result
         changes: Arc::new(tokio::sync::Mutex::new(())),
         geometry: Arc::new(GeometryGate::default()),
         downloads: Arc::new(tokio::sync::Semaphore::new(4)),
+        export: crate::export::Runtime::new(),
     });
     Ok(router(app))
 }
@@ -487,12 +502,14 @@ async fn limited(req: Request, next: Next, limit: usize) -> Response {
 }
 async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> Response {
     let command = req.uri().path().strip_prefix("/api/invoke/").unwrap_or("").to_owned();
-    let fileops_disabled = crate::write::FILE_OPS_COMMANDS.contains(&command.as_str()) && !app.config.file_ops;
+    let companion_upload = req.uri().path() == COMPANION_UPLOAD;
+    let fileops_disabled = (crate::write::FILE_OPS_COMMANDS.contains(&command.as_str()) || companion_upload) && !app.config.file_ops;
     let upload = req.uri().path() == "/api/upload" && app.uploads.is_some();
     let write_command = WRITE_COMMANDS.contains(&command.as_str());
-    let write = (write_command || upload) && app.config.write;
+    let write = (write_command || upload || companion_upload) && app.config.write;
     let limit = if upload { app.config.upload.as_ref().unwrap().max_bytes as usize } else if write { body_limit(&command) } else { 65536 };
-    let mut audit = (write && !upload).then(|| AuditCompletion::new(&command, req.headers(), cookie_name(secure(&app, req.headers())), app.clock.now()));
+    let audit_name = if companion_upload { crate::write::ROUTE_WRITES[0] } else { command.as_str() };
+    let mut audit = (write && !upload).then(|| AuditCompletion::new(audit_name, req.headers(), cookie_name(secure(&app, req.headers())), app.clock.now()));
     if let Some(audit) = &audit { req.extensions_mut().insert(audit.progress.clone()); }
 
     let upload_audit_name=if uploads::command(&command){Some(command.as_str())}else{match req.uri().path(){"/api/upload"=>Some("upload"),"/api/uploads"=>Some("list_uploads"),"/api/events"=>Some("events"),_=>None}};
@@ -516,15 +533,24 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
             });
             if !allowed {
                 error(if write { 403 } else { 421 }, "Host nicht zugelassen")
-            } else if req.method() != Method::GET && req.method() != Method::POST {
+            } else if req.method() != Method::GET && req.method() != Method::POST && !(req.method() == Method::HEAD && req.uri().path().starts_with(crate::slicer::PREFIX)) {
                 error(405, "Methode nicht erlaubt")
             } else if req.method() == Method::POST
                 && !app.config.allow_no_auth
                 && (!origin_ok(&app, req.headers()) || (write && app.config.write && !req.headers().contains_key(header::ORIGIN)))
             {
                 error(403, "Origin nicht zugelassen")
+            } else if companion_upload {
+                // The body streams to disk with its own idle limit; a huge file may take hours.
+                tokio::time::timeout(std::time::Duration::from_secs(6 * 3600 + 60), next.run(req)).await.unwrap_or_else(|_| error(408, "upload_timeout"))
             } else if upload {
                 tokio::time::timeout(std::time::Duration::from_secs(3600), next.run(req)).await.unwrap_or_else(|_| error(408,"upload_timeout"))
+            } else if req.uri().path() == "/api/backup/export" {
+                // Preparing the archive scales with the catalog size; only the
+                // response head is bounded here, the body streams afterwards.
+                tokio::time::timeout(std::time::Duration::from_secs(600), limited(req, next, limit))
+                    .await
+                    .unwrap_or_else(|_| error(408, "Zeitlimit für Anfrage überschritten"))
             } else if req.uri().path() == "/api/invoke/get_model_geometry" {
                 // Geometry processing has its own bounded admission; its body
                 // still has the same 15-second read deadline as other routes.
@@ -690,22 +716,40 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let method = req.method().clone();
     let command = path.strip_prefix("/api/invoke/").unwrap_or("");
     if crate::write::FILE_OPS_COMMANDS.contains(&command) && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
+    if path == COMPANION_UPLOAD && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
+    if path == COMPANION_UPLOAD && !app.config.write { return error(404, "Befehl im Web nicht verfügbar"); }
     let is_write = WRITE_COMMANDS.contains(&command);
     let upload_route=matches!(path.as_str(),"/api/upload"|"/api/uploads"|"/api/events")||uploads::command(command);
     if upload_route && app.uploads.is_none(){return error(404,"upload_disabled");}
     if is_write && !app.config.write { return error(404, "Befehl im Web nicht verfügbar"); }
+    if command == crate::slicer::COMMAND && app.slicer.is_none() { return error(404, "Befehl im Web nicht verfügbar"); }
+    // Handled before the static fallback and before any session lookup: the
+    // signed link is the only credential and must neither read nor set cookies.
+    if path.starts_with(crate::slicer::PREFIX) {
+        let Some(slicer) = &app.slicer else { return error(404, "Nicht gefunden") };
+        let peer = match client(&app, &req) {
+            Ok(peer) => peer,
+            Err(e) => return *e,
+        };
+        return crate::slicer::download(slicer, crate::slicer::Catalog { db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &path, &method, req.headers(), &peer, now).await;
+    }
     let audit = req.extensions().get::<Arc<WriteProgress>>().cloned();
     let download_id = path
         .strip_prefix("/api/files/")
+        .and_then(|p| p.strip_suffix("/download"))
+        .filter(|id| !id.contains('/'));
+    let companion_id = path
+        .strip_prefix("/api/companions/")
         .and_then(|p| p.strip_suffix("/download"))
         .filter(|id| !id.contains('/'));
     // Reserve the complete API namespace, including unknown routes, before SPA fallback.
     if path == "/api" || path.starts_with("/api/") {
         if !matches!(
             path.as_str(),
-            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events"
+            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events" | "/api/backup/export" | COMPANION_UPLOAD
         ) && !path.starts_with("/api/invoke/")
             && download_id.is_none()
+            && companion_id.is_none()
         {
             return error(404, "Nicht gefunden");
         }
@@ -735,10 +779,12 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         }
         if method!=Method::POST{return error(405,"method")}
     }
-    if let Some(id) = download_id {
+    if download_id.is_some() || companion_id.is_some() || path == "/api/backup/export" {
         if method != Method::GET {
             return error(405, "Methode nicht erlaubt");
         }
+        // Same rule for both file-like routes: a session is required unless the
+        // server runs in the loopback-only no-login mode.
         if !app.config.allow_no_auth {
             if current.is_none() {
                 return error(401, "Anmeldung erforderlich");
@@ -754,6 +800,23 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 return (StatusCode::FORBIDDEN, Json(json!({"message":"Bitte zuerst ein neues Passwort setzen","expected":true,"code":"password_change_required"}))).into_response();
             }
         }
+        if path == "/api/backup/export" {
+            let key = current.as_ref().map_or(peer.clone(), |s| s.token.clone());
+            let session = current.as_ref().map_or(0, |s| crate::write::session_fingerprint(&s.token));
+            return crate::export::export(&app.export, app.config.db_path.clone(), app.writer.as_ref().map(|w| w.conn.clone()), &key, session, app.clock.monotonic(), now).await;
+        }
+        if let Some(id) = companion_id {
+            return crate::download::companion(
+                app.config.db_path.clone(),
+                app.config.roots.clone(),
+                app.config.companion_max_bytes,
+                id,
+                &headers,
+                app.downloads.clone(),
+            )
+            .await;
+        }
+        let id = download_id.unwrap();
         return crate::download::download(
             app.config.db_path.clone(),
             app.config.roots.clone(),
@@ -767,7 +830,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         let must_change = current.is_some() && app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change);
         return match path.as_str() {
             "/api/health"=>Json(json!({"ok":true})).into_response(),
-            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"fileOps":fileops::capability(&app) && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
+            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"fileOps":fileops::capability(&app) && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"slicerLinks":app.slicer.is_some() && (app.config.allow_no_auth || current.is_some()) && !must_change,"companionMaxBytes":app.config.companion_max_bytes,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
             "/"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8")],include_str!("../static/index.html")).into_response(),
             "/static/app.js"=>([(header::CONTENT_TYPE,"application/javascript; charset=utf-8")],include_str!("../static/app.js")).into_response(),
             "/static/app.css"=>([(header::CONTENT_TYPE,"text/css; charset=utf-8")],include_str!("../static/app.css")).into_response(),
@@ -794,6 +857,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         }
     }
     if path == "/api/upload" { return uploads::upload(app,current.unwrap(),req).await; }
+    if path == COMPANION_UPLOAD { return companion_upload(app, current.expect("authenticated fileops"), req).await; }
     if path == "/api/logout" {
         if let Err(e) = read_body(req.into_body()).await {
             return *e;
@@ -832,6 +896,21 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     {
         return error(400, "Content-Type application/json erwartet");
     }
+    // Uploads and file operations carry their own operation journal, so the
+    // request id only applies to plain catalog writes. Format errors surface
+    // before any work is admitted.
+    let idempotent = is_write && !uploads::command(command) && (!crate::write::FILE_OPS_COMMANDS.contains(&command) || crate::write::companion_edit_command(command));
+    let request_id = if idempotent {
+        let mut values = headers.get_all(crate::idempotency::HEADER).iter();
+        match (values.next(), values.next()) {
+            (None, _) => None,
+            (Some(v), None) => match v.to_str().ok().filter(|s| crate::idempotency::valid_key(s)) {
+                Some(s) => Some(s.to_owned()),
+                None => return fileops::failure(400, "request_id_invalid"),
+            },
+            _ => return fileops::failure(400, "request_id_invalid"),
+        }
+    } else { None };
     // Reserve before buffering, including for chunked uploads. RAII releases the
     // place on invalid input, timeout or cancellation, then hands it to the worker.
     let admission = if is_write && !uploads::command(command) {
@@ -875,10 +954,34 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         p if p.starts_with("/api/invoke/") => {
             if uploads::command(command){let command=command.to_owned();return tokio::spawn(async move{uploads::invoke(app,current.unwrap(),&command,args).await}).await.unwrap_or_else(|_|error(500,"import_internal"));}
             if crate::write::FILE_OPS_COMMANDS.contains(&command) {
+                if let (true, Some(request_id)) = (crate::write::companion_edit_command(command), request_id.clone()) {
+                    return idempotent_fileop(app, current.expect("authenticated fileops"), peer.clone(), command.to_owned(), args, audit.expect("fileops audit"), admission.unwrap(), request_id).await;
+                }
                 return fileops::invoke(app, current.expect("authenticated fileops"), peer.clone(), command.to_owned(), args, admission.unwrap(), audit.expect("fileops audit")).await;
             }
             if is_write {
-                return write_invoke(app, current.expect("authenticated write"), command.to_owned(), args, audit, admission.unwrap()).await;
+                let current = current.expect("authenticated write");
+                if let Some(request_id) = request_id {
+                    return idempotent_write(app, current, command.to_owned(), args, audit, admission, request_id).await;
+                }
+                return write_invoke(app, current, command.to_owned(), args, audit, admission.unwrap(), None).await;
+            }
+            if command == crate::slicer::COMMAND {
+                // Hashed so the raw session token never sits in another table.
+                let key = current.as_ref().map_or_else(|| format!("p{peer}"), |s| format!("s{}", crate::idempotency::session_key(&s.token)));
+                return crate::slicer::mint(app.slicer.as_ref().expect("checked above"), crate::slicer::Catalog { db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &key, now, &args).await;
+            }
+            // The removed-files part of the companion list belongs to file management only.
+            let mut args = args;
+            if command == "list_companions" && !(app.config.file_ops && app.config.write) {
+                if let Some(object) = args.as_object_mut() {
+                    object.remove("includeRemoved");
+                }
+            }
+            if command == "list_folders" {
+                if let Some(response) = fileops::list_folders(&app).await {
+                    return response;
+                }
             }
             invoke(
                 app.config.db_path.clone(),
@@ -954,7 +1057,7 @@ async fn verify_client(
 }
 async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value) -> Response {
     if app.config.allow_no_auth {
-        return Json(json!({"ok":true,"mustChangePassword":false,"writable":false,"fileOps":false,"csrfToken":null}))
+        return Json(json!({"ok":true,"mustChangePassword":false,"writable":false,"fileOps":false,"slicerLinks":app.slicer.is_some(),"csrfToken":null}))
             .into_response();
     }
     let password = match string(&args, "password") {
@@ -980,7 +1083,7 @@ async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value)
         Ok(s) => s,
         Err(e) => return *e,
     };
-    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"fileOps":fileops::capability(&app) && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
+    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"fileOps":fileops::capability(&app) && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"slicerLinks":app.slicer.is_some() && !d.auth.as_ref().unwrap().must_change,"companionMaxBytes":app.config.companion_max_bytes,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
 }
 async fn change_password(
     app: Arc<App>,
@@ -1060,6 +1163,8 @@ async fn change_password(
     let active = d.sessions.contains_key(&current.token);
     d.auth = Some(auth);
     d.revision += 1;
+    // Links handed out under the old password stop working with it.
+    if let Some(slicer) = &app.slicer { slicer.rotate(); }
     for session in d.sessions.values() { session.validity.revoke(); }
     d.sessions.clear();
     d.limits.success(&peer);
@@ -1080,7 +1185,7 @@ async fn change_password(
         },
     );
     with_cookie(
-        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"fileOps":fileops::capability(&app),"uploadable":app.uploads.is_some(),"csrfToken":csrf})).into_response(),
+        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"fileOps":fileops::capability(&app),"uploadable":app.uploads.is_some(),"slicerLinks":app.slicer.is_some(),"companionMaxBytes":app.config.companion_max_bytes,"csrfToken":csrf})).into_response(),
         &token,
         secure,
         false,
@@ -1101,13 +1206,212 @@ fn admit_write(app: &App, current: &Session) -> Result<tokio::sync::OwnedSemapho
     }
     gate.admission.clone().try_acquire_owned().map_err(|_| Box::new(crate::write::retry(503)))
 }
-async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit) -> Response {
+const COMPANION_UPLOAD: &str = "/api/companion-upload";
+
+/// Strict percent-decoding of the file name header (the browser sends `encodeURIComponent`).
+fn decode_upload_name(raw: &str) -> Option<String> {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let h = (*bytes.get(i + 1)? as char).to_digit(16)?;
+            let l = (*bytes.get(i + 2)? as char).to_digit(16)?;
+            out.push((h * 16 + l) as u8);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// `POST /api/companion-upload`: one companion file as a raw body (`Content-Length`
+/// required), the model in `X-File-Id`, the name percent-encoded in `X-Upload-Name`.
+/// Everything that can be judged from the headers is refused before a byte is read.
+async fn companion_upload(app: Arc<App>, current: Session, req: Request) -> Response {
+    if req.method() != Method::POST {
+        return error(405, "Methode nicht erlaubt");
+    }
+    if app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change) {
+        return (StatusCode::FORBIDDEN, Json(json!({"message":"Bitte zuerst ein neues Passwort setzen","expected":true,"code":"password_change_required"}))).into_response();
+    }
+    let headers = req.headers().clone();
+    if headers.get(header::CONTENT_TYPE).and_then(|h| h.to_str().ok()) != Some("application/octet-stream") {
+        return fileops::failure(400, "content_type");
+    }
+    let Some(length) = headers.get(header::CONTENT_LENGTH) else { return fileops::failure(411, "length_required") };
+    let Some(length) = length.to_str().ok().filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())).and_then(|s| s.parse::<u64>().ok()) else {
+        return fileops::failure(400, "length_invalid");
+    };
+    let Some(file_id) = headers
+        .get("x-file-id")
+        .and_then(|h| h.to_str().ok())
+        .filter(|s| !s.is_empty() && s.len() < 19 && s.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|s| s.parse::<i64>().ok())
+        .filter(|id| *id > 0)
+    else {
+        return fileops::failure(400, "invalid_arguments");
+    };
+    let Some(name) = headers.get("x-upload-name").and_then(|h| h.to_str().ok()).filter(|s| s.len() <= 3072).and_then(decode_upload_name) else {
+        return fileops::failure(400, "name_invalid");
+    };
+    if let Err(e) = katalog_core::fsops::prepare_companion_name(&name, length, app.config.companion_max_bytes) {
+        return *fileops::core_error(e);
+    }
+    let mut ids = headers.get_all(crate::idempotency::HEADER).iter();
+    let request_id = match (ids.next(), ids.next()) {
+        (None, _) => None,
+        (Some(v), None) => match v.to_str().ok().filter(|s| crate::idempotency::valid_key(s)) {
+            Some(s) => Some(s.to_owned()),
+            None => return fileops::failure(400, "request_id_invalid"),
+        },
+        _ => return fileops::failure(400, "request_id_invalid"),
+    };
+    let audit = req.extensions().get::<Arc<WriteProgress>>().cloned().expect("companion upload audit");
+    let admission = match admit_write(&app, &current) {
+        Ok(permit) => permit,
+        Err(response) => return *response,
+    };
+    let body = req.into_body();
+    let Some(request_id) = request_id else {
+        return fileops::add_companion(app, current, file_id, name, length, body, audit, admission, fileops::COMPANION_IDLE).await;
+    };
+    // The client sends a fresh request id for every attempt (a chosen file is one attempt), so the
+    // key only recognises a network-level resend of the very same request. Hashing the content
+    // would mean reading the whole body twice, so file, name and length stand in for it.
+    let args_hash = crate::idempotency::args_hash(&json!({"fileId": file_id, "name": name, "length": length}));
+    let (app2, current2, audit2) = (app.clone(), current.clone(), audit.clone());
+    run_once(&app, &current, &request_id, crate::write::ROUTE_WRITES[0], args_hash, &Some(audit), Some(admission), move |guard, permit| async move {
+        let clock = app2.clock.clone();
+        let work = tokio::spawn(fileops::add_companion(app2, current2, file_id, name, length, body, audit2, permit, fileops::COMPANION_IDLE));
+        record_outcome(guard, work, clock).await
+    })
+    .await
+}
+/// Runs a write at most once per (session, request id). A repeat of a finished
+/// request is answered from the stored result; a repeat of a running one waits
+/// for it, so a client retry after a timeout never applies the change twice.
+/// `work` receives the guard that records the outcome and the admission place.
+#[allow(clippy::too_many_arguments)]
+async fn run_once<F, Fut>(
+    app: &Arc<App>,
+    current: &Session,
+    request_id: &str,
+    name: &'static str,
+    args_hash: u64,
+    audit: &Option<Arc<WriteProgress>>,
+    mut admission: Option<tokio::sync::OwnedSemaphorePermit>,
+    work: F,
+) -> Response
+where
+    F: FnOnce(crate::idempotency::Guard, tokio::sync::OwnedSemaphorePermit) -> Fut,
+    Fut: std::future::Future<Output = Response>,
+{
+    use crate::idempotency::{self, Begin};
+    let store = app.writer.as_ref().expect("write connection initialized").idem.clone();
+    let session = idempotency::session_key(&current.token);
+    loop {
+        match store.begin(session, request_id, name, args_hash, app.clock.monotonic()) {
+            Begin::Run(guard) => {
+                let permit = match admission.take() {
+                    Some(p) => p,
+                    None => match admit_write(app, current) { Ok(p) => p, Err(r) => return *r },
+                };
+                return work(guard, permit).await;
+            }
+            Begin::Wait(mut finished) => {
+                // Do not hold an admission place while another request does the work.
+                admission = None;
+                let _ = finished.changed().await;
+            }
+            Begin::Replay(stored) => {
+                if let Some(audit) = audit { audit.replay.store(true, std::sync::atomic::Ordering::Relaxed); }
+                return stored.to_response().unwrap_or_else(|| fileops::failure(409, "request_id_result_unavailable"));
+            }
+            Begin::Reused => return fileops::failure(422, "request_id_reused"),
+            Begin::Full => return crate::write::retry(503),
+        }
+    }
+}
+async fn idempotent_write(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: Option<tokio::sync::OwnedSemaphorePermit>, request_id: String) -> Response {
+    let args_hash = crate::idempotency::args_hash(&args);
+    let name = WRITE_COMMANDS.iter().copied().find(|c| *c == command).expect("allowlisted write");
+    let (app2, current2, audit2) = (app.clone(), current.clone(), audit.clone());
+    run_once(&app, &current, &request_id, name, args_hash, &audit, admission, move |guard, permit| {
+        write_invoke(app2, current2, command, args, audit2, permit, Some(guard))
+    })
+    .await
+}
+/// The same guarantee for a file operation that runs in its own task: the outcome is
+/// recorded even when the HTTP request is dropped before the operation ends.
+#[allow(clippy::too_many_arguments)]
+async fn idempotent_fileop(app: Arc<App>, current: Session, peer: String, command: String, args: Value, audit: Arc<WriteProgress>, admission: tokio::sync::OwnedSemaphorePermit, request_id: String) -> Response {
+    let args_hash = crate::idempotency::args_hash(&args);
+    let name = WRITE_COMMANDS.iter().copied().find(|c| *c == command).expect("allowlisted write");
+    let (app2, current2, audit2) = (app.clone(), current.clone(), Some(audit.clone()));
+    run_once(&app, &current, &request_id, name, args_hash, &audit2.clone(), Some(admission), move |guard, permit| async move {
+        let clock = app2.clock.clone();
+        let work = tokio::spawn(fileops::invoke(app2, current2, peer, command, args, permit, audit));
+        record_outcome(guard, work, clock).await
+    })
+    .await
+}
+/// Records the finished answer under the request id from a detached task, so a retry
+/// finds it even if the HTTP future was dropped by the request timeout.
+async fn record_outcome(guard: crate::idempotency::Guard, work: tokio::task::JoinHandle<Response>, clock: Arc<dyn Clock>) -> Response {
+    let (reply, delivered) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let response = work.await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"));
+        let (parts, body) = response.into_parts();
+        let response = match axum::body::to_bytes(body, usize::MAX).await {
+            Ok(bytes) => {
+                guard.finish(parts.status.as_u16(), parts.headers.get(header::CONTENT_TYPE).cloned(), bytes.clone(), clock.monotonic());
+                Response::from_parts(parts, Body::from(bytes))
+            }
+            Err(_) => error(500, "Interner Schreibfehler"),
+        };
+        let _ = reply.send(response);
+    });
+    delivered.await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"))
+}
+async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit, replay: Option<crate::idempotency::Guard>) -> Response {
     let gate = app.writer.as_ref().expect("write connection initialized");
     let started=std::time::Instant::now();
-    let Ok(Ok(worker)) = tokio::time::timeout(std::time::Duration::from_secs(5),gate.worker.clone().acquire_owned()).await else { return crate::write::retry(503); };
+    let clock = app.clock.clone();
+    // A rescan parses a file before it needs the write connection, so it takes the single
+    // scan place first and only later the write place; all other writes take the latter at once.
+    let rescan = command == "rescan_file_metadata";
+    let (worker, scan_permit) = if rescan {
+        let Ok(Ok(scan)) = tokio::time::timeout(std::time::Duration::from_secs(1),gate.rescan.clone().acquire_owned()).await else { return crate::write::retry(503); };
+        (None, Some(scan))
+    } else {
+        let Ok(Ok(worker)) = tokio::time::timeout(std::time::Duration::from_secs(5),gate.worker.clone().acquire_owned()).await else { return crate::write::retry(503); };
+        (Some(worker), None)
+    };
     // Permits live with blocking work, including after HTTP timeout/disconnect.
+    let exec_ctx = crate::write::ExecContext {
+        db_path: app.config.db_path.clone(),
+        roots: app.config.roots.clone(),
+        limits: app.config.upload.as_ref().map(|u| u.limits).unwrap_or_default(),
+    };
     let work=tokio::task::spawn_blocking(move || {
-        let (_admission, _worker) = (admission, worker);
+        let (_admission, _scan) = (admission, scan_permit);
+        let mut worker = worker;
+        let prepared = if rescan {
+            let prepared = match crate::write::prepare_rescan(&args, &exec_ctx) { Ok(p) => p, Err(response) => return *response };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                match app.writer.as_ref().unwrap().worker.clone().try_acquire_owned() {
+                    Ok(permit) => { worker = Some(permit); break; }
+                    Err(_) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(5)),
+                    Err(_) => return crate::write::retry(503),
+                }
+            }
+            Some(prepared)
+        } else { None };
+        let _worker = worker;
         let removal_ids = if command == "remove_files_from_catalog" {
             match crate::write::removal_ids(&args) {
                 Ok(ids) => Some(ids),
@@ -1188,10 +1492,11 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         }
         let execution = if removal_ids.is_some() {
             let cancel = fileops::operation_cancellation(&app, &current);
-            let result=cancel.run(&mut conn,|c|crate::write::execute(c,&command,&args));
+            let result=cancel.run(&mut conn,|c|crate::write::execute(c,&command,&args,&exec_ctx));
             if cancel.interrupted(){return fileops::failure(409,"not_started")}
             match result {Ok(result)=>result,Err(())=>return fileops::failure(500,"internal")}
-        } else {crate::write::execute(&mut conn,&command,&args)};
+        } else if let Some(prepared) = prepared { crate::write::apply_rescan(&mut conn, prepared) }
+        else {crate::write::execute(&mut conn,&command,&args,&exec_ctx)};
         match execution {
             Ok((response, changes)) => {
                 drop(conn);
@@ -1209,7 +1514,10 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
             Err(response) => *response,
         }
     });
-    work.await.unwrap_or_else(|_|error(500,"Interner Schreibfehler"))
+    let Some(guard) = replay else {
+        return work.await.unwrap_or_else(|_|error(500,"Interner Schreibfehler"));
+    };
+    record_outcome(guard, work, clock).await
 }
 
 #[cfg(test)]

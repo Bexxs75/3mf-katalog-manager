@@ -11,8 +11,10 @@ import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { WebSlicerMenu } from './WebSlicerMenu';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
+import { ImageUploadButton } from './ImageUploadButton';
 import { useModelImages } from '../hooks/useModelImages';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState } from 'react';
@@ -42,6 +44,7 @@ import { FilamentCheckSection } from './FilamentCheckSection';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { CompanionSection } from './CompanionSection';
+import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { FilamentUsageMissing } from './FilamentUsageMissing';
 import { isFilamentUsageMissing } from '../lib/filamentUsageHelp';
@@ -62,7 +65,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void | Promise<void>;
+  onUploadImage: (file?: File) => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
@@ -117,7 +120,7 @@ export function ModelDetailPage({
   const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const autoTagBlock = useAutoTagBlock(import.meta.env.VITE_TARGET === 'web' ? null : model, onRemoveTag, onAddTag);
+  const autoTagBlock = useAutoTagBlock(!canEdit ? null : model, onRemoveTag, onAddTag);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const deleteTriggerFocusPending = useRef(false);
@@ -167,7 +170,7 @@ export function ModelDetailPage({
 
   const rows = buildMetaRows(model, t, language);
   const filamentCheck = useFilamentCheck(
-    import.meta.env.VITE_TARGET !== 'web' && model.sliceInfo ? [model.id] : [],
+    model.sliceInfo ? [model.id] : [],
     JSON.stringify(model.sliceInfo ?? null),
   );
 
@@ -287,12 +290,7 @@ export function ModelDetailPage({
               </div>
             )}
           </div>
-          <>{!isReadOnly() && <button
-            onClick={imageUpload.uploadImage}
-            className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('uploadModelImageLabel')}
-          </button>}</>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]" />
           <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
         </div>
 
@@ -399,8 +397,11 @@ export function ModelDetailPage({
 
       <BuildPlateFit model={model} printers={printers} variant="page" />
 
+      {/* The web build lists and downloads companions only; the desktop section also edits them. */}
       <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
-        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="page" />}
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="page" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="page" />}
       </div>
 
       {isFilamentUsageMissing(model) && <FilamentUsageMissing />}
@@ -596,12 +597,13 @@ export function ModelDetailPage({
               {t('delete')}
             </button>
           ))}
-          <>{!isReadOnly() && <button
+          <button
             onClick={onRescanMetadata}
-            className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
+            className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)] disabled:opacity-40 disabled:cursor-default"
+            {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}
           >
             {t('rescanMetadataButton')}
-          </button>}</>
+          </button>
           <div className="relative">
             <>{canEdit && <button
               onClick={() => setAddToCollectionMenuOpen((prev) => !prev)}
@@ -634,6 +636,7 @@ export function ModelDetailPage({
           </div>
           <DownloadFileButton fileId={model.id} />
           <RevealFileButton fileId={model.id} />
+          <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} className="px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-body font-semibold disabled:opacity-50" />
           <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}

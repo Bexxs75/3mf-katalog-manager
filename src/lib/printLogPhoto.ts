@@ -1,4 +1,22 @@
+import { prepareCoverImage } from './coverImage';
+
 export const MAX_CUSTOM_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Same checks as `readPrintLogPhoto`, but failing with the backend's translatable
+ * image error codes so the upload feedback matches the desktop picker.
+ */
+export async function readImageFile(file: File): Promise<string> {
+  try {
+    const prepared = await prepareCoverImage(file);
+    return await readPrintLogPhoto(prepared as File);
+  } catch (error) {
+    const code = error instanceof Error && error.message === 'webPhotoTooLarge' ? 'imageUploadTooLarge'
+      : error instanceof Error && error.message === 'webPhotoFormat' ? 'imageUploadUnsupported'
+      : 'imageUploadUnreadable';
+    throw { message: code, expected: true };
+  }
+}
 
 /** Validate before allocating a base64 string; only server-supported formats. */
 export async function readPrintLogPhoto(file: File): Promise<string> {

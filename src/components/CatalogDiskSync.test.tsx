@@ -64,6 +64,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     expect(screen.getByText('foto[U+202E]gpj.stl').closest('li')).toHaveAttribute('title', '/models/foto[U+202E]gpj.stl');
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', {
@@ -87,6 +88,7 @@ describe('catalog disk sync', () => {
     const reload = renderSync();
     fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     if (remove) fireEvent.click(removeBox());
     fireEvent.click(screen.getByRole('button', { name: 'Änderungen übernehmen' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', { selection: { newPaths: ['/models/new.obj'], missingIds: ['42'], removeMissing: remove, renames: [] } }));
@@ -98,6 +100,7 @@ describe('catalog disk sync', () => {
     renderSync(vi.fn().mockRejectedValue(new Error('refresh failed')));
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
     expect(await screen.findByRole('status')).toHaveTextContent('1 neue Datei');
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -134,6 +137,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
     const checked = () => ['a.obj', 'b.obj', 'c.obj', 'd.obj', 'o.obj → n.obj'].map(n => box(n).checked);
     expect(checked()).toEqual([true, true, false, false, true]);
@@ -167,6 +171,7 @@ describe('catalog disk sync', () => {
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncClose }));
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     expect(screen.getByRole('dialog')).not.toHaveTextContent('Papierkorb');
   });
   it('shows the missing-only action only while removal is checked', async () => {
@@ -174,6 +179,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     expect(screen.queryByRole('button', { name: de.diskSyncRemoveAction })).toBeNull();
     expect(screen.getByRole('button', { name: de.diskSyncClose })).toBeVisible();
     fireEvent.click(removeBox());
@@ -190,6 +196,7 @@ describe('catalog disk sync', () => {
     const reload = renderSync();
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     expect(screen.queryByRole('button', { name: dictionary.diskSyncRemoveAction })).toBeNull();
     expect(invoke).toHaveBeenCalledTimes(1);
     fireEvent.click(removeBox(dictionary));
@@ -213,9 +220,11 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncApply }));
     await waitFor(() => expect(screen.queryByRole('button', { name: dictionary.diskSyncApply })).toBeNull());
-    const result = screen.getByRole(allFailed ? 'dialog' : 'status');
+    // The toast is set a microtask after the dialog's apply button disappears, so wait for it.
+    const result = await screen.findByRole(allFailed ? 'dialog' : 'status');
     expect(result).toHaveTextContent(dictionary.diskSyncUnreadable.one.replace('{count}', '1'));
     expect(result).toHaveTextContent('/models/broken.3mf');
     if (allFailed) {
@@ -251,6 +260,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncApply }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(dictionary[code]);
@@ -270,6 +280,7 @@ describe('catalog disk sync', () => {
     vi.mocked(invoke).mockResolvedValue(changes); renderSync();
     fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     const apply = screen.getByRole('button', { name: 'Änderungen übernehmen' }); apply.focus();
     fireEvent.keyDown(document, { key: 'Tab' }); expect(screen.getByRole('button', { name: de.diskSyncSelectAllIn.replace('{section}', de.diskSyncNewHeading) })).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true }); expect(apply).toHaveFocus();
@@ -298,7 +309,10 @@ describe('catalog disk sync', () => {
       vi.mocked(invoke).mockResolvedValueOnce(scan);
       const reload = renderSync();
       fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
-      return { reload, dialog: await screen.findByRole('dialog') };
+      const dialog = await screen.findByRole('dialog');
+      // The dialog's mount effect re-seeds the ticks; under load it can run after the first click and undo it.
+      await act(async () => {});
+      return { reload, dialog };
     };
     const box = (name: string) => screen.getByRole('checkbox', { name });
     const applied = { fileIds: [], folderIds: [], renamedIds: ['1', '2'], renamedCount: 2, removedCount: 0, failedPaths: [] };

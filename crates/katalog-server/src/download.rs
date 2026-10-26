@@ -112,11 +112,25 @@ pub async fn download(
         ))
     })
     .await;
-    let (mut file, len, modified, name, permit) = match opened {
+    let (file, len, modified, name, permit) = match opened {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => return crate::invoke::read_error(e),
         Err(_) => return error(500, "Interner Fehler"),
     };
+    serve(file, len, modified, &name, "application/octet-stream", permit, headers)
+}
+
+/// Streams an opened regular file with range support. The type is chosen by the caller,
+/// never sniffed; the file always goes out as an attachment.
+fn serve(
+    mut file: std::fs::File,
+    len: u64,
+    modified: Option<String>,
+    name: &str,
+    content_type: &str,
+    permit: OwnedSemaphorePermit,
+    headers: &HeaderMap,
+) -> Response {
     // No entity tag is emitted. Only our exact Last-Modified date can match;
     // weak tags, unknown tags and malformed validators require a full response.
     let if_range_matches = headers.get_all("if-range").iter().count() <= 1
@@ -164,9 +178,9 @@ pub async fn download(
         );
     }
     for (key, value) in [
-        ("content-type", "application/octet-stream".into()),
+        ("content-type", content_type.into()),
         ("content-length", count.to_string()),
-        ("content-disposition", disposition(&name)),
+        ("content-disposition", disposition(name)),
         ("accept-ranges", "bytes".into()),
     ] {
         response.headers_mut().insert(key, value.parse().unwrap());
@@ -179,7 +193,55 @@ pub async fn download(
     response
 }
 
-fn byte_range(value: &str, len: u64) -> Result<Option<(u64, u64)>, ()> {
+/// One companion file of a model, by its row id. The path comes from the catalog row
+/// only; the strict open (no links, one name, inside a root) is `open_for_web`.
+pub async fn companion(
+    db_path: PathBuf,
+    roots: Vec<PathBuf>,
+    max_bytes: u64,
+    id: &str,
+    headers: &HeaderMap,
+    slots: Arc<Semaphore>,
+) -> Response {
+    let Ok(numeric_id) = id.parse::<i64>() else {
+        return error(400, "ID muss eine numerische Zeichenfolge sein");
+    };
+    let permit = match tokio::time::timeout(Duration::from_millis(250), slots.acquire_owned()).await {
+        Ok(Ok(p)) => p,
+        _ => {
+            let mut r = error(503, "Zu viele Downloads");
+            r.headers_mut().insert("retry-after", "1".parse().unwrap());
+            return r;
+        }
+    };
+    // The permit travels through the blocking closure: cancelling the request must not
+    // release a slot while the file is still being opened in the blocking pool.
+    let opened = tokio::task::spawn_blocking(move || {
+        let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
+        let opened = katalog_core::companion_read::open_for_web(
+            &conn,
+            numeric_id,
+            &roots,
+            max_bytes,
+        );
+        drop(conn);
+        let (row, kind, mut file, _) = opened.map_err(crate::invoke::companion_error)?;
+        // The content check read the start of the file; the answer begins there again.
+        file.seek(SeekFrom::Start(0)).map_err(read::geometry_io_error)?;
+        let meta = file.metadata().map_err(read::geometry_io_error)?;
+        let content_type = katalog_core::companion_read::download_content_type(kind, &row.name);
+        Ok::<_, ReadError>((file, meta.len(), meta.modified().ok().and_then(http_date), row.name, content_type, permit))
+    })
+    .await;
+    let (file, len, modified, name, content_type, permit) = match opened {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => return crate::invoke::read_error(e),
+        Err(_) => return error(500, "Interner Fehler"),
+    };
+    serve(file, len, modified, &name, content_type, permit, headers)
+}
+
+pub(crate) fn byte_range(value: &str, len: u64) -> Result<Option<(u64, u64)>, ()> {
     let Some((unit, value)) = value.split_once('=') else {
         return Ok(None);
     };
@@ -226,7 +288,7 @@ fn byte_range(value: &str, len: u64) -> Result<Option<(u64, u64)>, ()> {
 
 // IMF-fixdate in UTC, without adding a dependency to the locked server graph.
 // Bound the year before conversion; filesystem timestamps can be out of range.
-fn http_date(time: std::time::SystemTime) -> Option<String> {
+pub(crate) fn http_date(time: std::time::SystemTime) -> Option<String> {
     let seconds = match time.duration_since(std::time::UNIX_EPOCH) {
         Ok(d) => i64::try_from(d.as_secs()).ok()?,
         Err(e) => {
@@ -295,7 +357,7 @@ fn is_format_control(c: char) -> bool {
         | '\u{1d173}'..='\u{1d17a}' | '\u{e0001}' | '\u{e0020}'..='\u{e007f}')
 }
 
-fn disposition(name: &str) -> String {
+pub(crate) fn disposition(name: &str) -> String {
     let clean: String = name
         .chars()
         .filter(|c| !c.is_control() && !is_format_control(*c) && !matches!(c, '/' | '\\' | '"'))
@@ -329,10 +391,16 @@ fn disposition(name: &str) -> String {
     format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")
 }
 
-struct DownloadBody {
+pub(crate) struct DownloadBody {
     file: tokio::fs::File,
     remaining: u64,
     permit: Option<OwnedSemaphorePermit>,
+}
+impl DownloadBody {
+    /// Streams exactly `remaining` bytes and keeps `permit` until the stream ends or is dropped.
+    pub(crate) fn new(file: tokio::fs::File, remaining: u64, permit: OwnedSemaphorePermit) -> Self {
+        Self { file, remaining, permit: Some(permit) }
+    }
 }
 impl hyper::body::Body for DownloadBody {
     type Data = Bytes;
