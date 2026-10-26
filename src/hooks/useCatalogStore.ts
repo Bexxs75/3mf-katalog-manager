@@ -29,6 +29,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     id: s.id,
     name: s.name,
     path: s.path,
+    fileType: s.fileType,
     folderId: s.folderId,
     tags: [],
     origin: 'local',

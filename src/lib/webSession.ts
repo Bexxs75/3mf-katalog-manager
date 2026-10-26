@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { isReadOnly } from './readOnly';
 /** Browser session and CSRF token live only in memory. */
-export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean; uploadable?: boolean; fileOps?: boolean }
+export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean; uploadable?: boolean; fileOps?: boolean; slicerLinks?: boolean }
 let session: WebSession = { authenticated: false, mustChangePassword: false, csrfToken: null };
 let sessionEpoch = 0;
 const subscribers = new Set<() => void>();
@@ -61,6 +61,10 @@ export const useCanEditMetadata = () => useSyncExternalStore(subscribe, canEditM
 /** Browser upload is a separate server capability; filesystem actions stay locked. */
 export const canUpload = () => isReadOnly() && session.authenticated && !session.mustChangePassword && session.writable === true && session.uploadable === true;
 export const useCanUpload = () => useSyncExternalStore(subscribe, canUpload, canUpload);
+
+/** Signed slicer links are a separate, opt-in server capability and need no write access. */
+export const canOpenInSlicerLink = () => isReadOnly() && session.authenticated && !session.mustChangePassword && session.slicerLinks === true;
+export const useCanOpenInSlicerLink = () => useSyncExternalStore(subscribe, canOpenInSlicerLink, canOpenInSlicerLink);
 
 /** Snapshot persistence has a separate capability from filesystem writes. */
 export const canSaveSnapshots = () => import.meta.env.VITE_TARGET === 'web' ? canEditMetadata() : !isReadOnly();

@@ -51,6 +51,10 @@ services:
     #   - KATALOG_IMPORT_MAX_UNPACKED_MB=1024
     #   - KATALOG_IMPORT_MAX_VERTICES=2000000
     #   - KATALOG_IMPORT_MAX_TRIANGLES=3000000
+    #   # "Open in slicer" via signed, short-lived download links (works in read-only mode, too):
+    #   - KATALOG_SLICER_LINKS=1
+    #   # Link lifetime in seconds (60-86400):
+    #   - KATALOG_SLICER_LINK_TTL_SECONDS=3600
     #   # First-time password only (otherwise a random one is printed once in the log):
     #   - KATALOG_PASSWORD_FILE=/config/.kasmvnc-password   # reuse the desktop image's password
     read_only: true

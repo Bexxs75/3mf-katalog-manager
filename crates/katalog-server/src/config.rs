@@ -34,6 +34,8 @@ pub struct Config {
     pub file_ops_daily_limit: u64,
     pub file_ops_ack: Vec<String>,
     pub file_roots: Vec<PathBuf>,
+    /// Lifetime in seconds of "open in slicer" links; `None` leaves the feature off.
+    pub slicer_links: Option<u64>,
     pub upload: Option<UploadConfig>,
     pub password: Option<String>,
     pub password_file: Option<PathBuf>,
@@ -187,7 +189,19 @@ impl Config {
         if file_ops && (!write || allow_no_auth || lookup("KATALOG_ALLOWED_HOSTS").is_none_or(|v| v.trim().is_empty())) {
             return Err("Dateiverwaltung erfordert Schreibmodus, Anmeldung und explizite Hostliste".into());
         }
+        let slicer_links = match lookup("KATALOG_SLICER_LINKS").as_deref() {
+            None | Some("0") => None,
+            Some("1") => Some(ranged_limit(
+                &lookup,
+                "KATALOG_SLICER_LINK_TTL_SECONDS",
+                crate::slicer::DEFAULT_TTL_SECONDS,
+                crate::slicer::MIN_TTL_SECONDS,
+                crate::slicer::MAX_TTL_SECONDS,
+            )?),
+            Some(_) => return Err("KATALOG_SLICER_LINKS muss 0 oder 1 sein".into()),
+        };
         let mut config = Self {
+            slicer_links,
             file_ops, file_ops_daily_limit, file_ops_ack, file_roots,
             static_dir,
             db_path,
@@ -205,6 +219,24 @@ impl Config {
         validate_upload_config(&mut config)?;
         validate_fileops_config(&config)?;
         Ok(config)
+    }
+}
+
+/// Like `positive_limit` with a lower bound; the bounds are part of the message.
+fn ranged_limit(
+    lookup: &impl Fn(&str) -> Option<String>,
+    key: &str,
+    default: u64,
+    min: u64,
+    max: u64,
+) -> Result<u64, String> {
+    match lookup(key) {
+        None => Ok(default),
+        Some(value) => value
+            .parse::<u64>()
+            .ok()
+            .filter(|n| value.bytes().all(|b| b.is_ascii_digit()) && (min..=max).contains(n))
+            .ok_or_else(|| format!("{key} muss eine ganze Zahl zwischen {min} und {max} sein")),
     }
 }
 

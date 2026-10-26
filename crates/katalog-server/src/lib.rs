@@ -10,6 +10,8 @@ mod static_files;
 
 mod download;
 
+mod slicer;
+
 mod export;
 
 mod write;

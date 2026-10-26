@@ -73,6 +73,7 @@ impl Fixture {
             geometry: Arc::new(GeometryGate::default()),
             downloads: Arc::new(tokio::sync::Semaphore::new(4)),
             export: crate::export::Runtime::new(),
+            slicer: None,
         });
         Self {
             app,

@@ -9,6 +9,7 @@ import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { WebSlicerMenu } from './WebSlicerMenu';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
 import { ImageUploadButton } from './ImageUploadButton';
@@ -368,6 +369,7 @@ export function DetailPanel({
           ) : (
             <>
               <RevealFileButton fileId={model.id} compact />
+              <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} />
               <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
@@ -559,6 +561,7 @@ export function DetailPanel({
         ) : (
           <>
             <RevealFileButton fileId={model.id} compact />
+              <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} />
             <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}

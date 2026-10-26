@@ -179,7 +179,7 @@ pub async fn download(
     response
 }
 
-fn byte_range(value: &str, len: u64) -> Result<Option<(u64, u64)>, ()> {
+pub(crate) fn byte_range(value: &str, len: u64) -> Result<Option<(u64, u64)>, ()> {
     let Some((unit, value)) = value.split_once('=') else {
         return Ok(None);
     };
@@ -226,7 +226,7 @@ fn byte_range(value: &str, len: u64) -> Result<Option<(u64, u64)>, ()> {
 
 // IMF-fixdate in UTC, without adding a dependency to the locked server graph.
 // Bound the year before conversion; filesystem timestamps can be out of range.
-fn http_date(time: std::time::SystemTime) -> Option<String> {
+pub(crate) fn http_date(time: std::time::SystemTime) -> Option<String> {
     let seconds = match time.duration_since(std::time::UNIX_EPOCH) {
         Ok(d) => i64::try_from(d.as_secs()).ok()?,
         Err(e) => {
@@ -295,7 +295,7 @@ fn is_format_control(c: char) -> bool {
         | '\u{1d173}'..='\u{1d17a}' | '\u{e0001}' | '\u{e0020}'..='\u{e007f}')
 }
 
-fn disposition(name: &str) -> String {
+pub(crate) fn disposition(name: &str) -> String {
     let clean: String = name
         .chars()
         .filter(|c| !c.is_control() && !is_format_control(*c) && !matches!(c, '/' | '\\' | '"'))

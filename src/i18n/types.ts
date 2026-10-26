@@ -651,6 +651,9 @@ export interface Translations {
   cancel: string;
   delete: string;
   openInSlicer: string;
+  webSlicerHint: string;
+  webSlicerError: string;
+  webSlicerNotInstalled: string;
   renameLabel: string;
   renameError: string;
   renameEmptyNameError: string;

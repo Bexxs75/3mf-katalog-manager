@@ -297,6 +297,7 @@ struct App {
     geometry: Arc<GeometryGate>,
     downloads: Arc<tokio::sync::Semaphore>,
     export: crate::export::Runtime,
+    slicer: Option<Arc<crate::slicer::Slicer>>,
 }
 pub(crate) fn error(status: u16, message: &str) -> Response {
     (
@@ -372,7 +373,9 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result
     } else { crate::fileops_startup::check_readonly(&config.config)?; None };
     uploads::reconcile(&config.config, uploads.as_ref())?;
     let fileops_safety = Mutex::new(crate::fileops_safety::FileOpsSafety::new(config.config.file_ops_daily_limit as usize));
+    let slicer = config.config.slicer_links.map(|ttl| crate::slicer::Slicer::new(ttl).map(Arc::new)).transpose()?;
     let app = Arc::new(App {
+        slicer,
         fileops, fileops_safety,
         uploads,
         writer,
@@ -528,7 +531,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
             });
             if !allowed {
                 error(if write { 403 } else { 421 }, "Host nicht zugelassen")
-            } else if req.method() != Method::GET && req.method() != Method::POST {
+            } else if req.method() != Method::GET && req.method() != Method::POST && !(req.method() == Method::HEAD && req.uri().path().starts_with(crate::slicer::PREFIX)) {
                 error(405, "Methode nicht erlaubt")
             } else if req.method() == Method::POST
                 && !app.config.allow_no_auth
@@ -712,6 +715,17 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let upload_route=matches!(path.as_str(),"/api/upload"|"/api/uploads"|"/api/events")||uploads::command(command);
     if upload_route && app.uploads.is_none(){return error(404,"upload_disabled");}
     if is_write && !app.config.write { return error(404, "Befehl im Web nicht verfügbar"); }
+    if command == crate::slicer::COMMAND && app.slicer.is_none() { return error(404, "Befehl im Web nicht verfügbar"); }
+    // Handled before the static fallback and before any session lookup: the
+    // signed link is the only credential and must neither read nor set cookies.
+    if path.starts_with(crate::slicer::PREFIX) {
+        let Some(slicer) = &app.slicer else { return error(404, "Nicht gefunden") };
+        let peer = match client(&app, &req) {
+            Ok(peer) => peer,
+            Err(e) => return *e,
+        };
+        return crate::slicer::download(slicer, crate::slicer::Catalog { db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &path, &method, req.headers(), &peer, now).await;
+    }
     let audit = req.extensions().get::<Arc<WriteProgress>>().cloned();
     let download_id = path
         .strip_prefix("/api/files/")
@@ -793,7 +807,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         let must_change = current.is_some() && app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change);
         return match path.as_str() {
             "/api/health"=>Json(json!({"ok":true})).into_response(),
-            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"fileOps":fileops::capability(&app) && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
+            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"fileOps":fileops::capability(&app) && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"slicerLinks":app.slicer.is_some() && (app.config.allow_no_auth || current.is_some()) && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
             "/"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8")],include_str!("../static/index.html")).into_response(),
             "/static/app.js"=>([(header::CONTENT_TYPE,"application/javascript; charset=utf-8")],include_str!("../static/app.js")).into_response(),
             "/static/app.css"=>([(header::CONTENT_TYPE,"text/css; charset=utf-8")],include_str!("../static/app.css")).into_response(),
@@ -925,6 +939,11 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 }
                 return write_invoke(app, current, command.to_owned(), args, audit, admission.unwrap(), None).await;
             }
+            if command == crate::slicer::COMMAND {
+                // Hashed so the raw session token never sits in another table.
+                let key = current.as_ref().map_or_else(|| format!("p{peer}"), |s| format!("s{}", crate::idempotency::session_key(&s.token)));
+                return crate::slicer::mint(app.slicer.as_ref().expect("checked above"), crate::slicer::Catalog { db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &key, now, &args).await;
+            }
             invoke(
                 app.config.db_path.clone(),
                 app.config.roots.clone(),
@@ -999,7 +1018,7 @@ async fn verify_client(
 }
 async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value) -> Response {
     if app.config.allow_no_auth {
-        return Json(json!({"ok":true,"mustChangePassword":false,"writable":false,"fileOps":false,"csrfToken":null}))
+        return Json(json!({"ok":true,"mustChangePassword":false,"writable":false,"fileOps":false,"slicerLinks":app.slicer.is_some(),"csrfToken":null}))
             .into_response();
     }
     let password = match string(&args, "password") {
@@ -1025,7 +1044,7 @@ async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value)
         Ok(s) => s,
         Err(e) => return *e,
     };
-    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"fileOps":fileops::capability(&app) && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
+    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"fileOps":fileops::capability(&app) && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"slicerLinks":app.slicer.is_some() && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
 }
 async fn change_password(
     app: Arc<App>,
@@ -1105,6 +1124,8 @@ async fn change_password(
     let active = d.sessions.contains_key(&current.token);
     d.auth = Some(auth);
     d.revision += 1;
+    // Links handed out under the old password stop working with it.
+    if let Some(slicer) = &app.slicer { slicer.rotate(); }
     for session in d.sessions.values() { session.validity.revoke(); }
     d.sessions.clear();
     d.limits.success(&peer);
@@ -1125,7 +1146,7 @@ async fn change_password(
         },
     );
     with_cookie(
-        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"fileOps":fileops::capability(&app),"uploadable":app.uploads.is_some(),"csrfToken":csrf})).into_response(),
+        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"fileOps":fileops::capability(&app),"uploadable":app.uploads.is_some(),"slicerLinks":app.slicer.is_some(),"csrfToken":csrf})).into_response(),
         &token,
         secure,
         false,

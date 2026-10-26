@@ -19,3 +19,16 @@ export function listRegisteredSlicers() {
 export function openInSlicer(modelId: string, slicerId: string) {
   return invoke('open_in_slicer', { fileId: modelId, slicerId });
 }
+
+export interface SlicerLinkDto {
+  /** Relative URL of the signed download route. */
+  path: string;
+  /** Unix seconds after which the link stops working. */
+  expiresAt: number;
+  name: string;
+}
+
+// Web only: the browser cannot start a program, so the server signs a short-lived download link instead.
+export function createSlicerLink(fileId: string) {
+  return invoke<SlicerLinkDto>('slicer_link', { fileId });
+}

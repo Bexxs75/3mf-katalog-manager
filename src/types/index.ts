@@ -35,6 +35,8 @@ export interface ModelImages {
 }
 
 export interface ModelFile {
+  /** Catalog file type ('3mf', 'stl', 'stp', 'obj'); absent on models loaded in full. */
+  fileType?: string;
   license: string | null;
   hasThumbnail?: boolean;
   hasRenderSnapshot?: boolean;

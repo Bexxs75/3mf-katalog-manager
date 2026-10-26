@@ -86,7 +86,7 @@ async fn fixture(forced: bool, proxy: bool) -> Fixture {
     let auth_path = dir.join("web-auth.json");
     password::write_auth(&auth_path, &auth).unwrap();
     let config = Config {
-        file_ops: false, file_ops_daily_limit: 2000, file_ops_ack: vec![], file_roots: vec![],
+        slicer_links: None, file_ops: false, file_ops_daily_limit: 2000, file_ops_ack: vec![], file_roots: vec![],
         upload: None,
         write: false,
         static_dir: None,
