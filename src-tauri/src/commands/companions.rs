@@ -10,111 +10,28 @@ use super::*;
 use crate::db::models::CompanionRecord;
 use std::io::{Read, Write};
 
-/// Largest single companion file.
-pub(crate) const MAX_COMPANION_BYTES: u64 = 50 * 1024 * 1024;
-/// Most companion files one model can have (trashed ones do not count).
-pub(crate) const MAX_COMPANIONS_PER_MODEL: i64 = 100;
+pub(super) use katalog_core::companions::validate_stored_fields;
+pub(crate) use katalog_core::companions::{
+    classify, extras_dir_for, is_extras_dir_name, CompanionKind, Refusal, MAX_COMPANIONS_PER_MODEL, MAX_COMPANION_BYTES,
+};
+use katalog_core::companions::{has_parent_component, kind_for_extension, lowercase_extension, CONTENT_CHECK_BYTES};
+
 /// Largest image sent to the preview; bigger pictures are opened externally.
 const MAX_PREVIEW_BYTES: u64 = 10 * 1024 * 1024;
-/// How much of a file is inspected to decide whether its content matches its type.
-const CONTENT_CHECK_BYTES: usize = 64 * 1024;
-/// Appended to the model name (without extension) to name the companion folder.
-pub(crate) const EXTRAS_SUFFIX: &str = "_extras";
 /// Extensions of the allowed types, for the file picker.
 const PICKER_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md"];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CompanionKind {
-    Image,
-    Pdf,
-    Text,
+/// The user-facing text for a refusal; the rule itself lives in `katalog_core::companions`.
+trait RefusalText {
+    fn message(self) -> &'static str;
 }
 
-impl CompanionKind {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Image => "image",
-            Self::Pdf => "pdf",
-            Self::Text => "text",
-        }
-    }
-
-    fn parse(value: &str) -> Option<Self> {
-        match value {
-            "image" => Some(Self::Image),
-            "pdf" => Some(Self::Pdf),
-            "text" => Some(Self::Text),
-            _ => None,
-        }
-    }
-}
-
-/// Why a file is not accepted as a companion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Refusal {
-    /// The extension is not on the allowlist (or there is none).
-    Type,
-    /// The content does not match the extension, or is not what the type promises.
-    Content,
-}
-
-impl Refusal {
+impl RefusalText for Refusal {
     fn message(self) -> &'static str {
         match self {
             Self::Type => "Dieser Dateityp ist als Begleitdatei nicht erlaubt. Erlaubt sind Bilder (PNG, JPG, GIF, WebP), PDF und Textdateien (TXT, MD).",
             Self::Content => "Der Inhalt der Datei passt nicht zu ihrem Dateityp und wird nicht übernommen.",
         }
-    }
-}
-
-fn lowercase_extension(name: &str) -> Option<String> {
-    Path::new(name).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase)
-}
-
-fn kind_for_extension(extension: &str) -> Option<CompanionKind> {
-    match extension {
-        "png" | "jpg" | "jpeg" | "gif" | "webp" => Some(CompanionKind::Image),
-        "pdf" => Some(CompanionKind::Pdf),
-        "txt" | "md" => Some(CompanionKind::Text),
-        _ => None,
-    }
-}
-
-/// Text must be free of NUL bytes and valid UTF-8. A multi-byte character cut at the
-/// end of an inspected block is not an error.
-fn text_content_ok(head: &[u8]) -> bool {
-    if head.contains(&0) {
-        return false;
-    }
-    match std::str::from_utf8(head) {
-        Ok(_) => true,
-        Err(error) => error.error_len().is_none() && head.len() >= CONTENT_CHECK_BYTES,
-    }
-}
-
-/// The extension decides which signature the content must carry. A PNG named
-/// `.jpg` is refused too: the types must agree.
-fn content_matches(extension: &str, head: &[u8]) -> bool {
-    match extension {
-        "png" => head.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "jpg" | "jpeg" => head.starts_with(b"\xff\xd8\xff"),
-        "gif" => head.starts_with(b"GIF87a") || head.starts_with(b"GIF89a"),
-        "webp" => head.starts_with(b"RIFF") && head.get(8..12) == Some(&b"WEBP"[..]),
-        "pdf" => head.starts_with(b"%PDF-"),
-        "txt" | "md" => text_content_ok(head),
-        _ => false,
-    }
-}
-
-/// Decides by extension and by the first bytes of the content. `head` is the start of
-/// the file, at most [`CONTENT_CHECK_BYTES`] long.
-pub(crate) fn classify(name: &str, head: &[u8]) -> Result<CompanionKind, Refusal> {
-    let extension = lowercase_extension(name).ok_or(Refusal::Type)?;
-    let kind = kind_for_extension(&extension).ok_or(Refusal::Type)?;
-    if content_matches(&extension, head) {
-        Ok(kind)
-    } else {
-        Err(Refusal::Content)
     }
 }
 
@@ -132,18 +49,6 @@ fn read_head(file: &mut std::fs::File) -> std::io::Result<Vec<u8>> {
     let mut head = Vec::new();
     Read::by_ref(file).take(CONTENT_CHECK_BYTES as u64).read_to_end(&mut head)?;
     Ok(head)
-}
-
-/// The folder next to a model that holds its companions.
-pub(crate) fn extras_dir_for(model_path: &Path) -> Option<PathBuf> {
-    let mut name = model_path.file_stem()?.to_os_string();
-    name.push(EXTRAS_SUFFIX);
-    Some(model_path.parent()?.join(name))
-}
-
-/// True for a path that is the folder of some model's companions (by name only).
-pub(crate) fn is_extras_dir_name(path: &Path) -> bool {
-    path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.len() > EXTRAS_SUFFIX.len() && n.ends_with(EXTRAS_SUFFIX))
 }
 
 /// A harmless single-component name for the copy of a user-chosen file.
@@ -202,10 +107,6 @@ fn is_real_dir(path: &Path) -> bool {
 
 fn is_real_file(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file())
-}
-
-fn has_parent_component(path: &Path) -> bool {
-    path.components().any(|c| matches!(c, std::path::Component::ParentDir))
 }
 
 /// The extras folder of a model, after checking that it may be written to: next to
@@ -291,25 +192,6 @@ fn ensure_row_folder_genuine(conn: &Connection, row: &CompanionRecord) -> CmdRes
         Some(problem) => Err(CmdError::coded(problem)),
         None => Ok(()),
     }
-}
-
-/// Structural check of a stored row. A restored backup could name any path; a companion
-/// file must sit in a `_extras` folder, carry the name and allowed kind it claims, and
-/// not be reached through `..`.
-pub(super) fn validate_stored_fields(name: &str, path: &str, kind: &str) -> Result<CompanionKind, &'static str> {
-    let path = Path::new(path);
-    let kind = CompanionKind::parse(kind).ok_or("kind")?;
-    let ext_kind = lowercase_extension(name).and_then(|e| kind_for_extension(&e));
-    if ext_kind != Some(kind) {
-        return Err("type");
-    }
-    if path.file_name().and_then(|n| n.to_str()) != Some(name) {
-        return Err("name");
-    }
-    if !path.parent().is_some_and(is_extras_dir_name) || !path.is_absolute() || has_parent_component(path) {
-        return Err("location");
-    }
-    Ok(kind)
 }
 
 /// Checks a stored row before anything touches its file.

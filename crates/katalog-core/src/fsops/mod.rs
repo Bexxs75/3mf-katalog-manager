@@ -26,6 +26,10 @@ pub enum Error {
     PathUnresolvable,
     Protected,
     HasCompanions,
+    /// A companion file's name is taken at the destination, or the destination folder is not a plain folder.
+    CompanionsConflict,
+    /// The model's companion rows changed while the operation was under way.
+    CompanionsChanged,
     RestartRequired,
     NotStarted,
     Internal,
@@ -64,14 +68,19 @@ impl From<rusqlite::Error> for Error {
         }
     }
 }
+mod carry;
+mod companion_block;
 mod journal;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod companion_gap_tests;
+#[cfg(test)]
+mod companion_carry_tests;
 pub use journal::*;
 mod operations;
 pub use operations::*;
+pub use companion_block::*;
 
 pub fn fs_rename_file<D: FsDatabase, L: UploadLedger>(
     ops: &mut FileOps<D, L>,

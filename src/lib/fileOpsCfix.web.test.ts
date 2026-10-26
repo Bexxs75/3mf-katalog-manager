@@ -3,7 +3,7 @@ vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { authenticationFailed, canManageFiles, login } from './webSession';
 import { emptyWebTrash, fileOp, fileOpsBatch, subscribeFileOpsApplied, subscribeFileOpsRefresh } from './fileOps';
 import { clearMetadataError, getMetadataError, subscribeMetadataErrors } from './metadataErrors';
-import { fileOpsError, fileOpsMessage, retryAfterSeconds } from './fileOpsErrors';
+import { fileOpsError, fileOpsMessage, isDomainRejection, retryAfterSeconds } from './fileOpsErrors';
 let calls: { command: string; args: Record<string, unknown> }[];
 let respond: (command: string) => Response;
 beforeEach(async () => {
@@ -126,6 +126,28 @@ it('reports an error and kept_on_disk exactly once', async () => {
   await expect(fileOpsBatch('delete_files', ids)).rejects.toBeDefined();
   expect(listener).toHaveBeenCalledTimes(2); // fileOp's error, then the batch's merged message superseding it; never a third
   off();
+});
+
+it('explains the companion kinds in every language, as domain answers and never with the generic text', () => {
+  const original = document.documentElement.lang;
+  try {
+    for (const kind of ['companions_conflict', 'companions_changed']) {
+      const seen = new Set<string>();
+      for (const lang of ['de', 'en', 'es', 'fr']) {
+        document.documentElement.lang = lang;
+        const text = fileOpsMessage(kind);
+        seen.add(text);
+        expect(text).not.toBe(fileOpsMessage('unknown_kind'));
+        expect(fileOpsError({ kind }).message).toBe(text);
+        expect(isDomainRejection(kind)).toBe(true);
+      }
+      expect(seen.size).toBe(4);
+    }
+    document.documentElement.lang = 'de';
+    expect(fileOpsMessage('companions_conflict')).toContain('Begleitdatei');
+    document.documentElement.lang = 'fr';
+    expect(fileOpsMessage('companions_changed')).toContain('fichiers associés');
+  } finally { document.documentElement.lang = original; }
 });
 
 it('explains has_companions in every language and never falls back to the generic text', () => {

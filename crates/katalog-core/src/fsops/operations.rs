@@ -1,3 +1,4 @@
+use super::carry::{apply_steps, read_companion_rows, CarryPlan};
 use super::*;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::{
@@ -125,17 +126,20 @@ fn commit(c: &mut Connection, intent: &Intent, guard_companions: bool) -> Result
     if read_state(&tx, intent.before.id)?.as_ref() != Some(&intent.before) {
         return Err(Error::Changed);
     }
-    // A companion added after the early check must still stop a move that
-    // would strand it; the caller rolls the disk move back on this error.
-    // Recovery passes false because the disk side is already done, and Unlink
-    // is excluded because its file is already gone.
-    if guard_companions
-        && matches!(
-            intent.operation,
-            Operation::Rename | Operation::Move | Operation::Trash
-        )
+    if matches!(intent.operation, Operation::Rename | Operation::Move) {
+        // The companions moved on disk under the picture taken before the journal entry.
+        // A row that appeared, vanished or changed since then would be stranded or
+        // overwritten, so the whole operation is undone instead. Recovery runs the same
+        // check: it is cheap and the disk side is already settled by then.
+        if read_companion_rows(&tx, intent.before.id)? != intent.companion_rows {
+            return Err(Error::CompanionsChanged);
+        }
+    } else if guard_companions
+        && intent.operation == Operation::Trash
         && any_companions(&tx, &[intent.before.id])?
     {
+        // Operations that do not carry companions stay refused. Recovery passes false
+        // because the disk side is already done, and Unlink because its file is gone.
         return Err(Error::HasCompanions);
     }
     if let Some(s) = &intent.after {
@@ -151,6 +155,7 @@ fn commit(c: &mut Connection, intent: &Intent, guard_companions: bool) -> Result
                 s.id
             ],
         )?;
+        apply_steps(&tx, &intent.companions)?;
     } else {
         crate::db::delete_file(&tx, intent.before.id).map_err(|_| Error::Internal)?;
     }
@@ -200,12 +205,18 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     pub fn has_companions(&mut self, id: i64) -> Result<bool> {
         self.db.with_conn(|c| any_companions(c, &[id]))
     }
-    fn reject_companions(&mut self, id: i64) -> Result<()> {
-        if self.db.with_conn(|c| any_companions(c, &[id]))? {
-            Err(Error::HasCompanions)
-        } else {
-            Ok(())
-        }
+    /// Operations that do not carry companions stay refused for any model that has a row.
+    fn reject_companions(&mut self, id: i64, op: CompanionOp) -> Result<()> {
+        let rows: i64 = self.db.with_conn(|c| {
+            Ok(c.query_row(
+                "SELECT COUNT(*) FROM companion_files WHERE file_id=?1",
+                [id],
+                |r| r.get(0),
+            )?)
+        })?;
+        companion_block(CompanionFacts::rows_only(op, rows as usize))
+            .into_result()
+            .map(|_| ())
     }
     fn check_source(&mut self, r: &Resolved, id: i64) -> Result<FileIdentity> {
         let identity = FileIdentity::read(r)?;
@@ -226,7 +237,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if self.ledger.detach(&[intent.before.id]).is_err() {
             return Err(self.journal.block(&intent.op_id));
         }
-        self.journal.remove(&intent.op_id)
+        self.journal.remove(&intent.op_id)?;
+        self.cleanup_old_extras(intent);
+        Ok(())
     }
     fn db_only(&mut self, before: FileState, after: Option<FileState>) -> Result<()> {
         let intent = Intent {
@@ -241,6 +254,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             identity: None,
             before,
             after,
+            companions: Vec::new(),
+            extras_dir: None,
+            companion_rows: Vec::new(),
         };
         self.journal.add(intent.clone())?;
         if let Err(e) = self.db.with_conn(|c| commit(c, &intent, false)) {
@@ -256,6 +272,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         source: Resolved,
         mut target: Resolved,
         operation: Operation,
+        carry: CarryPlan,
     ) -> Result<()> {
         if source.root != target.root {
             return Err(Error::CrossDevice);
@@ -283,7 +300,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 .to_owned()
         });
         let root = &self.context.roots[source.root];
-        let intent = Intent {
+        let mut intent = Intent {
             op_id,
             operation,
             phase: Phase::Prepared,
@@ -295,6 +312,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             identity: Some(identity),
             before,
             after: Some(after),
+            companions: carry.steps,
+            extras_dir: carry.extras_dir,
+            companion_rows: carry.rows,
         };
         let temp = intent
             .temporary
@@ -307,9 +327,13 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.journal.add(intent.clone())?;
         #[cfg(test)]
         super::tests::before_mutation();
+        // Companions first, so that "model at its destination" implies "companions at theirs".
+        if !intent.companions.is_empty() || intent.extras_dir.is_some() {
+            self.carry_forward(&mut intent, source.root)?;
+        }
         if let Some(t) = &temp {
             if let Err(e) = rename_checked(&source, t, identity) {
-                return self.transfer_failed(&intent, e);
+                return self.transfer_failed(&intent, source.root, e);
             }
             self.journal.phase(&intent.op_id, Phase::TmpRenamed)?;
         }
@@ -318,9 +342,13 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             if temp.is_some() && rename_checked(actual, &source, identity).is_err() {
                 return Err(self.journal.block(&intent.op_id));
             }
-            return self.transfer_failed(&intent, e);
+            return self.transfer_failed(&intent, source.root, e);
         }
         self.journal.phase(&intent.op_id, Phase::Renamed)?;
+        #[cfg(test)]
+        if super::tests::at_point("before_commit", 0) {
+            return Err(self.journal.simulate_crash());
+        }
         if let Err(e) = self.db.with_conn(|c| commit(c, &intent, true)) {
             let rollback = if let Some(temp) = &temp {
                 rename_checked(&target, temp, identity)
@@ -328,7 +356,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             } else {
                 rename_checked(&target, &source, identity)
             };
-            if rollback.is_err() {
+            if rollback.is_err() || self.rollback_carry(&intent, source.root).is_err() {
                 return Err(self.journal.block(&intent.op_id));
             }
             self.journal.remove(&intent.op_id)?;
@@ -336,8 +364,11 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         self.finish(&intent)
     }
-    fn transfer_failed(&mut self, i: &Intent, e: Error) -> Result<()> {
+    fn transfer_failed(&mut self, i: &Intent, root: usize, e: Error) -> Result<()> {
         if matches!(e, Error::RestartRequired) {
+            return Err(self.journal.block(&i.op_id));
+        }
+        if self.rollback_carry(i, root).is_err() {
             return Err(self.journal.block(&i.op_id));
         }
         self.journal.remove(&i.op_id)?;
@@ -354,17 +385,17 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if name == source.name {
             return Ok(());
         }
-        self.reject_companions(id)?;
         let path = std::path::Path::new(&before.path)
             .with_file_name(&name)
             .to_str()
             .unwrap()
             .to_owned();
         let target = self.context.resolve(&path, Access::RenameTarget)?;
+        let carry = self.plan_carry(&before, &path, CompanionOp::Rename)?;
         let mut after = before.clone();
         after.path = path;
         after.name = name;
-        self.transfer(before, after, source, target, Operation::Rename)
+        self.transfer(before, after, source, target, Operation::Rename, carry)
     }
     pub fn move_file_to_folder(&mut self, id: i64, folder_id: Option<i64>) -> Result<()> {
         let before = self.active(id)?;
@@ -393,13 +424,13 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if before.path == after.path {
             return self.db_only(before, Some(after));
         }
-        // Only a real disk move needs the check; database-only changes leave `_extras` where it is.
-        self.reject_companions(id)?;
-        self.transfer(before, after, source, target, Operation::Move)
+        // Only a real disk move takes companions along; database-only changes leave `_extras` where it is.
+        let carry = self.plan_carry(&before, &after.path, CompanionOp::Move)?;
+        self.transfer(before, after, source, target, Operation::Move, carry)
     }
     pub fn delete_file(&mut self, id: i64) -> Result<()> {
         let before = self.active(id)?;
-        self.reject_companions(id)?;
+        self.reject_companions(id, CompanionOp::Trash)?;
         let mut after = before.clone();
         after.deleted_at = Some(chrono::Utc::now().to_rfc3339());
         after.trash_path = None;
@@ -419,7 +450,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             &format!("{TRASH}/pending"),
             Access::Trash,
         )?;
-        self.transfer(before, after, source, target, Operation::Trash)
+        self.transfer(before, after, source, target, Operation::Trash, CarryPlan::default())
     }
     fn trash_source(&self, s: &FileState) -> Result<Resolved> {
         let (root, _) = self
@@ -464,7 +495,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                     e
                 }
             })?;
-        self.transfer(before, after, source, target, Operation::Restore)
+        self.transfer(before, after, source, target, Operation::Restore, CarryPlan::default())
     }
     pub fn delete_file_permanently(&mut self, id: i64) -> Result<DeleteOutcome> {
         self.delete_permanently_before(id, None)
@@ -475,7 +506,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
     ) -> Result<DeleteOutcome> {
         let before = self.trashed(id)?;
-        self.reject_companions(id)?;
+        self.reject_companions(id, CompanionOp::DeletePermanently)?;
         if let Some(cutoff) = cutoff {
             let deleted = chrono::DateTime::parse_from_rfc3339(
                 before.deleted_at.as_deref().ok_or(Error::Changed)?,
@@ -515,6 +546,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             identity: Some(identity),
             before,
             after: None,
+            companions: Vec::new(),
+            extras_dir: None,
+            companion_rows: Vec::new(),
         };
         self.journal.add(intent.clone())?;
         #[cfg(test)]
@@ -697,7 +731,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
 }
 // File handles pin parents, but a local writer may concurrently relocate an ancestor.
 // File operations accept this residual risk; directory operations recheck parent chains.
-fn rename_checked(source: &Resolved, target: &Resolved, identity: FileIdentity) -> Result<()> {
+pub(super) fn rename_checked(source: &Resolved, target: &Resolved, identity: FileIdentity) -> Result<()> {
     if FileIdentity::read(source)? != identity {
         return Err(Error::Changed);
     }
@@ -752,6 +786,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                     return Err(self.journal.block(&intent.op_id));
                 }
                 self.journal.remove(&intent.op_id)?;
+                self.cleanup_old_extras(&intent);
             }
         }
         self.journal.recovery_complete();
@@ -795,6 +830,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         )?;
         let identity = i.identity.ok_or(Error::Changed)?;
         let s = observe(&source, identity)?;
+        let carried = self.observe_carry(i, root)?;
         let target = i
             .target
             .as_ref()
@@ -816,7 +852,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .as_ref()
             .map(|r| self.context.resolve_relative(root, r, Access::RenameTarget))
             .transpose();
-        if db_before && s == Observed::Matches {
+        if db_before && s == Observed::Matches && carried.all_source {
             let matches = |r: &Result<Option<Resolved>>| {
                 r.as_ref()
                     .ok()
@@ -824,6 +860,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                     .is_some_and(|r| observe(r, identity) == Ok(Observed::Matches))
             };
             if !matches(&target) && !matches(&temp) {
+                self.remove_created_extras(i, root);
                 self.journal.remove(&i.op_id)?;
                 return Ok(false);
             }
@@ -885,9 +922,21 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             temporary_matches: tmp == Observed::Matches,
             unlink: i.operation == Operation::Unlink,
             db_only: false,
+            companions_db_before: carried.db_before,
+            companions_db_after: carried.db_after,
+            companions_all_source: carried.all_source,
+            companions_all_target: carried.all_target,
+            companions_mixed: carried.mixed,
+            companions_any: carried.any,
         });
         match decision {
             RecoveryDecision::Discard => {
+                self.remove_created_extras(i, root);
+                self.journal.remove(&i.op_id)?;
+                Ok(false)
+            }
+            RecoveryDecision::RollbackCompanions => {
+                self.rollback_carry(i, root)?;
                 self.journal.remove(&i.op_id)?;
                 Ok(false)
             }
@@ -928,12 +977,12 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     }
 }
 #[derive(PartialEq, Eq)]
-enum Observed {
+pub(super) enum Observed {
     Absent,
     Matches,
     Foreign,
 }
-fn observe(r: &Resolved, identity: FileIdentity) -> Result<Observed> {
+pub(super) fn observe(r: &Resolved, identity: FileIdentity) -> Result<Observed> {
     // Exact spelling matters on case-insensitive filesystems.
     if !r.parent.names_checked()?.iter().any(|n| n == &r.name) {
         return Ok(Observed::Absent);

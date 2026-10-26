@@ -63,7 +63,7 @@ fn core_error(e: fsops::Error) -> Box<Response> {
         match e {
             InvalidName | InvalidArguments => 400,
             NotFound => 404,
-            Protected | HasCompanions => 409,
+            Protected | HasCompanions | CompanionsConflict | CompanionsChanged => 409,
             RestartRequired => 503,
             Internal => 500,
             NotStarted => 409,

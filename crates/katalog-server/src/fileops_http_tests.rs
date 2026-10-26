@@ -661,25 +661,93 @@ async fn empty_trash_blocks_still_hit_the_daily_limit_with_real_retry_after() {
     assert_eq!(r.headers()["retry-after"], "86400");
 }
 
+fn add_real_companion(f: &Fixture, file_id: &str, dir: &str, name: &str) -> (i64, std::path::PathBuf) {
+    let folder = f.dir.join("models").join(dir);
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join(name);
+    std::fs::write(&path, [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]).unwrap();
+    let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    let id = db::companions::insert_companion(&conn, file_id.parse().unwrap(), name, path.to_str().unwrap(), "image", Some(8), "2026-01-01T00:00:00Z").unwrap();
+    (id, path)
+}
+
+fn companion_path(f: &Fixture, id: i64) -> String {
+    let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    conn.query_row("SELECT path FROM companion_files WHERE id=?1", [id], |r| r.get(0)).unwrap()
+}
+
 #[tokio::test]
-async fn rename_of_model_with_companion_is_rejected_with_has_companions() {
+async fn rename_of_model_with_companion_carries_the_file() {
     let f = Fixture::new(true).await;
     let id = f.file("c.3mf");
+    let (cid, old) = add_real_companion(&f, &id, "c_extras", "pic.png");
+    let r = f.invoke("rename_file", json!({"fileId":id,"name":"d"})).await;
+    assert_eq!(r.status(), 200);
+    let new = f.dir.join("models/d_extras/pic.png");
+    assert!(new.is_file());
+    assert!(!old.exists());
+    assert!(!f.dir.join("models/c_extras").exists());
+    assert!(f.dir.join("models/d.3mf").exists() && !f.dir.join("models/c.3mf").exists());
+    assert_eq!(companion_path(&f, cid), new.to_str().unwrap());
+    let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    let model_path: String = conn.query_row("SELECT path FROM files WHERE id=?1", [id.parse::<i64>().unwrap()], |r| r.get(0)).unwrap();
+    assert_eq!(model_path, f.dir.join("models/d.3mf").to_str().unwrap());
+}
+
+#[tokio::test]
+async fn rename_with_a_taken_companion_name_is_a_409_conflict_and_changes_nothing() {
+    let f = Fixture::new(true).await;
+    let id = f.file("c.3mf");
+    let (cid, old) = add_real_companion(&f, &id, "c_extras", "pic.png");
+    std::fs::create_dir_all(f.dir.join("models/d_extras")).unwrap();
+    std::fs::write(f.dir.join("models/d_extras/pic.png"), b"someone else").unwrap();
+    let r = f.invoke("rename_file", json!({"fileId":id,"name":"d"})).await;
+    assert_eq!(r.status(), 409);
+    let v = value(r).await;
+    assert_eq!(v["kind"], "companions_conflict");
+    assert_eq!(v["expected"], true);
+    assert!(f.dir.join("models/c.3mf").exists() && old.exists());
+    assert_eq!(companion_path(&f, cid), old.to_str().unwrap());
+    assert_eq!(std::fs::read(f.dir.join("models/d_extras/pic.png")).unwrap(), b"someone else");
+}
+
+#[tokio::test]
+async fn rename_with_a_symlinked_extras_folder_stays_a_409_has_companions() {
+    let f = Fixture::new(true).await;
+    let id = f.file("c.3mf");
+    let (_, real) = add_real_companion(&f, &id, "real", "pic.png");
+    std::os::unix::fs::symlink(real.parent().unwrap(), f.dir.join("models/c_extras")).unwrap();
     {
         let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO companion_files (file_id, name, path, kind, size_bytes, added_at) VALUES (?1,'pic.png','/x/pic.png','image',1,'2026-01-01T00:00:00Z')",
-            [id.parse::<i64>().unwrap()],
+            "UPDATE companion_files SET path=?1 WHERE file_id=?2",
+            rusqlite::params![f.dir.join("models/c_extras/pic.png").to_str().unwrap(), id.parse::<i64>().unwrap()],
         )
         .unwrap();
     }
     let r = f.invoke("rename_file", json!({"fileId":id,"name":"d"})).await;
     assert_eq!(r.status(), 409);
-    let v = value(r).await;
-    assert_eq!(v["kind"], "has_companions");
-    assert_eq!(v["expected"], true);
-    assert!(f.dir.join("models/c.3mf").exists());
-    assert!(!f.dir.join("models/d.3mf").exists());
+    assert_eq!(value(r).await["kind"], "has_companions");
+    assert!(real.exists() && f.dir.join("models/c.3mf").exists());
+}
+
+#[tokio::test]
+async fn batch_move_carries_companions_per_model() {
+    let f = Fixture::new(true).await;
+    let with = f.file("with.3mf");
+    let free = f.file("free.3mf");
+    let (cid, _) = add_real_companion(&f, &with, "with_extras", "pic.png");
+    let folder = {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        std::fs::create_dir_all(f.dir.join("models/sub")).unwrap();
+        c.execute("INSERT INTO folders(name,path) VALUES('sub',?1)", [f.dir.join("models/sub").to_str().unwrap()]).unwrap();
+        c.last_insert_rowid().to_string()
+    };
+    let r = value(f.invoke("move_files_to_folder", json!({"fileIds":[with,free],"folderId":folder})).await).await;
+    assert_eq!(r[0]["ok"], true, "{r}");
+    assert_eq!(r[1]["ok"], true, "{r}");
+    assert!(f.dir.join("models/sub/with_extras/pic.png").is_file());
+    assert_eq!(companion_path(&f, cid), f.dir.join("models/sub/with_extras/pic.png").to_str().unwrap());
 }
 
 fn add_companion(f: &Fixture, file_id: i64) {

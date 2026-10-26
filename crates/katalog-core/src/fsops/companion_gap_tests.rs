@@ -1,8 +1,8 @@
 //! Die Web-Dateiverwaltung zieht Begleitdateien (`companion_files`, Ordner
-//! `<Modell>_extras`) nicht mit. Deshalb lehnt sie Umbenennen, Verschieben,
-//! Papierkorb, endgueltiges Loeschen und Ordneroperationen ab, solange ein
-//! betroffenes Modell Begleitdateien hat. Die `#[ignore]`-Tests beschreiben den
-//! Sollzustand fuer das spaetere Mitziehen.
+//! `<Modell>_extras`) beim Umbenennen und Verschieben einzelner Modelle mit.
+//! Papierkorb, endgueltiges Loeschen und Ordneroperationen lehnt sie weiter ab,
+//! solange ein betroffenes Modell Begleitdateien hat. Die `#[ignore]`-Tests
+//! beschreiben den Sollzustand fuer das spaetere Mitziehen dieser Operationen.
 use super::*;
 use std::{fs, path::PathBuf};
 
@@ -132,18 +132,6 @@ fn exists(p: &std::path::Path) -> bool {
 // ---- (a) Umbenennen ----
 
 #[test]
-fn sperre_rename_mit_begleitdatei() {
-    let mut f = fixture();
-    let old = f.companion_path();
-    assert_eq!(f.ops.rename_file(1, "Bar"), Err(Error::HasCompanions));
-    assert!(exists(&f.root().join("Foo.3mf")));
-    assert!(!exists(&f.root().join("Bar.3mf")));
-    assert!(exists(&f.extras().join("pic.png")));
-    assert_eq!(f.companion_path(), old, "Pfad in companion_files unveraendert");
-}
-
-#[test]
-#[ignore = "Sperre aktiv; Mitziehen noch nicht umgesetzt"]
 fn soll_rename_zieht_extras_mit() {
     let mut f = fixture();
     f.ops.rename_file(1, "Bar").unwrap();
@@ -151,23 +139,18 @@ fn soll_rename_zieht_extras_mit() {
     assert!(exists(&new));
     assert!(!exists(&f.extras()));
     assert_eq!(f.companion_path(), new.to_str().unwrap());
+    let name: String = f
+        .ops
+        .db
+        .query_row("SELECT name FROM companion_files WHERE id=?1", [f.companion_id], |r| r.get(0))
+        .unwrap();
+    assert_eq!(name, "pic.png", "der Name der Begleitdatei bleibt");
+    assert!(f.ops.journal.is_empty());
 }
 
 // ---- (b) Verschieben ----
 
 #[test]
-fn sperre_move_mit_begleitdatei() {
-    let mut f = fixture();
-    let old = f.companion_path();
-    assert_eq!(f.ops.move_file_to_folder(1, Some(1)), Err(Error::HasCompanions));
-    assert!(exists(&f.root().join("Foo.3mf")));
-    assert!(!exists(&f.root().join("sub/Foo.3mf")));
-    assert!(exists(&f.extras().join("pic.png")));
-    assert_eq!(f.companion_path(), old);
-}
-
-#[test]
-#[ignore = "Sperre aktiv; Mitziehen noch nicht umgesetzt"]
 fn soll_move_zieht_extras_mit() {
     let mut f = fixture();
     f.ops.move_file_to_folder(1, Some(1)).unwrap();
@@ -175,6 +158,7 @@ fn soll_move_zieht_extras_mit() {
     assert!(exists(&new));
     assert!(!exists(&f.extras()));
     assert_eq!(f.companion_path(), new.to_str().unwrap());
+    assert!(f.ops.journal.is_empty());
 }
 
 // ---- (c) Papierkorb ----
@@ -284,14 +268,15 @@ fn stapel_loeschen_sperrt_nur_das_betroffene_modell() {
 }
 
 #[test]
-fn stapel_verschieben_sperrt_nur_das_betroffene_modell() {
+fn stapel_verschieben_zieht_nur_das_betroffene_modell_samt_begleitdateien() {
     let mut f = fixture();
     add_free(&mut f);
     let r = f.ops.move_files_to_folder(&[1, 2], Some(1), || true).unwrap();
-    assert_eq!(r[0].kind, Some(Error::HasCompanions));
-    assert!(r[1].ok);
-    assert!(exists(&f.root().join("Foo.3mf")));
+    assert!(r[0].ok && r[1].ok);
+    assert!(exists(&f.root().join("sub/Foo.3mf")));
+    assert!(exists(&f.root().join("sub/Foo_extras/pic.png")));
     assert!(exists(&f.root().join("sub/Free.3mf")));
+    assert!(!exists(&f.extras()));
 }
 
 #[test]
@@ -416,14 +401,18 @@ fn contains_file_named(dir: &std::path::Path, name: &str) -> bool {
 // ---- Nachbesserungen ----
 
 #[test]
-fn begleitdatei_mit_deleted_at_sperrt_ebenfalls() {
+fn getrennt_entfernte_begleitdatei_sperrt_umbenennen_nicht_aber_den_papierkorb() {
     let mut f = fixture();
     let id = f.companion_id;
     f.ops
         .db
         .execute("UPDATE companion_files SET deleted_at='2026-01-02T00:00:00Z' WHERE id=?1", [id])
         .unwrap();
-    assert_eq!(f.ops.rename_file(1, "Bar"), Err(Error::HasCompanions));
+    let old = f.companion_path();
+    f.ops.rename_file(1, "Bar").unwrap();
+    assert!(exists(&f.root().join("Bar.3mf")));
+    assert_eq!(f.companion_path(), old, "die entfernte Zeile bleibt unveraendert");
+    assert!(exists(&f.extras().join("pic.png")), "ihre Datei wird nicht angefasst");
     assert_eq!(f.ops.delete_file(1), Err(Error::HasCompanions));
 }
 
@@ -471,7 +460,7 @@ fn begleitdatei_nach_vorpruefung_rollt_umbenennen_zurueck() {
             insert_companion_via_second_connection(&db_path, 1, &pic)
         }));
     });
-    assert_eq!(f.ops.rename_file(1, "Bar"), Err(Error::HasCompanions));
+    assert_eq!(f.ops.rename_file(1, "Bar"), Err(Error::CompanionsChanged));
     assert!(exists(&f.root().join("Foo.3mf")), "Modell zurueck am alten Ort");
     assert!(!exists(&f.root().join("Bar.3mf")));
     assert!(exists(&f.extras().join("pic.png")));

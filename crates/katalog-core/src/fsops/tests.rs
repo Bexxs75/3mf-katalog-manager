@@ -414,6 +414,12 @@ fn recovery_table_has_a_test_for_each_decision() {
         temporary_matches: false,
         unlink: false,
         db_only: false,
+        companions_db_before: true,
+        companions_db_after: true,
+        companions_all_source: true,
+        companions_all_target: true,
+        companions_mixed: false,
+        companions_any: false,
     };
     let rows = [
         (RecoveryDecision::Manual, base),
@@ -460,6 +466,18 @@ fn recovery_table_has_a_test_for_each_decision() {
             RecoveryDecision::FinishUnlink,
             RecoveryFacts {
                 unlink: true,
+                ..base
+            },
+        ),
+        (
+            RecoveryDecision::RollbackCompanions,
+            RecoveryFacts {
+                source_matches: true,
+                source_absent: false,
+                companions_any: true,
+                companions_all_source: false,
+                companions_all_target: false,
+                companions_mixed: true,
                 ..base
             },
         ),
@@ -944,6 +962,33 @@ fn excessive_trash_extension_is_conflict() {
 
 thread_local! {
     pub(super) static BEFORE_MUTATION: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+/// What a named point inside a companion-carrying operation does when it is reached.
+pub(super) enum PointAction {
+    /// Stop as a crash would: nothing is rolled back.
+    Crash,
+    /// Run something at that moment, e.g. to make the next step fail.
+    Run(Box<dyn FnOnce()>),
+}
+thread_local! {
+    pub(super) static POINT: std::cell::RefCell<Option<(&'static str, usize, PointAction)>> = const { std::cell::RefCell::new(None) };
+}
+/// Returns true when the operation must stop here as if the process had died.
+pub(super) fn at_point(name: &str, k: usize) -> bool {
+    POINT.with(|p| {
+        let hit = p.borrow().as_ref().is_some_and(|(n, i, _)| *n == name && *i == k);
+        if !hit {
+            return false;
+        }
+        match p.borrow_mut().take().map(|(_, _, a)| a) {
+            Some(PointAction::Run(f)) => {
+                f();
+                false
+            }
+            Some(PointAction::Crash) => true,
+            None => false,
+        }
+    })
 }
 pub(super) fn before_mutation() {
     BEFORE_MUTATION.with(|h| {

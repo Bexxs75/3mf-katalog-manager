@@ -11,6 +11,7 @@ pub enum Phase {
     Prepared,
     TmpRenamed,
     Renamed,
+    CompanionsMoved,
     Unlinked,
     Committed,
     Manual,
@@ -24,6 +25,36 @@ pub enum Operation {
     Restore,
     Unlink,
     DbOnly,
+}
+/// One `companion_files` row as the journal remembers it, so recovery can tell
+/// "database still as before" from "commit already happened" row by row.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompanionState {
+    pub id: i64,
+    pub file_id: i64,
+    pub name: String,
+    pub path: String,
+    pub deleted_at: Option<String>,
+    pub trash_path: Option<String>,
+}
+/// A companion file that travels with its model. `source`/`target` are root-relative
+/// and absent when the file is gone from disk and only its row is rewritten.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompanionStep {
+    pub before: CompanionState,
+    pub after: Option<CompanionState>,
+    pub source: Option<String>,
+    pub target: Option<String>,
+    pub identity: Option<FileIdentity>,
+}
+/// A companion folder this operation created. Its inode is only known after
+/// `mkdir` returned; recovery never removes a folder whose inode was not recorded.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtrasDir {
+    pub relative: String,
+    pub identity: Option<Identity>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileState {
@@ -75,6 +106,29 @@ pub struct Intent {
     pub identity: Option<FileIdentity>,
     pub before: FileState,
     pub after: Option<FileState>,
+    /// Companion data only appears for operations that carry companions; an entry
+    /// without it is byte-identical to the format before companions existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub companions: Vec<CompanionStep>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extras_dir: Option<ExtrasDir>,
+    /// Every row of the model before the operation (trashed ones included).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub companion_rows: Vec<CompanionState>,
+}
+impl Intent {
+    pub(crate) fn has_companion_data(&self) -> bool {
+        !self.companions.is_empty() || self.extras_dir.is_some() || !self.companion_rows.is_empty()
+    }
+}
+/// Format 1 predates companion data. Entries with companion data are written as
+/// version 2 so an older binary refuses the file instead of ignoring the new fields.
+fn document_version(intents: &[Intent]) -> u32 {
+    if intents.iter().any(Intent::has_companion_data) {
+        2
+    } else {
+        1
+    }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -114,7 +168,8 @@ impl Journal {
                 }
                 let doc: Document =
                     serde_json::from_reader(file).map_err(|_| Error::RestartRequired)?;
-                if doc.version != 1 {
+                // A version-1 file never carries companion data; one that does was not written by us.
+                if !matches!(doc.version, 1 | 2) || (doc.version == 1 && document_version(&doc.intents) != 1) {
                     return Err(Error::RestartRequired);
                 }
                 let mut ids = std::collections::HashSet::new();
@@ -221,7 +276,7 @@ impl Journal {
     }
     pub(super) fn check_capacity(&self) -> Result<()> {
         let bytes = serde_json::to_vec(&Document {
-            version: 1,
+            version: document_version(&self.intents),
             intents: self.intents.clone(),
             folders: self.folders.clone(),
         })
@@ -239,7 +294,7 @@ impl Journal {
             serde_json::to_writer(
                 &mut file,
                 &Document {
-                    version: 1,
+                    version: document_version(&self.intents),
                     intents: self.intents.clone(),
                     folders: self.folders.clone(),
                 },
@@ -284,6 +339,13 @@ impl Journal {
         self.persist()?;
         self.checkpoint(phase)
     }
+    /// Stops the process at an arbitrary point as a crash would: nothing is
+    /// rolled back and the journal stays blocked.
+    #[cfg(test)]
+    pub(super) fn simulate_crash(&mut self) -> Error {
+        self.blocked = true;
+        Error::RestartRequired
+    }
     pub(super) fn checkpoint(&mut self, _phase: Phase) -> Result<()> {
         #[cfg(test)]
         if self.crash_at == Some(_phase) {
@@ -321,6 +383,8 @@ pub enum RecoveryDecision {
     FinishUnlink,
     FinishTemporary,
     RollbackTemporary,
+    /// The model is still at its source but some companions already moved: put them back.
+    RollbackCompanions,
     Committed,
     Manual,
 }
@@ -335,6 +399,18 @@ pub struct RecoveryFacts {
     pub temporary_matches: bool,
     pub unlink: bool,
     pub db_only: bool,
+    /// The model's companion rows equal the journal's picture from before the operation.
+    pub companions_db_before: bool,
+    /// Every row the operation rewrites already has its new state.
+    pub companions_db_after: bool,
+    /// Every companion that travels on disk is still at its source (true when none travels).
+    pub companions_all_source: bool,
+    /// Every companion that travels on disk is at its target (true when none travels).
+    pub companions_all_target: bool,
+    /// Each companion is at its source or its target, but not all at the same side.
+    pub companions_mixed: bool,
+    /// At least one companion travels on disk.
+    pub companions_any: bool,
 }
 pub const RECOVERY_TABLE: &[(RecoveryDecision, &str)] = &[
     (
@@ -365,6 +441,10 @@ pub const RECOVERY_TABLE: &[(RecoveryDecision, &str)] = &[
         RecoveryDecision::FinishUnlink,
         "DB before and unlink source absent",
     ),
+    (
+        RecoveryDecision::RollbackCompanions,
+        "DB before, model at its source, companions partly or fully at their targets",
+    ),
 ];
 pub fn recovery_decision(f: RecoveryFacts) -> RecoveryDecision {
     use RecoveryDecision::*;
@@ -372,30 +452,50 @@ pub fn recovery_decision(f: RecoveryFacts) -> RecoveryDecision {
         return Manual;
     }
     if f.db_after
+        && f.companions_db_after
         && (f.db_only
             || (f.unlink && f.source_absent)
-            || (!f.unlink && f.source_absent && f.target_matches))
+            || (!f.unlink && f.source_absent && f.target_matches && f.companions_all_target))
     {
         return Committed;
     }
     if f.temporary_matches && f.source_absent {
-        return if f.db_before {
-            FinishTemporary
-        } else {
-            RollbackTemporary
-        };
+        if f.db_before {
+            // The model only reaches its temporary name after every companion moved.
+            return if f.companions_db_before && f.companions_all_target {
+                FinishTemporary
+            } else {
+                Manual
+            };
+        }
+        // Moving only the model back would strand companions at the target.
+        return if f.companions_any { Manual } else { RollbackTemporary };
     }
     if !f.db_before {
         return Manual;
     }
-    if f.db_only || (f.source_matches && !f.target_matches) {
+    if f.db_only {
         return Discard;
+    }
+    if f.source_matches && !f.target_matches {
+        if f.companions_all_source {
+            return Discard;
+        }
+        return if f.companions_mixed || f.companions_all_target {
+            RollbackCompanions
+        } else {
+            Manual
+        };
     }
     if f.unlink && f.source_absent {
         return FinishUnlink;
     }
     if f.source_absent && f.target_matches {
-        return Finish;
+        return if f.companions_all_target && f.companions_db_before {
+            Finish
+        } else {
+            Manual
+        };
     }
     Manual
 }
