@@ -933,6 +933,8 @@ export const es: Translations = {
   companionRestoreNamed: "Restaurar {name}",
   companionsRemovedHint: "Los archivos adjuntos eliminados permanecen 7 días en la papelera de la aplicación. Después se borran definitivamente.",
   companionRestored: "«{name}» se ha restaurado.",
+  companionDownload: "Descargar",
+  companionDownloadNamed: "Descargar {name}",
   archiveSummaryCompanionsAssigned: { one: "{count} archivo complementario se asignó a su modelo.", other: "{count} archivos complementarios se asignaron a sus modelos." },
   archiveSummaryCompanionsIgnored: { one: "{count} archivo ignorado (tipo de archivo no permitido). Está en la carpeta de destino.", other: "{count} archivos ignorados (tipo de archivo no permitido). Están en la carpeta de destino." },
   archiveSummaryUnsafeSkipped: { one: "{count} entrada no segura omitida", other: "{count} entradas no seguras omitidas" },

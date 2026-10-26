@@ -10,6 +10,7 @@ import { checkFilament } from '../lib/api/filamentCheck';
 vi.mock('./Sidebar', () => ({ Sidebar: () => null }));
 vi.mock('./ModelPreview', () => ({ ModelPreview: () => null }));
 vi.mock('../lib/api/filamentCheck', () => ({ checkFilament: vi.fn().mockResolvedValue([]) }));
+vi.mock('../lib/api/companions', () => ({ listWebCompanions: vi.fn().mockResolvedValue([]), companionImageData: vi.fn(), companionDownloadUrl: (id: string) => id }));
 vi.mock('../lib/api/lastPrinter', () => ({ getLastPrinterForFile: vi.fn().mockResolvedValue(null) }));
 beforeEach(() => {
   vi.stubEnv('VITE_TARGET', 'web');

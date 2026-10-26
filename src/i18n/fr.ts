@@ -933,6 +933,8 @@ export const fr: Translations = {
   companionRestoreNamed: "Restaurer {name}",
   companionsRemovedHint: "Les fichiers associés supprimés restent 7 jours dans la corbeille de l’application. Ils sont ensuite supprimés définitivement.",
   companionRestored: "« {name} » a été restauré.",
+  companionDownload: "Télécharger",
+  companionDownloadNamed: "Télécharger {name}",
   archiveSummaryCompanionsAssigned: { one: "{count} fichier associé a été rattaché à son modèle.", other: "{count} fichiers associés ont été rattachés à leurs modèles." },
   archiveSummaryCompanionsIgnored: { one: "{count} fichier ignoré (type de fichier non autorisé). Il se trouve dans le dossier de destination.", other: "{count} fichiers ignorés (type de fichier non autorisé). Ils se trouvent dans le dossier de destination." },
   archiveSummaryUnsafeSkipped: { one: "{count} entrée non sûre ignorée", other: "{count} entrées non sûres ignorées" },

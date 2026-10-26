@@ -959,6 +959,8 @@ export interface Translations {
   companionRestoreNamed: string;
   companionsRemovedHint: string;
   companionRestored: string;
+  companionDownload: string;
+  companionDownloadNamed: string;
   archiveSummaryCompanionsAssigned: PluralForms;
   archiveSummaryCompanionsIgnored: PluralForms;
   archiveSummaryUnsafeSkipped: PluralForms;

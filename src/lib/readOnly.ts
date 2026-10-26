@@ -18,6 +18,8 @@ export const WEB_READ_COMMANDS = [
   'get_auto_tagging',
   'list_suggested_auto_tags',
   'list_blocked_auto_tags',
+  'list_companions',
+  'companion_image_data',
 ] as const;
 
 /** Web write commands: the server remains the authority for each request. */

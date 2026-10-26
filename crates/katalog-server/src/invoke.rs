@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use katalog_core::{
-    db,
+    companion_read, db,
     read::{self, GeometryErrorCode, ReadError},
 };
 use serde::Serialize;
@@ -167,7 +167,19 @@ pub const READ_COMMANDS: &[&str] = &[
     "get_auto_tagging",
     "list_suggested_auto_tags",
     "list_blocked_auto_tags",
+    "list_companions",
+    "companion_image_data",
 ];
+
+/// Companion refusals reach the client as plain statements: no path, no SQLite text.
+pub(crate) fn companion_error(e: companion_read::RowError) -> ReadError {
+    use companion_read::RowError as R;
+    match e {
+        R::TooLarge => ReadError::expected("Die Begleitdatei ist zu groß").with_code(GeometryErrorCode::TooLarge),
+        // Everything else looks the same from outside: no hint which check failed.
+        _ => ReadError::expected("Begleitdatei nicht gefunden").with_code(GeometryErrorCode::NotFound),
+    }
+}
 
 // New summaries intentionally expose no server paths or SQLite error text.
 fn trash_summary(conn: &katalog_core::write::Connection, roots: &[PathBuf]) -> Result<Value, ReadError> {
@@ -251,13 +263,17 @@ pub async fn invoke(
             Ok(value) => Some(value),
             Err(error) => return *error,
         },
-        "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" | "list_suggested_auto_tags" => {
+        "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" | "list_suggested_auto_tags" | "list_companions" => {
             match id(&args, "fileId") {
                 Ok(v) => Some(v),
                 Err(e) => return *e,
             }
         }
         "list_printer_history" => match id(&args, "printerId") {
+            Ok(v) => Some(v),
+            Err(e) => return *e,
+        },
+        "companion_image_data" => match id(&args, "companionId") {
             Ok(v) => Some(v),
             Err(e) => return *e,
         },
@@ -322,6 +338,8 @@ pub async fn invoke(
             | "get_last_printer_for_file"
             | "check_filament"
             | "get_filament_spool_image"
+            | "companion_image_data"
+            | "list_companions"
     ) {
         match gate.manager_reads.clone().try_acquire_owned() {
             Ok(p) => Some(p),
@@ -371,6 +389,23 @@ pub async fn invoke(
             )?),
             "check_filament" => encode(read::manager::check_filament_with_conn(&conn, &check_ids)?),
 
+            "list_companions" => encode(
+                companion_read::list_for_web(&conn, file_id.unwrap().parse().unwrap(), &roots).map_err(companion_error)?,
+            ),
+            "companion_image_data" => {
+                let opened = companion_read::open_for_web(
+                    &conn,
+                    file_id.unwrap().parse().unwrap(),
+                    &roots,
+                    companion_read::MAX_PREVIEW_BYTES,
+                );
+                drop(conn);
+                let (row, kind, mut file, head) = opened.map_err(companion_error)?;
+                if kind != katalog_core::companions::CompanionKind::Image {
+                    return Err(companion_error(companion_read::RowError::Invalid));
+                }
+                encode(companion_read::image_data_uri(&mut file, head, &row.name).map_err(companion_error)?)
+            }
             "list_file_summaries" => encode(read::list_file_summaries(&conn)?),
             "list_all_file_tags" => encode(read::list_all_file_tags(&conn)?),
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
@@ -503,6 +538,19 @@ mod tests {
             Arc::new(GeometryGate::default()),
         )
         .await
+    }
+    #[tokio::test]
+    async fn companion_reads_share_the_manager_gate() {
+        let c = catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let held: Vec<_> = (0..4).map(|_| gate.manager_reads.clone().try_acquire_owned().unwrap()).collect();
+        for (command, args) in [("list_companions", json!({"fileId": c.id})), ("companion_image_data", json!({"companionId": "1"}))] {
+            let r = invoke(c.db.clone(), vec![c.dir.clone()], command.into(), args, gate.clone()).await;
+            assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE, "{command}");
+        }
+        drop(held);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "list_companions".into(), json!({"fileId": c.id}), gate).await;
+        assert_eq!(r.status(), StatusCode::OK);
     }
     async fn body(response: Response) -> Vec<u8> {
         response

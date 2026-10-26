@@ -933,6 +933,8 @@ export const de: Translations = {
   companionRestoreNamed: "{name} wiederherstellen",
   companionsRemovedHint: "Entfernte Begleitdateien liegen 7 Tage im App-Papierkorb. Danach werden sie endgültig gelöscht.",
   companionRestored: "„{name}“ wurde wiederhergestellt.",
+  companionDownload: "Herunterladen",
+  companionDownloadNamed: "{name} herunterladen",
   archiveSummaryCompanionsAssigned: { one: "{count} Begleitdatei wurde dem Modell zugeordnet.", other: "{count} Begleitdateien wurden Modellen zugeordnet." },
   archiveSummaryCompanionsIgnored: { one: "{count} Datei ignoriert (nicht erlaubter Typ). Sie liegt im Zielordner.", other: "{count} Dateien ignoriert (nicht erlaubter Typ). Sie liegen im Zielordner." },
   archiveSummaryUnsafeSkipped: { one: "{count} unsicherer Eintrag übersprungen", other: "{count} unsichere Einträge übersprungen" },

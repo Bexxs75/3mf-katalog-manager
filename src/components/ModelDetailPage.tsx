@@ -44,6 +44,7 @@ import { FilamentCheckSection } from './FilamentCheckSection';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { CompanionSection } from './CompanionSection';
+import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { FilamentUsageMissing } from './FilamentUsageMissing';
 import { isFilamentUsageMissing } from '../lib/filamentUsageHelp';
@@ -396,10 +397,12 @@ export function ModelDetailPage({
 
       <BuildPlateFit model={model} printers={printers} variant="page" />
 
-      {/* The web build has no companion section; its card would stay an empty box. */}
-      {import.meta.env.VITE_TARGET !== 'web' && <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
-        <CompanionSection key={model.id} fileId={model.id} variant="page" />
-      </div>}
+      {/* The web build lists and downloads companions only; the desktop section also edits them. */}
+      <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="page" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="page" />}
+      </div>
 
       {isFilamentUsageMissing(model) && <FilamentUsageMissing />}
 

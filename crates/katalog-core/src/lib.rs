@@ -8,6 +8,7 @@ pub mod archive;
 pub mod geometry;
 pub mod safe_file;
 pub mod companions;
+pub mod companion_read;
 pub mod rescan;
 pub mod tagging;
 pub mod filament_check;

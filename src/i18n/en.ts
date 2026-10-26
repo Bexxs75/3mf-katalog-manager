@@ -933,6 +933,8 @@ export const en: Translations = {
   companionRestoreNamed: "Restore {name}",
   companionsRemovedHint: "Removed companion files stay in the app trash for 7 days. After that they are deleted for good.",
   companionRestored: "“{name}” was restored.",
+  companionDownload: "Download",
+  companionDownloadNamed: "Download {name}",
   archiveSummaryCompanionsAssigned: { one: "{count} companion file was assigned to its model.", other: "{count} companion files were assigned to their models." },
   archiveSummaryCompanionsIgnored: { one: "{count} file ignored (file type not allowed). It is in the target folder.", other: "{count} files ignored (file type not allowed). They are in the target folder." },
   archiveSummaryUnsafeSkipped: { one: "{count} unsafe entry skipped", other: "{count} unsafe entries skipped" },

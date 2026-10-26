@@ -505,6 +505,20 @@ export interface Companion {
   missing: boolean;
 }
 
+/** A companion as the web lists it: read only, no server path, trashed ones are never sent. */
+export interface WebCompanion {
+  id: string;
+  fileId: string;
+  name: string;
+  kind: CompanionKind;
+  sizeBytes: number | null;
+  addedAt: string;
+  /** Gone from disk or failing the server's safety checks: listed, not served. */
+  missing: boolean;
+  /** An image small enough for `companionImageData`. */
+  previewable: boolean;
+}
+
 export interface CompanionOpenInfo {
   id: string;
   name: string;

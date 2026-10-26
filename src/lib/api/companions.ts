@@ -1,5 +1,5 @@
 import { invoke } from '../transport';
-import type { Companion, CompanionOpenInfo } from '../../types';
+import type { Companion, CompanionOpenInfo, WebCompanion } from '../../types';
 
 // Limits mirrored from the backend, for hints in the UI. The backend enforces them.
 export const MAX_COMPANION_BYTES = 50 * 1024 * 1024;
@@ -35,4 +35,13 @@ export function openCompanion(companionId: string) {
 // The picture as a data URI (images only, size-capped).
 export function companionImageData(companionId: string) {
   return invoke<string>('companion_image_data', { companionId });
+}
+
+// Web build only (read only): the live companions of a model, without server paths.
+export function listWebCompanions(fileId: string) {
+  return invoke<WebCompanion[]>('list_companions', { fileId });
+}
+// Same-origin download link; the browser sends the session cookie and saves it as an attachment.
+export function companionDownloadUrl(companionId: string) {
+  return `/api/companions/${encodeURIComponent(companionId)}/download`;
 }

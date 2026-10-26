@@ -731,6 +731,10 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         .strip_prefix("/api/files/")
         .and_then(|p| p.strip_suffix("/download"))
         .filter(|id| !id.contains('/'));
+    let companion_id = path
+        .strip_prefix("/api/companions/")
+        .and_then(|p| p.strip_suffix("/download"))
+        .filter(|id| !id.contains('/'));
     // Reserve the complete API namespace, including unknown routes, before SPA fallback.
     if path == "/api" || path.starts_with("/api/") {
         if !matches!(
@@ -738,6 +742,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events" | "/api/backup/export"
         ) && !path.starts_with("/api/invoke/")
             && download_id.is_none()
+            && companion_id.is_none()
         {
             return error(404, "Nicht gefunden");
         }
@@ -767,7 +772,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         }
         if method!=Method::POST{return error(405,"method")}
     }
-    if download_id.is_some() || path == "/api/backup/export" {
+    if download_id.is_some() || companion_id.is_some() || path == "/api/backup/export" {
         if method != Method::GET {
             return error(405, "Methode nicht erlaubt");
         }
@@ -792,6 +797,16 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             let key = current.as_ref().map_or(peer.clone(), |s| s.token.clone());
             let session = current.as_ref().map_or(0, |s| crate::write::session_fingerprint(&s.token));
             return crate::export::export(&app.export, app.config.db_path.clone(), app.writer.as_ref().map(|w| w.conn.clone()), &key, session, app.clock.monotonic(), now).await;
+        }
+        if let Some(id) = companion_id {
+            return crate::download::companion(
+                app.config.db_path.clone(),
+                app.config.roots.clone(),
+                id,
+                &headers,
+                app.downloads.clone(),
+            )
+            .await;
         }
         let id = download_id.unwrap();
         return crate::download::download(

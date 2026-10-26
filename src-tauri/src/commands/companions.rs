@@ -14,10 +14,11 @@ pub(super) use katalog_core::companions::validate_stored_fields;
 pub(crate) use katalog_core::companions::{
     classify, extras_dir_for, is_extras_dir_name, CompanionKind, Refusal, MAX_COMPANIONS_PER_MODEL, MAX_COMPANION_BYTES,
 };
-use katalog_core::companions::{has_parent_component, kind_for_extension, lowercase_extension, CONTENT_CHECK_BYTES};
-
-/// Largest image sent to the preview; bigger pictures are opened externally.
-const MAX_PREVIEW_BYTES: u64 = 10 * 1024 * 1024;
+use katalog_core::companion_read::{self, FolderProblem, RowError};
+pub(super) use katalog_core::companion_read::{read_head, same_dir_with, MAX_PREVIEW_BYTES};
+use katalog_core::companions::{has_parent_component, kind_for_extension, lowercase_extension};
+#[cfg(test)]
+use katalog_core::companions::CONTENT_CHECK_BYTES;
 /// Extensions of the allowed types, for the file picker.
 const PICKER_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md"];
 
@@ -33,22 +34,6 @@ impl RefusalText for Refusal {
             Self::Content => "Der Inhalt der Datei passt nicht zu ihrem Dateityp und wird nicht übernommen.",
         }
     }
-}
-
-fn image_mime(name: &str) -> &'static str {
-    match lowercase_extension(name).as_deref() {
-        Some("png") => "image/png",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        _ => "image/jpeg",
-    }
-}
-
-/// Reads at most the first [`CONTENT_CHECK_BYTES`] of an open file.
-fn read_head(file: &mut std::fs::File) -> std::io::Result<Vec<u8>> {
-    let mut head = Vec::new();
-    Read::by_ref(file).take(CONTENT_CHECK_BYTES as u64).read_to_end(&mut head)?;
-    Ok(head)
 }
 
 /// A harmless single-component name for the copy of a user-chosen file.
@@ -138,60 +123,43 @@ fn resolve_extras_target(conn: &Connection, model_path: &Path, sensitive_dirs: &
     Ok(extras)
 }
 
-/// Whether two folder paths name the same folder, by the same rule everywhere (Windows
-/// ignores case; macOS volumes are usually case-insensitive too).
-fn same_dir_with(a: &Path, b: &Path, case_insensitive: bool) -> bool {
-    let (a, b) = (folders::comparison_path(a), folders::comparison_path(b));
-    if case_insensitive {
-        a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
-    } else {
-        a == b
-    }
-}
-
-fn same_dir(a: &Path, b: &Path) -> bool {
-    same_dir_with(a, b, CASE_INSENSITIVE_PATHS)
-}
-
 /// Why `dir` cannot be trusted as the companion folder `expected` (the `_extras` folder
-/// next to a model). A link in place of the folder, or a model folder reached through a
-/// different route, would make a file operation land on someone else's file, because a
-/// check on the file alone follows links in its parent folders. A folder that does not
-/// exist is fine: there is nothing to touch.
+/// next to a model). The check itself lives in `katalog_core::companion_read`, shared
+/// with the web server; this only names the problem for the desktop.
 fn extras_dir_problem(dir: &Path, expected: &Path) -> Option<ErrorCode> {
-    let meta = match std::fs::symlink_metadata(dir) {
-        Ok(meta) => meta,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
-        Err(_) => return Some(ErrorCode::CompanionFolderUnverifiable),
-    };
-    if !meta.is_dir() {
-        return Some(ErrorCode::CompanionFolderNotReal);
+    companion_read::extras_dir_problem(dir, expected).map(folder_error_code)
+}
+
+fn folder_error_code(problem: FolderProblem) -> ErrorCode {
+    match problem {
+        FolderProblem::Unverifiable => ErrorCode::CompanionFolderUnverifiable,
+        FolderProblem::NotReal => ErrorCode::CompanionFolderNotReal,
+        FolderProblem::Elsewhere => ErrorCode::CompanionFolderElsewhere,
+        FolderProblem::ModelPathInvalid => ErrorCode::ModelPathInvalid,
     }
-    let (Some(model_dir), Some(name)) = (expected.parent(), expected.file_name()) else {
-        return Some(ErrorCode::ModelPathInvalid);
-    };
-    let (Ok(resolved_dir), Ok(resolved_model_dir)) = (dir.canonicalize(), model_dir.canonicalize()) else {
-        return Some(ErrorCode::CompanionFolderUnverifiable);
-    };
-    if !same_dir(&resolved_dir, &resolved_model_dir.join(name)) {
-        return Some(ErrorCode::CompanionFolderElsewhere);
+}
+
+/// The user-facing text for a refusal to open a stored companion.
+fn row_error(error: RowError) -> CmdError {
+    match error {
+        RowError::Invalid => CmdError::expected("Diese Begleitdatei ist ungültig und wird nicht verwendet."),
+        RowError::Trashed => CmdError::expected("Diese Begleitdatei liegt im Papierkorb."),
+        RowError::ModelMissing => CmdError::expected("Modell nicht gefunden."),
+        RowError::ModelTrashed => CmdError::expected("Das Modell liegt im Papierkorb."),
+        RowError::ModelPathInvalid => CmdError::expected("Der Pfad des Modells ist nicht gültig."),
+        RowError::NotInModelFolder => CmdError::expected("Die Begleitdatei liegt nicht im Begleitdateien-Ordner ihres Modells."),
+        RowError::Folder(problem) => CmdError::coded(folder_error_code(problem)),
+        RowError::NotAFile => CmdError::expected("Die Begleitdatei existiert nicht mehr oder ist keine normale Datei."),
+        RowError::Unreadable => CmdError::expected("Die Begleitdatei kann nicht gelesen werden."),
+        RowError::TooLarge => CmdError::expected("Die Begleitdatei ist zu groß."),
+        RowError::Content(refusal) => CmdError::expected(refusal.message()),
     }
-    None
 }
 
 /// The folder of a stored companion must be exactly the genuine `_extras` folder of the
 /// model the row belongs to, before any file in it is moved, opened or read.
 fn ensure_row_folder_genuine(conn: &Connection, row: &CompanionRecord) -> CmdResult<()> {
-    let model = load_model(conn, row.file_id)?;
-    let expected = extras_dir_for(Path::new(&model.path)).ok_or_else(|| CmdError::expected("Der Pfad des Modells ist nicht gültig."))?;
-    let dir = Path::new(&row.path).parent().ok_or_else(|| CmdError::expected("Diese Begleitdatei ist ungültig und wird nicht verwendet."))?;
-    if !same_dir(dir, &expected) {
-        return Err(CmdError::expected("Die Begleitdatei liegt nicht im Begleitdateien-Ordner ihres Modells."));
-    }
-    match extras_dir_problem(dir, &expected) {
-        Some(problem) => Err(CmdError::coded(problem)),
-        None => Ok(()),
-    }
+    companion_read::check_row_folder(conn, row).map(|_| ()).map_err(row_error)
 }
 
 /// Checks a stored row before anything touches its file.
@@ -204,26 +172,10 @@ fn verify_row(row: &CompanionRecord) -> CmdResult<CompanionKind> {
 /// regular file (never a symlink), size, protected folders, and the content check.
 /// The returned handle is the one that was checked.
 fn open_checked(conn: &Connection, row: &CompanionRecord, sensitive_dirs: &[PathBuf], max_bytes: u64) -> CmdResult<(CompanionKind, std::fs::File, Vec<u8>)> {
-    let kind = verify_row(row)?;
-    if row.deleted_at.is_some() {
-        return Err(CmdError::expected("Diese Begleitdatei liegt im Papierkorb."));
-    }
-    let path = Path::new(&row.path);
-    reject_if_sensitive_path(path, sensitive_dirs)?;
+    let kind = companion_read::check_row_state(row).map_err(row_error)?;
+    reject_if_sensitive_path(Path::new(&row.path), sensitive_dirs)?;
     ensure_row_folder_genuine(conn, row)?;
-    if !is_real_file(path) {
-        return Err(CmdError::expected("Die Begleitdatei existiert nicht mehr oder ist keine normale Datei."));
-    }
-    let mut file = crate::safe_file::open_regular(path).map_err(|_| CmdError::expected("Die Begleitdatei kann nicht gelesen werden."))?;
-    let length = file.metadata().map_err(|e| e.to_string())?.len();
-    if length > max_bytes {
-        return Err(CmdError::expected("Die Begleitdatei ist zu groß."));
-    }
-    let head = read_head(&mut file).map_err(|_| CmdError::expected("Die Begleitdatei kann nicht gelesen werden."))?;
-    let checked = classify(&row.name, &head).map_err(|r| CmdError::expected(r.message()))?;
-    if checked != kind {
-        return Err(CmdError::expected(Refusal::Content.message()));
-    }
+    let (file, head) = companion_read::open_row_file(row, kind, max_bytes, false, None).map_err(row_error)?;
     Ok((kind, file, head))
 }
 
@@ -1026,18 +978,15 @@ pub async fn open_companion(app: tauri::AppHandle, companion_id: String) -> CmdR
 /// The picture as a data URI for the preview. Only images, with a size cap; anything
 /// else (or a file whose content is not the claimed picture) is refused.
 pub(super) fn image_data_with_conn(conn: &Connection, id: i64, sensitive_dirs: &[PathBuf]) -> CmdResult<String> {
-    use base64::Engine;
     let row = load_row(conn, id)?;
     if CompanionKind::parse(&row.kind) != Some(CompanionKind::Image) {
         return Err(CmdError::expected("Diese Begleitdatei ist kein Bild."));
     }
     let (_, mut file, head) = open_checked(conn, &row, sensitive_dirs, MAX_PREVIEW_BYTES)?;
-    let mut bytes = head;
-    Read::by_ref(&mut file).take(MAX_PREVIEW_BYTES + 1 - bytes.len() as u64).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-    if bytes.len() as u64 > MAX_PREVIEW_BYTES {
-        return Err(CmdError::expected("Das Bild ist für die Vorschau zu groß."));
-    }
-    Ok(format!("data:{};base64,{}", image_mime(&row.name), base64::engine::general_purpose::STANDARD.encode(bytes)))
+    companion_read::image_data_uri(&mut file, head, &row.name).map_err(|e| match e {
+        RowError::TooLarge => CmdError::expected("Das Bild ist für die Vorschau zu groß."),
+        other => row_error(other),
+    })
 }
 
 #[tauri::command]

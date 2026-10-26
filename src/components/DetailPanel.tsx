@@ -15,6 +15,7 @@ import { ImageUploadError } from './ImageUploadError';
 import { ImageUploadButton } from './ImageUploadButton';
 import { Icon } from './Icon';
 import { CompanionSection } from './CompanionSection';
+import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
@@ -335,7 +336,9 @@ export function DetailPanel({
         </div>
 
         <BuildPlateFit model={model} printers={printers} variant="compact" />
-        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="compact" />}
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="compact" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="compact" />}
       </div>
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
@@ -527,7 +530,9 @@ export function DetailPanel({
         </div>
 
         <BuildPlateFit model={model} printers={printers} variant="comfort" />
-        {import.meta.env.VITE_TARGET !== 'web' && <CompanionSection key={model.id} fileId={model.id} variant="comfort" />}
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="comfort" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="comfort" />}
       </div>
 
       <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
