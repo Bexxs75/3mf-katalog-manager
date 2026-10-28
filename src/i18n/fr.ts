@@ -389,7 +389,7 @@ export const fr: Translations = {
   pmModel: "Modèle",
   pmNozzle: "Buse",
   pmBed: "Volume d’impression X × Y × Z",
-  pmBedHint: "Le volume est la base de « Tient sur le plateau ? » dans le catalogue (prévu pour v0.17.0).",
+  pmBedHint: "Le volume est la base de « Tient sur le plateau ? » dans le catalogue.",
   pmEdit: "Modifier",
   pmLoadSpools: "Charger les bobines dans Material Manager →",
   pmUnitsHint: "Plusieurs AMS sur une imprimante : ajoutez-les plusieurs fois (AMS 1, AMS 2 …). Glissez les unités pour les réordonner.",

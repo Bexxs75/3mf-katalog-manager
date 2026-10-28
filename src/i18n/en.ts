@@ -389,7 +389,7 @@ export const en: Translations = {
   pmModel: "Model",
   pmNozzle: "Nozzle",
   pmBed: "Build volume X × Y × Z",
-  pmBedHint: "The build volume is the basis for “Fits on the print bed?” in the catalog (planned for v0.17.0).",
+  pmBedHint: "The build volume is the basis for “Fits on the print bed?” in the catalog.",
   pmEdit: "Edit",
   pmLoadSpools: "Load spools in Material Manager →",
   pmUnitsHint: "Multiple AMS on one printer: add them repeatedly (AMS 1, AMS 2 …). Drag units to reorder.",
