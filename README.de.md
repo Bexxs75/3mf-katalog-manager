@@ -20,69 +20,32 @@ Kostenlos und Open Source (MIT) · Windows, macOS, Linux · Deutsch, Englisch, S
 
 Die Knöpfe öffnen den Download-Bereich der Webseite, dort gibt es immer die neueste Version. Alle Dateien und Prüfsummen: [neueste Version](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest).
 
-Ab v0.16.0 gibt es einen Download pro System: Windows `.msi`, macOS `.dmg` (Intel und Apple Silicon), Linux `.AppImage`. Die STEP-Vorschau ist immer enthalten; der Download ist dadurch größer als das bisherige Standardpaket. Dateinamen haben keinen `-STEP`-Zusatz. Bestehende Standardinstallationen erhalten ihn beim nächsten Update in der App.
+Ab v0.16.0 gibt es einen Download pro System: Windows `.msi`, macOS `.dmg` (Intel und Apple Silicon), Linux `.AppImage`. Die STEP-Vorschau ist immer enthalten; der Download ist dadurch größer als das bisherige Standardpaket. Dateinamen haben keinen `-STEP`-Zusatz.
 
-## Kompatibilität
+## Screenshots
 
-| Bereich | Stand |
+| | |
 |---|---|
-| Windows (`.msi`) | verfügbar, unsigniert |
-| macOS, Intel und Apple Silicon (`.dmg`) | verfügbar, unsigniert |
-| Linux (`.AppImage`) | verfügbar; `.deb`, `.rpm` und AUR geplant |
-| 3MF, STL, OBJ | Katalog und 3D-Vorschau |
-| STEP (`.stp`/`.step`) | Katalog und 3D-Vorschau (ab v0.16.0 enthalten) |
-| OrcaSlicer / Bambu Studio 3MF | Filamentverbrauch und Gewicht je Platte unterstützt |
-| Im Slicer öffnen | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura werden erkannt, weitere lassen sich eintragen |
-| Klipper / Moonraker | verfügbar; [weitere Druckermodelle gesucht](https://3mfkatalog.de/druckertest.html) |
-| OctoPrint | geplant |
-| Bambu Lab (LAN) | geplant, hängt von einem Test an echten Druckern ab |
-| PrusaLink | später geplant |
-| Sprachen | Deutsch, Englisch, Spanisch, Französisch |
-
-### Getestete Drucker
-
-| Drucker | System | Geprüft | Ergebnis |
-|---|---|---|---|
-| Sovol SV08 | Klipper ab Werk | Druckliste und Verbrauch, Abbuchen von der Spule in der App | ✅ Im Alltag bestätigt |
-| Anycubic Kobra S1 mit ACE Pro / ACE Pro 2 | Rinkhals | Druckliste und Verbrauch, Abbuchen von der Spule, Zuordnung der Dateinamen zum Modell; abgebrochene Drucke werden mit der tatsächlichen Menge abgebucht; zwei Geräte parallel | ✅ Im Dauereinsatz bestätigt (2 Geräte) |
-| Qidi Smart 3 | Klipper ab Werk | Druckliste und Verbrauch lesbar; die Uhr des Druckers ging falsch | 🟡 Ab v0.15.0 |
-| Creality K2 Plus (mit CFS) | Creality-Klipper 1.1.6.1, gerootet | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer nicht, die Spule wird von Hand gewählt | ☑️ Testbericht geprüft |
-| Qidi Q1 Pro | Klipper ab Werk (Moonraker 0.7.1) | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer (QIDISlicer) | ☑️ Testbericht geprüft |
-| Anycubic Kobra 3 V2 | Klipper mit Rinkhals | Druckliste und Verbrauch lesbar; Material (PETG) und Gewicht kommen aus den Slicer-Daten; der Drucker meldet ein ACE-Modul, geprüft wurde nur ein Druck mit einem Farbeintrag | ☑️ Testbericht geprüft |
-
-*Im Alltag bestätigt*: mit der App am eigenen Drucker ausprobiert. *Im Dauereinsatz bestätigt*: von Nutzern über längere Zeit im Alltag eingesetzt und zurückgemeldet. *Testbericht geprüft*: die Daten aus dem anonymen [Testformular](https://3mfkatalog.de/druckertest.html) passen, ein Praxistest fehlt noch. Dein Drucker fehlt? Mit deinem Test kommt er dazu.
-
-## Ist die Installation sicher?
-
-Windows und macOS zeigen beim ersten Start eine Warnung, weil die Pakete **nicht signiert** sind: Die Zertifikate dafür kosten jedes Jahr Geld, das kann ein kostenloses Hobbyprojekt noch nicht tragen. Die Warnung bedeutet „unbekannter Herausgeber“, nicht, dass etwas Schädliches gefunden wurde.
-
-Was du selbst prüfen kannst:
-
-- **Open Source:** Jede Version wird aus dem öffentlichen Quellcode von [GitHub-Actions-Workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows) gebaut. Der Quellstand jeder Version ist das passende Tag, z. B. [v0.15.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.15.0).
-- **Prüfsummen:** Jede Version enthält `SHA256SUMS.txt`. Vergleiche sie mit dem Hash deines Downloads:
-  - Windows (PowerShell): `Get-FileHash .\3MF-Katalog-Manager-0.16.0-Windows-x64.msi -Algorithm SHA256`
-  - macOS: `shasum -a 256 3MF-Katalog-Manager-0.16.0-macOS-universal.dmg`
-  - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
-- **Trotzdem starten:** Windows-SmartScreen: „Weitere Informationen“ → „Trotzdem ausführen“. macOS: Rechtsklick auf die App → „Öffnen“; ab macOS 15: Systemeinstellungen → Datenschutz & Sicherheit → „Trotzdem öffnen“.
-- **Nur lokal:** Die App arbeitet offline. Online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, um sie herunterzuladen, wenn du aktualisierst, und, wenn du es einschaltest, um mit Druckern im Heimnetz zu sprechen.
-- **Virenscanner** wie Avast oder AVG blockieren neue, nicht signierte Programme manchmal vorsorglich. Stell die Datei aus der Quarantäne wieder her und trag den Installationsordner als Ausnahme ein; vorher kannst du die Datei bei [VirusTotal](https://www.virustotal.com) prüfen.
-- **Deinstallieren** entfernt das Programm, Katalog, Einstellungen und Logs bleiben aber absichtlich erhalten. Welche Ordner du löschen musst, um alles zu entfernen, steht im [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#deinstallieren).
-
-## Updates
-
-Ab v0.15.0 prüft die App beim Start auf Updates und kann sie unter Windows, macOS und der Linux-AppImage selbst installieren. „Jetzt aktualisieren“ lädt das signierte Paket herunter. „Neu starten und installieren“ sichert zuerst deine Katalog-Datenbank (die letzten 3 Sicherungen bleiben erhalten, in `update-backups` im Datenordner der App) und installiert dann das Update. Bei Linux-`.deb`/`.rpm`-Installationen erscheint stattdessen der Knopf „Zur Download-Seite“, weil sich nur die AppImage selbst ersetzen kann.
-
-Installationen von 0.14 oder älter müssen einmal von Hand auf 0.15.0 aktualisiert werden – lade sie von der [Webseite](https://3mfkatalog.de/#download) oder dem [neuesten Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest) herunter; ab 0.15.0 aktualisiert sich die App dann selbst. Details, auch zum Wiederherstellen einer Sicherung: [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#aktualisieren).
+| **Katalog mit der immer sichtbaren Auswahlleiste** | **Modell-Detailseite mit echten Dateifarben** |
+| ![Katalog in der Kachelansicht](docs/assets/readme/de/catalog.webp) | ![Modell-Detailseite mit Dateifarben und Plattenleiste](docs/assets/readme/de/model-detail.webp) |
+| **Material Manager mit gruppierten Spulen** | **Drucker und AMS-Fächer** |
+| ![Material Manager mit gruppierten Spulen](docs/assets/readme/de/material-manager.webp) | ![Drucker mit AMS-Fächern](docs/assets/readme/de/printers-ams.webp) |
+| **Quellordner: Downloads auf neue Modelle prüfen** | **Abgleich mit der Festplatte: umbenannte und verschobene Dateien** |
+| ![Dialog „Quellordner“](docs/assets/readme/de/source-folders.webp) | ![Dialog „Abgleich mit der Festplatte“](docs/assets/readme/de/disk-sync.webp) |
 
 ## Was die App kann
 
 - **Modelle finden und ordnen** — Dateien oder ganze Ordner importieren, automatische Tags, Suche, Ordner, Sammlungen, Favoriten, Duplikaterkennung, Papierkorb.
 - **Aus dem Katalog entfernen / Katalog zurücksetzen** — Modelle oder Ordner entfernen oder den Katalog leeren, ohne Dateien auf der Festplatte zu ändern.
-- **Dateien und Metadaten verstehen** — 3D-Vorschau für 3MF, STL, OBJ (und STEP), Maße, Volumen, Druckplatten, Filamentverbrauch und Gewicht aus OrcaSlicer/Bambu Studio.
-- **Filament und Resin verwalten** — Spulen und Resin-Flaschen mit Bestand, Lagerort und Preis, Drucker mit AMS-/MMU-Fächern, „Reicht das Filament?“ je Modell.
+- **Dateien und Metadaten verstehen** — 3D-Vorschau für 3MF, STL, OBJ (und STEP) mit den echten Dateifarben aus Projekten von Bambu Studio, OrcaSlicer und MakerWorld, Maße, Volumen, Druckplatten, Filamentverbrauch und Gewicht aus OrcaSlicer/Bambu Studio.
+- **Filament und Resin verwalten** — Spulen und Resin-Flaschen mit Bestand, Lagerort und Preis (gleiche Spulen gruppiert, bis zu vier Farben pro Spule), Drucker mit AMS-/MMU-Fächern, „Reicht das Filament?“ je Modell.
 - **Drucke planen und dokumentieren** — Warteschlange, Druckstatus, Druckprotokoll mit Fotos, geschätzte Materialkosten, mit einem Klick im Slicer öffnen.
 - **Drucker anbinden** — optional und nur lesend: Klipper/Moonraker-Drucker melden den Filamentverbrauch, du bestätigst, dann wird abgebucht. OctoPrint und Bambu Lab sind geplant.
+- **Den Katalog im Gleichschritt mit deinen Dateien halten** — der Abgleich mit der Festplatte erkennt umbenannte und verschobene Dateien und Ordner; Ordner in der App umbenennen und löschen, mehrere Modelle auf einmal verschieben und mit Strg/Cmd+Z zurücknehmen.
+- **Neue Downloads einsammeln** — Quellordner wie Downloads einrichten, auf neue Modelle prüfen und die gewählten Dateien in den Katalog verschieben.
+- **Begleitdateien und Druckbett-Prüfung** — Bilder, PDFs und Textdateien an ein Modell hängen; die Detailansicht zeigt, ob ein Modell auf jeden deiner Drucker passt, und der Filter „Passt auf“ grenzt den Katalog ein.
 - **Sicher und lokal** — Katalog-Sicherung als ZIP, Archive werden sicher entpackt, Content Security Policy, keine Cloud.
+- **Docker (experimentell)** — auch als Container mit Browser-Desktop erhältlich, im Wartungsmodus (nur Fehler- und Sicherheitskorrekturen): siehe [Docker im Wiki](https://wiki.3mfkatalog.de/docker/overview/).
 
 <details>
 <summary><b>Alle Funktionen im Detail</b></summary>
@@ -126,13 +89,57 @@ Installationen von 0.14 oder älter müssen einmal von Hand auf 0.15.0 aktualisi
 
 </details>
 
-## Screenshots
+## Kompatibilität
 
-| Katalog mit Vorschau | Modell mit Slicer-Daten |
+| Bereich | Stand |
 |---|---|
-| ![Katalog in der Kachelansicht](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Modell-Detailseite](docs/benutzerhandbuch/bilder/04-modell-detailseite.png) |
-| **Drucker und AMS-Fächer** | **Drucke vom Klipper-Drucker bestätigen** |
-| ![Drucker mit AMS-Fächern im Material Manager](docs/benutzerhandbuch/bilder/22-drucker-ams.png) | ![Dialog „Neue Drucke“](docs/benutzerhandbuch/bilder/27-neue-drucke.png) |
+| Windows (`.msi`) | verfügbar, unsigniert |
+| macOS, Intel und Apple Silicon (`.dmg`) | verfügbar, unsigniert |
+| Linux (`.AppImage`) | verfügbar; `.deb`, `.rpm` und AUR geplant |
+| 3MF, STL, OBJ | Katalog und 3D-Vorschau |
+| STEP (`.stp`/`.step`) | Katalog und 3D-Vorschau (ab v0.16.0 enthalten) |
+| OrcaSlicer / Bambu Studio 3MF | Filamentverbrauch und Gewicht je Platte unterstützt |
+| Im Slicer öffnen | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura werden erkannt, weitere lassen sich eintragen |
+| Klipper / Moonraker | verfügbar; [weitere Druckermodelle gesucht](https://3mfkatalog.de/druckertest.html) |
+| OctoPrint | geplant |
+| Bambu Lab (LAN) | geplant, hängt von einem Test an echten Druckern ab |
+| PrusaLink | später geplant |
+| Sprachen | Deutsch, Englisch, Spanisch, Französisch |
+
+### Getestete Drucker
+
+| Drucker | System | Geprüft | Ergebnis |
+|---|---|---|---|
+| Sovol SV08 | Klipper ab Werk | Druckliste und Verbrauch, Abbuchen von der Spule in der App | ✅ Im Alltag bestätigt |
+| Anycubic Kobra S1 mit ACE Pro / ACE Pro 2 | Rinkhals | Druckliste und Verbrauch, Abbuchen von der Spule, Zuordnung der Dateinamen zum Modell; abgebrochene Drucke werden mit der tatsächlichen Menge abgebucht; zwei Geräte parallel | ✅ Im Dauereinsatz bestätigt (2 Geräte) |
+| Qidi Smart 3 | Klipper ab Werk | Druckliste und Verbrauch lesbar; die Uhr des Druckers ging falsch | 🟡 Ab v0.15.0 |
+| Creality K2 Plus (mit CFS) | Creality-Klipper 1.1.6.1, gerootet | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer nicht, die Spule wird von Hand gewählt | ☑️ Testbericht geprüft |
+| Qidi Q1 Pro | Klipper ab Werk (Moonraker 0.7.1) | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer (QIDISlicer) | ☑️ Testbericht geprüft |
+| Anycubic Kobra 3 V2 | Klipper mit Rinkhals | Druckliste und Verbrauch lesbar; Material (PETG) und Gewicht kommen aus den Slicer-Daten; der Drucker meldet ein ACE-Modul, geprüft wurde nur ein Druck mit einem Farbeintrag | ☑️ Testbericht geprüft |
+
+*Im Alltag bestätigt*: mit der App am eigenen Drucker ausprobiert. *Im Dauereinsatz bestätigt*: von Nutzern über längere Zeit im Alltag eingesetzt und zurückgemeldet. *Testbericht geprüft*: die Daten aus dem anonymen [Testformular](https://3mfkatalog.de/druckertest.html) passen, ein Praxistest fehlt noch. Dein Drucker fehlt? Mit deinem Test kommt er dazu.
+
+## Ist die Installation sicher?
+
+Windows und macOS zeigen beim ersten Start eine Warnung, weil die Pakete **nicht signiert** sind: Die Zertifikate dafür kosten jedes Jahr Geld, das kann ein kostenloses Hobbyprojekt noch nicht tragen. Die Warnung bedeutet „unbekannter Herausgeber“, nicht, dass etwas Schädliches gefunden wurde.
+
+Was du selbst prüfen kannst:
+
+- **Open Source:** Jede Version wird aus dem öffentlichen Quellcode von [GitHub-Actions-Workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows) gebaut. Der Quellstand jeder Version ist das passende Tag, z. B. [v0.15.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.15.0).
+- **Prüfsummen:** Jede Version enthält `SHA256SUMS.txt`. Vergleiche sie mit dem Hash deines Downloads:
+  - Windows (PowerShell): `Get-FileHash .\3MF-Katalog-Manager-<version>-Windows-x64.msi -Algorithm SHA256`
+  - macOS: `shasum -a 256 3MF-Katalog-Manager-<version>-macOS-universal.dmg`
+  - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
+- **Trotzdem starten:** Windows-SmartScreen: „Weitere Informationen“ → „Trotzdem ausführen“. macOS: Rechtsklick auf die App → „Öffnen“; ab macOS 15: Systemeinstellungen → Datenschutz & Sicherheit → „Trotzdem öffnen“.
+- **Nur lokal:** Die App arbeitet offline. Online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, um sie herunterzuladen, wenn du aktualisierst, und, wenn du es einschaltest, um mit Druckern im Heimnetz zu sprechen.
+- **Virenscanner** wie Avast oder AVG blockieren neue, nicht signierte Programme manchmal vorsorglich. Stell die Datei aus der Quarantäne wieder her und trag den Installationsordner als Ausnahme ein; vorher kannst du die Datei bei [VirusTotal](https://www.virustotal.com) prüfen.
+- **Deinstallieren** entfernt das Programm, Katalog, Einstellungen und Logs bleiben aber absichtlich erhalten. Welche Ordner du löschen musst, um alles zu entfernen, steht im [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#deinstallieren).
+
+## Updates
+
+Ab v0.15.0 prüft die App beim Start auf Updates und kann sie unter Windows, macOS und der Linux-AppImage selbst installieren. „Jetzt aktualisieren“ lädt das Update-Paket herunter und prüft die Update-Signatur des Projekts (das ist keine Code-Signatur des Installers, siehe oben). „Neu starten und installieren“ sichert zuerst deine Katalog-Datenbank (die letzten 3 Sicherungen bleiben erhalten, in `update-backups` im Datenordner der App) und installiert dann das Update. Bei Linux-`.deb`/`.rpm`-Installationen erscheint stattdessen der Knopf „Zur Download-Seite“, weil sich nur die AppImage selbst ersetzen kann.
+
+Installationen von 0.14 oder älter müssen einmal von Hand aktualisiert werden – lade die aktuelle Version von der [Webseite](https://3mfkatalog.de/#download) oder dem [neuesten Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest) herunter; ab 0.15.0 aktualisiert sich die App dann selbst. Details, auch zum Wiederherstellen einer Sicherung: [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#aktualisieren).
 
 ## Hilfe und Dokumentation
 
