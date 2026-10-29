@@ -30,8 +30,10 @@ export function TagRemoveButton({ tag, autoTag, onRemove, onRemoveAndBlock, clas
   // inside the scrolling panel (or the window) on both sides; null until measured.
   const [menuLeft, setMenuLeft] = useState<number | null>(null);
 
-  // The menu closes when another model is shown or the tag stops being an automatic one.
-  useEffect(() => { setOpen(false); }, [tag, autoTag]);
+  // The menu closes when another model is shown or the tag stops being an automatic one. Becoming an
+  // automatic tag (the suggestions just arrived) must not close a menu the user has already opened.
+  useEffect(() => { setOpen(false); }, [tag]);
+  useEffect(() => { if (!autoTag) setOpen(false); }, [autoTag]);
 
   useLayoutEffect(() => {
     if (!open) return;
