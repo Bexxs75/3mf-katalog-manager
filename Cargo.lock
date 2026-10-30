@@ -2502,7 +2502,7 @@ dependencies = [
 
 [[package]]
 name = "katalog-core"
-version = "0.1.0"
+version = "0.17.0"
 dependencies = [
  "base64 0.22.1",
  "bzip2",
@@ -2532,7 +2532,7 @@ dependencies = [
 
 [[package]]
 name = "katalog-server"
-version = "0.1.0"
+version = "0.17.0"
 dependencies = [
  "argon2",
  "axum",
