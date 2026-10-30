@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canHaveFilamentUsage, isFilamentUsageMissing } from './filamentUsageHelp';
+import { canHaveFilamentUsage, filamentUsageHelpUrl, isFilamentUsageMissing } from './filamentUsageHelp';
 
 const sliceInfo = { totalWeightG: 12, plates: [] };
 
@@ -20,5 +20,14 @@ describe('isFilamentUsageMissing', () => {
 
   it('is false while only the list summary is loaded', () => {
     expect(isFilamentUsageMissing({ path: 'a.3mf', sliceInfo: null, summaryOnly: true })).toBe(false);
+  });
+});
+
+describe('filamentUsageHelpUrl', () => {
+  it('points German to the German wiki page and every other language to the English one', () => {
+    expect(filamentUsageHelpUrl('de')).toBe('https://wiki.3mfkatalog.de/help/filament-usage/');
+    for (const language of ['en', 'es', 'fr']) {
+      expect(filamentUsageHelpUrl(language)).toBe('https://wiki.3mfkatalog.de/en/help/filament-usage/');
+    }
   });
 });

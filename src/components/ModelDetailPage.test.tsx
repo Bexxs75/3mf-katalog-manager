@@ -6,7 +6,7 @@ import { ModelDetailPage } from './ModelDetailPage';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { makeModelFile, makePrinter } from '../test/factories';
 import { de } from '../i18n/de';
-import { FILAMENT_USAGE_HELP_URL } from '../lib/filamentUsageHelp';
+import { filamentUsageHelpUrl } from '../lib/filamentUsageHelp';
 
 vi.mock('./ModelPreview', () => ({ ModelPreview: () => <>
   <button>Viewer control</button>
@@ -329,7 +329,7 @@ it('explains a missing filament usage for a loaded 3MF and links to the manual',
   const hint = screen.getByRole('status');
   expect(hint).toHaveTextContent(de.filamentUsageMissingTitle);
   expect(hint).toHaveTextContent(de.filamentUsageMissingBody);
-  expect(screen.getByRole('link', { name: de.filamentUsageMissingLink })).toHaveAttribute('href', FILAMENT_USAGE_HELP_URL);
+  expect(screen.getByRole('link', { name: de.filamentUsageMissingLink })).toHaveAttribute('href', filamentUsageHelpUrl('de'));
 });
 
 it('shows the usage and no hint when the 3MF has slicer data', () => {

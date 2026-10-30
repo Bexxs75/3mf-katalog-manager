@@ -1,8 +1,11 @@
 import type { ModelFile } from '../types';
 
-// Placeholder: the wiki start page until the manual page about exporting a
-// sliced plate has its final address. Change it here only.
-export const FILAMENT_USAGE_HELP_URL = 'https://wiki.3mfkatalog.de/';
+const WIKI_BASE = 'https://wiki.3mfkatalog.de';
+
+/** The wiki exists in German and English; Spanish and French readers get the English page. */
+export function filamentUsageHelpUrl(language: string): string {
+  return language === 'de' ? `${WIKI_BASE}/help/filament-usage/` : `${WIKI_BASE}/en/help/filament-usage/`;
+}
 
 /** Only 3MF can carry slicer data; STL, OBJ and STEP never have a filament usage. */
 export function canHaveFilamentUsage(path: string): boolean {

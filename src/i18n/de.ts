@@ -493,7 +493,7 @@ export const de: Translations = {
   pmModel: "Modell",
   pmNozzle: "Düse",
   pmBed: "Bauraum X × Y × Z",
-  pmBedHint: "Der Bauraum ist die Grundlage für „Passt aufs Druckbett?“ im Katalog (geplant für v0.17.0).",
+  pmBedHint: "Der Bauraum ist die Grundlage für „Passt aufs Druckbett?“ im Katalog.",
   pmEdit: "Bearbeiten",
   pmLoadSpools: "Spulen im Material Manager einlegen →",
   pmUnitsHint: "Mehrere AMS am selben Drucker: einfach mehrmals hinzufügen (AMS 1, AMS 2 …). Die Reihenfolge der Einheiten ist per Ziehen änderbar.",

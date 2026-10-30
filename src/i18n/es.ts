@@ -493,7 +493,7 @@ export const es: Translations = {
   pmModel: "Modelo",
   pmNozzle: "Boquilla",
   pmBed: "Volumen de impresión X × Y × Z",
-  pmBedHint: "El volumen de impresión es la base de «¿Cabe en la cama?» en el catálogo (previsto para v0.17.0).",
+  pmBedHint: "El volumen de impresión es la base de «¿Cabe en la cama?» en el catálogo.",
   pmEdit: "Editar",
   pmLoadSpools: "Cargar bobinas en Material Manager →",
   pmUnitsHint: "Varios AMS en una impresora: añádelos varias veces (AMS 1, AMS 2 …). Arrastra las unidades para reordenarlas.",
