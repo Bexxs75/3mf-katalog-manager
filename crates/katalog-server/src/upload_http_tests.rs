@@ -916,7 +916,9 @@ async fn round3_list_hides_imported_and_import_journal_is_batched() {
         .invoke("start_upload_import", json!({"uploadIds":ids}))
         .await;
     assert_eq!(r.status(), 200);
-    let result = wait_result(&f, &value(r).await["jobId"]).await;
+    // 200 imports: `wait_result` gives up after about one second, which a loaded machine exceeds.
+    let result = wait_long(&f, &value(r).await["jobId"]).await;
+    assert_eq!(result["state"], "completed");
     assert_eq!(result["files"].as_array().unwrap().len(), 200);
     assert!(store.persist_count.load(Ordering::Relaxed) - before <= 13);
     let list = value(

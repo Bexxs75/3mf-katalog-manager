@@ -736,6 +736,7 @@ fn cross_root_moves_and_foreign_other_root_trash() {
 }
 #[test]
 fn empty_trash_has_bounded_blocks_and_frozen_ids() {
+    let _budget = GenerousBatchBudget::new();
     let mut f = Fixture::new();
     for id in 1..=205 {
         f.ops.db.execute("INSERT INTO files(id,name,path,file_type,file_size_bytes,imported_at,deleted_at) VALUES (?1,'missing',?2,'stl',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')",rusqlite::params![id,format!("/missing/{id}")]).unwrap();
@@ -905,6 +906,7 @@ fn ack_rejects_nonmanual_and_unknown_ids() {
 }
 #[test]
 fn snapshot_rechecks_cutoff_after_restore_and_delete() {
+    let _budget = GenerousBatchBudget::new();
     let mut f = Fixture::new();
     for id in 1..=200 {
         f.ops.db.execute("INSERT INTO files(id,name,path,file_type,file_size_bytes,imported_at,deleted_at) VALUES (?1,'missing',?2,'stl',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')",rusqlite::params![id,format!("/missing/{id}")]).unwrap();
@@ -973,6 +975,23 @@ fn excessive_trash_extension_is_conflict() {
     );
 }
 
+thread_local! {
+    pub(super) static BATCH_BUDGET: std::cell::Cell<Option<std::time::Duration>> = const { std::cell::Cell::new(None) };
+}
+/// Lifts the 20 s real-time limit of a batch for the current test, so that a slow or loaded disk
+/// cannot cut a block short. The limit itself is not what these tests check.
+struct GenerousBatchBudget;
+impl GenerousBatchBudget {
+    fn new() -> Self {
+        BATCH_BUDGET.with(|b| b.set(Some(std::time::Duration::from_secs(3600))));
+        Self
+    }
+}
+impl Drop for GenerousBatchBudget {
+    fn drop(&mut self) {
+        BATCH_BUDGET.with(|b| b.set(None));
+    }
+}
 thread_local! {
     pub(super) static BEFORE_MUTATION: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
 }

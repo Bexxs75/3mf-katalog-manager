@@ -721,7 +721,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if ids.len() > 200 || ids.iter().any(|i| *i <= 0) {
             return Err(Error::InvalidArguments);
         }
-        let deadline = Instant::now() + Duration::from_secs(20);
+        let deadline = Instant::now() + batch_budget();
         let mut seen = HashSet::new();
         let mut stopped = false;
         let mut out = Vec::new();
@@ -874,6 +874,15 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .count();
         Ok(result)
     }
+}
+/// How long one batch (or one empty-trash block) may run before its untouched items are answered `NotStarted`.
+/// This is a real-time limit, so tests that need a full block on a slow disk widen it (never in production).
+fn batch_budget() -> Duration {
+    #[cfg(test)]
+    if let Some(budget) = super::tests::BATCH_BUDGET.with(|b| b.get()) {
+        return budget;
+    }
+    Duration::from_secs(20)
 }
 // File handles pin parents, but a local writer may concurrently relocate an ancestor.
 // File operations accept this residual risk; directory operations recheck parent chains.

@@ -637,12 +637,30 @@ async fn thousand_trash_entries_empty_in_blocks_without_ten_minute_limit() {
     let started = f.invoke("empty_trash_start", json!({"expectedCount":1000,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"})).await;
     assert_eq!(started.status(), 200);
     let token = value(started).await["token"].clone();
-    for block in 0..5u64 {
+    // A block is bounded by a real 20 s deadline (`Ops::batch`, not by the mock clock). On a slow disk a block
+    // may stop early; its untouched items are answered `not_started` and stay in the snapshot. A block that ran
+    // to the end must remove exactly 200 (or all that is left); a stopped one must still make progress. The daily item budget is
+    // raised so that extra blocks on a slow machine cannot hit it (the daily limit is not under test here).
+    *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(100_000);
+    let mut remaining = 1000u64;
+    for block in 0..60u64 {
         f.time.0.store(100 + block * 2, Ordering::SeqCst);
         let r = f.invoke("empty_trash_block", json!({"token":token})).await;
         assert_eq!(r.status(), 200, "block {block}");
-        assert_eq!(value(r).await["remaining"], 800 - block * 200);
+        let body = value(r).await;
+        let now = body["remaining"].as_u64().unwrap();
+        let stopped = body["results"].as_array().unwrap().iter().any(|i| i["kind"] == "not_started");
+        if stopped {
+            assert!(now < remaining, "a stopped block {block} still makes progress");
+        } else {
+            assert_eq!(now, remaining - remaining.min(200), "block {block}");
+        }
+        remaining = now;
+        if remaining == 0 {
+            break;
+        }
     }
+    assert_eq!(remaining, 0, "the trash is empty after the blocks");
     // The 10-minute pot for single permanent deletions was not consumed by the blocks.
     let kept = f.file("kept.3mf");
     assert_eq!(f.invoke("delete_files", json!({"fileIds":[kept]})).await.status(), 200);
@@ -1625,7 +1643,20 @@ async fn other_file_operations_run_while_a_companion_body_is_still_arriving() {
     tx.send(bytes[..300_000].to_vec().into()).await.unwrap();
     f.wait_for_temporary("Foo", &mut task).await;
     let rt = f.app.fileops.as_ref().unwrap();
-    assert!(rt.state.try_lock().is_ok(), "the runtime is not held while the body streams");
+    // The temporary file is made inside `begin_companion_add`, i.e. while the runtime is still held to start the
+    // job; it is released right after. So wait (bounded) for the release, then require it stays free while the
+    // body is still incomplete (the task is not finished and the second half has not been sent).
+    let mut released = false;
+    for _ in 0..800 {
+        if rt.state.try_lock().is_ok() {
+            released = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(released, "the runtime is not held while the body streams");
+    assert!(!task.is_finished(), "the upload is still waiting for the rest of its body");
+    assert!(rt.state.try_lock().is_ok(), "the runtime stays free while the body streams");
     if let Some(u) = &f.app.uploads {
         assert_eq!(u.active.available_permits(), 1, "the import gate is free");
     }
