@@ -88,3 +88,14 @@ it('has the new texts in all four languages', () => {
   expect(de.catalogBackupWebHint).toContain('Windows');
   expect(de.catalogBackupWebFailureHint).toContain('neu an');
 });
+
+it('shows the app version in the Info tab of the web build', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.startsWith('/api/invoke/')) return Response.json(url.endsWith('get_app_version') ? '0.17.0' : []);
+    return Response.json({ authenticated: true, writable: false, csrfToken: 'token', mustChangePassword: false });
+  }));
+  await getSession();
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+  expect(await screen.findByTestId('web-version')).toHaveTextContent('0.17.0');
+});

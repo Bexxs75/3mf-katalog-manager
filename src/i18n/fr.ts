@@ -1111,6 +1111,7 @@ export const fr: Translations = {
   infoUpdateCheckFailed: 'Impossible de vérifier les mises à jour. Vérifiez votre connexion internet ou votre pare-feu.',
   infoCheckForUpdateButton: 'Rechercher à nouveau',
   infoCheckingForUpdate: 'Recherche en cours…',
+  infoVersionLabel: 'Version',
   infoSourceCodeLabel: 'Code source',
   infoCommunityLabel: 'Communauté',
   infoLicenseLabel: 'Licence',

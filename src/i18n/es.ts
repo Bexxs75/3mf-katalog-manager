@@ -1111,6 +1111,7 @@ export const es: Translations = {
   infoUpdateCheckFailed: 'No se pudo buscar actualizaciones. Revisa tu conexión a internet o el cortafuegos.',
   infoCheckForUpdateButton: 'Buscar actualizaciones de nuevo',
   infoCheckingForUpdate: 'Buscando…',
+  infoVersionLabel: 'Versión',
   infoSourceCodeLabel: 'Código fuente',
   infoCommunityLabel: 'Comunidad',
   infoLicenseLabel: 'Licencia',

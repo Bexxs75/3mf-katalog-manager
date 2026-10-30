@@ -1111,6 +1111,7 @@ export const de: Translations = {
   infoUpdateCheckFailed: 'Update-Prüfung nicht möglich. Bitte Internetverbindung oder Firewall prüfen.',
   infoCheckForUpdateButton: 'Erneut nach Updates suchen',
   infoCheckingForUpdate: 'Suche läuft…',
+  infoVersionLabel: 'Version',
   infoSourceCodeLabel: 'Quellcode',
   infoCommunityLabel: 'Community',
   infoLicenseLabel: 'Lizenz',

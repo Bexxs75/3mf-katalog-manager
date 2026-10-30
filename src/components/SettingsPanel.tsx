@@ -24,6 +24,7 @@ import { WebCatalogBackup } from './WebCatalogBackup';
 import { ErrorText } from '../diagnostics/ErrorText';
 import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
+import { getAppVersion } from '../lib/api/update';
 
 type SettingsTab = 'general' | 'slicer' | 'catalog' | 'info';
 const TABS: readonly SettingsTab[] = import.meta.env.VITE_TARGET === 'web' ? ['general', 'catalog', 'info'] : ['general', 'slicer', 'catalog', 'info'];
@@ -422,6 +423,7 @@ export function SettingsPanel({
           {activeSettingsTab === 'info' && (
             <>
               <button onClick={onOpenTips} className="w-full h-8 border border-[var(--line-strong)] rounded cursor-pointer mb-3">{t('keyboardTipsTitle')}</button>
+              {import.meta.env.VITE_TARGET === 'web' && <WebVersionRow />}
               {import.meta.env.VITE_TARGET !== 'web' && <UpdatePanel view={update} onExport={onExportCatalog} exportError={catalogBackupError} />}
               {import.meta.env.VITE_TARGET !== 'web' && <DiagnosticsSettings />}
               {import.meta.env.VITE_TARGET !== 'web' && <InfoFolders />}
@@ -474,6 +476,24 @@ export function SettingsPanel({
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+/** The web build has no updater panel (which shows the version on the desktop), so the version gets its own row. */
+function WebVersionRow() {
+  const t = useT();
+  const [version, setVersion] = useState('');
+  useEffect(() => {
+    let alive = true;
+    getAppVersion().then(v => { if (alive) setVersion(v); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  if (!version) return null;
+  return (
+    <div className="flex justify-between text-caption py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
+      <span>{t('infoVersionLabel')}</span>
+      <span data-testid="web-version">{version}</span>
     </div>
   );
 }

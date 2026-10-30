@@ -1137,6 +1137,7 @@ export interface Translations {
   infoUpdateCheckFailed: string;
   infoCheckForUpdateButton: string;
   infoCheckingForUpdate: string;
+  infoVersionLabel: string;
   infoSourceCodeLabel: string;
   infoCommunityLabel: string;
   infoLicenseLabel: string;
