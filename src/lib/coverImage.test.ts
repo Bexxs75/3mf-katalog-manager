@@ -64,4 +64,5 @@ it('reports unreadable, unsupported and impossible inputs instead of sending the
   await expect(prepareCoverImage(file(PNG, 9_000_000), fakeIo({ sizes: [6_000_000, 6_000_000, 6_000_000, 6_000_000] }))).rejects.toThrow('webPhotoTooLarge');
   // Without any browser canvas support the default implementation refuses too.
   await expect(prepareCoverImage(file(PNG, 9_000_000))).rejects.toThrow('coverUnreadable');
-});
+  // Several multi-megabyte files are built here; a shared CI runner needs more than the default 5 s.
+}, 30_000);
