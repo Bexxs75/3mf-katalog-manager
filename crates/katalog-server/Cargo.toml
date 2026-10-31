@@ -1,6 +1,6 @@
 [package]
 name = "katalog-server"
-version = "0.17.0"
+version = "0.18.0-1"
 edition = "2021"
 license = "MIT"
 description = "Read-only web server for the 3MF Katalog Manager catalog"

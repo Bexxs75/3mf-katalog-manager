@@ -1,6 +1,6 @@
 [package]
 name = "katalog-core"
-version = "0.17.0"
+version = "0.18.0-1"
 edition = "2021"
 license = "MIT"
 

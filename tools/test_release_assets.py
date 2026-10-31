@@ -126,6 +126,21 @@ class Preview(unittest.TestCase):
     def test_unknown_option_fails(self):
         with self.assertRaises(SystemExit): ra.main(["rename", "--foo", "0.15.0", "a", "b"])
 
+    def test_set_version_updates_workspace_crates(self):
+        with tempfile.TemporaryDirectory() as t:
+            r = pathlib.Path(t); (r / "src-tauri").mkdir(); (r / "crates/katalog-core").mkdir(parents=True)
+            (r / "src-tauri/Cargo.toml").write_text('[package]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
+            (r / "src-tauri/tauri.conf.json").write_text(json.dumps({"version": "0.14.0"}), encoding="utf-8")
+            (r / "package.json").write_text(json.dumps({"version": "0.14.0"}), encoding="utf-8")
+            (r / "crates/katalog-core/Cargo.toml").write_text('[package]\nname = "katalog-core"\nversion = "0.14.0"\n\n[dependencies]\nserde = { version = "1" }\n', encoding="utf-8")
+            (r / "Cargo.lock").write_text('[[package]]\nname = "katalog-core"\nversion = "0.14.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
+            ra.set_version("0.15.0-2", r)
+            self.assertIn('version = "0.15.0-2"', (r / "crates/katalog-core/Cargo.toml").read_text(encoding="utf-8"))
+            self.assertIn('serde = { version = "1" }', (r / "crates/katalog-core/Cargo.toml").read_text(encoding="utf-8"))
+            lock = (r / "Cargo.lock").read_text(encoding="utf-8")
+            self.assertIn('name = "katalog-core"\nversion = "0.15.0-2"', lock)
+            self.assertIn('name = "mf-katalog-manager"\nversion = "0.15.0-2"', lock)
+
     def test_set_version(self):
         with tempfile.TemporaryDirectory() as t:
             r = pathlib.Path(t); (r / "src-tauri").mkdir()

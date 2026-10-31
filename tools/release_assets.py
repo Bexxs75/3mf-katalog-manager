@@ -216,6 +216,20 @@ def set_version(version, root="."):
     lock_text, count = pattern.subn(lambda m: m.group(1) + version + m.group(2), lock_path.read_text(encoding="utf-8"), count=1)
     if count != 1:
         fail(f"could not find root package {package_name} in {lock_path}")
+
+    # The workspace crates (katalog-core, katalog-server) carry the same version as the app.
+    for crate_path in sorted((root / "crates").glob("*/Cargo.toml")):
+        prefix, _, rest = crate_path.read_text(encoding="utf-8").partition("[package]")
+        package, sep, suffix = rest.partition("\n[")
+        name_match = re.search(r'^name\s*=\s*"([^"]+)"', package, re.M)
+        if not name_match:
+            fail(f"{crate_path} has no [package] name")
+        package = re.sub(r'^version\s*=\s*"[^"]+"', f'version = "{version}"', package, count=1, flags=re.M)
+        crate_path.write_text(prefix + "[package]" + package + sep + suffix, encoding="utf-8", newline="\n")
+        crate_pattern = re.compile(r'(name = "' + re.escape(name_match.group(1)) + r'"\nversion = ")[^"]+(")')
+        lock_text, count = crate_pattern.subn(lambda m: m.group(1) + version + m.group(2), lock_text, count=1)
+        if count != 1:
+            fail(f"could not find workspace package {name_match.group(1)} in {lock_path}")
     lock_path.write_text(lock_text, encoding="utf-8", newline="\n")
 
 def main(argv):
