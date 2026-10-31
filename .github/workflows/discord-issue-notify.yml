@@ -67,7 +67,7 @@ jobs:
             --arg tag "$TAG_ID" \
             '{
               name: $name,
-              message: { content: $content },
+              message: { content: $content, allowed_mentions: { parse: [] } },
               applied_tags: [$tag]
             }')
 

@@ -52,7 +52,7 @@ jobs:
   # Like e2e, "assemble" does not wait for it: a red run is a warning, not a blocker.
   web-image:
     needs: verify
-    # The called workflow declares packages: write for its (here disabled) push step.
+    # The called workflow declares packages: write for its publish job only; with publish: false that job is skipped, and its build job has a read-only token.
     permissions:
       contents: read
       packages: write

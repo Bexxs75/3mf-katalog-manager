@@ -46,12 +46,16 @@ env:
   WEB_IMAGE_NAME: 3mf-katalog-manager-web
 
 jobs:
+  # Builds and tests with a read-only token. Third-party actions run only here, so a compromised
+  # action cannot publish anything; the package-write token exists only in the publish job below.
   web-image:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      # Needed only for the push step, which runs only when publish is true.
-      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      version: ${{ steps.meta.outputs.version }}
+      rc: ${{ steps.meta.outputs.rc }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -78,10 +82,8 @@ jobs:
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${WEB_IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
-      # The smoke test builds its empty catalog with a cargo example.
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
+      # The smoke test builds its empty catalog with a cargo example; the Rust toolchain that the
+      # GitHub runner image already contains is used (no extra third-party action).
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Build the candidate image
@@ -100,9 +102,37 @@ jobs:
       - name: Smoke test
         run: bash docker-web/scripts/ci-smoke.sh candidate:web-test
 
-      # Everything below runs only for an explicit publish=true.
-      - name: Log in to ghcr.io
+      # Hand the tested image to the publish job unchanged.
+      - name: Save the tested image
         if: inputs.publish == true
+        run: docker save candidate:web-test -o web-image.tar
+
+      - name: Keep the tested image
+        if: inputs.publish == true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: web-image
+          path: web-image.tar
+          retention-days: 1
+
+  # Runs only for an explicit publish=true. The only job with a package-write token.
+  publish:
+    needs: web-image
+    if: inputs.publish == true
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Fetch the tested image
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: web-image
+
+      - name: Load the tested image
+        run: docker load -i web-image.tar
+
+      - name: Log in to ghcr.io
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
@@ -110,12 +140,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push the tested image
-        if: inputs.publish == true
         shell: bash
         env:
-          IMAGE: ${{ steps.meta.outputs.image }}
-          VERSION: ${{ steps.meta.outputs.version }}
-          RC: ${{ steps.meta.outputs.rc }}
+          IMAGE: ${{ needs.web-image.outputs.image }}
+          VERSION: ${{ needs.web-image.outputs.version }}
+          RC: ${{ needs.web-image.outputs.rc }}
         run: |
           set -euo pipefail
           [[ "$VERSION" != dev ]] || { echo "publish needs a version" >&2; exit 1; }
