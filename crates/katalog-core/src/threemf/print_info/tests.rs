@@ -155,6 +155,21 @@ fn the_four_slice_states_are_told_apart() {
     set(&mut broken, "Metadata/slice_info.config", b"<config><plate><metadata key=\"index\" value=\"1\"></config>");
     assert_eq!(state_of(&broken), SliceState::Unreadable);
 
+    // Cut off, empty or without any element: incomplete, not "no data".
+    for incomplete in ["", "   \n", "<config><plate>", "<config><header>", "<config><plate><metadata key=\"index\" value=\"1\"/>"] {
+        let mut entries = base_entries();
+        set(&mut entries, "Metadata/slice_info.config", incomplete.as_bytes());
+        assert_eq!(state_of(&entries), SliceState::Unreadable, "{incomplete:?}");
+    }
+    // A self-closing plate is a plate for the state.
+    let mut empty_plate = base_entries();
+    set(&mut empty_plate, "Metadata/slice_info.config", b"<config><plate/></config>");
+    assert_eq!(state_of(&empty_plate), SliceState::Sliced);
+    // Complete and well-formed without a plate stays "no data", also with other elements.
+    let mut other = base_entries();
+    set(&mut other, "Metadata/slice_info.config", b"<?xml version=\"1.0\"?><config><header><header_item key=\"a\" value=\"b\"/></header></config>");
+    assert_eq!(state_of(&other), SliceState::NoSliceData);
+
     let mut not_utf8 = base_entries();
     set(&mut not_utf8, "Metadata/slice_info.config", &[0xff, 0xfe, 0xfd]);
     assert_eq!(state_of(&not_utf8), SliceState::Unreadable);
@@ -173,6 +188,18 @@ fn parse_slice_info_still_answers_none_for_all_four_cases() {
     let mut too_big = base_entries();
     set(&mut too_big, "Metadata/slice_info.config", &vec![b'A'; MAX_CONFIG_XML_BYTES as usize + 1]);
     assert!(parse_slice_info(&mut build(&too_big)).0.is_none());
+    // The old function stays lenient: a cut-off document still yields the plates read before the cut,
+    // and a self-closing `<plate/>` is no plate. Only the detailed reading is strict.
+    let mut cut = base_entries();
+    set(&mut cut, "Metadata/slice_info.config", format!("<config>{}<config>", slice_plate("1", &[1], "")).as_bytes());
+    assert!(parse_slice_info(&mut build(&cut)).0.is_some(), "lenient scan keeps the plate");
+    let (detail, _) = read_slice_info_detailed_with(&mut build(&cut), &[]);
+    assert_eq!(detail.state, SliceState::Unreadable);
+    assert!(detail.info.is_some(), "the stored slice info is the same as before");
+    let mut empty_plate = base_entries();
+    set(&mut empty_plate, "Metadata/slice_info.config", b"<config><plate/></config>");
+    assert!(parse_slice_info(&mut build(&empty_plate)).0.is_none());
+    assert!(read_slice_info_detailed_with(&mut build(&empty_plate), &[]).0.info.is_none());
 }
 
 #[test]
@@ -363,7 +390,16 @@ fn synthetic_temperatures_are_reduced_over_the_used_filaments() {
     let two = |a: &[u32], b: &[u32]| nozzle_of(&temperature_entries(&[slice_plate("1", a, ""), slice_plate("2", b, "")], settings));
     assert_eq!(two(&[1], &[1]), Reduced::Value(200.0));
     assert_eq!(two(&[1], &[2]), Reduced::Mixed);
-    assert_eq!(two(&[1], &[3]), Reduced::Value(200.0), "an unknown plate does not take part");
+    assert_eq!(two(&[1], &[3]), Reduced::Unknown, "one plate without a known value makes the file unknown");
+    assert_eq!(two(&[1], &[]), Reduced::Unknown, "a plate without filament ids too");
+    // A filament without a usable id: the list is incomplete, the plate stays unknown.
+    let bad_id = |id: &str| {
+        let plate = format!(r#"<plate><metadata key="index" value="1"/><filament id="{id}" type="PLA"/><filament id="1" type="PLA"/></plate>"#);
+        nozzle_of(&temperature_entries(&[plate], settings))
+    };
+    assert_eq!(bad_id("1"), Reduced::Value(200.0));
+    assert_eq!(bad_id("x"), Reduced::Unknown);
+    assert_eq!(bad_id(""), Reduced::Unknown);
 }
 
 #[test]
@@ -466,7 +502,7 @@ fn invalid_duplicate_and_missing_plate_indexes_are_dropped_or_numbered() {
     ];
     set(&mut entries, "Metadata/slice_info.config", slice_xml(&plates).as_bytes());
     let (_, info) = read_with(&mut build(&entries), &[TIME_KEY], &Sources::SHIPPED);
-    // Index 0 gets no row, the first plate with index 2 wins, the plate without an index
+    // Index 0 gets no row (see also the unusable-index test), the first plate with index 2 wins, the plate without an index
     // takes its position (4).
     assert_eq!(plate_indexes(&info), vec![2, 4]);
     assert_eq!(info.plates[0].print_seconds, Some(200));
@@ -478,8 +514,9 @@ fn more_than_the_maximum_of_plates_keep_only_the_first_rows() {
     let plates: Vec<String> = (0..5000).map(|_| "<plate/>".to_string()).collect();
     set(&mut entries, "Metadata/slice_info.config", slice_xml(&plates).as_bytes());
     let info = read(&mut build(&entries));
-    // `<plate/>` elements are empty, so no plate is found: no state "sliced", no rows.
-    assert_eq!(info.slice_state, SliceState::NoSliceData);
+    // Self-closing plates count for the state but carry no data and make no rows.
+    assert_eq!(info.slice_state, SliceState::Sliced);
+    assert!(info.plates.is_empty());
     let plates: Vec<String> = (0..5000).map(|_| "<plate></plate>".to_string()).collect();
     set(&mut entries, "Metadata/slice_info.config", slice_xml(&plates).as_bytes());
     let info = read(&mut build(&entries));
@@ -580,4 +617,103 @@ fn a_big_package_with_big_configs_is_read_unchanged() {
     set(&mut entries, "Metadata/model_settings.config", settings.as_bytes());
     let info = read(&mut build(&entries));
     assert_eq!(info, reference);
+}
+
+#[test]
+fn a_stated_but_unusable_plate_index_is_dropped_not_renumbered() {
+    for bad in ["4294967296", "-1", "abc", "", " ", "1.5"] {
+        let plate = format!(r#"<plate><metadata key="index" value="{bad}"/><metadata key="synthetic_print_time" value="100"/></plate>"#);
+        let mut entries = base_entries();
+        set(&mut entries, "Metadata/slice_info.config", slice_xml(&[plate]).as_bytes());
+        let (slice, info) = read_with(&mut build(&entries), &[TIME_KEY], &Sources::SHIPPED);
+        assert_eq!(slice.state, SliceState::Sliced);
+        assert!(info.plates.is_empty(), "{bad:?} must not become plate 1");
+        // The stored slice info is the old one: the plate is there with its position.
+        assert_eq!(slice.info.unwrap().plates[0].plate_index, 1);
+    }
+    // A missing index still takes the position.
+    let mut entries = base_entries();
+    set(&mut entries, "Metadata/slice_info.config", slice_xml(&["<plate><filament id=\"1\"/></plate>".to_string()]).as_bytes());
+    assert_eq!(read(&mut build(&entries)).plates.iter().map(|p| p.plate_index).collect::<Vec<_>>(), vec![1]);
+}
+
+#[test]
+fn the_first_layer_time_is_rounded_once_directly_to_one_place() {
+    let mut entries = base_entries();
+    set(&mut entries, "Metadata/plate_1.json", br#"{"first_layer_time":1.0496}"#);
+    set(&mut entries, "Metadata/plate_2.json", br#"{"first_layer_time":"2.0499"}"#);
+    set(&mut entries, "Metadata/plate_3.json", br#"{"first_layer_time":0.96}"#);
+    set(&mut entries, "Metadata/plate_4.json", br#"{"first_layer_time":123.4567}"#);
+    let times: Vec<_> = read(&mut build(&entries)).plates.iter().map(|p| p.first_layer_seconds).collect();
+    assert_eq!(times, vec![Some(1.0), Some(2.0), None, Some(123.5)]);
+}
+
+#[test]
+fn plate_json_names_with_leading_zeros_are_no_plates() {
+    let mut entries = base_entries();
+    set(&mut entries, "Metadata/plate_01.json", br#"{"first_layer_time":5.0}"#);
+    set(&mut entries, "Metadata/plate_2.json", br#"{"first_layer_time":6.0}"#);
+    let info = read(&mut build(&entries));
+    assert_eq!(plate_indexes(&info), vec![2]);
+}
+
+/// Stored (not compressed) entries so a big test archive builds fast.
+fn build_stored(entries: &Entries) -> ZipArchive<Cursor<Vec<u8>>> {
+    let mut buf = Vec::new();
+    {
+        let mut writer = ZipWriter::new(Cursor::new(&mut buf));
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for (name, content) in entries {
+            writer.start_file(name.as_str(), options).unwrap();
+            writer.write_all(content).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+    ZipArchive::new(Cursor::new(buf)).unwrap()
+}
+
+#[test]
+fn unusable_plate_json_entries_count_against_the_budget_too() {
+    // Invalid UTF-8, just below the single-entry limit, many plates: without counting, every
+    // one of them would be decompressed in full.
+    let mut entries = base_entries();
+    let bad = vec![0xffu8; MAX_PLATE_JSON_BYTES as usize - 16];
+    for n in 1..=8 {
+        set(&mut entries, &format!("Metadata/plate_{n}.json"), &bad);
+    }
+    let mut archive = build_stored(&entries);
+    let (_, _, assignments) = read_plate_metadata(&mut archive);
+    let (slice, _) = read_slice_info_detailed_with(&mut archive, &[]);
+    let (info, bytes) = read_print_info_with(&mut archive, &slice, &assignments, &Sources::SHIPPED);
+    assert!(bytes > MAX_PLATE_JSON_TOTAL_BYTES / 2, "the failed entries are counted: {bytes}");
+    assert!(bytes <= MAX_PLATE_JSON_TOTAL_BYTES + 64, "never more than the total budget: {bytes}");
+    assert!(info.plates.iter().all(|p| p.first_layer_seconds.is_none()));
+}
+
+#[test]
+fn an_entry_is_limited_by_the_rest_of_the_budget_not_only_by_its_own_limit() {
+    // Four valid-looking entries of 3.9 MB use 15.6 MB; the fifth, whose size field is honest but
+    // larger than the rest, is skipped, and a lying one would be cut at the rest.
+    let mut entries = base_entries();
+    for n in 1..=5 {
+        set(&mut entries, &format!("Metadata/plate_{n}.json"), &padded_plate_json(3_900_000));
+    }
+    let mut archive = build_stored(&entries);
+    let (_, _, assignments) = read_plate_metadata(&mut archive);
+    let (slice, _) = read_slice_info_detailed_with(&mut archive, &[]);
+    let (info, bytes) = read_print_info_with(&mut archive, &slice, &assignments, &Sources::SHIPPED);
+    assert_eq!(info.plates.iter().filter(|p| p.first_layer_seconds.is_some()).count(), 4);
+    assert!(bytes <= MAX_PLATE_JSON_TOTAL_BYTES);
+}
+
+#[test]
+fn an_invalid_utf8_settings_entry_is_counted_as_read() {
+    let mut entries = base_entries();
+    set(&mut entries, "Metadata/project_settings.config", &vec![0xffu8; 100_000]);
+    let mut archive = build(&entries);
+    let (_, _, assignments) = read_plate_metadata(&mut archive);
+    let (slice, _) = read_slice_info_detailed_with(&mut archive, &[]);
+    let (info, bytes) = read_print_info_with(&mut archive, &slice, &assignments, &Sources::SHIPPED);
+    assert_eq!(info.settings_state, SettingsState::Unreadable);
+    assert_eq!(bytes, 100_000);
 }

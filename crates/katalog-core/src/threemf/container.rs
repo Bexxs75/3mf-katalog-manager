@@ -200,7 +200,6 @@ fn read_package_inner<R: Read + Seek>(
     let (slice_detection, slice_info_bytes) = super::slice_info::read_slice_info_detailed(&mut archive);
     total_unpacked += slice_info_bytes;
     check_total_budget(total_unpacked)?;
-    let slice_info = slice_detection.info.clone();
 
     let mut print_info = None;
     if !geometry {
@@ -291,7 +290,7 @@ fn read_package_inner<R: Read + Seek>(
         referenced_models,
         plate_count,
         plate_assignments,
-        slice_info,
+        slice_info: slice_detection.info,
         print_info,
         thumbnail,
         slicer_colors,

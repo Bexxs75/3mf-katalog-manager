@@ -911,35 +911,59 @@ mod tests {
     #[test]
     fn the_print_tables_refuse_invalid_rows_and_follow_their_file() {
         let conn = crate::db::connect_in_memory().unwrap();
-        let id = crate::db::test_insert_minimal_file(&conn, "/a.3mf", None).unwrap();
-        let info = |extra: &str| {
-            conn.execute(
-                &format!("INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state{extra}) VALUES (?1, 1, 'now', 'sliced', 'read'{})", if extra.is_empty() { "" } else { ", -1" }),
-                [id],
-            )
+        let mut counter = 0;
+        // A fresh file per statement, so a refusal can only come from the CHECK under test
+        // and never from a primary key that is already taken.
+        let mut fresh = || {
+            counter += 1;
+            crate::db::test_insert_minimal_file(&conn, &format!("/f{counter}.3mf"), None).unwrap()
         };
-        assert!(info(", layer_height_mm").is_err(), "a negative layer height is refused");
-        assert!(info(", nozzle_temp_c").is_err());
-        assert!(info("").is_ok());
-        assert!(info("").is_err(), "one row per file");
-        for bad in [
-            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (999, 1, 'n', 'sliced', 'read')",
-            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (1, 0, 'n', 'sliced', 'read')",
-            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (1, 1, 'n', 'x', 'read')",
-            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (1, 1, 'n', 'sliced', 'x')",
-            "INSERT INTO file_print_plates (file_id, plate_index) VALUES (1, 0)",
-            "INSERT INTO file_print_plates (file_id, plate_index, print_seconds) VALUES (1, 1, 0)",
-            "INSERT INTO file_print_plates (file_id, plate_index, first_layer_seconds) VALUES (1, 1, -2)",
-            "INSERT INTO file_print_plates (file_id, plate_index) VALUES (999, 1)",
-        ] {
-            assert!(conn.execute(bad, []).is_err(), "{bad}");
-        }
-        conn.execute("INSERT INTO file_print_plates (file_id, plate_index) VALUES (?1, 1)", [id]).unwrap();
-        assert!(conn.execute("INSERT INTO file_print_plates (file_id, plate_index) VALUES (?1, 1)", [id]).is_err(), "one row per plate");
+        let info_cols = "file_id, reader_version, read_at, slice_state, settings_state";
+        let ok_values = |id: i64| format!("{id}, 1, 'n', 'sliced', 'read'");
+        // The valid row each case is derived from must be accepted.
+        let id = fresh();
+        conn.execute(&format!("INSERT INTO file_print_info ({info_cols}) VALUES ({})", ok_values(id)), []).unwrap();
+        assert!(conn.execute(&format!("INSERT INTO file_print_info ({info_cols}) VALUES ({})", ok_values(id)), []).is_err(), "one row per file");
+        let id = fresh();
+        conn.execute(&format!("INSERT INTO file_print_plates (file_id, plate_index) VALUES ({id}, 1)"), []).unwrap();
+        assert!(conn.execute(&format!("INSERT INTO file_print_plates (file_id, plate_index) VALUES ({id}, 1)"), []).is_err(), "one row per plate");
 
+        let bad_info = [
+            "{id}, 0, 'n', 'sliced', 'read'",
+            "{id}, 1, 'n', 'x', 'read'",
+            "{id}, 1, 'n', 'sliced', 'x'",
+        ];
+        for values in bad_info {
+            let sql = format!("INSERT INTO file_print_info ({info_cols}) VALUES ({})", values.replace("{id}", &fresh().to_string()));
+            assert!(conn.execute(&sql, []).is_err(), "{sql}");
+        }
+        for column in ["layer_height_mm", "nozzle_mm", "bed_temp_c", "nozzle_temp_c"] {
+            let sql = format!("INSERT INTO file_print_info ({info_cols}, {column}) VALUES ({}, -1)", ok_values(fresh()));
+            assert!(conn.execute(&sql, []).is_err(), "{sql}");
+        }
+        for column in ["nozzle_mixed", "bed_temp_mixed", "nozzle_temp_mixed"] {
+            let sql = format!("INSERT INTO file_print_info ({info_cols}, {column}) VALUES ({}, 2)", ok_values(fresh()));
+            assert!(conn.execute(&sql, []).is_err(), "{sql}");
+        }
+        for (column, value) in [("plate_index", "0"), ("print_seconds", "0"), ("first_layer_seconds", "-2")] {
+            let id = fresh();
+            let sql = if column == "plate_index" {
+                format!("INSERT INTO file_print_plates (file_id, plate_index) VALUES ({id}, {value})")
+            } else {
+                format!("INSERT INTO file_print_plates (file_id, plate_index, {column}) VALUES ({id}, 1, {value})")
+            };
+            assert!(conn.execute(&sql, []).is_err(), "{sql}");
+        }
+        // No such file.
+        assert!(conn.execute(&format!("INSERT INTO file_print_info ({info_cols}) VALUES ({})", ok_values(9999)), []).is_err());
+        assert!(conn.execute("INSERT INTO file_print_plates (file_id, plate_index) VALUES (9999, 1)", []).is_err());
+
+        let id = fresh();
+        conn.execute(&format!("INSERT INTO file_print_info ({info_cols}) VALUES ({})", ok_values(id)), []).unwrap();
+        conn.execute(&format!("INSERT INTO file_print_plates (file_id, plate_index) VALUES ({id}, 1)"), []).unwrap();
         conn.execute("DELETE FROM files WHERE id = ?1", [id]).unwrap();
         for table in ["file_print_info", "file_print_plates"] {
-            let rows: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            let rows: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table} WHERE file_id = ?1"), [id], |r| r.get(0)).unwrap();
             assert_eq!(rows, 0, "{table} is cleaned up with the file");
         }
     }
@@ -965,6 +989,25 @@ mod tests {
         ("file_tags", &["file_id|INTEGER|1|-|1", "tag_id|INTEGER|1|-|2"]),
     ];
 
+    /// Indexes, foreign keys and triggers of the same four tables on 2a4a74c8 (sorted lines).
+    const COMPANION_TABLE_EXTRAS: [(&str, &[&str]); 4] = [
+        ("files", &[
+            "fk folders|folder_id|id|NO ACTION|SET NULL",
+            "index idx_files_content_hash|unique=0|origin=c|partial=0|content_hash",
+            "index idx_files_file_type|unique=0|origin=c|partial=0|file_type",
+            "index idx_files_folder_id|unique=0|origin=c|partial=0|folder_id",
+            "index sqlite_autoindex_files_1|unique=1|origin=u|partial=0|path",
+        ]),
+        ("folders", &["fk folders|parent_id|id|NO ACTION|CASCADE", "index idx_folders_path|unique=1|origin=c|partial=0|path"]),
+        ("tags", &["index sqlite_autoindex_tags_1|unique=1|origin=u|partial=0|name"]),
+        ("file_tags", &[
+            "fk files|file_id|id|NO ACTION|CASCADE",
+            "fk tags|tag_id|id|NO ACTION|CASCADE",
+            "index idx_file_tags_tag_id|unique=0|origin=c|partial=0|tag_id",
+            "index sqlite_autoindex_file_tags_1|unique=1|origin=pk|partial=0|file_id,tag_id",
+        ]),
+    ];
+
     fn table_shape(conn: &Connection, table: &str) -> Vec<String> {
         let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
         stmt.query_map([], |r| {
@@ -983,6 +1026,36 @@ mod tests {
         .collect()
     }
 
+    /// Indexes (with their columns), foreign keys and triggers of a table, as text lines.
+    fn table_extras(conn: &Connection, table: &str) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut stmt = conn.prepare(&format!("PRAGMA index_list({table})")).unwrap();
+        let indexes: Vec<(String, i64, String, i64)> = stmt
+            .query_map([], |r| Ok((r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        for (name, unique, origin, partial) in indexes {
+            let mut cols = conn.prepare(&format!("PRAGMA index_info({name})")).unwrap();
+            let columns: Vec<String> = cols.query_map([], |r| r.get::<_, Option<String>>(2)).unwrap().map(|r| r.unwrap().unwrap_or_default()).collect();
+            lines.push(format!("index {name}|unique={unique}|origin={origin}|partial={partial}|{}", columns.join(",")));
+        }
+        let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list({table})")).unwrap();
+        let keys: Vec<String> = stmt
+            .query_map([], |r| {
+                Ok(format!("fk {}|{}|{}|{}|{}", r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, Option<String>>(4)?.unwrap_or_default(), r.get::<_, String>(5)?, r.get::<_, String>(6)?))
+            })
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        lines.extend(keys);
+        let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?1 ORDER BY name").unwrap();
+        let triggers: Vec<String> = stmt.query_map([table], |r| Ok(format!("trigger {}", r.get::<_, String>(0)?))).unwrap().map(|r| r.unwrap()).collect();
+        lines.extend(triggers);
+        lines.sort();
+        lines
+    }
+
     #[test]
     fn companion_tables_keep_their_shape() {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -990,6 +1063,9 @@ mod tests {
         run_migrations(&mut conn).unwrap();
         for (table, expected) in COMPANION_TABLE_SHAPES {
             assert_eq!(table_shape(&conn, table), expected, "table {table} changed: the Docker companion reads it with fixed columns");
+        }
+        for (table, expected) in COMPANION_TABLE_EXTRAS {
+            assert_eq!(table_extras(&conn, table), expected, "indexes, keys or triggers of {table} changed");
         }
     }
 

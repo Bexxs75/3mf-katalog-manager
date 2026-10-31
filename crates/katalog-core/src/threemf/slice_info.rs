@@ -80,6 +80,9 @@ pub struct PlateSliceExtra {
     pub print_seconds: Option<f64>,
     /// `id` of every `<filament>` of the plate, in file order.
     pub used_filament_ids: Vec<u32>,
+    /// False when a `<filament>` had no usable `id`: the list is then not the whole truth,
+    /// so nothing derived from it (temperatures) may be trusted.
+    pub filament_ids_complete: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -100,7 +103,9 @@ fn detection(state: SliceState) -> SliceDetection {
 /// limit (zip bomb); the bytes read are returned, so `read_package()` adds them to
 /// the total budget.
 pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<SliceInfo>, u64) {
-    let (detection, bytes_read) = read_slice_info_detailed(archive);
+    // Lenient scan: the old behaviour (a cut-off document still yields what was read before
+    // the end; an empty `<plate/>` is not a plate) stays exactly as it was.
+    let (detection, bytes_read) = scan_slice_info(archive, &[], false);
     (detection.info, bytes_read)
 }
 
@@ -114,6 +119,18 @@ pub fn read_slice_info_detailed<R: Read + Seek>(archive: &mut ZipArchive<R>) -> 
 pub fn read_slice_info_detailed_with<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     print_time_keys: &[&str],
+) -> (SliceDetection, u64) {
+    scan_slice_info(archive, print_time_keys, true)
+}
+
+/// `strict`: only a complete, well-formed document without `<plate>` is `NoSliceData`;
+/// an empty, cut-off or otherwise incomplete one is `Unreadable`, and a self-closing
+/// `<plate/>` counts as a plate for the state (it adds no entry to `info`, which keeps
+/// the stored slice info as it always was).
+fn scan_slice_info<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    print_time_keys: &[&str],
+    strict: bool,
 ) -> (SliceDetection, u64) {
     let xml = super::container::read_entry_to_string(
         archive,
@@ -138,37 +155,70 @@ pub fn read_slice_info_detailed_with<R: Read + Seek>(
     let mut plate_counter: u32 = 0;
     let mut in_plate = false;
     let mut current_index: Option<u32> = None;
+    // Whether an `index` was stated at all: a stated but unusable one is not replaced by the position.
+    let mut index_stated = false;
+    let mut depth: usize = 0;
+    let mut seen_element = false;
+    let mut empty_plates: usize = 0;
+    // Set at the end of a cut-off or empty document (strict only). The plates read before the
+    // cut stay in `info`, exactly as the lenient scan returns them.
+    let incomplete: bool;
     let mut current_weight: Option<f64> = None;
     let mut current_seconds: Option<f64> = None;
     let mut current_ids: Vec<u32> = Vec::new();
+    let mut ids_complete = true;
     let mut current_filaments: Vec<FilamentUsage> = Vec::new();
 
     let mut buf = Vec::new();
     loop {
-        match reader.read_event_into(&mut buf) {
+        let event = reader.read_event_into(&mut buf);
+        // Nesting depth, to tell a complete document from a cut-off one at the end.
+        match &event {
+            Ok(Event::Start(_)) => {
+                depth += 1;
+                seen_element = true;
+            }
+            Ok(Event::End(_)) => depth = depth.saturating_sub(1),
+            Ok(Event::Empty(_)) => seen_element = true,
+            _ => {}
+        }
+        match event {
             Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "plate" => {
                 in_plate = true;
+                index_stated = false;
                 plate_counter += 1;
                 current_index = None;
                 current_weight = None;
                 current_seconds = None;
                 current_ids = Vec::new();
+                ids_complete = true;
                 current_filaments = Vec::new();
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "plate" => {
+                empty_plates += 1;
             }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "plate" => {
                 if in_plate {
                     let weight_g = current_weight
                         .unwrap_or_else(|| current_filaments.iter().map(|f| f.used_g).sum());
                     let plate_index = current_index.unwrap_or(plate_counter);
+                    // Extras: a stated index that is unusable (not a number, out of range) makes
+                    // the plate unusable (0 = no row), it is not renumbered.
+                    let extra_index = match (index_stated, current_index) {
+                        (false, _) => plate_counter,
+                        (true, Some(index)) => index,
+                        (true, None) => 0,
+                    };
                     plates.push(PlateFilamentUsage {
                         plate_index,
                         weight_g,
                         filaments: std::mem::take(&mut current_filaments),
                     });
                     extras.push(PlateSliceExtra {
-                        plate_index,
+                        plate_index: extra_index,
                         print_seconds: current_seconds.take(),
                         used_filament_ids: std::mem::take(&mut current_ids),
+                        filament_ids_complete: ids_complete,
                     });
                 }
                 in_plate = false;
@@ -179,7 +229,10 @@ pub fn read_slice_info_detailed_with<R: Read + Seek>(
                         let key = get_attr(&e, "key");
                         let value = get_attr(&e, "value");
                         match key.as_deref() {
-                            Some("index") => current_index = value.and_then(|v| v.parse().ok()),
+                            Some("index") => {
+                                index_stated = true;
+                                current_index = value.and_then(|v| v.parse().ok());
+                            }
                             Some("weight") => current_weight = value.and_then(|v| v.parse().ok()),
                             Some(other) if current_seconds.is_none() && print_time_keys.contains(&other) => {
                                 current_seconds = value.and_then(|v| v.trim().parse().ok());
@@ -188,8 +241,9 @@ pub fn read_slice_info_detailed_with<R: Read + Seek>(
                         }
                     }
                     "filament" => {
-                        if let Some(id) = get_attr(&e, "id").and_then(|v| v.trim().parse().ok()) {
-                            current_ids.push(id);
+                        match get_attr(&e, "id").and_then(|v| v.trim().parse().ok()) {
+                            Some(id) => current_ids.push(id),
+                            None => ids_complete = false,
                         }
                         current_filaments.push(FilamentUsage {
                             filament_type: get_attr(&e, "type").unwrap_or_default(),
@@ -201,7 +255,10 @@ pub fn read_slice_info_detailed_with<R: Read + Seek>(
                     _ => {}
                 }
             }
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                incomplete = strict && (depth != 0 || !seen_element);
+                break;
+            }
             Err(_) => return (detection(SliceState::Unreadable), bytes_read),
             _ => {}
         }
@@ -209,13 +266,17 @@ pub fn read_slice_info_detailed_with<R: Read + Seek>(
     }
 
     if plates.is_empty() {
-        return (detection(SliceState::NoSliceData), bytes_read);
+        if incomplete {
+            return (detection(SliceState::Unreadable), bytes_read);
+        }
+        let state = if strict && empty_plates > 0 { SliceState::Sliced } else { SliceState::NoSliceData };
+        return (detection(state), bytes_read);
     }
 
     let total_weight_g = plates.iter().map(|p| p.weight_g).sum();
     (
         SliceDetection {
-            state: SliceState::Sliced,
+            state: if incomplete { SliceState::Unreadable } else { SliceState::Sliced },
             info: Some(SliceInfo { total_weight_g, plates }),
             plate_extras: extras,
         },

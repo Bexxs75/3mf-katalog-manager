@@ -15,10 +15,9 @@ use serde_json::Value;
 use zip::result::ZipError;
 use zip::ZipArchive;
 
-use super::container::{read_entry_to_string, MAX_CONFIG_XML_BYTES};
-use super::error::ThreeMfError;
+use super::container::MAX_CONFIG_XML_BYTES;
 use super::plates::PlateAssignments;
-use super::slice_info::{read_slice_info_detailed, PlateSliceExtra, SliceDetection};
+use super::slice_info::{PlateSliceExtra, SliceDetection};
 pub use super::slice_info::SliceState;
 use super::slicer_colors::MAX_FILAMENTS;
 use super::source::sanitize_source_value;
@@ -88,18 +87,6 @@ pub enum Reduced<T> {
     Value(T),
     Mixed,
     Unknown,
-}
-
-impl<T> Reduced<T> {
-    pub fn value(&self) -> Option<&T> {
-        match self {
-            Reduced::Value(v) => Some(v),
-            _ => None,
-        }
-    }
-    pub fn is_mixed(&self) -> bool {
-        matches!(self, Reduced::Mixed)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -172,17 +159,6 @@ pub fn read_print_info<R: Read + Seek>(
     read_print_info_with(archive, slice, assignments, &Sources::SHIPPED)
 }
 
-/// Convenience for callers that have no detection yet: reads `slice_info.config`, the
-/// plates and the print data in one go. Returns the detection and all bytes read.
-pub fn read_print_info_from_archive<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-    assignments: &PlateAssignments,
-) -> (SliceDetection, PrintInfo, u64) {
-    let (slice, slice_bytes) = read_slice_info_detailed(archive);
-    let (info, bytes) = read_print_info(archive, &slice, assignments);
-    (slice, info, slice_bytes + bytes)
-}
-
 pub fn read_print_info_with<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     slice: &SliceDetection,
@@ -198,18 +174,17 @@ pub fn read_print_info_with<R: Read + Seek>(
     let mut bytes_read: u64 = 0;
     let mut info = PrintInfo::empty(slice.state, SettingsState::Missing);
 
-    let settings = match read_entry_to_string(archive, SETTINGS_PATH, MAX_CONFIG_XML_BYTES) {
-        Ok(text) => {
-            bytes_read += text.len() as u64;
-            match serde_json::from_str::<Value>(&text) {
-                Ok(Value::Object(map)) => Some(map),
-                _ => {
-                    info.settings_state = SettingsState::Unreadable;
-                    None
-                }
+    let (settings_text, settings_bytes) = read_entry_counted(archive, SETTINGS_PATH, MAX_CONFIG_XML_BYTES);
+    bytes_read += settings_bytes;
+    let settings = match settings_text {
+        Ok(text) => match serde_json::from_str::<Value>(&text) {
+            Ok(Value::Object(map)) => Some(map),
+            _ => {
+                info.settings_state = SettingsState::Unreadable;
+                None
             }
-        }
-        Err(ThreeMfError::Zip(ZipError::FileNotFound)) => None,
+        },
+        Err(EntryFailure::Missing) => None,
         Err(_) => {
             info.settings_state = SettingsState::Unreadable;
             None
@@ -266,12 +241,21 @@ fn reduce_temperature(settings: &serde_json::Map<String, Value>, key: &str, slic
         if extra.plate_index == 0 || !seen.insert(extra.plate_index) {
             continue;
         }
-        // T1: a plate needs the filament ids it uses; T4: an id outside 1..=len is unknown.
+        // T1: a plate needs the complete list of filament ids it uses.
+        if !extra.filament_ids_complete {
+            per_plate.push(Reduced::Unknown);
+            continue;
+        }
+        // T4: an id outside 1..=len is unknown.
         let known = extra.used_filament_ids.iter().filter_map(|id| {
             let position = (*id as usize).checked_sub(1)?;
             values.get(position).copied().flatten()
         });
         per_plate.push(reduce(known));
+    }
+    // One plate without a known value makes the file's value unknown: nothing is guessed.
+    if per_plate.is_empty() || per_plate.iter().any(|p| matches!(p, Reduced::Unknown)) {
+        return Reduced::Unknown;
     }
     reduce_reduced(per_plate.into_iter())
 }
@@ -297,6 +281,40 @@ fn reduce(values: impl Iterator<Item = f64>) -> Reduced<f64> {
     reduce_reduced(values.map(Reduced::Value))
 }
 
+/// Why an entry gave no text.
+enum EntryFailure {
+    Missing,
+    /// Larger than the allowed size (declared, or more bytes than allowed came out).
+    TooLarge,
+    /// Other read problem, including text that is not valid UTF-8.
+    Unreadable,
+}
+
+/// Reads one entry as text, at most `max_bytes`, and tells how many bytes were
+/// decompressed ALSO when the result is a failure, so the caller can count them
+/// against the budget (an entry that is not valid UTF-8 costs as much as a good one).
+fn read_entry_counted<R: Read + Seek>(archive: &mut ZipArchive<R>, path: &str, max_bytes: u64) -> (Result<String, EntryFailure>, u64) {
+    let file = match archive.by_name(path) {
+        Ok(file) => file,
+        Err(ZipError::FileNotFound) => return (Err(EntryFailure::Missing), 0),
+        Err(_) => return (Err(EntryFailure::Unreadable), 0),
+    };
+    if file.size() > max_bytes {
+        return (Err(EntryFailure::TooLarge), 0);
+    }
+    let mut data = Vec::new();
+    // One byte more than allowed, so a size field that lies is noticed.
+    let read = file.take(max_bytes.saturating_add(1)).read_to_end(&mut data);
+    let consumed = data.len() as u64;
+    if read.is_err() {
+        return (Err(EntryFailure::Unreadable), consumed);
+    }
+    if consumed > max_bytes {
+        return (Err(EntryFailure::TooLarge), max_bytes);
+    }
+    (String::from_utf8(data).map_err(|_| EntryFailure::Unreadable), consumed)
+}
+
 fn round3(value: f64) -> f64 {
     (value * 1000.0).round() / 1000.0
 }
@@ -313,6 +331,16 @@ fn number_of(value: &Value, min: f64, max: f64) -> Option<f64> {
     }
     let rounded = round3(parsed);
     (min..=max).contains(&rounded).then_some(rounded)
+}
+
+/// A finite number from text or a number, unrounded.
+fn raw_number(value: &Value) -> Option<f64> {
+    let parsed = match value {
+        Value::String(text) => text.trim().parse::<f64>().ok()?,
+        Value::Number(n) => n.as_f64()?,
+        _ => return None,
+    };
+    parsed.is_finite().then_some(parsed)
 }
 
 fn scalar_number(value: Option<&Value>, min: f64, max: f64) -> Option<f64> {
@@ -357,7 +385,8 @@ fn plate_json_indexes<R: Read + Seek>(archive: &ZipArchive<R>) -> BTreeSet<u32> 
         .filter_map(|name| {
             let name = name.ok()?;
             let digits = name.strip_prefix("Metadata/plate_")?.strip_suffix(".json")?;
-            if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            // No leading zeros: the name read later is built from the number, so it must match.
+            if digits.is_empty() || digits.starts_with('0') || !digits.bytes().all(|b| b.is_ascii_digit()) {
                 return None;
             }
             digits.parse::<u32>().ok().filter(|n| *n >= 1)
@@ -397,25 +426,25 @@ fn read_plates<R: Read + Seek>(
     for index in indexes.into_iter().take(MAX_PLATES) {
         let mut first_layer_seconds = None;
         let mut plate_bed_type = None;
-        if json_indexes.contains(&index) && json_total < MAX_PLATE_JSON_TOTAL_BYTES {
+        let remaining = MAX_PLATE_JSON_TOTAL_BYTES.saturating_sub(json_total);
+        if json_indexes.contains(&index) && remaining > 0 {
             let path = format!("Metadata/plate_{index}.json");
-            let declared = archive.by_name(&path).map(|f| f.size()).unwrap_or(0);
-            if json_total.saturating_add(declared) <= MAX_PLATE_JSON_TOTAL_BYTES {
-                if let Ok(text) = read_entry_to_string(archive, &path, MAX_PLATE_JSON_BYTES) {
-                    let len = text.len() as u64;
-                    json_total += len;
-                    bytes_read += len;
-                    // A derived struct would also accept a JSON array, so insist on an object.
-                    let parsed = text.trim_start().starts_with('{').then(|| serde_json::from_str::<PlateJson>(&text)).and_then(Result::ok);
-                    if let Some(parsed) = parsed {
-                        first_layer_seconds = parsed
-                            .first_layer_time
-                            .as_ref()
-                            .and_then(|v| number_of(v, f64::MIN, f64::MAX))
-                            .and_then(valid_seconds)
-                            .map(|s| (s * 10.0).round() / 10.0);
-                        plate_bed_type = text_value(parsed.bed_type.as_ref());
-                    }
+            // Each entry is limited by what is left of the total, not only by its own limit,
+            // and what was decompressed counts even when the entry turns out unusable.
+            let (text, consumed) = read_entry_counted(archive, &path, MAX_PLATE_JSON_BYTES.min(remaining));
+            json_total += consumed;
+            bytes_read += consumed;
+            if let Ok(text) = text {
+                // A derived struct would also accept a JSON array, so insist on an object.
+                let parsed = text.trim_start().starts_with('{').then(|| serde_json::from_str::<PlateJson>(&text)).and_then(Result::ok);
+                if let Some(parsed) = parsed {
+                    first_layer_seconds = parsed
+                        .first_layer_time
+                        .as_ref()
+                        .and_then(raw_number)
+                        .and_then(valid_seconds)
+                        .map(|s| (s * 10.0).round() / 10.0);
+                    plate_bed_type = text_value(parsed.bed_type.as_ref());
                 }
             }
         }
