@@ -1,110 +1,19 @@
 //! Tauri commands of the printer connection. Network work runs in `spawn_blocking`, the database isn't locked meanwhile.
 
 use super::*;
-use serde::Deserialize;
 use tauri::Manager;
 
 use crate::db::printer_link as store;
 use crate::printer_link::address::AddressPolicy;
-use crate::printer_link::booking::{self, Decision};
-use crate::printer_link::matching::{best_match, Candidate, MatchKind};
+use crate::printer_link::booking;
 use crate::printer_link::sync::{unix_now, SyncWaker};
 use crate::printer_link::{make_link, LinkError};
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PrinterConnectionDto {
-    pub printer_id: String,
-    pub kind: String,
-    pub address: String,
-    pub base_url: Option<String>,
-    pub remote_version: Option<String>,
-    pub connected_since: f64,
-    pub last_synced_at: Option<f64>,
-    pub last_error: Option<String>,
-    pub error_since: Option<f64>,
-    pub paused: bool,
-    pub clock_offset_s: f64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TestResultDto {
-    pub ok: bool,
-    pub error: Option<String>,
-    pub connection: Option<PrinterConnectionDto>,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelMatchDto {
-    pub file_id: String,
-    pub file_name: String,
-    pub sure: bool,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenPrinterJobDto {
-    pub id: String,
-    pub printer_id: String,
-    pub printer_name: String,
-    pub file_name: String,
-    pub outcome: String,
-    pub raw_status: String,
-    pub ended_at: f64,
-    pub print_duration_s: f64,
-    pub used_mm: f64,
-    pub partial_percent: Option<u8>,
-    pub material: Option<String>,
-    pub has_thumbnail: bool,
-    pub suggested_spool_id: Option<String>,
-    pub grams: Option<f64>,
-    pub material_mismatch: bool,
-    pub model_match: Option<ModelMatchDto>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JobPreviewDto {
-    pub grams: f64,
-    pub material_mismatch: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JobDecisionDto {
-    pub job_id: String,
-    pub spool_id: String,
-    pub file_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConfirmResultDto {
-    pub confirmed: usize,
-    pub failed: usize,
-}
-
-fn id(value: &str, what: &str) -> CmdResult<i64> {
-    value.parse().map_err(|_| format!("ungueltige {what}-ID").into())
-}
-
-fn connection_dto(c: store::PrinterConnectionRecord) -> PrinterConnectionDto {
-    PrinterConnectionDto {
-        printer_id: c.printer_id.to_string(),
-        kind: c.kind,
-        address: c.address,
-        base_url: c.base_url,
-        remote_version: c.remote_version,
-        connected_since: c.connected_since,
-        last_synced_at: c.last_synced_at,
-        last_error: c.last_error,
-        error_since: c.error_since,
-        paused: c.paused,
-        clock_offset_s: c.clock_offset_s,
-    }
-}
+pub use crate::printer_link::views::{
+    ConfirmResultDto, JobDecisionDto, JobPreviewDto, OpenPrinterJobDto, PrinterConnectionDto,
+    TestResultDto,
+};
+use crate::printer_link::views::{self, connection_dto, parse_id as id};
 
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -117,105 +26,24 @@ fn wake(app: &tauri::AppHandle) {
 }
 
 pub(crate) fn list_printer_connections_with_conn(conn: &Connection) -> CmdResult<Vec<PrinterConnectionDto>> {
-    Ok(store::list_connections(conn).map_err(|e| e.to_string())?.into_iter().map(connection_dto).collect())
+    Ok(views::list_printer_connections(conn)?)
 }
 
 pub(crate) fn list_open_printer_jobs_with_conn(conn: &Connection) -> CmdResult<Vec<OpenPrinterJobDto>> {
-    let jobs = store::list_open_jobs(conn).map_err(|e| e.to_string())?;
-    if jobs.is_empty() {
-        return Ok(Vec::new());
-    }
-    let candidates: Vec<Candidate> = conn
-        .prepare("SELECT id, name, imported_at FROM files WHERE deleted_at IS NULL")
-        .and_then(|mut s| {
-            s.query_map([], |r| Ok(Candidate { file_id: r.get(0)?, name: r.get(1)?, imported_at: r.get(2)? }))?
-                .collect()
-        })
-        .map_err(|e| e.to_string())?;
-    let mut out = Vec::with_capacity(jobs.len());
-    for j in jobs {
-        let printer_name: String = conn
-            .query_row("SELECT name FROM printers WHERE id = ?1", [j.printer_id], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
-        let suggested = booking::suggest_spool(conn, j.printer_id).map_err(|e| e.to_string())?;
-        let spool = match suggested {
-            Some(sid) => booking::spool_info(conn, sid).map_err(|e| e.to_string())?,
-            None => None,
-        };
-        let grams = spool.as_ref().map(|s| {
-            booking::grams(j.used_mm, j.slicer_total_mm, j.slicer_weight_g, s.diameter_mm, &s.material)
-        });
-        let material_mismatch = spool
-            .as_ref()
-            .is_some_and(|s| !booking::materials_match(j.material.as_deref(), &s.material));
-        let model_match = best_match(&j.file_name, &candidates).map(|m| ModelMatchDto {
-            file_id: m.file_id.to_string(),
-            file_name: m.file_name,
-            sure: m.kind == MatchKind::Sure,
-        });
-        out.push(OpenPrinterJobDto {
-            id: j.id.to_string(),
-            printer_id: j.printer_id.to_string(),
-            printer_name,
-            partial_percent: if j.outcome == "partial" { booking::partial_percent(j.used_mm, j.slicer_total_mm) } else { None },
-            file_name: j.file_name,
-            outcome: j.outcome,
-            raw_status: j.raw_status,
-            ended_at: j.ended_at,
-            print_duration_s: j.print_duration_s,
-            used_mm: j.used_mm,
-            material: j.material,
-            has_thumbnail: j.thumbnail_path.is_some(),
-            suggested_spool_id: suggested.map(|s| s.to_string()),
-            grams,
-            material_mismatch,
-            model_match,
-        });
-    }
-    Ok(out)
+    Ok(views::list_open_printer_jobs(conn)?)
 }
 
 pub(crate) fn preview_printer_job_with_conn(conn: &Connection, job_id: &str, spool_id: &str) -> CmdResult<JobPreviewDto> {
-    let job = store::get_job(conn, id(job_id, "Druck")?)
-        .map_err(|e| e.to_string())?
-        .ok_or("Druck nicht gefunden")?;
-    let spool_id = id(spool_id, "Spulen")?;
-    booking::ensure_filament(conn, spool_id).map_err(|e| e.to_string())?;
-    let spool = booking::spool_info(conn, spool_id)
-        .map_err(|e| e.to_string())?
-        .ok_or("Spule nicht gefunden")?;
-    Ok(JobPreviewDto {
-        grams: booking::grams(job.used_mm, job.slicer_total_mm, job.slicer_weight_g, spool.diameter_mm, &spool.material),
-        material_mismatch: !booking::materials_match(job.material.as_deref(), &spool.material),
-    })
+    Ok(views::preview_printer_job(conn, job_id, spool_id)?)
 }
 
-/// Gate before `test_printer_connection`: if the printer connection is off, not a
-/// single packet goes to a printer, not even for the test. `Some(...)` = return the
-/// result directly, `None` = continue. Resin printers and unknown IDs give an
-/// error before anything goes to the network.
+/// Gate before `test_printer_connection`, see `views::test_printer_connection_gate`.
 pub(crate) fn test_printer_connection_gate_with_conn(conn: &Connection, printer_id: i64) -> CmdResult<Option<TestResultDto>> {
-    db::printers::ensure_filament_printer(conn, printer_id).map_err(|e| e.to_string())?;
-    if store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
-        Ok(None)
-    } else {
-        Ok(Some(TestResultDto { ok: false, error: Some("disabled".into()), connection: None }))
-    }
+    Ok(views::test_printer_connection_gate(conn, printer_id)?)
 }
 
 pub(crate) fn confirm_printer_jobs_with_conn(conn: &mut Connection, decisions: Vec<JobDecisionDto>) -> CmdResult<ConfirmResultDto> {
-    let parsed = decisions
-        .iter()
-        .map(|d| {
-            Ok(Decision {
-                job_id: id(&d.job_id, "Druck")?,
-                spool_id: id(&d.spool_id, "Spulen")?,
-                file_id: d.file_id.as_deref().map(|f| id(f, "Modell")).transpose()?,
-            })
-        })
-        .collect::<CmdResult<Vec<_>>>()?;
-    let (confirmed, failed) = booking::confirm_many(conn, &parsed, &now_rfc3339());
-    Ok(ConfirmResultDto { confirmed, failed })
+    Ok(views::confirm_printer_jobs(conn, decisions, &now_rfc3339())?)
 }
 
 #[tauri::command]
@@ -322,67 +150,12 @@ pub fn preview_printer_job(state: State<AppState>, job_id: String, spool_id: Str
     preview_printer_job_with_conn(&conn, &job_id, &spool_id)
 }
 
-/// Decides without network access whether a thumbnail may be fetched: `None` if
-/// the switch is off, the print/path/connection is missing or the connection is
-/// paused (only a new connection test lifts that).
 pub(crate) fn thumbnail_fetch_plan_with_conn(
     conn: &Connection,
     job_id: &str,
 ) -> CmdResult<Option<(store::PrinterConnectionRecord, String)>> {
-    let jid = id(job_id, "Druck")?;
-    if !store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
-        return Ok(None);
-    }
-    let Some(job) = store::get_job(conn, jid).map_err(|e| e.to_string())? else { return Ok(None) };
-    let Some(path) = job.thumbnail_path else { return Ok(None) };
-    let Some(c) = store::get_connection(conn, job.printer_id).map_err(|e| e.to_string())? else { return Ok(None) };
-    if c.paused {
-        return Ok(None);
-    }
-    Ok(Some((c, path)))
+    Ok(views::thumbnail_fetch_plan(conn, job_id)?)
 }
-
-/// Upper limit of thumbnail fetches running at once. Each one opens its own
-/// HTTP client (threads, sockets); hundreds in parallel exhaust the process's
-/// file handles.
-const MAX_CONCURRENT_THUMBNAIL_FETCHES: usize = 4;
-
-/// Counting semaphore on std primitives; the slot is returned on drop, so also
-/// when the fetch fails or panics.
-struct FetchLimiter {
-    running: std::sync::Mutex<usize>,
-    freed: std::sync::Condvar,
-    max: usize,
-}
-
-struct FetchSlot<'a>(&'a FetchLimiter);
-
-impl FetchLimiter {
-    const fn new(max: usize) -> Self {
-        FetchLimiter { running: std::sync::Mutex::new(0), freed: std::sync::Condvar::new(), max }
-    }
-
-    /// Blocks until a slot is free. Only call from a blocking thread.
-    fn acquire(&self) -> FetchSlot<'_> {
-        // A poisoned lock only means another holder panicked; the counter stays valid.
-        let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
-        while *running >= self.max {
-            running = self.freed.wait(running).unwrap_or_else(|e| e.into_inner());
-        }
-        *running += 1;
-        FetchSlot(self)
-    }
-}
-
-impl Drop for FetchSlot<'_> {
-    fn drop(&mut self) {
-        let mut running = self.0.running.lock().unwrap_or_else(|e| e.into_inner());
-        *running -= 1;
-        self.0.freed.notify_one();
-    }
-}
-
-static THUMBNAIL_FETCHES: FetchLimiter = FetchLimiter::new(MAX_CONCURRENT_THUMBNAIL_FETCHES);
 
 #[tauri::command]
 pub async fn get_printer_job_thumbnail(state: State<'_, AppState>, job_id: String) -> CmdResult<Option<String>> {
@@ -394,7 +167,7 @@ pub async fn get_printer_job_thumbnail(state: State<'_, AppState>, job_id: Strin
         }
     };
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, LinkError> {
-        let _slot = THUMBNAIL_FETCHES.acquire();
+        let _slot = views::THUMBNAIL_FETCHES.acquire();
         let link = make_link(&connection.kind, &connection.address, AddressPolicy::HOME_NETWORK)?;
         let info = link.test()?;
         link.thumbnail(&info.base_url, &path)
@@ -428,44 +201,6 @@ mod tests {
     use super::*;
     use crate::db::printer_link::{insert_job_if_new, save_connection_after_test};
     use crate::printer_link::{JobOutcome, RemoteJob};
-
-    #[test]
-    fn fetch_limiter_never_exceeds_its_maximum_and_frees_slots_on_panic() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::Arc;
-        let limiter = Arc::new(FetchLimiter::new(3));
-        let current = Arc::new(AtomicUsize::new(0));
-        let peak = Arc::new(AtomicUsize::new(0));
-        let (tx, rx) = std::sync::mpsc::channel();
-        for i in 0..12 {
-            let (limiter, current, peak, tx) = (limiter.clone(), current.clone(), peak.clone(), tx.clone());
-            std::thread::spawn(move || {
-                let result = std::panic::catch_unwind(|| {
-                    let _slot = limiter.acquire();
-                    let now = current.fetch_add(1, Ordering::SeqCst) + 1;
-                    peak.fetch_max(now, Ordering::SeqCst);
-                    std::thread::sleep(std::time::Duration::from_millis(20));
-                    current.fetch_sub(1, Ordering::SeqCst);
-                    if i % 4 == 0 {
-                        panic!("fetch failed");
-                    }
-                });
-                let _ = tx.send(result.is_err());
-            });
-        }
-        drop(tx);
-        // Do not join blocked workers: a leaked slot must fail within a bounded time.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        let mut panics = 0;
-        for _ in 0..12 {
-            let result = rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()));
-            assert!(result.is_ok(), "slots were not released: workers did not finish within 5 seconds");
-            panics += usize::from(result.unwrap());
-        }
-        assert_eq!(panics, 3);
-        assert!(peak.load(Ordering::SeqCst) <= 3, "peak {}", peak.load(Ordering::SeqCst));
-        assert_eq!(*limiter.running.lock().unwrap_or_else(|e| e.into_inner()), 0);
-    }
 
     #[test]
     fn container_local_names_are_rejected_before_connecting() {
