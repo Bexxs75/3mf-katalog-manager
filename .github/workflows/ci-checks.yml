@@ -60,6 +60,11 @@ jobs:
       - name: Build frontend (dist for tauri::generate_context)
         run: npm run build
 
+      # The web target is a second build of the same sources (VITE_TARGET=web); a type or import
+      # error that only shows up there must fail here, not in the Docker image build.
+      - name: Build web frontend (VITE_TARGET=web)
+        run: npm run build:web
+
       - name: Clippy (all targets, -D warnings)
         run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings
 
@@ -72,3 +77,43 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-openpyxl
           python3 -m unittest discover -s tools -p 'test_*.py'
+
+  # The workspace builds on Linux in the job above. The desktop app also ships for Windows and
+  # macOS, and the shared core has Linux-only parts behind cfg gates (the web server's file
+  # operations). A call outside such a gate compiles on Linux and breaks the other systems only
+  # in the release build; this job finds it on the pull request instead.
+  desktop-compile:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> src-tauri/target
+          key: desktop-compile-${{ matrix.os }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # tauri::generate_context!() embeds the dist directory during the Rust build.
+      - name: Build frontend (dist for tauri::generate_context)
+        run: npm run build
+
+      # Only the desktop crate and the core it depends on: the web server is Linux/Docker only.
+      - name: Compile the desktop app (core included)
+        run: cargo check -p mf-katalog-manager --no-default-features --all-targets
