@@ -598,7 +598,7 @@ pub(super) fn folder_ids(app: &App, id: i64) -> Result<Vec<i64>, Box<Response>> 
         .conn
         .lock()
         .map_err(|_| err(503, "restart_required"))?;
-    let mut stmt=conn.prepare("WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id=?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id) SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL").map_err(|_|err(500,"internal"))?;
+    let mut stmt=conn.prepare(&format!("{} SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL",katalog_core::db::FOLDER_SUBTREE_CTE)).map_err(|_|err(500,"internal"))?;
     let result = stmt
         .query_map([id], |r| r.get(0))
         .map_err(|_| err(500, "internal"))?

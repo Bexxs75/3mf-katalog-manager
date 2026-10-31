@@ -4,6 +4,8 @@ pub mod licenses;
 mod repository;
 mod collections;
 mod tag_fragments;
+mod folder_subtree;
+pub use folder_subtree::{folder_subtree_ids, FOLDER_SUBTREE_CTE};
 pub mod companions;
 pub mod sources;
 pub mod blocked_tags;

@@ -97,10 +97,7 @@ fn rewrite(path: &str, old: &str, new: &str) -> Result<String> {
 fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
     let root = folder(c, id)?.ok_or(Error::NotFound)?;
     valid_path(&root.path)?;
-    let mut stmt = c.prepare("WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id=?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id) SELECT id FROM subtree ORDER BY id")?;
-    let ids: Vec<i64> = stmt
-        .query_map([id], |r| r.get(0))?
-        .collect::<std::result::Result<_, _>>()?;
+    let ids = crate::db::folder_subtree_ids(c, id)?;
     let mut folders = Vec::new();
     for id in &ids {
         folders.push(folder(c, *id)?.ok_or(Error::Changed)?);
@@ -127,13 +124,11 @@ fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
             return Err(Error::Inconsistent);
         }
     }
-    let mut stmt = c.prepare(
-        "WITH RECURSIVE subtree(id) AS (
-        SELECT id FROM folders WHERE id=?1 UNION
-        SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id)
-        SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree)
+    let mut stmt = c.prepare(&format!(
+        "{} SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree)
         OR path=?2 OR (path>=?2||'/' AND path<?2||'0') ORDER BY id",
-    )?;
+        crate::db::FOLDER_SUBTREE_CTE
+    ))?;
     let mut files = Vec::new();
     for fid in stmt.query_map(params![id, root.path], |r| r.get::<_, i64>(0))? {
         let f = operations::read_state(c, fid?)?.ok_or(Error::Changed)?;
@@ -643,7 +638,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             return Err(Error::Cycle);
         }
         let parent = self.folder_state(pid)?;
-        let cycle=self.db.with_conn(|c|Ok(c.query_row("WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id=?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id) SELECT EXISTS(SELECT 1 FROM subtree WHERE id=?2)",params![id,pid],|r|r.get::<_,bool>(0))?))?;
+        let cycle=self.db.with_conn(|c|Ok(c.query_row(&format!("{} SELECT EXISTS(SELECT 1 FROM subtree WHERE id=?2)",crate::db::FOLDER_SUBTREE_CTE),params![id,pid],|r|r.get::<_,bool>(0))?))?;
         if cycle {
             return Err(Error::Cycle);
         }
@@ -864,7 +859,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 Err(e) => return Err(e),
             }
         }
-        let contains_base=self.db.with_conn(|c|Ok(c.query_row("WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id=?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id) SELECT EXISTS(SELECT 1 FROM folders WHERE id IN (SELECT id FROM subtree) AND path=(SELECT value FROM app_settings WHERE key='catalog_base_dir'))",[id],|r|r.get::<_,bool>(0))?))?;
+        let contains_base=self.db.with_conn(|c|Ok(c.query_row(&format!("{} SELECT EXISTS(SELECT 1 FROM folders WHERE id IN (SELECT id FROM subtree) AND path=(SELECT value FROM app_settings WHERE key='catalog_base_dir'))",crate::db::FOLDER_SUBTREE_CTE),[id],|r|r.get::<_,bool>(0))?))?;
         if contains_base {
             return Err(Error::Protected);
         }
@@ -1028,20 +1023,15 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
 }
 fn removal_tree(c: &Connection, id: i64) -> Result<FolderTree> {
     folder(c, id)?.ok_or(Error::NotFound)?;
-    let mut stmt=c.prepare("WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id=?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id) SELECT id FROM subtree ORDER BY id")?;
-    let ids: Vec<i64> = stmt
-        .query_map([id], |r| r.get(0))?
-        .collect::<std::result::Result<_, _>>()?;
+    let ids = crate::db::folder_subtree_ids(c, id)?;
     let mut result = FolderTree::default();
     for id in &ids {
         result.folders.push(folder(c, *id)?.ok_or(Error::Changed)?);
     }
-    let mut stmt = c.prepare(
-        "WITH RECURSIVE subtree(id) AS (
-        SELECT id FROM folders WHERE id=?1 UNION
-        SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id)
-        SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree) ORDER BY id",
-    )?;
+    let mut stmt = c.prepare(&format!(
+        "{} SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree) ORDER BY id",
+        crate::db::FOLDER_SUBTREE_CTE
+    ))?;
     for id in stmt.query_map([id], |r| r.get::<_, i64>(0))? {
         let f = operations::read_state(c, id?)?.ok_or(Error::Changed)?;
         if f.folder_id.is_some_and(|id| ids.contains(&id)) {

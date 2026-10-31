@@ -2,7 +2,8 @@ use super::*;
 use rusqlite::OptionalExtension;
 use tauri::Manager;
 
-pub(super) const SUBTREE: &str = "WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id = ?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id)";
+use crate::db::FOLDER_SUBTREE_CTE;
+
 const BASE_DIR_ERROR: ErrorCode = ErrorCode::CatalogBaseDirProtected;
 
 #[derive(Debug, Serialize)]
@@ -63,12 +64,12 @@ fn folder_summary_with_conn(conn: &Connection, folder_id: &str) -> CmdResult<Fol
         .ok_or_else(|| CmdError::coded(ErrorCode::FolderNotFound))?;
     let subfolder_count = conn
         .query_row(
-            &format!("{SUBTREE} SELECT COUNT(*) - 1 FROM subtree"),
+            &format!("{FOLDER_SUBTREE_CTE} SELECT COUNT(*) - 1 FROM subtree"),
             [id],
             |r| r.get(0),
         )
         .map_err(DbError::from)?;
-    let model_count = conn.query_row(&format!("{SUBTREE} SELECT COUNT(*) FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id], |r| r.get(0)).map_err(DbError::from)?;
+    let model_count = conn.query_row(&format!("{FOLDER_SUBTREE_CTE} SELECT COUNT(*) FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id], |r| r.get(0)).map_err(DbError::from)?;
     Ok(FolderRemovalSummary {
         name,
         subfolder_count,
@@ -84,11 +85,11 @@ pub(super) fn remove_folder_with_conn(
     let tx = conn.unchecked_transaction().map_err(DbError::from)?;
     let summary = folder_summary_with_conn(&tx, folder_id)?;
     // Protect ancestors too: cascading their removal must not bypass the base-directory guard.
-    let contains_base: bool = tx.query_row(&format!("{SUBTREE} SELECT EXISTS(SELECT 1 FROM folders WHERE id IN (SELECT id FROM subtree) AND path = (SELECT value FROM app_settings WHERE key = ?2))"), rusqlite::params![id, folders::SETTING_CATALOG_BASE_DIR], |r| r.get(0)).map_err(DbError::from)?;
+    let contains_base: bool = tx.query_row(&format!("{FOLDER_SUBTREE_CTE} SELECT EXISTS(SELECT 1 FROM folders WHERE id IN (SELECT id FROM subtree) AND path = (SELECT value FROM app_settings WHERE key = ?2))"), rusqlite::params![id, folders::SETTING_CATALOG_BASE_DIR], |r| r.get(0)).map_err(DbError::from)?;
     if contains_base {
         return Err(CmdError::coded(BASE_DIR_ERROR));
     }
-    tx.execute(&format!("{SUBTREE} DELETE FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id]).map_err(DbError::from)?;
+    tx.execute(&format!("{FOLDER_SUBTREE_CTE} DELETE FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id]).map_err(DbError::from)?;
     tx.execute("DELETE FROM folders WHERE id = ?1", [id])
         .map_err(DbError::from)?;
     tx.commit().map_err(DbError::from)?;
