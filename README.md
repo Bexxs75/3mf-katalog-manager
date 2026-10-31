@@ -20,69 +20,32 @@ Free and open source (MIT) · Windows, macOS, Linux · English, German, Spanish,
 
 The buttons open the download section of the website, which always offers the newest version. All files and checksums: [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest).
 
-From v0.16.0, there is one download per system: Windows `.msi`, macOS `.dmg` (Intel and Apple Silicon), Linux `.AppImage`. STEP preview is always included, making the download larger than the former standard package. File names have no `-STEP` suffix. Existing standard installations receive it through the next in-app update.
+From v0.16.0, there is one download per system: Windows `.msi`, macOS `.dmg` (Intel and Apple Silicon), Linux `.AppImage`. STEP preview is always included, making the download larger than the former standard package. File names have no `-STEP` suffix.
 
-## Compatibility
+## Screenshots
 
-| Area | Status |
+| | |
 |---|---|
-| Windows (`.msi`) | available, unsigned |
-| macOS, Intel and Apple Silicon (`.dmg`) | available, unsigned |
-| Linux (`.AppImage`) | available; `.deb`, `.rpm` and AUR planned |
-| 3MF, STL, OBJ | catalog and 3D preview |
-| STEP (`.stp`/`.step`) | catalog and 3D preview (included from v0.16.0) |
-| OrcaSlicer / Bambu Studio 3MF | filament usage and weight per plate supported |
-| Open in slicer | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura detected automatically, others can be added |
-| Klipper / Moonraker | available; [more printer models wanted](https://3mfkatalog.de/en/printer-test.html) |
-| OctoPrint | planned |
-| Bambu Lab (LAN) | planned, depends on a test on real printers |
-| PrusaLink | planned later |
-| Languages | English, German, Spanish, French |
-
-### Tested printers
-
-| Printer | System | Checked | Result |
-|---|---|---|---|
-| Sovol SV08 | Stock Klipper | Print list and usage, deducting from the spool in the app | ✅ Confirmed in daily use |
-| Anycubic Kobra S1 with ACE Pro / ACE Pro 2 | Rinkhals | Print list and usage, deducting from the spool, matching file names to the model; cancelled prints are deducted with the actual amount; two printers side by side | ✅ Confirmed in long-term use (2 printers) |
-| Qidi Smart 3 | Stock Klipper | Print list and usage readable; the printer's clock was wrong | 🟡 From v0.15.0 |
-| Creality K2 Plus (with CFS) | Creality Klipper 1.1.6.1, rooted | Print list and usage readable; no material or weight from the slicer, so the spool is chosen by hand | ☑️ Test report checked |
-| Qidi Q1 Pro | Stock Klipper (Moonraker 0.7.1) | Print list and usage readable; material and weight come from the slicer (QIDISlicer) | ☑️ Test report checked |
-| Anycubic Kobra 3 V2 | Klipper with Rinkhals | Print list and usage readable; material (PETG) and weight come from the slicer data; the printer reports an ACE module, only one print with a single colour entry was checked | ☑️ Test report checked |
-
-*Confirmed in daily use*: tried with the app on a real printer. *Confirmed in long-term use*: used by users in everyday printing over a longer period and reported back. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
-
-## Is it safe to install?
-
-Windows and macOS show a warning on the first start because the packages are **not code-signed**: the certificates for that cost money every year, which a free hobby project can't cover yet. The warning says "unknown publisher", not that anything harmful was found.
-
-What you can check yourself:
-
-- **Open source:** every release is built from the public source code by [GitHub Actions workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows). The source of each version is the matching tag, e.g. [v0.15.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.15.0).
-- **Checksums:** every release contains `SHA256SUMS.txt`. Compare it with the hash of your download:
-  - Windows (PowerShell): `Get-FileHash .\3MF-Katalog-Manager-0.16.0-Windows-x64.msi -Algorithm SHA256`
-  - macOS: `shasum -a 256 3MF-Katalog-Manager-0.16.0-macOS-universal.dmg`
-  - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
-- **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
-- **Local only:** the app works offline. It only goes online to check GitHub for a newer version, to download it when you choose to update, and, if you switch it on, to talk to printers on your home network.
-- **Antivirus programs** such as Avast or AVG sometimes block new, unsigned programs as a precaution. Restore the file from quarantine and add the installation folder as an exception; you can check the file on [VirusTotal](https://www.virustotal.com) first.
-- **Uninstalling** removes the program but keeps your catalog, settings and logs on purpose. The [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#uninstalling) lists the folders to delete if you want everything gone.
-
-## Updates
-
-From v0.15.0 the app checks for updates on startup and can install them itself on Windows, macOS, and the Linux AppImage. "Update now" downloads the signed package. "Restart and install" first backs up your catalog database (the last 3 backups are kept, in `update-backups` inside the app's data folder), then installs the update. Linux `.deb`/`.rpm` installs show a "Go to download page" button instead, since only the AppImage can replace itself.
-
-Installations of 0.14 or older have to be updated once by hand — download 0.15.0 from the [website](https://3mfkatalog.de/en/#download) or the [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest); every version from 0.15.0 onward then updates itself. Details, including how to restore a backup: [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#updating).
+| **Catalog with the always-visible selection bar** | **Model detail with real file colors** |
+| ![Catalog in grid view](docs/assets/readme/en/catalog.webp) | ![Model detail page with file colors and plate bar](docs/assets/readme/en/model-detail.webp) |
+| **Material Manager with grouped spools** | **Printers and AMS slots** |
+| ![Material Manager with grouped spools](docs/assets/readme/en/material-manager.webp) | ![Printers with AMS slots](docs/assets/readme/en/printers-ams.webp) |
+| **Source folders: check Downloads for new models** | **Sync with disk: renamed and moved files** |
+| ![Source folders dialog](docs/assets/readme/en/source-folders.webp) | ![Sync with disk dialog](docs/assets/readme/en/disk-sync.webp) |
 
 ## What it does
 
 - **Find and organize models** — import files or whole folders, automatic tags, search, folders, collections, favorites, duplicates detection, trash.
 - **Remove from catalog / Reset catalog** — remove models or folders, or empty the catalog, without changing files on disk.
-- **Understand files and metadata** — 3D preview for 3MF, STL, OBJ (and STEP), dimensions, volume, build plates, filament usage and weight from OrcaSlicer/Bambu Studio.
-- **Manage filament and resin** — spools and resin bottles with stock, location and price, printers with AMS/MMU slots, "Is there enough filament?" per model.
+- **Understand files and metadata** — 3D preview for 3MF, STL, OBJ (and STEP) with the real file colors of Bambu Studio, OrcaSlicer and MakerWorld projects, dimensions, volume, build plates, filament usage and weight from OrcaSlicer/Bambu Studio.
+- **Manage filament and resin** — spools and resin bottles with stock, location and price (equal spools grouped, up to four colors per spool), printers with AMS/MMU slots, "Is there enough filament?" per model.
 - **Plan and document prints** — print queue, print status, print log with photos, estimated material cost, open in your slicer with one click.
 - **Connect printers** — optional, read-only: Klipper/Moonraker printers report the filament used, you confirm and it is deducted. OctoPrint and Bambu Lab are planned.
+- **Keep the catalog in step with your files** — sync with disk recognises renamed and moved files and folders; rename and delete folders in the app, move several models at once, and undo with Ctrl/Cmd+Z.
+- **Collect new downloads** — set up source folders such as Downloads, check them for new models and move the chosen files into the catalog.
+- **Companion files and print bed check** — attach pictures, PDFs and text files to a model; the detail view shows whether a model fits each of your printers, and the "Fits on" filter narrows the catalog.
 - **Safe and local** — catalog backup as ZIP, archives extracted safely, Content Security Policy, no cloud.
+- **Docker (experimental)** — also available as a container with a browser desktop, in maintenance mode (bug and security fixes only): see [Docker in the wiki](https://wiki.3mfkatalog.de/en/docker/overview/).
 
 <details>
 <summary><b>All features in detail</b></summary>
@@ -126,13 +89,57 @@ Installations of 0.14 or older have to be updated once by hand — download 0.15
 
 </details>
 
-## Screenshots
+## Compatibility
 
-| Catalog with previews | Model with slicer data |
+| Area | Status |
 |---|---|
-| ![Catalog in grid view](docs/benutzerhandbuch/bilder/en/02-katalog-grid.png) | ![Model detail page](docs/benutzerhandbuch/bilder/en/04-modell-detailseite.png) |
-| **Printers and AMS slots** | **Confirming prints from a Klipper printer** |
-| ![Printers with AMS slots in the Material Manager](docs/benutzerhandbuch/bilder/en/22-drucker-ams.png) | !["New prints" dialog](docs/benutzerhandbuch/bilder/en/27-neue-drucke.png) |
+| Windows (`.msi`) | available, unsigned |
+| macOS, Intel and Apple Silicon (`.dmg`) | available, unsigned |
+| Linux (`.AppImage`) | available; `.deb`, `.rpm` and AUR planned |
+| 3MF, STL, OBJ | catalog and 3D preview |
+| STEP (`.stp`/`.step`) | catalog and 3D preview (included from v0.16.0) |
+| OrcaSlicer / Bambu Studio 3MF | filament usage and weight per plate supported |
+| Open in slicer | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura detected automatically, others can be added |
+| Klipper / Moonraker | available; [more printer models wanted](https://3mfkatalog.de/en/printer-test.html) |
+| OctoPrint | planned |
+| Bambu Lab (LAN) | planned, depends on a test on real printers |
+| PrusaLink | planned later |
+| Languages | English, German, Spanish, French |
+
+### Tested printers
+
+| Printer | System | Checked | Result |
+|---|---|---|---|
+| Sovol SV08 | Stock Klipper | Print list and usage, deducting from the spool in the app | ✅ Confirmed in daily use |
+| Anycubic Kobra S1 with ACE Pro / ACE Pro 2 | Rinkhals | Print list and usage, deducting from the spool, matching file names to the model; cancelled prints are deducted with the actual amount; two printers side by side | ✅ Confirmed in long-term use (2 printers) |
+| Qidi Smart 3 | Stock Klipper | Print list and usage readable; the printer's clock was wrong | 🟡 From v0.15.0 |
+| Creality K2 Plus (with CFS) | Creality Klipper 1.1.6.1, rooted | Print list and usage readable; no material or weight from the slicer, so the spool is chosen by hand | ☑️ Test report checked |
+| Qidi Q1 Pro | Stock Klipper (Moonraker 0.7.1) | Print list and usage readable; material and weight come from the slicer (QIDISlicer) | ☑️ Test report checked |
+| Anycubic Kobra 3 V2 | Klipper with Rinkhals | Print list and usage readable; material (PETG) and weight come from the slicer data; the printer reports an ACE module, only one print with a single colour entry was checked | ☑️ Test report checked |
+
+*Confirmed in daily use*: tried with the app on a real printer. *Confirmed in long-term use*: used by users in everyday printing over a longer period and reported back. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
+
+## Is it safe to install?
+
+Windows and macOS show a warning on the first start because the packages are **not code-signed**: the certificates for that cost money every year, which a free hobby project can't cover yet. The warning says "unknown publisher", not that anything harmful was found.
+
+What you can check yourself:
+
+- **Open source:** every release is built from the public source code by [GitHub Actions workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows). The source of each version is the matching tag, e.g. [v0.15.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.15.0).
+- **Checksums:** every release contains `SHA256SUMS.txt`. Compare it with the hash of your download:
+  - Windows (PowerShell): `Get-FileHash .\3MF-Katalog-Manager-<version>-Windows-x64.msi -Algorithm SHA256`
+  - macOS: `shasum -a 256 3MF-Katalog-Manager-<version>-macOS-universal.dmg`
+  - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
+- **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
+- **Local only:** the app works offline. It only goes online to check GitHub for a newer version, to download it when you choose to update, and, if you switch it on, to talk to printers on your home network.
+- **Antivirus programs** such as Avast or AVG sometimes block new, unsigned programs as a precaution. Restore the file from quarantine and add the installation folder as an exception; you can check the file on [VirusTotal](https://www.virustotal.com) first.
+- **Uninstalling** removes the program but keeps your catalog, settings and logs on purpose. The [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#uninstalling) lists the folders to delete if you want everything gone.
+
+## Updates
+
+From v0.15.0 the app checks for updates on startup and can install them itself on Windows, macOS, and the Linux AppImage. "Update now" downloads the update package and checks the project's update signature (this is not code signing of the installer, see above). "Restart and install" first backs up your catalog database (the last 3 backups are kept, in `update-backups` inside the app's data folder), then installs the update. Linux `.deb`/`.rpm` installs show a "Go to download page" button instead, since only the AppImage can replace itself.
+
+Installations of 0.14 or older have to be updated once by hand — download the current version from the [website](https://3mfkatalog.de/en/#download) or the [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest); every version from 0.15.0 onward then updates itself. Details, including how to restore a backup: [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#updating).
 
 ## Help and documentation
 
