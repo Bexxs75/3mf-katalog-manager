@@ -114,6 +114,13 @@ jobs:
       - name: Build frontend (dist for tauri::generate_context)
         run: npm run build
 
+      # tauri.windows.conf.json lists vc-runtime/*.dll as resources, so the build script of the
+      # desktop crate fails without them, even for a plain cargo check.
+      - name: Stage the Visual C++ runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\src-tauri\scripts\stage-vc-runtime.ps1
+
       # Only the desktop crate and the core it depends on: the web server is Linux/Docker only.
       - name: Compile the desktop app (core included)
         run: cargo check -p mf-katalog-manager --no-default-features --all-targets
