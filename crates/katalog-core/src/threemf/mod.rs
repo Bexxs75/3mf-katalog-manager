@@ -4,6 +4,7 @@ pub mod geometry;
 pub mod model_xml;
 pub mod paint;
 pub mod plates;
+pub mod print_info;
 pub mod slice_info;
 pub mod slicer_colors;
 pub mod source;

@@ -44,29 +44,103 @@ fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
     })
 }
 
+/// What the file says about slicing, told apart (a plain `None` cannot do that).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SliceState {
+    /// Readable, well-formed, at least one `<plate>`.
+    Sliced,
+    /// Entry present and well-formed but without a `<plate>`: the file holds no print
+    /// data. That does not say the model was never sliced (a project saved after
+    /// slicing looks the same).
+    NoSliceData,
+    /// The entry does not exist: nothing proves anything about the file.
+    NotRecognized,
+    /// The entry exists but is too large, not well-formed, or could not be read.
+    Unreadable,
+}
+
+impl SliceState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SliceState::Sliced => "sliced",
+            SliceState::NoSliceData => "no_slice_data",
+            SliceState::NotRecognized => "not_recognized",
+            SliceState::Unreadable => "unreadable",
+        }
+    }
+}
+
+/// Per-plate data of `slice_info.config` that is kept apart from [`SliceInfo`], so the
+/// stored `slice_info_json` stays byte-identical.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlateSliceExtra {
+    /// As in [`PlateFilamentUsage::plate_index`]: the stated index or the position; may be 0.
+    pub plate_index: u32,
+    /// Raw (not yet validated) value of the first matching print time source, in seconds.
+    pub print_seconds: Option<f64>,
+    /// `id` of every `<filament>` of the plate, in file order.
+    pub used_filament_ids: Vec<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SliceDetection {
+    pub state: SliceState,
+    /// Same value `parse_slice_info` returns.
+    pub info: Option<SliceInfo>,
+    /// One entry per entry of `info.plates`, same order; empty without `info`.
+    pub plate_extras: Vec<PlateSliceExtra>,
+}
+
+fn detection(state: SliceState) -> SliceDetection {
+    SliceDetection { state, info: None, plate_extras: Vec::new() }
+}
+
 /// Reads `Metadata/slice_info.config` (Bambu Studio/OrcaSlicer, not part of the
 /// 3MF standard). Missing, broken or plate-less file: `None`. Read with a size
 /// limit (zip bomb); the bytes read are returned, so `read_package()` adds them to
 /// the total budget.
 pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<SliceInfo>, u64) {
+    let (detection, bytes_read) = read_slice_info_detailed(archive);
+    (detection.info, bytes_read)
+}
+
+/// Like [`parse_slice_info`], but tells the four cases apart and also returns the
+/// per-plate extras. Print time keys come from the (currently empty) shipped table.
+pub fn read_slice_info_detailed<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (SliceDetection, u64) {
+    read_slice_info_detailed_with(archive, super::print_info::PRINT_TIME_SOURCES)
+}
+
+/// `print_time_keys`: `<metadata key>` names inside a `<plate>` that hold the print time in seconds.
+pub fn read_slice_info_detailed_with<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    print_time_keys: &[&str],
+) -> (SliceDetection, u64) {
     let xml = super::container::read_entry_to_string(
         archive,
         "Metadata/slice_info.config",
         super::container::MAX_CONFIG_XML_BYTES,
     );
     let bytes_read = xml.as_ref().map(|s| s.len() as u64).unwrap_or(0);
-    let Ok(xml) = xml else {
-        return (None, bytes_read);
+    let xml = match xml {
+        Ok(xml) => xml,
+        // Only a missing entry is "not recognised"; every other failure is a read problem.
+        Err(super::error::ThreeMfError::Zip(zip::result::ZipError::FileNotFound)) => {
+            return (detection(SliceState::NotRecognized), bytes_read);
+        }
+        Err(_) => return (detection(SliceState::Unreadable), bytes_read),
     };
 
     let mut reader = quick_xml::Reader::from_str(&xml);
     reader.config_mut().trim_text(true);
 
     let mut plates: Vec<PlateFilamentUsage> = Vec::new();
+    let mut extras: Vec<PlateSliceExtra> = Vec::new();
     let mut plate_counter: u32 = 0;
     let mut in_plate = false;
     let mut current_index: Option<u32> = None;
     let mut current_weight: Option<f64> = None;
+    let mut current_seconds: Option<f64> = None;
+    let mut current_ids: Vec<u32> = Vec::new();
     let mut current_filaments: Vec<FilamentUsage> = Vec::new();
 
     let mut buf = Vec::new();
@@ -77,16 +151,24 @@ pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<
                 plate_counter += 1;
                 current_index = None;
                 current_weight = None;
+                current_seconds = None;
+                current_ids = Vec::new();
                 current_filaments = Vec::new();
             }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "plate" => {
                 if in_plate {
                     let weight_g = current_weight
                         .unwrap_or_else(|| current_filaments.iter().map(|f| f.used_g).sum());
+                    let plate_index = current_index.unwrap_or(plate_counter);
                     plates.push(PlateFilamentUsage {
-                        plate_index: current_index.unwrap_or(plate_counter),
+                        plate_index,
                         weight_g,
                         filaments: std::mem::take(&mut current_filaments),
+                    });
+                    extras.push(PlateSliceExtra {
+                        plate_index,
+                        print_seconds: current_seconds.take(),
+                        used_filament_ids: std::mem::take(&mut current_ids),
                     });
                 }
                 in_plate = false;
@@ -99,10 +181,16 @@ pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<
                         match key.as_deref() {
                             Some("index") => current_index = value.and_then(|v| v.parse().ok()),
                             Some("weight") => current_weight = value.and_then(|v| v.parse().ok()),
+                            Some(other) if current_seconds.is_none() && print_time_keys.contains(&other) => {
+                                current_seconds = value.and_then(|v| v.trim().parse().ok());
+                            }
                             _ => {}
                         }
                     }
                     "filament" => {
+                        if let Some(id) = get_attr(&e, "id").and_then(|v| v.trim().parse().ok()) {
+                            current_ids.push(id);
+                        }
                         current_filaments.push(FilamentUsage {
                             filament_type: get_attr(&e, "type").unwrap_or_default(),
                             color: get_attr(&e, "color"),
@@ -114,18 +202,25 @@ pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<
                 }
             }
             Ok(Event::Eof) => break,
-            Err(_) => return (None, bytes_read),
+            Err(_) => return (detection(SliceState::Unreadable), bytes_read),
             _ => {}
         }
         buf.clear();
     }
 
     if plates.is_empty() {
-        return (None, bytes_read);
+        return (detection(SliceState::NoSliceData), bytes_read);
     }
 
     let total_weight_g = plates.iter().map(|p| p.weight_g).sum();
-    (Some(SliceInfo { total_weight_g, plates }), bytes_read)
+    (
+        SliceDetection {
+            state: SliceState::Sliced,
+            info: Some(SliceInfo { total_weight_g, plates }),
+            plate_extras: extras,
+        },
+        bytes_read,
+    )
 }
 
 #[cfg(test)]
