@@ -34,6 +34,15 @@ Please give us a reasonable amount of time to release a fix before you disclose 
 
 The desktop app (this repository) and the website [3mfkatalog.de](https://3mfkatalog.de). The app works locally; it only goes online to check GitHub for a new version, to download it when you choose to update, and, if you switch it on, to read printers on your home network.
 
+## Web server: residual risks
+
+These apply to the optional `katalog-server` (browser access). They are known limits, not vulnerabilities to report:
+
+- **Do not share a model root, the upload directory or the config folder with untrusted local writers.** Path checks guard against traversal and symlinks, but they cannot protect against another local user who may rename or replace directories in the same tree at the same time.
+- **Cookies are not separated by port.** The session cookie (`katalog_session`) is also sent to other HTTP services on the same host name. Use a dedicated host or domain name for the catalog.
+- **Older kernels without mount IDs.** File management (`KATALOG_FILE_OPS=1`) detects mount-point crossings via the mount ID. Where the kernel does not provide it, only the device ID is compared, so a bind mount of the same device inside a root is not detected.
+- The server has no HTTPS of its own: use it only in a home network or VPN, or behind an HTTPS reverse proxy that shields it.
+
 ---
 
 ## Sicherheitsrichtlinie (Deutsch)
@@ -69,3 +78,12 @@ Bitte gib uns angemessen Zeit für eine Korrektur, bevor du das Problem öffentl
 ### Geltungsbereich
 
 Die Desktop-App (dieses Repository) und die Webseite [3mfkatalog.de](https://3mfkatalog.de). Die App arbeitet lokal; online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, um sie herunterzuladen, wenn du aktualisierst, und, wenn du es einschaltest, um Drucker im Heimnetz auszulesen.
+
+### Webserver: Restrisiken
+
+Diese gelten für den optionalen `katalog-server` (Zugriff per Browser). Es sind bekannte Grenzen, keine zu meldenden Sicherheitslücken:
+
+- **Modellwurzeln, Upload-Ordner und Konfigurationsordner nicht mit nicht vertrauenswürdigen lokalen Schreibern teilen.** Pfadprüfungen schützen vor Pfad-Tricks und Symlinks, nicht aber vor einem anderen lokalen Benutzer, der im selben Baum gleichzeitig Verzeichnisse umbenennen oder ersetzen darf.
+- **Cookies sind nicht nach Port getrennt.** Das Sitzungscookie (`katalog_session`) geht auch an andere HTTP-Dienste auf demselben Hostnamen. Für den Katalog einen eigenen Host- oder Domainnamen verwenden.
+- **Ältere Kernel ohne Mount-ID.** Die Dateiverwaltung (`KATALOG_FILE_OPS=1`) erkennt Mountpunkt-Übergänge über die Mount-ID. Liefert der Kernel sie nicht, wird nur die Geräte-ID verglichen; ein Bind-Mount desselben Geräts innerhalb einer Wurzel wird dann nicht erkannt.
+- Der Server bietet kein eigenes HTTPS: nur im Heimnetz oder per VPN betreiben, oder hinter einem abschirmenden HTTPS-Reverse-Proxy.

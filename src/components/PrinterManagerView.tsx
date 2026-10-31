@@ -1,6 +1,7 @@
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
@@ -39,6 +40,7 @@ function Card({ title, aside, children, busy }: {
 
 export function PrinterManagerView({ printers: state, printerLink, printerId, onMaterial }: Props) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const [selected, setSelected] = useState<string | undefined>(printerId);
   const [adding, setAdding] = useState(false);
   useEffect(() => { setSelected(printerId); }, [printerId]);
@@ -64,7 +66,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
         <button type="button" ref={menuRef} aria-label={t('pmToggleList')} aria-expanded={open} className={`${pmButton} min-[1024px]:hidden !px-2`} onClick={() => setOpen(!open)}><Icon name={open ? 'collapse-all' : 'expand-all'} /></button>
         <h2 className="flex-1 ui-label text-[var(--ink-3)] max-[1023px]:group-data-[collapsed=true]:hidden">{t('pmPrinters')}</h2>
         <span className="text-[var(--ink-3)] max-[1023px]:group-data-[collapsed=true]:hidden">{state.printers.length}</span>
-        <button type="button" className={`${pmButton} !px-2 max-[1023px]:group-data-[collapsed=true]:hidden`} aria-label={t('pmAddPrinter')} title={t('pmAddPrinter')} onClick={() => setAdding(true)}><Icon name="plus" size={14} /></button>
+        <button type="button" className={`${pmButton} !px-2 max-[1023px]:group-data-[collapsed=true]:hidden`} aria-label={t('pmAddPrinter')} title={t('pmAddPrinter')} disabled={!canEdit} onClick={() => { if (canEditMetadata()) setAdding(true); }}><Icon name="plus" size={14} /></button>
       </div>
       <ul className="flex-1 min-h-0 overflow-auto px-2 space-y-0.5">
         {state.printers.map((p, index) => {
@@ -75,7 +77,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
             className={`group/item rounded-lg border flex items-center ${active ? 'border-[var(--sel-line)] bg-[var(--sel)] hover:bg-[var(--panel-2)]' : order.over === p.id ? 'border-[var(--sel-line)] bg-[var(--panel-2)]' : 'border-transparent hover:bg-[var(--panel-2)]'}`}>
             <div className="flex w-full items-center">
               <button className={`px-1 py-3 cursor-grab text-[var(--ink-3)] focus-visible:outline-2 focus-visible:opacity-100 group-hover/item:opacity-80 max-[1023px]:group-data-[collapsed=true]:hidden ${active ? 'opacity-80' : 'opacity-0'}`}
-                aria-label={`${t('printersReorderHint')} ${p.name}`} onMouseDown={e => { if (e.button === 0) order.begin(e, p.id); }} onKeyDown={e => order.key(e, p.id)}>⋮⋮</button>
+                disabled={!canEdit} aria-label={`${t('printersReorderHint')} ${p.name}`} onMouseDown={e => { if (e.button === 0) order.begin(e, p.id); }} onKeyDown={e => order.key(e, p.id)}>⋮⋮</button>
               <button aria-current={active ? 'true' : undefined} title={`${p.name} · ${t(status)}`} aria-label={`${p.name} ${t(status)}`}
                 className="relative text-left flex flex-1 min-w-0 items-center gap-2.5 p-2 focus-visible:outline-2 focus-visible:outline-[var(--accent)] max-[1023px]:group-data-[collapsed=true]:justify-center"
                 onKeyDown={e => {
@@ -91,27 +93,27 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
                 <Icon name={p.kind === 'resin' ? 'resin' : 'printer'} size={24} className="shrink-0 text-[var(--ink-2)]" />
                 <span className="min-w-0 flex-1 max-[1023px]:group-data-[collapsed=true]:hidden">
                   <b className="block truncate">{p.name}</b>
-                  <span className="flex flex-col items-start gap-1 mt-1 min-w-0"><PrinterStatusBadge status={status} />
-                    <span className="break-words text-caption text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : conn?.address ? <span className="font-code">{conn.address}</span> : t('pmNoConnection')}</span>
+                  <span className="flex flex-col items-start gap-1 mt-1 min-w-0">{import.meta.env.VITE_TARGET !== 'web' && <PrinterStatusBadge status={status} />}
+                    <span className="break-words text-caption text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : import.meta.env.VITE_TARGET === 'web' ? t('spoolKindFilament') : conn?.address ? <span className="font-code">{conn.address}</span> : t('pmNoConnection')}</span>
                   </span>
                 </span>
-                <span aria-hidden="true" className={`hidden max-[1023px]:group-data-[collapsed=true]:block absolute right-1 top-1 rounded-full w-2 h-2 ${printerStatusColors[status]}`}><span className="block w-full h-full rounded-full bg-current" /></span>
+                {import.meta.env.VITE_TARGET !== 'web' && <span aria-hidden="true" className={`hidden max-[1023px]:group-data-[collapsed=true]:block absolute right-1 top-1 rounded-full w-2 h-2 ${printerStatusColors[status]}`}><span className="block w-full h-full rounded-full bg-current" /></span>}
               </button>
             </div>
           </li>;
         })}
       </ul>
-      <footer className="border-t border-[var(--line)] p-3 max-[1023px]:group-data-[collapsed=true]:px-0"><PrinterLinkControl link={printerLink} /></footer>
+      <footer className="border-t border-[var(--line)] p-3 max-[1023px]:group-data-[collapsed=true]:px-0">{import.meta.env.VITE_TARGET !== 'web' && <PrinterLinkControl link={printerLink} />}</footer>
     </aside>
     <main className="col-start-2 row-start-1 min-w-0 min-h-0 scrollbar-stable overflow-x-auto overflow-y-scroll p-4 min-[1400px]:px-6">
       {state.error && <div role="alert" className="p-3 text-[var(--crit)]"><ErrorText error={state.error} /></div>}
       {!printer ? <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] flex flex-col items-center gap-4 px-3.5 py-10 text-center">
         <Icon name="printer" size={24} /><h1 className="font-bold">{t('pmEmptyTitle')}</h1>
         <p className="max-w-lg text-[var(--ink-3)]">{t('pmEmptyBody')}</p>
-        <button className={pmButton} onClick={() => setAdding(true)} aria-label={t('pmAddFirst')}><Icon name="plus" size={14} /> {t('pmAddFirst').replace(/^\+\s*/, '')}</button>
+        <button className={pmButton} disabled={!canEdit} onClick={() => { if (canEditMetadata()) setAdding(true); }} aria-label={t('pmAddFirst')}><Icon name="plus" size={14} /> {t('pmAddFirst').replace(/^\+\s*/, '')}</button>
       </section> : <PrinterDetail key={printer.id} printer={printer} state={state} link={printerLink} onMaterial={onMaterial} />}
     </main>
-    {adding && <AddPrinter state={state} onClose={() => setAdding(false)} onAdded={id => { setSelected(id); setOpen(false); }} />}
+    {canEdit && adding && <AddPrinter state={state} onClose={() => setAdding(false)} onAdded={id => { setSelected(id); setOpen(false); }} />}
   </div>;
 }
 
@@ -135,6 +137,7 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
   printer: Printer; state: PrintersState; link: PrinterLinkState; onMaterial: Props['onMaterial'];
 }) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
@@ -162,15 +165,15 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
         <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[var(--ink-2)]">
           <span>{t(printer.kind === 'resin' ? 'spoolKindResin' : 'spoolKindFilament')}</span>
           {connection && printer.kind !== 'resin' && <><span>{t('printerConnectionTypeMoonraker')}</span><span className="font-code text-small">{connection.address}</span></>}
-          <PrinterStatusBadge status={printerStatus(printer, link.enabled, connection)} />
+          {import.meta.env.VITE_TARGET !== 'web' && <PrinterStatusBadge status={printerStatus(printer, link.enabled, connection)} />}
         </div>
       </div>
-    </>} deleteAction={<button type="button" className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] text-[var(--crit)] max-[639px]:w-full`} disabled={!spoolsReady} onClick={() => setDeleting(true)}>{t('pmDeletePrinter')}</button>} />
-    <Card title={t('pmConnection')}>
+    </>} deleteAction={<button type="button" className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] text-[var(--crit)] max-[639px]:w-full`} disabled={!canEdit || !spoolsReady} onClick={() => setDeleting(true)}>{t('pmDeletePrinter')}</button>} />
+    {import.meta.env.VITE_TARGET !== 'web' && <Card title={t('pmConnection')}>
       {printer.kind === 'resin' ? <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmNotLinked')}</b><p>{t('pmResinNoConnection')}</p></div> :
         <PrinterConnectionSection printerId={printer.id} link={link} connection={connection ?? null} />}
       <p className="text-[var(--ink-3)]">{t('pmFutureConnections')}</p>
-    </Card>
+    </Card>}
     <Card title={t('pmUnits')} busy={!spoolsReady} aside={formatCount(t('printersUnitSlotCount'), printer.units.reduce((n, u) => n + u.slotCount, 0))}>
       {spoolsReady && <PrinterUnitsSection printer={printer} spools={spools} actions={state}
         onChanged={() => setRevision(n => n + 1)} onMaterial={() => onMaterial({ printerId: printer.id })} />}
@@ -184,12 +187,13 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
           <td className="p-2" title={t(j.outcome === 'completed' ? 'printerJobCompleted' : 'printerJobPartial')}>{displayName(j.fileName)}</td>
           <td className="p-2 whitespace-nowrap">{t('printerJobsMinutes').replace('{min}', number.format(j.printDurationS / 60))}</td>
           <td className="p-2 whitespace-nowrap">{grams != null ? `${number.format(grams)} g` : `${number.format(j.usedMm)} mm`}</td>
-          <td className="p-2">{j.state === 'open' ? <button className={`${pmButton} h-6 !py-0`} onClick={() => onMaterial({ printerId: printer.id, reviewJobs: true })}>{t('pmConfirmJobs')}</button> : t(j.state === 'confirmed' ? 'pmBooked' : 'pmIgnored')}</td>
+          <td className="p-2">{j.state === 'open' ? import.meta.env.VITE_TARGET === 'web' ? t('webManagerJobOpen') : <button className={`${pmButton} h-6 !py-0`} onClick={() => onMaterial({ printerId: printer.id, reviewJobs: true })}>{t('pmConfirmJobs')}</button> : t(j.state === 'confirmed' ? 'pmBooked' : 'pmIgnored')}</td>
         </tr>; })}</tbody>
       </table></div>
     </Card>}
-    {deleting && <PrinterManagerDialog title={t('printersDeletePrinterConfirm').replace('{name}', printer.name)} onClose={() => setDeleting(false)}
-      submitLabel={t('pmDeletePrinter')} onSubmit={async () => { await state.deletePrinter(printer.id); await link.refresh(); }}>
+    {canEdit && deleting && <PrinterManagerDialog title={t('printersDeletePrinterConfirm').replace('{name}', printer.name)} onClose={() => setDeleting(false)}
+      submitLabel={t('pmDeletePrinter')} onSubmit={async () => { await state.deletePrinter(printer.id); if (import.meta.env.VITE_TARGET !== 'web') await link.refresh(); }}>
+      {import.meta.env.VITE_TARGET === 'web' && <p>{t('webManagerDeletePrinter')}</p>}
       {count > 0 && <p>{formatCount(t('printersDeleteReturnHomeCount'), count)}</p>}
     </PrinterManagerDialog>}
   </div>;
@@ -197,6 +201,7 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
 
 function General({ printer, state, header, deleteAction }: { printer: Printer; state: PrintersState; header: ReactNode; deleteAction: ReactNode }) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const formId = useId();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -220,19 +225,19 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
   const [error, setError] = useState<AppError | null>(null);
   const reset = () => { setName(printer.name); setDraft(initial()); setValidation({}); setError(null); };
   const displayed = editing ? draft : initial();
-  const field = (key: keyof typeof draft, label: string) => <label className="min-w-0">{label}<input maxLength={120} className={pmField} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} /></label>;
+  const field = (key: keyof typeof draft, label: string) => <label className="min-w-0">{label}<input maxLength={120} className={pmField} value={displayed[key]} readOnly={!canEdit || !editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} /></label>;
   return <>
     <header data-testid="printer-detail-header" className="flex flex-wrap items-center gap-4 min-[1320px]:col-span-2">
       {header}
       <div className="ml-auto flex flex-wrap gap-2 max-[639px]:w-full">{editing ? <>
-        <button key="save" form={formId} type="submit" className={`${pmButton} max-[639px]:w-full`} disabled={busy}>{t('printersSave')}</button>
-        <button key="cancel" type="button" className={`${pmButton} max-[639px]:w-full`} disabled={busy} onClick={() => { reset(); setEditing(false); }}>{t('printersCancel')}</button>
-      </> : <>{/* Own key: without it React reuses the same <button> for "Edit" and the submit "Save" at the same position, and the browser then runs the new submit behaviour for the very click that opened the form, which saves and closes it at once. */}<button key="edit" type="button" className={`${pmButton} max-[639px]:w-full`} onClick={() => { reset(); setEditing(true); }}>{t('pmEdit')}</button>{deleteAction}</>}</div>
+        <button key="save" form={formId} type="submit" className={`${pmButton} max-[639px]:w-full`} disabled={busy || !canEdit}>{t('printersSave')}</button>
+        <button key="cancel" type="button" className={`${pmButton} max-[639px]:w-full`} disabled={busy || !canEdit} onClick={() => { reset(); setEditing(false); }}>{t('printersCancel')}</button>
+      </> : <>{/* Own key: without it React reuses the same <button> for "Edit" and the submit "Save" at the same position, and the browser then runs the new submit behaviour for the very click that opened the form, which saves and closes it at once. */}<button key="edit" disabled={!canEdit} type="button" className={`${pmButton} max-[639px]:w-full`} onClick={() => { reset(); setEditing(true); }}>{t('pmEdit')}</button>{deleteAction}</>}</div>
     </header>
     <Card title={t('pmHardware')}>
     <form id={formId} onSubmit={async e => {
     e.preventDefault();
-    if (!editing || busy) return;
+    if (!canEditMetadata() || !editing || busy) return;
     const numeric = (s: string) => s.trim() === '' ? null : parseDecimalInput(s);
     const details: PrinterDetails = { manufacturer: draft.manufacturer.trim() || null, model: draft.model.trim() || null,
       nozzleMm: numeric(draft.nozzleMm), bedXMm: numeric(draft.bedXMm), bedYMm: numeric(draft.bedYMm), bedZMm: numeric(draft.bedZMm) };
@@ -249,13 +254,13 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
     try { await state.updateDetails(printer.id, details); if (name.trim() !== printer.name) await state.renamePrinter(printer.id, name.trim()); setEditing(false); }
     catch (e) { setError(toAppError(e)); } finally { setBusy(false); }
   }}>
-    <fieldset disabled={busy} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <label>{t('pmName')}<input required maxLength={60} pattern=".*\S.*" className={pmField} value={editing ? name : printer.name} readOnly={!editing} onChange={e => setName(e.target.value)} /></label>
+    <fieldset disabled={busy || !canEdit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label>{t('pmName')}<input required maxLength={60} pattern=".*\S.*" className={pmField} value={editing ? name : printer.name} readOnly={!canEdit || !editing} onChange={e => setName(e.target.value)} /></label>
       <div>{t('pmKind')}<div className="mt-1 px-2 py-1.5 rounded border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)]">{t(printer.kind === 'resin' ? 'spoolKindResin' : 'spoolKindFilament')} {t('pmFixed')}</div></div>
       {field('manufacturer', t('pmManufacturer'))}{field('model', t('pmModel'))}
       <div className="sm:col-span-2 flex flex-wrap items-end gap-5 max-[639px]:flex-col max-[639px]:items-stretch">
-        {printer.kind === 'filament' && <label className="min-w-0">{t('pmNozzle')}<div className="flex items-center gap-1.5"><span className="min-w-0 max-[639px]:flex-1"><input {...numericProps('nozzleMm')} aria-label={t('pmNozzle')} className={`${pmField} ${validation.nozzleMm ? '!border-[var(--crit)]' : ''} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed.nozzleMm} readOnly={!editing} onChange={e => setDraft({ ...draft, nozzleMm: e.target.value })} />{fieldError('nozzleMm')}</span><span className="text-[var(--ink-3)] font-medium tabular-nums text-caption">mm</span></div></label>}
-        <fieldset className="min-w-0"><legend>{t('pmBed')}</legend><div className="flex items-center gap-1.5 max-[639px]:flex-col max-[639px]:items-stretch">{(['bedXMm', 'bedYMm', 'bedZMm'] as const).map((key, i) => <span className="flex items-center gap-1.5 min-w-0" key={key}><span className="min-w-0 max-[639px]:flex-1"><input {...numericProps(key)} aria-label={`${t('pmBed')} ${'XYZ'[i]}`} className={`${pmField} ${validation[key] ? '!border-[var(--crit)]' : ''} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} />{fieldError(key)}</span>{i < 2 && <span className="text-[var(--ink-3)] max-[639px]:hidden">×</span>}</span>)}<span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">mm</span></div></fieldset>
+        {printer.kind === 'filament' && <label className="min-w-0">{t('pmNozzle')}<div className="flex items-center gap-1.5"><span className="min-w-0 max-[639px]:flex-1"><input {...numericProps('nozzleMm')} aria-label={t('pmNozzle')} className={`${pmField} ${validation.nozzleMm ? '!border-[var(--crit)]' : ''} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed.nozzleMm} readOnly={!canEdit || !editing} onChange={e => setDraft({ ...draft, nozzleMm: e.target.value })} />{fieldError('nozzleMm')}</span><span className="text-[var(--ink-3)] font-medium tabular-nums text-caption">mm</span></div></label>}
+        <fieldset className="min-w-0"><legend>{t('pmBed')}</legend><div className="flex items-center gap-1.5 max-[639px]:flex-col max-[639px]:items-stretch">{(['bedXMm', 'bedYMm', 'bedZMm'] as const).map((key, i) => <span className="flex items-center gap-1.5 min-w-0" key={key}><span className="min-w-0 max-[639px]:flex-1"><input {...numericProps(key)} aria-label={`${t('pmBed')} ${'XYZ'[i]}`} className={`${pmField} ${validation[key] ? '!border-[var(--crit)]' : ''} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed[key]} readOnly={!canEdit || !editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} />{fieldError(key)}</span>{i < 2 && <span className="text-[var(--ink-3)] max-[639px]:hidden">×</span>}</span>)}<span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">mm</span></div></fieldset>
       </div>
     </fieldset>
     <p className="text-[var(--ink-3)] mt-3">{t('pmBedHint')}</p>

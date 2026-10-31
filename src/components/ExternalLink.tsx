@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useT } from '../i18n/LanguageContext';
@@ -9,6 +10,7 @@ export function ExternalLink({ url, label, onOpen, children, className, style }:
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const [result, setResult] = useState<{ url: string; ok: boolean } | null>(null);
+  if (isReadOnly()) return <a href={url} target="_blank" rel="noreferrer" className={className} style={style}>{children ?? label}</a>;
   if (!container) return onOpen
     ? <button type="button" onClick={onOpen} className={className} style={style}>{children ?? label}</button>
     : <a href={url} target="_blank" rel="noreferrer" className={className} style={style}>{children ?? label}</a>;

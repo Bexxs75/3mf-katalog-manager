@@ -104,6 +104,31 @@ it('keeps tiles at a fixed width when the available width changes', () => {
   } finally { rect.mockRestore(); vi.unstubAllGlobals(); }
 });
 
+it('keeps web tiles at a fixed width when the available width changes', () => {
+  vi.stubEnv('VITE_TARGET', 'web');
+  let resize!: () => void;
+  const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 1200, height: 100, top: 0 } as DOMRect);
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resize = callback; }
+    observe() {} disconnect() {}
+  });
+  try {
+    const props = { models: [makeModelFile({tags: []})], selectedId: null, onSelect: vi.fn(), onOpenDetail: vi.fn(),
+      onContextMenu: vi.fn(), onToggleFavorite: vi.fn(), selectedForBulk: new Set<string>(), onToggleBulkSelect: vi.fn(),
+      displayPreference: 'thumbnail' as const };
+    const { container } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} /></UiDensityProvider></LanguageProvider>);
+    act(() => resize());
+    const grid = () => container.querySelector('.grid.gap-3\\.5') as HTMLElement;
+    expect(grid()).toHaveStyle({ gridTemplateColumns: 'repeat(5, minmax(0, 190px))', justifyContent: 'start' });
+    rect.mockReturnValue({ width: 900, height: 100, top: 0 } as DOMRect);
+    act(() => resize());
+    expect(grid()).toHaveStyle({ gridTemplateColumns: 'repeat(4, minmax(0, 190px))' });
+    rect.mockReturnValue({ width: 400, height: 100, top: 0 } as DOMRect);
+    act(() => resize());
+    expect(grid()).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' });
+  } finally { rect.mockRestore(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+});
+
 it.each(['compact', 'comfort'])('disables native thumbnail dragging in both card layouts (%s)', density => {
   localStorage.setItem('3mf-katalog-density', density);
   const { container } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props}
@@ -150,6 +175,27 @@ it.each(['compact', 'comfort', 'list'])('exposes bidi names in text and accessib
   expect(select).toHaveBeenCalledWith(model.id);
   expect(model.name).toBe('part\u202etxt.3mf');
   expect(model.path).toBe('/models/part\u202etxt.3mf');
+});
+
+it.each([false, true])('retains metadata selection and collection drag with web fileOps=%s', async fileOps => {
+  const { login, authenticationFailed } = await import('../lib/webSession');
+  vi.stubEnv('VITE_TARGET', 'web');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: true, fileOps, csrfToken: 'csrf' })));
+  try {
+    await act(async () => { await login('test'); });
+    const select = vi.fn();
+    const { container, unmount } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} onSelect={select} onDragFileStart={vi.fn()} /></UiDensityProvider></LanguageProvider>);
+    // Drag also supports DB-only collection assignment; folder drops check fileOps themselves.
+    expect(container.querySelector('[data-drag-grip]')).not.toBeNull();
+    const card = container.querySelector('[data-model-id]');
+    expect(card).not.toBeNull();
+    fireEvent.click(card!);
+    expect(select).toHaveBeenCalledWith(props.models[0].id);
+    unmount();
+  } finally {
+    act(() => authenticationFailed(401));
+    vi.unstubAllGlobals(); vi.unstubAllEnvs();
+  }
 });
 
 

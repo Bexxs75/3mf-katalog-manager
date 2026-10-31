@@ -1,8 +1,9 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
@@ -60,9 +61,9 @@ export function ViewerErrorCard({ error, noWebGL, compact, model, onOpenInSlicer
           : code ? t(texts[code]) : t('viewerUnknownText')}</p>
         {code === 'notFound' && model && <code title={displayName(model.path)} className={`${compact ? 'truncate' : 'break-all'} font-code text-[var(--ink-2)]`}>{displayName(model.path)}</code>}
         <div className="flex flex-wrap gap-2">
-          {!container && code === 'notFound' && model && <button className={catalogActionButton} onClick={() => void runAction(openFolder)}>{t('viewerOpenFolder')}</button>}
-          {code === 'notFound' && onRemoveFromCatalog && <button ref={removeButton} {...lockProps} className={catalogActionButton} onClick={() => setConfirm(true)}>{t('removeCatalog')}</button>}
-          {!container && code !== 'notFound' && onOpenInSlicer && <button className={catalogActionButton} onClick={() => void runAction(onOpenInSlicer)}>{t('viewerOpenSlicer')}</button>}
+          {!container && code === 'notFound' && model && <>{!isReadOnly() && <button className={catalogActionButton} onClick={() => void runAction(openFolder)}>{t('viewerOpenFolder')}</button>}</>}
+          {code === 'notFound' && onRemoveFromCatalog && <>{!isReadOnly() && <button ref={removeButton} {...lockProps} className={catalogActionButton} onClick={() => setConfirm(true)}>{t('removeCatalog')}</button>}</>}
+          {!container && code !== 'notFound' && onOpenInSlicer && <>{!isReadOnly() && <button className={catalogActionButton} onClick={() => void runAction(onOpenInSlicer)}>{t('viewerOpenSlicer')}</button>}</>}
           {error?.unexpected && !noWebGL && <ReportProblemLink />}
         </div>
         {actionError && <ErrorText error={actionError} />}
@@ -72,14 +73,14 @@ export function ViewerErrorCard({ error, noWebGL, compact, model, onOpenInSlicer
       <p>{t('removeModelHint')}</p>
       {actionError && <ErrorText error={actionError} />}
       <div className="flex justify-end gap-2">
-        <button data-initial-focus disabled={busy} className={catalogActionButton} onClick={() => setConfirm(false)}>{t('cancel')}</button>
-        <button disabled={busy} {...lockProps} className={catalogActionButton} onClick={async () => {
+        <>{!isReadOnly() && <button data-initial-focus disabled={busy} className={catalogActionButton} onClick={() => setConfirm(false)}>{t('cancel')}</button>}</>
+        <>{!isReadOnly() && <button disabled={busy} {...lockProps} className={catalogActionButton} onClick={async () => {
           if (!onRemoveFromCatalog) return;
           setBusy(true); setActionError(null);
           try { await onRemoveFromCatalog(); setConfirm(false); }
           catch (e) { setActionError(toAppError(e)); }
           finally { setBusy(false); }
-        }}>{t('removeEntry')}</button>
+        }}>{t('removeEntry')}</button>}</>
       </div>
     </CatalogActionDialog>}
   </>;

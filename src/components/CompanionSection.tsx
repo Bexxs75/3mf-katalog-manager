@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import { displayName } from '../lib/displayName';
@@ -28,16 +28,16 @@ const UNDO_DURATION_MS = 15000;
 
 interface AddFailure { name: string; error: AppError }
 
-const buttonClass = 'h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-default';
+export const buttonClass = 'h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-default';
 
-const kindIcon = (item: Companion) => (item.kind === 'pdf' ? '📄' : item.kind === 'text' ? '📝' : '🖼');
+export const kindIcon = (item: Pick<Companion, 'kind'>) => (item.kind === 'pdf' ? '📄' : item.kind === 'text' ? '📝' : '🖼');
 
 function baseName(path: string) {
   return path.split(/[\\/]/).pop() || path;
 }
 
 /** Calls `onVisible` once when the node scrolls into view; at once where IntersectionObserver is missing. */
-function useVisibleOnce<T extends HTMLElement>(onVisible: () => void) {
+export function useVisibleOnce<T extends HTMLElement>(onVisible: () => void) {
   const ref = useRef<T | null>(null);
   const latest = useRef(onVisible);
   latest.current = onVisible;
@@ -54,7 +54,7 @@ function useVisibleOnce<T extends HTMLElement>(onVisible: () => void) {
   return ref;
 }
 
-function ImageLightbox({ name, src, onClose, returnFocus }: {
+export function ImageLightbox({ name, src, onClose, returnFocus }: {
   name: string; src: string | undefined; onClose: () => void; returnFocus: RefObject<HTMLElement | null>;
 }) {
   const t = useT();

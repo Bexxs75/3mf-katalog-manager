@@ -30,9 +30,13 @@ export interface ModelImages {
   thumbnailImage: string | null;
   renderSnapshotImage: string | null;
   customImage: string | null;
+  /** Web only: left out because the answer hit its size budget; request it again. */
+  deferred?: boolean;
 }
 
 export interface ModelFile {
+  /** Catalog file type ('3mf', 'stl', 'stp', 'obj'); absent on models loaded in full. */
+  fileType?: string;
   license: string | null;
   hasThumbnail?: boolean;
   hasRenderSnapshot?: boolean;
@@ -122,6 +126,8 @@ export interface Folder {
   count: number;
   /** The directory is gone from disk (false when unknown, e.g. root not readable). */
   missing?: boolean;
+  /** Web server: files may be moved into this folder (false for protected ones; absent = unknown, allowed). */
+  moveTarget?: boolean;
 }
 
 export interface FolderTrashSummary {
@@ -248,6 +254,8 @@ export interface FilamentSpool {
   remainingWeightG: number;
   price: number | null;
   imagePng: string | null;
+  /** Web lists omit image bytes and expose only this flag. */
+  hasImage?: boolean;
   /** Color value `#rrggbb`; `color` stays the color name. */
   colorHex: string | null;
   /** Up to four colors of a multi-color spool (`#rrggbb`); empty = single-color. `colorHex` is always the first entry. */
@@ -497,6 +505,24 @@ export interface Companion {
   deletedAt: string | null;
   /** The file is gone from disk. A state of this entry only, never a catalog change. */
   missing: boolean;
+}
+
+/** A companion as the web lists it: read only, no server path, trashed ones are never sent. */
+export interface WebCompanion {
+  id: string;
+  fileId: string;
+  name: string;
+  kind: CompanionKind;
+  sizeBytes: number | null;
+  addedAt: string;
+  /** Gone from disk or failing the server's safety checks: listed, not served. */
+  missing: boolean;
+  /** An image small enough for `companionImageData`. */
+  previewable: boolean;
+  /** Set for a file that was removed on its own and waits in the trash (web build only). */
+  deletedAt?: string;
+  /** Only with `deletedAt`: false when the file sits in the desktop's trash and can only be restored there. */
+  restorable?: boolean;
 }
 
 export interface CompanionOpenInfo {

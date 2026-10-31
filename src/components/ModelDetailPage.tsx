@@ -1,11 +1,20 @@
+import { WebFileActions } from './WebFileActions';
+import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
+import { readPrintLogPhoto } from '../lib/printLogPhoto';
+import { reportMetadataError } from '../lib/metadataErrors';
+import { useCanEditMetadata } from '../lib/webSession';
+import { DownloadFileButton } from './DownloadFileButton';
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { WebSlicerMenu } from './WebSlicerMenu';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
+import { ImageUploadButton } from './ImageUploadButton';
 import { useModelImages } from '../hooks/useModelImages';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState } from 'react';
@@ -17,7 +26,7 @@ import { TagInput } from './TagInput';
 import { TagRemoveButton } from './TagRemoveButton';
 import { AutoTagBlockStatus } from './AutoTagBlockStatus';
 import { useAutoTagBlock } from '../hooks/useAutoTagBlock';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import type { ModelFile, SlicerConfig, Collection, Printer } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
@@ -35,6 +44,7 @@ import { FilamentCheckSection } from './FilamentCheckSection';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { CompanionSection } from './CompanionSection';
+import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { FilamentUsageMissing } from './FilamentUsageMissing';
 import { isFilamentUsageMissing } from '../lib/filamentUsageHelp';
@@ -55,7 +65,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void | Promise<void>;
+  onUploadImage: (file?: File) => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
@@ -104,12 +114,13 @@ export function ModelDetailPage({
   rescanSuccess,
   displayPreference,
 }: Props) {
+  const canEdit = useCanEditMetadata();
   const [pendingNavigation, setPendingNavigation] = useState<DetailDirection | null>(null);
   const navigationTrigger = useRef<HTMLButtonElement | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const autoTagBlock = useAutoTagBlock(model, onRemoveTag, onAddTag);
+  const autoTagBlock = useAutoTagBlock(!canEdit ? null : model, onRemoveTag, onAddTag);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const deleteTriggerFocusPending = useRef(false);
@@ -191,6 +202,7 @@ export function ModelDetailPage({
   const navigationButtonClass = 'relative flex-none w-[42px] h-[42px] rounded-[10px] border border-transparent grid place-items-center cursor-pointer text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-40 disabled:cursor-default';
 
   const submitPrintLogEntry = () => {
+    if (!canEdit) return;
     addPrintLogEntry(new Date(printLogDate).toISOString(), printLogNote.trim() || null, printLogPhoto)
       .then(() => {
         setShowPrintLogForm(false);
@@ -198,10 +210,11 @@ export function ModelDetailPage({
         setPrintLogPhoto(null);
         setPrintLogDate(new Date().toISOString().slice(0, 10));
       })
-      .catch((e) => console.error('[print-log] adding failed:', e));
+      .catch((e) => { console.error('[print-log] adding failed:', e); reportMetadataError(e); });
   };
 
   const pickPrintLogPhoto = () => {
+    if (isReadOnly()) return;
     invoke<string | null>('pick_and_read_image').then((base64) => {
       if (base64) setPrintLogPhoto(base64);
     });
@@ -251,7 +264,7 @@ export function ModelDetailPage({
             ) : (
               <ModelPreview surfaceClassName="aspect-[4/3]"
                 model={model}
-                needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+                needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
                 onSnapshotCaptured={onSnapshotCaptured}
                 onOpenInSlicer={slicers.length ? onOpenInSlicer : undefined}
                 onRemoveFromCatalog={onRemoveFromCatalog}
@@ -277,12 +290,7 @@ export function ModelDetailPage({
               </div>
             )}
           </div>
-          <button
-            onClick={imageUpload.uploadImage}
-            className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('uploadModelImageLabel')}
-          </button>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]" />
           <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
         </div>
 
@@ -325,12 +333,12 @@ export function ModelDetailPage({
                     // Not an http(s) value: plain text, never a clickable link.
                     <span className="text-[var(--ink-2)]">{model.sourceUrl}</span>
                   )}{' '}
-                  <button aria-label={t('pmEdit')} onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="edit" size={14} /></button>
+                  <>{canEdit && <button aria-label={t('pmEdit')} onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="edit" size={14} /></button>}</>
                 </span>
               ) : (
-                <button onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)] underline decoration-dotted">
+                <>{canEdit && <button onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)] underline decoration-dotted">
                   {t('sourceUrlPlaceholder')} <Icon name="edit" size={14} />
-                </button>
+                </button>}</>
               )}
             </div>
 
@@ -343,7 +351,7 @@ export function ModelDetailPage({
                   <span key={tag} title={`#${tagLabel(tag, language)}`} className="inline-flex max-w-full min-w-0 items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
                     <TagDot hue={tagHues?.[tag]} />
                     <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
-                    <TagRemoveButton tag={tag} autoTag={autoTagBlock.suggested.has(tag)} onRemove={() => onRemoveTag(tag)} onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)} className="flex-none hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]" />
+                    {canEdit && <TagRemoveButton tag={tag} autoTag={autoTagBlock.suggested.has(tag)} onRemove={() => onRemoveTag(tag)} onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)} className="flex-none hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]" />}
                   </span>
                 ))}
                 <TagInput
@@ -367,7 +375,7 @@ export function ModelDetailPage({
                   ? 'bg-[var(--good-soft,var(--accent-soft))] text-[var(--good,var(--accent))]'
                   : 'bg-[var(--panel-2)] text-[var(--ink-2)] border border-[var(--line)]'
               }`}
-            >
+             {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
               {model.printStatus === 'printed' ? t('printedBadge') : t('notPrintedLabel')}
             </button>
             <button
@@ -377,20 +385,23 @@ export function ModelDetailPage({
               className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-9 h-9 rounded-md border grid place-items-center ${
                 model.favorite ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--line)] text-[var(--ink-2)]'
               }`}
-            >
+             {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
               <Icon name="heart" size={14} fill={model.favorite ? 'currentColor' : 'none'} />
             </button>
-            <button onClick={onToggleQueue} className="text-body font-semibold text-[var(--ink-2)] hover:text-[var(--ink)]">
+            <>{canEdit && <button onClick={onToggleQueue} className="text-body font-semibold text-[var(--ink-2)] hover:text-[var(--ink)]">
               {model.queuePosition === null && <Icon name="plus" size={14} />}{t(model.queuePosition !== null ? 'removeFromQueue' : 'addToQueue')}
-            </button>
+            </button>}</>
           </div>
         </div>
       </div>
 
       <BuildPlateFit model={model} printers={printers} variant="page" />
 
+      {/* The web build lists and downloads companions only; the desktop section also edits them. */}
       <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
-        <CompanionSection key={model.id} fileId={model.id} variant="page" />
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="page" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="page" />}
       </div>
 
       {isFilamentUsageMissing(model) && <FilamentUsageMissing />}
@@ -455,12 +466,12 @@ export function ModelDetailPage({
             {t('printLogHeading')}
           </p>
           {!showPrintLogForm && (
-            <button
+            <>{canEdit && <button
               onClick={() => setShowPrintLogForm(true)}
               className="text-small font-semibold text-[var(--accent)] hover:underline"
              aria-label={t('printLogAddButton')}>
               <Icon name="plus" size={14} /> {t('printLogAddButton').replace(/^\+\s*/, '')}
-            </button>
+            </button>}</>
           )}
         </div>
 
@@ -480,12 +491,21 @@ export function ModelDetailPage({
               className="bg-[var(--panel-2)] border border-[var(--line)] rounded px-2 py-1 text-body resize-none"
             />
             <div className="flex items-center gap-2">
-              <button
+              {isReadOnly() && canEdit && <label>{t('printLogPhotoButton')}
+                <input type="file" accept="image/*" onChange={async event => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  if (!file) return;
+                  try { setPrintLogPhoto(await readPrintLogPhoto(file)); }
+                  catch (error) { reportMetadataError(t(error instanceof Error && error.message === 'webPhotoTooLarge' ? 'webPhotoTooLarge' : 'webPhotoFormat')); }
+                }} />
+              </label>}
+              <>{!isReadOnly() && <button
                 onClick={pickPrintLogPhoto}
                 className="h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-small hover:border-[var(--accent)]"
               >
                 {t('printLogPhotoButton')}
-              </button>
+              </button>}</>
               {printLogPhoto && (
                 <img
                   src={`data:image/png;base64,${printLogPhoto}`}
@@ -495,7 +515,7 @@ export function ModelDetailPage({
               )}
             </div>
             <div className="flex gap-2 justify-end">
-              <button
+              <>{canEdit && <button
                 onClick={() => {
                   setShowPrintLogForm(false);
                   setPrintLogNote('');
@@ -504,13 +524,13 @@ export function ModelDetailPage({
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-small"
               >
                 {t('printLogCancelButton')}
-              </button>
-              <button
+              </button>}</>
+              <>{canEdit && <button
                 onClick={submitPrintLogEntry}
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold"
               >
                 {t('printLogSaveButton')}
-              </button>
+              </button>}</>
             </div>
           </div>
         )}
@@ -534,16 +554,16 @@ export function ModelDetailPage({
                   </div>
                   {entry.note && <div className="text-[var(--ink-2)]">{entry.note}</div>}
                 </div>
-                <button
+                <>{canEdit && <button
                   onClick={() =>
                     deletePrintLogEntry(entry.id).catch((e) =>
-                      console.error('[print-log] deleting failed:', e),
+                      (console.error('[print-log] deleting failed:', e), reportMetadataError(e)),
                     )
                   }
                   className="text-[var(--ink-3)] hover:text-red-400 flex-none"
                 >
                   <Icon name="close" size={14} />
-                </button>
+                </button>}</>
               </div>
             ))}
           </div>
@@ -554,7 +574,7 @@ export function ModelDetailPage({
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
         <span className="font-code text-small text-[var(--ink-3)] break-all">{displayName(model.path)}</span>
         <div className="flex gap-2.5 items-center flex-wrap min-w-0">
-          {confirmDelete ? (
+          {!isReadOnly() && (confirmDelete ? (
             <div
               role="group"
               aria-labelledby="detail-delete-question"
@@ -576,21 +596,22 @@ export function ModelDetailPage({
             <button ref={deleteTriggerRef} {...lockProps} onClick={() => setConfirmDelete(true)} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
               {t('delete')}
             </button>
-          )}
+          ))}
           <button
             onClick={onRescanMetadata}
-            className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
+            className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)] disabled:opacity-40 disabled:cursor-default"
+            {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}
           >
             {t('rescanMetadataButton')}
           </button>
           <div className="relative">
-            <button
+            <>{canEdit && <button
               onClick={() => setAddToCollectionMenuOpen((prev) => !prev)}
               className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
             >
               {t('addToCollectionLabel')}
-            </button>
-            {addToCollectionMenuOpen && (
+            </button>}</>
+            {canEdit && addToCollectionMenuOpen && (
               <div data-navigation-menu className="absolute bottom-11 right-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {collections.map((c) => (
                   <button
@@ -613,15 +634,19 @@ export function ModelDetailPage({
               </div>
             )}
           </div>
+          <DownloadFileButton fileId={model.id} />
           <RevealFileButton fileId={model.id} />
+          <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} className="px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-body font-semibold disabled:opacity-50" />
+          <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
+              <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-          {!container && (<button
+          {!container && (<>{!isReadOnly() && <button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}
             className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-body font-semibold disabled:opacity-50"
           >
             {t('openInSlicer')} <Icon name="external" size={14} />
-          </button>)}
+          </button>}</>)}
         </div>
       </footer>
       {slicerError && <p className="text-small text-red-400"><ErrorText error={slicerError} /></p>}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toAppError, type AppError } from '../lib/errors';
 
 /** Keep upload feedback with the model that started the file dialog. */
-export function useImageUpload(modelId: string | undefined, upload: () => void | Promise<void>) {
+export function useImageUpload(modelId: string | undefined, upload: (file?: File) => void | Promise<void>) {
   const [error, setError] = useState<AppError | null>(null);
   const currentModel = useRef(modelId);
   currentModel.current = modelId;
@@ -12,12 +12,13 @@ export function useImageUpload(modelId: string | undefined, upload: () => void |
     setError(null);
   }, [modelId]);
   const dismiss = () => setError(null);
-  const uploadImage = async () => {
+  /** The desktop opens its own dialog (no file); the web passes the file the browser picked. */
+  const uploadImage = async (file?: File) => {
     const id = modelId;
     const token = ++request.current;
     setError(null);
     try {
-      await upload();
+      await upload(file);
     } catch (e) {
       if (currentModel.current === id && request.current === token) setError(toAppError(e));
     }

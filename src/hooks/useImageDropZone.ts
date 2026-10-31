@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWebview } from '../lib/webview';
 import { evaluateImageDrop, isOverDropZone, isWindowsPlatform, type ImageDropRejection } from '../lib/imageDrop';
 
 interface Options {
@@ -29,7 +29,7 @@ export function useImageDropZone<T extends HTMLElement>({ enabled, onImage, onRe
   const isWindows = useRef(isWindowsPlatform()).current;
 
   useEffect(() => {
-    if (!enabled) return;
+    if (import.meta.env.VITE_TARGET === 'web' || !enabled) return;
     // Local flag instead of a "mounted" ref: StrictMode (mount → cleanup → mount)
     // cleanly turns the first registration into a dead one, the second stays active.
     let active = true;

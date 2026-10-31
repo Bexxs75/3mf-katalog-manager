@@ -408,3 +408,131 @@ fn an_import_needs_a_catalog_folder_so_files_are_always_moved() {
     assert!(accepted_import_paths(&f.state, &[file.to_string_lossy().into_owned()], MAX_SCAN_ENTRIES).is_err());
     assert!(file.is_file());
 }
+
+// ---- the import job itself (run with the worker, as the queue does) ----
+
+/// A temporary folder with STL models, for the tests that run the import worker.
+struct JobFixture(PathBuf);
+impl JobFixture {
+    fn new() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "source_import_job_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+    fn stl(&self, seed: u32) -> PathBuf {
+        write(&self.0.join(format!("model_{seed}.stl")), &stl(seed))
+    }
+}
+impl Drop for JobFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn finish_models(service: &ImportJobs, job: &ImportJob, conn: &mut Connection, paths: &[PathBuf]) {
+    let error = run_models(service, job, &mut &mut *conn, paths, &[]).err().map(|error| ImportJobError {
+        kind: "database".into(),
+        message: error.message,
+    });
+    service.finish(job, error);
+}
+
+#[test]
+fn source_folder_files_are_moved_into_the_catalog_folder_like_a_normal_import() {
+    let fixture = JobFixture::new();
+    let catalog = fixture.0.join("catalog");
+    std::fs::create_dir(&catalog).unwrap();
+    let downloads = fixture.0.join("downloads");
+    std::fs::create_dir_all(downloads.join("sub")).unwrap();
+    let a = fixture.stl(1);
+    let b = fixture.stl(2);
+    let left = fixture.stl(3);
+    for (file, target) in [(&a, "a.stl"), (&b, "sub/b.stl"), (&left, "left.stl")] {
+        std::fs::rename(file, downloads.join(target)).unwrap();
+    }
+    let (a, b, left) = (downloads.join("a.stl"), downloads.join("sub/b.stl"), downloads.join("left.stl"));
+
+    let conn = db::connect_in_memory().unwrap();
+    let folder = db::insert_folder_with_parent(&conn, "catalog", None, catalog.to_str().unwrap()).unwrap();
+    db::printer_link::set_setting(&conn, folders::SETTING_CATALOG_BASE_DIR, catalog.to_str().unwrap()).unwrap();
+    let state = AppState {
+        import_jobs: ImportJobs::default(),
+        db: Mutex::new(conn),
+        trash_dir: fixture.0.join("trash"),
+        db_path: fixture.0.join("catalog.db"),
+        sensitive_dirs: Vec::new(),
+    };
+    add_source_folder_with_conn(&state.db.lock().unwrap(), &downloads, &[]).unwrap();
+    let chosen = vec![a.to_string_lossy().into_owned(), b.to_string_lossy().into_owned()];
+    let paths = accepted_import_paths(&state, &chosen, 5000).unwrap();
+    let originals: Vec<_> = paths.iter().map(|p| std::fs::read(p).unwrap()).collect();
+
+    // What `import_source_files` hands to the queue: the same job a normal import with a
+    // catalog folder runs, placing the files into that folder.
+    let service = ImportJobs::default();
+    let job = service.enqueue(ImportSource::Files, Some(folder.to_string()), true, None).unwrap();
+    service.next().unwrap();
+    finish_models(&service, &job, &mut state.db.lock().unwrap(), &paths);
+
+    let result = job.result().unwrap();
+    assert_eq!(result.counts.imported, 2);
+    for (path, original) in paths.iter().zip(&originals) {
+        assert!(!path.exists(), "moved out of the source folder: {}", path.display());
+        assert_eq!(&std::fs::read(catalog.join(path.file_name().unwrap())).unwrap(), original);
+    }
+    assert!(left.is_file(), "files that were not chosen stay");
+    let stored: Vec<String> = db::list_files(&state.db.lock().unwrap()).unwrap().into_iter().map(|file| file.path).collect();
+    assert!(stored.iter().all(|p| Path::new(p).starts_with(&catalog)), "{stored:?}");
+    let again = scan_with_state(&state, 5000).unwrap();
+    let names: Vec<_> = again[0].files.iter().map(|f| f.relative_path.clone()).collect();
+    assert_eq!(names, vec!["left.stl"], "what was taken in is no longer new");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_source_subfolder_swapped_for_a_link_after_the_scan_leaves_the_foreign_file_alone() {
+    let fixture = JobFixture::new();
+    let catalog = fixture.0.join("catalog");
+    let downloads = fixture.0.join("downloads");
+    let foreign = fixture.0.join("foreign");
+    for dir in [&catalog, &downloads.join("sub"), &foreign] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::rename(fixture.stl(1), downloads.join("sub/b.stl")).unwrap();
+    std::fs::copy(downloads.join("sub/b.stl"), foreign.join("b.stl")).unwrap();
+    let conn = db::connect_in_memory().unwrap();
+    let folder = db::insert_folder_with_parent(&conn, "catalog", None, catalog.to_str().unwrap()).unwrap();
+    db::printer_link::set_setting(&conn, folders::SETTING_CATALOG_BASE_DIR, catalog.to_str().unwrap()).unwrap();
+    let state = AppState {
+        import_jobs: ImportJobs::default(),
+        db: Mutex::new(conn),
+        trash_dir: fixture.0.join("trash"),
+        db_path: fixture.0.join("catalog.db"),
+        sensitive_dirs: Vec::new(),
+    };
+    add_source_folder_with_conn(&state.db.lock().unwrap(), &downloads, &[]).unwrap();
+    let chosen = vec![downloads.join("sub/b.stl").to_string_lossy().into_owned()];
+    let (paths, roots) = accepted_import_selection(&state, &chosen, 5000).unwrap();
+
+    std::fs::remove_dir_all(downloads.join("sub")).unwrap();
+    std::os::unix::fs::symlink(&foreign, downloads.join("sub")).unwrap();
+
+    let service = ImportJobs::default();
+    let job = service
+        .enqueue_confined(ImportSource::Files, Some(folder.to_string()), true, None, JobInput::Models(paths.clone()), None, roots)
+        .unwrap();
+    service.next().unwrap();
+    finish_models(&service, &job, &mut state.db.lock().unwrap(), &paths);
+
+    let result = job.result().unwrap();
+    assert_eq!(result.counts.imported, 0);
+    assert_eq!(result.groups.skipped.len(), 1);
+    assert!(foreign.join("b.stl").is_file(), "the foreign file stays where it is");
+    assert_eq!(std::fs::read_dir(&catalog).unwrap().count(), 0);
+    assert!(db::list_files(&state.db.lock().unwrap()).unwrap().is_empty());
+}

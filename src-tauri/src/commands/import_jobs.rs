@@ -1,667 +1,33 @@
-//! Serialized import jobs and their independent control path.
+//! Tauri adapters for the transport-neutral import service.
 use super::*;
+use std::sync::{Arc, atomic::Ordering};
+#[cfg(test)] use std::sync::atomic::AtomicU64;
+use std::time::Duration;
+#[allow(unused_imports)] // Retain the existing desktop DTO/control API.
+pub use katalog_core::import::{self as core, ArchivePath, ArchiveTypes, CatalogGate, CatalogShare,
+    ImportSource, ImportState, ImportCounts, ImportedEntry, NotPlacedEntry, DuplicateEntry, SkippedEntry,
+    ImportGroups, ImportJobError, ImportJobResult, ImportProgress, ImportClock, ImportEvents, ImportReader,
+    TargetChecker, JobInput, NoEvents, RealClock, PathGrants, heartbeat, run_models};
+use super::files;
 #[path = "import_jobs_commands.rs"]
 mod api;
 #[path = "import_jobs_worker.rs"]
 mod worker;
 pub use api::*;
-use serde::Deserialize;
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
-use std::sync::{Arc, Condvar};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use worker::{heartbeat, run_archives, run_models};
-
-#[derive(Debug, Default)]
-pub struct CatalogGate {
-    state: Mutex<(usize, bool)>,
-    changed: Condvar,
-}
-#[derive(Debug)]
-pub struct CatalogShare {
-    gate: Arc<CatalogGate>,
-    exclusive: bool,
-}
-impl CatalogGate {
-    pub fn import(self: &Arc<Self>) -> CatalogShare {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        while state.1 {
-            state = self.changed.wait(state).unwrap_or_else(|e| e.into_inner());
-        }
-        state.0 += 1;
-        CatalogShare {
-            gate: self.clone(),
-            exclusive: false,
-        }
-    }
-    /// Background maintenance yields to queued/running imports and mutations.
-    pub(crate) fn try_background_exclusive(self: &Arc<Self>) -> Result<Option<CatalogShare>, DbError> {
-        let mut state = self.state.lock().map_err(|_| DbError::Other("Katalogsperre beschädigt".into()))?;
-        if state.0 != 0 || state.1 { return Ok(None); }
-        state.1 = true;
-        Ok(Some(CatalogShare { gate: self.clone(), exclusive: true }))
-    }
-
-    pub fn exclusive(self: &Arc<Self>) -> CmdResult<CatalogShare> {
-        let mut state = self.state.lock().map_err(|_| "catalog gate poisoned")?;
-        loop {
-            if state.0 != 0 {
-                return Err(CmdError::expected("importActive"));
-            }
-            if !state.1 {
-                break;
-            }
-            state = self
-                .changed
-                .wait(state)
-                .map_err(|_| "catalog gate poisoned")?;
-        }
-        state.1 = true;
-        Ok(CatalogShare {
-            gate: self.clone(),
-            exclusive: true,
-        })
-    }
-}
-impl Drop for CatalogShare {
-    fn drop(&mut self) {
-        let mut state = self.gate.state.lock().unwrap_or_else(|e| e.into_inner());
-        if self.exclusive {
-            state.1 = false;
-        } else {
-            state.0 -= 1;
-        }
-        self.gate.changed.notify_all();
-    }
-}
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum ImportSource {
-    Files,
-    Folder,
-    FolderContents,
-    Dropped,
-    SetupAdopt,
-    Archive,
-}
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-#[repr(u8)]
-pub enum ImportState {
-    Queued,
-    Scanning,
-    Importing,
-    Placing,
-    Cancelling,
-    Cancelled,
-    Finished,
-    Failed,
-}
-impl ImportState {
-    fn from_control(value: u8) -> Self {
-        match value {
-            0 => Self::Queued,
-            1 => Self::Scanning,
-            2 => Self::Importing,
-            3 => Self::Placing,
-            4 => Self::Cancelling,
-            5 => Self::Cancelled,
-            6 => Self::Finished,
-            _ => Self::Failed,
-        }
-    }
-    fn terminal(self) -> bool {
-        matches!(self, Self::Cancelled | Self::Finished | Self::Failed)
-    }
-}
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportCounts {
-    pub imported: usize,
-    pub imported_not_placed: usize,
-    pub duplicate: usize,
-    pub skipped: usize,
-    pub archive: usize,
-    pub known: usize,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportedEntry {
-    pub path: String,
-    pub file_id: String,
-    pub folder_id: Option<String>,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NotPlacedEntry {
-    pub path: String,
-    pub file_id: String,
-    pub reason: String,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DuplicateEntry {
-    pub path: String,
-    pub kind: String,
-    pub existing_file_id: Option<String>,
-    /// File name of the catalog entry that blocked this one; only set for
-    /// "path"/"hash" matches that resolve to exactly one live catalog file.
-    pub existing_file_name: Option<String>,
-}
-impl DuplicateEntry {
-    /// `matches` come from the catalog lookup. Several matches (or none, e.g.
-    /// the row sits in the trash) are ambiguous, so no name is shown rather
-    /// than a guessed one.
-    pub fn new(path: String, kind: &str, matches: &[crate::db::ExistingFileRef]) -> Self {
-        let single = match matches {
-            [one] => Some(one),
-            _ => None,
-        };
-        Self {
-            path,
-            kind: kind.into(),
-            existing_file_id: single.map(|m| m.id.to_string()),
-            existing_file_name: single.map(|m| m.name.clone()),
-        }
-    }
-}
-#[derive(Debug, Clone, Serialize)]
-pub struct SkippedEntry {
-    pub path: String,
-    pub reason: String,
-}
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportGroups {
-    pub imported: Vec<ImportedEntry>,
-    pub imported_not_placed: Vec<NotPlacedEntry>,
-    pub duplicate: Vec<DuplicateEntry>,
-    pub skipped: Vec<SkippedEntry>,
-    pub archive: Vec<serde_json::Value>,
-}
-impl ImportGroups {
-    fn counts(&self) -> ImportCounts {
-        let mut c = ImportCounts {
-            imported: self.imported.len(),
-            imported_not_placed: self.imported_not_placed.len(),
-            duplicate: self.duplicate.len(),
-            skipped: self.skipped.len(),
-            archive: self.archive.len(),
-            known: 0,
-        };
-        c.known = c.imported + c.imported_not_placed + c.duplicate + c.skipped + c.archive;
-        c
-    }
-}
-#[derive(Debug, Clone, Serialize)]
-pub struct ImportJobError {
-    pub kind: String,
-    pub message: String,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportJobResult {
-    pub job_id: String,
-    pub source: ImportSource,
-    pub state: ImportState,
-    pub parent_job_id: Option<String>,
-    pub job_error: Option<ImportJobError>,
-    pub scan_complete: bool,
-    pub archives_skipped: usize,
-    pub placement_required: bool,
-    pub groups: ImportGroups,
-    pub counts: ImportCounts,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportProgress {
-    pub job_id: String,
-    pub state: ImportState,
-    pub scan_complete: bool,
-    pub archives_skipped: usize,
-    pub total: Option<usize>,
-    pub found: usize,
-    pub done: usize,
-    pub in_flight: usize,
-    pub counts: ImportCounts,
-    pub current: Option<String>,
-    pub elapsed_ms: u64,
-}
-pub trait ImportClock: Send + Sync {
-    fn now_ms(&self) -> u64;
-}
-struct RealClock(Instant);
-impl ImportClock for RealClock {
-    fn now_ms(&self) -> u64 {
-        self.0.elapsed().as_millis() as u64
-    }
-}
-pub trait ImportEvents: Send + Sync {
-    fn emit(&self, name: &str, payload: serde_json::Value);
-}
-struct NoEvents;
-impl ImportEvents for NoEvents {
-    fn emit(&self, _: &str, _: serde_json::Value) {}
-}
-struct JobData {
-    state: ImportState,
-    scan_complete: bool,
-    archives_skipped: usize,
-    known: usize,
-    candidates: Vec<String>,
-    groups: ImportGroups,
-    in_flight: usize,
-    current: Option<String>,
-    result: Option<ImportJobResult>,
-    finished_at: Option<u64>,
-    share: Option<CatalogShare>,
-}
-pub struct ImportJob {
-    pub id: String,
-    pub source: ImportSource,
-    pub target_folder_id: Option<String>,
-    pub placement_required: bool,
-    pub parent_job_id: Option<String>,
-    pub cancel: AtomicBool,
-    /// Folders the job's files must stay below (empty: no restriction). Set for imports
-    /// from source folders, where a folder swapped for a link after the scan must not
-    /// lead the worker to a file elsewhere.
-    confine_to: Vec<PathBuf>,
-    control_state: AtomicU8,
-    terminal_at: AtomicU64,
-    input: JobInput,
-    legacy: Mutex<Option<ImportResultDto>>,
-    archive_legacy: Mutex<Option<ArchiveImportResultDto>>,
-    started: u64,
-    data: Mutex<JobData>,
-    clock: Arc<dyn ImportClock>,
-    events: Arc<dyn ImportEvents>,
-}
-impl ImportJob {
-    fn result(&self) -> Option<ImportJobResult> {
-        self.data.lock().unwrap().result.clone()
-    }
-    fn progress(&self) -> ImportProgress {
-        let d = self.data.lock().unwrap();
-        let counts = d.groups.counts();
-        ImportProgress {
-            job_id: self.id.clone(),
-            state: ImportState::from_control(self.control_state.load(Ordering::Acquire)),
-            scan_complete: d.scan_complete,
-            archives_skipped: d.archives_skipped,
-            total: d.scan_complete.then_some(d.known),
-            found: d.known,
-            done: counts.known,
-            in_flight: d.in_flight,
-            counts,
-            current: d.current.clone(),
-            elapsed_ms: self.clock.now_ms().saturating_sub(self.started),
-        }
-    }
-    fn event(&self) {
-        self.events.emit(
-            "import://progress",
-            serde_json::to_value(self.progress()).unwrap(),
-        );
-    }
-    fn transition(&self, state: ImportState) {
-        {
-            let mut d = self.data.lock().unwrap();
-            if d.state.terminal() {
-                return;
-            }
-            d.state = if self.cancel.load(Ordering::Acquire) && !state.terminal() {
-                ImportState::Cancelling
-            } else {
-                state
-            };
-            self.control_state.store(d.state as u8, Ordering::Release);
-        }
-        self.event();
-    }
-    fn finish(&self, mut error: Option<ImportJobError>) {
-        let result = {
-            let mut d = self.data.lock().unwrap();
-            if d.state.terminal() {
-                return;
-            }
-            // A parser panic or infrastructure failure still accounts for every
-            // scanned candidate. Committed rows already have their own group.
-            let mut resolved: HashMap<String, usize> = HashMap::new();
-            for path in d
-                .groups
-                .imported
-                .iter()
-                .map(|e| e.path.clone())
-                .chain(d.groups.imported_not_placed.iter().map(|e| e.path.clone()))
-                .chain(d.groups.duplicate.iter().map(|e| e.path.clone()))
-                .chain(d.groups.skipped.iter().map(|e| e.path.clone()))
-                .chain(
-                    d.groups
-                        .archive
-                        .iter()
-                        .filter_map(|e| e["path"].as_str().map(String::from)),
-                )
-            {
-                *resolved.entry(path).or_default() += 1;
-            }
-            for path in d.candidates.clone() {
-                let remaining = resolved.entry(path.clone()).or_default();
-                if *remaining > 0 {
-                    *remaining -= 1;
-                } else {
-                    d.groups.skipped.push(SkippedEntry {
-                        path,
-                        reason: "notStarted".into(),
-                    });
-                    if error.is_none() && !self.cancel.load(Ordering::Acquire) {
-                        error = Some(ImportJobError {
-                            kind: "internal".into(),
-                            message: "Import ended before processing all candidates".into(),
-                        });
-                    }
-                }
-            }
-            d.state = if error.is_some() {
-                ImportState::Failed
-            } else if self.cancel.load(Ordering::Acquire) {
-                ImportState::Cancelled
-            } else {
-                ImportState::Finished
-            };
-            let result = ImportJobResult {
-                job_id: self.id.clone(),
-                source: self.source,
-                state: d.state,
-                parent_job_id: self.parent_job_id.clone(),
-                job_error: error,
-                scan_complete: d.scan_complete,
-                archives_skipped: d.archives_skipped,
-                placement_required: self.placement_required,
-                groups: d.groups.clone(),
-                counts: d.groups.counts(),
-            };
-            d.in_flight = 0;
-            d.current = None;
-            d.finished_at = Some(self.clock.now_ms());
-            self.terminal_at
-                .store(self.clock.now_ms(), Ordering::Release);
-            self.control_state.store(d.state as u8, Ordering::Release);
-            d.result = Some(result.clone());
-            d.share.take();
-            result
-        };
-        for line in skipped_log_lines(&result.groups, log::max_level() >= log::LevelFilter::Debug) {
-            log::warn!(target: "import", "{line}");
-        }
-        log::info!(target: "import", "{}", job_summary(&result, self.clock.now_ms().saturating_sub(self.started) as f64 / 1000.0));
-        self.event();
-        self.events
-            .emit("import://finished", serde_json::to_value(result).unwrap());
-    }
-}
+use worker::run_archives;
 #[derive(Default)]
-struct Queue {
-    waiting: VecDeque<Arc<ImportJob>>,
-    jobs: HashMap<String, Arc<ImportJob>>,
-    running: Option<Arc<ImportJob>>,
-}
-pub struct ImportJobs {
-    reader: Arc<dyn ImportReader>,
-    target: Arc<dyn TargetChecker>,
-    scan_limit: usize,
-    pub drops: PathGrants,
-    pub pickers: PathGrants,
-    archives: Mutex<HashMap<(String, PathBuf), ArchiveGrant>>,
-    queue: Mutex<Queue>,
-    clock: Arc<dyn ImportClock>,
-    events: Arc<dyn ImportEvents>,
-    pub gate: Arc<CatalogGate>,
-}
-impl Default for ImportJobs {
-    fn default() -> Self {
-        Self {
-            reader: Arc::new(FileReader),
-            target: Arc::new(DiskTarget),
-            scan_limit: usize::MAX,
-            drops: PathGrants::default(),
-            pickers: PathGrants::default(),
-            archives: Mutex::new(HashMap::new()),
-            queue: Mutex::new(Queue::default()),
-            clock: Arc::new(RealClock(Instant::now())),
-            events: Arc::new(NoEvents),
-            gate: Arc::new(CatalogGate::default()),
-        }
-    }
-}
-impl ImportJobs {
-    #[cfg(test)]
-    fn enqueue(
-        &self,
-        source: ImportSource,
-        target: Option<String>,
-        placement: bool,
-        parent: Option<String>,
-    ) -> CmdResult<Arc<ImportJob>> {
-        self.enqueue_work(
-            source,
-            target,
-            placement,
-            parent,
-            JobInput::Models(Vec::new()),
-        )
-    }
-    #[cfg(test)]
-    fn enqueue_work(
-        &self,
-        source: ImportSource,
-        target: Option<String>,
-        placement: bool,
-        parent: Option<String>,
-        input: JobInput,
-    ) -> CmdResult<Arc<ImportJob>> {
-        self.enqueue_checked(source, target, placement, parent, input, None)
-    }
-    fn enqueue_checked(
-        &self,
-        source: ImportSource,
-        target: Option<String>,
-        placement: bool,
-        parent: Option<String>,
-        input: JobInput,
-        error: Option<ImportJobError>,
-    ) -> CmdResult<Arc<ImportJob>> {
-        self.enqueue_confined(source, target, placement, parent, input, error, Vec::new())
-    }
-    #[allow(clippy::too_many_arguments)]
-    fn enqueue_confined(
-        &self,
-        source: ImportSource,
-        target: Option<String>,
-        placement: bool,
-        parent: Option<String>,
-        input: JobInput,
-        error: Option<ImportJobError>,
-        confine_to: Vec<PathBuf>,
-    ) -> CmdResult<Arc<ImportJob>> {
-        let share = self.gate.import();
-        static SEQUENCE: AtomicU64 = AtomicU64::new(0);
-        let id = format!(
-            "{:x}-{:x}-{:x}",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos(),
-            std::process::id(),
-            SEQUENCE.fetch_add(1, Ordering::Relaxed)
-        );
-        let job = Arc::new(ImportJob {
-            id: id.clone(),
-            source,
-            target_folder_id: target,
-            placement_required: placement,
-            parent_job_id: parent,
-            confine_to,
-            input,
-            legacy: Mutex::new(None),
-            archive_legacy: Mutex::new(None),
-            cancel: AtomicBool::new(false),
-            control_state: AtomicU8::new(ImportState::Queued as u8),
-            terminal_at: AtomicU64::new(u64::MAX),
-            started: self.clock.now_ms(),
-            clock: self.clock.clone(),
-            events: self.events.clone(),
-            data: Mutex::new(JobData {
-                state: ImportState::Queued,
-                scan_complete: false,
-                archives_skipped: 0,
-                known: 0,
-                candidates: Vec::new(),
-                groups: ImportGroups::default(),
-                in_flight: 0,
-                current: None,
-                result: None,
-                finished_at: None,
-                share: Some(share),
-            }),
-        });
-        if let (JobInput::Models(paths), None) = (&job.input, &error) {
-            let mut grants = self.archives.lock().unwrap();
-            for (index, path) in paths
-                .iter()
-                .enumerate()
-                .filter(|(_, p)| p.is_file() && crate::archive::is_archive_path(p))
-            {
-                grants.insert(
-                    (job.id.clone(), path.clone()),
-                    ArchiveGrant {
-                        parent: job.id.clone(),
-                        id: format!("{}-{index}", job.id),
-                        expires: None,
-                    },
-                );
-            }
-        }
-        let mut q = self.queue.lock().map_err(|_| "import queue poisoned")?;
-        q.jobs.retain(|_, job| {
-            let terminal_at = job.terminal_at.load(Ordering::Acquire);
-            terminal_at == u64::MAX || self.clock.now_ms().saturating_sub(terminal_at) < 600_000
-        });
-        q.jobs.insert(id, job.clone());
-        if error.is_none() {
-            q.waiting.push_back(job.clone());
-        }
-        drop(q);
-        if let Some(error) = error {
-            job.finish(Some(error));
-        } else {
-            job.event();
-        }
-        Ok(job)
-    }
-    fn next(&self) -> Option<Arc<ImportJob>> {
-        let mut q = self.queue.lock().unwrap();
-        if q.running.as_ref().is_some_and(|j| {
-            !ImportState::from_control(j.control_state.load(Ordering::Acquire)).terminal()
-        }) {
-            return None;
-        }
-        q.running = None;
-        while let Some(job) = q.waiting.pop_front() {
-            if ImportState::from_control(job.control_state.load(Ordering::Acquire)).terminal() {
-                continue;
-            }
-            q.running = Some(job.clone());
-            drop(q);
-            job.transition(ImportState::Scanning);
-            return Some(job);
-        }
-        None
-    }
-    fn get(&self, id: &str) -> Option<Arc<ImportJob>> {
-        let job = self.queue.lock().unwrap().jobs.get(id)?.clone();
-        let terminal_at = job.terminal_at.load(Ordering::Acquire);
-        if terminal_at != u64::MAX && self.clock.now_ms().saturating_sub(terminal_at) >= 600_000 {
-            return None;
-        }
-        Some(job)
-    }
-    fn cancel(&self, id: &str) -> Option<ImportState> {
-        let job = self.get(id)?;
-        loop {
-            let state = ImportState::from_control(job.control_state.load(Ordering::Acquire));
-            if state.terminal() || state == ImportState::Cancelling {
-                return Some(state);
-            }
-            job.cancel.store(true, Ordering::Release);
-            if job
-                .control_state
-                .compare_exchange(
-                    state as u8,
-                    ImportState::Cancelling as u8,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                )
-                .is_err()
-            {
-                continue;
-            }
-            if state == ImportState::Queued {
-                self.archives
-                    .lock()
-                    .unwrap()
-                    .retain(|(parent, _), _| *parent != job.id);
-                job.finish(None);
-                return Some(ImportState::Cancelled);
-            }
-            // Event delivery may wait for a snapshot, the control response does not.
-            std::thread::spawn(move || job.event());
-            return Some(ImportState::Cancelling);
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn queued_cancellation_is_terminal_without_running_work() {
-        let service = ImportJobs::default();
-        let first = service
-            .enqueue(ImportSource::Dropped, None, false, None)
-            .unwrap();
-        let second = service
-            .enqueue(ImportSource::Dropped, None, false, None)
-            .unwrap();
-        assert_eq!(service.next().unwrap().id, first.id);
-        assert_eq!(service.cancel(&second.id), Some(ImportState::Cancelled));
-        assert!(service.next().is_none());
-        assert_eq!(second.result().unwrap().counts.known, 0);
-    }
-    #[test]
-    fn import_share_excludes_writers_until_last_queued_job_finishes() {
-        let gate = std::sync::Arc::new(CatalogGate::default());
-        let share = gate.import();
-        assert_eq!(gate.exclusive().unwrap_err().message, "importActive");
-        drop(share);
-        assert!(gate.exclusive().is_ok());
-    }
-}
-
-/// The parser is injectable so a slow read cannot hide a blocked control path.
-pub trait ImportReader: Send + Sync {
-    fn read(&self, path: &Path) -> CmdResult<NewFile>;
-}
+pub struct DesktopArchives;
+impl ArchivePath for ArchiveRequest { fn path(&self) -> &Path { Path::new(&self.path) } }
+impl ArchiveTypes for DesktopArchives { type Request = ArchiveRequest; type Result = ArchiveImportResultDto; }
+pub type ImportJobs = core::ImportJobs<DesktopArchives>;
+pub type ImportJob = core::ImportJob<DesktopArchives>;
 struct FileReader;
 impl ImportReader for FileReader {
-    fn read(&self, path: &Path) -> CmdResult<NewFile> {
-        let mut file = files::read_import_model_file(path, None)?;
-        file.content_hash = Some(files::compute_content_hash(path)?);
+    fn read(&self, path: &Path) -> core::ImportResult<NewFile> {
+        let mut file = files::read_import_model_file(path, None).map_err(core::ImportError::from)?;
+        file.content_hash = Some(files::compute_content_hash(path).map_err(core::ImportError::from)?);
         Ok(file)
     }
-}
-pub trait TargetChecker: Send + Sync {
-    fn exists(&self, path: &Path) -> bool;
 }
 struct DiskTarget;
 impl TargetChecker for DiskTarget {
@@ -669,185 +35,31 @@ impl TargetChecker for DiskTarget {
         path.is_dir()
     }
 }
-#[derive(Clone)]
-enum JobInput {
-    Models(Vec<PathBuf>),
-    Archives {
-        target: PathBuf,
-        requests: Vec<ArchiveRequest>,
-        delete: bool,
-    },
+fn desktop_import_diagnostic(error: &core::ImportError) -> CmdError {
+    CmdError::from(error.clone())
 }
 struct AppEvents(tauri::AppHandle);
 impl ImportEvents for AppEvents {
+    fn diagnostic(&self, error: &core::ImportError) { let _ = desktop_import_diagnostic(error); }
+    fn finished(&self, result: &ImportJobResult, seconds: f64) {
+        for line in skipped_log_lines(&result.groups, log::max_level() >= log::LevelFilter::Debug) { log::warn!(target: "import", "{line}"); }
+        log::info!(target: "import", "{}", job_summary(result, seconds));
+    }
     fn emit(&self, name: &str, payload: serde_json::Value) {
         use tauri::Emitter;
         let _ = self.0.emit(name, payload);
     }
 }
-impl ImportJobs {
-    pub fn for_app(app: tauri::AppHandle) -> Self {
-        Self {
-            events: Arc::new(AppEvents(app)),
-            ..Self::default()
-        }
-    }
+pub trait DesktopJobs: Sized {
+    #[cfg(test)] fn default() -> Self;
+    fn for_app(app: tauri::AppHandle) -> Self;
+    fn authorize_archives(&self, sensitive: &[PathBuf], target: &Path, target_approved: bool, requests: &[ArchiveRequest], parent: Option<&str>) -> CmdResult<Option<String>>;
+    #[cfg(test)] fn test_handoff(&self, paths: Vec<PathBuf>) -> String;
 }
-
-#[derive(Default)]
-pub struct PathGrants(Mutex<HashMap<PathBuf, u64>>);
-impl PathGrants {
-    pub fn register(&self, paths: &[PathBuf], now: u64, ttl: u64) {
-        let mut grants = self.0.lock().unwrap();
-        grants.retain(|_, expiry| *expiry > now);
-        for path in paths {
-            grants.insert(path.clone(), now.saturating_add(ttl));
-        }
-    }
-    fn claim(&self, paths: &[PathBuf], now: u64) -> bool {
-        let mut grants = self.0.lock().unwrap();
-        let unique: HashSet<_> = paths.iter().collect();
-        if !unique
-            .iter()
-            .all(|path| grants.get(*path).is_some_and(|expiry| *expiry > now))
-        {
-            return false;
-        }
-        for path in unique {
-            grants.remove(path);
-        }
-        true
-    }
-}
-struct ArchiveGrant {
-    parent: String,
-    id: String,
-    expires: Option<u64>,
-}
-
-#[cfg(test)]
-#[path = "import_job_tests.rs"]
-mod import_job_tests;
-
-impl ImportJobs {
-    pub fn observe_drop(&self, paths: &[PathBuf]) {
-        self.drops.register(paths, self.clock.now_ms(), 60_000);
-    }
-    pub fn observe_picker(&self, path: &Path) {
-        self.pickers
-            .register(&[path.to_path_buf()], self.clock.now_ms(), 600_000);
-    }
-    /// Consumes the proof that the user chose `path` in a file dialog or dropped it on the
-    /// window. Single use, so a path is never accepted twice.
-    pub(super) fn claim_user_selected(&self, path: &Path) -> bool {
-        let now = self.clock.now_ms();
-        let paths = [path.to_path_buf()];
-        self.pickers.claim(&paths, now) || self.drops.claim(&paths, now)
-    }
-}
-
-impl ImportJobs {
-    pub(super) fn authorize_models(
-        &self,
-        source: ImportSource,
-        paths: &[PathBuf],
-        allow_picker: bool,
-        sensitive: &[PathBuf],
-    ) -> CmdResult<ImportSource> {
-        let source = match source {
-            ImportSource::Dropped if self.drops.claim(paths, self.clock.now_ms()) => source,
-            ImportSource::Dropped
-                if allow_picker
-                    && paths.len() == 1
-                    && self.pickers.claim(paths, self.clock.now_ms()) =>
-            {
-                ImportSource::SetupAdopt
-            }
-            ImportSource::SetupAdopt if self.pickers.claim(paths, self.clock.now_ms()) => source,
-            ImportSource::Files | ImportSource::Folder | ImportSource::FolderContents => source,
-            _ => return Err(CmdError::expected("unauthorized")),
-        };
-        for path in paths {
-            if path.is_dir() {
-                reject_if_sensitive_path(path, sensitive)
-                    .map_err(|_| CmdError::expected("unauthorized"))?;
-            }
-        }
-        Ok(source)
-    }
-}
-
-impl ImportJobs {
-    fn finish(&self, job: &ImportJob, error: Option<ImportJobError>) {
-        let pending: HashSet<String> = job
-            .data
-            .lock()
-            .unwrap()
-            .groups
-            .archive
-            .iter()
-            .filter_map(|entry| entry["grantId"].as_str().map(String::from))
-            .collect();
-        self.archives.lock().unwrap().retain(|_, grant| {
-            if grant.parent != job.id {
-                return grant
-                    .expires
-                    .is_none_or(|expiry| expiry > self.clock.now_ms());
-            }
-            if !pending.contains(&grant.id) {
-                return false;
-            }
-            grant.expires = Some(self.clock.now_ms().saturating_add(1_800_000));
-            true
-        });
-        job.finish(error);
-    }
-    fn claim_archives(
-        &self,
-        requests: &[ArchiveRequest],
-        parent: Option<&str>,
-    ) -> Option<Option<String>> {
-        let mut grants = self.archives.lock().unwrap();
-        let now = self.clock.now_ms();
-        let mut seen = HashSet::new();
-        let mut selected = Vec::new();
-        for request in requests {
-            if !seen.insert(&request.path) {
-                return None;
-            }
-            let key = grants
-                .iter()
-                .filter(|((job, path), grant)| {
-                    path == Path::new(&request.path)
-                        && parent.is_none_or(|p| p == job)
-                        && grant.expires.is_some_and(|expiry| expiry > now)
-                })
-                .map(|(key, _)| key)
-                .max()
-                .cloned()?;
-            selected.push(key);
-        }
-        let parents: HashSet<_> = selected.iter().map(|(parent, _)| parent.clone()).collect();
-        if parents.len() > 1 {
-            return None;
-        }
-        for key in selected {
-            grants.remove(&key);
-        }
-        Some(if parents.len() == 1 {
-            parents.into_iter().next()
-        } else {
-            None
-        })
-    }
-}
-
-#[cfg(test)]
-#[path = "import_handoff_tests.rs"]
-mod import_handoff_tests;
-
-impl ImportJobs {
-    pub(super) fn authorize_archives(
+impl DesktopJobs for ImportJobs {
+    #[cfg(test)] fn default() -> Self { Self::new(Arc::new(FileReader), Arc::new(DiskTarget), Arc::new(RealClock::default()), Arc::new(NoEvents)) }
+    fn for_app(app: tauri::AppHandle) -> Self { Self::new(Arc::new(FileReader), Arc::new(DiskTarget), Arc::new(RealClock::default()), Arc::new(AppEvents(app))) }
+    fn authorize_archives(
         &self,
         sensitive: &[PathBuf],
         target: &Path,
@@ -864,56 +76,18 @@ impl ImportJobs {
         self.claim_archives(requests, parent)
             .ok_or_else(|| CmdError::expected("unauthorized"))
     }
-    #[cfg(test)]
-    pub(super) fn test_handoff(&self, paths: Vec<PathBuf>) -> String {
-        let job = self
-            .enqueue_work(
-                ImportSource::Dropped,
-                None,
-                false,
-                None,
-                JobInput::Models(paths.clone()),
-            )
-            .unwrap();
+
+    #[cfg(test)] fn test_handoff(&self, paths: Vec<PathBuf>) -> String {
+        let job = self.enqueue_work(ImportSource::Dropped,None,false,None,JobInput::Models(paths.clone())).unwrap();
         self.next().unwrap();
         let mut conn = db::connect_in_memory().unwrap();
         run_models(self, &job, &mut &mut conn, &paths, &[]).unwrap();
-        self.finish(&job, None);
-        job.id.clone()
+        self.finish(&job,None); job.id.clone()
     }
 }
-
-impl ImportJobs {
-    fn partition_archives(
-        &self,
-        requests: Vec<ArchiveRequest>,
-    ) -> Vec<(Option<String>, Vec<ArchiveRequest>)> {
-        let grants = self.archives.lock().unwrap();
-        let mut groups: Vec<(Option<String>, Vec<ArchiveRequest>)> = Vec::new();
-        for request in requests {
-            let parent = grants
-                .iter()
-                .filter(|((_, path), grant)| {
-                    path == Path::new(&request.path)
-                        && grant
-                            .expires
-                            .is_some_and(|expiry| expiry > self.clock.now_ms())
-                })
-                .map(|((parent, _), _)| parent.clone())
-                .max();
-            if let Some((_, group)) = groups
-                .last_mut()
-                .filter(|(previous, _)| *previous == parent)
-            {
-                group.push(request);
-            } else {
-                groups.push((parent, vec![request]));
-            }
-        }
-        groups
-    }
-}
-
+#[cfg(test)]
+#[path = "import_handoff_tests.rs"]
+mod import_handoff_tests;
 fn skip_reason(key: &str) -> &str {
     match key {
         "empty" => "Leere Datei (0 Byte)",
@@ -1000,9 +174,9 @@ mod logging_tests {
     fn final_summary_includes_source_archive_models_and_pending_archives() {
         let service = ImportJobs::default();
         let job = service.enqueue(ImportSource::Archive, None, false, None).unwrap();
-        job.data.lock().unwrap().groups.archive.push(serde_json::json!({"state":"finished","models":{"imported":[{},{}],"duplicates":[{}],"skipped":[{}]}}));
-        job.data.lock().unwrap().groups.archive.push(serde_json::json!({"state":"pending"}));
-        job.finish(None);
+        job.push_archive(serde_json::json!({"state":"finished","models":{"imported":[{},{}],"duplicates":[{}],"skipped":[{}]}}));
+        job.push_archive(serde_json::json!({"state":"pending"}));
+        service.finish(&job, None);
         let result = job.result().unwrap();
         assert_eq!(job_summary(&result, 1.34), "Archiv: 2 importiert, 1 Duplikate, 1 übersprungen, 1 Archive offen, 1.3 s");
         assert!(skipped_log_lines(&ImportGroups::default(), false).is_empty());
@@ -1019,4 +193,84 @@ fn skipped_log_filename_replacement_uses_the_existing_preview_rules() {
     assert!(!preview.contains("broken.obj"));
     assert!(preview.contains("<datei>"));
     assert!(preview.contains("WARN [import] übersprungen:"));
+}
+
+#[cfg(test)]
+#[test]
+fn desktop_reader_and_error_adapter_preserve_import_contract() {
+    let dir = unique_test_dir("desktop_import_reader_adapter");
+    let path = dir.join("model.stl");
+    let mut bytes = vec![0; 80]; bytes.extend(1u32.to_le_bytes());
+    for v in [0.0f32,0.,1.,0.,0.,0.,10.,0.,0.,0.,10.,1.] { bytes.extend(v.to_le_bytes()); }
+    bytes.extend(0u16.to_le_bytes()); std::fs::write(&path,bytes).unwrap();
+    let row = FileReader.read(&path).unwrap();
+    assert_eq!(row.path, path.to_string_lossy());
+    assert_eq!(row.content_hash, Some(files::compute_content_hash(&path).unwrap()));
+    std::fs::write(&path, b"invalid").unwrap();
+    assert!(!FileReader.read(&path).unwrap_err().expected);
+    for expected in [true,false] {
+        let original = core::ImportError { message: "unchanged".into(), expected, code: Some(GeometryErrorCode::Unreadable) };
+        let encoded = serde_json::to_value(&original).unwrap();
+        let desktop = CmdError::from(original);
+        assert_eq!(serde_json::to_value(&desktop).unwrap(),encoded);
+        assert_eq!(serde_json::to_value(core::ImportError::from(desktop)).unwrap(),encoded);
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[cfg(test)]
+#[test]
+fn desktop_placement_diagnostics_keep_failed_rollback_recovery_details() {
+    use std::cell::RefCell;
+    thread_local! { static BLOCK_ROLLBACK: RefCell<Option<PathBuf>> = const { RefCell::new(None) }; }
+    struct Diagnostics(Mutex<Vec<CmdError>>);
+    impl ImportEvents for Diagnostics {
+        fn emit(&self, _: &str, _: serde_json::Value) {}
+        fn diagnostic(&self, error: &core::ImportError) {
+            // Same diagnostic boundary as AppEvents: preserve the original error
+            // fields and let CmdError apply the existing desktop logging policy.
+            self.0.lock().unwrap().push(desktop_import_diagnostic(error));
+        }
+    }
+    let dir = unique_test_dir("import_failed_rollback_diagnostics");
+    let source = dir.join("model.stl");
+    let target = dir.join("target");
+    std::fs::create_dir(&target).unwrap();
+    let mut bytes = vec![0; 80]; bytes.extend(1u32.to_le_bytes());
+    for v in [0.0f32,0.,1.,0.,0.,0.,10.,0.,0.,0.,10.,1.] { bytes.extend(v.to_le_bytes()); }
+    bytes.extend(0u16.to_le_bytes()); std::fs::write(&source,&bytes).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let target_id = db::insert_folder_with_parent(&conn,"target",None,target.to_str().unwrap()).unwrap();
+    conn.execute_batch("CREATE TRIGGER fail_placement BEFORE UPDATE OF folder_id ON files BEGIN SELECT RAISE(ABORT, 'forced placement failure'); END;").unwrap();
+    BLOCK_ROLLBACK.with(|path| *path.borrow_mut() = Some(source.clone()));
+    conn.trace_v2(rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT, Some(|event| {
+        let rusqlite::trace::TraceEvent::Stmt(_, sql) = event else { return; };
+        if sql.starts_with("UPDATE files SET folder_id") {
+            BLOCK_ROLLBACK.with(|path| {
+                if let Some(path) = path.borrow_mut().take() { std::fs::write(path,b"concurrent replacement").unwrap(); }
+            });
+        }
+    }));
+    let diagnostics = Arc::new(Diagnostics(Mutex::new(Vec::new())));
+    let service = ImportJobs::new(Arc::new(FileReader),Arc::new(DiskTarget),Arc::new(RealClock::default()),diagnostics.clone());
+    let job = service.enqueue_work(ImportSource::Files,Some(target_id.to_string()),true,None,JobInput::Models(vec![source.clone()])).unwrap();
+    service.next().unwrap();
+    run_models(&service,&job,&mut &mut conn,std::slice::from_ref(&source),&[]).unwrap();
+    service.finish(&job,None);
+    let result = job.result().unwrap();
+    assert_eq!(result.state,ImportState::Finished);
+    assert_eq!(result.groups.imported_not_placed[0].reason,"moveFailed");
+    assert_eq!(std::fs::read(target.join("model.stl")).unwrap(),bytes);
+    assert_eq!(std::fs::read(&source).unwrap(),b"concurrent replacement");
+    let recorded = diagnostics.0.lock().unwrap();
+    assert_eq!(recorded.len(),1,"handled placement errors must reach desktop diagnostics");
+    let error = &recorded[0];
+    assert!(!error.expected);
+    assert!(error.message.contains("forced placement failure"));
+    assert!(error.message.contains("UND Rollback der Dateiverschiebung fehlgeschlagen"));
+    assert!(error.message.contains(target.join("model.stl").to_str().unwrap()));
+    assert!(error.message.contains(source.to_str().unwrap()));
+    drop(recorded);
+    BLOCK_ROLLBACK.with(|path| *path.borrow_mut() = None);
+    let _ = std::fs::remove_dir_all(dir);
 }

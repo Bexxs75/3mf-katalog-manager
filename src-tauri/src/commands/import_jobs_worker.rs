@@ -1,456 +1,5 @@
-//! Blocking import work; catalog locks only cover database access.
+//! Desktop archive execution adapter.
 use super::*;
-
-fn scan_candidates(
-    job: &ImportJob,
-    roots: &[PathBuf],
-    limit: usize,
-) -> Vec<(PathBuf, Option<PathBuf>)> {
-    scan_candidates_observed(job, roots, limit, || {})
-}
-
-fn scan_candidates_observed(
-    job: &ImportJob,
-    roots: &[PathBuf],
-    limit: usize,
-    mut observe: impl FnMut(),
-) -> Vec<(PathBuf, Option<PathBuf>)> {
-    fn visit(
-        job: &ImportJob,
-        path: &Path,
-        root: Option<&Path>,
-        out: &mut Vec<(PathBuf, Option<PathBuf>)>,
-        limit: usize,
-        observe: &mut impl FnMut(),
-    ) -> bool {
-        if job.cancel.load(Ordering::Acquire) || out.len() >= limit {
-            return false;
-        }
-        if path.is_symlink()
-            || (job.source == ImportSource::FolderContents
-                && root != Some(path)
-                && files::is_ignored_import_path(path))
-        {
-            return true;
-        }
-        if path.is_dir() {
-            job.data.lock().unwrap().current = Some(path.to_string_lossy().into_owned());
-            observe();
-            if let Ok(entries) = std::fs::read_dir(path) {
-                for entry in entries.flatten() {
-                    if !visit(job, &entry.path(), root, out, limit, observe) {
-                        return false;
-                    }
-                }
-            }
-        } else if root.is_none() || files::is_supported_extension(path) {
-            let folder_root = if job.source == ImportSource::FolderContents {
-                None
-            } else {
-                root.map(Path::to_path_buf)
-            };
-            out.push((path.to_path_buf(), folder_root));
-            let mut data = job.data.lock().unwrap();
-            data.known = out.len();
-            data.current = path.parent().map(|p| p.to_string_lossy().into_owned());
-            drop(data);
-            observe();
-        } else if crate::archive::is_archive_path(path) && path.is_file() {
-            // Count only archives the existing folder scan actually visits and skips.
-            job.data.lock().unwrap().archives_skipped += 1;
-        }
-        true
-    }
-    let mut out = Vec::new();
-    let mut complete = true;
-    for root in roots {
-        if !visit(
-            job,
-            root,
-            root.is_dir().then_some(root.as_path()),
-            &mut out,
-            limit,
-            &mut observe,
-        ) {
-            complete = false;
-            break;
-        }
-    }
-    let mut data = job.data.lock().unwrap();
-    data.known = out.len();
-    data.candidates = out
-        .iter()
-        .map(|(path, _)| path.to_string_lossy().into_owned())
-        .collect();
-    data.scan_complete = complete;
-    data.current = None;
-    if !complete {
-        job.cancel.store(true, Ordering::Release);
-    }
-    out
-}
-/// True if `path` lies below one of `roots` and is reached without passing a link: every
-/// component below the root is looked at without following links, and the resolved
-/// path must still be inside the resolved root. A folder swapped for a link after a scan
-/// would otherwise lead the worker to a same-named file somewhere else, which the
-/// placement then moves out of its folder. The root itself may be reached through a link
-/// (the user registered it that way). No roots means no restriction.
-fn stays_below(path: &Path, roots: &[PathBuf]) -> bool {
-    if roots.is_empty() {
-        return true;
-    }
-    roots.iter().any(|root| {
-        let Ok(relative) = path.strip_prefix(root) else { return false };
-        let mut current = root.clone();
-        for component in relative.components() {
-            if !matches!(component, std::path::Component::Normal(_)) {
-                return false;
-            }
-            current.push(component);
-            if std::fs::symlink_metadata(&current).is_ok_and(|m| m.file_type().is_symlink()) {
-                return false;
-            }
-        }
-        match (path.canonicalize(), root.canonicalize()) {
-            (Ok(resolved), Ok(resolved_root)) => resolved.starts_with(resolved_root),
-            _ => false,
-        }
-    })
-}
-fn skip(job: &ImportJob, path: &Path, reason: &str) {
-    job.data.lock().unwrap().groups.skipped.push(SkippedEntry {
-        path: path.to_string_lossy().into_owned(),
-        reason: reason.into(),
-    });
-}
-fn flush_models(
-    job: &ImportJob,
-    database: &mut impl files::ImportDb,
-    batch: &mut Vec<files::PendingImport>,
-    imported: &mut Vec<ModelFileDto>,
-    rename_paths: &HashSet<String>,
-) -> CmdResult<()> {
-    let mut local = files::empty_import_result();
-    let mut duplicates = Vec::new();
-    let result = files::store_batch_detailed(
-        database,
-        batch,
-        &mut local,
-        files::ImportMode::Batched,
-        &mut duplicates,
-    );
-    let mut data = job.data.lock().unwrap();
-    for file in &local.imported {
-        if job.placement_required || rename_paths.contains(&file.path) {
-            data.groups.imported_not_placed.push(NotPlacedEntry {
-                path: file.path.clone(),
-                file_id: file.id.clone(),
-                reason: "jobFailed".into(),
-            });
-        } else {
-            data.groups.imported.push(ImportedEntry {
-                path: file.path.clone(),
-                file_id: file.id.clone(),
-                folder_id: (!file.folder_id.is_empty()).then(|| file.folder_id.clone()),
-            });
-        }
-    }
-    for file in &local.skipped {
-        data.groups.skipped.push(SkippedEntry {
-            path: file.path.clone(),
-            reason: "failed".into(),
-        });
-    }
-    data.groups.duplicate.extend(duplicates);
-    data.in_flight = 0;
-    imported.extend(local.imported);
-    result
-}
-pub(super) fn run_models(
-    service: &ImportJobs,
-    job: &ImportJob,
-    database: &mut impl files::ImportDb,
-    roots: &[PathBuf],
-    sensitive: &[PathBuf],
-) -> CmdResult<()> {
-    let rename = database.with_conn(|conn| import_rename::enabled(conn))?;
-    let prefix = rename.then(|| import_rename::date_prefix(chrono::Local::now()));
-    let candidates = scan_candidates(job, roots, service.scan_limit);
-    let rename_paths = if rename {
-        database.with_conn(|conn| {
-            let base = import_rename::catalog_base(conn)?;
-            Ok(candidates
-                .iter()
-                .filter_map(|(path, _)| {
-                    let path_string = path.to_str()?;
-                    (job.placement_required || import_rename::is_internal(path, base.as_deref()))
-                        .then(|| path_string.to_owned())
-                })
-                .collect::<HashSet<_>>())
-        })?
-    } else {
-        HashSet::new()
-    };
-    job.transition(ImportState::Importing);
-    let mut batch = Vec::new();
-    let mut imported = Vec::new();
-    let mut error = None;
-    for (path, root) in &candidates {
-        if job.cancel.load(Ordering::Acquire) || error.is_some() {
-            skip(job, path, "notStarted");
-            continue;
-        }
-        if path.is_file() && crate::archive::is_archive_path(path) && root.is_none() {
-            let grant_id = format!(
-                "{}-{}",
-                job.id,
-                job.data.lock().unwrap().groups.archive.len()
-            );
-            let grant_id = service
-                .archives
-                .lock()
-                .unwrap()
-                .entry((job.id.clone(), path.clone()))
-                .or_insert_with(|| ArchiveGrant {
-                    parent: job.id.clone(),
-                    id: grant_id,
-                    expires: None,
-                })
-                .id
-                .clone();
-            job.data.lock().unwrap().groups.archive.push(serde_json::json!({"path":path.to_string_lossy(),"state":"pending","grantId":grant_id}));
-            continue;
-        }
-        if !files::is_supported_extension(path) {
-            skip(job, path, "unsupported");
-            continue;
-        }
-        if job.source == ImportSource::FolderContents
-            && reject_if_sensitive_path(path, sensitive).is_err()
-        {
-            skip(job, path, "protected");
-            continue;
-        }
-        let path_string = path.to_string_lossy().into_owned();
-        match database.with_conn(|conn| {
-            db::find_existing_by_path(conn, &path_string).map_err(|e| format!("database: {e}").into())
-        }) {
-            Ok(found) if !found.is_empty() => {
-                job.data
-                    .lock()
-                    .unwrap()
-                    .groups
-                    .duplicate
-                    .push(DuplicateEntry::new(path_string, "path", &found));
-                continue;
-            }
-            Err(e) => {
-                skip(job, path, "notStarted");
-                error = Some(e);
-                continue;
-            }
-            _ => {}
-        }
-        if std::fs::metadata(path).is_ok_and(|m| m.len() == 0) {
-            skip(job, path, "empty");
-            continue;
-        }
-        if job.cancel.load(Ordering::Acquire) {
-            skip(job, path, "notStarted");
-            continue;
-        }
-        if !stays_below(path, &job.confine_to) {
-            skip(job, path, "unsafe");
-            continue;
-        }
-        job.data.lock().unwrap().current = Some(path_string);
-        match service.reader.read(path) {
-            Ok(new_file) => {
-                batch.push(files::PendingImport {
-                    path: path.clone(),
-                    folder_root: root.clone(),
-                    new_file,
-                });
-                job.data.lock().unwrap().in_flight = batch.len();
-            }
-            Err(_) => skip(job, path, if path.exists() { "invalid" } else { "failed" }),
-        }
-        job.data.lock().unwrap().current = None;
-        if batch.len() >= 25 {
-            if let Err(e) = flush_models(job, database, &mut batch, &mut imported, &rename_paths) {
-                error = Some(e);
-            }
-        }
-    }
-    if error.is_none() {
-        if let Err(e) = flush_models(job, database, &mut batch, &mut imported, &rename_paths) {
-            error = Some(e);
-        }
-    }
-    if error.is_some() {
-        let mut data = job.data.lock().unwrap();
-        for item in &batch {
-            let path = item.path.to_string_lossy().into_owned();
-            if !data.groups.imported.iter().any(|f| f.path == path)
-                && !data
-                    .groups
-                    .imported_not_placed
-                    .iter()
-                    .any(|f| f.path == path)
-                && !data.groups.skipped.iter().any(|f| f.path == path)
-                && !data.groups.duplicate.iter().any(|f| f.path == path)
-            {
-                data.groups.skipped.push(SkippedEntry {
-                    path,
-                    reason: "notStarted".into(),
-                });
-            }
-        }
-    }
-    if (job.placement_required || !rename_paths.is_empty()) && error.is_none() {
-        job.transition(ImportState::Placing);
-        for file in &mut imported {
-            if !job.placement_required && !rename_paths.contains(&file.path) {
-                continue;
-            }
-            let reason = if job.cancel.load(Ordering::Acquire) {
-                Some("cancelled")
-            } else if !stays_below(Path::new(&file.path), &job.confine_to) {
-                // The file may have been swapped since it was read; never move what
-                // is no longer the scanned file.
-                Some("moveFailed")
-            } else {
-                let placed = database.with_conn(|conn| {
-                    let target = if job.placement_required {
-                        let target = job
-                            .target_folder_id
-                            .as_ref()
-                            .and_then(|s| s.parse::<i64>().ok())
-                            .ok_or_else(|| CmdError::expected("targetMissing"))?;
-                        let folders =
-                            db::list_folders(conn).map_err(|e| format!("database: {e}"))?;
-                        let folder = folders
-                            .iter()
-                            .find(|f| f.id == target)
-                            .ok_or_else(|| CmdError::expected("targetMissing"))?;
-                        if !service.target.exists(Path::new(&folder.path)) {
-                            return Err(CmdError::expected("targetMissing"));
-                        }
-                        reject_if_sensitive_path(Path::new(&folder.path), sensitive)
-                            .map_err(|_| CmdError::expected("protected"))?;
-                        Some(target)
-                    } else {
-                        None
-                    };
-                    if prefix.is_none() {
-                        files::move_file_to_folder_with_conn(
-                            conn,
-                            file.id.parse().unwrap(),
-                            target,
-                            sensitive,
-                        )?;
-                    } else if rename_paths.contains(&file.path) {
-                        import_rename::place(
-                            conn,
-                            file.id.parse().unwrap(),
-                            target,
-                            prefix.as_deref(),
-                            sensitive,
-                        )?;
-                    }
-                    let row = db::get_file(conn, file.id.parse().unwrap())
-                        .map_err(|e| format!("database: {e}"))?
-                        .ok_or_else(|| CmdError::from("file missing"))?;
-                    file.name = row.name;
-                    file.path = row.path;
-                    file.folder_id = row.folder_id.map(|id| id.to_string()).unwrap_or_default();
-                    Ok(())
-                });
-                match placed {
-                    Ok(()) => None,
-                    Err(e) if e.message == "targetMissing" => Some("targetMissing"),
-                    Err(e) if e.message == "protected" => Some("protected"),
-                    Err(e) if e.message.starts_with("database:") => {
-                        error = Some(e);
-                        break;
-                    }
-                    Err(_) => Some("moveFailed"),
-                }
-            };
-            let mut data = job.data.lock().unwrap();
-            if let Some(reason) = reason {
-                if let Some(entry) = data
-                    .groups
-                    .imported_not_placed
-                    .iter_mut()
-                    .find(|e| e.file_id == file.id)
-                {
-                    entry.reason = reason.into();
-                }
-            } else {
-                let original = data
-                    .groups
-                    .imported_not_placed
-                    .iter()
-                    .find(|e| e.file_id == file.id)
-                    .map(|e| e.path.clone())
-                    .unwrap_or_else(|| file.path.clone());
-                data.groups
-                    .imported_not_placed
-                    .retain(|e| e.file_id != file.id);
-                data.groups.imported.push(ImportedEntry {
-                    path: original,
-                    file_id: file.id.clone(),
-                    folder_id: (!file.folder_id.is_empty()).then(|| file.folder_id.clone()),
-                });
-            }
-        }
-    }
-    let data = job.data.lock().unwrap();
-    *job.legacy.lock().unwrap() = Some(ImportResultDto {
-        duplicate_entries: data.groups.duplicate.clone(),
-        imported,
-        duplicate_count: data.groups.duplicate.len() as i64,
-        pending_archives: data
-            .groups
-            .archive
-            .iter()
-            .filter_map(|a| a["path"].as_str().map(String::from))
-            .collect(),
-        skipped: data
-            .groups
-            .skipped
-            .iter()
-            .map(|s| files::SkippedFileDto {
-                path: s.path.clone(),
-                reason: match s.reason.as_str() {
-                    "empty" => files::SkipReason::Empty,
-                    "invalid" => files::SkipReason::Invalid,
-                    _ => files::SkipReason::Failed,
-                },
-            })
-            .collect(),
-    });
-    if let Some(e) = error {
-        Err(e)
-    } else {
-        Ok(())
-    }
-}
-
-pub(super) fn heartbeat(job: Arc<ImportJob>) {
-    heartbeat_with_wait(job, || std::thread::sleep(Duration::from_millis(250)));
-}
-
-fn heartbeat_with_wait(job: Arc<ImportJob>, mut wait: impl FnMut()) {
-    while !job.progress().state.terminal() {
-        wait();
-        if job.progress().state.terminal() {
-            break;
-        }
-        job.event();
-    }
-}
 pub(super) fn run_archives(
     app: &tauri::AppHandle,
     state: &AppState,
@@ -460,16 +9,7 @@ pub(super) fn run_archives(
     delete: bool,
 ) -> CmdResult<()> {
     use tauri::Emitter;
-    {
-        let mut data = job.data.lock().unwrap();
-        data.known = requests.len();
-        data.candidates = requests
-            .iter()
-            .map(|request| request.path.clone())
-            .collect();
-        data.scan_complete = true;
-    }
-    job.transition(ImportState::Importing);
+    job.begin_archive_candidates(requests.iter().map(|r| r.path.clone()).collect());
     let mut legacy = ArchiveImportResultDto {
         imported: Vec::new(),
         duplicate_count: 0,
@@ -479,7 +19,7 @@ pub(super) fn run_archives(
     let mut database_error = None;
     for request in requests {
         if job.cancel.load(Ordering::Acquire) || database_error.is_some() {
-            skip(job, Path::new(&request.path), "notStarted");
+            job.skip(Path::new(&request.path), "notStarted");
             legacy.archives.push(ArchiveOutcomeDto {
                 path: request.path.clone(),
                 error: Some("notStarted".into()),
@@ -488,7 +28,7 @@ pub(super) fn run_archives(
             continue;
         }
         let archive_path = request.path.clone();
-        job.data.lock().unwrap().current = Some(archive_path.clone());
+        job.set_current(Some(archive_path.clone()));
         let result = archives::extract_archives_controlled(
             &state.sensitive_dirs,
             target,
@@ -499,7 +39,7 @@ pub(super) fn run_archives(
                 let mut database = ArchiveJobDb {
                     db: &state.db,
                     job,
-                    reader: state.import_jobs.reader.as_ref(),
+                    reader: state.import_jobs.reader(),
                 };
                 let result = files::import_many_selected(
                     &mut database,
@@ -561,7 +101,7 @@ pub(super) fn run_archives(
             } else {
                 "finished"
             });
-            job.data.lock().unwrap().groups.archive.push(value);
+            job.push_archive(value);
             if outcome
                 .error
                 .as_ref()
@@ -574,11 +114,10 @@ pub(super) fn run_archives(
         legacy.duplicate_count += result.duplicate_count;
         legacy.skipped.extend(result.skipped);
         legacy.archives.extend(result.archives);
-        let mut data = job.data.lock().unwrap();
-        data.in_flight = 0;
-        data.current = None;
+        job.set_in_flight(0);
+        job.set_current(None);
     }
-    *job.archive_legacy.lock().unwrap() = Some(legacy);
+    job.set_archive_result(legacy);
     if let Some(error) = database_error {
         Err(error.into())
     } else {
@@ -592,165 +131,104 @@ struct ArchiveJobDb<'a> {
     reader: &'a dyn ImportReader,
 }
 impl files::ImportDb for ArchiveJobDb<'_> {
-    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
-        let mut conn = self.db.lock().map_err(|_| "database: lock poisoned")?;
-        f(&mut conn)
+    fn hash(&mut self, path: &Path) -> core::ImportResult<String> {
+        files::compute_content_hash(path).map_err(Into::into)
     }
-    fn read_file(&mut self, path: &Path) -> CmdResult<NewFile> {
-        self.job.data.lock().unwrap().current = Some(path.to_string_lossy().into_owned());
+    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> core::ImportResult<R>) -> core::ImportResult<R> {
+        let result = self.db.lock()
+            .map_err(|_| core::ImportError::from("database: lock poisoned"))
+            .and_then(|mut conn| f(&mut conn));
+        if let Err(error) = &result {
+            // Failed commits may be classified as expected for recovery, but
+            // still need error-level diagnostics in the desktop archive path.
+            if !error.expected || error.message.starts_with("database:") {
+                log::error!(target: "import", "{error}");
+            }
+        }
+        result
+    }
+    fn read_file(&mut self, path: &Path) -> core::ImportResult<NewFile> {
+        self.job.set_current(Some(path.to_string_lossy().into_owned()));
         let result = self.reader.read(path);
-        self.job.data.lock().unwrap().current = None;
+        self.job.set_current(None);
         result
     }
     fn report_in_flight(&self, count: usize) {
-        self.job.data.lock().unwrap().in_flight = count;
+        self.job.set_in_flight(count);
     }
 }
 
 #[cfg(test)]
-mod scan_tests {
+mod tests {
     use super::*;
-    use std::sync::mpsc;
+    use files::ImportDb;
+    use std::cell::RefCell;
 
-    #[derive(Default)]
-    struct Clock(AtomicU64);
-    impl ImportClock for Clock {
-        fn now_ms(&self) -> u64 {
-            self.0.load(Ordering::Relaxed)
-        }
+    thread_local! {
+        static ERRORS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
-    #[derive(Default)]
-    struct Events(Mutex<Vec<serde_json::Value>>);
-    impl ImportEvents for Events {
-        fn emit(&self, name: &str, payload: serde_json::Value) {
-            if name == "import://progress" {
-                self.0.lock().unwrap().push(payload);
+    struct Logger;
+    impl log::Log for Logger {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool { true }
+        fn log(&self, record: &log::Record<'_>) {
+            if record.level() == log::Level::Error {
+                ERRORS.with(|errors| errors.borrow_mut().push(record.args().to_string()));
             }
         }
+        fn flush(&self) {}
     }
-
-    #[test]
-    fn scanning_heartbeat_reports_growing_found_with_injected_clock_and_limit() {
-        for limit in [2, usize::MAX] {
-            let dir =
-                std::env::temp_dir().join(format!("scan_found_{}_{}", std::process::id(), limit));
-            std::fs::create_dir_all(&dir).unwrap();
-            for i in 0..3 {
-                std::fs::write(dir.join(format!("{i}.stl")), b"stl").unwrap();
-            }
-            std::fs::write(dir.join("ignored.txt"), b"text").unwrap();
-            let clock = Arc::new(Clock::default());
-            let events = Arc::new(Events::default());
-            let service = ImportJobs {
-                clock: clock.clone(),
-                events: events.clone(),
-                scan_limit: limit,
-                ..ImportJobs::default()
-            };
-            let job = service
-                .enqueue(ImportSource::Folder, None, false, None)
-                .unwrap();
-            service.next().unwrap();
-            let (visited_tx, visited_rx) = mpsc::channel();
-            let (resume_tx, resume_rx) = mpsc::channel();
-            std::thread::scope(|scope| {
-                let scan_job = job.clone();
-                let scan_dir = dir.clone();
-                let scan_limit = service.scan_limit;
-                scope.spawn(move || {
-                    let candidates =
-                        scan_candidates_observed(&scan_job, &[scan_dir], scan_limit, || {
-                            visited_tx.send(()).unwrap();
-                            resume_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-                        });
-                    assert_eq!(candidates.len(), limit.min(3));
-                    scan_job.finish(None);
-                    drop(visited_tx);
-                });
-                let mut paused = false;
-                heartbeat_with_wait(job.clone(), || {
-                    if paused {
-                        resume_tx.send(()).unwrap();
-                    }
-                    paused = visited_rx.recv_timeout(Duration::from_secs(5)).is_ok();
-                    clock.0.fetch_add(250, Ordering::Relaxed);
-                });
-            });
-            let recorded = events.0.lock().unwrap();
-            let scanning: Vec<_> = recorded
-                .iter()
-                .filter(|p| p["state"] == "scanning" && p["elapsedMs"] != 0)
-                .collect();
-            let found: Vec<_> = scanning
-                .iter()
-                .map(|p| p["found"].as_u64().unwrap())
-                .collect();
-            assert_eq!(found, (0..=limit.min(3) as u64).collect::<Vec<_>>());
-            for (i, payload) in scanning.iter().enumerate() {
-                assert!(payload["total"].is_null());
-                assert_eq!(payload["done"], 0);
-                assert_eq!(payload["current"], dir.to_string_lossy().as_ref());
-                assert_eq!(payload["elapsedMs"], (i as u64 + 1) * 250);
-            }
-            assert_eq!(job.progress().found, limit.min(3));
-            assert_eq!(job.progress().scan_complete, limit == usize::MAX);
-            std::fs::remove_dir_all(dir).unwrap();
-        }
+    fn capture(f: impl FnOnce()) -> Vec<String> {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            log::set_logger(&Logger).unwrap();
+            log::set_max_level(log::LevelFilter::Trace);
+        });
+        ERRORS.with(|errors| errors.borrow_mut().clear());
+        f();
+        ERRORS.with(|errors| std::mem::take(&mut *errors.borrow_mut()))
     }
-}
-
-#[cfg(test)]
-mod folder_contents_tests {
-    use super::*;
-
-    #[test]
-    fn archive_count_stops_at_scan_limit_and_cancellation() {
-        let dir = std::env::temp_dir().join(format!("archive_scan_limit_{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("before")).unwrap();
-        std::fs::create_dir_all(dir.join("after")).unwrap();
-        std::fs::write(dir.join("before/a.zip"), b"archive").unwrap();
-        std::fs::write(dir.join("model.stl"), b"model").unwrap();
-        std::fs::write(dir.join("after/b.7z"), b"archive").unwrap();
-        let roots = [dir.join("before"), dir.join("model.stl"), dir.join("after")];
-        let service = ImportJobs::default();
-        let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
-        assert_eq!(scan_candidates(&job, &roots, 1).len(), 1);
-        assert_eq!(job.progress().archives_skipped, 1);
-        assert!(!job.progress().scan_complete);
-        assert!(job.cancel.load(Ordering::Acquire));
-        let cancelled = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
-        cancelled.cancel.store(true, Ordering::Release);
-        assert!(scan_candidates(&cancelled, &roots, usize::MAX).is_empty());
-        assert_eq!(cancelled.progress().archives_skipped, 0);
-        std::fs::remove_dir_all(dir).unwrap();
+    fn with_database(f: impl FnOnce(&mut ArchiveJobDb<'_>)) {
+        let db = Mutex::new(db::connect_in_memory().unwrap());
+        let service = <ImportJobs as DesktopJobs>::default();
+        let job = service.enqueue(ImportSource::Files, None, false, None).unwrap();
+        f(&mut ArchiveJobDb { db: &db, job: &job, reader: service.reader() });
     }
-
     #[test]
-    fn folder_contents_scan_filters_files_without_mirrored_roots() {
-        let dir = std::env::temp_dir().join(format!("folder_contents_scan_{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("nested")).unwrap();
-        std::fs::create_dir_all(dir.join(".hidden")).unwrap();
-        for name in ["model.3mf", "nested/model.STL", "model.stp", "model.step", "model.obj", ".hidden/model.stl", ".hidden.stl", "~$temp.stl", "archive.zip", "partial.stl.part", "readme.txt"] {
-            std::fs::write(dir.join(name), b"test").unwrap();
-        }
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(dir.join("nested"), dir.join("linked")).unwrap();
-            std::os::unix::fs::symlink(dir.join("model.obj"), dir.join("linked.obj")).unwrap();
-        }
-        let service = ImportJobs::default();
-        let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
-        let candidates = scan_candidates(&job, std::slice::from_ref(&dir), usize::MAX);
-        assert_eq!(candidates.len(), 5);
-        assert!(candidates.iter().all(|(_, root)| root.is_none()));
-        assert!(job.data.lock().unwrap().scan_complete);
-        let limited = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
-        assert_eq!(scan_candidates(&limited, std::slice::from_ref(&dir), 2).len(), 2);
-        assert!(!limited.data.lock().unwrap().scan_complete);
-        assert!(limited.cancel.load(Ordering::Acquire));
-        let cancelled = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
-        cancelled.cancel.store(true, Ordering::Release);
-        assert!(scan_candidates(&cancelled, std::slice::from_ref(&dir), usize::MAX).is_empty());
-        std::fs::remove_dir_all(dir).unwrap();
+    fn archive_hash_failure_logs_error_and_remains_invalid() {
+        let missing = std::env::temp_dir().join(format!("archive_missing_{}.stl", std::process::id()));
+        assert!(!missing.exists());
+        let errors = capture(|| with_database(|database| {
+            let result = files::import_many_selected(database, vec![missing], files::ImportMode::Atomic, None, None).unwrap();
+            assert!(result.imported.is_empty());
+            assert_eq!(result.skipped.len(), 1);
+            assert_eq!(result.skipped[0].reason, files::SkipReason::Invalid);
+        }));
+        assert!(!errors.is_empty(), "hash failure must reach error-level diagnostics");
+    }
+    #[test]
+    fn archive_database_failure_logs_error_without_changing_result() {
+        let errors = capture(|| with_database(|database| {
+            let error = database.with_conn(|conn| {
+                conn.execute_batch("INSERT INTO missing_table VALUES (1)")
+                    .map_err(|e| core::ImportError::from(format!("database: {e}")))
+            }).unwrap_err();
+            assert!(!error.expected);
+            assert!(error.message.contains("missing_table"));
+        }));
+        assert!(errors.iter().any(|e| e.contains("missing_table")));
+    }
+    #[test]
+    fn archive_commit_failure_logs_error_even_when_expected() {
+        let errors = capture(|| with_database(|database| {
+            let error = database.with_conn(|conn| {
+                conn.execute_batch("CREATE TABLE parent_test(id INTEGER PRIMARY KEY); CREATE TABLE child_test(id INTEGER REFERENCES parent_test(id) DEFERRABLE INITIALLY DEFERRED)").unwrap();
+                let tx = conn.transaction().unwrap();
+                tx.execute("INSERT INTO child_test VALUES (1)", []).unwrap();
+                tx.commit().map_err(|e| core::ImportError::expected(format!("database: {e}")))
+            }).unwrap_err();
+            assert!(error.expected);
+            assert!(error.message.contains("FOREIGN KEY"));
+        }));
+        assert!(errors.iter().any(|e| e.contains("FOREIGN KEY")));
     }
 }

@@ -1,3 +1,6 @@
+import { folderOpsMessages } from '../lib/folderOpsMessages';
+import { canManageFiles, useCanManageFiles, canEditMetadata } from '../lib/webSession';
+import { isReadOnly } from '../lib/readOnly';
 import { dismissDragDropTip } from '../lib/dragDropTip';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as collectionsApi from '../lib/api/collections';
@@ -10,6 +13,12 @@ import {
 } from '../lib/moveUndo';
 import type { ModelFile, Folder, Collection } from '../types';
 
+/** The toast of a failed action. The web also keeps the message as `to`, as it always did. */
+function failureToast(from: string, e: unknown): MoveToastState {
+  const failure = toAppError(e);
+  return { from, to: isReadOnly() ? failure.message : '', error: true, failure };
+}
+
 interface Refreshers {
   refreshFolders: () => void;
   refreshFiles: () => void;
@@ -21,6 +30,7 @@ interface CollectionTargets {
 }
 
 export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers, collectionTargets?: CollectionTargets, catalogBaseDir: string | null = null, selectedIds?: ReadonlySet<string>) {
+  const canManage = useCanManageFiles();
   // Mouse-based dragging instead of HTML5 DnD: under Tauri/WebKitGTK
   // dragDropEnabled intercepts native drag sessions at window level.
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
@@ -39,6 +49,9 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const draggedFilesFolderId = useMemo(() => sharedFolderId(models, draggedFileIds), [models, draggedFileIds]);
   // Last folder row under the pointer, valid or not: a refused drop still needs to say why.
   const hoveredFolderId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!canManage) { setDraggedFolderId(null); setDragOverFolderId(null); }
+  }, [canManage]);
 
   const recordUndo = useCallback((step: UndoStep) => {
     undoStack.current = pushUndoStep(undoStack.current, step);
@@ -54,13 +67,14 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   );
 
   const onDragFileStart = useCallback((id: string) => {
+    if (!canEditMetadata()) return;
     setDraggedFileId(id);
     setDraggedFileIds(selectedIds?.has(id) ? [...selectedIds] : [id]);
   }, [selectedIds]);
   // A click without hovering over another row moves nothing. Folders that
   // cannot be moved are still draggable, so dropping them explains the refusal.
   const onDragFolderStart = useCallback((id: string) => {
-    if (!folders.some(folder => folder.id === id)) return;
+    if (!canManageFiles() || !folders.some(folder => folder.id === id)) return;
     hoveredFolderId.current = null;
     setDraggedFolderId(id);
   }, [folders]);
@@ -73,6 +87,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       if (!draggedFileId && !draggedFolderId) return;
       hoveredFolderId.current = id;
       setDragOverCollectionId(null);
+      if (!canManageFiles()) return;
       // Only when every dragged file is in this folder already; with a mixed selection
       // the others still move and the ones already there are reported as skipped.
       if (draggedFileId && sharedFolderId(models, draggedFileIds) === id) {
@@ -108,14 +123,13 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
 
   const onCreateFolder = useCallback(
     (parentId: string | null, name: string) =>
-      foldersApi
+      (!canManageFiles() || (isReadOnly() && (!parentId || !window.confirm(`${folderOpsMessages().create}: ${name}?`) || !canManageFiles()))) ? Promise.resolve() : foldersApi
         .createFolder(parentId, name)
-        .then(() => refreshFolders())
+        .then(() => { if (!isReadOnly()) refreshFolders(); })
         .catch((e) => {
-          console.error('[folders] creating failed:', e);
+          if (!isReadOnly()) console.error('[folders] creating failed:', e);
           // Show the error next to the folder tree; catalogBackupError would be invisible without an open panel.
-          const err = toAppError(e);
-          setMoveToast({ from: name, to: '', error: true, failure: err });
+          setMoveToast(failureToast(name, e));
         }),
     [refreshFolders],
   );
@@ -125,6 +139,20 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     const target = folders.find((f) => f.id === folderId);
     if (!target || ids.length === 0) return;
     const nameOf = (id: string) => models.find((m) => m.id === id)?.name ?? id;
+    if (!canManageFiles()) return;
+    if (isReadOnly()) {
+      // The web server reports plain per-file results and has no move history, so the toast stays simple.
+      const label = ids.length > 1 ? `${nameOf(ids[0])} (+${ids.length - 1})` : nameOf(ids[0]);
+      if (!window.confirm(`${folderOpsMessages().moveFile}\n${label} → ${target.name}`) || !canManageFiles()) return;
+      try {
+        await foldersApi.moveFilesToFolderWeb(ids, folderId);
+        dismissDragDropTip();
+        setMoveToast({ from: label, to: target.name });
+      } catch (e) {
+        setMoveToast(failureToast(label, e));
+      }
+      return;
+    }
     try {
       const results = await foldersApi.moveFilesToFolder(ids, folderId);
       const summary = summarizeMoveResults(results);
@@ -140,8 +168,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       setMoveToast({ from: names[0], to: target.path, batch: { names, total: ids.length, summary }, canUndo: items.length > 0 });
     } catch (e) {
       console.error('[folders] moving files failed:', e);
-      const err = toAppError(e);
-      setMoveToast({ from: nameOf(ids[0]), to: '', error: true, failure: err });
+      setMoveToast(failureToast(nameOf(ids[0]), e));
     }
   }, [folders, models, recordUndo, refreshFolders, refreshFiles]);
 
@@ -210,7 +237,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       setDraggedFileIds([]);
       setDragOverFolderId(null);
       const file = models.find((m) => m.id === fileId);
-      if (collectionId && file && collectionTargets) {
+      if (canEditMetadata() && collectionId && file && collectionTargets) {
         const target = collectionTargets.collections.find(c => c.id === collectionId);
         if (!target) return;
         collectionsApi.listCollectionFiles(collectionId).then(async members => {
@@ -219,12 +246,12 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
           dismissDragDropTip();
           setMoveToast({ from: file.name, to: target.name, collection: already ? 'already' : 'added' });
         }).catch(e => {
-          const err = toAppError(e);
-          setMoveToast({ from: file.name, to: '', error: true, failure: err });
+          if (isReadOnly()) { setMoveToast({ from: file.name, to: folderOpsMessages().failed, error: true }); return; }
+          setMoveToast(failureToast(file.name, e));
         });
         return;
       }
-      if (!folderId || !file) return;
+      if (!canManageFiles() || !folderId || !file) return;
       void moveFiles(fileIds, folderId);
     };
     document.addEventListener('mouseup', handleMouseUp);
@@ -241,7 +268,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       hoveredFolderId.current = null;
       setDraggedFolderId(null);
       setDragOverFolderId(null);
-      if (!targetId) return;
+      if (!canManageFiles() || !targetId) return;
       const folder = folders.find((f) => f.id === folderId);
       const targetFolder = folders.find((f) => f.id === targetId);
       if (!folder || !targetFolder) return;
@@ -250,20 +277,25 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         setMoveToast({ from: folder.name, to: '', error: true, blocked });
         return;
       }
+      if (isReadOnly() && (!window.confirm(`${folderOpsMessages().moveFolder}\n${folder.name} → ${targetFolder.name}\n${folderOpsMessages().contents}`) || !canManageFiles())) return;
       const fromParentId = folder.parentId;
       foldersApi
         .moveFolder(folderId, targetId)
         .then(() => {
           // The old parent has to be remembered now: after the reload the folder only knows its new one.
+          if (isReadOnly()) {
+            // The web file operations refresh every view themselves and keep no undo history.
+            setMoveToast({ from: folder.name, to: targetFolder.name });
+            return;
+          }
           if (fromParentId) recordUndo({ kind: 'moveFolder', folderId, name: folder.name, fromParentId });
           setMoveToast({ from: folder.name, to: targetFolder.path, canUndo: !!fromParentId });
           refreshFolders();
           refreshFiles();
         })
         .catch((e) => {
-          console.error('[folders] moving folder failed:', e);
-          const err = toAppError(e);
-          setMoveToast({ from: folder.name, to: '', error: true, failure: err });
+          if (!isReadOnly()) console.error('[folders] moving folder failed:', e);
+          setMoveToast(failureToast(folder.name, e));
         });
     };
     document.addEventListener('mouseup', handleMouseUp);

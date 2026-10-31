@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '../lib/events';
 import * as api from '../lib/api/printerLink';
 import { toAppError, type AppError } from '../lib/errors';
 import type { JobDecision, PrinterConnection, PrinterJob } from '../types';
@@ -24,6 +24,7 @@ export function usePrinterLink() {
   }, []);
 
   const refresh = useCallback(async () => {
+    if (import.meta.env.VITE_TARGET === 'web') return;
     try {
       const [on, conns, open] = await Promise.all([
         api.getPrinterLinkEnabled(),
@@ -42,6 +43,7 @@ export function usePrinterLink() {
   }, []);
 
   useEffect(() => {
+    if (import.meta.env.VITE_TARGET === 'web') return;
     refresh();
     let unlisten: (() => void) | undefined;
     let cancelled = false;

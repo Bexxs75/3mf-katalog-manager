@@ -1,3 +1,5 @@
+import { isReadOnly } from '../lib/readOnly';
+import { canManageFiles, useCanManageFiles, useCanEditMetadata } from '../lib/webSession';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_STEP } from '../hooks/useSidebarWidth';
@@ -122,6 +124,9 @@ export function Sidebar({
   cleanupScanning,
   cleanupError,
 }: Props) {
+  const canEdit = useCanEditMetadata();
+  const canManage = useCanManageFiles();
+  const canCreateFolder = canManage && (!isReadOnly() || folders.some(folder => folder.id === activeFolderId));
   const { jobActive, lockProps } = useImportLock();
   const [collectionMenu, setCollectionMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null);
   const [deletingCollection, setDeletingCollection] = useState<Collection | null>(null);
@@ -185,7 +190,7 @@ export function Sidebar({
   // Inline input instead of window.prompt. The folder is created below the
   // active folder, at the root for "All models".
   const submitCreateFolder = (explicit = false) => {
-    if (jobActive) return;
+    if (jobActive || !canManageFiles() || !canCreateFolder) return;
     if (folderProblem) {
       if (explicit) setFolderErrorDialog(folderNameProblemText(folderProblem, t));
       return;
@@ -291,7 +296,7 @@ export function Sidebar({
           onFolderMouseLeave={onFolderMouseLeave}
           onDragFolderStart={jobActive ? undefined : onDragFolderStart}
         />
-        {creatingFolder ? (
+        {creatingFolder && canCreateFolder ? (
           <div className="flex flex-col gap-1.5 px-1.5 pt-1 pb-1">
             <input
               aria-invalid={folderProblem ? true : undefined}
@@ -325,7 +330,7 @@ export function Sidebar({
             )}
           </div>
         ) : (
-          <button type="button" {...lockProps}
+          <>{canCreateFolder && <button type="button" {...lockProps}
             onClick={() => {
               setCreatingFolder(true);
               setFolderNameDraft('');
@@ -333,7 +338,7 @@ export function Sidebar({
             className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-medium tabular-nums text-caption text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
            aria-label={t('createFolderLabel')}>
             <Icon name="plus" size={14} /> {t('createFolderLabel').replace(/^\+\s*/, '')}
-          </button>
+          </button>}</>
         )}
 
         <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
@@ -359,13 +364,13 @@ export function Sidebar({
             onClick={() => { if (renamingCollection?.id !== c.id) onSelectCollection(c.id); }}
             onContextMenu={(event) => {
               event.preventDefault();
-              if (renamingCollection) return;
+              if (!canEdit || renamingCollection) return;
               event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
               setCollectionMenu({ collection: c, x: event.clientX, y: event.clientY });
             }}
             onKeyDown={(event) => {
               if (event.target !== event.currentTarget) return;
-              if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+              if (canEdit && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
                 event.preventDefault(); event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
                 const bounds = event.currentTarget.getBoundingClientRect();
                 setCollectionMenu({ collection: c, x: bounds.left, y: bounds.bottom });
@@ -411,7 +416,7 @@ export function Sidebar({
             />
           </div>
         ) : (
-          <div
+          <>{canEdit && <div
             onClick={() => {
               setCreatingCollection(true);
               setCollectionNameDraft('');
@@ -419,7 +424,7 @@ export function Sidebar({
             className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-medium tabular-nums text-caption text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('createCollectionLabel')}
-          </div>
+          </div>}</>
         )}
 
         <div

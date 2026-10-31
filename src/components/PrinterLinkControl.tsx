@@ -18,6 +18,7 @@ export function PrinterLinkControl({ link }: Props) {
     setActionError(null);
     Promise.resolve(link.setEnabled(on)).catch((e) => setActionError(toAppError(e)));
   };
+  if (import.meta.env.VITE_TARGET === 'web') return null;
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2.5 [&>button[aria-checked=true]]:bg-[var(--good)] [&>button>span]:bg-[var(--panel)] max-[1023px]:group-data-[collapsed=true]:justify-center">

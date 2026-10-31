@@ -6,7 +6,7 @@ import { ImageUploadError } from './ImageUploadError';
 
 function Upload({ id, upload }: { id: string; upload: () => Promise<void> }) {
   const { error, dismiss, uploadImage } = useImageUpload(id, upload);
-  return <><button onClick={uploadImage}>Upload</button><ImageUploadError error={error} onDismiss={dismiss} /></>;
+  return <><button onClick={() => void uploadImage()}>Upload</button><ImageUploadError error={error} onDismiss={dismiss} /></>;
 }
 
 it('shows translated expected upload errors, dismisses them and clears them when switching model', async () => {

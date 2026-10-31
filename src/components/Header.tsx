@@ -1,5 +1,8 @@
+import { WebAccountMenu } from './WebAccountMenu';
+import { useCanUpload } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { CatalogDiskSync } from './CatalogDiskSync';
+import { CatalogDiskReport } from './CatalogDiskReport';
 import { useMenuKeyboard } from '../hooks/useMenuKeyboard';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
@@ -69,6 +72,7 @@ export function Header({
   // Checking runs only while no import is active (the move would be refused anyway).
   const { jobActive } = useImportLock();
   const formatCount = useFormatCount();
+  const uploadable = useCanUpload();
   const [importSource, setImportSource] = useState<'files' | 'folder' | 'folderContents' | 'sourceFolders'>('files');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -115,10 +119,12 @@ export function Header({
         )}
       </div>
 
-      <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} onScanned={onDiskSyncScanned} />
+      {import.meta.env.VITE_TARGET === 'web' && <CatalogDiskReport active={mainView === 'catalog'} />}
+      {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} onScanned={onDiskSyncScanned} />}
       {mainView === 'catalog' && (
       <>
-      <div ref={importRef} className="relative flex shrink-0">
+      {uploadable && <button className="h-8 px-3 shrink-0 whitespace-nowrap flex items-center gap-2 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" title={t('webUploadTitle')} onClick={onImportFiles}><span className="min-[1100px]:hidden" aria-hidden="true"><Icon name="plus" size={14} /></span><span className="max-[1099px]:sr-only">{t('webUploadTitle')}</span></button>}
+      {import.meta.env.VITE_TARGET !== 'web' && <div ref={importRef} className="relative flex shrink-0">
         <button
           ref={importTriggerRef}
           aria-haspopup="menu"
@@ -189,7 +195,7 @@ export function Header({
             </button>
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="flex min-w-0 items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
         <span className="hidden min-[1100px]:inline ui-label text-[var(--ink-3)]">
@@ -290,6 +296,7 @@ export function Header({
         className={`shrink-0 flex items-center gap-1.5 px-2 h-8 rounded border cursor-pointer ${detailPanel === 'pinned' ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--accent)]' : 'border-[var(--line)] text-[var(--ink-2)]'}`}><Icon name="panel" size={18} /><span className="hidden min-[1100px]:inline">{t('detailPanelTitle')}</span></button>}
       <button onClick={onOpenTips} aria-label={t('keyboardTipsTitle')} title={t('keyboardTipsTitle')}
         className="shrink-0 w-8 h-8 grid place-items-center rounded-[6px] text-[var(--ink-2)] hover:text-[var(--accent)] hover:bg-[var(--panel-2)] cursor-pointer"><Icon name="help" size={22} /></button>
+      {import.meta.env.VITE_TARGET === 'web' && <WebAccountMenu />}
     </header>
   );
 }

@@ -202,3 +202,73 @@ docs/              Zusätzliche Dokumentation
 ## Lizenz
 
 Der Anwendungscode steht unter MIT — siehe [LICENSE](LICENSE). Die optionale STEP-Vorschau bindet Open CASCADE dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme ein. Details, Lizenztexte und Quellenhinweise stehen in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
+
+### Webserver: Netzbindung und Proxy
+
+**Netzbindung und Proxy (Deutsch).** Ist `KATALOG_BIND` keine Loopback-Adresse, ist `KATALOG_ALLOWED_HOSTS` Pflicht, und der Server startet sonst nicht (Schutz vor DNS-Rebinding); alle Namen und `Host:Port`, unter denen Browser den Server erreichen, eintragen. Der Server begrenzt Verbindungen auf 32 pro Client-Adresse (IPv6: pro /64) zusätzlich zu insgesamt 256. `KATALOG_TRUST_PROXY=1` lässt den Server den Headern `X-Forwarded-For`/`Forwarded` glauben: nur hinter einem Proxy verwenden, der den Server abschirmt und diese Header selbst setzt. Dann erscheinen alle Clients mit der Adresse des Proxys, daher greift die Pro-Adresse-Grenze nicht (nur das globale Limit); bei Nicht-Loopback-Bindung gibt der Server beim Start eine Warnung aus.
+
+### Optionale Dateiverwaltung im Web (Stufe 7, Server)
+
+**Warnung:** `KATALOG_FILE_OPS=1` erlaubt dem Webserver, Dateien umzubenennen,
+zu verschieben und zu löschen. Standard ist aus. Erforderlich sind
+`KATALOG_WRITE=1`, Anmeldung und explizite `KATALOG_ALLOWED_HOSTS`. Die
+Browseroberfläche folgt separat. Nur im Heimnetz/VPN betreiben; regelmäßige
+externe Sicherungen anlegen. Desktop und Webserver niemals parallel auf derselben
+Datenbank betreiben. Auch späteres Öffnen derselben DB im Desktop ist relevant:
+**Die Desktop-App entfernt Papierkorbeinträge beim Start nach 7 Tagen**
+(`purge_expired_trash_on_startup`); Web- und Desktop-Papierkorb nicht mischen.
+
+Dateiwurzeln und `/models` müssen schreibbar sein (Volumes **nicht `:ro`**).
+Der Serverbenutzer braucht passende Eigentümer-/Verzeichnisrechte; Docker
+`PUID`/`PGID` passend setzen. Hochgeladene Dateien gehören dem Serverbenutzer.
+Rename bewahrt Inode, Rechte und Zeitstempel. Jede Wurzel bekommt einen privaten
+Papierkorb `<Wurzel>/.katalog-papierkorb/` (0700), der im Web **nie automatisch
+geleert** wird. Startprüfungen verweigern überlappende Wurzeln, geschützte
+DB-/Auth-/Static-Verzeichnisse und unbeschreibbare oder inkompatible Dateisysteme.
+`renameat2(RENAME_NOREPLACE)` muss unterstützt sein; manche NAS/SMB/NFS-Systeme
+sind ungeeignet. Verschieben geht nur innerhalb derselben Wurzel und desselben
+Dateisystems, ohne Kopierausweg. Beim Ordnerverschieben wandern auch nicht
+katalogisierte Inhalte mit. Restore überschreibt nichts und legt fehlende
+Elternordner nicht an. `list_trash`/`list_folders` enthalten weiterhin absolute
+Pfadfelder als bestehende API-Ausnahme.
+
+Destruktive Befehle teilen instanzweite Grenzen: jeweils 200 Dateien je 10 Minuten
+und `KATALOG_FILE_OPS_DAILY_LIMIT=2000` je rollenden 24 Stunden, getrennt für
+Papierkorb und endgültige Entfernung (einschließlich DB-only-Entfernung).
+Reservierte Versuche zählen konservativ auch bei späterem Fehler.
+Papierkorbleerung startet höchstens einmal je Minute; Snapshot-Blöcke folgen
+frühestens alle 2 Sekunden. Nach 20 Sekunden werden keine weiteren Dateien eines
+Aufrufs begonnen. Endgültiges Löschen und Leerungsstart prüfen das Passwort erneut.
+Logout/Passwortwechsel stoppt vor der nächsten Datei; gestartete Arbeit wird beendet.
+Zählregeln: Das Entfernen eines Ordners aus dem Katalog zählt höchstens ein volles
+Fenster (200 je 10 Minuten bzw. die Tagesgrenze), egal wie viele Modelle er enthält;
+große Ordner bleiben entfernbar. Ein einzelner Stapel über der Fenstergrenze wird mit
+422 `limit_exceeded` (ohne `Retry-After`) abgelehnt. Blöcke der Papierkorbleerung
+zählen nur gegen die Tagesgrenze, nicht gegen den 10-Minuten-Topf des einzelnen
+endgültigen Löschens. `remove_files_from_catalog` wirkt auch ohne `KATALOG_FILE_OPS`:
+Es unterliegt denselben Grenzen (200 je 10 Minuten, Tagesgrenze) und löst Sicherungen
+aus, kann also mit 429 oder mit 503 `backup_failed` scheitern (zu wenig Platz:
+Datenbankgröße + 64 MiB; `<db-Ordner>/backups` nicht 0700 bzw. nicht im Besitz des
+Serverbenutzers; fremde `web-fileops-*.db` dort). Die Sicherungen liegen in
+`<db-Ordner>/backups/`.
+
+Vor destruktiven Änderungen liegen SQLite-Sicherungen in `<db-Ordner>/backups/`:
+eine je **UTC-Kalendertag**, 7 Tage behalten; zusätzliche Ereignissicherungen vor
+Papierkorbleerung und Katalogentfernung, 5 behalten, mindestens 10 Minuten Abstand.
+Ohne betroffene Katalogeinträge wird keine Sicherung erzeugt; auch das Entfernen
+eines leeren Ordners wird gesichert. Freier Platz muss für die
+DB plus 64 MiB Reserve reichen; Dateien haben Modus 0600. Sicherungsfehler
+verhindern die Änderung (`backup_failed`). Dies ersetzt keine externen Backups.
+
+Nach einem unklaren Journalzustand bleiben Dateioperationen blockiert
+(`restart_required`), Lesen und Metadatenbearbeitung bleiben möglich.
+Admin prüft die betroffene Operation anhand der **opId** und des lokalen Journals
+`web-fsops.json` manuell. Erst danach einmalig mit
+`KATALOG_FILE_OPS_ACK=<opId[,<opId>…]>` neu starten und die Variable wieder entfernen.
+ACK ist keine automatische Reparatur; ohne bestätigte Klärung bleibt die Sperre
+über Neustarts erhalten. Reiner Lesemodus verweigert den Start bei offenem Journal.
+
+Alte Upload-Journale können importierte oder gerade importierende Einträge ohne
+`fileId` enthalten. Sind Uploads dabei deaktiviert, verweigert der Server den Start,
+weil die Zuordnung nicht sicher rekonstruiert werden kann. Für die Recovery einmalig
+die ursprüngliche Upload-Konfiguration einschließlich `KATALOG_UPLOAD_DIR` aktivieren.

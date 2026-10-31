@@ -52,3 +52,15 @@ it('cancels an idle request when its consumer unmounts', async () => {
   expect(listFileImages).not.toHaveBeenCalled();
   vi.unstubAllGlobals();
 });
+it('asks again for entries the server deferred because of its size budget', async () => {
+  vi.mocked(listFileImages)
+    .mockResolvedValueOnce([
+      { id: 'a', thumbnailImage: 'a', renderSnapshotImage: null, customImage: null },
+      { id: 'b', thumbnailImage: null, renderSnapshotImage: null, customImage: null, deferred: true },
+    ]);
+  const { result } = renderHook(() => useModelImages(['a', 'b']));
+  await waitFor(() => expect(result.current.get('b')?.thumbnailImage).toBe('b'));
+  expect(result.current.get('a')?.thumbnailImage).toBe('a');
+  expect(vi.mocked(listFileImages).mock.calls.map(([batch]) => batch)).toEqual([['a', 'b'], ['b']]);
+  expect(result.current.get('b')?.deferred).toBeUndefined();
+});

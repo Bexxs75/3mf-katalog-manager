@@ -1,0 +1,54 @@
+[package]
+name = "katalog-core"
+version = "0.17.0"
+edition = "2021"
+license = "MIT"
+
+[features]
+default = []
+step-preview = ["dep:cxx", "dep:opencascade-sys"]
+test-support = []
+
+[dependencies]
+sha2 = "0.10"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+semver = "1"
+zip = "9"
+# Extracting archives on import (see src/archive/). Deliberately pure Rust
+# decoders for xz/zstd (lzma-rust2, ruzstd), so no further C libraries end up in
+# the three platform builds.
+tar = "0.4"
+flate2 = "1"
+bzip2 = "0.6"
+lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization"] }
+ruzstd = "0.9"
+# 7z: pure Rust. Without "aes256" - encrypted 7z archives are only detected (AES coder in the block), not extracted.
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util"] }
+# RAR: embeds the official UnRAR source code (C++). License see THIRD-PARTY-LICENSES.md (freeware, not an OSI license).
+unrar = "0.5"
+quick-xml = "0.41"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+log = "0.4"
+regex = "1"
+unicode-normalization = "0.1.25"
+cxx = { version = "1", optional = true }
+# STEP preview: raw OCCT bindings. Deliberately WITHOUT the `builtin` feature -
+# that would build OCCT from source and link it STATICALLY, which triggers the
+# LGPL obligation (relinkable object files for every recipient). Linked
+# dynamically, OCCT stays replaceable; see THIRD-PARTY-LICENSES.md.
+opencascade-sys = { version = "0.3", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+xattr = "1"
+
+# Unix: open model files non-blocking so a FIFO can't hang the app (see crates/katalog-core/src/safe_file.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util", "compress", "aes256"] }

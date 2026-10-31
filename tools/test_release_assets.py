@@ -135,11 +135,11 @@ class Preview(unittest.TestCase):
                 encoding="utf-8",
             )
             (r / "package.json").write_text(json.dumps({"name": "mf-katalog-manager", "version": "0.14.0"}, indent=2), encoding="utf-8")
-            (r / "src-tauri/Cargo.lock").write_text('[[package]]\nname = "serde"\nversion = "1.0.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
+            (r / "Cargo.lock").write_text('[[package]]\nname = "serde"\nversion = "1.0.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
             ra.set_version("0.15.0-2", r)
             ra.check_version("0.15.0-2", r)
             self.assertEqual(json.loads((r / "package.json").read_text(encoding="utf-8"))["version"], "0.15.0-2")
-            lock = (r / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
+            lock = (r / "Cargo.lock").read_text(encoding="utf-8")
             self.assertIn('name = "mf-katalog-manager"\nversion = "0.15.0-2"', lock)
             self.assertIn('name = "serde"\nversion = "1.0.0"', lock)
             self.assertIn('serde = { version = "1" }', (r / "src-tauri/Cargo.toml").read_text(encoding="utf-8"))

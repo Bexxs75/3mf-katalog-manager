@@ -1,3 +1,4 @@
+import { useCanEditMetadata } from '../lib/webSession';
 import { useState } from 'react';
 import { Icon } from './Icon';
 import { useT, useFormatCount } from '../i18n/LanguageContext';
@@ -59,6 +60,7 @@ export function PrinterUnitsSection({ printer, spools, actions, onChanged, onMat
 }) {
   const t = useT();
   const formatCount = useFormatCount();
+  const canEdit = useCanEditMetadata();
   const [editing, setEditing] = useState<MaterialUnit | 'new' | null>(null);
   const [deleting, setDeleting] = useState<MaterialUnit | null>(null);
   const order = usePrinterReorder(printer.units.map(u => u.id), ids => actions.reorderUnits(printer.id, ids));
@@ -67,7 +69,7 @@ export function PrinterUnitsSection({ printer, spools, actions, onChanged, onMat
     {printer.units.map(unit => <div key={unit.id} onMouseEnter={() => order.enter(unit.id)}
       className={`group/unit flex flex-wrap items-center gap-3 py-2 border-b ${order.over === unit.id ? 'border-[var(--sel-line)]' : 'border-[var(--line)]'}`}>
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        {unit.kind !== 'resin_vat' && <button type="button" className="text-[var(--ink-3)] cursor-grab opacity-0 group-hover/unit:opacity-80 focus-visible:opacity-100 focus-visible:outline-2"
+        {canEdit && unit.kind !== 'resin_vat' && <button type="button" className="text-[var(--ink-3)] cursor-grab opacity-0 group-hover/unit:opacity-80 focus-visible:opacity-100 focus-visible:outline-2"
           aria-label={`${t('printersReorderHint')} ${unit.name}`} onMouseDown={e => { if (e.button === 0) order.begin(e, unit.id); }} onKeyDown={e => order.key(e, unit.id)}>⋮⋮</button>}
         <Icon name={unit.kind === 'external' ? 'spool' : unit.kind === 'resin_vat' ? 'resin' : 'ams'} size={24} className="shrink-0 text-[var(--ink-2)]" />
         <div className="min-w-0"><b className="block break-words">{unit.name}</b>
@@ -80,21 +82,22 @@ export function PrinterUnitsSection({ printer, spools, actions, onChanged, onMat
         return <span key={i} title={label} aria-label={label} className="w-6 h-6 rounded-full border border-[var(--line-strong)] shrink-0"
           style={{ background: !spool ? 'repeating-linear-gradient(45deg, transparent 0 3px, var(--line) 3px 4px)' : spool.colorHex && isValidColorHex(spool.colorHex) ? spool.colorHex : 'var(--unk-soft)' }} />;
       })}</div>
-      {unit.kind !== 'resin_vat' && <div className="flex flex-wrap gap-1.5 max-[639px]:w-full">
+      {canEdit && unit.kind !== 'resin_vat' && <div className="flex flex-wrap gap-1.5 max-[639px]:w-full">
         <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] max-[639px]:w-full`} onClick={() => setEditing(unit)}>{t('pmEdit')}</button>
         <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] text-[var(--ink-2)] max-[639px]:w-full`} aria-label={`${t('printersDelete')} ${unit.name}`} onClick={() => setDeleting(unit)}>{t('printersDelete')}</button>
       </div>}
     </div>)}
     <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
       <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--accent)] focus-visible:outline-2 max-[639px]:w-full" onClick={onMaterial}>{t('pmLoadSpools')}</button>
-      {printer.kind !== 'resin' && <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] max-[639px]:w-full`} onClick={() => setEditing('new')}><Icon name="plus" size={14} /> {t('printersAddUnitButton')}</button>}
+      {canEdit && printer.kind !== 'resin' && <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] max-[639px]:w-full`} onClick={() => setEditing('new')}><Icon name="plus" size={14} /> {t('printersAddUnitButton')}</button>}
     </div>
     {printer.kind === 'resin' && <p className="text-[var(--ink-3)] mt-2">{t('printersResinPrinterNote')}</p>}
-    {editing && <UnitDialog printer={printer} unit={editing === 'new' ? null : editing} actions={actions}
+    {canEdit && editing && <UnitDialog printer={printer} unit={editing === 'new' ? null : editing} actions={actions}
       onClose={() => setEditing(null)} onChanged={onChanged} />}
-    {deleting && <PrinterManagerDialog title={t('printersDeleteUnitConfirm').replace('{name}', deleting.name)}
+    {canEdit && deleting && <PrinterManagerDialog title={t('printersDeleteUnitConfirm').replace('{name}', deleting.name)}
       onClose={() => setDeleting(null)} submitLabel={t('printersDelete')}
       onSubmit={async () => { await actions.deleteUnit(deleting.id); onChanged(); }}>
+      {import.meta.env.VITE_TARGET === 'web' && <p>{t('webManagerDeleteUnit')}</p>}
       {count > 0 && <p>{formatCount(t('printersDeleteReturnHomeCount'), count)}</p>}
     </PrinterManagerDialog>}
   </>;
@@ -122,6 +125,7 @@ function UnitDialog({ printer, unit, actions, onClose, onChanged }: {
     <label>{t('pmName')}<input required maxLength={60} className={pmField} value={name} onChange={e => setName(e.target.value)} /></label>
     {kind === 'custom' && <label>{t('printersSlotsLabel')}<input type="number" required min={1} max={16} step={1}
       className={pmField} value={slots} onChange={e => setSlots(Number(e.target.value))} /></label>}
+    {import.meta.env.VITE_TARGET === 'web' && unit && kind === 'custom' && slots < unit.slotCount && <p role="status">{t('webManagerShrinkUnit')}</p>}
     <p className="text-[var(--ink-3)]">{t('pmUnitsHint')}</p>
   </PrinterManagerDialog>;
 }

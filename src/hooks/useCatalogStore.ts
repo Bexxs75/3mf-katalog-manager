@@ -1,6 +1,17 @@
+import { webFileNameParts } from '../lib/webFileName';
+import { fileOp, fileOpsBatch, emptyWebTrash, type TrashSummary } from '../lib/fileOps';
+import { metadataBatch } from '../lib/metadataBatch';
+import { reportMetadataError } from '../lib/metadataErrors';
+import { canEditMetadata, canSaveSnapshots, canManageFiles } from '../lib/webSession';
+import { isReadOnly } from '../lib/readOnly';
 import { hasInterruptedPreviewAttempt } from '../lib/snapshotQueue';
 import { isStepFilePath } from '../lib/stepFile';
 import { clearModelImages, invalidateModelImages } from './useModelImages';
+import { readImageFile } from '../lib/printLogPhoto';
+
+/** The server's answer to a repeated write whose stored reply was too large to keep. */
+const isLostAnswer = (e: unknown) => typeof e === 'object' && e !== null
+  && ((e as { message?: unknown }).message === 'request_id_result_unavailable' || (e as { kind?: unknown }).kind === 'request_id_result_unavailable');
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
@@ -18,6 +29,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     id: s.id,
     name: s.name,
     path: s.path,
+    fileType: s.fileType,
     folderId: s.folderId,
     tags: [],
     origin: 'local',
@@ -90,6 +102,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
+  const trashModelsRef = useRef(trashModels);
+  trashModelsRef.current = trashModels;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // IDs whose full data is already loaded; refreshFiles() resets the list
   // back to summaries.
@@ -122,7 +136,31 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   const pendingMutationCounts = useRef<Record<string, number>>({}).current;
   const mutationEpochs = useRef<Record<string, number>>({}).current;
 
+  const currentModels = useRef(models);
+  currentModels.current = models;
+  const rollbackValues = useRef(new Map<string, Partial<ModelFile>>()).current;
+  const rollbackQueueEpochs = useRef(new Map<string, number>()).current;
+  const failedMutations = useRef(new Set<string>()).current;
+  function mutationFailed(key: string, error: unknown) {
+    if (isReadOnly()) failedMutations.add(key);
+    reportMetadataError(error);
+  }
+  function rollback(key: string, id: string) {
+    const saved = rollbackValues.get(key);
+    if (!saved) return;
+    const values = { ...saved };
+    if (key.startsWith('printStatus:') && (pendingMutationCounts[`queue:${id}`] || (mutationEpochs[`queue:${id}`] ?? 0) !== rollbackQueueEpochs.get(key))) delete values.queuePosition;
+    if (values) setModels(previous => previous.map(model => model.id === id ? { ...model, ...values } : model));
+  }
+
   function beginMutation(key: string): void {
+    if (isReadOnly() && !pendingMutationCounts[key]) {
+      const [prefix, id] = key.split(':');
+      const field = MUTATION_TRACKED_FIELDS.find(entry => entry.prefix === prefix)?.field;
+      const model = currentModels.current.find(model => model.id === id);
+      if (prefix === 'printStatus') rollbackQueueEpochs.set(key, mutationEpochs[`queue:${id}`] ?? 0);
+      if (field && model) rollbackValues.set(key, { [field]: model[field], ...(prefix === 'printStatus' ? { queuePosition: model.queuePosition } : {}) });
+    }
     pendingMutationCounts[key] = (pendingMutationCounts[key] ?? 0) + 1;
     mutationEpochs[key] = (mutationEpochs[key] ?? 0) + 1;
   }
@@ -135,6 +173,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       return;
     }
     delete pendingMutationCounts[key];
+    if (isReadOnly() && failedMutations.has(key)) rollback(key, id);
     const epochAtResyncStart = mutationEpochs[key];
     const generation = loadGeneration.current;
     try {
@@ -142,11 +181,21 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       // Only take it if no new mutation started during the await and no
       // newer resync has already taken a more current state.
       if (fresh && generation === loadGeneration.current && pendingMutationCounts[key] === undefined && mutationEpochs[key] === epochAtResyncStart) {
-        setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh, summaryOnly: false, hasThumbnail: fresh.thumbnailImage !== null, hasRenderSnapshot: fresh.renderSnapshotImage !== null } : m)));
+        const queueUnchanged = !pendingMutationCounts[`queue:${id}`] && (mutationEpochs[`queue:${id}`] ?? 0) === rollbackQueueEpochs.get(key);
+        setModels((prev) => prev.map((m) => {
+          if (m.id !== id) return m;
+          if (!isReadOnly()) return { ...m, ...fresh, summaryOnly: false, hasThumbnail: fresh.thumbnailImage !== null, hasRenderSnapshot: fresh.renderSnapshotImage !== null };
+          const field = MUTATION_TRACKED_FIELDS.find(entry => entry.prefix === key.split(':')[0])?.field;
+          return field ? { ...m, [field]: fresh[field], ...(field === 'printStatus' && queueUnchanged ? { queuePosition: fresh.queuePosition } : {}) } : m;
+        }));
       }
     } catch (e) {
-      console.error(`[resync] reloading ${key} failed:`, e);
-      // No further rollback; the next refreshFiles() reconciles.
+      console.error(`[resync] reloading ${key} failed:`, e); reportMetadataError(e);
+      if (isReadOnly() && failedMutations.has(key) && mutationEpochs[key] === epochAtResyncStart && !pendingMutationCounts[key]) rollback(key, id);
+    } finally {
+      if (mutationEpochs[key] === epochAtResyncStart && !pendingMutationCounts[key]) {
+        rollbackValues.delete(key); rollbackQueueEpochs.delete(key); failedMutations.delete(key);
+      }
     }
   }
 
@@ -230,7 +279,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
           setFullyLoadedIds((prev) => new Set(prev).add(id));
         })
         .catch((e) => {
-          console.error('[full-model] loading failed:', e);
+          console.error('[full-model] loading failed:', e); reportMetadataError(e);
         }).finally(() => {
           if (pendingFullLoads.current.get(id) === generation) pendingFullLoads.current.delete(id);
         });
@@ -259,7 +308,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       }
     }).catch(e => {
       if (!active) return;
-      console.error('[catalog] initial load failed:', e);
+      console.error('[catalog] initial load failed:', e); reportMetadataError(e);
       setInitialLoadFailed(true);
     }).finally(() => { if (active) setInitialLoading(false); });
     refreshFolders();
@@ -285,6 +334,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     (id: string) => {
       setSelectedId(id);
       ensureFullModel(id);
+      // A trashed entry has no live row to stamp; asking would only produce a 404.
+      if (!canEditMetadata() || trashModelsRef.current.some((m) => m.id === id)) return;
       const now = new Date().toISOString();
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
       const key = `lastViewedAt:${id}`;
@@ -292,7 +343,9 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       filesApi
         .markFileViewed(id)
         .catch((e) => {
-          console.error('[last-viewed] update failed:', e);
+          // A refused request (4xx, e.g. the entry vanished meanwhile) is a silent background miss, not a banner-worthy failure.
+          if ((e as { expected?: unknown } | null)?.expected === true) return;
+          console.error('[last-viewed] update failed:', e); mutationFailed(key, e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -353,29 +406,34 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const restoreModel = useCallback(
     (id: string) =>
-      filesApi.restoreFile(id).then(() => {
+      !canManageFiles() ? Promise.resolve() : isReadOnly() ? fileOp('restore_file', { fileId: id }).then(() => refetchAfterPartialDelete([id])).then(() => {}) : filesApi.restoreFile(id).then(() => {
         setTrashModels((prev) => prev.filter((m) => m.id !== id));
         setSelectedId((prev) => (prev === id ? null : prev));
         refreshFiles();
         refreshFolders();
         refreshTags();
       }),
-    [refreshFiles, refreshFolders, refreshTags],
+    [refreshFiles, refreshFolders, refreshTags, refetchAfterPartialDelete],
   );
 
   const deleteModelPermanently = useCallback(
-    (id: string) =>
-      filesApi.deleteFilePermanently(id).then(() => {
+    (id: string, password?: string) =>
+      !canManageFiles() ? Promise.resolve() : isReadOnly() ? (password === undefined ? Promise.resolve() : fileOp('delete_file_permanently', { fileId: id, confirm: true, password }).then(() => refetchAfterPartialDelete([id])).then(() => {})) : filesApi.deleteFilePermanently(id).then(() => {
         setTrashModels((prev) => prev.filter((m) => m.id !== id));
         setSelectedId((prev) => (prev === id ? null : prev));
       }),
-    [],
+    [refetchAfterPartialDelete],
   );
 
-  const emptyTrashAction = useCallback(() => filesApi.emptyTrash().then(() => setTrashModels([])), []);
+  const emptyTrashAction = useCallback((summary?: TrashSummary, password?: string, onProgress = (_done: number, _total: number) => {}) => {
+    if (!canManageFiles()) return Promise.resolve();
+    if (isReadOnly()) return summary && password !== undefined ? emptyWebTrash(summary, password, onProgress) : Promise.resolve();
+    return filesApi.emptyTrash().then(() => setTrashModels([]));
+  }, []);
 
   const addTag = useCallback(
     (id: string, rawTag: string) => {
+      if (!canEditMetadata()) return Promise.resolve();
       // Map translated names of automatic tags (e.g. "Multipart") to the
       // identifier before updating optimistically - otherwise a second tag
       // flashes briefly until the backend has normalized it.
@@ -389,7 +447,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
         .addTag(id, tag)
         .then(refreshTags)
         .catch((e) => {
-          console.error('[tags] adding failed:', e);
+          console.error('[tags] adding failed:', e); mutationFailed(key, e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -401,6 +459,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   // Deliberately NOT optimistic: the UI should be able to show a name
   // collision directly. The error goes to the caller as a rejection.
   const renameFile = useCallback((id: string, name: string) => {
+    if (!canManageFiles()) return Promise.resolve();
+    if (isReadOnly()) return fileOp('rename_file', { fileId: id, name: webFileNameParts(name).base }).then(() => refreshFiles());
     return filesApi.renameFile(id, name).then(() => {
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, name } : m)));
       // The new name can change the sort position. Scrolling happens in a
@@ -408,10 +468,11 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       // (requestAnimationFrame here wouldn't have that guarantee).
       setPendingScrollToId(id);
     });
-  }, []);
+  }, [refreshFiles]);
 
   const removeTag = useCallback(
     (id: string, tag: string) => {
+      if (!canEditMetadata()) return Promise.resolve();
       const current = models.find((m) => m.id === id);
       if (!current) return;
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, tags: m.tags.filter((t) => t !== tag) } : m)));
@@ -421,7 +482,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
         .removeTag(id, tag)
         .then(refreshTags)
         .catch((e) => {
-          console.error('[tags] removing failed:', e);
+          console.error('[tags] removing failed:', e); mutationFailed(key, e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -431,12 +492,13 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   );
 
   const deleteModel = useCallback(
-    (id: string) => filesApi.deleteFile(id).then(() => applyLocalDeletion([id])),
-    [applyLocalDeletion],
+    (id: string) => !canManageFiles() ? Promise.resolve() : isReadOnly() ? fileOpsBatch('delete_files', [id]).then(() => refetchAfterPartialDelete([id])) : filesApi.deleteFile(id).then(() => applyLocalDeletion([id])),
+    [applyLocalDeletion, refetchAfterPartialDelete],
   );
 
   const togglePrintStatus = useCallback(
     (id: string) => {
+      if (!canEditMetadata()) return Promise.resolve();
       const current = models.find((m) => m.id === id);
       if (!current) return;
       const next = current.printStatus === 'printed' ? 'not_printed' : 'printed';
@@ -450,7 +512,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       filesApi
         .setPrintStatus(id, next)
         .catch((e) => {
-          console.error('[print-status] update failed:', e);
+          console.error('[print-status] update failed:', e); mutationFailed(key, e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -461,6 +523,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const toggleFavorite = useCallback(
     (id: string) => {
+      if (!canEditMetadata()) return Promise.resolve();
       const current = models.find((m) => m.id === id);
       if (!current) return;
       const next = !current.favorite;
@@ -470,7 +533,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       filesApi
         .setFavorite(id, next)
         .catch((e) => {
-          console.error('[favorite] update failed:', e);
+          console.error('[favorite] update failed:', e); mutationFailed(key, e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -480,22 +543,27 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   );
 
   const addToQueue = useCallback((id: string) => {
+    if (!canEditMetadata()) return Promise.resolve();
+    const key = `queue:${id}`;
+    if (isReadOnly()) beginMutation(key);
     filesApi
       .addToQueue(id)
       .then((position) => {
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: position } : m)));
       })
-      .catch((e) => console.error('[queue] adding failed:', e));
+      .catch((e) => { console.error('[queue] adding failed:', e); mutationFailed(key, e); })
+      .finally(() => { if (isReadOnly()) void endMutationAndResyncIfSettled(key, id); });
   }, []);
 
   const removeFromQueue = useCallback((id: string) => {
+    if (!canEditMetadata()) return Promise.resolve();
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: null } : m)));
     const key = `queue:${id}`;
     beginMutation(key);
     filesApi
       .removeFromQueue(id)
       .catch((e) => {
-        console.error('[queue] removing failed:', e);
+        console.error('[queue] removing failed:', e); mutationFailed(key, e);
       })
       .finally(() => {
         void endMutationAndResyncIfSettled(key, id);
@@ -504,6 +572,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const reorderQueue = useCallback(
     (orderedIds: string[]) => {
+      if (!canEditMetadata()) return Promise.resolve();
       const updates: { fileId: string; position: number }[] = [];
       orderedIds.forEach((id, index) => {
         const position = index + 1;
@@ -513,6 +582,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
         }
       });
       if (updates.length === 0) return;
+      if (isReadOnly()) updates.forEach(update => beginMutation(`queue:${update.fileId}`));
       setModels((prev) =>
         prev.map((m) => {
           const index = orderedIds.indexOf(m.id);
@@ -522,14 +592,29 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       // A reorder affects several models; on failure a full refreshFiles()
       // is enough instead of the field+ID counters.
       filesApi.reorderQueue(updates).catch((e) => {
-        console.error('[queue] reordering failed:', e);
-        void refreshFiles();
+        console.error('[queue] reordering failed:', e); reportMetadataError(e);
+        if (isReadOnly()) updates.forEach(update => mutationFailed(`queue:${update.fileId}`, e));
+        else void refreshFiles();
+      }).finally(() => {
+        if (isReadOnly()) updates.forEach(update => { void endMutationAndResyncIfSettled(`queue:${update.fileId}`, update.fileId); });
       });
     },
     [models, refreshFiles],
   );
 
-  const uploadCustomImage = useCallback((id: string) => {
+  const uploadCustomImage = useCallback((id: string, file?: File) => {
+    if (isReadOnly()) {
+      if (!file || !canEditMetadata()) return Promise.resolve();
+      // The answer is empty; the picture itself is reloaded through the image listing.
+      return readImageFile(file)
+        .then((base64) => filesApi.setCustomImage(id, base64))
+        .then(() => invalidateModelImages(id))
+        .catch((e) => {
+          // The server did the work but cannot repeat its (large) answer: just reload the picture.
+          if (!isLostAnswer(e)) throw e;
+          invalidateModelImages(id);
+        });
+    }
     return filesApi
       .uploadCustomImage(id)
       .then((customImage) => {
@@ -542,12 +627,13 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   const latestSnapshotSaves = useRef(new Map<string, { failed: boolean }>()).current;
 
   const captureRenderSnapshot = useCallback((id: string, base64: string) => {
+    if (!canSaveSnapshots()) return Promise.resolve();
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, hasRenderSnapshot: true } : m)));
     const key = `renderSnapshot:${id}`;
     const attempt = { failed: false };
     latestSnapshotSaves.set(id, attempt);
     beginMutation(key);
-    filesApi
+    const save = filesApi
       .setRenderSnapshot(id, base64)
       .then(() => {
         // Detail reads started during the write may still contain the old flag.
@@ -555,7 +641,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
         invalidateModelImages(id);
       })
       .catch((e) => {
-        console.error('[render-snapshot] saving failed:', e);
+        console.error('[render-snapshot] saving failed:', e); reportMetadataError(e);
         attempt.failed = true;
       })
       .finally(() => {
@@ -576,9 +662,19 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
           delete pendingMutationCounts[key];
         }
       });
+    if (import.meta.env.VITE_TARGET === 'web') return save;
   }, []);
 
   const setModelLicenses = useCallback(async (ids: string[], license: string | null) => {
+    if (!canEditMetadata()) return Promise.resolve();
+    if (isReadOnly() && ids.length > 1) {
+      return metadataBatch([...new Set(ids)], id => filesApi.setLicense([id], license), async () => {
+        const summaries = await filesApi.listFileSummaries();
+        const selected = new Set(ids);
+        const licenses = new Map(summaries.filter(model => selected.has(model.id)).map(model => [model.id, model.license]));
+        setModels(previous => previous.map(model => licenses.has(model.id) ? { ...model, license: licenses.get(model.id)! } : model));
+      });
+    }
     const selected = new Set(ids);
     const startedEpochs = new Map<string, number>();
     let overlapped = false;
@@ -591,6 +687,9 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     try {
       await filesApi.setLicense([...selected], license);
       setModels(prev => prev.map(model => selected.has(model.id) ? { ...model, license } : model));
+    } catch (error) {
+      reportMetadataError(error);
+      throw error;
     } finally {
       const settled = new Map<string, number>();
       selected.forEach(id => {
@@ -613,20 +712,21 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
             .map(model => [model.id, model.license]));
           setModels(prev => prev.map(model => licenses.has(model.id) ? { ...model, license: licenses.get(model.id)! } : model));
         } catch (error) {
-          console.error('[license] reloading failed:', error);
+          console.error('[license] reloading failed:', error); reportMetadataError(error);
         }
       }
     }
   }, []);
 
   const setModelSourceUrl = useCallback((id: string, url: string | null) => {
+    if (!canEditMetadata()) return Promise.resolve();
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, sourceUrl: url } : m)));
     const key = `sourceUrl:${id}`;
     beginMutation(key);
     filesApi
       .setSourceUrl(id, url)
       .catch((e) => {
-        console.error('[source-url] saving failed:', e);
+        console.error('[source-url] saving failed:', e); mutationFailed(key, e);
       })
       .finally(() => {
         void endMutationAndResyncIfSettled(key, id);
@@ -634,18 +734,23 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   }, []);
 
   const rescanMetadata = useCallback((id: string) => {
+    if (!canEditMetadata()) return Promise.resolve();
     setRescanFeedback(null);
+    const apply = (updated: ModelFile) => {
+      invalidateModelImages(id);
+      setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
+      // The rescan answer and a plain reload both carry the full ModelFile record.
+      setFullyLoadedIds((prev) => new Set(prev).add(id));
+      setRescanFeedback({ fileId: id, status: 'success' });
+    };
     filesApi
       .rescanFileMetadata(id)
-      .then((updated) => {
-        invalidateModelImages(id);
-        setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
-        // rescan_file_metadata already returns the full ModelFile record.
-        setFullyLoadedIds((prev) => new Set(prev).add(id));
-        setRescanFeedback({ fileId: id, status: 'success' });
-      })
+      // A repeated request whose stored answer was too large: the scan itself succeeded, so
+      // reading the model again gives the same result as the lost answer.
+      .catch((e) => (isLostAnswer(e) ? filesApi.listFilesByIds([id]).then(([fresh]) => fresh ?? Promise.reject(e)) : Promise.reject(e)))
+      .then(apply)
       .catch((e) => {
-        console.error('[rescan] rescan failed:', e);
+        console.error('[rescan] rescan failed:', e); reportMetadataError(e);
         const err = toAppError(e);
         setRescanFeedback({ fileId: id, status: 'error', message: err.message, unexpected: err.unexpected });
       });

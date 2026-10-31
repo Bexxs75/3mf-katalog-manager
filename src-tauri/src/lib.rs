@@ -1,22 +1,24 @@
-mod archive;
+use crate::commands::DesktopJobs;
+pub use katalog_core::archive;
 mod commands;
-mod db;
+mod printer_sync;
+pub use katalog_core::db;
 pub mod diagnostics;
-mod filament_check;
-mod geometry;
+pub use katalog_core::filament_check;
+pub use katalog_core::geometry;
 mod linux_menu;
 mod log_target;
-mod obj;
+pub use katalog_core::obj;
 // Printer connection: connection and sync logic.
-mod printer_link;
-mod safe_file;
+pub use katalog_core::printer_link;
+pub use katalog_core::safe_file;
 mod slicers;
 mod single_instance;
 #[cfg(feature = "step-preview")]
-pub mod step;
-mod stl;
-mod tagging;
-mod threemf;
+pub use katalog_core::step;
+pub use katalog_core::stl;
+pub use katalog_core::tagging;
+pub use katalog_core::threemf;
 mod updater;
 mod startup;
 mod startup_error;
@@ -54,18 +56,7 @@ fn open_storage_at(
     Ok((conn, backup_failed, db_path, trash_dir))
 }
 
-// Data directory for the own user only (relevant on multi-user systems).
-#[cfg(unix)]
-pub(crate) fn harden_permissions(path: &std::path::Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let mode = if path.is_dir() { 0o700 } else { 0o600 };
-    if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
-        log::error!(target: "startup", "could not harden file permissions for {path:?}: {e}");
-    }
-}
-
-#[cfg(not(unix))]
-pub(crate) fn harden_permissions(_path: &std::path::Path) {}
+use katalog_core::safe_file::harden_permissions;
 
 /// Indents continuation lines of a multi-line log message (e.g. a stack
 /// trace) so they read as part of the same entry, not as separate log lines.
@@ -216,7 +207,7 @@ pub fn run() {
             });
             app.manage(commands::ApprovedTargets::default());
             app.manage(commands::ApprovedCatalogParents::default());
-            let waker = printer_link::sync::spawn_background(app.handle().clone());
+            let waker = printer_sync::spawn_background(app.handle().clone());
             app.manage(waker);
             app.manage(commands::DroppedImages::default());
             app.manage(commands::DiagnosticsState::default());

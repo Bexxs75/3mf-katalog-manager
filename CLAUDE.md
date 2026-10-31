@@ -1,11 +1,13 @@
 # 3MF Katalog Manager: notes for Claude Code
 
-Tauri 2 desktop app: Rust backend in `src-tauri/`, React + TypeScript frontend in `src/`, end-to-end tests in `e2e/`. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; this file only adds what an agent tends to get wrong.
+Tauri 2 desktop app: Rust desktop backend in `src-tauri/`, shared domain logic in `crates/katalog-core/`, React + TypeScript frontend in `src/`, end-to-end tests in `e2e/`. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; this file only adds what an agent tends to get wrong.
 
 ## Checks to run before calling something done
 
+Run from the repository root:
+
 ```bash
-cd src-tauri && cargo test --no-default-features && cargo clippy --no-default-features --all-targets -- -D warnings
+cargo test --workspace --no-default-features && cargo clippy --workspace --no-default-features --all-targets -- -D warnings
 npx tsc --noEmit && npx vitest run
 ```
 

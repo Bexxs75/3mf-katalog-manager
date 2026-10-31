@@ -1,6 +1,6 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 
-export interface RuntimeEnvironment { container: boolean }
+export interface RuntimeEnvironment { container: boolean; web?: boolean; readOnly?: boolean }
 
 let environment: Promise<RuntimeEnvironment> | undefined;
 

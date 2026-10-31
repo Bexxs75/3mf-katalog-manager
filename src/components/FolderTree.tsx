@@ -1,3 +1,5 @@
+import { isReadOnly } from '../lib/readOnly';
+import { canManageFiles, useCanManageFiles } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -66,6 +68,7 @@ export function FolderTree({
   onFolderMouseLeave,
   onDragFolderStart,
 }: Props) {
+  const canManage = useCanManageFiles();
   const { jobActive } = useImportLock();
   const t = useT();
   const formatCount = useFormatCount();
@@ -81,7 +84,7 @@ export function FolderTree({
 
   // Folder rows are only 28px high: an immediate drag start would let even a
   // slight slip during a click trigger a real move_folder.
-  const folderDrag = useDragThreshold(jobActive ? undefined : onDragFolderStart);
+  const folderDrag = useDragThreshold(jobActive || !canManage ? undefined : onDragFolderStart);
 
   // The folder row disappears: if the active folder lay inside it, fall back to "All models" and park the focus there.
   function leaveFolder(folderId: string) {
@@ -96,7 +99,7 @@ export function FolderTree({
   }
 
   function startRename(node: Folder) {
-    if (jobActive) return;
+    if (jobActive || !canManageFiles()) return;
     setRenaming({ id: node.id, draft: node.name, error: null, busy: false });
   }
   function cancelRename(restoreFocus: boolean) {
@@ -154,8 +157,8 @@ export function FolderTree({
 
   function renderNode(node: TreeNode, depth: number) {
     const isOpen = expansion.isExpanded(node.id);
-    const validFileTarget = !!draggedFileId && node.id !== draggedFileFolderId;
-    const isDraggedOver = dragOverFolderId === node.id && (!draggedFileId || validFileTarget);
+    const validFileTarget = canManage && !!draggedFileId && node.id !== draggedFileFolderId;
+    const isDraggedOver = canManage && dragOverFolderId === node.id && (!draggedFileId || validFileTarget);
     if (renaming?.id === node.id) {
       const errorId = `rename-error-${node.id}`;
       const hintId = `rename-hint-${node.id}`;
@@ -196,9 +199,9 @@ export function FolderTree({
         <div data-sync-folder-id={node.id}
           tabIndex={0}
           role="button"
-          onContextMenu={(e) => { e.preventDefault(); returnFocus.current = e.currentTarget; setMenu({ id: node.id, name: node.name, x: e.clientX, y: e.clientY }); }}
+          onContextMenu={(e) => { e.preventDefault(); if (!canManageFiles()) return; returnFocus.current = e.currentTarget; setMenu({ id: node.id, name: node.name, x: e.clientX, y: e.clientY }); }}
           onKeyDown={(e) => {
-            if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+            if (canManageFiles() && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
               e.preventDefault(); e.stopPropagation(); returnFocus.current = e.currentTarget;
               const rect = e.currentTarget.getBoundingClientRect();
               setMenu({ id: node.id, name: node.name, x: rect.left, y: rect.bottom });
@@ -261,10 +264,10 @@ export function FolderTree({
         <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{totalModelCount}</span>
       </div>
       {tree.map((n) => renderNode(n, 0))}
-      {menu && <FolderCatalogMenu folderId={menu.id} name={menu.name} x={menu.x} y={menu.y}
+      {menu && canManage && <FolderCatalogMenu folders={folders} folderId={menu.id} name={menu.name} x={menu.x} y={menu.y}
         returnFocus={returnFocus} onClose={() => setMenu(null)}
         onRename={() => { const node = folders.find((f) => f.id === menu.id); setMenu(null); if (node) startRename(node); }}
-        onRemoved={() => { leaveFolder(menu.id); onRemoved?.(); }}
+        onRemoved={() => { leaveFolder(menu.id); if (!isReadOnly()) onRemoved?.(); }}
         onTrashed={(result) => { leaveFolder(menu.id); onTrashed?.(result); }} /> }
     </div>
   );

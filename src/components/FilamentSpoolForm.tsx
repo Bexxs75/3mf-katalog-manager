@@ -1,7 +1,11 @@
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
+import { readPrintLogPhoto } from '../lib/printLogPhoto';
+import { invalidateSpoolImage } from '../lib/spoolImages';
+import { SpoolImage } from './SpoolImage';
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useCallback, useEffect, useState, useRef, useId } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useT } from '../i18n/LanguageContext';
 import { parseDecimalInput } from '../lib/decimalInput';
 import type { FilamentSpool, SpoolKind } from '../types';
@@ -92,13 +96,22 @@ function toForm(spool: FilamentSpool): FormState {
     originalWeightG: String(spool.originalWeightG),
     remainingWeightG: String(spool.remainingWeightG),
     price: spool.price === null ? '' : String(spool.price),
-    imagePng: spool.imagePng,
+    imagePng: spool.imagePng ?? null,
     quantity: '1',
   };
 }
 
 export function FilamentSpoolForm({ open, editing, knownLocations, knownManufacturers = [], knownSpools = NO_SPOOLS, onClose, onSaved, defaultKind = 'filament' }: Props) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
+  const web = import.meta.env.VITE_TARGET === 'web';
+  const [imageChanged, setImageChanged] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const [readingImage, setReadingImage] = useState(false);
+  const imageReadEpoch = useRef(0);
+  const [partial, setPartial] = useState('');
+  const fileInput = useRef<HTMLInputElement>(null);
   const dialogRef = useModalDialog<HTMLElement>({ open, onClose });
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const fieldId = useId();
@@ -146,6 +159,10 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       setForm(editing ? toForm(editing) : { ...EMPTY_FORM, kind: defaultKind });
       setWeightTouched({ original: false, remaining: false });
       setError(null);
+      imageReadEpoch.current++;
+      setReadingImage(false);
+      setImageChanged(false);
+      setPartial('');
       setAttempted(false);
       setImageError(null);
     }
@@ -183,6 +200,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
   };
 
   const handlePickImage = () => {
+    if (!canEditMetadata()) return;
+    if (web) { fileInput.current?.click(); return; }
     invoke<string | null>('pick_and_read_image')
       .then((base64) => {
         if (base64 === null) return;
@@ -208,13 +227,13 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
   );
 
   const imageDrop = useImageDropZone<HTMLButtonElement>({
-    enabled: open,
+    enabled: open && canEdit && !web,
     onImage: handleDroppedImage,
     onReject: handleRejectedDrop,
   });
 
   const submit = async () => {
-    if (!form.material.trim()) return;
+    if (!canEditMetadata() || busyRef.current || readingImage || !form.material.trim()) return;
     setAttempted(true);
     const firstInvalid = (Object.keys(invalid) as NumericField[]).find(key => invalid[key]);
     if (firstInvalid) {
@@ -235,7 +254,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
     const listed = [form.colorHex, ...form.extraColors.map((text) => (text.trim() === '' ? null : normalizeHex(text)))]
       .filter((hex): hex is string => hex !== null && isValidColorHex(hex));
     const colorHexes = listed.length > 1 ? listed : [];
-    const payload: FilamentSpool = {
+    const payload: Omit<FilamentSpool, 'imagePng'> & { imagePng?: string | null } = {
       id: editing?.id ?? '',
       material: form.material.trim(),
       manufacturer: form.manufacturer.trim() || null,
@@ -245,7 +264,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       originalWeightG: roundedOriginal,
       remainingWeightG: Math.round(remaining * 10) / 10,
       price,
-      imagePng: form.imagePng,
+      ...(!web || imageChanged ? { imagePng: form.imagePng } : {}),
       // A lone remaining extra color (first one set to "none") becomes the single color.
       colorHex: colorHexes[0] ?? listed[0] ?? form.colorHex,
       colorHexes,
@@ -255,22 +274,31 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       slotIndex: editing?.slotIndex ?? null,
       kind: form.kind,
     };
+    if (web) { busyRef.current = true; setBusy(true); }
+    let created = 0;
+    const count = Math.max(1, parseInt(form.quantity, 10) || 1);
     try {
       if (editing) {
         await invoke('update_filament_spool', { spool: payload });
+        if (web && imageChanged) invalidateSpoolImage(editing.id);
       } else {
         // Every spool gets its own record, even with identical values: the
         // remaining weight is tracked per physical spool.
-        const count = Math.max(1, parseInt(form.quantity, 10) || 1);
         for (let i = 0; i < count; i++) {
           await invoke('add_filament_spool', { spool: payload });
+          created++;
         }
       }
       onSaved();
       onClose();
     } catch (e) {
+      if (web && created) {
+        setForm(f => ({ ...f, quantity: String(count - created) }));
+        setPartial(t('webManagerPartial').replace('{done}', String(created)).replace('{remaining}', String(count - created)));
+        onSaved();
+      }
       setError(toAppError(e));
-    }
+    } finally { busyRef.current = false; setBusy(false); }
   };
 
   const resin = form.kind === 'resin';
@@ -327,8 +355,9 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
         </div>
 
         <div className="flex-1 scrollbar-stable overflow-y-scroll px-4 py-4 flex flex-col gap-5">
+          {partial && <p role="status">{partial}</p>}
           {error && (
-            <div className="text-small text-[var(--accent)] break-words">
+            <div role="alert" className="text-small text-[var(--accent)] break-words">
               {t('filamentError')} <ErrorText error={error} />
             </div>
           )}
@@ -337,7 +366,22 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
             <p className="text-compact-meta ui-label text-[var(--ink-3)] mb-2">
               {t('filamentSectionImage')}
             </p>
+            {web && <input ref={fileInput} type="file" accept="image/*" className="hidden" aria-label={t('filamentSectionImage')} onChange={async e => {
+              const file = e.target.files?.[0]; e.target.value = '';
+              if (!file || !canEditMetadata()) return;
+              const epoch = ++imageReadEpoch.current;
+              setReadingImage(true);
+              try {
+                const imagePng = await readPrintLogPhoto(file);
+                if (epoch !== imageReadEpoch.current) return;
+                setForm(f => ({ ...f, imagePng })); setImageChanged(true); setImageError(null);
+              } catch (error) {
+                if (epoch === imageReadEpoch.current) setImageError(expectedError(t(error instanceof Error && error.message === 'webPhotoTooLarge' ? 'webPhotoTooLarge' : 'webPhotoFormat')));
+              } finally { if (epoch === imageReadEpoch.current) setReadingImage(false); }
+            }} />}
+            {web && (form.imagePng || (!imageChanged && editing?.hasImage)) && <button type="button" disabled={!canEdit || busy || readingImage} onClick={() => { setImageChanged(true); setForm(f => ({...f, imagePng: null})); setImageError(null); }}>{t('webManagerRemoveImage')}</button>}
             <button
+              disabled={!canEdit || busy || readingImage}
               type="button"
               ref={imageDrop.zoneRef}
               onClick={handlePickImage}
@@ -348,7 +392,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
                   : 'border-[var(--line-strong)] text-[var(--ink-3)]'
               }`}
             >
-              {form.imagePng ? (
+              {web && !imageChanged && editing?.hasImage ? <SpoolImage spool={editing} className="w-14 h-14 rounded-md object-cover" fallback={<Icon name="spool" />} /> : form.imagePng ? (
                 <img
                   src={`data:image/png;base64,${form.imagePng}`}
                   className="w-14 h-14 rounded-md object-cover border border-[var(--line)]"
@@ -360,7 +404,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
                   <path d="m21 15-5-5L5 21" />
                 </svg>
               )}
-              {t('filamentImageDropHint')}
+              {t(web ? 'webManagerChooseImage' : 'filamentImageDropHint')}
             </button>
             {imageError && (
               <div
@@ -613,7 +657,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
         <div className="flex-none px-4 py-3.5 border-t border-[var(--line)] bg-[var(--panel-2)]">
           <button
             onClick={submit}
-            disabled={!form.material.trim()}
+            disabled={!canEdit || busy || readingImage || !form.material.trim()}
             className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-body font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {editing

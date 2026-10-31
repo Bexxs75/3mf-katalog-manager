@@ -1,6 +1,6 @@
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '../events';
 import type { ImportJobResult, ImportProgress, ImportState, StartedImport } from '../../types';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 import type { ArchiveImportResult, ArchiveInfo, ArchiveRequest, ImportResultDto } from '../../types';
 
 export function importFiles(targetFolderId?: string) {

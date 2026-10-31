@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 
 export interface DiskEntry { path: string; relativePath: string; root: string; id: string | null }
 export interface DiskRename {
@@ -70,3 +70,18 @@ export const onDiskSyncRequest = (handler: () => void) => {
   document.addEventListener(DISK_SYNC_REQUEST_EVENT, handler);
   return () => document.removeEventListener(DISK_SYNC_REQUEST_EVENT, handler);
 };
+
+// Web: read-only comparison of the catalog with the disk. Paths are relative to a configured folder, `root` indexes `roots`.
+export type DiskReportRootStatus = 'ok' | 'unreachable' | 'empty';
+export interface DiskReport {
+  roots: { name: string; status: DiskReportRootStatus; mostlyMissing: boolean }[];
+  missingModels: { id: string; root: number; relativePath: string }[];
+  newFiles: { root: number; relativePath: string }[];
+  danglingCompanions: { id: string; fileId: string; name: string; root: number; relativePath: string; reason: 'missing' | 'notFile' }[];
+  modelsOutsideRoots: number;
+  companionsOutsideRoots: number;
+  scannedEntries: number;
+  truncated: boolean;
+  truncatedBy: ('items' | 'entries' | 'time')[];
+}
+export const diskSyncReport = () => invoke<DiskReport>('disk_sync_report');

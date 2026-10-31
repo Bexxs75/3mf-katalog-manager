@@ -1,3 +1,8 @@
+import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
+import { canEditMetadata } from './lib/webSession';
+import { reportMetadataError } from './lib/metadataErrors';
+import { WebImport } from './components/WebImport';
+import { isReadOnly } from './lib/readOnly';
 import { DownloadSlicerView } from './components/DownloadSlicerView';
 import { useRuntimeEnvironment } from './hooks/useRuntimeEnvironment';
 import { NetworkFilesystemWarning } from './components/NetworkFilesystemWarning';
@@ -14,7 +19,7 @@ import { resolveDisplayImage } from './lib/resolveDisplayImage';
 import { useFolderExpansion } from './hooks/useFolderExpansion';
 import { detailNeighbor, type DetailDirection } from './hooks/useDetailNavigation';
 import { useSidebarWidth } from './hooks/useSidebarWidth';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './lib/transport';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { isWebGLUnavailable } from './lib/webglAvailability';
@@ -30,6 +35,7 @@ import { BulkDeleteFailureBanner } from './components/BulkDeleteFailureBanner';
 import { DateRenameBanner } from './components/DateRenameBanner';
 import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
+import { WebBackgroundSnapshots } from './components/WebBackgroundSnapshots';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { MoveToast } from './components/MoveToast';
 import { MoveTargetDialog } from './components/MoveTargetDialog';
@@ -145,13 +151,17 @@ export default function App() {
     refreshFiles: store.refreshFiles,
   }, collections, catalogBaseDir, bulk.selectedForBulk);
 
+  const [uploadRefreshKey, setUploadRefreshKey] = useState(0);
+  const [webImportOpen, setWebImportOpen] = useState(false);
   const [tipsOpen, setTipsOpen] = useState(false);
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [generalTabRequest, setGeneralTabRequest] = useState(0);
+  // Source folders, start sync, companions, date rename, move history and the Linux menu have no web server command.
+  const web = import.meta.env.VITE_TARGET === 'web';
   const sourceCheck = useSourceFolderCheck({
-    ready: !store.initialLoading,
+    ready: !web && !store.initialLoading,
     jobActive: fileImport.jobActive,
     // Without a source folder the check has nothing to do; show where to add one.
     onNoFolders: () => { setGeneralTabRequest(n => n + 1); setSettingsOpen(true); },
@@ -159,7 +169,7 @@ export default function App() {
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
   const update = useUpdater();
 
-  const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);
+  const [setupDialogOpen, setSetupDialogOpen] = useState(import.meta.env.VITE_TARGET !== 'web' && !setupSeen);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
@@ -170,7 +180,7 @@ export default function App() {
   ]);
   // Not while the first-run dialog is open, in the trash or other views, or during an import.
   const startSync = useStartSync(
-    !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
+    !web && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
     reloadAfterDiskSync,
   );
   const [moveDialog, setMoveDialog] = useState<{ ids: string[] } | null>(null);
@@ -201,13 +211,32 @@ export default function App() {
       ...(includeActiveCollection && collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
     ]).catch((e) => console.error('[catalog] refresh after removal failed:', e));
   };
+  const fileOpsRefresh = useRef<() => Promise<unknown>>(async () => {});
+  fileOpsRefresh.current = async () => {
+    setUploadRefreshKey(key => key + 1);
+    await Promise.all([
+      store.refreshFiles(), store.refreshFolders(), store.refreshTags(), store.refreshTrash(),
+      collections.refreshCollections(), printerLink.refresh(), printers.refresh(),
+      ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+    ]);
+  };
+  useEffect(() => subscribeFileOpsRefresh(() => fileOpsRefresh.current()), []);
+  // Deleted/restored/purged IDs must not linger in any selection (detail, bulk, trash).
+  const dropSelection = useRef<(ids: string[]) => void>(() => {});
+  dropSelection.current = (ids) => {
+    store.setSelectedId(previous => previous && ids.includes(previous) ? null : previous);
+    setDetailModelId(previous => previous && ids.includes(previous) ? null : previous);
+    bulk.deselectBulk(ids);
+  };
+  useEffect(() => subscribeFileOpsApplied(ids => dropSelection.current(ids)), []);
+
   const [renameToast, setRenameToast] = useState<{ from: string; to: string; count: number } | null>(null);
   const dismissRenameToast = useCallback(() => setRenameToast(null), []);
   const hasMoveToast = !!dragDrop.moveToast;
   useEffect(() => { if (hasMoveToast) setRenameToast(null); }, [hasMoveToast, dragDrop.moveToast]);
   // Same reload as after move_folder: folder paths changed, and so did the paths of the models below it.
   const onFolderRenamed = (info: { id: string; from: string; to: string; count: number }) => {
-    dragDrop.recordFolderRename({ folderId: info.id, oldName: info.from, newName: info.to });
+    if (!web) dragDrop.recordFolderRename({ folderId: info.id, oldName: info.from, newName: info.to });
     // One toast at a time, so an "Undo" button always belongs to the newest step.
     dragDrop.dismissMoveToast();
     setRenameToast(info);
@@ -229,9 +258,24 @@ export default function App() {
     void store.refreshFiles().catch((e) => console.error('[files] refresh after date rename failed:', e));
   };
   const removeCatalogModels = async (fileIds: string[]) => {
-    await invoke('remove_files_from_catalog', { fileIds });
-    store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
-    refreshAfterRemoval();
+    if (!canEditMetadata()) return;
+    try {
+      await invoke('remove_files_from_catalog', { fileIds });
+      store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
+      if (isReadOnly()) {
+        store.setSelectedId(null);
+        setDetailModelId(null);
+        bulk.clearBulkSelection();
+        setUploadRefreshKey(key => key + 1);
+        await Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags(),
+          collections.refreshCollections(),
+          ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+        ]);
+      } else refreshAfterRemoval();
+    } catch (error) {
+      reportMetadataError(error);
+      throw error;
+    }
   };
   const clearCatalogFilters = () => {
     collections.setActiveCollection(null);
@@ -320,11 +364,11 @@ export default function App() {
     openBulkDeleteConfirm: () => { if (!fileImport.jobActive) bulk.setConfirmBulkDelete(true); },
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
     toggleBulkSelect: bulk.toggleBulkSelect,
-    onMoveSelection: () => {
+    onMoveSelection: web ? undefined : () => {
       const ids = bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
       openMoveDialog(ids, ids.length === 1 ? tileOf(ids[0]) : (document.activeElement as HTMLElement | null));
     },
-    onUndo: fileImport.jobActive ? undefined : () => void dragDrop.undo(),
+    onUndo: web || fileImport.jobActive ? undefined : () => void dragDrop.undo(),
   });
 
   useEffect(() => {
@@ -451,7 +495,8 @@ export default function App() {
       onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
       style={{ fontSize: 'var(--fs-body)', '--sidebar-width': mainView === 'printers' ? 'var(--pm-master-width)' : `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
     >
-      {!noWebGL && snapshotIds.length > 0 && (
+      {import.meta.env.VITE_TARGET === 'web' && <WebBackgroundSnapshots ids={snapshotIds} noWebGL={noWebGL} capture={store.captureRenderSnapshot} skip={store.skipSnapshot} />}
+      {import.meta.env.VITE_TARGET !== 'web' && !noWebGL && snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
           key={snapshotRenderer.generation}
           fileId={snapshotIds[0]}
@@ -493,13 +538,14 @@ export default function App() {
         count={filters.filtered.length}
         importTargetName={catalogBaseDir ? store.folders.find(f => f.id === filters.activeFolderId)?.name ?? catalogBaseDir : undefined}
         importTargetIsRoot={filters.activeFolderId === 'all'}
-        onImportFiles={fileImport.importFiles}
+        onImportFiles={import.meta.env.VITE_TARGET === 'web' ? () => setWebImportOpen(true) : fileImport.importFiles}
         onImportFolder={fileImport.importFolder}
         onImportFolderContents={fileImport.importFolderContents}
         onCheckSourceFolders={() => void sourceCheck.check()}
         mainView={mainView}
       />
 
+      {import.meta.env.VITE_TARGET === 'web' && <WebImport refreshKey={uploadRefreshKey} open={webImportOpen} onClose={() => setWebImportOpen(false)} onImported={() => Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags()])} />}
       <NetworkFilesystemWarning />
       <div className="flex-1 flex flex-row min-h-0">
         <Rail
@@ -590,12 +636,12 @@ export default function App() {
               confirmBulkDelete={bulk.confirmBulkDelete}
               setConfirmBulkDelete={bulk.setConfirmBulkDelete}
               bulkDelete={bulk.bulkDelete}
-              onBulkMove={() => openMoveDialog([...bulk.selectedForBulk], document.activeElement as HTMLElement | null)}
+              onBulkMove={web ? undefined : () => openMoveDialog([...bulk.selectedForBulk], document.activeElement as HTMLElement | null)}
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
               onCatalogRemoved={refreshAfterRemoval}
               onFolderRenamed={onFolderRenamed}
               onFolderTrashed={onFolderTrashed}
-              onDateRenamed={onDateRenamed}
+              onDateRenamed={web ? undefined : onDateRenamed}
               onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
               selectAllVisible={() => bulk.selectAllVisible(filteredIds)}
               clearBulkSelection={bulk.clearBulkSelection}
@@ -685,7 +731,7 @@ export default function App() {
               fileId={contextModel.id}
               currentName={contextModel.name}
               onRename={(name) => store.renameFile(contextModel.id, name)}
-              onMove={() => openMoveDialog(
+              onMove={web ? undefined : () => openMoveDialog(
                 bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
             />
           )}
@@ -733,7 +779,7 @@ export default function App() {
           </NoticeStack>
 
           <MigrationBackupWarning />
-          <LinuxMenuPrompt wait={setupDialogOpen} />
+          {!web && <LinuxMenuPrompt wait={setupDialogOpen} />}
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
             <CatalogCleanupDialog
@@ -767,7 +813,7 @@ export default function App() {
               onCancel={() => setMoveDialog(null)} onMove={(folderId) => void confirmMove(folderId)} />
           )}
           {renameToast && <RenameToast from={renameToast.from} to={renameToast.to} count={renameToast.count} onDone={dismissRenameToast}
-            onUndo={fileImport.jobActive ? undefined : () => { focusCatalogMain(); dismissRenameToast(); void dragDrop.undo(); }} />}
+            onUndo={web || fileImport.jobActive ? undefined : () => { focusCatalogMain(); dismissRenameToast(); void dragDrop.undo(); }} />}
           {trashToast && <FolderTrashToast result={trashToast} onDone={dismissTrashToast} />}
         </div>
       </div>

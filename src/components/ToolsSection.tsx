@@ -1,3 +1,4 @@
+import { useCanEditMetadata } from '../lib/webSession';
 import { Icon as SharedIcon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useState, type ReactNode } from 'react';
@@ -89,6 +90,7 @@ function Hint({ children }: { children: ReactNode }) {
 }
 
 export function ToolsSection(props: ToolsSectionProps) {
+  const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
   const t = useT();
   const [collapsed, setCollapsed] = useState(false);
@@ -127,6 +129,7 @@ export function ToolsSection(props: ToolsSectionProps) {
       </button>
       {!collapsed && (
         <div className="flex flex-col gap-px">
+          {canEdit && <>
           <button
             type="button"
             aria-expanded={queueOpen}
@@ -148,11 +151,12 @@ export function ToolsSection(props: ToolsSectionProps) {
               />
             </div>
           )}
+          </>}
           {viewRow('recent', ICONS.recent, t('toolRecent'), props.counts.recent)}
           {viewRow('new', ICONS.new, t('toolNew'), props.counts.new)}
           {viewRow('favorites', null, t('toolFavorites'), props.counts.favorites)}
           {viewRow('duplicates', ICONS.duplicates, t('toolDuplicates'), props.counts.duplicateGroups)}
-          <button
+          {import.meta.env.VITE_TARGET !== 'web' && <button
             type="button"
             disabled={props.cleanupScanning} {...lockProps}
             onClick={props.onOpenCleanup}
@@ -161,7 +165,7 @@ export function ToolsSection(props: ToolsSectionProps) {
             <Icon>{ICONS.cleanup}</Icon>
             <span>{t('cleanupDialogTitle')}</span>
             <Hint><SharedIcon name="external" size={14} /></Hint>
-          </button>
+          </button>}
           {props.cleanupError && (
             <div role="alert" className="px-1.5 pl-[32px] text-[length:var(--font-size-meta)] text-[var(--crit)]">
               <ErrorText error={props.cleanupError} />

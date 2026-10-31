@@ -1,5 +1,7 @@
+import { isReadOnly } from '../lib/readOnly';
+import { canEditMetadata } from '../lib/webSession';
 import { useCallback, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { toAppError, type AppError } from '../lib/errors';
 
 export interface PrintLogEntry {
@@ -36,6 +38,7 @@ export function usePrintLog(fileId: string) {
 
   const addEntry = useCallback(
     (printedAt: string, note: string | null, photoBase64: string | null) => {
+      if (!canEditMetadata()) return Promise.resolve();
       return invoke<PrintLogEntry>('add_print_log_entry', {
         fileId,
         printedAt,
@@ -44,15 +47,16 @@ export function usePrintLog(fileId: string) {
       }).then((entry) => {
         setEntries((prev) => [entry, ...prev]);
         return entry;
-      });
+      }).catch(error => { if (isReadOnly()) setError(toAppError(error)); throw error; });
     },
     [fileId],
   );
 
   const deleteEntry = useCallback((entryId: string) => {
+    if (!canEditMetadata()) return Promise.resolve();
     return invoke('delete_print_log_entry', { entryId }).then(() => {
       setEntries((prev) => prev.filter((e) => e.id !== entryId));
-    });
+    }).catch(error => { if (isReadOnly()) setError(toAppError(error)); throw error; });
   }, []);
 
   return { entries, loading, error, addEntry, deleteEntry };

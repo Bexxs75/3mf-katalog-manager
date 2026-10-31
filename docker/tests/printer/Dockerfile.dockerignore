@@ -1,4 +1,10 @@
 **
+!Cargo.toml
+!Cargo.lock
+!crates/
+!crates/**
+!.cargo/
+!.cargo/**
 !src-tauri/
 !src-tauri/**
 src-tauri/target/
@@ -8,3 +14,4 @@ src-tauri/target/**
 !src/
 !src/lib/
 !src/lib/autoTags.json
+!src/lib/licensePresets.json

@@ -1,3 +1,5 @@
+import { useCanEditMetadata } from '../lib/webSession';
+import { SpoolImage } from './SpoolImage';
 import { Icon } from './Icon';
 import { useId, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
@@ -72,22 +74,19 @@ const iconButton = 'w-6 h-6 grid place-items-center rounded-full text-caption te
 const pillButton =
   'h-6 px-2 inline-flex items-center gap-1 rounded-full text-caption font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer';
 
-function SpoolImage({ spool }: { spool: FilamentSpool }) {
-  return spool.imagePng ? (
-    <img draggable={false}
-      src={`data:image/png;base64,${spool.imagePng}`}
-      className="w-9 h-9 rounded-md object-cover border border-[var(--line)] flex-none"
-    />
-  ) : spool.kind === 'resin' ? (
-    <span className="w-9 h-9 rounded-md flex-none grid place-items-center bg-[var(--plate)] border border-[var(--line)]">
-      <ResinBottleIcon colorHex={spool.colorHex} />
-    </span>
-  ) : (
-    <span
-      className="w-9 h-9 rounded-md flex-none grid place-items-center text-compact-label font-bold text-[var(--ink-3)] bg-[var(--plate)] border border-[var(--line)]"
-    >
-      {spool.material.slice(0, 3).toUpperCase()}
-    </span>
+function SpoolThumb({ spool }: { spool: FilamentSpool }) {
+  return (
+    <SpoolImage spool={spool} className="w-9 h-9 rounded-md object-cover border border-[var(--line)] flex-none" fallback={spool.kind === 'resin' ? (
+      <span className="w-9 h-9 rounded-md flex-none grid place-items-center bg-[var(--plate)] border border-[var(--line)]">
+        <ResinBottleIcon colorHex={spool.colorHex} />
+      </span>
+    ) : (
+      <span
+        className="w-9 h-9 rounded-md flex-none grid place-items-center text-compact-label font-bold text-[var(--ink-3)] bg-[var(--plate)] border border-[var(--line)]"
+      >
+        {spool.material.slice(0, 3).toUpperCase()}
+      </span>
+    )} />
   );
 }
 
@@ -123,9 +122,10 @@ function StockBar({ remaining, kind, pct, status }: { remaining: number; kind: F
 
 function ConfirmDelete({ id, onCancelDelete, onConfirmDelete }: { id: string } & Pick<CardActions, 'onCancelDelete' | 'onConfirmDelete'>) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   return (
     <div className="flex items-center gap-1.5">
-      <span className="flex-1 text-caption text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
+      <span className="flex-1 text-caption text-[var(--ink)]">{t(import.meta.env.VITE_TARGET === 'web' ? 'webManagerDeleteSpool' : 'deleteConfirmQuestion')}</span>
       <button
         onClick={onCancelDelete}
         className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption cursor-pointer"
@@ -133,7 +133,7 @@ function ConfirmDelete({ id, onCancelDelete, onConfirmDelete }: { id: string } &
         {t('cancel')}
       </button>
       <button
-        onClick={() => onConfirmDelete(id)}
+        disabled={!canEdit} onClick={() => onConfirmDelete(id)}
         className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption cursor-pointer"
       >
         {t('delete')}
@@ -144,6 +144,7 @@ function ConfirmDelete({ id, onCancelDelete, onConfirmDelete }: { id: string } &
 
 function SpoolCard({ spool, group, ...a }: { spool: FilamentSpool; group?: SpoolGroup } & CardActions) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const status = filamentStockStatus(spool);
   const pct = filamentStockPercent(spool);
@@ -154,16 +155,16 @@ function SpoolCard({ spool, group, ...a }: { spool: FilamentSpool; group?: Spool
   return (
     <div
       data-testid={`spool-card-${spool.id}`}
-      onMouseDown={(e) => draggable && !startsOnButton(e) && a.onSpoolMouseDown?.(spool.id, e)}
+      onMouseDown={(e) => canEdit && draggable && !startsOnButton(e) && a.onSpoolMouseDown?.(spool.id, e)}
       onDoubleClick={(e) => {
-        if (a.confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) a.onEdit(spool);
+        if (canEdit && a.confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) a.onEdit(spool);
       }}
       className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
         draggable ? 'cursor-grab' : ''
       } ${a.highlightIds?.has(spool.id) ? 'spool-new' : ''}`}
     >
       <div className="flex items-center gap-2.5 px-3 py-2.5">
-        <SpoolImage spool={spool} />
+        <SpoolThumb spool={spool} />
         <SpoolTitle spool={spool} />
       </div>
 
@@ -194,6 +195,7 @@ function SpoolCard({ spool, group, ...a }: { spool: FilamentSpool; group?: Spool
               {a.onConsume && spool.kind === 'resin' && (
                 <button
                   type="button"
+                  disabled={!canEdit}
                   onClick={(e) => a.onConsume?.(spool, e.currentTarget)}
                   aria-haspopup="dialog"
                   aria-expanded={a.consumeOpenId === spool.id}
@@ -206,6 +208,7 @@ function SpoolCard({ spool, group, ...a }: { spool: FilamentSpool; group?: Spool
               {a.onRestock && (
                 <button
                   type="button"
+                  disabled={!canEdit}
                   onClick={(e) => a.onRestock?.(spool, e.currentTarget)}
                   aria-haspopup="dialog"
                   aria-expanded={a.restockOpenId === spool.id}
@@ -217,14 +220,14 @@ function SpoolCard({ spool, group, ...a }: { spool: FilamentSpool; group?: Spool
               )}
             </span>
             <button
-              onClick={() => a.onEdit(spool)}
+              disabled={!canEdit} onClick={() => a.onEdit(spool)}
               aria-label={t('filamentEditAria')}
               className={`${iconButton} hover:bg-[var(--panel-2)]`}
             >
               <Icon name="edit" size={14} />
             </button>
             <button
-              onClick={() => a.onRequestDelete(spool.id)}
+              disabled={!canEdit} onClick={() => a.onRequestDelete(spool.id)}
               aria-label={t('deleteAriaLabel')}
               className={`${iconButton} hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]`}
             >
@@ -256,6 +259,7 @@ function UnitPlaceText({ group, slot }: { group: SpoolGroup; slot: number | null
 
 function GroupCard({ group, ...a }: { group: SpoolGroup } & CardActions) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const formatCount = useFormatCount();
   const panelId = useId();
@@ -274,13 +278,13 @@ function GroupCard({ group, ...a }: { group: SpoolGroup } & CardActions) {
   return (
     <div
       data-testid={`group-card-${first.id}`}
-      onMouseDown={(e) => dragSpool && a.onSpoolMouseDown && !startsOnButton(e) && a.onSpoolMouseDown(dragSpool.id, e)}
+      onMouseDown={(e) => canEdit && dragSpool && a.onSpoolMouseDown && !startsOnButton(e) && a.onSpoolMouseDown(dragSpool.id, e)}
       className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
         dragSpool && a.onSpoolMouseDown ? 'cursor-grab' : ''
       } ${group.spools.some((s) => a.highlightIds?.has(s.id)) ? 'spool-new' : ''}`}
     >
       <div className="flex items-center gap-2.5 px-3 py-2.5">
-        <SpoolImage spool={first} />
+        <SpoolThumb spool={first} />
         <SpoolTitle spool={first} />
         <span className="flex-none text-compact-meta font-semibold px-2 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
           {formatCount(texts.count, group.spools.length)}
@@ -338,6 +342,7 @@ function GroupCard({ group, ...a }: { group: SpoolGroup } & CardActions) {
             {a.onConsume && first.kind === 'resin' && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onConsume?.(suggestSpool(group.spools) ?? first, e.currentTarget, group.spools)}
                 aria-haspopup="dialog"
                 aria-expanded={a.consumeOpenId !== null && a.consumeOpenId !== undefined && group.spools.some((s) => s.id === a.consumeOpenId)}
@@ -350,6 +355,7 @@ function GroupCard({ group, ...a }: { group: SpoolGroup } & CardActions) {
             {a.onRestock && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onRestock?.(first, e.currentTarget)}
                 aria-haspopup="dialog"
                 aria-expanded={a.restockOpenId === first.id}
@@ -376,6 +382,7 @@ function GroupCard({ group, ...a }: { group: SpoolGroup } & CardActions) {
 
 function GroupSpoolRow({ spool, loaded, ...a }: { spool: FilamentSpool; loaded: boolean } & CardActions) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const status = filamentStockStatus(spool);
   const pct = filamentStockPercent(spool);
@@ -387,10 +394,10 @@ function GroupSpoolRow({ spool, loaded, ...a }: { spool: FilamentSpool; loaded: 
       data-testid={`spool-row-${spool.id}`}
       onMouseDown={(e) => {
         e.stopPropagation();
-        if (draggable && !startsOnButton(e)) a.onSpoolMouseDown?.(spool.id, e);
+        if (canEdit && draggable && !startsOnButton(e)) a.onSpoolMouseDown?.(spool.id, e);
       }}
       onDoubleClick={(e) => {
-        if (a.confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) a.onEdit(spool);
+        if (canEdit && a.confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) a.onEdit(spool);
       }}
       className={`flex flex-col gap-1 ${draggable ? 'cursor-grab' : ''} ${a.highlightIds?.has(spool.id) ? 'spool-new-row' : ''}`}
     >
@@ -408,6 +415,7 @@ function GroupSpoolRow({ spool, loaded, ...a }: { spool: FilamentSpool; loaded: 
           {a.onConsume && spool.kind === 'resin' && (
             <button
               type="button"
+              disabled={!canEdit}
               onClick={(e) => a.onConsume?.(spool, e.currentTarget)}
               aria-label={`${t('resinConsumeButton')}: ${where}, ${amount}`}
               aria-haspopup="dialog"
@@ -418,14 +426,14 @@ function GroupSpoolRow({ spool, loaded, ...a }: { spool: FilamentSpool; loaded: 
             </button>
           )}
           <button
-            onClick={() => a.onEdit(spool)}
+            disabled={!canEdit} onClick={() => a.onEdit(spool)}
             aria-label={`${t('filamentEditAria')}: ${where}, ${amount}`}
             className={`${iconButton} hover:bg-[var(--panel-2)]`}
           >
             <Icon name="edit" size={14} />
           </button>
           <button
-            onClick={() => a.onRequestDelete(spool.id)}
+            disabled={!canEdit} onClick={() => a.onRequestDelete(spool.id)}
             aria-label={`${t('deleteAriaLabel')}: ${where}, ${amount}`}
             className={`${iconButton} hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]`}
           >

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as printersApi from '../lib/api/printers';
 import { toAppError, type AppError } from '../lib/errors';
+import { reportMetadataError } from '../lib/metadataErrors';
 import type { PrinterDetails, Printer, PrinterKind, UnitKind } from '../types';
 
 /**
@@ -20,7 +21,7 @@ export function usePrinters() {
           setPrinters(result);
           setError(null);
         })
-        .catch((e) => setError(toAppError(e))),
+        .catch((e) => { setError(toAppError(e)); reportMetadataError(e); }),
     [],
   );
 
@@ -32,6 +33,7 @@ export function usePrinters() {
     <T,>(operation: Promise<T>): Promise<T> =>
       operation
         .then((result) => {
+          if (import.meta.env.VITE_TARGET === 'web') return refresh().then(() => result);
           refresh();
           return result;
         })

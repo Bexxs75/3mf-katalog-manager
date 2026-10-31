@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 
 export interface SlicerDto {
   id: string;
@@ -18,4 +18,17 @@ export function listRegisteredSlicers() {
 // Only the id of a registered slicer; path and validation live in the backend.
 export function openInSlicer(modelId: string, slicerId: string) {
   return invoke('open_in_slicer', { fileId: modelId, slicerId });
+}
+
+export interface SlicerLinkDto {
+  /** Relative URL of the signed download route. */
+  path: string;
+  /** Unix seconds after which the link stops working. */
+  expiresAt: number;
+  name: string;
+}
+
+// Web only: the browser cannot start a program, so the server signs a short-lived download link instead.
+export function createSlicerLink(fileId: string) {
+  return invoke<SlicerLinkDto>('slicer_link', { fileId });
 }

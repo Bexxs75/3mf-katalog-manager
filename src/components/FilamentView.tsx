@@ -1,6 +1,8 @@
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
+import { invalidateSpoolImage } from '../lib/spoolImages';
 import type { PrinterNavigation } from '../types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatVolumeMl, formatWeightG } from '../i18n/format';
 
@@ -54,6 +56,8 @@ interface Props {
 
 export function FilamentView({ printerLink, printers, onCatalogChanged, printerContext, onPrinterManager }: Props) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
+  const web = import.meta.env.VITE_TARGET === 'web';
   const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
@@ -70,7 +74,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const [highlightIds, setHighlightIds] = useState<ReadonlySet<string>>(() => new Set());
   const [kind, setKindState] = useState<SpoolKind>(() => printers.printers.find(p => p.id === printerContext?.printerId)?.kind ?? loadSpoolKind());
   // Hides the hint banner as soon as the confirmation dialog is open.
-  const [jobsOpen, setJobsOpen] = useState(printerContext?.reviewJobs ?? false);
+  const [jobsOpen, setJobsOpen] = useState(!web && (printerContext?.reviewJobs ?? false));
   useEffect(() => {
     const target = printers.printers.find(p => p.id === printerContext?.printerId);
     if (target) setKindState(target.kind);
@@ -197,19 +201,23 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   }, [ofKind, allGroups, grouped]);
 
   const openAddPanel = () => {
+    if (!canEditMetadata()) return;
     setEditingSpool(null);
     setPanelOpen(true);
   };
   const openEditPanel = (spool: FilamentSpool) => {
+    if (!canEditMetadata()) return;
     setEditingSpool(spool);
     setPanelOpen(true);
   };
 
-  const requestDelete = (id: string) => setConfirmDeleteId(id);
+  const requestDelete = (id: string) => { if (canEditMetadata()) setConfirmDeleteId(id); };
   const cancelDelete = () => setConfirmDeleteId(null);
   const confirmDelete = (id: string) => {
+    if (!canEditMetadata()) return;
     invoke('delete_filament_spool', { spoolId: id })
       .then(() => {
+        if (web) invalidateSpoolImage(id);
         setConfirmDeleteId(null);
         refresh();
       })
@@ -222,17 +230,24 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
     (spoolId: string, unitId: string, slotIndex: number) => {
       // The backend rejects it anyway; an unsuitable target doesn't even
       // send a request.
-      if (!fitsUnit(spoolId, unitId)) return;
+      if (!canEditMetadata() || !fitsUnit(spoolId, unitId)) return;
       printersApi
         .loadSpool(spoolId, unitId, slotIndex)
-        .then(() => refresh())
+        .then(result => {
+          if (web && result.displacedSpoolId) {
+            const displaced = spools.find(s => s.id === result.displacedSpoolId);
+            setToast({ type: 'message', label: t('webManagerDisplaced').replace('{spool}', displaced ? spoolLabel(displaced) : result.displacedSpoolId) });
+          }
+          refresh();
+        })
         .catch((e) => setError(toAppError(e)));
     },
-    [fitsUnit],
+    [fitsUnit, spools, web, t],
   );
 
   const unloadSpool = useCallback(
     (spoolId: string) => {
+      if (!canEditMetadata()) return;
       const spool = spools.find((s) => s.id === spoolId);
       printersApi
         .unloadSpool(spoolId, null)
@@ -247,8 +262,9 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
 
   const changeUnloadedLocation = (location: string) => {
     const spool = toast?.type === 'unload' ? spools.find((s) => s.id === toast.spoolId) : undefined;
-    if (!spool) return Promise.resolve();
-    return invoke('update_filament_spool', { spool: { ...spool, location } })
+    if (!canEditMetadata() || !spool) return Promise.resolve();
+    const { hasImage: _hasImage, imagePng: _imagePng, ...fields } = spool;
+    return invoke('update_filament_spool', { spool: web ? { ...fields, location } : { ...spool, location } })
       .then(() => refresh())
       .catch((e) => setError(toAppError(e)));
   };
@@ -256,7 +272,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const dismissToast = useCallback(() => setToast(null), []);
 
   const togglePopover = (type: PopoverType, spool: FilamentSpool, anchor: HTMLElement, choices?: FilamentSpool[]) =>
-    setPopover((prev) => (prev?.type === type && prev.spool.id === spool.id ? null : { type, spool, anchor, choices }));
+    canEditMetadata() && setPopover((prev) => (prev?.type === type && prev.spool.id === spool.id ? null : { type, spool, anchor, choices }));
   const closePopover = useCallback(() => setPopover(null), []);
   const handleRestocked = (created: FilamentSpool[]) => {
     const template = popover?.spool;
@@ -315,7 +331,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           </div>
         )}
 
-        {printerLink.enabled && !jobsOpen && (
+        {!web && printerLink.enabled && !jobsOpen && (
           <PrinterJobsBanner jobs={printerLink.jobs} onReview={() => setJobsOpen(true)} />
         )}
 
@@ -408,6 +424,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           />
 
           <button
+            disabled={!canEdit}
             onClick={openAddPanel}
             className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] ml-auto h-8 px-3.5 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-bold cursor-pointer flex items-center gap-1.5"
           >
@@ -495,7 +512,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           label={toast.label}
           location={toast.location}
           knownLocations={knownLocations}
-          onChangeLocation={changeUnloadedLocation}
+          onChangeLocation={canEdit ? changeUnloadedLocation : undefined}
           onDone={dismissToast}
         />
       )}
@@ -526,7 +543,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
       )}
 
       <FilamentSpoolForm
-        open={panelOpen}
+        open={panelOpen && canEdit}
         editing={editingSpool}
         knownManufacturers={knownManufacturers}
         knownSpools={spools}
@@ -536,7 +553,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
         defaultKind={kind}
       />
 
-      <PrinterJobsDialog
+      {!web && <PrinterJobsDialog
         open={jobsOpen && printerLink.jobs.length > 0}
         jobs={printerLink.jobs}
         spools={filamentSpools}
@@ -547,7 +564,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           refresh();
           onCatalogChanged?.();
         }}
-      />
+      />}
     </div>
   );
 }

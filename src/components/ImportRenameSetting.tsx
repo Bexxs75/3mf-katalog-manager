@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useT } from '../i18n/LanguageContext';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { toAppError, type AppError } from '../lib/errors';

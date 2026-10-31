@@ -6,7 +6,8 @@ import { Icon } from './Icon';
 import { PlateSelector } from './PlateSelector';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
+import { isStepFilePath } from '../lib/stepFile';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { decodeModelGeometry } from '../lib/parseModelGeometry';
@@ -336,6 +337,14 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     ctx.colorMaterials.forEach(m => m.dispose());
     ctx.colorMaterials = [];
 
+    // The web server never renders STEP (its `has_step_preview` is constant false), so the
+    // request could only end in a 422 and a console error; show the explanation directly.
+    if (import.meta.env.VITE_TARGET === 'web' && model && isStepFilePath(model.path)) {
+      setStatus('error');
+      setError({ message: 'unsupported', code: 'unsupported', unexpected: false });
+      reportError();
+      return () => { cancelled = true; clearTimeout(errorTimer); ctx.renderer.domElement.removeEventListener('webglcontextlost', handleContextLost); };
+    }
     const finishAttempt = beginPreviewAttempt(fileId);
     invoke<ArrayBuffer>('get_model_geometry', { fileId })
       .then((buffer) => {

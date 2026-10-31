@@ -9,7 +9,7 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import type { SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 import type { UiDensity } from '../hooks/UiDensityContext';
@@ -20,12 +20,14 @@ import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
 import { LinuxMenuSettings } from './LinuxMenuSettings';
 import { InfoFolders } from '../diagnostics/InfoFolders';
 import type { AppError } from '../lib/errors';
+import { WebCatalogBackup } from './WebCatalogBackup';
 import { ErrorText } from '../diagnostics/ErrorText';
 import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
+import { getAppVersion } from '../lib/api/update';
 
 type SettingsTab = 'general' | 'slicer' | 'catalog' | 'info';
-const TABS: readonly SettingsTab[] = ['general', 'slicer', 'catalog', 'info'];
+const TABS: readonly SettingsTab[] = import.meta.env.VITE_TARGET === 'web' ? ['general', 'catalog', 'info'] : ['general', 'slicer', 'catalog', 'info'];
 
 export interface SettingsPanelProps {
   /** Lay the panel over the main area instead of taking the detail panel's place in the layout. */
@@ -167,13 +169,17 @@ export function SettingsPanel({
           className="flex-1 min-h-0 overflow-y-auto scrollbar-stable px-4 pb-4">
           {activeSettingsTab === 'general' && (
             <>
+              {import.meta.env.VITE_TARGET !== 'web' && <>
               <button role="switch" aria-checked={singleKeyShortcuts} onClick={() => onSingleKeyShortcutsChange?.(!singleKeyShortcuts)} className="w-full text-left border border-[var(--line)] rounded p-2 mb-2 cursor-pointer">
                 <span aria-hidden="true">{singleKeyShortcuts ? <Icon name="check" size={14} /> : '○ '}</span>{t('singleKeyShortcutsTitle')}
               </button>
               <p className="text-small text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
-              <ImportRenameSetting />
-              <DiskSyncSettings />
-              <SourceFoldersSettings />
+              </>}
+              {import.meta.env.VITE_TARGET !== 'web' && <>
+                <ImportRenameSetting />
+                <DiskSyncSettings />
+                <SourceFoldersSettings />
+              </>}
               <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
                 <p>{t('settingsPrintersMovedHint')}</p>
                 <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {
@@ -252,12 +258,12 @@ export function SettingsPanel({
                   </button>
                 ))}
               </div>
-              <LinuxMenuSettings />
+              {import.meta.env.VITE_TARGET !== 'web' && <LinuxMenuSettings />}
             </>
           )}
 
-          {activeSettingsTab === 'slicer' && container && <p className="text-small text-[var(--ink-3)]">{t('containerSlicerUnavailable')}</p>}
-          {activeSettingsTab === 'slicer' && !container && (
+          {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'slicer' && container && <p className="text-small text-[var(--ink-3)]">{t('containerSlicerUnavailable')}</p>}
+          {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'slicer' && !container && (
             <>
               <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('slicerSectionTitle')}</div>
               {slicers.length === 0 ? (
@@ -317,7 +323,15 @@ export function SettingsPanel({
             </>
           )}
 
-          {activeSettingsTab === 'catalog' && (
+          {/* The web catalog tab holds the switch, the block list and the backup download: cleanup and import need the desktop. */}
+          {import.meta.env.VITE_TARGET === 'web' && activeSettingsTab === 'catalog' && (
+            <>
+              <AutoTaggingSetting />
+              <WebCatalogBackup />
+            </>
+          )}
+
+          {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'catalog' && (
             <>
               <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('catalogCleanupTitle')}</div>
               <button
@@ -409,9 +423,10 @@ export function SettingsPanel({
           {activeSettingsTab === 'info' && (
             <>
               <button onClick={onOpenTips} className="w-full h-8 border border-[var(--line-strong)] rounded cursor-pointer mb-3">{t('keyboardTipsTitle')}</button>
-              <UpdatePanel view={update} onExport={onExportCatalog} exportError={catalogBackupError} />
-              <DiagnosticsSettings />
-              <InfoFolders />
+              {import.meta.env.VITE_TARGET === 'web' && <WebVersionRow />}
+              {import.meta.env.VITE_TARGET !== 'web' && <UpdatePanel view={update} onExport={onExportCatalog} exportError={catalogBackupError} />}
+              {import.meta.env.VITE_TARGET !== 'web' && <DiagnosticsSettings />}
+              {import.meta.env.VITE_TARGET !== 'web' && <InfoFolders />}
               <div className="flex justify-between text-caption py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
                 <span>{t('infoSourceCodeLabel')}</span>
                 <ExternalLink url="https://github.com/Bexxs75/3mf-katalog-manager/" label="GitHub"
@@ -461,6 +476,24 @@ export function SettingsPanel({
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+/** The web build has no updater panel (which shows the version on the desktop), so the version gets its own row. */
+function WebVersionRow() {
+  const t = useT();
+  const [version, setVersion] = useState('');
+  useEffect(() => {
+    let alive = true;
+    getAppVersion().then(v => { if (alive) setVersion(v); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  if (!version) return null;
+  return (
+    <div className="flex justify-between text-caption py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
+      <span>{t('infoVersionLabel')}</span>
+      <span data-testid="web-version">{version}</span>
     </div>
   );
 }

@@ -1,3 +1,7 @@
+import { WebFileActions } from './WebFileActions';
+import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
+import { useCanEditMetadata } from '../lib/webSession';
+import { isReadOnly } from '../lib/readOnly';
 import { TRASH_RETENTION_DAYS } from '../lib/trashRetention';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
@@ -5,10 +9,13 @@ import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { WebSlicerMenu } from './WebSlicerMenu';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
+import { ImageUploadButton } from './ImageUploadButton';
 import { Icon } from './Icon';
 import { CompanionSection } from './CompanionSection';
+import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
@@ -51,7 +58,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void | Promise<void>;
+  onUploadImage: (file?: File) => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
@@ -85,6 +92,7 @@ export function DetailPanel({
   hasSlicer,
   slicerError,
 }: Props) {
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
@@ -92,7 +100,7 @@ export function DetailPanel({
   const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const autoTagBlock = useAutoTagBlock(trashMode ? null : model, onRemoveTag, onAddTag);
+  const autoTagBlock = useAutoTagBlock(trashMode || !canEdit ? null : model, onRemoveTag, onAddTag);
   const {
     editing: editingSourceUrl,
     draft: sourceUrlDraft,
@@ -143,24 +151,25 @@ export function DetailPanel({
         </div>
 
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
-          {expiryDate && (
+          {expiryDate && import.meta.env.VITE_TARGET !== 'web' && (
             <p className="font-medium tabular-nums text-caption text-[var(--ink-3)]">
               {t('trashExpiryHint').replace('{date}', formatDate(expiryDate.toISOString(), language))}
             </p>
           )}
           <div className="flex gap-2">
-            <button {...lockProps}
+            <WebFileActions key={model.id} fileIds={[model.id]} name={model.name} trash />
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={onRestore}
               className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('restoreLabel')}
-            </button>
-            <button {...lockProps}
+            </button>}</>
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={onDeletePermanently}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
             >
               {t('deletePermanentlyLabel')}
-            </button>
+            </button>}</>
           </div>
         </div>
       </aside>
@@ -187,7 +196,7 @@ export function DetailPanel({
           />
           <ModelPreview surfaceClassName="h-[248px]"
             model={model}
-            needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+            needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
@@ -195,12 +204,7 @@ export function DetailPanel({
           <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>
-          <button
-            onClick={imageUpload.uploadImage}
-            className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('uploadModelImageLabel')}
-          </button>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]" />
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
@@ -211,7 +215,7 @@ export function DetailPanel({
           <button
             onClick={onTogglePrintStatus}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             {model.printStatus === 'printed' ? t('markAsNotPrinted') : t('markAsPrinted')}
           </button>
         </div>
@@ -224,7 +228,7 @@ export function DetailPanel({
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
@@ -233,12 +237,12 @@ export function DetailPanel({
           <span className="flex-1 text-small font-medium">
             {model.queuePosition !== null ? t('inQueueLabel') : t('notInQueueLabel')}
           </span>
-          <button
+          <>{canEdit && <button
             onClick={onToggleQueue}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
-          </button>
+          </button>}</>
         </div>
 
         <div className="px-4 pt-3.5 pb-1">
@@ -287,12 +291,12 @@ export function DetailPanel({
               ) : (
                 <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
               )}
-              <span
+              <>{canEdit && <span
                 onClick={startEditingSourceUrl}
                 className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
               >
                 <Icon name="edit" size={14} />
-              </span>
+              </span>}</>
             </span>
           </div>
         </div>
@@ -310,13 +314,13 @@ export function DetailPanel({
               >
                 <TagDot hue={tagHues?.[tag]} />
                 <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
-                <TagRemoveButton
+                {canEdit && <TagRemoveButton
                   tag={tag}
                   autoTag={autoTagBlock.suggested.has(tag)}
                   onRemove={() => onRemoveTag(tag)}
                   onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)}
                   className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
-                />
+                />}
               </span>
             ))}
             <TagInput
@@ -332,7 +336,9 @@ export function DetailPanel({
         </div>
 
         <BuildPlateFit model={model} printers={printers} variant="compact" />
-        <CompanionSection key={model.id} fileId={model.id} variant="compact" />
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="compact" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="compact" />}
       </div>
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
@@ -341,19 +347,20 @@ export function DetailPanel({
             {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
-        <div className="flex gap-2">
+        {/* Web adds several action buttons that must wrap instead of squeezing each other; the desktop row keeps its fixed layout. */}
+        <div className={`flex gap-2${import.meta.env.VITE_TARGET === 'web' ? ' flex-wrap' : ''}`}>
           {confirmDelete ? (
             <>
               <span className="flex-1 flex items-center text-small font-medium text-[var(--ink)]">
                 {t('deleteConfirmQuestion')}
               </span>
-              <button
+              <>{!isReadOnly() && <button
                 onClick={() => setConfirmDelete(false)}
                 className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('cancel')}
-              </button>
-              <button {...lockProps}
+              </button>}</>
+              <>{!isReadOnly() && <button {...lockProps}
                 onClick={() => {
                   setConfirmDelete(false);
                   onDelete();
@@ -361,25 +368,28 @@ export function DetailPanel({
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
               >
                 {t('delete')}
-              </button>
+              </button>}</>
             </>
           ) : (
             <>
               <RevealFileButton fileId={model.id} compact />
-              {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-            {!container && (<button
+              <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} />
+              <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
+              <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
+          {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
+            {!container && (<>{!isReadOnly() && <button
                 onClick={() => onOpenInSlicer()}
                 className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('openInSlicer')}
-              </button>)}
-              <button {...lockProps}
+              </button>}</>)}
+              <>{!isReadOnly() && <button {...lockProps}
                 onClick={() => setConfirmDelete(true)}
                 aria-label={t('deleteAriaLabel')}
                 className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-medium tabular-nums cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 <Icon name="close" size={14} />
-              </button>
+              </button>}</>
             </>
           )}
         </div>
@@ -404,18 +414,12 @@ export function DetailPanel({
           />
           <ModelPreview surfaceClassName="h-[284px]"
             model={model}
-            needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+            needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />
-          <button
-            onClick={imageUpload.uploadImage}
-            className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
-            style={{ fontSize: 'var(--font-size-meta)' }}
-          >
-            {t('uploadModelImageLabel')}
-          </button>
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]" style={{ fontSize: 'var(--font-size-meta)' }} />
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
@@ -427,7 +431,7 @@ export function DetailPanel({
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none text-heading ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
-          >
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
@@ -442,14 +446,14 @@ export function DetailPanel({
             >
               <TagDot hue={tagHues?.[tag]} />
               <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
-              <TagRemoveButton
+              {canEdit && <TagRemoveButton
                 tag={tag}
                 autoTag={autoTagBlock.suggested.has(tag)}
                 onRemove={() => onRemoveTag(tag)}
                 onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)}
                 className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 style={{ fontSize: 'var(--font-size-label)' }}
-              />
+              />}
             </span>
           ))}
           <TagInput
@@ -513,20 +517,22 @@ export function DetailPanel({
                 ) : (
                   <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
                 )}
-                <span
+                <>{canEdit && <span
                   onClick={startEditingSourceUrl}
                   className="flex-none w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
                   style={{ fontSize: 'var(--font-size-label)' }}
                 >
                   <Icon name="edit" size={14} />
-                </span>
+                </span>}</>
               </span>
             )}
           </div>
         </div>
 
         <BuildPlateFit model={model} printers={printers} variant="comfort" />
-        <CompanionSection key={model.id} fileId={model.id} variant="comfort" />
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="comfort" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="comfort" />}
       </div>
 
       <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
@@ -540,14 +546,14 @@ export function DetailPanel({
             <span className="flex-1 font-medium" style={{ fontSize: 'var(--font-size-body)' }}>
               {t('deleteConfirmQuestion')}
             </span>
-            <button
+            <>{!isReadOnly() && <button
               onClick={() => setConfirmDelete(false)}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-10 px-4 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] font-semibold cursor-pointer"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               {t('cancel')}
-            </button>
-            <button {...lockProps}
+            </button>}</>
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={() => {
                 setConfirmDelete(false);
                 onDelete();
@@ -556,41 +562,44 @@ export function DetailPanel({
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               {t('delete')}
-            </button>
+            </button>}</>
           </div>
         ) : (
           <>
             <RevealFileButton fileId={model.id} compact />
-            {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-            {!container && (<button
+              <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} />
+            <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
+              <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
+          {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
+            {!container && (<>{!isReadOnly() && <button
               onClick={() => onOpenInSlicer()}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               🖨 {t('openInSlicer')}
-            </button>)}
-            <button
+            </button>}</>)}
+            <>{canEdit && <button
               onClick={onToggleQueue}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               🎞 {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
-            </button>
+            </button>}</>
             <button
               onClick={onTogglePrintStatus}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
-            >
+             {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
               {model.printStatus === 'printed' && <Icon name="check" size={14} />}{t(model.printStatus === 'printed' ? 'markAsNotPrinted' : 'markAsPrinted')}
             </button>
-            <button {...lockProps}
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={() => setConfirmDelete(true)}
               aria-label={t('deleteAriaLabel')}
               className="h-9 rounded-lg text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
               {t('deleteAriaLabel')}
-            </button>
+            </button>}</>
           </>
         )}
       </div>

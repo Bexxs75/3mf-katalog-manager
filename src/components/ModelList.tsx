@@ -1,3 +1,4 @@
+import { useCanEditMetadata } from '../lib/webSession';
 import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export function ModelList({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly, selectedForBulk, onToggleBulkSelect, onDragFileStart, label }: Props) {
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const t = useT();
 
@@ -73,7 +75,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
             onContextMenu(m.id, e.clientX, e.clientY);
           }}
           onMouseDown={(e) => {
-            if (!onDragFileStart || readOnly) return;
+            if (!canEdit || !onDragFileStart || readOnly) return;
             fileDrag.begin(e, m.id);
           }}
           className={`group min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
@@ -81,7 +83,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
           style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
         >
-          {readOnly ? (
+          {readOnly || !canEdit ? (
             <span role="gridcell" />
           ) : (
             <BulkCheckbox
@@ -92,7 +94,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
             />
           )}
           <span role="gridcell" className="flex items-center gap-1.5 min-w-0">
-            {onDragFileStart && !readOnly && <DragGrip />}
+            {onDragFileStart && !readOnly && canEdit && <DragGrip />}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
             <LicenseBadge license={m.license} />
           </span>

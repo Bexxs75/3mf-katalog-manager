@@ -120,7 +120,7 @@ interface CatalogWorkspaceProps {
   togglePrintStatus: (id: string) => void;
   toggleFavorite: (id: string) => void;
   addToQueue: (id: string) => void;
-  uploadCustomImage: (id: string) => void | Promise<void>;
+  uploadCustomImage: (id: string, file?: File) => void | Promise<void>;
   captureRenderSnapshot: (id: string, base64: string) => void;
   setModelLicenses?: (ids: string[], license: string | null) => Promise<void>;
   printStatus?: ModelFile['printStatus'] | null;
@@ -327,7 +327,7 @@ export function CatalogWorkspace({
   }, [onCloseDetails, selectedId, layouts]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
+      if (event.key !== 'Escape' || event.defaultPrevented || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
         shouldIgnoreCatalogShortcut(event, { preserveEscapeSelection: true })) return;
       event.preventDefault();
       closeDetails();
@@ -362,11 +362,18 @@ export function CatalogWorkspace({
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
   const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
   const selectedFilament = useFilamentCheck(selected ? [selected.id] : [], refreshKey);
-  const lastPrinter = useLastPrinter(selected?.id ?? null, printerRefreshKey);
+  const lastPrinter = useLastPrinter(import.meta.env.VITE_TARGET === 'web' ? null : selected?.id ?? null, printerRefreshKey);
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
   const displayedModels = filtered;
+  // The selection survives filter changes, so the confirmation must say how much of it is out of sight.
+  const visibleIds = useMemo(() => new Set(displayedModels.map(model => model.id)), [displayedModels]);
+  const selectedNames = useMemo(() => {
+    const byId = new Map(models.map(model => [model.id, model.name]));
+    return [...selectedForBulk].map(id => byId.get(id) ?? id);
+  }, [models, selectedForBulk]);
+  const hiddenSelectedCount = [...selectedForBulk].filter(id => !visibleIds.has(id)).length;
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
   const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');
@@ -537,6 +544,9 @@ export function CatalogWorkspace({
           <BulkActionToolbar
             compact={narrow}
             selectedCount={selectedForBulk.size}
+            selectedIds={[...selectedForBulk]}
+            selectedNames={selectedNames}
+            hiddenSelectedCount={hiddenSelectedCount}
             confirmBulkDelete={confirmBulkDelete}
             onConfirmBulkDeleteChange={setConfirmBulkDelete}
             onSelectAllVisible={selectAllVisible}
@@ -564,7 +574,6 @@ export function CatalogWorkspace({
             onRemoveTagMenuOpenChange={setRemoveTagMenuOpen}
             tagsInSelection={tagsInSelection}
             onBulkRemoveTag={bulkRemoveTag}
-            selectedIds={[...selectedForBulk]}
             onDateRenamed={onDateRenamed}
           />
           </div>
@@ -607,7 +616,7 @@ export function CatalogWorkspace({
             onToggleQueue={() =>
               detailModel.queuePosition !== null ? removeFromQueue(detailModel.id) : addToQueue(detailModel.id)
             }
-            onUploadImage={() => uploadCustomImage(detailModel.id)}
+            onUploadImage={(file) => uploadCustomImage(detailModel.id, file)}
             onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
             onSetLicense={setModelLicenses}
             onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
@@ -732,7 +741,7 @@ export function CatalogWorkspace({
           onToggleQueue={() =>
             selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
           }
-          onUploadImage={() => selected ? uploadCustomImage(selected.id) : undefined}
+          onUploadImage={(file) => selected ? uploadCustomImage(selected.id, file) : undefined}
           onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
           onSetLicense={setModelLicenses}
           onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}

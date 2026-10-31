@@ -41,6 +41,7 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
         >
           <Icon name="catalog" />
         </button>
+        {<>
         <button
           onClick={() => onMainViewChange('filament')}
           title={t('railFilament')}
@@ -53,6 +54,7 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
           className={`${railBtnBase} ${mainView === 'printers' ? railBtnActive : ''}`}>
           <Icon name="printer" />
         </button>
+        </>}
         {container && <button type="button" onClick={() => onMainViewChange('downloads')}
           title={t('railDownloads')} aria-label={t('railDownloads')}
           className={`${railBtnBase} ${mainView === 'downloads' ? railBtnActive : ''}`}>

@@ -19,7 +19,7 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
   const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [syncError, setSyncError] = useState<AppError | null>(null);
-  if (!link.enabled) return null;
+  if (import.meta.env.VITE_TARGET === 'web' || !link.enabled) return null;
   const c = link.connections.find((x) => x.printerId === printerId);
   if (!c) return null;
   const pending = link.jobs.filter((j) => j.printerId === printerId).length;

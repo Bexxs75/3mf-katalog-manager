@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 
 const BASE_DIR_KEY = '3mf-katalog-base-dir';
 const SETUP_SEEN_KEY = '3mf-katalog-setup-seen';
@@ -47,7 +47,7 @@ export function useCatalogBaseDir() {
 export function useRegisterCatalogBaseDirOnStartup(catalogBaseDir: string | null, refreshFolders: () => void) {
   const done = useRef(false);
   useEffect(() => {
-    if (done.current || !catalogBaseDir) return;
+    if (import.meta.env.VITE_TARGET === 'web' || done.current || !catalogBaseDir) return;
     done.current = true;
     invoke<unknown>('register_existing_catalog_base_dir', { path: catalogBaseDir })
       .then((folder) => {

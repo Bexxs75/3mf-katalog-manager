@@ -1,3 +1,7 @@
+import { WebFileActions } from './WebFileActions';
+import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
+import { DownloadFileButton } from './DownloadFileButton';
+import { useCanEditMetadata } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
@@ -257,8 +261,22 @@ interface CollectionMenuProps {
 }
 
 export function ContextMenu(props: Props | CollectionMenuProps) {
+  const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
   const t = useT();
+  const isWeb = import.meta.env.VITE_TARGET === 'web';
+  if (isWeb && !('collectionActions' in props)) return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>
+    <DownloadFileButton fileId={props.fileId} onSuccess={props.onClose}
+      className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
+    <WebFileActions fileIds={[props.fileId]} name={props.currentName} onDone={props.onClose} />
+    {canEdit && <>
+      <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onToggleQueue(); props.onClose(); }}>{t(props.inQueue ? 'removeFromQueue' : 'addToQueue')}</button>
+      <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onTogglePrintStatus(); props.onClose(); }}>{t(props.printed ? 'notPrintedLabel' : 'printedBadge')}</button>
+      <WebRemoveFromCatalogButton name={props.currentName} onRemove={props.onRemove} onRemoved={props.onClose}
+        className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" />
+    </>}
+  </ContextMenuFrame>;
+  if (!canEdit) return null;
   if (!('collectionActions' in props)) return <ModelContextMenu {...props} />;
   return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>
     <button {...lockProps} onClick={props.collectionActions.onRename}
@@ -266,6 +284,10 @@ export function ContextMenu(props: Props | CollectionMenuProps) {
     <button {...lockProps} onClick={props.collectionActions.onDelete}
       className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--crit)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50">{t('delete')}</button>
   </ContextMenuFrame>;
+}
+
+function isWebConfirmationOpen() {
+  return import.meta.env.VITE_TARGET === 'web' && document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
 }
 
 function ContextMenuFrame({ x, y, onClose, onEscape = onClose, children }: {
@@ -287,9 +309,12 @@ function ContextMenuFrame({ x, y, onClose, onEscape = onClose, children }: {
   }, []);
   useEffect(() => {
     const pointer = (event: MouseEvent) => {
+      // A web removal confirmation is portalled outside this menu.
+      if (isWebConfirmationOpen()) return;
       if (ref.current && !ref.current.contains(event.target as Node)) onClose();
     };
     const key = (event: KeyboardEvent) => {
+      if (isWebConfirmationOpen()) return;
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onEscape(); }
     };
     document.addEventListener('mousedown', pointer);

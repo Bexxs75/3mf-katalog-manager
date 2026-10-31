@@ -69,12 +69,12 @@ use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::db::error::DbError;
-use crate::db::models::{FileType, MaterialRecord, NewFile, ScannedMetadataUpdate};
+use crate::db::models::NewFile;
+#[cfg(test)] use crate::db::models::MaterialRecord;
+#[cfg(test)] use crate::db::models::FileType;
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::detect_slicers;
-use crate::tagging::{self, TaggingContext};
-use crate::{obj, stl, threemf};
 
 pub struct AppState {
     pub import_jobs: ImportJobs,
@@ -87,379 +87,17 @@ pub struct AppState {
     pub sensitive_dirs: Vec<std::path::PathBuf>,
 }
 pub(crate) type CmdResult<T> = Result<T, CmdError>;
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelFileDto {
-    pub id: String,
-    pub name: String,
-    pub path: String,
-    pub folder_id: String,
-    pub tags: Vec<String>,
-    pub origin: String,
-    pub sync: String,
-    pub dimensions_mm: Option<[f64; 3]>,
-    pub volume_cm3: Option<f64>,
-    pub object_count: Option<i64>,
-    pub materials: Vec<MaterialDto>,
-    pub file_size_bytes: i64,
-    pub imported_at: String,
-    pub file_modified_at: Option<String>,
-    pub print_status: String,
-    pub estimated_weight_g: Option<f64>,
-    pub last_viewed_at: Option<String>,
-    pub content_hash: Option<String>,
-    pub creator: Option<String>,
-    pub custom_image: Option<String>,
-    pub thumbnail_image: Option<String>,
-    pub render_snapshot_image: Option<String>,
-    pub source_url: Option<String>,
-    pub license: Option<String>,
-    pub source_platform: Option<String>,
-    pub source_model_id: Option<String>,
-    pub source_profile_id: Option<String>,
-    pub queue_position: Option<i64>,
-    pub favorite: bool,
-    pub plate_count: Option<i64>,
-    pub weight_source: String,
-    pub slice_info: Option<SliceInfoDto>,
-    pub cost_estimate: Option<CostEstimateDto>,
-    pub deleted_at: Option<String>,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MaterialDto {
-    pub name: String,
-    pub display_color: Option<String>,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FilamentUsageDto {
-    #[serde(rename = "type")]
-    pub filament_type: String,
-    pub color: Option<String>,
-    pub used_g: f64,
-    pub used_m: f64,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlateFilamentUsageDto {
-    pub plate_index: u32,
-    pub weight_g: f64,
-    pub filaments: Vec<FilamentUsageDto>,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SliceInfoDto {
-    pub total_weight_g: f64,
-    pub plates: Vec<PlateFilamentUsageDto>,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CostEstimateDto {
-    pub total_cost: Option<f64>,
-    pub has_unpriced_filaments: bool,
-}
-/// Estimates the material cost: for each filament in `slice_info`, stock spools
-/// whose `material` contains the type are looked up (ignoring color, which
-/// rarely matches) and their average price per gram is used. Filaments without
-/// a price don't count (0 would mean "free"); `has_unpriced_filaments` then marks
-/// the total as incomplete.
-pub(crate) fn estimate_material_cost(
-    slice_info: &threemf::SliceInfo,
-    spools: &[db::models::FilamentSpoolRecord],
-) -> CostEstimateDto {
-    let mut total_cost = 0.0;
-    let mut priced_any = false;
-    let mut has_unpriced = false;
-
-    for plate in &slice_info.plates {
-        for filament in &plate.filaments {
-            if filament.filament_type.trim().is_empty() {
-                has_unpriced = true;
-                continue;
-            }
-
-            let type_lower = filament.filament_type.to_lowercase();
-            let matching: Vec<&db::models::FilamentSpoolRecord> = spools
-                .iter()
-                .filter(|s| {
-                    s.kind == db::models::SPOOL_KIND_FILAMENT
-                        && s.material.to_lowercase().contains(&type_lower)
-                        && s.price.is_some()
-                        && s.original_weight_g > 0.0
-                })
-                .collect();
-
-            if matching.is_empty() {
-                has_unpriced = true;
-                continue;
-            }
-
-            let avg_price_per_gram: f64 = matching
-                .iter()
-                .map(|s| s.price.unwrap() / s.original_weight_g)
-                .sum::<f64>()
-                / matching.len() as f64;
-
-            total_cost += filament.used_g * avg_price_per_gram;
-            priced_any = true;
-        }
-    }
-
-    CostEstimateDto {
-        total_cost: if priced_any { Some(total_cost) } else { None },
-        has_unpriced_filaments: has_unpriced,
-    }
-}
-impl From<threemf::SliceInfo> for SliceInfoDto {
-    fn from(info: threemf::SliceInfo) -> Self {
-        SliceInfoDto {
-            total_weight_g: info.total_weight_g,
-            plates: info
-                .plates
-                .into_iter()
-                .map(|p| PlateFilamentUsageDto {
-                    plate_index: p.plate_index,
-                    weight_g: p.weight_g,
-                    filaments: p
-                        .filaments
-                        .into_iter()
-                        .map(|f| FilamentUsageDto {
-                            filament_type: f.filament_type,
-                            color: f.color,
-                            used_g: f.used_g,
-                            used_m: f.used_m,
-                        })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-}
-const MATERIAL_DENSITY_G_CM3: &[(&str, f64)] = &[
-    ("pla", 1.24),
-    ("petg", 1.27),
-    ("abs", 1.04),
-    ("tpu", 1.21),
-    ("asa", 1.05),
-    ("pc", 1.20),
-    ("nylon", 1.14),
-];
-const DEFAULT_DENSITY_G_CM3: f64 = 1.24;
-
-pub(crate) fn estimate_weight_g(volume_cm3: Option<f64>, material_name: Option<&str>) -> Option<f64> {
-    let volume = volume_cm3?;
-    let density = material_name
-        .and_then(|name| {
-            let lower = name.to_lowercase();
-            MATERIAL_DENSITY_G_CM3
-                .iter()
-                .find(|(key, _)| lower.contains(key))
-                .map(|(_, d)| *d)
-        })
-        .unwrap_or(DEFAULT_DENSITY_G_CM3);
-    Some(volume * density)
-}
-pub(crate) fn encode_image(bytes: Option<Vec<u8>>) -> Option<String> {
-    use base64::Engine;
-    bytes.map(|b| {
-        format!(
-            "data:image/png;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(b)
-        )
-    })
-}
-pub(crate) fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord]) -> ModelFileDto {
-    let slice_info: Option<threemf::SliceInfo> = file
-        .slice_info_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
-    let (estimated_weight_g, weight_source) = match &slice_info {
-        Some(info) => (Some(info.total_weight_g), "slicer".to_string()),
-        None => (
-            estimate_weight_g(file.volume_cm3, file.materials.first().map(|m| m.name.as_str())),
-            "estimated".to_string(),
-        ),
-    };
-    let cost_estimate = slice_info
-        .as_ref()
-        .map(|info| estimate_material_cost(info, spools));
-    let custom_image = encode_image(file.custom_image_png);
-    let thumbnail_image = encode_image(file.thumbnail_png);
-    let render_snapshot_image = encode_image(file.render_snapshot_png);
-    ModelFileDto {
-        id: file.id.to_string(),
-        name: file.name,
-        path: file.path,
-        folder_id: file
-            .folder_id
-            .map(|id| id.to_string())
-            .unwrap_or_default(),
-        tags: file.tags,
-        origin: file.origin,
-        sync: file.sync_status,
-        dimensions_mm: file.dimensions_mm,
-        volume_cm3: file.volume_cm3,
-        object_count: file.object_count,
-        materials: file
-            .materials
-            .into_iter()
-            .map(|m| MaterialDto {
-                name: m.name,
-                display_color: m.display_color,
-            })
-            .collect(),
-        file_size_bytes: file.file_size_bytes,
-        imported_at: file.imported_at,
-        file_modified_at: file.file_modified_at,
-        print_status: file.print_status,
-        estimated_weight_g,
-        last_viewed_at: file.last_viewed_at,
-        content_hash: file.content_hash,
-        creator: file.creator,
-        custom_image,
-        thumbnail_image,
-        render_snapshot_image,
-        source_url: sanitize_source_url(file.source_url),
-        license: file.license,
-        source_platform: file.source_platform,
-        source_model_id: file.source_model_id,
-        source_profile_id: file.source_profile_id,
-        queue_position: file.queue_position,
-        favorite: file.favorite,
-        plate_count: file.plate_count,
-        weight_source,
-        slice_info: slice_info.map(SliceInfoDto::from),
-        cost_estimate,
-        deleted_at: file.deleted_at,
-    }
-}
+#[allow(unused_imports)] // Preserve the shared DTO API for desktop callers.
+pub use katalog_core::read::{ModelFileDto, MaterialDto, FilamentUsageDto, PlateFilamentUsageDto, SliceInfoDto, CostEstimateDto, FileSummaryDto, FileImagesDto, TagCountDto, PrintLogEntryDto, FolderDto, CollectionDto};
+use katalog_core::read::to_dto;
 pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::MutexGuard<'a, Connection>> {
     state.db.lock().map_err(|_| "database lock poisoned".into())
 }
-/// Moves a file without ever overwriting an existing target. The moved file
-/// keeps the permissions and modification time of the source.
-///
-/// First tries `std::fs::hard_link(from, to)` and then removes the source. A
-/// hard link fails with `AlreadyExists` when the target exists (returned
-/// unchanged), so it is an atomic no-replace "rename": `std::fs::rename`
-/// replaces an existing target on POSIX and Windows, a prior `exists()` check
-/// would be a TOCTOU window, and rename-no-replace only exists as three
-/// platform-specific syscalls. Because the inode stays the same, permissions,
-/// timestamps, owner and extended attributes/ACLs all survive.
-///
-/// If linking fails for any other reason (other drive, file system without
-/// hard links such as FAT/exFAT or a network share, missing rights on
-/// Windows), it falls back to `move_file_by_copy`. Not atomic as a whole:
-/// after a crash, source and target can briefly both exist.
+/// Moves a file without ever overwriting an existing target, keeping its
+/// permissions and modification time (hard link first, copy as fallback; see
+/// `katalog_core::import::placement::move_file`).
 pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    // A link to a symlink would link the symlink itself (on Linux) instead of
-    // the file it points to, which is not what a copy-based move did before.
-    let is_symlink = std::fs::symlink_metadata(from).map(|m| m.file_type().is_symlink()).unwrap_or(false);
-    if !is_symlink {
-        match std::fs::hard_link(from, to) {
-            Ok(()) => {
-                if let Err(remove_err) = std::fs::remove_file(from) {
-                    let _ = std::fs::remove_file(to);
-                    return Err(remove_err);
-                }
-                return Ok(());
-            }
-            // The target exists: never replace it, report it as is.
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Err(e),
-            // Anything else (EXDEV / ERROR_NOT_SAME_DEVICE, no hard-link
-            // support, missing rights): copy instead.
-            Err(_) => {}
-        }
-    }
-    move_file_by_copy(from, to)
-}
-
-/// The permission bits a copy gets. The group bits of a file with a POSIX ACL are the
-/// ACL mask, not the group's rights, so copying them could open the file to a group
-/// the ACL excluded; for such a file only the owner bits are taken. Otherwise group and
-/// other never get more than the owner has. The umask is deliberately not applied: the
-/// source mode is the upper bound, and a hard-link move keeps it exactly as well.
-#[cfg(unix)]
-fn copied_mode(source_mode: u32, source_has_acl: bool) -> u32 {
-    let owner = source_mode & 0o700;
-    if source_has_acl {
-        return owner;
-    }
-    let group = source_mode & 0o070 & (owner >> 3);
-    let other = source_mode & 0o007 & (owner >> 6);
-    owner | group | other
-}
-
-/// True when the file carries an extended POSIX ACL (Linux). Other systems report
-/// false and rely on the plain mode rules.
-#[cfg(unix)]
-fn has_extended_acl(path: &std::path::Path) -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::ffi::OsStrExt;
-        let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else { return false };
-        // SAFETY: both strings are NUL-terminated; a null buffer with size 0 only asks for the size.
-        let size = unsafe { libc::getxattr(path.as_ptr(), c"system.posix_acl_access".as_ptr(), std::ptr::null_mut(), 0) };
-        size >= 0
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = path;
-        false
-    }
-}
-
-/// Copy-based move used when a hard link is not possible; split out so tests
-/// can exercise it on a file system that supports hard links.
-///
-/// Creates the target with `create_new` (O_EXCL/CREATE_NEW, never replaces),
-/// copies, applies the source's permissions and modification time, and
-/// deletes the source. The target is created owner-only (0600) and widened
-/// only after the content is written (see `copied_mode`), so the copy is never
-/// more open than the source at any moment. setuid/setgid/sticky bits are not
-/// carried over; the owner cannot be preserved. Failing to apply time or
-/// permissions is not fatal, an incomplete copy is. A partially written
-/// target is always removed.
-fn move_file_by_copy(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    let mut dst = crate::safe_file::create_new_private(to)?;
-
-    let copy_result = (|| -> std::io::Result<()> {
-        let mut src = std::fs::File::open(from)?;
-        let src_meta = src.metadata()?;
-        std::io::copy(&mut src, &mut dst)?;
-        // Best effort: the content is what matters. Time first, because on
-        // Windows a read-only target could no longer be touched afterwards.
-        if let Ok(modified) = src_meta.modified() {
-            let _ = dst.set_modified(modified);
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = copied_mode(src_meta.permissions().mode(), has_extended_acl(from));
-            let _ = dst.set_permissions(std::fs::Permissions::from_mode(mode));
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = dst.set_permissions(src_meta.permissions());
-        }
-        dst.sync_all()?;
-        Ok(())
-    })();
-
-    if let Err(e) = copy_result {
-        // A partially written target is always cleaned up.
-        drop(dst);
-        let _ = std::fs::remove_file(to);
-        return Err(e);
-    }
-    drop(dst);
-
-    if let Err(remove_err) = std::fs::remove_file(from) {
-        let _ = std::fs::remove_file(to);
-        return Err(remove_err);
-    }
-    Ok(())
+    katalog_core::import::placement::move_file(from, to)
 }
 /// Second barrier next to `validate_folder_name`: checks the resolved target
 /// path against sensitive system directories (config, autostart, SSH/GPG, system
@@ -470,34 +108,15 @@ fn move_file_by_copy(from: &std::path::Path, to: &std::path::Path) -> std::io::R
 /// The RESOLVED path is compared (`resolve_path_for_sensitivity_check`),
 /// otherwise `..` or symlinks could bypass the check.
 pub(crate) fn reject_if_sensitive_path(path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<()> {
-    reject_if_sensitive_path_expanded(path, &expand_sensitive_dirs(sensitive_dirs))
+    katalog_core::import::placement::reject_if_sensitive_path(path, sensitive_dirs).map_err(Into::into)
 }
 /// Adds the canonical spelling of each protected folder (e.g. /bin -> /usr/bin).
 /// Compute once when many paths are checked.
 fn expand_sensitive_dirs(sensitive_dirs: &[PathBuf]) -> Vec<PathBuf> {
-    let mut expanded = Vec::with_capacity(sensitive_dirs.len());
-    for dir in sensitive_dirs {
-        if let Ok(canonical) = dir.canonicalize() {
-            if canonical != *dir {
-                expanded.push(canonical);
-            }
-        }
-        expanded.push(dir.clone());
-    }
-    expanded
+    katalog_core::import::placement::expand_sensitive_dirs(sensitive_dirs)
 }
 fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> CmdResult<()> {
-    let resolved = resolve_path_for_sensitivity_check(path)?;
-    for dir in expanded_dirs {
-        if resolved == *dir || resolved.starts_with(dir) {
-            return Err(format!(
-                "Zielpfad liegt in einem geschuetzten Systemverzeichnis ({}) und wird abgelehnt",
-                dir.display()
-            )
-            .into());
-        }
-    }
-    Ok(())
+    katalog_core::import::placement::reject_if_sensitive_path_expanded(path, expanded_dirs).map_err(Into::into)
 }
 /// Containment instead of a denylist: `path` must lie inside the trash. Otherwise
 /// a backup could set `trash_path = ~/Documents/important.pdf` with an old
@@ -523,55 +142,15 @@ fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdRes
 ///   checked subtree) and the longest existing ancestor is resolved instead,
 ///   with the remaining components appended literally.
 fn resolve_path_for_sensitivity_check(path: &Path) -> CmdResult<PathBuf> {
-    if let Ok(canonical) = path.canonicalize() {
-        return Ok(canonical);
-    }
-    if path
-        .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
-        return Err(
-            "Pfad enthaelt \"..\"-Komponenten und wird abgelehnt".into(),
-        );
-    }
-
-    let mut trailing: Vec<std::ffi::OsString> = Vec::new();
-    let mut cursor = path;
-    while let (Some(name), Some(parent)) = (cursor.file_name(), cursor.parent()) {
-        trailing.push(name.to_os_string());
-        if let Ok(canonical) = parent.canonicalize() {
-            let mut resolved = canonical;
-            for component in trailing.iter().rev() {
-                resolved.push(component);
-            }
-            return Ok(resolved);
-        }
-        cursor = parent;
-    }
-    Ok(path.to_path_buf())
+    katalog_core::import::placement::resolve_path_for_sensitivity_check(path).map_err(Into::into)
 }
 // Only allow http(s) links: the frontend renders the URL unchanged as <a href>,
 // and a "javascript:"/"data:" value would be executed on click instead of
 // navigated (close to CWE-79).
 fn validate_source_url(url: Option<String>) -> CmdResult<Option<String>> {
-    let Some(trimmed) = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) else {
-        return Ok(None);
-    };
-    if is_http_url(&trimmed) {
-        Ok(Some(trimmed))
-    } else {
-        Err(CmdError::expected("source URL must start with http:// or https://"))
-    }
+    katalog_core::write::validate_source_url(url).map_err(Into::into)
 }
-fn is_http_url(url: &str) -> bool {
-    url.starts_with("http://") || url.starts_with("https://")
-}
-/// Read-side counterpart to `validate_source_url`: an imported catalog brings the
-/// column unchecked. Invalid values are silently dropped.
-fn sanitize_source_url(url: Option<String>) -> Option<String> {
-    url.map(|u| u.trim().to_string())
-        .filter(|u| !u.is_empty() && is_http_url(u))
-}
+
 
 // Von Tests in mehreren Untermodulen gebraucht.
 #[cfg(test)]
@@ -588,6 +167,9 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
 #[cfg(test)]
 pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_at: &str) -> FileRecord {
     FileRecord {
+        source_platform: None,
+        source_model_id: None,
+        source_profile_id: None,
         id,
         name: format!("file-{id}.3mf"),
         path: format!("/tmp/file-{id}.3mf"),
@@ -614,9 +196,6 @@ pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_a
         custom_image_png: None,
         source_url: None,
         license: None,
-        source_platform: None,
-        source_model_id: None,
-        source_profile_id: None,
         queue_position: None,
         favorite: false,
         plate_count: None,
@@ -630,254 +209,6 @@ pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_a
 mod tests {
     use super::*;
 
-    fn sample_spool(material: &str, original_weight_g: f64, price: Option<f64>) -> db::models::FilamentSpoolRecord {
-        db::models::FilamentSpoolRecord {
-            id: 1,
-            material: material.to_string(),
-            manufacturer: None,
-            color: None,
-            location: None,
-            diameter_mm: 1.75,
-            original_weight_g,
-            remaining_weight_g: original_weight_g,
-            price,
-            image_png: None,
-            color_hex: None,
-            color_hexes: Vec::new(),
-            home_location: None,
-            unit_id: None,
-            slot_index: None,
-            kind: "filament".to_string(),
-        }
-    }
-    fn sample_slice_info_single_filament(filament_type: &str, used_g: f64) -> threemf::SliceInfo {
-        threemf::SliceInfo {
-            total_weight_g: used_g,
-            plates: vec![threemf::slice_info::PlateFilamentUsage {
-                plate_index: 1,
-                weight_g: used_g,
-                filaments: vec![threemf::slice_info::FilamentUsage {
-                    filament_type: filament_type.to_string(),
-                    color: None,
-                    used_g,
-                    used_m: 0.0,
-                }],
-            }],
-        }
-    }
-    #[cfg(unix)]
-    fn mode_of(path: &std::path::Path) -> u32 {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
-    }
-    #[cfg(unix)]
-    fn old_time() -> std::time::SystemTime {
-        std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_500_000_000)
-    }
-    /// Creates `source` with `mode` and an old modification time.
-    #[cfg(unix)]
-    fn make_source(dir: &std::path::Path, mode: u32) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-        let from = dir.join("source.3mf");
-        std::fs::write(&from, b"model data").unwrap();
-        std::fs::File::options().write(true).open(&from).unwrap().set_modified(old_time()).unwrap();
-        std::fs::set_permissions(&from, std::fs::Permissions::from_mode(mode)).unwrap();
-        from
-    }
-    #[cfg(unix)]
-    #[test]
-    fn moved_files_keep_mode_mtime_and_inode() {
-        use std::os::unix::fs::MetadataExt;
-        for mode in [0o644, 0o600, 0o755] {
-            let dir = unique_test_dir("move_keeps_meta");
-            let from = make_source(&dir, mode);
-            let to = dir.join("target.3mf");
-            let inode = std::fs::metadata(&from).unwrap().ino();
-            move_file(&from, &to).unwrap();
-            assert_eq!(mode_of(&to), mode, "mode {mode:o} must be kept");
-            assert_eq!(std::fs::metadata(&to).unwrap().modified().unwrap(), old_time());
-            assert_eq!(std::fs::metadata(&to).unwrap().ino(), inode, "same-device move must keep the inode");
-            assert_eq!(std::fs::read(&to).unwrap(), b"model data");
-            assert!(!from.exists());
-            std::fs::remove_dir_all(dir).unwrap();
-        }
-    }
-    #[cfg(unix)]
-    #[test]
-    fn copy_fallback_keeps_mode_and_mtime_without_special_bits() {
-        use std::os::unix::fs::MetadataExt;
-        for mode in [0o644, 0o600, 0o755, 0o4755, 0o2755] {
-            let dir = unique_test_dir("move_copy_meta");
-            let from = make_source(&dir, mode);
-            let to = dir.join("target.3mf");
-            let inode = std::fs::metadata(&from).unwrap().ino();
-            move_file_by_copy(&from, &to).unwrap();
-            assert_eq!(mode_of(&to), mode & 0o777, "mode {mode:o}: permissions kept, setuid/setgid dropped");
-            assert_eq!(std::fs::metadata(&to).unwrap().modified().unwrap(), old_time());
-            assert_ne!(std::fs::metadata(&to).unwrap().ino(), inode, "the copy path creates a new file");
-            assert_eq!(std::fs::read(&to).unwrap(), b"model data");
-            assert!(!from.exists());
-            std::fs::remove_dir_all(dir).unwrap();
-        }
-    }
-    #[cfg(unix)]
-    #[test]
-    fn copied_mode_is_never_more_open_than_the_source() {
-        assert_eq!(copied_mode(0o644, false), 0o644);
-        assert_eq!(copied_mode(0o664, false), 0o664, "a group-writable file stays group-writable");
-        assert_eq!(copied_mode(0o604, false), 0o604);
-        assert_eq!(copied_mode(0o464, false), 0o444, "group and other never exceed the owner");
-        assert_eq!(copied_mode(0o2755, false), 0o755, "special bits dropped");
-        assert_eq!(copied_mode(0o660, true), 0o600, "with an ACL the group bits are only the mask");
-    }
-    #[cfg(unix)]
-    #[test]
-    fn copy_fallback_keeps_the_group_closed_for_a_source_with_an_acl() {
-        use std::os::unix::ffi::OsStrExt;
-        let dir = unique_test_dir("move_copy_acl");
-        let from = make_source(&dir, 0o600);
-        // Entries: owner rw-, named user 12345 r--, group ---, mask rw-, other ---.
-        let mut acl: Vec<u8> = 2u32.to_le_bytes().to_vec();
-        for (tag, perm, id) in [(1u16, 6u16, u32::MAX), (2, 4, 12345), (4, 0, u32::MAX), (0x10, 6, u32::MAX), (0x20, 0, u32::MAX)] {
-            acl.extend(tag.to_le_bytes());
-            acl.extend(perm.to_le_bytes());
-            acl.extend(id.to_le_bytes());
-        }
-        let path = std::ffi::CString::new(from.as_os_str().as_bytes()).unwrap();
-        let set = unsafe { libc::setxattr(path.as_ptr(), c"system.posix_acl_access".as_ptr(), acl.as_ptr().cast(), acl.len(), 0) };
-        if set != 0 {
-            // This file system has no ACL support; the pure mode rules are covered above.
-            std::fs::remove_dir_all(dir).unwrap();
-            return;
-        }
-        assert_eq!(mode_of(&from) & 0o070, 0o060, "precondition: the group bits show the mask");
-        let to = dir.join("target.3mf");
-        move_file_by_copy(&from, &to).unwrap();
-        assert_eq!(mode_of(&to) & 0o077, 0, "the copy is closed to group and others");
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-    #[cfg(unix)]
-    #[test]
-    fn failed_source_removal_after_linking_removes_the_target_again() {
-        use std::os::unix::fs::PermissionsExt;
-        if unsafe { libc::geteuid() } == 0 {
-            return; // root ignores directory permissions, the removal would succeed
-        }
-        let dir = unique_test_dir("move_link_remove_fails");
-        let src_dir = dir.join("src");
-        std::fs::create_dir_all(&src_dir).unwrap();
-        let from = src_dir.join("source.3mf");
-        std::fs::write(&from, b"keep me").unwrap();
-        let to = dir.join("target.3mf");
-        // A read-only directory forbids unlinking the source, but not linking it.
-        std::fs::set_permissions(&src_dir, std::fs::Permissions::from_mode(0o555)).unwrap();
-        let result = move_file(&from, &to);
-        std::fs::set_permissions(&src_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(result.is_err());
-        assert!(!to.exists(), "target must be removed when the source cannot be deleted");
-        assert_eq!(std::fs::read(&from).unwrap(), b"keep me");
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-    #[test]
-    fn copy_fallback_refuses_to_overwrite_an_existing_destination() {
-        let dir = unique_test_dir("move_copy_no_clobber");
-        let from = dir.join("source.3mf");
-        let to = dir.join("dest.3mf");
-        std::fs::write(&from, b"SOURCE").unwrap();
-        std::fs::write(&to, b"EXISTING").unwrap();
-        let err = move_file_by_copy(&from, &to).unwrap_err();
-        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
-        assert_eq!(std::fs::read(&to).unwrap(), b"EXISTING");
-        assert!(from.exists());
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-    #[test]
-    fn estimate_material_cost_uses_single_matching_spool() {
-        let slice_info = sample_slice_info_single_filament("PLA", 20.0);
-        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02 per gram
-        let cost = estimate_material_cost(&slice_info, &spools);
-        assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6);
-        assert!(!cost.has_unpriced_filaments);
-    }
-    #[test]
-    fn estimate_material_cost_averages_multiple_matching_spools() {
-        let slice_info = sample_slice_info_single_filament("PLA", 10.0);
-        let spools = vec![
-            sample_spool("PLA", 1000.0, Some(20.0)), // 0.02/g
-            sample_spool("Generic PLA", 1000.0, Some(30.0)), // 0.03/g
-        ];
-        let cost = estimate_material_cost(&slice_info, &spools);
-        // Durchschnitt 0.025/g * 10g = 0.25
-        assert!((cost.total_cost.expect("cost") - 0.25).abs() < 1e-6);
-    }
-    #[test]
-    fn estimate_material_cost_returns_none_when_no_matching_material() {
-        let slice_info = sample_slice_info_single_filament("PETG", 10.0);
-        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))];
-        let cost = estimate_material_cost(&slice_info, &spools);
-        assert_eq!(cost.total_cost, None);
-        assert!(cost.has_unpriced_filaments);
-    }
-    #[test]
-    fn estimate_material_cost_ignores_spools_without_price() {
-        let slice_info = sample_slice_info_single_filament("PLA", 10.0);
-        let spools = vec![sample_spool("PLA", 1000.0, None)];
-        let cost = estimate_material_cost(&slice_info, &spools);
-        assert_eq!(cost.total_cost, None);
-        assert!(cost.has_unpriced_filaments);
-    }
-    #[test]
-    fn estimate_material_cost_sums_only_priced_filaments_when_mixed() {
-        let slice_info = threemf::SliceInfo {
-            total_weight_g: 30.0,
-            plates: vec![threemf::slice_info::PlateFilamentUsage {
-                plate_index: 1,
-                weight_g: 30.0,
-                filaments: vec![
-                    threemf::slice_info::FilamentUsage {
-                        filament_type: "PLA".to_string(),
-                        color: None,
-                        used_g: 20.0,
-                        used_m: 0.0,
-                    },
-                    threemf::slice_info::FilamentUsage {
-                        filament_type: "Nylon".to_string(),
-                        color: None,
-                        used_g: 10.0,
-                        used_m: 0.0,
-                    },
-                ],
-            }],
-        };
-        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02/g, no nylon in stock
-        let cost = estimate_material_cost(&slice_info, &spools);
-        assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6); // PLA share only
-        assert!(cost.has_unpriced_filaments); // Nylon is missing
-    }
-    #[test]
-    fn estimate_material_cost_treats_empty_filament_type_as_unmatched_not_universal_match() {
-        let slice_info = threemf::SliceInfo {
-            total_weight_g: 10.0,
-            plates: vec![threemf::slice_info::PlateFilamentUsage {
-                plate_index: 1,
-                weight_g: 10.0,
-                filaments: vec![threemf::slice_info::FilamentUsage {
-                    filament_type: "".to_string(),
-                    color: None,
-                    used_g: 10.0,
-                    used_m: 0.0,
-                }],
-            }],
-        };
-        // The empty type string must not "match" every spool (every string contains "").
-        let spools = vec![
-            sample_spool("PLA", 1000.0, Some(20.0)),
-            sample_spool("PETG", 1000.0, Some(25.0)),
-        ];
-        let cost = estimate_material_cost(&slice_info, &spools);
-        assert_eq!(cost.total_cost, None);
-        assert!(cost.has_unpriced_filaments);
-    }
     #[test]
     fn validate_source_url_accepts_http_and_https() {
         assert_eq!(
@@ -899,100 +230,7 @@ mod tests {
         assert_eq!(validate_source_url(None).unwrap(), None);
         assert_eq!(validate_source_url(Some("   ".to_string())).unwrap(), None);
     }
-    #[test]
-    fn estimate_weight_g_uses_known_material_density() {
-        let grams = estimate_weight_g(Some(10.0), Some("Generic PLA")).expect("weight");
-        assert!((grams - 12.4).abs() < 0.001);
-    }
-    #[test]
-    fn estimate_weight_g_falls_back_to_default_density_for_unknown_material() {
-        let grams = estimate_weight_g(Some(10.0), Some("Mystery-Filament")).expect("weight");
-        assert!((grams - 12.4).abs() < 0.001);
-    }
-    #[test]
-    fn estimate_weight_g_returns_none_without_volume() {
-        assert_eq!(estimate_weight_g(None, Some("PLA")), None);
-    }
-    #[test]
-    fn encode_image_encodes_bytes_as_data_url() {
-        use base64::Engine;
-        let result = encode_image(Some(vec![1, 2, 3])).expect("some image");
-        let b64 = result.strip_prefix("data:image/png;base64,").expect("data url prefix");
-        let decoded = base64::engine::general_purpose::STANDARD.decode(b64).expect("valid base64");
-        assert_eq!(decoded, vec![1, 2, 3]);
-    }
-    #[test]
-    fn encode_image_returns_none_for_none() {
-        assert_eq!(encode_image(None), None);
-    }
-    #[test]
-    fn to_dto_uses_slicer_weight_and_marks_source_when_slice_info_present() {
-        let mut file = sample_file_record(1, None, "2026-09-13T00:00:00Z");
-        file.volume_cm3 = Some(100.0); // would give an estimate without slice_info
-        file.slice_info_json = Some(
-            r##"{"total_weight_g":42.5,"plates":[{"plate_index":1,"weight_g":42.5,"filaments":[{"filament_type":"PLA","color":"#FFFFFFFF","used_g":42.5,"used_m":15.0}]}]}"##
-                .to_string(),
-        );
 
-        let dto = to_dto(file, &[]);
-
-        assert_eq!(dto.weight_source, "slicer");
-        assert!((dto.estimated_weight_g.expect("weight") - 42.5).abs() < 1e-6);
-        let slice_info = dto.slice_info.expect("slice info dto present");
-        assert_eq!(slice_info.plates.len(), 1);
-        assert_eq!(slice_info.plates[0].filaments[0].filament_type, "PLA");
-    }
-    #[test]
-    fn to_dto_includes_content_hash() {
-        let dto = to_dto(sample_file_record(7, Some("hash-7"), "2026-09-24T08:00:00+00:00"), &[]);
-        assert_eq!(dto.content_hash.as_deref(), Some("hash-7"));
-        let none = to_dto(sample_file_record(8, None, "2026-09-24T08:00:00+00:00"), &[]);
-        assert_eq!(none.content_hash, None);
-    }
-    #[test]
-    fn to_dto_serializes_slice_info_with_camel_case_and_type_rename() {
-        let mut file = sample_file_record(3, None, "2026-09-13T00:00:00Z");
-        file.volume_cm3 = Some(100.0);
-        file.slice_info_json = Some(
-            r##"{"total_weight_g":42.5,"plates":[{"plate_index":1,"weight_g":42.5,"filaments":[{"filament_type":"PLA","color":"#FFFFFFFF","used_g":42.5,"used_m":15.0}]}]}"##
-                .to_string(),
-        );
-
-        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02/g
-
-        let dto = to_dto(file, &spools);
-        let dto_json = serde_json::to_value(&dto).expect("dto serializes to JSON");
-
-        assert_eq!(dto_json["weightSource"], "slicer");
-        assert_eq!(dto_json["sliceInfo"]["totalWeightG"], 42.5);
-        assert_eq!(dto_json["sliceInfo"]["plates"][0]["plateIndex"], 1);
-        assert_eq!(dto_json["sliceInfo"]["plates"][0]["weightG"], 42.5);
-        // Critical: FilamentUsageDto::filament_type must serialize as "type",
-        // not "filamentType", to match the frontend contract.
-        assert_eq!(dto_json["sliceInfo"]["plates"][0]["filaments"][0]["type"], "PLA");
-        assert_eq!(
-            dto_json["sliceInfo"]["plates"][0]["filaments"][0]["color"],
-            "#FFFFFFFF"
-        );
-        assert_eq!(dto_json["sliceInfo"]["plates"][0]["filaments"][0]["usedG"], 42.5);
-        assert_eq!(dto_json["sliceInfo"]["plates"][0]["filaments"][0]["usedM"], 15.0);
-        // 42.5g * 0.02/g = 0.85
-        assert!((dto_json["costEstimate"]["totalCost"].as_f64().expect("total cost number") - 0.85).abs() < 1e-6);
-        assert_eq!(dto_json["costEstimate"]["hasUnpricedFilaments"], false);
-    }
-    #[test]
-    fn to_dto_falls_back_to_estimate_when_slice_info_absent() {
-        let mut file = sample_file_record(2, None, "2026-09-13T00:00:00Z");
-        file.volume_cm3 = Some(10.0);
-        file.slice_info_json = None;
-
-        let dto = to_dto(file, &[]);
-
-        assert_eq!(dto.weight_source, "estimated");
-        assert!(dto.slice_info.is_none());
-        assert!(dto.estimated_weight_g.is_some());
-        assert!(dto.cost_estimate.is_none());
-    }
     #[test]
     fn reject_if_sensitive_path_rejects_exact_match_and_descendants_but_not_siblings() {
         // Deliberately no "/home/..." prefix: on macOS "/home" is an automounter
@@ -1047,36 +285,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
         assert!(result.is_ok(), "a fresh, not yet created catalog dir must remain a valid choice: {result:?}");
     }
-    #[test]
-    fn sanitize_source_url_drops_non_http_values_instead_of_erroring() {
-        assert_eq!(
-            sanitize_source_url(Some("https://example.org/x".to_string())),
-            Some("https://example.org/x".to_string())
-        );
-        assert_eq!(
-            sanitize_source_url(Some("http://example.org/x".to_string())),
-            Some("http://example.org/x".to_string())
-        );
-        assert_eq!(sanitize_source_url(Some("javascript:alert(1)".to_string())), None);
-        assert_eq!(sanitize_source_url(Some("data:text/html,<script>".to_string())), None);
-        assert_eq!(sanitize_source_url(Some("file:///etc/passwd".to_string())), None);
-        assert_eq!(sanitize_source_url(Some("   ".to_string())), None);
-        assert_eq!(sanitize_source_url(None), None);
-    }
-    #[test]
-    fn to_dto_drops_a_non_http_source_url_from_an_imported_row() {
-        let mut file = sample_file_record(1, None, "2026-09-19T00:00:00Z");
-        file.source_url = Some("javascript:alert(document.domain)".to_string());
-        let dto = to_dto(file, &[]);
-        assert_eq!(dto.source_url, None, "a javascript: URL must never reach the frontend as an href");
-    }
-    #[test]
-    fn to_dto_keeps_a_regular_http_source_url() {
-        let mut file = sample_file_record(1, None, "2026-09-19T00:00:00Z");
-        file.source_url = Some("https://makerworld.com/de/models/1".to_string());
-        let dto = to_dto(file, &[]);
-        assert_eq!(dto.source_url, Some("https://makerworld.com/de/models/1".to_string()));
-    }
+
     #[test]
     fn move_file_refuses_to_overwrite_an_existing_destination() {
         let dir = unique_test_dir("move_file_no_clobber");
@@ -1113,7 +322,7 @@ mod tests {
             let to = dir.join("dest.3mf");
             // The hard-link path would succeed on an unreadable file, so force
             // the copy path, where reading the source fails.
-            let result = move_file_by_copy(&from, &to);
+            let result = katalog_core::import::placement::move_file_by_copy(&from, &to);
             // Reset permissions so the unique_test_dir cleanup (if any) isn't blocked.
             std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644)).unwrap();
             assert!(result.is_err());
@@ -1121,12 +330,5 @@ mod tests {
             assert!(from.exists(), "source must survive a failed copy");
         }
     }
-    #[test]
-    fn estimate_material_cost_ignores_resin() {
-        let slice_info = sample_slice_info_single_filament("PLA", 10.0);
-        let resin = db::models::FilamentSpoolRecord { kind: "resin".into(), ..sample_spool("PLA", 1000.0, Some(20.0)) };
-        let cost = estimate_material_cost(&slice_info, &[resin]);
-        assert_eq!(cost.total_cost, None);
-        assert!(cost.has_unpriced_filaments);
-    }
+
 }

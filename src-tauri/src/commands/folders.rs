@@ -1,63 +1,21 @@
 use super::*;
 
-pub(super) const SETTING_CATALOG_BASE_DIR: &str = "catalog_base_dir";
+pub(super) use katalog_core::import::file_names::SETTING_CATALOG_BASE_DIR;
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FolderDto {
-    pub id: String,
-    pub name: String,
-    pub path: String,
-    pub parent_id: Option<String>,
-    pub count: i64,
-    /// The directory is gone from disk. False also when that is unknown (root not readable).
-    pub missing: bool,
-}
 #[tauri::command]
 pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
-    let (folders, files) = {
+    let (mut dtos, folders) = {
         let conn = lock_db(&state)?;
         (
+            katalog_core::read::list_folders(&conn).map_err(CmdError::from)?,
             db::list_folders(&conn).map_err(|e| e.to_string())?,
-            db::list_files(&conn).map_err(|e| e.to_string())?,
         )
     };
     // Disk access happens after the catalog lock is released: a slow network drive must not block it.
     let missing = disk_sync::missing_folder_ids(&folders);
-
-    fn is_descendant_or_self(folders: &[db::models::FolderRecord], candidate_id: i64, ancestor_id: i64) -> bool {
-        if candidate_id == ancestor_id {
-            return true;
-        }
-        let mut current = candidate_id;
-        while let Some(f) = folders.iter().find(|f| f.id == current) {
-            match f.parent_id {
-                Some(pid) if pid == ancestor_id => return true,
-                Some(pid) => current = pid,
-                None => return false,
-            }
-        }
-        false
+    for dto in &mut dtos {
+        dto.missing = dto.id.parse().is_ok_and(|id: i64| missing.contains(&id));
     }
-
-    let dtos = folders
-        .iter()
-        .map(|folder| {
-            let count = files
-                .iter()
-                .filter(|f| f.folder_id.is_some_and(|fid| is_descendant_or_self(&folders, fid, folder.id)))
-                .count() as i64;
-            FolderDto {
-                id: folder.id.to_string(),
-                name: folder.name.clone(),
-                path: folder.path.clone(),
-                parent_id: folder.parent_id.map(|id| id.to_string()),
-                count,
-                missing: missing.contains(&folder.id),
-            }
-        })
-        .collect();
-
     Ok(dtos)
 }
 /// `name` ends up in `join`/`with_file_name` and must be a single harmless path
@@ -143,6 +101,7 @@ fn create_folder_with_conn(
         parent_id: parent.map(|p| p.to_string()),
         count: 0,
         missing: false,
+        move_target: true,
     })
 }
 fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
@@ -154,11 +113,7 @@ fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
 }
 
 pub(super) fn comparison_path(path: &Path) -> PathBuf {
-    // Windows Path components already recognize both separator spellings.
-    #[cfg(windows)]
-    { PathBuf::from(path.to_string_lossy().to_lowercase()) }
-    #[cfg(not(windows))]
-    { path.to_path_buf() }
+    katalog_core::import::placement::comparison_path(path)
 }
 
 pub(super) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {
@@ -386,6 +341,7 @@ fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResu
         parent_id: folder.parent_id.map(|p| p.to_string()),
         count: 0,
         missing: false,
+        move_target: true,
     })
 }
 /// Only folders the user picked or created in the app may become the catalog
@@ -445,6 +401,7 @@ pub(super) fn register_existing_catalog_base_dir_with_conn(conn: &Connection, di
         parent_id: folder.parent_id.map(|id| id.to_string()),
         count: 0,
         missing: false,
+        move_target: true,
     };
     db::printer_link::set_setting(&tx, SETTING_CATALOG_BASE_DIR, &folder.path).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
@@ -459,21 +416,10 @@ pub fn register_existing_catalog_base_dir(state: State<AppState>, path: String) 
     register_existing_catalog_base_dir_with_conn(&conn, Path::new(&path), &state.sensitive_dirs)
 }
 
-// Windows forbids these in file names. They are rejected on every OS so a
-// catalog set up on Linux or macOS keeps working after a move to Windows.
-pub(super) const FORBIDDEN_DIR_NAME_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
-
-// Device names Windows refuses as file or folder names, also with an extension.
-// Windows also treats the superscript digits ¹²³ like 1, 2, 3 here.
-pub(super) const WINDOWS_RESERVED_NAMES: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "COM¹", "COM²", "COM³", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹",
-    "LPT²", "LPT³",
-];
-
-// Most file systems allow at most 255 bytes per name component. Checked up front
-// so the user gets a clear message instead of an OS error.
-pub(super) const MAX_DIR_NAME_BYTES: usize = 255;
+// Name rules shared with the import worker (date prefix on import).
+pub(super) use katalog_core::import::file_names::{FORBIDDEN_DIR_NAME_CHARS, MAX_DIR_NAME_BYTES};
+#[allow(unused_imports)]
+pub(super) use katalog_core::import::file_names::WINDOWS_RESERVED_NAMES;
 
 /// Name of a new catalog folder, typed freely by the user. Must be exactly one
 /// harmless path component, otherwise "../x" or "/etc/x" would create the folder
@@ -758,7 +704,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-
     #[test]
     fn managed_folders_reject_ancestors_before_adoption_or_rename() {
         let dir = unique_test_dir("protected_ancestor");
@@ -776,7 +721,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(target);
         let _ = std::fs::remove_dir_all(dir);
     }
-
 
     #[test]
     fn folder_names_reject_windows_special_components_on_every_platform() {

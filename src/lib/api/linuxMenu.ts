@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 
 export interface LinuxMenuStatus {
   /** Linux AppImage run; otherwise the feature stays hidden. */

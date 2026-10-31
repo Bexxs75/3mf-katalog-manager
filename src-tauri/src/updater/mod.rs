@@ -1,6 +1,6 @@
 //! Update from within the app: which endpoint to ask, whether this installation
 //! can replace itself, and what to show after an update.
-pub mod backup;
+pub use katalog_core::backup;
 
 use serde::{Deserialize, Serialize};
 

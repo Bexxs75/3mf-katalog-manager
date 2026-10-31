@@ -1,3 +1,6 @@
+import { WebFileActions } from './WebFileActions';
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
+import { isReadOnly } from '../lib/readOnly';
 import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -14,6 +17,8 @@ import { DateRenameDialog, type DateRenameOutcome } from './DateRenameDialog';
 
 interface BulkActionToolbarProps {
   selectedCount: number;
+  selectedNames?: string[];
+  hiddenSelectedCount?: number;
   confirmBulkDelete: boolean;
   onConfirmBulkDeleteChange: (value: boolean) => void;
   onSelectAllVisible: () => void;
@@ -95,6 +100,8 @@ function navigateActionMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
 
 export function BulkActionToolbar({
   selectedCount,
+  selectedNames,
+  hiddenSelectedCount = 0,
   confirmBulkDelete,
   onConfirmBulkDeleteChange,
   onSelectAllVisible,
@@ -126,6 +133,7 @@ export function BulkActionToolbar({
   onDateRenamed,
   compact = false,
 }: BulkActionToolbarProps) {
+  const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
   const t = useT();
   const formatCount = useFormatCount();
@@ -302,23 +310,24 @@ export function BulkActionToolbar({
     </ViewportPopover>
   );
 
+  if (!canEdit) return null;
   return (
     <div role="toolbar" aria-label={t('bulkToolbarLabel')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 min-h-12 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
-      {confirmRemove ? (
+      {canEdit && confirmRemove ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-small font-medium text-[var(--ink)]">{formatCount(t('removeModelsQuestion'), selectedCount)}</span>
-          <span className="text-small text-[var(--ink-2)]">{t('removeModelHint')}</span>
+          <span className="text-small text-[var(--ink-2)]">{t(isReadOnly() ? 'webRemoveModelHint' : 'removeModelHint')}</span>
           {error && <span role="alert" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)]"><ErrorText error={error} /></span>}
           <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
           <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
-            if (!onBulkRemove) return;
+            if (!onBulkRemove || !canEditMetadata() || busy) return;
             setBusy(true); setError(null);
             try { await onBulkRemove(); setConfirmRemove(false); }
             catch (e) { setError(toAppError(e)); }
             finally { setBusy(false); }
           }}>{t('removeEntry')}</button>
         </div>
-      ) : confirmBulkDelete ? (
+      ) : !isReadOnly() && confirmBulkDelete ? (
         <>
           <span className="text-small font-medium text-[var(--ink)]">
             {formatCount(t('bulkDeleteConfirmQuestion'), selectedCount)}
@@ -474,9 +483,10 @@ export function BulkActionToolbar({
             {compact && removeTagPopover}
           </div>
           <span aria-hidden="true" className="w-px h-6 mx-1 bg-[var(--line-strong)]" />
-          <button type="button" {...idle} {...lockProps} ref={deleteRef} onClick={act(() => onConfirmBulkDeleteChange(true))} className={`${BUTTON} !border-[var(--line-strong)] !text-red-400 hover:!border-red-400`}>
+          <WebFileActions fileIds={selectedIds ?? []} names={selectedNames} hiddenCount={hiddenSelectedCount} onDone={onClearSelection} requestTrashConfirm={confirmBulkDelete} onConfirmationClosed={() => onConfirmBulkDeleteChange(false)} />
+          {!isReadOnly() && <button type="button" {...idle} {...lockProps} ref={deleteRef} onClick={act(() => onConfirmBulkDeleteChange(true))} className={`${BUTTON} !border-[var(--line-strong)] !text-red-400 hover:!border-red-400`}>
             {t('delete')}
-          </button>
+          </button>}
         </>
       )}
       {dateRenameIds && onDateRenamed && (

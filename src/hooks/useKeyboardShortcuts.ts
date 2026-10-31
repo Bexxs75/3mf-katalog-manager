@@ -1,3 +1,4 @@
+import { canEditMetadata, canManageFiles } from '../lib/webSession';
 import { shouldIgnoreCatalogShortcut, hasPlatformModifier, isMacPlatform, isTextEntryTarget } from '../lib/keyboardGuard';
 import { useContext, useEffect } from 'react';
 import { ModelLayoutContext, type ModelLayout } from './ModelLayoutContext';
@@ -136,14 +137,14 @@ export function useKeyboardShortcuts({
       }
       if (singleKeyShortcuts && e.key === '?') { e.preventDefault(); onOpenTips?.(); return; }
       if (!navigationEnabled) return;
-      if (selectAll) { e.preventDefault(); selectAllVisible?.(); return; }
-      if (singleKeyShortcuts && onMoveSelection && (e.key === 'm' || e.key === 'M')) { e.preventDefault(); onMoveSelection(); return; }
+      if (canEditMetadata() && selectAll) { e.preventDefault(); selectAllVisible?.(); return; }
+      if (canManageFiles() && singleKeyShortcuts && onMoveSelection && (e.key === 'm' || e.key === 'M')) { e.preventDefault(); onMoveSelection(); return; }
       if (e.key === 'Enter' && selectedId) { e.preventDefault(); onOpenDetail?.(selectedId); return; }
-      if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && hasBulkSelection && !e.repeat) {
+      if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && canManageFiles() && hasBulkSelection && !e.repeat) {
         e.preventDefault(); openBulkDeleteConfirm(); return;
       }
 
-      if (singleKeyShortcuts && e.key === ' ' && selectedId) {
+      if (canEditMetadata() && singleKeyShortcuts && e.key === ' ' && selectedId) {
         e.preventDefault();
         toggleBulkSelect(selectedId);
         return;

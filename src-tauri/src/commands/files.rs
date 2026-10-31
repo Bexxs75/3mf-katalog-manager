@@ -1,134 +1,18 @@
 use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use super::*;
+#[cfg(test)]
+use katalog_core::read::summary_to_dto;
 
-pub(crate) const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024;
+pub(crate) use katalog_core::write::MAX_CUSTOM_IMAGE_BYTES;
 // Base64 inflates by 4/3: limit for the still encoded string in `set_render_snapshot`.
 const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
 
-/// Slim projection of `ModelFileDto` for grid and list: without image blobs
-/// and `tags`, which only the detail page loads via
-/// `list_files_by_ids([id])`.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileSummaryDto {
-    pub license: Option<String>,
-    pub source_platform: Option<String>,
-    pub source_model_id: Option<String>,
-    pub source_profile_id: Option<String>,
-    pub materials: Vec<MaterialDto>,
-    pub estimated_weight_g: Option<f64>,
-    pub weight_source: String,
-    pub id: String,
-    pub name: String,
-    pub path: String,
-    pub file_type: String,
-    // Empty string = no folder, as in `ModelFileDto.folder_id` and the frontend.
-    pub folder_id: String,
-    pub file_size_bytes: i64,
-    pub dimensions_mm: Option<[f64; 3]>,
-    pub volume_cm3: Option<f64>,
-    pub object_count: Option<i64>,
-    pub imported_at: String,
-    pub file_modified_at: Option<String>,
-    pub print_status: String,
-    pub favorite: bool,
-    pub queue_position: Option<i64>,
-    pub has_thumbnail: bool,
-    pub has_render_snapshot: bool,
-    pub creator: Option<String>,
-    pub last_viewed_at: Option<String>,
-    pub content_hash: Option<String>,
-}
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TagCountDto {
-    pub label: String,
-    pub count: i64,
-    pub color_hue: i64,
-}
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportResultDto {
-    #[serde(skip)]
-    pub(super) duplicate_entries: Vec<super::import_jobs::DuplicateEntry>,
-    pub imported: Vec<ModelFileDto>,
-    pub duplicate_count: i64,
-    /// Individually picked/dropped archives - NOT imported here, but handled by the
-    /// frontend through the extract dialog.
-    pub pending_archives: Vec<String>,
-    /// Files that could not be imported, so the UI can name them.
-    pub skipped: Vec<SkippedFileDto>,
-}
-/// Why a file was left out of an import. The UI shows a translated text per
-/// reason; the detailed error only goes to the log.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SkipReason {
-    /// The file has 0 bytes.
-    Empty,
-    /// Not a usable model: damaged, a different format, no geometry, or not readable.
-    Invalid,
-    /// The catalog could not store it - an app-side error worth a problem report.
-    Failed,
-}
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkippedFileDto {
-    pub path: String,
-    pub reason: SkipReason,
-}
+pub use katalog_core::import::files::{ImportResultDto, SkippedFileDto};
+#[cfg(test)] pub(super) use katalog_core::import::files::SkipReason;
 #[tauri::command]
 pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryDto>> {
     let conn = lock_db(&state)?;
-    let summaries = db::list_file_summaries(&conn).map_err(|e| e.to_string())?;
-    Ok(summaries
-        .into_iter()
-        .map(summary_to_dto)
-        .collect())
-}
-fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
-    let slice_info = s.slice_info_json.as_deref().and_then(|json| serde_json::from_str::<threemf::SliceInfo>(json).ok());
-    let (estimated_weight_g, weight_source) = match slice_info {
-        Some(info) => (Some(info.total_weight_g), "slicer"),
-        None => (estimate_weight_g(s.volume_cm3, s.materials.first().map(|m| m.name.as_str())), "estimated"),
-    };
-    FileSummaryDto {
-        license: s.license,
-        source_platform: s.source_platform,
-        source_model_id: s.source_model_id,
-        source_profile_id: s.source_profile_id,
-        estimated_weight_g,
-        weight_source: weight_source.into(),
-        materials: s.materials.into_iter().map(|m| MaterialDto { name: m.name, display_color: m.display_color }).collect(),
-        id: s.id.to_string(),
-        name: s.name,
-        path: s.path,
-        file_type: s.file_type.as_str().to_string(),
-        folder_id: s.folder_id.map(|id| id.to_string()).unwrap_or_default(),
-        file_size_bytes: s.file_size_bytes,
-        dimensions_mm: s.dimensions_mm,
-        volume_cm3: s.volume_cm3,
-        object_count: s.object_count,
-        imported_at: s.imported_at,
-        file_modified_at: s.file_modified_at,
-        print_status: s.print_status,
-        favorite: s.favorite,
-        queue_position: s.queue_position,
-        has_thumbnail: s.has_thumbnail,
-        has_render_snapshot: s.has_render_snapshot,
-        creator: s.creator,
-        last_viewed_at: s.last_viewed_at,
-        content_hash: s.content_hash,
-    }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileImagesDto {
-    pub id: String,
-    pub thumbnail_image: Option<String>,
-    pub render_snapshot_image: Option<String>,
-    pub custom_image: Option<String>,
+    katalog_core::read::list_file_summaries(&conn).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -144,15 +28,10 @@ pub async fn list_file_images(app: tauri::AppHandle, ids: Vec<String>) -> CmdRes
         let images = {
             let state = app.state::<AppState>();
             let conn = lock_db(&state)?;
-            db::list_file_images(&conn, &parsed).map_err(|e| e.to_string())?
+            katalog_core::read::load_file_images(&conn, &parsed)?
         };
         // Encoding can be expensive for uploaded images; release the DB lock first.
-        Ok(images.into_iter().map(|images| FileImagesDto {
-            id: images.id.to_string(),
-            thumbnail_image: encode_image(images.thumbnail_png),
-            render_snapshot_image: encode_image(images.render_snapshot_png),
-            custom_image: encode_image(images.custom_image_png),
-        }).collect())
+        Ok(katalog_core::read::encode_file_images(images))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -163,63 +42,27 @@ pub async fn list_file_images(app: tauri::AppHandle, ids: Vec<String>) -> CmdRes
 #[tauri::command]
 pub fn list_all_file_tags(state: State<AppState>) -> CmdResult<HashMap<String, Vec<String>>> {
     let conn = lock_db(&state)?;
-    let pairs = db::list_all_file_tags(&conn).map_err(|e| e.to_string())?;
-    let mut by_file: HashMap<String, Vec<String>> = HashMap::new();
-    for (file_id, tag) in pairs {
-        by_file.entry(file_id.to_string()).or_default().push(tag);
-    }
-    Ok(by_file)
+    katalog_core::read::list_all_file_tags(&conn).map_err(Into::into)
 }
 /// Loads the full model data `list_file_summaries` doesn't include (the detail page calls it with a single id).
 #[tauri::command]
 pub fn list_files_by_ids(state: State<AppState>, ids: Vec<String>) -> CmdResult<Vec<ModelFileDto>> {
     let conn = lock_db(&state)?;
-    let parsed_ids: Vec<i64> = ids
-        .iter()
-        .map(|id| id.parse().map_err(|_| format!("invalid file id: {id}")))
-        .collect::<Result<_, String>>()?;
-    let files = db::list_files_by_ids(&conn, &parsed_ids).map_err(|e| e.to_string())?;
-    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
-    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
+    katalog_core::read::list_files_by_ids(&conn, ids).map_err(Into::into)
 }
 #[tauri::command]
 pub fn list_tag_counts(state: State<AppState>) -> CmdResult<Vec<TagCountDto>> {
     let conn = lock_db(&state)?;
-    let tags = db::list_tag_counts(&conn).map_err(|e| e.to_string())?;
-    Ok(tags
-        .into_iter()
-        .map(|t| TagCountDto {
-            label: t.name,
-            count: t.count,
-            color_hue: t.color_hue,
-        })
-        .collect())
+    katalog_core::read::list_tag_counts(&conn).map_err(Into::into)
 }
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PrintLogEntryDto {
-    pub id: String,
-    pub printed_at: String,
-    pub note: Option<String>,
-    pub photo_image: Option<String>,
-}
-fn print_log_entry_to_dto(record: db::models::PrintLogEntryRecord) -> PrintLogEntryDto {
-    PrintLogEntryDto {
-        id: record.id.to_string(),
-        printed_at: record.printed_at,
-        note: record.note,
-        photo_image: encode_image(record.photo_png),
-    }
-}
+
 #[tauri::command]
 pub fn list_print_log_entries(
     state: State<AppState>,
     file_id: String,
 ) -> CmdResult<Vec<PrintLogEntryDto>> {
-    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
-    Ok(entries.into_iter().map(print_log_entry_to_dto).collect())
+    katalog_core::read::list_print_log_entries(&conn, file_id).map_err(Into::into)
 }
 #[tauri::command]
 pub fn add_print_log_entry(
@@ -229,56 +72,19 @@ pub fn add_print_log_entry(
     note: Option<String>,
     photo_base64: Option<String>,
 ) -> CmdResult<PrintLogEntryDto> {
-    use base64::Engine;
-    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-
-    let photo_png = photo_base64
-        .map(|b64| {
-            base64::engine::general_purpose::STANDARD
-                .decode(&b64)
-                .map_err(|e| e.to_string())
-        })
-        .transpose()?;
-    if let Some(bytes) = &photo_png {
-        if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
-            return Err(format!(
-                "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
-                bytes.len() as f64 / (1024.0 * 1024.0),
-                MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
-            )
-            .into());
-        }
-    }
-
+    let entry = katalog_core::write::prepare_print_log_entry(file_id, printed_at, note, photo_base64)?;
     let conn = lock_db(&state)?;
-    let new_entry = db::models::NewPrintLogEntry {
-        file_id: fid,
-        printed_at,
-        note,
-        photo_png,
-    };
-    let id = db::insert_print_log_entry(&conn, &new_entry).map_err(|e| e.to_string())?;
-    let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
-    let entry = entries
-        .into_iter()
-        .find(|e| e.id == id)
-        .ok_or_else(|| "entry not found after insert".to_string())?;
-    Ok(print_log_entry_to_dto(entry))
+    katalog_core::write::insert_prepared_print_log_entry(&conn, entry).map_err(Into::into)
 }
 #[tauri::command]
 pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdResult<()> {
-    let id: i64 = entry_id
-        .parse()
-        .map_err(|_| "invalid entry id".to_string())?;
+    let _: i64 = entry_id.parse().map_err(|_| "invalid entry id".to_string())?;
     let conn = lock_db(&state)?;
-    db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string().into())
+    katalog_core::write::delete_print_log_entry(&conn, entry_id).map_err(Into::into)
 }
 /// Dialog filters can be bypassed by typing a path; trust the bytes instead.
 pub(crate) fn validate_image_format(bytes: &[u8]) -> CmdResult<()> {
-    let supported = bytes.starts_with(b"\x89PNG\r\n\x1a\n")
-        || bytes.starts_with(b"\xff\xd8\xff")
-        || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(&b"WEBP"[..]));
-    if supported { Ok(()) } else { Err(CmdError::expected("imageUploadUnsupported")) }
+    katalog_core::write::validate_image_format(bytes).map_err(Into::into)
 }
 
 /// Reads a user-picked image file with a size limit, directly through a reader
@@ -320,11 +126,7 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
 /// normalized to their key, so e.g. "Multipart" doesn't create a second tag next
 /// to "mehrteilig".
 pub(super) fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
-    db::error::validate_text_length(tag, 100, "Tag").map_err(|e| CmdError::expected(e.to_string()))?;
-    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| match e {
-        db::error::DbError::Invalid(message) => CmdError::expected(message),
-        other => other.to_string().into(),
-    })
+    katalog_core::write::add_tag_with_conn(conn, file_id, tag).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -335,12 +137,9 @@ pub fn add_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResul
 }
 #[tauri::command]
 pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    // No normalization here (unlike add_tag): the frontend always sends the name
-    // actually stored - normalizing would make an alias tag (e.g. the ambiguous
-    // "mini") impossible to remove once it no longer matches the key.
-    db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string().into())
+    katalog_core::write::remove_tag(&conn, file_id, tag).map_err(Into::into)
 }
 fn blocked_tag_error(e: db::error::DbError) -> CmdError {
     match e {
@@ -349,20 +148,9 @@ fn blocked_tag_error(e: db::error::DbError) -> CmdError {
     }
 }
 
-/// Tags the app would suggest for this model today. The catalog does not record
-/// whether a tag was assigned automatically, so the detail view asks this to decide
-/// which tags may be blocked. Uses the stored dimensions, which for multi-plate
-/// models can differ slightly from the extent used at import.
+/// Thin desktop wrapper; the logic lives in `katalog_core::read`.
 pub(super) fn suggested_auto_tags_with_conn(conn: &Connection, file_id: i64) -> CmdResult<Vec<String>> {
-    let file = db::get_file(conn, file_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| CmdError::expected("Datei nicht gefunden"))?;
-    Ok(tagging::suggest_tags(&TaggingContext {
-        file_name: &file.name,
-        dimensions_mm: file.dimensions_mm,
-        object_count: file.object_count,
-        materials: &file.materials,
-    }))
+    katalog_core::read::suggested_auto_tags_with_conn(conn, file_id).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -759,45 +547,35 @@ pub fn rename_file(state: State<AppState>, file_id: String, name: String) -> Cmd
 }
 #[tauri::command]
 pub fn set_print_status(state: State<AppState>, file_id: String, status: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_print_status(&conn, id, &status).map_err(|e| e.to_string().into())
+    katalog_core::write::set_print_status(&conn, file_id, status).map_err(Into::into)
 }
 #[tauri::command]
 pub fn set_favorite(state: State<AppState>, file_id: String, favorite: bool) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_favorite(&conn, id, favorite).map_err(|e| e.to_string().into())
+    katalog_core::write::set_favorite(&conn, file_id, favorite).map_err(Into::into)
 }
 #[tauri::command]
 pub fn mark_file_viewed(state: State<AppState>, file_id: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::mark_file_viewed(&conn, id).map_err(|e| e.to_string().into())
+    katalog_core::write::mark_file_viewed(&conn, file_id).map_err(Into::into)
 }
 #[tauri::command]
 pub fn add_to_queue(state: State<AppState>, file_id: String) -> CmdResult<i64> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    let next = db::max_queue_position(&conn)
-        .map_err(|e| e.to_string())?
-        .unwrap_or(0)
-        + 1;
-    db::set_queue_position(&conn, id, Some(next)).map_err(|e| e.to_string())?;
-    Ok(next)
+    katalog_core::write::add_to_queue(&conn, file_id).map_err(Into::into)
 }
 #[tauri::command]
 pub fn remove_from_queue(state: State<AppState>, file_id: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_queue_position(&conn, id, None).map_err(|e| e.to_string().into())
+    katalog_core::write::remove_from_queue(&conn, file_id).map_err(Into::into)
 }
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueuePositionUpdate {
-    pub file_id: String,
-    pub position: i64,
-}
+pub use katalog_core::write::QueuePositionUpdate;
 #[tauri::command]
 pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) -> CmdResult<()> {
     let mut conn = lock_db(&state)?;
@@ -810,27 +588,7 @@ fn reorder_queue_with_conn(
     conn: &mut Connection,
     updates: Vec<QueuePositionUpdate>,
 ) -> CmdResult<()> {
-    let mut parsed = Vec::with_capacity(updates.len());
-    for update in updates {
-        let id: i64 = update
-            .file_id
-            .parse()
-            .map_err(|_| "invalid file id".to_string())?;
-        if db::get_file(conn, id).map_err(|e| e.to_string())?.is_none() {
-            return Err(format!(
-                "Datei mit id {id} nicht gefunden - Batch wird nicht angewendet"
-            )
-            .into());
-        }
-        parsed.push((id, update.position));
-    }
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    for (id, position) in parsed {
-        db::set_queue_position(&tx, id, Some(position)).map_err(|e| e.to_string())?;
-    }
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+    katalog_core::write::reorder_queue_with_conn(conn, updates).map_err(Into::into)
 }
 #[tauri::command]
 pub async fn upload_custom_image(
@@ -897,27 +655,12 @@ pub fn set_source_url(
     file_id: String,
     url: Option<String>,
 ) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let url = validate_source_url(url)?;
     let conn = lock_db(&state)?;
-    db::set_source_url(&conn, id, url.as_deref()).map_err(|e| e.to_string().into())
+    katalog_core::write::set_source_url(&conn, file_id, url).map_err(Into::into)
 }
-pub(super) fn is_ignored_import_path(path: &Path) -> bool {
-    path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-        n.starts_with('.') || n.starts_with("~$") || n.to_ascii_lowercase().ends_with(".part")
-    })
-}
-pub(crate) fn is_supported_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| {
-            matches!(
-                e.to_lowercase().as_str(),
-                "3mf" | "stl" | "stp" | "step" | "obj"
-            )
-        })
-        .unwrap_or(false)
-}
+pub(crate) use katalog_core::import::files::{is_ignored_import_path, is_supported_extension};
 /// Stricter than [`is_supported_extension`]: STEP can be cataloged, but most
 /// slicers can't import it. OBJ is a print-ready mesh and therefore allowed.
 pub(crate) fn is_sliceable_extension(path: &Path) -> bool {
@@ -927,24 +670,7 @@ pub(crate) fn is_sliceable_extension(path: &Path) -> bool {
         .unwrap_or(false)
 }
 pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
-    use sha2::{Digest, Sha256};
-    use std::io::Read;
-
-    const CHUNK_SIZE: usize = 1024 * 1024;
-    // Paths can come from an imported backup: `/dev/zero` would be read forever,
-    // a FIFO would block the startup backfill.
-    let file = crate::safe_file::open_regular(path).map_err(|e| e.to_string())?;
-    let mut reader = std::io::BufReader::new(file);
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; CHUNK_SIZE];
-    loop {
-        let bytes_read = reader.read(&mut buffer).map_err(|e| e.to_string())?;
-        if bytes_read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes_read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+    katalog_core::import::files::compute_content_hash(path).map_err(Into::into)
 }
 /// File I/O runs on a worker without a catalog or database lock, so slow disks
 /// cannot delay the window or other catalog operations.
@@ -995,43 +721,10 @@ fn backfill_hashes_with_reader(
 /// directories are skipped. Deliberately follows NO symlinks, neither to
 /// directories (endless recursion, files outside the selection) nor to files.
 /// The check comes before `is_dir()`, because `is_dir()` follows symlinks.
-pub(super) fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
-    if path.is_symlink() {
-        return;
-    }
-    if path.is_dir() {
-        let Ok(entries) = std::fs::read_dir(path) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            collect_supported_files(&entry.path(), out);
-        }
-    } else if is_supported_extension(path) {
-        out.push(path.to_path_buf());
-    }
-}
-/// The only place where the STEP preview shows up in the metadata path. On any
-/// error the file stays catalogable and just gets no automatic metadata.
-#[cfg(feature = "step-preview")]
-fn step_metadata(path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
-    match crate::step::parse_step_file(path) {
-        Ok(doc) => (
-            doc.dimensions_mm,
-            doc.volume_cm3,
-            Some(doc.object_count as i64),
-        ),
-        Err(err) => {
-            log::warn!(target: "step", "metadata not readable ({}): {err}", path.display());
-            (None, None, None)
-        }
-    }
-}
-
-#[cfg(not(feature = "step-preview"))]
-fn step_metadata(_path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
-    (None, None, None)
-}
-
+#[cfg(test)]
+pub(super) use katalog_core::import::files::collect_supported_files;
+#[cfg(test)]
+use katalog_core::import::files::step_metadata;
 /// Geometry for the STEP preview; without the feature the view shows the placeholder.
 #[cfg(feature = "step-preview")]
 fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
@@ -1057,12 +750,7 @@ fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
     Err(CmdError::expected("STEP-Vorschau ist in diesem Build nicht enthalten").with_code(super::error::GeometryErrorCode::Unsupported))
 }
 
-/// A missing or unsupported filesystem timestamp never prevents import.
-pub(crate) fn disk_modified_at(path: &Path) -> Option<String> {
-    std::fs::metadata(path).ok()?.modified().ok()
-        .map(|time| chrono::DateTime::<chrono::Utc>::from(time).to_rfc3339())
-}
-
+pub(crate) use katalog_core::import::files::disk_modified_at;
 /// Reads and stores a single file in one step; tests use this shortcut.
 #[cfg(test)]
 pub(crate) fn import_one(
@@ -1091,137 +779,8 @@ pub(super) fn read_import_model_file(path: &Path, display_name: Option<&str>) ->
 }
 
 fn read_model_file_inner(path: &Path, display_name: Option<&str>) -> Result<NewFile, String> {
-    let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unbenannt")
-            .to_string()
-    });
-    let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase());
-
-    let mut tagging_extent_mm = None;
-    let (
-        file_type,
-        dimensions_mm,
-        volume_cm3,
-        object_count,
-        materials,
-        metadata,
-        thumbnail_png,
-        plate_count,
-        slice_info_json,
-    ) = match extension.as_deref() {
-        Some("3mf") => {
-            let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
-            tagging_extent_mm = doc.tagging_extent_mm;
-            (
-                FileType::ThreeMf,
-                doc.dimensions_mm,
-                doc.volume_cm3,
-                Some(doc.object_count as i64),
-                doc.materials
-                    .into_iter()
-                    .map(|m| MaterialRecord {
-                        name: m.name,
-                        display_color: m.display_color,
-                    })
-                    .collect::<Vec<_>>(),
-                doc.metadata,
-                doc.thumbnail_png,
-                doc.plate_count.map(|c| c as i64),
-                doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
-            )
-        }
-        Some("stl") => {
-            let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
-            (
-                FileType::Stl,
-                doc.dimensions_mm,
-                doc.volume_cm3,
-                None,
-                Vec::new(),
-                BTreeMap::new(),
-                None,
-                None,
-                None,
-            )
-        }
-        Some("stp") | Some("step") => {
-            let (dimensions_mm, volume_cm3, object_count) = step_metadata(path);
-            (
-                FileType::Stp,
-                dimensions_mm,
-                volume_cm3,
-                object_count,
-                Vec::new(),
-                BTreeMap::new(),
-                None,
-                None,
-                None,
-            )
-        }
-        Some("obj") => {
-            let doc = obj::parse_obj_file(path).map_err(|e| e.to_string())?;
-            (
-                FileType::Obj,
-                doc.dimensions_mm,
-                doc.volume_cm3,
-                None,
-                Vec::new(),
-                BTreeMap::new(),
-                None,
-                None,
-                None,
-            )
-        }
-        _ => return Err("nicht unterstütztes Dateiformat".into()),
-    };
-
-    let tags = tagging::suggest_tags(&TaggingContext {
-        file_name: &file_name,
-        dimensions_mm: tagging_extent_mm.map(|extent| [extent; 3]).or(dimensions_mm),
-        object_count,
-        materials: &materials,
-    });
-
-    Ok(NewFile {
-        name: file_name,
-        path: path.to_string_lossy().to_string(),
-        file_type,
-        folder_id: None,
-        origin: "local".to_string(),
-        cloud_id: None,
-        sync_status: "local-only".to_string(),
-        file_size_bytes,
-        dimensions_mm,
-        volume_cm3,
-        object_count,
-        thumbnail_png,
-        imported_at: chrono::Utc::now().to_rfc3339(),
-        file_modified_at: disk_modified_at(path),
-        materials,
-        metadata: metadata.clone(),
-        tags,
-        print_status: "not_printed".to_string(),
-        last_viewed_at: None,
-        creator: metadata.get("Designer").cloned(),
-        content_hash: None,
-        render_snapshot_png: None,
-        custom_image_png: None,
-        source_url: None,
-        license: None,
-        source: threemf::source::detect_source(&metadata),
-        queue_position: None,
-        favorite: false,
-        plate_count,
-        slice_info_json,
-    })
+    katalog_core::import::files::read_model_file(path, display_name)
 }
-
 /// Inserts a row prepared by [`read_model_file`] and returns it as a DTO.
 #[cfg(test)]
 fn store_model_file(conn: &Connection, new_file: &NewFile) -> CmdResult<ModelFileDto> {
@@ -1241,110 +800,17 @@ fn store_model_file(conn: &Connection, new_file: &NewFile) -> CmdResult<ModelFil
     Ok(to_dto(file, &spools))
 }
 /// Re-reads a cataloged file and overwrites all columns derived from it, e.g.
-/// after it was re-sliced. If the file is missing, it aborts before the DB is
-/// changed.
+/// after it was re-sliced. The logic lives in the core so the web server shares it.
 pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFileDto> {
-    let existing = db::get_file(conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Datei nicht im Katalog gefunden".to_string())?;
-    let path = Path::new(&existing.path);
-    if !path.exists() {
-        return Err(CmdError::expected(format!("Datei nicht gefunden: {}", existing.path)));
-    }
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase());
-
-    let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
-    let content_hash = compute_content_hash(path).ok();
-
-    let update = match extension.as_deref() {
-        Some("3mf") => {
-            let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
-            let source = threemf::source::detect_source(&doc.metadata);
-            ScannedMetadataUpdate {
-                source,
-                dimensions_mm: doc.dimensions_mm,
-                volume_cm3: doc.volume_cm3,
-                object_count: Some(doc.object_count as i64),
-                thumbnail_png: doc.thumbnail_png,
-                plate_count: doc.plate_count.map(|c| c as i64),
-                slice_info_json: doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
-                materials: doc
-                    .materials
-                    .into_iter()
-                    .map(|m| MaterialRecord {
-                        name: m.name,
-                        display_color: m.display_color,
-                    })
-                    .collect(),
-                metadata: doc.metadata,
-                file_size_bytes,
-                file_modified_at: disk_modified_at(path),
-                content_hash,
-            }
-        }
-        Some("stl") => {
-            let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
-            ScannedMetadataUpdate {
-                dimensions_mm: doc.dimensions_mm,
-                volume_cm3: doc.volume_cm3,
-                object_count: None,
-                thumbnail_png: None,
-                plate_count: None,
-                slice_info_json: None,
-                materials: Vec::new(),
-                metadata: BTreeMap::new(),
-                source: Default::default(),
-                file_size_bytes,
-                file_modified_at: disk_modified_at(path),
-                content_hash,
-            }
-        }
-        Some("stp") | Some("step") => {
-            let (dimensions_mm, volume_cm3, object_count) = step_metadata(path);
-            ScannedMetadataUpdate {
-                dimensions_mm,
-                volume_cm3,
-                object_count,
-                thumbnail_png: None,
-                plate_count: None,
-                slice_info_json: None,
-                materials: Vec::new(),
-                metadata: BTreeMap::new(),
-                source: Default::default(),
-                file_size_bytes,
-                file_modified_at: disk_modified_at(path),
-                content_hash,
-            }
-        }
-        Some("obj") => {
-            let doc = obj::parse_obj_file(path).map_err(|e| e.to_string())?;
-            ScannedMetadataUpdate {
-                dimensions_mm: doc.dimensions_mm,
-                volume_cm3: doc.volume_cm3,
-                object_count: None,
-                thumbnail_png: None,
-                plate_count: None,
-                slice_info_json: None,
-                materials: Vec::new(),
-                metadata: BTreeMap::new(),
-                source: Default::default(),
-                file_size_bytes,
-                file_modified_at: disk_modified_at(path),
-                content_hash,
-            }
-        }
-        _ => return Err(CmdError::expected("nicht unterstütztes Dateiformat")),
-    };
-
-    db::update_scanned_metadata(conn, id, &update).map_err(|e| e.to_string())?;
-    let file = db::get_file(conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Datei nach Aktualisierung nicht mehr gefunden".to_string())?;
-    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
-    Ok(to_dto(file, &spools))
+    use katalog_core::rescan::RescanError;
+    katalog_core::rescan::rescan_file(conn, id).map_err(|e| match e {
+        RescanError::NotInCatalog => "Datei nicht im Katalog gefunden".to_string().into(),
+        RescanError::Missing(path) => CmdError::expected(format!("Datei nicht gefunden: {path}")),
+        RescanError::Unsupported => CmdError::expected("nicht unterstütztes Dateiformat"),
+        RescanError::Failed(message) => message.into(),
+        // Only the web variant produces the remaining kinds.
+        other => format!("{other:?}").into(),
+    })
 }
 #[tauri::command]
 pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResult<ModelFileDto> {
@@ -1365,7 +831,7 @@ pub(crate) fn import_many_with_conn(
     roots: Vec<PathBuf>,
 ) -> CmdResult<ImportResultDto> {
     let mut db: &mut Connection = conn;
-    import_many_in_batches(&mut db, roots, ImportMode::Batched)
+    import_many_in_batches(&mut db, roots, ImportMode::Batched).map_err(Into::into)
 }
 
 /// Archive extraction removes the entire directory on failure, so all its
@@ -1376,364 +842,18 @@ pub(crate) fn import_many_with_conn_atomic(
     roots: Vec<PathBuf>,
 ) -> CmdResult<ImportResultDto> {
     let mut db: &mut Connection = conn;
-    import_many_in_batches(&mut db, roots, ImportMode::Atomic)
+    import_many_in_batches(&mut db, roots, ImportMode::Atomic).map_err(Into::into)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ImportMode {
-    Batched,
-    Atomic,
-}
-
-/// Files stored per transaction. SQLite fsyncs on every commit, so one commit
-/// per file would be slow; one commit for the whole import would hold the lock
-/// for minutes.
-const IMPORT_BATCH_SIZE: usize = 25;
-
-/// How a batch import reaches the database. With the app's shared connection
-/// every call locks it only for its own duration: the UI thread keeps
-/// answering while files are read (a synchronous command waiting for the lock
-/// freezes the window).
-pub(crate) trait ImportDb {
-    fn read_file(&mut self, path: &Path) -> CmdResult<NewFile> {
-        read_import_model_file(path, None)
-    }
-    fn report_in_flight(&self, _count: usize) {}
-    fn savepoint_control(&self) -> fn(&Connection, &str) -> rusqlite::Result<()> {
-        |conn, sql| conn.execute_batch(sql)
-    }
-    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R>;
-}
-impl ImportDb for &Mutex<Connection> {
-    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
-        let mut conn = self
-            .lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-        f(&mut conn)
-    }
-}
-impl ImportDb for &mut Connection {
-    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
-        f(self)
-    }
-}
-
-/// A parsed file waiting to be stored with the next batch.
-pub(super) struct PendingImport {
-    pub(super) path: PathBuf,
-    /// Set for folder imports: the root the file's subfolders are mirrored from.
-    pub(super) folder_root: Option<PathBuf>,
-    pub(super) new_file: NewFile,
-}
-
+pub(crate) use katalog_core::import::files::{ImportDb, ImportMode, empty_import_result};
 #[cfg(test)]
-fn import_many_in_batches(
-    db: &mut impl ImportDb,
-    roots: Vec<PathBuf>,
-    mode: ImportMode,
-) -> CmdResult<ImportResultDto> {
-    import_many_controlled(db, roots, mode, None)
-}
-#[cfg(test)]
-pub(super) fn import_many_controlled(
-    db: &mut impl ImportDb,
-    roots: Vec<PathBuf>,
-    mode: ImportMode,
-    cancel: Option<&std::sync::atomic::AtomicBool>,
-) -> CmdResult<ImportResultDto> {
-    import_many_selected(db, roots, mode, cancel, None)
-}
+use katalog_core::import::files::{import_many_in_batches, IMPORT_BATCH_SIZE};
 pub(super) fn import_many_selected(
-    db: &mut impl ImportDb,
-    roots: Vec<PathBuf>,
-    mode: ImportMode,
-    cancel: Option<&std::sync::atomic::AtomicBool>,
-    selected: Option<&[PathBuf]>,
+    database: &mut impl ImportDb, roots: Vec<PathBuf>, mode: ImportMode,
+    cancel: Option<&std::sync::atomic::AtomicBool>, selected: Option<&[PathBuf]>,
 ) -> CmdResult<ImportResultDto> {
-    let mut seen_paths = HashSet::new();
-    let mut result = ImportResultDto {
-        duplicate_entries: Vec::new(),
-        imported: Vec::new(),
-        duplicate_count: 0,
-        // Archives aren't known here: they're split off and attached by the
-        // `#[tauri::command]` callers (`import_files`/`import_dropped`) once
-        // `import_many`/`import_many_with_conn` has returned.
-        pending_archives: Vec::new(),
-        skipped: Vec::new(),
-    };
-    let mut batch = Vec::with_capacity(IMPORT_BATCH_SIZE);
-
-    for root in roots {
-        let folder_root = root.is_dir().then(|| root.clone());
-        let mut candidates = Vec::new();
-        collect_supported_files(&root, &mut candidates);
-
-        for path in candidates {
-            if selected.is_some_and(|paths| !paths.contains(&path)) {
-                continue;
-            }
-            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) {
-                return Err(CmdError::expected("cancelled"));
-            }
-            let path_str = path.to_string_lossy().to_string();
-            if !seen_paths.insert(path_str.clone()) {
-                continue;
-            }
-            if mode != ImportMode::Atomic {
-                match db.with_conn(|conn| {
-                    db::find_existing_by_path(conn, &path_str).map_err(|e| e.to_string().into())
-                }) {
-                    Ok(found) if !found.is_empty() => {
-                        result.duplicate_count += 1;
-                        result
-                            .duplicate_entries
-                            .push(super::import_jobs::DuplicateEntry::new(
-                                path_str.clone(),
-                                "path",
-                                &found,
-                            ));
-                        continue;
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::error!(target: "import", "duplicate check failed: {e}");
-                        result.skip(path_str, SkipReason::Failed);
-                        continue;
-                    }
-                }
-            }
-            if std::fs::metadata(&path).is_ok_and(|m| m.len() == 0) {
-                log::debug!(target: "import", "übersprungen (leere Datei): {path_str}");
-                result.skip(path_str, SkipReason::Empty);
-                continue;
-            }
-
-            let content_hash = match compute_content_hash(&path) {
-                Ok(h) => h,
-                // compute_content_hash already logged the fault itself; this is just the
-                // (expected) consequence for the batch.
-                Err(e) => {
-                    log::debug!(target: "import", "übersprungen (Hashing fehlgeschlagen): {path_str}: {e}");
-                    result.skip(path_str, SkipReason::Invalid);
-                    continue;
-                }
-            };
-            if mode != ImportMode::Atomic {
-                match db.with_conn(|conn| {
-                    db::find_existing_by_hash(conn, &content_hash).map_err(|e| e.to_string().into())
-                }) {
-                    Ok(found) if !found.is_empty() => {
-                        result.duplicate_count += 1;
-                        result
-                            .duplicate_entries
-                            .push(super::import_jobs::DuplicateEntry::new(
-                                path_str.clone(),
-                                "hash",
-                                &found,
-                            ));
-                        continue;
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::error!(target: "import", "duplicate check (hash) failed: {e}");
-                        result.skip(path_str, SkipReason::Failed);
-                        continue;
-                    }
-                }
-            }
-            let mut new_file = match db.read_file(&path) {
-                Ok(f) => f,
-                Err(e) => {
-                    log::debug!(target: "import", "übersprungen: {path_str}: {e}");
-                    result.skip(path_str, SkipReason::Invalid);
-                    continue;
-                }
-            };
-            new_file.content_hash = Some(content_hash);
-            batch.push(PendingImport {
-                path,
-                folder_root: folder_root.clone(),
-                new_file,
-            });
-            db.report_in_flight(batch.len());
-            if mode == ImportMode::Batched && batch.len() >= IMPORT_BATCH_SIZE {
-                store_batch(db, &mut batch, &mut result, mode)?;
-            }
-        }
-    }
-    if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) {
-        return Err(CmdError::expected("cancelled"));
-    }
-    if mode == ImportMode::Atomic {
-        let (local, _) = store_transaction_controlled(db, &mut batch, mode, cancel);
-        merge_import_result(&mut result, local?.0);
-    } else {
-        store_batch(db, &mut batch, &mut result, mode)?;
-    }
-    Ok(result)
+    katalog_core::import::files::import_many_selected(database, roots, mode, cancel, selected).map_err(Into::into)
 }
-
-impl ImportResultDto {
-    fn skip(&mut self, path: String, reason: SkipReason) {
-        self.skipped.push(SkippedFileDto { path, reason });
-    }
-}
-
-/// Stores the pending files in one transaction and empties `batch`.
-pub(super) fn store_batch(
-    db: &mut impl ImportDb,
-    batch: &mut Vec<PendingImport>,
-    result: &mut ImportResultDto,
-    mode: ImportMode,
-) -> CmdResult<()> {
-    store_batch_detailed(db, batch, result, mode, &mut Vec::new())
-}
-pub(super) fn store_batch_detailed(
-    db: &mut impl ImportDb,
-    batch: &mut Vec<PendingImport>,
-    result: &mut ImportResultDto,
-    mode: ImportMode,
-    duplicates: &mut Vec<super::import_jobs::DuplicateEntry>,
-) -> CmdResult<()> {
-    if batch.is_empty() {
-        return Ok(());
-    }
-    let (attempt, commit_failed) = store_transaction(db, batch, mode);
-    match attempt {
-        Ok((local, committed_duplicates)) => {
-            merge_import_result(result, local);
-            duplicates.extend(committed_duplicates);
-        }
-        Err(_) if commit_failed && mode == ImportMode::Batched => {
-            for pending in batch.iter_mut() {
-                let (single, single_commit_failed) =
-                    store_transaction(db, std::slice::from_mut(pending), mode);
-                match single {
-                    Ok((local, committed_duplicates)) => {
-                        merge_import_result(result, local);
-                        duplicates.extend(committed_duplicates);
-                    }
-                    Err(error) if single_commit_failed && error.expected => result.skip(
-                        pending.path.to_string_lossy().into_owned(),
-                        SkipReason::Failed,
-                    ),
-                    Err(error) => return Err(error),
-                }
-            }
-        }
-        Err(error) => return Err(error),
-    }
-    batch.clear();
-    Ok(())
-}
-
-pub(super) fn empty_import_result() -> ImportResultDto {
-    ImportResultDto {
-        duplicate_entries: Vec::new(),
-        imported: Vec::new(),
-        duplicate_count: 0,
-        pending_archives: Vec::new(),
-        skipped: Vec::new(),
-    }
-}
-fn merge_import_result(result: &mut ImportResultDto, local: ImportResultDto) {
-    result.imported.extend(local.imported);
-    result.skipped.extend(local.skipped);
-    result.duplicate_count += local.duplicate_count;
-    result.duplicate_entries.extend(local.duplicate_entries);
-}
-fn database_error(error: impl std::fmt::Display) -> CmdError {
-    format!("database: {error}").into()
-}
-fn file_statement_error(error: &DbError) -> bool {
-    matches!(error, DbError::Invalid(_))
-        || matches!(error,
-        DbError::Sqlite(rusqlite::Error::SqliteFailure(code, _))
-        if code.code == rusqlite::ErrorCode::ConstraintViolation)
-}
-/// Only committed results escape this function. Keeping the inputs borrowed
-/// lets the caller recover a failed commit without re-reading the files.
-fn store_transaction(
-    db: &mut impl ImportDb,
-    pending: &mut [PendingImport],
-    mode: ImportMode,
-) -> (
-    CmdResult<(ImportResultDto, Vec<super::import_jobs::DuplicateEntry>)>,
-    bool,
-) {
-    store_transaction_controlled(db, pending, mode, None)
-}
-fn store_transaction_controlled(
-    db: &mut impl ImportDb,
-    pending: &mut [PendingImport],
-    mode: ImportMode,
-    cancel: Option<&std::sync::atomic::AtomicBool>,
-) -> (
-    CmdResult<(ImportResultDto, Vec<super::import_jobs::DuplicateEntry>)>,
-    bool,
-) {
-    let control = db.savepoint_control();
-    let mut commit_failed = false;
-    let result = db.with_conn(|conn| {
-        let mut local = empty_import_result();
-        let mut duplicates = Vec::new();
-        let tx = conn.transaction().map_err(database_error)?;
-        for item in pending {
-            if tx.query_row("SELECT EXISTS(SELECT 1 FROM files WHERE path = ?1)", [&item.new_file.path], |row| row.get::<_, bool>(0)).map_err(database_error)? {
-                local.duplicate_count += 1;
-                // The row may be soft-deleted (still blocks the unique path); the live-only lookup then yields no name.
-                let found = db::find_existing_by_path(&tx, &item.new_file.path).map_err(database_error)?;
-                duplicates.push(super::import_jobs::DuplicateEntry::new(item.new_file.path.clone(), "path", &found));
-                continue;
-            }
-            if let Some(hash) = &item.new_file.content_hash {
-                let found = db::find_existing_by_hash(&tx, hash).map_err(database_error)?;
-                if !found.is_empty() {
-                    local.duplicate_count += 1;
-                    duplicates.push(super::import_jobs::DuplicateEntry::new(item.new_file.path.clone(), "hash", &found));
-                    continue;
-                }
-            }
-            control(&tx, "SAVEPOINT import_file").map_err(database_error)?;
-            let stored: Result<ModelFileDto, DbError> = (|| {
-                item.new_file.folder_id = match item.folder_root.as_deref().zip(item.path.parent()) {
-                    Some((root, dir)) => Some(db::ensure_folder_path(&tx, root, dir)?),
-                    None => None,
-                };
-                let id = db::insert_file_within_tx(&tx, &item.new_file)?;
-                let file = db::get_file(&tx, id)?.ok_or_else(|| DbError::Other("imported file missing".into()))?;
-                let spools = db::list_filament_spools(&tx)?;
-                Ok(to_dto(file, &spools))
-            })();
-            match stored {
-                Ok(dto) => {
-                    control(&tx, "RELEASE import_file").map_err(database_error)?;
-                    local.imported.push(dto);
-                }
-                Err(error) => {
-                    control(&tx, "ROLLBACK TO import_file; RELEASE import_file").map_err(database_error)?;
-                    if mode == ImportMode::Atomic || !file_statement_error(&error) { return Err(database_error(error)); }
-                    local.skip(item.path.to_string_lossy().into_owned(), SkipReason::Failed);
-                }
-            }
-        }
-        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) { return Err(CmdError::expected("cancelled")); }
-        if let Err(error) = tx.commit() {
-            // rusqlite rolls back on Drop after a rejected COMMIT. Never retry
-            // unless the connection confirms that transaction has ended.
-            if !conn.is_autocommit() {
-                conn.execute_batch("ROLLBACK").map_err(database_error)?;
-            }
-            commit_failed = true;
-            let file_related = matches!(&error, rusqlite::Error::SqliteFailure(code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation);
-            return Err(if file_related { CmdError::expected(format!("database: {error}")) } else { database_error(error) });
-        }
-        local.duplicate_entries = duplicates.clone();
-        Ok((local, duplicates))
-    });
-    (result, commit_failed)
-}
-
 /// Formats the legacy result shape to test its pending-archive accounting.
 #[cfg(test)]
 pub(super) fn import_summary(result: &ImportResultDto, secs: f64) -> String {
@@ -1818,7 +938,7 @@ fn reveal_command(os: &str, path: &str) -> CmdResult<(String, RevealArgs)> {
 fn reveal_target(path: &Path) -> CmdResult<(PathBuf, bool)> {
     // Preserve the catalog's directory entry (including symlinks), while
     // ensuring even a relative dash-prefixed filename cannot become an option.
-    let absolute = std::path::absolute(path).map_err(geometry_io_error)?;
+    let absolute = std::path::absolute(path).map_err(katalog_core::read::geometry_io_error)?;
     if absolute.is_file() { return Ok((absolute, true)); }
     let parent = absolute.parent().filter(|p| p.is_dir()).ok_or_else(||
         CmdError::expected("Datei nicht gefunden").with_code(super::error::GeometryErrorCode::NotFound))?;
@@ -1905,215 +1025,28 @@ fn open_directory_in_file_manager(path: String) -> CmdResult<()> {
 // (position/normal/index) consists only of 4-byte elements, so the running
 // offset stays a multiple of 4 after each mesh - no extra alignment handling
 // needed (see also the wire format description in src/lib/parseModelGeometry.ts).
-fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
-    let mut palette: Vec<crate::geometry::RenderColor> = Vec::new();
-    let mut palette_indices = std::collections::HashMap::new();
-    let headers: Vec<serde_json::Value> = meshes.iter().map(|m| {
-        let local_indices: Vec<usize> = m.palette.iter().map(|color| {
-            *palette_indices.entry(color).or_insert_with(|| {
-                let index = palette.len();
-                palette.push(color.clone());
-                index
-            })
-        }).collect();
-        let mut header = serde_json::json!({
-            "vertexCount": m.positions.len(), "hasNormal": m.normals.is_some(),
-            "indexCount": m.indices.len() * 3, "plate": m.plate,
-        });
-        if let Some(name) = &m.object_name { header["objectName"] = name.clone().into(); }
-        if !m.groups.is_empty() {
-            header["groups"] = serde_json::json!(m.groups.iter().map(|g| crate::geometry::RenderGroup {
-                start: g.start, count: g.count,
-                color_index: g.color_index.map(|i| local_indices[i]),
-            }).collect::<Vec<_>>());
-        }
-        header
-    }).collect();
-    let plates: std::collections::BTreeMap<_, _> = meshes.iter().filter_map(|m| m.plate.map(|n| (n, m.plate_name.clone()))).collect();
-    let mut header = serde_json::json!({ "meshes": headers, "palette": palette });
-    // Whole-file flags: the viewer shows one note, not one per mesh.
-    if meshes.iter().any(|m| m.colors_unresolved) { header["colorsUnresolved"] = true.into(); }
-    if meshes.iter().any(|m| m.paint_simplified) { header["paintSimplified"] = true.into(); }
-    if plates.len() >= 2 {
-        header["plates"] = serde_json::json!(plates.into_iter().map(|(number, name)| serde_json::json!({"number": number, "name": name})).collect::<Vec<_>>());
-    }
-    let mut header_json = serde_json::to_vec(&header)
-        .expect("mesh header serialization cannot fail");
-    while !(4 + header_json.len()).is_multiple_of(4) {
-        header_json.push(b' ');
-    }
-
-    let payload: usize = meshes
-        .iter()
-        .map(|m| {
-            m.positions.len() * 12
-                + m.normals.as_ref().map_or(0, |n| n.len() * 12)
-                + m.indices.len() * 12
-        })
-        .sum();
-    let mut out = Vec::with_capacity(4 + header_json.len() + payload);
-    out.extend_from_slice(&(header_json.len() as u32).to_le_bytes());
-    out.extend_from_slice(&header_json);
-
-    for mesh in meshes {
-        for p in &mesh.positions {
-            for &c in p {
-                out.extend_from_slice(&c.to_le_bytes());
-            }
-        }
-        if let Some(normals) = &mesh.normals {
-            for n in normals {
-                for &c in n {
-                    out.extend_from_slice(&c.to_le_bytes());
-                }
-            }
-        }
-        for tri in &mesh.indices {
-            for &idx in tri {
-                out.extend_from_slice(&idx.to_le_bytes());
-            }
-        }
-    }
-
-    out
-}
-fn geometry_io_error(e: std::io::Error) -> CmdError {
-    use super::error::GeometryErrorCode as Code;
-    let code = if e.kind() == std::io::ErrorKind::NotFound { Code::NotFound } else { Code::Unreadable };
-    if matches!(code, Code::TooLarge | Code::NotFound) {
-        CmdError::expected(e.to_string()).with_code(code)
-    } else {
-        CmdError::from(e.to_string()).with_code(code)
-    }
-}
-
-fn geometry_3mf_error(e: threemf::ThreeMfError) -> CmdError {
-    use super::error::GeometryErrorCode as Code;
-    let code = match &e {
-        threemf::ThreeMfError::EntryTooLarge { .. } | threemf::ThreeMfError::ResourceLimitExceeded(_)
-        | threemf::ThreeMfError::MaxDepthExceeded => Code::TooLarge,
-        threemf::ThreeMfError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => Code::NotFound,
-        _ => Code::Unreadable,
-    };
-    if matches!(code, Code::TooLarge | Code::NotFound) {
-        CmdError::expected(e.to_string()).with_code(code)
-    } else {
-        CmdError::from(e.to_string()).with_code(code)
-    }
-}
-
-// Retains the existing safe-file budget and open-handle type check, while
-// distinguishing its size failures without inspecting error text.
-fn read_geometry_bytes(path: &Path, extension: &str) -> CmdResult<Vec<u8>> {
-    use std::io::Read;
-    let mut file = crate::safe_file::open_regular(path).map_err(geometry_io_error)?;
-    check_preview_size(&mut file, extension, MAX_PREVIEW_TRIANGLES, MAX_ASCII_STL_PREVIEW_BYTES, MAX_OBJ_PREVIEW_BYTES)?;
-    let max = crate::safe_file::MAX_MODEL_FILE_BYTES;
-    let too_large = || CmdError::expected(format!("Datei überschreitet {max} Bytes"))
-        .with_code(super::error::GeometryErrorCode::TooLarge);
-    if file.metadata().map_err(geometry_io_error)?.len() > max { return Err(too_large()); }
-    let mut bytes = Vec::new();
-    file.take(max + 1).read_to_end(&mut bytes).map_err(geometry_io_error)?;
-    if bytes.len() as u64 > max { return Err(too_large()); }
-    Ok(bytes)
-}
-
-// Same ceiling as the 3MF preview: beyond it the webview freezes or dies while
-// the mesh is serialized and rendered, so the viewer shows its "too large" card.
-const MAX_PREVIEW_TRIANGLES: u64 = 3_000_000;
-// Text meshes need a cheap byte-size precheck because the whole text is held
-// alongside the parsed mesh. OBJ additionally enforces the triangle budget
-// while parsing; file size alone cannot bound repeated faces.
-const MAX_ASCII_STL_PREVIEW_BYTES: u64 = 256 * 1024 * 1024;
-const MAX_OBJ_PREVIEW_BYTES: u64 = 128 * 1024 * 1024;
-
-fn preview_too_large(detail: String) -> CmdError {
-    CmdError::expected(detail).with_code(super::error::GeometryErrorCode::TooLarge)
-}
-
-/// Rejects oversized files before reading them in full. OBJ triangle counts are
-/// checked separately while parsing, since repeated faces can be very compact.
-fn check_preview_size(
-    file: &mut std::fs::File,
-    extension: &str,
-    max_triangles: u64,
-    max_ascii_stl_bytes: u64,
-    max_obj_bytes: u64,
-) -> CmdResult<()> {
-    use std::io::{Read, Seek, SeekFrom};
-    let len = file.metadata().map_err(geometry_io_error)?.len();
-    match extension {
-        "stl" => {
-            let mut head = [0u8; 84];
-            let mut filled = 0;
-            while filled < head.len() {
-                match file.read(&mut head[filled..]).map_err(geometry_io_error)? {
-                    0 => break,
-                    n => filled += n,
-                }
-            }
-            file.seek(SeekFrom::Start(0)).map_err(geometry_io_error)?;
-            if filled == head.len() {
-                let count = u64::from(u32::from_le_bytes([head[80], head[81], head[82], head[83]]));
-                if len == 84 + 50 * count {
-                    if count > max_triangles {
-                        return Err(preview_too_large(format!("model too large for 3D preview ({count} triangles)")));
-                    }
-                    return Ok(());
-                }
-            }
-            if len > max_ascii_stl_bytes {
-                return Err(preview_too_large(format!("model too large for 3D preview ({len} bytes)")));
-            }
-        }
-        "obj" if len > max_obj_bytes => {
-            return Err(preview_too_large(format!("model too large for 3D preview ({len} bytes)")));
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-fn load_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
-    load_geometry_with_obj_limit(path, MAX_PREVIEW_TRIANGLES)
-}
-
-fn load_geometry_with_obj_limit(path: &Path, max_obj_triangles: u64) -> CmdResult<Vec<RenderMesh>> {
-    use super::error::GeometryErrorCode as Code;
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    let unreadable = |e: String| CmdError::from(e).with_code(Code::Unreadable);
-    let meshes = match extension.as_str() {
-        "stl" => vec![stl::parse_stl_geometry(&read_geometry_bytes(path, &extension)?).map_err(|e| unreadable(e.to_string()))?],
-        "obj" => vec![obj::parse_obj_geometry(&read_geometry_bytes(path, &extension)?, max_obj_triangles).map_err(|e| {
-            match e {
-                obj::ObjError::TooLarge => preview_too_large(e.to_string()),
-                _ => unreadable(e.to_string()),
-            }
-        })?],
-        "3mf" => threemf::extract_render_meshes_from_path(path).map_err(geometry_3mf_error)?,
-        "stp" | "step" => step_geometry(path)?,
-        _ => return Err(CmdError::expected(format!("nicht unterstütztes Dateiformat: {extension}")).with_code(Code::Unsupported)),
-    };
-    if meshes.iter().all(|m| m.indices.is_empty() || m.positions.is_empty()) {
-        return Err(unreadable("Keine darstellbare Geometrie".into()));
-    }
-    Ok(meshes)
-}
-
 #[tauri::command]
 pub async fn get_model_geometry(
     state: State<'_, AppState>, file_id: String,
 ) -> CmdResult<tauri::ipc::Response> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-    let file = {
+    let source = {
         let conn = lock_db(&state)?;
-        db::get_file(&conn, id).map_err(|e| e.to_string())?
-            .ok_or_else(|| CmdError::expected("file not found").with_code(super::error::GeometryErrorCode::NotFound))?
+        katalog_core::read::load_geometry_source(&conn, &file_id)?
     };
-    let path = PathBuf::from(file.current_path());
-    let meshes = tauri::async_runtime::spawn_blocking(move || load_geometry(&path))
-        .await.map_err(|e| e.to_string())??;
-    Ok(tauri::ipc::Response::new(encode_render_meshes(&meshes)))
+    let bytes = tauri::async_runtime::spawn_blocking(move || -> CmdResult<Vec<u8>> {
+        // STEP remains a desktop-only path, including its existing feature gate.
+        let extension = source.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if matches!(extension.as_str(), "stp" | "step") {
+            let meshes = step_geometry(&source.path)?;
+            if meshes.iter().all(|m| m.indices.is_empty() || m.positions.is_empty()) {
+                return Err(CmdError::from("Keine darstellbare Geometrie").with_code(GeometryErrorCode::Unreadable));
+            }
+            Ok(katalog_core::read::encode_render_meshes(&meshes))
+        } else {
+            katalog_core::read::get_model_geometry(&source.path, None).map_err(Into::into)
+        }
+    }).await.map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 #[cfg(test)]
@@ -2121,7 +1054,7 @@ mod tests {
     #[test]
     fn creality_import_tags_use_plate_extent_but_store_overall_dimensions() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/creality-3plates.3mf");
+            .join("../crates/katalog-core/tests/fixtures/creality-3plates.3mf");
         let model = super::read_import_model_file(&path, None).unwrap();
         assert_eq!(model.dimensions_mm, Some([334.0, 326.586525, 83.0]));
         assert!(!model.tags.iter().any(|tag| tag == "grossformat" || tag == "miniatur"));
@@ -2180,7 +1113,6 @@ mod tests {
         assert!(db::get_file(&state.db.lock().unwrap(), id).unwrap().unwrap().content_hash.is_none());
     }
 
-
     #[test]
     fn file_names_reject_windows_devices_and_non_components() {
         for name in ["C:x", "CON.3mf", "LPT¹.stl", "x.", "x ", "x\n.stl", "sub/x", "sub\\x"] {
@@ -2211,60 +1143,6 @@ mod tests {
         assert!(rename_file_with_conn(&conn, id, "other.stl".into(), &[]).is_err());
         assert!(target.join("actual.stl").exists());
         let _ = std::fs::remove_dir_all(dir);
-    }
-
-
-    #[test]
-    fn creality_project_fixture_has_three_plates_and_five_meshes() {
-        let bytes = include_bytes!("../../tests/fixtures/creality-3plates.3mf");
-        let package = threemf::container::read_geometry_package(std::io::Cursor::new(bytes)).unwrap();
-        assert_eq!(package.plate_assignments.objects.get("2"), Some(&1));
-        for id in ["4", "6", "8"] { assert_eq!(package.plate_assignments.objects.get(id), Some(&2)); }
-        assert_eq!(package.plate_assignments.objects.get("10"), Some(&3));
-        let meshes = threemf::extract_render_meshes(&package).unwrap();
-        assert_eq!(meshes.iter().map(|m| m.plate).collect::<Vec<_>>(), vec![Some(1), Some(2), Some(2), Some(2), Some(3)]);
-        let bytes = encode_render_meshes(&meshes);
-        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4 + u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize]).unwrap();
-        assert_eq!(header["plates"].as_array().unwrap().len(), 3);
-    }
-
-    #[test]
-    fn synthetic_multiplate_package_propagates_root_ids_to_external_and_inline_meshes() {
-        use std::io::{Cursor, Write};
-        let mesh = "<mesh><vertices><vertex x=\"0\" y=\"0\" z=\"0\"/><vertex x=\"1\" y=\"0\" z=\"0\"/><vertex x=\"0\" y=\"1\" z=\"0\"/></vertices><triangles><triangle v1=\"0\" v2=\"1\" v3=\"2\"/></triangles></mesh>";
-        let root = format!(r#"<model xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06"><resources>
-            <object id="1" name="Same"><components><component objectid="10" p:path="/3D/Objects/part.model"/><component objectid="11" p:path="/3D/Objects/part.model"/></components></object>
-            <object id="2" name="Same">{mesh}</object><object id="3" name="Same">{mesh}</object><object id="4" name="Same">{mesh}</object><object id="5">{mesh}</object>
-            </resources><build><item objectid="1"/><item objectid="2"/><item objectid="3"/><item objectid="4"/><item objectid="5"/></build></model>"#);
-        let external = format!("<model><resources><object id=\"10\">{mesh}</object><object id=\"11\">{mesh}</object></resources></model>");
-        let config = r#"<config><plate><metadata key="plater_id" value="1"/><model_instance object_id="1"/><model_instance object_id="2"/></plate>
-            <plate><metadata key="plater_id" value="2"/><metadata key="plater_name" value="Regalplatte"/><model_instance><metadata key="object_id" value="3"/></model_instance><model_instance object_id="4"/></plate>
-            <plate><metadata key="plater_id" value="3"/></plate></config>"#;
-        let generic_root = root.replace(
-            r#"<components><component objectid="10" p:path="/3D/Objects/part.model"/><component objectid="11" p:path="/3D/Objects/part.model"/></components>"#, mesh)
-            .replace(r#" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06""#, "");
-        let empty_root = format!("{}<build/></model>", root.split("<build>").next().unwrap());
-        for (settings, model, expected) in [
-            (config, root.as_str(), vec![Some(1), Some(1), Some(1), Some(2), Some(2), None]),
-            (config, generic_root.as_str(), vec![Some(1), Some(1), Some(2), Some(2), None]),
-            ("<config/>", root.as_str(), vec![None; 6]),
-            (config, empty_root.as_str(), vec![]),
-        ] {
-            let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
-            for (name, contents) in [("3D/3dmodel.model", model), ("3D/Objects/part.model", external.as_str()), ("Metadata/model_settings.config", settings)] {
-                zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
-                zip.write_all(contents.as_bytes()).unwrap();
-            }
-            let package = threemf::container::read_geometry_package(zip.finish().unwrap()).unwrap();
-            let meshes = threemf::extract_render_meshes(&package).unwrap();
-            assert_eq!(meshes.iter().map(|m| m.plate).collect::<Vec<_>>(), expected);
-            let bytes = encode_render_meshes(&meshes);
-            let header: serde_json::Value = serde_json::from_slice(&bytes[4..4 + u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize]).unwrap();
-            if settings == config && !meshes.is_empty() {
-                assert_eq!(header["plates"], serde_json::json!([{"number":1,"name":null},{"number":2,"name":"Regalplatte"}]));
-                assert_eq!(header["meshes"][meshes.len() - 2]["plate"], 2);
-            } else { assert!(header.get("plates").is_none()); }
-        }
     }
 
     #[test]
@@ -2306,43 +1184,6 @@ mod tests {
     }
 
     #[test]
-    fn geometry_header_contains_only_plates_with_geometry() {
-        let mesh = |number, name: Option<&str>| RenderMesh {
-            positions: vec![[0., 0., 0.]], indices: vec![[0, 0, 0]],
-            plate: number, plate_name: name.map(str::to_string), ..Default::default()
-        };
-        let meshes = [mesh(Some(1), None), mesh(Some(2), Some("Regalplatte")), mesh(None, None)];
-        let bytes = encode_render_meshes(&meshes);
-        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4 + u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize]).unwrap();
-        assert_eq!(header["plates"], serde_json::json!([{"number":1,"name":null},{"number":2,"name":"Regalplatte"}]));
-        assert_eq!(header["meshes"][0]["plate"], 1);
-        assert_eq!(header["meshes"][2]["plate"], serde_json::Value::Null);
-        let bytes = encode_render_meshes(&meshes[..1]);
-        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4 + u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize]).unwrap();
-        assert!(header.get("plates").is_none());
-    }
-    #[test]
-    fn summary_serialization_has_presence_flags_and_no_image_fields() {
-        let summary = FileSummaryDto {
-            license: None,
-            source_platform: None, source_model_id: None, source_profile_id: None,
-            materials: Vec::new(), estimated_weight_g: None, weight_source: "estimated".into(),
-            id: "1".into(), name: "test".into(), path: "/tmp/test.stl".into(), file_type: "stl".into(),
-            folder_id: String::new(), file_size_bytes: 10, dimensions_mm: None, volume_cm3: None,
-            object_count: None, imported_at: String::new(), file_modified_at: Some("2023-11-14T22:13:20+00:00".into()), print_status: "not_printed".into(),
-            favorite: false, queue_position: None, has_thumbnail: true, has_render_snapshot: false,
-            creator: None, last_viewed_at: None, content_hash: None,
-        };
-        let json = serde_json::to_value(summary).unwrap();
-        assert_eq!(json["fileModifiedAt"], "2023-11-14T22:13:20+00:00");
-        assert_eq!(json["hasThumbnail"], true);
-        assert_eq!(json["hasRenderSnapshot"], false);
-        assert!(json.get("thumbnailImage").is_none());
-        assert!(json.get("renderSnapshotImage").is_none());
-        assert!(json.get("customImage").is_none());
-    }
-
-    #[test]
     fn import_and_rescan_store_disk_modified_time() {
         let dir = unique_test_dir("modified_time");
         let path = dir.join("model.stp");
@@ -2380,253 +1221,6 @@ mod tests {
         );
     }
 
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct HeaderEntryForTest {
-        vertex_count: usize,
-        has_normal: bool,
-        index_count: usize,
-    }
-    type DecodedMesh = (Vec<[f32; 3]>, Option<Vec<[f32; 3]>>, Vec<u32>);
-
-    fn decode_for_test(bytes: &[u8]) -> Vec<DecodedMesh> {
-        let header_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
-        let header_json = std::str::from_utf8(&bytes[4..4 + header_len]).unwrap();
-        let header: serde_json::Value = serde_json::from_str(header_json).unwrap();
-        let headers: Vec<HeaderEntryForTest> = serde_json::from_value(header["meshes"].clone()).unwrap();
-
-        let mut offset = 4 + header_len;
-        let mut result = Vec::new();
-        for h in headers {
-            let mut positions = Vec::with_capacity(h.vertex_count);
-            for _ in 0..h.vertex_count {
-                let x = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
-                let y = f32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap());
-                let z = f32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap());
-                positions.push([x, y, z]);
-                offset += 12;
-            }
-
-            let normals = if h.has_normal {
-                let mut ns = Vec::with_capacity(h.vertex_count);
-                for _ in 0..h.vertex_count {
-                    let x = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
-                    let y = f32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap());
-                    let z = f32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap());
-                    ns.push([x, y, z]);
-                    offset += 12;
-                }
-                Some(ns)
-            } else {
-                None
-            };
-
-            let mut indices = Vec::with_capacity(h.index_count);
-            for _ in 0..h.index_count {
-                let idx = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
-                indices.push(idx);
-                offset += 4;
-            }
-
-            result.push((positions, normals, indices));
-        }
-        assert_eq!(
-            offset,
-            bytes.len(),
-            "encoder should not leave trailing bytes"
-        );
-        result
-    }
-    #[test]
-    fn encode_render_meshes_roundtrips_positions_normals_and_indices() {
-        let meshes = vec![
-            RenderMesh {
-                positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-                indices: vec![[0, 1, 2]],
-                normals: Some(vec![[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
-                ..Default::default()
-            },
-            RenderMesh {
-                positions: vec![
-                    [5.0, 5.0, 5.0],
-                    [6.0, 5.0, 5.0],
-                    [5.0, 6.0, 5.0],
-                    [5.0, 5.0, 6.0],
-                ],
-                indices: vec![[0, 1, 2], [0, 1, 3]],
-                normals: None,
-                ..Default::default()
-            },
-        ];
-
-        let bytes = encode_render_meshes(&meshes);
-        let decoded = decode_for_test(&bytes);
-
-        assert_eq!(decoded.len(), 2);
-        assert_eq!(decoded[0].0, meshes[0].positions);
-        assert_eq!(decoded[0].1, meshes[0].normals);
-        assert_eq!(decoded[0].2, vec![0, 1, 2]);
-
-        assert_eq!(decoded[1].0, meshes[1].positions);
-        assert_eq!(decoded[1].1, None);
-        assert_eq!(decoded[1].2, vec![0, 1, 2, 0, 1, 3]);
-    }
-    #[test]
-    fn encode_render_meshes_roundtrips_material_groups_and_global_palette() {
-        use crate::geometry::{RenderColor, RenderGroup};
-        let red = RenderColor { name: "Rötlich".into(), color: "#ff0000".into(), filament: None };
-        let blue = RenderColor { name: "Blue".into(), color: "#0000ff".into(), filament: Some(2) };
-        let a = RenderMesh {
-            positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            indices: vec![[0, 1, 2], [0, 2, 1]],
-            object_name: Some("Töpfchen".into()),
-            groups: vec![RenderGroup { start: 0, count: 3, color_index: None },
-                RenderGroup { start: 3, count: 3, color_index: Some(0) }],
-            palette: vec![red.clone()], ..Default::default()
-        };
-        let b = RenderMesh { palette: vec![blue.clone(), red.clone()],
-            groups: vec![RenderGroup { start: 0, count: 3, color_index: Some(0) },
-                RenderGroup { start: 3, count: 3, color_index: Some(1) }], ..a.clone() };
-        let bytes = encode_render_meshes(&[a.clone(), b.clone()]);
-        let decoded = decode_for_test(&bytes);
-        assert_eq!(decoded[0].0, a.positions);
-        assert_eq!(decoded[1].2, vec![0, 1, 2, 0, 2, 1]);
-        let length = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
-        assert_eq!((4 + length) % 4, 0);
-        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4+length]).unwrap();
-        let palette: Vec<RenderColor> = serde_json::from_value(header["palette"].clone()).unwrap();
-        assert_eq!(palette, vec![red, blue]);
-        let groups: Vec<RenderGroup> = serde_json::from_value(header["meshes"][0]["groups"].clone()).unwrap();
-        assert_eq!(groups, a.groups);
-        let groups: Vec<RenderGroup> = serde_json::from_value(header["meshes"][1]["groups"].clone()).unwrap();
-        assert_eq!(groups[0].color_index, Some(1));
-        assert_eq!(groups[1].color_index, Some(0));
-        assert_eq!(header["meshes"][0]["objectName"], "Töpfchen");
-        assert!(header["palette"][0].get("filament").is_none());
-        assert_eq!(header["palette"][1]["filament"], 2);
-        assert!(header.get("colorsUnresolved").is_none());
-        assert!(header.get("paintSimplified").is_none());
-        let flagged = RenderMesh { colors_unresolved: true, paint_simplified: true, ..a.clone() };
-        let bytes = encode_render_meshes(&[a.clone(), flagged]);
-        let length = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
-        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4+length]).unwrap();
-        assert_eq!(header["colorsUnresolved"], true);
-        assert_eq!(header["paintSimplified"], true);
-    }
-
-    #[test]
-    fn geometry_errors_keep_typed_codes_without_parsing_messages() {
-        use super::super::error::GeometryErrorCode as Code;
-        for error in [threemf::ThreeMfError::MaxDepthExceeded,
-            threemf::ThreeMfError::ResourceLimitExceeded("arbitrary text".into()),
-            threemf::ThreeMfError::EntryTooLarge { path: "x".into(), size: 2, max: 1 }] {
-            assert_eq!(geometry_3mf_error(error).code, Some(Code::TooLarge));
-        }
-        assert_eq!(geometry_3mf_error(threemf::ThreeMfError::ComponentCycle).code, Some(Code::Unreadable));
-        assert_eq!(geometry_io_error(std::io::Error::from(std::io::ErrorKind::NotFound)).code, Some(Code::NotFound));
-        assert_eq!(geometry_io_error(std::io::Error::from(std::io::ErrorKind::PermissionDenied)).code, Some(Code::Unreadable));
-    }
-
-    #[test]
-    fn geometry_loader_distinguishes_missing_oversized_empty_and_unsupported_files() {
-        use super::super::error::GeometryErrorCode as Code;
-        let dir = super::super::unique_test_dir("viewer_error_codes");
-        assert_eq!(load_geometry(&dir.join("missing.stl")).unwrap_err().code, Some(Code::NotFound));
-        assert_eq!(load_geometry(&dir.join("x.unknown")).unwrap_err().code, Some(Code::Unsupported));
-        let path = dir.join("empty.stl");
-        std::fs::write(&path, b"solid empty\nendsolid empty").unwrap();
-        assert_eq!(load_geometry(&path).unwrap_err().code, Some(Code::Unreadable));
-        let path = dir.join("too-large.obj");
-        let file = std::fs::File::create(&path).unwrap();
-        file.set_len(crate::safe_file::MAX_MODEL_FILE_BYTES + 1).unwrap();
-        assert_eq!(load_geometry(&path).unwrap_err().code, Some(Code::TooLarge));
-        std::fs::remove_file(path).unwrap();
-    }
-
-    #[test]
-    fn obj_preview_enforces_triangle_budget_without_limiting_import() {
-        use super::super::error::GeometryErrorCode as Code;
-        let dir = super::super::unique_test_dir("obj_preview_budget");
-        let path = dir.join("repeated.obj");
-        let vertices = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 1 1 0\n";
-        std::fs::write(&path, format!("{vertices}{}", "f 1 2 3\n".repeat(2))).unwrap();
-        assert_eq!(load_geometry_with_obj_limit(&path, 3).unwrap()[0].indices.len(), 2);
-        std::fs::write(&path, format!("{vertices}{}", "f 1 2 3\n".repeat(4))).unwrap();
-        assert_eq!(load_geometry_with_obj_limit(&path, 3).unwrap_err().code, Some(Code::TooLarge));
-        assert!(obj::parse_obj_file(&path).is_ok());
-        // Once over budget, later malformed lines must not be parsed.
-        std::fs::write(&path, format!("{vertices}{}v broken\n", "f 1 2 3\n".repeat(4))).unwrap();
-        assert_eq!(load_geometry_with_obj_limit(&path, 3).unwrap_err().code, Some(Code::TooLarge));
-        std::fs::write(&path, format!("{vertices}f 1 2 4 3\n")).unwrap();
-        assert_eq!(load_geometry_with_obj_limit(&path, 2).unwrap()[0].indices.len(), 2);
-        assert_eq!(load_geometry_with_obj_limit(&path, 1).unwrap_err().code, Some(Code::TooLarge));
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-
-    fn preview_check(path: &Path, ext: &str, tri: u64, ascii: u64, obj: u64) -> CmdResult<()> {
-        let mut file = std::fs::File::open(path).unwrap();
-        check_preview_size(&mut file, ext, tri, ascii, obj)
-    }
-
-    #[test]
-    fn preview_size_check_uses_binary_stl_header_before_reading_the_rest() {
-        use super::super::error::GeometryErrorCode as Code;
-        let dir = super::super::unique_test_dir("preview_size_stl");
-        // Only a header count that matches the file length counts as binary STL.
-        let over = dir.join("over.stl");
-        let mut head = vec![0u8; 80];
-        head.extend_from_slice(&4u32.to_le_bytes());
-        head.extend(std::iter::repeat_n(0u8, 4 * 50));
-        std::fs::write(&over, &head).unwrap();
-        assert_eq!(preview_check(&over, "stl", 3, 1 << 20, 1 << 20).unwrap_err().code, Some(Code::TooLarge));
-        assert!(preview_check(&over, "stl", 4, 1 << 20, 1 << 20).is_ok());
-
-        // A count that does not match the length is treated as text and judged by bytes.
-        let liar = dir.join("liar.stl");
-        let mut head = vec![0u8; 80];
-        head.extend_from_slice(&u32::MAX.to_le_bytes());
-        std::fs::write(&liar, &head).unwrap();
-        assert!(preview_check(&liar, "stl", 3, 1 << 20, 1 << 20).is_ok());
-        assert_eq!(preview_check(&liar, "stl", 3, 10, 1 << 20).unwrap_err().code, Some(Code::TooLarge));
-    }
-
-    #[test]
-    fn preview_size_check_limits_ascii_stl_and_obj_by_bytes() {
-        use super::super::error::GeometryErrorCode as Code;
-        let dir = super::super::unique_test_dir("preview_size_text");
-        let stl = dir.join("a.stl");
-        std::fs::write(&stl, b"solid x
-endsolid x
-").unwrap();
-        assert!(preview_check(&stl, "stl", 3, 100, 5).is_ok());
-        assert_eq!(preview_check(&stl, "stl", 3, 10, 100).unwrap_err().code, Some(Code::TooLarge));
-        let obj = dir.join("a.obj");
-        std::fs::write(&obj, b"v 0 0 0\n").unwrap();
-        assert!(preview_check(&obj, "obj", 3, 5, 100).is_ok());
-        assert_eq!(preview_check(&obj, "obj", 3, 100, 5).unwrap_err().code, Some(Code::TooLarge));
-    }
-
-    #[test]
-    fn small_binary_stl_still_loads_through_the_size_check() {
-        let dir = super::super::unique_test_dir("preview_size_small");
-        let path = dir.join("one.stl");
-        let mut bytes = vec![0u8; 80];
-        bytes.extend_from_slice(&1u32.to_le_bytes());
-        bytes.extend_from_slice(&[0u8; 12]);
-        for v in [[0f32, 0., 0.], [1., 0., 0.], [0., 1., 0.]] {
-            for c in v { bytes.extend_from_slice(&c.to_le_bytes()); }
-        }
-        bytes.extend_from_slice(&[0u8; 2]);
-        std::fs::write(&path, bytes).unwrap();
-        assert_eq!(load_geometry(&path).unwrap().len(), 1);
-    }
-
-    #[test]
-    fn encode_render_meshes_handles_empty_mesh_list() {
-        let bytes = encode_render_meshes(&[]);
-        let decoded = decode_for_test(&bytes);
-        assert!(decoded.is_empty());
-    }
     #[test]
     fn import_one_stores_slice_info_json_when_present() {
         use std::io::Write;
@@ -3282,62 +1876,7 @@ endsolid x
             slice_info_json: None,
         }
     }
-    #[test]
-    fn add_and_list_print_log_entry_roundtrips_through_dto() {
-        let mut conn = crate::db::connect_in_memory().expect("connect");
-        let file = sample_file_record(1, None, "2026-09-13T00:00:00Z");
-        // add_print_log_entry needs a real file_id.
-        let _ = file;
-        let new_file = crate::db::models::NewFile {
-            name: "cube.3mf".to_string(),
-            path: "/tmp/print-log-test-cube.3mf".to_string(),
-            file_type: FileType::ThreeMf,
-            folder_id: None,
-            origin: "local".to_string(),
-            cloud_id: None,
-            sync_status: "local-only".to_string(),
-            file_size_bytes: 0,
-            dimensions_mm: None,
-            volume_cm3: None,
-            object_count: None,
-            thumbnail_png: None,
-            imported_at: "2026-09-13T00:00:00Z".to_string(),
-            file_modified_at: None,
-            materials: Vec::new(),
-            metadata: BTreeMap::new(),
-            tags: Vec::new(),
-            print_status: "not_printed".to_string(),
-            last_viewed_at: None,
-            creator: None,
-            content_hash: None,
-            render_snapshot_png: None,
-            custom_image_png: None,
-            source_url: None,
-            license: None,
-            source: Default::default(),
-            queue_position: None,
-            favorite: false,
-            plate_count: None,
-            slice_info_json: None,
-        };
-        let file_id = crate::db::insert_file(&mut conn, &new_file).expect("insert file");
 
-        let entry = crate::db::models::NewPrintLogEntry {
-            file_id,
-            printed_at: "2026-09-13T10:00:00Z".to_string(),
-            note: Some("Testdruck".to_string()),
-            photo_png: None,
-        };
-        let id = crate::db::insert_print_log_entry(&conn, &entry).expect("insert entry");
-
-        let entries = crate::db::list_print_log_entries(&conn, file_id).expect("list entries");
-        let dtos: Vec<PrintLogEntryDto> = entries.into_iter().map(print_log_entry_to_dto).collect();
-
-        assert_eq!(dtos.len(), 1);
-        assert_eq!(dtos[0].id, id.to_string());
-        assert_eq!(dtos[0].note.as_deref(), Some("Testdruck"));
-        assert_eq!(dtos[0].photo_image, None);
-    }
     #[test]
     fn move_file_to_folder_compensates_when_db_update_fails() {
         let dir = unique_test_dir("move_file_to_folder_compensation");
@@ -4175,7 +2714,7 @@ endsolid x
         accesses: usize,
     }
     impl ImportDb for CountingDb<'_> {
-        fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
+        fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> core::ImportResult<R>) -> core::ImportResult<R> {
             self.accesses += 1;
             let mut conn = self.db.lock().expect("lock");
             f(&mut conn)
@@ -4298,38 +2837,14 @@ endsolid x
     }
 }
 
-#[cfg(test)]
-#[path = "import_batch_tests.rs"]
-mod import_batch_tests;
 
-#[cfg(test)]
-#[test]
-fn summary_keeps_card_values_after_rename_move_restore_and_metadata_reload() {
-    let conn = db::connect_in_memory().unwrap();
-    let id = db::test_insert_minimal_file(&conn, "/tmp/card.3mf", None).unwrap();
-    conn.execute("INSERT INTO file_materials (file_id, name, display_color) VALUES (?1, 'Kirschrot', '#ff0000')", [id]).unwrap();
-    conn.execute("UPDATE files SET volume_cm3 = 10, slice_info_json = ?1 WHERE id = ?2", rusqlite::params![r#"{"total_weight_g":30.46,"plates":[]}"#, id]).unwrap();
-    // Persisted metadata is authoritative after every refresh, even for an unseen model.
-    for update in ["UPDATE files SET name = 'renamed.3mf'", "UPDATE files SET path = '/tmp/moved/card.3mf'", "UPDATE files SET deleted_at = '2026-01-01'", "UPDATE files SET deleted_at = NULL"] {
-        conn.execute(update, []).unwrap();
-        let summaries = db::list_file_summaries(&conn).unwrap();
-        if update.contains("deleted_at = '") { assert!(summaries.is_empty()); continue; }
-        let dto = summary_to_dto(summaries.into_iter().next().unwrap());
-        assert_eq!(dto.materials[0].name, "Kirschrot");
-        assert_eq!(dto.estimated_weight_g, Some(30.46));
-        assert_eq!(dto.weight_source, "slicer");
-    }
-    conn.execute("UPDATE files SET slice_info_json = NULL", []).unwrap();
-    let dto = summary_to_dto(db::list_file_summaries(&conn).unwrap().remove(0));
-    assert_eq!(dto.weight_source, "estimated");
-    assert_eq!(dto.estimated_weight_g, estimate_weight_g(Some(10.0), Some("Kirschrot")));
-}
+
 
 #[tauri::command]
 pub fn set_license(state: State<AppState>, file_ids: Vec<String>, license: Option<String>) -> CmdResult<()> {
-    let ids = file_ids.iter().map(|id| id.parse::<i64>().map_err(|_| "invalid file id".to_string())).collect::<Result<Vec<_>, _>>()?;
+    for id in &file_ids { let _: i64 = id.parse().map_err(|_| "invalid file id".to_string())?; }
     let mut conn = lock_db(&state)?;
-    db::licenses::set_license(&mut conn, &ids, license.as_deref()).map_err(|e| e.to_string().into())
+    katalog_core::write::set_license(&mut conn, file_ids, license).map_err(Into::into)
 }
 
 #[cfg(test)]

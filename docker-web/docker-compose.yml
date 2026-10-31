@@ -1,0 +1,67 @@
+# Web version of the 3MF Katalog Manager: read-only catalog server (no desktop stream).
+# Same folders as the desktop image: ./config (app data) and ./models.
+services:
+  katalog-web:
+    build:
+      context: ..
+      dockerfile: docker-web/Dockerfile
+    image: 3mfkatalog-web:local
+    container_name: 3mfkatalog-web
+    restart: unless-stopped
+    # Run as the owner of ./config so the password file can be written (id -u / id -g).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      # Local only by default. For other devices in the home network set KATALOG_BIND_IP
+      # to the server's address; for access from outside use a VPN or a reverse proxy with HTTPS.
+      - "${KATALOG_BIND_IP:-127.0.0.1}:${KATALOG_PORT:-8080}:8080"
+    volumes:
+      - ./config:/config
+      - ${MODELS_DIR:-./models}:/models:ro
+      # Optional upload storage: create ./uploads with owner PUID:PGID and mode 0755.
+      # Uploads remain on the server; home network/VPN only.
+      # - ./uploads:/models/uploads
+    environment:
+      # Pflicht, wenn der Zugriff über andere Namen/IPs als localhost erfolgt.
+      # Required whenever browsers use other names/IPs than localhost: list every host name or
+      # IP:port, e.g. KATALOG_ALLOWED_HOSTS=katalog.home.example,192.168.1.50:8080
+      # (DNS-rebinding protection; the server refuses to start without a list).
+      # Default: localhost on the published port.
+      - KATALOG_ALLOWED_HOSTS=${KATALOG_ALLOWED_HOSTS:-localhost:${KATALOG_PORT:-8080},127.0.0.1:${KATALOG_PORT:-8080}}
+    # Optional settings (uncomment, as further items of environment: above):
+    # Optional metadata and material/printer management writes (default remains read-only):
+    # /config must be writable.
+    # Never run the desktop app against the same DB at the same time.
+    # Authentication is mandatory; do not combine with KATALOG_ALLOW_NO_AUTH.
+    #   - KATALOG_WRITE=1
+    # Dateiverwaltung: erlaubt Rename/Move/Delete; /models darf NICHT :ro sein.
+    # File management: permits rename/move/delete; /models must NOT be :ro.
+    # Requires write mode, authentication and allowed hosts; see README warnings.
+    #   - KATALOG_FILE_OPS=1
+    #   - KATALOG_FILE_OPS_DAILY_LIMIT=2000
+    #   # Largest single companion file (upload and download) in MiB, 1-4096:
+    #   - KATALOG_COMPANION_MAX_MB=1024
+    # Only after manual journal inspection, one restart, then remove:
+    #   - KATALOG_FILE_OPS_ACK=<opId[,<opId>…]>
+    #   # Optional upload/import backend (also requires authentication + allowed hosts):
+    #   - KATALOG_UPLOAD_DIR=/models/uploads
+    #   - KATALOG_UPLOAD_MAX_MB=1024
+    #   - KATALOG_UPLOAD_MAX_FILES=2
+    #   # ZIP/7z uploads: largest size ONE archive may unpack to (MiB, 1-4096):
+    #   - KATALOG_ARCHIVE_MAX_MB=1024
+    #   # Lower-only parser limits (MiB/counts):
+    #   - KATALOG_IMPORT_MAX_MESH_MB=512
+    #   - KATALOG_IMPORT_MAX_UNPACKED_MB=1024
+    #   - KATALOG_IMPORT_MAX_VERTICES=2000000
+    #   - KATALOG_IMPORT_MAX_TRIANGLES=3000000
+    #   # "Open in slicer" via signed, short-lived download links (works in read-only mode, too):
+    #   - KATALOG_SLICER_LINKS=1
+    #   # Link lifetime in seconds (60-86400):
+    #   - KATALOG_SLICER_LINK_TTL_SECONDS=3600
+    #   # First-time password only (otherwise a random one is printed once in the log):
+    #   - KATALOG_PASSWORD_FILE=/config/.kasmvnc-password   # reuse the desktop image's password
+    read_only: true
+    # SQLite spills larger queries (e.g. the first catalog listing) to a temp file; without a writable /tmp the server reports "disk I/O error".
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]

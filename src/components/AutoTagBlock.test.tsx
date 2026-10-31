@@ -30,7 +30,12 @@ function renderPanel(density: string, handlers: { onAddTag?: (t: string) => void
 }
 
 // Generous timeout: the whole suite runs in parallel workers and the panel renders slowly then.
-const removeAuto = () => screen.findByRole('button', { name: 'miniatur entfernen, Menü' }, { timeout: 5000 });
+// The act() flush lets TagRemoveButton's reset effect (setOpen(false) on autoTag change) run before the click opens the menu.
+const removeAuto = async () => {
+  const button = await screen.findByRole('button', { name: 'miniatur entfernen, Menü' }, { timeout: 5000 });
+  await act(async () => {});
+  return button;
+};
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -76,7 +81,7 @@ describe.each(['compact', 'comfort'])('tag chips in the %s detail panel', (densi
     fireEvent.click(screen.getByRole('menuitem', { name: de.autoTagRemoveAndBlock }));
     await waitFor(() => expect(api.blockAutoTag).toHaveBeenCalledWith('miniatur'));
     expect(onRemoveTag).toHaveBeenCalledWith('miniatur');
-    const status = screen.getByRole('status');
+    const status = await screen.findByRole('status');
     await waitFor(() => expect(status).toHaveTextContent('„#miniatur“ wird nicht mehr automatisch vergeben.'));
     const undo = within(status).getByRole('button', { name: de.undoButton });
     expect(undo).toHaveFocus();

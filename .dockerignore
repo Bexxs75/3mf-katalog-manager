@@ -1,0 +1,16 @@
+# Build context for docker-web/Dockerfile (repository root). Keep it small.
+.git
+**/node_modules
+**/target
+dist
+dist-web
+dist-ssr
+docs
+e2e
+tools
+docker
+scripts
+*.md
+!WEB-PLAN.md
+src-tauri/icons/*.icns
+src-tauri/icons/*.ico
