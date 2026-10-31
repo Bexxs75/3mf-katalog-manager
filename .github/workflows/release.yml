@@ -48,6 +48,18 @@ jobs:
   e2e:
     needs: verify
     uses: ./.github/workflows/e2e.yml
+  # The slim web image is built and smoke-tested (never published here) next to the package builds.
+  # Like e2e, "assemble" does not wait for it: a red run is a warning, not a blocker.
+  web-image:
+    needs: verify
+    # The called workflow declares packages: write for its (here disabled) push step.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-web.yml
+    with:
+      version: ${{ inputs.version }}
+      publish: false
 
   assemble:
     needs: [windows-step, macos-step, linux-step]

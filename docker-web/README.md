@@ -27,6 +27,10 @@ docker compose logs katalog-web # beim ersten Start steht dort einmal das Zufall
 
 **Netzbindung und Proxy (Deutsch).** Ist `KATALOG_BIND` keine Loopback-Adresse, ist `KATALOG_ALLOWED_HOSTS` Pflicht, und der Server startet sonst nicht (Schutz vor DNS-Rebinding); alle Namen und `Host:Port`, unter denen Browser den Server erreichen, eintragen. Der Server begrenzt Verbindungen auf 32 pro Client-Adresse (IPv6: pro /64) zusätzlich zu insgesamt 256. `KATALOG_TRUST_PROXY=1` lässt den Server den Headern `X-Forwarded-For`/`Forwarded` glauben: nur hinter einem Proxy verwenden, der den Server abschirmt und diese Header selbst setzt. Dann erscheinen alle Clients mit der Adresse des Proxys, daher greift die Pro-Adresse-Grenze nicht (nur das globale Limit); bei Nicht-Loopback-Bindung gibt der Server beim Start eine Warnung aus.
 
+**Smoke-Test (Deutsch).** `bash docker-web/scripts/ci-smoke.sh IMAGE` startet das Image schreibgeschützt mit einem frisch erzeugten, leeren Katalog und prüft Web-Oberfläche, Abweisung ohne Anmeldung, Anmeldung, eine lesende Katalogabfrage und sauberes Stoppen. Der Katalog entsteht mit `cargo run -p katalog-core --no-default-features --example make_smoke_catalog -- <Pfad>`; ohne lokales Rust kann `SMOKE_CATALOG_CMD` das ersetzen (siehe Skriptkopf). Der Workflow `.github/workflows/docker-web.yml` baut das Image und führt diesen Test aus.
+
+**Smoke test (English).** `bash docker-web/scripts/ci-smoke.sh IMAGE` starts the image read-only with a freshly created empty catalog and checks the web UI, rejection without login, login, one catalog read and a clean stop. The catalog is created with `cargo run -p katalog-core --no-default-features --example make_smoke_catalog -- <path>`; without a local Rust toolchain `SMOKE_CATALOG_CMD` can replace that (see the script header). The workflow `.github/workflows/docker-web.yml` builds the image and runs this test.
+
 ### Browser-Upload und Import (Backend Stufe 5, Deutsch)
 
 Uploads sind standardmäßig aus. `KATALOG_UPLOAD_DIR=/models/uploads` aktiviert das

@@ -1,0 +1,128 @@
+name: Docker web image
+
+# Builds the slim web image (katalog-server + web UI, docker-web/Dockerfile) and smoke-tests it.
+# Default: build and test only, nothing is published. Publishing needs publish=true explicitly.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Branch or tag to build (empty: the ref that triggered the run)"
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "Version used for labels and tags, e.g. 0.18.0-1 (RC) or 0.18.0"
+        required: false
+        type: string
+        default: ""
+      publish:
+        description: "Push the image to ghcr.io (off: build and test only)"
+        required: false
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or tag to build (empty: the selected ref)"
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "Version used for labels and tags, e.g. 0.18.0-1 (RC) or 0.18.0"
+        required: false
+        type: string
+        default: ""
+      publish:
+        description: "Push the image to ghcr.io (off: build and test only)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  # Provisional name: the final image name is not decided yet.
+  WEB_IMAGE_NAME: 3mf-katalog-manager-web
+
+jobs:
+  web-image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Needed only for the push step, which runs only when publish is true.
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Resolve metadata
+        id: meta
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=${VERSION#v}
+          if [[ -n "$version" && ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]]; then
+            echo "Invalid version: $version" >&2
+            exit 1
+          fi
+          # Release candidates carry a "-N" suffix and also get the moving tag rc.
+          rc=false
+          [[ "$version" == *-* ]] && rc=true
+          echo "version=${version:-dev}" >> "$GITHUB_OUTPUT"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${WEB_IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      # The smoke test builds its empty catalog with a cargo example.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build the candidate image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: docker-web/Dockerfile
+          load: true
+          tags: candidate:web-test
+          labels: |
+            org.opencontainers.image.revision=${{ steps.meta.outputs.revision }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+          cache-from: type=gha,scope=docker-web
+          cache-to: type=gha,mode=max,scope=docker-web
+
+      - name: Smoke test
+        run: bash docker-web/scripts/ci-smoke.sh candidate:web-test
+
+      # Everything below runs only for an explicit publish=true.
+      - name: Log in to ghcr.io
+        if: inputs.publish == true
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the tested image
+        if: inputs.publish == true
+        shell: bash
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          RC: ${{ steps.meta.outputs.rc }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" != dev ]] || { echo "publish needs a version" >&2; exit 1; }
+          tags=("$IMAGE:$VERSION")
+          [[ "$RC" == true ]] && tags+=("$IMAGE:rc")
+          # No latest tag for final versions yet: that decision is still open.
+          for t in "${tags[@]}"; do
+            docker tag candidate:web-test "$t"
+            docker push "$t"
+          done
