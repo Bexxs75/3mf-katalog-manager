@@ -453,6 +453,54 @@ mod tests {
             Some("yes")
         );
     }
+
+    fn file_count(conn: &Connection) -> i64 {
+        count(conn, "files")
+    }
+
+    #[test]
+    fn file_removal_rejects_unknown_and_trashed_ids_without_deleting_anything() {
+        let (conn, _root, _child, active, trash) = fixture();
+        for bad in [trash, 9999] {
+            let err = remove_files_with_conn(&conn, vec![active.to_string(), bad.to_string()]).unwrap_err();
+            assert!(err.is(ErrorCode::ModelNotFoundOrTrashed, &[]), "{bad}");
+            assert_eq!(file_count(&conn), 2, "the valid id must survive a rejected batch");
+        }
+        for bad in ["0", "-3", "abc", ""] {
+            let err = remove_files_with_conn(&conn, vec![bad.to_string()]).unwrap_err();
+            assert!(err.is(ErrorCode::InvalidCatalogId, &[]), "{bad:?}");
+        }
+        assert_eq!(file_count(&conn), 2);
+    }
+
+    #[test]
+    fn file_removal_counts_duplicates_once_and_accepts_more_than_two_hundred_ids() {
+        let (conn, _root, child, active, _trash) = fixture();
+        assert_eq!(
+            remove_files_with_conn(&conn, vec![active.to_string(), active.to_string()]).unwrap(),
+            1
+        );
+        assert_eq!(remove_files_with_conn(&conn, vec![]).unwrap(), 0);
+        // The desktop command has no batch limit; select-all on a large catalog relies on it.
+        let ids: Vec<String> = (0..250)
+            .map(|i| db::test_insert_minimal_file(&conn, &format!("/catalog/child/bulk{i}.stl"), Some(child)).unwrap().to_string())
+            .collect();
+        assert_eq!(remove_files_with_conn(&conn, ids).unwrap(), 250);
+        assert_eq!(file_count(&conn), 1, "only the trashed row remains");
+    }
+
+    #[test]
+    fn file_removal_keeps_tags_and_drops_dependent_rows_with_the_file() {
+        let (conn, _root, _child, active, trash) = fixture();
+        related_rows(&conn, active, trash);
+        db::companions::insert_companion(&conn, active, "p.png", "/catalog/child/p.png", "image", None, "now").unwrap();
+        remove_files_with_conn(&conn, vec![active.to_string()]).unwrap();
+        assert_eq!(count(&conn, "tags"), 1, "unused tags are not cleaned up here");
+        assert_eq!(count(&conn, "companion_files"), 0);
+        // The trashed model's rows are untouched.
+        assert_eq!(count(&conn, "file_tags"), 1);
+        assert_eq!(file_count(&conn), 1);
+    }
 }
 
 #[cfg(test)]
