@@ -499,8 +499,11 @@ fn a_foreign_file_under_the_entrys_own_temporary_name_needs_manual_review() {
     run_at("mid_write", PointAction::Crash);
     assert_eq!(up(&mut f, 1, "neu.png", &png(9)), Err(Error::RestartRequired));
     let temp = leftovers_path(&f);
-    fs::remove_file(&temp).unwrap();
-    fs::write(&temp, b"foreign").unwrap();
+    // The foreign file is created while the original still exists and then renamed over it, so it
+    // is guaranteed to be another inode (a file written right after a removal can reuse the inode number).
+    let foreign = temp.with_extension("foreign");
+    fs::write(&foreign, b"foreign").unwrap();
+    fs::rename(&foreign, &temp).unwrap();
     let report = f.reopen_and_recover();
     assert_eq!(report.manual.len(), 1);
     assert_eq!(fs::read(&temp).unwrap(), b"foreign");

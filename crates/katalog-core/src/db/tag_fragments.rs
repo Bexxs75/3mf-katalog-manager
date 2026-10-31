@@ -111,17 +111,23 @@ mod tests {
 
     #[test]
     fn repairs_5000_files_under_one_second() {
-        let mut conn = connect_in_memory().unwrap();
-        let tx = conn.transaction().unwrap();
-        for i in 0..5000 {
-            let id = test_insert_minimal_file(&tx, &format!("/tmp/{i}-Handyständer.3mf"), None).unwrap();
-            for tag in ["handysta", "nder"] { add_tag_to_file(&tx, id, tag).unwrap(); }
+        // Wall-clock limit: the best of three runs counts, so a busy machine (a shared CI runner)
+        // does not fail the test while a real slowdown still does.
+        let mut best = std::time::Duration::MAX;
+        for _ in 0..3 {
+            let mut conn = connect_in_memory().unwrap();
+            let tx = conn.transaction().unwrap();
+            for i in 0..5000 {
+                let id = test_insert_minimal_file(&tx, &format!("/tmp/{i}-Handyständer.3mf"), None).unwrap();
+                for tag in ["handysta", "nder"] { add_tag_to_file(&tx, id, tag).unwrap(); }
+            }
+            tx.commit().unwrap();
+            let start = std::time::Instant::now();
+            assert_eq!(cleanup_tag_fragments(&mut conn).unwrap(), Some((5000, 10000, 5000)));
+            best = best.min(start.elapsed());
+            if best < std::time::Duration::from_secs(1) { break; }
         }
-        tx.commit().unwrap();
-        let start = std::time::Instant::now();
-        assert_eq!(cleanup_tag_fragments(&mut conn).unwrap(), Some((5000, 10000, 5000)));
-        let elapsed = start.elapsed();
-        eprintln!("5000-file cleanup: {elapsed:?}");
-        assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
+        eprintln!("5000-file cleanup (best run): {best:?}");
+        assert!(best < std::time::Duration::from_secs(1), "{best:?}");
     }
 }
