@@ -189,7 +189,18 @@ pub struct Journal {
     #[cfg(test)]
     pub(crate) fail_sync: bool,
 }
+#[cfg(test)]
+thread_local! {
+    /// Parity tests only: when set, `op_id` counts up from this value instead of reading
+    /// `/dev/urandom`, so journal files and trash names repeat byte for byte.
+    pub(crate) static FIXED_OP_IDS: std::cell::Cell<Option<u128>> = const { std::cell::Cell::new(None) };
+}
 pub(crate) fn op_id() -> Result<String> {
+    #[cfg(test)]
+    if let Some(next) = FIXED_OP_IDS.with(|c| c.get()) {
+        FIXED_OP_IDS.with(|c| c.set(Some(next + 1)));
+        return Ok(format!("{next:032x}"));
+    }
     let mut bytes = [0u8; 16];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())

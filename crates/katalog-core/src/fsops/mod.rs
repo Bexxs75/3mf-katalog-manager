@@ -96,6 +96,8 @@ mod tests;
 #[cfg(test)]
 mod companion_gap_tests;
 #[cfg(test)]
+mod parity_golden_tests;
+#[cfg(test)]
 mod companion_carry_tests;
 #[cfg(test)]
 mod companion_trash_tests;

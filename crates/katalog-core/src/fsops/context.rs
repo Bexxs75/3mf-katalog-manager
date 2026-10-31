@@ -315,6 +315,10 @@ pub fn ensure_trash_dir(root: &Directory) -> Result<Directory> {
 }
 
 #[cfg(test)]
+#[path = "parity_path_tests.rs"]
+mod parity_path_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]

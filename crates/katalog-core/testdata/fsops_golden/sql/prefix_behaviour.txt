@@ -1,0 +1,48 @@
+folder "/m/a": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a/": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a0": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a.b": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a/b": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a/b/c": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a-": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a1": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a\u{1}": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a/\u{10ffff}": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a_": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/ax": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a/b\\c": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a//b": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/ax/y": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+folder "/m/a.b/c": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a/": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a0": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a.b": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a/b": tree Ok folders=[1] files=[2] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a/b/c": tree Ok folders=[1] files=[2] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a-": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a1": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a\u{1}": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a/\u{10ffff}": tree Ok folders=[1] files=[2] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a_": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/ax": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a/b\\c": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a//b": tree Err inconsistent | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/ax/y": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+file "/m/a.b/c": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a/": tree Ok folders=[1] files=[] companions=[1] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a0": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a.b": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a/b": tree Ok folders=[1] files=[] companions=[1] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a/b/c": tree Ok folders=[1] files=[] companions=[1] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a-": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a1": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a\u{1}": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a/\u{10ffff}": tree Ok folders=[1] files=[] companions=[1] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a_": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/ax": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a/b\\c": tree Ok folders=[1] files=[] companions=[1] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a//b": tree Ok folders=[1] files=[] companions=[1] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/ax/y": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict
+companion "/m/a.b/c": tree Ok folders=[1] files=[] companions=[] | available(relocate) Err conflict | available(remove) Err conflict

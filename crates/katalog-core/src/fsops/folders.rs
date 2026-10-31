@@ -78,6 +78,14 @@ fn valid_path(path: &str) -> Result<&Path> {
     }
     Ok(Path::new(path))
 }
+/// Lets the parity tests (module `context`) reach the private check.
+#[cfg(test)]
+pub(super) fn valid_path_for_parity_tests(path: &str) -> Result<()> {
+    valid_path(path).map(|_| ())
+}
+#[cfg(test)]
+#[path = "parity_sql_tests.rs"]
+mod parity_sql_tests;
 fn under(path: &str, base: &str) -> bool {
     Path::new(path).starts_with(base)
 }
