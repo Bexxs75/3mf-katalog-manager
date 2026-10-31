@@ -70,6 +70,8 @@ pub struct PackageParts {
     pub plate_count: Option<u32>,
     pub plate_assignments: super::plates::PlateAssignments,
     pub slice_info: Option<super::slice_info::SliceInfo>,
+    /// Print data (settings, plates, slice state); only read on the metadata path, `None` for the preview.
+    pub print_info: Option<super::print_info::PrintInfo>,
     /// Bambu Studio / OrcaSlicer filament colors; only read for the preview.
     pub slicer_colors: super::slicer_colors::SlicerColors,
 }
@@ -194,9 +196,19 @@ fn read_package_inner<R: Read + Seek>(
     total_unpacked += plates_bytes;
     check_total_budget(total_unpacked)?;
 
-    let (slice_info, slice_info_bytes) = super::slice_info::parse_slice_info(&mut archive);
+    // One reading of slice_info.config serves both the stored slice info and the print data.
+    let (slice_detection, slice_info_bytes) = super::slice_info::read_slice_info_detailed(&mut archive);
     total_unpacked += slice_info_bytes;
     check_total_budget(total_unpacked)?;
+    let slice_info = slice_detection.info.clone();
+
+    let mut print_info = None;
+    if !geometry {
+        let (info, bytes) = super::print_info::read_print_info(&mut archive, &slice_detection, &plate_assignments);
+        print_info = Some(info);
+        total_unpacked += bytes;
+        check_total_budget(total_unpacked)?;
+    }
 
     let mut slicer_colors = super::slicer_colors::SlicerColors::default();
     if geometry {
@@ -280,6 +292,7 @@ fn read_package_inner<R: Read + Seek>(
         plate_count,
         plate_assignments,
         slice_info,
+        print_info,
         thumbnail,
         slicer_colors,
     })
@@ -952,6 +965,47 @@ mod tests {
             result.is_err(),
             "ein ueberdimensionierter slice_info.config-Eintrag allein muss das Gesamtbudget ueberschreiten koennen"
         );
+    }
+
+    fn read_with_small_budget(extra_entries: &[(&str, &str)]) -> Result<PackageParts, ThreeMfError> {
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(1000)));
+        let bytes = build_minimal_3mf_with_entries(SMALL_RELS_XML, extra_entries);
+        let result = read_package(std::io::Cursor::new(bytes));
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(None));
+        result
+    }
+
+    /// The print data readings count towards the total budget like their neighbours.
+    #[test]
+    fn read_package_rejects_when_project_settings_alone_push_total_over_budget() {
+        let padded = format!(r#"{{"printer_model":"{}"}}"#, "A".repeat(5000));
+        assert!((padded.len() as u64) < MAX_CONFIG_XML_BYTES);
+        let header_only = r#"<config><header/></config>"#;
+        let result = read_with_small_budget(&[("Metadata/slice_info.config", header_only), ("Metadata/project_settings.config", &padded)]);
+        assert!(matches!(result, Err(ThreeMfError::ResourceLimitExceeded(_))), "padded settings must exceed the small budget");
+        // Counter-check: the same settings below the budget are read.
+        let small = read_with_small_budget(&[("Metadata/slice_info.config", header_only), ("Metadata/project_settings.config", r#"{"printer_model":"X"}"#)]).unwrap();
+        assert_eq!(small.print_info.unwrap().printer_model.as_deref(), Some("X"));
+    }
+
+    #[test]
+    fn read_package_rejects_when_plate_json_alone_pushes_total_over_budget() {
+        let padded = format!(r#"{{"first_layer_time":5.0,"pad":"{}"}}"#, "A".repeat(5000));
+        let header_only = r#"<config><header/></config>"#;
+        let result = read_with_small_budget(&[("Metadata/slice_info.config", header_only), ("Metadata/plate_1.json", &padded)]);
+        assert!(matches!(result, Err(ThreeMfError::ResourceLimitExceeded(_))), "padded plate JSON must exceed the small budget");
+        let small = read_with_small_budget(&[("Metadata/slice_info.config", header_only), ("Metadata/plate_1.json", r#"{"first_layer_time":5.0}"#)]).unwrap();
+        assert_eq!(small.print_info.unwrap().plates[0].first_layer_seconds, Some(5.0));
+    }
+
+    /// Settings and plate JSON are only read on the metadata path, never for the preview.
+    #[test]
+    fn the_geometry_path_reads_no_print_data_and_the_metadata_path_does() {
+        let bytes = build_minimal_3mf_with_entries(SMALL_RELS_XML, &[("Metadata/project_settings.config", r#"{"printer_model":"X"}"#)]);
+        assert!(read_geometry_package(std::io::Cursor::new(bytes.clone())).unwrap().print_info.is_none());
+        let parts = read_package(std::io::Cursor::new(bytes)).unwrap();
+        let info = parts.print_info.expect("metadata path reads print data");
+        assert_eq!(info.slice_state, super::super::print_info::SliceState::NotRecognized, "no slice_info.config in this package");
     }
 
     /// Counter-check: without padding the same package is accepted.

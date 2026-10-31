@@ -35,6 +35,8 @@ pub struct ThreeMfDocument {
     pub thumbnail_png: Option<Vec<u8>>,
     pub plate_count: Option<u32>,
     pub slice_info: Option<SliceInfo>,
+    /// Print data read from the slicer files; `Some` for every 3MF read on the metadata path.
+    pub print_info: Option<print_info::PrintInfo>,
 }
 
 pub fn parse_3mf_file(path: &Path) -> Result<ThreeMfDocument, ThreeMfError> {
@@ -430,6 +432,7 @@ fn document_from_package(package: PackageParts) -> Result<ThreeMfDocument, Three
         thumbnail_png: package.thumbnail.clone(),
         plate_count: package.plate_count,
         slice_info: package.slice_info.clone(),
+        print_info: package.print_info.clone(),
     })
 }
 
@@ -623,6 +626,65 @@ mod tests {
         let (bbox, _, extent) = resolve_geometry(&package).unwrap();
         assert_eq!(extent, None);
         assert_eq!(bbox.size(), [1020.0, 510.0, 10.0]);
+    }
+
+    #[test]
+    fn the_document_carries_print_data_for_the_synthetic_bambu_style_project() {
+        // SYNTHETIC package, see tests/fixtures/README.md.
+        let doc = parse_3mf_bytes(include_bytes!("../../tests/fixtures/synthetic-bambu-project.3mf")).unwrap();
+        let info = doc.print_info.expect("print data");
+        assert_eq!(info.slice_state, print_info::SliceState::NoSliceData);
+        assert_eq!(info.printer_model.as_deref(), Some("Bambu Lab X1 Carbon"));
+        assert_eq!(info.plates.len(), 4);
+        assert_eq!(info.plates[0].first_layer_seconds, Some(123.5));
+        assert!(doc.slice_info.is_none(), "no print data in slice_info.config: nothing stored there");
+        assert_eq!(doc.plate_count, Some(4));
+    }
+
+    #[test]
+    fn the_creality_fixture_document_has_print_data_without_a_slice_result() {
+        let doc = parse_3mf_bytes(include_bytes!("../../tests/fixtures/creality-3plates.3mf")).unwrap();
+        let info = doc.print_info.expect("print data");
+        assert_eq!(info.slice_state, print_info::SliceState::NoSliceData);
+        assert_eq!(info.layer_height_mm, Some(0.2));
+        assert!(doc.slice_info.is_none());
+    }
+
+    /// The file name says nothing about slicing: only the content counts.
+    #[test]
+    fn the_file_name_does_not_change_the_slice_state() {
+        let bytes = include_bytes!("../../tests/fixtures/synthetic-bambu-project.3mf");
+        let dir = std::env::temp_dir().join(format!("katalog-print-info-name-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut states = Vec::new();
+        for name in ["x SLICED.3mf", "plain.3mf"] {
+            let path = dir.join(name);
+            std::fs::write(&path, bytes).unwrap();
+            let doc = parse_3mf_file(&path).unwrap();
+            states.push(doc.print_info.unwrap().slice_state);
+        }
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(states, vec![print_info::SliceState::NoSliceData; 2]);
+    }
+
+    /// The stored slice info keeps its exact shape: a new field there would change `slice_info_json`.
+    #[test]
+    fn the_slice_info_json_shape_is_unchanged_by_the_detailed_reading() {
+        let mut entries = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut entries));
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file("Metadata/slice_info.config", options).unwrap();
+            std::io::Write::write_all(&mut zip, br##"<config><plate><metadata key="index" value="1"/><metadata key="weight" value="2.5"/><filament id="1" type="PLA" color="#FFFFFF" used_m="1" used_g="2.5"/></plate></config>"##).unwrap();
+            zip.finish().unwrap();
+        }
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(entries)).unwrap();
+        let (detail, _) = slice_info::read_slice_info_detailed(&mut archive);
+        let json = serde_json::to_string(&detail.info.unwrap()).unwrap();
+        assert_eq!(
+            json,
+            r##"{"total_weight_g":2.5,"plates":[{"plate_index":1,"weight_g":2.5,"filaments":[{"filament_type":"PLA","color":"#FFFFFF","used_g":2.5,"used_m":1.0}]}]}"##
+        );
     }
 
     #[test]
@@ -1259,7 +1321,7 @@ mod render_material_tests {
         </vertices><triangles>{triangles}</triangles></mesh></object></resources>
         <build><item objectid="3"/></build></model>"##);
         let package = PackageParts { root_model: model_xml::parse_model_xml(&xml).unwrap(),
-            referenced_models: Default::default(), thumbnail: None, plate_count: None, plate_assignments: Default::default(), slice_info: None,
+            referenced_models: Default::default(), thumbnail: None, plate_count: None, plate_assignments: Default::default(), slice_info: None, print_info: None,
             slicer_colors: Default::default() };
         extract_render_meshes(&package).unwrap()
     }
@@ -1315,7 +1377,7 @@ mod instanced_triangle_tests {
         let package = PackageParts {
             root_model: model_xml::parse_model_xml(&xml).unwrap(),
             referenced_models: Default::default(), thumbnail: None, plate_count: None,
-            plate_assignments: Default::default(), slice_info: None,
+            plate_assignments: Default::default(), slice_info: None, print_info: None,
             slicer_colors: Default::default(),
         };
         let mut budget = WorkBudget::new();
