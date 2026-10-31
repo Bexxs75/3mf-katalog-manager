@@ -242,3 +242,35 @@ CREATE TABLE IF NOT EXISTS blocked_auto_tags (
 CREATE TABLE IF NOT EXISTS folder_trash_origin (
     file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE
 );
+
+-- Print data read from the slicer files of a 3MF. A separate table so `files` stays
+-- exactly as other tools read it. No row = never read (or read by an older reader).
+CREATE TABLE IF NOT EXISTS file_print_info (
+    file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE,
+    reader_version INTEGER NOT NULL CHECK (reader_version >= 1),
+    read_at TEXT NOT NULL,
+    slice_state TEXT NOT NULL
+        CHECK (slice_state IN ('sliced', 'no_slice_data', 'not_recognized', 'unreadable')),
+    settings_state TEXT NOT NULL
+        CHECK (settings_state IN ('read', 'missing', 'unreadable', 'not_attempted')),
+    printer_model TEXT,
+    bed_type TEXT,
+    layer_height_mm REAL CHECK (layer_height_mm IS NULL OR layer_height_mm > 0),
+    nozzle_mm REAL CHECK (nozzle_mm IS NULL OR nozzle_mm > 0),
+    nozzle_mixed INTEGER NOT NULL DEFAULT 0 CHECK (nozzle_mixed IN (0, 1)),
+    bed_temp_c REAL CHECK (bed_temp_c IS NULL OR bed_temp_c > 0),
+    bed_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (bed_temp_mixed IN (0, 1)),
+    nozzle_temp_c REAL CHECK (nozzle_temp_c IS NULL OR nozzle_temp_c > 0),
+    nozzle_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (nozzle_temp_mixed IN (0, 1))
+);
+
+-- One row per plate of such a file.
+CREATE TABLE IF NOT EXISTS file_print_plates (
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    plate_index INTEGER NOT NULL CHECK (plate_index >= 1),
+    plate_name TEXT,
+    print_seconds INTEGER CHECK (print_seconds IS NULL OR print_seconds > 0),
+    first_layer_seconds REAL CHECK (first_layer_seconds IS NULL OR first_layer_seconds > 0),
+    plate_bed_type TEXT,
+    PRIMARY KEY (file_id, plate_index)
+);

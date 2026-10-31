@@ -143,6 +143,8 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(add_blocked_auto_tags_table),
     // Marks models trashed by "folder to trash". New table only, no existing data is touched.
     MigrationStep::Simple(add_folder_trash_origin_table),
+    // Print data read from the slicer files of a 3MF. New tables only, no existing data is touched.
+    MigrationStep::Simple(add_print_info_tables),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -187,6 +189,44 @@ pub const SPOOL_COLOR_LIST_MIGRATION_VERSION: i64 = 50;
 /// every catalog written by the version that introduced the table contains.
 #[cfg(any(test, feature = "test-support"))]
 pub const BLOCKED_AUTO_TAGS_MIGRATION_VERSION: i64 = 51;
+
+/// Schema version after the folder trash origin table. Must stay 52: that is what every
+/// catalog written by the version that introduced the table contains.
+#[cfg(test)]
+pub(crate) const FOLDER_TRASH_ORIGIN_MIGRATION_VERSION: i64 = 52;
+
+/// New tables only (a row per read 3MF and a row per plate); `IF NOT EXISTS` so a catalog
+/// that already got them from the base schema is left alone. `files` is not touched on purpose:
+/// other tools read it with fixed column lists.
+fn add_print_info_tables(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS file_print_info (
+        file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE,
+        reader_version INTEGER NOT NULL CHECK (reader_version >= 1),
+        read_at TEXT NOT NULL,
+        slice_state TEXT NOT NULL
+            CHECK (slice_state IN ('sliced', 'no_slice_data', 'not_recognized', 'unreadable')),
+        settings_state TEXT NOT NULL
+            CHECK (settings_state IN ('read', 'missing', 'unreadable', 'not_attempted')),
+        printer_model TEXT,
+        bed_type TEXT,
+        layer_height_mm REAL CHECK (layer_height_mm IS NULL OR layer_height_mm > 0),
+        nozzle_mm REAL CHECK (nozzle_mm IS NULL OR nozzle_mm > 0),
+        nozzle_mixed INTEGER NOT NULL DEFAULT 0 CHECK (nozzle_mixed IN (0, 1)),
+        bed_temp_c REAL CHECK (bed_temp_c IS NULL OR bed_temp_c > 0),
+        bed_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (bed_temp_mixed IN (0, 1)),
+        nozzle_temp_c REAL CHECK (nozzle_temp_c IS NULL OR nozzle_temp_c > 0),
+        nozzle_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (nozzle_temp_mixed IN (0, 1))
+    )")?;
+    exec(conn, "CREATE TABLE IF NOT EXISTS file_print_plates (
+        file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+        plate_index INTEGER NOT NULL CHECK (plate_index >= 1),
+        plate_name TEXT,
+        print_seconds INTEGER CHECK (print_seconds IS NULL OR print_seconds > 0),
+        first_layer_seconds REAL CHECK (first_layer_seconds IS NULL OR first_layer_seconds > 0),
+        plate_bed_type TEXT,
+        PRIMARY KEY (file_id, plate_index)
+    )")
+}
 
 /// New table only; `IF NOT EXISTS` so a catalog that already got it from the base schema is left alone.
 fn add_blocked_auto_tags_table(conn: &Connection) -> Result<(), DbError> {
@@ -793,7 +833,7 @@ mod tests {
         assert_eq!(rows, 0);
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, BLOCKED_AUTO_TAGS_MIGRATION_VERSION + 1, "the folder trash origin table is the step after");
+        assert_eq!(FOLDER_TRASH_ORIGIN_MIGRATION_VERSION, BLOCKED_AUTO_TAGS_MIGRATION_VERSION + 1, "the folder trash origin table is the step after");
     }
 
     #[test]
@@ -809,6 +849,148 @@ mod tests {
         assert_eq!(rows, 0);
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    /// Rows of the tables other tools read, to prove a step leaves them as they were.
+    fn catalog_snapshot(conn: &Connection) -> String {
+        let one = |sql: &str| -> String { conn.query_row(sql, [], |r| r.get::<_, Option<String>>(0)).unwrap().unwrap_or_default() };
+        [
+            one("SELECT group_concat(id || '|' || name || '|' || path || '|' || file_type || '|' || file_size_bytes, ';') FROM (SELECT * FROM files ORDER BY id)"),
+            one("SELECT group_concat(id || '|' || name || '|' || color_hue, ';') FROM (SELECT * FROM tags ORDER BY id)"),
+            one("SELECT group_concat(file_id || '|' || tag_id, ';') FROM (SELECT * FROM file_tags ORDER BY file_id, tag_id)"),
+            one("SELECT group_concat(id || '|' || file_id || '|' || name, ';') FROM (SELECT * FROM file_materials ORDER BY id)"),
+        ]
+        .join("#")
+    }
+
+    #[test]
+    fn migration_adds_print_tables_without_touching_data() {
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        // A catalog at the version before the step: no print tables, but files, tags and materials.
+        conn.execute_batch("DROP TABLE file_print_plates; DROP TABLE file_print_info").unwrap();
+        let a = crate::db::test_insert_minimal_file(&conn, "/a.3mf", None).unwrap();
+        let b = crate::db::test_insert_minimal_file(&conn, "/b.3mf", None).unwrap();
+        conn.execute_batch(&format!(
+            "INSERT INTO tags (name, color_hue) VALUES ('miniatur', 12), ('mein-projekt', 200);
+             INSERT INTO file_tags (file_id, tag_id) VALUES ({a}, 1), ({a}, 2), ({b}, 2);
+             INSERT INTO file_materials (file_id, name, display_color) VALUES ({a}, 'PLA', '#ff0000'), ({b}, 'PETG', NULL)"
+        ))
+        .unwrap();
+        conn.pragma_update(None, "user_version", FOLDER_TRASH_ORIGIN_MIGRATION_VERSION).unwrap();
+        assert!(!table_exists(&conn, "file_print_info") && !table_exists(&conn, "file_print_plates"), "precondition");
+        let before = catalog_snapshot(&conn);
+        assert!(before.contains("/a.3mf") && before.contains("miniatur") && before.contains("PETG"), "precondition: data present");
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(catalog_snapshot(&conn), before, "no existing row may change");
+        for table in ["file_print_info", "file_print_plates"] {
+            assert!(table_exists(&conn, table), "{table}");
+            let rows: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert_eq!(rows, 0, "{table} starts empty");
+        }
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(CURRENT_SCHEMA_VERSION, FOLDER_TRASH_ORIGIN_MIGRATION_VERSION + 1, "the print tables are the step after");
+    }
+
+    #[test]
+    fn the_print_tables_step_is_repeatable_and_part_of_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        assert!(table_exists(&fresh, "file_print_info") && table_exists(&fresh, "file_print_plates"));
+        fresh.pragma_update(None, "foreign_keys", true).unwrap();
+        let id = crate::db::test_insert_minimal_file(&fresh, "/a.3mf", None).unwrap();
+        fresh.execute("INSERT INTO file_print_plates (file_id, plate_index, first_layer_seconds) VALUES (?1, 1, 5.5)", [id]).unwrap();
+        add_print_info_tables(&fresh).unwrap();
+        add_print_info_tables(&fresh).unwrap();
+        let rows: i64 = fresh.query_row("SELECT COUNT(*) FROM file_print_plates", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1, "repeating the step keeps the rows");
+    }
+
+    #[test]
+    fn the_print_tables_refuse_invalid_rows_and_follow_their_file() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/a.3mf", None).unwrap();
+        let info = |extra: &str| {
+            conn.execute(
+                &format!("INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state{extra}) VALUES (?1, 1, 'now', 'sliced', 'read'{})", if extra.is_empty() { "" } else { ", -1" }),
+                [id],
+            )
+        };
+        assert!(info(", layer_height_mm").is_err(), "a negative layer height is refused");
+        assert!(info(", nozzle_temp_c").is_err());
+        assert!(info("").is_ok());
+        assert!(info("").is_err(), "one row per file");
+        for bad in [
+            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (999, 1, 'n', 'sliced', 'read')",
+            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (1, 0, 'n', 'sliced', 'read')",
+            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (1, 1, 'n', 'x', 'read')",
+            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (1, 1, 'n', 'sliced', 'x')",
+            "INSERT INTO file_print_plates (file_id, plate_index) VALUES (1, 0)",
+            "INSERT INTO file_print_plates (file_id, plate_index, print_seconds) VALUES (1, 1, 0)",
+            "INSERT INTO file_print_plates (file_id, plate_index, first_layer_seconds) VALUES (1, 1, -2)",
+            "INSERT INTO file_print_plates (file_id, plate_index) VALUES (999, 1)",
+        ] {
+            assert!(conn.execute(bad, []).is_err(), "{bad}");
+        }
+        conn.execute("INSERT INTO file_print_plates (file_id, plate_index) VALUES (?1, 1)", [id]).unwrap();
+        assert!(conn.execute("INSERT INTO file_print_plates (file_id, plate_index) VALUES (?1, 1)", [id]).is_err(), "one row per plate");
+
+        conn.execute("DELETE FROM files WHERE id = ?1", [id]).unwrap();
+        for table in ["file_print_info", "file_print_plates"] {
+            let rows: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert_eq!(rows, 0, "{table} is cleaned up with the file");
+        }
+    }
+
+    /// `PRAGMA table_info` of the four tables the Docker companion reads, as produced on
+    /// commit 2a4a74c8 (the base of the print data work). A new column or a changed type in
+    /// any of them would break tools that read the catalog with fixed column lists.
+    const COMPANION_TABLE_SHAPES: [(&str, &[&str]); 4] = [
+        ("files", &[
+            "id|INTEGER|0|-|1", "name|TEXT|1|-|0", "path|TEXT|1|-|0", "file_type|TEXT|1|-|0", "folder_id|INTEGER|0|-|0",
+            "origin|TEXT|1|'local'|0", "sync_status|TEXT|1|'local-only'|0", "cloud_id|TEXT|0|-|0",
+            "file_size_bytes|INTEGER|1|-|0", "dimension_x_mm|REAL|0|-|0", "dimension_y_mm|REAL|0|-|0",
+            "dimension_z_mm|REAL|0|-|0", "volume_cm3|REAL|0|-|0", "object_count|INTEGER|0|-|0",
+            "thumbnail_png|BLOB|0|-|0", "imported_at|TEXT|1|-|0", "file_modified_at|TEXT|0|-|0",
+            "print_status|TEXT|1|'not_printed'|0", "last_viewed_at|TEXT|0|-|0", "creator|TEXT|0|-|0",
+            "content_hash|TEXT|0|-|0", "render_snapshot_png|BLOB|0|-|0", "custom_image_png|BLOB|0|-|0",
+            "source_url|TEXT|0|-|0", "license|TEXT|0|-|0", "queue_position|INTEGER|0|-|0", "favorite|INTEGER|1|0|0",
+            "plate_count|INTEGER|0|-|0", "slice_info_json|TEXT|0|-|0", "deleted_at|TEXT|0|-|0", "trash_path|TEXT|0|-|0",
+            "source_platform|TEXT|0|-|0", "source_model_id|TEXT|0|-|0", "source_profile_id|TEXT|0|-|0",
+        ]),
+        ("folders", &["id|INTEGER|0|-|1", "name|TEXT|1|-|0", "parent_id|INTEGER|0|-|0", "path|TEXT|0|-|0"]),
+        ("tags", &["id|INTEGER|0|-|1", "name|TEXT|1|-|0", "color_hue|INTEGER|1|-|0"]),
+        ("file_tags", &["file_id|INTEGER|1|-|1", "tag_id|INTEGER|1|-|2"]),
+    ];
+
+    fn table_shape(conn: &Connection, table: &str) -> Vec<String> {
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
+        stmt.query_map([], |r| {
+            let default: Option<String> = r.get(4)?;
+            Ok(format!(
+                "{}|{}|{}|{}|{}",
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+                default.unwrap_or_else(|| "-".into()),
+                r.get::<_, i64>(5)?
+            ))
+        })
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+    }
+
+    #[test]
+    fn companion_tables_keep_their_shape() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        for (table, expected) in COMPANION_TABLE_SHAPES {
+            assert_eq!(table_shape(&conn, table), expected, "table {table} changed: the Docker companion reads it with fixed columns");
+        }
     }
 
     #[test]
@@ -1157,7 +1339,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 13);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 14);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.
