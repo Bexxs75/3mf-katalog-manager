@@ -315,7 +315,11 @@ pub fn list_for_web_with(conn: &Connection, file_id: i64, roots: &[PathBuf], inc
     let removed = db::companions::list_trashed_files_of_model(conn, file_id).map_err(|_| RowError::ModelMissing)?;
     for row in removed.into_iter().take(MAX_COMPANIONS_PER_MODEL as usize) {
         let Ok(kind) = validate_stored_fields(&row.name, &row.path, &row.kind) else { continue };
+        // Restoring from the web trash exists on Linux only (the web server's platform); elsewhere the desktop restores.
+        #[cfg(target_os = "linux")]
         let restorable = crate::fsops::web_restorable(roots, &model.path, row.id, row.trash_path.as_deref());
+        #[cfg(not(target_os = "linux"))]
+        let restorable = false;
         out.push(WebCompanion {
             id: row.id.to_string(),
             file_id: row.file_id.to_string(),
