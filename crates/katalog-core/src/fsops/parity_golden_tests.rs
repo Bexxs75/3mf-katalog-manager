@@ -4,12 +4,22 @@
 //!
 //! The golden files in `testdata/fsops_golden/` may only be regenerated in step S8, and
 //! only for the cases that step names. A failing comparison means the behaviour changed.
-//! Regenerating (`FSOPS_GOLDEN_UPDATE=1`) is for that step alone.
+//! Regenerating needs `FSOPS_GOLDEN_UPDATE=1` (any other value compares as usual) and
+//! prints every file it rewrites or deletes.
 //!
-//! What is masked before comparing, because the OS decides it: the temporary directory,
-//! device and inode numbers, and the RFC 3339 timestamps `deleted_at` / `added_at`
-//! (`chrono::Utc::now()`). Everything else is the byte stream the journal wrote. Operation
-//! ids are made deterministic by the `cfg(test)` hook `journal::FIXED_OP_IDS`.
+//! What this scaffold does NOT prove, so steps S1 to S8 must additionally pass every
+//! existing `fsops` and server test:
+//! - It compares journal bytes only: not the database or file tree after the operation,
+//!   not return values, not file permissions.
+//! - It masks what the OS decides: the temporary directory, `dev`/`ino`/`temp_inode` and
+//!   the timestamps `deleted_at`/`added_at`. A change that only falsifies those fields
+//!   goes unnoticed here.
+//! - Recovery (`recover*`) is covered only by `recovery_after_each_phase_...` below, and
+//!   only for rename and move of a model with and without companions.
+//! - Failure paths of the operations (conflicts, refusals, aborted uploads) are not
+//!   recorded, and `Phase::Manual` (only set by `Journal::block`) is never reached.
+//!
+//! Operation ids are made deterministic by the `cfg(test)` hook `journal::FIXED_OP_IDS`.
 use super::companion_carry_tests::{Fx, Ledger, PNG};
 use super::journal::FIXED_OP_IDS;
 use super::tests::{PointAction, POINT};
@@ -20,12 +30,18 @@ pub(super) fn golden_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/fsops_golden")
 }
 
+/// Only the exact value `1` allows rewriting golden files.
+pub(super) fn updating() -> bool {
+    std::env::var("FSOPS_GOLDEN_UPDATE").as_deref() == Ok("1")
+}
+
 /// Compares `bytes` with the checked-in golden file `name`.
 pub(super) fn assert_golden(name: &str, bytes: &[u8]) {
     let path = golden_dir().join(name);
-    if std::env::var_os("FSOPS_GOLDEN_UPDATE").is_some() {
+    if updating() {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, bytes).unwrap();
+        eprintln!("golden file rewritten: {name}");
         return;
     }
     let want = fs::read(&path).unwrap_or_else(|_| panic!("golden file missing: {name}"));
@@ -268,10 +284,10 @@ fn run_armed(case: &Case, arm: impl FnOnce(&mut Fx)) -> (String, Option<Vec<u8>>
 
 /// Every golden file of the journal evidence, keyed by file name, plus the index that
 /// lists which phase or crash point of which operation can not be reached.
-fn generate() -> BTreeMap<String, Vec<u8>> {
+fn generate(only: Option<&[&str]>) -> BTreeMap<String, Vec<u8>> {
     let mut out = BTreeMap::new();
     let mut index = String::new();
-    for case in cases() {
+    for case in cases().into_iter().filter(|c| only.is_none_or(|o| o.contains(&c.name))) {
         let (end, bytes) = run_armed(&case, |_| {});
         assert_eq!(end, "completed", "{}", case.name);
         index += &format!("{} end completed\n", case.name);
@@ -301,37 +317,70 @@ fn generate() -> BTreeMap<String, Vec<u8>> {
             }
         }
     }
-    out.insert("journal/INDEX.txt".into(), index.into_bytes());
+    if only.is_none() {
+        out.insert("journal/INDEX.txt".into(), index.into_bytes());
+    }
     out
 }
 
 /// The evidence takes a while (every state is a real operation with fsync), so the tests
-/// that only read it share one run.
+/// that read it share one run.
 fn generated_once() -> &'static BTreeMap<String, Vec<u8>> {
     static ONCE: std::sync::OnceLock<BTreeMap<String, Vec<u8>>> = std::sync::OnceLock::new();
-    ONCE.get_or_init(generate)
+    ONCE.get_or_init(|| generate(None))
 }
 
 #[test]
 fn journal_after_every_reachable_phase_matches_the_golden_files() {
-    let generated = generated_once();
-    for (name, bytes) in generated {
+    for (name, bytes) in generated_once() {
         assert_golden(name, bytes);
     }
-    // A golden file nobody produces any more is stale evidence.
-    let mut stale = Vec::new();
-    for entry in fs::read_dir(golden_dir().join("journal")).unwrap().flatten() {
-        let name = format!("journal/{}", entry.file_name().to_str().unwrap());
-        if !generated.contains_key(&name) {
-            stale.push(name);
-        }
-    }
-    assert!(stale.is_empty() || std::env::var_os("FSOPS_GOLDEN_UPDATE").is_some(), "stale golden files: {stale:?}");
 }
 
+/// Files in the golden directory that no test produces any more are stale evidence and
+/// fail the run; regenerating (`FSOPS_GOLDEN_UPDATE=1`) deletes them and says so.
+#[test]
+fn the_golden_directory_holds_no_stale_files() {
+    let journal = generated_once();
+    let expected = |dir: &str| -> Vec<String> {
+        match dir {
+            "journal" => journal.keys().map(|k| k.trim_start_matches("journal/").to_owned()).collect(),
+            "recovery" => vec!["rename_and_move.txt".into()],
+            "error" => vec!["variants.txt".into()],
+            "paths" => ["differential_digest.txt", "fs_context_new_table.txt", "lexical_table.txt", "locate_resolve_relative_table.txt"].map(String::from).to_vec(),
+            "sql" => vec!["prefix_behaviour.txt".into(), "available_behaviour.txt".into()],
+            _ => vec![],
+        }
+    };
+    let mut stale = Vec::new();
+    for dir in fs::read_dir(golden_dir()).unwrap().flatten() {
+        let dir_name = dir.file_name().into_string().unwrap();
+        let want = expected(&dir_name);
+        for entry in fs::read_dir(dir.path()).unwrap().flatten() {
+            let file = entry.file_name().into_string().unwrap();
+            if !want.contains(&file) {
+                if updating() {
+                    fs::remove_file(entry.path()).unwrap();
+                    eprintln!("golden file deleted (stale): {dir_name}/{file}");
+                } else {
+                    stale.push(format!("{dir_name}/{file}"));
+                }
+            }
+        }
+    }
+    assert!(stale.is_empty(), "stale golden files: {stale:?}");
+}
+
+/// Two independent runs give the same bytes. Only a few cases are repeated: the matrix
+/// itself is compared with the checked-in files on every run, which covers the rest.
 #[test]
 fn journal_evidence_is_deterministic_run_to_run() {
-    assert_eq!(&generate(), generated_once());
+    let some = ["file_rename_with_companions", "file_trash", "folder_move", "companion_add"];
+    let again = generate(Some(&some));
+    for (name, bytes) in &again {
+        assert_eq!(Some(bytes), generated_once().get(name), "{name}");
+    }
+    assert!(!again.is_empty());
 }
 
 #[test]
@@ -342,4 +391,33 @@ fn every_golden_journal_is_a_valid_document_of_the_current_format() {
             assert!(value["version"].is_u64(), "{name}");
         }
     }
+}
+
+/// A crash after each phase, then a restart: what recovery leaves behind in the journal,
+/// on disk and in the database. Only rename and move (with and without companions).
+#[test]
+fn recovery_after_each_phase_of_rename_and_move_leaves_the_golden_state() {
+    let recovery_cases = ["file_rename", "file_rename_case", "file_move", "file_rename_with_companions", "file_move_with_companions"];
+    let mut text = String::new();
+    for case in cases().into_iter().filter(|c| recovery_cases.contains(&c.name)) {
+        for phase in PHASES {
+            FIXED_OP_IDS.with(|c| c.set(Some(1)));
+            let mut f = (case.setup)();
+            f.ops.journal.crash_at = Some(phase);
+            let crashed = (case.run)(&mut f) == Err(Error::RestartRequired);
+            if !crashed {
+                FIXED_OP_IDS.with(|c| c.set(None));
+                continue;
+            }
+            let report = f.reopen_and_recover();
+            let journal = journal_after(&f).map(|b| String::from_utf8(b).unwrap()).unwrap_or_default();
+            let snapshot = f.snapshot().replace(f.dir.to_str().unwrap(), "<DIR>");
+            FIXED_OP_IDS.with(|c| c.set(None));
+            text += &format!(
+                "== {} after {phase:?}\nmanual {:?} detach {:?} reset {:?} blocked {}\njournal {journal}\n{snapshot}\n",
+                case.name, report.manual, report.detach_ids, report.reset_ids, f.ops.journal.is_blocked()
+            );
+        }
+    }
+    assert_golden("recovery/rename_and_move.txt", text.as_bytes());
 }

@@ -1,0 +1,148 @@
+== file_rename after Prepared
+manual [] detach [] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /a.stl [109, 111, 100, 101, 108, 32, 49]
+d /sub
+F 1 a.stl /a.stl None None None
+== file_rename after Renamed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /b.stl [109, 111, 100, 101, 108, 32, 49]
+d /sub
+F 1 b.stl /b.stl None None None
+== file_rename after Committed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /b.stl [109, 111, 100, 101, 108, 32, 49]
+d /sub
+F 1 b.stl /b.stl None None None
+== file_rename_case after Prepared
+manual [] detach [] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /a.stl [109, 111, 100, 101, 108, 32, 49]
+d /sub
+F 1 a.stl /a.stl None None None
+== file_rename_case after TmpRenamed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /A.stl [109, 111, 100, 101, 108, 32, 49]
+d /sub
+F 1 A.stl /A.stl None None None
+== file_rename_case after Renamed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /A.stl [109, 111, 100, 101, 108, 32, 49]
+d /sub
+F 1 A.stl /A.stl None None None
+== file_rename_case after Committed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /A.stl [109, 111, 100, 101, 108, 32, 49]
+d /sub
+F 1 A.stl /A.stl None None None
+== file_move after Prepared
+manual [] detach [] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /a.stl [109, 111, 100, 101, 108, 32, 49]
+d /sub
+F 1 a.stl /a.stl None None None
+== file_move after Renamed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+d /sub
+f /sub/a.stl [109, 111, 100, 101, 108, 32, 49]
+F 1 a.stl /sub/a.stl Some(1) None None
+== file_move after Committed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+d /sub
+f /sub/a.stl [109, 111, 100, 101, 108, 32, 49]
+F 1 a.stl /sub/a.stl Some(1) None None
+== file_rename_with_companions after Prepared
+manual [] detach [] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /Foo.3mf [109, 111, 100, 101, 108, 32, 49]
+d /Foo_extras
+f /Foo_extras/pic.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+f /Foo_extras/zzz.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+d /sub
+F 1 Foo.3mf /Foo.3mf None None None
+C 1 1 pic.png /Foo_extras/pic.png None None
+C 2 1 zzz.png /Foo_extras/zzz.png None None
+== file_rename_with_companions after Renamed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /Bar.3mf [109, 111, 100, 101, 108, 32, 49]
+d /Bar_extras
+f /Bar_extras/pic.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+f /Bar_extras/zzz.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+d /sub
+F 1 Bar.3mf /Bar.3mf None None None
+C 1 1 pic.png /Bar_extras/pic.png None None
+C 2 1 zzz.png /Bar_extras/zzz.png None None
+== file_rename_with_companions after CompanionsMoved
+manual [] detach [] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /Foo.3mf [109, 111, 100, 101, 108, 32, 49]
+d /Foo_extras
+f /Foo_extras/pic.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+f /Foo_extras/zzz.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+d /sub
+F 1 Foo.3mf /Foo.3mf None None None
+C 1 1 pic.png /Foo_extras/pic.png None None
+C 2 1 zzz.png /Foo_extras/zzz.png None None
+== file_rename_with_companions after Committed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /Bar.3mf [109, 111, 100, 101, 108, 32, 49]
+d /Bar_extras
+f /Bar_extras/pic.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+f /Bar_extras/zzz.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+d /sub
+F 1 Bar.3mf /Bar.3mf None None None
+C 1 1 pic.png /Bar_extras/pic.png None None
+C 2 1 zzz.png /Bar_extras/zzz.png None None
+== file_move_with_companions after Prepared
+manual [] detach [] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /Foo.3mf [109, 111, 100, 101, 108, 32, 49]
+d /Foo_extras
+f /Foo_extras/pic.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+f /Foo_extras/zzz.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+d /sub
+F 1 Foo.3mf /Foo.3mf None None None
+C 1 1 pic.png /Foo_extras/pic.png None None
+C 2 1 zzz.png /Foo_extras/zzz.png None None
+== file_move_with_companions after Renamed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+d /sub
+f /sub/Foo.3mf [109, 111, 100, 101, 108, 32, 49]
+d /sub/Foo_extras
+f /sub/Foo_extras/pic.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+f /sub/Foo_extras/zzz.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+F 1 Foo.3mf /sub/Foo.3mf Some(1) None None
+C 1 1 pic.png /sub/Foo_extras/pic.png None None
+C 2 1 zzz.png /sub/Foo_extras/zzz.png None None
+== file_move_with_companions after CompanionsMoved
+manual [] detach [] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+f /Foo.3mf [109, 111, 100, 101, 108, 32, 49]
+d /Foo_extras
+f /Foo_extras/pic.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+f /Foo_extras/zzz.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+d /sub
+F 1 Foo.3mf /Foo.3mf None None None
+C 1 1 pic.png /Foo_extras/pic.png None None
+C 2 1 zzz.png /Foo_extras/zzz.png None None
+== file_move_with_companions after Committed
+manual [] detach [1] reset [] blocked false
+journal {"version":1,"intents":[],"folders":[]}
+d /sub
+f /sub/Foo.3mf [109, 111, 100, 101, 108, 32, 49]
+d /sub/Foo_extras
+f /sub/Foo_extras/pic.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+f /sub/Foo_extras/zzz.png [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]
+F 1 Foo.3mf /sub/Foo.3mf Some(1) None None
+C 1 1 pic.png /sub/Foo_extras/pic.png None None
+C 2 1 zzz.png /sub/Foo_extras/zzz.png None None
