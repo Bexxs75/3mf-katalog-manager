@@ -222,6 +222,8 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
         "id", "printer_id", "remote_id", "file_name", "outcome", "raw_status", "ended_at",
         "print_duration_s", "used_mm", "state",
     ]),
+    ("file_print_info", &["file_id", "reader_version", "read_at", "slice_state", "settings_state"]),
+    ("file_print_plates", &["file_id", "plate_index", "first_layer_seconds"]),
 ];
 
 fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
@@ -417,6 +419,27 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("printer_jobs", "booked_file_id", ColType::Integer, true),
     ("printer_jobs", "booked_g", ColType::Real, true),
     ("printer_jobs", "decided_at", ColType::Text, true),
+    // Print data of a 3MF - see db/repository.rs (load_print_info).
+    ("file_print_info", "file_id", ColType::Integer, false),
+    ("file_print_info", "reader_version", ColType::Integer, false),
+    ("file_print_info", "read_at", ColType::Text, false),
+    ("file_print_info", "slice_state", ColType::Text, false),
+    ("file_print_info", "settings_state", ColType::Text, false),
+    ("file_print_info", "printer_model", ColType::Text, true),
+    ("file_print_info", "bed_type", ColType::Text, true),
+    ("file_print_info", "layer_height_mm", ColType::Real, true),
+    ("file_print_info", "nozzle_mm", ColType::Real, true),
+    ("file_print_info", "nozzle_mixed", ColType::Integer, false),
+    ("file_print_info", "bed_temp_c", ColType::Real, true),
+    ("file_print_info", "bed_temp_mixed", ColType::Integer, false),
+    ("file_print_info", "nozzle_temp_c", ColType::Real, true),
+    ("file_print_info", "nozzle_temp_mixed", ColType::Integer, false),
+    ("file_print_plates", "file_id", ColType::Integer, false),
+    ("file_print_plates", "plate_index", ColType::Integer, false),
+    ("file_print_plates", "plate_name", ColType::Text, true),
+    ("file_print_plates", "print_seconds", ColType::Integer, true),
+    ("file_print_plates", "first_layer_seconds", ColType::Real, true),
+    ("file_print_plates", "plate_bed_type", ColType::Text, true),
 ];
 /// Checks the storage classes from `COLUMN_TYPES`. A crafted DB can bring tables
 /// without type affinity, e.g. `slot_count = 4.5`: it passes every value check but
@@ -620,6 +643,140 @@ fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// The print data tables are derived from the 3MF files, but a crafted backup can bring them
+/// without primary key, foreign key and CHECK clauses, and `foreign_key_check` only knows
+/// declared keys. So every rule is checked on the data itself. A violation rejects the whole
+/// backup: nothing is dropped silently, because a damaged backup should not lose data unnoticed.
+///
+/// Every condition covers `IS NULL` explicitly (a comparison with NULL is UNKNOWN and would
+/// slip through). Runs after `validate_column_types`, so the storage classes are known.
+fn validate_print_info_rows(conn: &Connection) -> Result<(), String> {
+    use crate::threemf::print_info::{
+        MAX_LAYER_HEIGHT_MM, MAX_NOZZLE_MM, MAX_PLATES, MAX_SECONDS, MAX_TEMP_C, MIN_LAYER_HEIGHT_MM, MIN_NOZZLE_MM,
+        MIN_SECONDS, MIN_TEMP_C, PRINT_INFO_READER_VERSION,
+    };
+    let count = |sql: &str, params: &[&dyn rusqlite::ToSql]| -> Result<i64, String> {
+        conn.query_row(sql, params, |r| r.get(0)).map_err(|e| e.to_string())
+    };
+    let reject = |what: &str| format!("Katalog-Datenbank enthaelt ungueltige Druckdaten ({what})");
+
+    // Reference: every row belongs to an existing 3MF file.
+    let orphans = count(
+        "SELECT (SELECT COUNT(*) FROM file_print_info i WHERE i.file_id IS NULL OR NOT EXISTS
+                    (SELECT 1 FROM files f WHERE f.id = i.file_id AND f.file_type = '3mf'))
+              + (SELECT COUNT(*) FROM file_print_plates p WHERE p.file_id IS NULL OR NOT EXISTS
+                    (SELECT 1 FROM files f WHERE f.id = p.file_id AND f.file_type = '3mf'))",
+        &[],
+    )?;
+    if orphans > 0 {
+        return Err(reject("Verweis auf keine 3MF-Datei"));
+    }
+
+    // Uniqueness: one info row per file, one plate row per (file, index).
+    let duplicates = count(
+        "SELECT (SELECT COUNT(*) - COUNT(DISTINCT file_id) FROM file_print_info)
+              + (SELECT COUNT(*) FROM (SELECT 1 FROM file_print_plates GROUP BY file_id, plate_index HAVING COUNT(*) > 1))",
+        &[],
+    )?;
+    if duplicates > 0 {
+        return Err(reject("doppelte Zeilen"));
+    }
+
+    // Plate index and plate count per file.
+    let max_plates = MAX_PLATES as i64;
+    let plates = count(
+        "SELECT (SELECT COUNT(*) FROM file_print_plates
+                  WHERE plate_index IS NULL OR typeof(plate_index) <> 'integer' OR plate_index < 1)
+              + (SELECT COUNT(*) FROM (SELECT 1 FROM file_print_plates GROUP BY file_id HAVING COUNT(*) > ?1))",
+        &[&max_plates],
+    )?;
+    if plates > 0 {
+        return Err(reject("Plattenindex"));
+    }
+
+    // States, version and flags.
+    let max_version = i64::from(PRINT_INFO_READER_VERSION);
+    let states = count(
+        "SELECT COUNT(*) FROM file_print_info
+         WHERE slice_state IS NULL OR slice_state NOT IN ('sliced', 'no_slice_data', 'not_recognized', 'unreadable')
+            OR settings_state IS NULL OR settings_state NOT IN ('read', 'missing', 'unreadable', 'not_attempted')
+            OR reader_version IS NULL OR typeof(reader_version) <> 'integer' OR reader_version < 1 OR reader_version > ?1
+            OR nozzle_mixed IS NULL OR nozzle_mixed NOT IN (0, 1)
+            OR bed_temp_mixed IS NULL OR bed_temp_mixed NOT IN (0, 1)
+            OR nozzle_temp_mixed IS NULL OR nozzle_temp_mixed NOT IN (0, 1)",
+        &[&max_version],
+    )?;
+    if states > 0 {
+        return Err(reject("Zustand, Version oder Kennzeichen"));
+    }
+
+    // Temperatures and print time exist only for a sliced file; a mixed value has no number.
+    let inconsistent = count(
+        "SELECT (SELECT COUNT(*) FROM file_print_info
+                  WHERE (slice_state <> 'sliced' AND (nozzle_temp_c IS NOT NULL OR bed_temp_c IS NOT NULL
+                                                      OR nozzle_temp_mixed <> 0 OR bed_temp_mixed <> 0))
+                     OR (nozzle_mixed = 1 AND nozzle_mm IS NOT NULL)
+                     OR (bed_temp_mixed = 1 AND bed_temp_c IS NOT NULL)
+                     OR (nozzle_temp_mixed = 1 AND nozzle_temp_c IS NOT NULL))
+              + (SELECT COUNT(*) FROM file_print_plates p JOIN file_print_info i ON i.file_id = p.file_id
+                  WHERE p.print_seconds IS NOT NULL AND i.slice_state <> 'sliced')",
+        &[],
+    )?;
+    if inconsistent > 0 {
+        return Err(reject("Werte, die der Zustand ausschliesst"));
+    }
+
+    // Plausible numbers (never 0 as a placeholder, nothing negative or absurd).
+    let numbers = count(
+        "SELECT (SELECT COUNT(*) FROM file_print_info
+                  WHERE (layer_height_mm IS NOT NULL AND NOT (layer_height_mm BETWEEN ?1 AND ?2))
+                     OR (nozzle_mm IS NOT NULL AND NOT (nozzle_mm BETWEEN ?3 AND ?4))
+                     OR (bed_temp_c IS NOT NULL AND NOT (bed_temp_c BETWEEN ?5 AND ?6))
+                     OR (nozzle_temp_c IS NOT NULL AND NOT (nozzle_temp_c BETWEEN ?5 AND ?6)))
+              + (SELECT COUNT(*) FROM file_print_plates
+                  WHERE (print_seconds IS NOT NULL AND NOT (print_seconds BETWEEN ?7 AND ?8))
+                     OR (first_layer_seconds IS NOT NULL AND NOT (first_layer_seconds BETWEEN ?7 AND ?8)))",
+        &[
+            &MIN_LAYER_HEIGHT_MM, &MAX_LAYER_HEIGHT_MM, &MIN_NOZZLE_MM, &MAX_NOZZLE_MM, &MIN_TEMP_C, &MAX_TEMP_C,
+            &MIN_SECONDS, &MAX_SECONDS,
+        ],
+    )?;
+    if numbers > 0 {
+        return Err(reject("Zahl ausserhalb des erlaubten Bereichs"));
+    }
+
+    // Texts are shown in the UI: same limits as freshly read ones; the read time must parse.
+    let mut info = conn
+        .prepare("SELECT read_at, printer_model, bed_type FROM file_print_info")
+        .map_err(|e| e.to_string())?;
+    let rows = info
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, Option<String>>(2)?)))
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let (read_at, printer_model, bed_type) = row.map_err(|e| e.to_string())?;
+        if chrono::DateTime::parse_from_rfc3339(&read_at).is_err() {
+            return Err(reject("Lesezeitpunkt"));
+        }
+        for text in [printer_model, bed_type].into_iter().flatten() {
+            crate::threemf::source::validate_source_value(&text).map_err(|_| reject("Text"))?;
+        }
+    }
+    drop(info);
+    let mut plate_texts = conn
+        .prepare("SELECT plate_name, plate_bed_type FROM file_print_plates")
+        .map_err(|e| e.to_string())?;
+    let rows = plate_texts
+        .query_map([], |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)))
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let (name, bed_type) = row.map_err(|e| e.to_string())?;
+        for text in [name, bed_type].into_iter().flatten() {
+            crate::threemf::source::validate_source_value(&text).map_err(|_| reject("Text"))?;
+        }
+    }
+    Ok(())
+}
+
 /// On restore: drop connections with addresses outside the home network and
 /// pause all others until the user tests them again.
 fn sanitize_printer_connections(conn: &Connection) -> Result<(), String> {
@@ -741,6 +898,7 @@ fn validate_catalog_db_bytes(
             // spools could end up in the same slot.
             validate_printer_invariants(&conn)?;
             validate_printer_link_rows(&conn)?;
+            validate_print_info_rows(&conn)?;
             // quick_check doesn't catch FK violations; check them after the migration.
             conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
             let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check").map_err(|e| e.to_string())?;
@@ -2410,6 +2568,261 @@ mod tests {
             "ein regulaer befuellter Katalog mit Daten in jeder Tabelle muss weiterhin akzeptiert werden: {result:?}"
         );
     }
+    // --- print data tables (file_print_info, file_print_plates) ---
+
+    fn print_record(slice_state: crate::threemf::print_info::SliceState, plates: &[i64]) -> db::models::PrintInfoRecord {
+        use db::models::{PrintInfoRecord, PrintPlateRecord};
+        use crate::threemf::print_info::SettingsState;
+        PrintInfoRecord {
+            reader_version: 1,
+            read_at: "2026-10-31T10:00:00+00:00".to_string(),
+            slice_state,
+            settings_state: SettingsState::Read,
+            printer_model: Some("Test Printer".to_string()),
+            bed_type: Some("Test Plate".to_string()),
+            layer_height_mm: Some(0.2),
+            nozzle_mm: Some(0.4),
+            nozzle_mixed: false,
+            bed_temp_c: Some(60.0),
+            bed_temp_mixed: false,
+            nozzle_temp_c: None,
+            nozzle_temp_mixed: true,
+            plates: plates
+                .iter()
+                .map(|i| PrintPlateRecord {
+                    plate_index: *i,
+                    plate_name: Some(format!("Plate {i}")),
+                    print_seconds: Some(600 + i),
+                    first_layer_seconds: Some(12.5),
+                    plate_bed_type: Some("supertack_plate".to_string()),
+                })
+                .collect(),
+        }
+        .validated()
+    }
+
+    fn file_with_print_data(path: &std::path::Path, record: db::models::PrintInfoRecord) -> NewFile {
+        let mut file = sample_new_file_for_rescan_test(path);
+        file.name = path.file_name().unwrap().to_string_lossy().to_string();
+        file.print_info = Some(record);
+        file
+    }
+
+    #[test]
+    fn print_data_survives_a_backup_and_restore() {
+        use crate::threemf::print_info::SliceState;
+        let (source, dir) = state_with_catalog("backup_print_data_a");
+        let (sliced_id, source_id, sliced, no_data);
+        {
+            let mut conn = source.db.lock().unwrap();
+            sliced = print_record(SliceState::Sliced, &[1, 2]);
+            no_data = print_record(SliceState::NoSliceData, &[1, 2, 4]);
+            sliced_id = db::insert_file(&mut conn, &file_with_print_data(&dir.join("sliced.3mf"), sliced.clone())).unwrap();
+            source_id = db::insert_file(&mut conn, &file_with_print_data(&dir.join("source.3mf"), no_data.clone())).unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("a backup with print data validates");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_print_data_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        let restored = |id: i64| db::get_file(&conn, id).unwrap().unwrap().print_info.expect("print data restored");
+        assert_eq!(restored(sliced_id), sliced);
+        assert_eq!(restored(source_id), no_data);
+    }
+
+    #[test]
+    fn a_backup_from_before_the_print_data_tables_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_print_data_old_a");
+        {
+            let mut conn = old.db.lock().unwrap();
+            let file = sample_new_file_for_rescan_test(&dir.join("old.3mf"));
+            db::insert_file(&mut conn, &file).unwrap();
+            conn.execute_batch("DROP TABLE file_print_plates; DROP TABLE file_print_info").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT file_id FROM file_print_info").is_err(), "precondition: the backup has no such table");
+
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_print_data_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        let count = |table: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!((count("file_print_info"), count("file_print_plates")), (0, 0), "tables exist and are empty");
+        assert_eq!(db::list_files(&conn).unwrap().len(), 1, "the file itself is kept");
+    }
+
+    /// A backup whose print data tables carry no primary key, foreign key, NOT NULL or CHECK
+    /// (as a crafted file can), with one valid 3MF file (id 1) and one STL file (id 2); `setup`
+    /// adds the rows under test.
+    fn print_data_template() -> &'static [u8] {
+        // Creating a catalog is slow, so the base database is built once and copied per case.
+        static TEMPLATE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+        TEMPLATE.get_or_init(|| {
+            backup_test_db_with(|conn| {
+                conn.execute_batch(
+                    "DROP TABLE file_print_plates;
+                     DROP TABLE file_print_info;
+                     CREATE TABLE file_print_info (
+                        file_id INTEGER, reader_version INTEGER, read_at TEXT, slice_state TEXT, settings_state TEXT,
+                        printer_model TEXT, bed_type TEXT, layer_height_mm REAL, nozzle_mm REAL, nozzle_mixed INTEGER,
+                        bed_temp_c REAL, bed_temp_mixed INTEGER, nozzle_temp_c REAL, nozzle_temp_mixed INTEGER);
+                     CREATE TABLE file_print_plates (
+                        file_id INTEGER, plate_index INTEGER, plate_name TEXT, print_seconds INTEGER,
+                        first_layer_seconds REAL, plate_bed_type TEXT);",
+                )
+                .unwrap();
+                crate::db::test_insert_minimal_file(conn, "/tmp/a.3mf", None).unwrap();
+                crate::db::test_insert_minimal_file(conn, "/tmp/b.stl", None).unwrap();
+                conn.execute("UPDATE files SET file_type = 'stl' WHERE id = 2", []).unwrap();
+            })
+            .0
+        })
+    }
+
+    /// Runs `setup` on a copy of the template and returns (the explicit print data check on
+    /// that database alone, the verdict of the whole restore validation on its bytes).
+    fn print_data_case(setup: impl FnOnce(&Connection)) -> (Result<(), String>, Result<(), String>) {
+        let path = unique_test_db_path("print_data_case");
+        std::fs::write(&path, print_data_template()).unwrap();
+        let explicit = {
+            let conn = Connection::open(&path).unwrap();
+            setup(&conn);
+            validate_print_info_rows(&conn)
+        };
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let restore = validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir(), &[]).map_err(|e| e.message);
+        (explicit, restore)
+    }
+
+    /// `INSERT INTO file_print_info` with valid defaults, some columns overridden.
+    fn info_row(conn: &Connection, file_id: i64, overrides: &[(&str, &str)]) {
+        let mut columns: Vec<(&str, String)> = vec![
+            ("file_id", file_id.to_string()),
+            ("reader_version", "1".into()),
+            ("read_at", "'2026-10-31T10:00:00+00:00'".into()),
+            ("slice_state", "'sliced'".into()),
+            ("settings_state", "'read'".into()),
+            ("nozzle_mixed", "0".into()),
+            ("bed_temp_mixed", "0".into()),
+            ("nozzle_temp_mixed", "0".into()),
+        ];
+        for (name, value) in overrides {
+            match columns.iter_mut().find(|(n, _)| n == name) {
+                Some(slot) => slot.1 = value.to_string(),
+                None => columns.push((name, value.to_string())),
+            }
+        }
+        let names: Vec<_> = columns.iter().map(|(n, _)| *n).collect();
+        let values: Vec<_> = columns.iter().map(|(_, v)| v.as_str()).collect();
+        conn.execute(&format!("INSERT INTO file_print_info ({}) VALUES ({})", names.join(", "), values.join(", ")), []).unwrap();
+    }
+
+    fn plate_row(conn: &Connection, file_id: i64, index: &str, overrides: &[(&str, &str)]) {
+        let mut columns: Vec<(&str, String)> = vec![("file_id", file_id.to_string()), ("plate_index", index.to_string())];
+        for (name, value) in overrides {
+            columns.push((name, value.to_string()));
+        }
+        let names: Vec<_> = columns.iter().map(|(n, _)| *n).collect();
+        let values: Vec<_> = columns.iter().map(|(_, v)| v.as_str()).collect();
+        conn.execute(&format!("INSERT INTO file_print_plates ({}) VALUES ({})", names.join(", "), values.join(", ")), []).unwrap();
+    }
+
+    #[test]
+    fn a_backup_with_valid_print_data_but_no_constraints_is_accepted() {
+        let (explicit, restore) = print_data_case(|conn| {
+            info_row(conn, 1, &[("printer_model", "'X1'"), ("layer_height_mm", "0.2"), ("nozzle_temp_c", "210"), ("bed_temp_c", "60"), ("nozzle_mixed", "1")]);
+            plate_row(conn, 1, "1", &[("print_seconds", "600"), ("first_layer_seconds", "12.5"), ("plate_name", "'A'")]);
+            plate_row(conn, 1, "2", &[]);
+        });
+        assert!(explicit.is_ok(), "{explicit:?}");
+        assert!(restore.is_ok(), "{restore:?}");
+    }
+
+    #[test]
+    fn a_backup_with_damaged_print_data_is_rejected_by_the_explicit_check() {
+        let many_plates = |conn: &Connection| {
+            for i in 1..=1025 {
+                plate_row(conn, 1, &i.to_string(), &[]);
+            }
+        };
+        type Setup = Box<dyn Fn(&Connection)>;
+        let cases: Vec<(&str, Setup)> = vec![
+            ("info row of a file that does not exist", Box::new(|c| info_row(c, 999, &[]))),
+            ("plate row of a file that does not exist", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 999, "1", &[]) })),
+            ("info row of a file that is no 3MF", Box::new(|c| info_row(c, 2, &[]))),
+            ("two info rows for one file", Box::new(|c| { info_row(c, 1, &[]); info_row(c, 1, &[]) })),
+            ("two plate rows with the same index", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "2", &[]); plate_row(c, 1, "2", &[]) })),
+            ("plate index 0", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "0", &[]) })),
+            ("plate index -3", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "-3", &[]) })),
+            ("more plates than allowed", Box::new(move |c| { info_row(c, 1, &[]); many_plates(c) })),
+            ("unknown slice state", Box::new(|c| info_row(c, 1, &[("slice_state", "'x'")]))),
+            ("unknown settings state", Box::new(|c| info_row(c, 1, &[("settings_state", "'x'")]))),
+            ("reader version from a newer build", Box::new(|c| info_row(c, 1, &[("reader_version", "99")]))),
+            ("reader version 0", Box::new(|c| info_row(c, 1, &[("reader_version", "0")]))),
+            ("flag outside 0 and 1", Box::new(|c| info_row(c, 1, &[("nozzle_mixed", "2")]))),
+            ("nozzle temperature without print data", Box::new(|c| info_row(c, 1, &[("slice_state", "'no_slice_data'"), ("nozzle_temp_c", "210")]))),
+            ("bed temperature in an unreadable file", Box::new(|c| info_row(c, 1, &[("slice_state", "'unreadable'"), ("bed_temp_c", "60")]))),
+            ("mixed temperature flag without print data", Box::new(|c| info_row(c, 1, &[("slice_state", "'no_slice_data'"), ("nozzle_temp_mixed", "1")]))),
+            ("print time without print data", Box::new(|c| { info_row(c, 1, &[("slice_state", "'no_slice_data'")]); plate_row(c, 1, "1", &[("print_seconds", "600")]) })),
+            ("mixed flag with a number", Box::new(|c| info_row(c, 1, &[("nozzle_mixed", "1"), ("nozzle_mm", "0.4")]))),
+            ("layer height below zero", Box::new(|c| info_row(c, 1, &[("layer_height_mm", "-1")]))),
+            ("layer height 0", Box::new(|c| info_row(c, 1, &[("layer_height_mm", "0")]))),
+            ("nozzle 9 mm", Box::new(|c| info_row(c, 1, &[("nozzle_mm", "9")]))),
+            ("temperature 600", Box::new(|c| info_row(c, 1, &[("bed_temp_c", "600")]))),
+            ("print time 0", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("print_seconds", "0")]) })),
+            ("print time below zero", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("print_seconds", "-5")]) })),
+            ("first layer time 0", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("first_layer_seconds", "0")]) })),
+            ("bed type with a control character", Box::new(|c| info_row(c, 1, &[("bed_type", "'x' || char(7)")]))),
+            ("printer model with 10000 characters", Box::new(|c| info_row(c, 1, &[("printer_model", "printf('%.*c', 10000, 'a')")]))),
+            ("plate name with a control character", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("plate_name", "'a' || char(10)")]) })),
+            ("plate bed type with 10000 characters", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("plate_bed_type", "printf('%.*c', 10000, 'a')")]) })),
+            ("read time that is no date", Box::new(|c| info_row(c, 1, &[("read_at", "'garbage'")]))),
+        ];
+        for (label, setup) in &cases {
+            // The restore refuses the backup, and it is the explicit check that does it
+            // (the other checks of the restore know nothing about these rules).
+            let (explicit, restore) = print_data_case(|conn| setup(conn));
+            assert!(restore.is_err(), "restore must refuse: {label}");
+            let message = explicit.expect_err(label);
+            assert!(message.contains("Druckdaten"), "{label}: {message}");
+        }
+    }
+
+    #[test]
+    fn foreign_key_check_alone_does_not_see_orphans_in_a_table_without_keys() {
+        // Why `validate_print_info_rows` exists: the table of a crafted backup declares no key.
+        let (bytes, _, _) = backup_test_db_with(|conn| {
+            conn.execute_batch(
+                "DROP TABLE file_print_plates;
+                 CREATE TABLE file_print_plates (file_id INTEGER, plate_index INTEGER, plate_name TEXT, print_seconds INTEGER, first_layer_seconds REAL, plate_bed_type TEXT);
+                 INSERT INTO file_print_plates (file_id, plate_index) VALUES (999, 1);",
+            )
+            .unwrap();
+        });
+        let path = unique_test_db_path("print_data_fk_probe");
+        std::fs::write(&path, &bytes).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        let violations: i64 = conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0)).unwrap();
+        assert_eq!(violations, 0, "foreign_key_check sees nothing");
+        let _ = std::fs::remove_file(path);
+        assert!(validate_print_info_rows(&conn).is_err(), "the explicit check does");
+    }
+
     #[test]
     fn column_types_covers_every_table_in_required_columns() {
         for (table, _) in REQUIRED_COLUMNS {

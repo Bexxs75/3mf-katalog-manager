@@ -135,7 +135,14 @@ mod tests {
             .unwrap();
         assert_eq!(foreign, 0);
         // Tables the desktop import requires.
-        for (table, column) in [("files", "trash_path"), ("folders", "path"), ("app_settings", "value"), ("printer_connections", "address")] {
+        for (table, column) in [
+            ("files", "trash_path"),
+            ("folders", "path"),
+            ("app_settings", "value"),
+            ("printer_connections", "address"),
+            ("file_print_info", "reader_version"),
+            ("file_print_plates", "print_seconds"),
+        ] {
             let found: i64 = copy
                 .query_row(&format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='{column}'"), [], |r| r.get(0))
                 .unwrap();
