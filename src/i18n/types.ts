@@ -825,8 +825,6 @@ export interface Translations {
   markAsNotPrinted: string;
   metaWeight: string;
   metaWeightFromSlicer: string;
-  sliceFilamentHeading: string;
-  sliceFilamentPlateLabel: string;
   metaCostEstimate: string;
   costEstimateUnpricedHint: string;
   filamentCheckHeading: string;

@@ -335,7 +335,7 @@ it('explains a missing filament usage for a loaded 3MF and links to the manual',
 it('shows the usage and no hint when the 3MF has slicer data', () => {
   renderPage({ model: makeModelFile({ path: '/c/a.3mf', sliceInfo }) });
   expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
-  expect(screen.getByText(de.sliceFilamentHeading)).toBeVisible();
+  expect(screen.getByRole('heading', { name: de.printDataHeading })).toBeVisible();
 });
 
 it.each(['stl', 'obj', 'step'])('shows no usage hint for a %s file', extension => {

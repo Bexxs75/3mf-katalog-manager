@@ -33,6 +33,8 @@ import { ModelPreview } from './ModelPreview';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { SourcePlatformRows } from './SourcePlatformRows';
+import { PrintDataCard } from './PrintDataCard';
+import { showsPrintData } from '../lib/printData';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
@@ -335,6 +337,7 @@ export function DetailPanel({
           <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
         </div>
 
+        {showsPrintData(model) && <PrintDataCard key={model.id} model={model} variant="compact" />}
         <BuildPlateFit model={model} printers={printers} variant="compact" />
         {import.meta.env.VITE_TARGET === 'web'
           ? <CompanionWebSection key={model.id} fileId={model.id} variant="compact" />
@@ -529,6 +532,7 @@ export function DetailPanel({
           </div>
         </div>
 
+        {showsPrintData(model) && <PrintDataCard key={model.id} model={model} variant="comfort" />}
         <BuildPlateFit model={model} printers={printers} variant="comfort" />
         {import.meta.env.VITE_TARGET === 'web'
           ? <CompanionWebSection key={model.id} fileId={model.id} variant="comfort" />

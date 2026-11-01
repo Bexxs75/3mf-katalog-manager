@@ -38,7 +38,7 @@ import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 import { usePrintLog } from '../hooks/usePrintLog';
 import { useFilamentCheck } from '../hooks/useFilamentCheck';
-import { formatWeightG, formatLengthM, formatPrice } from '../i18n/format';
+import { formatPrice } from '../i18n/format';
 import { shortTagLabel, tagLabel } from '../lib/autoTags';
 import { FilamentCheckSection } from './FilamentCheckSection';
 import type { AppError } from '../lib/errors';
@@ -48,6 +48,8 @@ import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { FilamentUsageMissing } from './FilamentUsageMissing';
 import { isFilamentUsageMissing } from '../lib/filamentUsageHelp';
+import { showsPrintData } from '../lib/printData';
+import { PrintDataCard } from './PrintDataCard';
 
 interface Props {
   allTags: string[];
@@ -404,60 +406,40 @@ export function ModelDetailPage({
           : <CompanionSection key={model.id} fileId={model.id} variant="page" />}
       </div>
 
-      {isFilamentUsageMissing(model) && <FilamentUsageMissing />}
+      {/* A current row explains itself in the print data card; the old hint stays for a file not read yet. */}
+      {isFilamentUsageMissing(model) && !model.printInfo?.readerCurrent && <FilamentUsageMissing />}
 
-      {model.sliceInfo && (
-        <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
-          <p className="ui-label text-[var(--ink-3)] mb-3">
-            {t('sliceFilamentHeading')}
-          </p>
-          <div className="flex flex-col gap-3">
-            {model.sliceInfo.plates.map((plate) => (
-              <div key={plate.plateIndex}>
-                <p className="text-small font-semibold text-[var(--ink-2)] mb-1.5">
-                  {t('sliceFilamentPlateLabel').replace('{index}', String(plate.plateIndex))}
-                </p>
-                <div className="flex flex-col gap-1">
-                  {plate.filaments.map((filament, i) => (
-                    <div key={i} className="flex items-center gap-2 text-body">
-                      {filament.color && (
-                        <span
-                          className="w-3 h-3 rounded-full border border-[var(--line)] flex-none"
-                          style={{ backgroundColor: filament.color.slice(0, 7) }}
-                        />
-                      )}
-                      <span className="text-[var(--ink-2)]">{filament.type}</span>
-                      <span className="font-medium tabular-nums tabular-nums text-[var(--ink-3)]">
-                        {formatWeightG(filament.usedG, language)} · {formatLengthM(filament.usedM, language)}
+      {showsPrintData(model) && (
+        <PrintDataCard
+          key={model.id}
+          model={model}
+          variant="page"
+          footer={model.sliceInfo && (
+            <>
+              <FilamentCheckSection
+                check={filamentCheck.checks?.get(model.id) ?? null}
+                error={filamentCheck.error}
+              />
+              {model.costEstimate && (
+                <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[var(--line)] text-body">
+                  <span className="text-[var(--ink-3)]">
+                    {t('metaCostEstimate')}
+                    {model.costEstimate.hasUnpricedFilaments && (
+                      <span title={t('costEstimateUnpricedHint')} className="ml-1 text-[var(--ink-3)]">
+                        *
                       </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-          <FilamentCheckSection
-            check={filamentCheck.checks?.get(model.id) ?? null}
-            error={filamentCheck.error}
-          />
-          {model.costEstimate && (
-            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[var(--line)] text-body">
-              <span className="text-[var(--ink-3)]">
-                {t('metaCostEstimate')}
-                {model.costEstimate.hasUnpricedFilaments && (
-                  <span title={t('costEstimateUnpricedHint')} className="ml-1 text-[var(--ink-3)]">
-                    *
+                    )}
                   </span>
-                )}
-              </span>
-              <span className="font-medium tabular-nums tabular-nums">
-                {model.costEstimate.totalCost === null
-                  ? t('noValue')
-                  : formatPrice(model.costEstimate.totalCost, language)}
-              </span>
-            </div>
+                  <span className="font-medium tabular-nums tabular-nums">
+                    {model.costEstimate.totalCost === null
+                      ? t('noValue')
+                      : formatPrice(model.costEstimate.totalCost, language)}
+                  </span>
+                </div>
+              )}
+            </>
           )}
-        </div>
+        />
       )}
 
       <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
