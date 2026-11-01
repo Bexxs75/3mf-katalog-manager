@@ -2930,3 +2930,12 @@ mod source_platform_tests;
 
 #[cfg(test)]
 mod rescan_phase_tests;
+
+#[cfg(test)]
+mod threemf_gen;
+
+#[cfg(test)]
+mod large_catalog_tests;
+
+#[cfg(test)]
+mod import_speed_tests;
