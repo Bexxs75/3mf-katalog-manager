@@ -60,6 +60,21 @@ describe.each(variants)('PrintDataCard (%s)', variant => {
     expect(screen.queryByText(de.printDataTime)).toBeNull();
   });
 
+  it('shows a PrusaSlicer project (printer, layer height, nozzle; bed type a dash) without temperatures or time', () => {
+    const prusa = makePrintInfo({
+      sliceState: 'no_slice_data', settingsState: 'read', printerModel: 'MK4S', bedType: null, layerHeightMm: 0.15,
+      nozzleMm: { value: 0.4, mixed: false }, bedTempC: { value: null, mixed: false }, nozzleTempC: { value: null, mixed: false }, plates: [],
+    });
+    show(modelWith(prusa, false), variant);
+    expect(screen.getByText('Keine Druckdaten')).toBeVisible();
+    expect(screen.getByText(de.printDataProjectSettings)).toBeVisible();
+    for (const text of ['MK4S', '0,15 mm', '0,4 mm']) expect(screen.getByText(text)).toBeVisible();
+    expect(screen.getAllByTitle(de.printDataNotFound)).toHaveLength(1);
+    expect(screen.getByText('–')).toBeVisible();
+    for (const text of [de.printDataBedTemp, de.printDataNozzleTemp, de.printDataTime]) expect(screen.queryByText(text)).toBeNull();
+    expect(screen.queryByText(/°C/)).toBeNull();
+  });
+
   it('shows a missing project setting as a dash with a tooltip, never as 0', () => {
     show(modelWith(makePrintInfo({ sliceState: 'no_slice_data', ...full, bedType: null, layerHeightMm: null }), false), variant);
     expect(screen.getAllByTitle(de.printDataNotFound)).toHaveLength(2);

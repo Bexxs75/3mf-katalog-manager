@@ -200,6 +200,15 @@ describe('rereadTargets', () => {
     expect(rereadTargets(models, 'selected', new Set(['slicedRead', 'sourceModel', 'stl', 'ghost']))).toEqual(['slicedRead', 'sourceModel']);
   });
 
+  it('a PrusaSlicer project without slice data is not read by "all sliced" but by "selected"', () => {
+    // No slicer weight (nothing sliced), print data stored by an older reader version: shown as unread.
+    const prusa = model('prusa', { weightSource: 'estimated', printDataState: 'unread' });
+    const prusaDone = model('prusaDone', { weightSource: 'estimated', printDataState: 'no_slice_data' });
+    const list = [prusa, prusaDone, model('slicedUnread')];
+    expect(rereadTargets(list, 'all')).toEqual(['slicedUnread']);
+    expect(rereadTargets(list, 'selected', new Set(['prusa', 'prusaDone']))).toEqual(['prusa', 'prusaDone']);
+  });
+
   it('derives the state of a full record without a list state', () => {
     expect(printDataStateOf(model('x', { printDataState: undefined, printInfo: answer('x').printInfo }))).toBe('sliced');
     expect(printDataStateOf(model('x', { path: '/a.obj', printDataState: undefined }))).toBe('none');
