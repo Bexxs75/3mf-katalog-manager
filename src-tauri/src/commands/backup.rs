@@ -1276,6 +1276,7 @@ mod tests {
             favorite: false,
             plate_count: None,
             slice_info_json: None,
+            print_info: None,
         }
     }
     #[test]
@@ -2370,6 +2371,7 @@ mod tests {
                 favorite: true,
                 plate_count: Some(2),
                 slice_info_json: Some("{}".to_string()),
+                print_info: None,
             };
             let file_id = crate::db::insert_file(&mut conn, &new_file).unwrap();
 

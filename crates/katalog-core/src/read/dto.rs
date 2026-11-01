@@ -302,6 +302,7 @@ mod tests {
             slice_info_json: None,
             deleted_at: None,
             trash_path: None,
+            print_info: None,
         }
     }
     fn sample_spool(

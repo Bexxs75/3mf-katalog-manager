@@ -823,7 +823,8 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &mut Vec<Entry>) 
                         .iter()
                         .map(|m| m.name.len() + m.display_color.as_ref().map_or(0, String::len))
                         .sum::<usize>()
-                    + new_file.tags.iter().map(String::len).sum::<usize>();
+                    + new_file.tags.iter().map(String::len).sum::<usize>()
+                    + new_file.print_info.as_ref().map_or(0, |info| info.approx_bytes());
                 batch.push(PendingImport {
                     path,
                     folder_root: None,

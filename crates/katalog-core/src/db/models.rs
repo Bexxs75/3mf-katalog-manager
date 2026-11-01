@@ -1,5 +1,11 @@
 use std::collections::BTreeMap;
 
+use crate::threemf::print_info::{
+    PrintInfo, Reduced, SettingsState, SliceState, MAX_LAYER_HEIGHT_MM, MAX_NOZZLE_MM, MAX_PLATES, MAX_SECONDS,
+    MAX_TEMP_C, MIN_LAYER_HEIGHT_MM, MIN_NOZZLE_MM, MIN_SECONDS, MIN_TEMP_C, PRINT_INFO_READER_VERSION,
+};
+use crate::threemf::source::sanitize_source_value;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileType {
     ThreeMf,
@@ -46,6 +52,158 @@ pub struct SourceInfo {
     pub profile_id: Option<String>,
 }
 
+/// One plate row of `file_print_plates`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrintPlateRecord {
+    pub plate_index: i64,
+    pub plate_name: Option<String>,
+    pub print_seconds: Option<i64>,
+    /// Time of the first layer only; never a print time.
+    pub first_layer_seconds: Option<f64>,
+    pub plate_bed_type: Option<String>,
+}
+
+/// Database mirror of [`PrintInfo`]: one `file_print_info` row plus its plate rows.
+/// Build it with [`PrintInfoRecord::from_print_info`]; the writer validates again, so no
+/// path can hand the table a value its CHECK or primary key would reject.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrintInfoRecord {
+    pub reader_version: u32,
+    pub read_at: String,
+    pub slice_state: SliceState,
+    pub settings_state: SettingsState,
+    pub printer_model: Option<String>,
+    pub bed_type: Option<String>,
+    pub layer_height_mm: Option<f64>,
+    pub nozzle_mm: Option<f64>,
+    pub nozzle_mixed: bool,
+    pub bed_temp_c: Option<f64>,
+    pub bed_temp_mixed: bool,
+    pub nozzle_temp_c: Option<f64>,
+    pub nozzle_temp_mixed: bool,
+    pub plates: Vec<PrintPlateRecord>,
+}
+
+fn in_range(value: Option<f64>, min: f64, max: f64) -> Option<f64> {
+    value.filter(|v| v.is_finite() && (min..=max).contains(v))
+}
+
+/// A reduced value as the pair of columns: a mixed value has no single number.
+fn split_reduced(value: Reduced<f64>) -> (Option<f64>, bool) {
+    match value {
+        Reduced::Value(v) => (Some(v), false),
+        Reduced::Mixed => (None, true),
+        Reduced::Unknown => (None, false),
+    }
+}
+
+impl PrintInfoRecord {
+    pub fn from_print_info(info: &PrintInfo, read_at: String) -> Self {
+        let (nozzle_mm, nozzle_mixed) = split_reduced(info.nozzle_mm);
+        let (bed_temp_c, bed_temp_mixed) = split_reduced(info.bed_temp_c);
+        let (nozzle_temp_c, nozzle_temp_mixed) = split_reduced(info.nozzle_temp_c);
+        PrintInfoRecord {
+            reader_version: PRINT_INFO_READER_VERSION,
+            read_at,
+            slice_state: info.slice_state,
+            settings_state: info.settings_state,
+            printer_model: info.printer_model.clone(),
+            bed_type: info.bed_type.clone(),
+            layer_height_mm: info.layer_height_mm,
+            nozzle_mm,
+            nozzle_mixed,
+            bed_temp_c,
+            bed_temp_mixed,
+            nozzle_temp_c,
+            nozzle_temp_mixed,
+            plates: info
+                .plates
+                .iter()
+                .map(|p| PrintPlateRecord {
+                    plate_index: i64::from(p.plate_index),
+                    plate_name: p.plate_name.clone(),
+                    print_seconds: p.print_seconds.and_then(|s| i64::try_from(s).ok()),
+                    first_layer_seconds: p.first_layer_seconds,
+                    plate_bed_type: p.plate_bed_type.clone(),
+                })
+                .collect(),
+        }
+        .validated()
+    }
+
+    /// Applies every rule the table and the restore check enforce:
+    /// out-of-range numbers become unknown (never 0), texts are cleaned, a mixed value has no
+    /// number, temperatures and print time exist only for a sliced file, plate rows follow the
+    /// the plate rules (index >= 1, the first plate with an index wins, at most `MAX_PLATES`) and exist only
+    /// for the two states that recognised a slicer project. Idempotent.
+    pub fn validated(mut self) -> Self {
+        self.reader_version = self.reader_version.max(1);
+        self.printer_model = self.printer_model.as_deref().and_then(sanitize_source_value);
+        self.bed_type = self.bed_type.as_deref().and_then(sanitize_source_value);
+        self.layer_height_mm = in_range(self.layer_height_mm, MIN_LAYER_HEIGHT_MM, MAX_LAYER_HEIGHT_MM);
+        self.nozzle_mm = in_range(self.nozzle_mm, MIN_NOZZLE_MM, MAX_NOZZLE_MM);
+        self.bed_temp_c = in_range(self.bed_temp_c, MIN_TEMP_C, MAX_TEMP_C);
+        self.nozzle_temp_c = in_range(self.nozzle_temp_c, MIN_TEMP_C, MAX_TEMP_C);
+        if self.slice_state != SliceState::Sliced {
+            self.bed_temp_c = None;
+            self.bed_temp_mixed = false;
+            self.nozzle_temp_c = None;
+            self.nozzle_temp_mixed = false;
+        }
+        if self.nozzle_mixed {
+            self.nozzle_mm = None;
+        }
+        if self.bed_temp_mixed {
+            self.bed_temp_c = None;
+        }
+        if self.nozzle_temp_mixed {
+            self.nozzle_temp_c = None;
+        }
+
+        if !matches!(self.slice_state, SliceState::Sliced | SliceState::NoSliceData) {
+            self.plates.clear();
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        let sliced = self.slice_state == SliceState::Sliced;
+        let mut kept = Vec::with_capacity(self.plates.len().min(MAX_PLATES));
+        for mut plate in std::mem::take(&mut self.plates) {
+            if plate.plate_index < 1 || !seen.insert(plate.plate_index) {
+                log::debug!(target: "3mf", "print data: plate index {} dropped", plate.plate_index);
+                continue;
+            }
+            if kept.len() >= MAX_PLATES {
+                log::debug!(target: "3mf", "print data: more than {MAX_PLATES} plates, rest dropped");
+                break;
+            }
+            plate.plate_name = plate.plate_name.as_deref().and_then(sanitize_source_value);
+            plate.plate_bed_type = plate.plate_bed_type.as_deref().and_then(sanitize_source_value);
+            plate.print_seconds = plate
+                .print_seconds
+                .filter(|s| sliced && (MIN_SECONDS as i64..=MAX_SECONDS as i64).contains(s));
+            plate.first_layer_seconds = in_range(plate.first_layer_seconds, MIN_SECONDS, MAX_SECONDS);
+            kept.push(plate);
+        }
+        self.plates = kept;
+        self
+    }
+
+    /// Rough size of what the record adds to the catalog, for the web upload budget.
+    pub fn approx_bytes(&self) -> usize {
+        let text = |t: &Option<String>| t.as_ref().map_or(0, String::len);
+        256 + text(&self.printer_model)
+            + text(&self.bed_type)
+            + self.read_at.len()
+            + self.plates.iter().map(|p| 64 + text(&p.plate_name) + text(&p.plate_bed_type)).sum::<usize>()
+    }
+}
+
+/// What the summary list needs of the print data: just enough to say "unread / state".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrintInfoSummary {
+    pub reader_version: u32,
+    pub slice_state: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewFile {
     pub name: String,
@@ -78,6 +236,8 @@ pub struct NewFile {
     pub favorite: bool,
     pub plate_count: Option<i64>,
     pub slice_info_json: Option<String>,
+    /// 3MF only (`None` for every other type); written in the same transaction as the file.
+    pub print_info: Option<PrintInfoRecord>,
 }
 
 /// Fields `rescan_file` always overwrites when re-reading (full refresh, no merge).
@@ -96,6 +256,8 @@ pub struct ScannedMetadataUpdate {
     /// Overwritten like the other scanned fields: a file that no longer carries
     /// the data clears the columns.
     pub source: SourceInfo,
+    /// Replaces the stored print data when `Some`; `None` leaves it untouched (non-3MF files).
+    pub print_info: Option<PrintInfoRecord>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,6 +304,7 @@ pub struct FileRecord {
     pub source_platform: Option<String>,
     pub source_model_id: Option<String>,
     pub source_profile_id: Option<String>,
+    pub print_info: Option<PrintInfoRecord>,
 }
 
 impl FileRecord {

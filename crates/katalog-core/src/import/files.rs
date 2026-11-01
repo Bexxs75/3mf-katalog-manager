@@ -129,6 +129,7 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
         .map(|e| e.to_lowercase());
 
     let mut tagging_extent_mm = None;
+    let mut print_info = None;
     let (
         file_type,
         dimensions_mm,
@@ -143,6 +144,7 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
         Some("3mf") => {
             let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
             tagging_extent_mm = doc.tagging_extent_mm;
+            print_info = print_info_record(doc.print_info.as_ref());
             (
                 FileType::ThreeMf,
                 doc.dimensions_mm,
@@ -244,7 +246,13 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
         favorite: false,
         plate_count,
         slice_info_json,
+        print_info,
     })
+}
+
+/// The print data of a read 3MF as the record the catalog stores (stamped with the read time).
+fn print_info_record(info: Option<&threemf::print_info::PrintInfo>) -> Option<crate::db::models::PrintInfoRecord> {
+    info.map(|info| crate::db::models::PrintInfoRecord::from_print_info(info, chrono::Utc::now().to_rfc3339()))
 }
 
 /// Explicit web budgets; desktop parser defaults are unaffected.
@@ -311,6 +319,7 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
         .map(|e| e.to_lowercase());
 
     let mut tagging_extent_mm = None;
+    let mut print_info = None;
     let (
         file_type,
         dimensions_mm,
@@ -325,6 +334,7 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
         Some("3mf") => {
             let doc = threemf::parse_web_reader(&mut file, WebImportLimits { max_unpacked_bytes: limits.max_unpacked_bytes.min(1024 * 1024 * 1024), ..limits }).map_err(|_| "invalid")?;
             tagging_extent_mm = doc.tagging_extent_mm;
+            print_info = print_info_record(doc.print_info.as_ref());
             (
                 FileType::ThreeMf,
                 doc.dimensions_mm,
@@ -441,6 +451,7 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
         favorite: false,
         plate_count,
         slice_info_json,
+        print_info,
     })
 }
 
@@ -814,6 +825,10 @@ impl<D: ImportDb> ImportDb for ConfiguredDb<'_, D> {
 #[cfg(test)]
 #[path = "import_batch_tests.rs"]
 mod import_batch_tests;
+
+#[cfg(test)]
+#[path = "print_info_import_tests.rs"]
+mod print_info_import_tests;
 
 #[cfg(test)]
 mod web_reader_tests {

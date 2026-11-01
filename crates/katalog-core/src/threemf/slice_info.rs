@@ -68,6 +68,16 @@ impl SliceState {
             SliceState::Unreadable => "unreadable",
         }
     }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "sliced" => Some(SliceState::Sliced),
+            "no_slice_data" => Some(SliceState::NoSliceData),
+            "not_recognized" => Some(SliceState::NotRecognized),
+            "unreadable" => Some(SliceState::Unreadable),
+            _ => None,
+        }
+    }
 }
 
 /// Per-plate data of `slice_info.config` that is kept apart from [`SliceInfo`], so the

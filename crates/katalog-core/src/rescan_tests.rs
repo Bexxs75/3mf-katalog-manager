@@ -206,3 +206,56 @@ fn write_step_rejects_a_file_or_row_that_changed_after_parsing() {
     let prepared = prepare_web_rescan(&c, id, &roots, limits()).unwrap();
     assert!(apply_web_rescan(&mut c, prepared).is_ok());
 }
+
+mod print_info {
+    use super::*;
+    use crate::db::print_info_tests::three_mf_with;
+    use crate::threemf::print_info::SliceState;
+
+    const BAMBU: &[u8] = include_bytes!("../tests/fixtures/synthetic-bambu-project.3mf");
+    const SLICED_INFO: &str = r#"<config><plate><metadata key="index" value="1"/></plate></config>"#;
+
+    fn state(c: &Connection, id: i64) -> Option<(SliceState, usize)> {
+        db::get_file(c, id).unwrap().unwrap().print_info.map(|p| (p.slice_state, p.plates.len()))
+    }
+
+    #[test]
+    fn a_desktop_rescan_follows_the_file_from_unsliced_to_sliced_to_unknown() {
+        let dir = unique_test_dir("rescan_print_info");
+        let path = dir.join("a.3mf");
+        std::fs::write(&path, BAMBU).unwrap();
+        let (mut c, id) = catalog(&path);
+        assert_eq!(state(&c, id), None, "never read");
+
+        rescan_file(&mut c, id).unwrap();
+        assert_eq!(state(&c, id), Some((SliceState::NoSliceData, 4)));
+
+        // Re-sliced elsewhere: the next rescan picks the new state up.
+        std::fs::write(&path, three_mf_with(&[("Metadata/slice_info.config", SLICED_INFO)])).unwrap();
+        rescan_file(&mut c, id).unwrap();
+        assert_eq!(state(&c, id), Some((SliceState::Sliced, 1)));
+
+        // A file that no longer says anything: state follows, the plate rows are cleared.
+        std::fs::write(&path, three_mf(10)).unwrap();
+        rescan_file(&mut c, id).unwrap();
+        assert_eq!(state(&c, id), Some((SliceState::NotRecognized, 0)));
+        let plates: i64 = c.query_row("SELECT COUNT(*) FROM file_print_plates WHERE file_id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(plates, 0);
+    }
+
+    #[test]
+    fn the_web_rescan_stores_the_print_data_and_other_types_stay_without() {
+        let root = unique_test_dir("rescan_print_info_web");
+        let path = root.join("a.3mf");
+        std::fs::write(&path, BAMBU).unwrap();
+        let (mut c, id) = catalog(&path);
+        rescan_file_in_roots(&mut c, id, std::slice::from_ref(&root), limits()).unwrap();
+        assert_eq!(state(&c, id), Some((SliceState::NoSliceData, 4)));
+
+        let obj = root.join("b.obj");
+        std::fs::write(&obj, TRIANGLE_OBJ).unwrap();
+        let (mut c2, id2) = catalog(&obj);
+        rescan_file_in_roots(&mut c2, id2, std::slice::from_ref(&root), limits()).unwrap();
+        assert_eq!(state(&c2, id2), None, "non-3MF files get no print data row");
+    }
+}

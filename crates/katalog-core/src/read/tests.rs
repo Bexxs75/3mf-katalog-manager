@@ -354,6 +354,7 @@ fn add_and_list_print_log_entry_roundtrips_through_dto() {
         favorite: false,
         plate_count: None,
         slice_info_json: None,
+        print_info: None,
     };
     let file_id = crate::db::insert_file(&mut conn, &new_file).expect("insert file");
 

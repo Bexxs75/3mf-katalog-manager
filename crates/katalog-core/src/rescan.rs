@@ -1,7 +1,7 @@
 //! Re-reading a cataloged file from disk and overwriting everything derived from it.
 //! The desktop reads the stored path as is; the web variant only reads files below the
 //! configured roots and applies the same parser budgets as the upload import.
-use crate::db::models::{FileRecord, FileType, MaterialRecord, NewFile, ScannedMetadataUpdate};
+use crate::db::models::{FileRecord, FileType, MaterialRecord, NewFile, PrintInfoRecord, ScannedMetadataUpdate};
 use crate::import::files::{
     compute_content_hash, disk_modified_at, read_web_model, step_metadata, WebImportLimits,
 };
@@ -83,6 +83,7 @@ pub fn rescan_file(conn: &mut Connection, id: i64) -> Result<ModelFileDto> {
         file_size_bytes,
         file_modified_at: disk_modified_at(path),
         content_hash: content_hash.clone(),
+        print_info: None,
     };
 
     let update = match extension.as_deref() {
@@ -94,6 +95,7 @@ pub fn rescan_file(conn: &mut Connection, id: i64) -> Result<ModelFileDto> {
                 thumbnail_png: doc.thumbnail_png,
                 plate_count: doc.plate_count.map(|c| c as i64),
                 slice_info_json: doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
+                print_info: doc.print_info.as_ref().map(|info| PrintInfoRecord::from_print_info(info, chrono::Utc::now().to_rfc3339())),
                 materials: materials(doc.materials),
                 metadata: doc.metadata,
                 ..scanned(doc.dimensions_mm, doc.volume_cm3, Some(doc.object_count as i64))
@@ -162,6 +164,7 @@ fn update_from(new_file: NewFile) -> ScannedMetadataUpdate {
         file_size_bytes: new_file.file_size_bytes,
         content_hash: new_file.content_hash,
         source: new_file.source,
+        print_info: new_file.print_info,
     }
 }
 

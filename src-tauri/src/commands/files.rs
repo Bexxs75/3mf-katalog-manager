@@ -1271,6 +1271,36 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
     #[test]
+    fn import_one_stores_the_print_data_of_sliced_and_unsliced_3mf() {
+        use std::io::Write;
+
+        let dir = unique_test_dir("import_one_print_info");
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let import = |name: &str, bytes: &[u8]| {
+            let path = dir.join(name);
+            std::fs::write(&path, bytes).unwrap();
+            let dto = import_one(&conn, &path, None, None, None).expect("import should succeed");
+            crate::db::get_file(&conn, dto.id.parse().unwrap()).unwrap().unwrap()
+        };
+
+        // No plate in slice_info.config: a project without print data, four plate rows from the settings.
+        let unsliced = import("project.3mf", include_bytes!("../../../crates/katalog-core/tests/fixtures/synthetic-bambu-project.3mf")).print_info.expect("print data row");
+        assert_eq!(unsliced.slice_state.as_str(), "no_slice_data");
+        assert_eq!(unsliced.plates.len(), 4);
+
+        // A plate in slice_info.config: sliced.
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("3D/3dmodel.model", options).unwrap();
+        zip.write_all(br#"<model unit="millimeter"><resources></resources><build></build></model>"#).unwrap();
+        zip.start_file("Metadata/slice_info.config", options).unwrap();
+        zip.write_all(br#"<config><plate><metadata key="index" value="1"/></plate></config>"#).unwrap();
+        let sliced = import("sliced.3mf", &zip.finish().unwrap().into_inner()).print_info.expect("print data row");
+        assert_eq!(sliced.slice_state.as_str(), "sliced");
+        assert_eq!(sliced.plates.len(), 1);
+    }
+
+    #[test]
     fn import_many_assigns_folder_id_for_folder_roots() {
         use std::io::Write;
         use zip::write::SimpleFileOptions;
@@ -1874,6 +1904,7 @@ mod tests {
             favorite: false,
             plate_count: None,
             slice_info_json: None,
+            print_info: None,
         }
     }
 

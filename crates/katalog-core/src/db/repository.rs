@@ -6,9 +6,11 @@ use std::path::PathBuf;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::error::DbError;
+use crate::threemf::print_info::{SettingsState, SliceState};
 use super::models::{
     FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
-    NewFile, NewFilamentSpool, NewPrintLogEntry, PrintLogEntryRecord,
+    NewFile, NewFilamentSpool, NewPrintLogEntry, PrintInfoRecord, PrintInfoSummary, PrintLogEntryRecord,
+    PrintPlateRecord,
     RegisteredSlicer, TagCount,
 };
 
@@ -635,6 +637,11 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
         )?;
     }
 
+    // Optional data: a failure here rolls back to the savepoint and the file stays imported.
+    if let Some(record) = &file.print_info {
+        write_print_info_guarded(conn, file_id, record, false)?;
+    }
+
     // Every automatic assignment ends up here (import, folder sync, source folders,
     // archives), so the on/off switch and the block list are applied in this one place.
     let mut tags = file.tags.clone();
@@ -695,6 +702,11 @@ pub fn update_scanned_metadata(
             "INSERT INTO file_metadata (file_id, label, value) VALUES (?1, ?2, ?3)",
             params![file_id, label, value],
         )?;
+    }
+
+    // Replaces the old rows as a whole or not at all (savepoint), never half.
+    if let Some(record) = &update.print_info {
+        write_print_info_guarded(&tx, file_id, record, true)?;
     }
 
     tx.commit()?;
@@ -826,6 +838,129 @@ pub fn find_existing_by_hash(conn: &Connection, hash: &str) -> Result<Vec<Existi
     find_existing(conn, "content_hash", hash)
 }
 
+/// Writes the print data rows of a file; `replace` first removes the old ones.
+fn write_print_info(conn: &Connection, file_id: i64, record: &PrintInfoRecord, replace: bool) -> rusqlite::Result<()> {
+    let record = record.clone().validated();
+    if replace {
+        conn.execute("DELETE FROM file_print_plates WHERE file_id = ?1", params![file_id])?;
+        conn.execute("DELETE FROM file_print_info WHERE file_id = ?1", params![file_id])?;
+    }
+    conn.execute(
+        "INSERT INTO file_print_info (
+            file_id, reader_version, read_at, slice_state, settings_state, printer_model,
+            bed_type, layer_height_mm, nozzle_mm, nozzle_mixed, bed_temp_c, bed_temp_mixed,
+            nozzle_temp_c, nozzle_temp_mixed
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        params![
+            file_id,
+            record.reader_version,
+            record.read_at,
+            record.slice_state.as_str(),
+            record.settings_state.as_str(),
+            record.printer_model,
+            record.bed_type,
+            record.layer_height_mm,
+            record.nozzle_mm,
+            record.nozzle_mixed,
+            record.bed_temp_c,
+            record.bed_temp_mixed,
+            record.nozzle_temp_c,
+            record.nozzle_temp_mixed,
+        ],
+    )?;
+    for plate in &record.plates {
+        conn.execute(
+            "INSERT INTO file_print_plates (
+                file_id, plate_index, plate_name, print_seconds, first_layer_seconds, plate_bed_type
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![file_id, plate.plate_index, plate.plate_name, plate.print_seconds, plate.first_layer_seconds, plate.plate_bed_type],
+        )?;
+    }
+    Ok(())
+}
+
+/// Print data is optional, so it must never stop the file from being saved: the writes run
+/// in a savepoint, a failure rolls it back (old rows return, a new file simply has none, which
+/// reads as "not read yet") and is only logged. An error of the savepoint control itself
+/// is the only one passed on, because then the transaction state is unknown.
+fn write_print_info_guarded(conn: &Connection, file_id: i64, record: &PrintInfoRecord, replace: bool) -> Result<(), DbError> {
+    conn.execute_batch("SAVEPOINT print_info")?;
+    match write_print_info(conn, file_id, record, replace) {
+        Ok(()) => conn.execute_batch("RELEASE print_info")?,
+        Err(error) => {
+            log::warn!(target: "3mf", "print data of file {file_id} not saved: {error}");
+            conn.execute_batch("ROLLBACK TO print_info; RELEASE print_info")?;
+        }
+    }
+    Ok(())
+}
+
+fn load_print_info(conn: &Connection, file_id: i64) -> Result<Option<PrintInfoRecord>, DbError> {
+    let head = conn
+        .query_row(
+            "SELECT reader_version, read_at, slice_state, settings_state, printer_model, bed_type,
+                    layer_height_mm, nozzle_mm, nozzle_mixed, bed_temp_c, bed_temp_mixed,
+                    nozzle_temp_c, nozzle_temp_mixed
+             FROM file_print_info WHERE file_id = ?1",
+            params![file_id],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    PrintInfoRecord {
+                        reader_version: 0,
+                        read_at: String::new(),
+                        slice_state: SliceState::NotRecognized,
+                        settings_state: SettingsState::NotAttempted,
+                        printer_model: row.get(4)?,
+                        bed_type: row.get(5)?,
+                        layer_height_mm: row.get(6)?,
+                        nozzle_mm: row.get(7)?,
+                        nozzle_mixed: row.get::<_, i64>(8)? != 0,
+                        bed_temp_c: row.get(9)?,
+                        bed_temp_mixed: row.get::<_, i64>(10)? != 0,
+                        nozzle_temp_c: row.get(11)?,
+                        nozzle_temp_mixed: row.get::<_, i64>(12)? != 0,
+                        plates: Vec::new(),
+                    },
+                ))
+            },
+        )
+        .optional()?;
+    let Some((version, read_at, slice_state, settings_state, mut record)) = head else {
+        return Ok(None);
+    };
+    // The CHECKs and the restore check keep these values valid; a row that still is not
+    // understood (written by a newer build) counts as "not read" instead of failing the load.
+    let (Some(slice_state), Some(settings_state)) = (SliceState::parse(&slice_state), SettingsState::parse(&settings_state)) else {
+        log::warn!(target: "3mf", "print data of file {file_id} has an unknown state, treated as not read");
+        return Ok(None);
+    };
+    record.reader_version = u32::try_from(version).unwrap_or(0);
+    record.read_at = read_at;
+    record.slice_state = slice_state;
+    record.settings_state = settings_state;
+
+    let mut stmt = conn.prepare(
+        "SELECT plate_index, plate_name, print_seconds, first_layer_seconds, plate_bed_type
+         FROM file_print_plates WHERE file_id = ?1 ORDER BY plate_index",
+    )?;
+    record.plates = stmt
+        .query_map(params![file_id], |row| {
+            Ok(PrintPlateRecord {
+                plate_index: row.get(0)?,
+                plate_name: row.get(1)?,
+                print_seconds: row.get(2)?,
+                first_layer_seconds: row.get(3)?,
+                plate_bed_type: row.get(4)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(record))
+}
+
 pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbError> {
     let row = conn
         .query_row(
@@ -848,6 +983,7 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
     file.materials = load_materials(conn, id)?;
     file.metadata = load_metadata(conn, id)?;
     file.tags = load_tags(conn, id)?;
+    file.print_info = load_print_info(conn, id)?;
     Ok(Some(file))
 }
 
@@ -877,6 +1013,7 @@ pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecor
         file.materials = load_materials(conn, file.id)?;
         file.metadata = load_metadata(conn, file.id)?;
         file.tags = load_tags(conn, file.id)?;
+        file.print_info = load_print_info(conn, file.id)?;
     }
 
     // SQL "IN" guarantees no order, but the collection position depends on it.
@@ -904,6 +1041,7 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
         file.materials = load_materials(conn, file.id)?;
         file.metadata = load_metadata(conn, file.id)?;
         file.tags = load_tags(conn, file.id)?;
+        file.print_info = load_print_info(conn, file.id)?;
     }
     Ok(files)
 }
@@ -937,6 +1075,8 @@ pub struct FileSummary {
     // For "Recently viewed", "Duplicates" and the 'viewed' sort order.
     pub last_viewed_at: Option<String>,
     pub content_hash: Option<String>,
+    /// `None`: no print data row (not a 3MF, or not read yet).
+    pub print_info: Option<PrintInfoSummary>,
 }
 
 pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbError> {
@@ -986,6 +1126,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 last_viewed_at: row.get(18)?,
                 content_hash: row.get(19)?,
                 file_modified_at: row.get(20)?,
+                print_info: None,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -996,6 +1137,16 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
         by_id.entry(id).or_default().push(material);
     }
     for row in &mut rows { row.materials = by_id.remove(&row.id).unwrap_or_default(); }
+    // Second small query instead of a JOIN in the main one (same pattern as the materials).
+    let mut states = conn.prepare("SELECT file_id, reader_version, slice_state FROM file_print_info")?;
+    let mut state_by_id: std::collections::HashMap<i64, PrintInfoSummary> = std::collections::HashMap::new();
+    for state in states.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, PrintInfoSummary { reader_version: u32::try_from(row.get::<_, i64>(1)?).unwrap_or(0), slice_state: row.get(2)? }))
+    })? {
+        let (id, state) = state?;
+        state_by_id.insert(id, state);
+    }
+    for row in &mut rows { row.print_info = state_by_id.remove(&row.id); }
     Ok(rows)
 }
 
@@ -1082,6 +1233,7 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         source_platform: row.get(31)?,
         source_model_id: row.get(32)?,
         source_profile_id: row.get(33)?,
+        print_info: None,
     })
 }
 

@@ -143,6 +143,7 @@ mod tests {
             favorite: false,
             plate_count: None,
             slice_info_json: None,
+            print_info: None,
         }
     }
 

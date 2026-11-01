@@ -231,6 +231,8 @@ mod tests {
             )
             .unwrap();
             conn.execute("INSERT INTO print_log (file_id, printed_at, created_at) VALUES (?1, 'today', 'today')", [id]).unwrap();
+            conn.execute("INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES (?1, 1, 'today', 'no_slice_data', 'read')", [id]).unwrap();
+            conn.execute("INSERT INTO file_print_plates (file_id, plate_index) VALUES (?1, 1)", [id]).unwrap();
         }
         conn.execute(
             "UPDATE files SET queue_position = 1 WHERE id = ?1",
@@ -289,7 +291,8 @@ mod tests {
             for path in [&disk_file, &unrelated, &trash_file] {
                 assert_eq!(std::fs::read(path).unwrap(), b"unchanged bytes");
             }
-            for table in ["file_metadata", "file_materials", "print_log"] {
+            // Only the trashed file's rows remain; the removed file's print data went with it.
+            for table in ["file_metadata", "file_materials", "print_log", "file_print_info", "file_print_plates"] {
                 assert_eq!(count(&conn, table), 1, "{mode}: {table}");
             }
             for table in ["tags", "collections", "file_tags", "collection_files"] {

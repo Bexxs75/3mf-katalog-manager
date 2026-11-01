@@ -33,15 +33,15 @@ pub const MAX_PLATE_JSON_BYTES: u64 = 4 * 1024 * 1024;
 /// All `plate_N.json` of one archive together; further plates are read without these values.
 pub const MAX_PLATE_JSON_TOTAL_BYTES: u64 = 16 * 1024 * 1024;
 
-const MIN_LAYER_HEIGHT_MM: f64 = 0.01;
-const MAX_LAYER_HEIGHT_MM: f64 = 5.0;
-const MIN_NOZZLE_MM: f64 = 0.1;
-const MAX_NOZZLE_MM: f64 = 5.0;
-const MIN_TEMP_C: f64 = 1.0;
-const MAX_TEMP_C: f64 = 500.0;
-const MIN_SECONDS: f64 = 1.0;
+pub const MIN_LAYER_HEIGHT_MM: f64 = 0.01;
+pub const MAX_LAYER_HEIGHT_MM: f64 = 5.0;
+pub const MIN_NOZZLE_MM: f64 = 0.1;
+pub const MAX_NOZZLE_MM: f64 = 5.0;
+pub const MIN_TEMP_C: f64 = 1.0;
+pub const MAX_TEMP_C: f64 = 500.0;
+pub const MIN_SECONDS: f64 = 1.0;
 /// Three years.
-const MAX_SECONDS: f64 = 3.0 * 365.0 * 24.0 * 3600.0;
+pub const MAX_SECONDS: f64 = 3.0 * 365.0 * 24.0 * 3600.0;
 
 const SETTINGS_PATH: &str = "Metadata/project_settings.config";
 
@@ -76,6 +76,16 @@ impl SettingsState {
             SettingsState::Missing => "missing",
             SettingsState::Unreadable => "unreadable",
             SettingsState::NotAttempted => "not_attempted",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "read" => Some(SettingsState::Read),
+            "missing" => Some(SettingsState::Missing),
+            "unreadable" => Some(SettingsState::Unreadable),
+            "not_attempted" => Some(SettingsState::NotAttempted),
+            _ => None,
         }
     }
 }

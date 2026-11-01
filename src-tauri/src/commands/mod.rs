@@ -202,6 +202,7 @@ pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_a
         slice_info_json: None,
         deleted_at: None,
         trash_path: None,
+        print_info: None,
     }
 }
 

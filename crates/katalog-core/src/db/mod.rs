@@ -80,6 +80,9 @@ pub use repository::{max_folder_id, remove_new_folder_rows};
 pub use repository::{file_exists_by_hash, file_exists_by_path};
 
 #[cfg(test)]
+pub(crate) mod print_info_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool, NewPrintLogEntry};
@@ -166,6 +169,7 @@ mod tests {
             favorite: false,
             plate_count: None,
             slice_info_json: None,
+            print_info: None,
         }
     }
 
