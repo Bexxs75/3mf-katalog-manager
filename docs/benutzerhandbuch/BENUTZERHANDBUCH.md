@@ -592,6 +592,10 @@ This is not an error. What the card shows depends on the file:
   weight), for example a project that was saved without slicing. These appear only in an exported
   sliced file. If the file has project settings, the card still lists the target printer, bed type,
   layer height and nozzle under "Project settings", without print time and temperatures.
+  This also applies to a PrusaSlicer project (saved without slicing): the card shows its printer
+  model, layer height and nozzle; the bed type is not stated there and shows a dash. To read such
+  files afterwards, select them and use "Read print data" in the "More" menu ("Read all sliced
+  files" skips them, because they hold no slicer results).
 - **"No slicer print data recognised."** — the file has no slicer data the app knows.
 - **"The slicer data of this file could not be read."** — the slicer data is there but damaged or
   unreadable.
@@ -1850,6 +1854,10 @@ der Datei nicht gefunden“. Das ist kein Fehler. Was die Karte zeigt, hängt vo
   entstehen erst in einer exportierten geslicten Datei. Hat die Datei Projekteinstellungen, listet
   die Karte unter „Projekteinstellungen“ trotzdem Zieldrucker, Betttyp, Layerhöhe und Düse, ohne
   Druckzeit und Temperaturen.
+  Das gilt auch für ein PrusaSlicer-Projekt (ohne Slicen gespeichert): die Karte zeigt Druckermodell,
+  Layerhöhe und Düse; der Betttyp steht dort nicht und erscheint als Strich. Um solche Dateien
+  nachzulesen, wähle sie aus und nutze „Druckdaten nachlesen“ im Menü „Mehr“ („Alle geslicten
+  Dateien nachlesen“ überspringt sie, weil sie keine Slicer-Ergebnisse enthalten).
 - **„Keine Slicer-Druckdaten erkannt.“** — die Datei enthält keine Slicer-Daten, die die App kennt.
 - **„Die Slicer-Daten dieser Datei konnten nicht gelesen werden.“** — die Slicer-Daten sind da,
   aber beschädigt oder nicht lesbar.
