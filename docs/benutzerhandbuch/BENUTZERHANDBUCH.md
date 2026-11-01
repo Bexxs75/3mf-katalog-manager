@@ -470,7 +470,9 @@ Studio, the app reads the real filament weight straight from the slicer's metada
 only roughly estimating it — including a breakdown per print plate and filament, plus an
 estimated material-cost total if matching spools are on record in the Material Manager. The
 "Rescan metadata" button re-fetches these values later on, in case you sliced an already
-cataloged file after the fact.
+cataloged file after the fact. For 3MF files, the card
+[Print data from the file](#print-data-from-the-file) collects these values together with the
+print time, target printer, bed type, layer height and nozzle.
 
 For models downloaded from Makerworld, the metadata also lists the **Platform**, the **Model ID**
 and the **Profile ID**. The app reads them from the 3MF file; nothing is shown for files without a
@@ -570,11 +572,56 @@ and text files to a model, for example assembly instructions or print notes.
 - **Docker:** inside the container, "Open" cannot start a program. The app says so and asks you to
   open the file on the Docker host.
 
+### Print data from the file
+
+For a 3MF file the detail page and the detail panel show a card **"Print data (from slicer)"**.
+All values come from the file itself; the app estimates nothing here. For a sliced file the card
+lists, per plate, the weight and the material with the filament usage, the print time where the
+file states it, and the total of all plates (with several plates, the plate bar or the plate
+buttons choose which plate the panel shows). Below, the shared settings are listed: **target
+printer**, **bed type**, **layer height** and **nozzle diameter**. **Bed temperature** and
+**nozzle temperature** appear only where the file gives them; the file kinds supported so far
+(Bambu Studio, OrcaSlicer and Creality Print) contain no temperatures, so these rows are not
+filled for them. If values differ between plates, the card says "several".
+
+A **dash** means that the value is not in the file; pointing at it shows "Not found in the file".
+This is not an error. What the card shows depends on the file:
+
+- **Print data present** — the values described above.
+- **"No print data"** — a chip on the card. The file has no slicer results (such as print time or
+  weight), for example a project that was saved without slicing. These appear only in an exported
+  sliced file. If the file has project settings, the card still lists the target printer, bed type,
+  layer height and nozzle under "Project settings", without print time and temperatures.
+- **"No slicer print data recognised."** — the file has no slicer data the app knows.
+- **"The slicer data of this file could not be read."** — the slicer data is there but damaged or
+  unreadable.
+- **"The print data of this file has not been read yet."** — the file was imported before this
+  card existed. Use [Reading print data afterwards](#reading-print-data-afterwards).
+
+### Reading print data afterwards
+
+Files that are already in the catalog are not read again automatically. There are three ways to
+read the print data afterwards; the files themselves are never changed:
+
+- **One model:** on the detail page, "Rescan metadata".
+- **All sliced files:** Settings → Catalog → **"Read print data"** → **"Read all sliced files"**. It
+  reads the sliced files that have not been read yet.
+- **Selected models:** select them and choose **"Read print data"** in the "More" menu of the
+  selection bar. This reads every selected 3MF file again, whatever its state.
+
+While it runs, the progress is shown as "File n of total". "Cancel" stops after the current file
+("Stopping after the current file …"); the values already read are kept. When an import is
+running, the read pauses ("Paused: an import is running.") and goes on afterwards. At the end you
+see how many files were read and how many could not be read. Only one read runs at a time. If you
+slice an already cataloged file again later, "Rescan metadata" updates it.
+
 ### Filament usage is missing
 
 On the detail page of a 3MF file, a box "Filament usage" with the hint "No usage given." appears
-when the file contains no slicer data. The app then does not know how much filament the model
-needs, so it shows no usage. This is not an error of the app. Without usage data,
+when the file contains no slicer data and its print data has not been read. (A file that was read
+and has no print data shows the chip "No print data" on the card
+[Print data from the file](#print-data-from-the-file) instead.) The app then does not know how much
+filament the model needs, so it shows no usage. This is not an error of the app. Without usage data,
 [Is there enough filament?](#is-there-enough-filament) stays "unclear".
 
 It happens with 3MF files that were not exported from a slicer as a sliced plate, for example a
@@ -605,7 +652,7 @@ multi-selection active, the Delete/Backspace key also opens the delete confirmat
 
 The selection bar is always visible and no longer hidden by the detail panel. Its actions are
 grouped by purpose ("Selection", "Edit", "File away"), and rarely used ones are in the "More" menu:
-"Set license", "Not printed", "Rename with date …" and "Remove from catalog". "Move …" moves the
+"Set license", "Not printed", "Rename with date …", "Read print data" and "Remove from catalog". "Move …" moves the
 selection to a folder (see [Moving models and managing folders](#moving-models-and-managing-folders)).
 Screen readers announce the number of selected models.
 
@@ -931,6 +978,8 @@ including self-built or modified versions. The radio button sets which slicer is
   source folders assign no tags automatically (see [Automatic tags](#automatic-tags)).
 - **Blocked automatic tags** — lists tags that the app no longer assigns by itself; "Lift block"
   ends a block.
+- **Read print data** — "Read all sliced files" reads the print data of sliced files that were not
+  read yet (see [Reading print data afterwards](#reading-print-data-afterwards)).
 - **Catalog backup** — see the next section.
 - **Catalog location** — shows the current base directory and lets you change it or open it
   directly in the file manager. Changing it opens the same dialog as the initial setup.
@@ -1662,7 +1711,9 @@ Modell-Herkunftsseite) sowie deine Hashtags mit Möglichkeit, weitere hinzuzufü
 entfernen. Wurde die Datei bereits in OrcaSlicer oder Bambu Studio gesliced, liest die App das
 reale Filamentgewicht direkt aus den Slicer-Metadaten statt es nur grob zu schätzen — inklusive
 Aufschlüsselung pro Druckplatte und Filament sowie einer geschätzten Materialkosten-Summe, wenn
-passende Spulen im Material Manager hinterlegt sind. Über den "Metadaten neu einlesen"-Knopf holst du
+passende Spulen im Material Manager hinterlegt sind. Bei 3MF-Dateien fasst die Karte
+[Druckdaten aus der Datei](#druckdaten-aus-der-datei) diese Werte zusammen mit Druckzeit,
+Zieldrucker, Betttyp, Layerhöhe und Düse zusammen. Über den "Metadaten neu einlesen"-Knopf holst du
 diese Werte nachträglich nach, falls du eine bereits katalogisierte Datei erst später im Slicer
 nachgesliced hast.
 
@@ -1777,11 +1828,59 @@ PDFs und Textdateien an, z. B. Bauanleitungen oder Druck-Notizen.
 - **Docker:** Im Container kann „Öffnen“ kein Programm starten. Die App sagt das und bittet dich,
   die Datei auf dem Docker-Host zu öffnen.
 
+### Druckdaten aus der Datei
+
+Bei einer 3MF-Datei zeigen die Detailseite und der Detailbereich eine Karte **„Druckdaten (aus
+Slicer)“**. Alle Werte stammen aus der Datei selbst; die App schätzt hier nichts. Bei einer
+geslicten Datei listet die Karte je Platte das Gewicht und das Material mit dem
+Filamentverbrauch, die Druckzeit, soweit die Datei sie angibt, und die Summe aller Platten (bei
+mehreren Platten wählen die Plattenleiste oder die Plattenknöpfe, welche Platte der Bereich
+zeigt). Darunter stehen die gemeinsamen Angaben: **Zieldrucker**, **Betttyp**, **Layerhöhe** und
+**Düsendurchmesser**. **Betttemperatur** und **Düsentemperatur** erscheinen nur, wo die Datei sie
+hergibt; die bisher unterstützten Dateiarten (Bambu Studio, OrcaSlicer und Creality Print)
+enthalten keine Temperaturen, diese Zeilen bleiben dort also leer. Unterscheiden sich Werte
+zwischen Platten, steht dort „mehrere“.
+
+Ein **Strich** bedeutet, dass der Wert nicht in der Datei steht; beim Daraufzeigen erscheint „In
+der Datei nicht gefunden“. Das ist kein Fehler. Was die Karte zeigt, hängt von der Datei ab:
+
+- **Druckdaten vorhanden** — die oben beschriebenen Werte.
+- **„Keine Druckdaten“** — ein Chip auf der Karte. Die Datei enthält keine Slicer-Ergebnisse (wie
+  Druckzeit oder Gewicht), zum Beispiel ein Projekt, das ohne Slicen gespeichert wurde. Sie
+  entstehen erst in einer exportierten geslicten Datei. Hat die Datei Projekteinstellungen, listet
+  die Karte unter „Projekteinstellungen“ trotzdem Zieldrucker, Betttyp, Layerhöhe und Düse, ohne
+  Druckzeit und Temperaturen.
+- **„Keine Slicer-Druckdaten erkannt.“** — die Datei enthält keine Slicer-Daten, die die App kennt.
+- **„Die Slicer-Daten dieser Datei konnten nicht gelesen werden.“** — die Slicer-Daten sind da,
+  aber beschädigt oder nicht lesbar.
+- **„Die Druckdaten dieser Datei wurden noch nicht gelesen.“** — die Datei wurde importiert, bevor
+  es diese Karte gab. Nutze [Druckdaten nachlesen](#druckdaten-nachlesen).
+
+### Druckdaten nachlesen
+
+Dateien, die schon im Katalog sind, werden nicht automatisch erneut gelesen. Es gibt drei Wege,
+die Druckdaten nachzulesen; die Dateien selbst werden dabei nie verändert:
+
+- **Ein Modell:** auf der Detailseite „Metadaten neu einlesen“.
+- **Alle geslicten Dateien:** Einstellungen → Katalog → **„Druckdaten nachlesen“** → **„Alle
+  geslicten Dateien nachlesen“**. Das liest die geslicten Dateien, die noch nicht gelesen wurden.
+- **Gewählte Modelle:** wählen und im Menü „Mehr“ der Auswahlleiste **„Druckdaten nachlesen“**
+  wählen. Das liest jede gewählte 3MF-Datei erneut, egal in welchem Zustand.
+
+Während des Lesens steht der Fortschritt als „Datei n von gesamt“. „Abbrechen“ beendet nach der
+aktuellen Datei („Wird nach der aktuellen Datei beendet …“); bereits gelesene Werte bleiben
+erhalten. Läuft ein Import, pausiert das Nachlesen („Pausiert: ein Import läuft.“) und macht
+danach weiter. Am Ende siehst du, wie viele Dateien gelesen wurden und wie viele nicht gelesen
+werden konnten. Es läuft immer nur ein Nachlesen. Slicest du eine bereits katalogisierte Datei
+später neu, aktualisiert „Metadaten neu einlesen“ sie.
+
 ### Filamentverbrauch fehlt
 
 Auf der Detailseite einer 3MF-Datei erscheint ein Kasten „Filamentverbrauch“ mit dem Hinweis
-„Kein Verbrauch angegeben.“, wenn die Datei keine Slicer-Daten enthält. Die App weiß dann nicht,
-wie viel Filament das Modell braucht, und zeigt deshalb keinen Verbrauch. Das ist kein Fehler der
+„Kein Verbrauch angegeben.“, wenn die Datei keine Slicer-Daten enthält und ihre Druckdaten nicht
+gelesen wurden. (Eine Datei, die gelesen wurde und keine Druckdaten hat, zeigt stattdessen den Chip
+„Keine Druckdaten“ auf der Karte [Druckdaten aus der Datei](#druckdaten-aus-der-datei).) Die App
+weiß dann nicht, wie viel Filament das Modell braucht, und zeigt deshalb keinen Verbrauch. Das ist kein Fehler der
 App. Ohne Verbrauchsdaten bleibt [Reicht das Filament?](#reicht-das-filament) „unklar“.
 
 Das passiert bei 3MF-Dateien, die nicht als geslicte Platte aus einem Slicer exportiert wurden,
@@ -1816,7 +1915,8 @@ aktiver Mehrfachauswahl öffnet auch die Taste Entf/Rücktaste direkt die Lösch
 
 Die Auswahlleiste ist immer sichtbar und wird nicht mehr vom Detailbereich verdeckt. Ihre Aktionen
 sind nach Zweck gruppiert („Auswahl“, „Bearbeiten“, „Ablegen“), selten genutzte stehen im Menü
-„Mehr“: „Lizenz setzen“, „Nicht gedruckt“, „Mit Datum umbenennen …“ und „Aus Katalog entfernen“.
+„Mehr“: „Lizenz setzen“, „Nicht gedruckt“, „Mit Datum umbenennen …“, „Druckdaten nachlesen“ und
+„Aus Katalog entfernen“.
 „Verschieben …“ verschiebt die Auswahl in einen Ordner (siehe
 [Modelle verschieben und Ordner verwalten](#modelle-verschieben-und-ordner-verwalten)).
 Screenreader nennen die Anzahl der ausgewählten Modelle.
@@ -2154,6 +2254,8 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
   [Automatische Tags](#automatische-tags)).
 - **Gesperrte automatische Tags** — listet Tags, die die App nicht mehr selbst vergibt; „Sperre
   aufheben“ beendet eine Sperre.
+- **Druckdaten nachlesen** — „Alle geslicten Dateien nachlesen“ liest die Druckdaten geslicter
+  Dateien, die noch nicht gelesen wurden (siehe [Druckdaten nachlesen](#druckdaten-nachlesen)).
 - **Katalog-Backup** — siehe nächster Abschnitt.
 - **Katalog-Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
   im Dateimanager zu öffnen. Ändern öffnet denselben Dialog wie bei der Ersteinrichtung.
