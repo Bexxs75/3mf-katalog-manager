@@ -6,7 +6,7 @@ import {
 import type { Translations } from '../i18n/types';
 import { displayName } from '../lib/displayName';
 import {
-  mergeFilaments, SHOW_PROJECT_SETTINGS_WITHOUT_PRINT_DATA, sumPrintTime, sumWeightG, summarizePrintData,
+  mergeFilaments, sumPrintTime, sumWeightG, summarizePrintData,
   type PlateRow, type PrintDataSummary, type SharedValue,
 } from '../lib/printData';
 import type { FilamentUsage, ModelFile } from '../types';
@@ -60,7 +60,8 @@ export function PrintDataCard({ model, variant, footer }: {
   const sharedReason = summary.settingsUnreadable ? t('printDataSettingsUnreadable') : notFound;
 
   const showTime = state === 'sliced' || state === 'partial';
-  const showShared = showTime || (SHOW_PROJECT_SETTINGS_WITHOUT_PRINT_DATA && state === 'no_slice_data');
+  const showShared = summary.sharedKind !== 'none';
+  const projectOnly = summary.sharedKind === 'project';
   const hintKey = NO_DATA_HINT[state];
   const current = plates.find(plate => plate.plateIndex === selected) ?? null;
   const scope: PlateRow[] = current ? [current] : plates;
@@ -88,8 +89,10 @@ export function PrintDataCard({ model, variant, footer }: {
          { label: t('printDataPrinter'), value: sharedValue(summary.shared.printerModel, v => v) }]),
     { label: t('printDataLayerHeight'), value: sharedValue(summary.shared.layerHeightMm, v => formatLayerHeightMm(v, language)) },
     { label: variant === 'page' ? t('printDataNozzleDiameter') : t('printDataNozzle'), value: sharedValue(summary.shared.nozzleMm, v => formatNozzleMm(v, language)) },
-    { label: t('printDataBedTemp'), value: sharedValue(summary.shared.bedTempC, v => formatTemperatureC(v, language)) },
-    { label: t('printDataNozzleTemp'), value: sharedValue(summary.shared.nozzleTempC, v => formatTemperatureC(v, language)) },
+    ...(projectOnly ? [] : [
+      { label: t('printDataBedTemp'), value: sharedValue(summary.shared.bedTempC, v => formatTemperatureC(v, language)) },
+      { label: t('printDataNozzleTemp'), value: sharedValue(summary.shared.nozzleTempC, v => formatTemperatureC(v, language)) },
+    ]),
   ];
 
   const chip = state === 'no_slice_data' && (
@@ -168,7 +171,7 @@ export function PrintDataCard({ model, variant, footer }: {
         </section>
         {showShared && (
           <section aria-labelledby={`${headingId}-shared`} className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
-            <h3 id={`${headingId}-shared`} className={`m-0 mb-3 ${headingClass}`}>{t('printDataSharedHeadingPage')}</h3>
+            <h3 id={`${headingId}-shared`} className={`m-0 mb-3 ${headingClass}`}>{projectOnly ? t('printDataProjectSettings') : t('printDataSharedHeadingPage')}</h3>
             <dl className="m-0 grid gap-x-6 gap-y-2.5 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
               {sharedEntries.map(entry => (
                 <div key={entry.label} className="min-w-0">
@@ -221,7 +224,7 @@ export function PrintDataCard({ model, variant, footer }: {
       {unreadBox}
       {showShared && (
         <>
-          <div className="text-caption font-semibold text-[var(--ink-2)] pt-2.5 pb-0.5">{t('printDataSharedHeadingPanel')}</div>
+          <div className="text-caption font-semibold text-[var(--ink-2)] pt-2.5 pb-0.5">{projectOnly ? t('printDataProjectSettings') : t('printDataSharedHeadingPanel')}</div>
           {sharedEntries.map(entry => <div key={entry.label}>{row(entry.label, entry.value)}</div>)}
         </>
       )}

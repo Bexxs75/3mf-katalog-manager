@@ -839,6 +839,7 @@ export const de: Translations = {
   printDataHeading: 'Druckdaten (aus Slicer)',
   printDataSharedHeadingPanel: 'Gemeinsam für alle Platten',
   printDataSharedHeadingPage: 'Gemeinsame Angaben',
+  printDataProjectSettings: 'Projekteinstellungen',
   printDataNoDataChip: 'Keine Druckdaten',
   printDataNoDataHint: 'Diese Datei enthält keine Druckdaten (zum Beispiel Druckzeit oder Gewicht). Sie entstehen erst in einer exportierten geslicten Datei.',
   printDataNotRecognizedHint: 'Keine Slicer-Druckdaten erkannt.',

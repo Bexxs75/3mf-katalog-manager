@@ -86,7 +86,7 @@ describe('summarizePrintData', () => {
     expect(summary.shared.bedTempC).toEqual({ kind: 'missing' });
   });
 
-  it.each(['no_slice_data', 'not_recognized', 'unreadable'] as const)('derives %s from the stored state without shared values', state => {
+  it.each(['not_recognized', 'unreadable'] as const)('derives %s from the stored state without shared values', state => {
     const summary = summarizePrintData({ sliceInfo: null, printInfo: makePrintInfo({ sliceState: state, ...complete, plates: [plate(1, 600)] }) });
     expect(summary.state).toBe(state);
     expect(Object.values(summary.shared).every(value => value.kind === 'missing')).toBe(true);
@@ -118,6 +118,32 @@ describe('summarizePrintData', () => {
     const summary = summarizePrintData({ sliceInfo: null, printInfo: makePrintInfo({ ...complete, plates: [plate(1, 600), plate(2, null)] }) });
     expect(summary.plates.map(row => row.plateIndex)).toEqual([1, 2]);
     expect(summary.sum).toEqual({ seconds: 600, known: 1, total: 2 });
+  });
+});
+
+describe('project settings without print data', () => {
+  const noData = (extra: Partial<Parameters<typeof makePrintInfo>[0]> = {}) =>
+    summarizePrintData({ sliceInfo: null, printInfo: makePrintInfo({ sliceState: 'no_slice_data', ...complete, plates: [plate(1, 600)], ...extra }) });
+
+  it('keeps the state and gives the four settings without temperatures or time', () => {
+    const summary = noData();
+    expect(summary.state).toBe('no_slice_data');
+    expect(summary.sharedKind).toBe('project');
+    expect(summary.shared.printerModel).toEqual({ kind: 'value', value: 'Bambu Lab X1 Carbon' });
+    expect(summary.shared.nozzleMm).toEqual({ kind: 'value', value: 0.4 });
+    expect(summary.shared.bedTempC).toEqual({ kind: 'missing' });
+    expect(summary.shared.nozzleTempC).toEqual({ kind: 'missing' });
+    expect(summary.sum.seconds).toBeNull();
+  });
+
+  it.each(['missing', 'unreadable', 'not_attempted'] as const)('gives nothing when the settings state is %s', settingsState => {
+    const summary = noData({ settingsState });
+    expect(summary.sharedKind).toBe('none');
+    expect(Object.values(summary.shared).every(value => value.kind === 'missing')).toBe(true);
+  });
+
+  it('marks a sliced file as full', () => {
+    expect(summarizePrintData({ sliceInfo: sliceInfo(1), printInfo: makePrintInfo({ ...complete, plates: [plate(1, 600)] }) }).sharedKind).toBe('full');
   });
 });
 

@@ -839,6 +839,7 @@ export const fr: Translations = {
   printDataHeading: 'Données d\'impression (du logiciel de découpe)',
   printDataSharedHeadingPanel: 'Commun à tous les plateaux',
   printDataSharedHeadingPage: 'Informations communes',
+  printDataProjectSettings: 'Réglages du projet',
   printDataNoDataChip: 'Aucune donnée d\'impression',
   printDataNoDataHint: 'Ce fichier ne contient aucune donnée d\'impression (par exemple la durée d\'impression ou le poids). Elles n\'existent que dans un fichier découpé exporté.',
   printDataNotRecognizedHint: 'Aucune donnée d\'impression du logiciel de découpe reconnue.',

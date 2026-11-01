@@ -839,6 +839,7 @@ export const es: Translations = {
   printDataHeading: 'Datos de impresión (del laminador)',
   printDataSharedHeadingPanel: 'Común a todas las placas',
   printDataSharedHeadingPage: 'Datos comunes',
+  printDataProjectSettings: 'Ajustes del proyecto',
   printDataNoDataChip: 'Sin datos de impresión',
   printDataNoDataHint: 'Este archivo no contiene datos de impresión (por ejemplo, tiempo de impresión o peso). Solo existen en un archivo laminado exportado.',
   printDataNotRecognizedHint: 'No se reconocieron datos de impresión del laminador.',

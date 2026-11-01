@@ -872,6 +872,7 @@ export interface Translations {
   printDataHeading: string;
   printDataSharedHeadingPanel: string;
   printDataSharedHeadingPage: string;
+  printDataProjectSettings: string;
   printDataNoDataChip: string;
   printDataNoDataHint: string;
   printDataNotRecognizedHint: string;

@@ -46,15 +46,32 @@ describe.each(variants)('PrintDataCard (%s)', variant => {
     expect(screen.queryByText(de.printDataNoDataHint)).toBeNull();
   });
 
-  it('shows the neutral chip and hint, and no time, weight table or values, for a file without print data', () => {
+  it('shows the chip, the hint and the project settings without temperatures and time for a file without print data', () => {
     show(modelWith(makePrintInfo({ sliceState: 'no_slice_data', ...full }), false), variant);
     expect(screen.getByText('Keine Druckdaten')).toBeVisible();
     expect(screen.getByText(de.printDataNoDataHint)).toBeVisible();
     expect(screen.queryByText('Geslict')).toBeNull();
     expect(screen.queryByText(/nicht geslict/i)).toBeNull();
-    // Project settings stay hidden while the product decision is open.
-    for (const text of ['Bambu Lab X1 Carbon', 'Textured PEI Plate', '0,20 mm', '220 °C']) expect(screen.queryByText(text)).toBeNull();
+    expect(screen.getByText(de.printDataProjectSettings)).toBeVisible();
+    expect(screen.queryByText(de.printDataSharedHeadingPanel)).toBeNull();
+    expect(screen.queryByText(de.printDataSharedHeadingPage)).toBeNull();
+    for (const text of ['Bambu Lab X1 Carbon', 'Textured PEI Plate', '0,20 mm', '0,4 mm']) expect(screen.getByText(text)).toBeVisible();
+    for (const text of [de.printDataBedTemp, de.printDataNozzleTemp, '60 °C', '220 °C']) expect(screen.queryByText(text)).toBeNull();
     expect(screen.queryByText(de.printDataTime)).toBeNull();
+  });
+
+  it('shows a missing project setting as a dash with a tooltip, never as 0', () => {
+    show(modelWith(makePrintInfo({ sliceState: 'no_slice_data', ...full, bedType: null, layerHeightMm: null }), false), variant);
+    expect(screen.getAllByTitle(de.printDataNotFound)).toHaveLength(2);
+    expect(screen.queryByText(/^0 (mm|°C)$|^0$/)).toBeNull();
+  });
+
+  it.each(['missing', 'unreadable', 'not_attempted'] as const)('shows no project settings rows when the settings state is %s', settingsState => {
+    show(modelWith(makePrintInfo({ sliceState: 'no_slice_data', ...full, settingsState }), false), variant);
+    expect(screen.getByText(de.printDataNoDataHint)).toBeVisible();
+    expect(screen.queryByText(de.printDataProjectSettings)).toBeNull();
+    expect(screen.queryByText('Bambu Lab X1 Carbon')).toBeNull();
+    expect(screen.queryByText(de.printDataPrinter)).toBeNull();
   });
 
   it.each([

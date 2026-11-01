@@ -839,6 +839,7 @@ export const en: Translations = {
   printDataHeading: 'Print data (from slicer)',
   printDataSharedHeadingPanel: 'Shared by all plates',
   printDataSharedHeadingPage: 'Shared settings',
+  printDataProjectSettings: 'Project settings',
   printDataNoDataChip: 'No print data',
   printDataNoDataHint: 'This file contains no print data (such as print time or weight). It only exists in an exported sliced file.',
   printDataNotRecognizedHint: 'No slicer print data recognised.',

@@ -86,7 +86,9 @@ it('shows the neutral chip and hint for a file without print data and no second 
   expect(screen.getByText('Keine Druckdaten')).toBeVisible();
   expect(screen.getByText(de.printDataNoDataHint)).toBeVisible();
   expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
-  expect(screen.queryByText('Textured PEI Plate')).toBeNull();
+  const settings = screen.getByRole('region', { name: de.printDataProjectSettings });
+  expect(within(settings).getByText('Textured PEI Plate')).toBeVisible();
+  expect(within(settings).queryByText(de.printDataBedTemp)).toBeNull();
   expect(screen.queryByRole('region', { name: de.printDataSharedHeadingPage })).toBeNull();
   expect(screen.queryByText('Geslict')).toBeNull();
 });

@@ -40,16 +40,14 @@ export interface PrintDataSummary {
   plates: PlateRow[];
   sum: TimeSum;
   shared: SharedRows;
+  /**
+   * `full`: the values of a sliced file; `project`: only printer, bed type, layer height and nozzle of a
+   * file without print data whose settings were read (the source gives no temperatures there); `none`.
+   */
+  sharedKind: 'full' | 'project' | 'none';
   /** The project settings could not be read: a missing shared value says so instead of "not found". */
   settingsUnreadable: boolean;
 }
-
-/**
- * Project settings (printer, bed type, layer height, nozzle) of a file without
- * print data are stored but not shown until the product decision is made
- * (specification question 12). Releasing them needs no rescan.
- */
-export const SHOW_PROJECT_SETTINGS_WITHOUT_PRINT_DATA = false;
 
 const missing = { kind: 'missing' } as const;
 
@@ -108,23 +106,24 @@ export function summarizePrintData(model: Pick<ModelFile, 'sliceInfo' | 'printIn
   const info = model.printInfo;
   if (info === null || !info.readerCurrent) {
     const plates = plateRows(model, false);
-    return { state: 'unread', plates, sum: sumPrintTime(plates), shared: NO_SHARED, settingsUnreadable: false };
+    return { state: 'unread', plates, sum: sumPrintTime(plates), shared: NO_SHARED, sharedKind: 'none', settingsUnreadable: false };
   }
   const sliced = info.sliceState === 'sliced';
   const plates = plateRows(model, sliced);
   // `total` counts the plates that have slicer data (the usage); without a usage the plates of the row.
   const sum = sumPrintTime(plates);
-  const shared: SharedRows = sliced ? {
+  const project = info.sliceState === 'no_slice_data' && info.settingsState === 'read';
+  const shared: SharedRows = sliced || project ? {
     printerModel: text(info.printerModel),
     bedType: text(info.bedType),
     layerHeightMm: info.layerHeightMm === null ? missing : { kind: 'value', value: info.layerHeightMm },
     nozzleMm: mixedNumber(info.nozzleMm),
-    bedTempC: mixedNumber(info.bedTempC),
-    nozzleTempC: mixedNumber(info.nozzleTempC),
+    bedTempC: sliced ? mixedNumber(info.bedTempC) : missing,
+    nozzleTempC: sliced ? mixedNumber(info.nozzleTempC) : missing,
   } : NO_SHARED;
   const sharedMissing = Object.values(shared).some(value => value.kind === 'missing');
   const state: PrintDataView = sliced && (sum.known < sum.total || sharedMissing) ? 'partial' : info.sliceState;
-  return { state, plates, sum, shared, settingsUnreadable: sliced && info.settingsState === 'unreadable' };
+  return { state, plates, sum, shared, sharedKind: sliced ? 'full' : project ? 'project' : 'none', settingsUnreadable: sliced && info.settingsState === 'unreadable' };
 }
 
 /** Filaments of several plates merged by type and color. */
