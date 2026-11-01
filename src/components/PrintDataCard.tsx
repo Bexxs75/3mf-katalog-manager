@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import {
-  formatLayerHeightMm, formatLengthM, formatNozzleMm, formatPrintDuration, formatTemperatureC, formatWeightG,
+  formatLayerHeightMm, formatNozzleMm, formatPrintDuration, formatTemperatureC, formatUsageG, formatUsageM,
 } from '../i18n/format';
 import type { Translations } from '../i18n/types';
 import { displayName } from '../lib/displayName';
@@ -24,22 +24,35 @@ const focusClass = 'focus-visible:outline focus-visible:outline-2 focus-visible:
 
 /** A value the file does not give: a dash with a tooltip, and the same words for screen readers (a `title` reaches neither keyboard nor touch). */
 function Missing({ reason }: { reason: string }) {
-  return <span title={reason} className="text-[var(--ink-3)] font-normal">–<span className="sr-only"> {reason}</span></span>;
+  return <span title={reason} className="text-[var(--ink-2)] font-normal">–<span className="sr-only"> {reason}</span></span>;
 }
 
+/**
+ * One filament per line: the dot column is always reserved, so dots and names line up under each other
+ * (also when a color is unknown). The dot border uses the muted ink token, which stays visible on both themes.
+ */
 function FilamentLine({ filament }: { filament: FilamentUsage }) {
   const { language } = useLanguage();
   return (
-    <span className="flex items-center gap-1.5 justify-end">
-      {filament.color && <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full border border-[var(--line-strong)] flex-none" style={{ backgroundColor: filament.color.slice(0, 7) }} />}
-      <span>{filament.type} · {formatWeightG(filament.usedG, language)} · {formatLengthM(filament.usedM, language)}</span>
+    <span className="flex items-center gap-2 text-left" data-filament-line>
+      <span aria-hidden="true" className={`w-2.5 h-2.5 rounded-full flex-none ${filament.color ? 'border border-[var(--ink-3)]' : ''}`}
+        style={filament.color ? { backgroundColor: filament.color.slice(0, 7) } : undefined} />
+      <span>
+        {filament.type}{' '}
+        <span className="text-[var(--ink-3)]">{formatUsageG(filament.usedG, language)} · {formatUsageM(filament.usedM, language)}</span>
+      </span>
     </span>
   );
 }
 
-function Filaments({ filaments, notFound }: { filaments: FilamentUsage[]; notFound: string }) {
+/** `end` (panel) puts the block at the right edge of the value column, `start` (table) under its heading; lines always start at one left edge. */
+function Filaments({ filaments, notFound, align }: { filaments: FilamentUsage[]; notFound: string; align: 'start' | 'end' }) {
   if (filaments.length === 0) return <Missing reason={notFound} />;
-  return <span className="flex flex-col gap-0.5">{filaments.map((filament, i) => <FilamentLine key={i} filament={filament} />)}</span>;
+  return (
+    <span className={`inline-flex flex-col gap-1 items-start ${align === 'end' ? 'text-left' : ''}`}>
+      {filaments.map((filament, i) => <FilamentLine key={i} filament={filament} />)}
+    </span>
+  );
 }
 
 /** The card "Print data (from slicer)": the panel shows one selected plate at a time, the page lists all plates in a table. */
@@ -125,9 +138,9 @@ export function PrintDataCard({ model, variant, footer }: {
                   <caption className="sr-only">{t('printDataHeading')}</caption>
                   <thead>
                     <tr className="text-left">
-                      <th scope="col" className="ui-label text-[var(--ink-3)] font-semibold py-2 pr-3">{t('printDataColPlate')}</th>
-                      {showTime && <th scope="col" className="ui-label text-[var(--ink-3)] font-semibold py-2 pr-3">{t('printDataTime')}</th>}
-                      <th scope="col" className="ui-label text-[var(--ink-3)] font-semibold py-2 pr-3">{t('printDataWeight')}</th>
+                      <th scope="col" className="ui-label text-[var(--ink-3)] font-semibold py-2 pr-6 w-[28%]">{t('printDataColPlate')}</th>
+                      {showTime && <th scope="col" className="ui-label text-[var(--ink-3)] font-semibold py-2 pr-8 w-[1%] whitespace-nowrap">{t('printDataTime')}</th>}
+                      <th scope="col" className="ui-label text-[var(--ink-3)] font-semibold py-2 pr-8 w-[1%] whitespace-nowrap">{t('printDataWeight')}</th>
                       <th scope="col" className="ui-label text-[var(--ink-3)] font-semibold py-2">{t('metaMaterial')}</th>
                     </tr>
                   </thead>
@@ -143,21 +156,21 @@ export function PrintDataCard({ model, variant, footer }: {
                               </button>
                             : <>{t('viewerPlate').replace('{n}', String(plate.plateIndex))}{plate.name && <span className="block text-caption font-normal text-[var(--ink-3)]">{displayName(plate.name)}</span>}</>}
                         </th>
-                        {showTime && <td className="py-2 pr-3 tabular-nums">{plate.printSeconds === null ? <Missing reason={notFound} /> : duration(plate.printSeconds)}</td>}
-                        <td className="py-2 pr-3 tabular-nums">{plate.weightG === null ? <Missing reason={notFound} /> : formatWeightG(plate.weightG, language)}</td>
-                        <td className="py-2 tabular-nums"><Filaments filaments={plate.filaments} notFound={notFound} /></td>
+                        {showTime && <td className="py-2 pr-8 tabular-nums">{plate.printSeconds === null ? <Missing reason={notFound} /> : duration(plate.printSeconds)}</td>}
+                        <td className="py-2 pr-8 tabular-nums">{plate.weightG === null ? <Missing reason={notFound} /> : formatUsageG(plate.weightG, language)}</td>
+                        <td className="py-2 tabular-nums"><Filaments filaments={plate.filaments} notFound={notFound} align="start" /></td>
                       </tr>
                     ))}
                     {plates.length > 1 && (
                       <tr className="border-t border-[var(--line-strong)] font-semibold align-top">
                         <th scope="row" className="text-left py-2 pr-3">{t('printDataTotal')}</th>
-                        {showTime && <td className="py-2 pr-3 tabular-nums">
+                        {showTime && <td className="py-2 pr-8 tabular-nums">
                           {allTime.seconds === null ? <Missing reason={notFound} /> : <>
                             {duration(allTime.seconds)}
                             {partialNote(allTime) && <span className="block text-caption font-normal text-[var(--ink-3)]">{partialNote(allTime)}</span>}
                           </>}
                         </td>}
-                        <td className="py-2 pr-3 tabular-nums">{sumWeightG(plates) === null ? <Missing reason={notFound} /> : formatWeightG(sumWeightG(plates) ?? 0, language)}</td>
+                        <td className="py-2 pr-8 tabular-nums">{sumWeightG(plates) === null ? <Missing reason={notFound} /> : formatUsageG(sumWeightG(plates) ?? 0, language)}</td>
                         <td />
                       </tr>
                     )}
@@ -190,7 +203,8 @@ export function PrintDataCard({ model, variant, footer }: {
   const wrapper = variant === 'compact' ? 'px-4 pt-3.5 pb-3 border-t border-[var(--line)]' : 'px-[18px] pt-3.5 pb-4 border-t border-[var(--line)]';
   const headingClass = variant === 'compact' ? 'text-compact-meta ui-label text-[var(--ink-3)]' : 'ui-label text-[var(--ink-3)]';
   const rowClass = variant === 'compact' ? 'flex items-baseline gap-3 py-1.5 border-b border-[var(--line)] text-small' : 'flex items-baseline gap-3 py-2 border-b border-[var(--line)]';
-  const labelClass = variant === 'compact' ? 'flex-none w-[108px] text-[var(--ink-2)]' : 'flex-none w-[128px] text-[var(--ink-2)]';
+  // min-width instead of a fixed one: the bold total label must not wrap, the other labels keep the common edge.
+  const labelClass = variant === 'compact' ? 'flex-none min-w-[108px] whitespace-nowrap text-[var(--ink-2)]' : 'flex-none min-w-[128px] whitespace-nowrap text-[var(--ink-2)]';
   const row = (label: string, value: ReactNode, sub?: string | null, strong = false) => (
     <div className={rowClass}>
       <span className={`${labelClass} ${strong ? 'font-semibold text-[var(--ink)]' : ''}`}>{label}</span>
@@ -215,8 +229,8 @@ export function PrintDataCard({ model, variant, footer }: {
           {showTime && row(t('printDataTime'),
             scopeTime.seconds === null ? <Missing reason={notFound} /> : duration(scopeTime.seconds),
             current ? null : partialNote(scopeTime))}
-          {row(t('printDataWeight'), scopeWeight === null ? <Missing reason={notFound} /> : formatWeightG(scopeWeight, language))}
-          {row(t('metaMaterial'), <Filaments filaments={mergeFilaments(scope)} notFound={notFound} />)}
+          {row(t('printDataWeight'), scopeWeight === null ? <Missing reason={notFound} /> : formatUsageG(scopeWeight, language))}
+          {row(t('metaMaterial'), <Filaments filaments={mergeFilaments(scope)} notFound={notFound} align="end" />)}
           {showTime && current && plates.length > 1 && row(t('printDataTotal'),
             allTime.seconds === null ? <Missing reason={notFound} /> : duration(allTime.seconds), partialNote(allTime), true)}
         </>

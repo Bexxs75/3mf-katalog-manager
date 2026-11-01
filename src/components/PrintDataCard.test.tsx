@@ -121,7 +121,7 @@ describe.each(variants)('PrintDataCard (%s)', variant => {
     expect(screen.queryByText(de.printDataTime)).toBeNull();
     for (const text of ['Bambu Lab X1 Carbon', '0,20 mm', '220 °C', '2 h 14 min']) expect(screen.queryByText(text)).toBeNull();
     // Weight and material are known from the slicer usage and stay visible.
-    expect(screen.getAllByText(/PLA · /).length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('[data-filament-line]').length).toBeGreaterThan(0);
     expect(screen.getAllByText('113,8 g').length).toBeGreaterThan(0);
   });
 
@@ -212,5 +212,41 @@ describe('PrintDataCard keyboard and screen reader', () => {
     expect(screen.getByRole('heading', { name: en.printDataHeading })).toBeVisible();
     expect(screen.getAllByTitle(en.printDataNotFound).length).toBeGreaterThan(0);
     expect(screen.getByText('0.20 mm')).toBeVisible();
+  });
+});
+
+describe('PrintDataCard look', () => {
+  const lines = () => [...document.querySelectorAll<HTMLElement>('[data-filament-line]')];
+
+  it('gives every filament dot a visible border from the muted ink token (dark colors on a dark theme)', () => {
+    show(modelWith(makePrintInfo(full)), 'page');
+    const dots = lines().map(line => line.firstElementChild as HTMLElement);
+    expect(dots.length).toBe(4);
+    for (const dot of dots) expect(dot.className).toContain('border-[var(--ink-3)]');
+  });
+
+  it('reserves the dot column on every line so several filaments line up, also without a color', () => {
+    show(modelWith(makePrintInfo(full)), 'compact');
+    const block = lines()[0].parentElement as HTMLElement;
+    expect(block.className).toMatch(/items-start/);
+    for (const line of lines()) expect(line.firstElementChild?.className).toContain('w-2.5');
+  });
+
+  it('keeps the total label on one line when a plate is chosen', () => {
+    show(modelWith(makePrintInfo(full)), 'compact');
+    fireEvent.click(screen.getByRole('button', { name: 'Platte 2 · Deckel' }));
+    expect(screen.getByText(de.printDataTotal).className).toContain('whitespace-nowrap');
+  });
+
+  it('draws the dash for missing values in the stronger ink token (contrast above 4.5:1 in both themes)', () => {
+    show(modelWith(makePrintInfo({ ...full, bedType: null })), 'page');
+    expect(screen.getAllByTitle(de.printDataNotFound)[0].className).toContain('text-[var(--ink-2)]');
+  });
+
+  it('shows weights with one decimal: 61 g becomes 61,0 g', () => {
+    const round = { ...sliceInfo, plates: [{ plateIndex: 1, weightG: 61, filaments: [dot('#2b2b2b', 61)] }, sliceInfo.plates[1]] };
+    show(makeModelFile({ sliceInfo: round, printInfo: makePrintInfo(full) }), 'page');
+    expect(screen.getAllByText('61,0 g').length).toBeGreaterThan(0);
+    expect(screen.queryByText('61 g')).toBeNull();
   });
 });

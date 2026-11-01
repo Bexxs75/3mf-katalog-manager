@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDecimalInput, formatLayerHeightMm, formatNozzleMm, formatPrintDuration, formatSpoolAmount, formatStockG, formatTemperatureC, formatVolumeMl } from './format';
+import { formatDecimalInput, formatLayerHeightMm, formatNozzleMm, formatPrintDuration, formatSpoolAmount, formatStockG, formatTemperatureC, formatUsageG, formatUsageM, formatVolumeMl } from './format';
 import { de } from './de';
 import { en } from './en';
 import { es } from './es';
@@ -85,5 +85,14 @@ describe('print data number formats', () => {
     expect(formatTemperatureC(220, 'de')).toBe('220 °C');
     expect(formatTemperatureC(60.4, 'en')).toBe('60 °C');
     expect(formatTemperatureC(1000, 'de')).toBe('1.000 °C');
+  });
+});
+
+describe('formatUsageG / formatUsageM', () => {
+  it('always shows one decimal', () => {
+    expect(formatUsageG(61, 'de')).toBe('61,0 g');
+    expect(formatUsageG(38.24, 'en')).toBe('38.2 g');
+    expect(formatUsageM(7, 'de')).toBe('7,0 m');
+    expect(formatUsageM(12.76, 'fr')).toBe('12,8 m');
   });
 });

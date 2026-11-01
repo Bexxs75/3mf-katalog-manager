@@ -64,6 +64,18 @@ export function formatLengthM(meters: number, language: Language): string {
   return `${nf.format(meters)} m`;
 }
 
+/** Slicer weight with exactly one decimal, so "61,0 g" lines up with "38,2 g" in a table. */
+export function formatUsageG(grams: number, language: Language): string {
+  const nf = new Intl.NumberFormat(localeFor(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${nf.format(grams)} g`;
+}
+
+/** Slicer filament length with exactly one decimal ("7,0 m"). */
+export function formatUsageM(meters: number, language: Language): string {
+  const nf = new Intl.NumberFormat(localeFor(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${nf.format(meters)} m`;
+}
+
 /** Filament length used by a print job in mm (rounded). */
 export function formatLengthMm(mm: number, language: Language): string {
   return `${new Intl.NumberFormat(localeFor(language)).format(Math.round(mm))} mm`;

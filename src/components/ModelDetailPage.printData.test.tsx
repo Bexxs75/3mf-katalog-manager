@@ -36,12 +36,13 @@ const info = makePrintInfo({
   plates: [{ plateIndex: 1, name: 'Boden', printSeconds: 8040, firstLayerSeconds: null, plateBedType: null },
     { plateIndex: 2, name: null, printSeconds: 3120, firstLayerSeconds: null, plateBedType: null }],
 });
+const filamentLines = (root: ParentNode = document) => [...root.querySelectorAll('[data-filament-line]')].map(line => line.textContent);
 const rescanButtons = () => screen.queryAllByRole('button', { name: de.rescanMetadataButton });
 
 it('shows a sliced file as a table with shared values and one rescan button', () => {
   renderPage(makeModelFile({ path: '/c/a.3mf', sliceInfo: slice, printInfo: info }));
   const table = screen.getByRole('table', { name: de.printDataHeading });
-  expect(within(table).getByText('PLA · 38,2 g · 12,8 m')).toBeVisible();
+  expect(filamentLines(table)).toEqual(['PLA 38,2 g · 12,8 m', 'PETG 14,6 g · 4,9 m']);
   expect(within(table).getByText('3 h 6 min')).toBeVisible();
   const shared = screen.getByRole('region', { name: de.printDataSharedHeadingPage });
   expect(within(shared).getByText('Bambu Lab X1 Carbon')).toBeVisible();
@@ -56,8 +57,7 @@ it('keeps the filament usage per plate, the filament check and the cost line (us
     filamentType: 'PLA', color: '#2b2b2b', neededG: 38.2, status: 'ok', missingG: 0, spools: [], possible: [] }] };
   check.value = { checks: new Map([['model-1', filamentCheck]]), error: false };
   renderPage(makeModelFile({ path: '/c/a.3mf', sliceInfo: slice, printInfo: info, costEstimate: { totalCost: 4.5, hasUnpricedFilaments: true } }));
-  expect(screen.getByText('PLA · 38,2 g · 12,8 m')).toBeVisible();
-  expect(screen.getByText('PETG · 14,6 g · 4,9 m')).toBeVisible();
+  expect(filamentLines()).toEqual(['PLA 38,2 g · 12,8 m', 'PETG 14,6 g · 4,9 m']);
   expect(screen.getByText(de.filamentCheckHeading)).toBeVisible();
   expect(screen.getByText(de.metaCostEstimate)).toBeVisible();
   expect(screen.getByTitle(de.costEstimateUnpricedHint)).toBeVisible();
@@ -66,7 +66,7 @@ it('keeps the filament usage per plate, the filament check and the cost line (us
 
 it('shows the filament usage even when the print data row is missing (not read yet)', () => {
   renderPage(makeModelFile({ path: '/c/a.3mf', sliceInfo: slice, printInfo: null }));
-  expect(screen.getByText('PLA · 38,2 g · 12,8 m')).toBeVisible();
+  expect(filamentLines()).toEqual(['PLA 38,2 g · 12,8 m', 'PETG 14,6 g · 4,9 m']);
   expect(screen.getByText(de.printDataUnreadKnown)).toBeVisible();
   expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
   expect(rescanButtons()).toHaveLength(1);
@@ -126,4 +126,22 @@ it('triggers the one existing rescan button and nothing else', () => {
   renderPage(makeModelFile({ path: '/c/a.3mf', sliceInfo: slice, printInfo: null }), { onRescanMetadata });
   act(() => { fireEvent.click(rescanButtons()[0]); });
   expect(onRescanMetadata).toHaveBeenCalledTimes(1);
+});
+
+it('shows weights and lengths with one decimal everywhere, so a round value keeps its ",0"', () => {
+  const round = { totalWeightG: 61, plates: [{ plateIndex: 1, weightG: 61, filaments: [{ type: 'PLA', color: '#2b2b2b', usedG: 61, usedM: 7 }] },
+    { plateIndex: 2, weightG: 38.2, filaments: [{ type: 'PLA', color: null, usedG: 38.2, usedM: 12.8 }] }] };
+  renderPage(makeModelFile({ path: '/c/a.3mf', sliceInfo: round, printInfo: info }));
+  const table = screen.getByRole('table');
+  expect(within(table).getAllByText('61,0 g').length).toBeGreaterThan(0);
+  expect(within(table).queryByText('61 g')).toBeNull();
+  expect(filamentLines(table)[0]).toBe('PLA 61,0 g · 7,0 m');
+});
+
+it('puts the material under its heading, left aligned, with the name in text color and the amounts muted', () => {
+  renderPage(makeModelFile({ path: '/c/a.3mf', sliceInfo: slice, printInfo: info }));
+  const cell = (screen.getByRole('table').querySelector('[data-filament-line]') as HTMLElement).closest('td') as HTMLElement;
+  expect(cell.innerHTML).not.toMatch(/justify-end|text-right/);
+  const line = cell.querySelector('[data-filament-line]') as HTMLElement;
+  expect(line.lastElementChild?.querySelector('span')).toHaveClass('text-[var(--ink-3)]');
 });
