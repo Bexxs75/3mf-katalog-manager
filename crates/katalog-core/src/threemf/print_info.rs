@@ -23,7 +23,8 @@ use super::slicer_colors::MAX_FILAMENTS;
 use super::source::sanitize_source_value;
 
 /// Raise with every new source entry so a re-read is offered again for files read earlier.
-pub const PRINT_INFO_READER_VERSION: u32 = 1;
+/// 2: PrusaSlicer projects (`Metadata/Slic3r_PE.config`) are read as a source.
+pub const PRINT_INFO_READER_VERSION: u32 = 2;
 
 /// Upper bound of plate rows per file (protects against prepared archives; real files have 1 to 4).
 pub const MAX_PLATES: usize = 1024;
@@ -44,6 +45,18 @@ pub const MIN_SECONDS: f64 = 1.0;
 pub const MAX_SECONDS: f64 = 3.0 * 365.0 * 24.0 * 3600.0;
 
 const SETTINGS_PATH: &str = "Metadata/project_settings.config";
+
+/// Settings of a PrusaSlicer project (text, one `; key = value` per line).
+///
+/// Source table, entry proven by a real PrusaSlicer 2.9 project saved without slicing
+/// (user sample `skoda_top_tether_hook_20260812.3mf`; the repository holds only the
+/// synthetic `tests/fixtures/synthetic-prusa-project.3mf`). That package has no
+/// `slice_info.config`, no `plate_N.json`, no G-code and no print time. Keys read:
+/// `printer_model`, `layer_height`, `nozzle_diameter` (comma separated with several
+/// extruders). Temperatures (`temperature`, `bed_temperature`, ...) and `bed_shape` are
+/// present in the file but deliberately NOT read: no temperatures without print data, and
+/// a bed type is never guessed from the bed shape.
+const PRUSA_SETTINGS_PATH: &str = "Metadata/Slic3r_PE.config";
 
 /// `<metadata key=".." value="seconds"/>` keys inside a `<plate>` of `slice_info.config`
 /// that carry the print time. EMPTY until a real print file proves one (the key
@@ -175,6 +188,14 @@ pub fn read_print_info_with<R: Read + Seek>(
     assignments: &PlateAssignments,
     sources: &Sources,
 ) -> (PrintInfo, u64) {
+    // A PrusaSlicer project has no `slice_info.config`; its own settings entry proves what it
+    // is. A file that has a `slice_info.config` (any state but "missing") is judged by that.
+    if slice.state == SliceState::NotRecognized {
+        if let Some(result) = read_prusa_project(archive) {
+            return result;
+        }
+    }
+
     // Only files recognised as slicer projects get the extra reading: for the other
     // two states nothing proves what the file is, and no extra work is done for them.
     if !matches!(slice.state, SliceState::Sliced | SliceState::NoSliceData) {
@@ -228,6 +249,51 @@ pub fn read_print_info_with<R: Read + Seek>(
     bytes_read += plate_bytes;
     info.plates = plates;
     (info, bytes_read)
+}
+
+/// Reads a PrusaSlicer project (`Slic3r_PE.config`). `None` when the entry does not exist
+/// (the caller goes on as before). Otherwise always a result: the file holds no print data
+/// (`NoSliceData`), the settings are `Read`, or `Unreadable` when the entry is too large,
+/// cut off, not text or has no `; key = value` line at all. No plate rows, no
+/// temperatures, no print time.
+fn read_prusa_project<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Option<(PrintInfo, u64)> {
+    let (text, bytes) = read_entry_counted(archive, PRUSA_SETTINGS_PATH, MAX_CONFIG_XML_BYTES);
+    let mut info = PrintInfo::empty(SliceState::NoSliceData, SettingsState::Unreadable);
+    let text = match text {
+        Ok(text) => text,
+        Err(EntryFailure::Missing) => return None,
+        Err(_) => return Some((info, bytes)),
+    };
+
+    let mut seen_pair = false;
+    let (mut model, mut layer, mut nozzle) = (None, None, None);
+    for line in text.lines() {
+        let Some((key, value)) = line.strip_prefix(';').and_then(|rest| rest.split_once('=')) else { continue };
+        let (key, value) = (key.trim(), value.trim());
+        if key.is_empty() {
+            continue;
+        }
+        seen_pair = true;
+        // The first line of a key wins; other keys are not kept.
+        let slot = match key {
+            "printer_model" => &mut model,
+            "layer_height" => &mut layer,
+            "nozzle_diameter" => &mut nozzle,
+            _ => continue,
+        };
+        slot.get_or_insert(value);
+    }
+    if !seen_pair {
+        return Some((info, bytes));
+    }
+
+    info.settings_state = SettingsState::Read;
+    info.printer_model = model.and_then(sanitize_source_value);
+    info.layer_height_mm = layer.and_then(|v| number_of_text(v, MIN_LAYER_HEIGHT_MM, MAX_LAYER_HEIGHT_MM));
+    info.nozzle_mm = nozzle
+        .map(|v| reduce(v.split(',').take(MAX_FILAMENTS).filter_map(|n| number_of_text(n, MIN_NOZZLE_MM, MAX_NOZZLE_MM))))
+        .unwrap_or(Reduced::Unknown);
+    Some((info, bytes))
 }
 
 /// Temperature reduced over the plates (gates T1, T2, T4 of the specification). Anything
@@ -339,6 +405,13 @@ fn number_of(value: &Value, min: f64, max: f64) -> Option<f64> {
     if !parsed.is_finite() {
         return None;
     }
+    let rounded = round3(parsed);
+    (min..=max).contains(&rounded).then_some(rounded)
+}
+
+/// Text to a plausible, rounded number (same rules as [`number_of`]).
+fn number_of_text(text: &str, min: f64, max: f64) -> Option<f64> {
+    let parsed = text.trim().parse::<f64>().ok().filter(|v| v.is_finite())?;
     let rounded = round3(parsed);
     (min..=max).contains(&rounded).then_some(rounded)
 }

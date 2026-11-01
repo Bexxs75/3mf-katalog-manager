@@ -717,3 +717,184 @@ fn an_invalid_utf8_settings_entry_is_counted_as_read() {
     assert_eq!(info.settings_state, SettingsState::Unreadable);
     assert_eq!(bytes, 100_000);
 }
+
+// PrusaSlicer projects (`Metadata/Slic3r_PE.config`)
+
+const PRUSA_SYNTHETIC: &[u8] = include_bytes!("../../../tests/fixtures/synthetic-prusa-project.3mf");
+const PRUSA_PATH: &str = "Metadata/Slic3r_PE.config";
+
+/// A package that has nothing but a PrusaSlicer settings entry.
+fn prusa_entries(config: &str) -> Entries {
+    let mut entries = Entries::new();
+    set(&mut entries, PRUSA_PATH, config.as_bytes());
+    entries
+}
+
+fn read_prusa(config: &str) -> PrintInfo {
+    read(&mut build(&prusa_entries(config)))
+}
+
+#[test]
+fn a_synthetic_prusa_project_gives_its_settings_but_no_print_data() {
+    // SYNTHETIC package built by tests/fixtures/make_synthetic_prusa_project.py, all values invented.
+    let mut archive = ZipArchive::new(Cursor::new(PRUSA_SYNTHETIC.to_vec())).unwrap();
+    let (slice, info) = read_with(&mut archive, PRINT_TIME_SOURCES, &Sources::SHIPPED);
+    assert_eq!(slice.state, SliceState::NotRecognized, "the Bambu detection does not know this file");
+    assert_eq!(info.slice_state, SliceState::NoSliceData);
+    assert_eq!(info.settings_state, SettingsState::Read);
+    assert_eq!(info.printer_model.as_deref(), Some("MK4S"));
+    assert_eq!(info.layer_height_mm, Some(0.15));
+    assert_eq!(info.nozzle_mm, Reduced::Value(0.4));
+    assert_eq!(info.bed_type, None, "no bed type is guessed from bed_shape");
+    assert_eq!(info.bed_temp_c, Reduced::Unknown, "the file holds temperatures, none is taken over");
+    assert_eq!(info.nozzle_temp_c, Reduced::Unknown);
+    assert!(info.plates.is_empty());
+}
+
+#[test]
+fn prusa_nozzle_lists_follow_the_bambu_rules() {
+    let nozzle = |value: &str| read_prusa(&format!("; nozzle_diameter = {value}\n")).nozzle_mm;
+    assert_eq!(nozzle("0.4,0.4"), Reduced::Value(0.4), "equal values give one value");
+    assert_eq!(nozzle("0.4,0.6"), Reduced::Mixed, "different values are mixed");
+    assert_eq!(nozzle("0.4,abc"), Reduced::Value(0.4), "an unusable entry is ignored");
+    assert_eq!(nozzle("abc"), Reduced::Unknown);
+    assert_eq!(nozzle("0"), Reduced::Unknown, "never 0");
+    assert_eq!(nozzle("99"), Reduced::Unknown, "outside the plausible range");
+    assert_eq!(nozzle("0.40"), Reduced::Value(0.4));
+}
+
+#[test]
+fn prusa_values_outside_the_limits_or_not_numbers_are_missing_never_zero() {
+    for bad in ["0", "-0.2", "5.5", "abc", "", "NaN", "inf"] {
+        let info = read_prusa(&format!("; layer_height = {bad}\n; printer_model = MK4S\n"));
+        assert_eq!(info.settings_state, SettingsState::Read, "{bad}");
+        assert_eq!(info.layer_height_mm, None, "layer height '{bad}'");
+    }
+    let info = read_prusa("; layer_height = 0.2\n");
+    assert_eq!(info.printer_model, None, "a missing key is missing");
+    assert_eq!(info.layer_height_mm, Some(0.2));
+}
+
+#[test]
+fn prusa_text_values_are_cleaned_and_the_first_line_of_a_key_wins() {
+    let info = read_prusa("; printer_model = MK4\u{7}S\n; printer_model = other\n; some comment without a value\n;nozzle_diameter=0.6\n");
+    assert_eq!(info.printer_model.as_deref(), Some("MK4S"));
+    assert_eq!(info.nozzle_mm, Reduced::Value(0.6), "spaces around the equals sign are optional");
+}
+
+#[test]
+fn a_config_without_any_key_line_or_not_text_is_unreadable_but_stays_without_print_data() {
+    for content in [&b""[..], b"hello\nworld\n", b"; just a comment\n", b"\xff\xfe\xfd"] {
+        let mut entries = Entries::new();
+        set(&mut entries, PRUSA_PATH, content);
+        let info = read(&mut build(&entries));
+        assert_eq!(info.slice_state, SliceState::NoSliceData, "{content:?}");
+        assert_eq!(info.settings_state, SettingsState::Unreadable, "{content:?}");
+        assert_eq!(info.layer_height_mm, None);
+        assert!(info.plates.is_empty());
+    }
+}
+
+#[test]
+fn a_cut_off_prusa_config_is_unreadable_and_never_an_abort() {
+    // Stored entry with a damaged byte: the checksum fails while reading.
+    let mut entries = prusa_entries("; layer_height = 0.2\n; nozzle_diameter = 0.4\n");
+    set(&mut entries, "3D/3dmodel.model", b"<model/>");
+    let mut buf = Vec::new();
+    {
+        let mut writer = ZipWriter::new(Cursor::new(&mut buf));
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for (name, content) in &entries {
+            writer.start_file(name.as_str(), options).unwrap();
+            writer.write_all(content).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+    let position = buf.windows(12).position(|w| w == b"layer_height").unwrap();
+    buf[position] = b'L';
+    let mut archive = ZipArchive::new(Cursor::new(buf)).unwrap();
+    let (_, _, assignments) = read_plate_metadata(&mut archive);
+    let (slice, _) = read_slice_info_detailed_with(&mut archive, &[]);
+    let (info, _) = read_print_info_with(&mut archive, &slice, &assignments, &Sources::SHIPPED);
+    assert_eq!(info.slice_state, SliceState::NoSliceData);
+    assert_eq!(info.settings_state, SettingsState::Unreadable);
+    assert_eq!(info.layer_height_mm, None);
+    assert_eq!(info.nozzle_mm, Reduced::Unknown);
+}
+
+#[test]
+fn a_huge_prusa_config_is_not_read_and_a_wrong_size_field_is_caught() {
+    let mut entries = Entries::new();
+    let mut text = b"; layer_height = 0.2\n".to_vec();
+    text.resize(MAX_CONFIG_XML_BYTES as usize + 1, b' ');
+    set(&mut entries, PRUSA_PATH, &text);
+    let mut archive = build_stored(&entries);
+    let (_, _, assignments) = read_plate_metadata(&mut archive);
+    let (slice, _) = read_slice_info_detailed_with(&mut archive, &[]);
+    let (info, bytes) = read_print_info_with(&mut archive, &slice, &assignments, &Sources::SHIPPED);
+    assert_eq!(info.slice_state, SliceState::NoSliceData);
+    assert_eq!(info.settings_state, SettingsState::Unreadable);
+    assert_eq!(info.layer_height_mm, None, "nothing of an oversized entry is used");
+    assert_eq!(bytes, 0, "refused by its declared size before any decompression");
+
+    // An entry just inside the limit is read, counted, and may be mostly blanks.
+    let mut ok = b"; layer_height = 0.2\n".to_vec();
+    ok.resize(MAX_CONFIG_XML_BYTES as usize, b' ');
+    let mut entries = Entries::new();
+    set(&mut entries, PRUSA_PATH, &ok);
+    let mut archive = build_stored(&entries);
+    let (slice, _) = read_slice_info_detailed_with(&mut archive, &[]);
+    let (_, _, assignments) = read_plate_metadata(&mut archive);
+    let (info, bytes) = read_print_info_with(&mut archive, &slice, &assignments, &Sources::SHIPPED);
+    assert_eq!(info.layer_height_mm, Some(0.2));
+    assert_eq!(bytes, MAX_CONFIG_XML_BYTES);
+}
+
+#[test]
+fn a_slice_info_entry_always_wins_over_the_prusa_config() {
+    // Sliced Bambu-style content next to a Prusa config: the slicer result decides.
+    let mut entries = base_entries();
+    set(&mut entries, "Metadata/slice_info.config", slice_xml(&[slice_plate("1", &[1], "")]).as_bytes());
+    settings_json(&mut entries, r#"{"printer_model":"Bambu Lab P1S","layer_height":"0.28"}"#);
+    set(&mut entries, PRUSA_PATH, b"; printer_model = MK4S\n; layer_height = 0.15\n");
+    let info = read(&mut build(&entries));
+    assert_eq!(info.slice_state, SliceState::Sliced);
+    assert_eq!(info.printer_model.as_deref(), Some("Bambu Lab P1S"));
+    assert_eq!(info.layer_height_mm, Some(0.28));
+
+    // Header-only slice_info (no print data) also stays in the Bambu path: the Prusa config is not mixed in.
+    let mut entries = base_entries();
+    set(&mut entries, "Metadata/project_settings.config", b"{\"printer_model\":\"Bambu Lab A1\"}");
+    set(&mut entries, PRUSA_PATH, b"; printer_model = MK4S\n");
+    let info = read(&mut build(&entries));
+    assert_eq!(info.slice_state, SliceState::NoSliceData);
+    assert_eq!(info.printer_model.as_deref(), Some("Bambu Lab A1"));
+
+    // A broken slice_info stays unreadable: nothing is claimed about the file.
+    let mut entries = prusa_entries("; printer_model = MK4S\n");
+    set(&mut entries, "Metadata/slice_info.config", b"<config><plate>");
+    let info = read(&mut build(&entries));
+    assert_eq!(info.slice_state, SliceState::Unreadable);
+    assert_eq!(info.settings_state, SettingsState::NotAttempted);
+    assert_eq!(info.printer_model, None);
+}
+
+#[test]
+fn a_package_without_any_slicer_entry_is_still_not_recognised() {
+    let mut entries = Entries::new();
+    set(&mut entries, "3D/3dmodel.model", b"<model/>");
+    set(&mut entries, "Metadata/Slic3r_PE_model.config", b"<config/>");
+    let info = read(&mut build(&entries));
+    assert_eq!(info.slice_state, SliceState::NotRecognized, "the model config alone proves nothing");
+    assert_eq!(info.settings_state, SettingsState::NotAttempted);
+}
+
+#[test]
+fn bambu_and_creality_fixtures_are_unchanged_by_the_prusa_source() {
+    for bytes in [CREALITY, BAMBU_SYNTHETIC] {
+        let info = read(&mut ZipArchive::new(Cursor::new(bytes.to_vec())).unwrap());
+        assert_eq!(info.slice_state, SliceState::NoSliceData);
+        assert_eq!(info.settings_state, SettingsState::Read);
+        assert!(!info.plates.is_empty(), "their plate rows stay");
+    }
+}

@@ -471,3 +471,22 @@ fn image_budget_defers_later_entries_but_always_serves_the_first() {
     let json = serde_json::to_value(&served[0]).unwrap();
     assert!(json.get("deferred").is_none());
 }
+
+#[test]
+fn a_row_of_the_first_reader_version_counts_as_unread_so_prusa_projects_can_be_read_again() {
+    use crate::db::print_info_tests::{new_file, record};
+    use crate::threemf::print_info::{SliceState, PRINT_INFO_READER_VERSION};
+
+    let mut conn = crate::db::connect_in_memory().expect("connect");
+    let mut old = record(SliceState::NotRecognized, vec![]);
+    old.reader_version = 1;
+    let mut current = record(SliceState::NotRecognized, vec![]);
+    current.reader_version = PRINT_INFO_READER_VERSION;
+    for (name, info) in [("old.3mf", old), ("current.3mf", current)] {
+        crate::db::insert_file(&mut conn, &new_file(&format!("/tmp/{name}"), FileType::ThreeMf, Some(info))).unwrap();
+    }
+    let states: std::collections::BTreeMap<String, String> =
+        list_file_summaries(&conn).unwrap().into_iter().map(|s| (s.name, s.print_data_state)).collect();
+    assert_eq!(states["old.3mf"], "unread");
+    assert_eq!(states["current.3mf"], "not_recognized");
+}

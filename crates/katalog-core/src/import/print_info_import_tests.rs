@@ -131,3 +131,43 @@ fn a_print_data_fault_in_the_batch_keeps_every_file() {
         assert!(stored.print_info.is_none(), "not read yet, no half row");
     }
 }
+
+const PRUSA: &[u8] = include_bytes!("../../tests/fixtures/synthetic-prusa-project.3mf");
+
+#[test]
+fn a_prusa_project_imports_with_its_settings_and_without_plates_or_temperatures() {
+    let dir = crate::unique_test_dir("print_info_prusa");
+    let path = write(&dir, "prusa.3mf", PRUSA);
+    let file = read_model_file(&path, None).unwrap();
+    let record = file.print_info.clone().expect("a 3MF carries print data");
+    assert_eq!(record.slice_state, SliceState::NoSliceData);
+    assert_eq!(record.settings_state, SettingsState::Read);
+    assert_eq!(record.printer_model.as_deref(), Some("MK4S"));
+    assert_eq!(record.layer_height_mm, Some(0.15));
+    assert_eq!(record.nozzle_mm, Some(0.4));
+    assert_eq!(record.bed_type, None);
+    assert_eq!((record.bed_temp_c, record.nozzle_temp_c), (None, None));
+    assert!(record.plates.is_empty());
+
+    // The row is stored (SAVEPOINT path of the import) and read back unchanged.
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = import(&mut conn, &file);
+    assert_eq!(db::get_file(&conn, id).unwrap().unwrap().print_info.unwrap(), record);
+
+    // The web reader delivers the same.
+    let handle = std::fs::File::open(&path).unwrap();
+    let web = read_web_model(handle, &path, "prusa.3mf", WebImportLimits::default()).unwrap().print_info.unwrap();
+    assert_eq!(PrintInfoRecord { read_at: record.read_at.clone(), ..web }, record, "same data, only the read time differs");
+}
+
+#[test]
+fn a_damaged_prusa_config_still_imports_the_file() {
+    let dir = crate::unique_test_dir("print_info_prusa_bad");
+    let bytes = three_mf_with(&[("Metadata/Slic3r_PE.config", "not a config at all")]);
+    let file = read_model_file(&write(&dir, "bad.3mf", &bytes), None).unwrap();
+    let record = file.print_info.clone().unwrap();
+    assert_eq!((record.slice_state, record.settings_state), (SliceState::NoSliceData, SettingsState::Unreadable));
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = import(&mut conn, &file);
+    assert_eq!(db::get_file(&conn, id).unwrap().unwrap().print_info.unwrap(), record);
+}

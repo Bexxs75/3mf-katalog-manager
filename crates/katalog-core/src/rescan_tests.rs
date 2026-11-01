@@ -307,6 +307,26 @@ mod print_info {
     }
 
     #[test]
+    fn a_rescan_stores_the_row_of_a_prusa_project_desktop_and_web() {
+        const PRUSA: &[u8] = include_bytes!("../tests/fixtures/synthetic-prusa-project.3mf");
+        let root = unique_test_dir("rescan_print_info_prusa");
+        let path = root.join("p.3mf");
+        std::fs::write(&path, PRUSA).unwrap();
+        let (mut c, id) = catalog(&path);
+        rescan_file(&mut c, id).unwrap();
+        let stored = db::get_file(&c, id).unwrap().unwrap().print_info.unwrap();
+        assert_eq!(stored.slice_state, SliceState::NoSliceData);
+        assert_eq!(stored.printer_model.as_deref(), Some("MK4S"));
+        assert_eq!(stored.layer_height_mm, Some(0.15));
+        assert!(stored.plates.is_empty());
+        assert_eq!(stored.reader_version, crate::threemf::print_info::PRINT_INFO_READER_VERSION);
+
+        let (mut c2, id2) = catalog(&path);
+        rescan_file_in_roots(&mut c2, id2, std::slice::from_ref(&root), limits()).unwrap();
+        assert_eq!(db::get_file(&c2, id2).unwrap().unwrap().print_info.unwrap().printer_model.as_deref(), Some("MK4S"));
+    }
+
+    #[test]
     fn the_web_rescan_stores_the_print_data_and_other_types_stay_without() {
         let root = unique_test_dir("rescan_print_info_web");
         let path = root.join("a.3mf");

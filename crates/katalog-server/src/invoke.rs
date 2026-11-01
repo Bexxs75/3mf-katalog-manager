@@ -718,10 +718,11 @@ mod tests {
             conn.execute_batch(&format!(
                 "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state,
                         printer_model, bed_type, layer_height_mm, nozzle_mm)
-                 VALUES ({id}, 1, '2026-10-31T10:00:00+00:00', 'no_slice_data', 'read',
+                 VALUES ({id}, {version}, '2026-10-31T10:00:00+00:00', 'no_slice_data', 'read',
                         'Bambu Lab X1 Carbon', 'Supertack Plate', 0.2, 0.4);
                  INSERT INTO file_print_plates (file_id, plate_index, first_layer_seconds, plate_bed_type)
-                 VALUES ({id}, 1, 123.5, 'supertack_plate');"
+                 VALUES ({id}, 1, 123.5, 'supertack_plate');",
+                version = katalog_core::threemf::print_info::PRINT_INFO_READER_VERSION,
             ))
             .unwrap();
             id.to_string()

@@ -642,6 +642,17 @@ mod tests {
     }
 
     #[test]
+    fn the_document_carries_the_settings_of_the_synthetic_prusa_project() {
+        // SYNTHETIC package, see tests/fixtures/README.md.
+        let doc = parse_3mf_bytes(include_bytes!("../../tests/fixtures/synthetic-prusa-project.3mf")).unwrap();
+        let info = doc.print_info.expect("print data");
+        assert_eq!(info.slice_state, print_info::SliceState::NoSliceData);
+        assert_eq!(info.printer_model.as_deref(), Some("MK4S"));
+        assert!(info.plates.is_empty());
+        assert!(doc.slice_info.is_none(), "no slicer result: nothing stored in slice_info");
+    }
+
+    #[test]
     fn the_creality_fixture_document_has_print_data_without_a_slice_result() {
         let doc = parse_3mf_bytes(include_bytes!("../../tests/fixtures/creality-3plates.3mf")).unwrap();
         let info = doc.print_info.expect("print data");

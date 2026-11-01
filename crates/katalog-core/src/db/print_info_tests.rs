@@ -68,7 +68,7 @@ pub(crate) fn plate(index: i64) -> PrintPlateRecord {
 
 pub(crate) fn record(slice_state: SliceState, plates: Vec<PrintPlateRecord>) -> PrintInfoRecord {
     PrintInfoRecord {
-        reader_version: 1,
+        reader_version: crate::threemf::print_info::PRINT_INFO_READER_VERSION,
         read_at: "2026-10-31T10:00:00+00:00".to_string(),
         slice_state,
         settings_state: SettingsState::Read,
@@ -244,8 +244,8 @@ fn summary_state_is_none_for_a_missing_row_else_the_stored_state() {
     let stl = insert_file(&mut conn, &new_file("/tmp/d.stl", FileType::Stl, None)).unwrap();
     let summaries = list_file_summaries(&conn).unwrap();
     let state = |id: i64| summaries.iter().find(|s| s.id == id).unwrap().print_info.as_ref().map(|p| (p.reader_version, p.slice_state.clone()));
-    assert_eq!(state(sliced), Some((1, "sliced".to_string())));
-    assert_eq!(state(source), Some((1, "no_slice_data".to_string())));
+    assert_eq!(state(sliced), Some((crate::threemf::print_info::PRINT_INFO_READER_VERSION, "sliced".to_string())));
+    assert_eq!(state(source), Some((crate::threemf::print_info::PRINT_INFO_READER_VERSION, "no_slice_data".to_string())));
     assert_eq!(state(unread), None);
     assert_eq!(state(stl), None);
 }
