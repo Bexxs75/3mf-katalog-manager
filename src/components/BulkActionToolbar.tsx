@@ -13,6 +13,8 @@ import { TagInput } from './TagInput';
 import { ViewportPopover } from './ViewportPopover';
 import { tagLabel } from '../lib/autoTags';
 import { Icon } from './Icon';
+import { usePrintDataReread } from '../hooks/usePrintDataReread';
+import { PrintDataRereadJob } from './PrintDataRereadJob';
 import { DateRenameDialog, type DateRenameOutcome } from './DateRenameDialog';
 
 interface BulkActionToolbarProps {
@@ -69,6 +71,8 @@ interface MoreItem {
   onSelect: () => void;
   /** Blocked while an import runs, like the former buttons. */
   locked?: boolean;
+  /** Reason the entry cannot be used right now; it is disabled and names the reason as its tooltip. */
+  disabledReason?: string;
   /** Entries that open a popover or dialog leave focus handling to it. */
   opensOwnUi?: boolean;
   separatorBefore?: boolean;
@@ -135,6 +139,7 @@ export function BulkActionToolbar({
 }: BulkActionToolbarProps) {
   const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
+  const { state: rereadState, start: startReread, dismiss: dismissReread } = usePrintDataReread();
   const t = useT();
   const formatCount = useFormatCount();
   const [licenseOpen, setLicenseOpen] = useState(false);
@@ -167,6 +172,12 @@ export function BulkActionToolbar({
     }
     previousConfirmation.current = current;
   }, [confirmRemove, confirmBulkDelete]);
+
+  // The result of a read of the chosen files belongs to that selection.
+  useEffect(() => {
+    if (selectedCount === 0) dismissReread('selection');
+  }, [selectedCount, dismissReread]);
+  useEffect(() => () => dismissReread('selection'), [dismissReread]);
 
   // The bar stays mounted without a selection, so whatever was open for the
   // old selection has to close when it is gone.
@@ -287,6 +298,7 @@ export function BulkActionToolbar({
       ...(onBulkSetLicense ? [{ key: 'license', label: t('licenseSet'), locked: true, opensOwnUi: true, onSelect: () => setLicenseOpen(true) }] : []),
     ] : []),
     ...(selectedIds && onDateRenamed ? [{ key: 'dateRename', label: t('dateRenameMenu'), locked: true, opensOwnUi: true, onSelect: () => setDateRenameIds([...selectedIds]) }] : []),
+    { key: 'rereadPrintData', label: t('printDataRereadSelected'), locked: true, disabledReason: rereadState.status === 'running' || rereadState.status === 'cancelling' ? t('printDataRereadBusy') : undefined, onSelect: () => { startReread('selection', selectedIds ?? []); } },
     ...(activeCollection ? [{ key: 'removeFromCollection', label: t('removeFromCollectionLabel'), onSelect: onBulkRemoveFromCollection }] : []),
     ...(onBulkRemove ? [{ key: 'removeCatalog', label: t('removeCatalogShort'), locked: true, opensOwnUi: true, separatorBefore: true, onSelect: () => { setError(null); setConfirmRemove(true); } }] : []),
   ];
@@ -469,7 +481,7 @@ export function BulkActionToolbar({
                   {moreItems.map(item => (
                     <div key={item.key}>
                       {item.separatorBefore && <div role="separator" className="my-1 border-t border-[var(--line)]" />}
-                      <button type="button" role="menuitem" tabIndex={-1} {...(item.locked ? lockProps : {})} onClick={closeMoreThen(item)} className={MENU_ITEM}>
+                      <button type="button" role="menuitem" tabIndex={-1} {...(item.locked ? lockProps : {})} {...(item.disabledReason ? { disabled: true, title: item.disabledReason } : {})} onClick={closeMoreThen(item)} className={MENU_ITEM}>
                         {item.label}
                       </button>
                     </div>
@@ -489,6 +501,7 @@ export function BulkActionToolbar({
           </button>}
         </>
       )}
+      <div className="basis-full empty:hidden"><PrintDataRereadJob origin="selection" returnFocus={moreRef} /></div>
       {dateRenameIds && onDateRenamed && (
         <DateRenameDialog fileIds={dateRenameIds} returnFocus={moreRef}
           onClose={() => setDateRenameIds(null)}

@@ -11,6 +11,7 @@ import { useSingleKeyShortcuts } from './hooks/useSingleKeyShortcuts';
 import { ModelLayoutContext } from './hooks/ModelLayoutContext';
 import { useModelImages } from './hooks/useModelImages';
 import { ImportLockContext } from './hooks/ImportLockContext';
+import { PrintDataRereadProvider } from './hooks/usePrintDataReread';
 import { PrinterManagerView } from './components/PrinterManagerView';
 import type { MainView, PrinterNavigation, FolderTrashResult } from './types';
 import { DragGhost } from './components/DragGhost';
@@ -490,6 +491,7 @@ export default function App() {
 
   return (
     <ImportLockContext.Provider value={fileImport.jobActive}>
+    <PrintDataRereadProvider models={store.models} setModels={store.setModels}>
     <div
       className="h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
@@ -835,6 +837,7 @@ export default function App() {
         />
       )}
     </div>
+    </PrintDataRereadProvider>
     </ImportLockContext.Provider>
   );
 }

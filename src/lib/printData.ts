@@ -1,4 +1,4 @@
-import type { FilamentUsage, ModelFile } from '../types';
+import type { FilamentUsage, ModelFile, PrintDataState } from '../types';
 
 /**
  * Display state of the print-data card. The first four are the stored slice
@@ -153,4 +153,32 @@ export function sumWeightG(rows: readonly PlateRow[]): number | null {
 /** True for a 3MF whose print data are loaded in full (not a list summary, not a trash record without them). */
 export function showsPrintData(model: Pick<ModelFile, 'path' | 'summaryOnly' | 'deletedAt'>): boolean {
   return model.path.toLowerCase().endsWith('.3mf') && !model.summaryOnly && model.deletedAt === null;
+}
+
+/**
+ * What the print data of a record are: the list's state when it has one, else derived
+ * (a record loaded in full has none). A row of another reader version counts as `unread`.
+ */
+export function printDataStateOf(model: Pick<ModelFile, 'path' | 'printDataState' | 'printInfo'>): PrintDataState {
+  if (model.printDataState) return model.printDataState;
+  if (!model.path.toLowerCase().endsWith('.3mf')) return 'none';
+  return model.printInfo?.readerCurrent ? model.printInfo.sliceState : 'unread';
+}
+
+/**
+ * The files a bulk read visits. `all`: sliced files (slicer weight) whose print data are not
+ * read yet or were read by another reader version. `selected`: the chosen 3MF files, whatever
+ * their state (a non-3MF has nothing to read).
+ */
+export function rereadTargets(
+  models: readonly Pick<ModelFile, 'id' | 'path' | 'weightSource' | 'deletedAt' | 'printDataState' | 'printInfo'>[],
+  scope: 'all' | 'selected',
+  selectedIds: ReadonlySet<string> = new Set(),
+): string[] {
+  return models.filter(model => {
+    if (model.deletedAt !== null) return false;
+    const state = printDataStateOf(model);
+    if (scope === 'all') return model.weightSource === 'slicer' && state === 'unread';
+    return selectedIds.has(model.id) && state !== 'none';
+  }).map(model => model.id);
 }

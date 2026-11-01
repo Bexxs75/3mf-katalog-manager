@@ -74,6 +74,8 @@ export interface ModelImages {
 export interface ModelFile {
   /** Catalog file type ('3mf', 'stl', 'stp', 'obj'); absent on models loaded in full. */
   fileType?: string;
+  /** What the list knows about the print data; absent on models loaded in full (derive it with `printDataStateOf`). */
+  printDataState?: PrintDataState;
   license: string | null;
   hasThumbnail?: boolean;
   hasRenderSnapshot?: boolean;

@@ -24,6 +24,7 @@ import { WebCatalogBackup } from './WebCatalogBackup';
 import { ErrorText } from '../diagnostics/ErrorText';
 import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
+import { PrintDataRereadSettings } from './PrintDataRereadSettings';
 import { getAppVersion } from '../lib/api/update';
 
 type SettingsTab = 'general' | 'slicer' | 'catalog' | 'info';
@@ -327,6 +328,7 @@ export function SettingsPanel({
           {import.meta.env.VITE_TARGET === 'web' && activeSettingsTab === 'catalog' && (
             <>
               <AutoTaggingSetting />
+              <PrintDataRereadSettings />
               <WebCatalogBackup />
             </>
           )}
@@ -350,6 +352,7 @@ export function SettingsPanel({
               )}
 
               <AutoTaggingSetting />
+              <PrintDataRereadSettings />
               <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBackupTitle')}</div>
               <button
                 onClick={onExportCatalog}

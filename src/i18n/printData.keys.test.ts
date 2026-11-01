@@ -8,7 +8,7 @@ import type { Translations } from './types';
 // Every key of the feature, found by its prefix so a new one is checked without touching this list.
 const keys = Object.keys(de).filter(key => key.startsWith('printData') || key.startsWith('printDuration'));
 const dictionaries = { de, en, es, fr } as const;
-const PLACEHOLDERS = ['{n}', '{total}', '{k}', '{p}', '{f}', '{h}', '{min}'];
+const PLACEHOLDERS = ['{n}', '{total}', '{k}', '{p}', '{f}', '{h}', '{min}', '{count}'];
 
 const textOf = (value: Translations[keyof Translations]): string => typeof value === 'string' ? value : `${value.one}|${value.other}`;
 const placeholdersOf = (value: Translations[keyof Translations]) => (textOf(value).match(/\{\w+\}/g) ?? []).sort();
