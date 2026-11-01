@@ -799,26 +799,73 @@ fn store_model_file(conn: &Connection, new_file: &NewFile) -> CmdResult<ModelFil
     let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
     Ok(to_dto(file, &spools))
 }
-/// Re-reads a cataloged file and overwrites all columns derived from it, e.g.
-/// after it was re-sliced. The logic lives in the core so the web server shares it.
-pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFileDto> {
+/// Maps the core's rescan failures to what the desktop shows. `Changed` and `importActive`
+/// are registered codes the frontend translates; the rest keeps its German text.
+fn rescan_cmd_error(e: katalog_core::rescan::RescanError) -> CmdError {
     use katalog_core::rescan::RescanError;
-    katalog_core::rescan::rescan_file(conn, id).map_err(|e| match e {
+    match e {
         RescanError::NotInCatalog => "Datei nicht im Katalog gefunden".to_string().into(),
         RescanError::Missing(path) => CmdError::expected(format!("Datei nicht gefunden: {path}")),
         RescanError::Unsupported => CmdError::expected("nicht unterstütztes Dateiformat"),
+        RescanError::Changed => CmdError::expected("rescan_file_changed"),
         RescanError::Failed(message) => message.into(),
-        // Only the web variant produces the remaining kinds.
+        // The web variant produces the remaining kinds; the desktop never reads below roots.
         other => format!("{other:?}").into(),
-    })
+    }
 }
+/// Re-reads a cataloged file and overwrites all columns derived from it, e.g.
+/// after it was re-sliced. The logic lives in the core so the web server shares it.
+#[cfg(test)]
+pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFileDto> {
+    katalog_core::rescan::rescan_file(conn, id).map_err(rescan_cmd_error)
+}
+/// The three phases of a desktop rescan, so reading a large file never holds the database lock
+/// or the UI thread. A: short, under the database lock. B: size, hash and parsing, no lock at
+/// all. C: the catalog gate exclusively, then the lock, one transaction. `between` runs after B
+/// and before C (test hook). Returns the answer and how long the database lock was held in C.
+fn rescan_in_phases(
+    db: &std::sync::Mutex<Connection>,
+    gate: &std::sync::Arc<katalog_core::import::CatalogGate>,
+    id: i64,
+    lean: bool,
+    between: &dyn Fn(&katalog_core::rescan::PreparedRescan),
+) -> CmdResult<(ModelFileDto, std::time::Duration)> {
+    let target = {
+        let conn = db.lock().map_err(|_| "database lock poisoned".to_string())?;
+        katalog_core::rescan::begin_rescan(&conn, id).map_err(rescan_cmd_error)?
+    };
+    let prepared = katalog_core::rescan::read_rescan_target(&target).map_err(rescan_cmd_error)?;
+    between(&prepared);
+    let _catalog_share = gate.exclusive()?;
+    let (mut dto, held) = {
+        let mut conn = db.lock().map_err(|_| "database lock poisoned".to_string())?;
+        let started = std::time::Instant::now();
+        let dto = katalog_core::rescan::apply_rescan(&mut conn, prepared).map_err(rescan_cmd_error)?;
+        (dto, started.elapsed())
+    };
+    if lean {
+        // The images stay in the database; only the answer leaves them out.
+        dto.custom_image = None;
+        dto.thumbnail_image = None;
+        dto.render_snapshot_image = None;
+    }
+    Ok((dto, held))
+}
+/// `lean` (desktop only, default false) leaves the three image fields of the answer empty, for
+/// the bulk re-read of many files.
 #[tauri::command]
-pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResult<ModelFileDto> {
+pub async fn rescan_file_metadata(app: tauri::AppHandle, file_id: String, lean: Option<bool>) -> CmdResult<ModelFileDto> {
     let id: i64 = file_id
         .parse()
         .map_err(|_| "ungueltige Datei-ID".to_string())?;
-    let mut conn = lock_db(&state)?;
-    rescan_file(&mut conn, id)
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        rescan_in_phases(&state.db, &state.import_jobs.gate, id, lean.unwrap_or(false), &|_| {})
+            .map(|(dto, _held)| dto)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 /// Expands `roots` (files and/or directories) into the supported model files
 /// they contain, skips paths already present in the catalog, and imports the
@@ -2880,3 +2927,6 @@ pub fn set_license(state: State<AppState>, file_ids: Vec<String>, license: Optio
 
 #[cfg(test)]
 mod source_platform_tests;
+
+#[cfg(test)]
+mod rescan_phase_tests;
