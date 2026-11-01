@@ -7,6 +7,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [Unreleased]
+
+### Added
+
+- **Print data from 3MF files:** the detail view has a new card "Print data (from slicer)". For sliced files it shows weight, material and filament usage per plate, plus the total of all plates, and the print time per plate and in total where the file states it. Shared settings are target printer, bed type, layer height and nozzle diameter; bed and nozzle temperature appear only where the file gives them (the file kinds supported so far, from Bambu Studio, OrcaSlicer and Creality Print, contain no temperatures). A value the file does not give is shown as a dash with the note "Not found in the file"; nothing is estimated by the app. The card also appears in the compact detail panel, with a plate selector when the file has several plates.
+- **Print data:** the card tells four cases apart by the content of the file: print data present; "No print data" (a chip on the card: the file has no slicer results, for example a project that was saved without slicing); "No slicer print data recognised."; and "The slicer data of this file could not be read." For a file without print data the card still shows the project settings (target printer, bed type, layer height, nozzle) when the file has them. A file imported before this feature shows that its print data has not been read yet.
+- **Read print data afterwards:** "Rescan metadata" reads the new values for a single model. In Settings, Catalog, "Read print data" with "Read all sliced files" reads all sliced files that were not read yet, and the selection bar has "Read print data" in its "More" menu for the selected files. The read shows its progress, can be cancelled (it stops after the current file and keeps what was read), pauses while an import is running and reports files that could not be read. The files themselves are never changed.
+
+### Changed
+
+- **Detail view:** the former "Filament usage" block is part of the new "Print data" card (material, filament usage per plate, material cost check). The hint "No usage given." now appears only when the file has no slicer data and its print data has not been read.
+- **Rescan metadata:** reading a file no longer holds up the app for other actions while the file is being read.
+- **Backup:** restoring a backup now also checks the new print data tables; a backup with damaged print data is rejected with a message instead of being restored.
+- **Catalog database:** the catalog database gets two new tables for print data (schema version 53); older catalogs are upgraded automatically (a copy is saved first). The web server needs a catalog that the desktop app has upgraded first, so start the desktop app once after the update.
+- The Spanish and French texts of this feature have not been checked by native speakers.
+
 ## [0.17.0] - 2026-10-28
 
 ### Added
@@ -691,6 +707,22 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [Unreleased]
+
+### Hinzugefügt
+
+- **Druckdaten aus 3MF-Dateien:** Die Detailansicht hat eine neue Karte „Druckdaten (aus Slicer)“. Bei geslicten Dateien zeigt sie Gewicht, Material und Filamentverbrauch je Platte samt Summe aller Platten sowie die Druckzeit je Platte und gesamt, soweit die Datei sie angibt. Gemeinsame Angaben sind Zieldrucker, Betttyp, Layerhöhe und Düsendurchmesser; Bett- und Düsentemperatur erscheinen nur, wo die Datei sie hergibt (die bisher unterstützten Dateiarten aus Bambu Studio, OrcaSlicer und Creality Print enthalten keine Temperaturen). Ein Wert, den die Datei nicht angibt, steht als Strich mit dem Hinweis „In der Datei nicht gefunden“; die App schätzt nichts. Die Karte erscheint auch im kompakten Detailbereich, bei mehreren Platten mit Plattenwähler.
+- **Druckdaten:** Die Karte unterscheidet vier Fälle nach dem Inhalt der Datei: Druckdaten vorhanden; „Keine Druckdaten“ (Chip auf der Karte: die Datei enthält keine Slicer-Ergebnisse, zum Beispiel ein Projekt, das ohne Slicen gespeichert wurde); „Keine Slicer-Druckdaten erkannt.“; und „Die Slicer-Daten dieser Datei konnten nicht gelesen werden.“ Bei einer Datei ohne Druckdaten zeigt die Karte trotzdem die Projekteinstellungen (Zieldrucker, Betttyp, Layerhöhe, Düse), wenn die Datei sie enthält. Eine Datei, die vor dieser Funktion importiert wurde, weist darauf hin, dass ihre Druckdaten noch nicht gelesen wurden.
+- **Druckdaten nachlesen:** „Metadaten neu einlesen“ liest die neuen Werte für ein einzelnes Modell. In den Einstellungen unter Katalog liest „Druckdaten nachlesen“ mit „Alle geslicten Dateien nachlesen“ alle geslicten Dateien, die noch nicht gelesen wurden; die Auswahlleiste hat für die gewählten Dateien „Druckdaten nachlesen“ im Menü „Mehr“. Das Nachlesen zeigt seinen Fortschritt, lässt sich abbrechen (es endet nach der aktuellen Datei und behält das Gelesene), pausiert, solange ein Import läuft, und meldet Dateien, die nicht gelesen werden konnten. Die Dateien selbst werden nie verändert.
+
+### Geändert
+
+- **Detailansicht:** Der bisherige Block „Filamentverbrauch“ ist Teil der neuen Karte „Druckdaten“ (Material, Filamentverbrauch je Platte, Prüfung der Materialkosten). Der Hinweis „Kein Verbrauch angegeben.“ erscheint nur noch, wenn die Datei keine Slicer-Daten enthält und ihre Druckdaten nicht gelesen wurden.
+- **Metadaten neu einlesen:** Das Lesen einer Datei hält die App für andere Aktionen nicht mehr auf, solange die Datei gelesen wird.
+- **Sicherung:** Beim Wiederherstellen einer Sicherung werden jetzt auch die neuen Druckdaten-Tabellen geprüft; eine Sicherung mit beschädigten Druckdaten wird mit einer Meldung abgelehnt statt wiederhergestellt.
+- **Katalog-Datenbank:** Die Katalog-Datenbank bekommt zwei neue Tabellen für Druckdaten (Schemaversion 53); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert). Der Web-Server braucht einen Katalog, den die Desktop-App zuvor aktualisiert hat; nach dem Update die Desktop-App einmal starten.
+- Die spanischen und französischen Texte dieser Funktion wurden nicht von Muttersprachlern geprüft.
 
 ## [0.17.0] - 2026-10-28
 
