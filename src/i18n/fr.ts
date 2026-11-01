@@ -863,7 +863,7 @@ export const fr: Translations = {
   printDataUnreadPlain: 'Les données d\'impression de ce fichier n\'ont pas encore été lues.',
   printDataUnreadPanel: 'La durée d\'impression, le type de plateau, l\'imprimante cible, la hauteur de couche, la buse et les températures n\'ont pas été lus à l\'import.',
   printDataRereadTitle: "Relire les données d’impression",
-  printDataRereadIntro: "Lit les nouvelles informations des fichiers découpés déjà importés. Les fichiers eux-mêmes ne sont pas modifiés. Les modèles source sont ignorés.",
+  printDataRereadIntro: "Lit les nouvelles informations des fichiers découpés déjà importés. Les fichiers eux-mêmes ne sont pas modifiés. Les fichiers sans données d’impression sont ignorés.",
   printDataRereadAll: "Relire tous les fichiers découpés",
   printDataRereadSelected: "Relire les données d’impression",
   printDataRereadProgress: "Fichier {n} sur {total}",

@@ -863,7 +863,7 @@ export const en: Translations = {
   printDataUnreadPlain: 'The print data of this file has not been read yet.',
   printDataUnreadPanel: 'Print time, bed type, target printer, layer height, nozzle and temperatures were not read at import.',
   printDataRereadTitle: "Read print data",
-  printDataRereadIntro: "Reads the new values from already imported sliced files. The files themselves stay unchanged. Source models are skipped.",
+  printDataRereadIntro: "Reads the new values from already imported sliced files. The files themselves stay unchanged. Files without print data are skipped.",
   printDataRereadAll: "Read all sliced files",
   printDataRereadSelected: "Read print data",
   printDataRereadProgress: "File {n} of {total}",

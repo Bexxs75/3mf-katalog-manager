@@ -863,7 +863,7 @@ export const es: Translations = {
   printDataUnreadPlain: 'Los datos de impresión de este archivo aún no se han leído.',
   printDataUnreadPanel: 'El tiempo de impresión, el tipo de cama, la impresora de destino, la altura de capa, la boquilla y las temperaturas no se leyeron al importar.',
   printDataRereadTitle: "Releer los datos de impresión",
-  printDataRereadIntro: "Lee los nuevos datos de los archivos laminados ya importados. Los archivos no se modifican. Se omiten los modelos de origen.",
+  printDataRereadIntro: "Lee los nuevos datos de los archivos laminados ya importados. Los archivos no se modifican. Se omiten los archivos sin datos de impresión.",
   printDataRereadAll: "Releer todos los archivos laminados",
   printDataRereadSelected: "Releer los datos de impresión",
   printDataRereadProgress: "Archivo {n} de {total}",

@@ -863,7 +863,7 @@ export const de: Translations = {
   printDataUnreadPlain: 'Die Druckdaten dieser Datei wurden noch nicht gelesen.',
   printDataUnreadPanel: 'Druckzeit, Betttyp, Zieldrucker, Layerhöhe, Düse und Temperaturen wurden beim Import noch nicht gelesen.',
   printDataRereadTitle: "Druckdaten nachlesen",
-  printDataRereadIntro: "Liest die neuen Angaben aus bereits importierten geslicten Dateien nach. Die Dateien selbst bleiben unverändert. Quellmodelle werden übersprungen.",
+  printDataRereadIntro: "Liest die neuen Angaben aus bereits importierten geslicten Dateien nach. Die Dateien selbst bleiben unverändert. Dateien ohne Druckdaten werden übersprungen.",
   printDataRereadAll: "Alle geslicten Dateien nachlesen",
   printDataRereadSelected: "Druckdaten nachlesen",
   printDataRereadProgress: "Datei {n} von {total}",

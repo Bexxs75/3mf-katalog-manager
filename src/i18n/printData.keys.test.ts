@@ -36,10 +36,13 @@ describe('print data texts', () => {
   });
 
   it('keeps the neutral wording: no "not sliced" in the chip, tooltip or hints', () => {
-    const forbidden = /nicht geslict|not sliced|no laminad|non découpé|Quellmodell|source model/i;
+    const forbidden = /nicht geslict|not sliced|no laminad|non découpé|Quellmodell|source model|modelos? (de origen|fuente)|modèles? source/i;
     for (const [language, dict] of Object.entries(dictionaries)) {
       for (const key of ['printDataNoDataChip', 'printDataNotFound', 'printDataNotRecognizedHint', 'printDataUnreadableHint'] as const) {
         expect(dict[key], `${language}.${key}`).not.toMatch(forbidden);
+      }
+      for (const key of keys.filter(k => k.startsWith('printDataReread'))) {
+        expect(textOf(dict[key as keyof Translations]), `${language}.${key}`).not.toMatch(forbidden);
       }
     }
     expect(de.printDataNoDataChip).toBe('Keine Druckdaten');
