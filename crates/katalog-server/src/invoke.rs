@@ -710,10 +710,32 @@ mod tests {
     #[tokio::test]
     async fn all_commands_match_core_and_catalog_end_state_is_unchanged() {
         let c = catalog();
+        // A 3MF with print data, so the new fields travel through the same comparison.
+        let print_id = {
+            let conn = db::connect(&c.db).unwrap();
+            let path = c.dir.join("project.3mf").to_string_lossy().to_string();
+            let id = db::test_insert_minimal_file(&conn, &path, None).unwrap();
+            conn.execute_batch(&format!(
+                "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state,
+                        printer_model, bed_type, layer_height_mm, nozzle_mm)
+                 VALUES ({id}, 1, '2026-10-31T10:00:00+00:00', 'no_slice_data', 'read',
+                        'Bambu Lab X1 Carbon', 'Supertack Plate', 0.2, 0.4);
+                 INSERT INTO file_print_plates (file_id, plate_index, first_layer_seconds, plate_bed_type)
+                 VALUES ({id}, 1, 123.5, 'supertack_plate');"
+            ))
+            .unwrap();
+            id.to_string()
+        };
         let before = Sha256::digest(std::fs::read(&c.db).unwrap());
         let names = entries(&c);
         let conn = db::open_read_only(&c.db).unwrap();
         let cases = vec![
+            (
+                "list_files_by_ids",
+                json!({"ids":[print_id]}),
+                serde_json::to_value(read::list_files_by_ids(&conn, vec![print_id.clone()]).unwrap())
+                    .unwrap(),
+            ),
             (
                 "list_file_summaries",
                 json!({}),
@@ -790,6 +812,14 @@ mod tests {
                 "{command}"
             );
         }
+        // The fields are really there, not just equal to a core answer that lacks them.
+        let listed = serde_json::from_slice::<Value>(&body(call(&c, "list_files_by_ids", json!({"ids":[print_id]})).await).await).unwrap();
+        assert_eq!(listed[0]["printInfo"]["sliceState"], "no_slice_data");
+        assert_eq!(listed[0]["printInfo"]["plates"][0]["firstLayerSeconds"], 123.5);
+        let summaries = serde_json::from_slice::<Value>(&body(call(&c, "list_file_summaries", json!({})).await).await).unwrap();
+        let state_of = |id: &str| summaries.as_array().unwrap().iter().find(|s| s["id"] == id).unwrap()["printDataState"].clone();
+        assert_eq!(state_of(&print_id), "no_slice_data");
+        assert_eq!(state_of(&c.id), "none", "an STL has no print data");
         let response = call(&c, "get_model_geometry", json!({"fileId":c.id})).await;
         assert_eq!(
             response.headers()["content-type"],

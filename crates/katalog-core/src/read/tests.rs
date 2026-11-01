@@ -307,6 +307,7 @@ fn summary_serialization_has_presence_flags_and_no_image_fields() {
         creator: None,
         last_viewed_at: None,
         content_hash: None,
+        print_data_state: "none".into(),
     };
     let json = serde_json::to_value(summary).unwrap();
     assert_eq!(json["fileModifiedAt"], "2023-11-14T22:13:20+00:00");
@@ -315,6 +316,47 @@ fn summary_serialization_has_presence_flags_and_no_image_fields() {
     assert!(json.get("thumbnailImage").is_none());
     assert!(json.get("renderSnapshotImage").is_none());
     assert!(json.get("customImage").is_none());
+}
+
+#[test]
+fn summary_print_data_state_tells_unread_from_the_stored_state() {
+    use crate::db::print_info_tests::{new_file, plate, record};
+    use crate::threemf::print_info::SliceState;
+
+    let mut conn = crate::db::connect_in_memory().expect("connect");
+    let mut stale = record(SliceState::Sliced, vec![plate(1)]);
+    stale.reader_version = 99;
+    let rows = [
+        ("sliced.3mf", FileType::ThreeMf, Some(record(SliceState::Sliced, vec![plate(1)]))),
+        ("source.3mf", FileType::ThreeMf, Some(record(SliceState::NoSliceData, vec![plate(1)]))),
+        ("unknown.3mf", FileType::ThreeMf, Some(record(SliceState::NotRecognized, vec![]))),
+        ("broken.3mf", FileType::ThreeMf, Some(record(SliceState::Unreadable, vec![]))),
+        ("stale.3mf", FileType::ThreeMf, Some(stale)),
+        ("never-read.3mf", FileType::ThreeMf, None),
+        ("model.stl", FileType::Stl, None),
+    ];
+    for (name, file_type, info) in rows {
+        crate::db::insert_file(&mut conn, &new_file(&format!("/tmp/{name}"), file_type, info)).unwrap();
+    }
+    let states: std::collections::BTreeMap<String, String> = list_file_summaries(&conn)
+        .unwrap()
+        .into_iter()
+        .map(|s| (s.name, s.print_data_state))
+        .collect();
+    let expected = [
+        ("sliced.3mf", "sliced"),
+        ("source.3mf", "no_slice_data"),
+        ("unknown.3mf", "not_recognized"),
+        ("broken.3mf", "unreadable"),
+        ("stale.3mf", "unread"),
+        ("never-read.3mf", "unread"),
+        ("model.stl", "none"),
+    ];
+    for (name, state) in expected {
+        assert_eq!(states[name], state, "{name}");
+    }
+    let json = serde_json::to_value(list_file_summaries(&conn).unwrap().remove(0)).unwrap();
+    assert!(json["printDataState"].is_string(), "camelCase key");
 }
 
 #[test]

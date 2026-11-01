@@ -20,7 +20,7 @@ pub(crate) fn three_mf_with(extra: &[(&str, &str)]) -> Vec<u8> {
     zip.finish().unwrap().into_inner()
 }
 
-fn new_file(path: &str, file_type: FileType, print_info: Option<PrintInfoRecord>) -> NewFile {
+pub(crate) fn new_file(path: &str, file_type: FileType, print_info: Option<PrintInfoRecord>) -> NewFile {
     NewFile {
         name: path.rsplit('/').next().unwrap().to_string(),
         path: path.to_string(),
@@ -56,7 +56,7 @@ fn new_file(path: &str, file_type: FileType, print_info: Option<PrintInfoRecord>
     }
 }
 
-fn plate(index: i64) -> PrintPlateRecord {
+pub(crate) fn plate(index: i64) -> PrintPlateRecord {
     PrintPlateRecord {
         plate_index: index,
         plate_name: Some(format!("Plate {index}")),
@@ -66,7 +66,7 @@ fn plate(index: i64) -> PrintPlateRecord {
     }
 }
 
-fn record(slice_state: SliceState, plates: Vec<PrintPlateRecord>) -> PrintInfoRecord {
+pub(crate) fn record(slice_state: SliceState, plates: Vec<PrintPlateRecord>) -> PrintInfoRecord {
     PrintInfoRecord {
         reader_version: 1,
         read_at: "2026-10-31T10:00:00+00:00".to_string(),

@@ -2003,6 +2003,29 @@ mod custom_image_and_rescan_tests {
     }
 
     #[tokio::test]
+    async fn rescan_of_a_3mf_returns_and_stores_its_print_info() {
+        let f = Fixture::new(true);
+        let path = f.dir.join("project.3mf");
+        std::fs::write(&path, include_bytes!("../../katalog-core/tests/fixtures/synthetic-bambu-project.3mf")).unwrap();
+        f.catalog_path(&path);
+        let before = value(f.send("list_files_by_ids", json!({"ids":[f.id]})).await).await;
+        assert!(before[0]["printInfo"].is_null(), "not read yet");
+
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        assert_eq!(r.status(), 200);
+        let model = value(r).await;
+        assert_eq!(model["printInfo"]["sliceState"], "no_slice_data");
+        assert_eq!(model["printInfo"]["printerModel"], "Bambu Lab X1 Carbon");
+        assert_eq!(model["printInfo"]["plates"].as_array().unwrap().len(), 4);
+        assert_eq!(model["printInfo"]["readerCurrent"], true);
+        // The plain read command now answers the same.
+        let listed = value(f.send("list_files_by_ids", json!({"ids":[f.id]})).await).await;
+        assert_eq!(listed[0]["printInfo"], model["printInfo"]);
+        let summaries = value(f.send("list_file_summaries", json!({})).await).await;
+        assert_eq!(summaries[0]["printDataState"], "no_slice_data");
+    }
+
+    #[tokio::test]
     async fn rescan_refuses_bad_arguments_and_unreadable_files_without_leaking_paths() {
         let f = Fixture::new(true);
         let secret = f.dir.join("secret-name.obj");

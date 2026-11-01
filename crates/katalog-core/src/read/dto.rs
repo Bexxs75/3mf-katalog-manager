@@ -1,4 +1,4 @@
-use crate::db::models::FileRecord;
+use crate::db::models::{FileRecord, PrintInfoRecord};
 use crate::{db, threemf};
 use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
@@ -38,6 +38,73 @@ pub struct ModelFileDto {
     pub slice_info: Option<SliceInfoDto>,
     pub cost_estimate: Option<CostEstimateDto>,
     pub deleted_at: Option<String>,
+    /// `None` for non-3MF files and for a 3MF without a stored row.
+    pub print_info: Option<PrintInfoDto>,
+}
+/// A value reduced over several entries: one number, "several different ones" or unknown.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MixedValueDto {
+    pub value: Option<f64>,
+    pub mixed: bool,
+}
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatePrintInfoDto {
+    pub plate_index: u32,
+    pub name: Option<String>,
+    pub print_seconds: Option<u64>,
+    /// Time of the first layer only, never a print time.
+    pub first_layer_seconds: Option<f64>,
+    pub plate_bed_type: Option<String>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintInfoDto {
+    /// `sliced` | `no_slice_data` | `not_recognized` | `unreadable`
+    pub slice_state: String,
+    /// `read` | `missing` | `unreadable` | `not_attempted`
+    pub settings_state: String,
+    /// False when an older (or newer) reader wrote the row: the client treats it as not read yet.
+    pub reader_current: bool,
+    pub read_at: String,
+    pub printer_model: Option<String>,
+    pub bed_type: Option<String>,
+    pub layer_height_mm: Option<f64>,
+    pub nozzle_mm: MixedValueDto,
+    pub bed_temp_c: MixedValueDto,
+    pub nozzle_temp_c: MixedValueDto,
+    pub plates: Vec<PlatePrintInfoDto>,
+}
+impl From<PrintInfoRecord> for PrintInfoDto {
+    fn from(record: PrintInfoRecord) -> Self {
+        let mixed = |value: Option<f64>, mixed: bool| MixedValueDto { value, mixed };
+        PrintInfoDto {
+            slice_state: record.slice_state.as_str().to_string(),
+            settings_state: record.settings_state.as_str().to_string(),
+            reader_current: record.reader_version == threemf::print_info::PRINT_INFO_READER_VERSION,
+            read_at: record.read_at,
+            printer_model: record.printer_model,
+            bed_type: record.bed_type,
+            layer_height_mm: record.layer_height_mm,
+            nozzle_mm: mixed(record.nozzle_mm, record.nozzle_mixed),
+            bed_temp_c: mixed(record.bed_temp_c, record.bed_temp_mixed),
+            nozzle_temp_c: mixed(record.nozzle_temp_c, record.nozzle_temp_mixed),
+            plates: record
+                .plates
+                .into_iter()
+                .filter_map(|p| {
+                    Some(PlatePrintInfoDto {
+                        plate_index: u32::try_from(p.plate_index).ok()?,
+                        name: p.plate_name,
+                        print_seconds: p.print_seconds.and_then(|s| u64::try_from(s).ok()),
+                        first_layer_seconds: p.first_layer_seconds,
+                        plate_bed_type: p.plate_bed_type,
+                    })
+                })
+                .collect(),
+        }
+    }
 }
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -246,6 +313,7 @@ pub fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord]) -> M
         slice_info: slice_info.map(SliceInfoDto::from),
         cost_estimate,
         deleted_at: file.deleted_at,
+        print_info: file.print_info.map(PrintInfoDto::from),
     }
 }
 fn is_http_url(url: &str) -> bool {
@@ -490,6 +558,46 @@ mod tests {
             &[],
         );
         assert_eq!(none.content_hash, None);
+    }
+    #[test]
+    fn to_dto_serializes_print_info_in_camel_case() {
+        use crate::db::print_info_tests::{plate, record};
+        use crate::threemf::print_info::SliceState;
+
+        let mut with = sample_file_record(5, None, "2026-09-13T00:00:00Z");
+        let mut info = record(SliceState::Sliced, vec![plate(1), plate(3)]);
+        info.nozzle_temp_mixed = true;
+        info.plates[0].print_seconds = Some(600);
+        with.print_info = Some(info.clone());
+        let json = serde_json::to_value(to_dto(with, &[])).unwrap();
+        let p = &json["printInfo"];
+        assert_eq!(p["sliceState"], "sliced");
+        assert_eq!(p["settingsState"], "read");
+        assert_eq!(p["readerCurrent"], true);
+        assert_eq!(p["readAt"], "2026-10-31T10:00:00+00:00");
+        assert_eq!(p["printerModel"], "Test Printer");
+        assert_eq!(p["bedType"], "Test Plate");
+        assert_eq!(p["layerHeightMm"], 0.2);
+        assert_eq!(p["nozzleMm"], serde_json::json!({"value": 0.4, "mixed": false}));
+        assert_eq!(p["bedTempC"], serde_json::json!({"value": null, "mixed": false}));
+        assert_eq!(p["nozzleTempC"], serde_json::json!({"value": null, "mixed": true}));
+        assert_eq!(p["plates"][0]["plateIndex"], 1);
+        assert_eq!(p["plates"][0]["name"], "Plate 1");
+        assert_eq!(p["plates"][0]["printSeconds"], 600);
+        assert_eq!(p["plates"][1]["plateIndex"], 3);
+        assert_eq!(p["plates"][1]["printSeconds"], serde_json::Value::Null);
+        assert_eq!(p["plates"][1]["firstLayerSeconds"], 103.0);
+        assert_eq!(p["plates"][1]["plateBedType"], "supertack_plate");
+
+        // A row another reader wrote is flagged, so the client treats it as not read yet.
+        info.reader_version = 99;
+        let mut stale = sample_file_record(6, None, "2026-09-13T00:00:00Z");
+        stale.print_info = Some(info);
+        assert_eq!(serde_json::to_value(to_dto(stale, &[])).unwrap()["printInfo"]["readerCurrent"], false);
+
+        // No row: null, not an empty object.
+        let none = sample_file_record(7, None, "2026-09-13T00:00:00Z");
+        assert!(serde_json::to_value(to_dto(none, &[])).unwrap()["printInfo"].is_null());
     }
     #[test]
     fn to_dto_serializes_slice_info_with_camel_case_and_type_rename() {

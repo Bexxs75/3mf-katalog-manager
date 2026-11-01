@@ -47,6 +47,9 @@ pub struct FileSummaryDto {
     pub creator: Option<String>,
     pub last_viewed_at: Option<String>,
     pub content_hash: Option<String>,
+    /// `none` (not a 3MF) | `unread` (3MF without a row, or one a different reader wrote)
+    /// | `sliced` | `no_slice_data` | `not_recognized` | `unreadable`.
+    pub print_data_state: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -78,7 +81,19 @@ pub struct PrintLogEntryDto {
     pub photo_image: Option<String>,
 }
 
+/// What the list shows about the print data of a file (see [`FileSummaryDto::print_data_state`]).
+fn print_data_state(file_type: db::models::FileType, print_info: Option<&db::models::PrintInfoSummary>) -> String {
+    if file_type != db::models::FileType::ThreeMf {
+        return "none".to_string();
+    }
+    match print_info {
+        Some(info) if info.reader_version == threemf::print_info::PRINT_INFO_READER_VERSION => info.slice_state.clone(),
+        _ => "unread".to_string(),
+    }
+}
+
 pub fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
+    let print_data_state = print_data_state(s.file_type, s.print_info.as_ref());
     let slice_info = s
         .slice_info_json
         .as_deref()
@@ -124,6 +139,7 @@ pub fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
         creator: s.creator,
         last_viewed_at: s.last_viewed_at,
         content_hash: s.content_hash,
+        print_data_state,
     }
 }
 
