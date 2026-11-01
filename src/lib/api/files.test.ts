@@ -106,4 +106,9 @@ describe('files api', () => {
     await filesApi.rescanFileMetadata('m1');
     expect(invoke).toHaveBeenCalledWith('rescan_file_metadata', { fileId: 'm1' });
   });
+  it('rescanFileMetadata sends lean on the desktop only when asked to', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await filesApi.rescanFileMetadata('m1', true);
+    expect(invoke).toHaveBeenLastCalledWith('rescan_file_metadata', { fileId: 'm1', lean: true });
+  });
 });

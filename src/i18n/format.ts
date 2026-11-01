@@ -78,6 +78,46 @@ export function formatDurationMinutes(seconds: number, language: Language): stri
   return new Intl.NumberFormat(localeFor(language)).format(minutes);
 }
 
+type PrintDurationKey = 'printDurationHoursMinutes' | 'printDurationHours' | 'printDurationMinutes' | 'printDurationUnderMinute';
+
+/**
+ * Print time from seconds as "2 h 14 min". The seconds are rounded to whole
+ * minutes once, here (a sum is formed from seconds first); under one minute
+ * is "< 1 min". The units come from the translations (`printDuration*`).
+ */
+export function formatPrintDuration(
+  seconds: number,
+  language: Language,
+  t: (key: PrintDurationKey) => string,
+): string {
+  const totalMinutes = Math.round(seconds / 60);
+  if (totalMinutes < 1) return t('printDurationUnderMinute');
+  const nf = new Intl.NumberFormat(localeFor(language));
+  const hours = Math.floor(totalMinutes / 60);
+  const min = nf.format(totalMinutes % 60);
+  if (hours === 0) return t('printDurationMinutes').replace('{min}', min);
+  const h = nf.format(hours);
+  if (totalMinutes % 60 === 0) return t('printDurationHours').replace('{h}', h);
+  return t('printDurationHoursMinutes').replace('{h}', h).replace('{min}', min);
+}
+
+/** Layer height: 2 to 3 decimals (0,20 mm, 0,125 mm). The reader already rounded to 3 decimals. */
+export function formatLayerHeightMm(mm: number, language: Language): string {
+  const nf = new Intl.NumberFormat(localeFor(language), { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+  return `${nf.format(mm)} mm`;
+}
+
+/** Nozzle diameter: 1 to 2 decimals (0,4 mm, 0,25 mm). */
+export function formatNozzleMm(mm: number, language: Language): string {
+  const nf = new Intl.NumberFormat(localeFor(language), { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+  return `${nf.format(mm)} mm`;
+}
+
+/** Temperature in whole degrees. */
+export function formatTemperatureC(celsius: number, language: Language): string {
+  return `${new Intl.NumberFormat(localeFor(language), { maximumFractionDigits: 0 }).format(celsius)} °C`;
+}
+
 export function formatDiameterMm(diameterMm: number, language: Language): string {
   const formatted = new Intl.NumberFormat(localeFor(language), {
     minimumFractionDigits: 2,

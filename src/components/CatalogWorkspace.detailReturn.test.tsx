@@ -15,7 +15,7 @@ const model: ModelFile = {
   origin: 'local', sync: 'local-only', dimensionsMm: null, volumeCm3: null,
   objectCount: null, plateCount: null, materials: [], fileSizeBytes: 100,
   fileModifiedAt: null, importedAt: '2026-10-01T00:00:00Z', printStatus: 'not_printed', estimatedWeightG: null,
-  weightSource: 'estimated', sliceInfo: null, costEstimate: null, lastViewedAt: null,
+  weightSource: 'estimated', sliceInfo: null, printInfo: null, costEstimate: null, lastViewedAt: null,
   contentHash: null, creator: null, customImage: null, thumbnailImage: null,
   renderSnapshotImage: null, license: null, sourcePlatform: null, sourceModelId: null, sourceProfileId: null, sourceUrl: null, queuePosition: null, favorite: false, deletedAt: null,
 };

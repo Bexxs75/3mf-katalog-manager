@@ -87,8 +87,11 @@ export function setRenderSnapshot(fileId: string, imageBase64: string) {
 export function setSourceUrl(fileId: string, url: string | null) {
   return invoke('set_source_url', { fileId, url });
 }
-export function rescanFileMetadata(fileId: string) {
-  return invoke<ModelFile>('rescan_file_metadata', { fileId });
+// `lean` (desktop only) asks for an answer without the three image fields, for bulk reads that
+// patch the list. The web server rejects unknown arguments, so the web build never sends it.
+export function rescanFileMetadata(fileId: string, lean?: boolean) {
+  const sendLean = lean !== undefined && import.meta.env.VITE_TARGET !== 'web';
+  return invoke<ModelFile>('rescan_file_metadata', sendLean ? { fileId, lean } : { fileId });
 }
 
 export function setLicense(fileIds: string[], license: string | null): Promise<void> {

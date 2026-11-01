@@ -20,6 +20,43 @@ export interface SliceInfo {
   plates: PlateFilamentUsage[];
 }
 
+/** A value reduced over several plates: one number, "several different ones" or unknown (`value` null, not mixed). */
+export interface MixedValue {
+  value: number | null;
+  mixed: boolean;
+}
+
+export interface PlatePrintInfo {
+  plateIndex: number;
+  name: string | null;
+  /** Estimated print time; null when the file does not give one. Never the first-layer time. */
+  printSeconds: number | null;
+  /** Time of the first layer only, never a print time. */
+  firstLayerSeconds: number | null;
+  plateBedType: string | null;
+}
+
+export type PrintSliceState = 'sliced' | 'no_slice_data' | 'not_recognized' | 'unreadable';
+
+/** What the slicer stored in a 3MF besides the filament usage (`PrintInfoDto`). */
+export interface PrintInfo {
+  sliceState: PrintSliceState;
+  settingsState: 'read' | 'missing' | 'unreadable' | 'not_attempted';
+  /** False when an older (or newer) reader wrote the row: treat it as not read yet and show no values. */
+  readerCurrent: boolean;
+  readAt: string;
+  printerModel: string | null;
+  bedType: string | null;
+  layerHeightMm: number | null;
+  nozzleMm: MixedValue;
+  bedTempC: MixedValue;
+  nozzleTempC: MixedValue;
+  plates: PlatePrintInfo[];
+}
+
+/** `none` = not a 3MF; `unread` = 3MF without a row or with a row of another reader version. */
+export type PrintDataState = 'none' | 'unread' | PrintSliceState;
+
 export interface CostEstimate {
   totalCost: number | null;
   hasUnpricedFilaments: boolean;
@@ -59,6 +96,8 @@ export interface ModelFile {
   estimatedWeightG: number | null;
   weightSource: 'slicer' | 'estimated';
   sliceInfo: SliceInfo | null;
+  /** Null for non-3MF files, for a 3MF without a stored row and while only the list summary is loaded (`summaryOnly`). */
+  printInfo: PrintInfo | null;
   costEstimate: CostEstimate | null;
   lastViewedAt: string | null;
   contentHash: string | null;
@@ -116,6 +155,7 @@ export interface ModelFileSummary {
   creator: string | null;
   lastViewedAt: string | null;
   contentHash: string | null;
+  printDataState: PrintDataState;
 }
 
 export interface Folder {

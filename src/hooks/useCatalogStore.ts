@@ -22,7 +22,7 @@ import type { ModelFile, ModelFileSummary, Folder, TagCount, ImportResultDto } f
 
 // Embeds a slim `ModelFileSummary` into the full `ModelFile` shape so
 // all components see the same type. Fields not delivered
-// (customImage, sliceInfo, costEstimate, sourceUrl) get
+// (customImage, sliceInfo, printInfo, costEstimate, sourceUrl) get
 // neutral defaults and are only loaded later via `ensureFullModel()`.
 function summaryToModelFile(s: ModelFileSummary): ModelFile {
   return {
@@ -46,6 +46,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     estimatedWeightG: s.estimatedWeightG,
     weightSource: s.weightSource,
     sliceInfo: null,
+    printInfo: null,
     costEstimate: null,
     lastViewedAt: s.lastViewedAt,
     contentHash: s.contentHash,
