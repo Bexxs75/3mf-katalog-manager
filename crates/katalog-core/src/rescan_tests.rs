@@ -207,6 +207,69 @@ fn write_step_rejects_a_file_or_row_that_changed_after_parsing() {
     assert!(apply_web_rescan(&mut c, prepared).is_ok());
 }
 
+#[test]
+fn desktop_split_begin_reads_nothing_and_a_file_gone_before_reading_is_missing() {
+    let dir = unique_test_dir("rescan_split_missing");
+    let path = dir.join("a.obj");
+    std::fs::write(&path, TRIANGLE_OBJ).unwrap();
+    let (mut c, id) = catalog(&path);
+    let target = begin_rescan(&c, id).unwrap();
+    assert_eq!(target.stored_path(), path.to_str().unwrap());
+    // Phase A touches neither the disk nor the row.
+    assert_eq!(db::get_file(&c, id).unwrap().unwrap().content_hash, None);
+    std::fs::remove_file(&path).unwrap();
+    let missing = read_rescan_target(&target).map(|_| ()).unwrap_err();
+    assert_eq!(missing, RescanError::Missing(path.to_str().unwrap().to_string()));
+    assert_eq!(db::get_file(&c, id).unwrap().unwrap().content_hash, None);
+    assert_eq!(begin_rescan(&c, 999).unwrap_err(), RescanError::NotInCatalog);
+    std::fs::write(&path, TRIANGLE_OBJ).unwrap();
+    let prepared = read_rescan_target(&begin_rescan(&c, id).unwrap()).unwrap();
+    assert!(apply_rescan(&mut c, prepared).is_ok());
+}
+
+#[test]
+fn desktop_write_step_rejects_a_file_or_row_that_changed_after_reading() {
+    let dir = unique_test_dir("rescan_split_changed");
+    let path = dir.join("a.obj");
+    std::fs::write(&path, TRIANGLE_OBJ).unwrap();
+    let (mut c, id) = catalog(&path);
+    let read = |c: &Connection| read_rescan_target(&begin_rescan(c, id).unwrap()).unwrap();
+    // File rewritten (other size) after it was parsed.
+    let prepared = read(&c);
+    std::fs::write(&path, [TRIANGLE_OBJ, b"v 1 1 1\n"].concat()).unwrap();
+    assert_eq!(fails(apply_rescan(&mut c, prepared)), RescanError::Changed);
+    assert_eq!(db::get_file(&c, id).unwrap().unwrap().content_hash, None);
+    // File removed after it was parsed.
+    let prepared = read(&c);
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(fails(apply_rescan(&mut c, prepared)), RescanError::Changed);
+    std::fs::write(&path, TRIANGLE_OBJ).unwrap();
+    // Row moved to another path, or put into the trash, after it was parsed.
+    let prepared = read(&c);
+    c.execute("UPDATE files SET path=?1 WHERE id=?2", rusqlite::params![dir.join("b.obj").to_str().unwrap(), id]).unwrap();
+    assert_eq!(fails(apply_rescan(&mut c, prepared)), RescanError::Changed);
+    c.execute("UPDATE files SET path=?1 WHERE id=?2", rusqlite::params![path.to_str().unwrap(), id]).unwrap();
+    let prepared = read(&c);
+    c.execute("UPDATE files SET deleted_at='2026-01-01T00:00:00Z' WHERE id=?1", [id]).unwrap();
+    assert_eq!(fails(apply_rescan(&mut c, prepared)), RescanError::Changed);
+    c.execute("UPDATE files SET deleted_at=NULL WHERE id=?1", [id]).unwrap();
+    assert_eq!(db::get_file(&c, id).unwrap().unwrap().content_hash, None);
+    let prepared = read(&c);
+    assert!(apply_rescan(&mut c, prepared).is_ok());
+}
+
+#[cfg(unix)]
+#[test]
+fn desktop_split_follows_a_stored_link_like_before() {
+    let dir = unique_test_dir("rescan_split_link");
+    std::fs::write(dir.join("real.obj"), TRIANGLE_OBJ).unwrap();
+    let link = dir.join("link.obj");
+    std::os::unix::fs::symlink(dir.join("real.obj"), &link).unwrap();
+    let (mut c, id) = catalog(&link);
+    let dto = rescan_file(&mut c, id).unwrap();
+    assert_eq!(dto.file_size_bytes, TRIANGLE_OBJ.len() as i64);
+}
+
 mod print_info {
     use super::*;
     use crate::db::print_info_tests::three_mf_with;

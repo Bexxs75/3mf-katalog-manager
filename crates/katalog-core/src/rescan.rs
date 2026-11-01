@@ -56,19 +56,46 @@ fn materials(doc_materials: Vec<threemf::ThreeMfMaterial>) -> Vec<MaterialRecord
         .collect()
 }
 
-/// Re-reads a cataloged file and overwrites all columns derived from it, e.g.
-/// after it was re-sliced. If the file is missing, it aborts before the DB is
-/// changed.
-pub fn rescan_file(conn: &mut Connection, id: i64) -> Result<ModelFileDto> {
+/// What the first, short step of a desktop rescan takes from the database: only the identity
+/// and the stored path, nothing is read from disk yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RescanTarget {
+    id: i64,
+    stored_path: String,
+}
+
+impl RescanTarget {
+    /// The stored path, for the caller's own message.
+    pub fn stored_path(&self) -> &str {
+        &self.stored_path
+    }
+}
+
+/// Step 1 of the desktop rescan, short and under the database lock: loads the row and hands
+/// out its identity and stored path. It reads nothing from disk, so the lock can be released
+/// before the slow part starts.
+pub fn begin_rescan(conn: &Connection, id: i64) -> Result<RescanTarget> {
     let existing = load(conn, id)?;
-    let path = Path::new(&existing.path);
+    Ok(RescanTarget { id, stored_path: existing.path })
+}
+
+/// Step 2 of the desktop rescan, without any connection or lock: checks the stored path, takes
+/// the file's identity first, then reads size and hash and parses the file. If the file is
+/// missing it fails before anything else is touched.
+pub fn read_rescan_target(target: &RescanTarget) -> Result<PreparedRescan> {
+    let path = Path::new(&target.stored_path);
     if !path.exists() {
-        return Err(RescanError::Missing(existing.path.clone()));
+        return Err(RescanError::Missing(target.stored_path.clone()));
     }
     let failed = |e: &dyn std::fmt::Display| RescanError::Failed(e.to_string());
     let extension = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
+    if !matches!(extension.as_deref(), Some("3mf" | "stl" | "stp" | "step" | "obj")) {
+        return Err(RescanError::Unsupported);
+    }
 
-    let file_size_bytes = std::fs::metadata(path).map_err(|e| failed(&e))?.len() as i64;
+    let meta = std::fs::metadata(path).map_err(|e| failed(&e))?;
+    let stamp = FileStamp::of(&meta);
+    let file_size_bytes = meta.len() as i64;
     let content_hash = compute_content_hash(path).ok();
     let scanned = |dimensions_mm, volume_cm3, object_count| ScannedMetadataUpdate {
         dimensions_mm,
@@ -105,7 +132,7 @@ pub fn rescan_file(conn: &mut Connection, id: i64) -> Result<ModelFileDto> {
             let doc = stl::parse_stl_file(path).map_err(|e| failed(&e))?;
             scanned(doc.dimensions_mm, doc.volume_cm3, None)
         }
-        Some("stp") | Some("step") => {
+        Some("stp" | "step") => {
             let (dimensions_mm, volume_cm3, object_count) = step_metadata(path);
             scanned(dimensions_mm, volume_cm3, object_count)
         }
@@ -115,7 +142,23 @@ pub fn rescan_file(conn: &mut Connection, id: i64) -> Result<ModelFileDto> {
         }
         _ => return Err(RescanError::Unsupported),
     };
-    store(conn, id, &update)
+    Ok(PreparedRescan {
+        id: target.id,
+        stored_path: target.stored_path.clone(),
+        canonical: PathBuf::from(&target.stored_path),
+        stamp,
+        follow_links: true,
+        update,
+    })
+}
+
+/// Re-reads a cataloged file and overwrites all columns derived from it, e.g.
+/// after it was re-sliced. If the file is missing, it aborts before the DB is
+/// changed. The three steps in a row, for callers that do not need the split (tests).
+pub fn rescan_file(conn: &mut Connection, id: i64) -> Result<ModelFileDto> {
+    let target = begin_rescan(conn, id)?;
+    let prepared = read_rescan_target(&target)?;
+    apply_rescan(conn, prepared)
 }
 
 /// Opens the stored path only if its real location is below one of `roots`. The final
@@ -198,13 +241,15 @@ impl FileStamp {
     }
 }
 
-/// Everything read from disk for a web rescan, ready to be written without touching the disk
+/// Everything read from disk for a rescan, ready to be written without touching the disk
 /// under the write lock.
 pub struct PreparedRescan {
     id: i64,
     stored_path: String,
     canonical: PathBuf,
     stamp: FileStamp,
+    /// The desktop reads the stored path as is, links included; the web variant never follows one.
+    follow_links: bool,
     update: ScannedMetadataUpdate,
 }
 
@@ -243,21 +288,32 @@ pub fn prepare_web_rescan(
         _ => RescanError::Invalid,
     })?;
     debug_assert!(matches!(new_file.file_type, FileType::ThreeMf | FileType::Stl | FileType::Obj));
-    Ok(PreparedRescan { id, stored_path: existing.path, canonical, stamp, update: update_from(new_file) })
+    Ok(PreparedRescan { id, stored_path: existing.path, canonical, stamp, follow_links: false, update: update_from(new_file) })
 }
 
-/// Step 2, short and under the write lock: the entry must still be the same live row with the
-/// same path, and the file must still be the one that was parsed. Anything else is `Changed`.
-pub fn apply_web_rescan(conn: &mut Connection, prepared: PreparedRescan) -> Result<ModelFileDto> {
+/// Short step under the write lock, shared by desktop and web: the entry must still be the same
+/// live row with the same path, and the file must still be the one that was parsed. Anything
+/// else is `Changed`.
+pub fn apply_rescan(conn: &mut Connection, prepared: PreparedRescan) -> Result<ModelFileDto> {
     let current = load(conn, prepared.id)?;
     if current.deleted_at.is_some() || current.path != prepared.stored_path {
         return Err(RescanError::Changed);
     }
-    let now = std::fs::symlink_metadata(&prepared.canonical).map_err(|_| RescanError::Changed)?;
+    let now = if prepared.follow_links {
+        std::fs::metadata(&prepared.canonical)
+    } else {
+        std::fs::symlink_metadata(&prepared.canonical)
+    }
+    .map_err(|_| RescanError::Changed)?;
     if !now.is_file() || FileStamp::of(&now) != prepared.stamp {
         return Err(RescanError::Changed);
     }
     store(conn, prepared.id, &prepared.update)
+}
+
+/// Step 2 of the web rescan; the same write step as the desktop's.
+pub fn apply_web_rescan(conn: &mut Connection, prepared: PreparedRescan) -> Result<ModelFileDto> {
+    apply_rescan(conn, prepared)
 }
 
 /// Both steps in a row, for callers that do not need the split (tests).
