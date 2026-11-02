@@ -1,5 +1,6 @@
 use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use super::*;
+use crate::db::models::RegisteredSlicer;
 
 /// The frontend's view of a `registered_slicers` entry.
 #[derive(Debug, Clone, Serialize)]
@@ -9,9 +10,37 @@ pub struct SlicerDto {
     pub name: String,
     pub executable_path: String,
 }
+fn slicer_dto(r: &RegisteredSlicer) -> SlicerDto {
+    SlicerDto { id: r.id.to_string(), name: r.name.clone(), executable_path: r.executable_path.clone() }
+}
+/// True when both paths name the same file: identical text, or both resolve
+/// (symlinks, `..`) to the same target. A stored path that no longer resolves
+/// (program removed) can only match literally, which is all that is needed to
+/// avoid the UNIQUE collision.
+fn same_executable(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
+}
+/// Shared by manual registration and the auto-scan, so both treat the same
+/// program reached through different paths as one entry.
+fn find_registered_by_path<'a>(registered: &'a [RegisteredSlicer], path: &str) -> Option<&'a RegisteredSlicer> {
+    registered.iter().find(|r| same_executable(&r.executable_path, path))
+}
 /// Core logic of the registration, without a dialog, so it's testable.
 pub(crate) fn register_slicer_with_conn(conn: &Connection, name: String, executable_path: String) -> CmdResult<SlicerDto> {
     validate_slicer_path(&executable_path)?;
+    // Choosing a program that is already registered (directly, or through a symlink
+    // or another path to the same file) is not an error: hand back the existing
+    // entry unchanged instead of tripping the UNIQUE constraint.
+    let existing = db::list_registered_slicers(conn).map_err(|e| e.to_string())?;
+    if let Some(found) = find_registered_by_path(&existing, &executable_path) {
+        return Ok(slicer_dto(found));
+    }
     let id = db::insert_registered_slicer(conn, &name, &executable_path, false).map_err(|e| e.to_string())?;
     Ok(SlicerDto { id: id.to_string(), name, executable_path })
 }
@@ -151,14 +180,17 @@ pub fn scan_installed_slicers(state: State<AppState>, environment: State<'_, Run
     environment.require_desktop(DesktopFeature::Slicer)?;
     let conn = lock_db(&state)?;
     let existing = db::list_registered_slicers(&conn).map_err(|e| e.to_string())?;
-    let known_paths: HashSet<String> = existing.iter().map(|s| s.executable_path.clone()).collect();
+    let mut known = existing;
     for detected in detect_slicers() {
-        if known_paths.contains(&detected.path) {
+        if find_registered_by_path(&known, &detected.path).is_some() {
             continue;
         }
         // Best effort: a single failing insert (e.g. a race with a parallel scan) must
         // not abort detecting the other slicers.
-        let _ = db::insert_registered_slicer(&conn, &detected.name, &detected.path, true);
+        if let Ok(id) = db::insert_registered_slicer(&conn, &detected.name, &detected.path, true) {
+            // Also guards against two detected paths that resolve to the same file.
+            known.push(RegisteredSlicer { id, name: detected.name.clone(), executable_path: detected.path.clone(), is_auto_detected: true });
+        }
     }
     db::list_registered_slicers(&conn)
         .map_err(|e| e.to_string().into())
@@ -214,6 +246,63 @@ mod tests {
 
         assert_eq!(resolved.executable_path, fake_slicer.to_string_lossy());
         assert_eq!(resolved.model_path, model_path.to_string_lossy());
+    }
+    #[test]
+    fn registering_the_same_file_twice_is_idempotent() {
+        let conn = db::connect_in_memory().unwrap();
+        let exe = std::env::current_exe().unwrap().to_string_lossy().to_string();
+        let first = register_slicer_with_conn(&conn, "Orca".into(), exe.clone()).unwrap();
+        let second = register_slicer_with_conn(&conn, "Other name".into(), exe).unwrap();
+        assert_eq!(first.id, second.id);
+        assert_eq!(second.name, "Orca", "the existing entry must stay unchanged");
+        assert_eq!(db::list_registered_slicers(&conn).unwrap().len(), 1);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn registering_a_symlink_to_a_registered_file_returns_the_existing_entry() {
+        let dir = unique_test_dir("register_slicer_symlink");
+        let link = dir.join("orca-slicer");
+        std::os::unix::fs::symlink(std::env::current_exe().unwrap(), &link).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let real = register_slicer_with_conn(&conn, "Orca".into(), std::env::current_exe().unwrap().to_string_lossy().to_string()).unwrap();
+        let via_link = register_slicer_with_conn(&conn, "orca-slicer".into(), link.to_string_lossy().to_string());
+        let rows = db::list_registered_slicers(&conn).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(via_link.unwrap().id, real.id);
+        assert_eq!(rows.len(), 1);
+    }
+    #[test]
+    fn registering_two_different_files_creates_two_entries() {
+        let dir = unique_test_dir("register_slicer_two_files");
+        let other = dir.join("other-slicer");
+        std::fs::copy(std::env::current_exe().unwrap(), &other).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let a = register_slicer_with_conn(&conn, "A".into(), std::env::current_exe().unwrap().to_string_lossy().to_string()).unwrap();
+        let b = register_slicer_with_conn(&conn, "B".into(), other.to_string_lossy().to_string()).unwrap();
+        let rows = db::list_registered_slicers(&conn).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_ne!(a.id, b.id);
+        assert_eq!(rows.len(), 2);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn find_registered_by_path_matches_canonically_equal_paths_and_literal_missing_ones() {
+        let dir = unique_test_dir("find_registered_by_path");
+        let real = dir.join("real");
+        std::fs::write(&real, b"x").unwrap();
+        let link = dir.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let registered = vec![
+            RegisteredSlicer { id: 1, name: "Real".into(), executable_path: real.to_string_lossy().to_string(), is_auto_detected: true },
+            RegisteredSlicer { id: 2, name: "Gone".into(), executable_path: "/does/not/exist/slicer".into(), is_auto_detected: false },
+        ];
+        let via_link = find_registered_by_path(&registered, &link.to_string_lossy()).map(|r| r.id);
+        let gone = find_registered_by_path(&registered, "/does/not/exist/slicer").map(|r| r.id);
+        let unknown = find_registered_by_path(&registered, "/does/not/exist/else").map(|r| r.id);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(via_link, Some(1));
+        assert_eq!(gone, Some(2));
+        assert_eq!(unknown, None);
     }
     #[test]
     fn validate_slicer_target_file_rejects_flags_unsupported_types_and_missing_files() {

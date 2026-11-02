@@ -38,7 +38,10 @@ export function useSlicers() {
   const [addSlicerError, setAddSlicerError] = useState<AppError | null>(null);
 
   const applyRegistry = useCallback((rows: SlicerDto[]) => {
-    setSlicers(rows.map(toSlicerConfig));
+    // One entry per id: registering an already known program returns the existing
+    // entry, which must never show up a second time in the list.
+    const seen = new Set<string>();
+    setSlicers(rows.filter((r) => !seen.has(r.id) && seen.add(r.id)).map(toSlicerConfig));
   }, []);
 
   useEffect(() => {
@@ -55,14 +58,23 @@ export function useSlicers() {
   const addSlicer = useCallback(async () => {
     if (container) return null;
     // The file dialog runs in the backend, the frontend passes no path through.
-    // Failure is realistic (already registered = UNIQUE, or
-    // validate_slicer_path rejects), hence the display via addSlicerError.
+    // Failure is realistic (validate_slicer_path rejects; an already registered
+    // program is not a failure but returns the existing entry), hence the display via addSlicerError.
     try {
       setAddSlicerError(null);
       const picked = await slicerApi.pickAndRegisterSlicer();
       if (!picked) return null;
       const rows = await slicerApi.listRegisteredSlicers();
       applyRegistry(rows);
+      // The user may have hidden this slicer earlier; choosing it again means they
+      // want it back, otherwise the action would look like it did nothing.
+      setHiddenIds((prev) => {
+        if (!prev.has(picked.id)) return prev;
+        const next = new Set(prev);
+        next.delete(picked.id);
+        localStorage.setItem(HIDDEN_IDS_STORAGE_KEY, JSON.stringify([...next]));
+        return next;
+      });
       setPrimaryIdState((prev) => {
         if (prev) return prev;
         localStorage.setItem(PRIMARY_ID_STORAGE_KEY, picked.id);
