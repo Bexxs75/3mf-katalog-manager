@@ -27,6 +27,12 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Catalog database:** the catalog database gets two new tables for print data (schema version 53, and one more column for the filament colors in version 54); older catalogs are upgraded automatically (a copy is saved first). The web server needs a catalog that the desktop app has upgraded first, so start the desktop app once after the update.
 - The Spanish and French texts of this feature have not been checked by native speakers.
 
+### Fixed
+
+- **Import:** Cancelling the file dialog of "Import → Files…" no longer opens an empty import window with 0 items. This happened where the app uses the zenity dialog (the container version, Linux without a desktop portal).
+- **Tag menu:** the menu of an automatic tag ("Remove and do not assign automatically again") no longer closes by itself when it is opened right after the model's tag suggestions have loaded.
+- **Slicers:** Registering a slicer that is already registered (for example the same program chosen again or reached through a link) no longer fails with a database error; the existing entry is kept.
+
 ## [0.17.0] - 2026-10-28
 
 ### Added
@@ -731,6 +737,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Sicherung:** Beim Wiederherstellen einer Sicherung werden jetzt auch die neuen Druckdaten-Tabellen geprüft; eine Sicherung mit beschädigten Druckdaten wird mit einer Meldung abgelehnt statt wiederhergestellt.
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt zwei neue Tabellen für Druckdaten (Schemaversion 53, dazu eine Spalte für die Filamentfarben in Version 54); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert). Der Web-Server braucht einen Katalog, den die Desktop-App zuvor aktualisiert hat; nach dem Update die Desktop-App einmal starten.
 - Die spanischen und französischen Texte dieser Funktion wurden nicht von Muttersprachlern geprüft.
+
+### Behoben
+
+- **Import:** Bricht man den Dateidialog von „Import → Dateien …“ ab, öffnet sich kein leeres Import-Fenster mit 0 Elementen mehr. Das passierte dort, wo die App den Zenity-Dialog verwendet (Container-Version, Linux ohne Desktop-Portal).
+- **Tag-Menü:** Das Menü eines automatischen Tags („Entfernen und nicht mehr automatisch vergeben“) schließt sich nicht mehr von selbst, wenn es unmittelbar nach dem Laden der Tag-Vorschläge des Modells geöffnet wird.
+- **Slicer:** Das Registrieren eines Slicers, der schon registriert ist (zum Beispiel dasselbe Programm erneut gewählt oder über einen Link erreicht), schlägt nicht mehr mit einem Datenbankfehler fehl; der vorhandene Eintrag bleibt erhalten.
 
 ## [0.17.0] - 2026-10-28
 

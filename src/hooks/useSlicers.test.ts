@@ -51,6 +51,44 @@ describe('useSlicers', () => {
     expect(result.current.slicers[0].name).toBe('Orca');
   });
 
+  it('does not list a slicer twice when the registry contains the same id again', async () => {
+    const orca = { id: '1', name: 'Orca', executablePath: '/usr/bin/orca' };
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'scan_installed_slicers') return Promise.resolve([orca]);
+      if (cmd === 'pick_and_register_slicer') return Promise.resolve(orca);
+      if (cmd === 'list_registered_slicers') return Promise.resolve([orca, orca]);
+      return Promise.resolve(null);
+    });
+    const { result } = renderHook(() => useSlicers());
+    await waitFor(() => expect(result.current.slicers).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.addSlicer();
+    });
+
+    expect(result.current.slicers).toHaveLength(1);
+  });
+
+  it('choosing an already registered but hidden slicer shows it again', async () => {
+    const orca = { id: '1', name: 'Orca', executablePath: '/usr/bin/orca' };
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'scan_installed_slicers') return Promise.resolve([orca]);
+      if (cmd === 'pick_and_register_slicer') return Promise.resolve(orca);
+      if (cmd === 'list_registered_slicers') return Promise.resolve([orca]);
+      return Promise.resolve(null);
+    });
+    const { result } = renderHook(() => useSlicers());
+    await waitFor(() => expect(result.current.slicers).toHaveLength(1));
+    act(() => result.current.removeSlicer('1'));
+    expect(result.current.slicers).toHaveLength(0);
+
+    await act(async () => {
+      await result.current.addSlicer();
+    });
+
+    expect(result.current.slicers).toHaveLength(1);
+  });
+
   it('removeSlicer hides a slicer from the visible list without a backend call (no delete endpoint exists)', async () => {
     vi.mocked(invoke).mockResolvedValue([{ id: '1', name: 'Orca', executablePath: '/usr/bin/orca' }]);
     const { result } = renderHook(() => useSlicers());
