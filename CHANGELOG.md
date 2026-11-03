@@ -29,6 +29,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- **Slicers (Linux AppImage):** A slicer started from the AppImage no longer inherits the AppImage's own `APPDIR`, `APPIMAGE`, `ARGV0` and `OWD` variables. Start scripts that resolve their libraries relative to `APPDIR` (for example the one of the `orca-slicer-unstable-bin` package) looked in the app's folder and failed with "error while loading shared libraries".
 - **Import:** Cancelling the file dialog of "Import → Files…" no longer opens an empty import window with 0 items. This happened where the app uses the zenity dialog (the container version, Linux without a desktop portal).
 - **Tag menu:** the menu of an automatic tag ("Remove and do not assign automatically again") no longer closes by itself when it is opened right after the model's tag suggestions have loaded.
 - **Slicers:** Registering a slicer that is already registered (for example the same program chosen again or reached through a link) no longer fails with a database error; the existing entry is kept.
@@ -741,6 +742,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- **Slicer (Linux-AppImage):** Ein aus der AppImage gestarteter Slicer erbt die AppImage-eigenen Variablen `APPDIR`, `APPIMAGE`, `ARGV0` und `OWD` nicht mehr. Startskripte, die ihre Bibliotheken relativ zu `APPDIR` suchen (zum Beispiel das des Pakets `orca-slicer-unstable-bin`), suchten im Ordner der App und brachen mit „error while loading shared libraries“ ab.
 - **Import:** Bricht man den Dateidialog von „Import → Dateien …“ ab, öffnet sich kein leeres Import-Fenster mit 0 Elementen mehr. Das passierte dort, wo die App den Zenity-Dialog verwendet (Container-Version, Linux ohne Desktop-Portal).
 - **Tag-Menü:** Das Menü eines automatischen Tags („Entfernen und nicht mehr automatisch vergeben“) schließt sich nicht mehr von selbst, wenn es unmittelbar nach dem Laden der Tag-Vorschläge des Modells geöffnet wird.
 - **Slicer:** Das Registrieren eines Slicers, der schon registriert ist (zum Beispiel dasselbe Programm erneut gewählt oder über einen Link erreicht), schlägt nicht mehr mit einem Datenbankfehler fehl; der vorhandene Eintrag bleibt erhalten.
