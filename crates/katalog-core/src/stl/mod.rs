@@ -1,9 +1,16 @@
 mod error;
 mod parser;
+mod writer;
+#[cfg(test)]
+mod writer_tests;
 
 use std::path::Path;
 
 pub use error::StlError;
+pub use writer::{
+    select_meshes, write_stl, write_stl_file, write_stl_file_with_limit, write_stl_with_limit, SourceStamp,
+    StlScope, StlWriteError, MAX_STL_TRIANGLES,
+};
 
 use crate::geometry::{signed_volume, BoundingBox};
 
