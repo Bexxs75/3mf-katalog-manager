@@ -656,3 +656,57 @@ fn the_list_json_has_camel_case_names_and_leaves_missing_fields_out() {
         serde_json::json!({"printerModel": "Test Printer", "layerHeightMm": 0.2, "nozzleMixed": true, "plateCount": 0, "colors": ["#00ff00"]})
     );
 }
+
+const CREALITY_3PLATES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/creality-3plates.3mf");
+
+fn plate_overview_of(path: &std::path::Path, roots: Option<&[PathBuf]>, previews: bool) -> ReadResult<PlateOverviewDto> {
+    read_plate_overview(path, FileType::ThreeMf, roots, previews)
+}
+
+#[test]
+fn plate_overview_of_the_creality_file_has_objects_one_three_one_and_three_pictures() {
+    let path = std::path::Path::new(CREALITY_3PLATES);
+    let with = plate_overview_of(path, None, true).unwrap();
+    assert_eq!(with.plates.iter().map(|p| (p.plate_index, p.object_count)).collect::<Vec<_>>(), [(1, Some(1)), (2, Some(3)), (3, Some(1))]);
+    for plate in &with.plates {
+        assert!(plate.preview.as_deref().unwrap().starts_with("data:image/png;base64,iVBORw0KGgo"), "plate {}", plate.plate_index);
+    }
+    let without = plate_overview_of(path, None, false).unwrap();
+    assert!(without.plates.iter().all(|p| p.preview.is_none()));
+    assert_eq!(without.plates.len(), 3);
+    // Left-out fields stay left out on the wire.
+    let json = serde_json::to_value(&without).unwrap();
+    assert_eq!(json, serde_json::json!({"plates":[{"plateIndex":1,"objectCount":1},{"plateIndex":2,"objectCount":3},{"plateIndex":3,"objectCount":1}]}));
+}
+
+#[test]
+fn plate_overview_without_plate_list_or_without_3mf_gives_an_empty_list() {
+    let c = catalog();
+    // An STL is not even opened; a Prusa project and a text file masquerading as 3MF have no plate list.
+    assert_eq!(read_plate_overview(&c.dir.join("missing.stl"), FileType::Stl, None, true).unwrap(), PlateOverviewDto::default());
+    let prusa = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/synthetic-prusa-project.3mf");
+    assert!(plate_overview_of(&prusa, None, true).unwrap().plates.is_empty());
+    let text = c.dir.join("not-a-zip.3mf");
+    std::fs::write(&text, b"hello").unwrap();
+    assert!(plate_overview_of(&text, None, true).unwrap().plates.is_empty());
+}
+
+#[test]
+fn plate_overview_reports_missing_files_and_refuses_paths_outside_the_roots() {
+    let c = catalog();
+    let missing = plate_overview_of(&c.dir.join("missing.3mf"), None, true).unwrap_err();
+    assert_eq!(missing.code, Some(GeometryErrorCode::NotFound));
+    let missing_in_root = plate_overview_of(&c.dir.join("missing.3mf"), Some(std::slice::from_ref(&c.dir)), true).unwrap_err();
+    assert_eq!(missing_in_root.code, Some(GeometryErrorCode::NotFound));
+
+    let elsewhere = c.dir.join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let inside = c.dir.join("inside.3mf");
+    std::fs::copy(CREALITY_3PLATES, &inside).unwrap();
+    assert_eq!(plate_overview_of(&inside, Some(std::slice::from_ref(&c.dir)), false).unwrap().plates.len(), 3);
+    let outside = plate_overview_of(&inside, Some(std::slice::from_ref(&elsewhere)), false).unwrap_err();
+    assert_eq!(outside.code, Some(GeometryErrorCode::Unreadable));
+    // `..` is resolved before the check.
+    let traversal = elsewhere.join("../inside.3mf");
+    assert!(plate_overview_of(&traversal, Some(std::slice::from_ref(&elsewhere)), false).is_err());
+}

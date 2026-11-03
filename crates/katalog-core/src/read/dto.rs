@@ -719,3 +719,21 @@ mod tests {
         assert!(cost.has_unpriced_filaments);
     }
 }
+
+/// Answer of `read_plate_overview`. Left-out fields mean "not given", never 0.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlateOverviewDto {
+    pub plates: Vec<PlateOverviewRowDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlateOverviewRowDto {
+    pub plate_index: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_count: Option<u32>,
+    /// `data:image/png;base64,...`, only when previews were asked for and the picture passed the checks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+}

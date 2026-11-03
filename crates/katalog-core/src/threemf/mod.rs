@@ -3,6 +3,7 @@ pub mod error;
 pub mod geometry;
 pub mod model_xml;
 pub mod paint;
+pub mod plate_overview;
 pub mod plates;
 pub mod print_info;
 pub mod slice_info;
