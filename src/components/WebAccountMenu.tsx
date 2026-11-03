@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as session from '../lib/webSession';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
+import { formatAppError } from '../lib/errorMessage';
 import { useT } from '../i18n/LanguageContext';
 
 /** Event the menu sends to `WebAuthGate`, which owns the password form. */
@@ -11,7 +12,7 @@ export function WebAccountMenu() {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<AppError | null>(null);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -24,16 +25,16 @@ export function WebAccountMenu() {
   const itemClass = 'block w-full text-left px-3 py-2 text-body text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer disabled:opacity-50';
   return (
     <div ref={root} className="relative shrink-0">
-      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => { setError(''); setOpen(o => !o); }}
+      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => { setError(null); setOpen(o => !o); }}
         className="h-8 px-2 rounded border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-body cursor-pointer hover:text-[var(--ink)]">{t('webAccount')}</button>
       {open && (
         <div role="menu" className="absolute right-0 top-10 z-50 min-w-[180px] py-1 rounded border border-[var(--line)] bg-[var(--panel)] shadow-lg">
           <button role="menuitem" className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event(WEB_CHANGE_PASSWORD_EVENT)); }}>{t('webChangePassword')}</button>
           <button role="menuitem" className={itemClass} disabled={busy} onClick={async () => {
-            setBusy(true); setError('');
-            try { await session.logout(); setOpen(false); } catch (e) { setError(messageOf(e)); } finally { setBusy(false); }
+            setBusy(true); setError(null);
+            try { await session.logout(); setOpen(false); } catch (e) { setError(toAppError(e)); } finally { setBusy(false); }
           }}>{t('webLogout')}</button>
-          {error && <p role="alert" className="px-3 py-2 text-small text-[var(--accent)]">{error}</p>}
+          {error && <p role="alert" className="px-3 py-2 text-small text-[var(--accent)]">{formatAppError(t, error)}</p>}
         </div>
       )}
     </div>

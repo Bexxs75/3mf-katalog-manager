@@ -26,6 +26,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Backup:** restoring a backup now also checks the new print data tables; a backup with damaged print data is rejected with a message instead of being restored.
 - **Catalog database:** the catalog database gets two new tables for print data (schema version 53, and one more column for the filament colors in version 54); older catalogs are upgraded automatically (a copy is saved first). The web server needs a catalog that the desktop app has upgraded first, so start the desktop app once after the update.
 - The Spanish and French texts of this feature have not been checked by native speakers.
+- **Web version, messages:** the messages of the web server (sign-in, password change, downloads, "Open in slicer", busy and error answers) now follow the interface language instead of always appearing in German. Server errors no longer carry texts from the database or the operating system, and a download of a file that is no longer on disk answers with "File not found" instead of a system message.
+- The Spanish and French texts of these messages have not been checked by native speakers.
 
 ### Fixed
 
@@ -739,6 +741,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Sicherung:** Beim Wiederherstellen einer Sicherung werden jetzt auch die neuen Druckdaten-Tabellen geprüft; eine Sicherung mit beschädigten Druckdaten wird mit einer Meldung abgelehnt statt wiederhergestellt.
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt zwei neue Tabellen für Druckdaten (Schemaversion 53, dazu eine Spalte für die Filamentfarben in Version 54); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert). Der Web-Server braucht einen Katalog, den die Desktop-App zuvor aktualisiert hat; nach dem Update die Desktop-App einmal starten.
 - Die spanischen und französischen Texte dieser Funktion wurden nicht von Muttersprachlern geprüft.
+- **Web-Version, Meldungen:** Die Meldungen des Web-Servers (Anmeldung, Passwortänderung, Downloads, „In Slicer öffnen“, Auslastungs- und Fehlerantworten) erscheinen jetzt in der Sprache der Oberfläche statt immer auf Deutsch. Server-Fehler enthalten keine Texte aus der Datenbank oder dem Betriebssystem mehr, und der Download einer Datei, die nicht mehr auf der Festplatte liegt, antwortet mit „Datei nicht gefunden“ statt mit einer Systemmeldung.
+- Die spanischen und französischen Texte dieser Meldungen wurden nicht von Muttersprachlern geprüft.
 
 ### Behoben
 

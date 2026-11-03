@@ -141,6 +141,27 @@ const SINKS: &[Sink] = &[
     Sink { name: "boxed_error", text_arg: 1, qualified: false },
     // The write path helper takes the message only.
     Sink { name: "invalid", text_arg: 0, qualified: false },
+    // The slicer link helper takes the status first and the code second.
+    Sink { name: "plain", text_arg: 1, qualified: false },
+];
+
+/// Snake-case codes of the upload, file-operation and rescan routes. They predate
+/// the registry, the web client keys on them, and they stay exactly as they are.
+/// Only these literals may be passed as text by the server helpers.
+const WIRE_CODES: &[&str] = &[
+    "upload_timeout",
+    "upload_disabled",
+    "import_internal",
+    "session_required",
+    "password_change_required",
+    "method",
+    "fileops_disabled",
+    "rescan_file_unavailable",
+    "rescan_file_unsupported",
+    "rescan_step_unavailable",
+    "rescan_file_too_large",
+    "rescan_file_invalid",
+    "rescan_file_changed",
 ];
 
 fn is_identifier_char(c: char) -> bool {
@@ -219,7 +240,9 @@ fn free_text_errors(code: &str) -> Vec<String> {
             }
             let allowed = call_arguments(rest).is_some_and(|arguments| {
                 arguments.get(sink.text_arg).is_none_or(|text| {
-                    LEGACY_CODES.iter().any(|legacy| text.trim_start() == format!("\"{legacy}\""))
+                    // A variant of the enum is a registered code by construction.
+                    text.trim_start().starts_with("ErrorCode::")
+                        || LEGACY_CODES.iter().chain(WIRE_CODES).any(|code| text.trim_start() == format!("\"{code}\""))
                 })
             });
             if !allowed {
@@ -228,6 +251,12 @@ fn free_text_errors(code: &str) -> Vec<String> {
         }
     }
     found
+}
+
+/// A source without the named functions, for files that still hold one function
+/// forwarding text that the core has not turned into a code yet.
+fn production_without(source: &str, skipped: &[&str]) -> String {
+    skipped.iter().fold(production_part(source), |code, name| code.replace(&function_body(source, name), ""))
 }
 
 /// Modules (or single functions) whose expected errors are fully migrated.
@@ -248,6 +277,12 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
             "validate_file_name", "move_file_core", "move_files_to_folder_with", "rename_file_with_conn",
         ]),
         functions("companions.rs", include_str!("../../../src-tauri/src/commands/companions.rs"), &["carry_with", "extras_dir_problem"]),
+        whole("web.rs", include_str!("../../katalog-server/src/web.rs")),
+        // `map_error` still forwards the text of the core write errors that have no
+        // code yet; it leaves this list when the core is migrated.
+        ("write.rs", production_without(include_str!("../../katalog-server/src/write.rs"), &["map_error"])),
+        whole("download.rs", include_str!("../../katalog-server/src/download.rs")),
+        whole("slicer.rs", include_str!("../../katalog-server/src/slicer.rs")),
         functions("backup.rs", include_str!("../../../src-tauri/src/commands/backup.rs"), &[
             "reject_oversized_zip_entry", "read_catalog_archive", "validate_catalog_db_bytes", "validate_backup_for_import",
         ]),
@@ -309,6 +344,9 @@ fn the_scanner_covers_the_core_and_server_constructors() {
         r#"invalid(&format!("Ungültig: {x}"))"#,
         r#"web::error(401, "Anmeldung erforderlich")"#,
         r#"boxed_error(429, "Zu viele Fehlversuche")"#,
+        r#"plain(404, "Nicht gefunden")"#,
+        // A snake-case code that is not one of the listed wire codes is refused.
+        r#"error(400, "some_new_code")"#,
         r#"error(StatusCode::BAD_REQUEST, "Ungültige Argumente", true)"#,
         // The text may sit on a line of its own.
         "error(\n    400,\n    \"Ungültige Argumente\",\n)",
@@ -339,6 +377,9 @@ fn the_scanner_accepts_code_only_calls_and_unrelated_names() {
         "boxed_error(500)",
         r#"error(400, "cancelled")"#,
         r#"invalid("cancelled")"#,
+        r#"error(408, "upload_timeout")"#,
+        r#"super::web::error(404, "rescan_file_unavailable")"#,
+        "plain(404, ErrorCode::WebNotFound)",
         "error_coded(400, ErrorCode::WebNotFound, &[])",
         "WriteError::coded(ErrorCode::InvalidCatalogId)",
         "DbError::coded(ErrorCode::InvalidCatalogId)",

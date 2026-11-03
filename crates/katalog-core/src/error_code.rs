@@ -131,6 +131,47 @@ error_codes! {
     BackupEntryTooLarge => "backupEntryTooLarge",
     BackupSettingsNotUtf8 => "backupSettingsNotUtf8",
     BackupInvalidDatabase => "backupInvalidDatabase",
+    // Web server: session, host checks and request shape. Every wording lives in the
+    // interface; a server fault always uses `webServerInternal` and never carries text
+    // from the database or the operating system.
+    WebLoginRequired => "webLoginRequired",
+    WebSessionExpired => "webSessionExpired",
+    WebPasswordIncorrect => "webPasswordIncorrect",
+    WebCurrentPasswordIncorrect => "webCurrentPasswordIncorrect",
+    /// params: lowest and highest number of characters.
+    WebPasswordLength => "webPasswordLength",
+    WebPasswordUnchanged => "webPasswordUnchanged",
+    WebPasswordGuessable => "webPasswordGuessable",
+    WebPasswordChangeRequired => "webPasswordChangeRequired",
+    WebPasswordChangeActive => "webPasswordChangeActive",
+    WebPasswordCheckBusy => "webPasswordCheckBusy",
+    WebTooManyAttempts => "webTooManyAttempts",
+    WebTooManyRequests => "webTooManyRequests",
+    WebCsrfInvalid => "webCsrfInvalid",
+    WebHostNotAllowed => "webHostNotAllowed",
+    WebHostHeaderInvalid => "webHostHeaderInvalid",
+    WebOriginNotAllowed => "webOriginNotAllowed",
+    WebProxyHeaderInvalid => "webProxyHeaderInvalid",
+    WebMethodNotAllowed => "webMethodNotAllowed",
+    WebNotFound => "webNotFound",
+    WebRequestTimeout => "webRequestTimeout",
+    WebBodyTooLarge => "webBodyTooLarge",
+    WebCommandUnavailable => "webCommandUnavailable",
+    /// The write path is busy; the client retries once on its own.
+    WebWriteBusy => "webWriteBusy",
+    WebServerInternal => "webServerInternal",
+    // Web server: arguments of a request.
+    ReqInvalidArguments => "reqInvalidArguments",
+    ReqInvalidIds => "reqInvalidIds",
+    /// params: the highest number of IDs allowed.
+    ReqIdsTooMany => "reqIdsTooMany",
+    PrinterDetailUnknown => "printerDetailUnknown",
+    // Downloads and slicer links.
+    FileNotFound => "fileNotFound",
+    DlPathNotAllowed => "dlPathNotAllowed",
+    DlRangeInvalid => "dlRangeInvalid",
+    DlTooManyDownloads => "dlTooManyDownloads",
+    SlicerLinkExpired => "slicerLinkExpired",
 }
 
 

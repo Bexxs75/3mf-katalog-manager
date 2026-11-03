@@ -320,12 +320,19 @@ pub(crate) fn coded_body(status: u16, code: ErrorCode, params: &[String]) -> ser
 pub(crate) fn error_coded(status: u16, code: ErrorCode, params: &[String]) -> Response {
     (StatusCode::from_u16(status).unwrap(), Json(coded_body(status, code, params))).into_response()
 }
-fn boxed_error(status: u16, message: &str) -> Box<Response> {
-    Box::new(error(status, message))
+/// 403 for a session that still has to replace its initial password. The `code`
+/// field is what the web client keys on to show the password change screen.
+fn password_change_required() -> Response {
+    let mut body = coded_body(403, ErrorCode::WebPasswordChangeRequired, &[]);
+    body["code"] = json!("password_change_required");
+    (StatusCode::FORBIDDEN, Json(body)).into_response()
+}
+fn boxed_coded(status: u16, code: ErrorCode, params: &[String]) -> Box<Response> {
+    Box::new(error_coded(status, code, params))
 }
 fn random_token() -> Result<String, Box<Response>> {
     let mut bytes = [0; 32];
-    getrandom::fill(&mut bytes).map_err(|_| boxed_error(500, "Zufallsquelle nicht verfügbar"))?;
+    getrandom::fill(&mut bytes).map_err(|_| boxed_coded(500, ErrorCode::WebServerInternal, &[]))?;
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 fn event(kind: &str, client: &str, now: u64) {
@@ -447,7 +454,7 @@ fn client(app: &App, req: &Request) -> Result<String, Box<Response>> {
                     .or_else(|| s.trim().parse::<SocketAddr>().ok().map(|s| s.ip()))
             })
             .ok_or_else(|| {
-                boxed_error(400, "Proxy-Header X-Forwarded-For fehlt oder ist ungültig")
+                boxed_coded(400, ErrorCode::WebProxyHeaderInvalid, &[])
             })?;
         return Ok(client_key(ip));
     }
@@ -462,14 +469,14 @@ fn client(app: &App, req: &Request) -> Result<String, Box<Response>> {
 }
 fn request_host(h: &HeaderMap) -> Result<(String, Option<u16>), Box<Response>> {
     if h.get_all(header::HOST).iter().count() != 1 {
-        return Err(boxed_error(400, "Ungültiger Host-Header"));
+        return Err(boxed_coded(400, ErrorCode::WebHostHeaderInvalid, &[]));
     }
     parse_host(
         h.get(header::HOST)
             .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| boxed_error(400, "Ungültiger Host-Header"))?,
+            .ok_or_else(|| boxed_coded(400, ErrorCode::WebHostHeaderInvalid, &[]))?,
     )
-    .map_err(|_| boxed_error(400, "Ungültiger Host-Header"))
+    .map_err(|_| boxed_coded(400, ErrorCode::WebHostHeaderInvalid, &[]))
 }
 fn origin_ok(app: &App, h: &HeaderMap) -> bool {
     let Some(origin) = h.get(header::ORIGIN) else {
@@ -530,7 +537,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
     let mut upload_audit=upload_audit_name.filter(|_|app.uploads.is_some()).map(|name|uploads::RequestAudit::new(name,req.headers().get(header::CONTENT_LENGTH).and_then(|v|v.to_str().ok()).and_then(|s|s.parse().ok()).unwrap_or(0),app.clock.now()));
     let api = req.uri().path().starts_with("/api/");
     let mut response = if fileops_disabled { fileops::failure(404,"fileops_disabled") } else { match request_host(req.headers()) {
-        Err(e) => if write { error(403, "Ungültiger Host-Header") } else { *e },
+        Err(e) => if write { error_coded(403, ErrorCode::WebHostHeaderInvalid, &[]) } else { *e },
         Ok(host) => {
             let allowed = app.config.allowed_hosts.as_ref().is_none_or(|list| {
                 list.iter().any(|s| {
@@ -546,14 +553,14 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
                 })
             });
             if !allowed {
-                error(if write { 403 } else { 421 }, "Host nicht zugelassen")
+                error_coded(if write { 403 } else { 421 }, ErrorCode::WebHostNotAllowed, &[])
             } else if req.method() != Method::GET && req.method() != Method::POST && !(req.method() == Method::HEAD && req.uri().path().starts_with(crate::slicer::PREFIX)) {
-                error(405, "Methode nicht erlaubt")
+                error_coded(405, ErrorCode::WebMethodNotAllowed, &[])
             } else if req.method() == Method::POST
                 && !app.config.allow_no_auth
                 && (!origin_ok(&app, req.headers()) || (write && app.config.write && !req.headers().contains_key(header::ORIGIN)))
             {
-                error(403, "Origin nicht zugelassen")
+                error_coded(403, ErrorCode::WebOriginNotAllowed, &[])
             } else if companion_upload {
                 // The body streams to disk with its own idle limit; a huge file may take hours.
                 tokio::time::timeout(std::time::Duration::from_secs(6 * 3600 + 60), next.run(req)).await.unwrap_or_else(|_| error(408, "upload_timeout"))
@@ -564,7 +571,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
                 // response head is bounded here, the body streams afterwards.
                 tokio::time::timeout(std::time::Duration::from_secs(600), limited(req, next, limit))
                     .await
-                    .unwrap_or_else(|_| error(408, "Zeitlimit für Anfrage überschritten"))
+                    .unwrap_or_else(|_| error_coded(408, ErrorCode::WebRequestTimeout, &[]))
             } else if req.uri().path() == "/api/invoke/get_model_geometry" {
                 // Geometry processing has its own bounded admission; its body
                 // still has the same 15-second read deadline as other routes.
@@ -572,7 +579,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
             } else {
                 tokio::time::timeout(std::time::Duration::from_secs(if write { 30 } else { 15 }), limited(req, next, limit))
                     .await
-                    .unwrap_or_else(|_| error(408, "Zeitlimit für Anfrage überschritten"))
+                    .unwrap_or_else(|_| error_coded(408, ErrorCode::WebRequestTimeout, &[]))
             }
         }
     }};
@@ -693,7 +700,7 @@ fn new_session(data: &mut Data, client: &str, now: u64) -> Result<Session, Box<R
     Ok(s)
 }
 fn retry_response(seconds: u64) -> Response {
-    let mut r = error(429, "Zu viele Fehlversuche. Bitte später erneut versuchen.");
+    let mut r = error_coded(429, ErrorCode::WebTooManyAttempts, &[]);
     r.headers_mut()
         .insert(header::RETRY_AFTER, seconds.to_string().parse().unwrap());
     r
@@ -707,22 +714,22 @@ async fn read_body_limit(body: Body, limit: usize) -> Result<axum::body::Bytes, 
 async fn read_body_deadline(body: Body, limit: usize, seconds: u64) -> Result<axum::body::Bytes, Box<Response>> {
     tokio::time::timeout(std::time::Duration::from_secs(seconds), to_bytes(body, limit))
         .await
-        .map_err(|_| boxed_error(408, "Zeitlimit für Anfrage überschritten"))?
-        .map_err(|_| boxed_error(413, "JSON-Körper ist zu groß"))
+        .map_err(|_| boxed_coded(408, ErrorCode::WebRequestTimeout, &[]))?
+        .map_err(|_| boxed_coded(413, ErrorCode::WebBodyTooLarge, &[]))
 }
 async fn json_body(body: Body, limit: usize, seconds: u64) -> Result<Value, Box<Response>> {
     let bytes = read_body_deadline(body, limit, seconds).await?;
     let value: Value =
-        serde_json::from_slice(&bytes).map_err(|_| boxed_error(400, "Ungültiger JSON-Körper"))?;
+        serde_json::from_slice(&bytes).map_err(|_| boxed_coded(400, ErrorCode::ReqInvalidArguments, &[]))?;
     if !value.is_object() {
-        return Err(boxed_error(400, "JSON-Objekt erwartet"));
+        return Err(boxed_coded(400, ErrorCode::ReqInvalidArguments, &[]));
     }
     Ok(value)
 }
 fn string<'a>(v: &'a Value, key: &str) -> Result<&'a str, Box<Response>> {
     v.get(key)
         .and_then(Value::as_str)
-        .ok_or_else(|| boxed_error(400, "Fehlendes oder ungültiges Textargument"))
+        .ok_or_else(|| boxed_coded(400, ErrorCode::ReqInvalidArguments, &[]))
 }
 async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let now = app.clock.now();
@@ -731,16 +738,16 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let command = path.strip_prefix("/api/invoke/").unwrap_or("");
     if crate::write::FILE_OPS_COMMANDS.contains(&command) && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
     if path == COMPANION_UPLOAD && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
-    if path == COMPANION_UPLOAD && !app.config.write { return error(404, "Befehl im Web nicht verfügbar"); }
+    if path == COMPANION_UPLOAD && !app.config.write { return error_coded(404, ErrorCode::WebCommandUnavailable, &[]); }
     let is_write = WRITE_COMMANDS.contains(&command);
     let upload_route=matches!(path.as_str(),"/api/upload"|"/api/uploads"|"/api/events")||uploads::command(command);
     if upload_route && app.uploads.is_none(){return error(404,"upload_disabled");}
-    if is_write && !app.config.write { return error(404, "Befehl im Web nicht verfügbar"); }
-    if command == crate::slicer::COMMAND && app.slicer.is_none() { return error(404, "Befehl im Web nicht verfügbar"); }
+    if is_write && !app.config.write { return error_coded(404, ErrorCode::WebCommandUnavailable, &[]); }
+    if command == crate::slicer::COMMAND && app.slicer.is_none() { return error_coded(404, ErrorCode::WebCommandUnavailable, &[]); }
     // Handled before the static fallback and before any session lookup: the
     // signed link is the only credential and must neither read nor set cookies.
     if path.starts_with(crate::slicer::PREFIX) {
-        let Some(slicer) = &app.slicer else { return error(404, "Nicht gefunden") };
+        let Some(slicer) = &app.slicer else { return error_coded(404, ErrorCode::WebNotFound, &[]) };
         let peer = match client(&app, &req) {
             Ok(peer) => peer,
             Err(e) => return *e,
@@ -765,11 +772,11 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             && download_id.is_none()
             && companion_id.is_none()
         {
-            return error(404, "Nicht gefunden");
+            return error_coded(404, ErrorCode::WebNotFound, &[]);
         }
     } else {
         if method != Method::GET {
-            return error(405, "Methode nicht erlaubt");
+            return error_coded(405, ErrorCode::WebMethodNotAllowed, &[]);
         }
         if let Some(root) = &app.config.static_dir {
             return crate::static_files::serve(root.clone(), path).await;
@@ -795,13 +802,13 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     }
     if download_id.is_some() || companion_id.is_some() || path == "/api/backup/export" {
         if method != Method::GET {
-            return error(405, "Methode nicht erlaubt");
+            return error_coded(405, ErrorCode::WebMethodNotAllowed, &[]);
         }
         // Same rule for both file-like routes: a session is required unless the
         // server runs in the loopback-only no-login mode.
         if !app.config.allow_no_auth {
             if current.is_none() {
-                return error(401, "Anmeldung erforderlich");
+                return error_coded(401, ErrorCode::WebLoginRequired, &[]);
             }
             if app
                 .data
@@ -811,7 +818,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 .as_ref()
                 .is_some_and(|a| a.must_change)
             {
-                return (StatusCode::FORBIDDEN, Json(json!({"message":"Bitte zuerst ein neues Passwort setzen","expected":true,"code":"password_change_required"}))).into_response();
+                return password_change_required();
             }
         }
         if path == "/api/backup/export" {
@@ -848,26 +855,26 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             "/"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8")],include_str!("../static/index.html")).into_response(),
             "/static/app.js"=>([(header::CONTENT_TYPE,"application/javascript; charset=utf-8")],include_str!("../static/app.js")).into_response(),
             "/static/app.css"=>([(header::CONTENT_TYPE,"text/css; charset=utf-8")],include_str!("../static/app.css")).into_response(),
-            p if p=="/api/login" || p=="/api/logout" || p=="/api/password" || p.starts_with("/api/invoke/")=>error(405,"Methode nicht erlaubt"),
-            _=>error(404,"Nicht gefunden")
+            p if p=="/api/login" || p=="/api/logout" || p=="/api/password" || p.starts_with("/api/invoke/")=>error_coded(405, ErrorCode::WebMethodNotAllowed, &[]),
+            _=>error_coded(404, ErrorCode::WebNotFound, &[])
         };
     }
     if matches!(
         path.as_str(),
         "/" | "/api/health" | "/api/session" | "/static/app.js" | "/static/app.css"
     ) {
-        return error(405, "Methode nicht erlaubt");
+        return error_coded(405, ErrorCode::WebMethodNotAllowed, &[]);
     }
     if path != "/api/login" && !app.config.allow_no_auth {
         let Some(s) = &current else {
-            return error(401, "Anmeldung erforderlich");
+            return error_coded(401, ErrorCode::WebLoginRequired, &[]);
         };
         let token = headers
             .get("x-csrf-token")
             .map(|h| h.as_bytes())
             .unwrap_or_default();
         if !bool::from(token.ct_eq(s.csrf.as_bytes())) {
-            return error(403, "Ungültiges CSRF-Token");
+            return error_coded(403, ErrorCode::WebCsrfInvalid, &[]);
         }
     }
     if path == "/api/upload" { return uploads::upload(app,current.unwrap(),req).await; }
@@ -897,7 +904,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             .as_ref()
             .is_some_and(|a| a.must_change)
     {
-        return (StatusCode::FORBIDDEN,Json(json!({"message":"Bitte zuerst ein neues Passwort setzen","expected":true,"code":"password_change_required"}))).into_response();
+        return password_change_required();
     }
     if !headers
         .get(header::CONTENT_TYPE)
@@ -908,7 +915,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 || (mime.starts_with("application/") && mime.ends_with("+json"))
         })
     {
-        return error(400, "Content-Type application/json erwartet");
+        return error_coded(400, ErrorCode::ReqInvalidArguments, &[]);
     }
     // Uploads and file operations carry their own operation journal, so the
     // request id only applies to plain catalog writes. Format errors surface
@@ -942,13 +949,13 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         "/api/login" => {
             match tokio::spawn(login(app.clone(), peer.clone(), now, is_secure, args)).await {
                 Ok(r) => r,
-                Err(_) => error(500, "Anmeldung fehlgeschlagen"),
+                Err(_) => error_coded(500, ErrorCode::WebServerInternal, &[]),
             }
         }
         "/api/password" => {
             let guard = match app.changes.clone().try_lock_owned() {
                 Ok(g) => g,
-                Err(_) => return error(503, "Passwortänderung bereits aktiv"),
+                Err(_) => return error_coded(503, ErrorCode::WebPasswordChangeActive, &[]),
             };
             match tokio::spawn(change_password(
                 app.clone(),
@@ -962,7 +969,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             .await
             {
                 Ok(r) => r,
-                Err(_) => error(500, "Passwortänderung fehlgeschlagen"),
+                Err(_) => error_coded(500, ErrorCode::WebServerInternal, &[]),
             }
         }
         p if p.starts_with("/api/invoke/") => {
@@ -1006,7 +1013,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             )
             .await
         }
-        _ => error(404, "Nicht gefunden"),
+        _ => error_coded(404, ErrorCode::WebNotFound, &[]),
     }
 }
 struct LoginAttempt {
@@ -1047,7 +1054,7 @@ async fn verify_client(
     };
     let permit = password::hash_slot()
         .await
-        .map_err(|_| boxed_error(503, "Passwortprüfung derzeit ausgelastet"))?;
+        .map_err(|_| boxed_coded(503, ErrorCode::WebPasswordCheckBusy, &[]))?;
     {
         let d = app.data.lock().unwrap();
         // Recheck after waiting for a hash slot. Own reservation already counts
@@ -1061,7 +1068,7 @@ async fn verify_client(
     }
     let valid = password::verify_with_slot(hash, value, permit)
         .await
-        .map_err(|_| boxed_error(503, "Passwortprüfung derzeit ausgelastet"))?;
+        .map_err(|_| boxed_coded(503, ErrorCode::WebPasswordCheckBusy, &[]))?;
     if !valid {
         let now = app.clock.now();
         app.data.lock().unwrap().limits.failure(peer, now);
@@ -1089,7 +1096,7 @@ async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value)
     let _change = app.changes.lock().await;
     let mut d = app.data.lock().unwrap();
     if !valid || revision != d.revision {
-        return error(401, "Passwort nicht korrekt");
+        return error_coded(401, ErrorCode::WebPasswordIncorrect, &[]);
     }
     d.limits.success(&peer);
     event("Erfolg", &peer, now);
@@ -1109,7 +1116,7 @@ async fn change_password(
     _guard: tokio::sync::OwnedMutexGuard<()>,
 ) -> Response {
     let Some(current) = current else {
-        return error(401, "Anmeldung erforderlich");
+        return error_coded(401, ErrorCode::WebLoginRequired, &[]);
     };
     let old = match string(&args, "current") {
         Ok(s) => s.to_owned(),
@@ -1122,23 +1129,23 @@ async fn change_password(
     let hash = {
         let d = app.data.lock().unwrap();
         if !d.sessions.contains_key(&current.token) {
-            return error(401, "Anmeldung erforderlich");
+            return error_coded(401, ErrorCode::WebLoginRequired, &[]);
         }
         d.auth.as_ref().unwrap().password_hash.clone()
     };
     match verify_client(app.clone(), &peer, hash, old.clone(), true).await {
         Ok(true) => {}
         Ok(false) => {
-            return error(401, "Aktuelles Passwort nicht korrekt");
+            return error_coded(401, ErrorCode::WebCurrentPasswordIncorrect, &[]);
         }
         Err(e) => return *e,
     }
-    if let Err(e) = password::policy(&new, Some(&old)) {
-        return error(422, &e);
+    if let Err(violation) = password::check_policy(&new, Some(&old)) {
+        return error_coded(422, violation.code(), &violation.params());
     }
     let hash = match password::hash_password(new).await {
         Ok(h) => h,
-        Err(_) => return error(503, "Passwortprüfung derzeit ausgelastet"),
+        Err(_) => return error_coded(503, ErrorCode::WebPasswordCheckBusy, &[]),
     };
     let auth = AuthFile {
         version: 1,
@@ -1160,7 +1167,7 @@ async fn change_password(
         let mut d = app.data.lock().unwrap();
         cleanup(&mut d, app.clock.now());
         if !d.sessions.contains_key(&current.token) {
-            return error(401, "Anmeldung erforderlich");
+            return error_coded(401, ErrorCode::WebLoginRequired, &[]);
         }
     }
     let path = app.config.auth_file.clone();
@@ -1169,7 +1176,7 @@ async fn change_password(
         tokio::task::spawn_blocking(move || password::write_auth(&path, &persisted)).await,
         Ok(Ok(()))
     ) {
-        return error(500, "Passwort konnte nicht gespeichert werden");
+        return error_coded(500, ErrorCode::WebServerInternal, &[]);
     }
     let now = app.clock.now();
     let mut d = app.data.lock().unwrap();
@@ -1184,7 +1191,7 @@ async fn change_password(
     d.limits.success(&peer);
     event("Passwortänderung", &peer, now);
     if !active {
-        return error(401, "Sitzung abgelaufen; bitte erneut anmelden");
+        return error_coded(401, ErrorCode::WebSessionExpired, &[]);
     }
     d.sessions.insert(
         token.clone(),
@@ -1215,7 +1222,7 @@ fn admit_write(app: &App, current: &Session) -> Result<tokio::sync::OwnedSemapho
     {
         let mut data = app.data.lock().unwrap();
         cleanup(&mut data, app.clock.now());
-        let Some(session) = data.sessions.get_mut(&current.token) else { return Err(boxed_error(401, "Sitzung abgelaufen")); };
+        let Some(session) = data.sessions.get_mut(&current.token) else { return Err(boxed_coded(401, ErrorCode::WebSessionExpired, &[])); };
         if !session.bucket.take(app.clock.now()) { return Err(Box::new(crate::write::retry(429))); }
     }
     gate.admission.clone().try_acquire_owned().map_err(|_| Box::new(crate::write::retry(503)))
@@ -1246,10 +1253,10 @@ fn decode_upload_name(raw: &str) -> Option<String> {
 /// Everything that can be judged from the headers is refused before a byte is read.
 async fn companion_upload(app: Arc<App>, current: Session, req: Request) -> Response {
     if req.method() != Method::POST {
-        return error(405, "Methode nicht erlaubt");
+        return error_coded(405, ErrorCode::WebMethodNotAllowed, &[]);
     }
     if app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change) {
-        return (StatusCode::FORBIDDEN, Json(json!({"message":"Bitte zuerst ein neues Passwort setzen","expected":true,"code":"password_change_required"}))).into_response();
+        return password_change_required();
     }
     let headers = req.headers().clone();
     if headers.get(header::CONTENT_TYPE).and_then(|h| h.to_str().ok()) != Some("application/octet-stream") {
@@ -1377,18 +1384,18 @@ async fn idempotent_fileop(app: Arc<App>, current: Session, peer: String, comman
 async fn record_outcome(guard: crate::idempotency::Guard, work: tokio::task::JoinHandle<Response>, clock: Arc<dyn Clock>) -> Response {
     let (reply, delivered) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
-        let response = work.await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"));
+        let response = work.await.unwrap_or_else(|_| error_coded(500, ErrorCode::WebServerInternal, &[]));
         let (parts, body) = response.into_parts();
         let response = match axum::body::to_bytes(body, usize::MAX).await {
             Ok(bytes) => {
                 guard.finish(parts.status.as_u16(), parts.headers.get(header::CONTENT_TYPE).cloned(), bytes.clone(), clock.monotonic());
                 Response::from_parts(parts, Body::from(bytes))
             }
-            Err(_) => error(500, "Interner Schreibfehler"),
+            Err(_) => error_coded(500, ErrorCode::WebServerInternal, &[]),
         };
         let _ = reply.send(response);
     });
-    delivered.await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"))
+    delivered.await.unwrap_or_else(|_| error_coded(500, ErrorCode::WebServerInternal, &[]))
 }
 async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit, replay: Option<crate::idempotency::Guard>) -> Response {
     let gate = app.writer.as_ref().expect("write connection initialized");
@@ -1441,7 +1448,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
                 match rt.store.has_importing() {
                     Ok(false) => Some(permit),
                     Ok(true) => return crate::write::retry(503),
-                    Err(_) => return error(500, "Interner Journalfehler"),
+                    Err(_) => return error_coded(500, ErrorCode::WebServerInternal, &[]),
                 }
             } else { None }
         } else { None };
@@ -1469,11 +1476,11 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
                 let conn = poisoned.into_inner();
                 if !conn.is_autocommit() && conn.execute_batch("ROLLBACK").is_err() {
                     eprintln!("write error_kind=poison_rollback");
-                    return error(500, "Interner Schreibfehler");
+                    return error_coded(500, ErrorCode::WebServerInternal, &[]);
                 }
                 if !conn.is_autocommit() {
                     eprintln!("write error_kind=poison_transaction_state");
-                    return error(500, "Interner Schreibfehler");
+                    return error_coded(500, ErrorCode::WebServerInternal, &[]);
                 }
                 mutex.clear_poison();
                 conn
@@ -1482,8 +1489,8 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         {
             let mut data = app.data.lock().unwrap();
             cleanup(&mut data, app.clock.now());
-            if !data.sessions.contains_key(&current.token) { return error(401, "Sitzung abgelaufen"); }
-            if data.auth.as_ref().is_none_or(|a| a.must_change) { return error(403, "Bitte zuerst ein neues Passwort setzen"); }
+            if !data.sessions.contains_key(&current.token) { return error_coded(401, ErrorCode::WebSessionExpired, &[]); }
+            if data.auth.as_ref().is_none_or(|a| a.must_change) { return error_coded(403, ErrorCode::WebPasswordChangeRequired, &[]); }
         }
         if let Some(ids) = &removal_ids {
             let mut active_count = 0;
@@ -1529,7 +1536,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         }
     });
     let Some(guard) = replay else {
-        return work.await.unwrap_or_else(|_|error(500,"Interner Schreibfehler"));
+        return work.await.unwrap_or_else(|_|error_coded(500, ErrorCode::WebServerInternal, &[]));
     };
     record_outcome(guard, work, clock).await
 }

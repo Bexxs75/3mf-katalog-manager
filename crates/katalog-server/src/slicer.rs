@@ -13,7 +13,7 @@ use axum::{
     Json,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use katalog_core::{db, safe_file};
+use katalog_core::{db, error_code::ErrorCode, safe_file};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -107,7 +107,7 @@ fn hit(windows: &Windows, key: &str, now: u64, limit: u32) -> Result<(), u64> {
 }
 
 fn limited(seconds: u64) -> Response {
-    let mut response = crate::web::error(429, "Zu viele Anfragen. Bitte später erneut versuchen.");
+    let mut response = crate::web::error_coded(429, ErrorCode::WebTooManyRequests, &[]);
     response.headers_mut().insert("retry-after", seconds.to_string().parse().unwrap());
     response
 }
@@ -301,8 +301,8 @@ impl Slicer {
     }
 }
 
-fn plain(status: u16, message: &str) -> Response {
-    let mut response = crate::web::error(status, message);
+fn plain(status: u16, code: ErrorCode) -> Response {
+    let mut response = crate::web::error_coded(status, code, &[]);
     response.headers_mut().insert("cache-control", "no-store".parse().unwrap());
     response
 }
@@ -325,7 +325,7 @@ pub(crate) async fn mint(
     args: &Value,
 ) -> Response {
     let Some(id) = numeric_id(args) else {
-        return crate::web::error(400, "ID muss eine numerische Zeichenfolge sein");
+        return crate::web::error_coded(400, ErrorCode::ReqInvalidIds, &[]);
     };
     if let Err(seconds) = hit(&slicer.mints, rate_key, now, LINKS_PER_MINUTE) {
         return limited(seconds);
@@ -343,7 +343,7 @@ pub(crate) async fn mint(
     })
     .await;
     let Ok(Some((revision, file))) = found else {
-        return plain(404, "Datei nicht gefunden");
+        return plain(404, ErrorCode::FileNotFound);
     };
     let expires = now + slicer.ttl;
     let name = url_name(&file.name, file.file_type.as_str());
@@ -367,7 +367,7 @@ pub(crate) async fn download(
     now: u64,
 ) -> Response {
     if *method != Method::GET && *method != Method::HEAD {
-        return plain(405, "Methode nicht erlaubt");
+        return plain(405, ErrorCode::WebMethodNotAllowed);
     }
     let segments: Vec<&str> = path.strip_prefix(PREFIX).unwrap_or("").split('/').collect();
     // Only rejected requests count and only they are throttled: a correctly signed
@@ -377,7 +377,7 @@ pub(crate) async fn download(
         Err(seconds) => limited(seconds),
         Ok(()) => {
             audit(now, id, 404, 0);
-            plain(404, "Nicht gefunden")
+            plain(404, ErrorCode::WebNotFound)
         }
     };
     let [id_text, token, name] = segments[..] else { return refuse("-") };
@@ -392,12 +392,12 @@ pub(crate) async fn download(
     // `now` is wall-clock time: setting the server clock back extends links that exist at that moment.
     if expires <= now {
         audit(now, id_text, 410, 0);
-        return plain(410, "Link abgelaufen");
+        return plain(410, ErrorCode::SlicerLinkExpired);
     }
     let permit = match tokio::time::timeout(Duration::from_millis(250), slicer.slots.clone().acquire_owned()).await {
         Ok(Ok(permit)) => permit,
         _ => {
-            let mut response = plain(503, "Zu viele Downloads");
+            let mut response = plain(503, ErrorCode::DlTooManyDownloads);
             response.headers_mut().insert("retry-after", "1".parse().unwrap());
             return response;
         }
@@ -418,7 +418,7 @@ pub(crate) async fn download(
     .await;
     let Ok(Some((mut file, meta, stored_name, permit))) = opened else {
         audit(now, id_text, 404, 0);
-        return plain(404, "Nicht gefunden");
+        return plain(404, ErrorCode::WebNotFound);
     };
     let len = meta.len();
     let modified = meta.modified().ok().and_then(http_date);
@@ -434,14 +434,14 @@ pub(crate) async fn download(
     let range = match range {
         Ok(range) => range,
         Err(()) => {
-            let mut response = plain(416, "Ungültiger Bytebereich");
+            let mut response = plain(416, ErrorCode::DlRangeInvalid);
             response.headers_mut().insert("content-range", format!("bytes */{len}").parse().unwrap());
             return response;
         }
     };
     let (start, count) = range.unwrap_or((0, len));
     if start != 0 && file.seek(SeekFrom::Start(start)).is_err() {
-        return plain(500, "Interner Fehler");
+        return plain(500, ErrorCode::WebServerInternal);
     }
     let mut response = if *method == Method::HEAD {
         // The body is never sent for HEAD; release the slot and the file now.

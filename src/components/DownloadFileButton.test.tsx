@@ -3,6 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DownloadFileButton } from './DownloadFileButton';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { getSnapshot } from '../lib/webSession';
+import { de } from '../i18n/de';
+import { en } from '../i18n/en';
+import { es } from '../i18n/es';
+import { fr } from '../i18n/fr';
 import { WebAuthGate } from './WebAuthGate';
 let links: string[];
 beforeEach(() => {
@@ -29,9 +33,15 @@ it.each([false, true])('shows the existing auth gate instead of navigating when 
   expect(screen.getByLabelText(forced ? 'Aktuelles Passwort' : 'Passwort')).toBeVisible();
 });
 it.each([401, 403])('displays session check failure %s without navigation', async status => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ message: 'Anmeldung erforderlich', expected: true }, { status })));
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ message: 'webLoginRequired', expected: true }, { status })));
   show(); await act(async () => fireEvent.click(screen.getByRole('button')));
-  expect(links).toEqual([]); expect(screen.getByRole('alert')).toHaveTextContent('Anmeldung erforderlich');
+  expect(links).toEqual([]); expect(screen.getByRole('alert')).toHaveTextContent(de.errWebLoginRequired);
+});
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('shows the server code in %s', async (language, dictionary) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ message: 'webLoginRequired', expected: true }, { status: 401 })));
+  show(); await act(async () => fireEvent.click(screen.getByRole('button')));
+  expect(screen.getByRole('alert')).toHaveTextContent(dictionary.errWebLoginRequired);
 });
 it('displays network failure and permits retry', async () => {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Offline'))); show();

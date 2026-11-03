@@ -3,6 +3,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { WebAccountMenu, WEB_CHANGE_PASSWORD_EVENT } from './WebAccountMenu';
 import * as session from '../lib/webSession';
+import { de } from '../i18n/de';
+import { en } from '../i18n/en';
+import { es } from '../i18n/es';
+import { fr } from '../i18n/fr';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const mount = () => render(<LanguageProvider><WebAccountMenu /></LanguageProvider>);
@@ -33,6 +37,16 @@ it('logs out through the session and shows a failure instead of hiding it', asyn
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Server nicht erreichbar'));
   expect(out).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('menu')).toBeVisible();
+});
+
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('shows a server code as text in %s', async (language, dictionary) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  vi.spyOn(session, 'logout').mockRejectedValueOnce({ message: 'webSessionExpired', expected: true });
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: dictionary.webAccount }));
+  fireEvent.click(screen.getByRole('menuitem', { name: dictionary.webLogout }));
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(dictionary.errWebSessionExpired));
+  localStorage.removeItem('3mf-katalog-language');
 });
 
 it('closes on Escape and on a click outside', () => {

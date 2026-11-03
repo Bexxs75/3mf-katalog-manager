@@ -4,6 +4,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use katalog_core::error_code::ErrorCode;
 use katalog_core::write::{web, CodedKind, Connection, WriteError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -329,7 +330,7 @@ mod fileops_audit_tests {
     }
 }
 pub(crate) fn retry(status: u16) -> Response {
-    let mut r = super::web::error(status, "Schreibzugriff derzeit ausgelastet");
+    let mut r = super::web::error_coded(status, ErrorCode::WebWriteBusy, &[]);
     r.headers_mut().insert("retry-after", "1".parse().unwrap());
     r
 }
@@ -348,12 +349,15 @@ fn map_error(e: WriteError) -> Box<Response> {
         WriteError::Busy { .. } => retry(503),
         WriteError::Other { kind, .. } => {
             eprintln!("write error_kind={kind}");
-            super::web::error(500, "Interner Schreibfehler")
+            super::web::error_coded(500, ErrorCode::WebServerInternal, &[])
         }
     })
 }
+fn too_many_ids(limit: usize) -> Box<Response> {
+    map_error(WriteError::coded_with(ErrorCode::ReqIdsTooMany, [limit]))
+}
 fn bad() -> Box<Response> {
-    Box::new(super::web::error(400, "Ungültige Argumente"))
+    Box::new(super::web::error_coded(400, ErrorCode::ReqInvalidArguments, &[]))
 }
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str, Box<Response>> {
     v.get(key).and_then(Value::as_str).ok_or_else(bad)
@@ -381,20 +385,14 @@ fn id(v: &Value, key: &str) -> Result<i64, Box<Response>> {
 fn ids(v: &Value) -> Result<Vec<i64>, Box<Response>> {
     let values = v.get("fileIds").and_then(Value::as_array).ok_or_else(bad)?;
     if values.len() > 500 {
-        return Err(Box::new(super::web::error(
-            422,
-            "Höchstens 500 IDs erlaubt",
-        )));
+        return Err(too_many_ids(500));
     }
     values.iter().map(id_value).collect()
 }
 fn updates(v: &Value) -> Result<Vec<(i64, i64)>, Box<Response>> {
     let values = v.get("updates").and_then(Value::as_array).ok_or_else(bad)?;
     if values.len() > 500 {
-        return Err(Box::new(super::web::error(
-            422,
-            "Höchstens 500 IDs erlaubt",
-        )));
+        return Err(too_many_ids(500));
     }
     values
         .iter()
@@ -443,7 +441,7 @@ fn printer_details(a: &Value) -> Result<katalog_core::write::printers::PrinterDe
     let object = value.as_object().ok_or_else(bad)?;
     const FIELDS: &[&str] = &["manufacturer", "model", "nozzleMm", "bedXMm", "bedYMm", "bedZMm"];
     if object.keys().any(|k| !FIELDS.contains(&k.as_str())) {
-        return Err(map_error(WriteError::expected("Unbekanntes Druckerdetail")));
+        return Err(map_error(WriteError::coded(ErrorCode::PrinterDetailUnknown)));
     }
     serde_json::from_value(value.clone()).map_err(|_| bad())
 }
@@ -465,10 +463,10 @@ pub(crate) fn removal_ids(args: &Value) -> Result<Vec<i64>, Box<Response>> {
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     struct Args { file_ids: Vec<String> }
-    let invalid = || map_error(WriteError::expected("Ungültige Katalog-ID."));
+    let invalid = || map_error(WriteError::coded(ErrorCode::InvalidCatalogId));
     let args: Args = serde_json::from_value(args.clone()).map_err(|_| invalid())?;
     if args.file_ids.len() > 200 {
-        return Err(map_error(WriteError::expected("Höchstens 200 IDs erlaubt")));
+        return Err(map_error(WriteError::coded_with(ErrorCode::ReqIdsTooMany, [200])));
     }
     args.file_ids.into_iter().map(|id| id_value(&Value::String(id)).map_err(|_| invalid())).collect()
 }
@@ -510,7 +508,7 @@ pub(crate) fn prepare_rescan(
     let file_id = id_value(&Value::String(args.file_id))?;
     let conn = katalog_core::db::open_read_only(&ctx.db_path).map_err(|_| {
         eprintln!("write error_kind=rescan_read_open");
-        Box::new(super::web::error(500, "Interner Schreibfehler"))
+        Box::new(super::web::error_coded(500, ErrorCode::WebServerInternal, &[]))
     })?;
     let prepared = katalog_core::rescan::prepare_web_rescan(&conn, file_id, &ctx.roots, ctx.limits)
         .map_err(rescan_error)?;
@@ -528,20 +526,19 @@ pub(crate) fn apply_rescan(
 /// The client only names the catalog entry; the path stays server-side and no message carries it.
 fn rescan_error(e: katalog_core::rescan::RescanError) -> Box<Response> {
     use katalog_core::rescan::RescanError::*;
-    let (status, code) = match e {
-        NotInCatalog | Missing(_) | Outside => (404, "rescan_file_unavailable"),
-        Unsupported => (422, "rescan_file_unsupported"),
-        StepUnavailable => (422, "rescan_step_unavailable"),
-        TooLarge => (422, "rescan_file_too_large"),
-        Invalid => (422, "rescan_file_invalid"),
-        Changed => (409, "rescan_file_changed"),
+    Box::new(match e {
+        NotInCatalog | Missing(_) | Outside => super::web::error(404, "rescan_file_unavailable"),
+        Unsupported => super::web::error(422, "rescan_file_unsupported"),
+        StepUnavailable => super::web::error(422, "rescan_step_unavailable"),
+        TooLarge => super::web::error(422, "rescan_file_too_large"),
+        Invalid => super::web::error(422, "rescan_file_invalid"),
+        Changed => super::web::error(409, "rescan_file_changed"),
         Failed(_) => {
             // The detail may be database text; only a fixed kind is logged.
             eprintln!("write error_kind=rescan_failed");
-            return Box::new(super::web::error(500, "Interner Schreibfehler"));
+            super::web::error_coded(500, ErrorCode::WebServerInternal, &[])
         }
-    };
-    Box::new(super::web::error(status, code))
+    })
 }
 pub(crate) fn execute(
     c: &mut Connection,
@@ -556,7 +553,7 @@ pub(crate) fn execute(
             struct ImageArgs<'a> { file_id: String, image_base64: &'a str }
             // Borrowed: the Base64 text can be megabytes and must not be copied again.
             let args = ImageArgs::deserialize(a)
-                .map_err(|_| map_error(WriteError::expected("Ungültige Bildargumente")))?;
+                .map_err(|_| map_error(WriteError::coded(ErrorCode::ReqInvalidArguments)))?;
             let file_id = id_value(&Value::String(args.file_id))?;
             encode(web::set_custom_image(c, file_id, args.image_base64))
         }
@@ -568,7 +565,7 @@ pub(crate) fn execute(
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
             struct SnapshotArgs<'a> { file_id: String, image_base64: &'a str }
             let args = SnapshotArgs::deserialize(a)
-                .map_err(|_| map_error(WriteError::expected("Ungültige Snapshot-Argumente")))?;
+                .map_err(|_| map_error(WriteError::coded(ErrorCode::ReqInvalidArguments)))?;
             let file_id = id_value(&Value::String(args.file_id))?;
             encode(web::set_render_snapshot(c, file_id, args.image_base64))
         }
@@ -702,10 +699,7 @@ pub(crate) fn execute(
             id(a, "collectionId")?,
             &updates(a)?,
         )),
-        _ => Err(Box::new(super::web::error(
-            404,
-            "Befehl im Web nicht verfügbar",
-        ))),
+        _ => Err(Box::new(super::web::error_coded(404, ErrorCode::WebCommandUnavailable, &[]))),
     }
 }
 
@@ -781,5 +775,42 @@ mod coded_error_tests {
         assert_eq!(invalid.status(), 422);
         let missing = map_error(WriteError::coded_not_found(ErrorCode::FolderNotFound));
         assert_eq!(missing.status(), 404);
+    }
+
+    async fn body(response: Response) -> (u16, String) {
+        let status = response.status().as_u16();
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    /// The limit travels as data; the sentence around it belongs to the interface.
+    #[tokio::test]
+    async fn too_many_ids_answer_422_with_the_limit() {
+        let many: Vec<String> = (1..=501).map(|n| n.to_string()).collect();
+        let rejected = ids(&serde_json::json!({"fileIds": many})).unwrap_err();
+        let (status, text) = body(*rejected).await;
+        assert_eq!(status, 422);
+        let json: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(json, serde_json::json!({"message": "reqIdsTooMany", "expected": true, "params": ["500"]}));
+    }
+
+    /// A server fault is one fixed code: nothing of the error that caused it, such
+    /// as a path or a database text, reaches the client.
+    #[tokio::test]
+    async fn server_faults_carry_no_text_of_their_cause() {
+        let cause = "unable to open /srv/secret/catalog.db: disk I/O error";
+        let (status, text) = body(*map_error(WriteError::Other { message: cause.into(), kind: "db" })).await;
+        assert_eq!(status, 500);
+        assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), serde_json::json!({"message": "webServerInternal", "expected": false}));
+        assert!(!text.contains("/srv/secret") && !text.contains("disk I/O"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_busy_write_gate_answers_with_its_code_and_a_retry_hint() {
+        let response = retry(503);
+        assert_eq!(response.headers()["retry-after"], "1");
+        let (status, text) = body(response).await;
+        assert_eq!(status, 503);
+        assert_eq!(serde_json::from_str::<Value>(&text).unwrap()["message"], "webWriteBusy");
     }
 }

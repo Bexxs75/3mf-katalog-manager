@@ -3,6 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { LanguageProvider, useLanguage } from '../i18n/LanguageContext';
 import { de } from '../i18n/de';
 import { en } from '../i18n/en';
+import { es } from '../i18n/es';
+import { fr } from '../i18n/fr';
 import { fillParams } from '../lib/errorMessage';
 import { WebAuthGate } from './WebAuthGate';
 import { authenticationFailed, getSession } from '../lib/webSession';
@@ -78,9 +80,29 @@ it('shows a coded login error in the chosen language and changes it with the lan
 
 it('still shows technical text of an unexpected login error as it is', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ authenticated: false, mustChangePassword: false, csrfToken: null }))
-    .mockResolvedValueOnce(Response.json({ message: 'Passwort nicht korrekt', expected: true }, { status: 422 })));
+    .mockResolvedValueOnce(Response.json({ message: 'database is locked', expected: false }, { status: 500 })));
   await act(async () => { render(<LanguageProvider><WebAuthGate><div>APP</div></WebAuthGate></LanguageProvider>); });
   fireEvent.change(screen.getByLabelText('Passwort'), { target: { value: 'wrong password' } });
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Anmelden' })));
-  expect(screen.getAllByRole('alert').map(alert => alert.textContent)).toContain('Passwort nicht korrekt');
+  expect(screen.getAllByRole('alert').map(alert => alert.textContent)).toContain('database is locked');
+});
+
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('shows the wrong-password code of the server in %s', async (language, dictionary) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ authenticated: false, mustChangePassword: false, csrfToken: null }))
+    .mockResolvedValueOnce(Response.json({ message: 'webPasswordIncorrect', expected: true }, { status: 401 })));
+  await act(async () => { render(<LanguageProvider><WebAuthGate><div>APP</div></WebAuthGate></LanguageProvider>); });
+  fireEvent.change(screen.getByLabelText(dictionary.webPassword), { target: { value: 'wrong password' } });
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: dictionary.webLogin })));
+  expect(screen.getAllByRole('alert').map(alert => alert.textContent)).toContain(dictionary.errWebPasswordIncorrect);
+});
+
+it('fills the limits into the password length rejection', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ authenticated: true, mustChangePassword: true, csrfToken: 'a' }))
+    .mockResolvedValueOnce(Response.json({ message: 'webPasswordLength', expected: true, params: ['12', '128'] }, { status: 422 })));
+  await act(async () => { render(<LanguageProvider><WebAuthGate><div>APP</div></WebAuthGate></LanguageProvider>); });
+  fireEvent.change(screen.getByLabelText('Aktuelles Passwort'), { target: { value: 'old password' } });
+  fireEvent.change(screen.getByLabelText('Neues Passwort'), { target: { value: 'new password' } });
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Passwort ändern' })));
+  expect(screen.getAllByRole('alert').map(alert => alert.textContent)).toContain(fillParams(de.errWebPasswordLength, ['12', '128']));
 });

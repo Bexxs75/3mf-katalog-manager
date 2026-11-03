@@ -226,8 +226,14 @@ async fn download_missing_invalid_id_trash_and_methods() {
     std::fs::remove_file(f.dir.join("models/model.step")).unwrap();
     let r = f.get(None).await;
     assert_eq!(r.status(), 404);
-    let v: serde_json::Value = serde_json::from_slice(&bytes(r).await).unwrap();
+    let body = bytes(r).await;
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(v["expected"], true);
+    // A file that vanished from the disk is a fixed code. The operating system's own
+    // text ("No such file or directory", the path) never reaches the client.
+    assert_eq!(v["message"], "fileNotFound");
+    let text = String::from_utf8_lossy(&body);
+    assert!(!text.contains("No such file") && !text.contains("os error") && !text.contains("model.step"), "{text}");
 }
 #[tokio::test]
 async fn download_rejects_directory() {
@@ -235,7 +241,13 @@ async fn download_rejects_directory() {
     let path = f.dir.join("models/model.step");
     std::fs::remove_file(&path).unwrap();
     std::fs::create_dir(&path).unwrap();
-    assert_eq!(f.get(None).await.status(), 500);
+    let r = f.get(None).await;
+    assert_eq!(r.status(), 500);
+    let body = bytes(r).await;
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v["message"], "webServerInternal");
+    assert_eq!(v["expected"], false);
+    assert!(!String::from_utf8_lossy(&body).contains("model.step"));
 }
 #[cfg(unix)]
 #[tokio::test]
@@ -390,7 +402,7 @@ async fn download_rejects_database_path_outside_roots() {
     assert_eq!(v["expected"], true);
     assert_eq!(
         v["message"],
-        "Dateipfad liegt außerhalb der freigegebenen Verzeichnisse"
+        "dlPathNotAllowed"
     );
 }
 
@@ -519,7 +531,7 @@ async fn download_skips_unresolvable_roots() {
             let v: serde_json::Value = serde_json::from_slice(&bytes(r).await).unwrap();
             assert_eq!(
                 v["message"],
-                "Dateipfad liegt außerhalb der freigegebenen Verzeichnisse"
+                "dlPathNotAllowed"
             );
         }
     }

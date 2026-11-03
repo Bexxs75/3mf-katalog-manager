@@ -3,10 +3,11 @@ use axum::{
     body::{Body, Bytes},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Json,
 };
+use crate::web::error_coded;
 use katalog_core::{
     db,
+    error_code::ErrorCode,
     read::{self, ReadError},
     safe_file,
 };
@@ -23,12 +24,30 @@ use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore},
 };
 
-fn error(status: u16, message: &str) -> Response {
-    (
-        StatusCode::from_u16(status).unwrap(),
-        Json(serde_json::json!({"message":message,"expected":status<500})),
-    )
-        .into_response()
+/// A failed read of the file to send. A missing file is a plain "not found" code:
+/// the operating system's own wording names paths and internals and must not reach
+/// the client. Every other I/O failure is a server fault, logged by
+/// `download_failure` and answered with the fixed internal-error code.
+fn io_failure(e: io::Error) -> ReadError {
+    if e.kind() == io::ErrorKind::NotFound {
+        ReadError::coded(ErrorCode::FileNotFound).with_code(read::GeometryErrorCode::NotFound)
+    } else {
+        ReadError::from(e.to_string()).with_code(read::GeometryErrorCode::Unreadable)
+    }
+}
+
+/// Answers a failed open: expected rejections keep their code, anything else is
+/// logged here and sent as the fixed internal-error code so no database or
+/// operating-system text leaves the server.
+fn download_failure(e: ReadError) -> Response {
+    if e.expected || e.busy || e.code == Some(read::GeometryErrorCode::NotFound) {
+        return crate::invoke::read_error(e);
+    }
+    eprintln!(
+        "Interner Lesefehler: {}",
+        e.message.chars().take(1024).flat_map(char::escape_default).collect::<String>()
+    );
+    error_coded(500, ErrorCode::WebServerInternal, &[])
 }
 
 pub async fn download(
@@ -39,13 +58,13 @@ pub async fn download(
     slots: Arc<Semaphore>,
 ) -> Response {
     let Ok(numeric_id) = id.parse::<i64>() else {
-        return error(400, "ID muss eine numerische Zeichenfolge sein");
+        return error_coded(400, ErrorCode::ReqInvalidIds, &[]);
     };
     let permit = match tokio::time::timeout(Duration::from_millis(250), slots.acquire_owned()).await
     {
         Ok(Ok(p)) => p,
         _ => {
-            let mut r = error(503, "Zu viele Downloads");
+            let mut r = error_coded(503, ErrorCode::DlTooManyDownloads, &[]);
             r.headers_mut().insert("retry-after", "1".parse().unwrap());
             return r;
         }
@@ -59,14 +78,14 @@ pub async fn download(
         let name = db::get_file(&conn, numeric_id)
             .map_err(ReadError::from)?
             .ok_or_else(|| {
-                ReadError::expected("file not found").with_code(read::GeometryErrorCode::NotFound)
+                ReadError::coded(ErrorCode::FileNotFound).with_code(read::GeometryErrorCode::NotFound)
             })?
             .name;
         drop(conn);
         let canonical = source
             .path
             .canonicalize()
-            .map_err(read::geometry_io_error)?;
+            .map_err(io_failure)?;
         let mut allowed = false;
         for root in roots {
             if root
@@ -77,22 +96,20 @@ pub async fn download(
             }
         }
         if !allowed {
-            return Err(ReadError::expected(
-                "Dateipfad liegt außerhalb der freigegebenen Verzeichnisse",
-            )
-            .with_code(read::GeometryErrorCode::Unreadable));
+            return Err(ReadError::coded(ErrorCode::DlPathNotAllowed)
+                .with_code(read::GeometryErrorCode::Unreadable));
         }
         // Same path-admission guarantee as geometry; roots must not be writable
         // by untrusted users (concurrent directory replacement is not prevented).
-        let admitted = std::fs::symlink_metadata(&canonical).map_err(read::geometry_io_error)?;
+        let admitted = std::fs::symlink_metadata(&canonical).map_err(io_failure)?;
         if !admitted.is_file() {
-            return Err(read::geometry_io_error(io::Error::new(
+            return Err(io_failure(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "keine reguläre Datei",
             )));
         }
-        let file = safe_file::open_regular(&canonical).map_err(read::geometry_io_error)?;
-        let opened = file.metadata().map_err(read::geometry_io_error)?;
+        let file = safe_file::open_regular(&canonical).map_err(io_failure)?;
+        let opened = file.metadata().map_err(io_failure)?;
         // Reject a final path component replaced between admission and opening,
         // including replacement by a symlink. Never read from a mismatched handle.
         #[cfg(unix)]
@@ -114,8 +131,8 @@ pub async fn download(
     .await;
     let (file, len, modified, name, permit) = match opened {
         Ok(Ok(v)) => v,
-        Ok(Err(e)) => return crate::invoke::read_error(e),
-        Err(_) => return error(500, "Interner Fehler"),
+        Ok(Err(e)) => return download_failure(e),
+        Err(_) => return error_coded(500, ErrorCode::WebServerInternal, &[]),
     };
     serve(file, len, modified, &name, "application/octet-stream", permit, headers)
 }
@@ -151,7 +168,7 @@ fn serve(
     let range = match range {
         Ok(r) => r,
         Err(()) => {
-            let mut r = error(416, "Ungültiger Bytebereich");
+            let mut r = error_coded(416, ErrorCode::DlRangeInvalid, &[]);
             r.headers_mut()
                 .insert("content-range", format!("bytes */{len}").parse().unwrap());
             return r;
@@ -160,7 +177,7 @@ fn serve(
     let (start, count) = range.unwrap_or((0, len));
     // Seeking a regular file changes only the handle offset and does not read data.
     if start != 0 && file.seek(SeekFrom::Start(start)).is_err() {
-        return error(500, "Interner Fehler");
+        return error_coded(500, ErrorCode::WebServerInternal, &[]);
     }
     let body = DownloadBody {
         file: tokio::fs::File::from_std(file),
@@ -204,12 +221,12 @@ pub async fn companion(
     slots: Arc<Semaphore>,
 ) -> Response {
     let Ok(numeric_id) = id.parse::<i64>() else {
-        return error(400, "ID muss eine numerische Zeichenfolge sein");
+        return error_coded(400, ErrorCode::ReqInvalidIds, &[]);
     };
     let permit = match tokio::time::timeout(Duration::from_millis(250), slots.acquire_owned()).await {
         Ok(Ok(p)) => p,
         _ => {
-            let mut r = error(503, "Zu viele Downloads");
+            let mut r = error_coded(503, ErrorCode::DlTooManyDownloads, &[]);
             r.headers_mut().insert("retry-after", "1".parse().unwrap());
             return r;
         }
@@ -227,16 +244,16 @@ pub async fn companion(
         drop(conn);
         let (row, kind, mut file, _) = opened.map_err(crate::invoke::companion_error)?;
         // The content check read the start of the file; the answer begins there again.
-        file.seek(SeekFrom::Start(0)).map_err(read::geometry_io_error)?;
-        let meta = file.metadata().map_err(read::geometry_io_error)?;
+        file.seek(SeekFrom::Start(0)).map_err(io_failure)?;
+        let meta = file.metadata().map_err(io_failure)?;
         let content_type = katalog_core::companion_read::download_content_type(kind, &row.name);
         Ok::<_, ReadError>((file, meta.len(), meta.modified().ok().and_then(http_date), row.name, content_type, permit))
     })
     .await;
     let (file, len, modified, name, content_type, permit) = match opened {
         Ok(Ok(v)) => v,
-        Ok(Err(e)) => return crate::invoke::read_error(e),
-        Err(_) => return error(500, "Interner Fehler"),
+        Ok(Err(e)) => return download_failure(e),
+        Err(_) => return error_coded(500, ErrorCode::WebServerInternal, &[]),
     };
     serve(file, len, modified, &name, content_type, permit, headers)
 }
@@ -505,5 +522,28 @@ mod tests {
             format!("attachment; filename=\"{}\"", "_".repeat(90))
         );
         assert_eq!(utf8, "%C3%84".repeat(90));
+    }
+
+    /// A vanished file is a plain "not found" code; the operating system's text,
+    /// which names the path, is dropped.
+    #[test]
+    fn a_missing_file_becomes_a_code_without_the_system_text() {
+        let os_error = io::Error::new(io::ErrorKind::NotFound, "No such file or directory (os error 2) at /srv/models/a.3mf");
+        let mapped = io_failure(os_error);
+        assert_eq!(mapped.message, "fileNotFound");
+        assert!(mapped.expected);
+        assert_eq!(mapped.code, Some(read::GeometryErrorCode::NotFound));
+    }
+
+    /// Any other failure is logged, never sent: the answer is the fixed code.
+    #[tokio::test]
+    async fn other_failures_answer_with_the_fixed_internal_code_only() {
+        let cause = io::Error::new(io::ErrorKind::PermissionDenied, "Permission denied (os error 13) at /srv/models/secret.3mf");
+        let response = download_failure(io_failure(cause));
+        assert_eq!(response.status(), 500);
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 16).await.unwrap();
+        let text = String::from_utf8(bytes.to_vec()).unwrap();
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&text).unwrap(), serde_json::json!({"message": "webServerInternal", "expected": false}));
+        assert!(!text.contains("/srv") && !text.contains("os error"), "{text}");
     }
 }
