@@ -191,6 +191,15 @@ pub fn ensure_folder_path(conn: &Connection, import_root: &Path, dir: &Path) -> 
     Ok(parent_id.expect("mindestens import_root wurde oben eingefuegt"))
 }
 
+/// Whether a folders row with exactly this path exists.
+pub fn folder_path_exists(conn: &Connection, path: &Path) -> Result<bool, DbError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM folders WHERE path = ?1)",
+        params![path.to_string_lossy().to_string()],
+        |r| r.get(0),
+    )?)
+}
+
 /// Attaches a folder created as a root (`parent_id IS NULL`) below the cataloged
 /// folder whose `path` is its parent directory. Needed after extracting an
 /// archive: `ensure_folder_path` always creates the import root as a root, even

@@ -800,6 +800,93 @@ fn rename_external_folder_and_drop_imports_keep_layout_with_or_without_catalog_r
     }
 }
 
+/// Imports `dir` as `source` into `conn` and returns the number of imported models.
+fn import_dir_as(source: ImportSource, conn: &mut Connection, dir: &Path) -> usize {
+    let service = ImportJobs::default();
+    let job = service.enqueue(source, None, false, None).unwrap();
+    service.next().unwrap();
+    finish_models(&service, &job, conn, &[dir.to_path_buf()]);
+    let result = job.result().unwrap();
+    assert!(result.job_error.is_none());
+    result.counts.imported
+}
+
+fn folder_row(conn: &Connection, path: &Path) -> Option<crate::db::models::FolderRecord> {
+    db::list_folders(conn).unwrap().into_iter().find(|f| f.path == path.to_string_lossy())
+}
+
+#[test]
+fn imported_folder_is_attached_below_its_catalogued_parent() {
+    for source in [ImportSource::Folder, ImportSource::Dropped] {
+        let fixture = Fixture::new();
+        let parent = fixture.0.join("A");
+        let child = parent.join("neu");
+        std::fs::create_dir_all(&child).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        let parent_id = db::ensure_folder_path(&conn, &parent, &parent).unwrap();
+        std::fs::rename(fixture.stl(1), child.join("model.stl")).unwrap();
+
+        assert_eq!(import_dir_as(source, &mut conn, &child), 1);
+
+        let row = folder_row(&conn, &child).expect("imported folder row");
+        assert_eq!(row.parent_id, Some(parent_id), "{source:?}: folder must sit below A, not at the top level");
+    }
+}
+
+#[test]
+fn imported_folder_without_catalogued_parent_stays_a_root() {
+    for source in [ImportSource::Folder, ImportSource::Dropped] {
+        let fixture = Fixture::new();
+        let child = fixture.0.join("A").join("neu");
+        std::fs::create_dir_all(&child).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        std::fs::rename(fixture.stl(1), child.join("model.stl")).unwrap();
+
+        assert_eq!(import_dir_as(source, &mut conn, &child), 1);
+
+        assert_eq!(folder_row(&conn, &child).expect("imported folder row").parent_id, None);
+        assert!(folder_row(&conn, child.parent().unwrap()).is_none());
+    }
+}
+
+#[test]
+fn importing_the_same_folder_again_leaves_the_folder_tree_unchanged() {
+    for source in [ImportSource::Folder, ImportSource::Dropped] {
+        let fixture = Fixture::new();
+        let parent = fixture.0.join("A");
+        let child = parent.join("neu");
+        std::fs::create_dir_all(&child).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        db::ensure_folder_path(&conn, &parent, &parent).unwrap();
+        std::fs::rename(fixture.stl(1), child.join("model.stl")).unwrap();
+
+        assert_eq!(import_dir_as(source, &mut conn, &child), 1);
+        let tree = |conn: &Connection| -> Vec<_> {
+            db::list_folders(conn).unwrap().into_iter().map(|f| (f.id, f.parent_id, f.path)).collect()
+        };
+        let before = tree(&conn);
+        assert_eq!(import_dir_as(source, &mut conn, &child), 0);
+        assert_eq!(tree(&conn), before);
+    }
+}
+
+#[test]
+fn a_folder_the_user_keeps_at_the_top_level_is_not_reattached_by_a_later_import() {
+    let fixture = Fixture::new();
+    let parent = fixture.0.join("A");
+    let child = parent.join("neu");
+    std::fs::create_dir_all(&child).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    db::ensure_folder_path(&conn, &parent, &parent).unwrap();
+    // The folder already exists as a root row (e.g. moved there by the user).
+    db::ensure_folder_path(&conn, &child, &child).unwrap();
+    std::fs::rename(fixture.stl(1), child.join("model.stl")).unwrap();
+
+    assert_eq!(import_dir_as(ImportSource::Folder, &mut conn, &child), 1);
+
+    assert_eq!(folder_row(&conn, &child).unwrap().parent_id, None);
+}
+
 #[test]
 fn rename_internal_in_place_preserves_folder_and_reports_protected_root() {
     for protected in [false, true] {

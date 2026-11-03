@@ -27,6 +27,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Catalog database:** the catalog database gets two new tables for print data (schema version 53, and one more column for the filament colors in version 54); older catalogs are upgraded automatically (a copy is saved first). The web server needs a catalog that the desktop app has upgraded first, so start the desktop app once after the update.
 - The Spanish and French texts of this feature have not been checked by native speakers.
 
+### Fixed
+
+- **Import:** a folder imported or dragged into the app now appears below its parent folder in the sidebar when that parent is already in the catalog, instead of one level too high. A folder that already exists in the catalog keeps its place.
+
 ## [0.17.0] - 2026-10-28
 
 ### Added
@@ -731,6 +735,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Sicherung:** Beim Wiederherstellen einer Sicherung werden jetzt auch die neuen Druckdaten-Tabellen geprüft; eine Sicherung mit beschädigten Druckdaten wird mit einer Meldung abgelehnt statt wiederhergestellt.
 - **Katalog-Datenbank:** Die Katalog-Datenbank bekommt zwei neue Tabellen für Druckdaten (Schemaversion 53, dazu eine Spalte für die Filamentfarben in Version 54); ältere Kataloge werden automatisch aktualisiert (vorher wird eine Kopie gesichert). Der Web-Server braucht einen Katalog, den die Desktop-App zuvor aktualisiert hat; nach dem Update die Desktop-App einmal starten.
 - Die spanischen und französischen Texte dieser Funktion wurden nicht von Muttersprachlern geprüft.
+
+### Behoben
+
+- **Import:** Ein importierter oder hineingezogener Ordner erscheint in der Seitenleiste jetzt unter seinem Elternordner, wenn dieser schon im Katalog steht, statt eine Ebene zu hoch. Ein Ordner, der schon im Katalog steht, behält seinen Platz.
 
 ## [0.17.0] - 2026-10-28
 
