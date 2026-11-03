@@ -337,3 +337,76 @@ async fn a_companion_bigger_than_the_old_50_mib_limit_still_downloads_in_ranges(
     assert_eq!(whole.status(), 200);
     assert_eq!(whole.headers()["content-length"], size.to_string());
 }
+
+/// Adds a file to the `Foo_extras` folder and its catalog row; returns the row id.
+fn add_companion_file(f: &Fx, name: &str, body: &[u8], kind: &str) -> i64 {
+    std::fs::write(f.dir.join("models/Foo_extras").join(name), body).unwrap();
+    db::companions::insert_companion(&f.conn(), f.model, name, f.dir.join("models/Foo_extras").join(name).to_str().unwrap(), kind, Some(body.len() as i64), "now").unwrap()
+}
+
+#[tokio::test]
+async fn every_kind_is_delivered_as_an_attachment_and_only_images_keep_their_type() {
+    let f = Fx::new(false).await;
+    let cases: [(&str, &[u8], &str, &str); 5] = [
+        ("a.jpg", b"\xff\xd8\xffbody", "image", "image/jpeg"),
+        ("a.gif", b"GIF89abody", "image", "image/gif"),
+        ("a.webp", b"RIFF\0\0\0\0WEBPbody", "image", "image/webp"),
+        ("notes.txt", b"<html><script>alert(1)</script></html>", "text", "application/octet-stream"),
+        ("readme.md", b"# title", "text", "application/octet-stream"),
+    ];
+    for (name, body, kind, content_type) in cases {
+        let id = add_companion_file(&f, name, body, kind);
+        let r = f.download(&id.to_string()).await;
+        assert_eq!(r.status(), 200, "{name}");
+        assert_eq!(r.headers()["content-type"], content_type, "{name}");
+        assert_eq!(r.headers()["x-content-type-options"], "nosniff", "{name}");
+        assert!(r.headers()["content-disposition"].to_str().unwrap().starts_with("attachment;"), "{name}");
+        assert_eq!(bytes(r).await, body, "{name}");
+    }
+}
+
+#[tokio::test]
+async fn a_server_without_write_rights_only_lists_and_downloads() {
+    let f = Fx::new(false).await;
+    f.conn().execute("UPDATE companion_files SET deleted_at='x' WHERE id=?1", [f.pdf]).unwrap();
+    // The removed rows belong to file management; a read-only server ignores the request for them.
+    let (status, list) = f.invoke("list_companions", json!({"fileId": f.model.to_string(), "includeRemoved": true})).await;
+    assert_eq!(status, 200);
+    let names: Vec<_> = list.as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_owned()).collect();
+    assert_eq!(names, ["pic.png"]);
+    // Neither edit command nor the upload route exists, and nothing changes on disk or in the catalog.
+    for command in ["remove_companion", "restore_companion"] {
+        let (status, _) = f.invoke(command, json!({"companionId": f.png.to_string()})).await;
+        assert_eq!(status, 404, "{command}");
+    }
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/api/companion-upload")
+        .header("host", "localhost:8080")
+        .header("content-type", "application/octet-stream")
+        .header("content-length", PNG.len().to_string())
+        .header("x-file-id", f.model.to_string())
+        .header("x-upload-name", "new.png")
+        .body(Body::from(PNG))
+        .unwrap();
+    assert_eq!(f.app.clone().oneshot(upload).await.unwrap().status(), 404);
+    assert!(!f.dir.join("models/Foo_extras/new.png").exists());
+    let rows: i64 = f.conn().query_row("SELECT COUNT(*) FROM companion_files WHERE deleted_at IS NULL", [], |r| r.get(0)).unwrap();
+    assert_eq!(rows, 1);
+    assert_eq!(f.download(&f.png.to_string()).await.status(), 200);
+}
+
+/// The web form offers exactly the extensions the shared Rust list accepts: a drift in either
+/// direction would offer files the server then refuses, or hide ones it takes.
+#[test]
+fn the_accept_list_of_the_web_form_matches_the_rust_list() {
+    let source = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/lib/companionUpload.ts")).unwrap();
+    let accept = source.lines().find_map(|l| l.strip_prefix("export const COMPANION_ACCEPT = '")).expect("accept constant").split('\'').next().unwrap();
+    let mut offered: Vec<&str> = accept.split(',').map(|e| e.strip_prefix('.').expect("leading dot")).collect();
+    offered.sort_unstable();
+    // Every extension anyone would try; the list may grow, a candidate missing here is not a drift.
+    let candidates = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "tif", "tiff", "heic", "pdf", "txt", "md", "rtf", "doc", "docx", "csv", "json", "html", "htm", "step", "stp", "stl", "3mf", "obj", "zip", "exe", "js"];
+    let mut accepted: Vec<&str> = candidates.into_iter().filter(|e| katalog_core::companions::kind_for_extension(e).is_some()).collect();
+    accepted.sort_unstable();
+    assert_eq!(offered, accepted);
+}

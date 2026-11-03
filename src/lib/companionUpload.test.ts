@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import * as session from './webSession';
-import { uploadCompanion, isAllowedCompanionName, companionSizeProblem } from './companionUpload';
+import { uploadCompanion, isAllowedCompanionName, companionSizeProblem, COMPANION_ACCEPT } from './companionUpload';
 
 class Xhr {
   static requests: Xhr[] = [];
@@ -69,6 +69,14 @@ it('refuses without the file-management right and ends on abort', async () => {
 it('knows the allowed extensions', () => {
   for (const name of ['a.PNG', 'b.jpeg', 'c.pdf', 'd.md', 'e.TXT', 'f.webp', 'g.gif']) expect(isAllowedCompanionName(name)).toBe(true);
   for (const name of ['a.svg', 'b.exe', 'c', 'd.png.exe', 'e.html']) expect(isAllowedCompanionName(name)).toBe(false);
+});
+
+it('offers in the file picker exactly the extensions it accepts by name', () => {
+  const offered = COMPANION_ACCEPT.split(',');
+  for (const extension of offered) expect(extension.startsWith('.')).toBe(true);
+  for (const extension of ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'svg', 'bmp', 'docx', 'html', 'json', 'step', 'zip', 'exe']) {
+    expect(isAllowedCompanionName(`file.${extension}`), extension).toBe(offered.includes(`.${extension}`));
+  }
 });
 
 it('refuses an empty or too big file before sending anything and says why', async () => {

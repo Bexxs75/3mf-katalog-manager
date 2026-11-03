@@ -1722,3 +1722,46 @@ async fn a_blocked_journal_names_only_entries_that_wait_for_a_person_not_an_uplo
     drop(tx);
     assert_eq!(task.await.unwrap().status(), 503, "the upload is left for recovery");
 }
+
+/// Every file below `dir`, relative to it, sorted.
+fn tree(dir: &std::path::Path) -> Vec<String> {
+    fn walk(base: &std::path::Path, at: &std::path::Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(at).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(base, &path, out);
+            } else {
+                out.push(path.strip_prefix(base).unwrap().to_string_lossy().into_owned());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+#[tokio::test]
+async fn a_path_in_the_upload_name_never_leaves_the_extras_folder() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let before = tree(&f.dir.join("models"));
+    for (sent, stored) in [
+        ("..%2F..%2Fevil.png", "evil.png"),
+        ("%2Fetc%2Fpasswd.png", "passwd.png"),
+        ("..%5C..%5Cwin.png", "win.png"),
+        ("sub%2F..%2Fdeep.png", "deep.png"),
+    ] {
+        let r = f.upload(&id, sent, png_of(20)).await;
+        assert_eq!(r.status(), 200, "{sent}");
+        assert_eq!(value(r).await["name"], stored, "{sent}");
+        assert!(f.extras("Foo").join(stored).is_file(), "{sent}");
+    }
+    // Names that are nothing but a path or dots have no file name left to keep.
+    for sent in ["..", "..%2F", "%2E%2E%2F.png.exe", "%2F"] {
+        assert!(f.upload(&id, sent, png_of(20)).await.status().is_client_error(), "{sent}");
+    }
+    let added: Vec<_> = tree(&f.dir.join("models")).into_iter().filter(|p| !before.contains(p)).collect();
+    assert!(added.iter().all(|p| p.starts_with("Foo_extras/")), "{added:?}");
+    assert_eq!(added.len(), 4, "{added:?}");
+}
