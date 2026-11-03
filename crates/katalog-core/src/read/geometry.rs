@@ -37,27 +37,32 @@ pub fn get_model_geometry_with_limits(
     allowed_roots: Option<&[PathBuf]>,
     web_limits: Option<crate::import::files::WebImportLimits>,
 ) -> ReadResult<Vec<u8>> {
-    let mut target = path.to_path_buf();
-    if let Some(roots) = allowed_roots {
-        let canonical = path.canonicalize().map_err(geometry_io_error)?;
-        let mut allowed = false;
-        for root in roots {
-            let root = root.canonicalize().map_err(geometry_io_error)?;
-            if canonical.starts_with(root) {
-                allowed = true;
-            }
-        }
-        if !allowed {
-            return Err(ReadError::expected(
-                "Dateipfad liegt außerhalb der freigegebenen Verzeichnisse",
-            )
-            .with_code(GeometryErrorCode::Unreadable));
-        }
-        // Open exactly the resolved path that passed the check, so a symlink swapped
-        // in afterwards cannot redirect the read.
-        target = canonical;
-    }
+    let target = resolve_within_roots(path, allowed_roots)?;
     Ok(encode_render_meshes(&load_geometry_with_obj_limit(&target, MAX_PREVIEW_TRIANGLES, web_limits)?))
+}
+
+/// `None` keeps the path as it is. With roots, both roots and the target are canonicalized and the
+/// resolved path that passed the containment check is returned, so a symlink swapped in
+/// afterwards cannot redirect the read.
+pub(super) fn resolve_within_roots(path: &Path, allowed_roots: Option<&[PathBuf]>) -> ReadResult<PathBuf> {
+    let Some(roots) = allowed_roots else {
+        return Ok(path.to_path_buf());
+    };
+    let canonical = path.canonicalize().map_err(geometry_io_error)?;
+    let mut allowed = false;
+    for root in roots {
+        let root = root.canonicalize().map_err(geometry_io_error)?;
+        if canonical.starts_with(root) {
+            allowed = true;
+        }
+    }
+    if !allowed {
+        return Err(ReadError::expected(
+            "Dateipfad liegt außerhalb der freigegebenen Verzeichnisse",
+        )
+        .with_code(GeometryErrorCode::Unreadable));
+    }
+    Ok(canonical)
 }
 
 pub fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
