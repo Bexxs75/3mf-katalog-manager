@@ -46,3 +46,47 @@ pub(super) fn under(path: &str, base: &str) -> bool {
 pub(super) fn rebase(path: &str, old: &str, new: &str) -> Option<String> {
     Some(parse(path)?.rebase(&parse(old)?, &parse(new)?).ok()?.as_str().to_owned())
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn joins_splits_and_rebases_valid_text() {
+        assert_eq!(join("/m/a", "b/c").as_deref(), Some("/m/a/b/c"));
+        assert_eq!(parent("/m/a/b").as_deref(), Some("/m/a"));
+        assert_eq!(parent("/m"), None);
+        assert_eq!(file_name("/m/a/b.3mf").as_deref(), Some("b.3mf"));
+        assert_eq!(with_file_name("/m/a/b", "c").as_deref(), Some("/m/a/c"));
+        assert_eq!(rebase("/m/a/b", "/m/a", "/m/z").as_deref(), Some("/m/z/b"));
+        assert!(same_place("/m/a", "/m/a") && !same_place("/m/a", "/m/b"));
+    }
+
+    #[test]
+    fn damaged_text_gives_nothing_instead_of_a_guess() {
+        for bad in ["", "m/a", "/m//a", "/m/a/", "/m/./a", "/m/../a", "/m\\a"] {
+            assert_eq!(join(bad, "x"), None, "{bad:?}");
+            assert_eq!(parent(bad), None, "{bad:?}");
+            assert_eq!(file_name(bad), None, "{bad:?}");
+            assert_eq!(with_file_name(bad, "x"), None, "{bad:?}");
+            assert!(!same_place(bad, bad), "{bad:?}");
+        }
+        assert_eq!(join("/m", "../x"), None);
+        assert_eq!(with_file_name("/m/a", "b/c"), None);
+        assert_eq!(rebase("/m/ab", "/m/a", "/m/z"), None);
+    }
+
+    #[test]
+    fn under_stays_conservative_for_damaged_rows() {
+        assert!(under("/m/a/b", "/m/a") && under("/m/a", "/m/a"));
+        assert!(!under("/m/ab", "/m/a"));
+        // The platform comparison ignores the doubled slash, so a damaged row still counts as inside.
+        assert!(under("/m//a/b", "/m/a"));
+    }
+
+    #[test]
+    fn the_probe_join_does_not_double_a_trailing_slash() {
+        assert_eq!(join_unchecked("/m/a", "p"), "/m/a/p");
+        assert_eq!(join_unchecked("/m/a/", "p"), "/m/a/p");
+        assert_eq!(join_unchecked("", "p"), "p");
+    }
+}
