@@ -3,6 +3,7 @@
 //! `libc` or `/proc` (except the Unix-only `From<io::Error>` mapping). `fsops` (Linux only)
 //! re-exports everything under the old paths.
 use serde::{Deserialize, Serialize};
+pub mod capabilities;
 pub mod names;
 pub mod path;
 pub mod recovery;
