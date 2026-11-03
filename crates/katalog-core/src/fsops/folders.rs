@@ -1,6 +1,6 @@
 use super::*;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
-use std::{collections::HashSet, path::Path};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FolderState {
@@ -69,33 +69,29 @@ fn folder(c: &Connection, id: i64) -> Result<Option<FolderState>> {
     )
     .optional()?)
 }
-fn valid_path(path: &str) -> Result<&Path> {
-    NativePath::parse(path, Style::Posix).map_err(|_| Error::Inconsistent)?;
-    Ok(Path::new(path))
+fn valid_path(path: &str) -> Result<()> {
+    NativePath::parse(path, Style::Posix)
+        .map(|_| ())
+        .map_err(|_| Error::Inconsistent)
 }
 /// Lets the parity tests (module `context`) reach the private check.
 #[cfg(test)]
 pub(super) fn valid_path_for_parity_tests(path: &str) -> Result<()> {
-    valid_path(path).map(|_| ())
+    valid_path(path)
 }
 #[cfg(test)]
 #[path = "parity_sql_tests.rs"]
 mod parity_sql_tests;
 fn under(path: &str, base: &str) -> bool {
-    Path::new(path).starts_with(base)
+    paths::under(path, base)
 }
 fn rewrite(path: &str, old: &str, new: &str) -> Result<String> {
-    let suffix = valid_path(path)?
-        .strip_prefix(valid_path(old)?)
-        .map_err(|_| Error::Inconsistent)?;
-    if suffix.as_os_str().is_empty() {
+    valid_path(path)?;
+    valid_path(old)?;
+    if paths::same_place(path, old) {
         return Ok(new.to_owned());
     }
-    Ok(Path::new(new)
-        .join(suffix)
-        .to_str()
-        .ok_or(Error::Inconsistent)?
-        .to_owned())
+    paths::rebase(path, old, new).ok_or(Error::Inconsistent)
 }
 fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
     let root = folder(c, id)?.ok_or(Error::NotFound)?;
@@ -115,7 +111,7 @@ fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
                 .iter()
                 .find(|p| Some(p.id) == f.parent_id)
                 .ok_or(Error::Inconsistent)?;
-            if Path::new(&f.path).parent() != Some(Path::new(&parent.path)) {
+            if paths::parent(&f.path).as_deref() != Some(parent.path.as_str()) {
                 return Err(Error::Inconsistent);
             }
         }
@@ -146,7 +142,7 @@ fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
                     .iter()
                     .find(|p| p.id == parent_id)
                     .ok_or(Error::Inconsistent)?;
-                if Path::new(&f.path).parent() != Some(Path::new(&parent.path)) {
+                if paths::parent(&f.path).as_deref() != Some(parent.path.as_str()) {
                     return Err(Error::Inconsistent);
                 }
             }
@@ -192,12 +188,9 @@ impl FolderIntent {
         !self.before.companions.is_empty() || !self.after.companions.is_empty()
     }
     fn source_absolute(&self) -> Option<String> {
-        self.source.as_ref().map(|s| {
-            Path::new(&self.root_path)
-                .join(s)
-                .to_string_lossy()
-                .into_owned()
-        })
+        self.source
+            .as_ref()
+            .and_then(|s| paths::join(&self.root_path, s))
     }
     fn validate(&self) -> Result<()> {
         let root = anchor(self)?;
@@ -223,57 +216,49 @@ impl FolderIntent {
                 }
                 let parent = self.parent.as_ref().ok_or(Error::Changed)?;
                 if root.parent_id != Some(parent.id)
-                    || root.path
-                        != Path::new(&parent.path)
-                            .join(validate_name(&root.name)?)
-                            .to_string_lossy()
+                    || paths::join(&parent.path, &validate_name(&root.name)?).as_deref()
+                        != Some(root.path.as_str())
                 {
                     return Err(Error::Changed);
                 }
                 let target = self.target.as_ref().ok_or(Error::Changed)?;
-                if root.path != Path::new(&self.root_path).join(target).to_string_lossy() {
+                if paths::join(&self.root_path, target).as_deref() != Some(root.path.as_str()) {
                     return Err(Error::Changed);
                 }
             }
             FolderOperation::Relocate => {
                 let target = self.target.as_ref().ok_or(Error::Changed)?;
-                let path = Path::new(&self.root_path).join(target);
-                let path = path.to_str().ok_or(Error::Changed)?;
-                let name = Path::new(path)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .ok_or(Error::Changed)?;
+                let path = paths::join(&self.root_path, target).ok_or(Error::Changed)?;
+                let name = paths::file_name(&path).ok_or(Error::Changed)?;
                 if self.parent.is_some() {
-                    if Path::new(&root.path).file_name().and_then(|n| n.to_str()) != Some(name) {
+                    if paths::file_name(&root.path).as_deref() != Some(name.as_str()) {
                         return Err(Error::Changed);
                     }
                 } else {
-                    validate_name(name)?;
+                    validate_name(&name)?;
                 }
-                let expected_parent = self
-                    .parent
-                    .as_ref()
-                    .map(|p| p.path.as_str())
-                    .or_else(|| Path::new(&root.path).parent().and_then(|p| p.to_str()))
-                    .ok_or(Error::Changed)?;
-                if Path::new(path).parent() != Some(Path::new(expected_parent)) {
+                let expected_parent = match &self.parent {
+                    Some(p) => p.path.clone(),
+                    None => paths::parent(&root.path).ok_or(Error::Changed)?,
+                };
+                if paths::parent(&path).as_deref() != Some(expected_parent.as_str()) {
                     return Err(Error::Changed);
                 }
                 let mut expected = self.before.clone();
                 for f in &mut expected.folders {
-                    f.path = rewrite(&f.path, &root.path, path)?;
+                    f.path = rewrite(&f.path, &root.path, &path)?;
                     if f.id == root.id {
-                        f.name = name.into();
+                        f.name = name.clone();
                         if let Some(parent) = &self.parent {
                             f.parent_id = Some(parent.id);
                         }
                     }
                 }
                 for f in &mut expected.files {
-                    f.path = rewrite(&f.path, &root.path, path)?;
+                    f.path = rewrite(&f.path, &root.path, &path)?;
                 }
                 for row in &mut expected.companions {
-                    row.path = rewrite(&row.path, &root.path, path)?;
+                    row.path = rewrite(&row.path, &root.path, &path)?;
                 }
                 if expected != self.after || self.identity.is_none() {
                     return Err(Error::Changed);
@@ -369,17 +354,16 @@ fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
     // Stale descendants at the destination would make the resulting tree
     // inconsistent even when none of the exact target paths is occupied.
     if let Some(target) = &i.target {
-        let path = Path::new(&i.root_path).join(target);
-        let path = path.to_str().ok_or(Error::PathUnresolvable)?;
+        let path = paths::join(&i.root_path, target).ok_or(Error::PathUnresolvable)?;
         let ids: HashSet<_> = i.after.folders.iter().map(|f| f.id).collect();
         let mut stmt = c.prepare(
             "SELECT id,path FROM folders WHERE path=?1 OR (path>=?1||'/' AND path<?1||'0')",
         )?;
-        for row in stmt.query_map([path], |r| {
+        for row in stmt.query_map([path.as_str()], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
         })? {
             let (id, candidate) = row?;
-            if under(&candidate, path) && !ids.contains(&id) {
+            if under(&candidate, &path) && !ids.contains(&id) {
                 return Err(Error::Conflict);
             }
         }
@@ -397,8 +381,7 @@ fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
     // moved tree without belonging to it; refuse before anything moves.
     if i.operation == FolderOperation::Relocate {
         if let Some(target) = &i.target {
-            let path = Path::new(&i.root_path).join(target);
-            let path = path.to_str().ok_or(Error::PathUnresolvable)?;
+            let path = paths::join(&i.root_path, target).ok_or(Error::PathUnresolvable)?;
             for (table, ids) in [
                 ("files", i.after.files.iter().map(|f| f.id).collect::<HashSet<_>>()),
                 ("companion_files", i.after.companions.iter().map(|r| r.id).collect()),
@@ -406,11 +389,11 @@ fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
                 let mut stmt = c.prepare(&format!(
                     "SELECT id,path FROM {table} WHERE path>=?1||'/' AND path<?1||'0'"
                 ))?;
-                for row in stmt.query_map([path], |r| {
+                for row in stmt.query_map([path.as_str()], |r| {
                     Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
                 })? {
                     let (id, candidate) = row?;
-                    if under(&candidate, path) && !ids.contains(&id) {
+                    if under(&candidate, &path) && !ids.contains(&id) {
                         return Err(Error::Conflict);
                     }
                 }
@@ -544,11 +527,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.ready()?;
         let name = validate_name(name)?;
         let parent = self.folder_state(parent_id.ok_or(Error::InvalidArguments)?)?;
-        let path = Path::new(&parent.path)
-            .join(&name)
-            .to_str()
-            .ok_or(Error::PathUnresolvable)?
-            .to_owned();
+        let path = paths::join(&parent.path, &name).ok_or(Error::PathUnresolvable)?;
         let target = self.context.resolve(&path, Access::Directory)?;
         self.context
             .directory_chain(target.root, &target.parent, None)?;
@@ -558,7 +537,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             op_id: journal::op_id()?,
             phase: Phase::Prepared,
             operation: FolderOperation::Create,
-            root_path: r.path.to_str().unwrap().into(),
+            root_path: r.native.as_str().into(),
             root_identity: r.identity,
             source: None,
             target: Some(target.relative.clone()),
@@ -627,11 +606,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if source.name == name {
             return Ok(());
         }
-        let path = Path::new(&before.path)
-            .with_file_name(&name)
-            .to_str()
-            .ok_or(Error::PathUnresolvable)?
-            .to_owned();
+        let path = paths::with_file_name(&before.path, &name).ok_or(Error::PathUnresolvable)?;
         self.relocate_folder(before, path, name, None)
     }
     pub fn move_folder(&mut self, id: i64, parent_id: Option<i64>) -> Result<()> {
@@ -648,16 +623,8 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if before.parent_id == Some(pid) {
             return Err(Error::Conflict);
         }
-        let name = Path::new(&before.path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or(Error::PathUnresolvable)?
-            .to_owned();
-        let path = Path::new(&parent.path)
-            .join(&name)
-            .to_str()
-            .ok_or(Error::PathUnresolvable)?
-            .to_owned();
+        let name = paths::file_name(&before.path).ok_or(Error::PathUnresolvable)?;
+        let path = paths::join(&parent.path, &name).ok_or(Error::PathUnresolvable)?;
         self.relocate_folder(before, path, name, Some(parent))
     }
     fn relocate_folder(
@@ -701,7 +668,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             op_id: journal::op_id()?,
             phase: Phase::Prepared,
             operation: FolderOperation::Relocate,
-            root_path: r.path.to_str().unwrap().into(),
+            root_path: r.native.as_str().into(),
             root_identity: r.identity,
             source: Some(source.relative.clone()),
             target: Some(target.relative.clone()),
@@ -885,7 +852,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             op_id: journal::op_id()?,
             phase: Phase::Prepared,
             operation: FolderOperation::Remove,
-            root_path: r.path.to_str().unwrap().into(),
+            root_path: r.native.as_str().into(),
             root_identity: r.identity,
             source: Some(relative),
             target: None,
@@ -944,7 +911,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .context
             .roots
             .iter()
-            .position(|r| r.path.to_str() == Some(&i.root_path) && r.identity == i.root_identity)
+            .position(|r| r.is_at(&i.root_path) && r.identity == i.root_identity)
             .ok_or(Error::Changed)?;
         let before = self.db.with_conn(|c| matches(c, i, false))?;
         let after = self.db.with_conn(|c| matches(c, i, true))?;
