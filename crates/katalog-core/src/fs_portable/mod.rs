@@ -4,6 +4,7 @@
 //! re-exports everything under the old paths.
 use serde::{Deserialize, Serialize};
 pub mod names;
+pub mod path;
 pub mod recovery;
 
 use unicode_normalization::UnicodeNormalization;
@@ -82,8 +83,8 @@ impl From<std::io::Error> for Error {
         }
     }
 }
-/// Other systems: map by `io::ErrorKind` only. Compiled for portability, no caller yet; the path
-/// backend will route this through `FileBackend::map_error` (K1c).
+/// Other systems have no errno table to rely on, so map by `io::ErrorKind` only. Nothing calls this
+/// yet; it exists so the module compiles on every host.
 #[cfg(not(unix))]
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
@@ -110,3 +111,5 @@ impl From<rusqlite::Error> for Error {
 }
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod path_tests;
