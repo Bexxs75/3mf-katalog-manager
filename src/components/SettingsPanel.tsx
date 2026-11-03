@@ -43,6 +43,8 @@ export interface SettingsPanelProps {
   onOpenTips?: () => void;
   /** Changes whenever the app wants the General tab (for example to point at the source folders). */
   generalTabRequest?: number;
+  /** Changes whenever the app wants the Catalog tab (the print data read block lives there). */
+  catalogTabRequest?: number;
   themeSetting: ThemeSetting;
   onThemeChange: (t: ThemeSetting) => void;
   uiDensity: UiDensity;
@@ -86,7 +88,7 @@ export function SettingsPanel({
   overlay, onClose, onOpenPrinters,
   detailPanel = 'auto', onDetailPanelChange,
   singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips,
-  generalTabRequest,
+  generalTabRequest, catalogTabRequest,
   themeSetting, onThemeChange,
   uiDensity, onUiDensityChange,
   displayPreference, onDisplayPreferenceChange,
@@ -106,6 +108,7 @@ export function SettingsPanel({
   const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement | null>>>({});
 
   useEffect(() => { if (generalTabRequest) setActiveSettingsTab('general'); }, [generalTabRequest]);
+  useEffect(() => { if (catalogTabRequest) setActiveSettingsTab('catalog'); }, [catalogTabRequest]);
 
   // Move focus into the panel when it opens so keyboard and screen reader users land in it.
   useEffect(() => { tabRefs.current.general?.focus(); }, []);

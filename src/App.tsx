@@ -164,13 +164,14 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [generalTabRequest, setGeneralTabRequest] = useState(0);
+  const [catalogTabRequest, setCatalogTabRequest] = useState(0);
   // Source folders, start sync, companions, date rename, move history and the Linux menu have no web server command.
   const web = import.meta.env.VITE_TARGET === 'web';
   const sourceCheck = useSourceFolderCheck({
     ready: !web && !store.initialLoading,
     jobActive: fileImport.jobActive,
     // Without a source folder the check has nothing to do; show where to add one.
-    onNoFolders: () => { setGeneralTabRequest(n => n + 1); setSettingsOpen(true); },
+    onNoFolders: () => { setGeneralTabRequest(n => n + 1); setCatalogTabRequest(0); setSettingsOpen(true); },
   });
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
   const update = useUpdater();
@@ -471,6 +472,7 @@ export default function App() {
       onClose={closeSettings}
       onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}
       generalTabRequest={generalTabRequest}
+      catalogTabRequest={catalogTabRequest}
       singleKeyShortcuts={singleKeyShortcuts}
       onSingleKeyShortcutsChange={setSingleKeyShortcuts}
       onOpenTips={() => setTipsOpen(true)}
@@ -722,6 +724,7 @@ export default function App() {
               toolView={filters.toolView}
               setToolView={filters.setToolView}
               onRemoveDuplicates={removeDuplicates}
+              onOpenPrintDataReread={() => { setCatalogTabRequest(n => n + 1); setGeneralTabRequest(0); setSettingsOpen(true); }}
               onOpenCleanup={() => void cleanup.scanCatalogIssues()}
               cleanupScanning={cleanup.cleanupScanning}
               cleanupError={cleanup.cleanupError}

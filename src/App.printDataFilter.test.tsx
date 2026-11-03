@@ -19,7 +19,7 @@ const x1c = makeModelFile({ id: '1', name: 'Benchy.3mf', printDataState: 'sliced
 const mk4 = makeModelFile({ id: '2', name: 'Vase.3mf', printDataState: 'sliced',
   printFacts: makePrintFacts({ printerModel: 'Prusa MK4S', layerHeightMm: 0.28, nozzleMm: 0.6, plateCount: 1 }) });
 const unread = makeModelFile({ id: '3', name: 'Dragon.3mf' });
-const stl = makeModelFile({ id: '4', name: 'Cube.stl', path: '/catalog/cube.stl' });
+const stl = makeModelFile({ id: '4', name: 'Cube.stl', path: '/catalog/cube.stl', printDataState: 'none' });
 const files = [x1c, mk4, unread, stl];
 
 beforeEach(() => {
@@ -139,4 +139,14 @@ it('opens the plate overview from the card of a filtered file, reads the file fo
   await waitFor(() => expect(within(dialog).getAllByText('3').length).toBeGreaterThan(0));
   fireEvent.click(within(dialog).getByRole('button', { name: de.poClose }));
   expect(screen.queryByRole('dialog', { name: new RegExp(de.poTitle) })).toBeNull();
+});
+
+it('says how many held-back files are unread and leads to the block that reads them', async () => {
+  const { bar } = await open();
+  choose(bar, de.pfFilterPrinter, /Prusa MK4S/);
+  const notice = (await screen.findByText('2 Dateien ohne Druckdaten ausgeblendet')).closest('[role="status"]') as HTMLElement;
+  expect(notice).toHaveTextContent('Davon ist 1 noch nicht gelesen.');
+  fireEvent.click(within(notice).getByRole('button', { name: de.pfUnreadReread }));
+  expect(await screen.findByRole('tab', { name: de.settingsTabCatalog, selected: true })).toBeInTheDocument();
+  expect(screen.getByText(de.printDataRereadTitle)).toBeInTheDocument();
 });

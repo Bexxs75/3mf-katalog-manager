@@ -144,6 +144,8 @@ interface CatalogWorkspaceProps {
   printNotice?: { hidden: number; shownUnknown: number; unread: number };
   /** Puts duplicate models in the trash; resolves with the ids still in the catalog afterwards. */
   onRemoveDuplicates?: (ids: string[]) => Promise<string[]>;
+  /** Opens the settings at the block that reads the print data of unread files. */
+  onOpenPrintDataReread?: () => void;
   setModelSourceUrl: (id: string, url: string | null) => void;
   openInSlicer: (id: string) => void;
   rescanMetadata: (id: string) => void;
@@ -267,6 +269,7 @@ export function CatalogWorkspace({
   setPrintFilter,
   printNotice,
   onRemoveDuplicates,
+  onOpenPrintDataReread,
   openInSlicer,
   rescanMetadata,
   addModelToCollection,
@@ -588,7 +591,7 @@ export function CatalogWorkspace({
         )}
 
         {!duplicatesMode && printFilter && setPrintFilter && printFilterIsActive && printNotice && (
-          <PrintDataNotice hidden={printNotice.hidden} shownUnknown={printNotice.shownUnknown} includeUnknown={printFilter.includeUnknown}
+          <PrintDataNotice hidden={printNotice.hidden} shownUnknown={printNotice.shownUnknown} unread={printNotice.unread} onReread={onOpenPrintDataReread} includeUnknown={printFilter.includeUnknown}
             onIncludeUnknownChange={include => setPrintFilter({ ...printFilter, includeUnknown: include })} />
         )}
 

@@ -94,8 +94,8 @@ export function makeModelFileSummary(
     creator: m.creator,
     lastViewedAt: m.lastViewedAt,
     contentHash: m.contentHash,
-    // The summary fixture is always a 3MF: no row or an old row means "unread".
-    printDataState: m.printInfo?.readerCurrent ? m.printInfo.sliceState : 'unread',
+    // An explicit state wins (a non-3MF has 'none'); else no row or an old row means "unread".
+    printDataState: overrides.printDataState ?? (m.printInfo?.readerCurrent ? m.printInfo.sliceState : 'unread'),
     ...(m.printFacts ? { printFacts: m.printFacts } : {}),
     license: m.license,
     sourcePlatform: m.sourcePlatform,
