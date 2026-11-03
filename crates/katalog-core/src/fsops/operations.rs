@@ -329,8 +329,8 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             self.name_trash_steps(&mut carry.steps, source.root, &op_id)?;
         }
         let case_only = operation == Operation::Rename
-            && crate::upload_fs::nfc(&source.name.to_lowercase())
-                == crate::upload_fs::nfc(&target.name.to_lowercase());
+            && crate::fs_portable::nfc(&source.name.to_lowercase())
+                == crate::fs_portable::nfc(&target.name.to_lowercase());
         let temporary = case_only.then(|| {
             let p = std::path::Path::new(&source.relative).parent().unwrap();
             p.join(format!(".fsops-{op_id}.tmp"))

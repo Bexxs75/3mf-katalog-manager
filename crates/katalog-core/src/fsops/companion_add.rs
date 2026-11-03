@@ -45,7 +45,7 @@ pub fn prepare_companion_name(original_name: &str, size: u64, max_bytes: u64) ->
     }
     // Only the last path component counts, whichever separator the client used.
     let last = original_name.rsplit(['/', '\\']).next().unwrap_or("");
-    let cleaned: String = crate::upload_fs::nfc(last)
+    let cleaned: String = crate::fs_portable::nfc(last)
         .chars()
         .map(|c| if names::forbidden(c) { '_' } else { c })
         .collect();

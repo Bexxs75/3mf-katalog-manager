@@ -1,10 +1,10 @@
-use super::*;
-pub(super) fn forbidden(c: char) -> bool {
+use super::{nfc, Error, Result};
+pub(crate) fn forbidden(c: char) -> bool {
     c.is_control()
         || matches!(c, '\u{ad}'|'\u{600}'..='\u{605}'|'\u{61c}'|'\u{6dd}'|'\u{70f}'|'\u{890}'..='\u{891}'|'\u{8e2}'|'\u{180e}'|'\u{200b}'..='\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2060}'..='\u{206f}'|'\u{feff}'|'\u{fff9}'..='\u{fffb}'|'\u{110bd}'|'\u{110cd}'|'\u{13430}'..='\u{13455}'|'\u{1bca0}'..='\u{1bca3}'|'\u{1d173}'..='\u{1d17a}'|'\u{e0001}'|'\u{e0020}'..='\u{e007f}')
 }
 pub fn validate_name(value: &str) -> Result<String> {
-    let n = crate::upload_fs::nfc(value);
+    let n = nfc(value);
     let base = n.split('.').next().unwrap_or("").trim_end().to_uppercase();
     if n.is_empty()
         || n.len() > 255
@@ -49,7 +49,7 @@ fn trash_entry_name(label: &str, op: &str, disk: &str) -> Result<String> {
     if op.len() < 8 || !op.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(Error::Internal);
     }
-    let clean: String = crate::upload_fs::nfc(disk)
+    let clean: String = nfc(disk)
         .chars()
         .map(|c| {
             if forbidden(c) || "/\\<>:\"|?*".contains(c) {

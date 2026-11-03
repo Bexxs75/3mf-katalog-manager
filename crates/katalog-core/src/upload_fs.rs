@@ -9,11 +9,7 @@ use std::{
     },
     path::{Component, Path},
 };
-use unicode_normalization::UnicodeNormalization;
-
-pub fn nfc(value: &str) -> String {
-    value.nfc().collect()
-}
+pub use crate::fs_portable::nfc;
 pub struct Directory(File);
 fn cstring(name: &str) -> io::Result<CString> {
     if name.is_empty() || name == "." || name == ".." || name.contains('/') {
