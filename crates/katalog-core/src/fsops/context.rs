@@ -289,16 +289,10 @@ fn ancestor_ids(dir: &Directory) -> Result<HashSet<Identity>> {
     Ok(ids)
 }
 fn components(path: &str) -> Result<()> {
-    if path.contains('\\')
-        || path.contains('\0')
-        || path.split('/').any(|p| matches!(p, "" | "." | ".."))
-    {
-        return Err(Error::PathUnresolvable);
-    }
-    Ok(())
+    RelPath::parse(path).map(|_| ())
 }
 fn lexical(path: &str) -> Result<()> {
-    components(path.strip_prefix('/').ok_or(Error::PathUnresolvable)?)
+    NativePath::parse(path, Style::Posix).map(|_| ())
 }
 pub fn ensure_trash_dir(root: &Directory) -> Result<Directory> {
     match root.mkdir(TRASH, 0o700) {

@@ -4,8 +4,8 @@
 //! 1. Accept/reject tables: input to result (error variant included) for `components`,
 //!    `lexical`, `valid_path`, `locate`, `resolve_relative` and `FsContext::new`.
 //! 2. A reference copy of `components`, `lexical` and `valid_path` as they are today, and a
-//!    differential test over every string of a small alphabet up to length 6. After the
-//!    parsers are replaced, the same test compares old against new.
+//!    differential test over every string of a small alphabet up to length 6. The
+//!    same test now compares old against the portable parsers (`NativePath`, `RelPath`).
 use super::*;
 use crate::fsops::parity_golden_tests::assert_golden;
 use std::{fs, os::unix::fs::symlink};
@@ -111,6 +111,17 @@ fn differential() -> (u64, [u64; 3], u64) {
             super::super::folders::valid_path_for_parity_tests(&input),
             valid_path_reference(&input).map(|_| ()),
             "valid_path {input:?}"
+        );
+        // The portable parsers themselves, not only the wrappers around them.
+        assert_eq!(
+            NativePath::parse(&input, Style::Posix).is_ok(),
+            lexical_reference(&input).is_ok(),
+            "NativePath {input:?}"
+        );
+        assert_eq!(
+            RelPath::parse(&input).is_ok(),
+            components_reference(&input).is_ok(),
+            "RelPath {input:?}"
         );
         for (i, ok) in current.iter().enumerate() {
             accepted[i] += u64::from(*ok);

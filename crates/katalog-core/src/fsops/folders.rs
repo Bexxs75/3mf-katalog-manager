@@ -70,12 +70,7 @@ fn folder(c: &Connection, id: i64) -> Result<Option<FolderState>> {
     .optional()?)
 }
 fn valid_path(path: &str) -> Result<&Path> {
-    if !path.starts_with('/')
-        || path[1..].split('/').any(|p| matches!(p, "" | "." | ".."))
-        || path.contains(['\\', '\0'])
-    {
-        return Err(Error::Inconsistent);
-    }
+    NativePath::parse(path, Style::Posix).map_err(|_| Error::Inconsistent)?;
     Ok(Path::new(path))
 }
 /// Lets the parity tests (module `context`) reach the private check.

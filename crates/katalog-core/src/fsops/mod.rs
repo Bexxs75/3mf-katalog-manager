@@ -7,6 +7,7 @@ use crate::fs_portable::names;
 pub use context::*;
 pub use crate::fs_portable::names::*;
 pub use crate::fs_portable::recovery::*;
+use crate::fs_portable::path::{NativePath, RelPath, Style};
 pub use crate::fs_portable::{Error, Result};
 mod carry;
 mod companion_add;
