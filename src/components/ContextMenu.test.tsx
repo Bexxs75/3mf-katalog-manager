@@ -177,3 +177,18 @@ it('has no move entry while an import runs', () => {
     fileId="42" currentName="Wuerfel.stl" onRename={vi.fn()} onMove={vi.fn()} /></ImportLockContext.Provider></LanguageProvider>);
   expect(screen.getByRole('button', { name: 'Verschieben nach …' })).toBeDisabled();
 });
+
+describe('ContextMenu plate overview', () => {
+  it('offers the plate overview only when the caller can open one', () => {
+    const base = { x: 0, y: 0, onClose: () => {}, onOpenInSlicer: () => {}, onDelete: () => {}, inQueue: false, onToggleQueue: () => {}, printed: false, onTogglePrintStatus: () => {}, fileId: '42', currentName: 'a.3mf', onRename: () => Promise.resolve() };
+    const onOpen = vi.fn();
+    const onClose = vi.fn();
+    const { unmount } = render(<LanguageProvider><ContextMenu {...base} onClose={onClose} onOpenPlateOverview={onOpen} /></LanguageProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Plattenübersicht' }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    unmount();
+    render(<LanguageProvider><ContextMenu {...base} /></LanguageProvider>);
+    expect(screen.queryByRole('button', { name: 'Plattenübersicht' })).toBeNull();
+  });
+});

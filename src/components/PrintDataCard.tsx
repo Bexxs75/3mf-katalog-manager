@@ -10,6 +10,7 @@ import {
   type PlateRow, type PrintDataSummary, type SharedValue,
 } from '../lib/printData';
 import type { FilamentUsage, ModelFile } from '../types';
+import { useOpenPlateOverview } from '../hooks/PlateOverviewContext';
 import { PlateSelector } from './PlateSelector';
 
 type Variant = 'compact' | 'comfort' | 'page';
@@ -57,7 +58,7 @@ function Filaments({ filaments, notFound, align }: { filaments: FilamentUsage[];
 
 /** The card "Print data (from slicer)": the panel shows one selected plate at a time, the page lists all plates in a table. */
 export function PrintDataCard({ model, variant, footer }: {
-  model: Pick<ModelFile, 'sliceInfo' | 'printInfo'>;
+  model: Pick<ModelFile, 'sliceInfo' | 'printInfo'> & Partial<Pick<ModelFile, 'id'>>;
   variant: Variant;
   /** Page only: what belongs under the plate block (filament check, cost). */
   footer?: ReactNode;
@@ -65,6 +66,7 @@ export function PrintDataCard({ model, variant, footer }: {
   const t = useT();
   const { language } = useLanguage();
   const headingId = useId();
+  const openPlateOverview = useOpenPlateOverview();
   const [selected, setSelected] = useState<number | null>(null);
   const summary = summarizePrintData(model);
   const { state, plates } = summary;
@@ -84,6 +86,14 @@ export function PrintDataCard({ model, variant, footer }: {
     ? t('printDataTotalPartial').replace('{k}', String(sum.known)).replace('{n}', String(sum.total)) : null;
   const geometryPlates = plates.map(plate => ({ number: plate.plateIndex, name: plate.name }));
   const plateLabel = (plate: PlateRow) => `${t('viewerPlate').replace('{n}', String(plate.plateIndex))}${plate.name ? ` · ${displayName(plate.name)}` : ''}`;
+
+  // The overview reads the file itself, so it needs the id; the card of a bare summary has none.
+  const overviewButton = openPlateOverview && model.id !== undefined && plates.length > 0 && (
+    <button type="button" onClick={() => openPlateOverview(model.id as string)}
+      className={`ml-auto px-2.5 py-0.5 rounded-[5px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${focusClass}`}>
+      {t('poOpen')}
+    </button>
+  );
 
   const unreadText = variant === 'page'
     ? t(model.sliceInfo ? 'printDataUnreadKnown' : 'printDataUnreadPlain')
@@ -128,6 +138,7 @@ export function PrintDataCard({ model, variant, footer }: {
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <h3 id={headingId} className={`m-0 ${headingClass}`}>{t('printDataHeading')}</h3>
             {chip}
+            {overviewButton}
           </div>
           {hint}
           {plates.length > 0 && (
@@ -220,6 +231,7 @@ export function PrintDataCard({ model, variant, footer }: {
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <h3 id={headingId} className={`m-0 ${headingClass}`} style={variant === 'comfort' ? { fontSize: 'var(--font-size-label)' } : undefined}>{t('printDataHeading')}</h3>
         {chip}
+        {overviewButton}
       </div>
       {hint}
       {plates.length > 0 && (

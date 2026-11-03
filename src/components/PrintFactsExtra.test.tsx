@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, within } from '@testing-library/react';
+import { fireEvent, render, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { UiDensityProvider } from '../hooks/UiDensityContext';
 import { PrintFilterContext } from '../hooks/PrintFilterContext';
+import { PlateOverviewContext } from '../hooks/PlateOverviewContext';
 import { makeModelFile, makePrintFacts } from '../test/factories';
 import { EMPTY_FILTER, type PrintDataFilter } from '../lib/printDataFilter';
 import { printFactsExtraHeight } from './PrintFactsExtra';
@@ -100,5 +101,40 @@ describe('list rows', () => {
     expect(card(container, 'full').querySelector('[data-print-facts-missing]')).toBeNull();
     rerender(<LanguageProvider><UiDensityProvider><PrintFilterContext.Provider value={null}><ModelList {...props} models={models} /></PrintFilterContext.Provider></UiDensityProvider></LanguageProvider>);
     expect(container.querySelectorAll('[data-print-facts-missing]')).toHaveLength(0);
+  });
+});
+
+describe('plate overview entry on the card', () => {
+  const renderOpener = (opener: ((id: string) => void) | null, onSelect = vi.fn(), list = models) => render(
+    <LanguageProvider><UiDensityProvider><PlateOverviewContext.Provider value={opener}><PrintFilterContext.Provider value={active}>
+      <ModelGrid {...props} onSelect={onSelect} models={list} />
+    </PrintFilterContext.Provider></PlateOverviewContext.Provider></UiDensityProvider></LanguageProvider>,
+  );
+  // The grid hides itself until it is measured, which also empties computed names: read the text.
+  const entry = (container: HTMLElement, id: string) => card(container, id).querySelector<HTMLButtonElement>('[data-print-facts] button');
+
+  it('names the plate count, opens the overview of that card, and does not select the card', () => {
+    const opener = vi.fn();
+    const onSelect = vi.fn();
+    const { container } = renderOpener(opener, onSelect);
+    expect(entry(container, 'full')).toHaveTextContent('Plattenübersicht (2 Platten)');
+    fireEvent.click(entry(container, 'full')!);
+    expect(opener).toHaveBeenCalledWith('full');
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(entry(container, 'partial')).toHaveTextContent('Plattenübersicht (3 Platten)');
+  });
+
+  it('is left out for a card without plates and where no dialog is available', () => {
+    const { container, unmount } = renderOpener(vi.fn());
+    expect(entry(container, 'bare')).toBeNull();
+    unmount();
+    const none = renderOpener(null);
+    expect(none.container.querySelectorAll('[data-print-facts] button')).toHaveLength(0);
+  });
+
+  it('uses the singular for one plate', () => {
+    const one = makeModelFile({ id: 'one', printFacts: makePrintFacts({ plateCount: 1, printerModel: 'X' }) });
+    const { container } = renderOpener(vi.fn(), vi.fn(), [one]);
+    expect(entry(container, 'one')).toHaveTextContent('Plattenübersicht (1 Platte)');
   });
 });

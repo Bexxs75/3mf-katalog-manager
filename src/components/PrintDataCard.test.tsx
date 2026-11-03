@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PlateOverviewContext } from '../hooks/PlateOverviewContext';
 import { PrintDataCard } from './PrintDataCard';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { makeModelFile, makePrintInfo } from '../test/factories';
@@ -263,5 +264,30 @@ describe('PrintDataCard look', () => {
     show(makeModelFile({ sliceInfo: round, printInfo: makePrintInfo(full) }), 'page');
     expect(screen.getAllByText('61,0 g').length).toBeGreaterThan(0);
     expect(screen.queryByText('61 g')).toBeNull();
+  });
+});
+
+describe('PrintDataCard plate overview entry', () => {
+  it.each(variants)('opens the overview of the model (%s)', variant => {
+    const opener = vi.fn();
+    render(<LanguageProvider><PlateOverviewContext.Provider value={opener}>
+      <PrintDataCard model={makeModelFile({ id: 'abc', sliceInfo, printInfo: makePrintInfo(full) })} variant={variant} />
+    </PlateOverviewContext.Provider></LanguageProvider>);
+    fireEvent.click(screen.getByRole('button', { name: de.poOpen }));
+    expect(opener).toHaveBeenCalledWith('abc');
+  });
+
+  it('is not offered without a dialog, without an id, or without plates', () => {
+    const { unmount } = show(makeModelFile({ id: 'abc', sliceInfo, printInfo: makePrintInfo(full) }), 'page');
+    expect(screen.queryByRole('button', { name: de.poOpen })).toBeNull();
+    unmount();
+    const noId = { sliceInfo, printInfo: makePrintInfo(full) };
+    const { unmount: unmount2 } = render(<LanguageProvider><PlateOverviewContext.Provider value={vi.fn()}><PrintDataCard model={noId} variant="page" /></PlateOverviewContext.Provider></LanguageProvider>);
+    expect(screen.queryByRole('button', { name: de.poOpen })).toBeNull();
+    unmount2();
+    render(<LanguageProvider><PlateOverviewContext.Provider value={vi.fn()}>
+      <PrintDataCard model={makeModelFile({ id: 'abc', sliceInfo: null, printInfo: makePrintInfo({ sliceState: 'no_slice_data', plates: [] }) })} variant="page" />
+    </PlateOverviewContext.Provider></LanguageProvider>);
+    expect(screen.queryByRole('button', { name: de.poOpen })).toBeNull();
   });
 });

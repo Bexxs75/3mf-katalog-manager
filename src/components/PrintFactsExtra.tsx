@@ -1,17 +1,18 @@
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useFormatCount, useLanguage, useT } from '../i18n/LanguageContext';
+import { useOpenPlateOverview } from '../hooks/PlateOverviewContext';
 import { formatLayerHeightMm, formatNozzleMm, formatPrintDuration } from '../i18n/format';
 import { colorBucket, evaluate, FILTER_KEYS, type FilterKey, type PrintDataFilter } from '../lib/printDataFilter';
 import { COLOR_LABEL_KEY, FILTER_LABEL_KEY } from '../lib/printFilterLabels';
 import { printFactsOf } from '../lib/printData';
 import type { ModelFile } from '../types';
 
-/** Rows of the block: printer, values, colors and the "value missing" mark. */
-const ROW = { compact: { line: 15, last: 18, gap: 2 }, comfort: { line: 20, last: 24, gap: 2 } } as const;
+/** Rows of the block: printer, values, colors with the "value missing" mark, and the plate overview entry. */
+const ROW = { compact: { line: 15, last: 18, action: 18, gap: 2 }, comfort: { line: 20, last: 24, action: 22, gap: 2 } } as const;
 
 /** Height of the block and the gap before it, the same for every card of a view. */
 export function printFactsExtraHeight(comfort: boolean): number {
   const row = comfort ? ROW.comfort : ROW.compact;
-  return 2 * row.line + row.last + 2 * row.gap + (comfort ? 8 : 6);
+  return 2 * row.line + row.last + row.action + 3 * row.gap + (comfort ? 8 : 6);
 }
 
 /** Names of the active filters this model has no value for (empty when it has all of them). */
@@ -27,8 +28,10 @@ const MAX_DOTS = 6;
  * nozzle and colors, or "value missing" for the filters the file has no value for. A value that is
  * not known is left out or marked, never shown as 0.
  */
-export function PrintFactsExtra({ model, filter, comfort }: { model: Pick<ModelFile, 'printInfo' | 'printFacts'>; filter: PrintDataFilter; comfort: boolean }) {
+export function PrintFactsExtra({ model, filter, comfort }: { model: Pick<ModelFile, 'id' | 'printInfo' | 'printFacts'>; filter: PrintDataFilter; comfort: boolean }) {
   const t = useT();
+  const formatCount = useFormatCount();
+  const openPlateOverview = useOpenPlateOverview();
   const { language } = useLanguage();
   const facts = printFactsOf(model);
   const row = comfort ? ROW.comfort : ROW.compact;
@@ -61,6 +64,16 @@ export function PrintFactsExtra({ model, filter, comfort }: { model: Pick<ModelF
           <span title={missingText} className="min-w-0 truncate px-1.5 rounded border border-[var(--warn)] bg-[var(--warn-soft)] text-[var(--warn)] font-semibold" style={{ lineHeight: `${row.last - 4}px` }}>
             {missingText}
           </span>
+        )}
+      </div>
+      <div style={rowStyle(row.action)}>
+        {openPlateOverview && facts && facts.plateCount > 0 && (
+          // The card selects on click and opens the detail page on double click; neither is meant here.
+          <button type="button" onClick={event => { event.stopPropagation(); openPlateOverview(model.id); }} onDoubleClick={event => event.stopPropagation()}
+            className="max-w-full truncate text-[var(--accent)] font-semibold cursor-pointer hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            style={{ lineHeight: `${row.action}px` }}>
+            {formatCount(t('poOpenCount'), facts.plateCount)}
+          </button>
         )}
       </div>
     </div>

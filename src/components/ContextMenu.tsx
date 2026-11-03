@@ -29,6 +29,8 @@ interface Props {
   onRename: (newName: string) => Promise<void>;
   /** Opens the "Move to ..." dialog; omitted when the caller cannot move files. */
   onMove?: () => void;
+  /** Opens the plate overview; omitted for files that have no plates (not a 3MF). */
+  onOpenPlateOverview?: () => void;
 }
 
 type View = 'menu' | 'confirmDelete' | 'confirmRemove' | 'rename';
@@ -48,6 +50,7 @@ function ModelContextMenu({
   currentName,
   onRename,
   onMove,
+  onOpenPlateOverview,
 }: Props) {
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
@@ -200,6 +203,17 @@ function ModelContextMenu({
           {/* Like every other menu in the app, entries here carry no icons; the entry also uses the same size as its neighbours. */}
           <RevealFileButton fileId={fileId} onSuccess={onClose} showIcon={false}
             className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
+          {onOpenPlateOverview && (
+            <button
+              onClick={() => {
+                onOpenPlateOverview();
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
+            >
+              {t('poOpen')}
+            </button>
+          )}
           <button
             onClick={() => {
               onToggleQueue();
@@ -269,6 +283,7 @@ export function ContextMenu(props: Props | CollectionMenuProps) {
     <DownloadFileButton fileId={props.fileId} onSuccess={props.onClose}
       className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
     <WebFileActions fileIds={[props.fileId]} name={props.currentName} onDone={props.onClose} />
+    {props.onOpenPlateOverview && <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onOpenPlateOverview?.(); props.onClose(); }}>{t('poOpen')}</button>}
     {canEdit && <>
       <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onToggleQueue(); props.onClose(); }}>{t(props.inQueue ? 'removeFromQueue' : 'addToQueue')}</button>
       <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onTogglePrintStatus(); props.onClose(); }}>{t(props.printed ? 'notPrintedLabel' : 'printedBadge')}</button>

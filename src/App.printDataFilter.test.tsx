@@ -34,6 +34,7 @@ beforeEach(() => {
     if (cmd === 'list_file_summaries') return files.map(makeModelFileSummary);
     if (cmd === 'list_files_by_ids') return files.filter(m => (args as { ids: string[] }).ids.includes(m.id));
     if (cmd === 'list_all_file_tags') return {};
+    if (cmd === 'read_plate_overview') return { plates: [{ plateIndex: 1, objectCount: 3 }] };
     return [];
   });
 });
@@ -124,4 +125,18 @@ it('resets every filter, shows the empty state with a reset, and puts the focus 
   expect(within(bar).getByText(de.filterBarHeading)).toHaveFocus();
   expect(screen.queryByText(de.pfHiddenDetail)).toBeNull();
   expect(main.querySelector('[data-print-facts]')).toBeNull();
+});
+
+it('opens the plate overview from the card of a filtered file, reads the file for it, and closes it again', async () => {
+  const { main, bar } = await open();
+  choose(bar, de.pfFilterPrinter, /Prusa MK4S/);
+  await waitFor(() => expect(main.querySelectorAll('[data-print-facts]')).toHaveLength(1));
+  const entry = main.querySelector<HTMLButtonElement>('[data-print-facts] button')!;
+  expect(entry).toHaveTextContent('Plattenübersicht (1 Platte)');
+  fireEvent.click(entry);
+  const dialog = await screen.findByRole('dialog', { name: new RegExp(`${de.poTitle}: Vase`) });
+  expect(vi.mocked(invoke)).toHaveBeenCalledWith('read_plate_overview', { fileId: '2', withPreviews: true });
+  await waitFor(() => expect(within(dialog).getAllByText('3').length).toBeGreaterThan(0));
+  fireEvent.click(within(dialog).getByRole('button', { name: de.poClose }));
+  expect(screen.queryByRole('dialog', { name: new RegExp(de.poTitle) })).toBeNull();
 });

@@ -11,6 +11,8 @@ import { useSingleKeyShortcuts } from './hooks/useSingleKeyShortcuts';
 import { ModelLayoutContext } from './hooks/ModelLayoutContext';
 import { useModelImages } from './hooks/useModelImages';
 import { ImportLockContext } from './hooks/ImportLockContext';
+import { PlateOverviewContext } from './hooks/PlateOverviewContext';
+import { PlateOverviewDialog } from './components/PlateOverviewDialog';
 import { PrintDataRereadProvider } from './hooks/usePrintDataReread';
 import { PrinterManagerView } from './components/PrinterManagerView';
 import type { MainView, PrinterNavigation, FolderTrashResult } from './types';
@@ -333,6 +335,13 @@ export default function App() {
   const detailModel = detailModelId ? store.models.find((m) => m.id === detailModelId) ?? null : null;
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
 
+  // The plate overview needs the full record (plate names, weights); it is loaded when the dialog opens.
+  const [plateOverviewId, setPlateOverviewId] = useState<string | null>(null);
+  const ensureFullModelRef = useRef(store.ensureFullModel);
+  ensureFullModelRef.current = store.ensureFullModel;
+  const openPlateOverview = useCallback((id: string) => { ensureFullModelRef.current(id); setPlateOverviewId(id); }, []);
+  const plateOverviewModel = plateOverviewId ? store.models.find((m) => m.id === plateOverviewId) ?? null : null;
+
   const { displayedModels, printNotice } = useMemo(() => {
     if (!collections.activeCollection) return { displayedModels: filters.filtered, printNotice: filters.printNotice };
     const currentModels = new Map(store.models.map(model => [model.id, model]));
@@ -497,6 +506,7 @@ export default function App() {
 
   return (
     <ImportLockContext.Provider value={fileImport.jobActive}>
+    <PlateOverviewContext.Provider value={openPlateOverview}>
     <PrintDataRereadProvider models={store.models} setModels={store.setModels}>
     <div
       className="h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
@@ -729,6 +739,7 @@ export default function App() {
               y={contextMenu.y}
               onClose={() => setContextMenu(null)}
               onOpenInSlicer={() => slicerLauncher.openInSlicer(contextMenu.modelId)}
+              onOpenPlateOverview={contextModel.path.toLowerCase().endsWith('.3mf') ? () => openPlateOverview(contextModel.id) : undefined}
               onDelete={() => store.deleteModel(contextMenu.modelId)}
               onRemove={() => removeCatalogModels([contextMenu.modelId])}
               inQueue={contextModel.queuePosition !== null}
@@ -745,6 +756,11 @@ export default function App() {
               onMove={web ? undefined : () => openMoveDialog(
                 bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
             />
+          )}
+
+          {plateOverviewModel && (
+            <PlateOverviewDialog key={plateOverviewModel.id} model={plateOverviewModel}
+              onClose={() => setPlateOverviewId(null)} onReread={(id) => void store.rescanMetadata(id)} />
           )}
 
           {fileImport.pendingArchives && (
@@ -847,6 +863,7 @@ export default function App() {
       )}
     </div>
     </PrintDataRereadProvider>
+    </PlateOverviewContext.Provider>
     </ImportLockContext.Provider>
   );
 }
