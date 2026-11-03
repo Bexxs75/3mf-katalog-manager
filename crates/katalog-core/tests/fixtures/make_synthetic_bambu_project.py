@@ -8,7 +8,11 @@ project_settings.config as JSON, model_settings.config with plates,
 plate_N.json) are imitated. It is NOT a copy or an extract of a real file.
 
 Usage: python3 make_synthetic_bambu_project.py synthetic-bambu-project.3mf
-The output is byte-for-byte reproducible (fixed timestamps, fixed order).
+       python3 make_synthetic_bambu_project.py --colors synthetic-bambu-colors.3mf
+The second form builds synthetic-bambu-colors.3mf: the same project plus a four-entry
+`filament_colour` list and extruder entries per object and part (extruders 1 and 3 are
+used, 2 and 4 are not), for the filament color reading of the print data.
+The outputs are byte-for-byte reproducible (fixed timestamps, fixed order).
 """
 import json
 import sys
@@ -84,6 +88,25 @@ SLICE_INFO = """<?xml version="1.0" encoding="UTF-8"?>
 </config>
 """
 
+# --colors variant: invented colors; entry n belongs to extruder n. Extruder 2 (red) and
+# extruder 4 (yellow) are listed in the project but no object or part uses them.
+COLOR_LIST = ["#2E7D32", "#FF0000FF", "#1565C0FF", "#F9A825"]
+
+MODEL_SETTINGS_COLORS = """<?xml version="1.0" encoding="UTF-8"?>
+<config>
+ <object id="1">
+  <metadata key="name" value="cube"/>
+  <metadata key="extruder" value="1"/>
+  <part id="1" subtype="normal_part">
+   <metadata key="name" value="body"/>
+  </part>
+  <part id="2" subtype="normal_part">
+   <metadata key="name" value="lid"/>
+   <metadata key="extruder" value="3"/>
+  </part>
+ </object>
+""" + "".join(plate_block(n) for n in (1, 2, 3, 4)) + "</config>\n"
+
 def settings():
     # Invented values; lists have the shapes seen in real files (9 filaments,
     # a longer nozzle list, a trailing "0"), but the numbers are made up.
@@ -105,6 +128,9 @@ def settings():
         "cool_plate_temp": nine(35, 35, 35, 35, 35, 35, 35, 35, 35),
     }
 
+def with_colors(values):
+    return {**values, "filament_colour": COLOR_LIST, "filament_type": ["PLA"] * 4}
+
 PLATE_JSON = {
     1: {"first_layer_time": 123.4567, "bed_type": "supertack_plate"},
     2: {"first_layer_time": 88.04, "bed_type": "textured_plate"},
@@ -112,14 +138,14 @@ PLATE_JSON = {
     4: {"first_layer_time": 250.96, "bed_type": "supertack_plate"},
 }
 
-def main(out):
+def main(out, colors=False):
     entries = [
         ("[Content_Types].xml", CONTENT_TYPES),
         ("_rels/.rels", RELS),
         ("3D/3dmodel.model", model_xml()),
-        ("Metadata/model_settings.config", MODEL_SETTINGS),
+        ("Metadata/model_settings.config", MODEL_SETTINGS_COLORS if colors else MODEL_SETTINGS),
         ("Metadata/slice_info.config", SLICE_INFO),
-        ("Metadata/project_settings.config", json.dumps(settings(), indent=4) + "\n"),
+        ("Metadata/project_settings.config", json.dumps(with_colors(settings()) if colors else settings(), indent=4) + "\n"),
     ]
     for n, extra in PLATE_JSON.items():
         body = {"bbox_all": [0.0, 0.0, 10.0, 10.0], "bbox_objects": [], "bed_type": extra["bed_type"],
@@ -135,4 +161,8 @@ def main(out):
             z.writestr(info, content)
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "synthetic-bambu-project.3mf")
+    args = sys.argv[1:]
+    if args[:1] == ["--colors"]:
+        main(args[1] if len(args) > 1 else "synthetic-bambu-colors.3mf", colors=True)
+    else:
+        main(args[0] if args else "synthetic-bambu-project.3mf")

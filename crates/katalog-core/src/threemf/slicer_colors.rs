@@ -30,6 +30,8 @@ pub struct SlicerColors {
 #[derive(Debug, Clone, Default)]
 pub struct ObjectExtruders {
     pub extruder: Option<u32>,
+    /// Number of `<part>` elements of the object (also those without an extruder entry).
+    pub part_count: u32,
     /// Keyed by part id, which the slicers write as the object id of the
     /// component that holds the part's mesh.
     pub parts: HashMap<String, u32>,
@@ -61,6 +63,25 @@ pub fn read_slicer_colors<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Slice
         colors.objects = parse_object_extruders(&xml);
     }
     (colors, bytes)
+}
+
+/// Extruders that an object or part of `model_settings.config` uses, explicitly or by the
+/// slicer default (object entry, else extruder 1). `None` when the file names no object at all:
+/// nothing is then known about the use, and nothing is guessed.
+pub(super) fn used_extruders(xml: &str) -> Option<std::collections::BTreeSet<u32>> {
+    let objects = parse_object_extruders(xml);
+    if objects.is_empty() {
+        return None;
+    }
+    let mut used = std::collections::BTreeSet::new();
+    for object in objects.values() {
+        used.extend(object.parts.values().copied());
+        // A part without its own entry (or an object without parts) inherits the object's extruder.
+        if object.part_count == 0 || (object.parts.len() as u64) < u64::from(object.part_count) {
+            used.insert(object.extruder.unwrap_or(1));
+        }
+    }
+    Some(used)
 }
 
 fn parse_filament_colors(json: &str) -> Vec<Option<RenderColor>> {
@@ -97,7 +118,15 @@ fn parse_object_extruders(xml: &str) -> HashMap<String, ObjectExtruders> {
                     b"object" if opens => {
                         object = attribute(&element, b"id", &reader).map(|id| (id, ObjectExtruders::default()));
                     }
-                    b"part" if opens => part = attribute(&element, b"id", &reader),
+                    b"part" => {
+                        // An empty `<part/>` has no entries and inherits, but it is a part.
+                        if opens {
+                            part = attribute(&element, b"id", &reader);
+                        }
+                        if let Some((_, extruders)) = &mut object {
+                            extruders.part_count = extruders.part_count.saturating_add(1);
+                        }
+                    }
                     b"metadata" => {
                         let Some((_, extruders)) = &mut object else { continue };
                         if attribute(&element, b"key", &reader).as_deref() != Some("extruder") { continue; }

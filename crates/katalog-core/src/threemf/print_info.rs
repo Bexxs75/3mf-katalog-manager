@@ -24,7 +24,11 @@ use super::source::sanitize_source_value;
 
 /// Raise with every new source entry so a re-read is offered again for files read earlier.
 /// 2: PrusaSlicer projects (`Metadata/Slic3r_PE.config`) are read as a source.
-pub const PRINT_INFO_READER_VERSION: u32 = 2;
+/// 3: filament colors (used filaments of a sliced file, else the used extruders' colors).
+pub const PRINT_INFO_READER_VERSION: u32 = 3;
+
+/// At most this many distinct filament colors are kept per file.
+pub const MAX_FILAMENT_COLORS: usize = 32;
 
 /// Upper bound of plate rows per file (protects against prepared archives; real files have 1 to 4).
 pub const MAX_PLATES: usize = 1024;
@@ -135,6 +139,9 @@ pub struct PrintInfo {
     pub bed_temp_c: Reduced<f64>,
     pub nozzle_temp_c: Reduced<f64>,
     pub plates: Vec<PlatePrintInfo>,
+    /// Distinct `#rrggbb` (lowercase, no alpha), in the order of the source, at most
+    /// [`MAX_FILAMENT_COLORS`]; empty = no colors known. Never mixes the two sources.
+    pub filament_colors: Vec<String>,
 }
 
 impl PrintInfo {
@@ -149,6 +156,7 @@ impl PrintInfo {
             bed_temp_c: Reduced::Unknown,
             nozzle_temp_c: Reduced::Unknown,
             plates: Vec::new(),
+            filament_colors: Vec::new(),
         }
     }
 }
@@ -248,7 +256,53 @@ pub fn read_print_info_with<R: Read + Seek>(
     let (plates, plate_bytes) = read_plates(archive, slice, assignments);
     bytes_read += plate_bytes;
     info.plates = plates;
+
+    // Source 1 (used filaments of a sliced file) wins, source 2 (colors of the used extruders)
+    // only fills in when source 1 gives nothing; the two are never mixed.
+    info.filament_colors = sliced_filament_colors(slice);
+    if info.filament_colors.is_empty() {
+        if let (Some(settings), Some(used)) = (&settings, &assignments.used_extruders) {
+            info.filament_colors = extruder_colors(settings, used);
+        }
+    }
     (info, bytes_read)
+}
+
+/// Keeps the first [`MAX_FILAMENT_COLORS`] distinct, usable colors as `#rrggbb`.
+fn collect_colors<'a>(raw: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut colors: Vec<String> = Vec::new();
+    for text in raw {
+        let Some(color) = super::normalize_color(text.trim()) else { continue };
+        if !colors.contains(&color) {
+            colors.push(color);
+            if colors.len() >= MAX_FILAMENT_COLORS {
+                break;
+            }
+        }
+    }
+    colors
+}
+
+/// Source 1: the colors of the filaments the slicer lists as used, over all plates.
+fn sliced_filament_colors(slice: &SliceDetection) -> Vec<String> {
+    if slice.state != SliceState::Sliced {
+        return Vec::new();
+    }
+    let Some(info) = &slice.info else { return Vec::new() };
+    collect_colors(info.plates.iter().flat_map(|p| &p.filaments).filter_map(|f| f.color.as_deref()))
+}
+
+/// Source 2: `filament_colour` of the project settings, only the entries of extruders that an
+/// object or part uses (extruder n = entry n - 1). An extruder without a usable entry adds nothing.
+fn extruder_colors(settings: &serde_json::Map<String, Value>, used: &BTreeSet<u32>) -> Vec<String> {
+    let Some(Value::Array(list)) = settings.get("filament_colour") else { return Vec::new() };
+    collect_colors(used.iter().filter_map(|extruder| {
+        let position = usize::try_from(*extruder).ok()?.checked_sub(1)?;
+        if position >= MAX_FILAMENTS {
+            return None;
+        }
+        list.get(position)?.as_str()
+    }))
 }
 
 /// Reads a PrusaSlicer project (`Slic3r_PE.config`). `None` when the entry does not exist

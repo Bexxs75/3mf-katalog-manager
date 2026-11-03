@@ -38,7 +38,10 @@ pub fn read_plate_metadata<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Opti
     if count == 0 {
         (None, bytes_read, PlateAssignments::default())
     } else {
-        (Some(count), bytes_read, parse_assignments(&xml))
+        // The text is in memory already, so the extruders cost no second read of the entry.
+        let mut assignments = parse_assignments(&xml);
+        assignments.used_extruders = super::slicer_colors::used_extruders(&xml);
+        (Some(count), bytes_read, assignments)
     }
 }
 
@@ -46,6 +49,8 @@ pub fn read_plate_metadata<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Opti
 pub struct PlateAssignments {
     pub plates: std::collections::BTreeMap<u32, Option<String>>,
     pub objects: std::collections::HashMap<String, u32>,
+    /// Extruders used by objects or parts; `None` = not known (no objects named).
+    pub used_extruders: Option<std::collections::BTreeSet<u32>>,
 }
 
 #[derive(Default)]

@@ -898,3 +898,126 @@ fn bambu_and_creality_fixtures_are_unchanged_by_the_prusa_source() {
         assert!(!info.plates.is_empty(), "their plate rows stay");
     }
 }
+
+// Filament colors
+
+const BAMBU_COLORS_SYNTHETIC: &[u8] = include_bytes!("../../../tests/fixtures/synthetic-bambu-colors.3mf");
+
+fn colors_of(entries: &Entries) -> Vec<String> {
+    read(&mut build(entries)).filament_colors
+}
+
+fn texts(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn a_sliced_file_gets_the_colors_of_its_used_filaments_over_all_plates_once() {
+    let mut entries = base_entries();
+    let plate = |index: &str, colors: &[&str]| {
+        let filaments: String = colors
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!(r#"<filament id="{}" type="PLA" color="{c}" used_m="1" used_g="2"/>"#, i + 1))
+            .collect();
+        format!(r#"<plate><metadata key="index" value="{index}"/>{filaments}</plate>"#)
+    };
+    set(&mut entries, "Metadata/slice_info.config", slice_xml(&[
+        plate("1", &["#FFFFFFFF", "#00AA00FF"]),
+        plate("2", &["#00aa00", "#123456FF"]),
+    ]).as_bytes());
+    // The project colors differ on purpose: source 1 wins and the two are never mixed.
+    settings_json(&mut entries, r##"{"filament_colour": ["#ff0000", "#0000ff"]}"##);
+    set(&mut entries, "Metadata/model_settings.config", br#"<config><object id="1"><metadata key="extruder" value="2"/></object><plate><metadata key="plater_id" value="1"/></plate></config>"#);
+    assert_eq!(colors_of(&entries), texts(&["#ffffff", "#00aa00", "#123456"]), "plate order, no alpha, no duplicate");
+}
+
+#[test]
+fn a_project_without_slice_data_gets_only_the_colors_of_the_used_extruders() {
+    // SYNTHETIC package from make_synthetic_bambu_project.py --colors: four project colors
+    // (green, red, blue with alpha, yellow); an object on extruder 1 with a part on extruder 3.
+    let mut archive = ZipArchive::new(Cursor::new(BAMBU_COLORS_SYNTHETIC.to_vec())).unwrap();
+    let info = read(&mut archive);
+    assert_eq!(info.slice_state, SliceState::NoSliceData);
+    assert_eq!(info.filament_colors, texts(&["#2e7d32", "#1565c0"]), "extruders 1 and 3; red (2) and yellow (4) are unused");
+    assert!(!info.filament_colors.contains(&"#ff0000".to_string()), "the unused extruder 2 must not colour the file");
+}
+
+#[test]
+fn files_without_a_usable_source_have_no_colors() {
+    // Prusa project: its own filament_colour is not read.
+    let prusa = read_prusa("; printer_model = MK4S\n; filament_colour = #FF0000;#00FF00\n");
+    assert!(prusa.filament_colors.is_empty());
+    // Existing fixtures: whatever they hold, the Prusa fixture and plain files give none.
+    let info = read(&mut ZipArchive::new(Cursor::new(PRUSA_SYNTHETIC.to_vec())).unwrap());
+    assert!(info.filament_colors.is_empty());
+    // Bambu fixture without a color list: none.
+    let info = read(&mut ZipArchive::new(Cursor::new(BAMBU_SYNTHETIC.to_vec())).unwrap());
+    assert!(info.filament_colors.is_empty());
+    // No objects in model_settings.config: the use is unknown, so no color (never "all of them").
+    let mut entries = base_entries();
+    settings_json(&mut entries, r##"{"filament_colour": ["#ff0000"]}"##);
+    set(&mut entries, "Metadata/model_settings.config", br#"<config><plate><metadata key="plater_id" value="1"/></plate></config>"#);
+    assert!(colors_of(&entries).is_empty());
+    // Unreadable settings and a file that is no slicer project: none.
+    let mut entries = base_entries();
+    settings_json(&mut entries, "{broken");
+    assert!(colors_of(&entries).is_empty());
+    assert!(colors_of(&Entries::new()).is_empty());
+}
+
+fn extruder_entries(colors_json: &str, objects_xml: &str) -> Entries {
+    let mut entries = base_entries();
+    settings_json(&mut entries, &format!(r#"{{"filament_colour": {colors_json}}}"#));
+    set(
+        &mut entries,
+        "Metadata/model_settings.config",
+        format!(r#"<config>{objects_xml}<plate><metadata key="plater_id" value="1"/></plate></config>"#).as_bytes(),
+    );
+    entries
+}
+
+#[test]
+fn extruders_resolve_part_then_object_then_extruder_one() {
+    let list = r##"["#111111", "#222222", "#333333", "#444444"]"##;
+    // Object default 2, one part overrides to 4, one part inherits: extruders 2 and 4.
+    let entries = extruder_entries(list, r#"<object id="1"><metadata key="extruder" value="2"/>
+        <part id="1"><metadata key="extruder" value="4"/></part><part id="2"/></object>"#);
+    assert_eq!(colors_of(&entries), texts(&["#222222", "#444444"]));
+    // All parts explicit: the object default does not count as used.
+    let entries = extruder_entries(list, r#"<object id="1"><metadata key="extruder" value="2"/>
+        <part id="1"><metadata key="extruder" value="3"/></part></object>"#);
+    assert_eq!(colors_of(&entries), texts(&["#333333"]));
+    // No entries at all: the slicer default, extruder 1. Extruder 0 means "inherit" (also 1).
+    let entries = extruder_entries(list, r#"<object id="1"><part id="1"><metadata key="extruder" value="0"/></part></object>"#);
+    assert_eq!(colors_of(&entries), texts(&["#111111"]));
+    // Two objects: both extruders, listed in the order of the project's color list.
+    let entries = extruder_entries(list, r#"<object id="1"><metadata key="extruder" value="3"/></object><object id="2"><metadata key="extruder" value="1"/></object>"#);
+    assert_eq!(colors_of(&entries), texts(&["#111111", "#333333"]));
+}
+
+#[test]
+fn unusable_color_entries_are_dropped_or_normalised_and_the_list_is_bounded() {
+    // `#12`, `red`, 8-digit with a bad digit, a number, an empty text and an extruder beyond the list: all dropped.
+    let entries = extruder_entries(
+        r##"["#12", "red", "#GG0000", 5, "", " #AbCdEf80 "]"##,
+        r#"<object id="1"><metadata key="extruder" value="1"/></object>
+           <object id="2"><metadata key="extruder" value="2"/></object>
+           <object id="3"><metadata key="extruder" value="3"/></object>
+           <object id="4"><metadata key="extruder" value="4"/></object>
+           <object id="5"><metadata key="extruder" value="5"/></object>
+           <object id="6"><metadata key="extruder" value="6"/></object>
+           <object id="7"><metadata key="extruder" value="9"/></object>"#,
+    );
+    assert_eq!(colors_of(&entries), texts(&["#abcdef"]), "alpha cut, case folded, text trimmed");
+
+    // More than 32 distinct colors: the first 32 stay.
+    let list: Vec<String> = (0..40).map(|i| format!("\"#0000{i:02x}\"")).collect();
+    let objects: String = (1..=40)
+        .map(|i| format!(r#"<object id="{i}"><metadata key="extruder" value="{i}"/></object>"#))
+        .collect();
+    let colors = colors_of(&extruder_entries(&format!("[{}]", list.join(",")), &objects));
+    assert_eq!(colors.len(), MAX_FILAMENT_COLORS);
+    assert_eq!(colors[0], "#000000");
+    assert_eq!(colors[31], "#00001f");
+}
