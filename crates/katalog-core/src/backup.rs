@@ -96,21 +96,53 @@ pub fn prune(dir: &Path, keep: usize) -> std::io::Result<()> {
     prune_preserving(dir, keep, None)
 }
 
-// Only names produced by the updater belong to its retention policy.
-fn backup_kind(name: &str) -> Option<BackupKind> {
-    if name.starts_with("catalog-vor-") && name.ends_with(".db") {
-        return Some(BackupKind::Normal);
-    }
-    let re = regex::Regex::new(r"^Katalog-Sicherung_(\d{4}-\d{2}-\d{2}_\d{4})_vor-(?:Update_([0-9A-Za-z.+-]+)_auf_([0-9A-Za-z.+-]+)|Schema-Migration_(\d+)_auf_(\d+))(?:_(\d+))?\.db$").unwrap();
-    let caps = re.captures(name)?;
+/// How a backup file came about, read from its name. The name is only used for
+/// display and retention, never to decide what may be touched.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackupLabel {
+    /// Version of the app the copy was taken from (updater copies only).
+    pub from_version: Option<String>,
+    pub to_version: Option<String>,
+    /// Schema versions (copies taken before a schema migration only).
+    pub from_schema: Option<i64>,
+    pub to_schema: Option<i64>,
+}
+
+/// Parses the name of a backup made by the updater or before a schema migration;
+/// `None` for anything else, including names with an impossible date or version.
+pub fn parse_backup_name(name: &str) -> Option<BackupLabel> {
+    static NAME: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"^Katalog-Sicherung_(\d{4}-\d{2}-\d{2}_\d{4})_vor-(?:Update_([0-9A-Za-z.+-]+)_auf_([0-9A-Za-z.+-]+)|Schema-Migration_(\d+)_auf_(\d+))(?:_(\d+))?\.db$").unwrap()
+    });
+    let caps = NAME.captures(name)?;
     chrono::NaiveDateTime::parse_from_str(&caps[1], "%Y-%m-%d_%H%M").ok()?;
     if caps.get(4).is_some() {
-        return Some(BackupKind::Schema);
+        return Some(BackupLabel {
+            from_version: None,
+            to_version: None,
+            from_schema: caps[4].parse().ok(),
+            to_schema: caps[5].parse().ok(),
+        });
     }
     let from = caps.get(2)?.as_str();
     let to = caps.get(3)?.as_str();
     semver::Version::parse(from).ok()?;
     semver::Version::parse(to).ok()?;
+    Some(BackupLabel {
+        from_version: Some(from.to_string()),
+        to_version: Some(to.to_string()),
+        from_schema: None,
+        to_schema: None,
+    })
+}
+
+// Only names produced by the updater belong to its retention policy.
+fn backup_kind(name: &str) -> Option<BackupKind> {
+    if name.starts_with("catalog-vor-") && name.ends_with(".db") {
+        return Some(BackupKind::Normal);
+    }
+    let label = parse_backup_name(name)?;
+    let Some(from) = label.from_version else { return Some(BackupKind::Schema) };
     Some(if from.contains('-') {
         BackupKind::Normal
     } else {
@@ -187,6 +219,27 @@ mod tests {
         let d = std::env::temp_dir().join(format!("mfk-upd-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         d
+    }
+
+    #[test]
+    fn backup_names_are_read_back_and_look_alikes_are_refused() {
+        let update = parse_backup_name("Katalog-Sicherung_2026-11-03_1432_vor-Update_0.17.1_auf_0.18.0.db").unwrap();
+        assert_eq!((update.from_version.as_deref(), update.to_version.as_deref()), (Some("0.17.1"), Some("0.18.0")));
+        assert_eq!((update.from_schema, update.to_schema), (None, None));
+        let schema = parse_backup_name(&schema_file_name(54, 55)).unwrap();
+        assert_eq!((schema.from_schema, schema.to_schema), (Some(54), Some(55)));
+        assert_eq!(schema.from_version, None);
+        // A collision suffix does not change what the copy is.
+        assert!(parse_backup_name("Katalog-Sicherung_2026-11-03_1432_vor-Schema-Migration_54_auf_55_2.db").is_some());
+        for bad in [
+            "Katalog-Sicherung_2026-13-03_1432_vor-Update_0.17.1_auf_0.18.0.db",
+            "Katalog-Sicherung_2026-11-03_1432_vor-Update_x_auf_0.18.0.db",
+            "../Katalog-Sicherung_2026-11-03_1432_vor-Update_0.17.1_auf_0.18.0.db",
+            "Katalog-Sicherung_2026-11-03_1432_vor-Update_0.17.1_auf_0.18.0.db.tmp",
+            "catalog.db",
+        ] {
+            assert!(parse_backup_name(bad).is_none(), "{bad}");
+        }
     }
 
     #[test]

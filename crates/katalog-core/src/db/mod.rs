@@ -29,7 +29,7 @@ pub use repository::{BACKUP_DIR_NAME, update_filament_spool_image_policy, list_f
 pub use repository::{list_files_missing_content_hash, set_content_hash};
 pub use repository::{
     FileSummary, FileImages, open_read_only, open_read_write,
-    add_tag_to_file, attach_folder_to_parent_by_path, folder_path_exists, connect, connect_with_warning, delete_file, delete_filament_spool, delete_print_log_entry,
+    add_tag_to_file, attach_folder_to_parent_by_path, folder_path_exists, connect, connect_with_report, MigrationReport, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_unused_tags, ensure_folder_path,
     find_existing_by_hash, find_existing_by_path, ExistingFileRef, get_file, get_filament_spool,
     get_registered_slicer,

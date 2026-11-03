@@ -16,6 +16,7 @@ pub mod tagging;
 pub mod filament_check;
 pub mod printer_link;
 pub mod backup;
+pub mod schema_versions;
 pub mod catalog_export;
 
 #[cfg(test)]

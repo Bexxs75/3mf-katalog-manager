@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::{Component, Path};
-#[cfg(any(test, feature = "test-support"))]
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -56,20 +54,43 @@ pub fn open_read_write(path: &Path) -> Result<Connection, DbError> {
 }
 
 pub fn connect(path: &Path) -> Result<Connection, DbError> {
-    connect_with_warning(path).map(|(conn, _)| conn)
+    connect_with_report(path).map(|(conn, _)| conn)
 }
 
-pub fn connect_with_warning(path: &Path) -> Result<(Connection, bool), DbError> {
+/// What happened to an existing catalog while it was brought up to this build's
+/// schema, so the interface can tell the user how to get back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrationReport {
+    /// Schema version found on disk; 0 when it could not be read.
+    pub from: i64,
+    /// Schema version of this build.
+    pub to: i64,
+    /// The copy taken before the migration, when it succeeded.
+    pub backup: Option<PathBuf>,
+    /// The copy could not be made; the migration ran anyway.
+    pub backup_error: bool,
+}
+
+/// Opens (and if needed migrates) the catalog. The report is `Some` only when an
+/// existing catalog was older than this build; a new or current one gives `None`.
+pub fn connect_with_report(path: &Path) -> Result<(Connection, Option<MigrationReport>), DbError> {
     let mut conn = Connection::open(path)?;
-    let backup_failed = match backup_before_migration(&conn, path) {
-        Ok(()) => false,
+    let report = match migration_backup_label(&conn) {
+        Ok(None) => None,
+        Ok(Some((from, to))) => Some(match backup_before_migration(&conn, path, from, to) {
+            Ok(copy) => MigrationReport { from, to, backup: Some(copy), backup_error: false },
+            Err(e) => {
+                log::warn!(target: "backup", "Sicherung vor der Schema-Migration fehlgeschlagen: {e}");
+                MigrationReport { from, to, backup: None, backup_error: true }
+            }
+        }),
         Err(e) => {
             log::warn!(target: "backup", "Sicherung vor der Schema-Migration fehlgeschlagen: {e}");
-            true
+            Some(MigrationReport { from: 0, to: super::migrations::CURRENT_SCHEMA_VERSION, backup: None, backup_error: true })
         }
     };
     init(&mut conn)?;
-    Ok((conn, backup_failed))
+    Ok((conn, report))
 }
 
 /// Directory next to the catalog database where copies taken before a schema
@@ -80,12 +101,11 @@ pub const BACKUP_DIR_NAME: &str = "update-backups";
 /// read the result. Whoever installs a version by hand (no in-app update, which
 /// has its own backup) would lose the way back, so an existing catalog is copied
 /// right before the first migration. A failed copy must never block the start.
-fn backup_before_migration(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
-    let Some((from, to)) = migration_backup_label(conn)? else { return Ok(()) };
+fn backup_before_migration(conn: &Connection, db_path: &Path, from: i64, to: i64) -> Result<PathBuf, DbError> {
     let dir = db_path.parent().ok_or_else(|| DbError::Other("Sicherungsordner nicht gefunden".into()))?.join(BACKUP_DIR_NAME);
     let path = crate::backup::create_schema(conn, &dir, from, to).map_err(DbError::Other)?;
     log::info!(target: "backup", "Sicherung vor der Schema-Migration: {}", path.display());
-    Ok(())
+    Ok(path)
 }
 
 /// `Some((old, new))` when the database already holds a catalog
@@ -1609,12 +1629,50 @@ mod tests {
         conn.pragma_update(None, "user_version", super::super::migrations::CURRENT_SCHEMA_VERSION - 1).unwrap();
         drop(conn);
         std::fs::write(dir.join(BACKUP_DIR_NAME), b"blocks backup directory").unwrap();
-        let (conn, warning) = connect_with_warning(&path).unwrap();
-        assert!(warning);
+        let (conn, report) = connect_with_report(&path).unwrap();
+        let report = report.expect("an older catalog is reported");
+        assert!(report.backup_error);
+        assert!(report.backup.is_none());
+        assert_eq!(report.to, super::super::migrations::CURRENT_SCHEMA_VERSION);
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, super::super::migrations::CURRENT_SCHEMA_VERSION);
         drop(conn);
-        assert!(!connect_with_warning(&path).unwrap().1);
+        assert!(connect_with_report(&path).unwrap().1.is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn migration_report_names_the_copy_taken_before_the_migration() {
+        let dir = backup_test_dir("migration-report");
+        let path = dir.join("catalog.db");
+        let target = super::super::migrations::CURRENT_SCHEMA_VERSION;
+        drop(connect(&path).unwrap());
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.pragma_update(None, "user_version", target - 1).unwrap();
+        }
+        let (_conn, report) = connect_with_report(&path).unwrap();
+        let report = report.expect("an older catalog is reported");
+        assert_eq!((report.from, report.to, report.backup_error), (target - 1, target, false));
+        let copy = report.backup.expect("the copy exists");
+        assert!(copy.is_file());
+        assert_eq!(copy.parent().unwrap(), dir.join(BACKUP_DIR_NAME));
+        let label = crate::backup::parse_backup_name(copy.file_name().unwrap().to_str().unwrap()).expect("name matches the backup pattern");
+        assert_eq!((label.from_schema, label.to_schema), (Some(target - 1), Some(target)));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_new_or_current_catalog_gives_no_migration_report() {
+        let dir = backup_test_dir("migration-report-none");
+        let path = dir.join("catalog.db");
+        // Fresh file: nothing to protect and nothing to report.
+        let (conn, report) = connect_with_report(&path).unwrap();
+        assert!(report.is_none());
+        drop(conn);
+        // Already current: opening again changes nothing and writes no copy.
+        assert!(connect_with_report(&path).unwrap().1.is_none());
+        assert!(!dir.join(BACKUP_DIR_NAME).exists());
         std::fs::remove_dir_all(dir).unwrap();
     }
 

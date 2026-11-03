@@ -131,6 +131,8 @@ error_codes! {
     BackupEntryTooLarge => "backupEntryTooLarge",
     BackupSettingsNotUtf8 => "backupSettingsNotUtf8",
     BackupInvalidDatabase => "backupInvalidDatabase",
+    // Startup notice after an update.
+    UpdateBackupFolderMissing => "updateBackupFolderMissing",
 }
 
 

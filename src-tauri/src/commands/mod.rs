@@ -35,6 +35,7 @@ mod source_folders;
 mod trash;
 mod folder_trash;
 mod updater;
+mod upgrade_notice;
 
 pub use archives::*;
 pub use backup::*;
@@ -58,6 +59,7 @@ pub use source_folders::*;
 pub use trash::*;
 pub use folder_trash::*;
 pub use updater::*;
+pub use upgrade_notice::*;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};

@@ -62,7 +62,8 @@
     "backupMissingEntry",
     "backupEntryTooLarge",
     "backupSettingsNotUtf8",
-    "backupInvalidDatabase"
+    "backupInvalidDatabase",
+    "updateBackupFolderMissing"
   ],
   "legacy": [
     "cancelled",
