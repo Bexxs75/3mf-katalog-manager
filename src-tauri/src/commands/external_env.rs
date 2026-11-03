@@ -1,5 +1,10 @@
 use std::process::Command;
 
+/// Variables the AppImage runtime sets for its own process. A foreign program
+/// (or its start script) that finds them would take them for its own: some
+/// launch scripts resolve their libraries relative to `APPDIR`.
+const APPIMAGE_MARKERS: [&str; 4] = ["APPDIR", "APPIMAGE", "ARGV0", "OWD"];
+
 /// Environment edits for a foreign Linux process. AppImage runtime paths must
 /// not override its Python, loader or desktop resources; host paths stay intact.
 pub(crate) fn sanitized_env(
@@ -10,6 +15,10 @@ pub(crate) fn sanitized_env(
         return Vec::new();
     };
     let mounted = std::path::Path::new(appdir);
+    let markers = vars
+        .iter()
+        .filter(|(name, _)| APPIMAGE_MARKERS.contains(&name.as_str()))
+        .map(|(name, _)| (name.clone(), None));
     vars.iter()
         .filter_map(|(name, value)| {
             let relevant = matches!(
@@ -53,6 +62,7 @@ pub(crate) fn sanitized_env(
             };
             Some((name.clone(), replacement))
         })
+        .chain(markers)
         .collect()
 }
 
@@ -116,6 +126,32 @@ mod tests {
                 .map(|(name, _)| (name.clone(), None))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn removes_the_appimage_markers_so_a_start_script_does_not_adopt_them() {
+        let input = vars(&[
+            ("APPDIR", "/tmp/.mount_x"),
+            ("APPIMAGE", "/home/u/bin/app.AppImage"),
+            ("ARGV0", "app"),
+            ("OWD", "/home/u"),
+            ("HOME", "/home/u"),
+        ]);
+        let edits = sanitized_env(&input, Some("/tmp/.mount_x"));
+        let mut removed: Vec<&str> = edits
+            .iter()
+            .filter(|(_, value)| value.is_none())
+            .map(|(name, _)| name.as_str())
+            .collect();
+        removed.sort();
+        assert_eq!(removed, ["APPDIR", "APPIMAGE", "ARGV0", "OWD"]);
+        assert_eq!(edits.len(), 4);
+    }
+
+    #[test]
+    fn a_program_outside_an_appimage_keeps_these_names() {
+        let input = vars(&[("APPDIR", "/opt/own"), ("OWD", "/home/u")]);
+        assert!(sanitized_env(&input, None).is_empty());
     }
 
     #[test]

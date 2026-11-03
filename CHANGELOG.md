@@ -7,6 +7,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [Unreleased]
+
+### Fixed
+
+- **Slicers (Linux AppImage):** A slicer started from the AppImage no longer inherits the AppImage's own `APPDIR`, `APPIMAGE`, `ARGV0` and `OWD` variables. Start scripts that resolve their libraries relative to `APPDIR` (for example the one of the `orca-slicer-unstable-bin` package) looked in the app's folder and failed with "error while loading shared libraries".
+
 ## [0.17.1] - 2026-11-02
 
 ### Fixed
@@ -699,6 +705,12 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [Unreleased]
+
+### Behoben
+
+- **Slicer (Linux-AppImage):** Ein aus der AppImage gestarteter Slicer erbt die AppImage-eigenen Variablen `APPDIR`, `APPIMAGE`, `ARGV0` und `OWD` nicht mehr. Startskripte, die ihre Bibliotheken relativ zu `APPDIR` suchen (zum Beispiel das des Pakets `orca-slicer-unstable-bin`), suchten im Ordner der App und brachen mit „error while loading shared libraries“ ab.
 
 ## [0.17.1] - 2026-11-02
 
