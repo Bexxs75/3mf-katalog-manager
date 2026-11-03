@@ -373,3 +373,74 @@ fn a_bulk_run_survives_damaged_empty_huge_and_vanishing_files() {
     let integrity: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap();
     assert_eq!(integrity, "ok");
 }
+
+/// Step 1 of the list measurement: builds the 5000-file catalog, fills the print data with the
+/// whole re-read run and leaves the database file at `MI_DB_OUT`. Run from a directory on a real
+/// disk (`TMPDIR`), see the module comment.
+#[test]
+#[ignore = "measurement, minutes: MI_DB_OUT=/path/catalog.db cargo test ... large_catalog_build_measurement_db -- --ignored --nocapture"]
+fn large_catalog_build_measurement_db() {
+    const FILES: usize = 5000;
+    let out_path = PathBuf::from(std::env::var("MI_DB_OUT").expect("MI_DB_OUT"));
+    let dir = unique_test_dir("large_catalog_build");
+    let (paths, kinds) = write_catalog_files(&dir, FILES, 300);
+    let (db, ids) = open_catalog(&dir, &paths);
+    let gate = Arc::new(CatalogGate::default());
+    let out = run_all(&db, &gate, &ids, &AtomicUsize::new(0));
+    let count = |k: Kind| kinds.iter().filter(|x| **x == k).count();
+    eprintln!("BUILD {FILES} files in {:?}, {} ok, {} errors, load {}", out.total, out.ok, out.errors.len(), load());
+    {
+        let conn = db.lock().unwrap();
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)").unwrap();
+        let colored = rows(&conn, "SELECT COUNT(*) FROM file_print_info WHERE filament_colors IS NOT NULL");
+        let plates = rows(&conn, "SELECT COUNT(*) FROM file_print_plates");
+        eprintln!(
+            "BUILD rows: print info {}, with colors {colored}, plate rows {plates}; mix sliced {} no-print-data {} prusa {} plain {} broken {} empty {}",
+            rows(&conn, "SELECT COUNT(*) FROM file_print_info"),
+            count(Kind::Sliced), count(Kind::NoPrintData), count(Kind::Prusa), count(Kind::Plain), count(Kind::Broken), count(Kind::Empty)
+        );
+    }
+    drop(db);
+    std::fs::copy(dir.join("catalog.db"), &out_path).expect("copy the database");
+}
+
+/// Step 2: times `list_file_summaries` on the database of step 1 (copied, the original stays) and
+/// measures the size of the answer as the web and the desktop send it (JSON), with and without the
+/// `printFacts` blocks.
+#[test]
+#[ignore = "measurement: MI_DB=/path/catalog.db cargo test ... large_catalog_list_with_print_data -- --ignored --nocapture"]
+fn large_catalog_list_with_print_data() {
+    let source = PathBuf::from(std::env::var("MI_DB").expect("MI_DB"));
+    let dir = unique_test_dir("large_catalog_list");
+    std::fs::copy(&source, dir.join("catalog.db")).expect("copy");
+    let conn = crate::db::connect(&dir.join("catalog.db")).expect("connect");
+    for _ in 0..3 {
+        katalog_core::read::list_file_summaries(&conn).unwrap();
+    }
+    let samples: Vec<Duration> = (0..40)
+        .map(|_| {
+            let s = Instant::now();
+            let list = katalog_core::read::list_file_summaries(&conn).unwrap();
+            let t = s.elapsed();
+            std::hint::black_box(list);
+            t
+        })
+        .collect();
+    eprintln!("LIST {} (idle, with print data, load {})", stats("list_file_summaries", samples), load());
+
+    let list = katalog_core::read::list_file_summaries(&conn).unwrap();
+    let with_facts = list.iter().filter(|s| s.print_facts.is_some()).count();
+    let mut value = serde_json::to_value(&list).unwrap();
+    let full = serde_json::to_vec(&value).unwrap().len();
+    for entry in value.as_array_mut().unwrap() {
+        entry.as_object_mut().unwrap().remove("printFacts");
+    }
+    let without = serde_json::to_vec(&value).unwrap().len();
+    eprintln!(
+        "SIZE {} entries, {with_facts} with printFacts: {full} bytes with, {without} bytes without ({:+.1} %), {:.0} / {:.0} bytes per entry",
+        list.len(),
+        (full as f64 / without as f64 - 1.0) * 100.0,
+        full as f64 / list.len() as f64,
+        without as f64 / list.len() as f64
+    );
+}
