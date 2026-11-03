@@ -64,6 +64,8 @@ it('filters by target printer, names what it holds back and shows it on request'
   expect(main).not.toHaveTextContent('Dragon.3mf');
   expect(main).not.toHaveTextContent('Cube.stl');
   expect(within(bar).getByText('1 von 4')).toBeInTheDocument();
+  // The card shows the facts only while a print data filter is active.
+  expect(main.querySelectorAll('[data-print-facts]')).toHaveLength(1);
   expect(bar.querySelector('[data-filter-kind]')).toHaveTextContent(de.pfFilterPrinter);
   expect(bar).toHaveTextContent('Prusa MK4S');
   const notice = screen.getByText('2 Dateien ohne Druckdaten ausgeblendet').closest('[role="status"]') as HTMLElement;
@@ -74,6 +76,7 @@ it('filters by target printer, names what it holds back and shows it on request'
   fireEvent.click(toggle);
   await waitFor(() => expect(main).toHaveTextContent('Dragon.3mf'));
   expect(main).toHaveTextContent('Cube.stl');
+  expect(main).toHaveTextContent(`${de.pfMissingFor.replace('{what}', de.pfFilterPrinter)}`);
   expect(main).not.toHaveTextContent('Benchy.3mf');
   expect(screen.getByText('2 Dateien ohne Druckdaten werden mit angezeigt')).toBeInTheDocument();
   // Same button, same focus: the switch does not lose the place.
@@ -120,4 +123,5 @@ it('resets every filter, shows the empty state with a reset, and puts the focus 
   expect(bar.querySelectorAll('[data-filter-kind]')).toHaveLength(0);
   expect(within(bar).getByText(de.filterBarHeading)).toHaveFocus();
   expect(screen.queryByText(de.pfHiddenDetail)).toBeNull();
+  expect(main.querySelector('[data-print-facts]')).toBeNull();
 });

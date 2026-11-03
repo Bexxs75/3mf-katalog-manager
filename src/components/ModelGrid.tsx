@@ -17,6 +17,8 @@ import { BulkCheckbox } from './BulkCheckbox';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { DRAG_THRESHOLD_PX, useDragThreshold } from '../hooks/useDragThreshold';
+import { useActivePrintFilter } from '../hooks/PrintFilterContext';
+import { PrintFactsExtra, printFactsExtraHeight } from './PrintFactsExtra';
 
 interface Props {
   models: ModelFile[];
@@ -99,12 +101,15 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   const canEdit = useCanEditMetadata();
   const t = useT();
   const { density } = useUiDensity();
+  // Only while a print data filter is active; then every card gets the same extra height.
+  const printFilter = useActivePrintFilter();
+  const extra = (comfort: boolean) => printFilter ? printFactsExtraHeight(comfort) : 0;
   const ids = useMemo(() => models.map(model => model.id), [models]);
   // Tiles keep one fixed width. A stretching row (1fr) hands the leftover width to the tiles,
   // so they grow and shrink every time the detail panel opens or the window changes.
   const fixedTileWidth = density === 'comfort' ? 232 : 190;
   const window = useModelWindow({ ids, containerRef, minWidth: fixedTileWidth, gap: 14,
-    fallbackHeight: density === 'comfort' ? 350 : 265, disabled: reorderable || !windowed });
+    fallbackHeight: (density === 'comfort' ? 350 : 265) + extra(density === 'comfort'), disabled: reorderable || !windowed });
   const visible = models.slice(window.startIndex, window.endIndex);
   const images = useModelImages(ids.slice(window.imageStartIndex, window.imageEndIndex));
   const imageFor = (model: ModelFile) => resolveDisplayImage(model, displayPreference, images.get(model.id));
@@ -257,12 +262,13 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             </button>
           )}
         </div>
-        <div data-card-metadata role="gridcell" className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 }}>
+        <div data-card-metadata role="gridcell" className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 + extra(false) }}>
           <div className="select-none text-small font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
             {displayName(m.name)}
           </div>
           <CardMeta model={m} comfort={false} />
           <CardTags tags={m.tags} comfort={false} />
+          {printFilter && <PrintFactsExtra model={m} filter={printFilter} comfort={false} />}
         </div>
       </div>
     );
@@ -357,7 +363,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 </button>
               )}
             </div>
-            <div data-card-metadata role="gridcell" className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)', height: 124 }}>
+            <div data-card-metadata role="gridcell" className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)', height: 124 + extra(true) }}>
               <div
                 className="select-none font-bold overflow-hidden text-ellipsis whitespace-nowrap shrink-0"
                 style={{ fontSize: 'var(--font-size-title)', height: 26, lineHeight: '26px' }}
@@ -366,6 +372,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
               </div>
               <CardMeta model={m} comfort />
               <CardTags tags={m.tags} comfort />
+              {printFilter && <PrintFactsExtra model={m} filter={printFilter} comfort />}
             </div>
           </div>
         ) : (

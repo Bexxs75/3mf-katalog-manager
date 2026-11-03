@@ -33,6 +33,7 @@ import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } f
 import type { AppError } from '../lib/errors';
 import { PrintDataFilterBar } from './PrintDataFilterBar';
 import { PrintDataNotice } from './PrintDataNotice';
+import { PrintFilterContext } from '../hooks/PrintFilterContext';
 import { isActive as printFilterActive, printDataFacets, type FilterKey, type PrintDataFilter } from '../lib/printDataFilter';
 import { printFilterChips } from '../lib/printFilterLabels';
 
@@ -439,6 +440,7 @@ export function CatalogWorkspace({
   const showBulkBar = !detailModel && (selectedForBulk.size > 0 || (!collectionsGalleryOpen && models.length > 0));
   const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && !fitPrinter && !printFilterIsActive;
   return (
+    <PrintFilterContext.Provider value={printFilterIsActive && printFilter ? printFilter : null}>
     <div ref={rootRef} className="relative flex-1 flex min-h-0">
       <Sidebar
         catalogKey={catalogKey}
@@ -798,5 +800,6 @@ export function CatalogWorkspace({
         </div>
       )}
     </div>
+    </PrintFilterContext.Provider>
   );
 }

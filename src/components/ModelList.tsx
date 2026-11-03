@@ -12,6 +12,9 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatVolumeCm3 } from '../i18n/format';
 import { BulkCheckbox } from './BulkCheckbox';
 import { shortTagLabel, tagLabel } from '../lib/autoTags';
+import { useActivePrintFilter } from '../hooks/PrintFilterContext';
+import { missingFilterNames } from './PrintFactsExtra';
+import { FILTER_LABEL_KEY } from '../lib/printFilterLabels';
 
 interface Props {
   models: ModelFile[];
@@ -33,6 +36,8 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
   const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const t = useT();
+  // While a print data filter is active, a row says which value of the filter the file lacks.
+  const printFilter = useActivePrintFilter();
 
   const ids = useMemo(() => models.map(model => model.id), [models]);
   const window = useModelWindow({ ids, containerRef, gap: 0, fallbackHeight: 43, disabled: !windowed });
@@ -97,6 +102,12 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
             {onDragFileStart && !readOnly && canEdit && <DragGrip />}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
             <LicenseBadge license={m.license} />
+            {printFilter && (() => {
+              const missing = missingFilterNames(m, printFilter, key => t(FILTER_LABEL_KEY[key]) as string);
+              if (missing.length === 0) return null;
+              const text = t('pfMissingFor').replace('{what}', missing.join(', '));
+              return <span data-print-facts-missing title={text} className="min-w-0 max-w-[55%] truncate px-1.5 rounded border border-[var(--warn)] bg-[var(--warn-soft)] text-[var(--warn)] font-semibold text-caption leading-none">{text}</span>;
+            })()}
           </span>
           <span role="gridcell" className="flex min-w-0 gap-1 overflow-hidden">
             {m.tags.map((tag) => (
