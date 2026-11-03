@@ -11,6 +11,9 @@ use std::{
 };
 pub use crate::fs_portable::nfc;
 pub struct Directory(File);
+// Contract adapter for `fs_portable::backend`; only additional impls.
+#[cfg(target_os = "linux")]
+mod backend;
 fn cstring(name: &str) -> io::Result<CString> {
     if name.is_empty() || name == "." || name == ".." || name.contains('/') {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
