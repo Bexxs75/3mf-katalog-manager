@@ -6,6 +6,9 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { WebSlicerMenu } from './WebSlicerMenu';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { de } from '../i18n/de';
+import { en } from '../i18n/en';
+import { es } from '../i18n/es';
+import { fr } from '../i18n/fr';
 import { getSession } from '../lib/webSession';
 
 let launched: string[];
@@ -99,12 +102,20 @@ it('uses each slicer scheme', async () => {
 });
 
 it('shows the server message when the link cannot be created and starts nothing', async () => {
-  server({ slicerLinks: true }, () => Response.json({ message: 'Datei nicht gefunden', expected: true }, { status: 404 }));
+  server({ slicerLinks: true }, () => Response.json({ message: 'fileNotFound', expected: true }, { status: 404 }));
   await show(); openMenu();
   await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'OrcaSlicer' })));
   expect(launched).toEqual([]);
-  expect(screen.getByRole('alert')).toHaveTextContent(`${de.webSlicerError} Datei nicht gefunden`);
+  expect(screen.getByRole('alert')).toHaveTextContent(`${de.webSlicerError} ${de.errFileNotFound}`);
   expect(screen.getByRole('button', { name: /In Slicer öffnen/ })).toBeEnabled();
+});
+
+it.each([['en', en], ['es', es], ['fr', fr]] as const)('shows the server code in %s', async (language, dictionary) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  server({ slicerLinks: true }, () => Response.json({ message: 'webTooManyRequests', expected: true }, { status: 429 }));
+  await show(); fireEvent.click(screen.getByRole('button', { name: new RegExp(dictionary.openInSlicer) }));
+  await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'OrcaSlicer' })));
+  expect(screen.getByRole('alert')).toHaveTextContent(`${dictionary.webSlicerError} ${dictionary.errWebTooManyRequests}`);
 });
 
 it('shows a network failure as an error', async () => {

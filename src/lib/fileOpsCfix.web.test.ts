@@ -25,9 +25,14 @@ it('retries once automatically when Retry-After is 3 seconds', async () => {
   await vi.advanceTimersByTimeAsync(1); await pending; expect(calls).toHaveLength(2);
 });
 it('retries the busy write gate at most once, even if the answer is still busy', async () => {
-  vi.useFakeTimers(); respond = () => Response.json({ message: 'Schreibzugriff derzeit ausgelastet' }, { status: 503, headers: { 'Retry-After': '2' } });
+  vi.useFakeTimers(); respond = () => Response.json({ message: 'webWriteBusy' }, { status: 503, headers: { 'Retry-After': '2' } });
   const rejected = expect(fileOp('rename_file', { fileId: '1', name: 'new' })).rejects.toMatchObject({ message: expect.stringContaining('2 Sekunden') });
   await vi.runAllTimersAsync(); await rejected; expect(calls).toHaveLength(2);
+});
+it('does not retry a 503 that carries any other code', async () => {
+  vi.useFakeTimers(); respond = () => Response.json({ message: 'webServerInternal' }, { status: 503, headers: { 'Retry-After': '2' } });
+  const rejected = expect(fileOp('rename_file', { fileId: '1', name: 'new' })).rejects.toBeDefined();
+  await vi.runAllTimersAsync(); await rejected; expect(calls).toHaveLength(1);
 });
 it('aborts immediately on a 60 second Retry-After and names the wait', async () => {
   vi.useFakeTimers(); respond = () => limited('60');

@@ -73,7 +73,7 @@ async function webInvoke<T>(command: string, args?: Record<string, unknown>): Pr
   const managerRead = ['list_filament_spools', 'get_filament_spool_image', 'list_printers', 'list_printer_history', 'get_last_printer_for_file', 'check_filament', 'companion_image_data', 'list_companions', 'disk_sync_report'].includes(command);
   if ((writing || managerRead || ['get_model_geometry', 'read_plate_overview'].includes(command)) && [429, 503].includes(response.status)) {
     const body = fileOperation ? await response.clone().json().catch(() => ({})) : null;
-    const safe = !fileOperation || body.kind === 'rate_limited' || (!body.kind && body.message === 'Schreibzugriff derzeit ausgelastet');
+    const safe = !fileOperation || body.kind === 'rate_limited' || (!body.kind && body.message === 'webWriteBusy');
     const retry = safe ? response.headers.get('Retry-After') : null;
     if (retry !== null) {
       const waitSeconds = retryAfterSeconds(retry);

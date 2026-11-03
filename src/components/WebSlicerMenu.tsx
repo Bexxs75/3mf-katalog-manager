@@ -3,7 +3,8 @@ import { useT } from '../i18n/LanguageContext';
 import { createSlicerLink } from '../lib/api/slicer';
 import { buildSlicerUrl, fileTypeOfName, slicersFor, type WebSlicer } from '../lib/slicerLinks';
 import { useCanOpenInSlicerLink } from '../lib/webSession';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
+import { formatAppError } from '../lib/errorMessage';
 import { Icon } from './Icon';
 
 /** Web counterpart of the desktop "open in slicer": hands the slicer a short-lived signed download link. */
@@ -15,7 +16,7 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
   const enabled = useCanOpenInSlicerLink();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<AppError | null>(null);
   const [alignRight, setAlignRight] = useState(false);
   const request = useRef(0);
   const root = useRef<HTMLDivElement>(null);
@@ -24,7 +25,7 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
   const menuId = useId();
   const hintId = useId();
   useEffect(() => {
-    request.current++; setOpen(false); setBusy(false); setError('');
+    request.current++; setOpen(false); setBusy(false); setError(null);
     return () => { request.current++; };
   }, [fileId]);
   // Opens towards the free side so the popover is never cut off by the panel or the window edge.
@@ -61,7 +62,7 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
   if (slicers.length === 0) return null;
   const launch = async (slicer: WebSlicer) => {
     const current = ++request.current;
-    setBusy(true); setError('');
+    setBusy(true); setError(null);
     try {
       const link = await createSlicerLink(fileId);
       if (request.current !== current) return;
@@ -71,7 +72,7 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
       anchor.click(); anchor.remove();
       setOpen(false);
     } catch (e) {
-      if (request.current === current) setError(`${t('webSlicerError')} ${messageOf(e)}`.trim());
+      if (request.current === current) setError(toAppError(e));
     } finally {
       if (request.current === current) setBusy(false);
     }
@@ -89,6 +90,6 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
         onClick={() => void launch(slicer)}>{slicer.name}</button>)}
       <p id={hintId} className="px-3 py-1.5 text-caption text-[var(--ink-3)]">{t('webSlicerHint')} {t('webSlicerNotInstalled')}</p>
     </div>}
-    {error && <p role="alert" className="text-small text-[var(--accent)]">{error}</p>}
+    {error && <p role="alert" className="text-small text-[var(--accent)]">{`${t('webSlicerError')} ${formatAppError(t, error)}`.trim()}</p>}
   </div>;
 }

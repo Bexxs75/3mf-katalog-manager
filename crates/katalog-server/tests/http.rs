@@ -197,18 +197,14 @@ async fn session(app: &Router, cookie: &str) -> Value {
 async fn login_logout_proxy_cookie_and_auth_contract() {
     let _lock = SERIAL.lock().await;
     let f = fixture(false, true).await;
-    assert_eq!(
-        call(&f.app, "/api/invoke/get_app_version", json!({}), &[], "a")
-            .await
-            .0,
-        401
-    );
-    assert_eq!(
-        call(&f.app, "/api/login", json!({"password":""}), &[], "a")
-            .await
-            .0,
-        401
-    );
+    // The answers carry registered codes; the interface owns the wording.
+    let (status, _, v) = call(&f.app, "/api/invoke/get_app_version", json!({}), &[], "a").await;
+    assert_eq!(status, 401);
+    assert_eq!(v["message"], "webLoginRequired");
+    assert_eq!(v["expected"], true);
+    let (status, _, v) = call(&f.app, "/api/login", json!({"password":""}), &[], "a").await;
+    assert_eq!(status, 401);
+    assert_eq!(v["message"], "webPasswordIncorrect");
     let (cookie, csrf) = login(&f.app, "a", true).await;
     for flag in [
         "__Host-katalog_session=",
@@ -424,7 +420,7 @@ async fn mandatory_password_change_rotates_sessions_and_write_failure_is_atomic(
     )
     .await;
     assert_eq!(status, 500);
-    assert_eq!(v["message"], "Passwort konnte nicht gespeichert werden");
+    assert_eq!(v["message"], "webServerInternal");
     assert_eq!(session(&f.app, &other).await["authenticated"], true);
     std::fs::remove_dir(&auth_path).unwrap();
     std::fs::write(&auth_path, before).unwrap();
@@ -521,10 +517,11 @@ async fn client_lock_proxy_selection_and_wrong_current_share_limits() {
             .0,
         401
     );
-    let (status, headers, _) =
+    let (status, headers, v) =
         call(&f.app, "/api/login", json!({"password":PASSWORD}), &[], "a").await;
     assert_eq!(status, 429);
     assert_eq!(headers["retry-after"], "60");
+    assert_eq!(v["message"], "webTooManyAttempts");
     f.time.set(120);
     let (status, headers, _) =
         call(&f.app, "/api/login", json!({"password":PASSWORD}), &[], "a").await;
@@ -668,7 +665,7 @@ async fn trusted_proxy_requires_valid_last_xff_and_accepts_socket_addresses() {
         assert_eq!(status, 400);
         assert_eq!(
             body,
-            json!({"message":"Proxy-Header X-Forwarded-For fehlt oder ist ungültig","expected":true})
+            json!({"message":"webProxyHeaderInvalid","expected":true})
         );
     }
     for address in [

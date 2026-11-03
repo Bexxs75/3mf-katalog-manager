@@ -2,6 +2,7 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Algorithm, Argon2, Params, Version,
 };
+use katalog_core::error_code::ErrorCode;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -351,7 +352,45 @@ fn random_password() -> Result<String, String> {
     Ok(password)
 }
 
+/// Why a new password is refused. The web interface names the reason by code and
+/// the operator prompt shows the German text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PolicyViolation {
+    Length,
+    Unchanged,
+    Guessable,
+}
+impl PolicyViolation {
+    pub fn code(self) -> ErrorCode {
+        match self {
+            Self::Length => ErrorCode::WebPasswordLength,
+            Self::Unchanged => ErrorCode::WebPasswordUnchanged,
+            Self::Guessable => ErrorCode::WebPasswordGuessable,
+        }
+    }
+    /// Values for the placeholders of the translated text.
+    pub fn params(self) -> Vec<String> {
+        match self {
+            Self::Length => vec![MIN_PASSWORD_CHARS.to_string(), MAX_PASSWORD_CHARS.to_string()],
+            Self::Unchanged | Self::Guessable => Vec::new(),
+        }
+    }
+    fn operator_text(self) -> &'static str {
+        match self {
+            Self::Length => "Das neue Passwort muss 12 bis 128 Zeichen lang sein",
+            Self::Unchanged => "Das neue Passwort muss sich vom bisherigen unterscheiden",
+            Self::Guessable => "Das neue Passwort ist zu leicht zu erraten",
+        }
+    }
+}
+const MIN_PASSWORD_CHARS: usize = 12;
+const MAX_PASSWORD_CHARS: usize = 128;
+
 pub fn policy(new: &str, old: Option<&str>) -> Result<(), String> {
+    check_policy(new, old).map_err(|v| v.operator_text().to_owned())
+}
+
+pub fn check_policy(new: &str, old: Option<&str>) -> Result<(), PolicyViolation> {
     const TRIVIAL: &[&str] = &[
         "passwort1234",
         "123456789012",
@@ -378,14 +417,14 @@ pub fn policy(new: &str, old: Option<&str>) -> Result<(), String> {
         "passwortpasswort",
         "123456123456",
     ];
-    if !(12..=128).contains(&new.chars().count()) {
-        return Err("Das neue Passwort muss 12 bis 128 Zeichen lang sein".into());
+    if !(MIN_PASSWORD_CHARS..=MAX_PASSWORD_CHARS).contains(&new.chars().count()) {
+        return Err(PolicyViolation::Length);
     }
     if old == Some(new) {
-        return Err("Das neue Passwort muss sich vom bisherigen unterscheiden".into());
+        return Err(PolicyViolation::Unchanged);
     }
     if new.chars().all(|c| new.starts_with(c)) || TRIVIAL.contains(&new.to_lowercase().as_str()) {
-        return Err("Das neue Passwort ist zu leicht zu erraten".into());
+        return Err(PolicyViolation::Guessable);
     }
     Ok(())
 }
