@@ -2,6 +2,12 @@ use super::*;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::HashSet;
 
+/// Bound into the prefix queries: a path is below `p` when `p||SEP <= path < p||AFTER_SEP`
+/// (`'0'` is the character right after `'/'`). Parameters instead of literals so a path style with
+/// another separator can bind its own pair.
+const SEP: &str = "/";
+const AFTER_SEP: &str = "0";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FolderState {
     pub id: i64,
@@ -125,11 +131,11 @@ fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
     }
     let mut stmt = c.prepare(&format!(
         "{} SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree)
-        OR path=?2 OR (path>=?2||'/' AND path<?2||'0') ORDER BY id",
+        OR path=?2 OR (path>=?2||?3 AND path<?2||?4) ORDER BY id",
         crate::db::FOLDER_SUBTREE_CTE
     ))?;
     let mut files = Vec::new();
-    for fid in stmt.query_map(params![id, root.path], |r| r.get::<_, i64>(0))? {
+    for fid in stmt.query_map(params![id, root.path, SEP, AFTER_SEP], |r| r.get::<_, i64>(0))? {
         let f = operations::read_state(c, fid?)?.ok_or(Error::Changed)?;
         let assigned = f.folder_id.is_some_and(|id| ids.contains(&id));
         if assigned || under(&f.path, &root.path) {
@@ -159,9 +165,9 @@ fn tree(c: &Connection, id: i64) -> Result<FolderTree> {
         }
     }
     let mut stmt = c.prepare(
-        "SELECT id,file_id,name,path,deleted_at,trash_path FROM companion_files WHERE path>=?1||'/' AND path<?1||'0' ORDER BY id",
+        "SELECT id,file_id,name,path,deleted_at,trash_path FROM companion_files WHERE path>=?1||?2 AND path<?1||?3 ORDER BY id",
     )?;
-    for row in stmt.query_map([&root.path], carry::companion_from_row)? {
+    for row in stmt.query_map(params![root.path, SEP, AFTER_SEP], carry::companion_from_row)? {
         let row = row?;
         rows.insert(row.id, row);
     }
@@ -357,9 +363,9 @@ fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
         let path = paths::join(&i.root_path, target).ok_or(Error::PathUnresolvable)?;
         let ids: HashSet<_> = i.after.folders.iter().map(|f| f.id).collect();
         let mut stmt = c.prepare(
-            "SELECT id,path FROM folders WHERE path=?1 OR (path>=?1||'/' AND path<?1||'0')",
+            "SELECT id,path FROM folders WHERE path=?1 OR (path>=?1||?2 AND path<?1||?3)",
         )?;
-        for row in stmt.query_map([path.as_str()], |r| {
+        for row in stmt.query_map(params![path, SEP, AFTER_SEP], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
         })? {
             let (id, candidate) = row?;
@@ -387,9 +393,9 @@ fn available(c: &Connection, i: &FolderIntent) -> Result<()> {
                 ("companion_files", i.after.companions.iter().map(|r| r.id).collect()),
             ] {
                 let mut stmt = c.prepare(&format!(
-                    "SELECT id,path FROM {table} WHERE path>=?1||'/' AND path<?1||'0'"
+                    "SELECT id,path FROM {table} WHERE path>=?1||?2 AND path<?1||?3"
                 ))?;
-                for row in stmt.query_map([path.as_str()], |r| {
+                for row in stmt.query_map(params![path, SEP, AFTER_SEP], |r| {
                     Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
                 })? {
                     let (id, candidate) = row?;
