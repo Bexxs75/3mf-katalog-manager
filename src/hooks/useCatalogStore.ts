@@ -31,6 +31,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     path: s.path,
     fileType: s.fileType,
     printDataState: s.printDataState,
+    printFacts: s.printFacts,
     folderId: s.folderId,
     tags: [],
     origin: 'local',

@@ -1,4 +1,4 @@
-import type { FilamentUsage, ModelFile, PrintDataState } from '../types';
+import type { FilamentUsage, ModelFile, PrintDataState, PrintFacts } from '../types';
 
 /**
  * Display state of the print-data card. The first four are the stored slice
@@ -163,6 +163,27 @@ export function printDataStateOf(model: Pick<ModelFile, 'path' | 'printDataState
   if (model.printDataState) return model.printDataState;
   if (!model.path.toLowerCase().endsWith('.3mf')) return 'none';
   return model.printInfo?.readerCurrent ? model.printInfo.sliceState : 'unread';
+}
+
+/**
+ * The print facts of a record: derived from the print info when it is loaded in full (same rule as
+ * the list's `printFacts`, see `print-facts-golden.json`), else the list's block. Null = not known,
+ * which the filter treats as "value missing"; a value is never replaced by 0.
+ */
+export function printFactsOf(model: Pick<ModelFile, 'printInfo' | 'printFacts'>): PrintFacts | null {
+  const info = model.printInfo;
+  if (!info) return model.printFacts ?? null;
+  if (!info.readerCurrent || (info.sliceState !== 'sliced' && info.sliceState !== 'no_slice_data')) return null;
+  const facts: PrintFacts = { plateCount: info.plates.length };
+  if (info.printerModel !== null) facts.printerModel = info.printerModel;
+  if (info.layerHeightMm !== null) facts.layerHeightMm = info.layerHeightMm;
+  if (info.nozzleMm.mixed) facts.nozzleMixed = true;
+  else if (info.nozzleMm.value !== null) facts.nozzleMm = info.nozzleMm.value;
+  const times = info.plates.map(plate => plate.printSeconds).filter((seconds): seconds is number => seconds !== null);
+  if (times.length > 0) facts.printSeconds = times.reduce((sum, seconds) => sum + seconds, 0);
+  if (info.plates.length > 0 && times.length === info.plates.length) facts.printSecondsComplete = true;
+  if (info.filamentColors.length > 0) facts.colors = [...info.filamentColors];
+  return facts;
 }
 
 /**

@@ -26,7 +26,7 @@ function model(id: string, over: Partial<ModelFile> = {}): ModelFile {
 const answer = (id: string, over: Partial<ModelFile> = {}) => model(id, {
   printDataState: undefined, summaryOnly: undefined,
   printInfo: { sliceState: 'sliced', settingsState: 'read', readerCurrent: true, readAt: 'x', printerModel: 'P', bedType: 'B', layerHeightMm: 0.2,
-    nozzleMm: { value: 0.4, mixed: false }, bedTempC: { value: 55, mixed: false }, nozzleTempC: { value: 220, mixed: false }, plates: [] },
+    nozzleMm: { value: 0.4, mixed: false }, bedTempC: { value: 55, mixed: false }, nozzleTempC: { value: 220, mixed: false }, plates: [], filamentColors: [] },
   ...over,
 });
 

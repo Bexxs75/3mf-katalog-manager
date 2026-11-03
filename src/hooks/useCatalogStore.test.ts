@@ -114,6 +114,15 @@ describe('useCatalogStore', () => {
     expect(result.current.models.find((m) => m.id === 'missing')?.fileModifiedAt).toBeNull();
   });
 
+  it('keeps the print facts of the list summary and leaves them out for a file without any', async () => {
+    const printFacts = { printerModel: 'Test Printer', layerHeightMm: 0.2, plateCount: 2, colors: ['#ff0000'] };
+    mockInitialLoad([makeModelFile({ id: 'with', printFacts }), makeModelFile({ id: 'without' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+    expect(result.current.models.find((m) => m.id === 'with')?.printFacts).toEqual(printFacts);
+    expect(result.current.models.find((m) => m.id === 'without')?.printFacts).toBeUndefined();
+  });
+
   it('togglePrintStatus flips status and clears queuePosition when marking printed', async () => {
     mockInitialLoad([makeModelFile({ id: 'm1', printStatus: 'not_printed', queuePosition: 2 })]);
     const { result } = renderHook(() => useCatalogStore());

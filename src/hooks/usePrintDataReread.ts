@@ -3,7 +3,7 @@ import * as filesApi from '../lib/api/files';
 import { toAppError, messageOf, type AppError } from '../lib/errors';
 import { retryAfterSeconds } from '../lib/fileOpsErrors';
 import { canEditMetadata } from '../lib/webSession';
-import { printDataStateOf, rereadTargets, summarizePrintData } from '../lib/printData';
+import { printDataStateOf, printFactsOf, rereadTargets, summarizePrintData } from '../lib/printData';
 import type { ModelFile } from '../types';
 import { invalidateModelImages } from './useModelImages';
 
@@ -14,7 +14,7 @@ export type RereadOrigin = 'settings' | 'selection';
  * The only fields a read changes in the list. No images (a bulk read would otherwise carry
  * three base64 pictures per file through the list) and no `fullyLoadedIds` entry.
  */
-export type RereadPatch = Pick<ModelFile, 'printInfo' | 'printDataState' | 'sliceInfo' | 'estimatedWeightG' | 'weightSource' | 'costEstimate'
+export type RereadPatch = Pick<ModelFile, 'printInfo' | 'printDataState' | 'printFacts' | 'sliceInfo' | 'estimatedWeightG' | 'weightSource' | 'costEstimate'
   | 'plateCount' | 'materials' | 'fileSizeBytes' | 'contentHash' | 'fileModifiedAt' | 'sourcePlatform' | 'sourceModelId' | 'sourceProfileId' | 'hasThumbnail'>;
 
 export const REREAD_FLUSH_FILES = 50;
@@ -28,6 +28,8 @@ export function patchOf(model: ModelFile): RereadPatch {
   return {
     printInfo: model.printInfo,
     printDataState: printDataStateOf({ path: model.path, printDataState: undefined, printInfo: model.printInfo }),
+    // Undefined (not omitted) so a patch also clears facts the file no longer has.
+    printFacts: printFactsOf(model) ?? undefined,
     sliceInfo: model.sliceInfo,
     estimatedWeightG: model.estimatedWeightG,
     weightSource: model.weightSource,

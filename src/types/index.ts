@@ -52,6 +52,28 @@ export interface PrintInfo {
   bedTempC: MixedValue;
   nozzleTempC: MixedValue;
   plates: PlatePrintInfo[];
+  /** Distinct `#rrggbb` colors of the used filaments or extruders; empty = none known. */
+  filamentColors: string[];
+}
+
+/**
+ * The few print facts the filter and the card extra need (`printFacts` of `list_file_summaries`).
+ * Absent field = not known; never 0. Mirrors `PrintFactsDto`: false flags are left out.
+ */
+export interface PrintFacts {
+  printerModel?: string;
+  layerHeightMm?: number;
+  /** Absent for a mixed or unknown nozzle. */
+  nozzleMm?: number;
+  nozzleMixed?: true;
+  /** Rows of the plate table (0 = none stored). */
+  plateCount: number;
+  /** Sum of the known plate times. */
+  printSeconds?: number;
+  /** True when every plate has a time, so `printSeconds` is the whole print time. */
+  printSecondsComplete?: true;
+  /** `#rrggbb` */
+  colors?: string[];
 }
 
 /** `none` = not a 3MF; `unread` = 3MF without a row or with a row of another reader version. */
@@ -76,6 +98,8 @@ export interface ModelFile {
   fileType?: string;
   /** What the list knows about the print data; absent on models loaded in full (derive it with `printDataStateOf`). */
   printDataState?: PrintDataState;
+  /** Print facts of the list; absent on models loaded in full (derive them with `printFactsOf`) and for files without usable print data. */
+  printFacts?: PrintFacts;
   license: string | null;
   hasThumbnail?: boolean;
   hasRenderSnapshot?: boolean;
@@ -158,6 +182,7 @@ export interface ModelFileSummary {
   lastViewedAt: string | null;
   contentHash: string | null;
   printDataState: PrintDataState;
+  printFacts?: PrintFacts;
 }
 
 export interface Folder {

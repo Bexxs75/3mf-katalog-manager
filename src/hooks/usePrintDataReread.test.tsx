@@ -28,7 +28,7 @@ function answer(id: string, over: Partial<ModelFile> = {}): ModelFile {
   return model(id, {
     printDataState: undefined, summaryOnly: undefined, thumbnailImage: IMAGE, customImage: IMAGE, renderSnapshotImage: IMAGE,
     printInfo: { sliceState: 'sliced', settingsState: 'read', readerCurrent: true, readAt: 'x', printerModel: 'P', bedType: 'B', layerHeightMm: 0.2,
-      nozzleMm: { value: 0.4, mixed: false }, bedTempC: { value: 55, mixed: false }, nozzleTempC: { value: 220, mixed: false }, plates: [] },
+      nozzleMm: { value: 0.4, mixed: false }, bedTempC: { value: 55, mixed: false }, nozzleTempC: { value: 220, mixed: false }, plates: [], filamentColors: [] },
     ...over,
   });
 }
@@ -172,13 +172,25 @@ describe('large catalogs (5000 mock files)', () => {
 
 describe('patches', () => {
   it('carries only the listed fields and never a picture', () => {
-    expect(Object.keys(patchOf(answer('a'))).sort()).toEqual(['contentHash', 'costEstimate', 'estimatedWeightG', 'fileModifiedAt', 'fileSizeBytes', 'hasThumbnail', 'materials', 'plateCount', 'printDataState', 'printInfo', 'sliceInfo', 'sourceModelId', 'sourcePlatform', 'sourceProfileId', 'weightSource']);
+    expect(Object.keys(patchOf(answer('a'))).sort()).toEqual(['contentHash', 'costEstimate', 'estimatedWeightG', 'fileModifiedAt', 'fileSizeBytes', 'hasThumbnail', 'materials', 'plateCount', 'printDataState', 'printFacts', 'printInfo', 'sliceInfo', 'sourceModelId', 'sourcePlatform', 'sourceProfileId', 'weightSource']);
   });
 
   it('derives the new list state from the stored row', () => {
     expect(patchOf(answer('a')).printDataState).toBe('sliced');
     expect(patchOf(answer('a', { printInfo: { ...answer('a').printInfo!, sliceState: 'no_slice_data' } })).printDataState).toBe('no_slice_data');
     expect(patchOf(answer('a', { printInfo: { ...answer('a').printInfo!, readerCurrent: false } })).printDataState).toBe('unread');
+  });
+
+  it('derives the print facts of the list from the stored row', () => {
+    expect(patchOf(answer('a')).printFacts).toEqual({ printerModel: 'P', layerHeightMm: 0.2, nozzleMm: 0.4, plateCount: 0 });
+  });
+
+  it('clears facts a file no longer has, and replaces stale ones when applied', () => {
+    const unusable = patchOf(answer('a', { printInfo: { ...answer('a').printInfo!, sliceState: 'not_recognized' } }));
+    expect(unusable.printFacts).toBeUndefined();
+    const stale = model('a', { printFacts: { printerModel: 'Old', plateCount: 3 } });
+    expect(applyRereadPatches([stale], new Map([['a', unusable]]))[0].printFacts).toBeUndefined();
+    expect(applyRereadPatches([stale], new Map([['a', patchOf(answer('a'))]]))[0].printFacts?.printerModel).toBe('P');
   });
 });
 

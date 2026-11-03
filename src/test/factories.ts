@@ -1,4 +1,4 @@
-import type { ModelFile, ModelFileSummary, Folder, Printer, PrintInfo } from '../types';
+import type { ModelFile, ModelFileSummary, Folder, Printer, PrintInfo, PrintFacts } from '../types';
 
 export function makePrintInfo(overrides: Partial<PrintInfo> = {}): PrintInfo {
   return {
@@ -13,8 +13,14 @@ export function makePrintInfo(overrides: Partial<PrintInfo> = {}): PrintInfo {
     bedTempC: { value: null, mixed: false },
     nozzleTempC: { value: null, mixed: false },
     plates: [],
+    filamentColors: [],
     ...overrides,
   };
+}
+
+/** Print facts of a list row; a bare `plateCount: 0` is what a file with nothing but the state yields. */
+export function makePrintFacts(overrides: Partial<PrintFacts> = {}): PrintFacts {
+  return { plateCount: 0, ...overrides };
 }
 
 export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
@@ -90,6 +96,7 @@ export function makeModelFileSummary(
     contentHash: m.contentHash,
     // The summary fixture is always a 3MF: no row or an old row means "unread".
     printDataState: m.printInfo?.readerCurrent ? m.printInfo.sliceState : 'unread',
+    ...(m.printFacts ? { printFacts: m.printFacts } : {}),
     license: m.license,
     sourcePlatform: m.sourcePlatform,
     sourceModelId: m.sourceModelId,
