@@ -951,6 +951,9 @@ export interface Translations {
   pfColorViolet: string;
   pfMissingFor: string;
   pfAtLeast: string;
+  pfUnread: PluralForms;
+  pfUnreadReread: string;
+  pfUnreadWhere: string;
   poTitle: string;
   poOpen: string;
   poOpenCount: PluralForms;
