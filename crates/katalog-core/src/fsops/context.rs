@@ -36,6 +36,8 @@ pub enum Access {
 }
 pub struct Root {
     pub path: PathBuf,
+    /// The same text as `path`, parsed once; all database paths are matched against this.
+    pub native: NativePath,
     pub handle: Directory,
     pub trash: Directory,
     pub identity: Identity,
@@ -88,7 +90,9 @@ impl FsContext {
         let mut result: Vec<Root> = Vec::new();
         for path in roots {
             let path = std::fs::canonicalize(path)?;
-            lexical(path.to_str().ok_or(Error::PathUnresolvable)?)?;
+            let text = path.to_str().ok_or(Error::PathUnresolvable)?;
+            lexical(text)?;
+            let native = NativePath::parse(text, Style::Posix)?;
             let handle = Directory::open(&path)?;
             let identity = Identity::of(&handle)?;
             let chain = ancestor_ids(&handle)?;
@@ -145,6 +149,7 @@ impl FsContext {
             let mount = handle.mount_id()?;
             result.push(Root {
                 path,
+                native,
                 handle,
                 trash,
                 identity,
@@ -161,29 +166,24 @@ impl FsContext {
         Self::new(roots, protected)
     }
     pub fn locate(&self, path: &str) -> Result<(usize, String)> {
-        lexical(path)?;
-        let p = Path::new(path);
+        let p = NativePath::parse(path, Style::Posix)?;
         self.roots
             .iter()
             .enumerate()
             .filter_map(|(i, r)| {
-                p.strip_prefix(&r.path)
+                p.relative_to(&r.native)
                     .ok()
-                    .filter(|p| !p.as_os_str().is_empty())
-                    .map(|rel| (i, rel.to_str().unwrap().to_owned()))
+                    .map(|rel| (i, rel.as_str().to_owned()))
             })
-            .max_by_key(|(i, _)| self.roots[*i].path.components().count())
+            .max_by_key(|(i, _)| self.roots[*i].native.segment_count())
             .ok_or(Error::PathUnresolvable)
     }
     /// Whether a file may be moved into this folder. Uses the move's own target check, so the
     /// folder list never offers a destination the operation would refuse as protected.
     /// Folders that cannot be inspected (missing, outside the roots) stay open to the operation.
     pub fn accepts_moves_into(&self, folder_path: &str) -> bool {
-        let probe = Path::new(folder_path).join(".move-target-probe");
-        let Some(probe) = probe.to_str() else {
-            return true;
-        };
-        !matches!(self.resolve(probe, Access::MoveTarget), Err(Error::Protected))
+        let probe = paths::join_unchecked(folder_path, ".move-target-probe");
+        !matches!(self.resolve(&probe, Access::MoveTarget), Err(Error::Protected))
     }
     pub fn resolve(&self, path: &str, access: Access) -> Result<Resolved> {
         let (root, relative) = self.locate(path)?;
@@ -269,12 +269,19 @@ impl FsContext {
         })
     }
     pub fn absolute(&self, r: &Resolved) -> String {
+        let relative = RelPath::parse(&r.relative).expect("a resolved path is a valid relative path");
         self.roots[r.root]
-            .path
-            .join(&r.relative)
-            .to_str()
-            .unwrap()
+            .native
+            .join(&relative)
+            .expect("a resolved path is valid below its root")
+            .as_str()
             .to_owned()
+    }
+}
+impl Root {
+    /// Whether a journal's root text names this root.
+    pub fn is_at(&self, root_text: &str) -> bool {
+        paths::same_place(root_text, self.native.as_str())
     }
 }
 fn different_mount(a: Option<u64>, b: Option<u64>) -> bool {

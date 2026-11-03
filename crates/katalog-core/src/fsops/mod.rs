@@ -3,6 +3,7 @@
 use crate::upload_fs::Directory;
 use serde::{Deserialize, Serialize};
 mod context;
+mod paths;
 use crate::fs_portable::names;
 pub use context::*;
 pub use crate::fs_portable::names::*;
