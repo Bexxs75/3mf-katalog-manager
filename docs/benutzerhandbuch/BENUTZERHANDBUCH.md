@@ -282,6 +282,26 @@ build volume entered. It lists those printers ("All" shows everything). With a p
 visible; models whose size is not known stay visible too. How the fit is judged is described under
 [Print bed](#print-bed).
 
+**Filtering by print data.** The filter bar also has five buttons for values read from the 3MF
+files: **Target printer**, **Nozzle**, **Layer height**, **Print time** and **Color**. Each opens a
+list of the values found in your catalog, with the number of files that have them and the number
+of files without that value; you can tick several. Within one button the choices are alternatives
+(any of the ticked printers); different buttons must all match. Print time is chosen in steps
+(under 1 h, 1–4 h, 4–12 h, 12 h or more; the lower limit is included, the upper one is not) and
+uses the sum of all plates. For colors you choose whether a model needs **any** of the ticked colors
+(OR) or **all** of them (AND). Layer height is the value of the project settings, not necessarily the
+height used for every object.
+
+Only files that were read can be filtered. A file that lacks the value of an active filter (for
+example a file without print data, a STL file, or a 3MF that has not been read yet) is neither
+counted as matching nor as not matching: a line above the models says how many such files are
+hidden and offers "Show"; they then appear marked "Value missing: …". If some of the hidden files
+were never read, the line says how many and has a "Read now …" button that opens Settings →
+Catalog, where [Reading print data afterwards](#reading-print-data-afterwards) is. While a print
+data filter is active the cards show the target printer, print time, layer height, nozzle and
+color dots, and an entry for the [plate overview](#plate-overview). A missing value is never shown
+as 0. "Reset filters" resets these filters too.
+
 ![Usage and print status filters and the sort menu](bilder/en/42-filter-sortierung.png)
 
 Under "Sort", choose "Name", "Import date", "Modified date", "File size", "Volume",
@@ -594,13 +614,25 @@ This is not an error. What the card shows depends on the file:
   layer height and nozzle under "Project settings", without print time and temperatures.
   This also applies to a PrusaSlicer project (saved without slicing): the card shows its printer
   model, layer height and nozzle; the bed type is not stated there and shows a dash. To read such
-  files afterwards, select them and use "Read print data" in the "More" menu ("Read all sliced
-  files" skips them, because they hold no slicer results).
+  files afterwards, use "Read all unread 3MF files" in the settings or select them and use
+  "Read print data" in the "More" menu.
 - **"No slicer print data recognised."** — the file has no slicer data the app knows.
 - **"The slicer data of this file could not be read."** — the slicer data is there but damaged or
   unreadable.
 - **"The print data of this file has not been read yet."** — the file was imported before this
   card existed. Use [Reading print data afterwards](#reading-print-data-afterwards).
+
+### Plate overview
+
+The **plate overview** lists every plate of a 3MF file with its name, the number of objects, the
+print time and the weight. Open it with **"Plate overview"** on the print data card (detail page and
+panel), from the right-click menu of a model, or from a card while a print data filter is active.
+Show it as a **table** or as **tiles**; "Show preview" adds the picture of each plate. A **total**
+row adds up the plates. Where a plate has no value, the cell shows a dash, never 0, and a total over
+incomplete plates reads "at least …" with a note. Name, time and weight come from the catalog; the
+object count and the pictures are read from the file when the dialog opens. If the file is no longer
+at its place, those two stay empty and the dialog says so. The number of objects counts the object
+placements on the plate, so copies of one object count several times.
 
 ### Reading print data afterwards
 
@@ -608,8 +640,9 @@ Files that are already in the catalog are not read again automatically. There ar
 read the print data afterwards; the files themselves are never changed:
 
 - **One model:** on the detail page, "Rescan metadata".
-- **All sliced files:** Settings → Catalog → **"Read print data"** → **"Read all sliced files"**. It
-  reads the sliced files that have not been read yet.
+- **All unread 3MF files:** Settings → Catalog → **"Read print data"** → **"Read all unread 3MF
+  files"**. It reads every 3MF file that has not been read yet, whichever slicer made it; a file
+  without print data still gives its project settings.
 - **Selected models:** select them and choose **"Read print data"** in the "More" menu of the
   selection bar. This reads every selected 3MF file again, whatever its state.
 
@@ -720,11 +753,17 @@ Click its heading to collapse it.
 - **Recently viewed** — the 20 most recently opened models, newest first.
 - **Recently added** — everything imported in the last 7 days.
 - **Favorites** — all models you marked with the heart, sorted alphabetically.
-- **Duplicates** — models with identical file content, shown side by side as groups.
+- **Duplicates** — models with identical file content, shown as groups. In each group you choose
+  the entry to keep (the oldest by default; "Keep the oldest of each" and "Keep the newest of
+  each" set all groups at once); exactly one entry always stays. "Remove deselected …" asks first and
+  then puts the others in the app trash (7 days, restorable). Tags and print log of the removed
+  models are **not** transferred to the kept one. The view shows all models of the catalog and
+  ignores the filters of the catalog view; files that are only on disk are not part of it. Entries
+  whose file is missing are covered by the cleanup suggestions.
 - **Cleanup suggestions** — checks the catalog for missing files and duplicates.
 
 A selected view appears as a filter chip at the top and can be combined with folders, tags and
-search. Clicking the view again or the ✕ on the chip removes it. Printer Manager, Material Manager and trash are
+search (the Duplicates view is the exception: it has its own page without the filter bar; click "Duplicates" in the sidebar again to leave it). Clicking the view again or the ✕ on the chip removes it. Printer Manager, Material Manager and trash are
 still reached via the icons in the left rail.
 
 ## Opening models directly in your slicer
@@ -1513,6 +1552,27 @@ gewählt, bleiben nur Modelle sichtbar, die auf dessen Druckbett passen; Modelle
 Größe bleiben ebenfalls sichtbar. Wie die Passung beurteilt wird, steht unter
 [Druckbett](#druckbett).
 
+**Nach Druckdaten filtern.** Die Filterleiste hat außerdem fünf Knöpfe für Werte, die aus den
+3MF-Dateien gelesen wurden: **Zieldrucker**, **Düse**, **Layerhöhe**, **Druckzeit** und **Farbe**.
+Jeder öffnet eine Liste der Werte, die in deinem Katalog vorkommen, mit der Zahl der Dateien, die
+sie haben, und der Zahl der Dateien ohne diese Angabe; du kannst mehrere ankreuzen. Innerhalb eines
+Knopfs gelten die Auswahlen als Alternativen (einer der gewählten Drucker); verschiedene Knöpfe
+müssen alle zutreffen. Die Druckzeit wählst du in Stufen (unter 1 h, 1–4 h, 4–12 h, ab 12 h; die
+Untergrenze zählt mit, die Obergrenze nicht), gerechnet wird die Summe aller Platten. Bei Farben
+legst du fest, ob ein Modell **eine** der gewählten Farben (ODER) oder **alle** (UND) haben muss. Die
+Layerhöhe ist der Wert der Projekteinstellungen, nicht zwingend die Höhe jedes Objekts.
+
+Filtern lassen sich nur gelesene Dateien. Fehlt einer Datei der Wert eines aktiven Filters (zum
+Beispiel eine Datei ohne Druckdaten, eine STL-Datei oder eine noch nicht gelesene 3MF-Datei), gilt
+sie weder als passend noch als unpassend: Eine Zeile über den Modellen sagt, wie viele solche
+Dateien ausgeblendet sind, und bietet „Einblenden“ an; sie erscheinen dann mit „Angabe fehlt: …“.
+Wurden einige der ausgeblendeten Dateien nie gelesen, sagt die Zeile auch, wie viele, und hat einen
+Knopf „Nachlesen …“, der Einstellungen → Katalog öffnet, wo
+[Druckdaten nachlesen](#druckdaten-nachlesen) steht. Solange ein Druckdaten-Filter aktiv ist,
+zeigen die Karten Zieldrucker, Druckzeit, Layerhöhe, Düse und Farbpunkte sowie einen Zugang zur
+[Plattenübersicht](#plattenübersicht). Ein fehlender Wert wird nie als 0 angezeigt. „Filter
+zurücksetzen“ setzt auch diese Filter zurück.
+
 Unter "Sortieren" wählst du "Name", "Importdatum", "Änderungsdatum", "Dateigröße", "Volumen",
 "Druckstatus" oder "Zuletzt angesehen". Alle lassen sich in beide Richtungen sortieren: etwa
 "Älteste zuerst" oder "Neueste zuerst" für Datumswerte, "A → Z" oder "Z → A" für Namen und
@@ -1856,13 +1916,26 @@ der Datei nicht gefunden“. Das ist kein Fehler. Was die Karte zeigt, hängt vo
   Druckzeit und Temperaturen.
   Das gilt auch für ein PrusaSlicer-Projekt (ohne Slicen gespeichert): die Karte zeigt Druckermodell,
   Layerhöhe und Düse; der Betttyp steht dort nicht und erscheint als Strich. Um solche Dateien
-  nachzulesen, wähle sie aus und nutze „Druckdaten nachlesen“ im Menü „Mehr“ („Alle geslicten
-  Dateien nachlesen“ überspringt sie, weil sie keine Slicer-Ergebnisse enthalten).
+  nachzulesen, nutze „Alle noch nicht gelesenen 3MF-Dateien nachlesen“ in den Einstellungen oder
+  wähle sie aus und nutze „Druckdaten nachlesen“ im Menü „Mehr“.
 - **„Keine Slicer-Druckdaten erkannt.“** — die Datei enthält keine Slicer-Daten, die die App kennt.
 - **„Die Slicer-Daten dieser Datei konnten nicht gelesen werden.“** — die Slicer-Daten sind da,
   aber beschädigt oder nicht lesbar.
 - **„Die Druckdaten dieser Datei wurden noch nicht gelesen.“** — die Datei wurde importiert, bevor
   es diese Karte gab. Nutze [Druckdaten nachlesen](#druckdaten-nachlesen).
+
+### Plattenübersicht
+
+Die **Plattenübersicht** listet jede Platte einer 3MF-Datei mit Name, Zahl der Objekte, Druckzeit
+und Gewicht. Du öffnest sie mit **„Plattenübersicht“** auf der Druckdaten-Karte (Detailseite und
+Detailbereich), im Rechtsklick-Menü eines Modells oder auf einer Karte, solange ein
+Druckdaten-Filter aktiv ist. Sie lässt sich als **Tabelle** oder als **Kacheln** zeigen; „Vorschau
+anzeigen“ blendet das Bild jeder Platte ein. Eine Zeile **Gesamt** addiert die Platten. Hat eine
+Platte keinen Wert, steht in der Zelle ein Strich, nie 0, und eine Summe über unvollständige Platten
+heißt „mind. …“ mit einem Hinweis. Name, Zeit und Gewicht kommen aus dem Katalog; Objektzahl und
+Bilder werden beim Öffnen aus der Datei gelesen. Liegt die Datei nicht mehr an ihrem Platz, bleiben
+diese beiden leer und der Dialog sagt es. Die Objektzahl zählt die Platzierungen auf der Platte;
+Kopien eines Objekts zählen also mehrfach.
 
 ### Druckdaten nachlesen
 
@@ -1870,8 +1943,10 @@ Dateien, die schon im Katalog sind, werden nicht automatisch erneut gelesen. Es 
 die Druckdaten nachzulesen; die Dateien selbst werden dabei nie verändert:
 
 - **Ein Modell:** auf der Detailseite „Metadaten neu einlesen“.
-- **Alle geslicten Dateien:** Einstellungen → Katalog → **„Druckdaten nachlesen“** → **„Alle
-  geslicten Dateien nachlesen“**. Das liest die geslicten Dateien, die noch nicht gelesen wurden.
+- **Alle noch nicht gelesenen 3MF-Dateien:** Einstellungen → Katalog → **„Druckdaten nachlesen“**
+  → **„Alle noch nicht gelesenen 3MF-Dateien nachlesen“**. Das liest jede 3MF-Datei, die noch nicht
+  gelesen wurde, egal mit welchem Slicer sie erstellt wurde; eine Datei ohne Druckdaten liefert
+  trotzdem ihre Projekteinstellungen.
 - **Gewählte Modelle:** wählen und im Menü „Mehr“ der Auswahlleiste **„Druckdaten nachlesen“**
   wählen. Das liest jede gewählte 3MF-Datei erneut, egal in welchem Zustand.
 
@@ -1994,11 +2069,20 @@ Unten in der Seitenleiste bündelt der Bereich **Werkzeuge** mehrere Hilfen, jew
 - **Zuletzt angesehen** — die 20 zuletzt geöffneten Modelle, das neueste zuerst.
 - **Neu hinzugefügt** — alles, was in den letzten 7 Tagen importiert wurde.
 - **Favoriten** — alle Modelle, die du mit dem Herz markiert hast, alphabetisch sortiert.
-- **Duplikate** — Modelle mit identischem Dateiinhalt, als Gruppen nebeneinander.
+- **Duplikate** — Modelle mit identischem Dateiinhalt, als Gruppen. In jeder Gruppe wählst du den
+  Eintrag, der behalten wird (standardmäßig der älteste; „Jeweils den ältesten behalten“ und
+  „Jeweils den neuesten behalten“ stellen alle Gruppen auf einmal ein); genau ein Eintrag bleibt
+  immer erhalten. „Abgewählte entfernen …“ fragt vorher nach und legt die übrigen in den
+  App-Papierkorb (7 Tage, wiederherstellbar). Tags und Druckprotokoll der entfernten Modelle werden
+  **nicht** auf den behaltenen übertragen. Die Ansicht zeigt alle Modelle des Katalogs und ignoriert
+  die Filter der Katalogansicht; Dateien, die nur auf der Festplatte liegen, gehören nicht dazu.
+  Einträge, deren Datei fehlt, deckt „Aufräum-Vorschläge“ ab.
 - **Aufräum-Vorschläge** — prüft den Katalog auf fehlende Dateien und Duplikate.
 
 Eine gewählte Ansicht erscheint oben als Filter-Chip und lässt sich mit Ordnern, Tags und Suche
-kombinieren. Ein zweiter Klick auf die Ansicht oder das ✕ am Chip hebt sie wieder auf.
+kombinieren (die Ansicht „Duplikate“ ist die Ausnahme: sie hat eine eigene Seite ohne Filterleiste;
+ein zweiter Klick auf „Duplikate“ in der Seitenleiste verlässt sie). Ein zweiter
+Klick auf die Ansicht oder das ✕ am Chip hebt sie wieder auf.
 Printer Manager, Material Manager und Papierkorb erreichst du über die Symbole in der linken Leiste.
 
 ## Modelle direkt im Slicer öffnen
