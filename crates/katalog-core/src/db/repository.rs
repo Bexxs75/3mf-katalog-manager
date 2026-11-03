@@ -1147,11 +1147,40 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
         by_id.entry(id).or_default().push(material);
     }
     for row in &mut rows { row.materials = by_id.remove(&row.id).unwrap_or_default(); }
-    // Second small query instead of a JOIN in the main one (same pattern as the materials).
-    let mut states = conn.prepare("SELECT file_id, reader_version, slice_state FROM file_print_info")?;
+    // Third statement (the count stays 3): the print data row with the totals of its plate rows,
+    // joined to one grouping of `file_print_plates`, instead of a statement per row.
+    let mut states = conn.prepare(
+        "SELECT i.file_id, i.reader_version, i.slice_state, i.printer_model, i.layer_height_mm,
+                i.nozzle_mm, i.nozzle_mixed, i.filament_colors,
+                p.plate_count, p.timed_count, p.sum_seconds
+         FROM file_print_info i
+         LEFT JOIN (SELECT file_id, COUNT(*) AS plate_count, COUNT(print_seconds) AS timed_count,
+                           SUM(print_seconds) AS sum_seconds
+                    FROM file_print_plates GROUP BY file_id) p ON p.file_id = i.file_id",
+    )?;
     let mut state_by_id: std::collections::HashMap<i64, PrintInfoSummary> = std::collections::HashMap::new();
     for state in states.query_map([], |row| {
-        Ok((row.get::<_, i64>(0)?, PrintInfoSummary { reader_version: u32::try_from(row.get::<_, i64>(1)?).unwrap_or(0), slice_state: row.get(2)? }))
+        let count = |index: usize| -> rusqlite::Result<u32> { Ok(u32::try_from(row.get::<_, Option<i64>>(index)?.unwrap_or(0)).unwrap_or(0)) };
+        Ok((
+            row.get::<_, i64>(0)?,
+            PrintInfoSummary {
+                reader_version: u32::try_from(row.get::<_, i64>(1)?).unwrap_or(0),
+                slice_state: row.get(2)?,
+                printer_model: row.get(3)?,
+                layer_height_mm: row.get(4)?,
+                nozzle_mm: row.get(5)?,
+                nozzle_mixed: row.get::<_, i64>(6)? != 0,
+                filament_colors: row
+                    .get::<_, Option<String>>(7)?
+                    .and_then(|text| {
+                        crate::threemf::print_info::parse_color_list_text(&text).map(|items| items.into_iter().map(str::to_string).collect())
+                    })
+                    .unwrap_or_default(),
+                plate_count: count(8)?,
+                timed_plate_count: count(9)?,
+                sum_seconds: row.get::<_, Option<i64>>(10)?.and_then(|s| u64::try_from(s).ok()).filter(|s| *s > 0),
+            },
+        ))
     })? {
         let (id, state) = state?;
         state_by_id.insert(id, state);
@@ -1693,6 +1722,35 @@ mod tests {
         assert!(
             executed <= 3,
             "list_file_summaries darf nicht pro Zeile eine zusaetzliche Query ausfuehren (gemessen: {executed} Statements fuer 500 Zeilen - muss unabhaengig von der Zeilenzahl konstant klein bleiben, nicht O(N))"
+        );
+    }
+
+    #[test]
+    fn list_file_summaries_with_print_data_and_plate_rows_still_needs_no_statement_per_row() {
+        use crate::db::print_info_tests::{new_file, plate, record};
+        use crate::threemf::print_info::SliceState;
+
+        let mut conn = connect_in_memory().unwrap();
+        for i in 0..500 {
+            let mut info = record(if i % 2 == 0 { SliceState::Sliced } else { SliceState::NoSliceData }, vec![plate(1), plate(2), plate(3)]);
+            info.filament_colors = vec!["#ff0000".into(), "#00ff00".into()];
+            insert_file(&mut conn, &new_file(&format!("/tmp/printed-{i}.3mf"), FileType::ThreeMf, Some(info))).unwrap();
+        }
+
+        QUERY_TRACE_COUNT.with(|c| c.set(0));
+        conn.trace_v2(
+            rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT,
+            Some(count_traced_query),
+        );
+
+        let summaries = list_file_summaries(&conn).unwrap();
+
+        assert_eq!(summaries.len(), 500);
+        assert!(summaries.iter().all(|s| s.print_info.as_ref().is_some_and(|p| p.plate_count == 3 && p.filament_colors.len() == 2)), "the facts arrive with the list");
+        let executed = QUERY_TRACE_COUNT.with(|c| c.get());
+        assert!(
+            executed <= 3,
+            "list_file_summaries mit Druckdaten darf nicht pro Zeile eine zusaetzliche Query ausfuehren (gemessen: {executed} Statements fuer 500 Zeilen)"
         );
     }
 

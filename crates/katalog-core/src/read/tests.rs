@@ -308,6 +308,7 @@ fn summary_serialization_has_presence_flags_and_no_image_fields() {
         last_viewed_at: None,
         content_hash: None,
         print_data_state: "none".into(),
+        print_facts: None,
     };
     let json = serde_json::to_value(summary).unwrap();
     assert_eq!(json["fileModifiedAt"], "2023-11-14T22:13:20+00:00");
@@ -489,4 +490,169 @@ fn a_row_of_the_first_reader_version_counts_as_unread_so_prusa_projects_can_be_r
         list_file_summaries(&conn).unwrap().into_iter().map(|s| (s.name, s.print_data_state)).collect();
     assert_eq!(states["old.3mf"], "unread");
     assert_eq!(states["current.3mf"], "not_recognized");
+}
+
+// Print facts of the list
+
+const PRINT_FACTS_GOLDEN: &str = include_str!("../../tests/fixtures/print-facts-golden.json");
+
+fn golden_cases() -> Vec<serde_json::Value> {
+    let doc: serde_json::Value = serde_json::from_str(PRINT_FACTS_GOLDEN).expect("the golden file is JSON");
+    doc["cases"].as_array().expect("cases").clone()
+}
+
+/// The catalog record a golden case describes.
+fn golden_record(case: &serde_json::Value) -> crate::db::models::PrintInfoRecord {
+    use crate::db::models::{PrintInfoRecord, PrintPlateRecord};
+    use crate::threemf::print_info::{SettingsState, SliceState};
+    let r = &case["record"];
+    let text = |v: &serde_json::Value| v.as_str().map(str::to_string);
+    PrintInfoRecord {
+        reader_version: r["readerVersion"].as_u64().unwrap() as u32,
+        read_at: "2026-10-31T10:00:00+00:00".to_string(),
+        slice_state: SliceState::parse(r["sliceState"].as_str().unwrap()).unwrap(),
+        settings_state: SettingsState::parse(r["settingsState"].as_str().unwrap()).unwrap(),
+        printer_model: text(&r["printerModel"]),
+        bed_type: text(&r["bedType"]),
+        layer_height_mm: r["layerHeightMm"].as_f64(),
+        nozzle_mm: r["nozzleMm"].as_f64(),
+        nozzle_mixed: r["nozzleMixed"].as_bool().unwrap(),
+        bed_temp_c: None,
+        bed_temp_mixed: false,
+        nozzle_temp_c: None,
+        nozzle_temp_mixed: false,
+        plates: r["plates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| PrintPlateRecord {
+                plate_index: p["plateIndex"].as_i64().unwrap(),
+                plate_name: text(&p["plateName"]),
+                print_seconds: p["printSeconds"].as_i64(),
+                first_layer_seconds: p["firstLayerSeconds"].as_f64(),
+                plate_bed_type: text(&p["plateBedType"]),
+            })
+            .collect(),
+        filament_colors: r["filamentColors"].as_array().unwrap().iter().map(|c| c.as_str().unwrap().to_string()).collect(),
+    }
+}
+
+#[test]
+fn the_golden_file_matches_the_list_facts_and_the_detail_print_info() {
+    let mut conn = crate::db::connect_in_memory().expect("connect");
+    let cases = golden_cases();
+    assert!(cases.len() >= 8, "the golden file holds its cases");
+    let mut ids = Vec::new();
+    for (index, case) in cases.iter().enumerate() {
+        let path = format!("/tmp/golden-{index}.3mf");
+        let file = crate::db::print_info_tests::new_file(&path, FileType::ThreeMf, Some(golden_record(case)));
+        ids.push(crate::db::insert_file(&mut conn, &file).unwrap());
+    }
+    let summaries = list_file_summaries(&conn).unwrap();
+    for (case, id) in cases.iter().zip(&ids) {
+        let name = case["name"].as_str().unwrap();
+        let summary = summaries.iter().find(|s| s.id == id.to_string()).expect("listed");
+        let json = serde_json::to_value(summary).unwrap();
+        let expected = &case["expected"]["printFacts"];
+        if expected.is_null() {
+            assert!(json.get("printFacts").is_none(), "{name}: the block is left out, not null");
+        } else {
+            assert_eq!(&json["printFacts"], expected, "{name}: list facts");
+        }
+        let detail = crate::db::get_file(&conn, *id).unwrap().unwrap().print_info.expect("stored");
+        assert_eq!(serde_json::to_value(PrintInfoDto::from(detail)).unwrap(), case["expected"]["printInfo"], "{name}: detail print info");
+    }
+}
+
+#[test]
+fn print_facts_are_left_out_unless_a_current_row_says_sliced_or_no_slice_data() {
+    use crate::db::print_info_tests::{new_file, plate, record};
+    use crate::threemf::print_info::SliceState;
+
+    let mut conn = crate::db::connect_in_memory().expect("connect");
+    let mut older = record(SliceState::Sliced, vec![plate(1)]);
+    older.reader_version = 2;
+    let rows = [
+        ("sliced.3mf", FileType::ThreeMf, Some(record(SliceState::Sliced, vec![plate(1)]))),
+        ("nodata.3mf", FileType::ThreeMf, Some(record(SliceState::NoSliceData, vec![]))),
+        ("not-recognised.3mf", FileType::ThreeMf, Some(record(SliceState::NotRecognized, vec![]))),
+        ("unreadable.3mf", FileType::ThreeMf, Some(record(SliceState::Unreadable, vec![]))),
+        ("older.3mf", FileType::ThreeMf, Some(older)),
+        ("unread.3mf", FileType::ThreeMf, None),
+        ("model.stl", FileType::Stl, None),
+    ];
+    for (name, file_type, info) in rows {
+        crate::db::insert_file(&mut conn, &new_file(&format!("/tmp/{name}"), file_type, info)).unwrap();
+    }
+    let facts: std::collections::BTreeMap<String, bool> = list_file_summaries(&conn)
+        .unwrap()
+        .into_iter()
+        .map(|s| (s.name, s.print_facts.is_some()))
+        .collect();
+    let expected: std::collections::BTreeMap<String, bool> = [
+        ("sliced.3mf", true), ("nodata.3mf", true), ("not-recognised.3mf", false), ("unreadable.3mf", false),
+        ("older.3mf", false), ("unread.3mf", false), ("model.stl", false),
+    ].into_iter().map(|(n, v)| (n.to_string(), v)).collect();
+    assert_eq!(facts, expected);
+}
+
+#[test]
+fn print_time_sum_is_complete_only_when_every_plate_row_has_a_time() {
+    use crate::db::print_info_tests::{new_file, plate, record};
+    use crate::threemf::print_info::SliceState;
+
+    let mut conn = crate::db::connect_in_memory().expect("connect");
+    let timed = |index: i64, seconds: Option<i64>| {
+        let mut p = plate(index);
+        p.print_seconds = seconds;
+        p
+    };
+    let cases = [
+        ("all.3mf", vec![timed(1, Some(600)), timed(2, Some(900))]),
+        ("some.3mf", vec![timed(1, Some(600)), timed(2, None)]),
+        ("none.3mf", vec![timed(1, None), timed(2, None)]),
+        ("rows-none.3mf", vec![]),
+    ];
+    for (name, plates) in &cases {
+        crate::db::insert_file(&mut conn, &new_file(&format!("/tmp/{name}"), FileType::ThreeMf, Some(record(SliceState::Sliced, plates.clone())))).unwrap();
+    }
+    let facts: std::collections::BTreeMap<String, PrintFactsDto> = list_file_summaries(&conn)
+        .unwrap()
+        .into_iter()
+        .map(|s| (s.name, s.print_facts.expect("facts")))
+        .collect();
+    let seen = |name: &str| (facts[name].plate_count, facts[name].print_seconds, facts[name].print_seconds_complete);
+    assert_eq!(seen("all.3mf"), (2, Some(1500), true));
+    assert_eq!(seen("some.3mf"), (2, Some(600), false), "a partial sum is not a total");
+    assert_eq!(seen("none.3mf"), (2, None, false), "no time at all is unknown, never 0");
+    assert_eq!(seen("rows-none.3mf"), (0, None, false), "no plate rows is not complete");
+}
+
+#[test]
+fn the_list_json_has_camel_case_names_and_leaves_missing_fields_out() {
+    use crate::db::print_info_tests::{new_file, record};
+    use crate::threemf::print_info::SliceState;
+
+    let mut conn = crate::db::connect_in_memory().expect("connect");
+    let mut bare = record(SliceState::NoSliceData, vec![]);
+    bare.printer_model = None;
+    bare.layer_height_mm = None;
+    bare.nozzle_mm = None;
+    crate::db::insert_file(&mut conn, &new_file("/tmp/bare.3mf", FileType::ThreeMf, Some(bare))).unwrap();
+    let mut full = record(SliceState::NoSliceData, vec![]);
+    full.nozzle_mm = None;
+    full.nozzle_mixed = true;
+    full.filament_colors = vec!["#00ff00".into()];
+    crate::db::insert_file(&mut conn, &new_file("/tmp/full.3mf", FileType::ThreeMf, Some(full))).unwrap();
+
+    let by_name: std::collections::BTreeMap<String, serde_json::Value> = list_file_summaries(&conn)
+        .unwrap()
+        .into_iter()
+        .map(|s| (s.name.clone(), serde_json::to_value(s).unwrap()))
+        .collect();
+    assert_eq!(by_name["bare.3mf"]["printFacts"], serde_json::json!({"plateCount": 0}), "every missing value is left out");
+    assert_eq!(
+        by_name["full.3mf"]["printFacts"],
+        serde_json::json!({"printerModel": "Test Printer", "layerHeightMm": 0.2, "nozzleMixed": true, "plateCount": 0, "colors": ["#00ff00"]})
+    );
 }

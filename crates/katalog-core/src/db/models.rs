@@ -213,11 +213,24 @@ impl PrintInfoRecord {
     }
 }
 
-/// What the summary list needs of the print data: just enough to say "unread / state".
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What the summary list needs of the print data: the state plus the few facts the print data
+/// filter works on (one row of `file_print_info` joined with the totals of its plate rows).
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrintInfoSummary {
     pub reader_version: u32,
     pub slice_state: String,
+    pub printer_model: Option<String>,
+    pub layer_height_mm: Option<f64>,
+    /// `None` for a mixed or unknown nozzle.
+    pub nozzle_mm: Option<f64>,
+    pub nozzle_mixed: bool,
+    pub filament_colors: Vec<String>,
+    /// Rows in `file_print_plates`.
+    pub plate_count: u32,
+    /// Plate rows that have a print time.
+    pub timed_plate_count: u32,
+    /// Sum of the known print times; `None` when no plate has one (never 0 as a placeholder).
+    pub sum_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone)]

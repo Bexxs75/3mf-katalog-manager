@@ -75,6 +75,8 @@ pub struct PrintInfoDto {
     pub bed_temp_c: MixedValueDto,
     pub nozzle_temp_c: MixedValueDto,
     pub plates: Vec<PlatePrintInfoDto>,
+    /// Distinct `#rrggbb` colors of the used filaments or extruders; empty = none known.
+    pub filament_colors: Vec<String>,
 }
 impl From<PrintInfoRecord> for PrintInfoDto {
     fn from(record: PrintInfoRecord) -> Self {
@@ -103,6 +105,7 @@ impl From<PrintInfoRecord> for PrintInfoDto {
                     })
                 })
                 .collect(),
+            filament_colors: record.filament_colors,
         }
     }
 }

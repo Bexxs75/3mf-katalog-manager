@@ -1,0 +1,530 @@
+{
+  "comment": "Golden data for the print facts of the file list. SYNTHETIC, all values invented. 'record' is what the catalog stores for a 3MF; 'expected.printInfo' is the PrintInfoDto the detail commands answer, 'expected.printFacts' the printFacts block of list_file_summaries (null = block left out). Rust checks both (read/tests.rs); the frontend derives printFacts from expected.printInfo and must get expected.printFacts. The expected values were derived by a separate script, not by the code under test.",
+  "cases": [
+    {
+      "name": "sliced, every plate has a time, two colors",
+      "record": {
+        "sliceState": "sliced",
+        "printerModel": "Test Printer",
+        "bedType": "Test Plate",
+        "layerHeightMm": 0.2,
+        "nozzleMm": 0.4,
+        "filamentColors": [
+          "#ff0000",
+          "#00ff00"
+        ],
+        "plates": [
+          {
+            "plateIndex": 1,
+            "plateName": "Plate A",
+            "printSeconds": 600,
+            "firstLayerSeconds": 12.5,
+            "plateBedType": "supertack_plate"
+          },
+          {
+            "plateIndex": 2,
+            "plateName": "Plate B",
+            "printSeconds": 900,
+            "firstLayerSeconds": null,
+            "plateBedType": null
+          }
+        ],
+        "readerVersion": 3,
+        "settingsState": "read",
+        "nozzleMixed": false
+      },
+      "expected": {
+        "printInfo": {
+          "sliceState": "sliced",
+          "settingsState": "read",
+          "readerCurrent": true,
+          "readAt": "2026-10-31T10:00:00+00:00",
+          "printerModel": "Test Printer",
+          "bedType": "Test Plate",
+          "layerHeightMm": 0.2,
+          "nozzleMm": {
+            "value": 0.4,
+            "mixed": false
+          },
+          "bedTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "nozzleTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "plates": [
+            {
+              "plateIndex": 1,
+              "name": "Plate A",
+              "printSeconds": 600,
+              "firstLayerSeconds": 12.5,
+              "plateBedType": "supertack_plate"
+            },
+            {
+              "plateIndex": 2,
+              "name": "Plate B",
+              "printSeconds": 900,
+              "firstLayerSeconds": null,
+              "plateBedType": null
+            }
+          ],
+          "filamentColors": [
+            "#ff0000",
+            "#00ff00"
+          ]
+        },
+        "printFacts": {
+          "printerModel": "Test Printer",
+          "layerHeightMm": 0.2,
+          "nozzleMm": 0.4,
+          "plateCount": 2,
+          "printSeconds": 1500,
+          "printSecondsComplete": true,
+          "colors": [
+            "#ff0000",
+            "#00ff00"
+          ]
+        }
+      }
+    },
+    {
+      "name": "sliced, one plate without a time: partial sum, not complete",
+      "record": {
+        "sliceState": "sliced",
+        "printerModel": "Test Printer",
+        "layerHeightMm": 0.16,
+        "nozzleMm": 0.6,
+        "filamentColors": [
+          "#123456"
+        ],
+        "plates": [
+          {
+            "plateIndex": 1,
+            "plateName": null,
+            "printSeconds": 3600,
+            "firstLayerSeconds": null,
+            "plateBedType": null
+          },
+          {
+            "plateIndex": 2,
+            "plateName": null,
+            "printSeconds": null,
+            "firstLayerSeconds": null,
+            "plateBedType": null
+          },
+          {
+            "plateIndex": 3,
+            "plateName": null,
+            "printSeconds": 7200,
+            "firstLayerSeconds": null,
+            "plateBedType": null
+          }
+        ],
+        "readerVersion": 3,
+        "settingsState": "read",
+        "bedType": null,
+        "nozzleMixed": false
+      },
+      "expected": {
+        "printInfo": {
+          "sliceState": "sliced",
+          "settingsState": "read",
+          "readerCurrent": true,
+          "readAt": "2026-10-31T10:00:00+00:00",
+          "printerModel": "Test Printer",
+          "bedType": null,
+          "layerHeightMm": 0.16,
+          "nozzleMm": {
+            "value": 0.6,
+            "mixed": false
+          },
+          "bedTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "nozzleTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "plates": [
+            {
+              "plateIndex": 1,
+              "name": null,
+              "printSeconds": 3600,
+              "firstLayerSeconds": null,
+              "plateBedType": null
+            },
+            {
+              "plateIndex": 2,
+              "name": null,
+              "printSeconds": null,
+              "firstLayerSeconds": null,
+              "plateBedType": null
+            },
+            {
+              "plateIndex": 3,
+              "name": null,
+              "printSeconds": 7200,
+              "firstLayerSeconds": null,
+              "plateBedType": null
+            }
+          ],
+          "filamentColors": [
+            "#123456"
+          ]
+        },
+        "printFacts": {
+          "printerModel": "Test Printer",
+          "layerHeightMm": 0.16,
+          "nozzleMm": 0.6,
+          "plateCount": 3,
+          "printSeconds": 10800,
+          "colors": [
+            "#123456"
+          ]
+        }
+      }
+    },
+    {
+      "name": "project without slice data, four plates, mixed nozzle",
+      "record": {
+        "sliceState": "no_slice_data",
+        "printerModel": "Bambu Lab X1 Carbon",
+        "layerHeightMm": 0.2,
+        "nozzleMixed": true,
+        "filamentColors": [
+          "#2e7d32"
+        ],
+        "plates": [
+          {
+            "plateIndex": 1,
+            "plateName": null,
+            "printSeconds": null,
+            "firstLayerSeconds": 123.5,
+            "plateBedType": null
+          },
+          {
+            "plateIndex": 2,
+            "plateName": null,
+            "printSeconds": null,
+            "firstLayerSeconds": null,
+            "plateBedType": null
+          },
+          {
+            "plateIndex": 3,
+            "plateName": null,
+            "printSeconds": null,
+            "firstLayerSeconds": null,
+            "plateBedType": null
+          },
+          {
+            "plateIndex": 4,
+            "plateName": null,
+            "printSeconds": null,
+            "firstLayerSeconds": 251.0,
+            "plateBedType": null
+          }
+        ],
+        "readerVersion": 3,
+        "settingsState": "read",
+        "bedType": null,
+        "nozzleMm": null
+      },
+      "expected": {
+        "printInfo": {
+          "sliceState": "no_slice_data",
+          "settingsState": "read",
+          "readerCurrent": true,
+          "readAt": "2026-10-31T10:00:00+00:00",
+          "printerModel": "Bambu Lab X1 Carbon",
+          "bedType": null,
+          "layerHeightMm": 0.2,
+          "nozzleMm": {
+            "value": null,
+            "mixed": true
+          },
+          "bedTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "nozzleTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "plates": [
+            {
+              "plateIndex": 1,
+              "name": null,
+              "printSeconds": null,
+              "firstLayerSeconds": 123.5,
+              "plateBedType": null
+            },
+            {
+              "plateIndex": 2,
+              "name": null,
+              "printSeconds": null,
+              "firstLayerSeconds": null,
+              "plateBedType": null
+            },
+            {
+              "plateIndex": 3,
+              "name": null,
+              "printSeconds": null,
+              "firstLayerSeconds": null,
+              "plateBedType": null
+            },
+            {
+              "plateIndex": 4,
+              "name": null,
+              "printSeconds": null,
+              "firstLayerSeconds": 251.0,
+              "plateBedType": null
+            }
+          ],
+          "filamentColors": [
+            "#2e7d32"
+          ]
+        },
+        "printFacts": {
+          "printerModel": "Bambu Lab X1 Carbon",
+          "layerHeightMm": 0.2,
+          "nozzleMixed": true,
+          "plateCount": 4,
+          "colors": [
+            "#2e7d32"
+          ]
+        }
+      }
+    },
+    {
+      "name": "project without slice data and without plates, printer only",
+      "record": {
+        "sliceState": "no_slice_data",
+        "printerModel": "MK4S",
+        "layerHeightMm": 0.15,
+        "nozzleMm": 0.4,
+        "readerVersion": 3,
+        "settingsState": "read",
+        "bedType": null,
+        "nozzleMixed": false,
+        "filamentColors": [],
+        "plates": []
+      },
+      "expected": {
+        "printInfo": {
+          "sliceState": "no_slice_data",
+          "settingsState": "read",
+          "readerCurrent": true,
+          "readAt": "2026-10-31T10:00:00+00:00",
+          "printerModel": "MK4S",
+          "bedType": null,
+          "layerHeightMm": 0.15,
+          "nozzleMm": {
+            "value": 0.4,
+            "mixed": false
+          },
+          "bedTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "nozzleTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "plates": [],
+          "filamentColors": []
+        },
+        "printFacts": {
+          "printerModel": "MK4S",
+          "layerHeightMm": 0.15,
+          "nozzleMm": 0.4,
+          "plateCount": 0
+        }
+      }
+    },
+    {
+      "name": "sliced, nothing but the state: facts exist, every field left out",
+      "record": {
+        "sliceState": "sliced",
+        "settingsState": "missing",
+        "readerVersion": 3,
+        "printerModel": null,
+        "bedType": null,
+        "layerHeightMm": null,
+        "nozzleMm": null,
+        "nozzleMixed": false,
+        "filamentColors": [],
+        "plates": []
+      },
+      "expected": {
+        "printInfo": {
+          "sliceState": "sliced",
+          "settingsState": "missing",
+          "readerCurrent": true,
+          "readAt": "2026-10-31T10:00:00+00:00",
+          "printerModel": null,
+          "bedType": null,
+          "layerHeightMm": null,
+          "nozzleMm": {
+            "value": null,
+            "mixed": false
+          },
+          "bedTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "nozzleTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "plates": [],
+          "filamentColors": []
+        },
+        "printFacts": {
+          "plateCount": 0
+        }
+      }
+    },
+    {
+      "name": "not recognised: no facts",
+      "record": {
+        "sliceState": "not_recognized",
+        "settingsState": "not_attempted",
+        "readerVersion": 3,
+        "printerModel": null,
+        "bedType": null,
+        "layerHeightMm": null,
+        "nozzleMm": null,
+        "nozzleMixed": false,
+        "filamentColors": [],
+        "plates": []
+      },
+      "expected": {
+        "printInfo": {
+          "sliceState": "not_recognized",
+          "settingsState": "not_attempted",
+          "readerCurrent": true,
+          "readAt": "2026-10-31T10:00:00+00:00",
+          "printerModel": null,
+          "bedType": null,
+          "layerHeightMm": null,
+          "nozzleMm": {
+            "value": null,
+            "mixed": false
+          },
+          "bedTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "nozzleTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "plates": [],
+          "filamentColors": []
+        },
+        "printFacts": null
+      }
+    },
+    {
+      "name": "unreadable: no facts",
+      "record": {
+        "sliceState": "unreadable",
+        "settingsState": "unreadable",
+        "readerVersion": 3,
+        "printerModel": null,
+        "bedType": null,
+        "layerHeightMm": null,
+        "nozzleMm": null,
+        "nozzleMixed": false,
+        "filamentColors": [],
+        "plates": []
+      },
+      "expected": {
+        "printInfo": {
+          "sliceState": "unreadable",
+          "settingsState": "unreadable",
+          "readerCurrent": true,
+          "readAt": "2026-10-31T10:00:00+00:00",
+          "printerModel": null,
+          "bedType": null,
+          "layerHeightMm": null,
+          "nozzleMm": {
+            "value": null,
+            "mixed": false
+          },
+          "bedTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "nozzleTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "plates": [],
+          "filamentColors": []
+        },
+        "printFacts": null
+      }
+    },
+    {
+      "name": "row of an earlier reader version: no facts, reader not current",
+      "record": {
+        "sliceState": "sliced",
+        "readerVersion": 2,
+        "printerModel": "Test Printer",
+        "layerHeightMm": 0.2,
+        "nozzleMm": 0.4,
+        "plates": [
+          {
+            "plateIndex": 1,
+            "plateName": null,
+            "printSeconds": 600,
+            "firstLayerSeconds": null,
+            "plateBedType": null
+          }
+        ],
+        "settingsState": "read",
+        "bedType": null,
+        "nozzleMixed": false,
+        "filamentColors": []
+      },
+      "expected": {
+        "printInfo": {
+          "sliceState": "sliced",
+          "settingsState": "read",
+          "readerCurrent": false,
+          "readAt": "2026-10-31T10:00:00+00:00",
+          "printerModel": "Test Printer",
+          "bedType": null,
+          "layerHeightMm": 0.2,
+          "nozzleMm": {
+            "value": 0.4,
+            "mixed": false
+          },
+          "bedTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "nozzleTempC": {
+            "value": null,
+            "mixed": false
+          },
+          "plates": [
+            {
+              "plateIndex": 1,
+              "name": null,
+              "printSeconds": 600,
+              "firstLayerSeconds": null,
+              "plateBedType": null
+            }
+          ],
+          "filamentColors": []
+        },
+        "printFacts": null
+      }
+    }
+  ]
+}

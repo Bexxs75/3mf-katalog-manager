@@ -50,6 +50,37 @@ pub struct FileSummaryDto {
     /// `none` (not a 3MF) | `unread` (3MF without a row, or one a different reader wrote)
     /// | `sliced` | `no_slice_data` | `not_recognized` | `unreadable`.
     pub print_data_state: String,
+    /// The few print facts the filter needs; only for a 3MF whose current-version row says
+    /// `sliced` or `no_slice_data`. Left out otherwise (the client treats that as "not known").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub print_facts: Option<PrintFactsDto>,
+}
+
+/// Print facts of one file for the list. Every field is optional on purpose: a missing value is
+/// left out, never sent as 0.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintFactsDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub printer_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer_height_mm: Option<f64>,
+    /// `None` for a mixed or unknown nozzle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nozzle_mm: Option<f64>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub nozzle_mixed: bool,
+    /// Rows in `file_print_plates`.
+    pub plate_count: u32,
+    /// Sum of the known plate print times.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub print_seconds: Option<u64>,
+    /// True when every plate has a time (then `print_seconds` is the whole print time).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub print_seconds_complete: bool,
+    /// `#rrggbb`
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub colors: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,8 +123,31 @@ fn print_data_state(file_type: db::models::FileType, print_info: Option<&db::mod
     }
 }
 
+/// The print facts of a list row: only for a 3MF whose row the current reader wrote and whose
+/// state is `sliced` or `no_slice_data` (the other states hold no usable values).
+fn print_facts(file_type: db::models::FileType, print_info: Option<&db::models::PrintInfoSummary>) -> Option<PrintFactsDto> {
+    if file_type != db::models::FileType::ThreeMf {
+        return None;
+    }
+    let info = print_info.filter(|i| i.reader_version == threemf::print_info::PRINT_INFO_READER_VERSION)?;
+    if !matches!(info.slice_state.as_str(), "sliced" | "no_slice_data") {
+        return None;
+    }
+    Some(PrintFactsDto {
+        printer_model: info.printer_model.clone(),
+        layer_height_mm: info.layer_height_mm,
+        nozzle_mm: info.nozzle_mm,
+        nozzle_mixed: info.nozzle_mixed,
+        plate_count: info.plate_count,
+        print_seconds: (info.timed_plate_count > 0).then_some(info.sum_seconds).flatten(),
+        print_seconds_complete: info.plate_count > 0 && info.timed_plate_count == info.plate_count,
+        colors: info.filament_colors.clone(),
+    })
+}
+
 pub fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
     let print_data_state = print_data_state(s.file_type, s.print_info.as_ref());
+    let print_facts = print_facts(s.file_type, s.print_info.as_ref());
     let slice_info = s
         .slice_info_json
         .as_deref()
@@ -140,6 +194,7 @@ pub fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
         last_viewed_at: s.last_viewed_at,
         content_hash: s.content_hash,
         print_data_state,
+        print_facts,
     }
 }
 
