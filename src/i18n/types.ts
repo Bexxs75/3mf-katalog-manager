@@ -949,6 +949,8 @@ export interface Translations {
   pfColorBlue: string;
   pfColorBrown: string;
   pfColorViolet: string;
+  pfMissingFor: string;
+  pfAtLeast: string;
   printDurationHoursMinutes: string;
   printDurationHours: string;
   printDurationMinutes: string;

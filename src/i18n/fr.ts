@@ -916,6 +916,8 @@ export const fr: Translations = {
   pfColorBlue: "Bleu",
   pfColorBrown: "Marron",
   pfColorViolet: "Violet/rose",
+  pfMissingFor: "Information manquante : {what}",
+  pfAtLeast: "au moins {value}",
   printDurationHoursMinutes: '{h} h {min} min',
   printDurationHours: '{h} h',
   printDurationMinutes: '{min} min',
