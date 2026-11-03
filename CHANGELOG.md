@@ -32,6 +32,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Import:** Cancelling the file dialog of "Import → Files…" no longer opens an empty import window with 0 items. This happened where the app uses the zenity dialog (the container version, Linux without a desktop portal).
 - **Tag menu:** the menu of an automatic tag ("Remove and do not assign automatically again") no longer closes by itself when it is opened right after the model's tag suggestions have loaded.
 - **Slicers:** Registering a slicer that is already registered (for example the same program chosen again or reached through a link) no longer fails with a database error; the existing entry is kept.
+- **Import:** a folder imported or dragged into the app now appears below its parent folder in the sidebar when that parent is already in the catalog, instead of one level too high. A folder that already exists in the catalog keeps its place.
 
 ## [0.17.0] - 2026-10-28
 
@@ -743,6 +744,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Import:** Bricht man den Dateidialog von „Import → Dateien …“ ab, öffnet sich kein leeres Import-Fenster mit 0 Elementen mehr. Das passierte dort, wo die App den Zenity-Dialog verwendet (Container-Version, Linux ohne Desktop-Portal).
 - **Tag-Menü:** Das Menü eines automatischen Tags („Entfernen und nicht mehr automatisch vergeben“) schließt sich nicht mehr von selbst, wenn es unmittelbar nach dem Laden der Tag-Vorschläge des Modells geöffnet wird.
 - **Slicer:** Das Registrieren eines Slicers, der schon registriert ist (zum Beispiel dasselbe Programm erneut gewählt oder über einen Link erreicht), schlägt nicht mehr mit einem Datenbankfehler fehl; der vorhandene Eintrag bleibt erhalten.
+- **Import:** Ein importierter oder hineingezogener Ordner erscheint in der Seitenleiste jetzt unter seinem Elternordner, wenn dieser schon im Katalog steht, statt eine Ebene zu hoch. Ein Ordner, der schon im Katalog steht, behält seinen Platz.
 
 ## [0.17.0] - 2026-10-28
 

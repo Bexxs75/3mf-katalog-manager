@@ -776,7 +776,17 @@ fn store_transaction_controlled(
             control(&tx, "SAVEPOINT import_file").map_err(database_error)?;
             let stored: Result<ModelFileDto, DbError> = (|| {
                 item.new_file.folder_id = if let Some(folder) = &options.fixed_folder { Some(folder.id) } else { match item.folder_root.as_deref().zip(item.path.parent()) {
-                    Some((root, dir)) => Some(db::ensure_folder_path(&tx, root, dir)?),
+                    Some((root, dir)) => {
+                        // `ensure_folder_path` creates the import root without a parent. A root that
+                        // is new here is hung below its catalogued parent folder, as the archive
+                        // import does; a root that already exists keeps its place in the tree.
+                        let root_is_new = !db::folder_path_exists(&tx, root)?;
+                        let id = db::ensure_folder_path(&tx, root, dir)?;
+                        if root_is_new {
+                            db::attach_folder_to_parent_by_path(&tx, root)?;
+                        }
+                        Some(id)
+                    }
                     None => None,
                 }};
                 let id = db::insert_file_within_tx(&tx, &item.new_file)?;
