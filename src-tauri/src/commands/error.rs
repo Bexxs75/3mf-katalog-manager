@@ -115,6 +115,7 @@ impl From<DbError> for CmdError {
     fn from(e: DbError) -> Self {
         match e {
             DbError::Invalid(msg) => Self::expected(msg),
+            DbError::Coded { code, params } => Self::coded_with(code, params),
             other => Self::from(other.to_string()),
         }
     }
@@ -181,6 +182,23 @@ mod tests {
         }));
         assert_eq!(serde_json::to_string(&CmdError::coded(ErrorCode::FolderNameEmpty)).unwrap(),
             r#"{"message":"folderNameEmpty","expected":true}"#);
+    }
+
+    #[test]
+    fn core_errors_keep_their_code_and_params_through_the_adapters() {
+        use katalog_core::{db::error::DbError as CoreDbError, import::ImportError, read::ReadError, write::WriteError};
+        let read = CmdError::from(ReadError::coded_with(ErrorCode::MoveTooManyFiles, [501, 500]));
+        assert!(read.is(ErrorCode::MoveTooManyFiles, &["501", "500"]));
+        let import = CmdError::from(ImportError::coded_with(ErrorCode::FileNameForbiddenChar, [":"]));
+        assert!(import.is(ErrorCode::FileNameForbiddenChar, &[":"]));
+        assert!(ImportError::from(import).expected);
+        let write = CmdError::from(WriteError::coded_with(ErrorCode::InvalidCatalogId, ["x"]));
+        assert!(write.is(ErrorCode::InvalidCatalogId, &["x"]));
+        let db = CmdError::from(CoreDbError::coded_with(ErrorCode::FolderNotFound, ["y"]));
+        assert!(db.is(ErrorCode::FolderNotFound, &["y"]));
+        // Free text keeps its old shape.
+        assert_eq!(serde_json::to_value(CmdError::from(ReadError::expected("x"))).unwrap(),
+            serde_json::json!({"message": "x", "expected": true}));
     }
 
     #[test]
@@ -255,6 +273,7 @@ impl From<katalog_core::read::ReadError> for CmdError {
         let mut mapped = if error.expected { Self::expected(error.message) }
             else { Self::from(error.message) };
         mapped.code = error.code;
+        mapped.params = error.params;
         mapped
     }
 }
@@ -265,7 +284,7 @@ fn read_error_adapter_preserves_all_wire_fields() {
     use katalog_core::read::ReadError;
     for expected in [false, true] {
         for code in [None, Some(GeometryErrorCode::NotFound), Some(GeometryErrorCode::Unreadable), Some(GeometryErrorCode::TooLarge), Some(GeometryErrorCode::Unsupported)] {
-            let error = ReadError { message: "unverändert".into(), expected, code, busy: true };
+            let error = ReadError { message: "unverändert".into(), expected, code, busy: true, params: Vec::new() };
             let original = serde_json::to_value(&error).unwrap();
             assert_eq!(serde_json::to_value(CmdError::from(error)).unwrap(), original);
         }
@@ -276,6 +295,7 @@ impl From<katalog_core::write::WriteError> for CmdError {
     fn from(error: katalog_core::write::WriteError) -> Self {
         match error {
             katalog_core::write::WriteError::Invalid { message } => Self::expected(message),
+            katalog_core::write::WriteError::Coded { code, params, .. } => Self::coded_with(code, params),
             other => other.to_string().into(),
         }
     }
@@ -306,9 +326,10 @@ impl From<katalog_core::import::ImportError> for CmdError {
     fn from(error: katalog_core::import::ImportError) -> Self {
         let mut mapped = if error.expected { Self::expected(error.message) } else { Self::from(error.message) };
         mapped.code = error.code;
+        mapped.params = error.params;
         mapped
     }
 }
 impl From<CmdError> for katalog_core::import::ImportError {
-    fn from(error: CmdError) -> Self { Self { message: error.message, expected: error.expected, code: error.code } }
+    fn from(error: CmdError) -> Self { Self { message: error.message, expected: error.expected, code: error.code, params: error.params } }
 }

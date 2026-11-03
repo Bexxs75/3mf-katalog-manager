@@ -4,7 +4,7 @@ mod error;
 pub mod web;
 use crate::read::{print_log_entry_to_dto, CollectionDto, PrintLogEntryDto};
 use crate::{db, tagging};
-pub use error::WriteError;
+pub use error::{CodedKind, WriteError};
 pub use rusqlite::Connection;
 pub type WriteResult<T> = Result<T, WriteError>;
 pub const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024;
