@@ -849,8 +849,8 @@ fn write_print_info(conn: &Connection, file_id: i64, record: &PrintInfoRecord, r
         "INSERT INTO file_print_info (
             file_id, reader_version, read_at, slice_state, settings_state, printer_model,
             bed_type, layer_height_mm, nozzle_mm, nozzle_mixed, bed_temp_c, bed_temp_mixed,
-            nozzle_temp_c, nozzle_temp_mixed
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            nozzle_temp_c, nozzle_temp_mixed, filament_colors
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             file_id,
             record.reader_version,
@@ -866,6 +866,8 @@ fn write_print_info(conn: &Connection, file_id: i64, record: &PrintInfoRecord, r
             record.bed_temp_mixed,
             record.nozzle_temp_c,
             record.nozzle_temp_mixed,
+            // No colors is NULL, never an empty text.
+            (!record.filament_colors.is_empty()).then(|| record.filament_colors.join(" ")),
         ],
     )?;
     for plate in &record.plates {
@@ -900,7 +902,7 @@ fn load_print_info(conn: &Connection, file_id: i64) -> Result<Option<PrintInfoRe
         .query_row(
             "SELECT reader_version, read_at, slice_state, settings_state, printer_model, bed_type,
                     layer_height_mm, nozzle_mm, nozzle_mixed, bed_temp_c, bed_temp_mixed,
-                    nozzle_temp_c, nozzle_temp_mixed
+                    nozzle_temp_c, nozzle_temp_mixed, filament_colors
              FROM file_print_info WHERE file_id = ?1",
             params![file_id],
             |row| {
@@ -924,6 +926,14 @@ fn load_print_info(conn: &Connection, file_id: i64) -> Result<Option<PrintInfoRe
                         nozzle_temp_c: row.get(11)?,
                         nozzle_temp_mixed: row.get::<_, i64>(12)? != 0,
                         plates: Vec::new(),
+                        // The restore check keeps this text well-formed; any other text reads as "no colors".
+                        filament_colors: row
+                            .get::<_, Option<String>>(13)?
+                            .and_then(|text| {
+                                crate::threemf::print_info::parse_color_list_text(&text)
+                                    .map(|items| items.into_iter().map(str::to_string).collect())
+                            })
+                            .unwrap_or_default(),
                     },
                 ))
             },

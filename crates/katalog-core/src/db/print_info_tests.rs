@@ -82,6 +82,7 @@ pub(crate) fn record(slice_state: SliceState, plates: Vec<PrintPlateRecord>) -> 
         nozzle_temp_c: None,
         nozzle_temp_mixed: false,
         plates,
+        filament_colors: Vec::new(),
     }
 }
 
@@ -334,4 +335,44 @@ fn a_failing_rescan_write_keeps_the_old_print_data() {
     assert_eq!(after.file_size_bytes, 2048);
     assert_eq!(after.print_info.as_ref(), Some(&before), "old rows survive, never half replaced");
     assert_eq!(count(&conn, "file_print_plates", id), 2);
+}
+
+#[test]
+fn validated_cleans_the_filament_colors_into_the_canonical_form() {
+    let mut raw = record(SliceState::Sliced, vec![plate(1)]);
+    raw.filament_colors = ["#FF0000", "#ff0000", "#00AA00", "red", "#12", "#00aa0080", "#0000ff", ""].map(String::from).to_vec();
+    let clean = raw.validated();
+    assert_eq!(clean.filament_colors, vec!["#ff0000", "#00aa00", "#0000ff"], "case folded, duplicates and unusable entries dropped");
+    assert_eq!(clean.clone().validated(), clean, "idempotent");
+
+    let mut many = record(SliceState::Sliced, Vec::new());
+    many.filament_colors = (0..40).map(|i| format!("#0000{i:02x}")).collect();
+    assert_eq!(many.validated().filament_colors.len(), crate::threemf::print_info::MAX_FILAMENT_COLORS);
+}
+
+#[test]
+fn filament_colors_are_stored_as_one_text_and_no_colors_as_null() {
+    let mut conn = connect_in_memory().unwrap();
+    let mut with = record(SliceState::Sliced, vec![plate(1)]);
+    with.filament_colors = vec!["#ff0000".into(), "#00ff00".into()];
+    let with_id = insert_file(&mut conn, &new_file("/tmp/with.3mf", FileType::ThreeMf, Some(with.clone()))).unwrap();
+    let without_id = insert_file(&mut conn, &new_file("/tmp/without.3mf", FileType::ThreeMf, Some(record(SliceState::Sliced, Vec::new())))).unwrap();
+
+    fn stored(conn: &rusqlite::Connection, id: i64) -> Option<String> {
+        conn.query_row("SELECT filament_colors FROM file_print_info WHERE file_id = ?1", params![id], |r| r.get(0)).unwrap()
+    }
+    assert_eq!(stored(&conn, with_id).as_deref(), Some("#ff0000 #00ff00"));
+    assert_eq!(stored(&conn, without_id), None, "no colors is NULL, never an empty text");
+    assert_eq!(get_file(&conn, with_id).unwrap().unwrap().print_info.unwrap().filament_colors, with.filament_colors);
+    assert!(get_file(&conn, without_id).unwrap().unwrap().print_info.unwrap().filament_colors.is_empty());
+
+    // A text that is not a color list (older or foreign data) reads as "no colors", never as garbage.
+    conn.execute("UPDATE file_print_info SET filament_colors = 'red  blue' WHERE file_id = ?1", params![with_id]).unwrap();
+    assert!(get_file(&conn, with_id).unwrap().unwrap().print_info.unwrap().filament_colors.is_empty());
+
+    // A rescan replaces the colors together with the other rows.
+    let mut newer = record(SliceState::Sliced, vec![plate(1)]);
+    newer.filament_colors = vec!["#123456".into()];
+    update_scanned_metadata(&mut conn, with_id, &update_with(Some(newer))).unwrap();
+    assert_eq!(stored(&conn, with_id).as_deref(), Some("#123456"));
 }

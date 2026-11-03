@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::threemf::print_info::{
     PrintInfo, Reduced, SettingsState, SliceState, MAX_LAYER_HEIGHT_MM, MAX_NOZZLE_MM, MAX_PLATES, MAX_SECONDS,
-    MAX_TEMP_C, MIN_LAYER_HEIGHT_MM, MIN_NOZZLE_MM, MIN_SECONDS, MIN_TEMP_C, PRINT_INFO_READER_VERSION,
+    MAX_TEMP_C, MAX_FILAMENT_COLORS, MIN_LAYER_HEIGHT_MM, MIN_NOZZLE_MM, MIN_SECONDS, MIN_TEMP_C,
+    PRINT_INFO_READER_VERSION,
 };
 use crate::threemf::source::sanitize_source_value;
 
@@ -82,6 +83,8 @@ pub struct PrintInfoRecord {
     pub nozzle_temp_c: Option<f64>,
     pub nozzle_temp_mixed: bool,
     pub plates: Vec<PrintPlateRecord>,
+    /// Distinct `#rrggbb` colors (stored as one space separated text); empty = none known.
+    pub filament_colors: Vec<String>,
 }
 
 fn in_range(value: Option<f64>, min: f64, max: f64) -> Option<f64> {
@@ -127,6 +130,7 @@ impl PrintInfoRecord {
                     plate_bed_type: p.plate_bed_type.clone(),
                 })
                 .collect(),
+            filament_colors: info.filament_colors.clone(),
         }
         .validated()
     }
@@ -184,6 +188,17 @@ impl PrintInfoRecord {
             kept.push(plate);
         }
         self.plates = kept;
+
+        // Same canonical form the reader produces: usable `#rrggbb`, distinct, at most 32.
+        let mut colors: Vec<String> = Vec::with_capacity(self.filament_colors.len().min(MAX_FILAMENT_COLORS));
+        for color in std::mem::take(&mut self.filament_colors) {
+            let usable = color.len() == 7 && color.starts_with('#') && color[1..].bytes().all(|b| b.is_ascii_hexdigit());
+            let color = color.to_ascii_lowercase();
+            if usable && !colors.contains(&color) && colors.len() < MAX_FILAMENT_COLORS {
+                colors.push(color);
+            }
+        }
+        self.filament_colors = colors;
         self
     }
 
@@ -194,6 +209,7 @@ impl PrintInfoRecord {
             + text(&self.bed_type)
             + self.read_at.len()
             + self.plates.iter().map(|p| 64 + text(&p.plate_name) + text(&p.plate_bed_type)).sum::<usize>()
+            + self.filament_colors.len() * 8
     }
 }
 

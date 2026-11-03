@@ -434,6 +434,8 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("file_print_info", "bed_temp_mixed", ColType::Integer, false),
     ("file_print_info", "nozzle_temp_c", ColType::Real, true),
     ("file_print_info", "nozzle_temp_mixed", ColType::Integer, false),
+    // Not in REQUIRED_COLUMNS on purpose: an older backup gets the column from the migration that runs first.
+    ("file_print_info", "filament_colors", ColType::Text, true),
     ("file_print_plates", "file_id", ColType::Integer, false),
     ("file_print_plates", "plate_index", ColType::Integer, false),
     ("file_print_plates", "plate_name", ColType::Text, true),
@@ -762,6 +764,23 @@ fn validate_print_info_rows(conn: &Connection) -> Result<(), String> {
         }
     }
     drop(info);
+
+    // Filament colors: one text of `#rrggbb` entries separated by single spaces, at most 32
+    // (lowercase, no alpha, no empty text); NULL when none are known.
+    let mut colors = conn
+        .prepare("SELECT filament_colors FROM file_print_info WHERE filament_colors IS NOT NULL")
+        .map_err(|e| e.to_string())?;
+    let rows = colors.query_map([], |row| row.get::<_, rusqlite::types::Value>(0)).map_err(|e| e.to_string())?;
+    for row in rows {
+        let valid = match row.map_err(|e| e.to_string())? {
+            rusqlite::types::Value::Text(text) => crate::threemf::print_info::parse_color_list_text(&text).is_some(),
+            _ => false,
+        };
+        if !valid {
+            return Err(reject("Filamentfarben"));
+        }
+    }
+    drop(colors);
     let mut plate_texts = conn
         .prepare("SELECT plate_name, plate_bed_type FROM file_print_plates")
         .map_err(|e| e.to_string())?;
@@ -2597,6 +2616,7 @@ mod tests {
                     plate_bed_type: Some("supertack_plate".to_string()),
                 })
                 .collect(),
+            filament_colors: vec!["#ff0000".to_string(), "#00ff00".to_string()],
         }
         .validated()
     }
@@ -2643,7 +2663,7 @@ mod tests {
             let file = sample_new_file_for_rescan_test(&dir.join("old.3mf"));
             db::insert_file(&mut conn, &file).unwrap();
             conn.execute_batch("DROP TABLE file_print_plates; DROP TABLE file_print_info").unwrap();
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 2).unwrap();
         }
         let zip_path = dir.join("old-backup.zip");
         write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
@@ -2664,6 +2684,38 @@ mod tests {
         assert_eq!(db::list_files(&conn).unwrap().len(), 1, "the file itself is kept");
     }
 
+    #[test]
+    fn a_backup_from_version_53_without_the_color_column_can_be_restored() {
+        use crate::threemf::print_info::SliceState;
+        let (old, dir) = state_with_catalog("backup_filament_colors_old_a");
+        let (id, mut record);
+        {
+            let mut conn = old.db.lock().unwrap();
+            record = print_record(SliceState::Sliced, &[1, 2]);
+            record.filament_colors.clear();
+            id = db::insert_file(&mut conn, &file_with_print_data(&dir.join("v53.3mf"), record.clone())).unwrap();
+            conn.execute_batch("ALTER TABLE file_print_info DROP COLUMN filament_colors").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+        }
+        let zip_path = dir.join("v53-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("v53-probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT filament_colors FROM file_print_info").is_err(), "precondition: the backup has no color column");
+
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("a version 53 backup must validate");
+        let incoming = dir.join("v53-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_filament_colors_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        let restored = db::get_file(&conn, id).unwrap().unwrap().print_info.expect("print data restored");
+        assert_eq!(restored, record, "the row is kept, its colors are unknown");
+        assert!(conn.prepare("SELECT filament_colors FROM file_print_info").is_ok(), "the migration added the column");
+    }
+
     /// A backup whose print data tables carry no primary key, foreign key, NOT NULL or CHECK
     /// (as a crafted file can), with one valid 3MF file (id 1) and one STL file (id 2); `setup`
     /// adds the rows under test.
@@ -2678,7 +2730,8 @@ mod tests {
                      CREATE TABLE file_print_info (
                         file_id INTEGER, reader_version INTEGER, read_at TEXT, slice_state TEXT, settings_state TEXT,
                         printer_model TEXT, bed_type TEXT, layer_height_mm REAL, nozzle_mm REAL, nozzle_mixed INTEGER,
-                        bed_temp_c REAL, bed_temp_mixed INTEGER, nozzle_temp_c REAL, nozzle_temp_mixed INTEGER);
+                        bed_temp_c REAL, bed_temp_mixed INTEGER, nozzle_temp_c REAL, nozzle_temp_mixed INTEGER,
+                        filament_colors TEXT);
                      CREATE TABLE file_print_plates (
                         file_id INTEGER, plate_index INTEGER, plate_name TEXT, print_seconds INTEGER,
                         first_layer_seconds REAL, plate_bed_type TEXT);",
@@ -2744,7 +2797,7 @@ mod tests {
     #[test]
     fn a_backup_with_valid_print_data_but_no_constraints_is_accepted() {
         let (explicit, restore) = print_data_case(|conn| {
-            info_row(conn, 1, &[("printer_model", "'X1'"), ("layer_height_mm", "0.2"), ("nozzle_temp_c", "210"), ("bed_temp_c", "60"), ("nozzle_mixed", "1")]);
+            info_row(conn, 1, &[("printer_model", "'X1'"), ("layer_height_mm", "0.2"), ("nozzle_temp_c", "210"), ("bed_temp_c", "60"), ("nozzle_mixed", "1"), ("filament_colors", "'#ff0000 #00ff00'")]);
             plate_row(conn, 1, "1", &[("print_seconds", "600"), ("first_layer_seconds", "12.5"), ("plate_name", "'A'")]);
             plate_row(conn, 1, "2", &[]);
         });
@@ -2791,6 +2844,17 @@ mod tests {
             ("plate name with a control character", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("plate_name", "'a' || char(10)")]) })),
             ("plate bed type with 10000 characters", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("plate_bed_type", "printf('%.*c', 10000, 'a')")]) })),
             ("read time that is no date", Box::new(|c| info_row(c, 1, &[("read_at", "'garbage'")]))),
+            ("filament colors stored as a blob", Box::new(|c| info_row(c, 1, &[("filament_colors", "x'23666630303030'")]))),
+            ("filament colors that are only a number", Box::new(|c| info_row(c, 1, &[("filament_colors", "5")]))),
+            ("filament colors with 300 characters", Box::new(|c| info_row(c, 1, &[("filament_colors", "printf('%.*c', 300, 'a')")]))),
+            ("filament colors that are no color", Box::new(|c| info_row(c, 1, &[("filament_colors", "'red'")]))),
+            ("filament colors with an empty text", Box::new(|c| info_row(c, 1, &[("filament_colors", "''")]))),
+            ("33 filament colors", Box::new(|c| info_row(c, 1, &[("filament_colors", "trim(replace(printf('%.*c', 33, 'x'), 'x', '#aaaaaa '))")]))),
+            ("filament colors with a comma", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#aaaaaa,#bbbbbb'")]))),
+            ("filament colors with a double space", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#aaaaaa  #bbbbbb'")]))),
+            ("filament colors with a trailing space", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#aaaaaa '")]))),
+            ("filament colors with alpha", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#aaaaaaff'")]))),
+            ("filament colors in capitals", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#AAAAAA'")]))),
         ];
         for (label, setup) in &cases {
             // The restore refuses the backup, and it is the explicit check that does it

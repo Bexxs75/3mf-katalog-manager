@@ -261,7 +261,9 @@ CREATE TABLE IF NOT EXISTS file_print_info (
     bed_temp_c REAL CHECK (bed_temp_c IS NULL OR bed_temp_c > 0),
     bed_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (bed_temp_mixed IN (0, 1)),
     nozzle_temp_c REAL CHECK (nozzle_temp_c IS NULL OR nozzle_temp_c > 0),
-    nozzle_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (nozzle_temp_mixed IN (0, 1))
+    nozzle_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (nozzle_temp_mixed IN (0, 1)),
+    -- Distinct filament colors, `#rrggbb` separated by single spaces (at most 32); NULL = none known.
+    filament_colors TEXT
 );
 
 -- One row per plate of such a file.

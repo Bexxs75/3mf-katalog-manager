@@ -268,6 +268,17 @@ pub fn read_print_info_with<R: Read + Seek>(
     (info, bytes_read)
 }
 
+/// The stored form of a color list (`file_print_info.filament_colors`): `#rrggbb` (lowercase,
+/// no alpha) separated by single spaces, at most [`MAX_FILAMENT_COLORS`] entries. `None` for any
+/// other text (empty, wrong separator, alpha, uppercase, too many).
+pub fn parse_color_list_text(text: &str) -> Option<Vec<&str>> {
+    let items: Vec<&str> = text.split(' ').collect();
+    let valid = |item: &&str| {
+        item.len() == 7 && item.starts_with('#') && item[1..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    };
+    (items.len() <= MAX_FILAMENT_COLORS && items.iter().all(valid)).then_some(items)
+}
+
 /// Keeps the first [`MAX_FILAMENT_COLORS`] distinct, usable colors as `#rrggbb`.
 fn collect_colors<'a>(raw: impl Iterator<Item = &'a str>) -> Vec<String> {
     let mut colors: Vec<String> = Vec::new();

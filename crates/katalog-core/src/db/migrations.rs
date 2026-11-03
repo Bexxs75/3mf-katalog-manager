@@ -145,6 +145,8 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(add_folder_trash_origin_table),
     // Print data read from the slicer files of a 3MF. New tables only, no existing data is touched.
     MigrationStep::Simple(add_print_info_tables),
+    // Filament colors of a 3MF (space separated `#rrggbb`); NULL = none known. New nullable column only.
+    MigrationStep::Simple(add_print_info_filament_colors),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -195,6 +197,11 @@ pub const BLOCKED_AUTO_TAGS_MIGRATION_VERSION: i64 = 51;
 #[cfg(test)]
 pub(crate) const FOLDER_TRASH_ORIGIN_MIGRATION_VERSION: i64 = 52;
 
+/// Schema version after the print data tables. Must stay 53 for the same reason as the
+/// versions above: it is what catalogs of builds between the tables and the colors contain.
+#[cfg(test)]
+pub(crate) const PRINT_INFO_TABLES_MIGRATION_VERSION: i64 = 53;
+
 /// New tables only (a row per read 3MF and a row per plate); `IF NOT EXISTS` so a catalog
 /// that already got them from the base schema is left alone. `files` is not touched on purpose:
 /// other tools read it with fixed column lists.
@@ -226,6 +233,13 @@ fn add_print_info_tables(conn: &Connection) -> Result<(), DbError> {
         plate_bed_type TEXT,
         PRIMARY KEY (file_id, plate_index)
     )")
+}
+
+/// New nullable column only, so every stored row keeps its values. Rows written by an earlier
+/// reader version count as unread anyway until they are read again. A catalog that already got
+/// the column from the base schema is left alone (`exec` tolerates the duplicate column).
+fn add_print_info_filament_colors(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "ALTER TABLE file_print_info ADD COLUMN filament_colors TEXT")
 }
 
 /// New table only; `IF NOT EXISTS` so a catalog that already got it from the base schema is left alone.
@@ -891,7 +905,7 @@ mod tests {
         }
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, FOLDER_TRASH_ORIGIN_MIGRATION_VERSION + 1, "the print tables are the step after");
+        assert_eq!(PRINT_INFO_TABLES_MIGRATION_VERSION, FOLDER_TRASH_ORIGIN_MIGRATION_VERSION + 1, "the print tables are the step after");
     }
 
     #[test]
@@ -1092,6 +1106,61 @@ mod tests {
         fresh.prepare("SELECT color_hexes FROM filament_spools").unwrap();
         add_spool_color_list(&fresh).unwrap();
         add_spool_color_list(&fresh).unwrap();
+    }
+
+    /// A catalog at version 53: print data tables without the color column, one stored row.
+    fn catalog_before_filament_colors() -> (Connection, i64) {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("ALTER TABLE file_print_info DROP COLUMN filament_colors").unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/a.3mf", None).unwrap();
+        conn.execute(
+            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state, printer_model, layer_height_mm)
+             VALUES (?1, 2, '2026-10-31T10:00:00+00:00', 'sliced', 'read', 'Bambu Lab X1 Carbon', 0.2)",
+            [id],
+        ).unwrap();
+        conn.pragma_update(None, "user_version", PRINT_INFO_TABLES_MIGRATION_VERSION).unwrap();
+        (conn, id)
+    }
+
+    #[test]
+    fn the_filament_colors_step_adds_a_nullable_column_and_keeps_every_row_unchanged() {
+        let (mut conn, id) = catalog_before_filament_colors();
+        assert!(conn.prepare("SELECT filament_colors FROM file_print_info").is_err(), "precondition: no column yet");
+        let before = catalog_snapshot(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(catalog_snapshot(&conn), before, "files, tags, file_tags and materials stay as they were");
+        let (model, layer, version, colors): (String, f64, i64, Option<String>) = conn
+            .query_row(
+                "SELECT printer_model, layer_height_mm, reader_version, filament_colors FROM file_print_info WHERE file_id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!((model.as_str(), layer, version, colors), ("Bambu Lab X1 Carbon", 0.2, 2, None), "old rows keep their values, colors unknown");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(CURRENT_SCHEMA_VERSION, PRINT_INFO_TABLES_MIGRATION_VERSION + 1, "the color column is the step after the print tables");
+    }
+
+    #[test]
+    fn the_filament_colors_step_is_repeatable_and_part_of_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        fresh.prepare("SELECT filament_colors FROM file_print_info").unwrap();
+        let id = crate::db::test_insert_minimal_file(&fresh, "/a.3mf", None).unwrap();
+        fresh.execute(
+            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state, filament_colors)
+             VALUES (?1, 3, 'n', 'sliced', 'read', '#ff0000 #00ff00')",
+            [id],
+        ).unwrap();
+        add_print_info_filament_colors(&fresh).unwrap();
+        add_print_info_filament_colors(&fresh).unwrap();
+        let colors: String = fresh.query_row("SELECT filament_colors FROM file_print_info", [], |r| r.get(0)).unwrap();
+        assert_eq!(colors, "#ff0000 #00ff00", "repeating the step keeps the value");
     }
 
     #[test]
@@ -1415,7 +1484,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 14);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 15);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.
