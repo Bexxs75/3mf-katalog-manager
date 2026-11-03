@@ -97,6 +97,16 @@ describe('settings block', () => {
     expect(screen.queryByRole('progressbar')).toBeNull();
   });
 
+  it('reads every unread 3MF, also one without a slicer weight, and leaves the read ones alone', async () => {
+    const reads = pendingReads();
+    render(<Harness initial={[model('a'), model('b', { weightSource: 'estimated' }), model('c', { printDataState: 'sliced' })]} />);
+    fireEvent.click(startButton());
+    expect(await screen.findByText('Datei 1 von 2')).toBeInTheDocument();
+    await reads.finishNext(); await reads.finishNext();
+    expect(await screen.findByText('2 Dateien gelesen.')).toBeInTheDocument();
+    expect(rescan.mock.calls.map(call => call[0])).toEqual(['a', 'b']);
+  });
+
   it('puts the focus back on the start button after the end, with a status text', async () => {
     const reads = pendingReads();
     render(<Harness initial={files(1)} />);

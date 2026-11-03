@@ -204,20 +204,20 @@ describe('rereadTargets', () => {
     model('fullRecord', { printDataState: undefined, summaryOnly: undefined, printInfo: null }),
   ];
 
-  it('all: only sliced files (slicer weight) whose print data are unread', () => {
-    expect(rereadTargets(models, 'all')).toEqual(['slicedUnread', 'fullRecord']);
+  it('all: every 3MF whose print data are unread, whatever its weight source', () => {
+    expect(rereadTargets(models, 'all')).toEqual(['slicedUnread', 'sourceModel', 'fullRecord']);
   });
 
   it('selected: only the chosen 3MF files, whatever their state', () => {
     expect(rereadTargets(models, 'selected', new Set(['slicedRead', 'sourceModel', 'stl', 'ghost']))).toEqual(['slicedRead', 'sourceModel']);
   });
 
-  it('a PrusaSlicer project without slice data is not read by "all sliced" but by "selected"', () => {
+  it('a PrusaSlicer project without slice data is read by "all" while unread, and by "selected" in any state', () => {
     // No slicer weight (nothing sliced), print data stored by an older reader version: shown as unread.
     const prusa = model('prusa', { weightSource: 'estimated', printDataState: 'unread' });
     const prusaDone = model('prusaDone', { weightSource: 'estimated', printDataState: 'no_slice_data' });
     const list = [prusa, prusaDone, model('slicedUnread')];
-    expect(rereadTargets(list, 'all')).toEqual(['slicedUnread']);
+    expect(rereadTargets(list, 'all')).toEqual(['prusa', 'slicedUnread']);
     expect(rereadTargets(list, 'selected', new Set(['prusa', 'prusaDone']))).toEqual(['prusa', 'prusaDone']);
   });
 

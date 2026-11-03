@@ -189,19 +189,20 @@ export function printFactsOf(model: Pick<ModelFile, 'printInfo' | 'printFacts'>)
 }
 
 /**
- * The files a bulk read visits. `all`: sliced files (slicer weight) whose print data are not
- * read yet or were read by another reader version. `selected`: the chosen 3MF files, whatever
- * their state (a non-3MF has nothing to read).
+ * The files a bulk read visits. `all`: every 3MF whose print data are not read yet or were read by
+ * another reader version (any slicer, with or without a slicer weight: a file without print data
+ * still gives its project settings). `selected`: the chosen 3MF files, whatever their state (a
+ * non-3MF has nothing to read).
  */
 export function rereadTargets(
-  models: readonly Pick<ModelFile, 'id' | 'path' | 'weightSource' | 'deletedAt' | 'printDataState' | 'printInfo'>[],
+  models: readonly Pick<ModelFile, 'id' | 'path' | 'deletedAt' | 'printDataState' | 'printInfo'>[],
   scope: 'all' | 'selected',
   selectedIds: ReadonlySet<string> = new Set(),
 ): string[] {
   return models.filter(model => {
     if (model.deletedAt !== null) return false;
     const state = printDataStateOf(model);
-    if (scope === 'all') return model.weightSource === 'slicer' && state === 'unread';
+    if (scope === 'all') return state === 'unread';
     return selectedIds.has(model.id) && state !== 'none';
   }).map(model => model.id);
 }

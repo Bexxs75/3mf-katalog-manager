@@ -7,7 +7,7 @@ import { printDataStateOf, printFactsOf, rereadTargets, summarizePrintData } fro
 import type { ModelFile } from '../types';
 import { invalidateModelImages } from './useModelImages';
 
-/** Where the run was started: the settings block (all sliced files) or the selection bar (chosen files). */
+/** Where the run was started: the settings block (all unread 3MF files) or the selection bar (chosen files). */
 export type RereadOrigin = 'settings' | 'selection';
 
 /**
