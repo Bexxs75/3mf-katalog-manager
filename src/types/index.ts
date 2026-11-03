@@ -76,6 +76,19 @@ export interface PrintFacts {
   colors?: string[];
 }
 
+/** One plate of `read_plate_overview`. A left-out field means "not given", never 0. */
+export interface PlateOverviewRow {
+  plateIndex: number;
+  /** Number of `<model_instance>` of the plate. */
+  objectCount?: number;
+  /** `data:image/png;base64,...`, only when previews were asked for and the picture passed the checks. */
+  preview?: string;
+}
+
+export interface PlateOverview {
+  plates: PlateOverviewRow[];
+}
+
 /** `none` = not a 3MF; `unread` = 3MF without a row or with a row of another reader version. */
 export type PrintDataState = 'none' | 'unread' | PrintSliceState;
 

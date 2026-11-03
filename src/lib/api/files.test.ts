@@ -101,6 +101,11 @@ describe('files api', () => {
     await filesApi.setSourceUrl('m1', 'https://example.com');
     expect(invoke).toHaveBeenCalledWith('set_source_url', { fileId: 'm1', url: 'https://example.com' });
   });
+  it('readPlateOverview', async () => {
+    vi.mocked(invoke).mockResolvedValue({ plates: [] });
+    await filesApi.readPlateOverview('m1', true);
+    expect(invoke).toHaveBeenCalledWith('read_plate_overview', { fileId: 'm1', withPreviews: true });
+  });
   it('rescanFileMetadata', async () => {
     vi.mocked(invoke).mockResolvedValue({ id: 'm1' });
     await filesApi.rescanFileMetadata('m1');

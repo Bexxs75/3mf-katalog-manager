@@ -1,5 +1,5 @@
 import { invoke } from '../transport';
-import type { ModelFile, ModelFileSummary, ModelImages } from '../../types';
+import type { ModelFile, ModelFileSummary, ModelImages, PlateOverview } from '../../types';
 
 // Slim catalog overview, see ModelFileSummary.
 export function listFileSummaries() {
@@ -15,6 +15,10 @@ export function listAllFileTags() {
 // Load full model data; the detail page calls this with [id].
 export function listFilesByIds(ids: string[]) {
   return invoke<ModelFile[]>('list_files_by_ids', { ids });
+}
+// Objects and preview pictures per plate, read from the file on demand (the plate overview dialog).
+export function readPlateOverview(fileId: string, withPreviews: boolean) {
+  return invoke<PlateOverview>('read_plate_overview', { fileId, withPreviews });
 }
 export function listTrash() {
   return invoke<ModelFile[]>('list_trash');
