@@ -1,4 +1,5 @@
 import type { ModelFile } from '../types';
+import { groupDuplicates } from './duplicateGroups';
 
 // Tool views of the sidebar: computed purely from the model list,
 // without side effects, so they can be tested individually.
@@ -57,22 +58,7 @@ function favoriteModels(models: ModelFile[]): ModelFile[] {
 }
 
 function duplicateGroups(models: ModelFile[]): ModelFile[][] {
-  const byHash = new Map<string, ModelFile[]>();
-  for (const m of models) {
-    if (!m.contentHash) continue;
-    const group = byHash.get(m.contentHash);
-    if (group) group.push(m);
-    else byHash.set(m.contentHash, [m]);
-  }
-  return [...byHash.values()]
-    .filter((g) => g.length >= 2)
-    .map((g) =>
-      g
-        .map((m) => ({ t: time(m.importedAt), m }))
-        .sort((a, b) => a.t - b.t)
-        .map((entry) => entry.m),
-    )
-    .sort((a, b) => a[0].name.localeCompare(b[0].name));
+  return groupDuplicates(models).map(group => group.members);
 }
 
 export function applyToolView(
