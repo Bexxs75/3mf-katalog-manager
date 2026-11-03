@@ -31,6 +31,10 @@ import { useFilamentCheck } from '../hooks/useFilamentCheck';
 import { selectFromQueue } from '../lib/queueSelect';
 import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } from '../lib/toolViews';
 import type { AppError } from '../lib/errors';
+import { PrintDataFilterBar } from './PrintDataFilterBar';
+import { PrintDataNotice } from './PrintDataNotice';
+import { isActive as printFilterActive, printDataFacets, type FilterKey, type PrintDataFilter } from '../lib/printDataFilter';
+import { printFilterChips } from '../lib/printFilterLabels';
 
 interface CatalogWorkspaceProps {
   initialLoading?: boolean;
@@ -131,6 +135,11 @@ interface CatalogWorkspaceProps {
   printers?: Printer[];
   fitPrinterId?: string | null;
   setFitPrinterId?: (printerId: string | null) => void;
+  /** Print data filter (target printer, nozzle, layer height, print time, color). */
+  printFilter?: PrintDataFilter;
+  setPrintFilter?: (filter: PrintDataFilter) => void;
+  /** Files the print data filter holds back or shows although a value is missing. */
+  printNotice?: { hidden: number; shownUnknown: number; unread: number };
   setModelSourceUrl: (id: string, url: string | null) => void;
   openInSlicer: (id: string) => void;
   rescanMetadata: (id: string) => void;
@@ -250,6 +259,9 @@ export function CatalogWorkspace({
   printers = [],
   fitPrinterId = null,
   setFitPrinterId,
+  printFilter,
+  setPrintFilter,
+  printNotice,
   openInSlicer,
   rescanMetadata,
   addModelToCollection,
@@ -357,7 +369,7 @@ export function CatalogWorkspace({
   const t = useT();
   const formatCount = useFormatCount();
   const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
-    view, sort, language, query, usage, printStatus, fitPrinterId, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
+    view, sort, language, query, usage, printStatus, fitPrinterId, printFilter, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
   const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
@@ -379,7 +391,20 @@ export function CatalogWorkspace({
   const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');
   const fitPrinters = printers.filter(printer => printerBuildVolume(printer));
   const fitPrinter = fitPrinters.find(printer => printer.id === fitPrinterId) ?? null;
-  const chips = [
+  const [printFilterOpen, setPrintFilterOpen] = useState<FilterKey | null>(null);
+  const printFilterIsActive = !!printFilter && printFilterActive(printFilter);
+  // The values the popovers and chips name; counted over the whole catalog, and only when needed.
+  const printFacets = useMemo(
+    () => (printFilterOpen !== null || printFilterIsActive ? printDataFacets(models) : null),
+    [models, printFilterOpen, printFilterIsActive],
+  );
+  const barRef = useRef<HTMLElement>(null);
+  const filterHeadingRef = useRef<HTMLSpanElement>(null);
+  const focusFilterTarget = (target: FilterKey | 'heading') => {
+    const button = target === 'heading' ? null : barRef.current?.querySelector<HTMLElement>(`[data-pf-button="${target}"]`);
+    (button ?? filterHeadingRef.current)?.focus();
+  };
+  const baseChips = [
     ...(printStatus ? [{kind: 'printStatusFilter' as const, value: printStatusLabel,
       removeLabel: t('chipRemove').replace('{label}', printStatusLabel), remove: () => setPrintStatus?.(null)}] : []),
     ...(usage ? [{kind: 'licenseUsage' as const, value: t(usageLabels[usage]),
@@ -397,11 +422,22 @@ export function CatalogWorkspace({
     ...(query ? [{kind: 'filterBarSearch' as const, value: query,
       removeLabel: t('filterBarRemoveSearch').replace('{label}', query), remove: () => setQuery('')}] : []),
   ];
+  const printChips = printFilter && setPrintFilter ? printFilterChips(printFilter, printFacets, setPrintFilter, t, language) : [];
+  const chips = [
+    ...baseChips,
+    ...printChips.map(chip => ({
+      kind: chip.kind, value: chip.value,
+      removeLabel: t('chipRemove').replace('{label}', `${t(chip.kind)} ${chip.value}`),
+      // The last chip hands the focus to the heading; the others to their own filter button.
+      remove: () => { chip.remove(); focusFilterTarget(baseChips.length + printChips.length === 1 ? 'heading' : chip.focus); },
+    })),
+  ];
+  const clearAllFilters = () => { onClearFilters(); filterHeadingRef.current?.focus(); };
   const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
   // Always shown (also without a selection) so "select all" can be found and the
   // grid does not jump on the first checkbox; only views with nothing to select hide it.
   const showBulkBar = !detailModel && (selectedForBulk.size > 0 || (!collectionsGalleryOpen && models.length > 0));
-  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && !fitPrinter;
+  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && !fitPrinter && !printFilterIsActive;
   return (
     <div ref={rootRef} className="relative flex-1 flex min-h-0">
       <Sidebar
@@ -494,9 +530,9 @@ export function CatalogWorkspace({
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
         <SelectionAnnouncer count={selectedForBulk.size} />
         {importRow}
-        {(setUsage || setPrintStatus || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
-          <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
-            <span className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
+        {(setUsage || setPrintStatus || setPrintFilter || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
+          <section ref={barRef} aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
+            <span ref={filterHeadingRef} tabIndex={-1} className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
             {setUsage && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
               {t('licenseUsage')}
               <select aria-label={t('licenseUsage')} value={usage ?? ''} onChange={event => setUsage((event.target.value || null) as LicenseUsage | null)}
@@ -522,6 +558,10 @@ export function CatalogWorkspace({
                 {fitPrinters.map(printer => <option key={printer.id} value={printer.id}>{printer.name}</option>)}
               </select>
             </label>}
+            {printFilter && setPrintFilter && (
+              <PrintDataFilterBar filter={printFilter} onChange={setPrintFilter} facets={printFacets}
+                open={printFilterOpen} onOpenChange={setPrintFilterOpen} hits={displayedModels.length} />
+            )}
             {chips.map(chip => (
               <span key={chip.kind} className="inline-flex max-w-full items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full border border-[var(--line-strong)] bg-[var(--panel)] text-[length:var(--font-size-control)]">
                 <span data-filter-kind className="ui-label text-[var(--ink-3)]">{t(chip.kind)}</span>
@@ -534,9 +574,14 @@ export function CatalogWorkspace({
               <span aria-live="polite" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-2)] tabular-nums">
                 {collectionLoading ? t('catalogLoading') : t('filterBarCount').replace('{count}', String(displayedModels.length)).replace('{total}', String(models.length))}
               </span>
-              <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
+              <button type="button" onClick={clearAllFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
             </div>
           </section>
+        )}
+
+        {printFilter && setPrintFilter && printFilterIsActive && printNotice && (
+          <PrintDataNotice hidden={printNotice.hidden} shownUnknown={printNotice.shownUnknown} includeUnknown={printFilter.includeUnknown}
+            onIncludeUnknownChange={include => setPrintFilter({ ...printFilter, includeUnknown: include })} />
         )}
 
         {showBulkBar && (
@@ -654,7 +699,7 @@ export function CatalogWorkspace({
               <div className="flex flex-col items-center gap-2.5 border border-dashed border-[var(--line-strong)] rounded-[10px] px-5 py-8 text-center">
                 <h3 className="font-semibold text-[length:var(--font-size-body)]">{t('filterBarEmptyTitle')}</h3>
                 <p className="max-w-[48ch] text-[length:var(--font-size-body)] text-[var(--ink-2)]">{formatCount(t('filterBarEmptyText'), models.length)}</p>
-                <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
+                <button type="button" onClick={clearAllFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
               </div>
             ) : view === 'grid' ? (
               <ModelGrid

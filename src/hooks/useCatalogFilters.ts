@@ -5,6 +5,7 @@ import type { ModelFile, Folder, ViewMode, SortKey, SortDirection, Printer } fro
 import { printerBuildVolume } from '../lib/buildPlateFit';
 import type { RecentSnapshot, ToolView } from '../lib/toolViews';
 import { defaultSortDirection, filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
+import { EMPTY_FILTER, splitByPrintData, type PrintDataFilter } from '../lib/printDataFilter';
 
 export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de', printers: readonly Printer[] = []) {
   const [view, setView] = useState<ViewMode>('grid');
@@ -19,6 +20,8 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   const [printStatus, setPrintStatus] = useState<ModelFile['printStatus'] | null>(null);
   const [usage, setUsage] = useState<LicenseUsage | null>(null);
   const [fitPrinterChoice, setFitPrinterId] = useState<string | null>(null);
+  // Not kept over a restart, like the other filters.
+  const [printFilter, setPrintFilter] = useState<PrintDataFilter>(EMPTY_FILTER);
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -37,22 +40,27 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   const fitPrinter = printers.find(printer => printer.id === fitPrinterChoice && printerBuildVolume(printer)) ?? null;
   const fitBed = useMemo(() => (fitPrinter ? printerBuildVolume(fitPrinter) : null), [fitPrinter]);
 
-  const filtered = useMemo(
-    () =>
-      filterAndSortModels(models, folders, {
-        usage,
-        printStatus,
-        fitBed,
-        activeFolderId,
-        activeTag,
-        query,
-        sort,
-        sortDirection,
-        language,
-        toolView,
-        recentSnapshot: recentSnapshot ?? undefined,
-      }),
-    [models, folders, usage, printStatus, fitBed, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot],
+  const printSplit = useMemo(() => {
+    const matched = filterAndSortModels(models, folders, {
+      usage,
+      printStatus,
+      fitBed,
+      activeFolderId,
+      activeTag,
+      query,
+      sort,
+      sortDirection,
+      language,
+      toolView,
+      recentSnapshot: recentSnapshot ?? undefined,
+    });
+    // After the other filters and the sort: a second pass that keeps the order.
+    return splitByPrintData(matched, printFilter);
+  }, [models, folders, usage, printStatus, fitBed, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot, printFilter]);
+  const filtered = printSplit.visible;
+  const printNotice = useMemo(
+    () => ({ hidden: printSplit.hidden, shownUnknown: printSplit.shownUnknown, unread: printSplit.unread }),
+    [printSplit.hidden, printSplit.shownUnknown, printSplit.unread],
   );
 
   const queue = useMemo(() => selectQueuedModels(models), [models]);
@@ -61,6 +69,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
     usage, setUsage,
     printStatus, setPrintStatus,
     fitPrinterId: fitPrinter?.id ?? null, setFitPrinterId, fitBed,
+    printFilter, setPrintFilter, printNotice,
     view, setView,
     sort, setSort, sortDirection, setSortDirection,
     query, setQuery,

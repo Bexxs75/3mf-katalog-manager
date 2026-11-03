@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCatalogFilters } from './useCatalogFilters';
-import { makeModelFile, makePrinter } from '../test/factories';
+import { makeModelFile, makePrintFacts, makePrinter } from '../test/factories';
+import { EMPTY_FILTER } from '../lib/printDataFilter';
 
 describe('useCatalogFilters', () => {
   it('returns initial state with correct structure', () => {
@@ -185,5 +186,44 @@ describe('print bed filter', () => {
     act(() => result.current.setFitPrinterId('nobed'));
     expect(result.current.fitPrinterId).toBeNull();
     expect(result.current.filtered).toHaveLength(3);
+  });
+  describe('print data filter', () => {
+    const a = makeModelFile({ id: 'a', name: 'A', printFacts: makePrintFacts({ layerHeightMm: 0.2 }), printDataState: 'sliced' });
+    const b = makeModelFile({ id: 'b', name: 'B', printFacts: makePrintFacts({ layerHeightMm: 0.28 }), printDataState: 'sliced' });
+    const c = makeModelFile({ id: 'c', name: 'C' });
+    const d = makeModelFile({ id: 'd', name: 'D', printFacts: makePrintFacts({}), printDataState: 'no_slice_data' });
+    const models = [a, b, c, d];
+
+    it('starts empty and leaves the list alone', () => {
+      const { result } = renderHook(() => useCatalogFilters(models, []));
+      expect(result.current.printFilter).toEqual(EMPTY_FILTER);
+      expect(result.current.filtered).toHaveLength(4);
+      expect(result.current.printNotice).toEqual({ hidden: 0, shownUnknown: 0, unread: 0 });
+    });
+
+    it('keeps the matches, holds back the files without the value and counts the unread ones', () => {
+      const { result } = renderHook(() => useCatalogFilters(models, []));
+      act(() => result.current.setPrintFilter({ ...EMPTY_FILTER, layers: [0.2] }));
+      expect(result.current.filtered.map(m => m.id)).toEqual(['a']);
+      expect(result.current.printNotice).toEqual({ hidden: 2, shownUnknown: 0, unread: 1 });
+    });
+
+    it('shows the files without the value on request and keeps the sort order', () => {
+      const { result } = renderHook(() => useCatalogFilters(models, []));
+      act(() => result.current.setPrintFilter({ ...EMPTY_FILTER, layers: [0.2], includeUnknown: true }));
+      expect(result.current.filtered.map(m => m.id)).toEqual(['a', 'c', 'd']);
+      expect(result.current.printNotice).toEqual({ hidden: 0, shownUnknown: 2, unread: 0 });
+      act(() => result.current.setSortDirection('desc'));
+      expect(result.current.filtered.map(m => m.id)).toEqual(['d', 'c', 'a']);
+    });
+
+    it('combines with the other filters', () => {
+      const { result } = renderHook(() => useCatalogFilters(models, []));
+      act(() => result.current.setPrintFilter({ ...EMPTY_FILTER, layers: [0.2, 0.28] }));
+      expect(result.current.filtered.map(m => m.id)).toEqual(['a', 'b']);
+      act(() => result.current.setQuery('b'));
+      expect(result.current.filtered.map(m => m.id)).toEqual(['b']);
+      expect(result.current.printNotice.hidden).toBe(0);
+    });
   });
 });

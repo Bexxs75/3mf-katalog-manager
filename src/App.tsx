@@ -62,6 +62,7 @@ import { licenseUsage } from './lib/licenses';
 import { modelMayFitBed } from './lib/buildPlateFit';
 import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
+import { EMPTY_FILTER, splitByPrintData } from './lib/printDataFilter';
 import { useCollections } from './hooks/useCollections';
 import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
 import { NO_FOLDER_COLLAPSE_KEY, useCollapsedFolders } from './hooks/useCollapsedFolders';
@@ -286,6 +287,7 @@ export default function App() {
     filters.setUsage(null);
     filters.setPrintStatus(null);
     filters.setFitPrinterId(null);
+    filters.setPrintFilter(EMPTY_FILTER);
     filters.setQuery('');
     filters.setToolView(null);
   };
@@ -331,19 +333,22 @@ export default function App() {
   const detailModel = detailModelId ? store.models.find((m) => m.id === detailModelId) ?? null : null;
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
 
-  const displayedModels = useMemo(() => {
-    if (!collections.activeCollection) return filters.filtered;
+  const { displayedModels, printNotice } = useMemo(() => {
+    if (!collections.activeCollection) return { displayedModels: filters.filtered, printNotice: filters.printNotice };
     const currentModels = new Map(store.models.map(model => [model.id, model]));
     // An open collection shows its members in collection order; only the usage and print status
     // filters apply there. Selection, detail navigation and the grid all use this one list.
-    return collections.collectionModels.map(model => {
+    const members = collections.collectionModels.map(model => {
       const current = currentModels.get(model.id);
       return current ? { ...model, license: current.license, printStatus: current.printStatus } : model;
     })
       .filter(model => !filters.printStatus || (model.printStatus === 'printed') === (filters.printStatus === 'printed'))
       .filter(model => !filters.usage || licenseUsage(model.license) === filters.usage)
       .filter(model => !filters.fitBed || modelMayFitBed(model.dimensionsMm, filters.fitBed));
-  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printStatus, filters.usage, filters.fitBed, store.models]);
+    // The print data filter applies in a collection as well; the notice counts what it holds back there.
+    const split = splitByPrintData(members, filters.printFilter);
+    return { displayedModels: split.visible, printNotice: { hidden: split.hidden, shownUnknown: split.shownUnknown, unread: split.unread } };
+  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printNotice, filters.printFilter, filters.printStatus, filters.usage, filters.fitBed, store.models]);
   const filteredIds = displayedModels.map(model => model.id);
   const navigateDetail = (direction: DetailDirection) => {
     const id = detailNeighbor(filteredIds, detailModelId, direction);
@@ -413,6 +418,7 @@ export default function App() {
     filters.usage,
     filters.printStatus,
     filters.fitPrinterId,
+    filters.printFilter,
     collections.activeCollection,
     collections.collectionsGalleryOpen,
   ]);
@@ -681,6 +687,9 @@ export default function App() {
               printers={printers.printers}
               fitPrinterId={filters.fitPrinterId}
               setFitPrinterId={filters.setFitPrinterId}
+              printFilter={filters.printFilter}
+              setPrintFilter={filters.setPrintFilter}
+              printNotice={printNotice}
               openInSlicer={slicerLauncher.openInSlicer}
               rescanMetadata={store.rescanMetadata}
               addModelToCollection={collections.addModelToCollection}
