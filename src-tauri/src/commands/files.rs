@@ -1096,6 +1096,22 @@ pub async fn get_model_geometry(
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// Objects and preview pictures per plate for the plate overview dialog. Reads the file on
+/// demand; the database lock is only held to find the path.
+#[tauri::command]
+pub async fn read_plate_overview(
+    state: State<'_, AppState>, file_id: String, with_previews: bool,
+) -> CmdResult<katalog_core::read::PlateOverviewDto> {
+    let source = {
+        let conn = lock_db(&state)?;
+        katalog_core::read::load_geometry_source(&conn, &file_id)?
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        katalog_core::read::read_plate_overview(&source.path, source.file_type, None, with_previews)
+            .map_err(CmdError::from)
+    }).await.map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

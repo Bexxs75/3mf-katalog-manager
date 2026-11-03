@@ -124,6 +124,7 @@
     "preview_log_export": "C",
     "preview_printer_job": "B",
     "read_dropped_image": "C",
+    "read_plate_overview": "web",
     "register_catalog_base_dir": "C",
     "register_existing_catalog_base_dir": "C",
     "reject_source_files": "B",

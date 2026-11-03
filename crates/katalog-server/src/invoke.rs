@@ -181,6 +181,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "list_companions",
     "companion_image_data",
     "disk_sync_report",
+    "read_plate_overview",
 ];
 
 /// Companion refusals reach the client as plain statements: no path, no SQLite text.
@@ -277,7 +278,7 @@ pub async fn invoke(
             Ok(value) => Some(value),
             Err(error) => return *error,
         },
-        "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" | "list_suggested_auto_tags" | "list_companions" => {
+        "list_print_log_entries" | "get_model_geometry" | "read_plate_overview" | "get_last_printer_for_file" | "list_suggested_auto_tags" | "list_companions" => {
             match id(&args, "fileId") {
                 Ok(v) => Some(v),
                 Err(e) => return *e,
@@ -346,6 +347,14 @@ pub async fn invoke(
     } else {
         Vec::new()
     };
+    // Only the plate overview reads the flag; absent means "no pictures".
+    let with_previews = match args.get("withPreviews") {
+        None => false,
+        Some(Value::Bool(flag)) => *flag,
+        Some(_) => {
+            return *error(StatusCode::BAD_REQUEST, "withPreviews muss true oder false sein", true);
+        }
+    };
     let manager_permit = if matches!(
         command.as_str(),
         "list_filament_spools"
@@ -413,7 +422,8 @@ pub async fn invoke(
             Err(_) => *error(StatusCode::GATEWAY_TIMEOUT, "Der Abgleich dauert zu lange (ein Laufwerk antwortet nicht). Bitte später erneut versuchen.", true),
         };
     }
-    let permits = if command == "get_model_geometry" {
+    // Both open and parse a 3MF, so both wait for the parser gate.
+    let permits = if matches!(command.as_str(), "get_model_geometry" | "read_plate_overview") {
         match gate.acquire().await {
             Ok(p) => Some(p),
             Err(e) => return *e,
@@ -511,6 +521,11 @@ pub async fn invoke(
                     Some(katalog_core::import::files::WebImportLimits::default()),
                 )?;
                 Ok(([("content-type", "application/octet-stream")], bytes).into_response())
+            }
+            "read_plate_overview" => {
+                let source = read::load_geometry_source(&conn, &file_id.unwrap())?;
+                drop(conn);
+                encode(read::read_plate_overview(&source.path, source.file_type, Some(&roots), with_previews)?)
             }
             _ => unreachable!("allowlist checked"),
         }
@@ -727,6 +742,13 @@ mod tests {
             .unwrap();
             id.to_string()
         };
+        // A real 3MF with plates for the plate overview, which reads the file itself.
+        let plates_id = {
+            let conn = db::connect(&c.db).unwrap();
+            let path = c.dir.join("plates.3mf");
+            std::fs::copy(katalog_core_fixture("creality-3plates.3mf"), &path).unwrap();
+            db::test_insert_minimal_file(&conn, path.to_str().unwrap(), None).unwrap().to_string()
+        };
         let before = Sha256::digest(std::fs::read(&c.db).unwrap());
         let names = entries(&c);
         let conn = db::open_read_only(&c.db).unwrap();
@@ -802,6 +824,22 @@ mod tests {
             ),
             ("is_preview_build", json!({}), json!(false)),
             ("has_step_preview", json!({}), json!(false)),
+            (
+                "read_plate_overview",
+                json!({"fileId":plates_id,"withPreviews":true}),
+                serde_json::to_value(
+                    read::read_plate_overview(&c.dir.join("plates.3mf"), db::models::FileType::ThreeMf, Some(std::slice::from_ref(&c.dir)), true).unwrap(),
+                )
+                .unwrap(),
+            ),
+            (
+                "read_plate_overview",
+                json!({"fileId":plates_id}),
+                serde_json::to_value(
+                    read::read_plate_overview(&c.dir.join("plates.3mf"), db::models::FileType::ThreeMf, Some(std::slice::from_ref(&c.dir)), false).unwrap(),
+                )
+                .unwrap(),
+            ),
         ];
         drop(conn);
         for (command, args, expected) in cases {
@@ -821,6 +859,12 @@ mod tests {
         let state_of = |id: &str| summaries.as_array().unwrap().iter().find(|s| s["id"] == id).unwrap()["printDataState"].clone();
         assert_eq!(state_of(&print_id), "no_slice_data");
         assert_eq!(state_of(&c.id), "none", "an STL has no print data");
+        // The answers really carry the objects and pictures, not just equal a core answer without them.
+        let overview = serde_json::from_slice::<Value>(&body(call(&c, "read_plate_overview", json!({"fileId":plates_id,"withPreviews":true})).await).await).unwrap();
+        assert_eq!(overview["plates"].as_array().unwrap().iter().map(|p| p["objectCount"].as_u64().unwrap()).collect::<Vec<_>>(), [1, 3, 1]);
+        assert!(overview["plates"][1]["preview"].as_str().unwrap().starts_with("data:image/png;base64,"));
+        let plain = serde_json::from_slice::<Value>(&body(call(&c, "read_plate_overview", json!({"fileId":plates_id})).await).await).unwrap();
+        assert!(plain["plates"][0].get("preview").is_none());
         let response = call(&c, "get_model_geometry", json!({"fileId":c.id})).await;
         assert_eq!(
             response.headers()["content-type"],
@@ -898,6 +942,47 @@ mod tests {
             .await;
             assert_eq!(r.status(), 422);
         }
+    }
+    fn katalog_core_fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../katalog-core/tests/fixtures").join(name)
+    }
+    #[tokio::test]
+    async fn plate_overview_checks_arguments_roots_and_missing_files() {
+        let c = catalog();
+        // An STL answers with an empty list, not an error.
+        let r = call(&c, "read_plate_overview", json!({"fileId":c.id,"withPreviews":true})).await;
+        assert_eq!(r.status(), 200);
+        assert_eq!(serde_json::from_slice::<Value>(&body(r).await).unwrap(), json!({"plates":[]}));
+        for args in [json!({"fileId":"no"}), json!({}), json!({"fileId":c.id,"withPreviews":"yes"}), json!({"fileId":c.id,"withPreviews":1})] {
+            assert_eq!(call(&c, "read_plate_overview", args.clone()).await.status(), 400, "{args}");
+        }
+        assert_eq!(call(&c, "read_plate_overview", json!([])).await.status(), 400);
+        // Unknown id and a file that is gone.
+        let conn = db::connect(&c.db).unwrap();
+        let gone = db::test_insert_minimal_file(&conn, c.dir.join("gone.3mf").to_str().unwrap(), None).unwrap();
+        let inside = c.dir.join("in.3mf");
+        std::fs::copy(katalog_core_fixture("creality-3plates.3mf"), &inside).unwrap();
+        let present = db::test_insert_minimal_file(&conn, inside.to_str().unwrap(), None).unwrap();
+        drop(conn);
+        assert_eq!(call(&c, "read_plate_overview", json!({"fileId":"999999"})).await.status(), 404);
+        assert_eq!(call(&c, "read_plate_overview", json!({"fileId":gone.to_string()})).await.status(), 404);
+        // Outside the shared roots the file is refused and nothing of it is read.
+        let root = c.dir.join("allowed");
+        std::fs::create_dir(&root).unwrap();
+        let outside = invoke(c.db.clone(), vec![root], "read_plate_overview".into(), json!({"fileId":present.to_string(),"withPreviews":true}), Arc::new(GeometryGate::default())).await;
+        assert_eq!(outside.status(), 422);
+        assert!(!String::from_utf8_lossy(&body(outside).await).contains("base64"));
+    }
+    #[tokio::test]
+    async fn plate_overview_waits_for_the_same_parser_gate_as_the_geometry() {
+        let c = catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let held: Vec<_> = (0..10).map(|_| gate.admission.clone().try_acquire_owned().unwrap()).collect();
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "read_plate_overview".into(), json!({"fileId":c.id}), gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        drop(held);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "read_plate_overview".into(), json!({"fileId":c.id}), gate).await;
+        assert_eq!(r.status(), StatusCode::OK);
     }
     #[tokio::test]
     async fn busy_marker_maps_to_503_without_message_parsing() {

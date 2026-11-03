@@ -21,6 +21,7 @@ export const WEB_READ_COMMANDS = [
   'list_companions',
   'companion_image_data',
   'disk_sync_report',
+  'read_plate_overview',
 ] as const;
 
 /** Web write commands: the server remains the authority for each request. */

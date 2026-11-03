@@ -35,12 +35,14 @@ it.each([429, 503])('retains Retry-After on ordinary errors (%s)', async status 
   await expect((await import('./transport')).invoke('list_folders')).rejects.toMatchObject({ message: 'busy', expected: true, retryAfter: '60' });
 });
 
-it.each([429, 503])('retries geometry once for %s with Retry-After', async status => {
+it.each([
+  ['get_model_geometry', 429], ['get_model_geometry', 503], ['read_plate_overview', 429], ['read_plate_overview', 503],
+])('retries %s once for %s with Retry-After', async (command, status) => {
   vi.useFakeTimers();
   try {
     const fetch = vi.fn().mockImplementation(async () => Response.json({ message: 'busy', expected: true }, { status, headers: { 'Retry-After': '2' } }));
     vi.stubGlobal('fetch', fetch);
-    const pending = (await import('./transport')).invoke('get_model_geometry', { fileId: '1' });
+    const pending = (await import('./transport')).invoke(command, { fileId: '1' });
     const rejected = expect(pending).rejects.toMatchObject({ message: 'busy' });
     await vi.advanceTimersByTimeAsync(1999); expect(fetch).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1); await rejected;
