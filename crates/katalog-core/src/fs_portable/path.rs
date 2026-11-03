@@ -295,6 +295,44 @@ impl NativePath {
         Self::parse(&text, self.style)
     }
 
+    fn name_ok(&self, name: &str) -> bool {
+        match self.style {
+            Style::Posix => portable_segment(name),
+            Style::Windows => windows_segment(name),
+        }
+    }
+
+    /// The folder part of the path. `None` when the path has no segment, and for a single Posix
+    /// segment, whose parent would be the bare `/` that is not a valid path here.
+    pub fn parent(&self) -> Option<NativePath> {
+        let last = self.segments.last()?;
+        let end = if self.segments.len() > 1 {
+            last.start - 1
+        } else if self.style == Style::Posix {
+            return None;
+        } else {
+            last.start
+        };
+        Self::parse(&self.text[..end], self.style).ok()
+    }
+
+    /// The same folder with another last segment (one segment, no separator inside).
+    pub fn with_file_name(&self, name: &str) -> Result<NativePath> {
+        let last = self.segments.last().ok_or(Error::PathUnresolvable)?;
+        if !self.name_ok(name) {
+            return bad();
+        }
+        Self::parse(&format!("{}{name}", &self.text[..last.start]), self.style)
+    }
+
+    /// This path with one more segment (one segment, no separator inside).
+    pub fn child(&self, name: &str) -> Result<NativePath> {
+        if !self.name_ok(name) {
+            return bad();
+        }
+        self.join(&RelPath(name.to_owned()))
+    }
+
     /// Replace the leading `from` by `to`, keeping the part below it. The same place as `from`
     /// becomes `to`.
     pub fn rebase(&self, from: &NativePath, to: &NativePath) -> Result<NativePath> {

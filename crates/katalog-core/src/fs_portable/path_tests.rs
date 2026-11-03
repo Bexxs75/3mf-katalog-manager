@@ -167,3 +167,24 @@ fn byte_limits_and_unicode_pass_through_unchanged() {
     let b = posix(&format!("/m/{nfd}"));
     assert!(!a.same_place(&b), "no normalization: the text is what the database holds");
 }
+
+#[test]
+fn parent_file_name_and_child() {
+    let p = posix("/m/models/a.3mf");
+    assert_eq!(p.parent().unwrap().as_str(), "/m/models");
+    assert_eq!(posix("/m").parent(), None, "the bare / is not a path of this model");
+    assert_eq!(p.with_file_name("b.3mf").unwrap().as_str(), "/m/models/b.3mf");
+    assert_eq!(posix("/m").with_file_name("n").unwrap().as_str(), "/n");
+    assert_eq!(p.child("x").unwrap().as_str(), "/m/models/a.3mf/x");
+    for bad in ["", ".", "..", "a/b", "a\\b", "a\0"] {
+        assert!(p.with_file_name(bad).is_err() && p.child(bad).is_err(), "{bad:?}");
+    }
+    let w = win(r"C:\Data\x");
+    assert_eq!(w.parent().unwrap().as_str(), r"C:\Data");
+    assert_eq!(win(r"C:\Data").parent().unwrap().as_str(), r"C:\");
+    assert_eq!(win(r"\\nas\share\x").parent().unwrap().as_str(), r"\\nas\share\");
+    assert_eq!(win(r"C:\").parent(), None);
+    assert_eq!(w.with_file_name("y").unwrap().as_str(), r"C:\Data\y");
+    assert_eq!(win("C:/Data/x").with_file_name("y").unwrap().as_str(), "C:/Data/y");
+    assert!(w.child("a:b").is_err() && w.with_file_name("a.").is_err());
+}
