@@ -95,7 +95,8 @@
     "dlPathNotAllowed",
     "dlRangeInvalid",
     "dlTooManyDownloads",
-    "slicerLinkExpired"
+    "slicerLinkExpired",
+    "updateBackupFolderMissing"
   ],
   "legacy": [
     "cancelled",

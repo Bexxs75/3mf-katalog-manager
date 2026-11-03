@@ -172,6 +172,8 @@ error_codes! {
     DlRangeInvalid => "dlRangeInvalid",
     DlTooManyDownloads => "dlTooManyDownloads",
     SlicerLinkExpired => "slicerLinkExpired",
+    // Startup notice after an update.
+    UpdateBackupFolderMissing => "updateBackupFolderMissing",
 }
 
 

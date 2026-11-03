@@ -1044,7 +1044,7 @@ pub fn open_in_file_manager(path: String, environment: State<'_, RuntimeEnvironm
     open_directory_in_file_manager(path)
 }
 
-fn open_directory_in_file_manager(path: String) -> CmdResult<()> {
+pub(super) fn open_directory_in_file_manager(path: String) -> CmdResult<()> {
     // Only existing directories: a path starting with "-" could otherwise be read
     // as an option by xdg-open/open/explorer.
     if !std::path::Path::new(&path).is_dir() {

@@ -32,7 +32,7 @@ use tauri::Manager;
 /// opening the catalog can migrate it before a later database operation fails.
 fn open_storage(
     app: &tauri::App,
-) -> Result<(rusqlite::Connection, bool, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
+) -> Result<(rusqlite::Connection, Option<db::MigrationReport>, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
     use startup_error::{StartupFailure, StartupStage};
     let app_data_dir = app.path().app_data_dir()
         .map_err(|e| StartupFailure::new(StartupStage::DataFolder, std::path::Path::new(""), e))?;
@@ -41,7 +41,7 @@ fn open_storage(
 
 fn open_storage_at(
     app_data_dir: &std::path::Path,
-) -> Result<(rusqlite::Connection, bool, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
+) -> Result<(rusqlite::Connection, Option<db::MigrationReport>, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
     use startup_error::{StartupFailure, StartupStage};
     std::fs::create_dir_all(app_data_dir)
         .map_err(|e| StartupFailure::new(StartupStage::DataFolder, app_data_dir, e))?;
@@ -50,10 +50,10 @@ fn open_storage_at(
     std::fs::create_dir_all(&trash_dir)
         .map_err(|e| StartupFailure::new(StartupStage::TrashFolder, &trash_dir, e))?;
     let db_path = app_data_dir.join("catalog.db");
-    let (conn, backup_failed) = db::connect_with_warning(&db_path)
+    let (conn, migration_report) = db::connect_with_report(&db_path)
         .map_err(|e| StartupFailure::new(StartupStage::Catalog, &db_path, e))?;
     harden_permissions(&db_path);
-    Ok((conn, backup_failed, db_path, trash_dir))
+    Ok((conn, migration_report, db_path, trash_dir))
 }
 
 use katalog_core::safe_file::harden_permissions;
@@ -153,14 +153,14 @@ pub fn run() {
         .setup(|app| {
             // The window is created last: if the data folder or catalog cannot be opened,
             // no webview exists whose commands would hit state that was never managed.
-            let (mut conn, backup_failed, db_path, trash_dir) = match open_storage(app) {
+            let (mut conn, migration_report, db_path, trash_dir) = match open_storage(app) {
                 Ok(storage) => storage,
                 Err(failure) => {
                     startup_error::report_and_exit(app.handle(), &failure);
                     return Ok(());
                 }
             };
-            app.manage(startup::MigrationBackupWarning(backup_failed));
+            app.manage(commands::UpgradeReport(migration_report));
             commands::apply_verbose_state(&conn);
             diagnostics::log_startup(&conn);
             match db::cleanup_tag_fragments(&mut conn) {
@@ -236,7 +236,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             startup::frontend_ready,
-            startup::get_migration_backup_warning,
             startup::save_window_theme,
             commands::discard_archive_imports,
             commands::start_import,
@@ -406,6 +405,9 @@ pub fn run() {
             commands::install_app_update,
             commands::open_release_url,
             commands::open_discord_invite,
+            commands::get_upgrade_notice,
+            commands::dismiss_upgrade_notice,
+            commands::open_update_backup_folder,
             commands::get_verbose_logging,
             commands::set_verbose_logging,
             commands::get_bug_report_info,

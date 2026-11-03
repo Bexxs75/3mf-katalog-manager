@@ -257,7 +257,7 @@ mod tests {
         }
         let before = std::fs::read(&db_path).unwrap();
 
-        let error = crate::db::connect_with_warning(&db_path).expect_err("newer catalog must be rejected");
+        let error = crate::db::connect_with_report(&db_path).expect_err("newer catalog must be rejected");
         let text = startup_error_message(StartupStage::Catalog, &db_path, &error);
 
         assert_bilingual_with_path(&text, &db_path);
@@ -271,7 +271,7 @@ mod tests {
         let dir = temp_dir("missing");
         let db_path = dir.join("does-not-exist").join("catalog.db");
 
-        let error = crate::db::connect_with_warning(&db_path).expect_err("open must fail");
+        let error = crate::db::connect_with_report(&db_path).expect_err("open must fail");
         let text = startup_error_message(StartupStage::Catalog, &db_path, &error);
 
         assert_bilingual_with_path(&text, &db_path);

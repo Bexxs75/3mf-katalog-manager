@@ -48,7 +48,7 @@ import { FolderTrashToast } from './components/FolderTrashToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
-import { MigrationBackupWarning } from './components/MigrationBackupWarning';
+import { UpgradeNoticeDialog } from './components/UpgradeNoticeDialog';
 import { NoticeStack } from './components/NoticeStack';
 import { StartSyncBanner } from './components/StartSyncBanner';
 import { useStartSync } from './hooks/useStartSync';
@@ -177,6 +177,8 @@ export default function App() {
   const update = useUpdater();
 
   const [setupDialogOpen, setSetupDialogOpen] = useState(import.meta.env.VITE_TARGET !== 'web' && !setupSeen);
+  // The update notice goes before other start-up questions, so they wait for it.
+  const [upgradeNoticeSettled, setUpgradeNoticeSettled] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
@@ -811,8 +813,8 @@ export default function App() {
             {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
           </NoticeStack>
 
-          <MigrationBackupWarning />
-          {!web && <LinuxMenuPrompt wait={setupDialogOpen} />}
+          {!web && <UpgradeNoticeDialog wait={setupDialogOpen} onSettled={() => setUpgradeNoticeSettled(true)} />}
+          {!web && <LinuxMenuPrompt wait={setupDialogOpen || !upgradeNoticeSettled} />}
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
             <CatalogCleanupDialog
