@@ -153,17 +153,15 @@ pub(super) fn commit_companion_add(c: &mut Connection, i: &Intent) -> Result<i64
     if active >= MAX_COMPANIONS_PER_MODEL {
         return Err(Error::CompanionLimit);
     }
-    let root = std::path::PathBuf::from(&i.root_path);
-    let path = root.join(&add.target);
-    let path = path.to_str().ok_or(Error::PathUnresolvable)?;
-    if path_held(&tx, path, 0)? {
+    let path = paths::join(&i.root_path, &add.target).ok_or(Error::PathUnresolvable)?;
+    if path_held(&tx, &path, 0)? {
         return Err(Error::CompanionsConflict);
     }
     let id = crate::db::companions::insert_companion(
         &tx,
         add.file_id,
         &add.name,
-        path,
+        &path,
         &add.kind,
         Some(add.size as i64),
         &add.added_at,
@@ -383,8 +381,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         let want = CompanionState { id: 0, file_id, name: wanted_name, path: String::new(), deleted_at: None, trash_path: None };
         let (name, path) = self.free_name(&probe, &extras, &want, &std::collections::HashSet::new())?;
         let op_id = journal::op_id()?;
-        let temp_path = extras.join(format!(".fsops-{op_id}.part"));
-        let temp_path = temp_path.to_str().ok_or(Error::PathUnresolvable)?;
+        let temp_path = paths::join(&extras_str, &format!(".fsops-{op_id}.part")).ok_or(Error::PathUnresolvable)?;
         let extras_dir = if probe.state == DirState::Absent {
             Some(ExtrasDir { relative: self.relative_in(root, &extras_str)?, identity: None })
         } else {
@@ -401,7 +398,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             op_id,
             operation: Operation::CompanionAdd,
             phase: Phase::Prepared,
-            root_path: r.path.to_str().ok_or(Error::PathUnresolvable)?.to_owned(),
+            root_path: r.native.as_str().to_owned(),
             root_identity: r.identity,
             source: None,
             target: None,
@@ -418,7 +415,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 kind: kind.as_str().to_owned(),
                 size,
                 added_at: chrono::Utc::now().to_rfc3339(),
-                temporary: self.relative_in(root, temp_path)?,
+                temporary: self.relative_in(root, &temp_path)?,
                 target: self.relative_in(root, &path)?,
                 temp_inode: None,
                 identity: None,
@@ -524,8 +521,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         let add = i.companion_add.clone().ok_or(Halt::Early(Error::Internal))?;
         let early = |e: Error| Halt::Early(e);
         // The folder is the very one that was looked at (or made); a swap since is refused.
-        let (folder_rel, _) = add.temporary.rsplit_once('/').ok_or(Halt::Early(Error::Internal))?;
-        let folder = self.context.resolve_relative(root, folder_rel, Access::Directory).map_err(early)?;
+        let temporary = RelPath::parse(&add.temporary).map_err(|_| Halt::Early(Error::Internal))?;
+        let folder_rel = temporary.parent().ok_or(Halt::Early(Error::Internal))?;
+        let folder = self.context.resolve_relative(root, folder_rel.as_str(), Access::Directory).map_err(early)?;
         if Some(self.context.directory_identity(&folder).map_err(early)?) != expected_dir {
             return Err(Halt::Early(Error::CompanionsConflict));
         }
@@ -560,8 +558,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         let add = i.companion_add.clone().ok_or(Halt::Fail(Error::Internal))?;
         let identity = p.identity.ok_or(Halt::Fail(Error::Internal))?;
         // The upload may have run for a long time: the folder must still be the one it began in.
-        let (folder_rel, _) = add.temporary.rsplit_once('/').ok_or(Halt::Fail(Error::Internal))?;
-        let folder = self.context.resolve_relative(root, folder_rel, Access::Directory)?;
+        let temporary = RelPath::parse(&add.temporary).map_err(|_| Halt::Fail(Error::Internal))?;
+        let folder_rel = temporary.parent().ok_or(Halt::Fail(Error::Internal))?;
+        let folder = self.context.resolve_relative(root, folder_rel.as_str(), Access::Directory)?;
         if Some(self.context.directory_identity(&folder)?) != p.folder_identity {
             return Err(Error::CompanionsConflict.into());
         }
@@ -733,7 +732,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .context
             .roots
             .iter()
-            .position(|r| r.path.to_str() == Some(&i.root_path) && r.identity == i.root_identity)
+            .position(|r| r.is_at(&i.root_path) && r.identity == i.root_identity)
             .ok_or(Error::Changed)?;
         let add = i.companion_add.as_ref().ok_or(Error::Changed)?;
         // The entry has exactly the shape this code writes; anything else was not ours.
