@@ -43,6 +43,11 @@ describe('printFactsOf', () => {
     expect(printFactsOf({ printInfo: info, printFacts: makePrintFacts({ printerModel: 'Stale' }) })?.printerModel).toBe('Fresh');
   });
 
+  it('does not break on an answer without a color list (older server)', () => {
+    const old = { ...makePrintInfo({ printerModel: 'A' }), filamentColors: undefined } as unknown as ModelFile['printInfo'];
+    expect(printFactsOf({ printInfo: old, printFacts: undefined })).toEqual({ plateCount: 0, printerModel: 'A' });
+  });
+
   it('knows nothing for a row of another reader version', () => {
     expect(printFactsOf({ printInfo: makePrintInfo({ readerCurrent: false, printerModel: 'A' }), printFacts: undefined })).toBeNull();
   });

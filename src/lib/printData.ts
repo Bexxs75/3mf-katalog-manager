@@ -182,7 +182,9 @@ export function printFactsOf(model: Pick<ModelFile, 'printInfo' | 'printFacts'>)
   const times = info.plates.map(plate => plate.printSeconds).filter((seconds): seconds is number => seconds !== null);
   if (times.length > 0) facts.printSeconds = times.reduce((sum, seconds) => sum + seconds, 0);
   if (info.plates.length > 0 && times.length === info.plates.length) facts.printSecondsComplete = true;
-  if (info.filamentColors.length > 0) facts.colors = [...info.filamentColors];
+  // An answer of an older server has no color list; that must not break a bulk read.
+  const colors = info.filamentColors ?? [];
+  if (colors.length > 0) facts.colors = [...colors];
   return facts;
 }
 

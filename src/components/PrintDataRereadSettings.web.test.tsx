@@ -14,7 +14,7 @@ let calls: { command: string; args: Record<string, unknown> }[] = [];
 const sliced = {
   id: 'a', name: 'a', path: '/m/a.3mf', weightSource: 'slicer', deletedAt: null, printInfo: {
     sliceState: 'sliced', settingsState: 'read', readerCurrent: true, readAt: 'x', printerModel: 'P', bedType: 'B', layerHeightMm: 0.2,
-    nozzleMm: { value: 0.4, mixed: false }, bedTempC: { value: 55, mixed: false }, nozzleTempC: { value: 220, mixed: false }, plates: [] },
+    nozzleMm: { value: 0.4, mixed: false }, bedTempC: { value: 55, mixed: false }, nozzleTempC: { value: 220, mixed: false }, plates: [], filamentColors: [] },
   materials: [], tags: [],
 };
 const fetchMock = vi.fn(async (url: string, options?: RequestInit): Promise<Response> => {
