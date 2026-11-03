@@ -43,9 +43,12 @@ fn model_xml(triangles: usize, seed: usize) -> String {
 fn project_settings(pad_bytes: usize) -> String {
     let nine = |v: &str| format!("[{}]", (0..9).map(|_| format!("\"{v}\"")).collect::<Vec<_>>().join(","));
     let seventeen = |v: &str| format!("[{}]", (0..17).map(|_| format!("\"{v}\"")).collect::<Vec<_>>().join(","));
+    // Nine invented filament colors (the last one with alpha, as the slicers write them).
+    let colors = format!("[{}]", (0..9).map(|i| format!("\"#{:02X}{:02X}{:02X}{}\"", 20 + i * 20, 200 - i * 10, 40 + i * 15, if i == 8 { "FF" } else { "" })).collect::<Vec<_>>().join(","));
     let mut json = format!(
-        r#"{{"from":"project","printer_model":"Invented Printer","curr_bed_type":"Supertack Plate","layer_height":"0.2","nozzle_diameter":["0.4"],"filament_type":{},"nozzle_temperature":{},"nozzle_temperature_initial_layer":{},"supertack_plate_temp":{},"hot_plate_temp":{},"cool_plate_temp":{}"#,
+        r#"{{"from":"project","printer_model":"Invented Printer","curr_bed_type":"Supertack Plate","layer_height":"0.2","nozzle_diameter":["0.4"],"filament_type":{},"filament_colour":{},"nozzle_temperature":{},"nozzle_temperature_initial_layer":{},"supertack_plate_temp":{},"hot_plate_temp":{},"cool_plate_temp":{}"#,
         nine("PLA"),
+        colors,
         seventeen("210"),
         seventeen("215"),
         nine("45"),
@@ -78,7 +81,7 @@ fn slice_info(plates: usize, with_plates: bool) -> String {
 }
 
 fn model_settings(plates: usize) -> String {
-    let mut xml = String::from(r#"<?xml version="1.0" encoding="UTF-8"?><config><object id="1"><metadata key="name" value="shape"/></object>"#);
+    let mut xml = String::from(r#"<?xml version="1.0" encoding="UTF-8"?><config><object id="1"><metadata key="name" value="shape"/><metadata key="extruder" value="2"/><part id="1" subtype="normal_part"><metadata key="extruder" value="3"/></part></object>"#);
     for n in 1..=plates {
         xml.push_str(&format!(r#"<plate><metadata key="plater_id" value="{n}"/></plate>"#));
     }
