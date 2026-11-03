@@ -320,9 +320,10 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         let op_id = journal::op_id()?;
         if operation == Operation::Trash {
             let name = trash_name(before.id, &op_id, &source.name)?;
+            let trash_entry = RelPath::parse(TRASH)?.child(&name)?;
             target = self.context.resolve_relative(
                 source.root,
-                &format!("{TRASH}/{name}"),
+                trash_entry.as_str(),
                 Access::Trash,
             )?;
             after.trash_path = Some(self.context.absolute(&target));
@@ -331,19 +332,18 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         let case_only = operation == Operation::Rename
             && crate::fs_portable::nfc(&source.name.to_lowercase())
                 == crate::fs_portable::nfc(&target.name.to_lowercase());
-        let temporary = case_only.then(|| {
-            let p = std::path::Path::new(&source.relative).parent().unwrap();
-            p.join(format!(".fsops-{op_id}.tmp"))
-                .to_str()
-                .unwrap()
-                .to_owned()
-        });
+        let temporary = if case_only {
+            let name = format!(".fsops-{op_id}.tmp");
+            Some(RelPath::parse(&source.relative)?.with_file_name(&name)?.as_str().to_owned())
+        } else {
+            None
+        };
         let root = &self.context.roots[source.root];
         let mut intent = Intent {
             op_id,
             operation,
             phase: Phase::Prepared,
-            root_path: root.path.to_str().unwrap().to_owned(),
+            root_path: root.native.as_str().to_owned(),
             root_identity: root.identity,
             source: Some(source.relative.clone()),
             target: Some(target.relative.clone()),
@@ -425,11 +425,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if name == source.name {
             return Ok(());
         }
-        let path = std::path::Path::new(&before.path)
-            .with_file_name(&name)
-            .to_str()
-            .unwrap()
-            .to_owned();
+        let path = paths::with_file_name(&before.path, &name).ok_or(Error::PathUnresolvable)?;
         let target = self.context.resolve(&path, Access::RenameTarget)?;
         let carry = self.plan_carry(&before, &path, CompanionOp::Rename)?;
         let mut after = before.clone();
@@ -455,11 +451,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .ok_or(Error::NotFound)
         })?;
         let source = self.context.resolve(&before.path, Access::Source)?;
-        after.path = std::path::Path::new(&folder_path)
-            .join(&source.name)
-            .to_str()
-            .ok_or(Error::PathUnresolvable)?
-            .to_owned();
+        after.path = paths::join(&folder_path, &source.name).ok_or(Error::PathUnresolvable)?;
         let target = self.context.resolve(&after.path, Access::MoveTarget)?;
         if before.path == after.path {
             return self.db_only(before, Some(after), CarryPlan::default());
@@ -487,9 +479,10 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             Ok(_) => (),
         }
         // transfer derives the final trash name and intent from one operation ID.
+        let pending = RelPath::parse(TRASH)?.child("pending")?;
         let target = self.context.resolve_relative(
             source.root,
-            &format!("{TRASH}/pending"),
+            pending.as_str(),
             Access::Trash,
         )?;
         self.outcome.moved = carry.steps.len();
@@ -605,7 +598,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             op_id: journal::op_id()?,
             operation: Operation::Unlink,
             phase: Phase::Prepared,
-            root_path: root.path.to_str().unwrap().to_owned(),
+            root_path: root.native.as_str().to_owned(),
             root_identity: root.identity,
             source: Some(source.relative.clone()),
             target: None,
@@ -980,7 +973,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .context
             .roots
             .iter()
-            .position(|r| r.path.to_str() == Some(&i.root_path) && r.identity == i.root_identity)
+            .position(|r| r.is_at(&i.root_path) && r.identity == i.root_identity)
             .ok_or(Error::Changed)?;
         let source = self.context.resolve_relative(
             root,
@@ -1038,7 +1031,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         } else {
             &i.before.path
         };
-        if self.context.absolute(&source) != *expected_source {
+        if !paths::same_place(&self.context.absolute(&source), expected_source) {
             return Err(Error::Changed);
         }
         if let Some(t) = &target {
@@ -1048,14 +1041,14 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             } else {
                 &after.path
             };
-            if self.context.absolute(t) != *expected_target {
+            if !paths::same_place(&self.context.absolute(t), expected_target) {
                 return Err(Error::Changed);
             }
         }
         if let Some(t) = &temp {
             if i.operation != Operation::Rename
-                || std::path::Path::new(&t.relative).parent()
-                    != std::path::Path::new(&source.relative).parent()
+                || RelPath::parse(&t.relative).map(|p| p.parent())
+                    != RelPath::parse(&source.relative).map(|p| p.parent())
                 || t.name != format!(".fsops-{}.tmp", i.op_id)
             {
                 return Err(Error::Changed);
