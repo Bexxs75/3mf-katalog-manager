@@ -4,7 +4,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use katalog_core::write::{web, Connection, WriteError};
+use katalog_core::write::{web, CodedKind, Connection, WriteError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::{
@@ -337,6 +337,14 @@ fn map_error(e: WriteError) -> Box<Response> {
     Box::new(match e {
         WriteError::Invalid { message } => super::web::error(422, &message),
         WriteError::NotFound { message } => super::web::error(404, &message),
+        WriteError::Coded { kind, code, params } => super::web::error_coded(
+            match kind {
+                CodedKind::Invalid => 422,
+                CodedKind::NotFound => 404,
+            },
+            code,
+            &params,
+        ),
         WriteError::Busy { .. } => retry(503),
         WriteError::Other { kind, .. } => {
             eprintln!("write error_kind={kind}");
@@ -759,5 +767,19 @@ mod auto_tag_audit_tests {
             let line = progress.line(&audit);
             assert!(line.contains(&format!("command={command}")) && line.contains("changes=1"), "{line}");
         }
+    }
+}
+
+#[cfg(test)]
+mod coded_error_tests {
+    use super::*;
+    use katalog_core::error_code::ErrorCode;
+
+    #[test]
+    fn coded_write_errors_map_to_their_status() {
+        let invalid = map_error(WriteError::coded(ErrorCode::InvalidCatalogId));
+        assert_eq!(invalid.status(), 422);
+        let missing = map_error(WriteError::coded_not_found(ErrorCode::FolderNotFound));
+        assert_eq!(missing.status(), 404);
     }
 }

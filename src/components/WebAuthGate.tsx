@@ -1,7 +1,8 @@
 import { MetadataError } from './MetadataError';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type FormEvent } from 'react';
 import * as session from '../lib/webSession';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
+import { formatAppError } from '../lib/errorMessage';
 import { useT } from '../i18n/LanguageContext';
 import { WEB_CHANGE_PASSWORD_EVENT } from './WebAccountMenu';
 
@@ -13,29 +14,31 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  // Kept as the error itself, not as finished text, so it changes language with the page.
+  const [error, setError] = useState<AppError | null>(null);
+  const errorText = error ? formatAppError(t, error) : '';
   const [editing, setEditing] = useState(false);
   const [password, setPassword] = useState('');
   const [next, setNext] = useState('');
   const changing = state.authenticated && (state.mustChangePassword || editing);
-  const check = () => { setLoading(true); setChecked(false); setError(''); void session.getSession().then(() => setChecked(true)).catch(e => setError(messageOf(e))).finally(() => setLoading(false)); };
+  const check = () => { setLoading(true); setChecked(false); setError(null); void session.getSession().then(() => setChecked(true)).catch(e => setError(toAppError(e))).finally(() => setLoading(false)); };
   useEffect(check, []);
   useEffect(() => {
-    const open = () => { setError(''); setEditing(true); };
+    const open = () => { setError(null); setEditing(true); };
     window.addEventListener(WEB_CHANGE_PASSWORD_EVENT, open);
     return () => window.removeEventListener(WEB_CHANGE_PASSWORD_EVENT, open);
   }, []);
   async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError('');
+    event.preventDefault(); setBusy(true); setError(null);
     try {
       if (changing) { await session.changePassword(password, next); setEditing(false); }
       else await session.login(password);
       setPassword(''); setNext('');
-    } catch (e) { setError(messageOf(e)); }
+    } catch (e) { setError(toAppError(e)); }
     finally { setBusy(false); }
   }
   if (loading) return <main className="p-6" role="status">{t('webSessionChecking')}</main>;
-  if (!checked) return <main className="p-6"><p role="alert">{error}</p><button onClick={check}>{t('webRetry')}</button></main>;
+  if (!checked) return <main className="p-6"><p role="alert">{errorText}</p><button onClick={check}>{t('webRetry')}</button></main>;
   if (state.authenticated && !changing) return <>
     <MetadataError />
 {children}</>;
@@ -50,10 +53,10 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
       {changing && <label className="block">{t('webNewPassword')}
         <input className="block w-full p-2 border rounded bg-[var(--panel-2)]" type="password" autoComplete="new-password" required minLength={12} maxLength={128} value={next} onChange={e => setNext(e.target.value)} />
       </label>}
-      {error && <p role="alert">{error}</p>}
+      {errorText && <p role="alert">{errorText}</p>}
       <button type="submit" className="p-2 border rounded" disabled={busy}>{t(changing ? 'webChangePassword' : 'webLogin')}</button>
       {editing && !state.mustChangePassword && <button type="button" onClick={() => { setEditing(false); setPassword(''); setNext(''); }}>{t('webCancel')}</button>}
-      {!state.authenticated && error && <button type="button" onClick={check}>{t('webRetry')}</button>}
+      {!state.authenticated && errorText && <button type="button" onClick={check}>{t('webRetry')}</button>}
     </form>
   </main>;
 }

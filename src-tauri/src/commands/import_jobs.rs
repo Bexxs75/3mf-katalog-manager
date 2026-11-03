@@ -209,7 +209,7 @@ fn desktop_reader_and_error_adapter_preserve_import_contract() {
     std::fs::write(&path, b"invalid").unwrap();
     assert!(!FileReader.read(&path).unwrap_err().expected);
     for expected in [true,false] {
-        let original = core::ImportError { message: "unchanged".into(), expected, code: Some(GeometryErrorCode::Unreadable) };
+        let original = core::ImportError { message: "unchanged".into(), expected, code: Some(GeometryErrorCode::Unreadable), params: Vec::new() };
         let encoded = serde_json::to_value(&original).unwrap();
         let desktop = CmdError::from(original);
         assert_eq!(serde_json::to_value(&desktop).unwrap(),encoded);

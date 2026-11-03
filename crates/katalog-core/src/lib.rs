@@ -1,4 +1,5 @@
 pub mod db;
+pub mod error_code;
 pub mod threemf;
 pub mod stl;
 pub mod obj;

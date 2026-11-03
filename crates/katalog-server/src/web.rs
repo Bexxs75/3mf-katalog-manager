@@ -90,6 +90,7 @@ use axum::{
     Json, Router,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use katalog_core::error_code::ErrorCode;
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, VecDeque},
@@ -305,6 +306,19 @@ pub(crate) fn error(status: u16, message: &str) -> Response {
         Json(json!({"message":message,"expected":status<500})),
     )
         .into_response()
+}
+/// Body of an error whose `message` is a registered code. The interface owns the
+/// wording; `params` carry data only (names, numbers), never words and never
+/// server paths, and are left out when empty so plain codes keep the short form.
+pub(crate) fn coded_body(status: u16, code: ErrorCode, params: &[String]) -> serde_json::Value {
+    let mut body = json!({"message": code.as_str(), "expected": status < 500});
+    if !params.is_empty() {
+        body["params"] = json!(params);
+    }
+    body
+}
+pub(crate) fn error_coded(status: u16, code: ErrorCode, params: &[String]) -> Response {
+    (StatusCode::from_u16(status).unwrap(), Json(coded_body(status, code, params))).into_response()
 }
 fn boxed_error(status: u16, message: &str) -> Box<Response> {
     Box::new(error(status, message))
@@ -1531,3 +1545,28 @@ mod upload_http_tests;
 #[cfg(test)]
 #[path = "fileops_http_tests.rs"]
 mod fileops_http_tests;
+
+#[cfg(test)]
+mod coded_error_tests {
+    use super::*;
+
+    #[test]
+    fn a_coded_body_names_the_code_and_leaves_empty_params_out() {
+        assert_eq!(
+            coded_body(401, ErrorCode::InvalidCatalogId, &[]),
+            json!({"message": "invalidCatalogId", "expected": true})
+        );
+        assert_eq!(
+            coded_body(422, ErrorCode::MoveTooManyFiles, &["501".into(), "500".into()]),
+            json!({"message": "moveTooManyFiles", "expected": true, "params": ["501", "500"]})
+        );
+        // Server faults are never "expected", so the interface offers no retry hint for them.
+        assert_eq!(coded_body(500, ErrorCode::FolderNotFound, &[])["expected"], json!(false));
+    }
+
+    #[test]
+    fn a_coded_response_carries_the_status() {
+        assert_eq!(error_coded(404, ErrorCode::FolderNotFound, &[]).status(), StatusCode::NOT_FOUND);
+        assert_eq!(error_coded(422, ErrorCode::FolderNotFound, &["a".into()]).status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+}

@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::error_code::ErrorCode;
+
 #[derive(Debug)]
 pub enum DbError {
     Sqlite(rusqlite::Error),
@@ -8,6 +10,23 @@ pub enum DbError {
     NewerSchema { found: i64, supported: i64 },
     /// Rejected user input (e.g. an empty name): normal feedback, not a fault.
     Invalid(String),
+    /// Rejected user input identified by a registered code; the interface turns it
+    /// into text. `params` hold data only, never wording.
+    Coded { code: ErrorCode, params: Vec<String> },
+}
+
+impl DbError {
+    pub fn coded(code: ErrorCode) -> Self {
+        DbError::Coded { code, params: Vec::new() }
+    }
+
+    pub fn coded_with<I, S>(code: ErrorCode, params: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: ToString,
+    {
+        DbError::Coded { code, params: params.into_iter().map(|p| p.to_string()).collect() }
+    }
 }
 
 impl fmt::Display for DbError {
@@ -20,6 +39,8 @@ impl fmt::Display for DbError {
                 "Datenbank-Schemaversion {found} ist neuer als die von dieser App-Version unterstuetzte Version {supported}"
             ),
             DbError::Invalid(msg) => write!(f, "{msg}"),
+            // The code is the best text a log or a fallback can show.
+            DbError::Coded { code, .. } => f.write_str(code.as_str()),
         }
     }
 }
