@@ -271,3 +271,151 @@ fn unlink_removes_the_name_only() {
     // The opened object lives on until the handle is dropped.
     assert_eq!(f.nlink().unwrap(), Some(0));
 }
+
+// ---- FileBackend: probe, mount list, ids, error mapping ----
+
+use super::{parse_mountinfo, HandleBackend};
+use crate::fs_portable::backend::FileBackend;
+use crate::fs_portable::capabilities::{Capabilities, IdentityKind, NlinkKind, Normalization};
+use crate::fs_portable::path::{NativePath, Style};
+use crate::fs_portable::Error;
+
+fn probe_dirs(label: &str) -> (PathBuf, Directory, Directory) {
+    let base = fresh(label);
+    let root = open(&base);
+    let trash = DirHandle::open_dir(&root, &n(".fsops-trash")).or_else(|_| {
+        DirHandle::mkdir(&root, &n(".fsops-trash"), DirMode::Private)?;
+        DirHandle::open_dir(&root, &n(".fsops-trash"))
+    });
+    (base, root, trash.unwrap())
+}
+fn fs_magic(dir: &Directory) -> u64 {
+    let mut buf = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    assert_eq!(unsafe { libc::fstatfs(std::os::fd::AsRawFd::as_raw_fd(&dir.0), buf.as_mut_ptr()) }, 0);
+    (unsafe { buf.assume_init() }.f_type as u64) & 0xFFFF_FFFF
+}
+
+#[test]
+fn probe_proves_no_replace_links_and_private_trash_and_cleans_up() {
+    let (base, root, trash) = probe_dirs("probe");
+    let caps = HandleBackend.probe(&root, &trash).unwrap();
+    assert_eq!(caps.atomic_noreplace_rename, Level::Yes);
+    assert_eq!(caps.nlink, NlinkKind::Reliable);
+    assert_eq!(caps.dir_fsync, Level::Yes);
+    assert_eq!(caps.prevents_symlink_races, Level::Yes);
+    assert_eq!(caps.private_files, Level::Yes);
+    assert_eq!(caps.unlink_verified_object, Level::No);
+    assert_eq!(caps.case_insensitive_names, Level::Unknown);
+    assert_eq!(caps.unicode_normalization, Normalization::None);
+    assert_eq!(caps.detects_mount_aliases, Level::Yes);
+    // The identity is only claimed on file systems of the known list.
+    let known = [0xEF53u64, 0x5846_5342, 0x9123_683E, 0x0102_1994, 0xF2F5_2010].contains(&fs_magic(&root));
+    assert_eq!(caps.file_identity, if known { IdentityKind::DevIno64 } else { IdentityKind::Unknown });
+    // Nothing of the probe is left behind.
+    assert_eq!(std::fs::read_dir(&base).unwrap().count(), 1);
+    assert_eq!(std::fs::read_dir(base.join(".fsops-trash")).unwrap().count(), 0);
+}
+
+#[test]
+fn probe_reports_a_trash_that_others_can_read_as_not_private() {
+    let (base, root, trash) = probe_dirs("probe_open_trash");
+    std::fs::set_permissions(base.join(".fsops-trash"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(HandleBackend.probe(&root, &trash).unwrap().private_files, Level::No);
+}
+
+#[test]
+fn probe_fails_on_a_folder_it_cannot_write_to_and_leaves_nothing() {
+    let (base, root, trash) = probe_dirs("probe_readonly");
+    std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o500)).unwrap();
+    // Running as root ignores the mode; the probe then simply succeeds.
+    let result = HandleBackend.probe(&root, &trash);
+    std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).unwrap();
+    if unsafe { libc::geteuid() } != 0 {
+        assert!(result.is_err());
+    }
+    assert_eq!(std::fs::read_dir(&base).unwrap().count(), 1);
+}
+
+#[test]
+fn probe_leaves_a_present_foreign_file_alone() {
+    let (base, root, trash) = probe_dirs("probe_foreign");
+    std::fs::write(base.join("model.3mf"), b"keep").unwrap();
+    std::fs::write(base.join(".fsops-trash/other"), b"keep").unwrap();
+    let _: Capabilities = HandleBackend.probe(&root, &trash).unwrap();
+    assert_eq!(std::fs::read(base.join("model.3mf")).unwrap(), b"keep");
+    assert_eq!(std::fs::read(base.join(".fsops-trash/other")).unwrap(), b"keep");
+}
+
+#[test]
+fn open_root_takes_absolute_posix_roots_only() {
+    let base = fresh("open_root");
+    let ok = NativePath::parse(base.to_str().unwrap(), Style::Posix).unwrap();
+    let dir = HandleBackend.open_root(&ok).unwrap();
+    assert_eq!(dir.key().unwrap(), open(&base).key().unwrap());
+    let windows = NativePath::parse("C:\\data", Style::Windows).unwrap();
+    assert_eq!(HandleBackend.open_root(&windows).err().unwrap().kind(), io::ErrorKind::InvalidInput);
+    let missing = NativePath::parse(base.join("missing").to_str().unwrap(), Style::Posix).unwrap();
+    assert_eq!(HandleBackend.open_root(&missing).err().unwrap().kind(), io::ErrorKind::NotFound);
+}
+
+#[test]
+fn random_ids_differ_and_have_sixteen_bytes() {
+    let a = HandleBackend.random_op_id().unwrap();
+    let b = HandleBackend.random_op_id().unwrap();
+    assert_ne!(a, b);
+}
+
+#[test]
+fn errors_map_like_the_existing_io_conversion() {
+    for (errno, want) in [
+        (libc::EXDEV, Error::CrossDevice),
+        (libc::EBUSY, Error::Busy),
+        (libc::EINVAL, Error::Unsupported),
+        (libc::EEXIST, Error::Conflict),
+        (libc::ENOENT, Error::NotFound),
+        (libc::ELOOP, Error::PathUnresolvable),
+        (libc::ENOSPC, Error::InsufficientStorage),
+        (libc::EACCES, Error::Internal),
+    ] {
+        assert_eq!(HandleBackend.map_error(&io::Error::from_raw_os_error(errno)), want, "{errno}");
+    }
+    assert_eq!(
+        HandleBackend.map_error(&io::Error::from(io::ErrorKind::InvalidData)),
+        Error::PathUnresolvable
+    );
+}
+
+#[test]
+fn mount_list_is_read_and_unescaped() {
+    let text = "36 35 98:0 /mnt1 /mnt/with\\040space rw,noatime master:1 - ext3 /dev/root rw\n\
+                37 35 8:1 / / rw - ext4 /dev/sda1 rw\n\
+                38 35 8:2 /caf\\303\\251 /ok rw - ext4 /dev/sda2 rw\n\
+                39 35 8:3 /bad\\377 /x rw - ext4 /dev/sda3 rw\n";
+    let list = parse_mountinfo(text).unwrap();
+    assert_eq!(list.len(), 3, "the mount with a non-UTF-8 path is left out");
+    assert_eq!((list[0].mount_id, list[0].root.as_str(), list[0].point.as_str()), (36, "/mnt1", "/mnt/with space"));
+    assert_eq!(list[2].root, "/café");
+    assert_eq!(parse_mountinfo("short line\n").unwrap_err().kind(), io::ErrorKind::InvalidData);
+    assert_eq!(parse_mountinfo("1 2 3:4 /a\\04 /b rw - x y z\n").unwrap_err().kind(), io::ErrorKind::InvalidData);
+    // The real list of this machine parses too, and holds the mount of the test folder.
+    let real = HandleBackend.mount_aliases().unwrap();
+    assert!(!real.is_empty());
+}
+
+#[test]
+fn probe_trusts_the_identity_on_tmpfs() {
+    // The default temp folder may be an overlay, which is not on the list; /dev/shm usually is tmpfs.
+    let base = PathBuf::from("/dev/shm").join(format!("backend_probe_{}", std::process::id()));
+    if std::fs::create_dir_all(&base).is_err() {
+        return;
+    }
+    let root = open(&base);
+    if fs_magic(&root) == 0x0102_1994 {
+        DirHandle::mkdir(&root, &n(".fsops-trash"), DirMode::Private).unwrap();
+        let trash = DirHandle::open_dir(&root, &n(".fsops-trash")).unwrap();
+        let caps = HandleBackend.probe(&root, &trash).unwrap();
+        assert_eq!(caps.file_identity, IdentityKind::DevIno64);
+        assert_eq!(caps.atomic_noreplace_rename, Level::Yes);
+    }
+    std::fs::remove_dir_all(&base).unwrap();
+}
