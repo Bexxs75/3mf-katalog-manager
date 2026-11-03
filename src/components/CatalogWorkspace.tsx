@@ -33,6 +33,7 @@ import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } f
 import type { AppError } from '../lib/errors';
 import { PrintDataFilterBar } from './PrintDataFilterBar';
 import { PrintDataNotice } from './PrintDataNotice';
+import { DuplicatesView } from './DuplicatesView';
 import { PrintFilterContext } from '../hooks/PrintFilterContext';
 import { isActive as printFilterActive, printDataFacets, type FilterKey, type PrintDataFilter } from '../lib/printDataFilter';
 import { printFilterChips } from '../lib/printFilterLabels';
@@ -141,6 +142,8 @@ interface CatalogWorkspaceProps {
   setPrintFilter?: (filter: PrintDataFilter) => void;
   /** Files the print data filter holds back or shows although a value is missing. */
   printNotice?: { hidden: number; shownUnknown: number; unread: number };
+  /** Puts duplicate models in the trash; resolves with the ids still in the catalog afterwards. */
+  onRemoveDuplicates?: (ids: string[]) => Promise<string[]>;
   setModelSourceUrl: (id: string, url: string | null) => void;
   openInSlicer: (id: string) => void;
   rescanMetadata: (id: string) => void;
@@ -263,6 +266,7 @@ export function CatalogWorkspace({
   printFilter,
   setPrintFilter,
   printNotice,
+  onRemoveDuplicates,
   openInSlicer,
   rescanMetadata,
   addModelToCollection,
@@ -437,7 +441,9 @@ export function CatalogWorkspace({
   const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
   // Always shown (also without a selection) so "select all" can be found and the
   // grid does not jump on the first checkbox; only views with nothing to select hide it.
-  const showBulkBar = !detailModel && (selectedForBulk.size > 0 || (!collectionsGalleryOpen && models.length > 0));
+  // The duplicates view stands in for the catalog list: it has its own selection and ignores the filters.
+  const duplicatesMode = toolView === 'duplicates' && !detailModel && !collectionsGalleryOpen && !activeCollection;
+  const showBulkBar = !detailModel && !duplicatesMode && (selectedForBulk.size > 0 || (!collectionsGalleryOpen && models.length > 0));
   const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && !fitPrinter && !printFilterIsActive;
   return (
     <PrintFilterContext.Provider value={printFilterIsActive && printFilter ? printFilter : null}>
@@ -532,7 +538,7 @@ export function CatalogWorkspace({
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
         <SelectionAnnouncer count={selectedForBulk.size} />
         {importRow}
-        {(setUsage || setPrintStatus || setPrintFilter || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
+        {!duplicatesMode && (setUsage || setPrintStatus || setPrintFilter || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
           <section ref={barRef} aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
             <span ref={filterHeadingRef} tabIndex={-1} className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
             {setUsage && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
@@ -581,7 +587,7 @@ export function CatalogWorkspace({
           </section>
         )}
 
-        {printFilter && setPrintFilter && printFilterIsActive && printNotice && (
+        {!duplicatesMode && printFilter && setPrintFilter && printFilterIsActive && printNotice && (
           <PrintDataNotice hidden={printNotice.hidden} shownUnknown={printNotice.shownUnknown} includeUnknown={printFilter.includeUnknown}
             onIncludeUnknownChange={include => setPrintFilter({ ...printFilter, includeUnknown: include })} />
         )}
@@ -693,7 +699,7 @@ export function CatalogWorkspace({
               <div aria-hidden="true" className="mt-4 grid grid-cols-3 gap-4">
                 {[0, 1, 2].map(key => <div key={key} className="h-40 rounded-lg bg-[var(--panel-2)]" />)}
               </div>
-            </div> : initialLoadFailed ? <div role="alert" className="p-6 text-body text-[var(--crit)]">{t('catalogLoadFailed')}</div> : models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : toolOnly && displayedModels.length === 0 ? (
+            </div> : initialLoadFailed ? <div role="alert" className="p-6 text-body text-[var(--crit)]">{t('catalogLoadFailed')}</div> : models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : duplicatesMode ? <DuplicatesView models={models} onRemove={onRemoveDuplicates} /> : toolOnly && displayedModels.length === 0 ? (
               <div className="font-medium tabular-nums text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}
               </div>

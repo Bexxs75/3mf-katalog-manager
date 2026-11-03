@@ -12,6 +12,7 @@ import { ModelLayoutContext } from './hooks/ModelLayoutContext';
 import { useModelImages } from './hooks/useModelImages';
 import { ImportLockContext } from './hooks/ImportLockContext';
 import { PlateOverviewContext } from './hooks/PlateOverviewContext';
+import { useDuplicateRemoval } from './hooks/useDuplicateRemoval';
 import { PlateOverviewDialog } from './components/PlateOverviewDialog';
 import { PrintDataRereadProvider } from './hooks/usePrintDataReread';
 import { PrinterManagerView } from './components/PrinterManagerView';
@@ -140,6 +141,7 @@ export default function App() {
   });
   const backup = useCatalogBackup();
   const cleanup = useCatalogCleanup();
+  const removeDuplicates = useDuplicateRemoval(store.refetchAfterPartialDelete);
   const bulk = useBulkSelection({
     models: store.models,
     setModels: store.setModels,
@@ -719,6 +721,7 @@ export default function App() {
               selected={selected}
               toolView={filters.toolView}
               setToolView={filters.setToolView}
+              onRemoveDuplicates={removeDuplicates}
               onOpenCleanup={() => void cleanup.scanCatalogIssues()}
               cleanupScanning={cleanup.cleanupScanning}
               cleanupError={cleanup.cleanupError}
