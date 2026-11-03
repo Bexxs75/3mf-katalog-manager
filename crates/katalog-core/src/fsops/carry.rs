@@ -316,9 +316,8 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         // The row's path is unique even for files that are gone from disk.
         for row in &travelling {
-            let target = new_dir.join(&row.name);
-            let target = target.to_str().ok_or(Error::PathUnresolvable)?;
-            if self.db.with_conn(|c| path_held(c, target, row.id))? {
+            let target = paths::join(new_str, &row.name).ok_or(Error::PathUnresolvable)?;
+            if self.db.with_conn(|c| path_held(c, &target, row.id))? {
                 facts.names_taken += 1;
             }
         }
@@ -333,11 +332,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         };
         let mut steps = Vec::new();
         for (row, found) in travelling.iter().zip(&present) {
-            let target_path = new_dir
-                .join(&row.name)
-                .to_str()
-                .ok_or(Error::PathUnresolvable)?
-                .to_owned();
+            let target_path = paths::join(new_str, &row.name).ok_or(Error::PathUnresolvable)?;
             let (source, target) = match found {
                 Some(_) => (Some(relative(&row.path)?), Some(relative(&target_path)?)),
                 None => (None, None),
@@ -578,7 +573,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .iter()
             .filter_map(|s| s.after.as_ref())
             .all(|a| rows.iter().find(|r| r.id == a.id) == Some(a));
-        let root_path = self.context.roots.get(root).map(|r| r.path.clone());
+        let root_path = self.context.roots.get(root).map(|r| r.native.as_str().to_owned());
         let unlink = matches!(i.operation, Operation::Unlink | Operation::CompanionPurge);
         let (from, to) = step_access(i.operation);
         let (mut at_source, mut at_target, mut invalid) = (0usize, 0usize, false);
@@ -597,7 +592,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             };
             let (source_abs, target_abs) = step_places(i.operation, step)?;
             let root_path = root_path.as_ref().ok_or(Error::Changed)?;
-            if root_path.join(s) != Path::new(source_abs) {
+            if !paths::join(root_path, s).is_some_and(|joined| paths::same_place(&joined, source_abs)) {
                 return Err(Error::Changed);
             }
             if unlink {
@@ -615,7 +610,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             let (Some(t), Some(target_abs)) = (&step.target, target_abs) else {
                 continue;
             };
-            if root_path.join(t) != Path::new(target_abs) {
+            if !paths::join(root_path, t).is_some_and(|joined| paths::same_place(&joined, target_abs)) {
                 return Err(Error::Changed);
             }
             let so = self.observe_rel(root, s, from, identity)?;
