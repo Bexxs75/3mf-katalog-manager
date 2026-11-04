@@ -12,7 +12,7 @@
 use super::*;
 
 use katalog_core::error_code::ErrorCode;
-use katalog_core::import::files::{compute_content_hash, is_supported_extension};
+use katalog_core::import::files::{compute_content_hash, is_model_extension};
 
 /// More files per hand-over are dropped (a selection of thousands must not flood the queue).
 pub(crate) const MAX_OPEN_FILES: usize = 64;
@@ -84,7 +84,7 @@ pub(crate) fn open_requests_from_args(args: &[String], cwd: &Path) -> Vec<PathBu
             None => PathBuf::from(arg),
         };
         let path = if path.is_absolute() { path } else { cwd.join(path) };
-        if !is_supported_extension(&path) || !path.is_file() || paths.contains(&path) {
+        if !is_model_extension(&path) || !path.is_file() || paths.contains(&path) {
             continue;
         }
         paths.push(path);
@@ -210,7 +210,7 @@ pub(crate) fn resolve_open_requests(conn: &Connection, sources: &ExternalSources
     let mut requests = Vec::new();
     for path in paths {
         let Ok(meta) = std::fs::metadata(&path) else { continue };
-        if !meta.is_file() || !is_supported_extension(&path) {
+        if !meta.is_file() || !is_model_extension(&path) {
             continue;
         }
         let hit = find_in_catalog(conn, &path, || compute_content_hash(&path).ok());
