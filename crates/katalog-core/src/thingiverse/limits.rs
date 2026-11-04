@@ -19,6 +19,11 @@ impl Limits {
     /// minutes (per its Getting Started text), so this is a fifth of that.
     pub const PRODUCTION: Limits = Limits { min_gap_s: 1.0, window_s: 300.0, window_max: 60 };
 
+    /// Images come from the image hosts, not from the API (checked 2026-11-04: no key,
+    /// no rate-limit headers, publicly cached). Ten per second at most and 300 per five
+    /// minutes, which covers about fifteen pages of results.
+    pub const IMAGES: Limits = Limits { min_gap_s: 0.1, window_s: 300.0, window_max: 300 };
+
     /// Tests that talk to a local stub do not want to wait.
     #[cfg(test)]
     pub const NONE: Limits = Limits { min_gap_s: 0.0, window_s: 300.0, window_max: usize::MAX };

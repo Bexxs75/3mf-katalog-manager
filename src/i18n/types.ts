@@ -1884,6 +1884,7 @@ export interface Translations {
   tvTokenRemove: string;
   tvTokenValid: string;
   tvTokenNote: string;
+  tvKeptOnRestore: string;
   tvRemoveTitle: string;
   tvRemoveText: string;
   tvHowTitle: string;

@@ -1204,6 +1204,12 @@ fn replace_catalog_db_with_copy_fn(
         let guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
         db::list_registered_slicers(&guard).map_err(|e| e.to_string())?
     };
+    // The Thingiverse key belongs to this computer: a backup never holds it, so the
+    // working database's key (and switch) is put back into the incoming one below.
+    let local_thingiverse = {
+        let guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
+        db::thingiverse::local_settings(&guard).map_err(|e| e.to_string())?
+    };
 
     // Migrate and sanitize the incoming DB while it's not active yet. Any error
     // here leaves the old DB active and unchanged (fail closed).
@@ -1211,8 +1217,10 @@ fn replace_catalog_db_with_copy_fn(
         let mut incoming = Connection::open(new_db_path).map_err(|e| e.to_string())?;
         crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
         // A key in a file somebody handed over must never take effect. Outside the
-        // transaction because it vacuums the file; the on/off switch stays.
+        // transaction because it vacuums the file; the on/off switch stays. Then the
+        // key of this computer goes back in (it is the only one that takes effect).
         db::scrub_secrets(&incoming).map_err(|e| e.to_string())?;
+        db::thingiverse::keep_local(&incoming, &local_thingiverse).map_err(|e| e.to_string())?;
         let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
         sanitize_printer_connections(&tx)?;
         sanitize_imported_file_identity(&tx)?;
@@ -4449,5 +4457,55 @@ mod companion_tests {
             assert!(db::thingiverse::get_enabled(&conn).unwrap(), "the switch comes along");
         }
         assert!(!contains(&std::fs::read(target_dir.join("catalog.db")).unwrap(), TV_KEY.as_bytes()), "the key is still in the restored file");
+    }
+
+    const TV_KEY_LOCAL: &str = "LOCALKEY-9876543210-zyxwvutsrq";
+
+    #[test]
+    fn a_restore_keeps_the_key_of_this_computer_and_never_takes_the_one_from_the_file() {
+        // A user backup of another computer: switch on, no key (the backup never holds it).
+        let (source, dir) = state_with_catalog("backup_thingiverse_key_d");
+        {
+            let conn = source.db.lock().unwrap();
+            db::thingiverse::set_enabled(&conn, true).unwrap();
+        }
+        let incoming = dir.join("incoming.db");
+        std::fs::copy(&source.db_path, &incoming).unwrap();
+
+        // This computer: its own key, switch ON.
+        let (target, target_dir) = state_with_catalog("backup_thingiverse_key_e");
+        {
+            let conn = target.db.lock().unwrap();
+            db::thingiverse::set_enabled(&conn, true).unwrap();
+            db::thingiverse::set_token(&conn, &katalog_core::thingiverse::Token::parse(TV_KEY_LOCAL).unwrap()).unwrap();
+        }
+        replace_catalog_db(&target, &incoming).unwrap();
+        {
+            let conn = target.db.lock().unwrap();
+            assert!(db::thingiverse::get_token(&conn).unwrap().is_some(), "the local key survives the restore");
+            assert!(db::thingiverse::get_enabled(&conn).unwrap(), "the switch survives the restore");
+        }
+        assert!(contains(&std::fs::read(target_dir.join("catalog.db")).unwrap(), TV_KEY_LOCAL.as_bytes()), "the key is in the restored working file");
+
+        // The same with a file that carries a foreign key: the local one wins, the foreign one is gone.
+        set_thingiverse(&source);
+        let foreign = dir.join("foreign.db");
+        std::fs::copy(&source.db_path, &foreign).unwrap();
+        assert!(contains(&std::fs::read(&foreign).unwrap(), TV_KEY.as_bytes()), "precondition: the incoming file holds a foreign key");
+        replace_catalog_db(&target, &foreign).unwrap();
+        {
+            let conn = target.db.lock().unwrap();
+            assert!(db::thingiverse::get_token(&conn).unwrap().is_some());
+        }
+        let bytes = std::fs::read(target_dir.join("catalog.db")).unwrap();
+        assert!(contains(&bytes, TV_KEY_LOCAL.as_bytes()), "the local key, not the foreign one, is in the restored file");
+        assert!(!contains(&bytes, TV_KEY.as_bytes()), "the foreign key is still in the restored file");
+
+        // The next backup of this computer still does not carry the key.
+        let zip_path = dir.join("after.zip");
+        write_catalog_backup(&target.db, &zip_path, "{}").unwrap();
+        assert!(!contains(&std::fs::read(&zip_path).unwrap(), TV_KEY_LOCAL.as_bytes()));
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        assert!(!contains(&db_bytes, TV_KEY_LOCAL.as_bytes()));
     }
 }

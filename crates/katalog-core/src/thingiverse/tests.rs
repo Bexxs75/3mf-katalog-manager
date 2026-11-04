@@ -105,7 +105,7 @@ impl Stub {
 }
 
 fn config(stub: &Stub, limits: Limits) -> Config {
-    Config { base_url: stub.base(), timeout: Duration::from_secs(5), limits, local_test: true }
+    Config { base_url: stub.base(), timeout: Duration::from_secs(5), limits, image_limits: Limits::NONE, local_test: true }
 }
 
 fn service(stub: &Stub) -> Service {
@@ -230,7 +230,7 @@ fn an_answer_above_one_mib_is_refused() {
 #[test]
 fn a_refused_connection_is_offline() {
     let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let cfg = Config { base_url: format!("http://127.0.0.1:{port}"), timeout: Duration::from_secs(2), limits: Limits::NONE, local_test: true };
+    let cfg = Config { base_url: format!("http://127.0.0.1:{port}"), timeout: Duration::from_secs(2), limits: Limits::NONE, image_limits: Limits::NONE, local_test: true };
     let svc = Service::with_config(cfg, Arc::new(|| 0.0));
     assert_eq!(err(svc.search(&token(), "x", 1, &open())).code, ErrorCode::ThingiverseOffline);
 }
@@ -357,14 +357,31 @@ fn a_valid_image_becomes_a_data_address_without_the_key() {
     ] {
         let stub = stub_with_images(bytes, 1);
         let svc = seen_thing_service(&stub);
-        let data = svc.image(1, ImageSize::Thumb, &open()).unwrap().expect("an image");
+        let data = svc.image(1, ImageSize::Thumb).unwrap().expect("an image");
         assert!(data.starts_with(&format!("data:{mime};base64,")), "{data}");
         let img_request = stub.requests().into_iter().find(|s| s.target.starts_with("/img/")).unwrap();
         assert!(img_request.header("authorization").is_none(), "the key is not sent to the image host");
-        let again = svc.image(1, ImageSize::Thumb, &open()).unwrap();
+        let again = svc.image(1, ImageSize::Thumb).unwrap();
         assert_eq!(again.as_deref(), Some(data.as_str()));
         assert_eq!(stub.count(), 2, "the second image call came from memory");
     }
+}
+
+#[test]
+fn images_are_not_counted_for_the_day_and_have_their_own_limit() {
+    let stub = stub_with_images(png(300), 3);
+    let cfg = Config { image_limits: Limits { min_gap_s: 0.0, window_s: 300.0, window_max: 2 }, ..config(&stub, Limits { min_gap_s: 0.0, ..Limits::PRODUCTION }) };
+    let svc = Service::with_config(cfg, Arc::new(|| 0.0));
+    // Three hits cost one API slot; the images use the image limiter, never the gate.
+    svc.search(&token(), "x", 1, &open()).unwrap();
+    let closed = || Err(TvError::new(ErrorCode::ThingiverseDailyLimit));
+    assert!(svc.search(&token(), "y", 1, &closed).is_err(), "precondition: the gate would refuse an API request");
+    svc.image(1, ImageSize::Thumb).unwrap();
+    svc.image(2, ImageSize::Thumb).unwrap();
+    let e = err(svc.image(3, ImageSize::Thumb));
+    assert_eq!(e.code, ErrorCode::ThingiverseRateLimited, "the image window is full");
+    // The API limiter was not used up by the images: with 60 slots and one used, more fit.
+    svc.search(&token(), "z", 1, &open()).unwrap();
 }
 
 #[test]
@@ -375,7 +392,7 @@ fn unusable_images_are_refused() {
     for (name, bytes) in [("svg", svg), ("too big", too_big), ("magic does not match", wrong_magic)] {
         let stub = stub_with_images(bytes, 1);
         let svc = seen_thing_service(&stub);
-        assert_eq!(err(svc.image(1, ImageSize::Thumb, &open())).code, ErrorCode::ThingiverseBadResponse, "{name}");
+        assert_eq!(err(svc.image(1, ImageSize::Thumb)).code, ErrorCode::ThingiverseBadResponse, "{name}");
         assert!(svc.cached_bytes() < 4096, "{name}: nothing from the refused image is kept");
     }
 }
@@ -388,7 +405,7 @@ fn production_rules_refuse_a_foreign_host_and_plain_http() {
     let svc = Service::with_config(cfg, Arc::new(|| 0.0));
     svc.search(&token(), "x", 1, &open()).unwrap();
     let before = stub.count();
-    assert_eq!(err(svc.image(1, ImageSize::Thumb, &open())).code, ErrorCode::ThingiverseBadResponse);
+    assert_eq!(err(svc.image(1, ImageSize::Thumb)).code, ErrorCode::ThingiverseBadResponse);
     assert_eq!(stub.count(), before, "no request went to the foreign host");
 }
 
@@ -396,7 +413,7 @@ fn production_rules_refuse_a_foreign_host_and_plain_http() {
 fn an_image_of_an_unknown_thing_is_not_fetched() {
     let stub = Stub::start(|_| json(200, "{}"));
     let svc = service(&stub);
-    assert_eq!(svc.image(999, ImageSize::Thumb, &open()).unwrap(), None);
+    assert_eq!(svc.image(999, ImageSize::Thumb).unwrap(), None);
     assert_eq!(stub.count(), 0);
 }
 
@@ -426,7 +443,7 @@ fn a_hundred_hits_with_images_stay_below_the_memory_budget() {
     let svc = service(&stub);
     svc.search(&token(), "x", 1, &open()).unwrap();
     for id in 1..=100 {
-        svc.image(id, ImageSize::Thumb, &open()).unwrap();
+        svc.image(id, ImageSize::Thumb).unwrap();
         assert!(svc.cached_bytes() <= cache::MAX_BYTES, "after image {id}");
     }
     assert!(svc.cached_bytes() > cache::MAX_BYTES / 2, "the images really are held: {}", svc.cached_bytes());
@@ -463,4 +480,27 @@ fn the_page_address_is_checked_or_built() {
 fn a_detail_of_another_thing_than_asked_for_is_a_bad_response() {
     let stub = Stub::start(|_| json(200, r#"{"id":2,"name":"T"}"#));
     assert_eq!(err(service(&stub).thing(&token(), 1, &open())).code, ErrorCode::ThingiverseBadResponse);
+}
+
+/// Optional check against the real service with the production client; skipped unless
+/// `TV_TEST_TOKEN_FILE` names a file holding an app token. Prints only the outcome,
+/// never the key. Run: `TV_TEST_TOKEN_FILE=/path cargo test -p katalog-core --lib
+/// real_service -- --nocapture`.
+#[test]
+fn real_service_accepts_the_production_client_when_a_token_file_is_given() {
+    let Ok(path) = std::env::var("TV_TEST_TOKEN_FILE") else { return };
+    let raw = std::fs::read_to_string(path).expect("token file readable");
+    let token = Token::parse(raw.trim()).expect("token file holds a well-formed key");
+    let svc = Service::new();
+    let report = |what: &str, result: Result<(), TvError>| {
+        eprintln!("real service, {what}: {}", result.as_ref().map_or_else(|e| format!("{:?}", e.code), |_| "OK".to_string()));
+        result
+    };
+    report("users/me", svc.test_token(&token, &open()).map(|_| ())).expect("users/me");
+    let found = svc.search(&token, "benchy", 1, &open());
+    report("search", found.as_ref().map(|_| ()).map_err(Clone::clone)).expect("search");
+    let found = found.unwrap();
+    assert!(!found.items.is_empty());
+    let first = found.items.iter().find(|i| i.preview_available).expect("a hit with a preview");
+    report("image", svc.image(first.id, ImageSize::Thumb).map(|_| ())).expect("image");
 }

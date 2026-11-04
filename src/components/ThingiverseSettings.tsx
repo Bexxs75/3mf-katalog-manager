@@ -134,6 +134,7 @@ export function ThingiverseSettings({ onEnabledChange }: { onEnabledChange: (ena
           {userName !== null && <p role="status" className="text-[var(--good)]">{t('tvTokenValid').replace('{0}', userName)}</p>}
           {error && <p role="alert" className="text-[var(--crit)] break-words"><ErrorText error={error} /></p>}
           <p className="p-2 rounded border border-[var(--line)] bg-[var(--panel-2)] text-caption">{t('tvTokenNote')}</p>
+          <p className="text-caption text-[var(--ink-2)]">{t('tvKeptOnRestore')}</p>
 
           <div>
             <button type="button" aria-expanded={howOpen} aria-controls={howId} onClick={() => setHowOpen(o => !o)}

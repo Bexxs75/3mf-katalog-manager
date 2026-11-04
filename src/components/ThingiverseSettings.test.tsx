@@ -145,6 +145,12 @@ describe('ThingiverseSettings', () => {
     expect(screen.queryByText(de.tvTokenStored)).toBeNull();
   });
 
+  it('says that the key stays on this computer and is in no backup', async () => {
+    stored = { enabled: true, hasToken: true, tokenMask: '••••a3f9', usageToday: 0, dailyLimit: 1000 };
+    setup();
+    expect(await screen.findByText(de.tvKeptOnRestore)).toBeInTheDocument();
+  });
+
   it('unfolds and folds the instructions', async () => {
     stored.enabled = true;
     setup();
@@ -155,6 +161,7 @@ describe('ThingiverseSettings', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText(de.tvHowStep1)).toBeInTheDocument();
     expect(screen.getByText(de.tvHowMayChange)).toBeInTheDocument();
+    expect(screen.getByText(de.tvHowStep4)).toHaveTextContent('App Token');
     fireEvent.click(toggle);
     expect(screen.queryByText(de.tvHowStep1)).toBeNull();
   });

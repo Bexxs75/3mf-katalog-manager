@@ -3,7 +3,10 @@
 //!
 //! The service holds no key and no database access. The caller passes the key per
 //! call and a gate that counts the request in the daily counter right before it goes
-//! out, so cache hits and refused requests are not counted.
+//! out, so cache hits and refused requests are not counted. Preview images are not
+//! API requests: they come from the image hosts (checked against the real service on
+//! 2026-11-04: no key needed, no rate-limit headers, publicly cached), so they stay
+//! out of the daily counter and have a limiter of their own.
 
 mod cache;
 mod client;
@@ -106,6 +109,8 @@ pub struct Config {
     pub base_url: String,
     pub timeout: Duration,
     pub limits: Limits,
+    /// Limits of the image hosts: more generous than the API's, still bounded.
+    pub image_limits: Limits,
     /// Tests only: images and redirects may go to the stub on the loopback address.
     pub local_test: bool,
 }
@@ -116,6 +121,7 @@ impl Config {
             base_url: parse::API_BASE.to_string(),
             timeout: Duration::from_secs(15),
             limits: Limits::PRODUCTION,
+            image_limits: Limits::IMAGES,
             local_test: false,
         }
     }
@@ -131,6 +137,7 @@ enum Cached {
 
 struct State {
     limiter: Limiter,
+    image_limiter: Limiter,
     cache: Cache<Cached>,
 }
 
@@ -151,7 +158,8 @@ impl Service {
 
     pub fn with_config(cfg: Config, clock: Clock) -> Self {
         let limiter = Limiter::new(cfg.limits);
-        Service { cfg, clock, state: Mutex::new(State { limiter, cache: Cache::new() }), http: Mutex::new(None) }
+        let image_limiter = Limiter::new(cfg.image_limits);
+        Service { cfg, clock, state: Mutex::new(State { limiter, image_limiter, cache: Cache::new() }), http: Mutex::new(None) }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
@@ -173,6 +181,7 @@ impl Service {
         let mut st = self.lock();
         st.cache.clear();
         st.limiter.clear();
+        st.image_limiter.clear();
     }
 
     /// Bytes held by the cache (for tests and measurements).
@@ -196,17 +205,21 @@ impl Service {
     }
 
     /// One request through limiter and gate. The limiter may delay it (never past
-    /// a few seconds for a single call) or refuse it without any network use.
-    fn send(&self, url: reqwest::Url, token: Option<&Token>, limit: u64, kind: &'static str, gate: Gate) -> Result<Reply, TvError> {
+    /// a few seconds for a single call) or refuse it without any network use. An image
+    /// (`gate` is `None`) uses the image limiter and is not counted for the day.
+    fn send(&self, url: reqwest::Url, token: Option<&Token>, limit: u64, kind: &'static str, gate: Option<Gate>) -> Result<Reply, TvError> {
         let slot = {
             let now = (self.clock)();
-            self.lock().limiter.reserve(now)
+            let mut st = self.lock();
+            if gate.is_some() { st.limiter.reserve(now) } else { st.image_limiter.reserve(now) }
         };
         let wait = match slot {
             Slot::After(w) => w,
             Slot::Full { retry_after_s } => return Err(TvError::rate_limited(retry_after_s.ceil() as u64)),
         };
-        gate()?;
+        if let Some(gate) = gate {
+            gate()?;
+        }
         if wait > 0.0 {
             std::thread::sleep(Duration::from_secs_f64(wait));
         }
@@ -214,7 +227,7 @@ impl Service {
     }
 
     fn get_json(&self, url: reqwest::Url, token: &Token, kind: &'static str, gate: Gate) -> Result<Value, TvError> {
-        let reply = self.send(url, Some(token), MAX_JSON_BYTES, kind, gate)?;
+        let reply = self.send(url, Some(token), MAX_JSON_BYTES, kind, Some(gate))?;
         classify(&reply, true)?;
         serde_json::from_slice(&reply.body).map_err(|_| TvError::new(ErrorCode::ThingiverseBadResponse))
     }
@@ -264,8 +277,8 @@ impl Service {
     /// Preview image as a `data:` address, or `None` when no address is known for this
     /// thing (it was not in a result of this session) or it has no image. The
     /// interface passes only the number, never an address. The key is not sent: the
-    /// image host has no use for it.
-    pub fn image(&self, id: u64, size: ImageSize, gate: Gate) -> Result<Option<String>, TvError> {
+    /// image host has no use for it. Not counted in the daily counter (see above).
+    pub fn image(&self, id: u64, size: ImageSize) -> Result<Option<String>, TvError> {
         let key = Key::Image { id, large: size == ImageSize::Large };
         if let Some(Cached::Image(hit)) = self.cached(&key) {
             return Ok(Some(hit));
@@ -280,7 +293,7 @@ impl Service {
         if !self.image_host_ok(&url) {
             return Err(TvError::new(ErrorCode::ThingiverseBadResponse));
         }
-        let reply = self.send(url, None, MAX_IMAGE_BYTES, "image", gate)?;
+        let reply = self.send(url, None, MAX_IMAGE_BYTES, "image", None)?;
         classify(&reply, false)?;
         let mime = parse::sniff_image(&reply.body).ok_or_else(|| TvError::new(ErrorCode::ThingiverseBadResponse))?;
         let data = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(&reply.body));

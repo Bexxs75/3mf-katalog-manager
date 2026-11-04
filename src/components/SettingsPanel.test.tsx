@@ -162,6 +162,7 @@ describe('SettingsPanel content', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Katalog importieren' }));
     expect(props.onClearCatalogBackupError).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Ersetzt den kompletten aktuellen Katalog. Fortfahren?')).toBeVisible();
+    expect(screen.getByText('Dein Thingiverse-Schlüssel bleibt auf diesem Rechner erhalten und ist in keiner Sicherung enthalten.')).toBeVisible();
     expect(props.onImportCatalog).not.toHaveBeenCalled();
   });
 
