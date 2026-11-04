@@ -4,6 +4,7 @@ import * as api from '../lib/api/importExport';
 import { importSourceFiles } from '../lib/api/sourceFolders';
 import { countsWithArchiveModels } from '../lib/importCounts';
 import { toAppError } from '../lib/errors';
+import type { DropTarget } from '../lib/externalDrop';
 import type { ArchiveInfo, ArchiveRequest, ImportJobResult, ImportProgress, ImportResultDto, ImportSource, SkippedFile, StartedImport } from '../types';
 
 interface UseFileImportArgs {
@@ -12,6 +13,10 @@ interface UseFileImportArgs {
   activeFolderId: string;
   targetName?: string;
   rootFolderId?: string;
+  /** Folder under the drop position; without it a drop is catalogued in place. */
+  resolveDropTarget?: (position: { x: number; y: number }) => DropTarget;
+  /** A drop on a folder that is no target: nothing is imported. */
+  onDropRejected?: (target: Extract<DropTarget, { kind: 'invalid' }>) => void;
   onImported: (result: ImportResultDto) => void;
   refreshFolders: () => void;
   refreshFiles: () => void;
@@ -35,6 +40,8 @@ export function useFileImport(args: UseFileImportArgs) {
   const [lastJob, setLastJob] = useState<{ meta: ImportJobMeta; progress: ImportProgress } | null>(null);
   const [error, setError] = useState<ReturnType<typeof toAppError> | null>(null);
   const [pendingArchives, setPendingArchives] = useState<ArchiveInfo[] | null>(null);
+  // Folder a drop landed on: the archive dialog of that drop suggests it as extraction folder.
+  const [archiveDropTarget, setArchiveDropTarget] = useState<string | null>(null);
   // Setup still uses the legacy DTO and its summary.
   const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number; skipped: SkippedFile[]; otherFilesExtracted?: number; companionsAssigned?: number; companionsIgnored?: number; jobHasProblems?: boolean } | null>(null);
   const mergeImported = useCallback((value: ImportResultDto) => {
@@ -98,6 +105,7 @@ export function useFileImport(args: UseFileImportArgs) {
   }, [persist, receiveFinished, receiveProgress]);
   const track = useCallback(async (start: Promise<StartedImport>, meta: Omit<ImportJobMeta, 'jobId'>) => {
     setError(null);
+    if (meta.source !== 'dropped') setArchiveDropTarget(null);
     try {
       const {jobId} = await start;
       if (!jobId || !mounted.current) return;
@@ -137,7 +145,11 @@ export function useFileImport(args: UseFileImportArgs) {
   useEffect(() => {
     if (import.meta.env.VITE_TARGET === 'web') return;
     const subscription = getCurrentWebview().onDragDropEvent(event => {
-      if (event.payload.type === 'drop' && latest.current.enabled) void track(api.startDroppedImport(event.payload.paths), {source: 'dropped'});
+      if (event.payload.type !== 'drop' || !latest.current.enabled) return;
+      const target = latest.current.resolveDropTarget?.(event.payload.position) ?? { kind: 'none' };
+      if (target.kind === 'invalid') latest.current.onDropRejected?.(target);
+      else if (target.kind === 'folder') { setArchiveDropTarget(target.folder.path); void track(api.startDroppedImport(event.payload.paths, target.folder.id), {source: 'dropped', targetName: target.folder.name}); }
+      else { setArchiveDropTarget(null); void track(api.startDroppedImport(event.payload.paths), {source: 'dropped'}); }
     });
     return () => { void subscription.then(off => off()).catch(console.error); };
   }, [track]);
@@ -179,7 +191,7 @@ export function useFileImport(args: UseFileImportArgs) {
       const started = await importSourceFiles(paths);
       await track(Promise.resolve(started), {source: 'files', targetName: args.catalogBaseDir ?? undefined});
     },
-    startArchives, pendingArchives,
+    startArchives, pendingArchives, archiveDropTarget: pendingArchives ? archiveDropTarget : null,
     cancelArchives: async () => {
       try { if (pendingArchives?.length) await api.discardArchiveImports(pendingArchives.map(a => a.path)); parents.current.clear(); setPendingArchives(null); }
       catch (e) { setError(toAppError(e)); }

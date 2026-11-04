@@ -70,6 +70,8 @@ import { useCollections } from './hooks/useCollections';
 import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
 import { NO_FOLDER_COLLAPSE_KEY, useCollapsedFolders } from './hooks/useCollapsedFolders';
 import { useFileImport } from './hooks/useFileImport';
+import { ExternalDragContext, useExternalDropTarget } from './hooks/useExternalDropTarget';
+import { DropRejectedNotice } from './components/DropRejectedNotice';
 import { useSourceFolderCheck } from './hooks/useSourceFolderCheck';
 import { SourceFolderNotice } from './components/SourceFolderNotice';
 import { SourceFilesDialog } from './components/SourceFilesDialog';
@@ -126,10 +128,11 @@ export default function App() {
   const { container } = useRuntimeEnvironment();
   const [requestedMainView, setMainView] = useState<MainView>('catalog');
   const mainView = requestedMainView === 'downloads' && !container ? 'catalog' : requestedMainView;
-  const archiveTargetDefault =
-    store.folders.find((f) => f.id === filters.activeFolderId)?.path ?? catalogBaseDir;
+  const externalDrop = useExternalDropTarget({ enabled: mainView === 'catalog', folders: store.folders, catalogBaseDir });
   const fileImport = useFileImport({
     enabled: mainView === 'catalog',
+    resolveDropTarget: externalDrop.resolve,
+    onDropRejected: externalDrop.reject,
     catalogBaseDir,
     activeFolderId: filters.activeFolderId,
     rootFolderId: store.folders.find(f => f.path === catalogBaseDir)?.id,
@@ -139,6 +142,8 @@ export default function App() {
     refreshFolders: store.refreshFolders,
     refreshFiles: store.refreshFiles,
   });
+  const archiveTargetDefault = fileImport.archiveDropTarget ??
+    store.folders.find((f) => f.id === filters.activeFolderId)?.path ?? catalogBaseDir;
   const backup = useCatalogBackup();
   const cleanup = useCatalogCleanup();
   const removeDuplicates = useDuplicateRemoval(store.refetchAfterPartialDelete);
@@ -512,6 +517,7 @@ export default function App() {
 
   return (
     <ImportLockContext.Provider value={fileImport.jobActive}>
+    <ExternalDragContext.Provider value={externalDrop.state}>
     <PlateOverviewContext.Provider value={openPlateOverview}>
     <PrintDataRereadProvider models={store.models} setModels={store.setModels}>
     <div
@@ -613,6 +619,7 @@ export default function App() {
                   onShowNew={showRecentlyAdded}
                 />}
                 {fileImport.error && <div role="alert"><ErrorText error={fileImport.error} /></div>}
+                {externalDrop.rejected && <DropRejectedNotice target={externalDrop.rejected} onDismiss={externalDrop.dismissRejected} />}
               </>}
               expansion={expansion}
               sidebarWidth={sidebarWidth}
@@ -872,6 +879,7 @@ export default function App() {
     </div>
     </PrintDataRereadProvider>
     </PlateOverviewContext.Provider>
+    </ExternalDragContext.Provider>
     </ImportLockContext.Provider>
   );
 }

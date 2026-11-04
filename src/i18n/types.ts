@@ -612,6 +612,13 @@ export interface Translations {
   undoFailed: string;
   undoFilesPartial: string;
   dropHereMany: PluralForms;
+  dzDropMany: PluralForms;
+  dzNoTarget: string;
+  dzRowTarget: string;
+  dzRowNoTarget: string;
+  dzTargetMissing: string;
+  dzTargetCatalogRoot: string;
+  dzClose: string;
   moveDialogTitle: PluralForms;
   moveDialogTreeLabel: string;
   moveDialogHint: string;

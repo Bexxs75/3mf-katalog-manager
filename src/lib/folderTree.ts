@@ -50,6 +50,11 @@ export function containsCatalogRoot(path: string, catalogBaseDir: string | null)
   return root === folder || root.startsWith(`${folder}/`);
 }
 
+/** True for the catalog folder itself (not an ancestor or a subfolder of it). */
+export function isCatalogRootFolder(path: string, catalogBaseDir: string | null): boolean {
+  return containsCatalogRoot(path, catalogBaseDir) && containsCatalogRoot(catalogBaseDir ?? '', path);
+}
+
 export type FolderMoveBlock = 'catalogRoot' | 'self' | 'descendant' | 'alreadyThere' | 'nameTaken';
 
 function pathBasename(path: string): string {
