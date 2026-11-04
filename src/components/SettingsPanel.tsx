@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { ImportRenameSetting } from './ImportRenameSetting';
 import { SourceFoldersSettings } from './SourceFoldersSettings';
@@ -374,6 +375,7 @@ export function SettingsPanel({
                   <div className="font-medium tabular-nums text-caption text-[var(--ink-2)]">
                     {t('importCatalogConfirmQuestion')}
                   </div>
+                  {!isReadOnly() && <div className="text-caption text-[var(--ink-3)]">{t('tvKeptOnRestore')}</div>}
                   <div className="flex gap-1.5">
                     <button {...lockProps}
                       onClick={() => {

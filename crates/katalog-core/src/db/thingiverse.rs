@@ -71,6 +71,31 @@ pub fn scrub_secrets(conn: &Connection) -> Result<(), DbError> {
     Ok(())
 }
 
+/// The machine-local part of the area's settings that a restore keeps: the key and the
+/// switch of the working database. A backup never holds the key (see `scrub_secrets`),
+/// so without this a restore would silently drop it.
+pub struct LocalSettings {
+    enabled: Option<String>,
+    token: Option<Token>,
+}
+
+/// Reads what [`keep_local`] puts back. The key is read only when it is a valid one.
+pub fn local_settings(conn: &Connection) -> Result<LocalSettings, DbError> {
+    Ok(LocalSettings { enabled: get_setting(conn, SETTING_ENABLED)?, token: get_token(conn)? })
+}
+
+/// Puts the local key (and the local switch, when there was one) into a database that
+/// is about to become the working one. Without a local key the incoming switch stays.
+pub fn keep_local(conn: &Connection, local: &LocalSettings) -> Result<(), DbError> {
+    if let Some(token) = &local.token {
+        set_token(conn, token)?;
+        if let Some(enabled) = &local.enabled {
+            set_setting(conn, SETTING_ENABLED, enabled)?;
+        }
+    }
+    Ok(())
+}
+
 /// What the day's counter says: only calls of this program, estimated, and local.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Usage {

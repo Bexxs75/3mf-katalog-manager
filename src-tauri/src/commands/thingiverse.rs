@@ -175,6 +175,7 @@ pub async fn thingiverse_thing(app: tauri::AppHandle, thing_id: u64) -> CmdResul
 }
 
 /// Preview image as a `data:` address; `None` when the thing has none or was not in a result.
+/// Not counted in the daily counter: images are not API requests.
 #[tauri::command]
 pub async fn thingiverse_image(app: tauri::AppHandle, thing_id: u64, size: String) -> CmdResult<Option<String>> {
     let size = match size.as_str() {
@@ -182,7 +183,7 @@ pub async fn thingiverse_image(app: tauri::AppHandle, thing_id: u64, size: Strin
         "large" => ImageSize::Large,
         _ => return Err(CmdError::coded(ErrorCode::ReqInvalidArguments)),
     };
-    with_key(app, move |service, _token, gate| service.image(thing_id, size, gate)).await
+    with_key(app, move |service, _token, _gate| service.image(thing_id, size)).await
 }
 
 /// Opens the thing's page in the browser; in a container the interface shows the address instead.

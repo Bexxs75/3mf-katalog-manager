@@ -1,10 +1,11 @@
 //! Everything that depends on the shape of the Thingiverse API sits in this file:
-//! endpoint paths, field names and the parsers. NOTHING here is verified against the
-//! real service yet (the check with a real key is still open); the stub-server tests
-//! use fixtures written after the same assumptions. When the real shape differs, only
-//! this file changes.
+//! endpoint paths, field names and the parsers. The shape was checked against the real
+//! service on 2026-11-04 (user, search, detail, images); the stub-server tests use
+//! fixtures written after it. When the real shape differs, only this file changes.
 //!
-//! Assumed:
+//! Checked (the search hit also carries `preview_image`, a small resized card picture,
+//! and the detail `default_image.sizes` lists resized variants; `thumbnail` of a hit is
+//! the original file):
 //! - `GET /users/me` -> `{ "name": "<user>" }`
 //! - `GET /search/<term>?type=things&page=<n>&per_page=<k>` -> `{ "total": <n>, "hits": [<thing>] }`
 //! - `GET /things/<id>` -> `<thing>`
@@ -102,6 +103,16 @@ pub fn parse_user_name(body: &Value) -> Result<String, TvError> {
     text(body, "name", MAX_NAME_CHARS).or_else(|| text(body, "username", MAX_NAME_CHARS)).ok_or_else(bad)
 }
 
+/// The address of one entry of `default_image.sizes` (`{ type, size, url }`).
+fn sized_image(image: &Value, kind: &str, size: &str) -> Option<String> {
+    image
+        .get("sizes")?
+        .as_array()?
+        .iter()
+        .find(|e| e.get("type").and_then(Value::as_str) == Some(kind) && e.get("size").and_then(Value::as_str) == Some(size))
+        .and_then(|e| text(e, "url", 2048))
+}
+
 /// Strict on types (an `id` that is not a number is an error), lenient on optional fields.
 fn parse_common(v: &Value) -> Result<(ThingSummaryDto, ThingRefs), TvError> {
     if !v.is_object() {
@@ -110,8 +121,14 @@ fn parse_common(v: &Value) -> Result<(ThingSummaryDto, ThingRefs), TvError> {
     let id = v.get("id").and_then(Value::as_u64).ok_or_else(bad)?;
     let name = text(v, "name", MAX_NAME_CHARS).ok_or_else(bad)?;
     let author = v.get("creator").and_then(|c| text(c, "name", MAX_NAME_CHARS)).unwrap_or_default();
-    let thumb = text(v, "thumbnail", 2048);
-    let large = v.get("default_image").and_then(|i| text(i, "url", 2048)).or_else(|| thumb.clone());
+    // `preview_image` is the small resized card picture; `thumbnail` is the original
+    // file (often over a megabyte), so it is only the fallback.
+    let thumb = text(v, "preview_image", 2048).or_else(|| text(v, "thumbnail", 2048));
+    let image = v.get("default_image");
+    let large = image
+        .and_then(|i| sized_image(i, "display", "large"))
+        .or_else(|| thumb.clone())
+        .or_else(|| image.and_then(|i| text(i, "url", 2048)));
     let page = text(v, "public_url", 2048);
     let summary = ThingSummaryDto {
         id,
@@ -428,6 +445,23 @@ mod tests {
         for body in [json!({"hits": [{"id": "1", "name": "A"}]}), json!({"hits": [{"id": 1}]}), json!({"hits": 5}), json!("x"), json!({"nope": []})] {
             assert_eq!(parse_search(&body, 1).err().map(|e| e.code), Some(ErrorCode::ThingiverseBadResponse), "{body}");
         }
+    }
+
+    #[test]
+    fn the_small_preview_is_preferred_over_the_original_file() {
+        let hit = json!({"id": 1, "name": "A", "thumbnail": "https://cdn.thingiverse.com/original.jpg",
+                         "preview_image": "https://resize.thingiverse.com/?url=/assets/a.jpg&w=292&h=219"});
+        let (_, refs) = parse_common(&hit).unwrap();
+        assert_eq!(refs.thumb.as_deref(), Some("https://resize.thingiverse.com/?url=/assets/a.jpg&w=292&h=219"));
+        let detail = json!({"id": 1, "name": "A", "thumbnail": "https://cdn.thingiverse.com/original.jpg",
+                            "default_image": {"url": "https://cdn.thingiverse.com/original.jpg", "sizes": [
+                                {"type": "thumb", "size": "large", "url": "https://cdn.thingiverse.com/original.jpg"},
+                                {"type": "display", "size": "large", "url": "https://resize.thingiverse.com/?url=/assets/a.jpg&w=1024&h=1024"}]}});
+        let (_, refs) = parse_common(&detail).unwrap();
+        assert_eq!(refs.large.as_deref(), Some("https://resize.thingiverse.com/?url=/assets/a.jpg&w=1024&h=1024"));
+        // Without any smaller variant the old behaviour stays: the thumbnail, then the original.
+        let (_, refs) = parse_common(&json!({"id": 2, "name": "B", "default_image": {"url": "https://cdn.thingiverse.com/big.jpg"}})).unwrap();
+        assert_eq!(refs.large.as_deref(), Some("https://cdn.thingiverse.com/big.jpg"));
     }
 
     #[test]
