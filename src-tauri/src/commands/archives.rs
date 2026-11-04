@@ -4,7 +4,7 @@
 //! happen. The folder import deliberately extracts nothing.
 
 use super::*;
-use super::files::{is_supported_extension, SkippedFileDto};
+use super::files::{is_model_extension, SkippedFileDto};
 #[cfg(test)]
 use super::files::import_many_with_conn_atomic;
 
@@ -190,7 +190,7 @@ fn path_exists(path: &Path) -> bool {
 }
 
 pub(crate) fn inspect_one(path: &Path) -> ArchiveInfoDto {
-    let summary = archive::inspect(path, is_supported_extension);
+    let summary = archive::inspect(path, is_model_extension);
     let (file_size, modified_unix_ms, status) = match file_fingerprint(path) {
         Some((size, modified)) => (size, modified, summary.status.into()),
         None => (0, 0, ArchiveStatusDto::Unreadable),
@@ -339,7 +339,7 @@ fn extract_one(
     let (assigned, ignored) = assign_companions(&dest, &extraction.written_files(&dest), &outcome.models.imported);
     outcome.companions_assigned = assigned;
     outcome.companions_ignored = ignored;
-    outcome.other_files_extracted = extraction.count_written_files_not_matching(&dest, is_supported_extension);
+    outcome.other_files_extracted = extraction.count_written_files_not_matching(&dest, is_model_extension);
     outcome.stripped_root = extraction.stripped_root.clone();
     outcome.extracted_to = Some(dest.to_string_lossy().to_string());
 

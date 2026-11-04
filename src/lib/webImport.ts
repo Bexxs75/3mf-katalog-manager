@@ -3,7 +3,7 @@ import { authenticationFailed, canUpload, getSnapshot, readResponse, subscribe }
 
 export type UploadTextKey = { [K in keyof Translations]: Translations[K] extends string ? K : never }[keyof Translations];
 
-export const MODEL_UPLOAD_ACCEPT = '.3mf,.stl,.obj,.stp,.step,.zip,.7z';
+export const MODEL_UPLOAD_ACCEPT = '.3mf,.stl,.obj,.stp,.step,.gcode,.bgcode,.zip,.7z';
 // Formats the server recognises but does not unpack in the browser (desktop app only).
 const UNPACKED_ELSEWHERE = /\.(rar|tar|tgz|tbz2|txz|tzst)$|\.tar\.(gz|bz2|xz|zst)$/i;
 // Why an upload or archive was set aside, as reported by the server in `kind`.
@@ -196,7 +196,7 @@ export class WebImportController {
       const id = ++this.serial;
       const error: UploadTextKey | undefined = file.webkitRelativePath ? 'webUploadFolders'
         : UNPACKED_ELSEWHERE.test(file.name) ? 'webUploadArchives'
-        : !/\.(3mf|stl|obj|stp|step|zip|7z)$/i.test(file.name) ? 'webUploadType' : undefined;
+        : !/\.(3mf|stl|obj|stp|step|gcode|bgcode|zip|7z)$/i.test(file.name) ? 'webUploadType' : undefined;
       this.patch({ queue: [...this.view.queue, { id, name: file.name, percent: 0, state: error ? 'error' : 'queued', error }] });
       if (!error) this.pending.set(id, { file, abort: new AbortController() });
     }

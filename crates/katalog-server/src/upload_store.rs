@@ -178,7 +178,7 @@ pub fn sanitize_name(encoded: &str) -> Result<String, StoreError> {
     let decoded = String::from_utf8(decoded).map_err(|_| bad())?;
     let name = clean_name(&decoded)?;
     let ext = extension(&name);
-    if is_archive_name(&name) || is_model_extension(&ext) {
+    if is_archive_name(&name) || is_model_extension(&ext) || is_sliced_extension(&ext) {
         return Ok(name);
     }
     // rar, tar and friends are recognised so the user learns the format is the
@@ -219,6 +219,11 @@ pub(crate) fn clean_name(decoded: &str) -> Result<String, StoreError> {
 }
 pub(crate) fn is_model_extension(ext: &str) -> bool {
     matches!(ext, "3mf" | "stl" | "obj" | "stp" | "step")
+}
+/// Sliced output (G-Code, bgcode). Accepted as a single upload only, never out of an archive,
+/// like the desktop import.
+pub(crate) fn is_sliced_extension(ext: &str) -> bool {
+    matches!(ext, "gcode" | "bgcode")
 }
 /// Archives the web upload unpacks itself; every other archive format is refused.
 pub(crate) fn is_archive_name(name: &str) -> bool {
@@ -1158,8 +1163,24 @@ pub(crate) fn signature_ok(ext: &str, head: &[u8]) -> bool {
             .iter()
             .position(|b| !b.is_ascii_whitespace())
             .is_some_and(|p| head[p..].starts_with(b"ISO-10303-21")),
+        // Binary G-Code starts with its magic number.
+        "bgcode" => head.starts_with(b"GCDE"),
+        // Text G-Code: the start must be text, so a renamed binary never gets in.
+        "gcode" => text_like(head) && !head.starts_with(b"#!"),
         _ => !head.starts_with(b"MZ") && !head.starts_with(b"\x7fELF") && !head.starts_with(b"#!"),
     }
+}
+/// The first 4 KiB hold no NUL byte and are overwhelmingly printable (UTF-8 text with line breaks).
+fn text_like(head: &[u8]) -> bool {
+    let sample = &head[..head.len().min(4096)];
+    if sample.contains(&0) {
+        return false;
+    }
+    let odd = sample
+        .iter()
+        .filter(|b| **b < 0x20 && !matches!(**b, b'\n' | b'\r' | b'\t'))
+        .count();
+    odd * 20 <= sample.len()
 }
 pub struct PendingUpload {
     store: Arc<UploadStore>,

@@ -131,7 +131,8 @@ fn refusal_reason(file_path: &str, root: &Path, expanded_sensitive: &[PathBuf]) 
     if archives::check_managed_location(&resolved_parent, expanded_sensitive).is_err() {
         return Some("outside_folder");
     }
-    if !is_supported_extension(path) {
+    // Entries of the catalog, so sliced files the user added one by one go to the trash as well.
+    if !katalog_core::import::files::is_catalog_extension(path) {
         return Some("not_a_model");
     }
     if meta.file_type().is_symlink() {

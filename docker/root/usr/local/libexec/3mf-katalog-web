@@ -43,6 +43,9 @@ ASSETS = {
     'icon-32.png': ('static/icon-32.png', 'image/png', 'public, max-age=86400'),
 }
 MIME = {'3mf': 'model/3mf', 'stl': 'model/stl', 'obj': 'model/obj', 'stp': 'model/step', 'step': 'model/step'}
+# File types the catalog also holds that no slicer link may open (G-Code is already sliced): they are
+# deliberately not in ALL_TYPES, so they get a download link, a placeholder and no "open in slicer" list.
+MIME['gcode'] = 'text/x.gcode'
 ALL_TYPES = {'3mf', 'stl', 'obj', 'stp', 'step'}
 SLICERS = (
     ('OrcaSlicer', 'orcaslicer://open?file=', ALL_TYPES),
@@ -1364,7 +1367,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             if not single:
                 parts.append(f'<form method="get" action="/katalog/">{"<input type=hidden name=hidden value=1>" if view_hidden else ""}{lang_field}<label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
-                choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
+                choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj', 'gcode')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
                 for key, options in choices:
                     parts.append(f'<label>{t(key)}<select name="{key}">')
                     if key != 'sort':

@@ -676,13 +676,13 @@ fn validate_print_info_rows(conn: &Connection) -> Result<(), String> {
     // Reference: every row belongs to an existing 3MF file.
     let orphans = count(
         "SELECT (SELECT COUNT(*) FROM file_print_info i WHERE i.file_id IS NULL OR NOT EXISTS
-                    (SELECT 1 FROM files f WHERE f.id = i.file_id AND f.file_type = '3mf'))
+                    (SELECT 1 FROM files f WHERE f.id = i.file_id AND f.file_type IN ('3mf', 'gcode')))
               + (SELECT COUNT(*) FROM file_print_plates p WHERE p.file_id IS NULL OR NOT EXISTS
-                    (SELECT 1 FROM files f WHERE f.id = p.file_id AND f.file_type = '3mf'))",
+                    (SELECT 1 FROM files f WHERE f.id = p.file_id AND f.file_type IN ('3mf', 'gcode')))",
         &[],
     )?;
     if orphans > 0 {
-        return Err(reject("Verweis auf keine 3MF-Datei"));
+        return Err(reject("Verweis auf keine 3MF- oder G-Code-Datei"));
     }
 
     // Uniqueness: one info row per file, one plate row per (file, index).
@@ -2844,6 +2844,29 @@ mod tests {
     }
 
     #[test]
+    fn a_backup_with_a_gcode_file_and_its_print_data_is_accepted() {
+        let (explicit, restore) = print_data_case(|conn| {
+            crate::db::test_insert_minimal_file(conn, "/tmp/c.gcode", None).unwrap();
+            conn.execute("UPDATE files SET file_type = 'gcode' WHERE id = 3", []).unwrap();
+            info_row(conn, 3, &[("printer_model", "'MK4'"), ("layer_height_mm", "0.2")]);
+            plate_row(conn, 3, "1", &[("print_seconds", "4200")]);
+        });
+        assert!(explicit.is_ok(), "{explicit:?}");
+        assert!(restore.is_ok(), "{restore:?}");
+    }
+
+    #[test]
+    fn a_backup_with_resin_and_gcode_rows_but_print_data_for_a_resin_file_is_rejected() {
+        let (explicit, restore) = print_data_case(|conn| {
+            crate::db::test_insert_minimal_file(conn, "/tmp/d.ctb", None).unwrap();
+            conn.execute("UPDATE files SET file_type = 'resin' WHERE id = 3", []).unwrap();
+            info_row(conn, 3, &[]);
+        });
+        assert!(explicit.is_err(), "print data belongs to 3MF and G-Code files only");
+        assert!(restore.is_err());
+    }
+
+    #[test]
     fn a_backup_with_damaged_print_data_is_rejected_by_the_explicit_check() {
         let many_plates = |conn: &Connection| {
             for i in 1..=1025 {
@@ -2854,7 +2877,7 @@ mod tests {
         let cases: Vec<(&str, Setup)> = vec![
             ("info row of a file that does not exist", Box::new(|c| info_row(c, 999, &[]))),
             ("plate row of a file that does not exist", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 999, "1", &[]) })),
-            ("info row of a file that is no 3MF", Box::new(|c| info_row(c, 2, &[]))),
+            ("info row of a file that is no 3MF or G-Code", Box::new(|c| info_row(c, 2, &[]))),
             ("two info rows for one file", Box::new(|c| { info_row(c, 1, &[]); info_row(c, 1, &[]) })),
             ("two plate rows with the same index", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "2", &[]); plate_row(c, 1, "2", &[]) })),
             ("plate index 0", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "0", &[]) })),
