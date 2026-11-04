@@ -316,7 +316,10 @@ pub fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord]) -> M
         slice_info: slice_info.map(SliceInfoDto::from),
         cost_estimate,
         deleted_at: file.deleted_at,
-        print_info: file.print_info.map(PrintInfoDto::from),
+        print_info: file.print_info.map(|record| {
+            let current = file.file_type.expected_reader_version() == Some(record.reader_version);
+            PrintInfoDto { reader_current: current, ..PrintInfoDto::from(record) }
+        }),
     }
 }
 fn is_http_url(url: &str) -> bool {

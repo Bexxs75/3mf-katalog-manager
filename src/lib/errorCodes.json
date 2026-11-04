@@ -183,7 +183,14 @@
     "archiveTypeUnknown",
     "onlyWebAddresses",
     "logPreviewExpired",
-    "updateBackupFolderMissing"
+    "updateBackupFolderMissing",
+    "gcodeFileUnreadable",
+    "bgcodeNotBgcode",
+    "bgcodeVersionUnsupported",
+    "bgcodeCorrupt",
+    "bgcodeChecksum",
+    "bgcodeCompressionUnsupported",
+    "bgcodeTooLarge"
   ],
   "legacy": [
     "cancelled",

@@ -140,8 +140,17 @@ pub fn read_rescan_target(target: &RescanTarget) -> Result<PreparedRescan> {
             let doc = obj::parse_obj_file(path).map_err(|e| failed(&e))?;
             scanned(doc.dimensions_mm, doc.volume_cm3, None)
         }
-        // Catalog entry only, nothing to read yet.
-        Some("gcode" | "bgcode") => scanned(None, None, None),
+        Some("gcode" | "bgcode") => {
+            let read = crate::gcode::import_gcode_file(path);
+            ScannedMetadataUpdate {
+                thumbnail_png: read.thumbnail_png,
+                plate_count: read.plate_count,
+                slice_info_json: read.slice_info_json,
+                print_info: read.print_info,
+                metadata: read.metadata,
+                ..scanned(None, None, None)
+            }
+        }
         _ => return Err(RescanError::Unsupported),
     };
     Ok(PreparedRescan {

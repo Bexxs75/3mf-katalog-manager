@@ -321,6 +321,40 @@ fn summary_serialization_has_presence_flags_and_no_image_fields() {
 }
 
 #[test]
+fn summary_print_data_state_follows_the_reader_version_of_each_file_type() {
+    use crate::db::print_info_tests::{new_file, plate, record};
+    use crate::threemf::print_info::{SliceState, PRINT_INFO_READER_VERSION};
+
+    let mut conn = crate::db::connect_in_memory().expect("connect");
+    let with_version = |version: u32| {
+        let mut r = record(SliceState::Sliced, vec![plate(1)]);
+        r.reader_version = version;
+        Some(r)
+    };
+    let rows = [
+        ("current.gcode", FileType::Gcode, with_version(crate::gcode::GCODE_READER_VERSION)),
+        // The number of the 3MF reader means nothing for a G-code row.
+        ("threemf-version.gcode", FileType::Gcode, with_version(PRINT_INFO_READER_VERSION)),
+        ("never-read.gcode", FileType::Gcode, None),
+        ("current.3mf", FileType::ThreeMf, with_version(PRINT_INFO_READER_VERSION)),
+        // Likewise the other way round: the G-code number does not make a 3MF row current.
+        ("gcode-version.3mf", FileType::ThreeMf, with_version(crate::gcode::GCODE_READER_VERSION)),
+    ];
+    for (name, file_type, info) in rows {
+        crate::db::insert_file(&mut conn, &new_file(&format!("/tmp/{name}"), file_type, info)).unwrap();
+    }
+    let summaries = list_file_summaries(&conn).unwrap();
+    let state = |name: &str| summaries.iter().find(|s| s.name == name).unwrap().print_data_state.clone();
+    assert_eq!(state("current.gcode"), "sliced");
+    assert_eq!(state("threemf-version.gcode"), "unread");
+    assert_eq!(state("never-read.gcode"), "unread");
+    assert_eq!(state("current.3mf"), "sliced");
+    assert_eq!(state("gcode-version.3mf"), "unread");
+    let facts = |name: &str| summaries.iter().find(|s| s.name == name).unwrap().print_facts.is_some();
+    assert!(facts("current.gcode") && !facts("threemf-version.gcode"));
+}
+
+#[test]
 fn summary_print_data_state_tells_unread_from_the_stored_state() {
     use crate::db::print_info_tests::{new_file, plate, record};
     use crate::threemf::print_info::SliceState;

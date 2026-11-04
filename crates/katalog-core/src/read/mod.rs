@@ -116,22 +116,20 @@ pub struct PrintLogEntryDto {
 
 /// What the list shows about the print data of a file (see [`FileSummaryDto::print_data_state`]).
 fn print_data_state(file_type: db::models::FileType, print_info: Option<&db::models::PrintInfoSummary>) -> String {
-    if file_type != db::models::FileType::ThreeMf {
+    let Some(expected) = file_type.expected_reader_version() else {
         return "none".to_string();
-    }
+    };
     match print_info {
-        Some(info) if info.reader_version == threemf::print_info::PRINT_INFO_READER_VERSION => info.slice_state.clone(),
+        Some(info) if info.reader_version == expected => info.slice_state.clone(),
         _ => "unread".to_string(),
     }
 }
 
-/// The print facts of a list row: only for a 3MF whose row the current reader wrote and whose
+/// The print facts of a list row: only for a 3MF or G-code file whose row the current reader wrote and whose
 /// state is `sliced` or `no_slice_data` (the other states hold no usable values).
 fn print_facts(file_type: db::models::FileType, print_info: Option<&db::models::PrintInfoSummary>) -> Option<PrintFactsDto> {
-    if file_type != db::models::FileType::ThreeMf {
-        return None;
-    }
-    let info = print_info.filter(|i| i.reader_version == threemf::print_info::PRINT_INFO_READER_VERSION)?;
+    let expected = file_type.expected_reader_version()?;
+    let info = print_info.filter(|i| i.reader_version == expected)?;
     if !matches!(info.slice_state.as_str(), "sliced" | "no_slice_data") {
         return None;
     }

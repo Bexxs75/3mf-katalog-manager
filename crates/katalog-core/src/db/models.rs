@@ -21,6 +21,16 @@ pub enum FileType {
 }
 
 impl FileType {
+    /// Version of the reader that writes the print data of this kind of file; a stored row of
+    /// another version counts as not read yet. `None` for kinds that have no print data.
+    pub fn expected_reader_version(&self) -> Option<u32> {
+        match self {
+            FileType::ThreeMf => Some(PRINT_INFO_READER_VERSION),
+            FileType::Gcode => Some(crate::gcode::GCODE_READER_VERSION),
+            FileType::Stl | FileType::Stp | FileType::Obj | FileType::Resin => None,
+        }
+    }
+
     pub fn as_str(&self) -> &'static str {
         match self {
             FileType::ThreeMf => "3mf",
