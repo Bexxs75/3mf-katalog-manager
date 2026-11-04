@@ -31,7 +31,7 @@ preview = []
 
 [dependencies]
 katalog-core = { path = "../crates/katalog-core", default-features = false }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = { version = "2", default-features = false, features = ["xdg-portal"] }
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }

@@ -22,6 +22,7 @@ pub use katalog_core::threemf;
 mod updater;
 mod startup;
 mod startup_error;
+mod tray;
 
 use std::sync::Mutex;
 
@@ -175,6 +176,10 @@ pub fn run() {
             }
             commands::purge_expired_trash_on_startup(&conn, &trash_dir);
             let sensitive_dirs = sensitive_dirs(app.handle());
+            // Mirrors the stored close wish so the window hook never touches the database lock.
+            let close_behavior = tray::CloseBehavior::from_db(&conn);
+            let wants_tray = close_behavior.action() == tray::CloseAction::Tray;
+            app.manage(close_behavior);
             app.manage(commands::AppState {
                 import_jobs: commands::ImportJobs::for_app(app.handle().clone()),
                 db: Mutex::new(conn),
@@ -214,6 +219,14 @@ pub fn run() {
             app.manage(commands::UpdaterState::default());
             commands::sync_linux_menu_path();
             startup::create_window(app)?;
+            if wants_tray {
+                // A failed build (e.g. no appindicator library) leaves the behavior at "quit".
+                let container = commands::RuntimeEnvironment::current().container;
+                let behavior = app.state::<tray::CloseBehavior>();
+                if let Err(error) = behavior.apply(tray::CloseAction::Tray, container, &tray::AppTray(app.handle().clone())) {
+                    log::info!(target: "tray", "tray unavailable: {error:?}");
+                }
+            }
             // Product name from the active config (differs for the preview variant) plus
             // the version, taken straight from Cargo.toml.
             if let Some(window) = app.get_webview_window("main") {
@@ -227,6 +240,15 @@ pub fn run() {
         // event loop iteration in which Tauri forwards the drop event to the frontend -
         // the following IPC call `import_dropped` is therefore always processed after it.
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let container = window.state::<commands::RuntimeEnvironment>().container;
+                if let Some(behavior) = window.try_state::<tray::CloseBehavior>() {
+                    if behavior.decide(container, window.label()) == tray::CloseDecision::Hide {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                }
+            }
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 window.state::<commands::AppState>().import_jobs.observe_drop(paths);
                 if let Some(images) = window.try_state::<commands::DroppedImages>() {
@@ -420,8 +442,17 @@ pub fn run() {
             commands::open_log_folder,
             commands::open_bug_report_form,
         ])
-        .run(context)
-        .expect("error while running tauri application");
+        .build(context)
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            // Dock click on macOS while the window is hidden in the tray.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { has_visible_windows, .. } = _event {
+                if tray::reopen_needs_window(has_visible_windows) {
+                    tray::show_main_window(_app);
+                }
+            }
+        });
 }
 
 #[cfg(test)]
