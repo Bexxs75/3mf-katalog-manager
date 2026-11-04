@@ -25,6 +25,10 @@ pub struct PrinterConnectionDto {
     pub error_since: Option<f64>,
     pub paused: bool,
     pub clock_offset_s: f64,
+    /// Failed attempts in a row.
+    pub failures: i64,
+    /// `ok`, `reconnecting`, `offline`, `error` or `paused` (`printer_link::status`).
+    pub status: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -91,6 +95,7 @@ fn id(value: &str, what: &str) -> CmdResult<i64> {
 }
 
 fn connection_dto(c: store::PrinterConnectionRecord) -> PrinterConnectionDto {
+    let status = crate::printer_link::status::connection_status(&c, unix_now()).as_str().to_string();
     PrinterConnectionDto {
         printer_id: c.printer_id.to_string(),
         kind: c.kind,
@@ -103,6 +108,8 @@ fn connection_dto(c: store::PrinterConnectionRecord) -> PrinterConnectionDto {
         error_since: c.error_since,
         paused: c.paused,
         clock_offset_s: c.clock_offset_s,
+        failures: c.failures,
+        status,
     }
 }
 
@@ -113,6 +120,13 @@ fn now_rfc3339() -> String {
 fn wake(app: &tauri::AppHandle) {
     if let Some(w) = app.try_state::<SyncWaker>() {
         w.wake();
+    }
+}
+
+/// "Connect now": the pass also contacts printers that are waiting after failures.
+fn wake_now(app: &tauri::AppHandle) {
+    if let Some(w) = app.try_state::<SyncWaker>() {
+        w.wake_now();
     }
 }
 
@@ -230,7 +244,7 @@ pub fn set_printer_link_enabled(app: tauri::AppHandle, state: State<AppState>, e
     store::set_printer_link_enabled(&conn, enabled).map_err(|e| e.to_string())?;
     drop(conn);
     if enabled {
-        wake(&app);
+        wake_now(&app);
     }
     Ok(())
 }
@@ -298,7 +312,7 @@ pub fn remove_printer_connection(state: State<AppState>, printer_id: String) -> 
 
 #[tauri::command]
 pub fn sync_printers_now(app: tauri::AppHandle) -> CmdResult<()> {
-    wake(&app);
+    wake_now(&app);
     Ok(())
 }
 

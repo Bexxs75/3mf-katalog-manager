@@ -168,7 +168,9 @@ CREATE TABLE IF NOT EXISTS printer_connections (
     last_error TEXT,
     error_since REAL,
     paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
-    clock_offset_s REAL NOT NULL DEFAULT 0
+    clock_offset_s REAL NOT NULL DEFAULT 0,
+    failures INTEGER NOT NULL DEFAULT 0 CHECK (failures >= 0),
+    last_attempt_at REAL
 );
 
 CREATE TABLE IF NOT EXISTS printer_jobs (

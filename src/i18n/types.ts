@@ -490,6 +490,8 @@ export interface Translations {
   importActiveError: string;
   pmConnected: string;
   pmConnectionError: string;
+  pmReconnecting: string;
+  pmOffline: string;
 
   railPrinters: string;
   settingsPrintersMovedHint: string;
@@ -1422,6 +1424,10 @@ export interface Translations {
   printerErrorContainerLocalName: string;
   printerErrorContainerLoopback: string;
   printerErrorUnreachable: string;
+  printerErrorTimeout: string;
+  printerErrorConnectionRefused: string;
+  printerErrorConnectionReset: string;
+  printerErrorServerBusy: string;
   printerErrorAuthRequired: string;
   printerErrorBadResponse: string;
   printerErrorTooManyOpenJobs: string;
@@ -1431,6 +1437,7 @@ export interface Translations {
   printerSyncedAgo: string;
   printerNotSyncedYet: string;
   printerUnreachableSince: string;
+  printerReconnecting: string;
   printerAuthNeeded: string;
   /** Fallback when the backend reports a connection error code the UI does not know. */
   printerErrorUnknown: string;

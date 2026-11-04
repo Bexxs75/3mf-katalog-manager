@@ -21,6 +21,10 @@ pub struct PrinterConnectionRecord {
     pub paused: bool,
     /// Printer clock minus local clock from the last test or sync; 0 = within tolerance.
     pub clock_offset_s: f64,
+    /// Failed attempts in a row since the last success or test; 0 = none.
+    pub failures: i64,
+    /// When the background pass last contacted the printer (success or failure); `None` = never.
+    pub last_attempt_at: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,7 +69,7 @@ pub fn set_printer_link_enabled(conn: &Connection, enabled: bool) -> Result<(), 
 }
 
 const CONNECTION_COLUMNS: &str = "printer_id, kind, address, base_url, remote_version, connected_since,
-    last_synced_at, last_error, error_since, paused, clock_offset_s";
+    last_synced_at, last_error, error_since, paused, clock_offset_s, failures, last_attempt_at";
 
 fn connection_from_row(r: &Row) -> rusqlite::Result<PrinterConnectionRecord> {
     Ok(PrinterConnectionRecord {
@@ -80,6 +84,8 @@ fn connection_from_row(r: &Row) -> rusqlite::Result<PrinterConnectionRecord> {
         error_since: r.get(8)?,
         paused: r.get::<_, i64>(9)? != 0,
         clock_offset_s: r.get(10)?,
+        failures: r.get(11)?,
+        last_attempt_at: r.get(12)?,
     })
 }
 
@@ -101,7 +107,8 @@ pub fn save_connection_after_test(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(printer_id) DO UPDATE SET
              kind = excluded.kind, address = excluded.address, base_url = excluded.base_url,
-             remote_version = excluded.remote_version, last_error = NULL, error_since = NULL, paused = 0",
+             remote_version = excluded.remote_version, last_error = NULL, error_since = NULL, paused = 0,
+             failures = 0, last_attempt_at = NULL",
         params![printer_id, kind, address, base_url, version, now],
     )?;
     get_connection(conn, printer_id)?.ok_or_else(|| DbError::Other("Verbindung fehlt nach dem Speichern".into()))
@@ -145,18 +152,19 @@ pub fn set_clock_offset(conn: &Connection, printer_id: i64, offset_s: f64) -> Re
 pub fn record_sync_success(conn: &Connection, printer_id: i64, now: f64, base_url: &str, version: &str) -> Result<(), DbError> {
     conn.execute(
         "UPDATE printer_connections SET last_synced_at = ?2, last_error = NULL, error_since = NULL,
-             base_url = ?3, remote_version = ?4
+             base_url = ?3, remote_version = ?4, failures = 0, last_attempt_at = ?2
          WHERE printer_id = ?1",
         params![printer_id, now, base_url, version],
     )?;
     Ok(())
 }
 
-/// Remembers the error; `error_since` stays at the first error.
+/// Remembers the error and counts it; `error_since` stays at the first error.
 /// `auth_required` pauses the connection until the next test.
 pub fn record_sync_error(conn: &Connection, printer_id: i64, code: &str, now: f64) -> Result<(), DbError> {
     conn.execute(
         "UPDATE printer_connections SET last_error = ?2, error_since = COALESCE(error_since, ?3),
+             failures = failures + 1, last_attempt_at = ?3,
              paused = CASE WHEN ?2 = 'auth_required' THEN 1 ELSE paused END
          WHERE printer_id = ?1",
         params![printer_id, code, now],
@@ -403,6 +411,23 @@ mod tests {
         assert_eq!(c.address, "192.168.1.61");
         assert!(!c.paused);
         assert_eq!(c.last_error, None);
+    }
+
+    #[test]
+    fn errors_are_counted_and_a_success_or_a_test_resets_the_count() {
+        let conn = setup();
+        let fresh = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        assert_eq!((fresh.failures, fresh.last_attempt_at), (0, None));
+        record_sync_error(&conn, 1, "timeout", 1100.0).unwrap();
+        record_sync_error(&conn, 1, "connection_refused", 1400.0).unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert_eq!((c.failures, c.last_attempt_at, c.error_since), (2, Some(1400.0), Some(1100.0)));
+        record_sync_success(&conn, 1, 1700.0, "http://192.168.1.60", "v0.8.0").unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert_eq!((c.failures, c.last_attempt_at, c.last_error), (0, Some(1700.0), None));
+        record_sync_error(&conn, 1, "timeout", 2000.0).unwrap();
+        let tested = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 3000.0).unwrap();
+        assert_eq!((tested.failures, tested.last_attempt_at), (0, None), "a successful test starts over");
     }
 
     #[test]

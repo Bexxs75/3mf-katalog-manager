@@ -412,6 +412,8 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("printer_connections", "last_error", ColType::Text, true),
     ("printer_connections", "error_since", ColType::Real, true),
     ("printer_connections", "paused", ColType::Integer, false),
+    ("printer_connections", "failures", ColType::Integer, false),
+    ("printer_connections", "last_attempt_at", ColType::Real, true),
     ("printer_jobs", "id", ColType::Integer, false),
     ("printer_jobs", "printer_id", ColType::Integer, false),
     ("printer_jobs", "remote_id", ColType::Text, false),
@@ -643,6 +645,7 @@ fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
         .query_row(
             "SELECT
                (SELECT COUNT(*) FROM printer_connections WHERE kind <> 'moonraker' OR paused NOT IN (0, 1)
+                    OR failures < 0
                     OR printer_id IN (SELECT id FROM printers WHERE kind = 'resin'))
              + (SELECT COUNT(*) FROM printer_jobs WHERE outcome NOT IN ('completed', 'partial')
                     OR state NOT IN ('open', 'confirmed', 'ignored'))",
@@ -820,7 +823,9 @@ fn sanitize_printer_connections(conn: &Connection) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
         }
     }
-    conn.execute("UPDATE printer_connections SET paused = 1", []).map_err(|e| e.to_string())?;
+    // The count of failed attempts belongs to the machine the backup came from.
+    conn.execute("UPDATE printer_connections SET paused = 1, failures = 0, last_attempt_at = NULL", [])
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 /// Checks that `bytes` are a usable, safe catalog DB BEFORE the existing
@@ -1844,6 +1849,36 @@ mod tests {
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
             .collect::<Result<_, _>>().unwrap();
         assert_eq!(rows, vec![(1, 1), (3, 1)]);
+    }
+    #[test]
+    fn sanitize_resets_the_failure_counter() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute_batch(
+            "INSERT INTO printers (id, name, position) VALUES (1, 'A', 0);
+             INSERT INTO printer_connections (printer_id, kind, address, connected_since, failures, last_attempt_at)
+                 VALUES (1, 'moonraker', '192.168.1.60', 1.0, 7, 99.0);",
+        )
+        .unwrap();
+        sanitize_printer_connections(&conn).unwrap();
+        let row: (i64, Option<f64>) = conn
+            .query_row("SELECT failures, last_attempt_at FROM printer_connections", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(row, (0, None));
+    }
+    #[test]
+    fn a_negative_failure_counter_is_rejected() {
+        let conn = Connection::open_in_memory().unwrap();
+        // A table without the CHECK, as a crafted backup could bring it.
+        conn.execute_batch(
+            "CREATE TABLE printers (id INTEGER, kind TEXT);
+             CREATE TABLE printer_jobs (outcome TEXT, state TEXT);
+             CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER);
+             INSERT INTO printer_connections VALUES (1, 'moonraker', 0, -3);",
+        )
+        .unwrap();
+        assert!(validate_printer_link_rows(&conn).is_err());
+        conn.execute("UPDATE printer_connections SET failures = 0", []).unwrap();
+        assert!(validate_printer_link_rows(&conn).is_ok());
     }
     #[test]
     fn validate_catalog_db_bytes_accepts_fractional_spool_weights() {

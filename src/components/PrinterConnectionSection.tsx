@@ -18,6 +18,10 @@ export type PrinterErrorKey =
   | 'printerErrorContainerLocalName'
   | 'printerErrorContainerLoopback'
   | 'printerErrorUnreachable'
+  | 'printerErrorTimeout'
+  | 'printerErrorConnectionRefused'
+  | 'printerErrorConnectionReset'
+  | 'printerErrorServerBusy'
   | 'printerErrorAuthRequired'
   | 'printerErrorBadResponse'
   | 'printerErrorTooManyOpenJobs'
@@ -31,6 +35,10 @@ export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
   container_local_name: 'printerErrorContainerLocalName',
   container_loopback: 'printerErrorContainerLoopback',
   unreachable: 'printerErrorUnreachable',
+  timeout: 'printerErrorTimeout',
+  connection_refused: 'printerErrorConnectionRefused',
+  connection_reset: 'printerErrorConnectionReset',
+  server_busy: 'printerErrorServerBusy',
   auth_required: 'printerErrorAuthRequired',
   bad_response: 'printerErrorBadResponse',
   too_many_open_jobs: 'printerErrorTooManyOpenJobs',
@@ -149,6 +157,9 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
     .reduce((a, b) => t('printerClockAnd').replace('{a}', () => a).replace('{b}', () => b));
   const localNow = Date.now() / 1000;
   const effectiveError = error ?? current?.lastError;
+  // A printer that is only switched off or restarting is not an alarm: a failed test the user
+  // started is, and so is anything that needs them.
+  const soft = !error && (current?.status === 'reconnecting' || current?.status === 'offline') ? current.status : null;
 
   if (import.meta.env.VITE_TARGET === 'web') return null;
   return (
@@ -192,7 +203,18 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           <ErrorText error={actionError} />
         </div>
       )}
-      {link.enabled && (error || current?.lastError || current?.paused) && (
+      {link.enabled && soft && current && (
+        <div role="status" className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3 text-small text-[var(--ink-2)]">
+          <b>{t(soft === 'reconnecting' ? 'pmReconnecting' : 'pmOffline')}</b>
+          <p>
+            {soft === 'reconnecting'
+              ? t('printerReconnecting').replace('{n}', String((current.failures ?? 0) + 1))
+              : t('printerUnreachableSince').replace('{time}', () => formatDateTime(current.errorSince ?? 0, language))}
+          </p>
+          {effectiveError && <p>{t(errorKeyFor(effectiveError)).replace('{host}', () => printerErrorHost(current.address))}</p>}
+        </div>
+      )}
+      {link.enabled && !soft && (error || current?.lastError || current?.paused) && (
         <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-small text-[var(--crit)]">
           <b>{t('pmConnectionError')}</b><p>{effectiveError ? t(errorKeyFor(effectiveError)).replace('{host}', () => printerErrorHost(error ? testedAddress : current?.address ?? '')) : t('printerPausedRetest')}</p>
         </div>

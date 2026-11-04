@@ -4,11 +4,37 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 
-pub type Handler = Arc<dyn Fn(&str) -> Option<(u16, Vec<u8>)> + Send + Sync>;
+/// What the fake printer does with one request.
+#[derive(Debug, Clone)]
+pub enum Reply {
+    Answer(u16, Vec<u8>),
+    /// Keeps the connection open without a response (a hanging printer).
+    Silent,
+    /// Closes the connection without a response (Moonraker crashed or restarts).
+    Close,
+    /// Waits, then does the inner reply.
+    After(std::time::Duration, Box<Reply>),
+}
+
+/// A request as the fake printer saw it.
+#[derive(Debug, Clone)]
+pub struct Request {
+    pub target: String,
+    /// Header names in lower case.
+    pub headers: Vec<(String, String)>,
+}
+
+impl Request {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str())
+    }
+}
+
+pub type Handler = Arc<dyn Fn(&Request) -> Reply + Send + Sync>;
 
 pub struct FakeServer {
     port: u16,
-    requests: Arc<Mutex<Vec<String>>>,
+    requests: Arc<Mutex<Vec<Request>>>,
 }
 
 impl FakeServer {
@@ -31,6 +57,22 @@ impl FakeServer {
         offset_s: Option<f64>,
         handler: impl Fn(&str) -> Option<(u16, Vec<u8>)> + Send + Sync + 'static,
     ) -> Self {
+        Self::start_replying_on(address, offset_s, move |request: &Request| match handler(&request.target) {
+            Some((status, body)) => Reply::Answer(status, body),
+            None => Reply::Silent,
+        })
+    }
+
+    /// Full control: sees the headers and chooses what happens (answer, hang, close, delay).
+    pub fn start_replying(handler: impl Fn(&Request) -> Reply + Send + Sync + 'static) -> Self {
+        Self::start_replying_on("127.0.0.1:0", None, handler)
+    }
+
+    fn start_replying_on(
+        address: &str,
+        offset_s: Option<f64>,
+        handler: impl Fn(&Request) -> Reply + Send + Sync + 'static,
+    ) -> Self {
         let listener = TcpListener::bind(address).unwrap();
         let port = listener.local_addr().unwrap().port();
         let requests = Arc::new(Mutex::new(Vec::new()));
@@ -48,15 +90,25 @@ impl FakeServer {
                         return;
                     }
                     let target = line.split_whitespace().nth(1).unwrap_or("/").to_string();
+                    let mut headers = Vec::new();
                     loop {
                         let mut h = String::new();
                         if reader.read_line(&mut h).is_err() || h == "\r\n" || h.is_empty() {
                             break;
                         }
+                        if let Some((name, value)) = h.split_once(':') {
+                            headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
+                        }
                     }
-                    log.lock().unwrap().push(target.clone());
-                    match handler(&target) {
-                        Some((status, body)) => {
+                    let request = Request { target, headers };
+                    log.lock().unwrap().push(request.clone());
+                    let mut reply = handler(&request);
+                    while let Reply::After(wait, next) = reply {
+                        std::thread::sleep(wait);
+                        reply = *next;
+                    }
+                    match reply {
+                        Reply::Answer(status, body) => {
                             let date = offset_s
                                 .and_then(|o| {
                                     let secs = (super::sync::unix_now() + o) as i64;
@@ -71,12 +123,23 @@ impl FakeServer {
                             let _ = stream.write_all(head.as_bytes());
                             let _ = stream.write_all(&body);
                         }
-                        None => std::thread::sleep(std::time::Duration::from_secs(8)),
+                        Reply::Close => {
+                            let _ = stream.shutdown(std::net::Shutdown::Both);
+                        }
+                        Reply::Silent | Reply::After(..) => std::thread::sleep(std::time::Duration::from_secs(8)),
                     }
                 });
             }
         });
         FakeServer { port, requests }
+    }
+
+    /// An address in the app's format where nothing listens (the port was free a moment ago).
+    pub fn closed_address() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        format!("127.0.0.1:{port}")
     }
 
     /// Address in the app's format ("127.0.0.1:PORT").
@@ -85,7 +148,39 @@ impl FakeServer {
     }
 
     pub fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().iter().map(|r| r.target.clone()).collect()
+    }
+
+    /// The requests with their headers.
+    pub fn request_log(&self) -> Vec<Request> {
         self.requests.lock().unwrap().clone()
+    }
+}
+
+/// Answers each path with a list of replies one after another; the last reply repeats.
+/// A path without a script gets 404.
+pub struct Script {
+    steps: Mutex<std::collections::HashMap<String, (usize, Vec<Reply>)>>,
+}
+
+impl Script {
+    pub fn new(paths: Vec<(&str, Vec<Reply>)>) -> Arc<Self> {
+        Arc::new(Script {
+            steps: Mutex::new(paths.into_iter().map(|(p, r)| (p.to_string(), (0, r))).collect()),
+        })
+    }
+
+    pub fn reply(&self, request: &Request) -> Reply {
+        let path = request.target.split('?').next().unwrap_or("");
+        let mut steps = self.steps.lock().unwrap();
+        match steps.get_mut(path) {
+            Some((next, replies)) => {
+                let reply = replies[(*next).min(replies.len() - 1)].clone();
+                *next += 1;
+                reply
+            }
+            None => Reply::Answer(404, b"{}".to_vec()),
+        }
     }
 }
 

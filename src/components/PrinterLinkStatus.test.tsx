@@ -35,6 +35,16 @@ describe('PrinterLinkStatus', () => {
     expect(screen.queryByText(/Unerwartete Antwort/)).not.toBeInTheDocument();
   });
 
+  it.each([
+    [{ lastError: 'timeout', failures: 1, status: 'reconnecting' }, /verbinde neu … \(Versuch 2\)/],
+    [{ lastError: 'connection_refused', failures: 3, errorSince: 1790271000, status: 'offline' }, /nicht erreichbar seit/],
+    [{ lastError: 'timeout', failures: 30, errorSince: 1790271000, status: 'error' }, /nicht erreichbar seit/],
+    [{ lastError: 'history_missing', failures: 1, errorSince: 1, status: 'error' }, /Druckhistorie ist am Drucker nicht eingeschaltet/],
+  ] as const)('shows the status of a failing connection: %j', (patch, text) => {
+    render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, ...patch } as PrinterConnection)} /></LanguageProvider>);
+    expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
   it('renders nothing for printers without connection', () => {
     const { container } = render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link(null)} /></LanguageProvider>);
     expect(container).toBeEmptyDOMElement();
