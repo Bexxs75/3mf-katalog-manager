@@ -172,6 +172,20 @@ error_codes! {
     DlRangeInvalid => "dlRangeInvalid",
     DlTooManyDownloads => "dlTooManyDownloads",
     SlicerLinkExpired => "slicerLinkExpired",
+    // Saving a model as STL.
+    StlSourceIsStl => "stlSourceIsStl",
+    StlTargetIsSource => "stlTargetIsSource",
+    /// params: file name of the existing target.
+    StlTargetExists => "stlTargetExists",
+    StlNothingToExport => "stlNothingToExport",
+    /// params: number of triangles, limit.
+    StlTooLarge => "stlTooLarge",
+    StlSourceChanged => "stlSourceChanged",
+    StlSourceUnreadable => "stlSourceUnreadable",
+    StlSourceTooLarge => "stlSourceTooLarge",
+    StlStepUnavailable => "stlStepUnavailable",
+    /// params: the reason reported by the operating system.
+    StlWriteFailed => "stlWriteFailed",
     // Startup notice after an update.
     UpdateBackupFolderMissing => "updateBackupFolderMissing",
 }

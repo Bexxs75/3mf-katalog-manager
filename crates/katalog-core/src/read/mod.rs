@@ -8,7 +8,7 @@ pub use error::{GeometryErrorCode, ReadError};
 pub use plate_overview::read_plate_overview;
 pub use geometry::{
     encode_render_meshes, geometry_io_error, get_model_geometry, get_model_geometry_with_limits, load_geometry_source,
-    GeometrySource,
+    load_render_meshes, GeometrySource,
 };
 pub type ReadResult<T> = Result<T, ReadError>;
 use crate::{db, threemf};

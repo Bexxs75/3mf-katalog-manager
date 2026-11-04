@@ -14,6 +14,8 @@ import { ImportLockContext } from './hooks/ImportLockContext';
 import { PlateOverviewContext } from './hooks/PlateOverviewContext';
 import { useDuplicateRemoval } from './hooks/useDuplicateRemoval';
 import { PlateOverviewDialog } from './components/PlateOverviewDialog';
+import { StlExportDialog } from './components/StlExportDialog';
+import { modelFileType } from './lib/stlExport';
 import { PrintDataRereadProvider } from './hooks/usePrintDataReread';
 import { PrinterManagerView } from './components/PrinterManagerView';
 import type { MainView, PrinterNavigation, FolderTrashResult } from './types';
@@ -347,6 +349,7 @@ export default function App() {
 
   // The plate overview needs the full record (plate names, weights); it is loaded when the dialog opens.
   const [plateOverviewId, setPlateOverviewId] = useState<string | null>(null);
+  const [stlExportModel, setStlExportModel] = useState<{ id: string; name: string; fileType: string } | null>(null);
   const ensureFullModelRef = useRef(store.ensureFullModel);
   ensureFullModelRef.current = store.ensureFullModel;
   const openPlateOverview = useCallback((id: string) => { ensureFullModelRef.current(id); setPlateOverviewId(id); }, []);
@@ -755,6 +758,8 @@ export default function App() {
               onClose={() => setContextMenu(null)}
               onOpenInSlicer={() => slicerLauncher.openInSlicer(contextMenu.modelId)}
               onOpenPlateOverview={contextModel.path.toLowerCase().endsWith('.3mf') ? () => openPlateOverview(contextModel.id) : undefined}
+              onSaveAsStl={() => setStlExportModel({ id: contextModel.id, name: contextModel.name, fileType: modelFileType(contextModel) })}
+              stlModel={contextModel}
               onDelete={() => store.deleteModel(contextMenu.modelId)}
               onRemove={() => removeCatalogModels([contextMenu.modelId])}
               inQueue={contextModel.queuePosition !== null}
@@ -772,6 +777,8 @@ export default function App() {
                 bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
             />
           )}
+
+          {stlExportModel && <StlExportDialog key={stlExportModel.id} model={stlExportModel} onClose={() => setStlExportModel(null)} />}
 
           {plateOverviewModel && (
             <PlateOverviewDialog key={plateOverviewModel.id} model={plateOverviewModel}

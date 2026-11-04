@@ -31,6 +31,12 @@ pub fn get_model_geometry(path: &Path, allowed_roots: Option<&[PathBuf]>) -> Rea
     get_model_geometry_with_limits(path, allowed_roots, None)
 }
 
+/// The mesh list of a 3MF, OBJ or STL file (what the preview shows), for
+/// converting it. STEP is handled by the desktop adapter (OCCT).
+pub fn load_render_meshes(path: &Path) -> ReadResult<Vec<RenderMesh>> {
+    load_geometry_with_obj_limit(path, MAX_PREVIEW_TRIANGLES, None)
+}
+
 /// `web_limits` replaces the desktop 3MF parser budgets (2/3 GiB) with the web ones.
 pub fn get_model_geometry_with_limits(
     path: &Path,

@@ -9,6 +9,7 @@ import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { SaveAsStlButton } from './SaveAsStlButton';
 import { WebSlicerMenu } from './WebSlicerMenu';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
@@ -396,6 +397,8 @@ export function DetailPanel({
             </>
           )}
         </div>
+        {!confirmDelete && <SaveAsStlButton model={model}
+          className="mt-2 w-full h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" />}
       </div>
     </aside>
     );
@@ -582,6 +585,8 @@ export function DetailPanel({
             >
               🖨 {t('openInSlicer')}
             </button>}</>)}
+            <SaveAsStlButton model={model}
+              className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:text-[var(--accent)] disabled:opacity-50" />
             <>{canEdit && <button
               onClick={onToggleQueue}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"

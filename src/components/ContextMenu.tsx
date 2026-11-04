@@ -5,6 +5,7 @@ import { useCanEditMetadata } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { useStlEntry } from '../hooks/useStlEntry';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useT } from '../i18n/LanguageContext';
@@ -31,6 +32,10 @@ interface Props {
   onMove?: () => void;
   /** Opens the plate overview; omitted for files that have no plates (not a 3MF). */
   onOpenPlateOverview?: () => void;
+  /** Opens the "Save as STL" dialog (kept by the caller, because the menu closes with the click); omitted where it does not apply. */
+  onSaveAsStl?: () => void;
+  /** Type and name of the file, for deciding whether "Save as STL" is offered. */
+  stlModel?: { fileType?: string; name?: string; path?: string };
 }
 
 type View = 'menu' | 'confirmDelete' | 'confirmRemove' | 'rename';
@@ -51,10 +56,13 @@ function ModelContextMenu({
   onRename,
   onMove,
   onOpenPlateOverview,
+  onSaveAsStl,
+  stlModel,
 }: Props) {
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
   const t = useT();
+  const stlState = useStlEntry(onSaveAsStl && stlModel ? stlModel : {});
   const formatError = useFormatError();
   const [view, setView] = useState<View>('menu');
   const [baseNameDraft, setBaseNameDraft] = useState('');
@@ -200,6 +208,19 @@ function ModelContextMenu({
           >
             {t('openInSlicer')}
           </button>)}
+          {onSaveAsStl && stlState !== 'hidden' && (
+            <button
+              disabled={stlState === 'disabled'}
+              title={stlState === 'disabled' ? t('stStepNoPreview') : undefined}
+              onClick={() => {
+                onSaveAsStl();
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50 disabled:cursor-default"
+            >
+              {t('stSaveAsStl')}
+            </button>
+          )}
           {/* Like every other menu in the app, entries here carry no icons; the entry also uses the same size as its neighbours. */}
           <RevealFileButton fileId={fileId} onSuccess={onClose} showIcon={false}
             className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />

@@ -727,7 +727,7 @@ pub(super) use katalog_core::import::files::collect_supported_files;
 use katalog_core::import::files::step_metadata;
 /// Geometry for the STEP preview; without the feature the view shows the placeholder.
 #[cfg(feature = "step-preview")]
-fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
+pub(crate) fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
     // Same treatment as the sibling "3mf" arm in get_model_geometry: an
     // unreadable file is an unexpected CmdError, not CmdError::expected.
     crate::step::parse_step_geometry(path).map_err(|e| {
@@ -744,7 +744,7 @@ fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
 }
 
 #[cfg(not(feature = "step-preview"))]
-fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
+pub(crate) fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
     // Not a bug: this build was made without STEP support (only possible for
     // source builds). The viewer shows the typed "unsupported" error as an explanation.
     Err(CmdError::expected("STEP-Vorschau ist in diesem Build nicht enthalten").with_code(super::error::GeometryErrorCode::Unsupported))

@@ -46,6 +46,7 @@
     "empty_trash_start": "web-only",
     "empty_trash_summary": "web-only",
     "export_catalog": "B",
+    "export_model_as_stl": "B",
     "extract_archives": "B",
     "folder_removal_summary": "web",
     "folder_trash_summary": "B",

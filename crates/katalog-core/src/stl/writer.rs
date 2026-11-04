@@ -49,6 +49,8 @@ pub enum StlWriteError {
     TargetIsSource,
     /// The source file changed after it was read.
     SourceChanged,
+    /// The target file exists already and is never overwritten.
+    TargetExists,
     Io(io::Error),
 }
 
@@ -66,6 +68,7 @@ impl fmt::Display for StlWriteError {
             }
             StlWriteError::TargetIsSource => write!(f, "the target is the source file"),
             StlWriteError::SourceChanged => write!(f, "the source file changed"),
+            StlWriteError::TargetExists => write!(f, "the target file exists already"),
             StlWriteError::Io(e) => write!(f, "I/O error: {e}"),
         }
     }
@@ -243,6 +246,36 @@ pub fn write_stl_file_with_limit(
     Ok(written)
 }
 
+/// Like [`write_stl_file`], but an existing target is never replaced
+/// (`TargetExists`). The finished temp file is hard-linked to the target, which
+/// fails atomically when the name is taken; where the file system has no hard
+/// links, an existence check and a rename follow (a small race remains there).
+pub fn write_stl_file_new(target: &Path, source: Option<&Path>, meshes: &[&RenderMesh]) -> Result<u64, StlWriteError> {
+    if let Some(source) = source {
+        if is_same_file(target, source) {
+            return Err(StlWriteError::TargetIsSource);
+        }
+    }
+    if std::fs::symlink_metadata(target).is_ok() {
+        return Err(StlWriteError::TargetExists);
+    }
+    validate(meshes, MAX_STL_TRIANGLES)?;
+    let mut written = 0;
+    let result = create_file_without_replacing(target, |file| {
+        let mut buffered = io::BufWriter::new(file);
+        written = write_stl_with_limit(&mut buffered, meshes, MAX_STL_TRIANGLES).map_err(|e| match e {
+            StlWriteError::Io(e) => e,
+            other => io::Error::other(other.to_string()),
+        })?;
+        buffered.flush()
+    });
+    match result {
+        Ok(()) => Ok(written),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Err(StlWriteError::TargetExists),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Also true when both names reach the same file (symlink, `..`, hard link).
 fn is_same_file(target: &Path, source: &Path) -> bool {
     let Ok(source_real) = source.canonicalize() else {
@@ -277,6 +310,25 @@ pub(crate) fn replace_file_atomically(target: &Path, write: impl FnOnce(&mut Fil
     if result.is_err() {
         let _ = std::fs::remove_file(&temp);
     }
+    result
+}
+
+/// Like [`replace_file_atomically`], but fails with `AlreadyExists` instead of
+/// replacing a file that has the target's name.
+fn create_file_without_replacing(target: &Path, write: impl FnOnce(&mut File) -> io::Result<()>) -> io::Result<()> {
+    let dir = target.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let (temp, mut file) = create_temp_beside(dir)?;
+    let result = write(&mut file).and_then(|()| file.sync_all());
+    drop(file);
+    let result = result.and_then(|()| match std::fs::hard_link(&temp, target) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Err(e),
+        Err(_) if std::fs::symlink_metadata(target).is_ok() => Err(io::ErrorKind::AlreadyExists.into()),
+        Err(_) => std::fs::rename(&temp, target),
+    });
+    // After a successful link the temp name is the second name of the file; after a
+    // rename it is gone already (the error is ignored then).
+    let _ = std::fs::remove_file(&temp);
     result
 }
 

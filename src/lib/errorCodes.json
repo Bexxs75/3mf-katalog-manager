@@ -96,6 +96,16 @@
     "dlRangeInvalid",
     "dlTooManyDownloads",
     "slicerLinkExpired",
+    "stlSourceIsStl",
+    "stlTargetIsSource",
+    "stlTargetExists",
+    "stlNothingToExport",
+    "stlTooLarge",
+    "stlSourceChanged",
+    "stlSourceUnreadable",
+    "stlSourceTooLarge",
+    "stlStepUnavailable",
+    "stlWriteFailed",
     "updateBackupFolderMissing"
   ],
   "legacy": [

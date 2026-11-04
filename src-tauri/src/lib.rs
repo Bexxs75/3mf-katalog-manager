@@ -356,6 +356,7 @@ pub fn run() {
             commands::archive_target_conflicts,
             commands::extract_archives,
             commands::get_model_geometry,
+            commands::export_model_as_stl,
             commands::read_plate_overview,
             commands::pick_and_register_slicer,
             commands::list_registered_slicers,

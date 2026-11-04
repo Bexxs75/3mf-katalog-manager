@@ -11,6 +11,7 @@ import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { SaveAsStlButton } from './SaveAsStlButton';
 import { WebSlicerMenu } from './WebSlicerMenu';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
@@ -618,6 +619,8 @@ export function ModelDetailPage({
           </div>
           <DownloadFileButton fileId={model.id} />
           <RevealFileButton fileId={model.id} />
+          <SaveAsStlButton model={model}
+            className="px-3 py-2 rounded-md border border-[var(--line)] text-small font-semibold text-[var(--ink-2)] hover:text-[var(--accent)] disabled:opacity-50" />
           <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} className="px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-body font-semibold disabled:opacity-50" />
           <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />

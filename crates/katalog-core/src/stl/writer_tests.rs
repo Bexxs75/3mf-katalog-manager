@@ -359,6 +359,46 @@ fn target_equal_to_source_is_refused_and_the_source_stays_intact() {
 }
 
 #[test]
+fn write_new_never_replaces_an_existing_target_and_leaves_no_temp_file() {
+    let d = dir("stl_write_new_exists");
+    let target = d.join("out.stl");
+    std::fs::write(&target, b"precious").unwrap();
+    let mesh = cube(None);
+
+    let result = write_stl_file_new(&target, None, &[&mesh]);
+    assert!(matches!(result, Err(StlWriteError::TargetExists)), "{result:?}");
+    assert_eq!(std::fs::read(&target).unwrap(), b"precious");
+    assert_eq!(leftovers(&d), vec!["out.stl".to_string()]);
+    // A dangling symlink under the target name counts as taken, too.
+    #[cfg(unix)]
+    {
+        let link = d.join("dangling.stl");
+        std::os::unix::fs::symlink(d.join("nowhere"), &link).unwrap();
+        assert!(matches!(write_stl_file_new(&link, None, &[&mesh]), Err(StlWriteError::TargetExists)));
+        assert!(!d.join("nowhere").exists());
+    }
+}
+
+#[test]
+fn write_new_creates_a_complete_file_and_refuses_the_source_and_bad_input() {
+    let d = dir("stl_write_new_ok");
+    let mesh = cube(None);
+    let target = d.join("fresh.stl");
+    assert_eq!(write_stl_file_new(&target, None, &[&mesh]).unwrap(), 12);
+    assert_eq!(std::fs::read(&target).unwrap(), written(&[&mesh]));
+    assert_eq!(leftovers(&d), vec!["fresh.stl".to_string()]);
+
+    let source = d.join("model.3mf");
+    std::fs::write(&source, b"original").unwrap();
+    assert!(matches!(write_stl_file_new(&source, Some(&source), &[&mesh]), Err(StlWriteError::TargetIsSource)));
+    assert_eq!(std::fs::read(&source).unwrap(), b"original");
+
+    let empty = RenderMesh::default();
+    assert!(matches!(write_stl_file_new(&d.join("none.stl"), None, &[&empty]), Err(StlWriteError::NothingToExport)));
+    assert!(!d.join("none.stl").exists());
+}
+
+#[test]
 fn a_failed_write_leaves_no_partial_file_and_keeps_an_existing_target() {
     let d = dir("stl_atomic_failure");
     let target = d.join("out.stl");
