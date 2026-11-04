@@ -1065,6 +1065,21 @@ pub(super) fn open_directory_in_file_manager(path: String) -> CmdResult<()> {
     cmd.arg(&absolute).spawn().map_err(|e| CmdError::expected(e.to_string()))?;
     Ok(())
 }
+/// The encoded preview geometry of a model file on disk (see the wire format above).
+/// Shared by the catalog preview and the view of a file opened from outside the catalog.
+pub(crate) fn geometry_bytes_for_path(path: &Path) -> CmdResult<Vec<u8>> {
+    // STEP remains a desktop-only path, including its existing feature gate.
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if matches!(extension.as_str(), "stp" | "step") {
+        let meshes = step_geometry(path)?;
+        if meshes.iter().all(|m| m.indices.is_empty() || m.positions.is_empty()) {
+            return Err(CmdError::from("Keine darstellbare Geometrie").with_code(GeometryErrorCode::Unreadable));
+        }
+        Ok(katalog_core::read::encode_render_meshes(&meshes))
+    } else {
+        katalog_core::read::get_model_geometry(path, None).map_err(Into::into)
+    }
+}
 // Encodes the extracted geometry as a single binary stream for
 // tauri::ipc::Response: 4 bytes header length (u32 LE), then a JSON header
 // padded with spaces to a multiple of 4 bytes, followed by the raw
@@ -1080,19 +1095,9 @@ pub async fn get_model_geometry(
         let conn = lock_db(&state)?;
         katalog_core::read::load_geometry_source(&conn, &file_id)?
     };
-    let bytes = tauri::async_runtime::spawn_blocking(move || -> CmdResult<Vec<u8>> {
-        // STEP remains a desktop-only path, including its existing feature gate.
-        let extension = source.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-        if matches!(extension.as_str(), "stp" | "step") {
-            let meshes = step_geometry(&source.path)?;
-            if meshes.iter().all(|m| m.indices.is_empty() || m.positions.is_empty()) {
-                return Err(CmdError::from("Keine darstellbare Geometrie").with_code(GeometryErrorCode::Unreadable));
-            }
-            Ok(katalog_core::read::encode_render_meshes(&meshes))
-        } else {
-            katalog_core::read::get_model_geometry(&source.path, None).map_err(Into::into)
-        }
-    }).await.map_err(|e| e.to_string())??;
+    let bytes = tauri::async_runtime::spawn_blocking(move || geometry_bytes_for_path(&source.path))
+        .await
+        .map_err(|e| e.to_string())??;
     Ok(tauri::ipc::Response::new(bytes))
 }
 

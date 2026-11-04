@@ -76,6 +76,8 @@ import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
 import { NO_FOLDER_COLLAPSE_KEY, useCollapsedFolders } from './hooks/useCollapsedFolders';
 import { useFileImport } from './hooks/useFileImport';
 import { useOpenRequests } from './hooks/useOpenRequests';
+import { releaseExternalSource, type OpenRequest } from './lib/api/openRequests';
+import { OpenFilesDialog, type ExternalRequest } from './components/OpenFilesDialog';
 import { ExternalDragContext, useExternalDropTarget } from './hooks/useExternalDropTarget';
 import { DropRejectedNotice } from './components/DropRejectedNotice';
 import { useSourceFolderCheck } from './hooks/useSourceFolderCheck';
@@ -146,8 +148,8 @@ export default function App() {
     // Switched off while open: leave the area for good, or switching on again would drop the user back into it.
     if (!thingiverseAllowed && requestedMainView === 'thingiverse') setMainView('catalog');
   }, [thingiverseAllowed, requestedMainView]);
-  // Files the system handed over ("Open with"); the view-only dialog will take them from here.
-  useOpenRequests();
+  // Files the system handed over ("Open with"); the effect further down shows them once the start-up dialogs are done.
+  const openRequests = useOpenRequests();
   const externalDrop = useExternalDropTarget({ enabled: mainView === 'catalog', folders: store.folders, catalogBaseDir });
   const fileImport = useFileImport({
     enabled: mainView === 'catalog',
@@ -217,6 +219,25 @@ export default function App() {
     !web && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
     reloadAfterDiskSync,
   );
+  // "Open with": one cataloged file opens its detail page; anything else asks first (view only / list).
+  const [openFiles, setOpenFiles] = useState<OpenRequest[] | null>(null);
+  const openRequestsReady = !web && !openFiles && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && upgradeNoticeSettled;
+  const pendingOpenCount = openRequests.requests.length;
+  useEffect(() => {
+    if (!openRequestsReady || pendingOpenCount === 0) return;
+    const taken = openRequests.consume();
+    const only = taken.length === 1 ? taken[0] : null;
+    if (only?.kind === 'catalog') {
+      setMainView('catalog');
+      store.selectModel(only.fileId);
+      store.ensureFullModel(only.fileId);
+      setDetailModelId(only.fileId);
+    } else if (taken.length > 0) setOpenFiles(taken);
+  }, [openRequestsReady, pendingOpenCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  const closeOpenFiles = (files: ExternalRequest[], release: boolean) => {
+    setOpenFiles(null);
+    if (release) for (const file of files) void releaseExternalSource(file.sourceId).catch(error => console.warn('[open] releasing a source failed:', error));
+  };
   const [moveDialog, setMoveDialog] = useState<{ ids: string[] } | null>(null);
   const moveReturnFocus = useRef<HTMLElement | null>(null);
   const focusCatalogMain = () => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus();
@@ -800,6 +821,16 @@ export default function App() {
                 bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
             />
           )}
+
+          {openFiles && <OpenFilesDialog requests={openFiles}
+            nameOfCatalogFile={id => store.models.find(m => m.id === id)?.name}
+            onAdd={files => {
+              setOpenFiles(null);
+              // The sources stay valid until every start has been handed to the backend.
+              void (async () => { for (const file of files) await fileImport.importExternal(file.sourceId); })()
+                .finally(() => closeOpenFiles(files, true));
+            }}
+            onClose={() => closeOpenFiles(openFiles.filter((r): r is ExternalRequest => r.kind === 'external'), true)} />}
 
           {stlExportModel && <StlExportDialog key={stlExportModel.id} model={stlExportModel} onClose={() => setStlExportModel(null)} />}
 
