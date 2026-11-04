@@ -270,6 +270,22 @@ error_codes! {
     ThingiverseBadResponse => "thingiverseBadResponse",
     ThingiverseNotFound => "thingiverseNotFound",
     ThingiverseQueryInvalid => "thingiverseQueryInvalid",
+    // Slicers, archives, updates and other desktop actions.
+    SlicerExeNotFound => "slicerExeNotFound",
+    SlicerPathNotFile => "slicerPathNotFile",
+    SlicerPathNotExecutable => "slicerPathNotExecutable",
+    SlicerPathNotExe => "slicerPathNotExe",
+    ModelFileNotFound => "modelFileNotFound",
+    BackupEntryNameInvalid => "backupEntryNameInvalid",
+    BackupEntryNameUnsafeOnWindows => "backupEntryNameUnsafeOnWindows",
+    UpdateNoLongerAvailable => "updateNoLongerAvailable",
+    UpdateNotDownloaded => "updateNotDownloaded",
+    ArchiveTargetNotApproved => "archiveTargetNotApproved",
+    /// params: path of the target folder.
+    ArchiveTargetMissing => "archiveTargetMissing",
+    ArchiveTypeUnknown => "archiveTypeUnknown",
+    OnlyWebAddresses => "onlyWebAddresses",
+    LogPreviewExpired => "logPreviewExpired",
     // Startup notice after an update.
     UpdateBackupFolderMissing => "updateBackupFolderMissing",
 }

@@ -301,8 +301,15 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         whole("read/geometry.rs", include_str!("read/geometry.rs")),
         whole("read/manager.rs", include_str!("read/manager.rs")),
         whole("read/mod.rs", include_str!("read/mod.rs")),
+        whole("slicers.rs", include_str!("../../../src-tauri/src/commands/slicers.rs")),
+        whole("date_rename.rs", include_str!("../../../src-tauri/src/commands/date_rename.rs")),
+        whole("updater.rs", include_str!("../../../src-tauri/src/commands/updater.rs")),
+        whole("archives.rs", include_str!("../../../src-tauri/src/commands/archives.rs")),
+        whole("diagnostics.rs", include_str!("../../../src-tauri/src/commands/diagnostics.rs")),
+        whole("security.rs", include_str!("../../../src-tauri/src/commands/security.rs")),
+        whole("import_jobs.rs", include_str!("../../../src-tauri/src/commands/import_jobs.rs")),
         functions("backup.rs", include_str!("../../../src-tauri/src/commands/backup.rs"), &[
-            "reject_oversized_zip_entry", "read_catalog_archive", "validate_catalog_db_bytes", "validate_backup_for_import",
+            "validate_file_name", "reject_oversized_zip_entry", "read_catalog_archive", "validate_catalog_db_bytes", "validate_backup_for_import",
         ]),
     ]
 }
@@ -323,6 +330,23 @@ fn the_core_write_path_builds_no_text_variants() {
 fn migrated_code_emits_no_free_text() {
     for (name, code) in migrated_sources() {
         assert_eq!(free_text_errors(&code), Vec::<String>::new(), "{name} still emits free text");
+    }
+}
+
+/// The desktop actions that were migrated last are scanned, and the texts they sent
+/// before the migration would be caught there.
+#[test]
+fn the_remaining_desktop_actions_are_scanned() {
+    let names: Vec<_> = migrated_sources().into_iter().map(|(name, _)| name).collect();
+    for name in ["slicers.rs", "date_rename.rs", "updater.rs", "archives.rs", "diagnostics.rs", "security.rs", "import_jobs.rs"] {
+        assert!(names.contains(&name), "{name} is not scanned");
+    }
+    for old in [
+        r#"CmdError::expected("slicer executable not found")"#,
+        r#"CmdError::expected(format!("Zielordner existiert nicht: {}", dir.display()))"#,
+        r#"CmdError::expected("Es liegt kein heruntergeladenes Update vor")"#,
+    ] {
+        assert_eq!(free_text_errors(old).len(), 1, "{old}");
     }
 }
 

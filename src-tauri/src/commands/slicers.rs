@@ -85,15 +85,15 @@ fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     let path = Path::new(slicer_path);
     // A missing slicer executable (uninstalled, moved) is a normal situation for the
     // user to fix, not an application fault.
-    let metadata = std::fs::metadata(path).map_err(|_| CmdError::expected("slicer executable not found"))?;
+    let metadata = std::fs::metadata(path).map_err(|_| CmdError::coded(ErrorCode::SlicerExeNotFound))?;
     if !metadata.is_file() {
-        return Err(CmdError::expected("slicer path is not a file"));
+        return Err(CmdError::coded(ErrorCode::SlicerPathNotFile));
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         if metadata.permissions().mode() & 0o111 == 0 {
-            return Err(CmdError::expected("slicer path is not executable"));
+            return Err(CmdError::coded(ErrorCode::SlicerPathNotExecutable));
         }
     }
     #[cfg(windows)]
@@ -104,7 +104,7 @@ fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
             .map(|e| e.eq_ignore_ascii_case("exe"))
             .unwrap_or(false);
         if !is_exe {
-            return Err(CmdError::expected("slicer path must be an .exe file"));
+            return Err(CmdError::coded(ErrorCode::SlicerPathNotExe));
         }
     }
     Ok(())
@@ -126,7 +126,7 @@ fn validate_slicer_target_file(file_path: &str) -> CmdResult<()> {
     if !std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
         // The model file was deleted or moved outside the app - a normal situation,
         // not an application fault.
-        return Err(CmdError::expected("model file not found"));
+        return Err(CmdError::coded(ErrorCode::ModelFileNotFound));
     }
     Ok(())
 }

@@ -6,13 +6,13 @@ fn validate_file_name(name: &str) -> CmdResult<()> {
     let mut components = Path::new(name).components();
     if name.trim().is_empty() || name.contains(['/', '\\']) || name.chars().any(char::is_control)
         || !matches!((components.next(), components.next()), (Some(std::path::Component::Normal(_)), None)) {
-        return Err(CmdError::expected("Ungültiger Name im Archiv"));
+        return Err(CmdError::coded(ErrorCode::BackupEntryNameInvalid));
     }
     #[cfg(windows)]
     {
         let stem = name.split('.').next().unwrap_or(name).trim_end().to_uppercase();
         if name.contains(':') || folders::WINDOWS_RESERVED_NAMES.contains(&stem.as_str()) {
-            return Err(CmdError::expected("Unter Windows unsicherer Name im Archiv"));
+            return Err(CmdError::coded(ErrorCode::BackupEntryNameUnsafeOnWindows));
         }
     }
     Ok(())

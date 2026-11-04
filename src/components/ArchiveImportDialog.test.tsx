@@ -116,7 +116,7 @@ describe('ArchiveImportDialog', () => {
     mockBackend({});
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'archive_target_conflicts') return Promise.resolve([false, false]);
-      if (cmd === 'extract_archives') return Promise.reject('Zielordner wurde nicht ueber die App ausgewaehlt');
+      if (cmd === 'extract_archives') return Promise.reject({ message: 'archiveTargetNotApproved', expected: true, params: [] });
       return Promise.resolve(undefined);
     });
     renderDialog('/katalog');
@@ -125,7 +125,7 @@ describe('ArchiveImportDialog', () => {
     expect(screen.getByText('fehlgeschlagen')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Entpacken (2)' }));
-    await waitFor(() => expect(screen.getByText('Zielordner wurde nicht ueber die App ausgewaehlt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Der Zielordner wurde nicht über die App ausgewählt.')).toBeInTheDocument());
     expect(screen.queryByText('fehlgeschlagen')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Entpacken (2)' })).toBeEnabled();
   });

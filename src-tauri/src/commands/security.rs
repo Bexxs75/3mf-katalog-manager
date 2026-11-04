@@ -47,7 +47,7 @@ fn url_opener(os: &str, url: &str) -> (&'static str, Vec<String>) {
 pub(crate) fn open_url(url: &str, environment: RuntimeEnvironment) -> CmdResult<()> {
     environment.require_desktop(DesktopFeature::ExternalAction)?;
     if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err(CmdError::expected("Nur Web-Adressen können im Browser geöffnet werden"));
+        return Err(CmdError::coded(ErrorCode::OnlyWebAddresses));
     }
     let (program, args) = url_opener(crate::diagnostics::form_url::current_os(), url);
     let mut cmd = std::process::Command::new(program);
