@@ -72,6 +72,8 @@ fn create_named(conn: &Connection, dir: &Path, name: &str) -> Result<PathBuf, St
             .map_err(|e| e.to_string())?
             .run_to_completion(i32::MAX, std::time::Duration::from_millis(250), None)
             .map_err(|e| e.to_string())?;
+        // Update backups can be handed on or restored elsewhere: keys stay out of them.
+        crate::db::scrub_secrets(&dst).map_err(|e| e.to_string())?;
         drop(dst);
         Ok(())
     })();
@@ -219,6 +221,27 @@ mod tests {
         let d = std::env::temp_dir().join(format!("mfk-upd-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         d
+    }
+
+    #[test]
+    fn an_update_backup_never_carries_the_api_key() {
+        const KEY: &str = "TVKEY-0123456789-abcdefghijkl";
+        let dir = tmp("no-key");
+        let work = dir.join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let db_path = work.join("catalog.db");
+        let conn = crate::db::connect(&db_path).unwrap();
+        crate::db::thingiverse::set_enabled(&conn, true).unwrap();
+        crate::db::thingiverse::set_token(&conn, &crate::thingiverse::Token::parse(KEY).unwrap()).unwrap();
+        let has_key = |p: &Path| std::fs::read(p).unwrap().windows(KEY.len()).any(|w| w == KEY.as_bytes());
+        assert!(has_key(&db_path), "precondition: the working database holds the key");
+        let copy = create(&conn, &dir.join("backups"), "0.17.1", "0.18.0").unwrap();
+        assert!(!has_key(&copy), "the key is in the bytes of the update backup");
+        let restored = Connection::open(&copy).unwrap();
+        assert!(crate::db::thingiverse::get_token(&restored).unwrap().is_none());
+        assert!(crate::db::thingiverse::get_enabled(&restored).unwrap());
+        assert!(has_key(&db_path));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

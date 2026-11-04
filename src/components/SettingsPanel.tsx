@@ -25,6 +25,7 @@ import { ErrorText } from '../diagnostics/ErrorText';
 import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
 import { PrintDataRereadSettings } from './PrintDataRereadSettings';
+import { ThingiverseSettings } from './ThingiverseSettings';
 import { getAppVersion } from '../lib/api/update';
 
 type SettingsTab = 'general' | 'slicer' | 'catalog' | 'info';
@@ -36,6 +37,8 @@ export interface SettingsPanelProps {
   onClose: () => void;
   /** Leaves the settings and shows the Printer Manager. */
   onOpenPrinters: () => void;
+  /** Told when the Thingiverse switch changes, so the rail entry follows at once. */
+  onThingiverseEnabledChange?: (enabled: boolean) => void;
   detailPanel?: 'auto' | 'pinned';
   onDetailPanelChange?: (mode: 'auto' | 'pinned') => void;
   singleKeyShortcuts?: boolean;
@@ -85,7 +88,7 @@ const LANGUAGE_LABELS: Record<Language, string> = {
 };
 
 export function SettingsPanel({
-  overlay, onClose, onOpenPrinters,
+  overlay, onClose, onOpenPrinters, onThingiverseEnabledChange,
   detailPanel = 'auto', onDetailPanelChange,
   singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips,
   generalTabRequest, catalogTabRequest,
@@ -183,6 +186,7 @@ export function SettingsPanel({
                 <ImportRenameSetting />
                 <DiskSyncSettings />
                 <SourceFoldersSettings />
+                <ThingiverseSettings onEnabledChange={enabled => onThingiverseEnabledChange?.(enabled)} />
               </>}
               <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
                 <p>{t('settingsPrintersMovedHint')}</p>

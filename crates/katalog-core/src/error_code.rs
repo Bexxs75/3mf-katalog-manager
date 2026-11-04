@@ -186,6 +186,22 @@ error_codes! {
     StlStepUnavailable => "stlStepUnavailable",
     /// params: the reason reported by the operating system.
     StlWriteFailed => "stlWriteFailed",
+    // Thingiverse search with the user's own key. The key, the address and the search
+    // term never appear in a code or its params.
+    ThingiverseDisabled => "thingiverseDisabled",
+    ThingiverseNoToken => "thingiverseNoToken",
+    ThingiverseTokenFormat => "thingiverseTokenFormat",
+    ThingiverseTokenInvalid => "thingiverseTokenInvalid",
+    /// The protection service in front of Thingiverse answered instead of the API.
+    ThingiverseBlocked => "thingiverseBlocked",
+    /// params: seconds to wait.
+    ThingiverseRateLimited => "thingiverseRateLimited",
+    ThingiverseDailyLimit => "thingiverseDailyLimit",
+    ThingiverseOffline => "thingiverseOffline",
+    ThingiverseTimeout => "thingiverseTimeout",
+    ThingiverseBadResponse => "thingiverseBadResponse",
+    ThingiverseNotFound => "thingiverseNotFound",
+    ThingiverseQueryInvalid => "thingiverseQueryInvalid",
     // Startup notice after an update.
     UpdateBackupFolderMissing => "updateBackupFolderMissing",
 }

@@ -106,6 +106,18 @@
     "stlSourceTooLarge",
     "stlStepUnavailable",
     "stlWriteFailed",
+    "thingiverseDisabled",
+    "thingiverseNoToken",
+    "thingiverseTokenFormat",
+    "thingiverseTokenInvalid",
+    "thingiverseBlocked",
+    "thingiverseRateLimited",
+    "thingiverseDailyLimit",
+    "thingiverseOffline",
+    "thingiverseTimeout",
+    "thingiverseBadResponse",
+    "thingiverseNotFound",
+    "thingiverseQueryInvalid",
     "updateBackupFolderMissing"
   ],
   "legacy": [

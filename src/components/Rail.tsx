@@ -10,6 +10,8 @@ interface Props {
   trashCount: number;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
+  /** Shows the Thingiverse entry; the switch lives in the settings and is off by default. */
+  thingiverseEnabled?: boolean;
 }
 
 const railBtnBase =
@@ -17,7 +19,7 @@ const railBtnBase =
 const railBtnActive =
   'text-[var(--accent)] bg-[var(--accent-soft)] border-[color-mix(in_oklch,var(--accent)_30%,transparent)]';
 
-export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onSettingsOpenChange }: Props) {
+export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onSettingsOpenChange, thingiverseEnabled = false }: Props) {
   const t = useT();
   const { container } = useRuntimeEnvironment();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -55,6 +57,11 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
           <Icon name="printer" />
         </button>
         </>}
+        {thingiverseEnabled && <button type="button" onClick={() => onMainViewChange('thingiverse')}
+          title={t('tvRail')} aria-label={t('tvRail')}
+          className={`${railBtnBase} ${mainView === 'thingiverse' ? railBtnActive : ''}`}>
+          <Icon name="search" />
+        </button>}
         {container && <button type="button" onClick={() => onMainViewChange('downloads')}
           title={t('railDownloads')} aria-label={t('railDownloads')}
           className={`${railBtnBase} ${mainView === 'downloads' ? railBtnActive : ''}`}>

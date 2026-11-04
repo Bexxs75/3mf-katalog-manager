@@ -27,11 +27,12 @@ for printing, and managing your filament stock.
 12. [The Material Manager](#the-material-manager)
 13. [Print log](#print-log)
 14. [The trash](#the-trash)
-15. [Settings](#settings)
-16. [Updating](#updating)
-17. [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)
-18. [Known limitations](#known-limitations)
-19. [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
+15. [Thingiverse search (experimental)](#thingiverse-search-experimental)
+16. [Settings](#settings)
+17. [Updating](#updating)
+18. [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)
+19. [Known limitations](#known-limitations)
+20. [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
 
 ---
 
@@ -981,6 +982,24 @@ models of a deleted folder can be brought back. Companion files go to the trash 
 model; companion files removed on their own are restored from the model (see
 [Companion files](#companion-files)).
 
+## Thingiverse search (experimental)
+
+The Thingiverse area is an extra for finding models on Thingiverse. It is **off by default** and **experimental**: it needs a key of your own, and it is not yet confirmed that Thingiverse permits this way of using its interface. It only searches and shows; it never downloads files and never writes into your catalog.
+
+**Switching it on.** In Settings, General, "Thingiverse", turn on "Show the Thingiverse area". A dialog tells you first what happens: your search terms, your IP address and your key go to Thingiverse (and to Cloudflare, its protection service); there is no server of ours in between; a Thingiverse key has no partial permissions, so it gives full access to your Thingiverse account, and this app only uses it for reading; you enter into an agreement with Thingiverse yourself, its terms apply, and Thingiverse can block your access at any time. Only after you confirm does the entry "Thingiverse" appear in the bar on the left. Turning the switch off removes the entry again and drops everything held in memory.
+
+**Getting a key.** Every user needs a key of his or her own: the program contains none and there is no server of ours. The settings block has a folding guide ("How to get a key"): sign in at Thingiverse, open the page "Create an app" (there is a button for it), enter a name and a short description, choose the app type "Desktop", and after creating it copy the app token into the key field. The steps at Thingiverse can change; they have not yet been checked against the real site. Never give your key to anyone. "Check and save" tests the key with one request and stores it only if Thingiverse accepts it; the field is emptied afterwards and the key is never shown again, only a mask with its last four characters. "Replace" and "Remove" are next to it; removing deletes the key on this computer only, at Thingiverse it stays valid until you revoke it there.
+
+**Where the key is kept.** In the catalog database on this computer, with the same protection the operating system gives any file in your user folder (no key ring, no encryption). It is left out of every backup ZIP, every update backup copy and the catalog sent to the web version, and a key inside a backup you restore is ignored. After restoring a backup you enter the key again. Several people should not share one installation, because the key belongs to one person.
+
+**Searching.** The area has a search field; the search runs only when you press Enter or "Search", never while you type and never when the area opens. Each hit shows a preview, the title, the author ("by ..."), the license when Thingiverse names one and three buttons: "Details", "Open on Thingiverse" and "Copy link". In a container, "Open on Thingiverse" shows the address with a copy button instead. "Load more" fetches the next page. The detail page shows the large image, author, license (with the reminder to respect it, or the note that none is given), date, likes, the description as plain text and the tags for viewing only. Files can only be downloaded on Thingiverse; to keep a link with a model, copy it and paste it into the field "Source (link)" yourself.
+
+**Limits.** The app asks for at most one result per second and 60 per five minutes, and counts its own requests per day ("about N of roughly 1000"; an estimate on this computer, not Thingiverse's count). From about 800 it warns, at 1000 it stops until midnight. A preview image counts as one request. If Thingiverse says "too many requests", the area counts down the seconds and blocks the search button. If its protection service blocks the request, nothing is retried automatically; wait a few minutes. A VPN or a shared network can trigger this.
+
+**What is stored.** Results and preview images are kept in memory for ten minutes at most and are dropped when you leave the area, switch it off, remove the key or close the program. This program stores no content from Thingiverse on your disk and does not use it for tagging or any other automatic function. The only things saved are the switch, the key and the day's counter.
+
+**What it needs.** The area exists in the desktop version and in the desktop version in a container; it is not part of the web version. If Thingiverse blocks the key, the area stops working and the rest of the program is not affected. The program is not on Thingiverse's side: you are responsible for keeping to Thingiverse's terms, and the area is not meant for children under 13. The Spanish and French texts have not been checked by native speakers.
+
 ## Settings
 
 The gear icon at the bottom of the navigation rail opens Settings in the right-hand panel, next to
@@ -1282,11 +1301,12 @@ importierst, organisierst, druckfertig machst und deine Spulen im Material Manag
 12. [Der Material Manager](#der-material-manager)
 13. [Druckprotokoll](#druckprotokoll)
 14. [Der Papierkorb](#der-papierkorb)
-15. [Einstellungen](#einstellungen)
-16. [Aktualisieren](#aktualisieren)
-17. [Katalog sichern und wiederherstellen (Backup)](#katalog-sichern-und-wiederherstellen-backup)
-18. [Bekannte Einschränkungen](#bekannte-einschränkungen)
-19. [Häufige Fragen (FAQ)](#häufige-fragen-faq)
+15. [Thingiverse-Suche (experimentell)](#thingiverse-suche-experimentell)
+16. [Einstellungen](#einstellungen)
+17. [Aktualisieren](#aktualisieren)
+18. [Katalog sichern und wiederherstellen (Backup)](#katalog-sichern-und-wiederherstellen-backup)
+19. [Bekannte Einschränkungen](#bekannte-einschränkungen)
+20. [Häufige Fragen (FAQ)](#häufige-fragen-faq)
 
 ---
 
@@ -2309,6 +2329,24 @@ und Modelle, die der Abgleich entfernt hat. Stellst du ein Modell wieder her, le
 Ordner neu an, falls es ihn nicht mehr gibt; so lassen sich Modelle eines gelöschten Ordners
 zurückholen. Begleitdateien wandern zusammen mit ihrem Modell in den Papierkorb; einzeln entfernte
 Begleitdateien stellst du über das Modell wieder her (siehe [Begleitdateien](#begleitdateien)).
+
+## Thingiverse-Suche (experimentell)
+
+Der Bereich „Thingiverse“ ist ein Zusatz, um Modelle bei Thingiverse zu finden. Er ist **standardmäßig aus** und **experimentell**: Er braucht einen eigenen Schlüssel, und es ist noch nicht bestätigt, dass Thingiverse diese Art der Nutzung seiner Schnittstelle erlaubt. Er sucht und zeigt nur; er lädt nie Dateien herunter und schreibt nie in deinen Katalog.
+
+**Einschalten.** In den Einstellungen unter „Allgemein“, „Thingiverse“, den Schalter „Thingiverse-Bereich anzeigen“ einschalten. Ein Dialog sagt dir vorher, was geschieht: Deine Suchbegriffe, deine IP-Adresse und dein Schlüssel gehen an Thingiverse (und an Cloudflare, dessen Schutzdienst); es gibt keinen Server von uns dazwischen; ein Thingiverse-Schlüssel hat keine Teilberechtigungen und erlaubt damit vollen Zugriff auf dein Thingiverse-Konto, diese App benutzt ihn nur lesend; du schließt selbst eine Vereinbarung mit Thingiverse, es gelten dessen Bedingungen, und Thingiverse kann deinen Zugang jederzeit sperren. Erst nach deiner Bestätigung erscheint der Eintrag „Thingiverse“ in der Leiste links. Ausschalten entfernt den Eintrag wieder und verwirft alles, was im Arbeitsspeicher liegt.
+
+**Einen Schlüssel besorgen.** Jede Person braucht einen eigenen Schlüssel: Das Programm enthält keinen, und es gibt keinen Server von uns. Der Einstellungsblock hat eine aufklappbare Anleitung („So bekommst du einen Schlüssel“): bei Thingiverse anmelden, die Seite „App erstellen“ öffnen (dafür gibt es einen Knopf), Name und kurze Beschreibung eintragen, den App-Typ „Desktop“ wählen und nach dem Anlegen das App-Token in das Schlüsselfeld kopieren. Die Schritte bei Thingiverse können sich ändern; sie sind noch nicht mit der echten Seite abgeglichen. Gib deinen Schlüssel niemandem weiter. „Prüfen und speichern“ testet den Schlüssel mit einer Anfrage und speichert ihn nur, wenn Thingiverse ihn annimmt; danach ist das Feld leer, und der Schlüssel wird nie wieder angezeigt, nur eine Maske mit den letzten vier Zeichen. „Ersetzen“ und „Entfernen“ stehen daneben; Entfernen löscht den Schlüssel nur auf diesem Rechner, bei Thingiverse bleibt er gültig, bis du ihn dort widerrufst.
+
+**Wo der Schlüssel liegt.** In der Katalog-Datenbank auf diesem Rechner, mit dem Schutz, den das Betriebssystem jeder Datei in deinem Benutzerordner gibt (kein Schlüsselbund, keine Verschlüsselung). Er fehlt in jeder Sicherungs-ZIP, jeder Update-Sicherungskopie und dem Katalog, der an die Web-Version geht; ein Schlüssel in einer Sicherung, die du wiederherstellst, wird ignoriert. Nach dem Wiederherstellen einer Sicherung trägst du den Schlüssel neu ein. Mehrere Personen sollten sich keine Installation teilen, weil der Schlüssel einer Person gehört.
+
+**Suchen.** Der Bereich hat ein Suchfeld; gesucht wird nur mit Enter oder „Suchen“, nie beim Tippen und nie beim Öffnen des Bereichs. Jeder Treffer zeigt eine Vorschau, den Titel, den Urheber („von …“), die Lizenz, wenn Thingiverse eine nennt, und drei Knöpfe: „Details“, „Auf Thingiverse öffnen“ und „Link kopieren“. Im Container zeigt „Auf Thingiverse öffnen“ stattdessen die Adresse mit Kopieren-Knopf. „Mehr laden“ holt die nächste Seite. Die Detailseite zeigt das große Bild, Urheber, Lizenz (mit der Erinnerung, sie zu beachten, oder dem Hinweis, dass keine angegeben ist), Datum, Gefällt-Zahl, die Beschreibung als reinen Text und die Tags nur zur Ansicht. Dateien herunterladen kannst du nur bei Thingiverse; um einen Link bei einem Modell aufzuheben, kopiere ihn und füge ihn selbst in das Feld „Quelle (Link)“ ein.
+
+**Grenzen.** Das Programm fragt höchstens einmal pro Sekunde und 60-mal in fünf Minuten an und zählt seine eigenen Anfragen je Tag („etwa N von ungefähr 1000“; eine Schätzung auf diesem Rechner, nicht die Zählung von Thingiverse). Ab etwa 800 warnt es, bei 1000 hält es bis Mitternacht an. Ein Vorschaubild zählt als eine Anfrage. Sagt Thingiverse „zu viele Anfragen“, zählt der Bereich die Sekunden herunter und sperrt den Suchknopf. Blockiert der Schutzdienst die Anfrage, wird nichts automatisch wiederholt; warte einige Minuten. Ein VPN oder ein geteiltes Netz kann das auslösen.
+
+**Was gespeichert wird.** Treffer und Vorschaubilder liegen höchstens zehn Minuten im Arbeitsspeicher und werden verworfen, wenn du den Bereich verlässt, ihn ausschaltest, den Schlüssel entfernst oder das Programm beendest. Dieses Programm speichert keine Inhalte von Thingiverse auf deiner Festplatte und benutzt sie weder zum Taggen noch für eine andere automatische Funktion. Gespeichert werden nur der Schalter, der Schlüssel und der Tageszähler.
+
+**Voraussetzungen.** Den Bereich gibt es in der Desktop-Version und in der Desktop-Version im Container; in der Web-Version gibt es ihn nicht. Sperrt Thingiverse den Schlüssel, funktioniert der Bereich nicht mehr, der Rest des Programms ist nicht betroffen. Das Programm steht nicht auf der Seite von Thingiverse: Du bist selbst dafür verantwortlich, dessen Bedingungen einzuhalten, und der Bereich ist nicht für Kinder unter 13 gedacht. Die spanischen und französischen Texte wurden nicht von Muttersprachlern geprüft.
 
 ## Einstellungen
 

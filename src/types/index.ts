@@ -380,7 +380,39 @@ export interface PrinterDetails {
   bedZMm: number | null;
 }
 
-export type MainView = 'catalog' | 'filament' | 'printers' | 'trash' | 'downloads';
+export type MainView = 'catalog' | 'filament' | 'printers' | 'trash' | 'downloads' | 'thingiverse';
+
+/** What the backend says about the Thingiverse area; never the key itself. */
+export interface ThingiverseSettings {
+  enabled: boolean;
+  hasToken: boolean;
+  /** Bullets plus the last four characters, or null without a key. */
+  tokenMask: string | null;
+  usageToday: number;
+  dailyLimit: number;
+}
+export interface ThingSummary {
+  id: number;
+  name: string;
+  /** Empty when Thingiverse named no author. */
+  authorName: string;
+  licenseName: string | null;
+  likeCount: number | null;
+  previewAvailable: boolean;
+  /** Address of the thing's page on Thingiverse. */
+  url: string;
+}
+export interface ThingDetail extends ThingSummary {
+  /** Plain text, never HTML. */
+  description: string;
+  createdAt: string | null;
+  tags: string[];
+}
+export interface ThingiverseSearch {
+  items: ThingSummary[];
+  hasMore: boolean;
+  page: number;
+}
 export interface PrinterNavigation { printerId?: string; reviewJobs?: boolean }
 
 export interface PrinterHistoryJob {

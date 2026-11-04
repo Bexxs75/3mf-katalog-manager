@@ -12,6 +12,8 @@ pub use tag_fragments::cleanup_tag_fragments;
 pub mod printers;
 // Printer connection: settings, connections, fetched prints.
 pub mod printer_link;
+pub mod thingiverse;
+pub use thingiverse::scrub_secrets;
 mod migrations;
 
 pub use migrations::run_migrations;

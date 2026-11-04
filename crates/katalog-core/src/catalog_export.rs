@@ -62,6 +62,8 @@ fn snapshot_with(conn: &Connection, dest: &Path, attempts: u32, pause: std::time
         match backup.step(-1).map_err(|e| e.to_string())? {
             StepResult::Done => {
                 drop(backup);
+                // The copy leaves the machine (web server, other computer): no secrets in it.
+                crate::db::scrub_secrets(&target).map_err(|e| e.to_string())?;
                 drop(target);
                 return Ok(());
             }
@@ -108,6 +110,34 @@ mod tests {
         let path = dir.join(name);
         File::create(&path).unwrap();
         path
+    }
+
+    const TV_KEY: &str = "TVKEY-0123456789-abcdefghijkl";
+
+    fn seed_key(conn: &Connection) {
+        db::thingiverse::set_enabled(conn, true).unwrap();
+        db::thingiverse::set_token(conn, &crate::thingiverse::Token::parse(TV_KEY).unwrap()).unwrap();
+    }
+
+    fn holds_key(path: &Path) -> bool {
+        let bytes = std::fs::read(path).unwrap();
+        bytes.windows(TV_KEY.len()).any(|w| w == TV_KEY.as_bytes())
+    }
+
+    #[test]
+    fn the_web_export_never_carries_the_api_key() {
+        let dir = unique_test_dir("export-no-key");
+        let (path, writer) = seeded(&dir);
+        seed_key(&writer);
+        assert!(holds_key(&path), "precondition: the working database holds the key");
+        let reader = db::open_read_only(&path).unwrap();
+        let dest = empty_target(&dir, "out.db");
+        snapshot(&reader, &dest).unwrap();
+        assert!(!holds_key(&dest), "the key is in the bytes of the export");
+        let copy = Connection::open(&dest).unwrap();
+        assert!(db::thingiverse::get_token(&copy).unwrap().is_none());
+        assert!(db::thingiverse::get_enabled(&copy).unwrap());
+        assert!(holds_key(&path), "the working database keeps its key");
     }
 
     #[test]

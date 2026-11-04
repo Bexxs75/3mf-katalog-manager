@@ -18,6 +18,8 @@ import { StlExportDialog } from './components/StlExportDialog';
 import { modelFileType } from './lib/stlExport';
 import { PrintDataRereadProvider } from './hooks/usePrintDataReread';
 import { PrinterManagerView } from './components/PrinterManagerView';
+import { ThingiverseView } from './components/ThingiverseView';
+import { getThingiverseSettings } from './lib/api/thingiverse';
 import type { MainView, PrinterNavigation, FolderTrashResult } from './types';
 import { DragGhost } from './components/DragGhost';
 import { DragDropTip } from './components/DragDropTip';
@@ -129,7 +131,19 @@ export default function App() {
 
   const { container } = useRuntimeEnvironment();
   const [requestedMainView, setMainView] = useState<MainView>('catalog');
-  const mainView = requestedMainView === 'downloads' && !container ? 'catalog' : requestedMainView;
+  // The Thingiverse area exists only on the desktop and only while its switch is on.
+  const [thingiverseEnabled, setThingiverseEnabled] = useState(false);
+  const thingiverseAllowed = thingiverseEnabled && import.meta.env.VITE_TARGET !== 'web';
+  const mainView = requestedMainView === 'downloads' && !container ? 'catalog'
+    : requestedMainView === 'thingiverse' && !thingiverseAllowed ? 'catalog' : requestedMainView;
+  useEffect(() => {
+    if (import.meta.env.VITE_TARGET === 'web') return;
+    getThingiverseSettings().then(s => setThingiverseEnabled(s.enabled)).catch(e => console.error('Reading the Thingiverse setting failed', e));
+  }, []);
+  useEffect(() => {
+    // Switched off while open: leave the area for good, or switching on again would drop the user back into it.
+    if (!thingiverseAllowed && requestedMainView === 'thingiverse') setMainView('catalog');
+  }, [thingiverseAllowed, requestedMainView]);
   const externalDrop = useExternalDropTarget({ enabled: mainView === 'catalog', folders: store.folders, catalogBaseDir });
   const fileImport = useFileImport({
     enabled: mainView === 'catalog',
@@ -333,6 +347,7 @@ export default function App() {
   const [printerContext, setPrinterContext] = useState<PrinterNavigation>({});
   const changeMainView = (v: MainView, context: PrinterNavigation = {}) => {
     if (v === 'downloads' && !container) return;
+    if (v === 'thingiverse' && !thingiverseAllowed) return;
     setPrinterContext(context);
     setMainView(v);
     store.setSelectedId(null);
@@ -481,6 +496,7 @@ export default function App() {
       overlay={overlay}
       onClose={closeSettings}
       onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}
+      onThingiverseEnabledChange={setThingiverseEnabled}
       generalTabRequest={generalTabRequest}
       catalogTabRequest={catalogTabRequest}
       singleKeyShortcuts={singleKeyShortcuts}
@@ -587,6 +603,7 @@ export default function App() {
           trashCount={store.trashModels.length}
           settingsOpen={settingsOpen}
           onSettingsOpenChange={setSettingsOpen}
+          thingiverseEnabled={thingiverseAllowed}
         />
         <div className="relative flex-1 min-w-0 flex flex-col min-h-0">
           {mainView === 'downloads' && container ? (
@@ -741,6 +758,8 @@ export default function App() {
               cleanupScanning={cleanup.cleanupScanning}
               cleanupError={cleanup.cleanupError}
             />
+          ) : mainView === 'thingiverse' ? (
+            <ThingiverseView onOpenSettings={() => { setGeneralTabRequest(n => n + 1); setCatalogTabRequest(0); setSettingsOpen(true); }} />
           ) : mainView === 'printers' ? (
             <PrinterManagerView printers={printers} printerLink={printerLink} printerId={printerContext.printerId}
               onMaterial={context => changeMainView('filament', context)} />
