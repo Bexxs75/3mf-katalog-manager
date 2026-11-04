@@ -241,6 +241,46 @@ fn to_collection_dto(record: db::models::CollectionRecord) -> CollectionDto {
     }
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleMemberDto {
+    pub file_id: String,
+    pub position: i64,
+    pub label: Option<String>,
+    pub in_trash: bool,
+}
+
+/// A bundle of two or more files. The members come ordered by position; the first is the title model.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleDto {
+    pub id: String,
+    pub name: String,
+    /// `variants` or `parts`.
+    pub kind: String,
+    pub created_at: String,
+    pub members: Vec<BundleMemberDto>,
+}
+
+pub fn to_bundle_dto(record: db::bundles::BundleRecord) -> BundleDto {
+    BundleDto {
+        id: record.id.to_string(),
+        name: record.name,
+        kind: record.kind.as_str().to_string(),
+        created_at: record.created_at,
+        members: record
+            .members
+            .into_iter()
+            .map(|m| BundleMemberDto {
+                file_id: m.file_id.to_string(),
+                position: m.position,
+                label: m.label,
+                in_trash: m.in_trash,
+            })
+            .collect(),
+    }
+}
+
 pub fn list_file_summaries(conn: &Connection) -> ReadResult<Vec<FileSummaryDto>> {
     let summaries = db::list_file_summaries(conn).map_err(ReadError::from)?;
     Ok(summaries.into_iter().map(summary_to_dto).collect())
@@ -363,6 +403,12 @@ pub fn list_folders(conn: &Connection) -> ReadResult<Vec<FolderDto>> {
 pub fn list_collections(conn: &Connection) -> ReadResult<Vec<CollectionDto>> {
     let collections = db::list_collections(conn).map_err(ReadError::from)?;
     Ok(collections.into_iter().map(to_collection_dto).collect())
+}
+
+/// Every bundle with at least two members (members in the trash included), oldest first.
+pub fn list_bundles(conn: &Connection) -> ReadResult<Vec<BundleDto>> {
+    let bundles = db::bundles::list_bundles(conn).map_err(ReadError::from)?;
+    Ok(bundles.into_iter().map(to_bundle_dto).collect())
 }
 
 pub fn list_collection_files(

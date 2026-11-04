@@ -143,6 +143,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "list_folders",
     "list_collections",
     "list_collection_files",
+    "list_bundles",
     "list_trash",
     "list_file_images",
     "get_model_geometry",
@@ -445,6 +446,7 @@ pub async fn invoke(
             }
             "list_folders" => encode(read::list_folders(&conn)?),
             "list_collections" => encode(read::list_collections(&conn)?),
+            "list_bundles" => encode(read::list_bundles(&conn)?),
             "list_collection_files" => {
                 encode(read::list_collection_files(&conn, file_id.unwrap())?)
             }
@@ -709,6 +711,12 @@ mod tests {
             std::fs::copy(katalog_core_fixture("creality-3plates.3mf"), &path).unwrap();
             db::test_insert_minimal_file(&conn, path.to_str().unwrap(), None).unwrap().to_string()
         };
+        // A bundle, so the bundle list travels through the same comparison with a member in it.
+        {
+            let conn = db::connect(&c.db).unwrap();
+            let members = [print_id.parse().unwrap(), c.id.parse().unwrap()];
+            db::bundles::create_bundle(&conn, "Pair", db::bundles::BundleKind::Parts, &members, "2026-11-04T10:00:00+00:00").unwrap();
+        }
         let before = Sha256::digest(std::fs::read(&c.db).unwrap());
         let names = entries(&c);
         let conn = db::open_read_only(&c.db).unwrap();
@@ -755,6 +763,11 @@ mod tests {
                 "list_collections",
                 json!({}),
                 serde_json::to_value(read::list_collections(&conn).unwrap()).unwrap(),
+            ),
+            (
+                "list_bundles",
+                json!({}),
+                serde_json::to_value(read::list_bundles(&conn).unwrap()).unwrap(),
             ),
             (
                 "list_collection_files",

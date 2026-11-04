@@ -1744,6 +1744,7 @@ export interface Translations {
   errBundleTooFewFiles: string;
   errBundleTooManyFiles: string;
   errBundleDuplicateFiles: string;
+  errBundleKindInvalid: string;
   errBundleNameInvalid: string;
   errBundleLabelInvalid: string;
   stSaveAsStl: string;

@@ -279,6 +279,7 @@ error_codes! {
     /// params: the highest number of files.
     BundleTooManyFiles => "bundleTooManyFiles",
     BundleDuplicateFiles => "bundleDuplicateFiles",
+    BundleKindInvalid => "bundleKindInvalid",
     /// params: the highest number of characters.
     BundleNameInvalid => "bundleNameInvalid",
     /// params: the highest number of characters.

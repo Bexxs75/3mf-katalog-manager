@@ -138,10 +138,10 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 57);
+    assert_eq!(WRITE_COMMANDS.len(), 63);
     assert_eq!(crate::write::ROUTE_WRITES, &["add_companion"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
-    assert_eq!(crate::READ_COMMANDS.len(), 31);
+    assert_eq!(crate::READ_COMMANDS.len(), 32);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
     }
@@ -2196,4 +2196,90 @@ async fn write_rejections_answer_with_registered_codes() {
     let r = f.send("add_unit", json!({"printerId":p["id"],"kind":"resin_vat","name":"Vat"})).await;
     assert_eq!(r.status(), 422);
     assert_eq!(value(r).await, json!({"message":"reqInvalidArguments","expected":true}));
+}
+
+#[tokio::test]
+async fn bundle_commands_work_over_http_and_leave_the_files_alone() {
+    let f = Fixture::new(true);
+    let (second, third) = {
+        let c = db::connect(&f.app.config.db_path).unwrap();
+        (
+            db::test_insert_minimal_file(&c, "/second.3mf", None).unwrap().to_string(),
+            db::test_insert_minimal_file(&c, "/third.3mf", None).unwrap().to_string(),
+        )
+    };
+    let files_before = {
+        let c = db::open_read_only(&f.app.config.db_path).unwrap();
+        c.query_row("SELECT group_concat(id || path, ',') FROM (SELECT * FROM files ORDER BY id)", [], |r| r.get::<_, String>(0)).unwrap()
+    };
+    let r = f.send("create_bundle", json!({"name":"Vase","kind":"parts","fileIds":[f.id, second]})).await;
+    assert_eq!(r.status(), 200);
+    let bundle = value(r).await;
+    assert_eq!((bundle["name"].as_str(), bundle["kind"].as_str()), (Some("Vase"), Some("parts")));
+    assert_eq!(bundle["members"].as_array().unwrap().len(), 2);
+    assert_eq!(bundle["members"][0], json!({"fileId":f.id,"position":0,"label":null,"inTrash":false}));
+    let bid = bundle["id"].clone();
+
+    let listed = value(f.send("list_bundles", json!({})).await).await;
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(listed[0]["id"], bid);
+
+    let r = f.send("add_files_to_bundle", json!({"bundleId":bid,"fileIds":[third]})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await["members"].as_array().unwrap().len(), 3);
+    for (cmd, args) in [
+        ("update_bundle", json!({"bundleId":bid,"name":"Vase 2","kind":"variants"})),
+        ("update_bundle_member", json!({"fileId":second,"label":"Lid","makeTitle":true})),
+        ("remove_files_from_bundle", json!({"fileIds":[third]})),
+    ] {
+        assert_eq!(f.send(cmd, args).await.status(), 200, "{cmd}");
+    }
+    let listed = value(f.send("list_bundles", json!({})).await).await;
+    assert_eq!((listed[0]["name"].as_str(), listed[0]["kind"].as_str()), (Some("Vase 2"), Some("variants")));
+    assert_eq!(listed[0]["members"][0]["fileId"], json!(second));
+    assert_eq!(listed[0]["members"][0]["label"], json!("Lid"));
+    assert_eq!(f.send("dissolve_bundle", json!({"bundleId":bid})).await.status(), 200);
+    assert_eq!(value(f.send("list_bundles", json!({})).await).await, json!([]));
+
+    let c = db::open_read_only(&f.app.config.db_path).unwrap();
+    let files_after: String = c
+        .query_row("SELECT group_concat(id || path, ',') FROM (SELECT * FROM files ORDER BY id)", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(files_after, files_before, "no file was touched");
+}
+
+#[tokio::test]
+async fn bundle_commands_refuse_what_is_invalid_with_registered_codes() {
+    let f = Fixture::new(true);
+    let second = {
+        let c = db::connect(&f.app.config.db_path).unwrap();
+        db::test_insert_minimal_file(&c, "/second.3mf", None).unwrap().to_string()
+    };
+    let too_many: Vec<String> = (1..=501).map(|i| i.to_string()).collect();
+    let bundle = value(f.send("create_bundle", json!({"name":"Vase","kind":"parts","fileIds":[f.id, second]})).await).await;
+    let cases = [
+        ("create_bundle", json!({"name":"A","kind":"other","fileIds":[f.id, second]}), 422, json!({"message":"bundleKindInvalid","expected":true})),
+        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":[f.id]}), 422, json!({"message":"bundleTooFewFiles","expected":true,"params":["2"]})),
+        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":[f.id, f.id]}), 422, json!({"message":"bundleDuplicateFiles","expected":true})),
+        ("create_bundle", json!({"name":" ","kind":"parts","fileIds":[f.id, second]}), 422, json!({"message":"bundleNameInvalid","expected":true,"params":["120"]})),
+        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":["999998","999999"]}), 422, json!({"message":"entryNotFound","expected":true})),
+        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":too_many}), 422, json!({"message":"reqIdsTooMany","expected":true,"params":["500"]})),
+        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":["0","1"]}), 400, json!({"message":"reqInvalidArguments","expected":true})),
+        ("create_bundle", json!({"name":"A","kind":"parts"}), 400, json!({"message":"reqInvalidArguments","expected":true})),
+        ("update_bundle", json!({"bundleId":"999999","name":"B"}), 404, json!({"message":"bundleNotFound","expected":true})),
+        ("update_bundle", json!({"bundleId":bundle["id"],"kind":"x"}), 422, json!({"message":"bundleKindInvalid","expected":true})),
+        ("add_files_to_bundle", json!({"bundleId":"999999","fileIds":[f.id]}), 404, json!({"message":"bundleNotFound","expected":true})),
+        ("dissolve_bundle", json!({"bundleId":"999999"}), 404, json!({"message":"bundleNotFound","expected":true})),
+        ("update_bundle_member", json!({"fileId":"999999","label":"x"}), 404, json!({"message":"entryNotFound","expected":true})),
+        ("update_bundle_member", json!({"fileId":f.id,"label":"l".repeat(61)}), 422, json!({"message":"bundleLabelInvalid","expected":true,"params":["60"]})),
+        ("update_bundle_member", json!({"fileId":f.id,"makeTitle":"yes"}), 400, json!({"message":"reqInvalidArguments","expected":true})),
+    ];
+    for (cmd, args, status, expected) in cases {
+        let r = f.send(cmd, args.clone()).await;
+        assert_eq!(r.status(), status, "{cmd} {args}");
+        assert_eq!(value(r).await, expected, "{cmd} {args}");
+    }
+    let listed = value(f.send("list_bundles", json!({})).await).await;
+    assert_eq!(listed.as_array().unwrap().len(), 1, "the rejected calls changed nothing");
+    assert_eq!(listed[0]["members"].as_array().unwrap().len(), 2);
 }

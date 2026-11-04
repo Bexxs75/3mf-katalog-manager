@@ -607,3 +607,99 @@ fn web_removing_files_from_the_catalog_dissolves_a_bundle_left_with_one_member()
     let members: i64 = c.query_row("SELECT COUNT(*) FROM bundle_members", [], |r| r.get(0)).unwrap();
     assert_eq!((rows, members), (0, 0));
 }
+
+fn bundle_files(c: &Connection, n: usize) -> Vec<i64> {
+    (0..n).map(|i| db::test_insert_minimal_file(c, &format!("/bundle{i}.3mf"), None).unwrap()).collect()
+}
+
+#[test]
+fn web_bundles_are_created_changed_and_dissolved_with_counted_changes() {
+    let mut c = db::connect_in_memory().unwrap();
+    let f = bundle_files(&c, 4);
+    let created = create_bundle(&mut c, "Vase", "variants", &f[..2]).unwrap();
+    assert_eq!(created.changes, 2);
+    let id: i64 = created.value.id.parse().unwrap();
+    assert_eq!((created.value.name.as_str(), created.value.kind.as_str()), ("Vase", "variants"));
+    assert_eq!(add_files_to_bundle(&mut c, id, &f[2..]).unwrap().value.members.len(), 4);
+    assert_eq!(update_bundle(&mut c, id, Some("Vase 2"), None).unwrap().changes, 1);
+    assert_eq!(update_bundle(&mut c, id, None, None).unwrap().changes, 0);
+    assert_eq!(update_bundle_member(&mut c, f[3], Some("Lid"), Some(true)).unwrap().changes, 2);
+    assert_eq!(update_bundle_member(&mut c, f[3], None, None).unwrap().changes, 0);
+    let listed = db::bundles::get_bundle(&c, id).unwrap().unwrap();
+    assert_eq!(listed.name, "Vase 2");
+    assert_eq!(listed.members[0].file_id, f[3]);
+    assert_eq!(remove_files_from_bundle(&mut c, &[f[0], f[1]]).unwrap().changes, 2);
+    assert_eq!(remove_files_from_bundle(&mut c, &[f[0]]).unwrap().changes, 0, "a file in no bundle is ignored");
+    assert_eq!(dissolve_bundle(&mut c, id).unwrap().changes, 1);
+    assert!(db::bundles::get_bundle(&c, id).unwrap().is_none());
+    let files: i64 = c.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap();
+    assert_eq!(files, 4);
+}
+
+#[test]
+fn web_bundle_rejections_carry_codes_and_change_nothing() {
+    use crate::error_code::ErrorCode;
+    use crate::write::CodedKind;
+    let mut c = db::connect_in_memory().unwrap();
+    let f = bundle_files(&c, 3);
+    let coded = |e: WriteError| match e {
+        WriteError::Coded { kind, code, params } => (kind, code, params),
+        other => panic!("not coded: {other:?}"),
+    };
+    let (kind, code, _) = coded(create_bundle(&mut c, "A", "other", &f).unwrap_err());
+    assert_eq!((kind, code), (CodedKind::Invalid, ErrorCode::BundleKindInvalid));
+    let (_, code, params) = coded(create_bundle(&mut c, "A", "parts", &vec![f[0]; 501]).unwrap_err());
+    assert_eq!((code, params), (ErrorCode::ReqIdsTooMany, vec!["500".to_string()]));
+    let (_, code, params) = coded(create_bundle(&mut c, "A", "parts", &[f[0], f[1], 999]).unwrap_err());
+    assert_eq!((code, params), (ErrorCode::EntryNotFound, vec![]));
+    let (_, code, _) = coded(create_bundle(&mut c, "A", "parts", &f[..1]).unwrap_err());
+    assert_eq!(code, ErrorCode::BundleTooFewFiles);
+    let (_, code, params) = coded(create_bundle(&mut c, &"n".repeat(121), "parts", &f).unwrap_err());
+    assert_eq!((code, params), (ErrorCode::BundleNameInvalid, vec!["120".to_string()]));
+    let rows: i64 = c.query_row("SELECT (SELECT COUNT(*) FROM bundles) + (SELECT COUNT(*) FROM bundle_members)", [], |r| r.get(0)).unwrap();
+    assert_eq!(rows, 0, "no rejected call left a row behind");
+
+    let id: i64 = create_bundle(&mut c, "A", "parts", &f[..2]).unwrap().value.id.parse().unwrap();
+    for error in [
+        update_bundle(&mut c, 999, Some("x"), None).unwrap_err(),
+        add_files_to_bundle(&mut c, 999, &[f[2]]).unwrap_err(),
+        dissolve_bundle(&mut c, 999).unwrap_err(),
+    ] {
+        let (kind, code, _) = coded(error);
+        assert_eq!((kind, code), (CodedKind::NotFound, ErrorCode::BundleNotFound));
+    }
+    let (kind, code, _) = coded(update_bundle_member(&mut c, 999, None, None).unwrap_err());
+    assert_eq!((kind, code), (CodedKind::NotFound, ErrorCode::EntryNotFound));
+    let (kind, code, _) = coded(update_bundle_member(&mut c, f[2], Some("x"), None).unwrap_err());
+    assert_eq!((kind, code), (CodedKind::Invalid, ErrorCode::EntryNotFound), "a file in no bundle has no label");
+    let (_, code, params) = coded(update_bundle_member(&mut c, f[0], Some(&"l".repeat(61)), None).unwrap_err());
+    assert_eq!((code, params), (ErrorCode::BundleLabelInvalid, vec!["60".to_string()]));
+    let (_, code, _) = coded(update_bundle(&mut c, id, None, Some("x")).unwrap_err());
+    assert_eq!(code, ErrorCode::BundleKindInvalid);
+}
+
+#[test]
+fn desktop_and_web_bundles_give_the_same_answer() {
+    let mut web = db::connect_in_memory().unwrap();
+    let desktop = db::connect_in_memory().unwrap();
+    let wf = bundle_files(&web, 3);
+    let df = bundle_files(&desktop, 3);
+    let from_web = create_bundle(&mut web, "Vase", "parts", &wf).unwrap().value;
+    let from_desktop = crate::write::create_bundle(
+        &desktop,
+        "Vase".into(),
+        "parts".into(),
+        df.iter().map(|id| id.to_string()).collect(),
+    )
+    .unwrap();
+    let shape = |dto: &crate::read::BundleDto| {
+        let mut value = serde_json::to_value(dto).unwrap();
+        value["createdAt"] = serde_json::Value::Null;
+        value
+    };
+    assert_eq!(shape(&from_web), shape(&from_desktop));
+    assert_eq!(
+        shape(&crate::read::list_bundles(&web).unwrap()[0]),
+        shape(&crate::read::list_bundles(&desktop).unwrap()[0])
+    );
+}

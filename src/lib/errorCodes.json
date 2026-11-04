@@ -173,6 +173,7 @@
     "bundleTooFewFiles",
     "bundleTooManyFiles",
     "bundleDuplicateFiles",
+    "bundleKindInvalid",
     "bundleNameInvalid",
     "bundleLabelInvalid",
     "slicerExeNotFound",

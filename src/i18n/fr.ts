@@ -1703,6 +1703,7 @@ export const fr: Translations = {
   errBundleTooFewFiles: "Un lot doit contenir au moins {0} fichiers",
   errBundleTooManyFiles: "Un lot peut contenir au plus {0} fichiers",
   errBundleDuplicateFiles: "Un fichier ne peut figurer qu’une seule fois dans un lot",
+  errBundleKindInvalid: "Type de lot non valide",
   errBundleNameInvalid: "Le nom du lot ne peut pas être vide, doit comporter au plus {0} caractères et ne doit pas contenir de caractères de contrôle",
   errBundleLabelInvalid: "L’étiquette peut comporter au plus {0} caractères et ne doit pas contenir de caractères de contrôle",
   stSaveAsStl: "Enregistrer en STL",

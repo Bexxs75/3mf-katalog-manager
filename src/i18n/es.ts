@@ -1703,6 +1703,7 @@ export const es: Translations = {
   errBundleTooFewFiles: "Un paquete necesita al menos {0} archivos",
   errBundleTooManyFiles: "Un paquete puede contener como máximo {0} archivos",
   errBundleDuplicateFiles: "Un archivo solo puede estar una vez en un paquete",
+  errBundleKindInvalid: "Tipo de paquete no válido",
   errBundleNameInvalid: "El nombre del paquete no puede estar vacío, puede tener como máximo {0} caracteres y no puede contener caracteres de control",
   errBundleLabelInvalid: "La etiqueta puede tener como máximo {0} caracteres y no puede contener caracteres de control",
   stSaveAsStl: "Guardar como STL",

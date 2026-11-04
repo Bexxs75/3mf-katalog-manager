@@ -35,6 +35,7 @@ pub(super) fn exists(c: &Connection, table: &str, id: i64) -> WriteResult<()> {
         "files" => "SELECT 1 FROM files WHERE id=?1 AND deleted_at IS NULL",
         "all_files" => "SELECT 1 FROM files WHERE id=?1",
         "collections" => "SELECT 1 FROM collections WHERE id=?1",
+        "bundles" => "SELECT 1 FROM bundles WHERE id=?1",
         "print_log" => "SELECT 1 FROM print_log WHERE id=?1",
         "filament_spools" => "SELECT 1 FROM filament_spools WHERE id=?1",
         "printers" => "SELECT 1 FROM printers WHERE id=?1",
@@ -42,7 +43,11 @@ pub(super) fn exists(c: &Connection, table: &str, id: i64) -> WriteResult<()> {
         _ => unreachable!(),
     };
     if c.query_row(sql, [id], |_| Ok(())).optional()?.is_none() {
-        return Err(missing());
+        return Err(if table == "bundles" {
+            WriteError::coded_not_found(ErrorCode::BundleNotFound)
+        } else {
+            missing()
+        });
     }
     Ok(())
 }
@@ -326,6 +331,79 @@ pub fn remove_file_from_collection(
         exists(c, "all_files", id)?;
         db::remove_file_from_collection(c, cid, id)?;
         Ok(outcome((), c.changes()))
+    })
+}
+fn bundle_kind(text: &str) -> WriteResult<db::bundles::BundleKind> {
+    db::bundles::BundleKind::parse(text).ok_or_else(|| invalid(ErrorCode::BundleKindInvalid))
+}
+fn bundle_dto(c: &Connection, id: i64) -> WriteResult<read::BundleDto> {
+    db::bundles::get_bundle(c, id)?
+        .map(read::to_bundle_dto)
+        .ok_or_else(|| WriteError::coded_not_found(ErrorCode::BundleNotFound))
+}
+/// Bundles are catalog metadata only: no file is moved, renamed or deleted.
+pub fn create_bundle(
+    c: &mut Connection,
+    name: &str,
+    kind: &str,
+    ids: &[i64],
+) -> WriteResult<Outcome<read::BundleDto>> {
+    count(ids.len())?;
+    let kind = bundle_kind(kind)?;
+    transaction(c, |c| {
+        let id = db::bundles::create_bundle(c, name, kind, ids, &chrono::Utc::now().to_rfc3339())?;
+        Ok(outcome(bundle_dto(c, id)?, ids.len() as u64))
+    })
+}
+pub fn update_bundle(
+    c: &mut Connection,
+    id: i64,
+    name: Option<&str>,
+    kind: Option<&str>,
+) -> WriteResult<Outcome<()>> {
+    let kind = kind.map(bundle_kind).transpose()?;
+    transaction(c, |c| {
+        exists(c, "bundles", id)?;
+        db::bundles::update_bundle(c, id, name, kind)?;
+        Ok(outcome((), u64::from(name.is_some()) + u64::from(kind.is_some())))
+    })
+}
+pub fn add_files_to_bundle(
+    c: &mut Connection,
+    id: i64,
+    ids: &[i64],
+) -> WriteResult<Outcome<read::BundleDto>> {
+    count(ids.len())?;
+    transaction(c, |c| {
+        exists(c, "bundles", id)?;
+        db::bundles::add_files_to_bundle(c, id, ids)?;
+        Ok(outcome(bundle_dto(c, id)?, ids.len() as u64))
+    })
+}
+pub fn remove_files_from_bundle(c: &mut Connection, ids: &[i64]) -> WriteResult<Outcome<()>> {
+    count(ids.len())?;
+    transaction(c, |c| {
+        let removed = db::bundles::remove_files_from_bundle(c, ids)?;
+        Ok(outcome((), removed as u64))
+    })
+}
+pub fn dissolve_bundle(c: &mut Connection, id: i64) -> WriteResult<Outcome<()>> {
+    transaction(c, |c| {
+        exists(c, "bundles", id)?;
+        db::bundles::dissolve_bundle(c, id)?;
+        Ok(outcome((), 1))
+    })
+}
+pub fn update_bundle_member(
+    c: &mut Connection,
+    file_id: i64,
+    label: Option<&str>,
+    make_title: Option<bool>,
+) -> WriteResult<Outcome<()>> {
+    transaction(c, |c| {
+        exists(c, "all_files", file_id)?;
+        db::bundles::update_bundle_member(c, file_id, label, make_title.unwrap_or(false))?;
+        Ok(outcome((), u64::from(label.is_some()) + u64::from(make_title == Some(true))))
     })
 }
 fn reorder(

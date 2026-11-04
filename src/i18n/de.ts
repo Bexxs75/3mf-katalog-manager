@@ -1703,6 +1703,7 @@ export const de: Translations = {
   errBundleTooFewFiles: "Ein Bündel braucht mindestens {0} Dateien",
   errBundleTooManyFiles: "Ein Bündel darf höchstens {0} Dateien enthalten",
   errBundleDuplicateFiles: "Eine Datei kann nur einmal in einem Bündel vorkommen",
+  errBundleKindInvalid: "Ungültige Bündelart",
   errBundleNameInvalid: "Der Bündelname darf nicht leer sein, höchstens {0} Zeichen haben und keine Steuerzeichen enthalten",
   errBundleLabelInvalid: "Die Beschriftung darf höchstens {0} Zeichen und keine Steuerzeichen enthalten",
   stSaveAsStl: "Als STL speichern",

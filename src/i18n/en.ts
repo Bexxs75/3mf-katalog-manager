@@ -1703,6 +1703,7 @@ export const en: Translations = {
   errBundleTooFewFiles: "A bundle needs at least {0} files",
   errBundleTooManyFiles: "A bundle can hold at most {0} files",
   errBundleDuplicateFiles: "A file can only be in a bundle once",
+  errBundleKindInvalid: "Invalid bundle kind",
   errBundleNameInvalid: "The bundle name must not be empty, at most {0} characters long, and free of control characters",
   errBundleLabelInvalid: "The label can be at most {0} characters long and must not contain control characters",
   stSaveAsStl: "Save as STL",
