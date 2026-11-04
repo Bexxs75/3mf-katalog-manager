@@ -419,7 +419,7 @@ mod tests {
 
         let err = restock_filament_spool_with_conn(&mut conn, "999999", 2, 1000.0, None, None).unwrap_err();
 
-        assert!(err.contains("Vorlage"), "verstaendliche Meldung, war: {err}");
+        assert_eq!(err.message, "spoolTemplateNotFound");
         assert!(crate::db::list_filament_spools(&conn).expect("list").is_empty());
     }
 

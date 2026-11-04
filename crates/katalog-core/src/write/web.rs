@@ -1,6 +1,6 @@
 //! Strict operations. Checks and mutations share an IMMEDIATE transaction.
 use super::{Connection, WriteError, WriteResult, MAX_CUSTOM_IMAGE_BYTES};
-use crate::{db, read};
+use crate::{db, error_code::ErrorCode, read};
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 #[derive(Debug)]
 pub struct Outcome<T> {
@@ -10,13 +10,16 @@ pub struct Outcome<T> {
 pub(super) fn outcome<T>(value: T, changes: u64) -> Outcome<T> {
     Outcome { value, changes }
 }
-pub(super) fn invalid(message: &str) -> WriteError {
-    WriteError::expected(message)
+/// Rejected input (HTTP 422 on the server), identified by a registered code.
+pub(super) fn invalid(code: ErrorCode) -> WriteError {
+    WriteError::coded(code)
+}
+/// Like `invalid`, with the values the translated text needs (numbers, never words).
+pub(super) fn invalid_with(code: ErrorCode, params: impl IntoIterator<Item = impl ToString>) -> WriteError {
+    WriteError::coded_with(code, params)
 }
 fn missing() -> WriteError {
-    WriteError::NotFound {
-        message: "Eintrag nicht gefunden".into(),
-    }
+    WriteError::coded_not_found(ErrorCode::EntryNotFound)
 }
 pub(super) fn transaction<T>(
     c: &mut Connection,
@@ -45,19 +48,19 @@ pub(super) fn exists(c: &Connection, table: &str, id: i64) -> WriteResult<()> {
 }
 fn nonempty(value: &str) -> WriteResult<()> {
     if value.trim().is_empty() {
-        return Err(invalid("Text darf nicht leer sein"));
+        return Err(invalid(ErrorCode::TextEmpty));
     }
     Ok(())
 }
 fn length(value: &str, max: usize) -> WriteResult<()> {
     if value.chars().count() > max {
-        return Err(invalid("Text ist zu lang"));
+        return Err(invalid_with(ErrorCode::TextTooLong, [max]));
     }
     Ok(())
 }
 fn count(ids: usize) -> WriteResult<()> {
     if ids > 500 {
-        return Err(invalid("Höchstens 500 IDs erlaubt"));
+        return Err(invalid_with(ErrorCode::ReqIdsTooMany, [500]));
     }
     Ok(())
 }
@@ -77,7 +80,7 @@ pub fn set_favorite(c: &mut Connection, id: i64, favorite: bool) -> WriteResult<
 }
 pub fn set_print_status(c: &mut Connection, id: i64, status: &str) -> WriteResult<Outcome<()>> {
     if !matches!(status, "not_printed" | "printed") {
-        return Err(invalid("Ungültiger Druckstatus"));
+        return Err(invalid(ErrorCode::InvalidPrintStatus));
     }
     file_update(c, id, |c| db::set_print_status(c, id, status))
 }
@@ -104,14 +107,14 @@ pub fn add_to_queue(c: &mut Connection, id: i64) -> WriteResult<Outcome<i64>> {
         let next = db::max_queue_position(c)?
             .unwrap_or(0)
             .checked_add(1)
-            .ok_or_else(|| invalid("Position zu groß"))?;
+            .ok_or_else(|| invalid(ErrorCode::PositionTooLarge))?;
         db::set_queue_position(c, id, Some(next))?;
         Ok(outcome(next, c.changes()))
     })
 }
 pub fn add_tag(c: &mut Connection, id: i64, tag: &str) -> WriteResult<Outcome<()>> {
     nonempty(tag)?;
-    db::error::validate_text_length(tag, 100, "Tag")?;
+    db::error::validate_text_length(tag, 100, ErrorCode::TagNameTooLong)?;
     file_update(c, id, |c| {
         db::add_tag_to_file(c, id, &crate::tagging::canonical_tag(tag))
     })
@@ -169,7 +172,7 @@ pub fn set_source_url(
         .as_ref()
         .is_some_and(|u| u.chars().any(char::is_control))
     {
-        return Err(invalid("Ungültige Quell-URL"));
+        return Err(invalid(ErrorCode::InvalidSourceUrl));
     }
     let url = url.map(|u| u.trim().to_owned()).filter(|u| !u.is_empty());
     if let Some(url) = &url {
@@ -178,7 +181,7 @@ pub fn set_source_url(
         if !scheme
             .is_some_and(|s| s.eq_ignore_ascii_case("http") || s.eq_ignore_ascii_case("https"))
         {
-            return Err(invalid("Ungültige Quell-URL"));
+            return Err(invalid(ErrorCode::InvalidSourceUrl));
         }
     }
     file_update(c, id, |c| db::set_source_url(c, id, url.as_deref()))
@@ -191,7 +194,9 @@ pub fn set_license(
     license: Option<&str>,
 ) -> WriteResult<Outcome<()>> {
     count(ids.len())?;
-    db::licenses::validate_license(license).map_err(|e| invalid(&e.to_string()))?;
+    // The database text names the limit in German; the interface words it from the code.
+    db::licenses::validate_license(license)
+        .map_err(|_| invalid_with(ErrorCode::LicenseInvalid, [200]))?;
     for &id in ids {
         exists(c, "files", id)?;
     }
@@ -209,7 +214,7 @@ pub fn add_print_log_entry(
     use base64::Engine;
     length(&printed_at, 64)?;
     if chrono::DateTime::parse_from_rfc3339(&printed_at).is_err() {
-        return Err(invalid("Ungültiger Druckzeitpunkt"));
+        return Err(invalid(ErrorCode::InvalidPrintTime));
     }
     if let Some(note) = &note {
         length(note, 4000)?;
@@ -218,14 +223,14 @@ pub fn add_print_log_entry(
         .map(|s| {
             base64::engine::general_purpose::STANDARD
                 .decode(s)
-                .map_err(|_| invalid("Ungültiges Foto"))
+                .map_err(|_| invalid(ErrorCode::InvalidPhoto))
         })
         .transpose()?;
     if photo_png
         .as_ref()
         .is_some_and(|p| p.len() > MAX_CUSTOM_IMAGE_BYTES)
     {
-        return Err(invalid("Foto ist zu groß"));
+        return Err(WriteError::expected("imageUploadTooLarge"));
     }
     if let Some(photo) = &photo_png {
         super::validate_image_format(photo)?;
@@ -304,7 +309,7 @@ pub fn add_files_to_collection(
         for &id in ids {
             next = next
                 .checked_add(1)
-                .ok_or_else(|| invalid("Position zu groß"))?;
+                .ok_or_else(|| invalid(ErrorCode::PositionTooLarge))?;
             db::add_file_to_collection(c, cid, id, next)?;
             changes += c.changes();
         }
@@ -340,7 +345,7 @@ fn reorder(
                 c.query_row("SELECT EXISTS(SELECT 1 FROM files WHERE id=?1 AND queue_position IS NOT NULL AND deleted_at IS NULL)", [id], |r| r.get(0))?
             };
             if !member {
-                return Err(invalid("Datei ist kein Mitglied der Liste"));
+                return Err(invalid(ErrorCode::NotAListMember));
             }
         }
         let mut changes = 0;
@@ -383,13 +388,13 @@ pub fn set_render_snapshot(
     transaction(c, |c| {
         exists(c, "files", id)?;
         if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
-            return Err(invalid("Snapshot-Base64 ist zu groß"));
+            return Err(WriteError::expected("imageUploadTooLarge"));
         }
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(image_base64)
-            .map_err(|_| invalid("Ungültiges Snapshot-Base64"))?;
+            .map_err(|_| WriteError::expected("imageUploadUnreadable"))?;
         if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
-            return Err(invalid("Snapshot ist zu groß"));
+            return Err(WriteError::expected("imageUploadTooLarge"));
         }
         super::validate_image_format(&bytes)?;
         db::set_render_snapshot_png(c, id, &bytes)?;
@@ -409,13 +414,13 @@ pub fn set_custom_image(
         exists(c, "files", id)?;
         // Checked before decoding so an oversized string never allocates its decoded copy.
         if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
-            return Err(invalid("imageUploadTooLarge"));
+            return Err(WriteError::expected("imageUploadTooLarge"));
         }
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(image_base64)
-            .map_err(|_| invalid("imageUploadUnreadable"))?;
+            .map_err(|_| WriteError::expected("imageUploadUnreadable"))?;
         if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
-            return Err(invalid("imageUploadTooLarge"));
+            return Err(WriteError::expected("imageUploadTooLarge"));
         }
         super::validate_image_format(&bytes)?;
         db::set_custom_image_png(c, id, &bytes)?;
@@ -426,10 +431,10 @@ pub fn set_custom_image(
 /// Remove catalog records only; filesystem ownership remains with the upload journal.
 pub fn remove_files_from_catalog(c: &mut Connection, ids: &[i64]) -> WriteResult<Outcome<usize>> {
     if ids.len() > 200 {
-        return Err(invalid("Höchstens 200 IDs erlaubt"));
+        return Err(invalid_with(ErrorCode::ReqIdsTooMany, [200]));
     }
     if ids.iter().any(|id| *id <= 0) {
-        return Err(invalid("Ungültige Katalog-ID."));
+        return Err(invalid(ErrorCode::InvalidCatalogId));
     }
     let ids: std::collections::BTreeSet<_> = ids.iter().copied().collect();
     transaction(c, |c| {
@@ -439,7 +444,7 @@ pub fn remove_files_from_catalog(c: &mut Connection, ids: &[i64]) -> WriteResult
                 [id], |r| r.get(0),
             )?;
             if !active {
-                return Err(WriteError::NotFound { message: "Modell nicht gefunden oder bereits im Papierkorb.".into() });
+                return Err(WriteError::coded_not_found(ErrorCode::ModelNotFoundOrTrashed));
             }
         }
         let mut changes = 0;

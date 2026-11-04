@@ -170,11 +170,11 @@ pub fn companion_file_name(original: &str) -> Option<String> {
         stem.pop();
     }
     let full = format!("{stem}.{extension}");
-    if validate_name(&full, true, "Dateiname").is_ok() {
+    if validate_name(&full, true, crate::import::file_names::NameKind::File).is_ok() {
         return Some(full);
     }
     let prefixed = format!("_{full}");
-    validate_name(&prefixed, true, "Dateiname").is_ok().then_some(prefixed)
+    validate_name(&prefixed, true, crate::import::file_names::NameKind::File).is_ok().then_some(prefixed)
 }
 
 /// The folder next to a model that holds its companions. It is derived from the

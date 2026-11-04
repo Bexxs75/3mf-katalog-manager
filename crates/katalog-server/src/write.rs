@@ -1,10 +1,10 @@
 //! Explicit write allowlist, bounded admission, and transport-neutral core dispatch.
 use axum::{
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
-use katalog_core::error_code::ErrorCode;
+use katalog_core::error_code::{ErrorCode, LEGACY_CODES};
 use katalog_core::write::{web, CodedKind, Connection, WriteError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -334,10 +334,28 @@ pub(crate) fn retry(status: u16) -> Response {
     r.headers_mut().insert("retry-after", "1".parse().unwrap());
     r
 }
+/// An uncoded rejection of the core. Only the codes that predate the registry (the
+/// image upload ones the web client keys on) pass through; any other text is logged
+/// and answered with a generic code, so no German sentence reaches the client.
+fn legacy_or_refusal(status: u16, message: &str) -> Response {
+    if LEGACY_CODES.contains(&message) {
+        return (
+            StatusCode::from_u16(status).unwrap(),
+            Json(serde_json::json!({"message": message, "expected": true})),
+        )
+            .into_response();
+    }
+    eprintln!("write rejection without a code");
+    super::web::error_coded(
+        status,
+        if status == 404 { ErrorCode::WebNotFound } else { ErrorCode::ReqInvalidArguments },
+        &[],
+    )
+}
 fn map_error(e: WriteError) -> Box<Response> {
     Box::new(match e {
-        WriteError::Invalid { message } => super::web::error(422, &message),
-        WriteError::NotFound { message } => super::web::error(404, &message),
+        WriteError::Invalid { message } => legacy_or_refusal(422, &message),
+        WriteError::NotFound { message } => legacy_or_refusal(404, &message),
         WriteError::Coded { kind, code, params } => super::web::error_coded(
             match kind {
                 CodedKind::Invalid => 422,

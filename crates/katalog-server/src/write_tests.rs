@@ -2152,3 +2152,48 @@ mod custom_image_and_rescan_tests {
         assert!(!stderr.contains("audit-secret") && !stderr.contains("iVBOR"), "{stderr}");
     }
 }
+
+/// Rejections of the write path name a registered code (never a German sentence) and
+/// carry only numbers or the offending letter as parameters; the statuses stay.
+#[tokio::test]
+async fn write_rejections_answer_with_registered_codes() {
+    let f = Fixture::new(true);
+    let p = value(f.send("add_printer", json!({"name":"P","holderName":"H"})).await).await;
+    let filament = value(f.send("add_filament_spool", json!({"spool":manager_spool()})).await).await;
+    let mut color = manager_spool();
+    color["colorHex"] = json!("not-a-color");
+    let mut kind = manager_spool();
+    kind["kind"] = json!("plastic");
+    let long_tag = "x".repeat(101);
+    let cases = [
+        ("add_filament_spool", json!({"spool":color}), 422, json!({"message":"invalidColor","expected":true})),
+        ("add_filament_spool", json!({"spool":kind}), 422, json!({"message":"invalidMaterialKind","expected":true})),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":21,"weight":1}), 422, json!({"message":"invalidCount","expected":true})),
+        ("restock_filament_spool", json!({"templateId":filament["id"],"count":1,"weight":0}), 422, json!({"message":"invalidAmount","expected":true})),
+        ("restock_filament_spool", json!({"templateId":"999999","count":1,"weight":1}), 404, json!({"message":"entryNotFound","expected":true})),
+        ("consume_resin", json!({"spoolId":filament["id"],"amountMl":3}), 422, json!({"message":"consumeOnlyResin","expected":true})),
+        ("update_printer_details", json!({"id":p["id"],"details":{"nozzleMm":5.0}}), 422, json!({"message":"printerNozzleOutOfRange","expected":true,"params":["0.1","2"]})),
+        ("update_printer_details", json!({"id":p["id"],"details":{"bedXMm":5000.0}}), 422, json!({"message":"printerBedOutOfRange","expected":true,"params":["X","1","2000"]})),
+        ("update_printer_details", json!({"id":p["id"],"details":{"model":"m".repeat(121)}}), 422, json!({"message":"printerModelTooLong","expected":true,"params":["120"]})),
+        ("add_printer", json!({"name":"  ","holderName":"H"}), 422, json!({"message":"printerNameEmpty","expected":true})),
+        ("add_tag", json!({"fileId":f.id,"tag":long_tag}), 422, json!({"message":"tagNameTooLong","expected":true,"params":["100"]})),
+        ("block_auto_tag", json!({"tag":""}), 422, json!({"message":"tagNameEmpty","expected":true})),
+        ("block_auto_tag", json!({"tag":"a\nb"}), 422, json!({"message":"tagNameInvalid","expected":true})),
+        ("set_print_status", json!({"fileId":f.id,"status":"burnt"}), 422, json!({"message":"invalidPrintStatus","expected":true})),
+        ("set_source_url", json!({"fileId":f.id,"url":"ftp://x"}), 422, json!({"message":"invalidSourceUrl","expected":true})),
+        ("remove_files_from_catalog", json!({"fileIds":["0"]}), 422, json!({"message":"invalidCatalogId","expected":true})),
+        ("remove_files_from_catalog", json!({"fileIds":["999999"]}), 404, json!({"message":"modelNotFoundOrTrashed","expected":true})),
+        ("set_custom_image", json!({"fileId":f.id,"imageBase64":"bad"}), 422, json!({"message":"imageUploadUnreadable","expected":true})),
+    ];
+    for (cmd, args, status, expected) in cases {
+        let r = f.send(cmd, args.clone()).await;
+        assert_eq!(r.status(), status, "{cmd} {args}");
+        let got = value(r).await;
+        assert_eq!(got, expected, "{cmd} {args}");
+    }
+    // A business rule of a database helper has German text of its own; the web
+    // answers with the generic refusal instead of passing it on.
+    let r = f.send("add_unit", json!({"printerId":p["id"],"kind":"resin_vat","name":"Vat"})).await;
+    assert_eq!(r.status(), 422);
+    assert_eq!(value(r).await, json!({"message":"reqInvalidArguments","expected":true}));
+}

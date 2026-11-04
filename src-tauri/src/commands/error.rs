@@ -310,9 +310,9 @@ mod write_adapter_tests {
         let mut c = db::connect_in_memory().unwrap();
         let id = db::test_insert_minimal_file(&c,"/one",None).unwrap();
         let e = CmdError::from(write::add_tag_with_conn(&c,id,&"😀".repeat(51)).unwrap_err());
-        assert!(e.expected); assert_eq!(e.message,"Tag darf höchstens 100 Zeichen enthalten");
+        assert!(e.expected); assert_eq!(e.message,"tagNameTooLong"); assert_eq!(e.params,vec!["100".to_string()]);
         let e = CmdError::from(write::set_source_url(&c,id.to_string(),Some("file:///x".into())).unwrap_err());
-        assert!(e.expected); assert_eq!(e.message,"source URL must start with http:// or https://");
+        assert!(e.expected); assert_eq!(e.message,"invalidSourceUrl");
         let e = CmdError::from(write::set_license(&mut c,vec![id.to_string()],Some("x".repeat(201))).unwrap_err());
         assert!(!e.expected); assert_eq!(e.message,"Lizenz darf höchstens 200 Zeichen und keine Steuerzeichen enthalten");
         let collection = write::create_collection(&c,"x".into()).unwrap();

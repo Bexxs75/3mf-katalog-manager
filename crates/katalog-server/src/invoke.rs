@@ -6,6 +6,7 @@ use axum::{
 };
 use katalog_core::{
     companion_read, db, disk_report,
+    error_code::{ErrorCode, LEGACY_CODES},
     read::{self, GeometryErrorCode, ReadError},
 };
 use serde::Serialize;
@@ -41,42 +42,37 @@ impl Default for GeometryGate {
 impl GeometryGate {
     async fn acquire(&self) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), Box<Response>> {
         let admission = self.admission.clone().try_acquire_owned().map_err(|_| {
-            error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Zu viele Geometrie-Anfragen",
-                true,
-            )
+            error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[])
         })?;
         let worker = self.workers.clone().acquire_owned().await.map_err(|_| {
-            error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Geometrie nicht verfügbar",
-                true,
-            )
+            error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::GeometryUnavailable, &[])
         })?;
         Ok((admission, worker))
     }
 }
-fn error(status: StatusCode, message: &str, expected: bool) -> Box<Response> {
-    Box::new(
-        (
-            status,
-            Json(json!({"message": message, "expected": expected})),
-        )
-            .into_response(),
-    )
+/// An answer whose `message` is a registered code; the interface owns the wording.
+fn error(status: StatusCode, code: ErrorCode, params: &[String]) -> Box<Response> {
+    Box::new(crate::web::error_coded(status.as_u16(), code, params))
+}
+/// Whether `message` is a code the interface can translate. A read error that
+/// claims to be expected but carries anything else would put free text on the wire.
+fn is_wire_code(message: &str) -> bool {
+    ErrorCode::ALL.iter().any(|code| code.as_str() == message) || LEGACY_CODES.contains(&message)
 }
 pub(crate) fn read_error(e: ReadError) -> Response {
-    let status = if e.busy {
-        StatusCode::SERVICE_UNAVAILABLE
-    } else if e.code == Some(GeometryErrorCode::NotFound) {
+    // A busy database is a condition of the server, not of the request: the answer is
+    // a fixed code and never the database's own text.
+    if e.busy {
+        return *error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebServerBusy, &[]);
+    }
+    let status = if e.code == Some(GeometryErrorCode::NotFound) {
         StatusCode::NOT_FOUND
     } else if e.expected {
         StatusCode::UNPROCESSABLE_ENTITY
     } else {
         StatusCode::INTERNAL_SERVER_ERROR
     };
-    if status == StatusCode::INTERNAL_SERVER_ERROR {
+    if status == StatusCode::INTERNAL_SERVER_ERROR || !is_wire_code(&e.message) {
         // Read errors contain catalog/SQLite diagnostics, never authentication inputs.
         eprintln!(
             "Interner Lesefehler: {}",
@@ -86,7 +82,7 @@ pub(crate) fn read_error(e: ReadError) -> Response {
                 .flat_map(char::escape_default)
                 .collect::<String>()
         );
-        return *error(status, "Interner Fehler", false);
+        return *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]);
     }
     (status, Json(e)).into_response()
 }
@@ -101,11 +97,7 @@ fn id(args: &Value, key: &str) -> Result<String, Box<Response>> {
         .filter(|s| s.parse::<i64>().is_ok())
         .map(str::to_owned)
         .ok_or_else(|| {
-            error(
-                StatusCode::BAD_REQUEST,
-                "ID muss eine numerische Zeichenfolge sein",
-                true,
-            )
+            error(StatusCode::BAD_REQUEST, ErrorCode::ReqInvalidIds, &[])
         })
 }
 const MAX_FILE_IDS: usize = 500;
@@ -114,22 +106,14 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
     let values = args
         .get("ids")
         .and_then(Value::as_array)
-        .ok_or_else(|| error(StatusCode::BAD_REQUEST, "ids muss eine Liste sein", true))?;
+        .ok_or_else(|| error(StatusCode::BAD_REQUEST, ErrorCode::ReqInvalidIds, &[]))?;
     if images && values.len() > 200 {
-        return Err(error(
-            StatusCode::BAD_REQUEST,
-            "Höchstens 200 Bild-IDs erlaubt",
-            true,
-        ));
+        return Err(error(StatusCode::BAD_REQUEST, ErrorCode::ReqIdsTooMany, &["200".to_string()]));
     }
     // Each ID loads a full file record; an unbounded list would hold the
     // database lock and build an arbitrarily large response.
     if !images && values.len() > MAX_FILE_IDS {
-        return Err(error(
-            StatusCode::BAD_REQUEST,
-            "Höchstens 500 IDs erlaubt",
-            true,
-        ));
+        return Err(error(StatusCode::BAD_REQUEST, ErrorCode::ReqIdsTooMany, &["500".to_string()]));
     }
     values
         .iter()
@@ -138,11 +122,7 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
                 .filter(|s| s.parse::<i64>().is_ok())
                 .map(str::to_owned)
                 .ok_or_else(|| {
-                    error(
-                        StatusCode::BAD_REQUEST,
-                        "IDs müssen numerische Zeichenfolgen sein",
-                        true,
-                    )
+                    error(StatusCode::BAD_REQUEST, ErrorCode::ReqInvalidIds, &[])
                 })
         })
         .collect()
@@ -188,9 +168,9 @@ pub const READ_COMMANDS: &[&str] = &[
 pub(crate) fn companion_error(e: companion_read::RowError) -> ReadError {
     use companion_read::RowError as R;
     match e {
-        R::TooLarge => ReadError::expected("Die Begleitdatei ist zu groß").with_code(GeometryErrorCode::TooLarge),
+        R::TooLarge => ReadError::coded(ErrorCode::CompanionTooLarge).with_code(GeometryErrorCode::TooLarge),
         // Everything else looks the same from outside: no hint which check failed.
-        _ => ReadError::expected("Begleitdatei nicht gefunden").with_code(GeometryErrorCode::NotFound),
+        _ => ReadError::coded(ErrorCode::CompanionNotFound).with_code(GeometryErrorCode::NotFound),
     }
 }
 
@@ -242,14 +222,10 @@ pub async fn invoke(
     gate: Arc<GeometryGate>,
 ) -> Response {
     if !READ_COMMANDS.contains(&command.as_str()) {
-        return *error(StatusCode::NOT_FOUND, "Befehl im Web nicht verfügbar", true);
+        return *error(StatusCode::NOT_FOUND, ErrorCode::WebCommandUnavailable, &[]);
     }
     if !args.is_object() {
-        return *error(
-            StatusCode::BAD_REQUEST,
-            "Argumente müssen ein JSON-Objekt sein",
-            true,
-        );
+        return *error(StatusCode::BAD_REQUEST, ErrorCode::ReqInvalidArguments, &[]);
     }
     if matches!(
         command.as_str(),
@@ -266,11 +242,7 @@ pub async fn invoke(
             .keys()
             .any(|key| !allowed.contains(&key.as_str()))
         {
-            return *error(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "Unbekannte Argumente",
-                true,
-            );
+            return *error(StatusCode::UNPROCESSABLE_ENTITY, ErrorCode::ReqInvalidArguments, &[]);
         }
     }
     let file_id = match command.as_str() {
@@ -319,29 +291,17 @@ pub async fn invoke(
     let include_removed = args.get("includeRemoved") == Some(&Value::Bool(true));
     let check_ids = if command == "check_filament" {
         let Some(values) = args.get("fileIds").and_then(Value::as_array) else {
-            return *error(
-                StatusCode::BAD_REQUEST,
-                "fileIds muss eine Liste sein",
-                true,
-            );
+            return *error(StatusCode::BAD_REQUEST, ErrorCode::ReqInvalidIds, &[]);
         };
         if values.len() > 1000 {
-            return *error(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "Höchstens 1000 IDs erlaubt",
-                true,
-            );
+            return *error(StatusCode::UNPROCESSABLE_ENTITY, ErrorCode::ReqIdsTooMany, &["1000".to_string()]);
         }
         let Some(ids) = values
             .iter()
             .map(|v| v.as_str().map(str::to_owned))
             .collect::<Option<Vec<_>>>()
         else {
-            return *error(
-                StatusCode::BAD_REQUEST,
-                "IDs müssen Zeichenfolgen sein",
-                true,
-            );
+            return *error(StatusCode::BAD_REQUEST, ErrorCode::ReqInvalidIds, &[]);
         };
         ids
     } else {
@@ -352,7 +312,7 @@ pub async fn invoke(
         None => false,
         Some(Value::Bool(flag)) => *flag,
         Some(_) => {
-            return *error(StatusCode::BAD_REQUEST, "withPreviews muss true oder false sein", true);
+            return *error(StatusCode::BAD_REQUEST, ErrorCode::ReqInvalidArguments, &[]);
         }
     };
     let manager_permit = if matches!(
@@ -370,11 +330,7 @@ pub async fn invoke(
         match gate.manager_reads.clone().try_acquire_owned() {
             Ok(p) => Some(p),
             Err(_) => {
-                let mut r = *error(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Zu viele Manager-Anfragen",
-                    true,
-                );
+                let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[]);
                 r.headers_mut().insert("retry-after", "1".parse().unwrap());
                 return r;
             }
@@ -386,7 +342,7 @@ pub async fn invoke(
         match gate.disk_reports.clone().try_acquire_owned() {
             Ok(p) => Some(p),
             Err(_) => {
-                let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, "Abgleich läuft bereits", true);
+                let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::RescanRunning, &[]);
                 r.headers_mut().insert("retry-after", "5".parse().unwrap());
                 return r;
             }
@@ -413,13 +369,13 @@ pub async fn invoke(
             let _ = tx.send(outcome);
         });
         if started.is_err() {
-            return *error(StatusCode::SERVICE_UNAVAILABLE, "Abgleich derzeit nicht möglich", true);
+            return *error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::RescanUnavailable, &[]);
         }
         return match tokio::time::timeout(wait, rx).await {
             Ok(Ok(Ok(value))) => Json(value).into_response(),
             Ok(Ok(Err(e))) => read_error(e),
-            Ok(Err(_)) => *error(StatusCode::INTERNAL_SERVER_ERROR, "Anfrage konnte nicht verarbeitet werden", false),
-            Err(_) => *error(StatusCode::GATEWAY_TIMEOUT, "Der Abgleich dauert zu lange (ein Laufwerk antwortet nicht). Bitte später erneut versuchen.", true),
+            Ok(Err(_)) => *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]),
+            Err(_) => *error(StatusCode::GATEWAY_TIMEOUT, ErrorCode::RescanTimeout, &[]),
         };
     }
     // Both open and parse a 3MF, so both wait for the parser gate.
@@ -497,7 +453,7 @@ pub async fn invoke(
             "folder_removal_summary" => {
                 match folder_summary(&conn, file_id.unwrap().parse().unwrap())? {
                     Some(summary) => encode(summary),
-                    None => Ok(*error(StatusCode::NOT_FOUND, "Ordner nicht gefunden", true)),
+                    None => Ok(*error(StatusCode::NOT_FOUND, ErrorCode::FolderNotFound, &[])),
                 }
             }
             "list_file_images" => {
@@ -534,11 +490,7 @@ pub async fn invoke(
     match result {
         Ok(Ok(response)) => response,
         Ok(Err(e)) => read_error(e),
-        Err(_) => *error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Anfrage konnte nicht verarbeitet werden",
-            false,
-        ),
+        Err(_) => *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]),
     }
 }
 
@@ -655,7 +607,7 @@ mod tests {
         assert_eq!(r.status(), StatusCode::GATEWAY_TIMEOUT);
         assert!(started.elapsed() < std::time::Duration::from_millis(600));
         let text = String::from_utf8(body(r).await).unwrap();
-        assert!(text.contains("dauert zu lange") && !text.contains(c.dir.to_str().unwrap()), "{text}");
+        assert!(text.contains("\"rescanTimeout\"") && !text.contains(c.dir.to_str().unwrap()), "{text}");
         // The scan thread still owns the single-flight permit and one manager permit.
         assert_eq!(gate.disk_reports.available_permits(), 0);
         assert_eq!(gate.manager_reads.available_permits(), 3);
@@ -704,14 +656,20 @@ mod tests {
         v
     }
     #[tokio::test]
-    async fn unexpected_errors_hide_details_and_expected_errors_keep_them() {
+    async fn unexpected_errors_hide_details_and_expected_errors_keep_their_code() {
+        let busy = ReadError { busy: true, ..ReadError::from("database is locked: /srv/catalog.db") };
         for (e, status, message) in [
             (
                 ReadError::from("no such table: private_table"),
                 500,
-                "Interner Fehler",
+                "webServerInternal",
             ),
-            (ReadError::expected("Fachfehler"), 422, "Fachfehler"),
+            (ReadError::coded(ErrorCode::FileNotFound), 422, "fileNotFound"),
+            (ReadError::expected("imageUploadTooLarge"), 422, "imageUploadTooLarge"),
+            // Free text that claims to be expected never reaches the client.
+            (ReadError::expected("Fachfehler"), 500, "webServerInternal"),
+            (ReadError::expected("/srv/models/a.stl fehlt").with_code(GeometryErrorCode::NotFound), 500, "webServerInternal"),
+            (busy, 503, "webServerBusy"),
         ] {
             let response = read_error(e);
             assert_eq!(response.status(), status);
@@ -720,6 +678,8 @@ mod tests {
                 .unwrap();
             let value: Value = serde_json::from_slice(&bytes).unwrap();
             assert_eq!(value["message"], message);
+            assert!(!String::from_utf8_lossy(&bytes).contains("private_table"));
+            assert!(!String::from_utf8_lossy(&bytes).contains("/srv/"));
         }
     }
     #[tokio::test]
@@ -886,7 +846,7 @@ mod tests {
             assert_eq!(r.status(), 404);
             assert_eq!(
                 serde_json::from_slice::<Value>(&body(r).await).unwrap(),
-                json!({"message":"Befehl im Web nicht verfügbar","expected":true})
+                json!({"message":"webCommandUnavailable","expected":true})
             );
         }
         for (cmd, args) in [
@@ -898,6 +858,46 @@ mod tests {
         ] {
             assert_eq!(call(&c, cmd, args).await.status(), 400);
         }
+    }
+    /// Every refusal of the read allowlist names a registered code and carries only
+    /// numbers as parameters; the status codes stay as they were.
+    #[tokio::test]
+    async fn read_refusals_answer_with_registered_codes() {
+        let c = catalog();
+        let thousand = vec!["1"; 1001];
+        for (cmd, args, status, expected) in [
+            ("list_file_summaries", json!([]), 400, json!({"message":"reqInvalidArguments","expected":true})),
+            ("get_model_geometry", json!({"fileId":"no"}), 400, json!({"message":"reqInvalidIds","expected":true})),
+            ("list_file_images", json!({"ids":vec!["1";201]}), 400, json!({"message":"reqIdsTooMany","expected":true,"params":["200"]})),
+            ("list_files_by_ids", json!({"ids":vec!["1";501]}), 400, json!({"message":"reqIdsTooMany","expected":true,"params":["500"]})),
+            ("check_filament", json!({"fileIds":thousand}), 422, json!({"message":"reqIdsTooMany","expected":true,"params":["1000"]})),
+            ("check_filament", json!({"fileIds":"x"}), 400, json!({"message":"reqInvalidIds","expected":true})),
+            ("folder_removal_summary", json!({"folderId":"999999"}), 404, json!({"message":"folderNotFound","expected":true})),
+            ("empty_trash_summary", json!({"x":1}), 422, json!({"message":"reqInvalidArguments","expected":true})),
+            ("get_model_geometry", json!({"fileId":"999999"}), 404, json!({"message":"fileNotFound","expected":true,"code":"notFound"})),
+        ] {
+            let r = call(&c, cmd, args).await;
+            assert_eq!(r.status(), status, "{cmd}");
+            assert_eq!(serde_json::from_slice::<Value>(&body(r).await).unwrap(), expected, "{cmd}");
+        }
+    }
+    #[tokio::test]
+    async fn geometry_outside_the_roots_names_a_code_and_no_path() {
+        let c = catalog();
+        let root = c.dir.join("allowed");
+        std::fs::create_dir(&root).unwrap();
+        let r = invoke(
+            c.db.clone(),
+            vec![root],
+            "get_model_geometry".into(),
+            json!({"fileId":c.id}),
+            Arc::new(GeometryGate::default()),
+        )
+        .await;
+        assert_eq!(r.status(), 422);
+        let text = String::from_utf8(body(r).await).unwrap();
+        assert!(text.contains("\"dlPathNotAllowed\""), "{text}");
+        assert!(!text.contains(c.dir.to_str().unwrap()), "{text}");
     }
     #[tokio::test]
     async fn list_files_by_ids_is_limited_to_500_ids() {

@@ -3,7 +3,7 @@
 mod error;
 pub mod web;
 use crate::read::{print_log_entry_to_dto, CollectionDto, PrintLogEntryDto};
-use crate::{db, tagging};
+use crate::{db, error_code::ErrorCode, tagging};
 pub use error::{CodedKind, WriteError};
 pub use rusqlite::Connection;
 pub type WriteResult<T> = Result<T, WriteError>;
@@ -44,12 +44,7 @@ pub fn prepare_print_log_entry(
         .transpose()?;
     if let Some(bytes) = &photo_png {
         if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
-            return Err(format!(
-                "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
-                bytes.len() as f64 / (1024.0 * 1024.0),
-                MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
-            )
-            .into());
+            return Err(WriteError::expected("imageUploadTooLarge"));
         }
     }
 
@@ -138,10 +133,9 @@ pub fn set_license(
 }
 
 pub fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> WriteResult<()> {
-    db::error::validate_text_length(tag, 100, "Tag")
-        .map_err(|e| WriteError::expected(e.to_string()))?;
+    db::error::validate_text_length(tag, 100, ErrorCode::TagNameTooLong)?;
     db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| match e {
-        db::error::DbError::Invalid(message) => WriteError::expected(message),
+        coded @ db::error::DbError::Coded { .. } => coded.into(),
         other => other.to_string().into(),
     })
 }
@@ -271,9 +265,7 @@ pub fn validate_source_url(url: Option<String>) -> WriteResult<Option<String>> {
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         Ok(Some(trimmed))
     } else {
-        Err(WriteError::expected(
-            "source URL must start with http:// or https://",
-        ))
+        Err(WriteError::coded(ErrorCode::InvalidSourceUrl))
     }
 }
 

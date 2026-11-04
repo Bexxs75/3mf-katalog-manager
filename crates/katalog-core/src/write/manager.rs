@@ -1,17 +1,27 @@
 use super::{validate_image_format, WriteError, WriteResult, MAX_CUSTOM_IMAGE_BYTES};
 use crate::db;
+use crate::error_code::ErrorCode;
 use crate::read::manager::{spool_record_to_dto, FilamentSpoolDto};
 use rusqlite::Connection;
 pub fn validate_color_hex(color_hex: &Option<String>) -> WriteResult<()> {
     match color_hex {
         Some(value) if !db::printers::is_valid_color_hex(value) => {
-            Err(format!("ungueltiger Farbwert: {value}").into())
+            Err(WriteError::coded(ErrorCode::InvalidColor))
         }
         _ => Ok(()),
     }
 }
 pub fn validate_color_hexes(color_hexes: &[String]) -> WriteResult<()> {
-    db::printers::validate_color_list(color_hexes).map_err(WriteError::expected)
+    if color_hexes.len() > db::printers::MAX_SPOOL_COLORS {
+        return Err(WriteError::coded_with(
+            ErrorCode::SpoolColorsTooMany,
+            [db::printers::MAX_SPOOL_COLORS],
+        ));
+    }
+    if color_hexes.iter().any(|c| !db::printers::is_valid_color_hex(c)) {
+        return Err(WriteError::coded(ErrorCode::InvalidColor));
+    }
+    Ok(())
 }
 pub fn validate_spool_kind(kind: &str) -> WriteResult<()> {
     if db::models::SPOOL_KINDS.contains(&kind) {
@@ -107,7 +117,7 @@ pub fn delete_filament_spool(conn: &Connection, spool_id: String) -> WriteResult
 pub const RESTOCK_MAX_COUNT: i64 = 20;
 
 fn missing_template() -> WriteError {
-    WriteError::expected("Vorlage nicht gefunden (die Spule wurde inzwischen geloescht)")
+    WriteError::coded(ErrorCode::SpoolTemplateNotFound)
 }
 
 /// Creates `count` new, full entries modeled on the template inside the caller's
@@ -170,17 +180,18 @@ pub fn restock_filament_spool(
         .parse()
         .map_err(|_| "invalid spool id".to_string())?;
     if !(1..=RESTOCK_MAX_COUNT).contains(&count) {
-        return Err(WriteError::expected(format!(
-            "Anzahl muss zwischen 1 und {RESTOCK_MAX_COUNT} liegen"
-        )));
+        return Err(WriteError::coded_with(
+            ErrorCode::RestockCountOutOfRange,
+            [1, RESTOCK_MAX_COUNT],
+        ));
     }
     let weight = db::printers::round_tenth(weight);
     if !weight.is_finite() || weight <= 0.0 {
-        return Err(WriteError::expected("Menge muss groesser als 0 sein"));
+        return Err(WriteError::coded(ErrorCode::AmountNotPositive));
     }
     if let Some(value) = price {
         if !value.is_finite() || value < 0.0 {
-            return Err(WriteError::expected("ungueltiger Preis"));
+            return Err(WriteError::coded(ErrorCode::InvalidPrice));
         }
     }
     let tx = conn.transaction()?;
@@ -196,14 +207,12 @@ pub fn consume_resin_in(tx: &Connection, id: i64, amount: f64) -> WriteResult<Fi
     let spool = match db::get_filament_spool(tx, id) {
         Ok(record) => record,
         Err(db::error::DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows)) => {
-            return Err(WriteError::expected(
-                "Flasche nicht gefunden (wurde sie inzwischen geloescht?)",
-            ))
+            return Err(WriteError::coded(ErrorCode::BottleNotFound))
         }
         Err(e) => return Err(e.into()),
     };
     if spool.kind != db::models::SPOOL_KIND_RESIN {
-        return Err("Verbrauch abbuchen gibt es nur fuer Resin".to_string().into());
+        return Err(WriteError::coded(ErrorCode::ConsumeOnlyResin));
     }
     let remaining = db::printers::round_tenth((spool.remaining_weight_g - amount).max(0.0));
     tx.execute(
@@ -224,7 +233,7 @@ pub fn consume_resin(
         .map_err(|_| "invalid spool id".to_string())?;
     let amount = db::printers::round_tenth(amount_ml);
     if !amount.is_finite() || amount <= 0.0 {
-        return Err(WriteError::expected("Verbrauch muss groesser als 0 sein"));
+        return Err(WriteError::coded(ErrorCode::ConsumeNotPositive));
     }
     let tx = conn.transaction()?;
     let updated = consume_resin_in(&tx, id, amount)?;

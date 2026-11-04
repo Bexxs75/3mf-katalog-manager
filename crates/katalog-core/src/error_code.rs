@@ -172,6 +172,74 @@ error_codes! {
     DlRangeInvalid => "dlRangeInvalid",
     DlTooManyDownloads => "dlTooManyDownloads",
     SlicerLinkExpired => "slicerLinkExpired",
+    // Tags, printers and spools (database and write path).
+    TagNameEmpty => "tagNameEmpty",
+    TagNameInvalid => "tagNameInvalid",
+    /// params: the highest number of characters.
+    TagNameTooLong => "tagNameTooLong",
+    /// params: the highest number of blocked tags.
+    BlockedTagsLimit => "blockedTagsLimit",
+    PrinterNameEmpty => "printerNameEmpty",
+    /// params: the highest number of characters.
+    PrinterNameTooLong => "printerNameTooLong",
+    PrinterOrderIncomplete => "printerOrderIncomplete",
+    PrinterNotFound => "printerNotFound",
+    /// params: the highest number of characters.
+    PrinterManufacturerTooLong => "printerManufacturerTooLong",
+    /// params: the highest number of characters.
+    PrinterModelTooLong => "printerModelTooLong",
+    /// params: lowest and highest value in mm.
+    PrinterNozzleOutOfRange => "printerNozzleOutOfRange",
+    /// params: axis (X, Y or Z), lowest and highest value in mm.
+    PrinterBedOutOfRange => "printerBedOutOfRange",
+    SpoolTemplateNotFound => "spoolTemplateNotFound",
+    BottleNotFound => "bottleNotFound",
+    /// params: lowest and highest count.
+    RestockCountOutOfRange => "restockCountOutOfRange",
+    InvalidCount => "invalidCount",
+    InvalidAmount => "invalidAmount",
+    AmountNotPositive => "amountNotPositive",
+    ConsumeNotPositive => "consumeNotPositive",
+    InvalidPrice => "invalidPrice",
+    /// params: the highest number of colors.
+    SpoolColorsTooMany => "spoolColorsTooMany",
+    InvalidColor => "invalidColor",
+    InvalidMaterialKind => "invalidMaterialKind",
+    MaterialEmpty => "materialEmpty",
+    InvalidDiameter => "invalidDiameter",
+    ConsumeOnlyResin => "consumeOnlyResin",
+    InvalidSlot => "invalidSlot",
+    /// params: the highest number of entries.
+    WebLimitReached => "webLimitReached",
+    // Catalog entries written from the web.
+    EntryNotFound => "entryNotFound",
+    TextEmpty => "textEmpty",
+    /// params: the highest number of characters.
+    TextTooLong => "textTooLong",
+    InvalidPrintStatus => "invalidPrintStatus",
+    PositionTooLarge => "positionTooLarge",
+    InvalidSourceUrl => "invalidSourceUrl",
+    /// params: the highest number of characters.
+    LicenseInvalid => "licenseInvalid",
+    InvalidPrintTime => "invalidPrintTime",
+    InvalidPhoto => "invalidPhoto",
+    NotAListMember => "notAListMember",
+    // Reading and importing files.
+    /// params: the limit in bytes.
+    FileTooLarge => "fileTooLarge",
+    PreviewTooLarge => "previewTooLarge",
+    /// params: the file extension.
+    FileFormatUnsupported => "fileFormatUnsupported",
+    SpoolNotFound => "spoolNotFound",
+    ImportFixedFolderNeedsFiles => "importFixedFolderNeedsFiles",
+    // Web server: reads and rescans.
+    WebServerBusy => "webServerBusy",
+    GeometryUnavailable => "geometryUnavailable",
+    RescanRunning => "rescanRunning",
+    RescanUnavailable => "rescanUnavailable",
+    RescanTimeout => "rescanTimeout",
+    CompanionTooLarge => "companionTooLarge",
+    CompanionNotFound => "companionNotFound",
     // Saving a model as STL.
     StlSourceIsStl => "stlSourceIsStl",
     StlTargetIsSource => "stlTargetIsSource",

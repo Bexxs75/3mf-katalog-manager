@@ -7,6 +7,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::error::DbError;
+use crate::error_code::ErrorCode;
 use super::models::{MaterialUnitRecord, PrinterRecord};
 
 /// Color names (German/English, lowercase) -> color value. Same values as the
@@ -187,10 +188,10 @@ fn uses_bambu_ams_index(kind: &str) -> bool {
 fn clean_name(name: &str) -> Result<String, DbError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return Err(DbError::Invalid("Name darf nicht leer sein".into()));
+        return Err(DbError::coded(ErrorCode::PrinterNameEmpty));
     }
     if trimmed.chars().count() > MAX_NAME_LEN {
-        return Err(DbError::Invalid(format!("Name darf hoechstens {MAX_NAME_LEN} Zeichen haben")));
+        return Err(DbError::coded_with(ErrorCode::PrinterNameTooLong, [MAX_NAME_LEN]));
     }
     Ok(trimmed.to_string())
 }
@@ -210,7 +211,7 @@ pub fn reorder_printers(conn: &Connection, ids: &[i64]) -> Result<(), DbError> {
     current.sort_unstable();
     requested.sort_unstable();
     if current != requested {
-        return Err(DbError::Invalid("Reihenfolge muss alle Drucker genau einmal enthalten".into()));
+        return Err(DbError::coded(ErrorCode::PrinterOrderIncomplete));
     }
     for (position, id) in ids.iter().enumerate() {
         conn.execute("UPDATE printers SET position = ?1 WHERE id = ?2", params![position as i64, id])?;

@@ -162,6 +162,12 @@ const WIRE_CODES: &[&str] = &[
     "rescan_file_too_large",
     "rescan_file_invalid",
     "rescan_file_changed",
+    // Reasons an import job gives for a file it could not place; the import result
+    // dialog keys on them (`ImportResultDialog.tsx`).
+    "targetMissing",
+    "protected",
+    "moveFailed",
+    "unauthorized",
 ];
 
 fn is_identifier_char(c: char) -> bool {
@@ -253,12 +259,6 @@ fn free_text_errors(code: &str) -> Vec<String> {
     found
 }
 
-/// A source without the named functions, for files that still hold one function
-/// forwarding text that the core has not turned into a code yet.
-fn production_without(source: &str, skipped: &[&str]) -> String {
-    skipped.iter().fold(production_part(source), |code, name| code.replace(&function_body(source, name), ""))
-}
-
 /// Modules (or single functions) whose expected errors are fully migrated.
 /// `files.rs` and `companions.rs` hold unrelated actions too, so only the
 /// functions of the migrated actions are scanned there.
@@ -278,15 +278,45 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         ]),
         functions("companions.rs", include_str!("../../../src-tauri/src/commands/companions.rs"), &["carry_with", "extras_dir_problem"]),
         whole("web.rs", include_str!("../../katalog-server/src/web.rs")),
-        // `map_error` still forwards the text of the core write errors that have no
-        // code yet; it leaves this list when the core is migrated.
-        ("write.rs", production_without(include_str!("../../katalog-server/src/write.rs"), &["map_error"])),
+        whole("write.rs", include_str!("../../katalog-server/src/write.rs")),
         whole("download.rs", include_str!("../../katalog-server/src/download.rs")),
         whole("slicer.rs", include_str!("../../katalog-server/src/slicer.rs")),
+        whole("invoke.rs", include_str!("../../katalog-server/src/invoke.rs")),
+        // The core: write path, database checks and the import and read paths the
+        // server and the desktop share. `db/error.rs` and `import/files.rs` hold other
+        // code too (the text variant itself, technical `database:` errors), so only
+        // the checking function is scanned there.
+        whole("write/web.rs", include_str!("write/web.rs")),
+        whole("write/web_manager.rs", include_str!("write/web_manager.rs")),
+        whole("write/manager.rs", include_str!("write/manager.rs")),
+        whole("write/mod.rs", include_str!("write/mod.rs")),
+        whole("write/printers.rs", include_str!("write/printers.rs")),
+        whole("db/blocked_tags.rs", include_str!("db/blocked_tags.rs")),
+        whole("db/printers.rs", include_str!("db/printers.rs")),
+        functions("db/error.rs", include_str!("db/error.rs"), &["validate_text_length"]),
+        whole("import/file_names.rs", include_str!("import/file_names.rs")),
+        whole("import/rename.rs", include_str!("import/rename.rs")),
+        whole("import/placement.rs", include_str!("import/placement.rs")),
+        whole("import/mod.rs", include_str!("import/mod.rs")),
+        whole("read/geometry.rs", include_str!("read/geometry.rs")),
+        whole("read/manager.rs", include_str!("read/manager.rs")),
+        whole("read/mod.rs", include_str!("read/mod.rs")),
         functions("backup.rs", include_str!("../../../src-tauri/src/commands/backup.rs"), &[
             "reject_oversized_zip_entry", "read_catalog_archive", "validate_catalog_db_bytes", "validate_backup_for_import",
         ]),
     ]
+}
+
+/// The text-carrying variants of `WriteError` are only built by the adapters that
+/// read them (`error.rs`, the server's `map_error`); the write path itself names a
+/// code. The struct form has no call parentheses, so the sinks above cannot see it.
+#[test]
+fn the_core_write_path_builds_no_text_variants() {
+    for (name, code) in migrated_sources().into_iter().filter(|(name, _)| name.starts_with("write/")) {
+        for form in ["WriteError::Invalid {", "WriteError::NotFound {"] {
+            assert!(!code.contains(form), "{name} builds {form} with text");
+        }
+    }
 }
 
 #[test]

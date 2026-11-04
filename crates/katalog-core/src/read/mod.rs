@@ -11,7 +11,7 @@ pub use geometry::{
     load_render_meshes, GeometrySource,
 };
 pub type ReadResult<T> = Result<T, ReadError>;
-use crate::{db, threemf};
+use crate::{db, error_code::ErrorCode, threemf};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -277,7 +277,7 @@ pub fn get_auto_tagging(conn: &Connection) -> ReadResult<bool> {
 pub fn suggested_auto_tags_with_conn(conn: &Connection, file_id: i64) -> ReadResult<Vec<String>> {
     let file = db::get_file(conn, file_id)
         .map_err(ReadError::from)?
-        .ok_or_else(|| ReadError::expected("Datei nicht gefunden"))?;
+        .ok_or_else(|| ReadError::coded(ErrorCode::FileNotFound))?;
     Ok(crate::tagging::suggest_tags(&crate::tagging::TaggingContext {
         file_name: &file.name,
         dimensions_mm: file.dimensions_mm,

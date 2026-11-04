@@ -195,7 +195,8 @@ fn geometry_roots_reject_outside_and_allow_none() {
     let error = get_model_geometry(&model, Some(&[other])).unwrap_err();
     assert!(error.expected);
     assert_eq!(error.code, Some(GeometryErrorCode::Unreadable));
-    assert!(error.message.contains("außerhalb"));
+    assert_eq!(error.message, "dlPathNotAllowed");
+    assert!(error.params.is_empty());
     assert!(get_model_geometry(&model, Some(&[])).is_err());
     assert_eq!(
         get_model_geometry(&model, None).unwrap(),
@@ -441,7 +442,7 @@ fn suggested_auto_tags_for_an_unknown_file_is_an_expected_error() {
     let conn = db::connect_in_memory().unwrap();
     let e = suggested_auto_tags_with_conn(&conn, 999).unwrap_err();
     assert!(e.expected);
-    assert_eq!(e.message, "Datei nicht gefunden");
+    assert_eq!(e.message, "fileNotFound");
 }
 
 #[test]
