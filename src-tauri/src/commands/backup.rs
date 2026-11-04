@@ -80,14 +80,18 @@ fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings
 
             let conn = db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
             let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
-            let backup =
-                rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
-            // One step for the whole database: `run_to_completion` sleeps after
-            // every step that isn't the last, while the catalog lock (and with it
-            // every synchronous command of the UI) waits - see updater/backup.rs.
-            backup
-                .run_to_completion(i32::MAX, std::time::Duration::from_millis(250), None)
-                .map_err(|e| e.to_string())?;
+            {
+                let backup =
+                    rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
+                // One step for the whole database: `run_to_completion` sleeps after
+                // every step that isn't the last, while the catalog lock (and with it
+                // every synchronous command of the UI) waits - see updater/backup.rs.
+                backup
+                    .run_to_completion(i32::MAX, std::time::Duration::from_millis(250), None)
+                    .map_err(|e| e.to_string())?;
+            }
+            // The ZIP is meant to be kept and passed on: no API keys in the copy.
+            db::scrub_secrets(&dst).map_err(|e| e.to_string())?;
         }
 
         let db_bytes = std::fs::read(&backup_db_path).map_err(|e| e.to_string())?;
@@ -1206,6 +1210,9 @@ fn replace_catalog_db_with_copy_fn(
     {
         let mut incoming = Connection::open(new_db_path).map_err(|e| e.to_string())?;
         crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
+        // A key in a file somebody handed over must never take effect. Outside the
+        // transaction because it vacuums the file; the on/off switch stays.
+        db::scrub_secrets(&incoming).map_err(|e| e.to_string())?;
         let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
         sanitize_printer_connections(&tx)?;
         sanitize_imported_file_identity(&tx)?;
@@ -4369,5 +4376,55 @@ mod companion_tests {
             conn.execute("INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES (X'1234', 1, ?1, 't')", [COPY_HASH]).unwrap();
         });
         assert!(validate(&bytes, &trash).is_err());
+    }
+
+    const TV_KEY: &str = "TVKEY-0123456789-abcdefghijkl";
+
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+        haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    fn set_thingiverse(state: &AppState) {
+        let conn = state.db.lock().unwrap();
+        db::thingiverse::set_enabled(&conn, true).unwrap();
+        db::thingiverse::set_token(&conn, &katalog_core::thingiverse::Token::parse(TV_KEY).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn a_user_backup_holds_the_switch_but_never_the_api_key() {
+        let (source, dir) = state_with_catalog("backup_thingiverse_key_a");
+        set_thingiverse(&source);
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        assert!(!contains(&db_bytes, TV_KEY.as_bytes()), "the key is in the bytes of the backup database");
+        assert!(!contains(&std::fs::read(&zip_path).unwrap(), TV_KEY.as_bytes()));
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        let copy = Connection::open(&probe).unwrap();
+        assert!(db::thingiverse::get_token(&copy).unwrap().is_none());
+        assert!(db::thingiverse::get_enabled(&copy).unwrap(), "the switch is not a secret");
+        // The working database keeps its key.
+        let conn = source.db.lock().unwrap();
+        assert!(db::thingiverse::get_token(&conn).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_key_inside_a_restored_database_never_takes_effect() {
+        let (source, dir) = state_with_catalog("backup_thingiverse_key_b");
+        set_thingiverse(&source);
+        // A file somebody handed over: the working database as it is, key included.
+        let incoming = dir.join("incoming.db");
+        std::fs::copy(&source.db_path, &incoming).unwrap();
+        assert!(contains(&std::fs::read(&incoming).unwrap(), TV_KEY.as_bytes()), "precondition: the incoming file holds the key");
+
+        let (target, target_dir) = state_with_catalog("backup_thingiverse_key_c");
+        replace_catalog_db(&target, &incoming).unwrap();
+        {
+            let conn = target.db.lock().unwrap();
+            assert!(db::thingiverse::get_token(&conn).unwrap().is_none());
+            assert!(db::thingiverse::get_enabled(&conn).unwrap(), "the switch comes along");
+        }
+        assert!(!contains(&std::fs::read(target_dir.join("catalog.db")).unwrap(), TV_KEY.as_bytes()), "the key is still in the restored file");
     }
 }

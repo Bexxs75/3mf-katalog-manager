@@ -1715,6 +1715,18 @@ export interface Translations {
   kcCopyOf: string;
   kcMore: PluralForms;
   kcResetDone: string;
+  errThingiverseDisabled: string;
+  errThingiverseNoToken: string;
+  errThingiverseTokenFormat: string;
+  errThingiverseTokenInvalid: string;
+  errThingiverseBlocked: string;
+  errThingiverseRateLimited: string;
+  errThingiverseDailyLimit: string;
+  errThingiverseOffline: string;
+  errThingiverseTimeout: string;
+  errThingiverseBadResponse: string;
+  errThingiverseNotFound: string;
+  errThingiverseQueryInvalid: string;
 }
 
 export function formatCount(forms: PluralForms, n: number, language: Language = 'de'): string {

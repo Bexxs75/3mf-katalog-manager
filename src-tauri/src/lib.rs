@@ -113,6 +113,8 @@ pub fn run() {
     }
     builder
         .manage(commands::RuntimeEnvironment::current())
+        // Thingiverse search: cache and request limits live in memory only.
+        .manage(std::sync::Arc::new(katalog_core::thingiverse::Service::new()))
         .plugin(
             log_builder
                 // Debug passes the plugin; the effective level is set at runtime with
@@ -357,6 +359,14 @@ pub fn run() {
             commands::extract_archives,
             commands::get_model_geometry,
             commands::export_model_as_stl,
+            commands::get_thingiverse_settings,
+            commands::set_thingiverse_enabled,
+            commands::test_thingiverse_token,
+            commands::remove_thingiverse_token,
+            commands::thingiverse_search,
+            commands::thingiverse_thing,
+            commands::thingiverse_image,
+            commands::open_thingiverse_thing,
             commands::read_plate_overview,
             commands::pick_and_register_slicer,
             commands::list_registered_slicers,
