@@ -75,6 +75,7 @@ import { useCollections } from './hooks/useCollections';
 import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
 import { NO_FOLDER_COLLAPSE_KEY, useCollapsedFolders } from './hooks/useCollapsedFolders';
 import { useFileImport } from './hooks/useFileImport';
+import { useOpenRequests } from './hooks/useOpenRequests';
 import { ExternalDragContext, useExternalDropTarget } from './hooks/useExternalDropTarget';
 import { DropRejectedNotice } from './components/DropRejectedNotice';
 import { useSourceFolderCheck } from './hooks/useSourceFolderCheck';
@@ -145,6 +146,8 @@ export default function App() {
     // Switched off while open: leave the area for good, or switching on again would drop the user back into it.
     if (!thingiverseAllowed && requestedMainView === 'thingiverse') setMainView('catalog');
   }, [thingiverseAllowed, requestedMainView]);
+  // Files the system handed over ("Open with"); the view-only dialog will take them from here.
+  useOpenRequests();
   const externalDrop = useExternalDropTarget({ enabled: mainView === 'catalog', folders: store.folders, catalogBaseDir });
   const fileImport = useFileImport({
     enabled: mainView === 'catalog',

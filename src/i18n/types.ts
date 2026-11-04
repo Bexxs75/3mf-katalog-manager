@@ -1764,6 +1764,7 @@ export interface Translations {
   errStlSourceTooLarge: string;
   errStlStepUnavailable: string;
   errStlWriteFailed: string;
+  errOpenSourceUnknown: string;
   errSourceNoCatalogFolder: string;
   errSourceNoFilesSelected: string;
   errSlicerExeNotFound: string;

@@ -254,6 +254,8 @@ error_codes! {
     StlStepUnavailable => "stlStepUnavailable",
     /// params: the reason reported by the operating system.
     StlWriteFailed => "stlWriteFailed",
+    // Files the operating system opened with the app.
+    OpenSourceUnknown => "openSourceUnknown",
     // Thingiverse search with the user's own key. The key, the address and the search
     // term never appear in a code or its params.
     ThingiverseDisabled => "thingiverseDisabled",

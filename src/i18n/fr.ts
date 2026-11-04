@@ -1723,6 +1723,7 @@ export const fr: Translations = {
   errStlSourceTooLarge: "Le fichier est trop volumineux pour être converti.",
   errStlStepUnavailable: "Les fichiers STEP ne peuvent pas être convertis dans cette version (aperçu STEP non inclus).",
   errStlWriteFailed: "Le fichier STL n’a pas pu être écrit : {0}",
+  errOpenSourceUnknown: "Ce fichier n’a pas été transmis par le système ou sa vue est déjà fermée.",
   errSourceNoCatalogFolder: "Aucun dossier de catalogue n’a encore été configuré. Sans lui, les fichiers ne peuvent pas être repris depuis un dossier source.",
   errSourceNoFilesSelected: "Aucun fichier n’a été sélectionné.",
   errSlicerExeNotFound: "Le programme du slicer est introuvable.",

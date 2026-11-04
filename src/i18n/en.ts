@@ -1723,6 +1723,7 @@ export const en: Translations = {
   errStlSourceTooLarge: "The file is too large to convert.",
   errStlStepUnavailable: "STEP files cannot be converted in this build (no STEP preview included).",
   errStlWriteFailed: "The STL file could not be written: {0}",
+  errOpenSourceUnknown: "This file was not handed over by the system, or its view is already closed.",
   errSourceNoCatalogFolder: "No catalog folder has been set up yet. Without one, files cannot be taken from a source folder.",
   errSourceNoFilesSelected: "No files were selected.",
   errSlicerExeNotFound: "The slicer program was not found.",

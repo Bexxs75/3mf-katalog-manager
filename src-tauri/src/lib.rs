@@ -99,7 +99,9 @@ pub fn run() {
     let allow_multiple = std::env::var(single_instance::ALLOW_MULTIPLE_ENV).ok();
     if single_instance::single_instance_enabled(cfg!(debug_assertions), allow_multiple.as_deref()) {
         // The singleton must claim its lock before any other plugin initializes.
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            // Files of the second start wait in the backend; the frontend collects them.
+            commands::queue_and_notify(app, commands::open_requests_from_args(&args, std::path::Path::new(&cwd)));
             if let Some(window) = app.get_webview_window("main") {
                 single_instance::bring_to_front(&window);
             } else {
@@ -112,7 +114,15 @@ pub fn run() {
     for kind in log_target::resolve_log_targets(&context.config().identifier, &context.package_info().name) {
         log_builder = log_builder.target(tauri_plugin_log::Target::new(kind));
     }
+    // A path given at the first start is earlier than the window; it waits here.
+    let pending_open = commands::PendingOpenFiles::default();
+    if let Ok(cwd) = std::env::current_dir() {
+        let args: Vec<String> = std::env::args_os().map(|a| a.to_string_lossy().into_owned()).collect();
+        pending_open.push(commands::open_requests_from_args(&args, &cwd));
+    }
     builder
+        .manage(pending_open)
+        .manage(commands::ExternalSources::default())
         .manage(commands::RuntimeEnvironment::current())
         // Thingiverse search: cache and request limits live in memory only.
         .manage(std::sync::Arc::new(katalog_core::thingiverse::Service::new()))
@@ -429,6 +439,7 @@ pub fn run() {
             commands::list_collection_files,
             commands::get_app_version,
             commands::is_preview_build,
+            commands::take_open_requests,
             commands::get_close_behavior,
             commands::set_close_behavior,
             commands::set_tray_labels,
@@ -464,6 +475,13 @@ pub fn run() {
                 if tray::reopen_needs_window(has_visible_windows) {
                     tray::show_main_window(_app);
                 }
+            }
+            // macOS hands "Open with" files over as an event, never as arguments (also at the first start).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &_event {
+                let args: Vec<String> = std::iter::once(String::new()).chain(urls.iter().map(|u| u.to_string())).collect();
+                commands::queue_and_notify(_app, commands::open_requests_from_args(&args, std::path::Path::new("/")));
+                tray::show_main_window(_app);
             }
         });
 }
