@@ -69,9 +69,7 @@ impl DesktopJobs for ImportJobs {
     ) -> CmdResult<Option<String>> {
         archives::check_target_location(target, &expand_sensitive_dirs(sensitive))?;
         if !target_approved {
-            return Err(CmdError::expected(
-                "Zielordner wurde nicht ueber die App ausgewaehlt",
-            ));
+            return Err(CmdError::coded(ErrorCode::ArchiveTargetNotApproved));
         }
         self.claim_archives(requests, parent)
             .ok_or_else(|| CmdError::expected("unauthorized"))

@@ -262,7 +262,7 @@ pub async fn download_app_update<R: tauri::Runtime>(
     let update = fetch_update(&app, &url)
         .await
         .map_err(|e| format!("Update-Prüfung fehlgeschlagen: {}", error_chain(&e)))?
-        .ok_or_else(|| CmdError::expected("Es ist kein Update mehr verfügbar"))?;
+        .ok_or_else(|| CmdError::coded(ErrorCode::UpdateNoLongerAvailable))?;
     log::info!(target: "update", "Download von {} gestartet", update.version);
     let mut downloaded = 0u64;
     let bytes = update
@@ -306,7 +306,7 @@ pub fn install_app_update<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: St
     let version = guard
         .as_ref()
         .map(|(update, _)| update.version.clone())
-        .ok_or_else(|| CmdError::expected("Es liegt kein heruntergeladenes Update vor"))?;
+        .ok_or_else(|| CmdError::coded(ErrorCode::UpdateNotDownloaded))?;
 
     let backup_result: Result<PathBuf, String> = {
         let conn = lock_db(&state)?;

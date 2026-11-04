@@ -190,7 +190,7 @@ pub fn save_log_export(app: tauri::AppHandle, diag: State<DiagnosticsState>, id:
     use tauri::Manager;
     let text = diag
         .preview_for_save(id)
-        .ok_or_else(|| CmdError::expected("Die Vorschau ist veraltet, bitte erneut anzeigen"))?;
+        .ok_or_else(|| CmdError::coded(ErrorCode::LogPreviewExpired))?;
     let dir = choose_export_dir(app.path().download_dir().ok(), app.path().home_dir().ok())
         .ok_or_else(|| "kein Download- oder Benutzerordner verfügbar".to_string())?;
     // The folder may not exist yet (e.g. a download dir configured but never created).

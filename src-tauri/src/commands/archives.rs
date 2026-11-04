@@ -163,7 +163,7 @@ fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) 
 /// All target folder checks that consume or write NOTHING.
 pub(super) fn check_target_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
     if !target_dir.is_dir() {
-        return Err(CmdError::expected(format!("Zielordner existiert nicht: {}", target_dir.display())));
+        return Err(CmdError::coded_with(ErrorCode::ArchiveTargetMissing, [target_dir.display().to_string()]));
     }
     check_managed_location(target_dir, expanded_sensitive)
 }
@@ -442,7 +442,7 @@ pub async fn inspect_archives(paths: Vec<String>) -> CmdResult<Vec<ArchiveInfoDt
 
 fn inspect_archive_paths(paths: &[String]) -> CmdResult<Vec<ArchiveInfoDto>> {
     if paths.iter().any(|path| !archive::is_archive_path(Path::new(path))) {
-        return Err(CmdError::expected("Unbekannter Archiv-Dateityp"));
+        return Err(CmdError::coded(ErrorCode::ArchiveTypeUnknown));
     }
     Ok(paths.iter().map(|p| inspect_one(Path::new(p))).collect())
 }
@@ -951,10 +951,10 @@ mod tests {
 
         let mut conn = crate::db::connect_in_memory().unwrap();
         let first = service.authorize_archives(&[], &target, false, &[plain_request(&archive)], Some(&parent));
-        assert!(first.unwrap_err().contains("nicht ueber die App ausgewaehlt"));
+        assert!(first.unwrap_err().is(ErrorCode::ArchiveTargetNotApproved, &[]));
         assert!(!target.join("Drache").exists());
         let missing = service.authorize_archives(&[], &dir.join("gibt-es-nicht"), true, &[plain_request(&archive)], Some(&parent));
-        assert!(missing.is_err());
+        assert!(missing.unwrap_err().is(ErrorCode::ArchiveTargetMissing, &[dir.join("gibt-es-nicht").display().to_string().as_str()]));
         assert_eq!(service.authorize_archives(&[], &target, true, &[plain_request(&archive)], Some(&parent)).unwrap(), Some(parent));
         let retry = run_core(&mut conn, &target, vec![plain_request(&archive)]).expect("zweiter Versuch mit gueltigem Ziel");
         assert_eq!(retry.archives.len(), 1);
