@@ -102,6 +102,26 @@ jobs:
           APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage")
           ./src-tauri/scripts/fix-appimage-egl-linux.sh "$APPIMAGE"
 
+      # Tray icon check (informative only): the "minimize to the notification
+      # area" setting needs libayatana-appindicator3 (or libappindicator3) at run
+      # time. Whether linuxdeploy bundles it is not known in advance, so look into
+      # the finished AppImage and write the result to the log. A missing library is
+      # not an error: the app then relies on the system's library, and if the tray
+      # icon cannot be created it quits on close as before (and Settings says so).
+      - name: Check the AppImage for the tray library (warning only)
+        continue-on-error: true
+        run: |
+          APPIMAGE=$(realpath "$(find src-tauri/target/release/bundle/appimage -name "*.AppImage")")
+          chmod +x "$APPIMAGE"
+          mkdir -p "$RUNNER_TEMP/appimage-check"
+          (cd "$RUNNER_TEMP/appimage-check" && "$APPIMAGE" --appimage-extract >/dev/null) || { echo "::warning::Tray library check skipped: the AppImage could not be extracted"; exit 0; }
+          FOUND=$(find "$RUNNER_TEMP/appimage-check/squashfs-root" \( -name 'libayatana-appindicator3*' -o -name 'libappindicator3*' \) 2>/dev/null)
+          if [ -n "$FOUND" ]; then
+            echo "Tray library bundled in the AppImage:"; echo "$FOUND"
+          else
+            echo "::warning::The AppImage does not contain libayatana-appindicator3 or libappindicator3; the tray icon depends on the system's copy"
+          fi
+
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:

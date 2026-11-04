@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version without v, e.g. 0.15.0 or 0.15.0-1 (MSI needs a numeric pre-release)"
+        description: "Version without v, e.g. 0.15.0 or 0.15.0-1 (MSI needs a numeric pre-release; a pre-release also gets the NSIS installer)"
         required: true
         type: string
 
@@ -20,6 +20,11 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    outputs:
+      # The NSIS installer is only built for pre-release versions (release
+      # candidates, e.g. 0.18.0-1) until it has proven itself; a stable version
+      # ships the MSI alone, exactly as before.
+      nsis: ${{ steps.nsis.outputs.nsis }}
     steps:
       - uses: actions/checkout@v4
       # Passed through env instead of being pasted into the script, so the input
@@ -28,6 +33,12 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: python3 tools/release_assets.py check-version "$VERSION"
+      - name: NSIS installer only for pre-release versions
+        id: nsis
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          case "$VERSION" in *-*) echo "nsis=true" >> "$GITHUB_OUTPUT";; *) echo "nsis=false" >> "$GITHUB_OUTPUT";; esac
 
   windows-step:
     needs: verify
@@ -37,6 +48,8 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/build-windows-step.yml
+    with:
+      nsis: ${{ needs.verify.outputs.nsis == 'true' }}
   macos-step:
     needs: verify
     uses: ./.github/workflows/build-macos-step.yml
@@ -62,12 +75,15 @@ jobs:
       publish: false
 
   assemble:
-    needs: [windows-step, macos-step, linux-step]
+    needs: [verify, windows-step, macos-step, linux-step]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
       VERSION: ${{ inputs.version }}
+      # "--require-nsis" for a pre-release: the build must have produced the
+      # installer, otherwise the draft is not created.
+      NSIS_FLAG: ${{ needs.verify.outputs.nsis == 'true' && '--require-nsis' || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,7 +99,7 @@ jobs:
           pattern: 3mf-katalog-manager-*
           path: artifacts
       - name: Readable file names
-        run: python3 tools/release_assets.py rename "$VERSION" artifacts dist
+        run: python3 tools/release_assets.py rename "$VERSION" artifacts dist $NSIS_FLAG
       # `tauri signer sign` writes the signature next to the file as <file>.sig,
       # which is where the manifest step looks for it. The CLI version is pinned
       # (same as package-lock.json) because this step hands it the private key.
@@ -92,11 +108,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          for f in dist/*.msi dist/*.app.tar.gz dist/*.AppImage; do
+          # nullglob: a stable version has no Setup.exe, an unmatched pattern must not be signed as a file name.
+          shopt -s nullglob
+          for f in dist/*.msi dist/*-Setup.exe dist/*.app.tar.gz dist/*.AppImage; do
             npx --yes @tauri-apps/cli@2.11.4 signer sign "$f"
           done
       - name: Updater manifests
-        run: python3 tools/release_assets.py latest-json "$VERSION" dist
+        run: python3 tools/release_assets.py latest-json "$VERSION" dist $NSIS_FLAG
       - name: Checksums
         run: cd dist && sha256sum -- * > SHA256SUMS.txt
       # A version with a hyphen (e.g. 0.15.0-1) is marked as pre-release, so
