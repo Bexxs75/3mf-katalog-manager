@@ -443,6 +443,27 @@ export interface Collection {
   modelCount: number;
 }
 
+/** Variants of one model, or the parts of a multi-part model. */
+export type BundleKind = 'variants' | 'parts';
+
+/** One file of a bundle. A member in the trash stays a member until it is deleted for good. */
+export interface BundleMember {
+  fileId: string;
+  /** Order inside the bundle; the member with the smallest position is the title model. */
+  position: number;
+  label: string | null;
+  inTrash: boolean;
+}
+
+/** Mirrors `BundleDto`: members come ordered by position; the list holds bundles of two or more members only. */
+export interface Bundle {
+  id: string;
+  name: string;
+  kind: BundleKind;
+  createdAt: string;
+  members: BundleMember[];
+}
+
 export type FilamentCheckStatus = 'ok' | 'swap' | 'short' | 'unknown' | 'no_data';
 
 export interface FilamentSlotRef {
