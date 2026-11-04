@@ -2,6 +2,7 @@
   "_comment": "Classification of every desktop command (generate_handler! in src-tauri/src/lib.rs) for the web build. web = allowed in the web (READ_COMMANDS/WRITE_COMMANDS in katalog-server and readOnly.ts); web-only = exists only in the web server; B = a web variant is feasible but not built yet; C = not transferable (needs the user's own computer or makes no sense on a server). A new desktop command makes src/lib/commandParity.test.ts fail until it is classified here.",
   "commands": {
     "add_companion": "B",
+    "add_external_to_catalog": "C",
     "add_filament_spool": "web",
     "add_files_to_collection": "web",
     "add_print_log_entry": "web",
@@ -58,6 +59,7 @@
     "get_catalog_web_link": "C",
     "get_close_behavior": "C",
     "get_data_paths": "C",
+    "get_external_geometry": "C",
     "get_filament_spool_image": "web-only",
     "get_import_rename_enabled": "B",
     "get_import_result": "web",
@@ -136,6 +138,7 @@
     "register_catalog_base_dir": "C",
     "register_existing_catalog_base_dir": "C",
     "reject_source_files": "B",
+    "release_external_source": "C",
     "remove_companion": "web",
     "remove_file_from_collection": "web",
     "remove_files_from_catalog": "web",

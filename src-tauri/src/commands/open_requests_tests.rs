@@ -209,3 +209,39 @@ fn the_wire_format_names_the_kind() {
     .unwrap();
     assert_eq!(json, serde_json::json!({ "kind": "external", "sourceId": "ext-1", "name": "a.stl", "sizeBytes": 3, "extension": "stl" }));
 }
+
+#[test]
+fn an_external_source_is_vouched_for_by_the_backend_for_the_import() {
+    let dir = unique_test_dir("open_prove");
+    let file = touch(&dir, "viewed.3mf");
+    let sources = ExternalSources::default();
+    let jobs = ImportJobs::default();
+    let id = sources.register(&file);
+
+    // Without the hand-over no proof exists: neither a forged id nor the plain path is accepted.
+    assert!(prove_external_source(&sources, &jobs, "ext-forged").is_err());
+    assert!(jobs.authorize_models(ImportSource::Dropped, std::slice::from_ref(&file), false, &[]).is_err());
+
+    assert_eq!(prove_external_source(&sources, &jobs, &id).unwrap(), file);
+    assert!(jobs.authorize_models(ImportSource::Dropped, std::slice::from_ref(&file), false, &[]).is_ok());
+    // The proof is single use, like a real drop.
+    assert!(jobs.authorize_models(ImportSource::Dropped, std::slice::from_ref(&file), false, &[]).is_err());
+}
+
+#[test]
+fn a_vanished_or_released_source_gives_no_proof() {
+    let dir = unique_test_dir("open_prove_gone");
+    let file = touch(&dir, "soon-gone.stl");
+    let sources = ExternalSources::default();
+    let jobs = ImportJobs::default();
+    let id = sources.register(&file);
+    std::fs::remove_file(&file).unwrap();
+    let error = prove_external_source(&sources, &jobs, &id).unwrap_err();
+    assert!(error.is(ErrorCode::FileNotFound, &[]));
+    assert!(jobs.authorize_models(ImportSource::Dropped, std::slice::from_ref(&file), false, &[]).is_err());
+
+    let again = touch(&dir, "released.stl");
+    let id = sources.register(&again);
+    sources.release(&id);
+    assert!(prove_external_source(&sources, &jobs, &id).is_err());
+}

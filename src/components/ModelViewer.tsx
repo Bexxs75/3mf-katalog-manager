@@ -19,6 +19,8 @@ import { createViewerFloor, gridColor } from '../lib/viewerFloor';
 interface Props extends ViewerActions {
   surfaceClassName?: string;
   fileId: string;
+  /** A file opened from outside the catalog: the geometry comes from this source id and `fileId` is only the key. */
+  externalSourceId?: string;
   needsSnapshot: boolean;
   onSnapshotCaptured: (base64: string) => void;
   onError?: () => void;
@@ -146,7 +148,7 @@ function fitViewer(ctx: ViewerContext) {
   ctx.floor.visible = true;
 }
 
-export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot, onSnapshotCaptured, onError, onContextLost, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
+export function ModelViewer({ surfaceClassName = 'h-full', fileId, externalSourceId, needsSnapshot, onSnapshotCaptured, onError, onContextLost, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
@@ -345,8 +347,9 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
       reportError();
       return () => { cancelled = true; clearTimeout(errorTimer); ctx.renderer.domElement.removeEventListener('webglcontextlost', handleContextLost); };
     }
-    const finishAttempt = beginPreviewAttempt(fileId);
-    invoke<ArrayBuffer>('get_model_geometry', { fileId })
+    // The attempt marker belongs to cataloged files (it tells the snapshot queue which previews crashed).
+    const finishAttempt = externalSourceId ? () => {} : beginPreviewAttempt(fileId);
+    (externalSourceId ? invoke<ArrayBuffer>('get_external_geometry', { sourceId: externalSourceId }) : invoke<ArrayBuffer>('get_model_geometry', { fileId }))
       .then((buffer) => {
         if (cancelled || contextLost) { finishAttempt(); return; }
         const { meshes, palette, plates, colorsUnresolved, paintSimplified } = decodeModelGeometry(buffer);
@@ -427,7 +430,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
       ctx.renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       clearTimeout(errorTimer);
     };
-  }, [fileId]);
+  }, [fileId, externalSourceId]);
 
   useEffect(() => {
     const ctx = ctxRef.current;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWebview } from '../lib/webview';
 import * as api from '../lib/api/importExport';
 import { importSourceFiles } from '../lib/api/sourceFolders';
+import { addExternalToCatalog } from '../lib/api/openRequests';
 import { countsWithArchiveModels } from '../lib/importCounts';
 import { toAppError } from '../lib/errors';
 import type { DropTarget } from '../lib/externalDrop';
@@ -185,6 +186,8 @@ export function useFileImport(args: UseFileImportArgs) {
     dismiss: () => { lastMeta.current = null; setResult(null); setLastJob(null); setError(null); persist(); },
     importFiles: () => track(api.startImport('files', args.activeFolderId === 'all' ? args.rootFolderId : args.activeFolderId), {source: 'files', targetName: args.catalogBaseDir ? args.targetName ?? args.catalogBaseDir : undefined}),
     importFolderContents: () => track(api.startImport('folderContents', args.activeFolderId === 'all' ? args.rootFolderId : args.activeFolderId), {source: 'folderContents', targetName: args.catalogBaseDir ? args.targetName ?? args.catalogBaseDir : undefined}),
+    // A file the system opened: the same job as a dropped file, vouched for by the backend through its id.
+    importExternal: (sourceId: string) => track(addExternalToCatalog(sourceId, args.activeFolderId === 'all' ? args.rootFolderId : args.activeFolderId), {source: 'dropped', targetName: args.catalogBaseDir ? args.targetName ?? args.catalogBaseDir : undefined}),
     importFolder: () => track(api.startImport('folder'), {source: 'folder'}),
     // Start errors reach the caller (the source folder dialog shows them); progress problems go to `error`.
     importSourceFiles: async (paths: string[]) => {

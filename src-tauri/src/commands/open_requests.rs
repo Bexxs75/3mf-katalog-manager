@@ -151,7 +151,6 @@ impl ExternalSources {
     }
 
     /// The path behind an id; unknown ids (also forged ones) are an error.
-    #[allow(dead_code)] // first caller: the view-only dialog (P5-4)
     pub(crate) fn resolve(&self, id: &str) -> CmdResult<PathBuf> {
         let sources = self.0.lock().unwrap_or_else(|e| e.into_inner());
         sources
@@ -161,7 +160,6 @@ impl ExternalSources {
             .ok_or_else(|| CmdError::coded(ErrorCode::OpenSourceUnknown))
     }
 
-    #[allow(dead_code)] // first caller: the view-only dialog (P5-4)
     pub(crate) fn release(&self, id: &str) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).retain(|(known, _)| known != id);
     }
@@ -254,6 +252,56 @@ pub async fn take_open_requests(app: tauri::AppHandle) -> CmdResult<Vec<OpenRequ
         let state = app.state::<AppState>();
         let conn = lock_db(&state)?;
         Ok(resolve_open_requests(&conn, &app.state::<ExternalSources>(), paths))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The geometry of an external source for the view-only dialog (binary like `get_model_geometry`).
+/// The id is the only input; the file may have changed or vanished since it was handed over.
+#[tauri::command]
+pub async fn get_external_geometry(app: tauri::AppHandle, source_id: String) -> CmdResult<tauri::ipc::Response> {
+    use tauri::Manager;
+    let path = app.state::<ExternalSources>().resolve(&source_id)?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || geometry_bytes_for_path(&path))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Forgets an external source when its view closes.
+#[tauri::command]
+pub fn release_external_source(app: tauri::AppHandle, source_id: String) {
+    use tauri::Manager;
+    app.state::<ExternalSources>().release(&source_id);
+}
+
+/// Resolves a source and hands its path to the import service as "the user dropped this":
+/// the backend itself vouches for the path, the frontend never names one. A file that
+/// vanished since the hand-over is refused before any proof exists.
+pub(crate) fn prove_external_source(sources: &ExternalSources, jobs: &ImportJobs, source_id: &str) -> CmdResult<PathBuf> {
+    let path = sources.resolve(source_id)?;
+    if !path.is_file() {
+        return Err(CmdError::coded(ErrorCode::FileNotFound));
+    }
+    jobs.observe_drop(std::slice::from_ref(&path));
+    Ok(path)
+}
+
+/// "Add to catalog" of the view-only dialog: the existing import (the same job a dropped
+/// file starts, so placement, duplicate checks and progress are unchanged). `folder_id`
+/// is the catalog folder the file is moved into, as for an import from the file dialog.
+#[tauri::command]
+pub async fn add_external_to_catalog(
+    app: tauri::AppHandle,
+    source_id: String,
+    folder_id: Option<String>,
+) -> CmdResult<StartedImport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let path = prove_external_source(&app.state::<ExternalSources>(), &app.state::<AppState>().import_jobs, &source_id)?;
+        let job = submit_models(&app, ImportSource::Dropped, vec![path], folder_id, false)?;
+        Ok(StartedImport { job_id: Some(job.id.clone()) })
     })
     .await
     .map_err(|e| e.to_string())?

@@ -257,6 +257,21 @@ target folder.
 
 ![Dialog for extracting archives](bilder/en/21-archiv-entpacken.png)
 
+### Files opened from outside (view only)
+
+A model file that is handed to the program from outside (for example on the command line) is
+not added to the catalog on its own: an import moves the file, and opening a file you only
+want to look at should not make it disappear from, say, your Downloads folder.
+
+- If the file is already in the catalog (found by its location or its content), its detail
+  page opens, as after a double click on a card.
+- Otherwise a dialog **View only** shows the file in the 3D view. **Add to catalog** starts the
+  normal import into the folder that is currently selected (the file is moved there, as with
+  any import); **Close** leaves the file untouched.
+- Several files at once open a list instead of a 3D view. It says how many of them are already
+  in the catalog; **Add to catalog** imports the new ones and skips the rest.
+- While an import is running, **Add to catalog** is switched off.
+
 ## Browsing and organizing your catalog
 
 Top right, next to "Import", you switch between three views: **grid** (image tiles, see the
@@ -1555,6 +1570,21 @@ weitere Dateien entpackt, aber nicht in den Katalog aufgenommen wurden (der Kata
 Modelle) und dass sie im Zielordner liegen.
 
 ![Dialog zum Entpacken von Archiven](bilder/21-archiv-entpacken.png)
+
+### Von außen geöffnete Dateien (nur ansehen)
+
+Eine Modelldatei, die dem Programm von außen übergeben wird (zum Beispiel in der Kommandozeile),
+landet nicht von allein im Katalog: Ein Import verschiebt die Datei, und wer eine Datei nur
+ansehen will, will nicht, dass sie zum Beispiel aus dem Downloads-Ordner verschwindet.
+
+- Liegt die Datei schon im Katalog (erkannt an ihrem Ort oder ihrem Inhalt), öffnet sich ihre
+  Detailseite wie nach einem Doppelklick auf eine Karte.
+- Sonst zeigt der Dialog **Nur ansehen** die Datei in der 3D-Ansicht. **Zum Katalog hinzufügen**
+  startet den normalen Import in den gerade gewählten Ordner (die Datei wird dorthin verschoben,
+  wie bei jedem Import); **Schließen** lässt die Datei unberührt.
+- Mehrere Dateien auf einmal öffnen eine Liste statt der 3D-Ansicht. Sie nennt, wie viele davon
+  schon im Katalog sind; **Zum Katalog hinzufügen** importiert die neuen und überspringt die übrigen.
+- Solange ein Import läuft, ist **Zum Katalog hinzufügen** abgeschaltet.
 
 ## Katalog durchsuchen und organisieren
 
