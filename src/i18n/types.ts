@@ -1740,6 +1740,12 @@ export interface Translations {
   errCompanionTooLarge: string;
   errCompanionNotFound: string;
   errUpdateBackupFolderMissing: string;
+  errBundleNotFound: string;
+  errBundleTooFewFiles: string;
+  errBundleTooManyFiles: string;
+  errBundleDuplicateFiles: string;
+  errBundleNameInvalid: string;
+  errBundleLabelInvalid: string;
   stSaveAsStl: string;
   stStepNoPreview: string;
   stDialogTitle: string;

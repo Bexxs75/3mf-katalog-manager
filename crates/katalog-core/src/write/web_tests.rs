@@ -593,3 +593,17 @@ fn rejections_carry_codes_and_numbers_not_sentences() {
     let (_, code, _) = coded(remove_files_from_catalog(&mut c, &[0]).unwrap_err());
     assert_eq!(code, ErrorCode::InvalidCatalogId);
 }
+
+#[test]
+fn web_removing_files_from_the_catalog_dissolves_a_bundle_left_with_one_member() {
+    let mut c = db::connect_in_memory().unwrap();
+    let ids: Vec<i64> = (0..3).map(|i| db::test_insert_minimal_file(&c, &format!("/r{i}.3mf"), None).unwrap()).collect();
+    let bundle = db::bundles::create_bundle(&c, "Trio", db::bundles::BundleKind::Parts, &ids, "t").unwrap();
+    remove_files_from_catalog(&mut c, &[ids[0]]).unwrap();
+    assert!(db::bundles::get_bundle(&c, bundle).unwrap().is_some(), "two members are still a bundle");
+    remove_files_from_catalog(&mut c, &[ids[1]]).unwrap();
+    assert!(db::bundles::get_bundle(&c, bundle).unwrap().is_none());
+    let rows: i64 = c.query_row("SELECT COUNT(*) FROM bundles", [], |r| r.get(0)).unwrap();
+    let members: i64 = c.query_row("SELECT COUNT(*) FROM bundle_members", [], |r| r.get(0)).unwrap();
+    assert_eq!((rows, members), (0, 0));
+}

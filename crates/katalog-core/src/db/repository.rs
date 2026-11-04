@@ -137,6 +137,10 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), DbError> {
     if let Err(e) = merge_auto_tag_aliases(conn) {
         log::error!(target: "tags", "merging automatic tag names failed: {e}");
     }
+    // Same for bundles a deletion path left with a single member.
+    if let Err(e) = super::bundles::prune_bundles(conn) {
+        log::error!(target: "bundles", "removing leftover bundles failed: {e}");
+    }
     Ok(())
 }
 
@@ -752,6 +756,7 @@ pub fn delete_file(conn: &Connection, id: i64) -> Result<(), DbError> {
     drop(stmt);
 
     conn.execute("DELETE FROM files WHERE id = ?1", params![id])?;
+    super::bundles::prune_bundles(conn)?;
 
     for tag_id in tag_ids {
         delete_tag_if_unused(conn, tag_id)?;

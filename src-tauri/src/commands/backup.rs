@@ -229,6 +229,8 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ]),
     ("file_print_info", &["file_id", "reader_version", "read_at", "slice_state", "settings_state"]),
     ("file_print_plates", &["file_id", "plate_index", "first_layer_seconds"]),
+    ("bundles", &["id", "name", "kind", "created_at"]),
+    ("bundle_members", &["file_id", "bundle_id", "position"]),
 ];
 
 fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
@@ -453,6 +455,14 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("file_print_plates", "print_seconds", ColType::Integer, true),
     ("file_print_plates", "first_layer_seconds", ColType::Real, true),
     ("file_print_plates", "plate_bed_type", ColType::Text, true),
+    ("bundles", "id", ColType::Integer, false),
+    ("bundles", "name", ColType::Text, false),
+    ("bundles", "kind", ColType::Text, false),
+    ("bundles", "created_at", ColType::Text, false),
+    ("bundle_members", "file_id", ColType::Integer, false),
+    ("bundle_members", "bundle_id", ColType::Integer, false),
+    ("bundle_members", "position", ColType::Integer, false),
+    ("bundle_members", "label", ColType::Text, true),
 ];
 /// Checks the storage classes from `COLUMN_TYPES`. A crafted DB can bring tables
 /// without type affinity, e.g. `slot_count = 4.5`: it passes every value check but
@@ -807,6 +817,72 @@ fn validate_print_info_rows(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// Bundle names and labels are shown in the UI, so a foreign backup must not bring oversized or
+/// control text, and the rules the CHECK clauses would enforce are checked on the data itself
+/// (a crafted backup can omit them). A bundle with fewer than two members is accepted on purpose:
+/// the app can leave one behind and removes it at the next start, so a backup of the app's own
+/// would otherwise be refused. Runs after `validate_column_types`, so the storage classes are known.
+fn validate_bundle_rows(conn: &Connection) -> Result<(), String> {
+    use crate::db::bundles::{MAX_BUNDLE_LABEL_CHARS, MAX_BUNDLE_MEMBERS, MAX_BUNDLE_NAME_CHARS};
+    let reject = |what: &str| format!("Katalog-Datenbank enthaelt ungueltige Buendel ({what})");
+    let count = |sql: &str, params: &[&dyn rusqlite::ToSql]| -> Result<i64, String> {
+        conn.query_row(sql, params, |r| r.get(0)).map_err(|e| e.to_string())
+    };
+
+    if count("SELECT COUNT(*) FROM bundles WHERE kind IS NULL OR kind NOT IN ('variants', 'parts')", &[])? > 0 {
+        return Err(reject("unbekannte Art"));
+    }
+    // Reference: a member belongs to an existing bundle and an existing file.
+    let orphans = count(
+        "SELECT COUNT(*) FROM bundle_members m
+          WHERE m.file_id IS NULL OR m.bundle_id IS NULL
+             OR NOT EXISTS (SELECT 1 FROM bundles b WHERE b.id = m.bundle_id)
+             OR NOT EXISTS (SELECT 1 FROM files f WHERE f.id = m.file_id)",
+        &[],
+    )?;
+    if orphans > 0 {
+        return Err(reject("Mitglied ohne Buendel oder ohne Datei"));
+    }
+    // A file is a member once, and the bundles are not larger than the app allows.
+    let duplicates = count("SELECT COUNT(*) - COUNT(DISTINCT file_id) FROM bundle_members", &[])?;
+    if duplicates > 0 {
+        return Err(reject("Datei in mehreren Buendeln"));
+    }
+    let too_large = count(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM bundle_members GROUP BY bundle_id HAVING COUNT(*) > ?1)",
+        &[&(MAX_BUNDLE_MEMBERS as i64)],
+    )?;
+    if too_large > 0 {
+        return Err(reject("zu viele Mitglieder"));
+    }
+    if count("SELECT COUNT(*) FROM bundle_members WHERE position < 0", &[])? > 0 {
+        return Err(reject("negative Position"));
+    }
+
+    let valid_text = |text: &str, max: usize| text.chars().count() <= max && !text.chars().any(char::is_control);
+    let mut names = conn.prepare("SELECT name FROM bundles").map_err(|e| e.to_string())?;
+    let rows = names
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let name = row.map_err(|e| e.to_string())?;
+        if name.trim().is_empty() || !valid_text(&name, MAX_BUNDLE_NAME_CHARS) {
+            return Err(reject("Name"));
+        }
+    }
+    drop(names);
+    let mut labels = conn
+        .prepare("SELECT label FROM bundle_members WHERE label IS NOT NULL")
+        .map_err(|e| e.to_string())?;
+    let rows = labels.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+    for row in rows {
+        if !valid_text(&row.map_err(|e| e.to_string())?, MAX_BUNDLE_LABEL_CHARS) {
+            return Err(reject("Beschriftung"));
+        }
+    }
+    Ok(())
+}
+
 /// On restore: drop connections with addresses outside the home network and
 /// pause all others until the user tests them again.
 fn sanitize_printer_connections(conn: &Connection) -> Result<(), String> {
@@ -929,6 +1005,7 @@ fn validate_catalog_db_bytes(
             validate_printer_invariants(&conn)?;
             validate_printer_link_rows(&conn)?;
             validate_print_info_rows(&conn)?;
+            validate_bundle_rows(&conn)?;
             // quick_check doesn't catch FK violations; check them after the migration.
             conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
             let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check").map_err(|e| e.to_string())?;
@@ -2946,6 +3023,180 @@ mod tests {
         assert_eq!(violations, 0, "foreign_key_check sees nothing");
         let _ = std::fs::remove_file(path);
         assert!(validate_print_info_rows(&conn).is_err(), "the explicit check does");
+    }
+
+    // --- bundle tables (bundles, bundle_members) ---
+
+    #[test]
+    fn bundles_survive_a_backup_and_restore_with_order_and_labels() {
+        let (source, dir) = state_with_catalog("backup_bundles_a");
+        let ids: Vec<i64> = {
+            let conn = source.db.lock().unwrap();
+            let ids: Vec<i64> = (0..3).map(|i| db::test_insert_minimal_file(&conn, &format!("/tmp/b{i}.3mf"), None).unwrap()).collect();
+            let bundle = db::bundles::create_bundle(&conn, "Vase", db::bundles::BundleKind::Parts, &[ids[2], ids[0], ids[1]], "2026-11-04T10:00:00Z").unwrap();
+            db::bundles::update_bundle_member(&conn, ids[0], Some("Lid"), false).unwrap();
+            assert!(db::bundles::get_bundle(&conn, bundle).unwrap().is_some());
+            ids
+        };
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("a backup with bundles validates");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_bundles_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        let bundles = db::bundles::list_bundles(&conn).unwrap();
+        assert_eq!(bundles.len(), 1);
+        assert_eq!(bundles[0].name, "Vase");
+        assert_eq!(bundles[0].members.iter().map(|m| m.file_id).collect::<Vec<_>>(), vec![ids[2], ids[0], ids[1]]);
+        assert_eq!(bundles[0].members[1].label.as_deref(), Some("Lid"));
+    }
+
+    #[test]
+    fn a_backup_from_before_the_bundle_tables_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_bundles_old_a");
+        {
+            let conn = old.db.lock().unwrap();
+            db::test_insert_minimal_file(&conn, "/tmp/old.3mf", None).unwrap();
+            conn.execute_batch("DROP TABLE bundle_members; DROP TABLE bundles").unwrap();
+            conn.pragma_update(None, "user_version", 56).unwrap(); // the version before the bundle tables (a development number, not derived from the current one)
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT file_id FROM bundle_members").is_err(), "precondition: the backup has no such table");
+
+        validate_catalog_db_bytes(&db_bytes, &[], &dir, &[]).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_bundles_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        let count = |table: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!((count("bundles"), count("bundle_members")), (0, 0), "tables exist and are empty");
+        assert_eq!(db::list_files(&conn).unwrap().len(), 1, "the file itself is kept");
+    }
+
+    /// A backup whose bundle tables carry no key and no CHECK (as a crafted file can), with two
+    /// files (ids 1 and 2) and one valid bundle (id 1) of both; `setup` adds the rows under test.
+    fn bundle_template() -> &'static [u8] {
+        static TEMPLATE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+        TEMPLATE.get_or_init(|| {
+            backup_test_db_with(|conn| {
+                conn.execute_batch(
+                    "DROP TABLE bundle_members;
+                     DROP TABLE bundles;
+                     CREATE TABLE bundles (id INTEGER, name TEXT, kind TEXT, created_at TEXT);
+                     CREATE TABLE bundle_members (file_id INTEGER, bundle_id INTEGER, position INTEGER, label TEXT);",
+                )
+                .unwrap();
+                crate::db::test_insert_minimal_file(conn, "/tmp/a.3mf", None).unwrap();
+                crate::db::test_insert_minimal_file(conn, "/tmp/b.3mf", None).unwrap();
+            })
+            .0
+        })
+    }
+
+    /// Runs `setup` on a copy of the template and returns (the explicit bundle check on that
+    /// database alone, the verdict of the whole restore validation on its bytes).
+    fn bundle_case(setup: &str) -> (Result<(), String>, Result<(), String>) {
+        let path = unique_test_db_path("bundle_case");
+        std::fs::write(&path, bundle_template()).unwrap();
+        let explicit = {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(setup).unwrap();
+            validate_bundle_rows(&conn)
+        };
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let restore = validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir(), &[]).map_err(|e| e.message);
+        (explicit, restore)
+    }
+
+    const GOOD_BUNDLE: &str = "INSERT INTO bundles VALUES (1, 'Vase', 'parts', 't');
+        INSERT INTO bundle_members VALUES (1, 1, 0, NULL), (2, 1, 1, 'Lid');";
+
+    #[test]
+    fn the_bundle_template_with_a_valid_bundle_is_accepted() {
+        let (explicit, restore) = bundle_case(GOOD_BUNDLE);
+        assert_eq!(explicit, Ok(()));
+        assert_eq!(restore, Ok(()));
+    }
+
+    #[test]
+    fn a_bundle_with_fewer_than_two_members_is_accepted_because_the_app_can_leave_one() {
+        for setup in [
+            "INSERT INTO bundles VALUES (1, 'Alone', 'parts', 't'); INSERT INTO bundle_members VALUES (1, 1, 0, NULL);",
+            "INSERT INTO bundles VALUES (1, 'Empty', 'variants', 't');",
+        ] {
+            let (explicit, restore) = bundle_case(setup);
+            assert_eq!(explicit, Ok(()), "{setup}");
+            assert_eq!(restore, Ok(()), "{setup}");
+        }
+    }
+
+    #[test]
+    fn crafted_bundle_rows_are_rejected() {
+        let many = {
+            let members: Vec<String> = (0..201).map(|i| format!("({}, 1, {i}, NULL)", 100 + i)).collect();
+            format!("INSERT INTO bundles VALUES (1, 'Big', 'parts', 't'); INSERT INTO bundle_members VALUES {};", members.join(", "))
+        };
+        let cases: Vec<(&str, String)> = vec![
+            ("unknown kind", "INSERT INTO bundles VALUES (1, 'A', 'other', 't');".into()),
+            ("kind NULL", "INSERT INTO bundles VALUES (1, 'A', NULL, 't');".into()),
+            ("member without a file", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'); INSERT INTO bundle_members VALUES (999, 1, 0, NULL);".into()),
+            ("member without a bundle", "INSERT INTO bundle_members VALUES (1, 77, 0, NULL);".into()),
+            ("file without a number", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'); INSERT INTO bundle_members VALUES (NULL, 1, 0, NULL);".into()),
+            ("name empty", "INSERT INTO bundles VALUES (1, '  ', 'parts', 't');".into()),
+            ("name with a control character", "INSERT INTO bundles VALUES (1, 'A' || char(7), 'parts', 't');".into()),
+            ("name too long", format!("INSERT INTO bundles VALUES (1, '{}', 'parts', 't');", "n".repeat(121))),
+            ("label too long", format!("{GOOD_BUNDLE} UPDATE bundle_members SET label = '{}' WHERE file_id = 1;", "l".repeat(61))),
+            ("label with a control character", format!("{GOOD_BUNDLE} UPDATE bundle_members SET label = 'a' || char(10) || 'b' WHERE file_id = 1;")),
+            ("file in two bundles", format!("{GOOD_BUNDLE} INSERT INTO bundles VALUES (2, 'B', 'parts', 't'); INSERT INTO bundle_members VALUES (1, 2, 0, NULL);")),
+            ("negative position", format!("{GOOD_BUNDLE} UPDATE bundle_members SET position = -1 WHERE file_id = 2;")),
+            ("201 members", many),
+        ];
+        for (what, setup) in cases {
+            let (_, restore) = bundle_case(&setup);
+            assert!(restore.is_err(), "{what}: the restore validation must refuse it");
+        }
+    }
+
+    #[test]
+    fn crafted_bundle_rows_are_refused_by_the_explicit_check_itself() {
+        for (what, setup) in [
+            ("unknown kind", "INSERT INTO bundles VALUES (1, 'A', 'other', 't');"),
+            ("member without a file", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'); INSERT INTO bundle_members VALUES (999, 1, 0, NULL);"),
+            ("file in two bundles", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'), (2, 'B', 'parts', 't'); INSERT INTO bundle_members VALUES (1, 1, 0, NULL), (1, 2, 0, NULL);"),
+            ("negative position", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'); INSERT INTO bundle_members VALUES (1, 1, -3, NULL);"),
+            ("control character in the name", "INSERT INTO bundles VALUES (1, 'A' || char(7), 'parts', 't');"),
+        ] {
+            let (explicit, _) = bundle_case(setup);
+            let message = explicit.expect_err(what);
+            assert!(message.contains("Buendel"), "{what}: {message}");
+        }
+    }
+
+    #[test]
+    fn a_label_stored_as_a_blob_is_refused_by_the_column_types() {
+        let setup = format!("{GOOD_BUNDLE} UPDATE bundle_members SET label = x'4c6964' WHERE file_id = 2;");
+        let path = unique_test_db_path("bundle_blob_label");
+        std::fs::write(&path, bundle_template()).unwrap();
+        let types = {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(&setup).unwrap();
+            validate_column_types(&conn)
+        };
+        let _ = std::fs::remove_file(&path);
+        let message = types.expect_err("a BLOB label");
+        assert!(message.contains("bundle_members") && message.contains("label"), "{message}");
+        assert!(bundle_case(&setup).1.is_err(), "and the whole restore validation refuses it");
     }
 
     #[test]

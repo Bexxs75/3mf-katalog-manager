@@ -451,6 +451,7 @@ pub fn remove_files_from_catalog(c: &mut Connection, ids: &[i64]) -> WriteResult
         for id in &ids {
             changes += c.execute("DELETE FROM files WHERE id=?1", [id])?;
         }
+        db::bundles::prune_bundles(c)?;
         Ok(outcome(changes, changes as u64))
     })
 }

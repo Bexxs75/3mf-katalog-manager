@@ -286,3 +286,23 @@ CREATE TABLE IF NOT EXISTS disk_sync_known_copies (
     content_hash TEXT NOT NULL,
     noted_at TEXT NOT NULL
 );
+
+-- Groups of files shown as one card (variants of one model, or the parts of a multi-part model).
+-- Nothing else hangs on a bundle: tags, license and notes stay with the files.
+CREATE TABLE IF NOT EXISTS bundles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+    kind TEXT NOT NULL CHECK (kind IN ('variants', 'parts')),
+    created_at TEXT NOT NULL
+);
+
+-- One row per member. `file_id` is the primary key: a file belongs to at most one bundle. The member
+-- with the smallest position is the title model.
+CREATE TABLE IF NOT EXISTS bundle_members (
+    file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE,
+    bundle_id INTEGER NOT NULL REFERENCES bundles (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    label TEXT CHECK (label IS NULL OR length(label) <= 60)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bundle_members_bundle_id ON bundle_members (bundle_id);

@@ -477,6 +477,7 @@ fn commit(c: &mut Connection, i: &FolderIntent) -> Result<()> {
                     tx.execute("DELETE FROM files WHERE id=?1", [f.id])?;
                 }
             }
+            crate::db::bundles::prune_bundles(&tx).map_err(|_| Error::Internal)?;
             // Direct deletion deliberately retains unused tags, matching desktop catalog_removal.
             tx.execute("DELETE FROM folders WHERE id=?1", [anchor(i)?.id])?;
         }

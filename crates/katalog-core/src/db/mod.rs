@@ -3,6 +3,7 @@ pub mod models;
 pub mod licenses;
 mod repository;
 mod collections;
+pub mod bundles;
 mod tag_fragments;
 pub mod companions;
 pub mod sources;

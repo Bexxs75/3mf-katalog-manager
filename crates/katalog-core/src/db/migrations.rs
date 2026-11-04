@@ -153,6 +153,8 @@ const MIGRATIONS: &[MigrationStep] = &[
     // New file types `gcode` (.gcode and .bgcode) and `resin` (resin slicer files). Only the CHECK of
     // `files.file_type` changes; the columns, indexes and triggers of the table stay as they are.
     MigrationStep::Rebuild(add_gcode_and_resin_to_file_type_check),
+    // Bundles of files (variants or parts of one model). New tables only, no existing data is touched.
+    MigrationStep::Simple(add_bundle_tables),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -216,6 +218,29 @@ pub(crate) const FILAMENT_COLORS_MIGRATION_VERSION: i64 = 54;
 /// Schema version after the file types `gcode` and `resin`.
 #[cfg(test)]
 pub(crate) const GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION: i64 = 56;
+
+/// Schema version after the bundle tables.
+#[cfg(test)]
+pub(crate) const BUNDLE_TABLES_MIGRATION_VERSION: i64 = 57;
+
+/// New tables only; `IF NOT EXISTS` so a catalog that already got them from the base schema is left
+/// alone. `files` is not touched on purpose: other tools read it with fixed column lists. Keep the
+/// statements in step with `schema.sql`.
+fn add_bundle_tables(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS bundles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+        kind TEXT NOT NULL CHECK (kind IN ('variants', 'parts')),
+        created_at TEXT NOT NULL
+    )")?;
+    exec(conn, "CREATE TABLE IF NOT EXISTS bundle_members (
+        file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE,
+        bundle_id INTEGER NOT NULL REFERENCES bundles (id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK (position >= 0),
+        label TEXT CHECK (label IS NULL OR length(label) <= 60)
+    )")?;
+    exec(conn, "CREATE INDEX IF NOT EXISTS idx_bundle_members_bundle_id ON bundle_members (bundle_id)")
+}
 
 /// New tables only (a row per read 3MF and a row per plate); `IF NOT EXISTS` so a catalog
 /// that already got them from the base schema is left alone. `files` is not touched on purpose:
@@ -1305,9 +1330,10 @@ mod tests {
         assert_eq!(declined, 1, "the declined source files are another table and stay");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, "the file type step is the newest one");
+        assert_eq!(CURRENT_SCHEMA_VERSION, BUNDLE_TABLES_MIGRATION_VERSION, "the bundle step is the newest one");
         assert_eq!(GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 2, "after the table of remembered copies, which follows the color column");
-        assert_eq!(CURRENT_SCHEMA_VERSION, 56);
+        assert_eq!(BUNDLE_TABLES_MIGRATION_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION + 1, "the bundle tables follow the file type step");
+        assert_eq!(CURRENT_SCHEMA_VERSION, 57);
     }
 
     #[test]
@@ -1341,13 +1367,147 @@ mod tests {
         assert_eq!(shape(&fresh).len(), 5);
     }
 
+    /// A catalog at version 56: everything but the bundle tables, with rows in the tables around them.
+    fn catalog_before_bundle_tables() -> (Connection, i64) {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("DROP TABLE bundle_members; DROP TABLE bundles").unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/a.3mf", None).unwrap();
+        conn.execute("INSERT INTO tags (id, name, color_hue) VALUES (1, 'deko', 10)", []).unwrap();
+        conn.execute("INSERT INTO file_tags VALUES (?1, 1)", [id]).unwrap();
+        conn.execute("INSERT INTO collections (id, name, created_at) VALUES (1, 'Set', 't')", []).unwrap();
+        conn.execute("INSERT INTO collection_files (collection_id, file_id, position) VALUES (1, ?1, 0)", [id]).unwrap();
+        conn.pragma_update(None, "user_version", GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION).unwrap();
+        (conn, id)
+    }
+
+    #[test]
+    fn the_bundle_step_adds_empty_tables_and_keeps_every_row_of_every_table() {
+        let (mut conn, _) = catalog_before_bundle_tables();
+        assert!(!table_exists(&conn, "bundles") && !table_exists(&conn, "bundle_members"), "precondition: no tables yet");
+        let before = catalog_snapshot(&conn);
+        let counts_before = row_counts(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(catalog_snapshot(&conn), before);
+        let mut expected = counts_before;
+        expected.push(("bundle_members".to_string(), 0));
+        expected.push(("bundles".to_string(), 0));
+        expected.sort();
+        assert_eq!(row_counts(&conn), expected, "only the two new tables appear, both empty");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(BUNDLE_TABLES_MIGRATION_VERSION, 57, "the bundle step keeps its number");
+    }
+
+    #[test]
+    fn the_bundle_step_is_repeatable_and_gives_the_same_tables_as_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        let a = crate::db::test_insert_minimal_file(&fresh, "/a.3mf", None).unwrap();
+        let b = crate::db::test_insert_minimal_file(&fresh, "/b.3mf", None).unwrap();
+        fresh.execute("INSERT INTO bundles (id, name, kind, created_at) VALUES (1, 'Vase', 'parts', 't')", []).unwrap();
+        fresh.execute("INSERT INTO bundle_members (file_id, bundle_id, position) VALUES (?1, 1, 0), (?2, 1, 1)", [a, b]).unwrap();
+        add_bundle_tables(&fresh).unwrap();
+        add_bundle_tables(&fresh).unwrap();
+        let rows: i64 = fresh.query_row("SELECT COUNT(*) FROM bundle_members", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 2, "repeating the step keeps the rows");
+
+        let sql = |conn: &Connection| -> Vec<(String, String)> {
+            conn.prepare("SELECT name, sql FROM sqlite_master WHERE name IN ('bundles', 'bundle_members', 'idx_bundle_members_bundle_id') ORDER BY name")
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        let shape = |conn: &Connection, table: &str| -> Vec<(String, String, bool, bool)> {
+            conn.prepare(&format!("SELECT name, type, \"notnull\", pk FROM pragma_table_info('{table}') ORDER BY cid"))
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        let by_step = Connection::open_in_memory().unwrap();
+        by_step.execute_batch("CREATE TABLE files (id INTEGER PRIMARY KEY)").unwrap();
+        add_bundle_tables(&by_step).unwrap();
+        for table in ["bundles", "bundle_members"] {
+            assert_eq!(shape(&by_step, table), shape(&fresh, table), "schema.sql and the step must describe {table} the same way");
+        }
+        assert_eq!(sql(&by_step).len(), 3, "both tables and the index");
+        assert_eq!(shape(&fresh, "bundles").len(), 4);
+        assert_eq!(shape(&fresh, "bundle_members").len(), 4);
+    }
+
+    #[test]
+    fn bundle_tables_enforce_their_rules_and_hang_on_files_only_by_a_foreign_key() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        let a = crate::db::test_insert_minimal_file(&conn, "/a.3mf", None).unwrap();
+        let b = crate::db::test_insert_minimal_file(&conn, "/b.3mf", None).unwrap();
+        for bad in [
+            "INSERT INTO bundles (name, kind, created_at) VALUES ('', 'parts', 't')",
+            "INSERT INTO bundles (name, kind, created_at) VALUES ('x', 'other', 't')",
+        ] {
+            assert!(conn.execute(bad, []).is_err(), "{bad}");
+        }
+        let long_name = "n".repeat(121);
+        assert!(conn.execute("INSERT INTO bundles (name, kind, created_at) VALUES (?1, 'parts', 't')", [long_name]).is_err());
+        conn.execute("INSERT INTO bundles (id, name, kind, created_at) VALUES (1, 'A', 'parts', 't'), (2, 'B', 'variants', 't')", []).unwrap();
+        conn.execute("INSERT INTO bundle_members (file_id, bundle_id, position) VALUES (?1, 1, 0)", [a]).unwrap();
+        assert!(
+            conn.execute("INSERT INTO bundle_members (file_id, bundle_id, position) VALUES (?1, 2, 0)", [a]).is_err(),
+            "a file is in at most one bundle"
+        );
+        assert!(conn.execute("INSERT INTO bundle_members (file_id, bundle_id, position) VALUES (?1, 1, -1)", [b]).is_err());
+        assert!(conn.execute("INSERT INTO bundle_members (file_id, bundle_id, position) VALUES (?1, 99, 0)", [b]).is_err(), "bundle must exist");
+        assert!(conn.execute("INSERT INTO bundle_members (file_id, bundle_id, position) VALUES (9999, 1, 0)", []).is_err(), "file must exist");
+        let long_label = "l".repeat(61);
+        assert!(conn.execute("INSERT INTO bundle_members (file_id, bundle_id, position, label) VALUES (?1, 1, 1, ?2)", rusqlite::params![b, long_label]).is_err());
+        conn.execute("INSERT INTO bundle_members (file_id, bundle_id, position, label) VALUES (?1, 1, 1, 'Lid')", [b]).unwrap();
+
+        // Deleting a file removes its membership; deleting a bundle removes its members only.
+        conn.execute("DELETE FROM files WHERE id = ?1", [a]).unwrap();
+        let members: i64 = conn.query_row("SELECT COUNT(*) FROM bundle_members", [], |r| r.get(0)).unwrap();
+        assert_eq!(members, 1);
+        conn.execute("DELETE FROM bundles WHERE id = 1", []).unwrap();
+        let members: i64 = conn.query_row("SELECT COUNT(*) FROM bundle_members", [], |r| r.get(0)).unwrap();
+        assert_eq!(members, 0);
+        let files: i64 = conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap();
+        assert_eq!(files, 1, "dissolving a bundle never touches a file");
+
+        // Bundles must not need a trigger: the backup check refuses every trigger.
+        let triggers: i64 = conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger'", [], |r| r.get(0)).unwrap();
+        assert_eq!(triggers, 0);
+        // Only the two bundle tables point at `files` from this change; `files` itself keeps no key to them.
+        let keys: Vec<String> = conn
+            .prepare("SELECT \"table\" FROM pragma_foreign_key_list('bundle_members') ORDER BY \"table\"")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(keys, vec!["bundles".to_string(), "files".to_string()]);
+        let files_keys: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_list('files') WHERE \"table\" LIKE 'bundle%'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(files_keys, 0);
+    }
+
     /// A catalog at version 55 with the old `file_type` CHECK, rows in the tables that point at `files`.
     fn catalog_with_old_file_type_check() -> (Connection, i64) {
         let conn = crate::db::connect_in_memory().unwrap();
         let folder = crate::db::insert_folder(&conn, "root").unwrap();
         let id = crate::db::test_insert_minimal_file(&conn, "/models/a.3mf", Some(folder)).unwrap();
-        crate::db::test_insert_minimal_file(&conn, "/models/b.stl", Some(folder)).unwrap();
+        let id_b = crate::db::test_insert_minimal_file(&conn, "/models/b.stl", Some(folder)).unwrap();
         conn.execute("INSERT INTO tags (id, name, color_hue) VALUES (1, 'deko', 10)", []).unwrap();
+        conn.execute("INSERT INTO bundles (id, name, kind, created_at) VALUES (1, 'Vase', 'variants', 't')", []).unwrap();
+        conn.execute("INSERT INTO bundle_members (file_id, bundle_id, position) VALUES (?1, 1, 0), (?2, 1, 1)", [id, id_b]).unwrap();
         conn.execute("INSERT INTO file_tags VALUES (?1, 1)", [id]).unwrap();
         conn.execute("INSERT INTO print_log (file_id, printed_at, created_at) VALUES (?1, 't', 't')", [id]).unwrap();
         conn.execute(
@@ -1437,6 +1597,8 @@ mod tests {
         conn.execute("DELETE FROM files WHERE id = ?1", [id]).unwrap();
         let tags: i64 = conn.query_row("SELECT COUNT(*) FROM file_tags", [], |r| r.get(0)).unwrap();
         assert_eq!(tags, 0, "ON DELETE CASCADE still works after the rebuild");
+        let members: i64 = conn.query_row("SELECT COUNT(*) FROM bundle_members", [], |r| r.get(0)).unwrap();
+        assert_eq!(members, 1, "the bundle membership follows its file after the rebuild, the other one stays");
     }
 
     #[test]
@@ -1819,7 +1981,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 17);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 18);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.
