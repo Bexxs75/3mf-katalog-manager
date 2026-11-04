@@ -40,6 +40,7 @@ Lokaler Nachweis ohne Veröffentlichung: obiger Python-Testbefehl (simulierte Ma
 | System | Download (STEP preview included) |
 |---|---|
 | Windows | `3MF-Katalog-Manager-X.Y.Z-Windows-x64.msi` |
+| Windows (pre-releases only, optional) | `3MF-Katalog-Manager-X.Y.Z-Windows-x64-Setup.exe` — installs without administrator rights; an installed MSI is not replaced by it, uninstall the MSI first if you switch |
 | macOS (Intel + Apple Silicon) | `3MF-Katalog-Manager-X.Y.Z-macOS-universal.dmg` |
 | Linux | `3MF-Katalog-Manager-X.Y.Z-Linux-x86_64.AppImage` |
 
@@ -63,7 +64,7 @@ Checksums: `SHA256SUMS.txt` · [Is it safe to install?](https://github.com/Bexxs
 
 **Bekannte Einschränkungen:** <…>
 
-**Download:** Windows `.msi`, macOS `.dmg`, Linux `.AppImage`; die STEP-Vorschau ist immer enthalten, die Dateinamen haben keinen `-STEP`-Zusatz. Prüfsummen: `SHA256SUMS.txt` · [Ist die Installation sicher?](https://github.com/Bexxs75/3mf-katalog-manager/blob/master/README.de.md#ist-die-installation-sicher) · [Vollständiges Changelog](https://github.com/Bexxs75/3mf-katalog-manager/blob/master/CHANGELOG.md#changelog-deutsch)
+**Download:** Windows `.msi` (bei Vorabversionen zusätzlich `-Setup.exe`, optional, ohne Administratorrechte; eine installierte MSI wird nicht ersetzt, bei einem Wechsel die MSI zuerst deinstallieren), macOS `.dmg`, Linux `.AppImage`; die STEP-Vorschau ist immer enthalten, die Dateinamen haben keinen `-STEP`-Zusatz. Prüfsummen: `SHA256SUMS.txt` · [Ist die Installation sicher?](https://github.com/Bexxs75/3mf-katalog-manager/blob/master/README.de.md#ist-die-installation-sicher) · [Vollständiges Changelog](https://github.com/Bexxs75/3mf-katalog-manager/blob/master/CHANGELOG.md#changelog-deutsch)
 
 <details><summary>Alle Änderungen</summary>
 

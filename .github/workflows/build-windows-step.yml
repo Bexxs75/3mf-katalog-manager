@@ -1,4 +1,4 @@
-name: Build Windows MSI (with STEP preview)
+name: Build Windows MSI and NSIS (with STEP preview)
 
 on:
   workflow_dispatch: {}
@@ -13,6 +13,12 @@ on:
       version:
         type: string
         default: ""
+      # Also builds the NSIS installer (Setup.exe) next to the MSI. The MSI and
+      # its artifact are the same either way; the in-app updater of an MSI
+      # installation keeps using the MSI.
+      nsis:
+        type: boolean
+        default: false
 
 # packages: write for the vcpkg binary cache in GitHub Packages (NuGet), see the
 # "Setup vcpkg binary cache" step below.
@@ -30,6 +36,7 @@ jobs:
       APP_NAME: ${{ inputs.preview && '3MF Katalog Manager Preview' || '3MF Katalog Manager' }}
       PREVIEW_CONFIG: ${{ inputs.preview && '--config src-tauri/tauri.preview.conf.json' || '' }}
       PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
+      WINDOWS_BUNDLES: ${{ inputs.nsis && 'msi,nsis' || 'msi' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -108,16 +115,26 @@ jobs:
       # bash instead of PowerShell: the preview flags must split into separate
       # arguments, which PowerShell would pass on as a single quoted one. Tauri
       # merges several --config overlays in the given order.
-      - name: Build Tauri app (Windows MSI, with STEP preview)
+      - name: Build Tauri app (Windows installers, with STEP preview)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CMAKE_PREFIX_PATH: ${{ github.workspace }}\src-tauri\occt-vcpkg-manifest\vcpkg_installed\x64-windows
         shell: bash
-        run: npm run tauri build -- --bundles msi --config src-tauri/tauri.windows-step.conf.json $PREVIEW_CONFIG -- $PREVIEW_FEATURES
+        run: npm run tauri build -- --bundles $WINDOWS_BUNDLES --config src-tauri/tauri.windows-step.conf.json $PREVIEW_CONFIG -- $PREVIEW_FEATURES
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
         with:
           name: 3mf-katalog-manager-windows-msi-step
           path: src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+
+      # Only the installer itself: the bundle folder holds nothing else with
+      # this ending, and release_assets.py insists on exactly one file.
+      - name: Upload NSIS artifact
+        if: ${{ inputs.nsis }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3mf-katalog-manager-windows-nsis-step
+          path: src-tauri/target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
