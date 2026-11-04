@@ -999,6 +999,15 @@ your models and folders. They're split into four tabs:
   background, one file after another. With "Image", this happens for files without an image of
   their own (e.g. STL, OBJ).
 - **Language** — German, English, Spanish, or French, effective immediately without a restart.
+- **When the window is closed** (desktop app only) — "Quit the program" (the default) or "Minimize
+  to the notification area" (on macOS: the menu bar). With the second choice, closing the window only
+  hides it: imports and the printer connection keep running. To open the window again, click the
+  icon (a click on "Open" in its menu does the same) or start the program again; "Quit" in the icon's
+  menu ends the program. If the icon cannot be created, the program quits when the window closes, and
+  the setting says so; there is no new attempt until the next start. On Linux the icon needs support
+  from your desktop (on GNOME, for example, the AppIndicator extension). Without it you cannot see the
+  icon: start the program again to bring the window back, then switch the setting back to "Quit". The
+  choice is not offered in the container version.
 - **Rename files on import** — off by default; prefixes new catalog files with the date and time
   (see [Importing files](#importing-files)).
 - **Sync with disk** — "Sync at start" and "Add new files automatically" (see
@@ -2328,6 +2337,16 @@ vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
   nachgerendert, eine Datei nach der anderen. Bei „Bild“ passiert das für Dateien ohne eigenes Bild
   (z. B. STL, OBJ).
 - **Sprache** — Deutsch, Englisch, Spanisch oder Französisch, sofort wirksam ohne Neustart.
+- **Beim Schließen des Fensters** (nur Desktop-App) — „Programm beenden“ (Standard) oder „In den
+  Infobereich minimieren“ (auf macOS: die Menüleiste). Bei der zweiten Wahl versteckt das Schließen
+  das Fenster nur: Importe und Druckeranbindung laufen weiter. Zum Wiederöffnen klickst du auf das
+  Symbol (ein Klick auf „Öffnen“ in seinem Menü tut dasselbe) oder startest das Programm erneut;
+  „Beenden“ im Menü des Symbols beendet das Programm. Lässt sich das Symbol nicht erzeugen, beendet
+  das Schließen das Programm, und die Einstellung sagt es; bis zum nächsten Start gibt es keinen neuen
+  Versuch. Unter Linux braucht das Symbol Unterstützung deines Desktops (bei GNOME zum Beispiel die
+  AppIndicator-Erweiterung). Ohne sie siehst du das Symbol nicht: Starte das Programm erneut, um das
+  Fenster zurückzuholen, und stelle die Einstellung wieder auf „Beenden“. Im Container steht die Wahl
+  nicht zur Verfügung.
 - **Dateien beim Import umbenennen** — standardmäßig aus; stellt neuen Katalogdateien Datum und
   Uhrzeit voran (siehe [Dateien importieren](#dateien-importieren)).
 - **Abgleich mit der Festplatte** — „Beim Start abgleichen“ und „Neue Dateien automatisch

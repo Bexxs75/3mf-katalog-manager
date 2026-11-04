@@ -99,3 +99,12 @@ it('shows the app version in the Info tab of the web build', async () => {
   fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
   expect(await screen.findByTestId('web-version')).toHaveTextContent('0.17.0');
 });
+
+it('offers no close-behavior group in the web build and never asks the backend for it', async () => {
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Allgemein' }));
+  expect(await screen.findByText(de.languageTitle)).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: de.closeActionTitle })).toBeNull();
+  const urls = vi.mocked(fetch).mock.calls.map(call => String(call[0]));
+  expect(urls.some(url => url.includes('close_behavior') || url.includes('tray_labels'))).toBe(false);
+});

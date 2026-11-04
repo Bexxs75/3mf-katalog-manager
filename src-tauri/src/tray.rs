@@ -32,7 +32,6 @@ impl CloseAction {
         }
     }
 
-    #[allow(dead_code)] // used by `set_close_behavior` in P7-2
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Exit => "exit",
@@ -78,6 +77,8 @@ pub(crate) enum TrayError {
 /// Builds and removes the native icon. A trait so tests need no display (pattern of `single_instance::MainWindow`).
 pub(crate) trait TrayHost {
     fn build(&self, labels: &TrayLabels) -> Result<(), String>;
+    /// Replaces the menu texts of an existing icon.
+    fn update_labels(&self, labels: &TrayLabels) -> Result<(), String>;
     fn remove(&self);
 }
 
@@ -85,6 +86,9 @@ pub(crate) trait TrayHost {
 pub(crate) struct CloseBehavior {
     tray: AtomicBool,
     tray_ok: AtomicBool,
+    /// A build failed in this run. Not retried until the next start: after a panic inside the
+    /// lazily loaded appindicator library a second attempt is unlikely to behave better.
+    tray_failed: AtomicBool,
     labels: Mutex<Option<TrayLabels>>,
 }
 
@@ -114,12 +118,24 @@ impl CloseBehavior {
     }
 
     /// Remembers new menu texts; returns whether an icon exists whose menu must be rebuilt.
-    #[allow(dead_code)] // wired to `set_tray_labels` in P7-2
     pub(crate) fn set_labels(&self, labels: TrayLabels) -> bool {
         if let Ok(mut slot) = self.labels.lock() {
             *slot = Some(labels);
         }
         self.tray_ok()
+    }
+
+    pub(crate) fn tray_failed(&self) -> bool {
+        self.tray_failed.load(Ordering::SeqCst)
+    }
+
+    /// Remembers new menu texts and refreshes the menu of an existing icon.
+    pub(crate) fn apply_labels(&self, labels: TrayLabels, host: &impl TrayHost) {
+        if self.set_labels(labels.clone()) {
+            if let Err(error) = host.update_labels(&labels) {
+                log::warn!(target: "tray", "could not update the tray menu: {error}");
+            }
+        }
     }
 
     /// Brings the icon in line with `action`. Returns whether the tray is available afterwards.
@@ -138,7 +154,7 @@ impl CloseBehavior {
                 Ok(false)
             }
             CloseAction::Tray => {
-                if !self.tray_ok() {
+                if !self.tray_ok() && !self.tray_failed() {
                     let labels = self.labels();
                     let built = match catch_unwind(AssertUnwindSafe(|| host.build(&labels))) {
                         Ok(Ok(())) => true,
@@ -152,6 +168,7 @@ impl CloseBehavior {
                         }
                     };
                     self.tray_ok.store(built, Ordering::SeqCst);
+                    self.tray_failed.store(!built, Ordering::SeqCst);
                 }
                 Ok(self.tray_ok())
             }
@@ -159,20 +176,29 @@ impl CloseBehavior {
     }
 }
 
+#[cfg(target_os = "macos")]
+/// Raw RGBA (black glyph, alpha only): decoding a PNG would need an extra tauri feature.
+const MACOS_TEMPLATE_ICON: &[u8] = include_bytes!("../icons/tray-template.rgba");
+#[cfg(target_os = "macos")]
+const MACOS_TEMPLATE_SIZE: u32 = 44;
+
+fn tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, labels: &TrayLabels) -> Result<tauri::menu::Menu<R>, String> {
+    use tauri::menu::{Menu, MenuItem};
+    let open = MenuItem::with_id(app, MENU_OPEN, &labels.open, true, None::<&str>).map_err(|e| e.to_string())?;
+    let quit = MenuItem::with_id(app, MENU_QUIT, &labels.quit, true, None::<&str>).map_err(|e| e.to_string())?;
+    Menu::with_items(app, &[&open, &quit]).map_err(|e| e.to_string())
+}
+
 /// The real icon of a running app.
 pub(crate) struct AppTray<R: tauri::Runtime>(pub tauri::AppHandle<R>);
 
 impl<R: tauri::Runtime> TrayHost for AppTray<R> {
     fn build(&self, labels: &TrayLabels) -> Result<(), String> {
-        use tauri::menu::{Menu, MenuItem};
         use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
         let app = &self.0;
-        let open = MenuItem::with_id(app, MENU_OPEN, &labels.open, true, None::<&str>).map_err(|e| e.to_string())?;
-        let quit = MenuItem::with_id(app, MENU_QUIT, &labels.quit, true, None::<&str>).map_err(|e| e.to_string())?;
-        let menu = Menu::with_items(app, &[&open, &quit]).map_err(|e| e.to_string())?;
         let mut builder = TrayIconBuilder::with_id(TRAY_ID)
-            .menu(&menu)
+            .menu(&tray_menu(app, labels)?)
             .show_menu_on_left_click(false)
             .on_menu_event(|app, event| match event.id.as_ref() {
                 MENU_OPEN => show_main_window(app),
@@ -184,10 +210,21 @@ impl<R: tauri::Runtime> TrayHost for AppTray<R> {
                     show_main_window(tray.app_handle());
                 }
             });
+        // macOS shows a single-color template image in the menu bar; the colored app icon would look wrong there.
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder.icon(tauri::image::Image::new(MACOS_TEMPLATE_ICON, MACOS_TEMPLATE_SIZE, MACOS_TEMPLATE_SIZE)).icon_as_template(true);
+        }
+        #[cfg(not(target_os = "macos"))]
         if let Some(icon) = app.default_window_icon() {
             builder = builder.icon(icon.clone());
         }
         builder.build(app).map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    fn update_labels(&self, labels: &TrayLabels) -> Result<(), String> {
+        let Some(tray) = self.0.tray_by_id(TRAY_ID) else { return Ok(()) };
+        tray.set_menu(Some(tray_menu(&self.0, labels)?)).map_err(|e| e.to_string())
     }
 
     fn remove(&self) {
@@ -221,6 +258,7 @@ mod tests {
         builds: Cell<u32>,
         removes: Cell<u32>,
         seen_labels: RefCell<Vec<TrayLabels>>,
+        updates: RefCell<Vec<TrayLabels>>,
         mode: &'static str, // "", "err", "panic"
     }
 
@@ -233,6 +271,10 @@ mod tests {
                 "panic" => panic!("library not found"),
                 _ => Ok(()),
             }
+        }
+        fn update_labels(&self, labels: &TrayLabels) -> Result<(), String> {
+            self.updates.borrow_mut().push(labels.clone());
+            Ok(())
         }
         fn remove(&self) {
             self.removes.set(self.removes.get() + 1);
@@ -308,6 +350,41 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_build_is_not_retried_until_restart() {
+        for mode in ["err", "panic"] {
+            let behavior = CloseBehavior::default();
+            let host = FakeHost { mode, ..Default::default() };
+            assert_eq!(behavior.apply(CloseAction::Tray, false, &host), Ok(false));
+            assert!(behavior.tray_failed());
+            assert_eq!(behavior.apply(CloseAction::Tray, false, &host), Ok(false), "{mode}");
+            assert_eq!(host.builds.get(), 1, "{mode}: no second attempt");
+            assert_eq!(behavior.decide(false, "main"), CloseDecision::Close);
+            // Choosing "quit" and then "tray" again still does not try again.
+            behavior.apply(CloseAction::Exit, false, &host).unwrap();
+            assert_eq!(behavior.apply(CloseAction::Tray, false, &host), Ok(false));
+            assert_eq!(host.builds.get(), 1);
+        }
+        let working = CloseBehavior::default();
+        assert!(!working.tray_failed());
+        working.apply(CloseAction::Tray, false, &FakeHost::default()).unwrap();
+        assert!(!working.tray_failed());
+    }
+
+    #[test]
+    fn new_labels_refresh_only_an_existing_icon() {
+        let behavior = CloseBehavior::default();
+        let host = FakeHost::default();
+        let labels = TrayLabels { open: "Abrir".into(), quit: "Salir".into() };
+        behavior.apply_labels(labels.clone(), &host);
+        assert!(host.updates.borrow().is_empty(), "no icon yet, nothing to update");
+        behavior.apply(CloseAction::Tray, false, &host).unwrap();
+        assert_eq!(host.seen_labels.borrow()[0], labels, "the stored texts are used for the build");
+        let next = TrayLabels { open: "Ouvrir".into(), quit: "Quitter".into() };
+        behavior.apply_labels(next.clone(), &host);
+        assert_eq!(*host.updates.borrow(), vec![next]);
+    }
+
+    #[test]
     fn container_refuses_the_tray_without_building() {
         let behavior = CloseBehavior::default();
         let host = FakeHost::default();
@@ -345,6 +422,14 @@ mod tests {
         assert!(!behavior.tray_ok());
         assert_eq!(host.builds.get(), 0);
         assert_eq!(behavior.decide(false, "main"), CloseDecision::Close);
+    }
+
+    #[test]
+    fn the_macos_template_image_is_a_44_pixel_rgba_square() {
+        let bytes = include_bytes!("../icons/tray-template.rgba");
+        assert_eq!(bytes.len(), 44 * 44 * 4);
+        assert!(bytes.chunks(4).all(|px| px[..3] == [0, 0, 0]), "template images carry the shape in alpha only");
+        assert!(bytes.chunks(4).any(|px| px[3] == 255) && bytes.chunks(4).any(|px| px[3] == 0));
     }
 
     #[test]

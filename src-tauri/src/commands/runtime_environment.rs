@@ -9,7 +9,7 @@ pub struct RuntimeEnvironment {
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum DesktopFeature { Slicer, FileManager, Updater, ExternalAction }
+pub(super) enum DesktopFeature { Slicer, FileManager, Updater, ExternalAction, Tray }
 
 impl DesktopFeature {
     fn message(self) -> &'static str {
@@ -17,7 +17,7 @@ impl DesktopFeature {
             Self::Slicer => "containerSlicerUnavailable",
             Self::FileManager => "containerFileManagerUnavailable",
             Self::Updater => "container",
-            Self::ExternalAction => "containerExternalUnavailable",
+            Self::ExternalAction | Self::Tray => "containerExternalUnavailable",
         }
     }
 }

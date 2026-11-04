@@ -18,6 +18,7 @@ import type { Language } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
 import { LinuxMenuSettings } from './LinuxMenuSettings';
+import { CloseBehaviorSettings } from './CloseBehaviorSettings';
 import { InfoFolders } from '../diagnostics/InfoFolders';
 import type { AppError } from '../lib/errors';
 import { WebCatalogBackup } from './WebCatalogBackup';
@@ -262,6 +263,7 @@ export function SettingsPanel({
                   </button>
                 ))}
               </div>
+              {import.meta.env.VITE_TARGET !== 'web' && !container && <CloseBehaviorSettings />}
               {import.meta.env.VITE_TARGET !== 'web' && <LinuxMenuSettings />}
             </>
           )}
