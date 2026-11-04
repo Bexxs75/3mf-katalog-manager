@@ -59,6 +59,7 @@ import { useStartSync } from './hooks/useStartSync';
 import { requestDiskSync } from './lib/api/diskSync';
 import { UpdateToast } from './components/UpdateToast';
 import { LinuxMenuPrompt } from './components/LinuxMenuPrompt';
+import { TrayLabelSync } from './components/TrayLabelSync';
 import { useTheme } from './hooks/useTheme';
 import { useDetailPanel } from './hooks/useDetailPanel';
 import { useUiDensity } from './hooks/UiDensityContext';
@@ -847,6 +848,7 @@ export default function App() {
           </NoticeStack>
 
           {!web && <UpgradeNoticeDialog wait={setupDialogOpen} onSettled={() => setUpgradeNoticeSettled(true)} />}
+          {!web && <TrayLabelSync />}
           {!web && <LinuxMenuPrompt wait={setupDialogOpen || !upgradeNoticeSettled} />}
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
