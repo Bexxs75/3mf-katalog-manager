@@ -192,6 +192,7 @@
     "start_import": "B",
     "start_upload_import": "web-only",
     "sync_printers_now": "B",
+    "take_open_requests": "C",
     "test_printer_connection": "B",
     "test_thingiverse_token": "C",
     "thingiverse_image": "C",

@@ -1723,6 +1723,7 @@ export const es: Translations = {
   errStlSourceTooLarge: "El archivo es demasiado grande para convertirlo.",
   errStlStepUnavailable: "Los archivos STEP no se pueden convertir en esta compilación (sin vista previa STEP).",
   errStlWriteFailed: "No se pudo escribir el archivo STL: {0}",
+  errOpenSourceUnknown: "El sistema no entregó este archivo o su vista ya está cerrada.",
   errSourceNoCatalogFolder: "Todavía no se ha configurado ninguna carpeta del catálogo. Sin ella, no se pueden importar archivos desde una carpeta de origen.",
   errSourceNoFilesSelected: "No se seleccionó ningún archivo.",
   kcDialogHint: "Las copias que no marques se recuerdan y no se vuelven a ofrecer en la próxima sincronización.",

@@ -1723,6 +1723,7 @@ export const de: Translations = {
   errStlSourceTooLarge: "Die Datei ist zu groß für die Umwandlung.",
   errStlStepUnavailable: "STEP-Dateien können in diesem Build nicht umgewandelt werden (keine STEP-Vorschau enthalten).",
   errStlWriteFailed: "Die STL-Datei konnte nicht geschrieben werden: {0}",
+  errOpenSourceUnknown: "Diese Datei wurde nicht vom System übergeben oder die Ansicht ist schon geschlossen.",
   errSourceNoCatalogFolder: "Es ist noch kein Katalogordner eingerichtet. Ohne ihn können Dateien nicht aus einem Quellordner übernommen werden.",
   errSourceNoFilesSelected: "Es wurden keine Dateien ausgewählt.",
   kcDialogHint: "Nicht gewählte Kopien werden gemerkt und beim nächsten Abgleich nicht mehr angeboten.",

@@ -156,6 +156,7 @@
     "stlSourceTooLarge",
     "stlStepUnavailable",
     "stlWriteFailed",
+    "openSourceUnknown",
     "thingiverseDisabled",
     "thingiverseNoToken",
     "thingiverseTokenFormat",
