@@ -9,7 +9,7 @@
 //! followed (a link on the way makes a row "unknown", not "missing"), and nothing in the
 //! result is an absolute path: every entry names its root by index and its path relative
 //! to that root.
-use crate::import::files::{is_ignored_import_path, is_supported_extension};
+use crate::import::files::{is_ignored_import_path, is_model_extension};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -449,7 +449,7 @@ fn walk(
                     continue;
                 }
                 subdirs.push(path);
-            } else if kind.is_file() && is_supported_extension(&path) && !known.contains(&key(&path)) {
+            } else if kind.is_file() && is_model_extension(&path) && !known.contains(&key(&path)) {
                 if !budget.room(report.new_files.len()) {
                     return false;
                 }

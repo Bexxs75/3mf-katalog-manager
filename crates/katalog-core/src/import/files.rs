@@ -40,7 +40,9 @@ pub fn is_ignored_import_path(path: &Path) -> bool {
         n.starts_with('.') || n.starts_with("~$") || n.to_ascii_lowercase().ends_with(".part")
     })
 }
-pub fn is_supported_extension(path: &Path) -> bool {
+/// Model files: what folder, archive and source-folder runs pick up by themselves, and what counts
+/// as "the model" when a archive's companion files are assigned.
+pub fn is_model_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|e| {
@@ -50,6 +52,20 @@ pub fn is_supported_extension(path: &Path) -> bool {
             )
         })
         .unwrap_or(false)
+}
+/// Sliced output (G-Code, bgcode). Catalogable, but never a model: a folder or archive run does not
+/// pick these up by itself and an archive's companion files never attach to them. Only files the
+/// user names one by one (dialog, drag and drop) are taken in. Resin endings join in with the
+/// resin catalog.
+pub fn is_sliced_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_lowercase().as_str(), "gcode" | "bgcode"))
+        .unwrap_or(false)
+}
+/// Everything the catalog can hold: models and sliced output.
+pub fn is_catalog_extension(path: &Path) -> bool {
+    is_model_extension(path) || is_sliced_extension(path)
 }
 pub fn compute_content_hash(path: &Path) -> CmdResult<String> {
     // Paths can come from an imported backup: `/dev/zero` would be read forever,
@@ -83,7 +99,7 @@ pub fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
         for entry in entries.flatten() {
             collect_supported_files(&entry.path(), out);
         }
-    } else if is_supported_extension(path) {
+    } else if is_model_extension(path) {
         out.push(path.to_path_buf());
     }
 }
@@ -197,6 +213,20 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
                 FileType::Obj,
                 doc.dimensions_mm,
                 doc.volume_cm3,
+                None,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+                None,
+            )
+        }
+        Some("gcode") | Some("bgcode") => {
+            // Catalog entry only; the G-Code reader follows in a later step.
+            (
+                FileType::Gcode,
+                None,
+                None,
                 None,
                 Vec::new(),
                 BTreeMap::new(),
@@ -387,6 +417,20 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
                 FileType::Obj,
                 doc.dimensions_mm,
                 doc.volume_cm3,
+                None,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+                None,
+            )
+        }
+        Some("gcode") | Some("bgcode") => {
+            // Catalog entry only; the G-Code reader follows in a later step.
+            (
+                FileType::Gcode,
+                None,
+                None,
                 None,
                 Vec::new(),
                 BTreeMap::new(),

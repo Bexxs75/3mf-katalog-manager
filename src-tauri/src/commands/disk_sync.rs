@@ -365,7 +365,7 @@ fn walk(
                     continue;
                 }
                 pending.push(path);
-            } else if kind.is_file() && files::is_supported_extension(&path) {
+            } else if kind.is_file() && files::is_model_extension(&path) {
                 let key = path_key(&path, case_insensitive);
                 seen_files.insert(key.clone());
                 if known.files.contains(&key) {

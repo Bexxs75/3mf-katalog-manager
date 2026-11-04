@@ -89,7 +89,7 @@ pub fn read_rescan_target(target: &RescanTarget) -> Result<PreparedRescan> {
     }
     let failed = |e: &dyn std::fmt::Display| RescanError::Failed(e.to_string());
     let extension = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
-    if !matches!(extension.as_deref(), Some("3mf" | "stl" | "stp" | "step" | "obj")) {
+    if !matches!(extension.as_deref(), Some("3mf" | "stl" | "stp" | "step" | "obj" | "gcode" | "bgcode")) {
         return Err(RescanError::Unsupported);
     }
 
@@ -140,6 +140,8 @@ pub fn read_rescan_target(target: &RescanTarget) -> Result<PreparedRescan> {
             let doc = obj::parse_obj_file(path).map_err(|e| failed(&e))?;
             scanned(doc.dimensions_mm, doc.volume_cm3, None)
         }
+        // Catalog entry only, nothing to read yet.
+        Some("gcode" | "bgcode") => scanned(None, None, None),
         _ => return Err(RescanError::Unsupported),
     };
     Ok(PreparedRescan {
@@ -271,7 +273,7 @@ pub fn prepare_web_rescan(
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase());
     match extension.as_deref() {
-        Some("3mf" | "stl" | "obj") => {}
+        Some("3mf" | "stl" | "obj" | "gcode" | "bgcode") => {}
         // Reading it without OCCT would silently wipe the dimensions of a good record.
         Some("stp" | "step") => return Err(RescanError::StepUnavailable),
         _ => return Err(RescanError::Unsupported),
@@ -287,7 +289,7 @@ pub fn prepare_web_rescan(
         "read_failed" => RescanError::Failed("read_failed".into()),
         _ => RescanError::Invalid,
     })?;
-    debug_assert!(matches!(new_file.file_type, FileType::ThreeMf | FileType::Stl | FileType::Obj));
+    debug_assert!(matches!(new_file.file_type, FileType::ThreeMf | FileType::Stl | FileType::Obj | FileType::Gcode));
     Ok(PreparedRescan { id, stored_path: existing.path, canonical, stamp, follow_links: false, update: update_from(new_file) })
 }
 

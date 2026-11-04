@@ -14,6 +14,10 @@ pub enum FileType {
     // Covers both .stp and .step files - the DB value is always "stp" (canonical), regardless of the original extension.
     Stp,
     Obj,
+    /// Covers both .gcode and .bgcode; the DB value is always "gcode".
+    Gcode,
+    /// Resin slicer files of every format; the ending stays in the path.
+    Resin,
 }
 
 impl FileType {
@@ -23,6 +27,8 @@ impl FileType {
             FileType::Stl => "stl",
             FileType::Stp => "stp",
             FileType::Obj => "obj",
+            FileType::Gcode => "gcode",
+            FileType::Resin => "resin",
         }
     }
 
@@ -32,6 +38,8 @@ impl FileType {
             "stl" => Some(FileType::Stl),
             "stp" => Some(FileType::Stp),
             "obj" => Some(FileType::Obj),
+            "gcode" => Some(FileType::Gcode),
+            "resin" => Some(FileType::Resin),
             _ => None,
         }
     }

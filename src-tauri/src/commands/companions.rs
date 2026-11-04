@@ -612,7 +612,7 @@ pub(super) fn assign_from_archive(
     sensitive_dirs: &[PathBuf],
 ) -> (u32, u32) {
     let key = |p: &Path| folders::comparison_path(p);
-    let model_files: Vec<&PathBuf> = written.iter().filter(|p| files::is_supported_extension(p)).collect();
+    let model_files: Vec<&PathBuf> = written.iter().filter(|p| files::is_model_extension(p)).collect();
     let imported_id: HashMap<PathBuf, i64> =
         imported.iter().filter_map(|m| Some((key(Path::new(&m.path)), m.id.parse().ok()?))).collect();
     let owner_of = |candidate: &Path| -> Option<i64> {
@@ -633,7 +633,7 @@ pub(super) fn assign_from_archive(
     let mut ignored = 0u32;
     let mut extras_of: HashMap<i64, Option<PathBuf>> = HashMap::new();
     let mut count_of: HashMap<i64, i64> = HashMap::new();
-    for candidate in written.iter().filter(|p| !files::is_supported_extension(p) && !files::is_ignored_import_path(p)) {
+    for candidate in written.iter().filter(|p| !files::is_model_extension(p) && !files::is_ignored_import_path(p)) {
         let Some(name) = candidate.file_name().and_then(|n| n.to_str()) else { continue };
         let Ok(mut file) = crate::safe_file::open_regular(candidate) else { continue };
         let Ok(length) = file.metadata().map(|m| m.len()) else { continue };

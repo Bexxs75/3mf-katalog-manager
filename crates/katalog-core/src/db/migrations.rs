@@ -150,6 +150,9 @@ const MIGRATIONS: &[MigrationStep] = &[
     // Copies the disk sync offered and the user declined, so they are not hashed and offered
     // again. New table only, no existing data is touched.
     MigrationStep::Simple(add_known_copies_table),
+    // New file types `gcode` (.gcode and .bgcode) and `resin` (resin slicer files). Only the CHECK of
+    // `files.file_type` changes; the columns, indexes and triggers of the table stay as they are.
+    MigrationStep::Rebuild(add_gcode_and_resin_to_file_type_check),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -209,6 +212,10 @@ pub(crate) const PRINT_INFO_TABLES_MIGRATION_VERSION: i64 = 53;
 /// between the color column and the remembered copies contain.
 #[cfg(test)]
 pub(crate) const FILAMENT_COLORS_MIGRATION_VERSION: i64 = 54;
+
+/// Schema version after the file types `gcode` and `resin`.
+#[cfg(test)]
+pub(crate) const GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION: i64 = 56;
 
 /// New tables only (a row per read 3MF and a row per plate); `IF NOT EXISTS` so a catalog
 /// that already got them from the base schema is left alone. `files` is not touched on purpose:
@@ -474,6 +481,89 @@ fn rebuild_files_table_with_check(
 
 fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
     rebuild_files_table_with_check(conn, step_version, &["3mf", "stl", "stp"])
+}
+
+/// Adds `gcode` and `resin` to the `file_type` CHECK of `files`. Unlike
+/// [`rebuild_files_table_with_check`] (its column list ends at `trash_path`, so it cannot be run
+/// again) this copy takes the table definition, the columns, the indexes and the triggers from
+/// the database itself and replaces only the value list of the CHECK.
+fn add_gcode_and_resin_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
+    const NEW_VALUES: &str = "'3mf', 'stl', 'stp', 'obj', 'gcode', 'resin'";
+    let current_sql: String = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'files'",
+        [],
+        |r| r.get(0),
+    )?;
+    // A fresh database already has the new CHECK from schema.sql, and a table without a `file_type`
+    // CHECK (a stripped-down table of an old test) has nothing to widen: only the version is bumped.
+    let already_migrated = current_sql.contains("'gcode'") && current_sql.contains("'resin'");
+    let new_sql = if already_migrated { None } else { files_sql_with_check(&current_sql, NEW_VALUES) };
+
+    // Remember the previous value: tests also call run_migrations without foreign_keys=ON.
+    let previously_enabled: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
+    // Must be off before the transaction starts, or DROP TABLE would cascade into every child table.
+    conn.pragma_update(None, "foreign_keys", false)?;
+
+    let result = (|| -> Result<(), DbError> {
+        let tx = conn.transaction()?;
+        if let Some(create_sql) = new_sql {
+            let columns: Vec<String> = {
+                let mut stmt = tx.prepare("SELECT name FROM pragma_table_info('files') ORDER BY cid")?;
+                let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                rows.collect::<Result<_, _>>()?
+            };
+            let column_list = columns.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+            // Indexes and triggers of `files` vanish with the table: keep their definitions.
+            let extras: Vec<String> = {
+                let mut stmt = tx.prepare(
+                    "SELECT sql FROM sqlite_master
+                     WHERE tbl_name = 'files' AND type IN ('index', 'trigger') AND sql IS NOT NULL
+                     ORDER BY rowid",
+                )?;
+                let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                rows.collect::<Result<_, _>>()?
+            };
+            tx.execute_batch(&create_sql)?;
+            tx.execute_batch(&format!(
+                "INSERT INTO files_new ({column_list}) SELECT {column_list} FROM files;
+                 DROP TABLE files;
+                 ALTER TABLE files_new RENAME TO files;"
+            ))?;
+            for sql in extras {
+                tx.execute_batch(&sql)?;
+            }
+            let has_violation = tx
+                .query_row("PRAGMA foreign_key_check", [], |_| Ok(()))
+                .optional()?
+                .is_some();
+            if has_violation {
+                return Err(DbError::Other(
+                    "file_type-CHECK-Migration: foreign_key_check fand verwaiste Referenzen nach dem Rebuild".into(),
+                ));
+            }
+        }
+        tx.pragma_update(None, "user_version", step_version)?;
+        tx.commit()?;
+        Ok(())
+    })();
+
+    // Always restore, even after an error.
+    conn.pragma_update(None, "foreign_keys", previously_enabled)?;
+    result
+}
+
+/// The `CREATE TABLE` text of `files` as stored by SQLite, renamed to `files_new` and with the
+/// value list of the `file_type` CHECK replaced.
+fn files_sql_with_check(current_sql: &str, values: &str) -> Option<String> {
+    let body = &current_sql[current_sql.find('(')?..];
+    let list_start = body.find("file_type IN (")? + "file_type IN (".len();
+    let list_len = body[list_start..].find(')')?;
+    Some(format!(
+        "CREATE TABLE files_new {}{}{}",
+        &body[..list_start],
+        values,
+        &body[list_start + list_len..]
+    ))
 }
 
 fn add_obj_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
@@ -1215,8 +1305,9 @@ mod tests {
         assert_eq!(declined, 1, "the declined source files are another table and stay");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 1, "the table is the step after the color column");
-        assert_eq!(CURRENT_SCHEMA_VERSION, 55);
+        assert_eq!(CURRENT_SCHEMA_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, "the file type step is the newest one");
+        assert_eq!(GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 2, "after the table of remembered copies, which follows the color column");
+        assert_eq!(CURRENT_SCHEMA_VERSION, 56);
     }
 
     #[test]
@@ -1248,6 +1339,155 @@ mod tests {
         add_known_copies_table(&by_step).unwrap();
         assert_eq!(shape(&by_step), shape(&fresh), "schema.sql and the step must describe the same table");
         assert_eq!(shape(&fresh).len(), 5);
+    }
+
+    /// A catalog at version 55 with the old `file_type` CHECK, rows in the tables that point at `files`.
+    fn catalog_with_old_file_type_check() -> (Connection, i64) {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let folder = crate::db::insert_folder(&conn, "root").unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/models/a.3mf", Some(folder)).unwrap();
+        crate::db::test_insert_minimal_file(&conn, "/models/b.stl", Some(folder)).unwrap();
+        conn.execute("INSERT INTO tags (id, name, color_hue) VALUES (1, 'deko', 10)", []).unwrap();
+        conn.execute("INSERT INTO file_tags VALUES (?1, 1)", [id]).unwrap();
+        conn.execute("INSERT INTO print_log (file_id, printed_at, created_at) VALUES (?1, 't', 't')", [id]).unwrap();
+        conn.execute(
+            "INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'a.png', '/models/a_extras/a.png', 'image', 't')",
+            [id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state)
+             VALUES (?1, 3, 'n', 'no_slice_data', 'missing')",
+            [id],
+        ).unwrap();
+        let old_sql: String = conn
+            .query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'files'", [], |r| r.get(0))
+            .unwrap();
+        let old_create = files_sql_with_check(&old_sql, "'3mf', 'stl', 'stp', 'obj'").expect("the CHECK is found");
+        conn.pragma_update(None, "foreign_keys", false).unwrap();
+        conn.execute_batch(&format!(
+            "{old_create};
+             INSERT INTO files_new SELECT * FROM files;
+             DROP TABLE files;
+             ALTER TABLE files_new RENAME TO files;
+             CREATE INDEX idx_files_folder_id ON files (folder_id);
+             CREATE INDEX idx_files_file_type ON files (file_type);
+             CREATE INDEX idx_files_content_hash ON files (content_hash);"
+        ))
+        .unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        conn.pragma_update(None, "user_version", GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION - 1).unwrap();
+        // Precondition: the old CHECK really is in force.
+        assert!(conn.execute("UPDATE files SET file_type = 'gcode' WHERE id = ?1", [id]).is_err());
+        (conn, id)
+    }
+
+    fn row_counts(conn: &Connection) -> Vec<(String, i64)> {
+        let names: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        names
+            .into_iter()
+            .map(|n| {
+                let c: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{n}\""), [], |r| r.get(0)).unwrap();
+                (n, c)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_gcode_resin_step_widens_the_check_and_keeps_every_row_of_every_table() {
+        let (mut conn, id) = catalog_with_old_file_type_check();
+        let counts_before = row_counts(&conn);
+        let snapshot_before = catalog_snapshot(&conn);
+        let columns = |conn: &Connection| -> Vec<(String, String, bool, bool)> {
+            conn.prepare("SELECT name, type, \"notnull\", pk FROM pragma_table_info('files') ORDER BY cid")
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        let shape_before = columns(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(row_counts(&conn), counts_before, "no row of any table is lost or added");
+        assert_eq!(catalog_snapshot(&conn), snapshot_before);
+        assert_eq!(columns(&conn), shape_before, "columns, types and nullability stay the same");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        let on: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert!(on, "foreign keys are switched on again");
+        let indexes: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'files'
+                   AND name IN ('idx_files_folder_id', 'idx_files_file_type', 'idx_files_content_hash')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(indexes, 3);
+        let violations: i64 = conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0)).unwrap();
+        assert_eq!(violations, 0);
+        // The children still follow their parent.
+        conn.execute("DELETE FROM files WHERE id = ?1", [id]).unwrap();
+        let tags: i64 = conn.query_row("SELECT COUNT(*) FROM file_tags", [], |r| r.get(0)).unwrap();
+        assert_eq!(tags, 0, "ON DELETE CASCADE still works after the rebuild");
+    }
+
+    #[test]
+    fn after_the_gcode_resin_step_both_new_types_are_accepted_and_others_are_not() {
+        let (mut conn, _) = catalog_with_old_file_type_check();
+        run_migrations(&mut conn).unwrap();
+        for (i, kind) in ["gcode", "resin"].iter().enumerate() {
+            let inserted = conn.execute(
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', ?1, ?2, 1, 't')",
+                rusqlite::params![format!("/p/{i}"), kind],
+            );
+            assert!(inserted.is_ok(), "{kind} is accepted");
+        }
+        let rejected = conn.execute(
+            "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/p/z', 'xyz', 1, 't')",
+            [],
+        );
+        assert!(rejected.is_err(), "an unknown type is still refused");
+    }
+
+    #[test]
+    fn the_gcode_resin_step_is_repeatable_and_a_fresh_schema_needs_no_rebuild() {
+        let (mut conn, _) = catalog_with_old_file_type_check();
+        run_migrations(&mut conn).unwrap();
+        let counts = row_counts(&conn);
+        // Run the step again on the migrated table (schema.sql has the same CHECK).
+        add_gcode_and_resin_to_file_type_check(&mut conn, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION).unwrap();
+        assert_eq!(row_counts(&conn), counts);
+        let mut fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut fresh).unwrap();
+        let sql = |c: &Connection| -> String {
+            c.query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'files'", [], |r| r.get(0)).unwrap()
+        };
+        assert!(sql(&fresh).contains("'gcode', 'resin'"));
+        assert!(sql(&conn).contains("'gcode', 'resin'"));
+    }
+
+    /// Counter-proof for the trap the step avoids: the same rebuild with foreign keys on deletes the
+    /// children of every file.
+    #[test]
+    fn a_rebuild_of_files_with_foreign_keys_on_would_lose_the_child_rows() {
+        let (conn, _) = catalog_with_old_file_type_check();
+        conn.execute_batch(
+            "CREATE TABLE files_new AS SELECT * FROM files;
+             DROP TABLE files;
+             ALTER TABLE files_new RENAME TO files;",
+        )
+        .unwrap();
+        let tags: i64 = conn.query_row("SELECT COUNT(*) FROM file_tags", [], |r| r.get(0)).unwrap();
+        assert_eq!(tags, 0, "dropping `files` with foreign keys on cascades into file_tags");
     }
 
     #[test]
@@ -1579,7 +1819,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 16);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 17);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

@@ -45,7 +45,7 @@ fn scan_candidates_observed<A: ArchiveTypes>(
                     }
                 }
             }
-        } else if root.is_none() || files::is_supported_extension(path) {
+        } else if root.is_none() || files::is_model_extension(path) {
             let folder_root = if job.source == ImportSource::FolderContents {
                 None
             } else {
@@ -251,7 +251,9 @@ pub fn run_models<A: ArchiveTypes>(
             job.data.lock().unwrap().groups.archive.push(serde_json::json!({"path":path.to_string_lossy(),"state":"pending","grantId":grant_id}));
             continue;
         }
-        if !files::is_supported_extension(path) {
+        // Folder runs only hand over models (see `visit`); sliced files get here as files the user
+        // named one by one.
+        if !files::is_catalog_extension(path) {
             skip(job, path, "unsupported");
             continue;
         }
@@ -617,6 +619,28 @@ mod folder_contents_tests {
         cancelled.cancel.store(true, Ordering::Release);
         assert!(scan_candidates(&cancelled, &roots, usize::MAX).is_empty());
         assert_eq!(cancelled.progress().archives_skipped, 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn folder_runs_leave_sliced_files_alone_but_files_named_one_by_one_pass() {
+        let dir = std::env::temp_dir().join(format!("folder_sliced_scan_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["model.stl", "print.gcode", "print.BGCODE", "layer.ctb"] {
+            std::fs::write(dir.join(name), b"test").unwrap();
+        }
+        let service = ImportJobs::default();
+        for source in [ImportSource::Folder, ImportSource::FolderContents] {
+            let job = service.enqueue(source, None, false, None).unwrap();
+            let found = scan_candidates(&job, std::slice::from_ref(&dir), usize::MAX);
+            let names: Vec<_> = found.iter().map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+            assert_eq!(names, vec!["model.stl"], "{source:?}: a folder run takes models only");
+        }
+        let job = service.enqueue(ImportSource::Files, None, false, None).unwrap();
+        let named = [dir.join("print.gcode"), dir.join("print.BGCODE")];
+        assert_eq!(scan_candidates(&job, &named, usize::MAX).len(), 2, "single files are always handed on");
+        assert!(files::is_catalog_extension(&named[0]) && files::is_catalog_extension(&named[1]));
+        assert!(!files::is_catalog_extension(&dir.join("layer.ctb")), "resin endings join in with the resin catalog");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
