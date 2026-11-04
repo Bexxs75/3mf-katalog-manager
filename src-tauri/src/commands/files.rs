@@ -2606,8 +2606,9 @@ mod tests {
             let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).unwrap().unwrap();
             assert_eq!(stored.file_type.as_str(), expected);
             assert_eq!(stored.file_type, FileType::Gcode);
-            assert!(stored.dimensions_mm.is_none() && stored.thumbnail_png.is_none(), "no reader yet");
-            assert!(stored.print_info.is_none());
+            assert!(stored.dimensions_mm.is_none() && stored.thumbnail_png.is_none(), "no model and no preview in this file");
+            let info = stored.print_info.expect("the G-Code reader stored its row");
+            assert_eq!(info.reader_version, katalog_core::gcode::GCODE_READER_VERSION);
             let listed = crate::db::list_files(&conn).unwrap();
             assert_eq!(listed.len(), 1);
         }

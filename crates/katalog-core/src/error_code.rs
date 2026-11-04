@@ -290,6 +290,14 @@ error_codes! {
     LogPreviewExpired => "logPreviewExpired",
     // Startup notice after an update.
     UpdateBackupFolderMissing => "updateBackupFolderMissing",
+    // Reading sliced G-code files. The file name never appears in a code or its params.
+    GcodeFileUnreadable => "gcodeFileUnreadable",
+    BgcodeNotBgcode => "bgcodeNotBgcode",
+    BgcodeVersionUnsupported => "bgcodeVersionUnsupported",
+    BgcodeCorrupt => "bgcodeCorrupt",
+    BgcodeChecksum => "bgcodeChecksum",
+    BgcodeCompressionUnsupported => "bgcodeCompressionUnsupported",
+    BgcodeTooLarge => "bgcodeTooLarge",
 }
 
 

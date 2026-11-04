@@ -709,15 +709,17 @@ fn validate_print_info_rows(conn: &Connection) -> Result<(), String> {
 
     // States, version and flags.
     let max_version = i64::from(PRINT_INFO_READER_VERSION);
+    let max_gcode_version = i64::from(katalog_core::gcode::GCODE_READER_VERSION);
     let states = count(
         "SELECT COUNT(*) FROM file_print_info
          WHERE slice_state IS NULL OR slice_state NOT IN ('sliced', 'no_slice_data', 'not_recognized', 'unreadable')
             OR settings_state IS NULL OR settings_state NOT IN ('read', 'missing', 'unreadable', 'not_attempted')
             OR reader_version IS NULL OR typeof(reader_version) <> 'integer' OR reader_version < 1 OR reader_version > ?1
+            OR (reader_version > ?2 AND EXISTS (SELECT 1 FROM files f WHERE f.id = file_print_info.file_id AND f.file_type = 'gcode'))
             OR nozzle_mixed IS NULL OR nozzle_mixed NOT IN (0, 1)
             OR bed_temp_mixed IS NULL OR bed_temp_mixed NOT IN (0, 1)
             OR nozzle_temp_mixed IS NULL OR nozzle_temp_mixed NOT IN (0, 1)",
-        &[&max_version],
+        &[&max_version, &max_gcode_version],
     )?;
     if states > 0 {
         return Err(reject("Zustand, Version oder Kennzeichen"));
@@ -2859,6 +2861,23 @@ mod tests {
             info_row(conn, 3, &[("printer_model", "'MK4'"), ("layer_height_mm", "0.2")]);
             plate_row(conn, 3, "1", &[("print_seconds", "4200")]);
         });
+        assert!(explicit.is_ok(), "{explicit:?}");
+        assert!(restore.is_ok(), "{restore:?}");
+    }
+
+    #[test]
+    fn a_gcode_row_with_a_reader_version_from_a_newer_build_is_rejected_but_a_3mf_row_of_that_version_is_not() {
+        // The G-code reader and the 3MF reader count their versions separately: version 2 does
+        // not exist for G-code yet, but it does for 3MF.
+        let too_new = (katalog_core::gcode::GCODE_READER_VERSION + 1).to_string();
+        let (explicit, restore) = print_data_case(|conn| {
+            crate::db::test_insert_minimal_file(conn, "/tmp/e.gcode", None).unwrap();
+            conn.execute("UPDATE files SET file_type = 'gcode' WHERE id = 3", []).unwrap();
+            info_row(conn, 3, &[("reader_version", too_new.as_str())]);
+        });
+        assert!(explicit.is_err(), "{explicit:?}");
+        assert!(restore.is_err());
+        let (explicit, restore) = print_data_case(|conn| info_row(conn, 1, &[("reader_version", too_new.as_str())]));
         assert!(explicit.is_ok(), "{explicit:?}");
         assert!(restore.is_ok(), "{restore:?}");
     }

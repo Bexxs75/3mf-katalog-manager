@@ -1,0 +1,59 @@
+; HEADER_BLOCK_START
+; BambuStudio 99.99.99.99
+; model printing time: 2h 18m 33s; total estimated time: 2h 18m 52s
+; total layer number: 100
+; total filament length [mm] : 5197.96,7153.11
+; total filament volume [cm^3] : 12502.57,17205.25
+; total filament weight [g] : 15.75,21.68
+; model label id: 47,58
+; filament_density: 1.26,1.26
+; filament_diameter: 1.75,1.75
+; max_z_height: 20.00
+; filament: 1,2
+; HEADER_BLOCK_END
+
+; CONFIG_BLOCK_START
+; cool_plate_temp = 35,35
+; curr_bed_type = Cool Plate
+; eng_plate_temp = 0,0
+; filament_colour = #E4002B;#00A651
+; filament_type = PLA;PETG
+; hot_plate_temp = 65,65
+; layer_height = 0.2
+; nozzle_diameter = 0.4
+; nozzle_temperature = 220,250
+; printer_model = Example Printer Y
+; CONFIG_BLOCK_END
+
+; EXECUTABLE_BLOCK_START
+G1 X10.0 Y20.0 E0.25 F1800
+G1 X11.0 Y21.0 E1.25 F1800
+G1 X12.0 Y22.0 E2.25 F1800
+G1 X13.0 Y23.0 E3.25 F1800
+G1 X14.0 Y24.0 E4.25 F1800
+G1 X15.0 Y25.0 E5.25 F1800
+G1 X16.0 Y26.0 E6.25 F1800
+G1 X17.0 Y27.0 E7.25 F1800
+G1 X18.0 Y28.0 E8.25 F1800
+G1 X19.0 Y29.0 E9.25 F1800
+G1 X20.0 Y30.0 E10.25 F1800
+G1 X21.0 Y31.0 E11.25 F1800
+G1 X22.0 Y32.0 E12.25 F1800
+G1 X23.0 Y33.0 E13.25 F1800
+G1 X24.0 Y34.0 E14.25 F1800
+G1 X25.0 Y35.0 E15.25 F1800
+G1 X26.0 Y36.0 E16.25 F1800
+G1 X27.0 Y37.0 E17.25 F1800
+G1 X28.0 Y38.0 E18.25 F1800
+G1 X29.0 Y39.0 E19.25 F1800
+G1 X30.0 Y40.0 E20.25 F1800
+G1 X31.0 Y41.0 E21.25 F1800
+G1 X32.0 Y42.0 E22.25 F1800
+G1 X33.0 Y43.0 E23.25 F1800
+G1 X34.0 Y44.0 E24.25 F1800
+G1 X35.0 Y45.0 E25.25 F1800
+G1 X36.0 Y46.0 E26.25 F1800
+G1 X37.0 Y47.0 E27.25 F1800
+G1 X38.0 Y48.0 E28.25 F1800
+G1 X39.0 Y49.0 E29.25 F1800
+; EXECUTABLE_BLOCK_END

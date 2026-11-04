@@ -222,17 +222,20 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
             )
         }
         Some("gcode") | Some("bgcode") => {
-            // Catalog entry only; the G-Code reader follows in a later step.
+            // Only the start and the end of the file are read; a file that cannot be read
+            // stays catalogued without print data.
+            let read = crate::gcode::import_gcode_file(path);
+            print_info = read.print_info;
             (
                 FileType::Gcode,
                 None,
                 None,
                 None,
                 Vec::new(),
-                BTreeMap::new(),
-                None,
-                None,
-                None,
+                read.metadata,
+                read.thumbnail_png,
+                read.plate_count,
+                read.slice_info_json,
             )
         }
         _ => return Err("nicht unterstütztes Dateiformat".into()),
@@ -426,17 +429,19 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
             )
         }
         Some("gcode") | Some("bgcode") => {
-            // Catalog entry only; the G-Code reader follows in a later step.
+            file.seek(SeekFrom::Start(0)).map_err(|_| "read_failed")?;
+            let read = crate::gcode::import_gcode(&mut file);
+            print_info = read.print_info;
             (
                 FileType::Gcode,
                 None,
                 None,
                 None,
                 Vec::new(),
-                BTreeMap::new(),
-                None,
-                None,
-                None,
+                read.metadata,
+                read.thumbnail_png,
+                read.plate_count,
+                read.slice_info_json,
             )
         }
         _ => return Err("unsupported".into()),

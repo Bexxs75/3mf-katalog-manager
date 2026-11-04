@@ -1740,6 +1740,13 @@ export interface Translations {
   errCompanionTooLarge: string;
   errCompanionNotFound: string;
   errUpdateBackupFolderMissing: string;
+  errGcodeFileUnreadable: string;
+  errBgcodeNotBgcode: string;
+  errBgcodeVersionUnsupported: string;
+  errBgcodeCorrupt: string;
+  errBgcodeChecksum: string;
+  errBgcodeCompressionUnsupported: string;
+  errBgcodeTooLarge: string;
   stSaveAsStl: string;
   stStepNoPreview: string;
   stDialogTitle: string;
