@@ -10,6 +10,7 @@ pub type ImportResult<T> = Result<T, ImportError>;
 use ImportError as CmdError;
 use ImportResult as CmdResult;
 use crate::db::{self, error::DbError, models::NewFile};
+use crate::error_code::ErrorCode;
 use crate::read::ModelFileDto;
 use files::ImportResultDto;
 use placement::reject_if_sensitive_path;
@@ -549,7 +550,7 @@ impl<A: ArchiveTypes> ImportJobs<A> {
         confine_to: Vec<PathBuf>,
     ) -> CmdResult<Arc<ImportJob<A>>> {
         if options.fixed_folder.is_some() && (placement || source != ImportSource::Files || !matches!(input, JobInput::Models(_))) {
-            return Err(CmdError::expected("fixed folder requires explicit files without placement"));
+            return Err(CmdError::coded(ErrorCode::ImportFixedFolderNeedsFiles));
         }
         let share = self.gate.import();
         static SEQUENCE: AtomicU64 = AtomicU64::new(0);

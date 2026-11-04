@@ -1,5 +1,6 @@
 use super::{ReadError, ReadResult};
 use crate::db;
+use crate::error_code::ErrorCode;
 use crate::db::printers as p;
 use rusqlite::Connection;
 use serde::Serialize;
@@ -286,7 +287,7 @@ pub fn get_filament_spool_image(conn: &Connection, id: i64) -> ReadResult<Filame
         .optional()
         .map_err(sql_error)?;
     let bytes = bytes.ok_or_else(|| {
-        ReadError::expected("Spule nicht gefunden").with_code(super::GeometryErrorCode::NotFound)
+        ReadError::coded(ErrorCode::SpoolNotFound).with_code(super::GeometryErrorCode::NotFound)
     })?;
     Ok(FilamentSpoolImage {
         image_png: bytes.map(|b| base64::engine::general_purpose::STANDARD.encode(b)),

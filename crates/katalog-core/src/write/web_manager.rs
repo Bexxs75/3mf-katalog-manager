@@ -2,10 +2,10 @@
 //! used by the desktop adapters. No nested transactions or stringified SQL errors.
 use super::{
     manager as m, printers as desktop,
-    web::{exists, invalid, outcome, transaction, Outcome},
+    web::{exists, invalid, invalid_with, outcome, transaction, Outcome},
     WriteError, WriteResult,
 };
-use crate::{db, read::manager as read};
+use crate::{db, error_code::ErrorCode, read::manager as read};
 use db::printers as p;
 use rusqlite::Connection;
 
@@ -19,13 +19,15 @@ pub const MAX_WEIGHT: f64 = f64::MAX / 10.0;
 // errors retain their typed Busy/Locked classification through WriteError.
 fn business(e: db::error::DbError) -> WriteError {
     match e {
-        db::error::DbError::Other(message) => WriteError::expected(message),
+        // The German text of such a rejection is not for the interface: the web
+        // answers with the generic refusal (the browser never offers these cases).
+        db::error::DbError::Other(_) => WriteError::coded(ErrorCode::ReqInvalidArguments),
         e => e.into(),
     }
 }
 fn text(value: &str) -> WriteResult<()> {
     if value.encode_utf16().count() > 120 {
-        return Err(invalid("Text darf höchstens 120 UTF-16-Einheiten haben"));
+        return Err(invalid_with(ErrorCode::TextTooLong, [120]));
     }
     Ok(())
 }
@@ -38,16 +40,16 @@ fn optional_text(value: &Option<String>) -> WriteResult<()> {
 fn quota(c: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql], max: i64) -> WriteResult<()> {
     let n: i64 = c.query_row(sql, args, |r| r.get(0))?;
     if n >= max {
-        return Err(invalid("Web-Obergrenze erreicht"));
+        return Err(invalid_with(ErrorCode::WebLimitReached, [max]));
     }
     Ok(())
 }
 fn prepare(s: &read::FilamentSpoolDto) -> WriteResult<db::models::NewFilamentSpool> {
     if !db::models::SPOOL_KINDS.contains(&s.kind.as_str()) {
-        return Err(invalid("Ungültige Materialart"));
+        return Err(invalid(ErrorCode::InvalidMaterialKind));
     }
     if s.material.trim().is_empty() {
-        return Err(invalid("Material darf nicht leer sein"));
+        return Err(invalid(ErrorCode::MaterialEmpty));
     }
     text(&s.material)?;
     for v in [&s.manufacturer, &s.color, &s.location] {
@@ -57,15 +59,13 @@ fn prepare(s: &read::FilamentSpoolDto) -> WriteResult<db::models::NewFilamentSpo
         .as_ref()
         .is_some_and(|s| !p::is_valid_color_hex(s))
     {
-        return Err(invalid("Ungültiger Farbwert"));
+        return Err(invalid(ErrorCode::InvalidColor));
     }
-    if p::validate_color_list(&s.color_hexes).is_err() {
-        return Err(invalid("Ungültiger Farbwert"));
-    }
+    m::validate_color_hexes(&s.color_hexes)?;
     if !s.diameter_mm.is_finite()
         || (s.kind == "filament" && !(s.diameter_mm > 0.0 && s.diameter_mm <= 5.0))
     {
-        return Err(invalid("Ungültiger Durchmesser"));
+        return Err(invalid(ErrorCode::InvalidDiameter));
     }
     if !s.original_weight_g.is_finite()
         || s.original_weight_g <= 0.0
@@ -75,10 +75,10 @@ fn prepare(s: &read::FilamentSpoolDto) -> WriteResult<db::models::NewFilamentSpo
         || s.remaining_weight_g < 0.0
         || s.remaining_weight_g > s.original_weight_g
     {
-        return Err(invalid("Ungültige Menge"));
+        return Err(invalid(ErrorCode::InvalidAmount));
     }
     if s.price.is_some_and(|p| !p.is_finite() || p < 0.0) {
-        return Err(invalid("Ungültiger Preis"));
+        return Err(invalid(ErrorCode::InvalidPrice));
     }
     m::filament_dto_to_record(s)
 }
@@ -133,21 +133,21 @@ pub fn restock_filament_spool(
     location: Option<String>,
 ) -> WriteResult<Outcome<Vec<read::FilamentSpoolDto>>> {
     if !(1..=m::RESTOCK_MAX_COUNT).contains(&count) {
-        return Err(invalid("Ungültige Anzahl"));
+        return Err(invalid(ErrorCode::InvalidCount));
     }
     if !weight.is_finite()
         || weight > MAX_WEIGHT
         || p::round_tenth(weight) <= 0.0
         || price.is_some_and(|v| !v.is_finite() || !(0.0..=MAX_WEIGHT).contains(&v))
     {
-        return Err(invalid("Ungültige Menge"));
+        return Err(invalid(ErrorCode::InvalidAmount));
     }
     optional_text(&location)?;
     transaction(c, |c| {
         exists(c, "filament_spools", template_id)?;
         let n: i64 = c.query_row("SELECT count(*) FROM filament_spools", [], |r| r.get(0))?;
         if n + count > MAX_SPOOLS {
-            return Err(invalid("Web-Obergrenze erreicht"));
+            return Err(invalid_with(ErrorCode::WebLimitReached, [MAX_SPOOLS]));
         }
         let created = m::restock_in(c, template_id, count, weight, price, location)?;
         // c.changes() would only report the last insert; the audit counts all rows.
@@ -163,14 +163,14 @@ pub fn consume_resin(
     amount_ml: f64,
 ) -> WriteResult<Outcome<read::FilamentSpoolDto>> {
     if !amount_ml.is_finite() || amount_ml > MAX_WEIGHT || p::round_tenth(amount_ml) <= 0.0 {
-        return Err(invalid("Ungültige Menge"));
+        return Err(invalid(ErrorCode::InvalidAmount));
     }
     transaction(c, |c| {
         exists(c, "filament_spools", id)?;
         let kind: String =
             c.query_row("SELECT kind FROM filament_spools WHERE id=?1", [id], |r| r.get(0))?;
         if kind != db::models::SPOOL_KIND_RESIN {
-            return Err(invalid("Verbrauch abbuchen gibt es nur für Resin"));
+            return Err(invalid(ErrorCode::ConsumeOnlyResin));
         }
         let updated = m::consume_resin_in(c, id, p::round_tenth(amount_ml))?;
         Ok(outcome(updated, c.changes()))
@@ -305,7 +305,7 @@ pub fn load_spool(
         exists(c, "material_units", unit)?;
         // Prevent overflow in the desktop helper's human-readable slot number.
         if !(0..16).contains(&slot) {
-            return Err(invalid("Ungültiger Slot"));
+            return Err(invalid(ErrorCode::InvalidSlot));
         }
         let same: bool = c.query_row(
             "SELECT unit_id IS ?1 AND slot_index IS ?2 FROM filament_spools WHERE id=?3",

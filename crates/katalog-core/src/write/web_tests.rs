@@ -6,7 +6,7 @@ fn web_atomic_membership_and_bounds() {
     let b = db::test_insert_minimal_file(&c, "/b.3mf", None).unwrap();
     assert!(matches!(
         set_favorite(&mut c, 999, true),
-        Err(WriteError::NotFound { .. })
+        Err(WriteError::NotFound { .. } | WriteError::Coded { kind: crate::write::CodedKind::NotFound, .. })
     ));
     set_favorite(&mut c, a, true).unwrap();
     assert!(db::get_file(&c, a).unwrap().unwrap().favorite);
@@ -64,7 +64,7 @@ fn every_web_operation_succeeds_and_checks_missing_records() {
     macro_rules! missing {
         ($e:expr) => {
             assert!(
-                matches!($e, Err(WriteError::NotFound { .. })),
+                matches!($e, Err(WriteError::NotFound { .. } | WriteError::Coded { kind: crate::write::CodedKind::NotFound, .. })),
                 stringify!($e)
             );
         };
@@ -93,11 +93,11 @@ fn every_web_operation_succeeds_and_checks_missing_records() {
     missing!(reorder_collection(&mut c, 999, &[]));
     assert!(matches!(
         reorder_queue(&mut c, &[(999, 0)]),
-        Err(WriteError::Invalid { .. })
+        Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
     ));
     assert!(matches!(
         reorder_collection(&mut c, cid, &[(999, 0)]),
-        Err(WriteError::Invalid { .. })
+        Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
     ));
     add_tag(&mut c, id, "test").unwrap();
     assert_eq!(add_tag(&mut c, id, "test").unwrap().changes, 0);
@@ -273,19 +273,19 @@ fn web_rejects_blank_names_and_tags() {
     for blank in ["", " \t\n", "\u{2003}"] {
         assert!(matches!(
             add_tag(&mut c, id, blank),
-            Err(WriteError::Invalid { .. })
+            Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
         ));
         assert!(matches!(
             remove_tag(&mut c, id, blank),
-            Err(WriteError::Invalid { .. })
+            Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
         ));
         assert!(matches!(
             create_collection(&mut c, blank),
-            Err(WriteError::Invalid { .. })
+            Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
         ));
         assert!(matches!(
             rename_collection(&mut c, cid, blank),
-            Err(WriteError::Invalid { .. })
+            Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
         ));
     }
 }
@@ -306,7 +306,7 @@ fn web_source_url_trims_before_length_and_accepts_case_insensitive_scheme() {
     ] {
         assert!(matches!(
             set_source_url(&mut c, id, Some(url.into())),
-            Err(WriteError::Invalid { .. })
+            Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
         ));
     }
 }
@@ -367,7 +367,7 @@ fn web_print_log_validates_timestamp_and_desktop_image_signatures() {
     ] {
         assert!(matches!(
             add_print_log_entry(&mut c, id, date.into(), None, None),
-            Err(WriteError::Invalid { .. })
+            Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
         ));
     }
     for bytes in [&b"GIF89a"[..], b"<svg/>", b"", b"RIFF1234NOPE", b"\x89PNG"] {
@@ -379,7 +379,7 @@ fn web_print_log_validates_timestamp_and_desktop_image_signatures() {
                 None,
                 Some(base64::engine::general_purpose::STANDARD.encode(bytes))
             ),
-            Err(WriteError::Invalid { .. })
+            Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
         ));
     }
     assert!(db::list_print_log_entries(&c, id).unwrap().is_empty());
@@ -430,7 +430,7 @@ fn snapshot_limits_formats_and_rollback() {
     )
     .unwrap_err();
     assert!(
-        matches!(err, WriteError::Invalid { message } if message == "Snapshot-Base64 ist zu groß")
+        matches!(err, WriteError::Invalid { message } if message == "imageUploadTooLarge")
     );
     for input in [
         "!".into(),
@@ -439,7 +439,7 @@ fn snapshot_limits_formats_and_rollback() {
     ] {
         assert!(matches!(
             set_render_snapshot(&mut c, id, &input),
-            Err(WriteError::Invalid { .. })
+            Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })
         ));
         assert_eq!(
             db::get_file(&c, id)
@@ -499,7 +499,7 @@ fn custom_image_accepts_the_three_formats_and_rejects_everything_else() {
     assert_eq!(stored(&c).unwrap(), max);
     assert!(matches!(
         set_custom_image(&mut c, 999, &encode(b"\xff\xd8\xff")),
-        Err(WriteError::NotFound { .. })
+        Err(WriteError::NotFound { .. } | WriteError::Coded { kind: crate::write::CodedKind::NotFound, .. })
     ));
     // The render snapshot is a different column and must stay untouched.
     assert!(db::get_file(&c, id).unwrap().unwrap().render_snapshot_png.is_none());
@@ -547,8 +547,8 @@ fn web_block_and_unblock_are_idempotent_and_count_only_real_changes() {
 fn web_block_rejects_bad_names_and_the_list_cap_without_changing_anything() {
     let mut c = db::connect_in_memory().unwrap();
     for bad in ["", "   ", "a\nb", "a\u{7}", &"x".repeat(101)] {
-        assert!(matches!(block_auto_tag(&mut c, bad), Err(WriteError::Invalid { .. })), "{bad:?}");
-        assert!(matches!(unblock_auto_tag(&mut c, bad), Err(WriteError::Invalid { .. })), "{bad:?}");
+        assert!(matches!(block_auto_tag(&mut c, bad), Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })), "{bad:?}");
+        assert!(matches!(unblock_auto_tag(&mut c, bad), Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })), "{bad:?}");
     }
     assert!(blocked(&c).is_empty());
     block_auto_tag(&mut c, &"x".repeat(100)).unwrap();
@@ -556,11 +556,40 @@ fn web_block_rejects_bad_names_and_the_list_cap_without_changing_anything() {
         block_auto_tag(&mut c, &format!("tag{i}")).unwrap();
     }
     assert_eq!(blocked(&c).len(), db::blocked_tags::MAX_BLOCKED_TAGS);
-    assert!(matches!(block_auto_tag(&mut c, "one-too-many"), Err(WriteError::Invalid { .. })));
+    assert!(matches!(block_auto_tag(&mut c, "one-too-many"), Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })));
     // Blocking a tag that is already on the full list still succeeds.
     assert_eq!(block_auto_tag(&mut c, "tag1").unwrap().changes, 0);
     assert_eq!(blocked(&c).len(), db::blocked_tags::MAX_BLOCKED_TAGS);
     // Lifting a block frees a slot.
     unblock_auto_tag(&mut c, "tag1").unwrap();
     block_auto_tag(&mut c, "one-too-many").unwrap();
+}
+
+/// Rejections name a registered code and carry only numbers as parameters.
+#[test]
+fn rejections_carry_codes_and_numbers_not_sentences() {
+    use crate::error_code::ErrorCode;
+    use crate::write::CodedKind;
+    let mut c = db::connect_in_memory().unwrap();
+    let id = db::test_insert_minimal_file(&c, "/a.3mf", None).unwrap();
+    let coded = |e: WriteError| match e {
+        WriteError::Coded { kind, code, params } => (kind, code, params),
+        other => panic!("not coded: {other:?}"),
+    };
+    let (kind, code, params) = coded(add_tag(&mut c, id, " ").unwrap_err());
+    assert_eq!((kind, code, params), (CodedKind::Invalid, ErrorCode::TextEmpty, vec![]));
+    let (_, code, params) = coded(add_tag(&mut c, id, &"x".repeat(101)).unwrap_err());
+    assert_eq!((code, params), (ErrorCode::TagNameTooLong, vec!["100".to_string()]));
+    let (_, code, params) = coded(set_source_url(&mut c, id, Some("x".repeat(2049))).unwrap_err());
+    assert_eq!((code, params), (ErrorCode::TextTooLong, vec!["2048".to_string()]));
+    let (_, code, params) = coded(set_license(&mut c, &vec![id; 501], None).unwrap_err());
+    assert_eq!((code, params), (ErrorCode::ReqIdsTooMany, vec!["500".to_string()]));
+    let (_, code, _) = coded(set_license(&mut c, &[id], Some(&"x".repeat(201))).unwrap_err());
+    assert_eq!(code, ErrorCode::LicenseInvalid);
+    let (kind, code, _) = coded(set_favorite(&mut c, 999, true).unwrap_err());
+    assert_eq!((kind, code), (CodedKind::NotFound, ErrorCode::EntryNotFound));
+    let (kind, code, _) = coded(remove_files_from_catalog(&mut c, &[999]).unwrap_err());
+    assert_eq!((kind, code), (CodedKind::NotFound, ErrorCode::ModelNotFoundOrTrashed));
+    let (_, code, _) = coded(remove_files_from_catalog(&mut c, &[0]).unwrap_err());
+    assert_eq!(code, ErrorCode::InvalidCatalogId);
 }

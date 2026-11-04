@@ -248,7 +248,7 @@ pub fn move_file_to_folder_with_conn(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
     if file.deleted_at.is_some() {
-        return Err(CmdError::expected("file is in trash"));
+        return Err(CmdError::coded(ErrorCode::FileInTrash));
     }
 
     let target_dir: std::path::PathBuf = match folder_id {

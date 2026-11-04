@@ -1,6 +1,7 @@
 use super::{WriteError, WriteResult};
 use crate::db;
 use crate::db::printers as p;
+use crate::error_code::ErrorCode;
 use crate::read::manager::{list_printers_with_conn, unit_dto, MaterialUnitDto, PrinterDto};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -62,25 +63,29 @@ pub fn add_printer_with_conn(
         .ok_or_else(|| "Drucker nach dem Anlegen nicht gefunden".to_string().into())
 }
 pub fn validate_printer_details(details: &PrinterDetails) -> WriteResult<()> {
-    for (value, label) in [
-        (&details.manufacturer, "Hersteller"),
-        (&details.model, "Modellname"),
+    for (value, code) in [
+        (&details.manufacturer, ErrorCode::PrinterManufacturerTooLong),
+        (&details.model, ErrorCode::PrinterModelTooLong),
     ] {
         if let Some(value) = value {
-            db::error::validate_text_length(value, 120, label)
-                .map_err(|e| WriteError::expected(e.to_string()))?;
+            db::error::validate_text_length(value, 120, code)?;
         }
     }
-    for (value, min, max, label) in [
-        (details.nozzle_mm, 0.1, 2.0, "Düse"),
-        (details.bed_x_mm, 1.0, 2000.0, "Bauraum X"),
-        (details.bed_y_mm, 1.0, 2000.0, "Bauraum Y"),
-        (details.bed_z_mm, 1.0, 2000.0, "Bauraum Z"),
+    // The axis letter is data, not wording; the nozzle has a code of its own.
+    for (value, min, max, axis) in [
+        (details.nozzle_mm, 0.1, 2.0, None),
+        (details.bed_x_mm, 1.0, 2000.0, Some("X")),
+        (details.bed_y_mm, 1.0, 2000.0, Some("Y")),
+        (details.bed_z_mm, 1.0, 2000.0, Some("Z")),
     ] {
         if value.is_some_and(|v| !v.is_finite() || v < min || v > max) {
-            return Err(WriteError::expected(format!(
-                "{label} muss zwischen {min} und {max} mm liegen"
-            )));
+            return Err(match axis {
+                None => WriteError::coded_with(ErrorCode::PrinterNozzleOutOfRange, [min, max]),
+                Some(axis) => WriteError::coded_with(
+                    ErrorCode::PrinterBedOutOfRange,
+                    [axis.to_string(), min.to_string(), max.to_string()],
+                ),
+            });
         }
     }
     Ok(())
@@ -96,7 +101,7 @@ pub fn update_details(
             rusqlite::params![clean(details.manufacturer), clean(details.model), details.nozzle_mm, details.bed_x_mm, details.bed_y_mm, details.bed_z_mm, id],
         )?;
     if changed == 0 {
-        return Err(db::error::DbError::Invalid("Drucker nicht gefunden".into()));
+        return Err(db::error::DbError::coded(ErrorCode::PrinterNotFound));
     }
     Ok(())
 }

@@ -12,7 +12,7 @@ pub fn load_geometry_source(conn: &Connection, file_id: &str) -> ReadResult<Geom
     let file = db::get_file(conn, id)
         .map_err(ReadError::from)?
         .ok_or_else(|| {
-            ReadError::expected("file not found").with_code(GeometryErrorCode::NotFound)
+            ReadError::coded(ErrorCode::FileNotFound).with_code(GeometryErrorCode::NotFound)
         })?;
     Ok(GeometrySource {
         path: PathBuf::from(file.current_path()),
@@ -63,10 +63,8 @@ pub(super) fn resolve_within_roots(path: &Path, allowed_roots: Option<&[PathBuf]
         }
     }
     if !allowed {
-        return Err(ReadError::expected(
-            "Dateipfad liegt außerhalb der freigegebenen Verzeichnisse",
-        )
-        .with_code(GeometryErrorCode::Unreadable));
+        // The path itself is never a parameter: it would show the server's layout.
+        return Err(ReadError::coded(ErrorCode::DlPathNotAllowed).with_code(GeometryErrorCode::Unreadable));
     }
     Ok(canonical)
 }
@@ -174,8 +172,9 @@ pub fn geometry_io_error(e: std::io::Error) -> ReadError {
     } else {
         Code::Unreadable
     };
-    if matches!(code, Code::TooLarge | Code::NotFound) {
-        ReadError::expected(e.to_string()).with_code(code)
+    // The system's own wording names paths, so a missing file becomes a plain code.
+    if code == Code::NotFound {
+        ReadError::coded(ErrorCode::FileNotFound).with_code(code)
     } else {
         ReadError::from(e.to_string()).with_code(code)
     }
@@ -190,10 +189,10 @@ fn geometry_3mf_error(e: threemf::ThreeMfError) -> ReadError {
         threemf::ThreeMfError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => Code::NotFound,
         _ => Code::Unreadable,
     };
-    if matches!(code, Code::TooLarge | Code::NotFound) {
-        ReadError::expected(e.to_string()).with_code(code)
-    } else {
-        ReadError::from(e.to_string()).with_code(code)
+    match code {
+        Code::TooLarge => ReadError::coded(ErrorCode::PreviewTooLarge).with_code(code),
+        Code::NotFound => ReadError::coded(ErrorCode::FileNotFound).with_code(code),
+        _ => ReadError::from(e.to_string()).with_code(code),
     }
 }
 
@@ -211,7 +210,7 @@ fn read_geometry_bytes(path: &Path, extension: &str) -> ReadResult<Vec<u8>> {
     )?;
     let max = crate::safe_file::MAX_MODEL_FILE_BYTES;
     let too_large = || {
-        ReadError::expected(format!("Datei überschreitet {max} Bytes"))
+        ReadError::coded_with(ErrorCode::FileTooLarge, [max])
             .with_code(super::GeometryErrorCode::TooLarge)
     };
     if file.metadata().map_err(geometry_io_error)?.len() > max {
@@ -236,8 +235,8 @@ const MAX_PREVIEW_TRIANGLES: u64 = 3_000_000;
 const MAX_ASCII_STL_PREVIEW_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_OBJ_PREVIEW_BYTES: u64 = 128 * 1024 * 1024;
 
-fn preview_too_large(detail: String) -> ReadError {
-    ReadError::expected(detail).with_code(super::GeometryErrorCode::TooLarge)
+fn preview_too_large() -> ReadError {
+    ReadError::coded(ErrorCode::PreviewTooLarge).with_code(super::GeometryErrorCode::TooLarge)
 }
 
 /// Rejects oversized files before reading them in full. OBJ triangle counts are
@@ -266,23 +265,17 @@ fn check_preview_size(
                 let count = u64::from(u32::from_le_bytes([head[80], head[81], head[82], head[83]]));
                 if len == 84 + 50 * count {
                     if count > max_triangles {
-                        return Err(preview_too_large(format!(
-                            "model too large for 3D preview ({count} triangles)"
-                        )));
+                        return Err(preview_too_large());
                     }
                     return Ok(());
                 }
             }
             if len > max_ascii_stl_bytes {
-                return Err(preview_too_large(format!(
-                    "model too large for 3D preview ({len} bytes)"
-                )));
+                return Err(preview_too_large());
             }
         }
         "obj" if len > max_obj_bytes => {
-            return Err(preview_too_large(format!(
-                "model too large for 3D preview ({len} bytes)"
-            )));
+            return Err(preview_too_large());
         }
         _ => {}
     }
@@ -316,7 +309,7 @@ fn load_geometry_with_obj_limit(
             max_obj_triangles,
         )
         .map_err(|e| match e {
-            obj::ObjError::TooLarge => preview_too_large(e.to_string()),
+            obj::ObjError::TooLarge => preview_too_large(),
             _ => unreadable(e.to_string()),
         })?],
         "3mf" => match web_limits {
@@ -325,10 +318,8 @@ fn load_geometry_with_obj_limit(
         }
         .map_err(geometry_3mf_error)?,
         _ => {
-            return Err(ReadError::expected(format!(
-                "nicht unterstütztes Dateiformat: {extension}"
-            ))
-            .with_code(Code::Unsupported))
+            return Err(ReadError::coded_with(ErrorCode::FileFormatUnsupported, [&extension])
+                .with_code(Code::Unsupported))
         }
     };
     if meshes

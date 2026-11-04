@@ -214,7 +214,8 @@ mod tests {
         ] {
             let error = update_printer_details_with_conn(&mut conn, id, details).unwrap_err();
             assert!(error.expected);
-            assert!(error.message.contains("120"));
+            assert!(error.message == "printerManufacturerTooLong" || error.message == "printerModelTooLong", "{}", error.message);
+            assert_eq!(error.params, vec!["120".to_string()]);
         }
         let saved = list_printers_with_conn(&conn).unwrap().remove(0);
         assert_eq!(saved.manufacturer, Some("a".repeat(120)));
@@ -523,7 +524,7 @@ fn manager_desktop_error_flags_remain_distinct_from_web() {
     assert_eq!(bad_kind.message, "unbekannte Druckerart: other");
     let empty = add_printer_with_conn(&mut c, " ", "H", "filament").unwrap_err();
     assert!(empty.expected);
-    assert_eq!(empty.message, "Name darf nicht leer sein");
+    assert_eq!(empty.message, "printerNameEmpty");
     let missing = unload_spool_with_conn(&mut c, "999", None).unwrap_err();
     assert!(!missing.expected);
     assert_eq!(missing.message, "Spule 999 existiert nicht");
@@ -533,5 +534,5 @@ fn manager_desktop_error_flags_remain_distinct_from_web() {
     let missing =
         update_printer_details_with_conn(&mut c, 999, PrinterDetails::default()).unwrap_err();
     assert!(missing.expected);
-    assert_eq!(missing.message, "Drucker nicht gefunden");
+    assert_eq!(missing.message, "printerNotFound");
 }

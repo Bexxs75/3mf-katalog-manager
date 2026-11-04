@@ -53,10 +53,11 @@ impl From<rusqlite::Error> for DbError {
     }
 }
 
-/// Count UTF-16 units to match HTML input maxLength, including non-BMP text.
-pub fn validate_text_length(value: &str, max: usize, label: &str) -> Result<(), DbError> {
+/// Count UTF-16 units to match HTML input maxLength, including non-BMP text. `code`
+/// names the field that was too long; the limit travels as its only parameter.
+pub fn validate_text_length(value: &str, max: usize, code: ErrorCode) -> Result<(), DbError> {
     if value.encode_utf16().take(max + 1).count() > max {
-        return Err(DbError::Invalid(format!("{label} darf höchstens {max} Zeichen enthalten")));
+        return Err(DbError::coded_with(code, [max]));
     }
     Ok(())
 }

@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use rusqlite::{params, Connection};
 
 use super::error::{validate_text_length, DbError};
+use crate::error_code::ErrorCode;
 use super::printer_link::{get_setting, set_setting};
 
 /// Longest tag name the catalog accepts (UTF-16 units, like the tag input).
@@ -20,11 +21,11 @@ pub const MAX_BLOCKED_TAGS: usize = 500;
 pub fn normalize_blocked_name(name: &str) -> Result<String, DbError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return Err(DbError::Invalid("Tag-Name darf nicht leer sein".to_string()));
+        return Err(DbError::coded(ErrorCode::TagNameEmpty));
     }
-    validate_text_length(trimmed, MAX_TAG_NAME_LEN, "Tag")?;
+    validate_text_length(trimmed, MAX_TAG_NAME_LEN, ErrorCode::TagNameTooLong)?;
     if trimmed.chars().any(char::is_control) {
-        return Err(DbError::Invalid("Tag-Name enthält ungültige Zeichen".to_string()));
+        return Err(DbError::coded(ErrorCode::TagNameInvalid));
     }
     Ok(comparison_key(trimmed))
 }
@@ -43,7 +44,7 @@ pub fn block_auto_tag(conn: &Connection, name: &str) -> Result<String, DbError> 
     }
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |r| r.get(0))?;
     if count as usize >= MAX_BLOCKED_TAGS {
-        return Err(DbError::Invalid(format!("Es können höchstens {MAX_BLOCKED_TAGS} Tags gesperrt werden")));
+        return Err(DbError::coded_with(ErrorCode::BlockedTagsLimit, [MAX_BLOCKED_TAGS]));
     }
     conn.execute(
         "INSERT OR IGNORE INTO blocked_auto_tags (name, blocked_at) VALUES (?1, ?2)",

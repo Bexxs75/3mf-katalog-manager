@@ -19,13 +19,13 @@ fn setup() -> (Connection, i64, i64, i64) {
 }
 fn invalid<T: std::fmt::Debug>(result: Result<T, WriteError>) {
     assert!(
-        matches!(result, Err(WriteError::Invalid { .. })),
+        matches!(result, Err(WriteError::Invalid { .. } | WriteError::Coded { kind: crate::write::CodedKind::Invalid, .. })),
         "{result:?}"
     );
 }
 fn missing<T: std::fmt::Debug>(result: Result<T, WriteError>) {
     assert!(
-        matches!(result, Err(WriteError::NotFound { .. })),
+        matches!(result, Err(WriteError::NotFound { .. } | WriteError::Coded { kind: crate::write::CodedKind::NotFound, .. })),
         "{result:?}"
     );
 }
@@ -588,4 +588,31 @@ fn consume_resin_rejects_bad_amounts_filament_and_missing_bottles() {
     missing(consume_resin(&mut c, 999_999, 10.0));
     assert_eq!(db::get_filament_spool(&c, bottle).unwrap().remaining_weight_g, 100.0);
     assert_eq!(db::get_filament_spool(&c, filament).unwrap().remaining_weight_g, 800.0);
+}
+
+/// Spec test 3: an invalid color value is a 422 with its own code, in both the single
+/// value and the list, and the list limit has a code of its own.
+#[test]
+fn colors_and_amounts_are_rejected_with_their_codes() {
+    use crate::error_code::ErrorCode;
+    let code = |result: Result<Outcome<r::FilamentSpoolDto>, WriteError>| match result {
+        Err(WriteError::Coded { code, params, .. }) => (code, params),
+        other => panic!("not coded: {other:?}"),
+    };
+    let mut c = db::connect_in_memory().unwrap();
+    let mut one = spool();
+    one.color_hex = Some("red".into());
+    assert_eq!(code(add_filament_spool(&mut c, one)), (ErrorCode::InvalidColor, vec![]));
+    let mut list = spool();
+    list.color_hexes = vec!["#112233".into(), "zz".into()];
+    assert_eq!(code(add_filament_spool(&mut c, list)), (ErrorCode::InvalidColor, vec![]));
+    let mut many = spool();
+    many.color_hexes = vec!["#112233".into(); 5];
+    assert_eq!(code(add_filament_spool(&mut c, many)), (ErrorCode::SpoolColorsTooMany, vec!["4".to_string()]));
+    let mut weight = spool();
+    weight.original_weight_g = 0.0;
+    assert_eq!(code(add_filament_spool(&mut c, weight)), (ErrorCode::InvalidAmount, vec![]));
+    let mut kind = spool();
+    kind.kind = "plastic".into();
+    assert_eq!(code(add_filament_spool(&mut c, kind)), (ErrorCode::InvalidMaterialKind, vec![]));
 }
