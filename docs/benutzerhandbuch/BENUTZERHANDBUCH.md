@@ -435,7 +435,12 @@ Refresh first only looks — nothing changes until you confirm:
   and the file is unchanged. Otherwise the file stays under "new" and "missing".
 - **Same content as an existing model:** new files with the same content as a model already in
   the catalog are listed separately, not ticked by default. Adding one creates a second model with
-  the same data. If you do not add it, it stays in the folder and is shown again at every sync.
+  the same data. If you do not add it, it stays in the folder and the sync remembers it (by path and
+  size): it is no longer offered or read again. It is offered again when the original is gone from
+  the catalog or the file changes its size. With copies listed, "Apply changes" also works with
+  nothing ticked; that is how you decline them. In the settings, "Sync with disk" shows
+  "N remembered copies" with "Show …" (the list, with the model each is a copy of) and "Reset"
+  (all are offered again).
 - **Select all / None:** every entry has its own checkbox. "Select all" and "None" tick or untick
   all entries of the lists of new files and of files with the same content as an existing model.
 - **Files in the trash:** a new file whose path is still held by the [trash](#the-trash) is
@@ -1714,7 +1719,12 @@ Aktualisieren schaut zuerst nur nach – erst nach deiner Bestätigung ändert s
 - **Gleicher Inhalt wie ein vorhandenes Modell:** Neue Dateien mit dem gleichen Inhalt wie ein
   Modell, das schon im Katalog ist, stehen getrennt und sind standardmäßig nicht angehakt. Sie
   aufzunehmen erzeugt ein zweites Modell mit denselben Daten. Nimmst du sie nicht auf, bleiben sie
-  im Ordner und werden bei jedem Abgleich wieder gezeigt.
+  im Ordner, und der Abgleich merkt sie sich (nach Pfad und Größe): Sie werden nicht mehr angeboten
+  und nicht erneut gelesen. Sie erscheinen wieder, wenn das Original aus dem Katalog verschwunden ist
+  oder die Datei ihre Größe ändert. Sind Kopien gelistet, geht „Änderungen übernehmen“ auch ohne
+  Häkchen; so lehnst du sie ab. In den Einstellungen zeigt „Abgleich mit der Festplatte“ die Zeile
+  „N gemerkte Kopien“ mit „Anzeigen …“ (die Liste, mit dem Modell, von dem jede eine Kopie ist) und
+  „Zurücksetzen“ (alle werden wieder angeboten).
 - **Alle auswählen / Keine:** Jeder Eintrag hat ein eigenes Kästchen. „Alle auswählen“ und „Keine“
   haken alle Einträge der Listen für neue Dateien und für Dateien mit gleichem Inhalt wie ein
   vorhandenes Modell an bzw. ab.

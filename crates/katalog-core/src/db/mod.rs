@@ -6,6 +6,7 @@ mod collections;
 mod tag_fragments;
 pub mod companions;
 pub mod sources;
+pub mod known_copies;
 pub mod blocked_tags;
 pub use tag_fragments::cleanup_tag_fragments;
 pub mod printers;

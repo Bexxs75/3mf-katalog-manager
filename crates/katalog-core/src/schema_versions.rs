@@ -15,7 +15,7 @@ pub const SCHEMA_APP_VERSIONS: &[(i64, &str)] = &[
     (39, "0.15.4"),
     (47, "0.16.3"),
     (52, "0.17.1"),
-    (54, "0.18.0"),
+    (55, "0.18.0"),
 ];
 
 /// The release to reinstall for a catalog that is at `schema`, if one is known.
@@ -54,8 +54,10 @@ mod tests {
     #[test]
     fn unknown_schemas_give_no_guess() {
         assert_eq!(app_version_for_schema(52), Some("0.17.1"));
-        // Development-only schema: no release can read it.
+        // Development-only schemas: no release can read them.
         assert_eq!(app_version_for_schema(53), None);
+        assert_eq!(app_version_for_schema(54), None);
+        assert_eq!(app_version_for_schema(55), Some("0.18.0"));
         assert_eq!(app_version_for_schema(0), None);
     }
 }

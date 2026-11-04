@@ -12,7 +12,7 @@ import { es } from '../i18n/es';
 import { fr } from '../i18n/fr';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-const empty: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [], trashBlockedCount: 0 };
+const empty: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [], trashBlockedCount: 0, knownCopyCount: 0 };
 const changes: DiskScan = {
   ...empty,
   newFiles: [{ path: '/models/new.obj', relativePath: 'new.obj', root: '/models', id: null }],
@@ -359,6 +359,37 @@ describe('catalog disk sync', () => {
       await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', { selection: {
         newPaths: ['/models/Deko/Schale.3mf'], missingIds: [], removeMissing: false,
         renames: [{ id: '1', newPath: '/models/Druckerteile/Halter.3mf' }, { id: '2', newPath: '/models/Deko/Vase_v2.stl' }],
+        declinedCopies: ['/models/Deko/Vase - Kopie.3mf'],
+      } }));
+    });
+    it('says that copies left unticked are remembered', async () => {
+      const { dialog } = await open();
+      expect(dialog).toHaveTextContent(de.kcDialogHint);
+      expect(de.kcDialogHint).toBe('Nicht gewählte Kopien werden gemerkt und beim nächsten Abgleich nicht mehr angeboten.');
+    });
+    it('sends copies left unticked as declinedCopies and names how many were remembered', async () => {
+      await open();
+      vi.mocked(invoke).mockResolvedValueOnce({ ...applied, notedCopyCount: 1, knownCopyCount: 4 });
+      fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
+      await waitFor(() => expect(vi.mocked(invoke).mock.calls[vi.mocked(invoke).mock.calls.length - 1][1]).toMatchObject({ selection: { declinedCopies: ['/models/Deko/Vase - Kopie.3mf'] } }));
+      expect(await screen.findByRole('status')).toHaveTextContent('1 Kopie gemerkt');
+    });
+    it('does not send a ticked copy as declined and does not mention remembering when none was', async () => {
+      await open();
+      vi.mocked(invoke).mockResolvedValueOnce({ ...applied, notedCopyCount: 0, knownCopyCount: 0 });
+      fireEvent.click(box('Deko/Vase - Kopie.3mf'));
+      fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
+      await waitFor(() => expect(invoke).toHaveBeenLastCalledWith('apply_catalog_disk_sync', { selection: expect.not.objectContaining({ declinedCopies: expect.anything() }) }));
+      expect(await screen.findByRole('status')).not.toHaveTextContent('gemerkt');
+    });
+    it('can be applied with nothing ticked when only copies are listed, which remembers them', async () => {
+      await open({ ...empty, duplicateFiles: grouped.duplicateFiles });
+      vi.mocked(invoke).mockResolvedValueOnce({ ...applied, renamedIds: [], renamedCount: 0, notedCopyCount: 1, knownCopyCount: 1 });
+      const apply = screen.getByRole('button', { name: de.diskSyncApply });
+      expect(apply).toBeEnabled();
+      fireEvent.click(apply);
+      await waitFor(() => expect(invoke).toHaveBeenLastCalledWith('apply_catalog_disk_sync', { selection: {
+        newPaths: [], missingIds: [], removeMissing: false, renames: [], declinedCopies: ['/models/Deko/Vase - Kopie.3mf'],
       } }));
     });
     it('can be operated with the keyboard and keeps focus on the checkbox', async () => {
@@ -372,12 +403,16 @@ describe('catalog disk sync', () => {
       fireEvent.click(copy);
       expect(copy).not.toBeChecked(); expect(copy).toHaveFocus();
     });
-    it('disables the apply button when everything is unticked', async () => {
-      await open();
+    it('disables the apply button when everything is unticked and no copy is listed', async () => {
+      await open({ ...grouped, duplicateFiles: [] });
       for (const name of ['Drucker-Teile/Halter.3mf → Druckerteile/Halter.3mf', 'Deko/Vase.stl → Deko/Vase_v2.stl', 'Deko/Schale.3mf']) fireEvent.click(box(name));
       await waitFor(() => expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeDisabled());
-      fireEvent.click(box('Deko/Vase - Kopie.3mf'));
-      await waitFor(() => expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeEnabled());
+    });
+    it('keeps the apply button enabled while copies are listed, because applying remembers the unticked ones', async () => {
+      await open();
+      for (const name of ['Drucker-Teile/Halter.3mf → Druckerteile/Halter.3mf', 'Deko/Vase.stl → Deko/Vase_v2.stl', 'Deko/Schale.3mf']) fireEvent.click(box(name));
+      await waitFor(() => expect(box('Deko/Schale.3mf')).not.toBeChecked());
+      expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeEnabled();
     });
     it('offers a scan that only contains renames', async () => {
       await open({ ...empty, renamedFiles: grouped.renamedFiles });

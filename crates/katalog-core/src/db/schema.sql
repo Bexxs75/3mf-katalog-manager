@@ -276,3 +276,13 @@ CREATE TABLE IF NOT EXISTS file_print_plates (
     plate_bed_type TEXT,
     PRIMARY KEY (file_id, plate_index)
 );
+
+-- Copies the disk sync offered and the user did not take over: the next sync neither hashes nor
+-- offers them again while the file is unchanged in size and its original is still cataloged.
+CREATE TABLE IF NOT EXISTS disk_sync_known_copies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    size_bytes INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    noted_at TEXT NOT NULL
+);

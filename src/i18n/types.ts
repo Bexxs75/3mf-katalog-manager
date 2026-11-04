@@ -1679,6 +1679,18 @@ export interface Translations {
   errUpdateBackupFolderMissing: string;
   errSourceNoCatalogFolder: string;
   errSourceNoFilesSelected: string;
+  kcDialogHint: string;
+  kcNoted: PluralForms;
+  kcCount: PluralForms;
+  kcShow: string;
+  kcHide: string;
+  kcReset: string;
+  kcHint: string;
+  kcEmpty: string;
+  kcListLabel: string;
+  kcCopyOf: string;
+  kcMore: PluralForms;
+  kcResetDone: string;
 }
 
 export function formatCount(forms: PluralForms, n: number, language: Language = 'de'): string {

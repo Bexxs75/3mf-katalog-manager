@@ -35,7 +35,8 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   const selectable = !!scan && (scan.newFiles.length > 0 || scan.renamedFiles.length > 0 || scan.duplicateFiles.length > 0);
   const hasMissing = !!scan && (scan.missingFiles.length > 0 || scan.missingFolders.length > 0);
   // The reset effect runs after the render that drops the scan; do not trust stale ticks until then.
-  const canApply = (!!scan && paths.size + renameIds.size > 0) || (remove && hasMissing);
+  // Copies can be applied with nothing ticked: that is how the user declines them, and the backend remembers them.
+  const canApply = (!!scan && (paths.size + renameIds.size > 0 || scan.duplicateFiles.length > 0)) || (remove && hasMissing);
   // The trash notice can be the only finding; then the all-zero counters would only add noise.
   const hasFindings = !!scan && (selectable || hasMissing || scan.newFolders.length > 0 || scan.skippedPaths.length > 0);
   const ref = useModalDialog({ open: true, onClose, busy });
@@ -126,7 +127,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
           {scan.duplicateFiles.length > 0 && <section><h3 className="ui-label mb-2 flex flex-wrap gap-2 items-center">{t('diskSyncDuplicateHeading')}<span className={tag}>{t('diskSyncNotPreselected')}</span></h3>
             {sectionButtons(scan.duplicateFiles, t('diskSyncDuplicateHeading'))}
             {pickable(scan.duplicateFiles, e => t('diskSyncDuplicateOf').replace('{name}', displayName(e.duplicateOfPath)))}
-            <p className={hintBox}>{t('diskSyncDuplicateHint')}</p></section>}
+            <p className={hintBox}>{t('diskSyncDuplicateHint')} {t('kcDialogHint')}</p></section>}
           {hasMissing && <section><h3 className="ui-label mb-2">{t('diskSyncMissingHeading')}</h3>{scan.missingFolders.length > 0 && missingFolderRows(scan.missingFolders)}{group(scan.missingFiles)}
             <label className="flex gap-2 mt-4"><input type="checkbox" checked={remove} disabled={busy} onChange={e => setRemove(e.target.checked)} />{t('diskSyncRemove')}</label>
             <p className="text-small text-[var(--ink-2)] mt-2">{t('diskSyncRemoveHint')}</p>
@@ -194,7 +195,7 @@ export function CatalogDiskSync({ onApplied, onScanned, active = true }: { onApp
       if (failures.length && !result.fileIds.length && !result.folderIds.length && !result.removedCount && !result.renamedCount) {
         setFailedPaths(failures);
       } else {
-        const summary = [...(result.renamedCount > 0 ? [count(t('diskSyncRenamed'), result.renamedCount)] : []), count(t('diskSyncNewFiles'), result.fileIds.length), count(t('diskSyncNewFolders'), result.folderIds.length), count(t('diskSyncRemoved'), result.removedCount)].join(' · ');
+        const summary = [...(result.renamedCount > 0 ? [count(t('diskSyncRenamed'), result.renamedCount)] : []), count(t('diskSyncNewFiles'), result.fileIds.length), count(t('diskSyncNewFolders'), result.folderIds.length), count(t('diskSyncRemoved'), result.removedCount), ...(result.notedCopyCount > 0 ? [count(t('kcNoted'), result.notedCopyCount)] : [])].join(' · ');
         setToast(failures.length ? `${summary}\n${count(t('diskSyncUnreadable'), failures.length)}\n${failures.map(f => displayName(f.path)).join('\n')}` : summary);
       }
     } catch (e) { setScan(null); setError(diskSyncError(e)); }
