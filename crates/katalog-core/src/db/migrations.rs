@@ -153,6 +153,12 @@ const MIGRATIONS: &[MigrationStep] = &[
     // New file types `gcode` (.gcode and .bgcode) and `resin` (resin slicer files). Only the CHECK of
     // `files.file_type` changes; the columns, indexes and triggers of the table stay as they are.
     MigrationStep::Rebuild(add_gcode_and_resin_to_file_type_check),
+    // Slot 57 belongs to another work package and is taken by its step when the branches meet.
+    // Until then this step does nothing, so the failure counter below keeps its number 58.
+    MigrationStep::Simple(reserved_step),
+    // Failed attempts in a row and the time of the last attempt per printer connection.
+    // New columns only; stored connections start at 0 and NULL.
+    MigrationStep::Simple(add_printer_connection_failures),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -216,6 +222,22 @@ pub(crate) const FILAMENT_COLORS_MIGRATION_VERSION: i64 = 54;
 /// Schema version after the file types `gcode` and `resin`.
 #[cfg(test)]
 pub(crate) const GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION: i64 = 56;
+
+/// Schema version after the failure counter of the printer connection (57 is reserved).
+#[cfg(test)]
+pub(crate) const PRINTER_FAILURES_MIGRATION_VERSION: i64 = 58;
+
+/// Placeholder for a slot another branch fills. Changes nothing.
+fn reserved_step(_conn: &Connection) -> Result<(), DbError> {
+    Ok(())
+}
+
+/// New columns only. `exec` tolerates a duplicate column, so a catalog that already got them from
+/// the base schema is left alone. Keep the statements in step with `schema.sql`.
+fn add_printer_connection_failures(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "ALTER TABLE printer_connections ADD COLUMN failures INTEGER NOT NULL DEFAULT 0 CHECK (failures >= 0)")?;
+    exec(conn, "ALTER TABLE printer_connections ADD COLUMN last_attempt_at REAL")
+}
 
 /// New tables only (a row per read 3MF and a row per plate); `IF NOT EXISTS` so a catalog
 /// that already got them from the base schema is left alone. `files` is not touched on purpose:
@@ -1305,9 +1327,10 @@ mod tests {
         assert_eq!(declined, 1, "the declined source files are another table and stay");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, "the file type step is the newest one");
+        assert_eq!(CURRENT_SCHEMA_VERSION, PRINTER_FAILURES_MIGRATION_VERSION, "the failure counter step is the newest one");
         assert_eq!(GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 2, "after the table of remembered copies, which follows the color column");
-        assert_eq!(CURRENT_SCHEMA_VERSION, 56);
+        assert_eq!(PRINTER_FAILURES_MIGRATION_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION + 2, "slot 57 is reserved");
+        assert_eq!(CURRENT_SCHEMA_VERSION, 58);
     }
 
     #[test]
@@ -1339,6 +1362,82 @@ mod tests {
         add_known_copies_table(&by_step).unwrap();
         assert_eq!(shape(&by_step), shape(&fresh), "schema.sql and the step must describe the same table");
         assert_eq!(shape(&fresh).len(), 5);
+    }
+
+    /// A catalog at version 56 with a connection that failed before the counter existed.
+    fn catalog_before_failure_counter() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        // The state of a 56 catalog: no counter columns yet.
+        conn.execute_batch("ALTER TABLE printer_connections DROP COLUMN failures; ALTER TABLE printer_connections DROP COLUMN last_attempt_at;").unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'Sovol SV08', 0)", []).unwrap();
+        conn.execute(
+            "INSERT INTO printer_connections (printer_id, kind, address, connected_since, last_error, error_since, paused)
+             VALUES (1, 'moonraker', '192.168.1.60', 1000.0, 'unreachable', 2000.0, 0)",
+            [],
+        ).unwrap();
+        conn.pragma_update(None, "user_version", GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION).unwrap();
+        conn
+    }
+
+    #[test]
+    fn the_failure_counter_step_adds_two_columns_and_keeps_the_connections() {
+        let mut conn = catalog_before_failure_counter();
+        let before = catalog_snapshot(&conn);
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(catalog_snapshot(&conn), before, "the catalog tables stay as they were");
+        let (failures, last_attempt, error, since): (i64, Option<f64>, String, f64) = conn
+            .query_row(
+                "SELECT failures, last_attempt_at, last_error, error_since FROM printer_connections WHERE printer_id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!((failures, last_attempt, error.as_str(), since), (0, None, "unreachable", 2000.0));
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, PRINTER_FAILURES_MIGRATION_VERSION);
+        assert!(conn.execute("UPDATE printer_connections SET failures = -1", []).is_err(), "the counter cannot go negative");
+    }
+
+    #[test]
+    fn the_failure_counter_step_is_repeatable_and_leaves_stored_values_alone() {
+        let conn = catalog_before_failure_counter();
+        add_printer_connection_failures(&conn).unwrap();
+        conn.execute("UPDATE printer_connections SET failures = 3, last_attempt_at = 5.0", []).unwrap();
+        add_printer_connection_failures(&conn).unwrap();
+        let (failures, last): (i64, f64) = conn
+            .query_row("SELECT failures, last_attempt_at FROM printer_connections", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!((failures, last), (3, 5.0));
+    }
+
+    #[test]
+    fn the_failure_counter_step_gives_the_same_columns_as_a_fresh_schema() {
+        let shape = |conn: &Connection| -> Vec<(String, String, bool, Option<String>)> {
+            conn.prepare("SELECT name, type, \"notnull\", dflt_value FROM pragma_table_info('printer_connections') ORDER BY name")
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        let mut migrated = catalog_before_failure_counter();
+        run_migrations(&mut migrated).unwrap();
+        assert_eq!(shape(&migrated), shape(&fresh), "schema.sql and the step must describe the same columns");
+    }
+
+    #[test]
+    fn the_reserved_slot_changes_nothing() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        let before = catalog_snapshot(&conn);
+        reserved_step(&conn).unwrap();
+        reserved_step(&conn).unwrap();
+        assert_eq!(catalog_snapshot(&conn), before);
     }
 
     /// A catalog at version 55 with the old `file_type` CHECK, rows in the tables that point at `files`.
@@ -1819,7 +1918,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 17);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 19);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

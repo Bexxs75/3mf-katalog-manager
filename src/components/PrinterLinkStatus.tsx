@@ -11,6 +11,10 @@ interface Props {
   link: PrinterLinkState;
 }
 
+/** Codes of failures that usually pass; after a day without success they are shown as an error with the date. */
+const TRANSIENT = new Set(['timeout', 'connection_refused', 'connection_reset', 'server_busy', 'unreachable']);
+const isTransient = (code: string) => TRANSIENT.has(code);
+
 const iso = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString();
 
 /** Status row of a connected printer in the printer column. */
@@ -30,13 +34,19 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
     : t('printerNotSyncedYet');
   // After a restore `paused` is set but `lastError` is empty;
   // without this branch the connection would wrongly look healthy.
-  if (c.paused && c.lastError !== 'auth_required') {
+  if (c.status === 'reconnecting') {
+    dot = 'bg-[var(--ink-3)]';
+    text = t('printerReconnecting').replace('{n}', String((c.failures ?? 0) + 1));
+  } else if (c.status === 'offline') {
+    dot = 'bg-[var(--unk)]';
+    text = t('printerUnreachableSince').replace('{time}', () => formatDateTime(c.errorSince ?? 0, language));
+  } else if (c.paused && c.lastError !== 'auth_required') {
     dot = 'bg-[var(--warn)]';
     text = t('printerPausedRetest');
   } else if (c.lastError === 'auth_required') {
     dot = 'bg-[var(--warn)]';
     text = t('printerAuthNeeded');
-  } else if (c.lastError === 'unreachable') {
+  } else if (c.lastError === 'unreachable' || (c.status === 'error' && c.lastError && isTransient(c.lastError))) {
     dot = 'bg-[var(--crit)]';
     text = t('printerUnreachableSince').replace('{time}', () => formatDateTime(c.errorSince ?? 0, language));
   } else if (c.lastError) {

@@ -152,7 +152,12 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
     })
 }
 
+/// Time limit of `/server/info` and thumbnails.
 const TIMEOUT: Duration = Duration::from_secs(5);
+/// Time limit of one history page; the answer carries up to 50 jobs with their metadata.
+const PAGE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Everything one printer may take in one pass, retries included.
+pub const PRINTER_BUDGET: Duration = Duration::from_secs(45);
 pub const MAX_JSON_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_THUMB_BYTES: u64 = 512 * 1024;
 const PAGE: usize = 50;
@@ -193,12 +198,16 @@ pub struct MoonrakerLink {
     /// Total time limit of a request including the body; `TIMEOUT` (5 s) in
     /// production, tests set a shorter one via `new_with_timeout`.
     timeout: Duration,
+    /// Same for one history page (`PAGE_TIMEOUT`).
+    page_timeout: Duration,
+    /// Hard end of the whole pass for this printer; no request outlives it.
+    deadline: Instant,
 }
 
 impl MoonrakerLink {
     /// Fails instead of panicking when the client cannot be built (e.g. no free file handles).
     pub fn try_new(address: &str, policy: AddressPolicy) -> Result<Self, LinkError> {
-        Self::with_timeout(address, policy, TIMEOUT)
+        Self::with_timeouts(address, policy, TIMEOUT, PAGE_TIMEOUT)
     }
 
     /// Tests only: the production path uses `try_new`.
@@ -210,14 +219,14 @@ impl MoonrakerLink {
     /// Tests only: own time limit instead of production's fixed 5 s.
     #[cfg(test)]
     pub(crate) fn new_with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Self {
-        Self::with_timeout(address, policy, timeout).expect("HTTP-Client")
+        Self::with_timeouts(address, policy, timeout, timeout).expect("HTTP-Client")
     }
 
-    fn with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Result<Self, LinkError> {
-        Self::with_client_factory(address, policy, timeout, || {
+    fn with_timeouts(address: &str, policy: AddressPolicy, timeout: Duration, page_timeout: Duration) -> Result<Self, LinkError> {
+        Self::with_client_factory(address, policy, timeout, page_timeout, || {
             reqwest::blocking::Client::builder()
-                .timeout(timeout)
-                .connect_timeout(timeout)
+                // The limit of each request is set on the request itself (info, page, rest of the budget).
+                .connect_timeout(page_timeout.max(timeout))
                 // Never use the system proxy: requests must go to the checked Target.ip.
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
@@ -230,10 +239,27 @@ impl MoonrakerLink {
         address: &str,
         policy: AddressPolicy,
         timeout: Duration,
+        page_timeout: Duration,
         factory: impl FnOnce() -> Result<reqwest::blocking::Client, ()>,
     ) -> Result<Self, LinkError> {
         let client = factory().map_err(|_| LinkError::Unreachable)?;
-        Ok(MoonrakerLink { address: address.to_string(), policy, client, timeout })
+        Ok(MoonrakerLink {
+            address: address.to_string(),
+            policy,
+            client,
+            timeout,
+            page_timeout,
+            deadline: Instant::now() + PRINTER_BUDGET,
+        })
+    }
+
+    /// The limit for one request: its own, but never beyond the end of the printer's budget.
+    fn request_limit(&self, own: Duration) -> Result<Duration, LinkError> {
+        let left = self.deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(LinkError::Timeout);
+        }
+        Ok(own.min(left))
     }
 
     /// First port 80 (Mainsail/nginx), then 7125 (Moonraker directly), unless the address names a port itself.
@@ -260,17 +286,17 @@ impl MoonrakerLink {
     /// we only wait with `recv_timeout`. A still hanging helper thread finishes later
     /// and sends into the void, which is harmless.
     fn get_bytes(&self, url: reqwest::Url, limit: u64) -> Result<Vec<u8>, LinkError> {
-        self.fetch(url, limit).map(|f| f.body)
+        self.fetch(url, limit, self.timeout).map(|f| f.body)
     }
 
-    fn fetch(&self, url: reqwest::Url, limit: u64) -> Result<Fetched, LinkError> {
+    fn fetch(&self, url: reqwest::Url, limit: u64, own_timeout: Duration) -> Result<Fetched, LinkError> {
         let client = self.client.clone();
-        let timeout = self.timeout;
+        let timeout = self.request_limit(own_timeout)?;
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let _ = tx.send(Self::fetch_bytes(&client, url, limit, timeout));
         });
-        rx.recv_timeout(timeout).unwrap_or(Err(LinkError::Unreachable))
+        rx.recv_timeout(timeout).unwrap_or(Err(LinkError::Timeout))
     }
 
     /// Network part of `get_bytes` on the helper thread: reads in chunks with its own time limit check.
@@ -280,7 +306,7 @@ impl MoonrakerLink {
         // Path only, never the host (a printer's LAN address) or the query string
         // (can carry the `since` timestamp, not secret but still noise).
         let path = url.path().to_string();
-        let mut resp = client.get(url).send().map_err(|_| LinkError::Unreachable)?;
+        let mut resp = client.get(url).timeout(timeout).send().map_err(|e| classify_send_error(&e))?;
         let local_mid = (sent_at + unix_now()) / 2.0;
         let printer_now = resp
             .headers()
@@ -291,6 +317,8 @@ impl MoonrakerLink {
         log::debug!(target: "drucker", "GET {path} -> {status}");
         match status {
             401 | 403 => return Err(LinkError::AuthRequired),
+            // A web server in front of Moonraker answers while Moonraker restarts.
+            502..=504 => return Err(LinkError::ServerBusy),
             s if !(200..300).contains(&s) => return Err(LinkError::BadResponse(format!("HTTP {s}"))),
             _ => {}
         }
@@ -298,9 +326,9 @@ impl MoonrakerLink {
         let mut chunk = [0u8; 8192];
         loop {
             if Instant::now() >= deadline {
-                return Err(LinkError::Unreachable);
+                return Err(LinkError::Timeout);
             }
-            let n = resp.read(&mut chunk).map_err(|_| LinkError::Unreachable)?;
+            let n = resp.read(&mut chunk).map_err(|e| classify_io_error(&e))?;
             if n == 0 {
                 break;
             }
@@ -311,10 +339,69 @@ impl MoonrakerLink {
         }
         Ok(Fetched { body: buf, printer_now, local_mid })
     }
+}
 
-    fn get_json(&self, url: reqwest::Url) -> Result<Value, LinkError> {
-        let bytes = self.get_bytes(url, MAX_JSON_BYTES)?;
-        serde_json::from_slice(&bytes).map_err(|e| LinkError::BadResponse(e.to_string()))
+/// The class of an I/O failure. Windows and macOS name the same situations with other kinds
+/// than Linux; what no kind covers stays `Unreachable`.
+fn classify_kind(kind: std::io::ErrorKind) -> Option<LinkError> {
+    use std::io::ErrorKind::*;
+    match kind {
+        ConnectionRefused => Some(LinkError::ConnectionRefused),
+        TimedOut | WouldBlock => Some(LinkError::Timeout),
+        ConnectionReset | ConnectionAborted | BrokenPipe | UnexpectedEof | NotConnected => Some(LinkError::ConnectionReset),
+        _ => None,
+    }
+}
+
+/// The class named by the first I/O error in the chain of causes that has one. Wrapped errors
+/// (`reqwest` around `hyper` around the socket error) are walked down to the socket.
+fn class_in_chain(error: &(dyn std::error::Error + 'static)) -> Option<LinkError> {
+    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(e) = current {
+        if let Some(io) = e.downcast_ref::<std::io::Error>() {
+            if let Some(class) = classify_kind(io.kind()) {
+                return Some(class);
+            }
+            // `source()` of an I/O error skips the error it wraps, so look at that one itself.
+            if let Some(class) = io.get_ref().and_then(|inner| class_in_chain(inner)) {
+                return Some(class);
+            }
+        }
+        current = e.source();
+    }
+    None
+}
+
+fn classify_io_error(e: &std::io::Error) -> LinkError {
+    class_in_chain(e).unwrap_or(LinkError::Unreachable)
+}
+
+/// The class of a failed `send()`. A connection that was made and then ended without an answer
+/// (the printer closed it, Moonraker crashed) is a reset, not "unreachable".
+fn classify_send_error(e: &reqwest::Error) -> LinkError {
+    if e.is_timeout() {
+        return LinkError::Timeout;
+    }
+    if let Some(class) = class_in_chain(e) {
+        return class;
+    }
+    if e.is_connect() {
+        LinkError::Unreachable
+    } else {
+        LinkError::ConnectionReset
+    }
+}
+
+/// Which of two failures says more about the printer: an answer of a web server in front of
+/// Moonraker beats silence, silence beats a refusal.
+fn error_rank(e: &LinkError) -> u8 {
+    match e {
+        LinkError::ServerBusy => 6,
+        LinkError::BadResponse(_) => 5,
+        LinkError::Timeout => 4,
+        LinkError::ConnectionReset => 3,
+        LinkError::ConnectionRefused => 2,
+        _ => 1,
     }
 }
 
@@ -335,14 +422,18 @@ impl PrinterLink for MoonrakerLink {
     fn test(&self) -> Result<ConnectionInfo, LinkError> {
         let mut last = LinkError::Unreachable;
         for base in self.candidate_bases()? {
-            let answer = self.fetch(url(&base, "/server/info")?, MAX_JSON_BYTES).and_then(|f| {
+            if self.deadline <= Instant::now() {
+                return Err(LinkError::Timeout);
+            }
+            let answer = self.fetch(url(&base, "/server/info")?, MAX_JSON_BYTES, self.timeout).and_then(|f| {
                 let v: Value = serde_json::from_slice(&f.body).map_err(|e| LinkError::BadResponse(e.to_string()))?;
                 Ok((parse_server_info(&v)?, clock_offset(f.printer_now, f.local_mid)))
             });
             match answer {
                 Ok((version, clock_offset_s)) => return Ok(ConnectionInfo { version, base_url: base, clock_offset_s }),
                 Err(e @ (LinkError::AuthRequired | LinkError::HistoryMissing)) => return Err(e),
-                Err(e) => last = e,
+                Err(e) if error_rank(&e) >= error_rank(&last) => last = e,
+                Err(_) => {}
             }
         }
         Err(last)
@@ -358,10 +449,24 @@ impl PrinterLink for MoonrakerLink {
         let mut jobs = Vec::new();
         let mut start = 0usize;
         for _ in 0..MAX_PAGES {
-            let page = parse_history_page(&self.get_json(url(
-                base,
-                &format!("/server/history/list?since={query_since}&order=asc&limit={PAGE}&start={start}"),
-            )?)?)?;
+            let answer = self
+                .fetch(
+                    url(base, &format!("/server/history/list?since={query_since}&order=asc&limit={PAGE}&start={start}"))?,
+                    MAX_JSON_BYTES,
+                    self.page_timeout,
+                )
+                .and_then(|f| serde_json::from_slice::<Value>(&f.body).map_err(|e| bad(&e.to_string())))
+                .and_then(|v| parse_history_page(&v));
+            let page = match answer {
+                Ok(page) => page,
+                // The pages read so far are kept: the next pass continues after the newest one
+                // (the cursor is the newest stored end time). Only a first page that fails is an error.
+                Err(e) if e.is_transient() && start > 0 => {
+                    log::warn!(target: "drucker", "history only partly read ({})", e.code());
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
             jobs.extend(page.jobs.into_iter().filter_map(|mut j| {
                 j.ended_at -= offset;
                 (j.ended_at > since).then_some(j)
@@ -385,6 +490,10 @@ impl PrinterLink for MoonrakerLink {
             segs.clear().extend(["server", "files", "gcodes"]).extend(path.split('/'));
         }
         self.get_bytes(u, MAX_THUMB_BYTES)
+    }
+
+    fn set_deadline(&mut self, deadline: Instant) {
+        self.deadline = deadline.min(Instant::now() + PRINTER_BUDGET);
     }
 }
 
@@ -669,12 +778,12 @@ mod client_tests {
     use super::*;
     use crate::printer_link::address::AddressPolicy;
     use crate::printer_link::fake_moonraker::qidi_smart3;
-    use crate::printer_link::fake_moonraker::{fixture_bytes, sv08, FakeServer};
+    use crate::printer_link::fake_moonraker::{fixture_bytes, sv08, FakeServer, Reply};
     use crate::printer_link::PrinterLink;
 
     #[test]
     fn client_factory_failure_is_unreachable() {
-        let result = MoonrakerLink::with_client_factory("printer.local", AddressPolicy::TEST, TIMEOUT, || Err(()));
+        let result = MoonrakerLink::with_client_factory("printer.local", AddressPolicy::TEST, TIMEOUT, PAGE_TIMEOUT, || Err(()));
         assert!(matches!(result, Err(LinkError::Unreachable)));
     }
 
@@ -708,19 +817,129 @@ mod client_tests {
     }
 
     #[test]
-    fn unreachable_port_is_reported() {
-        // Port 1 on loopback is practically always closed.
-        let link = MoonrakerLink::new("127.0.0.1:1", AddressPolicy::TEST);
-        assert_eq!(link.test(), Err(LinkError::Unreachable));
+    fn a_closed_port_is_a_refused_connection() {
+        let link = MoonrakerLink::new(&FakeServer::closed_address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::ConnectionRefused));
     }
 
     #[test]
-    fn a_silent_printer_times_out_as_unreachable() {
+    fn a_silent_printer_times_out() {
         let server = FakeServer::start(|_| None);
-        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let link = MoonrakerLink::new_with_timeout(&server.address(), AddressPolicy::TEST, Duration::from_millis(300));
         let started = std::time::Instant::now();
-        assert_eq!(link.test(), Err(LinkError::Unreachable));
+        assert_eq!(link.test(), Err(LinkError::Timeout));
         assert!(started.elapsed() < std::time::Duration::from_secs(8));
+    }
+
+    #[test]
+    fn a_late_answer_is_too_late_and_the_test_server_sees_the_headers() {
+        let late = Reply::After(Duration::from_millis(400), Box::new(Reply::Answer(200, fixture_bytes("server_info_v0_8_0_209.json"))));
+        let server = FakeServer::start_replying(move |_| late.clone());
+        let link = MoonrakerLink::new_with_timeout(&server.address(), AddressPolicy::TEST, Duration::from_millis(100));
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        let seen = server.request_log();
+        assert_eq!(seen[0].target, "/server/info");
+        assert!(seen[0].header("host").is_some_and(|h| h == server.address()), "{:?}", seen[0].headers);
+        assert_eq!(seen[0].header("x-api-key"), None, "no key is sent in this build");
+    }
+
+    #[test]
+    fn a_connection_closed_without_an_answer_is_a_reset() {
+        let server = FakeServer::start_replying(|_| Reply::Close);
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::ConnectionReset));
+    }
+
+    #[test]
+    fn a_proxy_error_while_moonraker_restarts_is_server_busy() {
+        for status in [502, 503, 504] {
+            let server = FakeServer::start(move |_| Some((status, b"{}".to_vec())));
+            let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+            assert_eq!(link.test(), Err(LinkError::ServerBusy), "HTTP {status}");
+        }
+        // Other server errors stay "unexpected answer".
+        let server = FakeServer::start(|_| Some((500, b"{}".to_vec())));
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::BadResponse("HTTP 500".into())));
+    }
+
+    /// Port 80 answers 502 (web server up, Moonraker down) while port 7125 refuses: the 502 says more.
+    #[test]
+    fn the_more_telling_failure_of_the_two_ports_wins() {
+        assert!(error_rank(&LinkError::ServerBusy) > error_rank(&LinkError::ConnectionRefused));
+        assert!(error_rank(&LinkError::Timeout) > error_rank(&LinkError::ConnectionRefused));
+        assert!(error_rank(&LinkError::ConnectionRefused) > error_rank(&LinkError::Unreachable));
+    }
+
+    #[test]
+    fn io_kinds_map_to_classes() {
+        use std::io::ErrorKind::*;
+        assert_eq!(classify_kind(ConnectionRefused), Some(LinkError::ConnectionRefused));
+        for kind in [TimedOut, WouldBlock] {
+            assert_eq!(classify_kind(kind), Some(LinkError::Timeout));
+        }
+        for kind in [ConnectionReset, ConnectionAborted, BrokenPipe, UnexpectedEof, NotConnected] {
+            assert_eq!(classify_kind(kind), Some(LinkError::ConnectionReset));
+        }
+        assert_eq!(classify_kind(PermissionDenied), None);
+        // A wrapped socket error is found at the bottom of the chain.
+        let wrapped = std::io::Error::new(Other, std::io::Error::new(ConnectionReset, "inner"));
+        assert_eq!(classify_io_error(&wrapped), LinkError::ConnectionReset);
+        assert_eq!(classify_io_error(&std::io::Error::other("x")), LinkError::Unreachable);
+    }
+
+    #[test]
+    fn a_history_that_stalls_after_two_pages_keeps_the_pages_read() {
+        let page_of = |start: usize| -> Reply {
+            let jobs: Vec<String> = (start..start + 50)
+                .map(|i| format!(r#"{{"end_time": {}.0, "filament_used": 1.0, "filename": "a.gcode", "metadata": {{}}, "print_duration": 1.0, "status": "completed", "job_id": "{i}"}}"#, 1000 + i))
+                .collect();
+            Reply::Answer(200, format!(r#"{{"result": {{"count": 500, "jobs": [{}]}}}}"#, jobs.join(",")).into_bytes())
+        };
+        let server = FakeServer::start_replying(move |request| {
+            if request.target.starts_with("/server/info") {
+                return Reply::Answer(200, fixture_bytes("server_info_v0_8_0_209.json"));
+            }
+            let start: usize = request.target.split("start=").nth(1).unwrap_or("0").split('&').next().unwrap().parse().unwrap();
+            if start >= 100 { Reply::Silent } else { page_of(start) }
+        });
+        let link = MoonrakerLink::new_with_timeout(&server.address(), AddressPolicy::TEST, Duration::from_millis(400));
+        let info = link.test().unwrap();
+        let jobs = link.jobs_ended_since(&info, 0.0).unwrap();
+        assert_eq!(jobs.len(), 100, "pages 1 and 2 are kept, the stalled third one only ends the read");
+    }
+
+    #[test]
+    fn a_stalled_first_page_is_an_error() {
+        let server = FakeServer::start_replying(|request| {
+            if request.target.starts_with("/server/info") {
+                Reply::Answer(200, fixture_bytes("server_info_v0_8_0_209.json"))
+            } else {
+                Reply::Silent
+            }
+        });
+        let link = MoonrakerLink::new_with_timeout(&server.address(), AddressPolicy::TEST, Duration::from_millis(300));
+        let info = link.test().unwrap();
+        assert_eq!(link.jobs_ended_since(&info, 0.0), Err(LinkError::Timeout));
+    }
+
+    #[test]
+    fn nothing_is_sent_after_the_budget_of_the_printer_is_used_up() {
+        let server = sv08();
+        let mut link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        link.set_deadline(Instant::now());
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        assert!(server.requests().is_empty());
+    }
+
+    #[test]
+    fn the_budget_cuts_a_request_short() {
+        let server = FakeServer::start(|_| None);
+        let mut link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        link.set_deadline(Instant::now() + Duration::from_millis(300));
+        let started = Instant::now();
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
     }
 
     #[test]
@@ -840,7 +1059,7 @@ mod client_tests {
 
     /// A trickling printer must not block `get_bytes` indefinitely.
     #[test]
-    fn a_dripping_body_times_out_as_unreachable_within_the_overall_deadline() {
+    fn a_dripping_body_times_out_within_the_overall_deadline() {
         use std::io::{BufRead, BufReader, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -869,14 +1088,14 @@ mod client_tests {
         });
         let link = MoonrakerLink::new_with_timeout(&format!("127.0.0.1:{port}"), AddressPolicy::TEST, Duration::from_millis(120));
         let started = std::time::Instant::now();
-        assert_eq!(link.test(), Err(LinkError::Unreachable));
+        assert_eq!(link.test(), Err(LinkError::Timeout));
         assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
     }
 
     /// A single hanging `read()` shortly before the deadline must not extend the time
     /// limit: first byte after ~100 ms, then a 140 ms pause with a 150 ms limit.
     #[test]
-    fn a_single_stalled_read_still_returns_unreachable_within_the_overall_deadline() {
+    fn a_single_stalled_read_still_times_out_within_the_overall_deadline() {
         use std::io::{BufRead, BufReader, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -906,7 +1125,7 @@ mod client_tests {
         });
         let link = MoonrakerLink::new_with_timeout(&format!("127.0.0.1:{port}"), AddressPolicy::TEST, Duration::from_millis(150));
         let started = std::time::Instant::now();
-        assert_eq!(link.test(), Err(LinkError::Unreachable));
+        assert_eq!(link.test(), Err(LinkError::Timeout));
         assert!(started.elapsed() < Duration::from_millis(210), "{:?}", started.elapsed());
     }
 }

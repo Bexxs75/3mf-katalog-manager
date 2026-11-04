@@ -486,12 +486,19 @@ export type PrinterConnectionError =
   | 'container_local_name'
   | 'container_loopback'
   | 'unreachable'
+  | 'timeout'
+  | 'connection_refused'
+  | 'connection_reset'
+  | 'server_busy'
   | 'auth_required'
   | 'bad_response'
   | 'too_many_open_jobs'
   | 'history_missing'
   | 'address_not_allowed'
   | 'disabled';
+
+/** What the backend derives from the stored failures (`printer_link::status`). */
+export type PrinterConnectionStatus = 'ok' | 'reconnecting' | 'offline' | 'error' | 'paused';
 
 export interface PrinterConnection {
   printerId: string;
@@ -507,6 +514,10 @@ export interface PrinterConnection {
   paused: boolean;
   /** Printer clock minus local clock in seconds; 0 when within 5 minutes. */
   clockOffsetS: number;
+  /** Failed attempts in a row. */
+  failures?: number;
+  /** Absent only for data that predates the field; the views then derive it from `lastError` and `paused`. */
+  status?: PrinterConnectionStatus;
 }
 
 export interface PrinterTestResult {

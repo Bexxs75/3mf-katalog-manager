@@ -38,6 +38,10 @@ describe('PrinterConnectionSection', () => {
 
   it.each([
     ['unreachable', /Nicht erreichbar/],
+    ['timeout', /antwortet zu langsam/],
+    ['connection_refused', /lehnt die Verbindung ab\. Läuft Moonraker/],
+    ['connection_reset', /Verbindung zum Drucker wurde abgebrochen/],
+    ['server_busy', /Moonraker startet gerade neu/],
     ['name_resolution_failed', /Der Name „10.0.0.9“ konnte nicht aufgelöst werden/],
     ['container_local_name', /\*\.local.*IP/],
     ['container_loopback', /Nur Adressen im Heimnetz.*host.docker.internal:host-gateway/],
@@ -50,6 +54,42 @@ describe('PrinterConnectionSection', () => {
     fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '10.0.0.9' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
     expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it('shows a printer that is only restarting as a quiet status, not as an alarm', () => {
+    const c: PrinterConnection = { ...okConnection, lastError: 'server_busy', errorSince: 1790271000, failures: 1, status: 'reconnecting' };
+    renderIt(link(null), c);
+    expect(screen.queryByRole('alert')).toBeNull();
+    const box = screen.getByRole('status');
+    expect(box).toHaveTextContent('Verbinde neu');
+    expect(box).toHaveTextContent('Versuch 2');
+    expect(box).toHaveTextContent('Moonraker startet gerade neu');
+  });
+
+  it('shows a switched-off printer as grey "not reachable since", still without an alarm', () => {
+    const c: PrinterConnection = { ...okConnection, lastError: 'connection_refused', errorSince: 1790271000, failures: 4, status: 'offline' };
+    renderIt(link(null), c);
+    expect(screen.queryByRole('alert')).toBeNull();
+    const box = screen.getByRole('status');
+    expect(box).toHaveTextContent('Nicht erreichbar');
+    expect(box).toHaveTextContent(/nicht erreichbar seit/);
+    expect(box).toHaveTextContent('Läuft Moonraker?');
+  });
+
+  it('keeps the red alarm for an error that needs the user and for a printer gone for a day', () => {
+    for (const lastError of ['auth_required', 'timeout'] as const) {
+      const c: PrinterConnection = { ...okConnection, lastError, errorSince: 1, failures: 9, status: 'error' };
+      const { unmount } = renderIt(link(null), c);
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('shows a failed test the user started as an alarm even if the stored status is quiet', async () => {
+    const c: PrinterConnection = { ...okConnection, lastError: 'timeout', errorSince: 1, failures: 1, status: 'reconnecting' };
+    renderIt(link({ ok: false, error: 'connection_refused', connection: null }), c);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung testen/ })));
+    expect(screen.getByRole('alert')).toHaveTextContent('Läuft Moonraker?');
   });
 
   it('removes an existing connection', async () => {

@@ -6,6 +6,7 @@ pub mod address;
 pub mod booking;
 pub mod matching;
 pub mod moonraker;
+pub mod status;
 pub mod sync;
 #[cfg(test)]
 pub(crate) mod fake_moonraker;
@@ -57,7 +58,16 @@ pub struct RemoteJob {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkError {
+    /// Network failure that none of the more specific classes names (no route, unknown cause).
     Unreachable,
+    /// The printer did not answer within the time limit.
+    Timeout,
+    /// Nothing listens on the address: the printer is off or Moonraker is not running.
+    ConnectionRefused,
+    /// The connection broke off without an answer.
+    ConnectionReset,
+    /// 502, 503 or 504: a web server in front of Moonraker is up while Moonraker restarts.
+    ServerBusy,
     NameResolutionFailed,
     ContainerLocalName,
     ContainerLoopback,
@@ -72,6 +82,10 @@ impl LinkError {
     pub fn code(&self) -> &'static str {
         match self {
             LinkError::Unreachable => "unreachable",
+            LinkError::Timeout => "timeout",
+            LinkError::ConnectionRefused => "connection_refused",
+            LinkError::ConnectionReset => "connection_reset",
+            LinkError::ServerBusy => "server_busy",
             LinkError::NameResolutionFailed => "name_resolution_failed",
             LinkError::ContainerLocalName => "container_local_name",
             LinkError::ContainerLoopback => "container_loopback",
@@ -80,6 +94,14 @@ impl LinkError {
             LinkError::HistoryMissing => "history_missing",
             LinkError::AddressNotAllowed => "address_not_allowed",
         }
+    }
+}
+
+impl LinkError {
+    /// A failure that usually goes away by itself (printer switched off, restarting, Wi-Fi
+    /// hiccup): worth another try and, for a while, no reason for a red error.
+    pub fn is_transient(&self) -> bool {
+        status::is_transient_code(self.code())
     }
 }
 
@@ -94,6 +116,9 @@ pub trait PrinterLink: Send {
     fn jobs_ended_since(&self, info: &ConnectionInfo, since: f64) -> Result<Vec<RemoteJob>, LinkError>;
     /// Thumbnail (PNG) for a path from `RemoteJob::thumbnail_path`.
     fn thumbnail(&self, base_url: &str, path: &str) -> Result<Vec<u8>, LinkError>;
+    /// Hard end of everything this link still does (all printers together get one budget per pass).
+    /// Adapters without time limits ignore it.
+    fn set_deadline(&mut self, _deadline: std::time::Instant) {}
 }
 
 pub fn make_link(kind: &str, address: &str, policy: address::AddressPolicy) -> Result<Box<dyn PrinterLink>, LinkError> {
