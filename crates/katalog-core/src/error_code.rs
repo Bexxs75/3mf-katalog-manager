@@ -272,6 +272,18 @@ error_codes! {
     ThingiverseBadResponse => "thingiverseBadResponse",
     ThingiverseNotFound => "thingiverseNotFound",
     ThingiverseQueryInvalid => "thingiverseQueryInvalid",
+    // Bundles of files.
+    BundleNotFound => "bundleNotFound",
+    /// params: the lowest number of files.
+    BundleTooFewFiles => "bundleTooFewFiles",
+    /// params: the highest number of files.
+    BundleTooManyFiles => "bundleTooManyFiles",
+    BundleDuplicateFiles => "bundleDuplicateFiles",
+    BundleKindInvalid => "bundleKindInvalid",
+    /// params: the highest number of characters.
+    BundleNameInvalid => "bundleNameInvalid",
+    /// params: the highest number of characters.
+    BundleLabelInvalid => "bundleLabelInvalid",
     // Slicers, archives, updates and other desktop actions.
     SlicerExeNotFound => "slicerExeNotFound",
     SlicerPathNotFile => "slicerPathNotFile",

@@ -49,6 +49,7 @@ fn remove_files_with_conn(conn: &Connection, file_ids: Vec<String>) -> CmdResult
         tx.execute("DELETE FROM files WHERE id = ?1", [id])
             .map_err(DbError::from)?;
     }
+    db::bundles::prune_bundles(&tx)?;
     tx.commit().map_err(DbError::from)?;
     log::info!(target: "catalog", "{} Modelle aus dem Katalog entfernt", ids.len());
     Ok(ids.len())
@@ -89,6 +90,7 @@ pub(super) fn remove_folder_with_conn(
         return Err(CmdError::coded(BASE_DIR_ERROR));
     }
     tx.execute(&format!("{SUBTREE} DELETE FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id]).map_err(DbError::from)?;
+    db::bundles::prune_bundles(&tx)?;
     tx.execute("DELETE FROM folders WHERE id = ?1", [id])
         .map_err(DbError::from)?;
     tx.commit().map_err(DbError::from)?;
@@ -116,6 +118,7 @@ fn reset_with_conn(conn: &Connection) -> CmdResult<CatalogRemovalCount> {
     tx.execute("DELETE FROM tags", []).map_err(DbError::from)?;
     tx.execute("DELETE FROM collections", [])
         .map_err(DbError::from)?;
+    db::bundles::clear_bundles(&tx)?;
     tx.execute(
         "DELETE FROM app_settings WHERE key = ?1",
         [folders::SETTING_CATALOG_BASE_DIR],
@@ -245,6 +248,41 @@ mod tests {
     fn count(conn: &Connection, table: &str) -> i64 {
         conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
             .unwrap()
+    }
+
+    #[test]
+    fn removals_keep_bundles_in_step_with_their_files() {
+        for mode in ["files", "folder", "reset"] {
+            let (conn, root, _child, active, _trash) = fixture();
+            let other_folder = db::insert_folder(&conn, "other").unwrap();
+            let kept = db::test_insert_minimal_file(&conn, "/catalog/other/c.stl", Some(other_folder)).unwrap();
+            let kept_too = db::test_insert_minimal_file(&conn, "/catalog/other/d.stl", Some(other_folder)).unwrap();
+            // One bundle of the file that goes and one that stays whole; the trashed file is a member too.
+            let pair = db::bundles::create_bundle(&conn, "Pair", db::bundles::BundleKind::Parts, &[active, kept], "t").unwrap();
+            let member_to_trash = db::test_insert_minimal_file(&conn, "/catalog/other/e.stl", Some(other_folder)).unwrap();
+            let pair_with_trash = db::bundles::create_bundle(&conn, "Trash", db::bundles::BundleKind::Variants, &[member_to_trash, kept_too], "t").unwrap();
+            db::soft_delete_file(&conn, member_to_trash, Some("/trash/e.stl"), "today").unwrap();
+            match mode {
+                "files" => {
+                    remove_files_with_conn(&conn, vec![active.to_string()]).unwrap();
+                }
+                "folder" => {
+                    remove_folder_with_conn(&conn, &root.to_string()).unwrap();
+                }
+                _ => {
+                    reset_with_conn(&conn).unwrap();
+                }
+            }
+            let gone = db::bundles::get_bundle(&conn, pair).unwrap().is_none();
+            assert!(gone, "{mode}: a bundle left with one member is dissolved");
+            let trash_bundle = db::bundles::get_bundle(&conn, pair_with_trash).unwrap();
+            if mode == "reset" {
+                assert!(trash_bundle.is_none(), "{mode}: a reset removes every bundle");
+                assert_eq!(count(&conn, "bundle_members"), 0);
+            } else {
+                assert!(trash_bundle.is_some(), "{mode}: a trashed member keeps its bundle");
+            }
+        }
     }
 
     #[test]

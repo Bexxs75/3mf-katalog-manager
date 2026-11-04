@@ -2,7 +2,7 @@
 //! `web` adds transactional admission and strict input validation.
 mod error;
 pub mod web;
-use crate::read::{print_log_entry_to_dto, CollectionDto, PrintLogEntryDto};
+use crate::read::{print_log_entry_to_dto, BundleDto, CollectionDto, PrintLogEntryDto};
 use crate::{db, error_code::ErrorCode, tagging};
 pub use error::{CodedKind, WriteError};
 pub use rusqlite::Connection;
@@ -224,6 +224,103 @@ pub fn remove_file_from_collection(
         .map_err(|_| "invalid collection id".to_string())?;
     let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     db::remove_file_from_collection(conn, cid, fid).map_err(|e| e.to_string().into())
+}
+
+fn catalog_id(id: &str) -> WriteResult<i64> {
+    id.parse::<i64>()
+        .ok()
+        .filter(|id| *id > 0)
+        .ok_or_else(|| WriteError::coded(ErrorCode::InvalidCatalogId))
+}
+
+fn catalog_ids(ids: &[String]) -> WriteResult<Vec<i64>> {
+    ids.iter().map(|id| catalog_id(id)).collect()
+}
+
+fn bundle_dto(conn: &Connection, id: i64) -> WriteResult<BundleDto> {
+    db::bundles::get_bundle(conn, id)?
+        .map(crate::read::to_bundle_dto)
+        .ok_or_else(|| WriteError::coded_not_found(ErrorCode::BundleNotFound))
+}
+
+/// Bundles are catalog metadata only: no file is moved, renamed or deleted. Each command is one
+/// transaction, so a rejected input changes nothing.
+pub fn create_bundle(
+    conn: &Connection,
+    name: String,
+    kind: String,
+    file_ids: Vec<String>,
+) -> WriteResult<BundleDto> {
+    let kind = db::bundles::BundleKind::parse(&kind)
+        .ok_or_else(|| WriteError::coded(ErrorCode::BundleKindInvalid))?;
+    let ids = catalog_ids(&file_ids)?;
+    let tx = conn.unchecked_transaction()?;
+    let id = db::bundles::create_bundle(&tx, &name, kind, &ids, &chrono::Utc::now().to_rfc3339())?;
+    let dto = bundle_dto(&tx, id)?;
+    tx.commit()?;
+    Ok(dto)
+}
+
+pub fn update_bundle(
+    conn: &Connection,
+    bundle_id: String,
+    name: Option<String>,
+    kind: Option<String>,
+) -> WriteResult<()> {
+    let id = catalog_id(&bundle_id)?;
+    let kind = kind
+        .map(|text| {
+            db::bundles::BundleKind::parse(&text)
+                .ok_or_else(|| WriteError::coded(ErrorCode::BundleKindInvalid))
+        })
+        .transpose()?;
+    let tx = conn.unchecked_transaction()?;
+    db::bundles::update_bundle(&tx, id, name.as_deref(), kind)?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn add_files_to_bundle(
+    conn: &Connection,
+    bundle_id: String,
+    file_ids: Vec<String>,
+) -> WriteResult<BundleDto> {
+    let id = catalog_id(&bundle_id)?;
+    let ids = catalog_ids(&file_ids)?;
+    let tx = conn.unchecked_transaction()?;
+    db::bundles::add_files_to_bundle(&tx, id, &ids)?;
+    let dto = bundle_dto(&tx, id)?;
+    tx.commit()?;
+    Ok(dto)
+}
+
+pub fn remove_files_from_bundle(conn: &Connection, file_ids: Vec<String>) -> WriteResult<()> {
+    let ids = catalog_ids(&file_ids)?;
+    let tx = conn.unchecked_transaction()?;
+    db::bundles::remove_files_from_bundle(&tx, &ids)?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn dissolve_bundle(conn: &Connection, bundle_id: String) -> WriteResult<()> {
+    let id = catalog_id(&bundle_id)?;
+    let tx = conn.unchecked_transaction()?;
+    db::bundles::dissolve_bundle(&tx, id)?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn update_bundle_member(
+    conn: &Connection,
+    file_id: String,
+    label: Option<String>,
+    make_title: Option<bool>,
+) -> WriteResult<()> {
+    let id = catalog_id(&file_id)?;
+    let tx = conn.unchecked_transaction()?;
+    db::bundles::update_bundle_member(&tx, id, label.as_deref(), make_title.unwrap_or(false))?;
+    tx.commit()?;
+    Ok(())
 }
 
 pub fn reorder_collection_with_conn(

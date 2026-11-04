@@ -1754,6 +1754,13 @@ export interface Translations {
   errBgcodeChecksum: string;
   errBgcodeCompressionUnsupported: string;
   errBgcodeTooLarge: string;
+  errBundleNotFound: string;
+  errBundleTooFewFiles: string;
+  errBundleTooManyFiles: string;
+  errBundleDuplicateFiles: string;
+  errBundleKindInvalid: string;
+  errBundleNameInvalid: string;
+  errBundleLabelInvalid: string;
   stSaveAsStl: string;
   stStepNoPreview: string;
   stDialogTitle: string;

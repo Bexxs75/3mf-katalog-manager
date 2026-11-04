@@ -9,6 +9,7 @@ pub use catalog_removal::*;
 mod archives;
 mod backup;
 mod imported_paths;
+mod bundles;
 mod collections;
 mod companions;
 mod diagnostics;
@@ -43,6 +44,7 @@ mod upgrade_notice;
 
 pub use archives::*;
 pub use backup::*;
+pub use bundles::*;
 pub use collections::*;
 pub use companions::*;
 pub use diagnostics::*;
@@ -98,7 +100,7 @@ pub struct AppState {
 }
 pub(crate) type CmdResult<T> = Result<T, CmdError>;
 #[allow(unused_imports)] // Preserve the shared DTO API for desktop callers.
-pub use katalog_core::read::{ModelFileDto, MaterialDto, FilamentUsageDto, PlateFilamentUsageDto, SliceInfoDto, CostEstimateDto, FileSummaryDto, FileImagesDto, TagCountDto, PrintLogEntryDto, FolderDto, CollectionDto};
+pub use katalog_core::read::{ModelFileDto, MaterialDto, FilamentUsageDto, PlateFilamentUsageDto, SliceInfoDto, CostEstimateDto, FileSummaryDto, FileImagesDto, TagCountDto, PrintLogEntryDto, FolderDto, CollectionDto, BundleDto};
 use katalog_core::read::to_dto;
 pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::MutexGuard<'a, Connection>> {
     state.db.lock().map_err(|_| "database lock poisoned".into())

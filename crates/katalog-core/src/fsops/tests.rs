@@ -1188,6 +1188,33 @@ fn folder_removal_preserves_disk_trash_and_unused_tags() {
 }
 
 #[test]
+fn folder_removal_dissolves_a_bundle_that_is_left_with_one_member() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    let c = f.folder("C", None);
+    f.add(1, "A/a.stl");
+    f.assign(1, a);
+    f.add(2, "C/c.stl");
+    f.assign(2, c);
+    f.add(3, "C/d.stl");
+    f.assign(3, c);
+    f.add(4, "C/e.stl");
+    f.assign(4, c);
+    f.ops
+        .db
+        .execute_batch(
+            "INSERT INTO bundles VALUES (1, 'Pair', 'parts', 't'), (2, 'Other', 'parts', 't');
+             INSERT INTO bundle_members VALUES (1, 1, 0, NULL), (2, 1, 1, NULL), (3, 2, 0, NULL), (4, 2, 1, NULL);",
+        )
+        .unwrap();
+    f.ops.remove_folder_from_catalog(a).unwrap();
+    let rows = |sql: &str| f.ops.db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+    assert_eq!(rows("SELECT COUNT(*) FROM bundles"), 1, "the pair is gone, the other bundle stays");
+    assert_eq!(rows("SELECT COUNT(*) FROM bundle_members"), 2, "the survivor of the pair left with its bundle");
+    assert_eq!(rows("SELECT COUNT(*) FROM files"), 3);
+}
+
+#[test]
 fn folder_protection_matrix_and_catalog_setting() {
     let mut f = Fixture::new();
     let parent = f.folder("parent", None);
