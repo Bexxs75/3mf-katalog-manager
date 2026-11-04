@@ -142,6 +142,7 @@ mod tests {
             ("printer_connections", "address"),
             ("file_print_info", "reader_version"),
             ("file_print_plates", "print_seconds"),
+            ("disk_sync_known_copies", "content_hash"),
         ] {
             let found: i64 = copy
                 .query_row(&format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='{column}'"), [], |r| r.get(0))

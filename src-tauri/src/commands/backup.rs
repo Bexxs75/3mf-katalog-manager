@@ -217,6 +217,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("source_folders", &["id", "path", "added_at"]),
     ("source_rejected", &["id", "path", "size_bytes", "rejected_at"]),
     ("blocked_auto_tags", &["name", "blocked_at"]),
+    ("disk_sync_known_copies", &["id", "path", "size_bytes", "content_hash", "noted_at"]),
     ("printer_connections", &["printer_id", "kind", "address", "connected_since", "paused"]),
     ("printer_jobs", &[
         "id", "printer_id", "remote_id", "file_name", "outcome", "raw_status", "ended_at",
@@ -388,6 +389,12 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     // blocked_auto_tags - see db/blocked_tags.rs.
     ("blocked_auto_tags", "name", ColType::Text, false),
     ("blocked_auto_tags", "blocked_at", ColType::Text, false),
+    // disk_sync_known_copies - see db/known_copies.rs.
+    ("disk_sync_known_copies", "id", ColType::Integer, false),
+    ("disk_sync_known_copies", "path", ColType::Text, false),
+    ("disk_sync_known_copies", "size_bytes", ColType::Integer, false),
+    ("disk_sync_known_copies", "content_hash", ColType::Text, false),
+    ("disk_sync_known_copies", "noted_at", ColType::Text, false),
     // Printer connection - see db/printer_link.rs (connection_from_row, job_from_row).
     ("app_settings", "key", ColType::Text, false),
     ("app_settings", "value", ColType::Text, false),
@@ -1054,6 +1061,30 @@ fn validate_catalog_db_bytes(
                     reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
                         .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 }
+            }
+            drop(stmt);
+            // The paths show up in the sync settings and decide which files the sync skips,
+            // so a foreign backup must not bring an endless list or protected locations.
+            let copies_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM disk_sync_known_copies", [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            if copies_count as usize > crate::db::known_copies::MAX_KNOWN_COPIES {
+                return Err("Katalog-Datenbank enthaelt zu viele gemerkte Kopien".to_string());
+            }
+            let mut stmt = conn
+                .prepare("SELECT path, size_bytes, content_hash FROM disk_sync_known_copies")
+                .map_err(|e| e.to_string())?;
+            let copies = stmt
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            for (path, size_bytes, content_hash) in copies {
+                crate::db::known_copies::validate_stored_fields(&path, size_bytes, &content_hash)
+                    .map_err(|why| format!("Eintrag gemerkter Kopien im Archiv abgelehnt ({why})"))?;
+                validate_imported_path_length(&path, known_folders)?;
+                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
+                    .map_err(|e| format!("Eintrag gemerkter Kopien im Archiv abgelehnt: {}", e.message))?;
             }
             drop(stmt);
             validate_blocked_auto_tags(&conn)?;
@@ -2663,7 +2694,7 @@ mod tests {
             let file = sample_new_file_for_rescan_test(&dir.join("old.3mf"));
             db::insert_file(&mut conn, &file).unwrap();
             conn.execute_batch("DROP TABLE file_print_plates; DROP TABLE file_print_info").unwrap();
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 2).unwrap();
+            conn.pragma_update(None, "user_version", 52).unwrap(); // the version before the print tables (a shipped number, not derived from the current one)
         }
         let zip_path = dir.join("old-backup.zip");
         write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
@@ -2695,7 +2726,7 @@ mod tests {
             record.filament_colors.clear();
             id = db::insert_file(&mut conn, &file_with_print_data(&dir.join("v53.3mf"), record.clone())).unwrap();
             conn.execute_batch("ALTER TABLE file_print_info DROP COLUMN filament_colors").unwrap();
-            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+            conn.pragma_update(None, "user_version", 53).unwrap(); // the version before the color column
         }
         let zip_path = dir.join("v53-backup.zip");
         write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
@@ -4219,6 +4250,123 @@ mod companion_tests {
         assert!(validate(&bytes, &trash).is_err());
         let (bytes, trash) = catalog_bytes(|conn| {
             conn.execute("INSERT INTO source_folders (path, added_at) VALUES (X'1234', 't')", []).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_err());
+    }
+
+    const COPY_HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    fn insert_known_copy(conn: &Connection, path: &str, size: i64, hash: &str) {
+        conn.execute(
+            "INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES (?1, ?2, ?3, 't')",
+            rusqlite::params![path, size, hash],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn remembered_copies_survive_export_and_restore() {
+        let (source, dir) = state_with_catalog("backup_known_copies_a");
+        {
+            let conn = source.db.lock().unwrap();
+            db::known_copies::note_known_copy(&conn, "/models/copy.3mf", 42, COPY_HASH, "2026-11-01T10:00:00Z").unwrap();
+        }
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        validate(&db_bytes, &dir).expect("a current export must validate");
+        let incoming = dir.join("incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+
+        let (target, _target_dir) = state_with_catalog("backup_known_copies_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        let rows = db::known_copies::list_known_copies(&conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].path.as_str(), rows[0].size_bytes, rows[0].content_hash.as_str()), ("/models/copy.3mf", 42, COPY_HASH));
+    }
+
+    #[test]
+    fn a_backup_from_before_the_known_copies_table_can_be_restored() {
+        let (old, dir) = state_with_catalog("backup_known_copies_old_a");
+        {
+            let conn = old.db.lock().unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
+            conn.execute_batch("DROP TABLE disk_sync_known_copies").unwrap();
+            conn.pragma_update(None, "user_version", 54).unwrap();
+        }
+        let zip_path = dir.join("old-backup.zip");
+        write_catalog_backup(&old.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        assert!(Connection::open(&probe).unwrap().prepare("SELECT * FROM disk_sync_known_copies").is_err(), "precondition: the backup has no such table");
+
+        validate(&db_bytes, &dir).expect("an older backup must validate");
+        let incoming = dir.join("old-incoming.db");
+        std::fs::write(&incoming, &db_bytes).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_known_copies_old_b");
+        replace_catalog_db(&target, &incoming).unwrap();
+
+        let conn = target.db.lock().unwrap();
+        assert_eq!(db::known_copies::count_known_copies(&conn).unwrap(), 0, "the table exists and is empty");
+        assert_eq!(db::list_files(&conn).unwrap()[0].creator.as_deref(), Some("Jane"));
+    }
+
+    #[test]
+    fn crafted_known_copy_rows_are_rejected() {
+        let long = format!("/{}", "x".repeat(4100));
+        let cases: [(&str, &str, i64, &str); 8] = [
+            ("parent component", "/models/../etc/x.3mf", 1, COPY_HASH),
+            ("control character", "/models/a\u{7}.3mf", 1, COPY_HASH),
+            ("relative path", "models/a.3mf", 1, COPY_HASH),
+            ("negative size", "/models/a.3mf", -1, COPY_HASH),
+            ("short hash", "/models/a.3mf", 1, "abcd"),
+            ("non-hex hash", "/models/a.3mf", 1, "zz23456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+            ("empty path", "", 1, COPY_HASH),
+            ("endless path", long.as_str(), 1, COPY_HASH),
+        ];
+        for (why, path, size, hash) in cases {
+            let (bytes, trash) = catalog_bytes(|conn| insert_known_copy(conn, path, size, hash));
+            assert!(validate(&bytes, &trash).is_err(), "{why}");
+        }
+        let (bytes, trash) = catalog_bytes(|conn| insert_known_copy(conn, "/models/a.3mf", 1, COPY_HASH));
+        assert!(validate(&bytes, &trash).is_ok(), "counter-check: a normal row passes");
+    }
+
+    #[test]
+    fn a_known_copy_in_a_protected_location_is_rejected() {
+        let (bytes, trash) = catalog_bytes(|conn| insert_known_copy(conn, "/protected/dir/a.3mf", 1, COPY_HASH));
+        let sensitive = [PathBuf::from("/protected")];
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &[], &trash, &[]).is_ok(), "counter-check: without the protection the row is fine");
+    }
+
+    #[test]
+    fn a_backup_with_too_many_known_copies_is_rejected() {
+        let limit = crate::db::known_copies::MAX_KNOWN_COPIES;
+        for (rows, accepted) in [(limit, true), (limit + 1, false)] {
+            let (bytes, trash) = catalog_bytes(|conn| {
+                conn.execute_batch("BEGIN").unwrap();
+                for i in 0..rows {
+                    insert_known_copy(conn, &format!("/models/{i}.3mf"), 1, COPY_HASH);
+                }
+                conn.execute_batch("COMMIT").unwrap();
+            });
+            assert_eq!(validate(&bytes, &trash).is_ok(), accepted, "{rows} rows");
+        }
+    }
+
+    #[test]
+    fn wrong_storage_classes_in_known_copies_are_rejected() {
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES ('/m/a.3mf', 'big', ?1, 't')", [COPY_HASH]).unwrap();
+        });
+        assert!(validate(&bytes, &trash).is_err());
+        let (bytes, trash) = catalog_bytes(|conn| {
+            conn.execute("INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES (X'1234', 1, ?1, 't')", [COPY_HASH]).unwrap();
         });
         assert!(validate(&bytes, &trash).is_err());
     }

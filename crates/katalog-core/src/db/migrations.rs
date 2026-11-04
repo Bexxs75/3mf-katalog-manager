@@ -147,6 +147,9 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(add_print_info_tables),
     // Filament colors of a 3MF (space separated `#rrggbb`); NULL = none known. New nullable column only.
     MigrationStep::Simple(add_print_info_filament_colors),
+    // Copies the disk sync offered and the user declined, so they are not hashed and offered
+    // again. New table only, no existing data is touched.
+    MigrationStep::Simple(add_known_copies_table),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -202,6 +205,11 @@ pub(crate) const FOLDER_TRASH_ORIGIN_MIGRATION_VERSION: i64 = 52;
 #[cfg(test)]
 pub(crate) const PRINT_INFO_TABLES_MIGRATION_VERSION: i64 = 53;
 
+/// Schema version after the filament color column. Must stay 54: it is what catalogs of builds
+/// between the color column and the remembered copies contain.
+#[cfg(test)]
+pub(crate) const FILAMENT_COLORS_MIGRATION_VERSION: i64 = 54;
+
 /// New tables only (a row per read 3MF and a row per plate); `IF NOT EXISTS` so a catalog
 /// that already got them from the base schema is left alone. `files` is not touched on purpose:
 /// other tools read it with fixed column lists.
@@ -240,6 +248,18 @@ fn add_print_info_tables(conn: &Connection) -> Result<(), DbError> {
 /// the column from the base schema is left alone (`exec` tolerates the duplicate column).
 fn add_print_info_filament_colors(conn: &Connection) -> Result<(), DbError> {
     exec(conn, "ALTER TABLE file_print_info ADD COLUMN filament_colors TEXT")
+}
+
+/// New table only; `IF NOT EXISTS` so a catalog that already got it from the base schema is left alone.
+/// Keep the statement in step with `schema.sql`.
+fn add_known_copies_table(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS disk_sync_known_copies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        size_bytes INTEGER NOT NULL,
+        content_hash TEXT NOT NULL,
+        noted_at TEXT NOT NULL
+    )")
 }
 
 /// New table only; `IF NOT EXISTS` so a catalog that already got it from the base schema is left alone.
@@ -1143,7 +1163,7 @@ mod tests {
         assert_eq!((model.as_str(), layer, version, colors), ("Bambu Lab X1 Carbon", 0.2, 2, None), "old rows keep their values, colors unknown");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, PRINT_INFO_TABLES_MIGRATION_VERSION + 1, "the color column is the step after the print tables");
+        assert_eq!(FILAMENT_COLORS_MIGRATION_VERSION, PRINT_INFO_TABLES_MIGRATION_VERSION + 1, "the color column is the step after the print tables");
     }
 
     #[test]
@@ -1161,6 +1181,81 @@ mod tests {
         add_print_info_filament_colors(&fresh).unwrap();
         let colors: String = fresh.query_row("SELECT filament_colors FROM file_print_info", [], |r| r.get(0)).unwrap();
         assert_eq!(colors, "#ff0000 #00ff00", "repeating the step keeps the value");
+    }
+
+    /// A catalog at version 54: everything but the table of remembered copies, with rows in the
+    /// tables other tools read.
+    fn catalog_before_known_copies() -> (Connection, i64) {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("DROP TABLE disk_sync_known_copies").unwrap();
+        let folder = crate::db::insert_folder(&conn, "root").unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/models/a.3mf", Some(folder)).unwrap();
+        conn.execute("INSERT INTO tags (id, name, color_hue) VALUES (1, 'deko', 10)", []).unwrap();
+        conn.execute("INSERT INTO file_tags VALUES (?1, 1)", [id]).unwrap();
+        conn.execute("INSERT INTO source_rejected (path, size_bytes, rejected_at) VALUES ('/d/x.stl', 5, 't')", []).unwrap();
+        conn.pragma_update(None, "user_version", FILAMENT_COLORS_MIGRATION_VERSION).unwrap();
+        (conn, id)
+    }
+
+    #[test]
+    fn the_known_copies_step_adds_an_empty_table_and_keeps_every_row_unchanged() {
+        let (mut conn, _) = catalog_before_known_copies();
+        assert!(!table_exists(&conn, "disk_sync_known_copies"), "precondition: no table yet");
+        let before = catalog_snapshot(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(catalog_snapshot(&conn), before, "files, tags, file_tags and materials stay byte for byte as they were");
+        assert!(table_exists(&conn, "disk_sync_known_copies"));
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM disk_sync_known_copies", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0, "the table starts empty");
+        let declined: i64 = conn.query_row("SELECT COUNT(*) FROM source_rejected", [], |r| r.get(0)).unwrap();
+        assert_eq!(declined, 1, "the declined source files are another table and stay");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(CURRENT_SCHEMA_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 1, "the table is the step after the color column");
+        assert_eq!(CURRENT_SCHEMA_VERSION, 55);
+    }
+
+    #[test]
+    fn the_known_copies_step_is_repeatable_and_gives_the_same_table_as_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        fresh.execute(
+            "INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES ('/m/a.3mf', 1, 'h', 't')",
+            [],
+        ).unwrap();
+        add_known_copies_table(&fresh).unwrap();
+        add_known_copies_table(&fresh).unwrap();
+        let rows: i64 = fresh.query_row("SELECT COUNT(*) FROM disk_sync_known_copies", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1, "repeating the step keeps the row");
+        assert!(fresh.execute(
+            "INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES ('/m/a.3mf', 1, 'h', 't')",
+            [],
+        ).is_err(), "the path is unique");
+
+        let shape = |conn: &Connection| -> Vec<(String, String, bool, bool)> {
+            conn.prepare("SELECT name, type, \"notnull\", pk FROM pragma_table_info('disk_sync_known_copies') ORDER BY cid")
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        let by_step = Connection::open_in_memory().unwrap();
+        add_known_copies_table(&by_step).unwrap();
+        assert_eq!(shape(&by_step), shape(&fresh), "schema.sql and the step must describe the same table");
+        assert_eq!(shape(&fresh).len(), 5);
+    }
+
+    #[test]
+    fn opening_a_version_54_catalog_through_init_migrates_it() {
+        let (mut conn, id) = catalog_before_known_copies();
+        crate::db::repository::init(&mut conn).unwrap();
+        assert!(table_exists(&conn, "disk_sync_known_copies"));
+        assert!(crate::db::get_file(&conn, id).unwrap().is_some());
     }
 
     #[test]
@@ -1484,7 +1579,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 15);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 16);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

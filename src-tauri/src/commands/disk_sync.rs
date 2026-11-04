@@ -30,6 +30,9 @@ pub struct DiskScan {
     /// row. The sync never restores them; the count only lets the dialog say why they
     /// are not offered.
     trash_blocked_count: usize,
+    /// New files left out because the user declined them as copies earlier and nothing
+    /// changed since. The dialog only names the number.
+    known_copy_count: usize,
     #[serde(skip)]
     roots: Vec<DiskRoot>,
 }
@@ -81,6 +84,12 @@ pub struct DiskDuplicate {
     entry: DiskEntry,
     duplicate_of_name: String,
     duplicate_of_path: String,
+    // What the content match saw, kept so a declined copy can be remembered without
+    // reading the file again. Never sent to the webview.
+    #[serde(skip)]
+    content_hash: String,
+    #[serde(skip)]
+    size_bytes: i64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,6 +105,9 @@ pub struct DiskSelection {
     missing_ids: Vec<String>,
     remove_missing: bool,
     renames: Vec<RenameChoice>,
+    /// Copies of present models the user left unticked; they are remembered so the next
+    /// sync does not offer them again. Only paths the re-scan lists as copies count.
+    declined_copies: Vec<String>,
     // Filled by the command from app state, never taken from the webview.
     #[serde(skip)]
     sensitive_dirs: Vec<PathBuf>,
@@ -108,6 +120,9 @@ pub struct DiskApplied {
     renamed_ids: Vec<String>,
     renamed_count: usize,
     removed_count: usize,
+    /// Copies remembered by this run, and all remembered copies afterwards.
+    noted_copy_count: usize,
+    known_copy_count: i64,
     failed_paths: Vec<DiskFailedPath>,
 }
 
@@ -399,6 +414,15 @@ fn scan_with_path_mode(
     read: &mut impl FnMut(&Path) -> std::io::Result<DirectoryEntries>,
     case_insensitive: bool,
 ) -> SyncResult<DiskScan> {
+    scan_with_hasher(conn, read, case_insensitive, &hash_for_match)
+}
+
+fn scan_with_hasher(
+    conn: &Connection,
+    read: &mut impl FnMut(&Path) -> std::io::Result<DirectoryEntries>,
+    case_insensitive: bool,
+    hash: &dyn Fn(&Path) -> Option<String>,
+) -> SyncResult<DiskScan> {
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let known_folders: HashSet<PathBuf> = folders
         .iter()
@@ -600,7 +624,8 @@ fn scan_with_path_mode(
     result.missing_files.sort_by(|a, b| a.path.cmp(&b.path));
     result.missing_files.dedup_by(|a, b| a.id == b.id);
     if result.unreachable_roots.is_empty() {
-        classify_by_content(conn, &mut result, case_insensitive, &hash_for_match)?;
+        skip_known_copies(conn, &mut result, case_insensitive)?;
+        classify_by_content(conn, &mut result, case_insensitive, hash)?;
         // After the content match: a folder whose files were recognised as moved is not gone.
         result.missing_folders = find_missing_folders(conn, &result, case_insensitive)?;
     }
@@ -624,6 +649,94 @@ fn hash_for_match(path: &Path) -> Option<String> {
 
 fn extension_key(path: &Path) -> Option<String> {
     path.extension().map(|e| e.to_string_lossy().to_lowercase())
+}
+
+/// Where a listed entry lies on disk (its stored spelling resolved onto the real root).
+fn disk_path_of(scan: &DiskScan, e: &DiskEntry) -> Option<PathBuf> {
+    scan.roots
+        .iter()
+        .find(|r| r.stored == Path::new(&e.root))
+        .and_then(|r| r.resolve(Path::new(&e.path)))
+}
+
+/// Takes the copies the user declined earlier out of the new files without reading them.
+/// A remembered copy counts only while the file lies at the same path with the same size
+/// and a present, not missing catalog row still has its content hash; otherwise the row
+/// is forgotten and the file is judged like any new file, so a copy is offered again as
+/// soon as its original is gone. Size instead of a new hash is what saves the time; a
+/// file that changes its content at the same size stays remembered.
+fn skip_known_copies(conn: &Connection, scan: &mut DiskScan, case_insensitive: bool) -> SyncResult<()> {
+    let known = db::known_copies::list_known_copies(conn).map_err(|e| e.to_string())?;
+    if known.is_empty() {
+        return Ok(());
+    }
+    let missing_ids: HashSet<&str> = scan.missing_files.iter().filter_map(|e| e.id.as_deref()).collect();
+    let mut live_hashes: HashSet<String> = HashSet::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT id, content_hash FROM files WHERE deleted_at IS NULL AND content_hash IS NOT NULL")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?.to_string(), r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (id, hash) = row.map_err(|e| e.to_string())?;
+            if !missing_ids.contains(id.as_str()) {
+                live_hashes.insert(hash);
+            }
+        }
+    }
+    let new_by_key: HashMap<PathBuf, usize> = scan
+        .new_files
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (path_key(Path::new(&e.path), case_insensitive), i))
+        .collect();
+    let mut skipped: HashSet<usize> = HashSet::new();
+    let mut stale: Vec<i64> = Vec::new();
+    for row in &known {
+        let index = new_by_key.get(&path_key(Path::new(&row.path), case_insensitive)).copied();
+        let still_a_copy = index.is_some_and(|i| {
+            live_hashes.contains(&row.content_hash)
+                && disk_path_of(scan, &scan.new_files[i])
+                    .and_then(|p| std::fs::metadata(p).ok())
+                    .is_some_and(|m| m.is_file() && i64::try_from(m.len()).ok() == Some(row.size_bytes))
+        });
+        match index {
+            Some(i) if still_a_copy => {
+                skipped.insert(i);
+            }
+            _ => stale.push(row.id),
+        }
+    }
+    // Housekeeping only; a failure here must not stop the scan.
+    if !stale.is_empty() {
+        let _ = db::known_copies::forget_known_copies(conn, &stale);
+    }
+    if skipped.is_empty() {
+        return Ok(());
+    }
+    let skipped_dirs: Vec<PathBuf> = skipped
+        .iter()
+        .filter_map(|&i| Path::new(&scan.new_files[i].path).parent().map(|p| path_key(p, case_insensitive)))
+        .collect();
+    let mut index = 0;
+    scan.new_files.retain(|_| {
+        index += 1;
+        !skipped.contains(&(index - 1))
+    });
+    scan.known_copy_count = skipped.len();
+    // A folder that only held remembered copies has nothing left to offer.
+    let remaining: Vec<PathBuf> = scan
+        .new_files
+        .iter()
+        .map(|e| path_key(Path::new(&e.path), case_insensitive))
+        .collect();
+    scan.new_folders.retain(|folder| {
+        let folder = path_key(Path::new(&folder.path), case_insensitive);
+        !skipped_dirs.iter().any(|dir| dir.starts_with(&folder)) || remaining.iter().any(|file| file.starts_with(&folder))
+    });
+    Ok(())
 }
 
 /// Splits the new files by content: a clear rename partner among the missing rows, or a
@@ -677,13 +790,13 @@ fn classify_by_content(
         return Ok(());
     }
     let mut new_by_hash: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut sizes: HashMap<usize, i64> = HashMap::new();
     for (index, e) in scan.new_files.iter().enumerate() {
-        let disk_path = scan
-            .roots
-            .iter()
-            .find(|r| r.stored == Path::new(&e.root))
-            .and_then(|r| r.resolve(Path::new(&e.path)));
+        let disk_path = disk_path_of(scan, e);
+        // Size first: it is what a remembered copy is later compared with.
+        let size = disk_path.as_ref().and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len() as i64);
         if let Some(content_hash) = disk_path.and_then(|p| hash(&p)) {
+            sizes.insert(index, size);
             new_by_hash.entry(content_hash).or_default().push(index);
         }
     }
@@ -699,6 +812,8 @@ fn classify_by_content(
                     entry: scan.new_files[i].clone(),
                     duplicate_of_name: name.clone(),
                     duplicate_of_path: path.clone(),
+                    content_hash: content_hash.clone(),
+                    size_bytes: sizes.get(&i).copied().unwrap_or(0),
                 });
             }
             continue;
@@ -1526,6 +1641,7 @@ fn apply_with_path_mode(
         }
         remove_missing_folders(&tx, &current)?;
     }
+    remember_declined_copies(&tx, &current, &selection.declined_copies, &chosen, case_insensitive, &mut result)?;
     result.folder_ids = db::list_folders(&tx)
         .map_err(|e| e.to_string())?
         .into_iter()
@@ -1535,6 +1651,44 @@ fn apply_with_path_mode(
     validate()?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(result)
+}
+
+/// Remembers the copies the user left unticked. Only paths the fresh scan lists as copies
+/// are taken (never one the webview merely names), so nothing outside the catalog roots
+/// can end up in the table.
+fn remember_declined_copies(
+    tx: &Connection,
+    current: &DiskScan,
+    declined: &[String],
+    chosen: &HashSet<String>,
+    case_insensitive: bool,
+    result: &mut DiskApplied,
+) -> SyncResult<()> {
+    if !declined.is_empty() {
+        let declined: HashSet<&str> = declined.iter().map(String::as_str).collect();
+        let existing = db::known_copies::list_known_copies(tx).map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        for d in &current.duplicate_files {
+            let path = d.entry.path.as_str();
+            if !declined.contains(path) || chosen.contains(path) || d.content_hash.is_empty() {
+                continue;
+            }
+            // The table is unique by spelling; where paths are case-folded another spelling is the same file.
+            let key = path_key(Path::new(path), case_insensitive);
+            let other_spellings: Vec<i64> = existing
+                .iter()
+                .filter(|row| row.path != path && path_key(Path::new(&row.path), case_insensitive) == key)
+                .map(|row| row.id)
+                .collect();
+            db::known_copies::forget_known_copies(tx, &other_spellings).map_err(|e| e.to_string())?;
+            db::known_copies::note_known_copy(tx, path, d.size_bytes, &d.content_hash, &now)
+                .map_err(|e| e.to_string())?;
+            result.noted_copy_count += 1;
+        }
+        db::known_copies::trim_known_copies(tx).map_err(|e| e.to_string())?;
+    }
+    result.known_copy_count = db::known_copies::count_known_copies(tx).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn connection(state: &AppState) -> CmdResult<Connection> {
@@ -2407,6 +2561,9 @@ mod tests {
 mod start_sync;
 pub use start_sync::*;
 
+mod known_copies;
+pub use known_copies::*;
+
 #[cfg(test)]
 mod start_sync_tests;
 
@@ -2424,3 +2581,6 @@ mod companion_tests;
 
 #[cfg(test)]
 mod blocked_tags_tests;
+
+#[cfg(test)]
+mod known_copy_tests;
