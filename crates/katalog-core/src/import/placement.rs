@@ -187,7 +187,58 @@ pub fn comparison_path(path: &Path) -> PathBuf {
     { PathBuf::from(path.to_string_lossy().to_lowercase()) }
     #[cfg(not(windows))]
     { path.to_path_buf() }
-}pub fn move_file_to_folder_with_conn(
+}
+/// Folder below `parent_id` that mirrors the directory of `file` inside the dropped
+/// folder `root`, including the dropped folder itself (`root/a/x.3mf` ends in
+/// `<parent>/<root name>/a`). Missing directories and catalog rows are created; existing
+/// ones are reused. Nothing is created for a file directly in a dropped file list.
+pub fn ensure_subfolders(
+    conn: &Connection,
+    parent_id: i64,
+    file: &Path,
+    root: &Path,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<i64> {
+    let (Some(dir), Some(base)) = (file.parent(), root.parent()) else {
+        return Ok(parent_id);
+    };
+    let relative = dir
+        .strip_prefix(base)
+        .map_err(|_| CmdError::expected("moveFailed"))?;
+    let mut current = parent_id;
+    for component in relative.components() {
+        let std::path::Component::Normal(name) = component else {
+            return Err(CmdError::expected("moveFailed"));
+        };
+        let folders = db::list_folders(conn).map_err(|e| format!("database: {e}"))?;
+        let parent = folders
+            .iter()
+            .find(|f| f.id == current)
+            .ok_or_else(|| CmdError::expected("targetMissing"))?;
+        let path = Path::new(&parent.path).join(name);
+        reject_if_sensitive_path(&path, sensitive_dirs).map_err(|_| CmdError::expected("protected"))?;
+        let path_text = path.to_string_lossy().into_owned();
+        if let Some(existing) = folders.iter().find(|f| f.path == path_text) {
+            current = existing.id;
+            continue;
+        }
+        match std::fs::create_dir(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => {}
+            Err(_) => return Err(CmdError::expected("moveFailed")),
+        }
+        current = db::insert_folder_with_parent(
+            conn,
+            &name.to_string_lossy(),
+            Some(current),
+            &path_text,
+        )
+        .map_err(|e| format!("database: {e}"))?;
+    }
+    Ok(current)
+}
+
+pub fn move_file_to_folder_with_conn(
     conn: &Connection,
     file_id: i64,
     folder_id: Option<i64>,

@@ -1040,3 +1040,154 @@ fn rename_database_failure_rolls_back_and_fails_job() {
         path.to_str().unwrap()
     );
 }
+
+fn dropped_job(service: &ImportJobs, target: Option<i64>) -> Arc<ImportJob> {
+    let job = service
+        .enqueue(ImportSource::Dropped, target.map(|t| t.to_string()), target.is_some(), None)
+        .unwrap();
+    service.next().unwrap();
+    job
+}
+
+#[test]
+fn drop_without_target_imports_in_place_and_with_target_moves_the_file() {
+    // Golden: no target keeps the old result (path and folder untouched).
+    let fixture = Fixture::new();
+    let path = fixture.stl(1);
+    let mut conn = db::connect_in_memory().unwrap();
+    let service = ImportJobs::default();
+    let job = dropped_job(&service, None);
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&path));
+    let result = job.result().unwrap();
+    assert!(!result.placement_required);
+    assert_eq!(result.groups.imported.len(), 1);
+    let row = &db::list_files(&conn).unwrap()[0];
+    assert_eq!((Path::new(&row.path), row.folder_id), (path.as_path(), None));
+    assert!(path.exists());
+
+    // With a target the file moves and carries the folder.
+    let fixture = Fixture::new();
+    let path = fixture.stl(1);
+    let target = fixture.0.join("target");
+    std::fs::create_dir(&target).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = db::insert_folder_with_parent(&conn, "target", None, &target.to_string_lossy()).unwrap();
+    let job = dropped_job(&service, Some(id));
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&path));
+    let result = job.result().unwrap();
+    assert_eq!(result.counts.imported, 1);
+    assert_eq!(result.counts.imported_not_placed, 0);
+    let row = &db::list_files(&conn).unwrap()[0];
+    assert_eq!(Path::new(&row.path), target.join("model_1.stl"));
+    assert_eq!(row.folder_id, Some(id));
+    assert!(!path.exists() && target.join("model_1.stl").exists());
+}
+
+#[test]
+fn drop_target_missing_on_disk_or_protected_moves_nothing() {
+    let fixture = Fixture::new();
+    let path = fixture.stl(1);
+    let target = fixture.0.join("target");
+    std::fs::create_dir(&target).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = db::insert_folder_with_parent(&conn, "target", None, &target.to_string_lossy()).unwrap();
+    // Not on disk.
+    let service = ImportJobs { target: Arc::new(MissingTarget), ..ImportJobs::default() };
+    let job = dropped_job(&service, Some(id));
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&path));
+    let result = job.result().unwrap();
+    assert_eq!(result.groups.imported_not_placed[0].reason, "targetMissing");
+    assert!(path.exists() && !target.join("model_1.stl").exists());
+    // Protected.
+    let fixture = Fixture::new();
+    let path = fixture.stl(1);
+    let target = fixture.0.join("target");
+    std::fs::create_dir(&target).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = db::insert_folder_with_parent(&conn, "target", None, &target.to_string_lossy()).unwrap();
+    let service = ImportJobs::default();
+    let job = dropped_job(&service, Some(id));
+    let sensitive = vec![target.clone()];
+    run_models(&service, &job, &mut &mut conn, std::slice::from_ref(&path), &sensitive).unwrap();
+    job.finish(None);
+    let result = job.result().unwrap();
+    assert_eq!(result.groups.imported_not_placed[0].reason, "protected");
+    assert!(path.exists() && !target.join("model_1.stl").exists());
+}
+
+#[test]
+fn drop_with_a_name_collision_in_the_target_keeps_the_source() {
+    let fixture = Fixture::new();
+    let path = fixture.stl(1);
+    let target = fixture.0.join("target");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("model_1.stl"), b"other").unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = db::insert_folder_with_parent(&conn, "target", None, &target.to_string_lossy()).unwrap();
+    let service = ImportJobs::default();
+    let job = dropped_job(&service, Some(id));
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&path));
+    let result = job.result().unwrap();
+    assert_eq!(result.groups.imported_not_placed[0].reason, "moveFailed");
+    assert!(path.exists());
+    assert_eq!(std::fs::read(target.join("model_1.stl")).unwrap(), b"other");
+}
+
+#[test]
+fn dropped_folder_becomes_a_subfolder_with_its_structure() {
+    let fixture = Fixture::new();
+    let drop = fixture.0.join("drop");
+    std::fs::create_dir_all(drop.join("a/b")).unwrap();
+    for (name, seed) in [("y.stl", 1), ("a/x.stl", 2), ("a/b/z.stl", 3)] {
+        std::fs::rename(fixture.stl(seed), drop.join(name)).unwrap();
+    }
+    let target = fixture.0.join("target");
+    std::fs::create_dir(&target).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = db::insert_folder_with_parent(&conn, "target", None, &target.to_string_lossy()).unwrap();
+    let service = ImportJobs::default();
+    let job = dropped_job(&service, Some(id));
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&drop));
+    let result = job.result().unwrap();
+    assert_eq!((result.counts.imported, result.counts.imported_not_placed), (3, 0));
+    let folders = db::list_folders(&conn).unwrap();
+    let find = |path: &Path| folders.iter().find(|f| Path::new(&f.path) == path).unwrap();
+    let d = find(&target.join("drop"));
+    assert_eq!(d.parent_id, Some(id));
+    let a = find(&target.join("drop/a"));
+    assert_eq!(a.parent_id, Some(d.id));
+    let b = find(&target.join("drop/a/b"));
+    assert_eq!(b.parent_id, Some(a.id));
+    // The old place got no folder rows of its own.
+    assert!(folders.iter().all(|f| !Path::new(&f.path).starts_with(&drop)));
+    for (rel, folder) in [("y.stl", d.id), ("a/x.stl", a.id), ("a/b/z.stl", b.id)] {
+        let row = db::list_files(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|f| Path::new(&f.path) == target.join("drop").join(rel))
+            .unwrap_or_else(|| panic!("{rel} not catalogued in the target"));
+        assert_eq!(row.folder_id, Some(folder));
+        assert!(!drop.join(rel).exists());
+    }
+}
+
+#[test]
+fn dropping_another_folder_of_the_same_name_reuses_the_subfolder() {
+    let fixture = Fixture::new();
+    let target = fixture.0.join("target");
+    std::fs::create_dir_all(target.join("drop")).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = db::insert_folder_with_parent(&conn, "target", None, &target.to_string_lossy()).unwrap();
+    let existing = db::insert_folder_with_parent(
+        &conn, "drop", Some(id), &target.join("drop").to_string_lossy()).unwrap();
+    let source = fixture.0.join("src");
+    std::fs::create_dir_all(source.join("drop")).unwrap();
+    std::fs::rename(fixture.stl(1), source.join("drop/m.stl")).unwrap();
+    let service = ImportJobs::default();
+    let job = dropped_job(&service, Some(id));
+    finish_models(&service, &job, &mut conn, &[source.join("drop")]);
+    assert_eq!(job.result().unwrap().counts.imported, 1);
+    let drops: Vec<_> = db::list_folders(&conn).unwrap().into_iter().filter(|f| f.name == "drop").collect();
+    assert_eq!(drops.len(), 1);
+    assert_eq!(db::list_files(&conn).unwrap()[0].folder_id, Some(existing));
+}

@@ -208,6 +208,17 @@ pub fn run_models<A: ArchiveTypes>(
     let mut batch = Vec::new();
     let mut imported = Vec::new();
     let mut error = None;
+    // A folder dropped onto a catalog folder keeps its structure below that folder: the
+    // placement rebuilds it from these roots, so the import does not first give the
+    // files folder rows at their old place.
+    let placed_roots: HashMap<String, PathBuf> = if job.placement_required {
+        candidates
+            .iter()
+            .filter_map(|(path, root)| Some((path.to_string_lossy().into_owned(), root.clone()?)))
+            .collect()
+    } else {
+        HashMap::new()
+    };
     for (path, root) in &candidates {
         if job.cancel.load(Ordering::Acquire) || error.is_some() {
             skip(job, path, "notStarted");
@@ -290,7 +301,7 @@ pub fn run_models<A: ArchiveTypes>(
                 new_file.path = path.to_string_lossy().into_owned();
                 batch.push(files::PendingImport {
                     path: path.clone(),
-                    folder_root: root.clone(),
+                    folder_root: if job.placement_required { None } else { root.clone() },
                     new_file,
                 });
                 job.data.lock().unwrap().in_flight = batch.len();
@@ -363,6 +374,16 @@ pub fn run_models<A: ArchiveTypes>(
                         Some(target)
                     } else {
                         None
+                    };
+                    let target = match (target, placed_roots.get(&file.path)) {
+                        (Some(parent), Some(root)) => Some(placement::ensure_subfolders(
+                            conn,
+                            parent,
+                            Path::new(&file.path),
+                            root,
+                            sensitive,
+                        )?),
+                        _ => target,
                     };
                     if prefix.is_none() {
                         placement::move_file_to_folder_with_conn(
