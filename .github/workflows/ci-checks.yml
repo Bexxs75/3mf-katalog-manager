@@ -123,7 +123,7 @@ jobs:
 
       # Only the portable file layer: other core tests are not proven on Windows/macOS yet.
       - name: Test the portable file operations of the core
-        run: cargo test -p katalog-core --no-default-features fs_portable::
+        run: "cargo test -p katalog-core --no-default-features fs_portable::"
 
       # Only the desktop crate and the core it depends on: the web server is Linux/Docker only.
       - name: Compile the desktop app (core included)
