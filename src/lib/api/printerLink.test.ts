@@ -66,6 +66,12 @@ describe('printerLink api', () => {
     await api.ignorePrinterJob('5');
     expect(invoke).toHaveBeenCalledWith('ignore_printer_job', { jobId: '5' });
   });
+  it('sets and clears the reason a print ended early', async () => {
+    await api.setPrinterJobFailure('5', 'clog', null);
+    expect(invoke).toHaveBeenCalledWith('set_printer_job_failure', { jobId: '5', reason: 'clog', note: null });
+    await api.setPrinterJobFailure('5', null, null);
+    expect(invoke).toHaveBeenLastCalledWith('set_printer_job_failure', { jobId: '5', reason: null, note: null });
+  });
   it('exposes the sync event name', () => {
     expect(api.PRINTER_JOBS_CHANGED_EVENT).toBe('printer-jobs-changed');
   });
