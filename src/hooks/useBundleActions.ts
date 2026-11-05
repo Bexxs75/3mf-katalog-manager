@@ -100,6 +100,28 @@ export function useBundleActions({ bundleStore, models, selection, selectIds, co
     focusLater(cardSelector(bundleId));
   }, [bundleStore, bundles, selectIds, show, t, formatCount, focusLater]);
 
+  /**
+   * Creates the bundles of accepted suggestions one after the other. A failure stops there and is
+   * thrown to the dialog; what was created before stays and is reported.
+   */
+  const createSuggested = useCallback(async (items: { name: string; kind: BundleKind; fileIds: string[] }[]) => {
+    let bundlesMade = 0;
+    let modelsMade = 0;
+    try {
+      for (const item of items) {
+        const created = await bundleStore.createBundle(item.name, item.kind, item.fileIds);
+        if (!created) return 0;
+        bundlesMade += 1;
+        modelsMade += item.fileIds.length;
+      }
+    } finally {
+      if (bundlesMade > 0) {
+        show(formatCount(t('bundleSuggestToastCreated'), bundlesMade).replace('{models}', String(modelsMade)));
+      }
+    }
+    return bundlesMade;
+  }, [bundleStore, show, t, formatCount]);
+
   const restore = useCallback(async (snapshots: BundleSnapshot[]) => {
     await guarded(async () => {
       let last: Bundle | undefined;
@@ -190,7 +212,7 @@ export function useBundleActions({ bundleStore, models, selection, selectIds, co
     state,
     dialog, openDialog, closeDialog,
     returnFocus,
-    create, add, saveEdit, remove, dissolve,
+    create, add, createSuggested, saveEdit, remove, dissolve,
     deleteChoice,
     closeDeleteChoice,
     interceptDelete, askDeleteBundle,

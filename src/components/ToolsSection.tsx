@@ -21,6 +21,9 @@ export interface ToolsSectionProps {
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
   cleanupError: AppError | null;
+  /** Bundle suggestions still open; the entry only shows when `onOpenBundleSuggestions` is given. */
+  bundleSuggestionCount?: number;
+  onOpenBundleSuggestions?: (returnTo: HTMLElement | null) => void;
 }
 
 // Line icons (16 px, currentColor) as in the approved mockup.
@@ -64,6 +67,12 @@ const ICONS = {
     </>
   ),
   cleanup: <path d="M3 7h18M5 7l1 13h12l1-13M9 7V4h6v3M10 11v6M14 11v6" />,
+  bundle: (
+    <>
+      <rect x="7" y="3" width="14" height="14" rx="2" />
+      <path d="M3 8v11a2 2 0 0 0 2 2h11" />
+    </>
+  ),
 };
 
 const rowBase =
@@ -156,6 +165,18 @@ export function ToolsSection(props: ToolsSectionProps) {
           {viewRow('new', ICONS.new, t('toolNew'), props.counts.new)}
           {viewRow('favorites', null, t('toolFavorites'), props.counts.favorites)}
           {viewRow('duplicates', ICONS.duplicates, t('toolDuplicates'), props.counts.duplicateGroups)}
+          {canEdit && props.onOpenBundleSuggestions && (
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              onClick={event => props.onOpenBundleSuggestions?.(event.currentTarget)}
+              className={`${rowBase} ${rowIdle}`}
+            >
+              <Icon>{ICONS.bundle}</Icon>
+              <span>{t('toolBundleSuggestions')}</span>
+              <Count value={props.bundleSuggestionCount ?? 0} />
+            </button>
+          )}
           {import.meta.env.VITE_TARGET !== 'web' && <button
             type="button"
             disabled={props.cleanupScanning} {...lockProps}

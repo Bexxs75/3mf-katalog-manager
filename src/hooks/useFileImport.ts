@@ -19,6 +19,8 @@ interface UseFileImportArgs {
   /** A drop on a folder that is no target: nothing is imported. */
   onDropRejected?: (target: Extract<DropTarget, { kind: 'invalid' }>) => void;
   onImported: (result: ImportResultDto) => void;
+  /** Ids of files an import has just added, for follow-up hints; the file list may not hold them yet. */
+  onAdded?: (fileIds: string[]) => void;
   refreshFolders: () => void;
   refreshFiles: () => void;
   refreshTags: () => void;
@@ -47,6 +49,7 @@ export function useFileImport(args: UseFileImportArgs) {
   const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number; skipped: SkippedFile[]; otherFilesExtracted?: number; companionsAssigned?: number; companionsIgnored?: number; jobHasProblems?: boolean } | null>(null);
   const mergeImported = useCallback((value: ImportResultDto) => {
     latest.current.onImported(value);
+    latest.current.onAdded?.(value.imported.map(file => file.id));
     if (value.duplicateCount || value.skipped?.length) setImportBanner({ imported: value.imported.length, duplicates: value.duplicateCount, skipped: value.skipped ?? [] });
   }, []);
   const persist = useCallback(() => {
@@ -71,6 +74,7 @@ export function useFileImport(args: UseFileImportArgs) {
     jobs.current.delete(value.jobId); setResult(value); persist();
     // Failed or cancelled jobs can still have imported models and their tags.
     latest.current.refreshFiles(); latest.current.refreshFolders(); latest.current.refreshTags();
+    latest.current.onAdded?.([...value.groups.imported, ...value.groups.importedNotPlaced].map(file => file.fileId));
     const archives = value.groups.archive.filter(a => a.state !== 'pending');
     if (archives.length || value.source === 'archive') {
       const otherFilesExtracted = archives.reduce((sum, a) => sum + a.otherFilesExtracted, 0);

@@ -9,12 +9,13 @@ import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
 import { useDismissableMenu } from '../hooks/useDismissableMenu';
 import type { MainView, ViewMode, SortKey, SortDirection } from '../types';
+import type { DiskApplied } from '../lib/api/diskSync';
 import { defaultSortDirection } from '../lib/catalogFilters';
 
 import { useT, useFormatCount } from '../i18n/LanguageContext';
 
 interface Props {
-  onDiskSyncApplied?: () => Promise<unknown>;
+  onDiskSyncApplied?: (result: DiskApplied) => Promise<unknown>;
   onDiskSyncScanned?: () => unknown;
   detailPanel?: 'auto' | 'pinned';
   onDetailPanelChange?: (mode: 'auto' | 'pinned') => void;

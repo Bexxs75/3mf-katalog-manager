@@ -42,6 +42,20 @@ describe('ToolsSection', () => {
     expect(row('Aufräum-Vorschläge')).toBeInTheDocument();
   });
 
+  it('offers the bundle suggestions with their count, and only when the app passes a handler', () => {
+    const onOpen = vi.fn();
+    setup({ bundleSuggestionCount: 3, onOpenBundleSuggestions: onOpen });
+    const entry = row('Bündel-Vorschläge');
+    expect(entry).toHaveTextContent('3');
+    fireEvent.click(entry);
+    expect(onOpen).toHaveBeenCalledWith(entry);
+  });
+
+  it('has no suggestion entry without a handler', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: /Bündel-Vorschläge/ })).not.toBeInTheDocument();
+  });
+
   it('leaves Material Manager and trash to the left rail', () => {
     setup();
     expect(screen.queryByRole('button', { name: /Material Manager/ })).not.toBeInTheDocument();
