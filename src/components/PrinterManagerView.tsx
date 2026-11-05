@@ -16,6 +16,7 @@ import { PrinterConnectionSection } from './PrinterConnectionSection';
 import { PrinterLinkControl } from './PrinterLinkControl';
 import { PrinterUnitsSection } from './PrinterUnitsSection';
 import { PrinterHistoryTable } from './PrinterHistoryTable';
+import { PrinterStatistics } from './PrinterStatistics';
 import { PrinterManagerDialog, pmButton, pmField } from './PrinterManagerDialog';
 import { SegmentedControl } from './SegmentedControl';
 import { Icon } from './Icon';
@@ -116,7 +117,10 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
         <Icon name="printer" size={24} /><h1 className="font-bold">{t('pmEmptyTitle')}</h1>
         <p className="max-w-lg text-[var(--ink-3)]">{t('pmEmptyBody')}</p>
         <button className={pmButton} disabled={!canEdit} onClick={() => { if (canEditMetadata()) setAdding(true); }} aria-label={t('pmAddFirst')}><Icon name="plus" size={14} /> {t('pmAddFirst').replace(/^\+\s*/, '')}</button>
-      </section> : <PrinterDetail key={printer.id} printer={printer} state={state} link={printerLink} onMaterial={onMaterial} />}
+      </section> : <div className="min-w-0 flex flex-col gap-4 max-w-[1500px]">
+        <PrinterDetail key={printer.id} printer={printer} state={state} link={printerLink} onMaterial={onMaterial} />
+        <PrinterStatistics printers={listed} printerId={printer.id} refreshKey={printerLink.jobs} />
+      </div>}
     </main>
     {canEdit && adding && <AddPrinter state={state} onClose={() => setAdding(false)} onAdded={id => { setSelected(id); setOpen(false); }} />}
   </div>;
