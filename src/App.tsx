@@ -51,6 +51,7 @@ import { MoveTargetDialog } from './components/MoveTargetDialog';
 import { RenameToast } from './components/RenameToast';
 import { FolderTrashToast } from './components/FolderTrashToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
+import { PrintTechnologyPrompt } from './components/PrintTechnologyPrompt';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
 import { UpgradeNoticeDialog } from './components/UpgradeNoticeDialog';
@@ -204,6 +205,8 @@ export default function App() {
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
   const update = useUpdater();
 
+  // Whether this start is the very first one decides how "what do you print with" is asked.
+  const firstRunRef = useRef(!setupSeen);
   const [setupDialogOpen, setSetupDialogOpen] = useState(import.meta.env.VITE_TARGET !== 'web' && !setupSeen);
   // The update notice goes before other start-up questions, so they wait for it.
   const [upgradeNoticeSettled, setUpgradeNoticeSettled] = useState(false);
@@ -865,6 +868,8 @@ export default function App() {
           )}
 
           <NoticeStack>
+            {!web && <PrintTechnologyPrompt firstRun={firstRunRef.current} wait={setupDialogOpen || !upgradeNoticeSettled}
+              onChoose={() => { setGeneralTabRequest(n => n + 1); setCatalogTabRequest(0); setSettingsOpen(true); }} />}
             {sourceCheck.notice && <SourceFolderNotice notice={sourceCheck.notice} onView={sourceCheck.openDialog} onClose={sourceCheck.dismissNotice} />}
             {fileImport.importBanner && (
               <ImportSummaryBanner

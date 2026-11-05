@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ModelDetailPage } from './ModelDetailPage';
 import { LanguageProvider } from '../i18n/LanguageContext';
+import { PrintTechnologyProvider } from '../hooks/PrintTechnologyContext';
+import { invoke } from '@tauri-apps/api/core';
 import { makeModelFile, makePrintInfo } from '../test/factories';
 import { de } from '../i18n/de';
 import type { FilamentCheck, ModelFile } from '../types';
@@ -62,6 +64,20 @@ it('keeps the filament usage per plate, the filament check and the cost line (us
   expect(screen.getByText(de.metaCostEstimate)).toBeVisible();
   expect(screen.getByTitle(de.costEstimateUnpricedHint)).toBeVisible();
   expect(screen.getByText('4,50')).toBeVisible();
+});
+
+it.each([['resin', false], ['filament', true], ['both', true]] as const)('with %s the spool check and cost line are shown: %s', async (value, shown) => {
+  vi.mocked(invoke).mockImplementation((cmd: string) => Promise.resolve(cmd === 'get_print_technology' ? { value, asked: true } : []));
+  const filamentCheck: FilamentCheck = { fileId: 'model-1', status: 'ok', needs: [] };
+  check.value = { checks: new Map([['model-1', filamentCheck]]), error: false };
+  const model = makeModelFile({ path: '/c/a.3mf', sliceInfo: slice, printInfo: info, costEstimate: { totalCost: 4.5, hasUnpricedFilaments: false } });
+  render(<LanguageProvider><PrintTechnologyProvider><ModelDetailPage {...props} model={model} /></PrintTechnologyProvider></LanguageProvider>);
+  await vi.waitFor(() => expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_print_technology'));
+  await act(async () => {});
+  expect(!!screen.queryByText(de.filamentCheckHeading)).toBe(shown);
+  expect(!!screen.queryByText(de.metaCostEstimate)).toBe(shown);
+  // The usage read from the file is data of the file, not of the stock, and stays.
+  expect(screen.getByRole('table', { name: de.printDataHeading })).toBeVisible();
 });
 
 it('shows the filament usage even when the print data row is missing (not read yet)', () => {

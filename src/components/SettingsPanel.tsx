@@ -1,3 +1,4 @@
+import { PrintTechnologySettings } from './PrintTechnologySettings';
 import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { ImportRenameSetting } from './ImportRenameSetting';
@@ -256,6 +257,7 @@ export function SettingsPanel({
                   : t('displayPreferenceDescriptionRender')}
               </div>
 
+              <div className="mt-4"><PrintTechnologySettings /></div>
               <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('languageTitle')}</div>
               <div className="grid grid-cols-2 gap-0.5 p-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
                 {(['de', 'en', 'es', 'fr'] as Language[]).map((lang) => (
