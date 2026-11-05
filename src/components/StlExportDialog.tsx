@@ -10,6 +10,8 @@ import { Icon } from './Icon';
 
 interface Props {
   model: { id: string; name: string; fileType: string };
+  /** Opened from the parts list of a STEP file: the parts to save (mesh indices) replace the plate choice. */
+  parts?: { indices: number[]; initial: 'parts' | 'eachPart' };
   onClose: () => void;
 }
 
@@ -21,7 +23,7 @@ const primaryClass = `h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[v
  * "Save as STL": range (only where there is a choice), hints, then the system save dialog opens in the
  * backend. Nothing is added to the catalog; an existing file is never overwritten.
  */
-export function StlExportDialog({ model, onClose }: Props) {
+export function StlExportDialog({ model, parts, onClose }: Props) {
   const t = useT();
   const titleId = useId();
   const scopeName = useId();
@@ -29,6 +31,7 @@ export function StlExportDialog({ model, onClose }: Props) {
   const [plates, setPlates] = useState<number[]>([]);
   const [wholeModel, setWholeModel] = useState(true);
   const [plate, setPlate] = useState<number | null>(null);
+  const [eachPart, setEachPart] = useState(parts?.initial === 'eachPart');
   const [error, setError] = useState<AppError | null>(null);
   const [result, setResult] = useState<StlExportResult | null>(null);
   const [folderError, setFolderError] = useState<AppError | null>(null);
@@ -49,7 +52,8 @@ export function StlExportDialog({ model, onClose }: Props) {
 
   const chosenPlate = plate ?? plates[0] ?? null;
   const manyPlates = plates.length > 1;
-  const scope: StlScope = manyPlates && !wholeModel && chosenPlate !== null ? { kind: 'plate', number: chosenPlate } : { kind: 'all' };
+  const scope: StlScope = parts ? (eachPart ? { kind: 'eachPart' } : { kind: 'parts', indices: parts.indices })
+    : manyPlates && !wholeModel && chosenPlate !== null ? { kind: 'plate', number: chosenPlate } : { kind: 'all' };
 
   const save = async () => {
     setError(null);
@@ -83,7 +87,7 @@ export function StlExportDialog({ model, onClose }: Props) {
         {phase === 'done' && result ? (
           <>
             <p role="status" className="m-0 mb-1 font-semibold">{t('stDone')}</p>
-            <p className="m-0 mb-2 font-code text-small break-all text-[var(--ink-2)]">{displayName(result.name)}</p>
+            <p className="m-0 mb-2 font-code text-small break-all text-[var(--ink-2)]">{result.fileCount > 1 ? t('stDoneMany').replace('{n}', String(result.fileCount)) : displayName(result.name)}</p>
             {result.inCatalogFolder && <p className="m-0 mb-2 text-small text-[var(--ink-2)]">{t('stDoneInCatalog')}</p>}
             {folderError && <p role="alert" className="m-0 mb-2 text-small text-[var(--accent)]"><ErrorText error={folderError} /></p>}
             <div className="flex gap-2 justify-end mt-3">
@@ -96,7 +100,20 @@ export function StlExportDialog({ model, onClose }: Props) {
           </>
         ) : (
           <>
-            {manyPlates && (
+            {parts && (
+              <fieldset className="m-0 mb-3 p-0 border-0">
+                <legend className="ui-label text-[var(--ink-3)] mb-1">{t('stScope')}</legend>
+                <label className="flex items-center gap-2 py-1 cursor-pointer">
+                  <input type="radio" name={scopeName} checked={!eachPart} disabled={phase === 'saving' || parts.indices.length === 0} onChange={() => setEachPart(false)} />
+                  {t('stScopeParts').replace('{n}', String(parts.indices.length))}
+                </label>
+                <label className="flex items-center gap-2 py-1 cursor-pointer">
+                  <input type="radio" name={scopeName} checked={eachPart} disabled={phase === 'saving'} onChange={() => setEachPart(true)} />
+                  {t('stScopeEach')}
+                </label>
+              </fieldset>
+            )}
+            {!parts && manyPlates && (
               <fieldset className="m-0 mb-3 p-0 border-0">
                 <legend className="ui-label text-[var(--ink-3)] mb-1">{t('stScope')}</legend>
                 <label className="flex items-center gap-2 py-1 cursor-pointer">
@@ -115,7 +132,7 @@ export function StlExportDialog({ model, onClose }: Props) {
               </fieldset>
             )}
             {noteColors && <p className="m-0 mb-1 text-small text-[var(--ink-2)]">{t('stNoteColors')}</p>}
-            {manyPlates && wholeModel && <p className="m-0 mb-1 text-small text-[var(--ink-2)]">{t('stNotePlates')}</p>}
+            {!parts && manyPlates && wholeModel && <p className="m-0 mb-1 text-small text-[var(--ink-2)]">{t('stNotePlates')}</p>}
             {phase === 'saving' && <p role="status" className="m-0 mt-2 text-small">{t('stSaving')}</p>}
             {error && <p role="alert" className="m-0 mt-2 text-small text-[var(--accent)]"><ErrorText error={error} /></p>}
             <div className="flex gap-2 justify-end mt-3">

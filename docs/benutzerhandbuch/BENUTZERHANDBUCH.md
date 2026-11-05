@@ -722,6 +722,14 @@ beside the tree, files stay where they are, as before.
 files, not in the web version). For a 3MF with several plates you choose everything or one plate. STL stores neither colors nor
 materials, and positions follow the build plate. An existing file is never overwritten.
 
+#### Parts of a STEP file
+
+If a STEP file holds several bodies, its viewer (detail page) shows a collapsible **Parts** list in the picture. A checkbox shows or
+hides a part, hovering or focusing a row tints the part, the name selects it and shows its size. **Show all** undoes all hiding.
+The arrow keys move between the checkboxes. Below the list you can save the chosen part, the shown parts, or **each part as its
+own file** (you pick a folder; the files are called `<name>_Teil<N>.stl`, nothing is overwritten). More than 256 bodies are
+merged into one last part "Further parts". A file with one body shows no list.
+
 ### More companion formats
 
 Besides pictures, PDF and text, a model can keep FreeCAD (`.fcstd`), OpenSCAD (`.scad`), DXF, CSV, Word (`.docx`) and OpenDocument
@@ -2218,6 +2226,15 @@ Meldung nennt den Grund. Neben dem Baum abgelegt, bleiben Dateien wie bisher an 
 3MF-, OBJ- und STEP-Modelle lassen sich über das Kontextmenü, die Detailseite und das Detailpanel als binäre **STL** speichern (nicht
 für STL-Dateien, nicht in der Web-Version). Bei einer 3MF mit mehreren Platten wählst du alles oder eine Platte. STL kennt weder Farben
 noch Materialien, und die Positionen folgen dem Druckbett. Eine vorhandene Datei wird nie überschrieben.
+
+#### Teile einer STEP-Datei
+
+Enthält eine STEP-Datei mehrere Körper, zeigt ihr Viewer (Detailseite) im Bild eine einklappbare Liste **Teile**. Ein Kontrollkästchen
+zeigt oder verbirgt ein Teil, Überfahren oder Fokus auf einer Zeile färbt das Teil ein, der Name wählt es und zeigt seine Maße.
+**Alle zeigen** nimmt jedes Ausblenden zurück. Die Pfeiltasten wechseln zwischen den Kontrollkästchen. Unter der Liste speicherst
+du das gewählte Teil, die sichtbaren Teile oder **jedes Teil als eigene Datei** (du wählst einen Ordner; die Dateien heißen
+`<Name>_Teil<N>.stl`, nichts wird überschrieben). Mehr als 256 Körper werden zu einem letzten Teil „Weitere Teile“ zusammengefasst.
+Eine Datei mit einem Körper zeigt keine Liste.
 
 ### Weitere Begleitdatei-Formate
 
