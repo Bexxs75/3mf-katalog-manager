@@ -33,7 +33,7 @@ pub const MAX_ENTRIES: usize = 10_000;
 /// displaying the folder (`.lnk`/`.url`/`.scf`/`.library-ms`/`.searchconnector-ms`
 /// with a UNC icon path -> NTLM hash leak), disk images and Linux/macOS
 /// launchers. Model downloads need none of these.
-const BLOCKED_EXTENSIONS: &[&str] = &[
+pub(crate) const BLOCKED_EXTENSIONS: &[&str] = &[
     "exe", "dll", "com", "scr", "pif", "cpl", "msi", "msp", "msc", "bat", "cmd", "ps1", "psm1",
     "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "reg", "inf", "lnk", "url", "scf",
     "library-ms", "searchconnector-ms", "appref-ms", "application", "xll", "jar", "iso", "img",

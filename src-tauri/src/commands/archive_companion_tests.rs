@@ -126,6 +126,39 @@ fn with_one_model_all_allowed_files_belong_to_it_and_the_rest_stays() {
 }
 
 #[test]
+fn cad_sources_and_documents_in_an_archive_join_the_model_when_their_content_fits() {
+    let fixture = Fixture::new();
+    let conn = RefCell::new(db::connect_in_memory().unwrap());
+    let zip_bytes = b"PK\x03\x04\x14\0\0\0rest".to_vec();
+    let outcome = run(
+        &fixture,
+        &conn,
+        &[
+            ("Model.stl", stl(1)),
+            ("source/Model.FCStd", zip_bytes.clone()),
+            ("docs/spec.docx", zip_bytes),
+            ("part.scad", b"cube(10);\n".to_vec()),
+            // Right extension, wrong content: stays where it was extracted and counts as ignored.
+            ("broken.fcstd", b"this is not a zip".to_vec()),
+            // A format that is no companion: never taken over.
+            ("macro.docm", b"PK\x03\x04".to_vec()),
+        ],
+    );
+    assert_eq!((outcome.companions_assigned, outcome.companions_ignored), (3, 2));
+    assert_eq!(companions_of(&conn, "Model.stl"), vec!["Model.fcstd", "part.scad", "spec.docx"]);
+    let kinds: Vec<String> = {
+        let conn = conn.borrow();
+        let mut stmt = conn.prepare("SELECT DISTINCT kind FROM companion_files").unwrap();
+        stmt.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+    };
+    assert_eq!(kinds, vec!["other"]);
+    let dest = fixture.target().join("pack");
+    for left in ["broken.fcstd", "macro.docm"] {
+        assert!(dest.join(left).is_file(), "{left} stays where it was extracted");
+    }
+}
+
+#[test]
 fn a_gcode_file_in_the_archive_is_no_model_and_does_not_change_who_gets_the_pictures() {
     // One model, one picture and a sliced file: the picture still belongs to the single model, and the
     // G-Code is neither imported nor counted as a second model (which would leave the picture unassigned).

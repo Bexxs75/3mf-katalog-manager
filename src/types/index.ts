@@ -639,9 +639,10 @@ export interface StartedImport { jobId: string | null }
 
 export type SortDirection = 'asc' | 'desc';
 
-export type CompanionKind = 'image' | 'pdf' | 'text';
+/** `other` is a CAD source or document: stored and handed back, never opened or previewed. */
+export type CompanionKind = 'image' | 'pdf' | 'text' | 'other';
 
-/** An extra file of a model (picture, PDF, text). Trashed ones have `deletedAt` set. */
+/** An extra file of a model (picture, PDF, text, other format). Trashed ones have `deletedAt` set. */
 export interface Companion {
   id: string;
   fileId: string;

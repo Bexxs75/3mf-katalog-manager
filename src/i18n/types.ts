@@ -1284,6 +1284,8 @@ export interface Translations {
   companionOpenContainer: string;
   companionMenu: string;
   companionReveal: string;
+  companionRevealNamed: string;
+  companionOtherNote: string;
   companionRemoveNamed: string;
   companionRestoreAtDesktop: string;
   companionRemove: string;

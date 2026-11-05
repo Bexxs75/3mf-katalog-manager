@@ -160,6 +160,9 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(add_printer_connection_failures),
     // API key of the printer connection. New nullable column only; stored connections have no key.
     MigrationStep::Simple(add_printer_connection_api_key),
+    // New companion file kind `other` (CAD sources and documents that are stored but never opened).
+    // Only the CHECK of `companion_files.kind` changes; every row stays as it is.
+    MigrationStep::Rebuild(add_other_to_companion_kind_check),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -265,6 +268,65 @@ pub(crate) const PRINTER_API_KEY_MIGRATION_VERSION: i64 = 59;
 /// New nullable column only (`exec` tolerates a duplicate column). Keep in step with `schema.sql`.
 fn add_printer_connection_api_key(conn: &Connection) -> Result<(), DbError> {
     exec(conn, "ALTER TABLE printer_connections ADD COLUMN api_key TEXT")
+}
+
+/// Schema version after the companion kind `other`.
+#[cfg(test)]
+pub(crate) const COMPANION_OTHER_KIND_MIGRATION_VERSION: i64 = 60;
+
+/// Widens the `kind` CHECK of `companion_files` by `other`, via a rebuild (SQLite cannot alter a
+/// CHECK). Nothing references the table, but the rebuild still runs with `foreign_keys` off and
+/// ends with a `foreign_key_check`, because the table itself points at `files` with
+/// `ON DELETE CASCADE`. Columns are named in the copy: an imported backup need not have our order.
+fn add_other_to_companion_kind_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
+    let current_sql: Option<String> = conn
+        .query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'companion_files'", [], |r| r.get(0))
+        .optional()?;
+    // A fresh database already has the new CHECK from schema.sql, and a database without the
+    // table (a stripped-down table of an old test) has nothing to widen: only the version is bumped.
+    let needs_rebuild = current_sql.is_some_and(|sql| !sql.contains("'other'"));
+
+    let previously_enabled: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
+    conn.pragma_update(None, "foreign_keys", false)?;
+
+    let result = (|| -> Result<(), DbError> {
+        let tx = conn.transaction()?;
+        if needs_rebuild {
+            tx.execute_batch(
+                "CREATE TABLE companion_files_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    path TEXT NOT NULL UNIQUE,
+                    kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text', 'other')),
+                    size_bytes INTEGER,
+                    added_at TEXT NOT NULL,
+                    deleted_at TEXT,
+                    trash_path TEXT
+                );
+                INSERT INTO companion_files_new (id, file_id, name, path, kind, size_bytes, added_at, deleted_at, trash_path)
+                    SELECT id, file_id, name, path, kind, size_bytes, added_at, deleted_at, trash_path FROM companion_files;
+                DROP TABLE companion_files;
+                ALTER TABLE companion_files_new RENAME TO companion_files;
+                CREATE INDEX IF NOT EXISTS idx_companion_files_file_id ON companion_files (file_id);",
+            )?;
+            let has_violation = tx
+                .query_row("PRAGMA foreign_key_check(companion_files)", [], |_| Ok(()))
+                .optional()?
+                .is_some();
+            if has_violation {
+                return Err(DbError::Other(
+                    "Begleitdatei-Migration: foreign_key_check fand verwaiste Referenzen in companion_files".into(),
+                ));
+            }
+        }
+        tx.pragma_update(None, "user_version", step_version)?;
+        tx.commit()?;
+        Ok(())
+    })();
+
+    conn.pragma_update(None, "foreign_keys", previously_enabled)?;
+    result
 }
 
 /// New tables only (a row per read 3MF and a row per plate); `IF NOT EXISTS` so a catalog
@@ -1355,12 +1417,13 @@ mod tests {
         assert_eq!(declined, 1, "the declined source files are another table and stay");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, PRINTER_API_KEY_MIGRATION_VERSION, "the API key step is the newest one");
+        assert_eq!(CURRENT_SCHEMA_VERSION, COMPANION_OTHER_KIND_MIGRATION_VERSION, "the companion kind step is the newest one");
         assert_eq!(GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 2, "after the table of remembered copies, which follows the color column");
         assert_eq!(BUNDLE_TABLES_MIGRATION_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION + 1, "the bundle tables follow the file type step");
         assert_eq!(PRINTER_FAILURES_MIGRATION_VERSION, BUNDLE_TABLES_MIGRATION_VERSION + 1, "the failure counter follows the bundle tables");
         assert_eq!(PRINTER_API_KEY_MIGRATION_VERSION, PRINTER_FAILURES_MIGRATION_VERSION + 1, "the API key follows the failure counter");
-        assert_eq!(CURRENT_SCHEMA_VERSION, 59);
+        assert_eq!(COMPANION_OTHER_KIND_MIGRATION_VERSION, PRINTER_API_KEY_MIGRATION_VERSION + 1, "the companion kind follows the API key");
+        assert_eq!(CURRENT_SCHEMA_VERSION, 60);
     }
 
     #[test]
@@ -1621,7 +1684,7 @@ mod tests {
             .unwrap();
         assert_eq!((address.as_str(), failures, key), ("192.168.1.60", 3, None));
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, PRINTER_API_KEY_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION, "later steps run as well");
     }
 
     #[test]
@@ -1649,6 +1712,88 @@ mod tests {
         let mut migrated = catalog_before_api_key();
         run_migrations(&mut migrated).unwrap();
         assert_eq!(shape(&migrated), shape(&fresh));
+    }
+
+    /// A catalog at version 59 with the old `kind` CHECK and companion rows in it.
+    fn catalog_before_other_kind() -> (Connection, i64) {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/models/a.3mf", None).unwrap();
+        conn.execute_batch(
+            "DROP TABLE companion_files;
+             CREATE TABLE companion_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE,
+                kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text')),
+                size_bytes INTEGER,
+                added_at TEXT NOT NULL,
+                deleted_at TEXT,
+                trash_path TEXT
+             );
+             CREATE INDEX idx_companion_files_file_id ON companion_files (file_id);",
+        ).unwrap();
+        conn.execute("INSERT INTO companion_files (id, file_id, name, path, kind, size_bytes, added_at) VALUES (7, ?1, 'p.png', '/models/a_extras/p.png', 'image', 12, 't1')", [id]).unwrap();
+        conn.execute("INSERT INTO companion_files (id, file_id, name, path, kind, added_at, deleted_at, trash_path) VALUES (9, ?1, 'n.txt', '/models/a_extras/n.txt', 'text', 't2', 't3', '/trash/9')", [id]).unwrap();
+        conn.pragma_update(None, "user_version", PRINTER_API_KEY_MIGRATION_VERSION).unwrap();
+        // The unmigrated table really refuses the new kind.
+        assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'x.fcstd', '/x', 'other', 't')", [id]).is_err());
+        (conn, id)
+    }
+
+    #[test]
+    fn the_other_kind_step_keeps_every_companion_row_and_accepts_only_the_new_kind() {
+        let (mut conn, id) = catalog_before_other_kind();
+        let rows = |c: &Connection| -> Vec<String> {
+            c.prepare("SELECT id || '|' || file_id || '|' || name || '|' || path || '|' || kind || '|' || ifnull(size_bytes, '-') || '|' || added_at || '|' || ifnull(deleted_at, '-') || '|' || ifnull(trash_path, '-') FROM companion_files ORDER BY id")
+                .unwrap().query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap()
+        };
+        let before = rows(&conn);
+        run_migrations(&mut conn).unwrap();
+        assert_eq!(rows(&conn), before, "no value of an existing row may change");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, COMPANION_OTHER_KIND_MIGRATION_VERSION);
+        conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'x.fcstd', '/models/a_extras/x.fcstd', 'other', 't')", [id]).unwrap();
+        assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'y', '/y', 'exe', 't')", [id]).is_err(), "the rest stays invalid");
+        assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'p.png', '/models/a_extras/p.png', 'image', 't')", [id]).is_err(), "the path is still unique");
+        let index: i64 = conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_companion_files_file_id'", [], |r| r.get(0)).unwrap();
+        assert_eq!(index, 1, "the index comes back with the table");
+        // The table keeps following its model, and new ids continue after the old ones.
+        let next: i64 = conn.query_row("SELECT MAX(id) FROM companion_files", [], |r| r.get(0)).unwrap();
+        assert_eq!(next, 10);
+        conn.execute("DELETE FROM files WHERE id = ?1", [id]).unwrap();
+        let left: i64 = conn.query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0, "deleting the model removes its companion rows");
+    }
+
+    #[test]
+    fn the_other_kind_step_is_repeatable_and_gives_the_same_table_as_a_fresh_schema() {
+        let shape = |conn: &Connection| -> Vec<String> {
+            let mut lines: Vec<String> = conn
+                .prepare("SELECT name || '|' || type || '|' || \"notnull\" || '|' || ifnull(dflt_value, '-') || '|' || pk FROM pragma_table_info('companion_files') ORDER BY cid")
+                .unwrap().query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
+            lines.extend(
+                conn.prepare("SELECT name FROM sqlite_master WHERE tbl_name = 'companion_files' ORDER BY name")
+                    .unwrap().query_map([], |r| r.get::<_, String>(0)).unwrap().collect::<Result<Vec<_>, _>>().unwrap(),
+            );
+            lines.extend(
+                conn.prepare("SELECT \"table\" || '|' || \"from\" || '|' || \"to\" || '|' || on_delete FROM pragma_foreign_key_list('companion_files')")
+                    .unwrap().query_map([], |r| r.get::<_, String>(0)).unwrap().collect::<Result<Vec<_>, _>>().unwrap(),
+            );
+            lines
+        };
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        let (mut migrated, _) = catalog_before_other_kind();
+        run_migrations(&mut migrated).unwrap();
+        assert_eq!(shape(&migrated), shape(&fresh));
+        // A second run (the step again, on a table that already has the kind) changes nothing.
+        let before = shape(&migrated);
+        migrated.pragma_update(None, "user_version", PRINTER_API_KEY_MIGRATION_VERSION).unwrap();
+        run_migrations(&mut migrated).unwrap();
+        assert_eq!(shape(&migrated), before);
+        let rows: i64 = migrated.query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 2);
     }
 
     /// A catalog at version 55 with the old `file_type` CHECK, rows in the tables that point at `files`.
@@ -2133,7 +2278,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 20);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 21);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

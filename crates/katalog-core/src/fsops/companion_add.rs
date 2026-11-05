@@ -12,7 +12,7 @@ use super::operations::{read_state, Observed};
 use super::*;
 use crate::companion_read::same_dir;
 use crate::companions::{
-    classify, companion_file_name, extras_dir_for, kind_for_extension, lowercase_extension, validate_stored_fields,
+    classify, companion_file_name, extras_dir_for, is_text_name, kind_for_extension, lowercase_extension, validate_stored_fields,
     CompanionKind, Refusal, TextScan, CONTENT_CHECK_BYTES, MAX_COMPANIONS_PER_MODEL, MAX_COMPANION_BYTES_CONFIGURABLE,
 };
 use rusqlite::{Connection, TransactionBehavior};
@@ -353,7 +353,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         let kind = check_companion_head(&wanted_name, head)?;
         let mut scan = None;
-        if kind == CompanionKind::Text {
+        if is_text_name(&wanted_name) {
             let mut text = TextScan::default();
             if !text.feed(head) {
                 return Err(Error::CompanionContent);

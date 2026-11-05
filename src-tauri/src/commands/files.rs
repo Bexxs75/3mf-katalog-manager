@@ -992,7 +992,7 @@ fn reveal_target(path: &Path) -> CmdResult<(PathBuf, bool)> {
     Ok((parent.to_path_buf(), false))
 }
 
-fn reveal_catalog_path(path: &Path) -> CmdResult<()> {
+pub(super) fn reveal_catalog_path(path: &Path) -> CmdResult<()> {
     let (absolute, is_file) = reveal_target(path)?;
     if !is_file { return open_directory_in_file_manager(absolute.to_string_lossy().into_owned()); }
     let (program, args) = reveal_command(std::env::consts::OS, &absolute.to_string_lossy())?;

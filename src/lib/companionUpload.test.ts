@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import * as session from './webSession';
+import goldList from './companionExtensions.json';
 import { uploadCompanion, isAllowedCompanionName, companionSizeProblem, COMPANION_ACCEPT } from './companionUpload';
 
 class Xhr {
@@ -67,14 +68,25 @@ it('refuses without the file-management right and ends on abort', async () => {
 });
 
 it('knows the allowed extensions', () => {
-  for (const name of ['a.PNG', 'b.jpeg', 'c.pdf', 'd.md', 'e.TXT', 'f.webp', 'g.gif']) expect(isAllowedCompanionName(name)).toBe(true);
-  for (const name of ['a.svg', 'b.exe', 'c', 'd.png.exe', 'e.html']) expect(isAllowedCompanionName(name)).toBe(false);
+  for (const name of ['a.PNG', 'b.jpeg', 'c.pdf', 'd.md', 'e.TXT', 'f.webp', 'g.gif', 'h.FCStd', 'i.scad', 'j.dxf', 'k.csv', 'l.docx', 'm.odt']) expect(isAllowedCompanionName(name)).toBe(true);
+  for (const name of ['a.svg', 'b.exe', 'c', 'd.png.exe', 'e.html', 'f.fcstd.exe', 'g.docm', 'h.step']) expect(isAllowedCompanionName(name)).toBe(false);
+});
+
+it('keeps the web form and the shared gold list of extensions identical', () => {
+  const gold = Object.keys(goldList.extensions);
+  const offered = COMPANION_ACCEPT.split(',').map((extension) => extension.slice(1));
+  expect([...offered].sort()).toEqual([...gold].sort());
+  for (const extension of gold) expect(isAllowedCompanionName(`file.${extension.toUpperCase()}`), extension).toBe(true);
+  // STEP are models, SVG can carry scripts, archives hide their content, macro formats run code.
+  for (const extension of ['step', 'stp', 'svg', 'zip', '7z', 'docm', 'xlsm', 'exe', 'js', 'sh', 'bat', 'lnk', 'html']) {
+    expect(isAllowedCompanionName(`file.${extension}`), extension).toBe(false);
+  }
 });
 
 it('offers in the file picker exactly the extensions it accepts by name', () => {
   const offered = COMPANION_ACCEPT.split(',');
   for (const extension of offered) expect(extension.startsWith('.')).toBe(true);
-  for (const extension of ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'svg', 'bmp', 'docx', 'html', 'json', 'step', 'zip', 'exe']) {
+  for (const extension of ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'svg', 'bmp', 'docx', 'odt', 'fcstd', 'html', 'json', 'step', 'zip', 'exe']) {
     expect(isAllowedCompanionName(`file.${extension}`), extension).toBe(offered.includes(`.${extension}`));
   }
 });

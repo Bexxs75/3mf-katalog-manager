@@ -170,6 +170,7 @@
     "restock_filament_spool": "web",
     "restore_companion": "web",
     "restore_file": "web",
+    "reveal_companion": "C",
     "reveal_in_file_manager": "C",
     "run_start_sync": "B",
     "save_log_export": "C",

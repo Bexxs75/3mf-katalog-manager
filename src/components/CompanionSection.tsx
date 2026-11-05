@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { invoke } from '../lib/transport';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import { displayName } from '../lib/displayName';
@@ -10,8 +9,8 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useModalDialog } from '../hooks/useModalDialog';
 import {
-  addCompanion, companionImageData, companionOpenInfo, listCompanions, openCompanion,
-  pickCompanionFiles, removeCompanion, restoreCompanion,
+  addCompanion, companionImageData, listCompanions, openCompanion,
+  pickCompanionFiles, removeCompanion, restoreCompanion, revealCompanion,
 } from '../lib/api/companions';
 import { trashDaysLeft } from '../lib/trashRetention';
 import type { Companion } from '../types';
@@ -30,7 +29,7 @@ interface AddFailure { name: string; error: AppError }
 
 export const buttonClass = 'h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-default';
 
-export const kindIcon = (item: Pick<Companion, 'kind'>) => (item.kind === 'pdf' ? '📄' : item.kind === 'text' ? '📝' : '🖼');
+export const kindIcon = (item: Pick<Companion, 'kind'>) => (item.kind === 'pdf' ? '📄' : item.kind === 'text' ? '📝' : item.kind === 'other' ? '📎' : '🖼');
 
 function baseName(path: string) {
   return path.split(/[\\/]/).pop() || path;
@@ -312,10 +311,7 @@ export function CompanionSection({ fileId, variant }: Props) {
   });
 
   const reveal = (item: Companion) => guarded(async () => {
-    try {
-      const info = await companionOpenInfo(item.id);
-      await invoke('open_in_file_manager', { path: info.path });
-    } catch (e) { setActionError(toAppError(e)); }
+    try { await revealCompanion(item.id); } catch (e) { setActionError(toAppError(e)); }
   });
 
   const headingClass = variant === 'compact' ? 'text-compact-meta ui-label text-[var(--ink-3)]' : 'ui-label text-[var(--ink-3)]';
@@ -330,7 +326,7 @@ export function CompanionSection({ fileId, variant }: Props) {
     <ActionMenu
       item={item}
       busy={busy}
-      canReveal={!container}
+      canReveal={!container && item.kind !== 'other'}
       lockProps={lockProps}
       onRemove={() => void remove(item)}
       onReveal={() => void reveal(item)}
@@ -392,6 +388,7 @@ export function CompanionSection({ fileId, variant }: Props) {
                   {item.missing
                     ? <span className="text-[var(--accent)]">{t('companionMissing')}</span>
                     : item.sizeBytes !== null && formatBytes(item.sizeBytes, language)}
+                  {!item.missing && item.kind === 'other' && <span>{item.sizeBytes !== null && ' · '}{t('companionOtherNote')}</span>}
                 </div>
               </div>
               {item.missing ? (
@@ -401,10 +398,20 @@ export function CompanionSection({ fileId, variant }: Props) {
                 </button>
               ) : (
                 <>
-                  <button type="button" aria-label={t('companionOpenNamed').replace('{name}', displayName(item.name))}
-                    onClick={() => void open(item)} className={buttonClass}>
-                    {t('companionOpen')}
-                  </button>
+                  {item.kind === 'other'
+                    // Never opened: the default program could run macros or scripts. Only the folder is shown.
+                    ? !container && (
+                      <button type="button" aria-label={t('companionRevealNamed').replace('{name}', displayName(item.name))}
+                        onClick={() => void reveal(item)} className={buttonClass}>
+                        {t('companionReveal')}
+                      </button>
+                    )
+                    : (
+                      <button type="button" aria-label={t('companionOpenNamed').replace('{name}', displayName(item.name))}
+                        onClick={() => void open(item)} className={buttonClass}>
+                        {t('companionOpen')}
+                      </button>
+                    )}
                   {menuFor(item)}
                 </>
               )}

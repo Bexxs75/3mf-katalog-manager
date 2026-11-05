@@ -1258,6 +1258,8 @@ export const de: Translations = {
   companionOpenContainer: "Im Container lässt sich die Datei nicht öffnen, weil dort kein Programm dafür läuft. Öffne sie direkt auf deinem Docker-Host.",
   companionMenu: "Weitere Aktionen für {name}",
   companionReveal: "Im Dateimanager zeigen",
+  companionRevealNamed: "{name} im Dateimanager zeigen",
+  companionOtherNote: "Nur abgelegt, wird nicht geöffnet",
   companionRemoveNamed: "„{name}“ entfernen",
   companionRestoreAtDesktop: "Dieser Papierkorbeintrag liegt im Desktop-Papierkorb. Bitte am Desktop wiederherstellen.",
   companionRemove: "Entfernen",
