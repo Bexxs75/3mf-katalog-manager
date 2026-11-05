@@ -60,7 +60,6 @@ struct PlanItem {
     printer_id: i64,
     kind: String,
     address: String,
-    api_key: Option<ApiKey>,
     since: f64,
 }
 
@@ -86,8 +85,7 @@ pub fn sync_with(db: &Mutex<Connection>, make: &LinkMaker, now: f64, options: &S
                 continue;
             }
             let since = store::sync_from(&conn, c.printer_id, now)?;
-            let api_key = store::get_api_key(&conn, c.printer_id)?;
-            plan.push(PlanItem { printer_id: c.printer_id, kind: c.kind, address: c.address, api_key, since });
+            plan.push(PlanItem { printer_id: c.printer_id, kind: c.kind, address: c.address, since });
         }
         (plan, waiting)
     };
@@ -155,7 +153,7 @@ pub fn include_older_history(
             return Ok(Err("disabled"));
         }
         let Some(c) = store::get_connection(&conn, printer_id)? else { return Ok(Err("no_connection")) };
-        (c.kind, c.address, store::get_api_key(&conn, printer_id)?, c.connected_since)
+        (c.kind, c.address, store::get_api_key(&conn, printer_id)?, store::older_history_before(&conn, printer_id, c.connected_since)?)
     };
     let fetched = make(&kind, &address, api_key.as_ref()).and_then(|mut link| {
         link.set_deadline(Instant::now() + super::moonraker::PRINTER_BUDGET);
@@ -203,6 +201,7 @@ fn sync_printer(
     stop: &AtomicBool,
 ) -> Result<Option<&'static str>, DbError> {
     let printer_id = item.printer_id;
+    let mut api_key: Option<ApiKey>;
     if new_jobs.load(Ordering::SeqCst) >= MAX_NEW_JOBS {
         return Ok(None);
     }
@@ -219,6 +218,8 @@ fn sync_printer(
             Some(c) if !c.paused => {}
             _ => return Ok(None),
         }
+        // The plan holds no key: read it now, so one deleted or replaced since is not sent.
+        api_key = store::get_api_key(&conn, printer_id)?;
         if store::open_job_limit_reached(&conn, printer_id)? {
             store::record_sync_error(&conn, printer_id, "too_many_open_jobs", now)?;
             return Ok(Some("too_many_open_jobs"));
@@ -228,7 +229,7 @@ fn sync_printer(
     let deadline = Instant::now() + options.printer_budget;
     let mut repetition = 0;
     let result = loop {
-        let attempt = make(&item.kind, &item.address, item.api_key.as_ref()).and_then(|mut link| {
+        let attempt = make(&item.kind, &item.address, api_key.as_ref()).and_then(|mut link| {
             link.set_deadline(deadline);
             let info = link.test()?;
             let jobs = link.jobs_ended_since(&info, item.since)?;
@@ -246,6 +247,8 @@ fn sync_printer(
                 if !still_wanted(db, printer_id, stop)? {
                     return Ok(None);
                 }
+                let conn = lock(db)?;
+                api_key = store::get_api_key(&conn, printer_id)?;
             }
             other => break other,
         }
@@ -262,7 +265,9 @@ fn sync_printer(
             // The cursor follows end time, whereas Moonraker pages by start time.
             jobs.sort_by(|a, b| a.ended_at.total_cmp(&b.ended_at));
             for job in &jobs {
-                if new_jobs.load(Ordering::SeqCst) >= MAX_NEW_JOBS {
+                // Stop at the first print that no longer fits: a later one (even a history-only
+                // print, which has no limit) would move the cursor past the dropped one.
+                if new_jobs.load(Ordering::SeqCst) >= MAX_NEW_JOBS || store::open_job_limit_reached(&conn, printer_id)? {
                     break;
                 }
                 if store::insert_job_if_new(&conn, printer_id, job)? {
@@ -388,6 +393,141 @@ mod tests {
         assert_eq!(jobs.len(), 500);
         assert!(jobs.iter().all(|job| job.ended_at == 1000.0 && job.file_name.len() == 510));
         assert_eq!(get_connection(&conn, 1).unwrap().unwrap().last_error.as_deref(), Some("too_many_open_jobs"));
+    }
+
+    struct ThreeAfterFull;
+
+    impl PrinterLink for ThreeAfterFull {
+        fn test(&self) -> Result<ConnectionInfo, LinkError> {
+            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer".into(), clock_offset_s: 0.0 })
+        }
+        fn jobs_ended_since(&self, _info: &ConnectionInfo, since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+            let job = |id: &str, ended_at: f64, deductible: bool| RemoteJob {
+                remote_id: id.into(),
+                file_name: format!("{id}.gcode"),
+                outcome: JobOutcome::Completed,
+                raw_status: "completed".into(),
+                ended_at,
+                print_duration_s: 60.0,
+                used_mm: if deductible { 100.0 } else { 0.0 },
+                deductible,
+                slicer_total_mm: None,
+                slicer_weight_g: None,
+                material: None,
+                thumbnail_path: None,
+            };
+            Ok(vec![job("A", 1100.0, true), job("B", 1200.0, true), job("C", 1300.0, false)]
+                .into_iter()
+                .filter(|j| j.ended_at > since)
+                .collect())
+        }
+        fn thumbnail(&self, _base_url: &str, _path: &str) -> Result<Vec<u8>, LinkError> {
+            Err(LinkError::Unreachable)
+        }
+    }
+
+    #[test]
+    fn a_print_dropped_for_the_open_limit_is_not_skipped_by_the_cursor() {
+        let db = db_with_connection("printer", 1000.0);
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        {
+            let conn = db.lock().unwrap();
+            for i in 0..store::MAX_OPEN_JOBS - 1 {
+                conn.execute(
+                    "INSERT INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s, used_mm, state, auto_closed)
+                     VALUES (1, ?1, 'x.gcode', 'completed', 'completed', 1000.0, 1.0, 1.0, 'open', 0)",
+                    [format!("old{i}")],
+                )
+                .unwrap();
+            }
+        }
+        let make: Box<LinkMaker> = Box::new(|_, _, _| Ok(Box::new(ThreeAfterFull)));
+        assert_eq!(sync_once(&db, &*make, 2000.0).unwrap(), 1, "only A fits");
+        let count = |id: &str| -> i64 {
+            db.lock().unwrap().query_row("SELECT COUNT(*) FROM printer_jobs WHERE remote_id = ?1", [id], |r| r.get(0)).unwrap()
+        };
+        assert_eq!((count("A"), count("B"), count("C")), (1, 0, 0), "C must not be stored behind the dropped B");
+        assert!(store::sync_from(&db.lock().unwrap(), 1, 2000.0).unwrap() < 1200.0, "the cursor stays before B");
+        {
+            let conn = db.lock().unwrap();
+            let id = list_open_jobs(&conn).unwrap()[0].id;
+            store::mark_job_ignored(&conn, id, "now").unwrap();
+        }
+        assert_eq!(sync_once(&db, &*make, 2000.0).unwrap(), 1, "B is fetched once a slot is free");
+        assert_eq!((count("B"), count("C")), (1, 0));
+    }
+
+    struct KeyRecorder(Arc<Mutex<Vec<Option<String>>>>);
+
+    #[test]
+    fn the_key_is_read_when_the_printer_is_asked_not_when_the_plan_was_made() {
+        let db = db_with_connection("printer", 0.0);
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        db.lock().unwrap().execute("UPDATE printer_connections SET api_key = 'secretkey123'", []).unwrap();
+        let item = PlanItem { printer_id: 1, kind: "moonraker".into(), address: "printer".into(), since: 0.0 };
+        let seen = KeyRecorder(Arc::new(Mutex::new(Vec::new())));
+        let log = seen.0.clone();
+        let make: Box<LinkMaker> = Box::new(move |_, _, key| {
+            log.lock().unwrap().push(key.map(|_| "key".to_string()));
+            Err(LinkError::Unreachable)
+        });
+        let options = SyncOptions { retry_pauses: vec![], ..SyncOptions::default() };
+        let ask = || sync_printer(&db, &*make, 10.0, &options, &item, &AtomicUsize::new(0), &AtomicBool::new(false)).unwrap();
+        ask();
+        // The user deletes the key while the pass is under way: the next attempt must not send it.
+        store::clear_api_key(&db.lock().unwrap(), 1).unwrap();
+        ask();
+        assert_eq!(*seen.0.lock().unwrap(), vec![Some("key".to_string()), None]);
+    }
+
+    struct OlderPages;
+
+    impl PrinterLink for OlderPages {
+        fn test(&self) -> Result<ConnectionInfo, LinkError> {
+            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer".into(), clock_offset_s: 0.0 })
+        }
+        fn jobs_ended_since(&self, _info: &ConnectionInfo, _since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+            Ok(vec![])
+        }
+        /// Five older prints; the printer answers with the two newest ones before `before`.
+        fn jobs_ended_before(&self, _info: &ConnectionInfo, before: f64) -> Result<Vec<RemoteJob>, LinkError> {
+            let mut jobs: Vec<RemoteJob> = (1..=5)
+                .map(|i| RemoteJob {
+                    remote_id: format!("o{i}"),
+                    file_name: format!("o{i}.gcode"),
+                    outcome: JobOutcome::Completed,
+                    raw_status: "completed".into(),
+                    ended_at: 100.0 * i as f64,
+                    print_duration_s: 60.0,
+                    used_mm: 10.0,
+                    deductible: true,
+                    slicer_total_mm: None,
+                    slicer_weight_g: None,
+                    material: None,
+                    thumbnail_path: None,
+                })
+                .filter(|j| j.ended_at <= before)
+                .collect();
+            jobs.sort_by(|a, b| b.ended_at.total_cmp(&a.ended_at));
+            jobs.truncate(2);
+            Ok(jobs)
+        }
+        fn thumbnail(&self, _base_url: &str, _path: &str) -> Result<Vec<u8>, LinkError> {
+            Err(LinkError::Unreachable)
+        }
+    }
+
+    #[test]
+    fn older_history_goes_on_where_the_last_press_stopped() {
+        let db = db_with_connection("printer", 1000.0);
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        let make: Box<LinkMaker> = Box::new(|_, _, _| Ok(Box::new(OlderPages)));
+        // The boundary print of the last press is read again (ties in end time must not be lost)
+        // and ignored as a duplicate, so each further press adds the next older one.
+        let added: Vec<usize> = (0..6).map(|_| include_older_history(&db, &*make, 1).unwrap().unwrap()).collect();
+        assert_eq!(added, [2, 1, 1, 1, 0, 0], "every press goes on behind the last one, not over the newest page again");
+        let total: i64 = db.lock().unwrap().query_row("SELECT COUNT(*) FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 5);
     }
 
     #[test]

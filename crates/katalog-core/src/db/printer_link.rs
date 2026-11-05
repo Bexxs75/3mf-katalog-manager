@@ -258,6 +258,15 @@ pub fn sync_from(conn: &Connection, printer_id: i64, now: f64) -> Result<f64, Db
     Ok(since)
 }
 
+/// Where the next "include older history" read goes on: before the oldest print already taken
+/// over, and never later than the connection. Without this every press would read the same newest
+/// page of a long history again.
+pub fn older_history_before(conn: &Connection, printer_id: i64, connected_since: f64) -> Result<f64, DbError> {
+    let oldest: Option<f64> =
+        conn.query_row("SELECT MIN(ended_at) FROM printer_jobs WHERE printer_id = ?1", params![printer_id], |r| r.get(0))?;
+    Ok(oldest.map_or(connected_since, |o| o.min(connected_since)))
+}
+
 pub const MAX_OPEN_JOBS: usize = 500;
 
 pub fn open_job_limit_reached(conn: &Connection, printer_id: i64) -> Result<bool, DbError> {

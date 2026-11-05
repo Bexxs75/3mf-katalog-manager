@@ -1430,8 +1430,22 @@ fn replace_catalog_db_with_copy_fn(
     // otherwise older exports would miss columns until restart.
     let mut guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
     *guard = db::connect(&state.db_path).map_err(|e| e.to_string())?;
+    drop(guard);
+
+    // The new database is active, so the fallback copy has done its job as a way back: from now on
+    // it is only an old catalog that must not keep the keys of this computer (printer API keys,
+    // Thingiverse token) that the user may delete later. A failure leaves the copy as it is and is
+    // logged, the restore itself succeeded.
+    if let Err(e) = scrub_fallback_copy(&backup_path) {
+        log::warn!(target: "backup", "Rückfallkopie {} konnte nicht von Schlüsseln bereinigt werden: {e}", backup_path.display());
+    }
 
     Ok(())
+}
+/// Removes API keys and tokens from the fallback copy of the replaced database.
+fn scrub_fallback_copy(path: &Path) -> Result<(), String> {
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    db::scrub_secrets(&conn).map_err(|e| e.to_string())
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3471,8 +3485,12 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().starts_with("catalog.db.bak-"))
             .collect();
         assert_eq!(bak_entries.len(), 1, "expected exactly one backup file");
-        let bak_bytes = std::fs::read(bak_entries[0].path()).expect("read backup db bytes");
-        assert_eq!(bak_bytes, old_bytes, "backup file must contain the old db content");
+        // Not byte-identical: the keys are scrubbed from it (and the file vacuumed) once the new
+        // database is active. It still holds the old catalog.
+        let bak_conn = Connection::open(bak_entries[0].path()).expect("open backup db");
+        let bak_files: i64 = bak_conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap();
+        assert_eq!(bak_files, 0, "backup file must contain the old (empty) catalog, not the new one");
+        drop(bak_conn);
 
         // No byte comparison possible: sanitizing rewrites the incoming DB before
         // copying. So check the content instead.
@@ -3488,6 +3506,47 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+    #[test]
+    fn replace_catalog_db_leaves_no_api_key_or_token_in_the_fallback_copy() {
+        let dir = unique_test_dir("replace_catalog_db_fallback_secrets");
+        let db_path = dir.join("catalog.db");
+        {
+            let old = crate::db::connect(&db_path).unwrap();
+            old.execute("INSERT INTO printers (id, name, position) VALUES (1, 'P', 0)", []).unwrap();
+            old.execute(
+                "INSERT INTO printer_connections (printer_id, kind, address, connected_since, api_key) VALUES (1, 'moonraker', 'printer', 0, 'secretkey123')",
+                [],
+            )
+            .unwrap();
+            db::printer_link::set_setting(&old, db::thingiverse::SETTING_TOKEN, "secrettoken123").unwrap();
+        }
+        let new_db_path = dir.join("incoming_catalog.db");
+        drop(crate::db::connect(&new_db_path).unwrap());
+        let state = AppState {
+            import_jobs: ImportJobs::default(),
+            db: Mutex::new(crate::db::connect(&db_path).unwrap()),
+            trash_dir: dir.join("trash"),
+            db_path: db_path.clone(),
+            sensitive_dirs: Vec::new(),
+        };
+        replace_catalog_db(&state, &new_db_path).unwrap();
+        let bak: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("catalog.db.bak-"))
+            .collect();
+        assert_eq!(bak.len(), 1);
+        let bytes = std::fs::read(bak[0].path()).unwrap();
+        for secret in [&b"secretkey123"[..], &b"secrettoken123"[..]] {
+            assert!(!bytes.windows(secret.len()).any(|w| w == secret), "the fallback copy still holds a secret");
+        }
+        // It is still the old catalog, openable.
+        let old = Connection::open(bak[0].path()).unwrap();
+        let printers: i64 = old.query_row("SELECT COUNT(*) FROM printers", [], |r| r.get(0)).unwrap();
+        assert_eq!(printers, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn replace_catalog_db_fails_closed_when_the_incoming_db_path_does_not_exist() {
         // A missing file makes Connection::open create an empty DB; the migration

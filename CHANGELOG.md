@@ -68,6 +68,9 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Tag menu:** the menu of an automatic tag ("Remove and do not assign automatically again") no longer closes by itself when it is opened right after the model's tag suggestions have loaded.
 - **Slicers:** Registering a slicer that is already registered (for example the same program chosen again or reached through a link) no longer fails with a database error; the existing entry is kept.
 - **Import:** a folder imported or dragged into the app now appears below its parent folder in the sidebar when that parent is already in the catalog, instead of one level too high. A folder that already exists in the catalog keeps its place.
+- **Printer connection:** prints that did not fit into the 500 open prints are no longer skipped later (the next fetch now continues at the first print that was left out); "Include older history" continues behind the prints taken over before instead of reading the newest ones again; a deleted API key is no longer sent by a pass that is already under way.
+- **Restore:** the fallback copy `catalog.db.bak-…` of the replaced database no longer keeps API keys or the Thingiverse key once the restored catalog is open.
+- **G-code:** a print time with a non-ASCII character (for example `1µ`) no longer aborts the import of the file; it counts as no time.
 
 ## [0.17.0] - 2026-10-28
 
@@ -815,6 +818,9 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Tag-Menü:** Das Menü eines automatischen Tags („Entfernen und nicht mehr automatisch vergeben“) schließt sich nicht mehr von selbst, wenn es unmittelbar nach dem Laden der Tag-Vorschläge des Modells geöffnet wird.
 - **Slicer:** Das Registrieren eines Slicers, der schon registriert ist (zum Beispiel dasselbe Programm erneut gewählt oder über einen Link erreicht), schlägt nicht mehr mit einem Datenbankfehler fehl; der vorhandene Eintrag bleibt erhalten.
 - **Import:** Ein importierter oder hineingezogener Ordner erscheint in der Seitenleiste jetzt unter seinem Elternordner, wenn dieser schon im Katalog steht, statt eine Ebene zu hoch. Ein Ordner, der schon im Katalog steht, behält seinen Platz.
+- **Druckeranbindung:** Drucke, die nicht mehr in die 500 offenen Drucke passten, werden später nicht mehr übersprungen (der nächste Abruf setzt beim ersten ausgelassenen Druck fort); „Ältere Drucke einbeziehen“ setzt hinter den bereits übernommenen Drucken fort, statt die neuesten erneut zu lesen; ein gelöschter API-Schlüssel wird von einem bereits laufenden Durchgang nicht mehr gesendet.
+- **Wiederherstellung:** Die Rückfallkopie `catalog.db.bak-…` der ersetzten Datenbank behält keine API-Schlüssel und keinen Thingiverse-Schlüssel mehr, sobald der wiederhergestellte Katalog geöffnet ist.
+- **G-Code:** Eine Druckzeit mit einem Nicht-ASCII-Zeichen (zum Beispiel `1µ`) bricht den Import der Datei nicht mehr ab; sie gilt als keine Zeit.
 
 ## [0.17.0] - 2026-10-28
 
