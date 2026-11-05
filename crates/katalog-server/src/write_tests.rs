@@ -141,7 +141,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
     assert_eq!(WRITE_COMMANDS.len(), 63);
     assert_eq!(crate::write::ROUTE_WRITES, &["add_companion"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
-    assert_eq!(crate::READ_COMMANDS.len(), 33);
+    assert_eq!(crate::READ_COMMANDS.len(), 34);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
     }
@@ -926,6 +926,11 @@ async fn manager_reads_are_available_without_write_mode() {
             json!([]),
         ),
         (
+            "get_print_statistics",
+            json!({}),
+            json!({"rows":[],"truncated":false,"firstConnectedAt":null}),
+        ),
+        (
             "get_last_printer_for_file",
             json!({"fileId":"999"}),
             Value::Null,
@@ -1100,6 +1105,7 @@ async fn manager_http_auth_csrf_and_nonimage_body_limits_cover_every_write() {
         "get_filament_spool_image",
         "list_printers",
         "list_printer_history",
+        "get_print_statistics",
         "get_last_printer_for_file",
         "check_filament",
     ] {

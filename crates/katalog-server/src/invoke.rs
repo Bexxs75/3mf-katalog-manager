@@ -153,6 +153,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "list_filament_spools",
     "list_printers",
     "list_printer_history",
+    "get_print_statistics",
     "get_last_printer_for_file",
     "check_filament",
     "get_filament_spool_image",
@@ -262,6 +263,14 @@ pub async fn invoke(
             Ok(v) => Some(v),
             Err(e) => return *e,
         },
+        // Optional: missing or null means all printers.
+        "get_print_statistics" => match args.get("printerId") {
+            None | Some(Value::Null) => None,
+            Some(_) => match id(&args, "printerId") {
+                Ok(v) => Some(v),
+                Err(e) => return *e,
+            },
+        },
         "companion_image_data" => match id(&args, "companionId") {
             Ok(v) => Some(v),
             Err(e) => return *e,
@@ -322,6 +331,7 @@ pub async fn invoke(
         "list_filament_spools"
             | "list_printers"
             | "list_printer_history"
+            | "get_print_statistics"
             | "get_last_printer_for_file"
             | "check_filament"
             | "get_filament_spool_image"
@@ -402,6 +412,11 @@ pub async fn invoke(
                 &conn,
                 file_id.unwrap().parse().unwrap(),
                 500,
+            )?),
+            "get_print_statistics" => encode(read::manager::print_statistics_rows(
+                &conn,
+                file_id.map(|v| v.parse().unwrap()),
+                read::manager::PRINT_STATS_MAX_ROWS,
             )?),
             "get_last_printer_for_file" => {
                 encode(read::manager::get_last_printer_for_file_with_conn(
@@ -719,6 +734,18 @@ mod tests {
             let members = [print_id.parse().unwrap(), c.id.parse().unwrap()];
             db::bundles::create_bundle(&conn, "Pair", db::bundles::BundleKind::Parts, &members, "2026-11-04T10:00:00+00:00").unwrap();
         }
+        // A printer with prints, so the statistics travel through the same comparison.
+        {
+            let conn = db::connect(&c.db).unwrap();
+            let printer = db::printers::insert_printer(&conn, "Stats").unwrap();
+            conn.execute_batch(&format!(
+                "INSERT INTO printer_connections(printer_id,kind,address,connected_since) VALUES ({printer},'moonraker','a',900.5);
+                 INSERT INTO printer_jobs(printer_id,remote_id,file_name,outcome,raw_status,ended_at,print_duration_s,used_mm,material,state,booked_g,failure_reason)
+                 VALUES ({printer},'a','x','completed','completed',1000,60,10,'PLA','confirmed',12.5,NULL),
+                        ({printer},'b','x','partial','cancelled',1200,30,5,NULL,'open',NULL,'user_cancel');"
+            ))
+            .unwrap();
+        }
         // A stored choice, so the comparison is not just the default.
         {
             let conn = db::connect(&c.db).unwrap();
@@ -754,6 +781,21 @@ mod tests {
                 "list_tag_counts",
                 json!({}),
                 serde_json::to_value(read::list_tag_counts(&conn).unwrap()).unwrap(),
+            ),
+            (
+                "get_print_statistics",
+                json!({}),
+                serde_json::to_value(read::manager::print_statistics_rows(&conn, None, read::manager::PRINT_STATS_MAX_ROWS).unwrap()).unwrap(),
+            ),
+            (
+                "get_print_statistics",
+                json!({"printerId":null}),
+                serde_json::to_value(read::manager::print_statistics_rows(&conn, None, read::manager::PRINT_STATS_MAX_ROWS).unwrap()).unwrap(),
+            ),
+            (
+                "get_print_statistics",
+                json!({"printerId":"1"}),
+                serde_json::to_value(read::manager::print_statistics_rows(&conn, Some(1), read::manager::PRINT_STATS_MAX_ROWS).unwrap()).unwrap(),
             ),
             (
                 "get_print_technology",
@@ -837,6 +879,11 @@ mod tests {
             );
         }
         // The fields are really there, not just equal to a core answer that lacks them.
+        let stats = serde_json::from_slice::<Value>(&body(call(&c, "get_print_statistics", json!({})).await).await).unwrap();
+        assert_eq!(stats["rows"].as_array().unwrap().len(), 2);
+        assert_eq!(stats["rows"][0]["endedAt"], 1200.0);
+        assert_eq!(stats["firstConnectedAt"], 900.5);
+        assert_eq!(stats["truncated"], false);
         let listed = serde_json::from_slice::<Value>(&body(call(&c, "list_files_by_ids", json!({"ids":[print_id]})).await).await).unwrap();
         assert_eq!(listed[0]["printInfo"]["sliceState"], "no_slice_data");
         assert_eq!(listed[0]["printInfo"]["plates"][0]["firstLayerSeconds"], 123.5);
@@ -880,6 +927,8 @@ mod tests {
             ("list_files_by_ids", json!({"ids":[1]})),
             ("list_collection_files", json!({"collectionId":"1.0"})),
             ("list_file_images", json!({"ids":vec!["1";201]})),
+            ("get_print_statistics", json!({"printerId":"x"})),
+            ("get_print_statistics", json!({"printerId":5})),
         ] {
             assert_eq!(call(&c, cmd, args).await.status(), 400);
         }
@@ -1084,6 +1133,7 @@ mod manager_tests {
             "check_filament",
             "list_printers",
             "list_printer_history",
+            "get_print_statistics",
             "get_last_printer_for_file",
         ] {
             let r = invoke(

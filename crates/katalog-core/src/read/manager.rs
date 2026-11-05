@@ -205,6 +205,34 @@ pub fn check_filament_with_conn(
 
     Ok(check_models(&models, &spools))
 }
+/// Upper bound of rows in `get_print_statistics`; the answer says when more exist.
+pub const PRINT_STATS_MAX_ROWS: usize = 5000;
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintStatRowDto {
+    pub printer_id: String,
+    /// End of the print in local Unix seconds (already corrected by the printer clock).
+    pub ended_at: f64,
+    pub outcome: String,
+    /// The status as the printer reported it, shortened.
+    pub raw_status: String,
+    pub print_duration_s: f64,
+    /// Only confirmed prints carry the booked grams.
+    pub grams: Option<f64>,
+    pub used_mm: f64,
+    pub material: Option<String>,
+    pub state: String,
+    pub auto_closed: bool,
+    pub failure_reason: Option<String>,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintStatisticsDto {
+    pub rows: Vec<PrintStatRowDto>,
+    pub truncated: bool,
+    /// Earliest start of a printer connection (local Unix seconds), if any exists.
+    pub first_connected_at: Option<f64>,
+}
 pub fn list_printer_history_with_conn(
     conn: &Connection,
     printer_id: i64,
@@ -238,6 +266,45 @@ pub fn list_printer_history_limit(
         .collect::<Result<Vec<_>, _>>()
         .map_err(sql_error)?;
     Ok(rows)
+}
+/// Rows for the print statistics: every state (an open or ignored print happened too),
+/// newest first, at most `limit` (the answer says when more exist). Read only; the
+/// aggregation is done by the interface in the user's time zone.
+pub fn print_statistics_rows(
+    conn: &Connection,
+    printer_id: Option<i64>,
+    limit: usize,
+) -> ReadResult<PrintStatisticsDto> {
+    let mut stmt = conn.prepare("SELECT printer_id, ended_at, outcome, raw_status, print_duration_s, CASE WHEN state = 'confirmed' THEN booked_g END, used_mm, material, state, auto_closed, failure_reason FROM printer_jobs WHERE (?1 IS NULL OR printer_id = ?1) ORDER BY ended_at DESC, id DESC LIMIT ?2").map_err(sql_error)?;
+    let mut rows = stmt
+        .query_map(rusqlite::params![printer_id, limit as i64 + 1], |r| {
+            Ok(PrintStatRowDto {
+                printer_id: r.get::<_, i64>(0)?.to_string(),
+                ended_at: r.get(1)?,
+                outcome: r.get(2)?,
+                raw_status: r.get(3)?,
+                print_duration_s: r.get(4)?,
+                grams: r.get(5)?,
+                used_mm: r.get(6)?,
+                material: r.get(7)?,
+                state: r.get(8)?,
+                auto_closed: r.get::<_, i64>(9)? != 0,
+                failure_reason: r.get(10)?,
+            })
+        })
+        .map_err(sql_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sql_error)?;
+    let truncated = rows.len() > limit;
+    rows.truncate(limit);
+    let first_connected_at = conn
+        .query_row(
+            "SELECT MIN(connected_since) FROM printer_connections WHERE (?1 IS NULL OR printer_id = ?1)",
+            [printer_id],
+            |r| r.get::<_, Option<f64>>(0),
+        )
+        .map_err(sql_error)?;
+    Ok(PrintStatisticsDto { rows, truncated, first_connected_at })
 }
 pub fn get_last_printer_for_file_with_conn(
     conn: &Connection,

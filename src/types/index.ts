@@ -434,6 +434,30 @@ export interface PrinterHistoryJob {
   autoClosed: boolean;
 }
 
+export interface PrintStatRow {
+  printerId: string;
+  /** End of the print in local Unix seconds. */
+  endedAt: number;
+  outcome: 'completed' | 'partial';
+  rawStatus: string;
+  printDurationS: number;
+  /** Only confirmed prints carry grams. */
+  grams: number | null;
+  usedMm: number;
+  material: string | null;
+  state: 'open' | 'confirmed' | 'ignored';
+  autoClosed: boolean;
+  failureReason: string | null;
+}
+
+export interface PrintStatistics {
+  rows: PrintStatRow[];
+  /** More rows exist than were returned. */
+  truncated: boolean;
+  /** Earliest start of a printer connection (local Unix seconds). */
+  firstConnectedAt: number | null;
+}
+
 export interface Printer extends PrinterDetails {
   id: string;
   name: string;

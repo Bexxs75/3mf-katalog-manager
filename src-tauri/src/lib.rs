@@ -337,6 +337,7 @@ pub fn run() {
             commands::update_printer_details,
             commands::reorder_printers,
             commands::list_printer_history,
+            commands::get_print_statistics,
             commands::delete_printer,
             commands::add_unit,
             commands::update_unit,

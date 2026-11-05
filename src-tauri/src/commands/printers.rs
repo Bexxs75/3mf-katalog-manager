@@ -197,6 +197,22 @@ pub fn list_printer_history(
     list_printer_history_with_conn(&conn, parse_id(&printer_id, "Drucker")?)
 }
 
+/// Rows for the print statistics (all printers, or one). Read only.
+#[tauri::command]
+pub fn get_print_statistics(
+    state: State<AppState>,
+    printer_id: Option<String>,
+) -> CmdResult<katalog_core::read::manager::PrintStatisticsDto> {
+    let printer_id = printer_id.map(|id| parse_id(&id, "Drucker")).transpose()?;
+    let conn = lock_db(&state)?;
+    katalog_core::read::manager::print_statistics_rows(
+        &conn,
+        printer_id,
+        katalog_core::read::manager::PRINT_STATS_MAX_ROWS,
+    )
+    .map_err(Into::into)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

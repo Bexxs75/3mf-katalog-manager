@@ -71,6 +71,7 @@
     "get_last_printer_for_file": "web",
     "get_linux_menu_status": "C",
     "get_model_geometry": "web",
+    "get_print_statistics": "web",
     "get_print_technology": "web",
     "get_printer_job_thumbnail": "B",
     "get_printer_link_enabled": "B",
