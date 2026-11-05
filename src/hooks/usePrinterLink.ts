@@ -76,7 +76,9 @@ export function usePrinterLink() {
     error,
     refresh,
     setEnabled: (on: boolean) => after(api.setPrinterLinkEnabled(on)),
-    testConnection: (printerId: string, address: string) => after(api.testPrinterConnection(printerId, address)),
+    testConnection: (printerId: string, address: string, apiKey: string | null = null) =>
+      after(api.testPrinterConnection(printerId, address, apiKey)),
+    clearApiKey: (printerId: string) => after(api.clearPrinterApiKey(printerId)),
     removeConnection: (printerId: string) => after(api.removePrinterConnection(printerId)),
     syncNow: () => api.syncPrintersNow(),
     ignoreJob: (jobId: string) => after(api.ignorePrinterJob(jobId)),

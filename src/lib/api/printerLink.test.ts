@@ -10,7 +10,13 @@ beforeEach(() => invoke.mockReset().mockResolvedValue(undefined));
 describe('printerLink api', () => {
   it('tests a moonraker connection with camelCase arguments', async () => {
     await api.testPrinterConnection('1', '192.168.1.60');
-    expect(invoke).toHaveBeenCalledWith('test_printer_connection', { printerId: '1', kind: 'moonraker', address: '192.168.1.60' });
+    expect(invoke).toHaveBeenCalledWith('test_printer_connection', { printerId: '1', kind: 'moonraker', address: '192.168.1.60', apiKey: null });
+  });
+  it('sends a typed key only as the argument of the test and clears a stored one by its own command', async () => {
+    await api.testPrinterConnection('1', '192.168.1.60', 'abc123');
+    expect(invoke).toHaveBeenCalledWith('test_printer_connection', { printerId: '1', kind: 'moonraker', address: '192.168.1.60', apiKey: 'abc123' });
+    await api.clearPrinterApiKey('1');
+    expect(invoke).toHaveBeenCalledWith('clear_printer_api_key', { printerId: '1' });
   });
   it('sends all decisions at once', async () => {
     await api.confirmPrinterJobs([{ jobId: '5', spoolId: '100', fileId: null }]);

@@ -31,7 +31,7 @@ pub fn get_token(conn: &Connection) -> Result<Option<Token>, DbError> {
 
 /// Runs `f` with `secure_delete` on, so overwritten or deleted key bytes do not stay
 /// readable in free pages of the working database; restores the previous setting.
-fn with_secure_delete<T>(conn: &Connection, f: impl FnOnce() -> Result<T, DbError>) -> Result<T, DbError> {
+pub(super) fn with_secure_delete<T>(conn: &Connection, f: impl FnOnce() -> Result<T, DbError>) -> Result<T, DbError> {
     let before: i64 = conn.query_row("PRAGMA secure_delete", [], |r| r.get(0))?;
     conn.execute_batch("PRAGMA secure_delete = ON")?;
     let result = f();
@@ -67,6 +67,7 @@ pub fn scrub_secrets(conn: &Connection) -> Result<(), DbError> {
             conn.execute("DELETE FROM app_settings WHERE key = ?1", params![key])?;
         }
     }
+    super::printer_link::scrub_api_keys(conn)?;
     conn.execute_batch("VACUUM")?;
     Ok(())
 }

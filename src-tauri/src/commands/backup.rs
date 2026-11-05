@@ -416,6 +416,7 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("printer_connections", "paused", ColType::Integer, false),
     ("printer_connections", "failures", ColType::Integer, false),
     ("printer_connections", "last_attempt_at", ColType::Real, true),
+    ("printer_connections", "api_key", ColType::Text, true),
     ("printer_jobs", "id", ColType::Integer, false),
     ("printer_jobs", "printer_id", ColType::Integer, false),
     ("printer_jobs", "remote_id", ColType::Text, false),
@@ -656,6 +657,7 @@ fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
             "SELECT
                (SELECT COUNT(*) FROM printer_connections WHERE kind <> 'moonraker' OR paused NOT IN (0, 1)
                     OR failures < 0
+                    OR length(api_key) > 256 OR api_key GLOB '*[^!-~]*'
                     OR printer_id IN (SELECT id FROM printers WHERE kind = 'resin'))
              + (SELECT COUNT(*) FROM printer_jobs WHERE outcome NOT IN ('completed', 'partial')
                     OR state NOT IN ('open', 'confirmed', 'ignored'))",
@@ -1951,14 +1953,35 @@ mod tests {
         conn.execute_batch(
             "CREATE TABLE printers (id INTEGER, kind TEXT);
              CREATE TABLE printer_jobs (outcome TEXT, state TEXT);
-             CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER);
-             INSERT INTO printer_connections VALUES (1, 'moonraker', 0, -3);",
+             CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER, api_key TEXT);
+             INSERT INTO printer_connections VALUES (1, 'moonraker', 0, -3, NULL);",
         )
         .unwrap();
         assert!(validate_printer_link_rows(&conn).is_err());
         conn.execute("UPDATE printer_connections SET failures = 0", []).unwrap();
         assert!(validate_printer_link_rows(&conn).is_ok());
     }
+    #[test]
+    fn a_damaged_api_key_value_is_rejected_and_an_absent_one_is_not() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE printers (id INTEGER, kind TEXT);
+             CREATE TABLE printer_jobs (outcome TEXT, state TEXT);
+             CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER, api_key TEXT);
+             INSERT INTO printer_connections VALUES (1, 'moonraker', 0, 0, NULL);",
+        )
+        .unwrap();
+        assert!(validate_printer_link_rows(&conn).is_ok(), "no key is fine");
+        for bad in ["abc\ndef", "abc def", "tab\there", "\u{e4}bc"] {
+            conn.execute("UPDATE printer_connections SET api_key = ?1", [bad]).unwrap();
+            assert!(validate_printer_link_rows(&conn).is_err(), "{bad:?}");
+        }
+        conn.execute("UPDATE printer_connections SET api_key = ?1", ["a".repeat(257)]).unwrap();
+        assert!(validate_printer_link_rows(&conn).is_err(), "too long");
+        conn.execute("UPDATE printer_connections SET api_key = ?1", ["a".repeat(256)]).unwrap();
+        assert!(validate_printer_link_rows(&conn).is_ok(), "at the limit");
+    }
+
     #[test]
     fn validate_catalog_db_bytes_accepts_fractional_spool_weights() {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
@@ -4812,5 +4835,57 @@ mod companion_tests {
         assert!(!contains(&std::fs::read(&zip_path).unwrap(), TV_KEY_LOCAL.as_bytes()));
         let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
         assert!(!contains(&db_bytes, TV_KEY_LOCAL.as_bytes()));
+    }
+
+    const PRINTER_KEY: &str = "PRKEY0123456789abcdef0123456789";
+
+    fn set_printer_key(state: &AppState) {
+        let conn = state.db.lock().unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'Sovol SV08', 0)", []).unwrap();
+        db::printer_link::save_connection_after_test(
+            &conn, 1, "moonraker", "192.168.1.60",
+            Some(&katalog_core::printer_link::api_key::ApiKey::parse(PRINTER_KEY).unwrap()), "http://192.168.1.60", "v0.8.0", 1000.0,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_user_backup_keeps_the_printer_connection_but_never_its_api_key() {
+        let (source, dir) = state_with_catalog("backup_printer_key_a");
+        set_printer_key(&source);
+        assert!(contains(&std::fs::read(&source.db_path).unwrap(), PRINTER_KEY.as_bytes()), "precondition: the working file holds the key");
+        let zip_path = dir.join("backup.zip");
+        write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+        let (db_bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+        assert!(!contains(&db_bytes, PRINTER_KEY.as_bytes()), "the key is in the bytes of the backup database");
+        assert!(!contains(&std::fs::read(&zip_path).unwrap(), PRINTER_KEY.as_bytes()));
+        let probe = dir.join("probe.db");
+        std::fs::write(&probe, &db_bytes).unwrap();
+        let copy = Connection::open(&probe).unwrap();
+        let connection = db::printer_link::get_connection(&copy, 1).unwrap().unwrap();
+        assert_eq!(connection.address, "192.168.1.60", "the connection itself is in the backup");
+        assert!(!connection.has_api_key);
+        // The working database keeps its key.
+        let conn = source.db.lock().unwrap();
+        assert!(db::printer_link::get_api_key(&conn, 1).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_printer_key_inside_a_restored_database_never_takes_effect() {
+        let (source, dir) = state_with_catalog("backup_printer_key_b");
+        set_printer_key(&source);
+        let incoming = dir.join("incoming.db");
+        std::fs::copy(&source.db_path, &incoming).unwrap();
+        assert!(contains(&std::fs::read(&incoming).unwrap(), PRINTER_KEY.as_bytes()), "precondition: the incoming file holds the key");
+
+        let (target, target_dir) = state_with_catalog("backup_printer_key_c");
+        replace_catalog_db(&target, &incoming).unwrap();
+        {
+            let conn = target.db.lock().unwrap();
+            let connection = db::printer_link::get_connection(&conn, 1).unwrap().unwrap();
+            assert!(!connection.has_api_key);
+            assert!(connection.paused, "a restored connection waits for a new test");
+        }
+        assert!(!contains(&std::fs::read(target_dir.join("catalog.db")).unwrap(), PRINTER_KEY.as_bytes()), "the key is still in the restored file");
     }
 }

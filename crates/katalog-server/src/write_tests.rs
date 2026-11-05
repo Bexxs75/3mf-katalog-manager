@@ -1042,6 +1042,7 @@ async fn manager_http_all_writes_round_trip_and_rejected_commands_stay_closed() 
         "set_printer_link_enabled",
         "test_printer_connection",
         "remove_printer_connection",
+        "clear_printer_api_key",
         "sync_printers_now",
         "pick_and_read_image",
     ] {

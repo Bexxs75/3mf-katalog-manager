@@ -21,8 +21,12 @@ export function listPrinterConnections() {
   return invoke<PrinterConnection[]>('list_printer_connections');
 }
 /** Klipper/Moonraker only for now. */
-export function testPrinterConnection(printerId: string, address: string) {
-  return invoke<PrinterTestResult>('test_printer_connection', { printerId, kind: 'moonraker', address });
+export function testPrinterConnection(printerId: string, address: string, apiKey: string | null = null) {
+  // `apiKey` is only what the user just typed; null keeps the stored key.
+  return invoke<PrinterTestResult>('test_printer_connection', { printerId, kind: 'moonraker', address, apiKey });
+}
+export function clearPrinterApiKey(printerId: string) {
+  return invoke<void>('clear_printer_api_key', { printerId });
 }
 export function removePrinterConnection(printerId: string) {
   return invoke<void>('remove_printer_connection', { printerId });

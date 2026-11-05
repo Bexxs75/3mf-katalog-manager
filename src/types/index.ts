@@ -512,6 +512,8 @@ export type PrinterConnectionError =
   | 'connection_reset'
   | 'server_busy'
   | 'auth_required'
+  | 'auth_rejected'
+  | 'api_key_invalid'
   | 'bad_response'
   | 'too_many_open_jobs'
   | 'history_missing'
@@ -537,6 +539,8 @@ export interface PrinterConnection {
   clockOffsetS: number;
   /** Failed attempts in a row. */
   failures?: number;
+  /** Whether a key is stored. The key itself never reaches the interface. */
+  hasApiKey?: boolean;
   /** Absent only for data that predates the field; the views then derive it from `lastError` and `paused`. */
   status?: PrinterConnectionStatus;
 }

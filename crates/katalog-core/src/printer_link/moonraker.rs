@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use super::address::{base_url, resolve, AddressPolicy};
+use super::api_key::ApiKey;
 use super::sync::unix_now;
 use super::{ConnectionInfo, JobOutcome, LinkError, PrinterLink, RemoteJob};
 
@@ -202,28 +203,43 @@ pub struct MoonrakerLink {
     page_timeout: Duration,
     /// Hard end of the whole pass for this printer; no request outlives it.
     deadline: Instant,
+    /// Sent as `X-Api-Key` with every request to the checked address. Redirects are off, so it
+    /// never goes anywhere else.
+    api_key: Option<ApiKey>,
 }
 
 impl MoonrakerLink {
     /// Fails instead of panicking when the client cannot be built (e.g. no free file handles).
-    pub fn try_new(address: &str, policy: AddressPolicy) -> Result<Self, LinkError> {
-        Self::with_timeouts(address, policy, TIMEOUT, PAGE_TIMEOUT)
+    pub fn try_new(address: &str, api_key: Option<ApiKey>, policy: AddressPolicy) -> Result<Self, LinkError> {
+        Self::with_timeouts(address, api_key, policy, TIMEOUT, PAGE_TIMEOUT)
     }
 
     /// Tests only: the production path uses `try_new`.
     #[cfg(test)]
     pub fn new(address: &str, policy: AddressPolicy) -> Self {
-        Self::try_new(address, policy).expect("HTTP-Client")
+        Self::try_new(address, None, policy).expect("HTTP-Client")
+    }
+
+    /// Tests only: a link that sends a key.
+    #[cfg(test)]
+    pub(crate) fn new_with_key(address: &str, key: &str, policy: AddressPolicy) -> Self {
+        Self::try_new(address, Some(ApiKey::parse(key).unwrap()), policy).expect("HTTP-Client")
     }
 
     /// Tests only: own time limit instead of production's fixed 5 s.
     #[cfg(test)]
     pub(crate) fn new_with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Self {
-        Self::with_timeouts(address, policy, timeout, timeout).expect("HTTP-Client")
+        Self::with_timeouts(address, None, policy, timeout, timeout).expect("HTTP-Client")
     }
 
-    fn with_timeouts(address: &str, policy: AddressPolicy, timeout: Duration, page_timeout: Duration) -> Result<Self, LinkError> {
-        Self::with_client_factory(address, policy, timeout, page_timeout, || {
+    fn with_timeouts(
+        address: &str,
+        api_key: Option<ApiKey>,
+        policy: AddressPolicy,
+        timeout: Duration,
+        page_timeout: Duration,
+    ) -> Result<Self, LinkError> {
+        Self::with_client_factory(address, api_key, policy, timeout, page_timeout, || {
             reqwest::blocking::Client::builder()
                 // The limit of each request is set on the request itself (info, page, rest of the budget).
                 .connect_timeout(page_timeout.max(timeout))
@@ -237,6 +253,7 @@ impl MoonrakerLink {
 
     fn with_client_factory(
         address: &str,
+        api_key: Option<ApiKey>,
         policy: AddressPolicy,
         timeout: Duration,
         page_timeout: Duration,
@@ -250,6 +267,7 @@ impl MoonrakerLink {
             timeout,
             page_timeout,
             deadline: Instant::now() + PRINTER_BUDGET,
+            api_key,
         })
     }
 
@@ -291,22 +309,37 @@ impl MoonrakerLink {
 
     fn fetch(&self, url: reqwest::Url, limit: u64, own_timeout: Duration) -> Result<Fetched, LinkError> {
         let client = self.client.clone();
+        let api_key = self.api_key.clone();
         let timeout = self.request_limit(own_timeout)?;
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(Self::fetch_bytes(&client, url, limit, timeout));
+            let _ = tx.send(Self::fetch_bytes(&client, url, limit, timeout, api_key.as_ref()));
         });
         rx.recv_timeout(timeout).unwrap_or(Err(LinkError::Timeout))
     }
 
     /// Network part of `get_bytes` on the helper thread: reads in chunks with its own time limit check.
-    fn fetch_bytes(client: &reqwest::blocking::Client, url: reqwest::Url, limit: u64, timeout: Duration) -> Result<Fetched, LinkError> {
+    fn fetch_bytes(
+        client: &reqwest::blocking::Client,
+        url: reqwest::Url,
+        limit: u64,
+        timeout: Duration,
+        api_key: Option<&ApiKey>,
+    ) -> Result<Fetched, LinkError> {
         let deadline = Instant::now() + timeout;
         let sent_at = unix_now();
         // Path only, never the host (a printer's LAN address) or the query string
         // (can carry the `since` timestamp, not secret but still noise).
         let path = url.path().to_string();
-        let mut resp = client.get(url).timeout(timeout).send().map_err(|e| classify_send_error(&e))?;
+        let mut request = client.get(url).timeout(timeout);
+        if let Some(key) = api_key {
+            // The value is plain visible ASCII (see `ApiKey::parse`), so building it can't fail;
+            // marking it sensitive keeps it out of any debug output of the request.
+            let mut value = reqwest::header::HeaderValue::from_str(key.expose()).map_err(|_| LinkError::AuthRejected)?;
+            value.set_sensitive(true);
+            request = request.header("X-Api-Key", value);
+        }
+        let mut resp = request.send().map_err(|e| classify_send_error(&e))?;
         let local_mid = (sent_at + unix_now()) / 2.0;
         let printer_now = resp
             .headers()
@@ -316,6 +349,8 @@ impl MoonrakerLink {
         let status = resp.status().as_u16();
         log::debug!(target: "drucker", "GET {path} -> {status}");
         match status {
+            // With a key the printer has looked at it and said no; without one it asks for one.
+            401 | 403 if api_key.is_some() => return Err(LinkError::AuthRejected),
             401 | 403 => return Err(LinkError::AuthRequired),
             // A web server in front of Moonraker answers while Moonraker restarts.
             502..=504 => return Err(LinkError::ServerBusy),
@@ -431,7 +466,7 @@ impl PrinterLink for MoonrakerLink {
             });
             match answer {
                 Ok((version, clock_offset_s)) => return Ok(ConnectionInfo { version, base_url: base, clock_offset_s }),
-                Err(e @ (LinkError::AuthRequired | LinkError::HistoryMissing)) => return Err(e),
+                Err(e @ (LinkError::AuthRequired | LinkError::AuthRejected | LinkError::HistoryMissing)) => return Err(e),
                 Err(e) if error_rank(&e) >= error_rank(&last) => last = e,
                 Err(_) => {}
             }
@@ -783,13 +818,13 @@ mod client_tests {
 
     #[test]
     fn client_factory_failure_is_unreachable() {
-        let result = MoonrakerLink::with_client_factory("printer.local", AddressPolicy::TEST, TIMEOUT, PAGE_TIMEOUT, || Err(()));
+        let result = MoonrakerLink::with_client_factory("printer.local", None, AddressPolicy::TEST, TIMEOUT, PAGE_TIMEOUT, || Err(()));
         assert!(matches!(result, Err(LinkError::Unreachable)));
     }
 
     #[test]
     fn client_factory_builds_the_normal_client() {
-        assert!(MoonrakerLink::try_new("printer.local", AddressPolicy::TEST).is_ok());
+        assert!(MoonrakerLink::try_new("printer.local", None, AddressPolicy::TEST).is_ok());
     }
 
     #[test]
@@ -814,6 +849,54 @@ mod client_tests {
         let server = FakeServer::start(|_| Some((401, b"{}".to_vec())));
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
         assert_eq!(link.test(), Err(LinkError::AuthRequired));
+    }
+
+    /// A printer with the login switched on: everything needs the right key, the thumbnail too.
+    fn locked_printer(expected: &'static str) -> FakeServer {
+        FakeServer::start_replying(move |request| {
+            if request.header("x-api-key") != Some(expected) {
+                return Reply::Answer(401, b"{}".to_vec());
+            }
+            let path = request.target.split('?').next().unwrap_or("");
+            match path {
+                "/server/info" => Reply::Answer(200, fixture_bytes("server_info_v0_8_0_209.json")),
+                "/server/history/list" => Reply::Answer(200, fixture_bytes("history_completed.json")),
+                p if p.starts_with("/server/files/gcodes/") => Reply::Answer(200, b"\x89PNG\r\n\x1a\nfake".to_vec()),
+                _ => Reply::Answer(404, b"{}".to_vec()),
+            }
+        })
+    }
+
+    #[test]
+    fn the_key_is_sent_as_a_header_on_every_request() {
+        const KEY: &str = "0123456789abcdef0123456789abcdef";
+        let server = locked_printer(KEY);
+        let link = MoonrakerLink::new_with_key(&server.address(), KEY, AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert!(!link.jobs_ended_since(&info, 0.0).unwrap().is_empty());
+        link.thumbnail(&info.base_url, ".thumbs/a-300x300.png").unwrap();
+        let log = server.request_log();
+        assert!(log.len() >= 3);
+        assert!(log.iter().all(|r| r.header("x-api-key") == Some(KEY)), "a request went out without the key");
+    }
+
+    #[test]
+    fn without_a_key_no_header_is_sent_and_a_locked_printer_asks_for_one() {
+        let server = locked_printer("0123456789abcdef0123456789abcdef");
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::AuthRequired));
+        assert!(server.request_log().iter().all(|r| r.header("x-api-key").is_none()));
+    }
+
+    #[test]
+    fn a_wrong_key_is_rejected_not_asked_for() {
+        let server = locked_printer("0123456789abcdef0123456789abcdef");
+        let link = MoonrakerLink::new_with_key(&server.address(), "ffffffffffffffffffffffffffffffff", AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::AuthRejected));
+        // The same for 403, which some front ends send instead of 401.
+        let forbidden = FakeServer::start(|_| Some((403, b"{}".to_vec())));
+        let link = MoonrakerLink::new_with_key(&forbidden.address(), "ffffffffffffffffffffffffffffffff", AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::AuthRejected));
     }
 
     #[test]

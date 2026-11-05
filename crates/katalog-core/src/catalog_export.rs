@@ -141,6 +141,27 @@ mod tests {
     }
 
     #[test]
+    fn the_web_export_never_carries_a_printer_api_key() {
+        const PRINTER_KEY: &str = "PRKEY0123456789abcdef0123456789";
+        let dir = unique_test_dir("export-no-printer-key");
+        let (path, writer) = seeded(&dir);
+        writer.execute("INSERT INTO printers (id, name, position) VALUES (1, 'Sovol SV08', 0)", []).unwrap();
+        let key = crate::printer_link::api_key::ApiKey::parse(PRINTER_KEY).unwrap();
+        db::printer_link::save_connection_after_test(&writer, 1, "moonraker", "192.168.1.60", Some(&key), "", "", 1.0).unwrap();
+        let holds = |p: &Path| std::fs::read(p).unwrap().windows(PRINTER_KEY.len()).any(|w| w == PRINTER_KEY.as_bytes());
+        assert!(holds(&path), "precondition: the working database holds the key");
+        let reader = db::open_read_only(&path).unwrap();
+        let dest = empty_target(&dir, "out.db");
+        snapshot(&reader, &dest).unwrap();
+        assert!(!holds(&dest), "the key is in the bytes of the export");
+        let copy = Connection::open(&dest).unwrap();
+        let connection = db::printer_link::get_connection(&copy, 1).unwrap().unwrap();
+        assert!(!connection.has_api_key);
+        assert_eq!(connection.address, "192.168.1.60");
+        assert!(holds(&path), "the working database keeps its key");
+    }
+
+    #[test]
     fn snapshot_is_a_complete_valid_catalog_with_the_same_schema_version() {
         let dir = unique_test_dir("export-snapshot");
         let (path, _writer) = seeded(&dir);

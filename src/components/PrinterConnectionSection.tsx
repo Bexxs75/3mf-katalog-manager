@@ -23,6 +23,8 @@ export type PrinterErrorKey =
   | 'printerErrorConnectionReset'
   | 'printerErrorServerBusy'
   | 'printerErrorAuthRequired'
+  | 'printerErrorAuthRejected'
+  | 'printerErrorApiKeyInvalid'
   | 'printerErrorBadResponse'
   | 'printerErrorTooManyOpenJobs'
   | 'printerErrorHistoryMissing'
@@ -40,6 +42,8 @@ export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
   connection_reset: 'printerErrorConnectionReset',
   server_busy: 'printerErrorServerBusy',
   auth_required: 'printerErrorAuthRequired',
+  auth_rejected: 'printerErrorAuthRejected',
+  api_key_invalid: 'printerErrorApiKeyInvalid',
   bad_response: 'printerErrorBadResponse',
   too_many_open_jobs: 'printerErrorTooManyOpenJobs',
   history_missing: 'printerErrorHistoryMissing',
@@ -94,6 +98,11 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const [testedAddress, setTestedAddress] = useState('');
   const [testing, setTesting] = useState(false);
   const [removing, setRemoving] = useState(false);
+  // What the user types. Never filled from the backend: it only says that a key exists.
+  const [apiKey, setApiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [replacingKey, setReplacingKey] = useState(false);
+  const [clearingKey, setClearingKey] = useState(false);
   const [error, setError] = useState<PrinterConnectionError | null>(null);
   const [actionError, setActionError] = useState<AppError | null>(null);
   const [current, setCurrent] = useState<PrinterConnection | null>(connection);
@@ -116,10 +125,14 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
     setError(null);
     setActionError(null);
     try {
-      const r = await link.testConnection(printerId, address.trim());
+      const r = await link.testConnection(printerId, address.trim(), apiKey.trim() === '' ? null : apiKey.trim());
       if (r.ok && r.connection) {
         skipNextPropSync.current = true;
         setCurrent(r.connection);
+        // The key is saved; the field must not keep it.
+        setApiKey('');
+        setShowKey(false);
+        setReplacingKey(false);
       } else {
         setError(r.error ?? 'bad_response');
       }
@@ -130,12 +143,29 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
     }
   };
 
+  const runClearKey = async () => {
+    setClearingKey(true);
+    setActionError(null);
+    try {
+      await link.clearApiKey(printerId);
+      setCurrent((c) => (c ? { ...c, hasApiKey: false } : c));
+      setReplacingKey(false);
+      setApiKey('');
+    } catch (e) {
+      setActionError(toAppError(e));
+    } finally {
+      setClearingKey(false);
+    }
+  };
+
   const runRemove = async () => {
     setRemoving(true);
     setActionError(null);
     try {
       await link.removeConnection(printerId);
       setCurrent(null);
+      setApiKey('');
+      setReplacingKey(false);
     } catch (e) {
       setActionError(toAppError(e));
     } finally {
@@ -180,11 +210,40 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
             autoComplete="off"
           />
         </label>
-        <label className="flex flex-col gap-1 min-w-0">
-          <span className="text-caption text-[var(--ink-2)]">{t('pmApiKey')}</span>
-          <input disabled className={`${fieldClass} disabled:bg-[var(--panel-2)]`} placeholder={t('pmApiPlaceholder')} />
-        </label>
+        {current?.hasApiKey && !replacingKey ? (
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-caption text-[var(--ink-2)]">{t('pmApiKey')}</span>
+            <div className="flex flex-wrap items-center gap-2 min-h-8">
+              <span className="text-small text-[var(--ink)]">{t('pmApiKeySaved')}</span>
+              <button type="button" className={smallButton} onClick={() => setReplacingKey(true)}>{t('pmApiKeyReplace')}</button>
+              <button type="button" className={smallButton} disabled={clearingKey} onClick={runClearKey}>{t('pmApiKeyRemove')}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1 min-w-0">
+            <label htmlFor={`printer-api-key-${printerId}`} className="text-caption text-[var(--ink-2)]">{t('pmApiKey')}</label>
+            <div className="flex items-center gap-2 min-w-0">
+              <input
+                id={`printer-api-key-${printerId}`}
+                className={`${fieldClass} font-code w-full min-w-0 placeholder:text-[var(--ink-3)] disabled:bg-[var(--panel-2)]`}
+                type={showKey ? 'text' : 'password'}
+                disabled={!link.enabled}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={t('pmApiPlaceholder')}
+                spellCheck={false}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+              />
+              <button type="button" className={smallButton} aria-pressed={showKey} onClick={() => setShowKey((v) => !v)}>
+                {t(showKey ? 'pmApiKeyHide' : 'pmApiKeyShow')}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+      <p className="text-caption text-[var(--ink-3)]">{t('pmApiKeyHint')}</p>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={smallButton} disabled={!link.enabled || testing || address.trim() === ''} onClick={runTest}>
           {testing ? t('printerConnectionTesting') : t(current ? 'printerConnectionTest' : 'pmSetupConnection')}

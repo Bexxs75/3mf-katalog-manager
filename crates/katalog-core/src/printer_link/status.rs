@@ -98,6 +98,7 @@ mod tests {
             clock_offset_s: 0.0,
             failures,
             last_attempt_at: None,
+            has_api_key: false,
         }
     }
 
@@ -123,6 +124,8 @@ mod tests {
             (record(Some("timeout"), 5, None, false), ConnectionStatus::Error),
             // permanent: error at once, whatever the counter says
             (record(Some("auth_required"), 0, Some(now), false), ConnectionStatus::Error),
+            (record(Some("auth_rejected"), 0, Some(now), false), ConnectionStatus::Error),
+            (record(Some("auth_rejected"), 1, Some(now), true), ConnectionStatus::Paused),
             (record(Some("history_missing"), 0, Some(now), false), ConnectionStatus::Error),
             (record(Some("address_not_allowed"), 0, Some(now), false), ConnectionStatus::Error),
             (record(Some("bad_response"), 1, Some(now), false), ConnectionStatus::Error),
@@ -197,6 +200,7 @@ mod tests {
         }
         for e in [
             LinkError::AuthRequired,
+            LinkError::AuthRejected,
             LinkError::HistoryMissing,
             LinkError::AddressNotAllowed,
             LinkError::BadResponse("x".into()),

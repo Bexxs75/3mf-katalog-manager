@@ -204,7 +204,7 @@ it('shows a failed reorder and a failed reload without optimistic ordering', asy
   cleanup(); clearMetadataError(); calls=[]; failRead=true;
   managers('printers'); await screen.findAllByText('offline');
 });
-it.each(['set_printer_link_enabled','test_printer_connection','remove_printer_connection','sync_printers_now','preview_printer_job','get_printer_job_thumbnail','confirm_printer_jobs','ignore_printer_job','pick_and_read_image'])('never sends forbidden %s even in write mode', async command => {
+it.each(['set_printer_link_enabled','test_printer_connection','remove_printer_connection','clear_printer_api_key','sync_printers_now','preview_printer_job','get_printer_job_thumbnail','confirm_printer_jobs','ignore_printer_job','pick_and_read_image'])('never sends forbidden %s even in write mode', async command => {
   await expect(invoke(command,{})).rejects.toBeDefined(); expect(calls).toEqual([]);
 });
 it('waits for image validation before saving and never silently drops a selected image', async () => {

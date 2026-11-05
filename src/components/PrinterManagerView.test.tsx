@@ -25,7 +25,7 @@ let list: Printer[];
 let history: PrinterHistoryJob[];
 const link = (): PrinterLinkState => ({ refreshKey: 0, enabled: false, connections: [], jobs: [], error: null,
   refresh: vi.fn().mockResolvedValue(undefined), setEnabled: vi.fn().mockResolvedValue(undefined),
-  testConnection: vi.fn(), removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn() });
+  testConnection: vi.fn(), removeConnection: vi.fn(), clearApiKey: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn() });
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -269,13 +269,13 @@ it('keeps material and color names in slot titles and deletion in the detail hea
   expect(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Drucker löschen' })).toBeInTheDocument();
 });
 
-it('puts the switch in the master footer and keeps the API key disabled', async () => {
+it('puts the switch in the master footer and keeps the API key field disabled', async () => {
   setup();
   await screen.findByTitle('1 · PLA · Rot');
   const master = screen.getByRole('complementary', { name: 'Drucker' });
   expect(within(master.querySelector('footer')!).getByRole('switch', { name: 'Anbindung' })).toHaveAttribute('aria-checked', 'false');
   expect(screen.getByLabelText('API-Schlüssel')).toBeDisabled();
-  expect(screen.getByPlaceholderText('Bei Klipper nicht nötig')).toBeDisabled();
+  expect(screen.getByPlaceholderText('Nur nötig, wenn dein Drucker eine Anmeldung verlangt')).toBeDisabled();
   expect(screen.getByText(/Schalte unten in der Druckerliste/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Verbindung einrichten' })).toBeDisabled();
   expect(screen.queryByRole('heading', { name: 'Printer Manager' })).toBeNull();

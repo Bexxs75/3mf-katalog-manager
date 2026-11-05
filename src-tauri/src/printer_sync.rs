@@ -21,8 +21,8 @@ pub fn spawn_background(app: tauri::AppHandle) -> SyncWaker {
                 force |= more;
             }
             let state = app.state::<crate::commands::AppState>();
-            let maker = |kind: &str, address: &str| {
-                crate::printer_link::make_link(kind, address, crate::printer_link::address::AddressPolicy::HOME_NETWORK)
+            let maker = |kind: &str, address: &str, key: Option<&crate::printer_link::api_key::ApiKey>| {
+                crate::printer_link::make_link(kind, address, key, crate::printer_link::address::AddressPolicy::HOME_NETWORK)
             };
             let options = SyncOptions { force, ..SyncOptions::default() };
             if let Err(e) = sync_with(&state.db, &maker, unix_now(), &options) {
