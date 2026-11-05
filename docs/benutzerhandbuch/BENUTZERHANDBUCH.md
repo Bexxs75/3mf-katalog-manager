@@ -944,6 +944,10 @@ to change "Name", "Manufacturer", "Model", "Nozzle" (filament printers) and
 sets up the printer link, and "Recent prints" shows its print history.
 Loading spools or resin bottles and confirming new prints remain in Material Manager.
 
+**AMS 2 Pro.** "Add unit" offers "Bambu AMS 2 Pro" (4 slots). The app doesn't talk to Bambu printers, so this is bookkeeping
+only. Existing units are never converted automatically; to change an existing AMS or AMS lite into an AMS 2 Pro (or back),
+use "Edit" → "Type". Slots and loaded spools stay unchanged. The type can only be changed within this Bambu family.
+
 ![Printer Manager with hardware, units and connection](bilder/en/33-printer-manager.png)
 
 ![Printers & AMS slots](bilder/en/22-drucker-ams.png)
@@ -1036,6 +1040,27 @@ Klipper printers should work the same way; if you want to test yours, the
 ![Material Manager with the new-prints notice and connection status](bilder/en/26-druckeranbindung-lager.png)
 
 !["New prints" dialog](bilder/en/27-neue-drucke.png)
+
+### Print history, failure reasons and statistics
+
+"Recent prints" in the Printer Manager lists the prints the printer connection has seen, including cancelled ones. Three
+things are worth knowing:
+
+- **Prints without usage.** A print for which the printer reports no filament (or 0) is no longer dropped. It is
+  listed as "without usage", is never offered for deduction and does not count towards the limit of 500 open
+  prints. The new button **Include older history** (under "Connection & network") additionally takes over
+  prints that ended *before* you set up the connection, up to 2000 at a time; they are history only and are never
+  deducted. Prints that were discarded before this update are not recovered.
+- **Failure reason.** For a cancelled print you can optionally pick a reason (adhesion, clogged nozzle, filament,
+  power or network, slicer error, mechanics, print came off the bed, stopped on purpose, other) and, for "other", a short
+  note of up to 200 characters. It is never required and never preselected, because the printer only reports *that* a print
+  stopped, not why. In the history, the pencil adds or changes the reason afterwards (desktop only; the web
+  version only displays it). A chosen reason decides how the print counts: "stopped on purpose" counts as cancelled,
+  every other reason counts as failed.
+- **Statistics.** A card below the printer details shows prints, success rate, total print time, filament in grams
+  (confirmed prints only; prints without grams are counted separately), prints per month or per 5 days as a chart or a
+  table, and the failure reasons, for one printer or all. It counts from the first printer connection on, shows at most the
+  newest 5000 prints and says so when it truncates.
 
 ## Print log
 
@@ -2376,6 +2401,11 @@ Filament-Druckern) und "Bauraum X × Y × Z". Unter "Materialzuordnung" verwalte
 unter "Anbindung & Netzwerk" richtest du die Verbindung ein. "Letzte Drucke" zeigt den Druckverlauf.
 Spulen oder Resin-Flaschen einlegen und neue Drucke bestätigen kannst du weiterhin im Material Manager.
 
+**AMS 2 Pro.** „Einheit hinzufügen“ bietet „Bambu AMS 2 Pro“ (4 Fächer) an. Das Programm spricht nicht mit Bambu-Druckern,
+der Typ dient nur der Buchführung. Bestehende Einheiten werden nie automatisch umgestellt; um ein vorhandenes AMS oder
+AMS lite zu einem AMS 2 Pro zu machen (oder zurück), nutzt du „Bearbeiten“ → „Typ“. Fächer und eingelegte Spulen bleiben
+unverändert. Der Typ lässt sich nur innerhalb dieser Bambu-Familie ändern.
+
 ![Printer Manager mit Hardware, Einheiten und Anbindung](bilder/33-printer-manager.png)
 
 ![Drucker & AMS-Fächer](bilder/22-drucker-ams.png)
@@ -2470,6 +2500,27 @@ Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, 
 ![Material Manager mit Hinweis auf neue Drucke und Verbindungsstatus](bilder/26-druckeranbindung-lager.png)
 
 ![Dialog „Neue Drucke“](bilder/27-neue-drucke.png)
+
+### Druckverlauf, Fehlergründe und Statistik
+
+„Letzte Drucke“ im Druckerverwalter listet die Drucke, die die Druckeranbindung gesehen hat, auch abgebrochene. Drei
+Dinge sind wichtig:
+
+- **Drucke ohne Verbrauch.** Ein Druck, für den der Drucker kein Filament (oder 0) meldet, wird nicht mehr verworfen. Er
+  steht als „ohne Verbrauch“ im Verlauf, wird nie zur Abbuchung angeboten und zählt nicht zur Grenze von 500 offenen
+  Drucken. Der neue Knopf **Älteren Verlauf einbeziehen** (unter „Anbindung & Netzwerk“) übernimmt zusätzlich Drucke, die
+  *vor* dem Einrichten der Anbindung endeten, bis zu 2000 pro Klick; sie sind nur Verlauf und werden nie abgebucht. Drucke,
+  die vor diesem Update verworfen wurden, kommen nicht nach.
+- **Fehlergrund.** Bei einem abgebrochenen Druck kannst du optional einen Grund wählen (Haftung, verstopfte Düse,
+  Filament, Strom oder Netz, Slicer-Fehler, Mechanik, Druck vom Bett gelöst, absichtlich gestoppt, Sonstiges) und bei
+  „Sonstiges“ eine Kurznotiz mit bis zu 200 Zeichen. Der Grund ist nie Pflicht und nie vorausgewählt, weil der Drucker nur
+  meldet, *dass* ein Druck gestoppt wurde, nicht warum. Im Verlauf ergänzt oder ändert der Stift den Grund nachträglich
+  (nur am Desktop; die Web-Version zeigt ihn nur an). Der gewählte Grund bestimmt die Zählung: „absichtlich gestoppt“ zählt als
+  abgebrochen, jeder andere Grund als fehlgeschlagen.
+- **Statistik.** Eine Karte unter den Druckerdetails zeigt Drucke, Erfolgsquote, gesamte Druckzeit, Filament in Gramm
+  (nur bestätigte Drucke; Drucke ohne Gramm werden gesondert gezählt), Drucke pro Monat oder pro 5 Tage als Diagramm oder
+  Tabelle sowie die Fehlergründe, für einen Drucker oder alle. Sie zählt ab der ersten Druckeranbindung, zeigt höchstens die
+  neuesten 5000 Drucke und weist darauf hin, wenn sie kürzt.
 
 ## Druckprotokoll
 
