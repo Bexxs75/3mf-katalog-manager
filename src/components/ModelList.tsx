@@ -19,7 +19,7 @@ import { formatBytes, formatVolumeCm3 } from '../i18n/format';
 import { BulkCheckbox } from './BulkCheckbox';
 import { shortTagLabel, tagLabel } from '../lib/autoTags';
 import { useActivePrintFilter } from '../hooks/PrintFilterContext';
-import { fileKindOf, gcodeBadge } from '../lib/fileKind';
+import { isSlicedOutput, kindBadge } from '../lib/fileKind';
 import { missingFilterNames } from './PrintFactsExtra';
 import { FILTER_LABEL_KEY } from '../lib/printFilterLabels';
 
@@ -70,7 +70,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
 
   const rowLabel = (m: ModelFile, partOf: string | null) => {
     const label = modelLicenseAriaLabel(displayName(m.name), m.license, t);
-    const named = fileKindOf(m) === 'gcode' ? `${label}, ${gcodeBadge(m.path)}` : label;
+    const named = isSlicedOutput(m) ? `${label}, ${kindBadge(m)}` : label;
     return partOf ? `${named}, ${partOf}` : named;
   };
 
@@ -113,7 +113,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           <span role="gridcell" className="flex items-center gap-1.5 min-w-0">
             {onDragFileStart && !readOnly && canEdit && <DragGrip />}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
-            {fileKindOf(m) === 'gcode' && <span data-kind-badge aria-hidden="true" className="flex-none font-bold tracking-[0.05em] text-caption px-1.5 py-px rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">{gcodeBadge(m.path)}</span>}
+            {isSlicedOutput(m) && <span data-kind-badge aria-hidden="true" className="flex-none font-bold tracking-[0.05em] text-caption px-1.5 py-px rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">{kindBadge(m)}</span>}
             <LicenseBadge license={m.license} />
             {partOf && <span data-part-of title={partOf} className="min-w-0 max-w-[40%] truncate px-1.5 rounded-full border border-dashed border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-semibold text-caption">{partOf}</span>}
             {printFilter && (() => {

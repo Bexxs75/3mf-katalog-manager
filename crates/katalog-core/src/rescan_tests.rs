@@ -82,6 +82,31 @@ fn a_gcode_entry_is_rescanned_without_a_reader_and_a_renamed_file_is_unsupported
 }
 
 #[test]
+fn a_resin_entry_is_rescanned_for_size_and_hash_only_in_both_variants() {
+    let root = unique_test_dir("rescan_resin");
+    for name in ["a.ctb", "b.GOO", "c.sl1"] {
+        let path = root.join(name);
+        std::fs::write(&path, [7u8; 100]).unwrap();
+        let (mut c, id) = catalog(&path);
+        let first = rescan_file(&mut c, id).unwrap();
+        assert_eq!(first.file_size_bytes, 100, "{name}");
+        assert!(first.dimensions_mm.is_none() && first.content_hash.is_some(), "{name}");
+        let web = rescan_file_in_roots(&mut c, id, std::slice::from_ref(&root), limits()).unwrap();
+        assert_eq!(web.content_hash, first.content_hash, "{name}");
+        std::fs::write(&path, [8u8; 150]).unwrap();
+        let changed = rescan_file_in_roots(&mut c, id, std::slice::from_ref(&root), limits()).unwrap();
+        assert_eq!(changed.file_size_bytes, 150, "{name}");
+        assert_ne!(changed.content_hash, first.content_hash, "{name}");
+    }
+    // A resin ending the catalog does not know stays unsupported in both variants.
+    let project = root.join("d.lys");
+    std::fs::write(&project, [1u8; 10]).unwrap();
+    let (mut c, id) = catalog(&project);
+    assert_eq!(fails(rescan_file(&mut c, id)), RescanError::Unsupported);
+    assert_eq!(fails(rescan_file_in_roots(&mut c, id, &[root], limits())), RescanError::Unsupported);
+}
+
+#[test]
 fn web_rescan_picks_up_a_changed_file() {
     let root = unique_test_dir("rescan_changed");
     let path = root.join("a.3mf");

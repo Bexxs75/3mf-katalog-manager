@@ -44,6 +44,8 @@ import { ToggleSwitch } from './ToggleSwitch';
 import { isActive as printFilterActive, printDataFacets, type FilterKey, type PrintDataFilter } from '../lib/printDataFilter';
 import { printFilterChips } from '../lib/printFilterLabels';
 import { countByKind, FILE_KIND_FILTERS, type FileKindFilter } from '../lib/fileKind';
+import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
+import { showsKind } from '../lib/printTechnology';
 
 interface CatalogWorkspaceProps {
   initialLoading?: boolean;
@@ -445,11 +447,13 @@ export function CatalogWorkspace({
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
   const kindCounts = useMemo(() => countByKind(models), [models]);
-  const kindLabel = (kind: FileKindFilter) => t(kind === 'all' ? 'fileKindAll' : kind === 'model' ? 'fileKindModels' : 'fileKindGcode');
+  const kindLabel = (kind: FileKindFilter) => t(kind === 'all' ? 'fileKindAll' : kind === 'model' ? 'fileKindModels' : kind === 'resin' ? 'fileKindResin' : 'fileKindGcode');
   // Only worth a control once there is slicer output to filter out; a chosen filter stays visible until removed.
-  const showKindFilter = !!setFileKind && (kindCounts.gcode > 0 || fileKind !== 'all');
+  const showKindFilter = !!setFileKind && (kindCounts.gcode + kindCounts.resin > 0 || fileKind !== 'all');
   const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');
-  const fitPrinters = printers.filter(printer => printerBuildVolume(printer));
+  const technology = usePrintTechnology().technology;
+  // Printers the printer list hides for the chosen technology are no choice here either.
+  const fitPrinters = printers.filter(printer => printerBuildVolume(printer) && showsKind(technology, printer.kind));
   const fitPrinter = fitPrinters.find(printer => printer.id === fitPrinterId) ?? null;
   const [printFilterOpen, setPrintFilterOpen] = useState<FilterKey | null>(null);
   const printFilterIsActive = !!printFilter && printFilterActive(printFilter);

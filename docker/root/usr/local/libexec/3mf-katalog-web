@@ -1367,7 +1367,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             if not single:
                 parts.append(f'<form method="get" action="/katalog/">{"<input type=hidden name=hidden value=1>" if view_hidden else ""}{lang_field}<label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
-                choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj', 'gcode')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
+                choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj', 'gcode', 'resin')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
                 for key, options in choices:
                     parts.append(f'<label>{t(key)}<select name="{key}">')
                     if key != 'sort':
@@ -1398,7 +1398,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     parts.append(f'<img src="/katalog/thumb/{fid}" alt="" loading="lazy">')
                 else:
                     # Same box as the thumbnail so cards stay uniform; the type is also in the text below.
-                    parts.append(f'<div class="ph" aria-hidden="true">{ICON_MODEL}<span>{escape(str(row["file_type"]).upper())}</span></div>')
+                    # A resin file shows its ending ("CTB"): the type alone would read "RESIN" on every card.
+                    badge = os.path.splitext(row["name"])[1][1:] if row["file_type"] == 'resin' and os.path.splitext(row["name"])[1] else row["file_type"]
+                    parts.append(f'<div class="ph" aria-hidden="true">{ICON_MODEL}<span>{escape(str(badge).upper())}</span></div>')
                 parts.append(f'<div class="content"><h2>{escape(row["name"])}</h2><p class="meta">{escape(row["file_type"])} · {escape(row["file_size_bytes"])} B · {escape(row["folder"] or "")}</p>')
                 if tagged[row['id']]:
                     parts.append('<p class="tags">' + ''.join(f'<span class="tag">{escape(tag)}</span>' for tag in tagged[row['id']]) + '</p>')

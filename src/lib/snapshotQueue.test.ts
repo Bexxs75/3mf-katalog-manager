@@ -126,8 +126,9 @@ describe('snapshotQueue and G-code', () => {
     { id: 'stl', path: '/cat/model.stl', thumbnailImage: null },
     { id: 'gcode', path: '/cat/out.gcode', thumbnailImage: null },
     { id: 'bgcode', path: '/cat/OUT.BGCODE', thumbnailImage: null },
+    { id: 'ctb', path: '/cat/layers.CTB', thumbnailImage: null },
   ];
-  it.each(['render', 'thumbnail'] as const)('never queues G-code for a render (%s)', preference => {
-    expect(snapshotQueue(withGcode, ['stl', 'gcode', 'bgcode'], preference, true)).toEqual(['stl']);
+  it.each(['render', 'thumbnail'] as const)('never queues G-code or resin files for a render (%s)', preference => {
+    expect(snapshotQueue(withGcode, ['stl', 'gcode', 'bgcode', 'ctb'], preference, true)).toEqual(['stl']);
   });
 });

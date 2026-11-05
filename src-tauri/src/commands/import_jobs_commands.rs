@@ -174,6 +174,7 @@ pub(super) fn pick_models(
         return Err(CmdError::expected("unauthorized"));
     }
     let mut extensions = vec!["3mf", "stl", "stp", "step", "obj", "gcode", "bgcode"];
+    extensions.extend_from_slice(katalog_core::import::files::RESIN_EXTENSIONS);
     extensions.extend_from_slice(crate::archive::DIALOG_EXTENSIONS);
     Ok(app
         .dialog()

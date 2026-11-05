@@ -1,5 +1,5 @@
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
-import { isGcodePath } from './fileKind';
+import { isGcodePath, isResinPath } from './fileKind';
 import { isStepFilePath } from './stepFile';
 
 export const MAX_BACKGROUND_MESH_BYTES = 200 * 1024 * 1024;
@@ -57,7 +57,7 @@ export function snapshotQueue(
   const byId = new Map(models.map((m) => [m.id, m]));
   const renderable = pendingIds.filter((id) => {
     const model = byId.get(id);
-    if (model && isGcodePath(model.path)) return false;
+    if (model && (isGcodePath(model.path) || isResinPath(model.path))) return false;
     // Uncompressed meshes can block the UI while decoding and uploading geometry.
     if (model && /\.(stl|obj|ply)$/i.test(model.path) &&
       (model.fileSizeBytes ?? 0) > MAX_BACKGROUND_MESH_BYTES) return false;

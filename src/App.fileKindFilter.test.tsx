@@ -19,7 +19,7 @@ const cube = makeModelFile({ id: '2', name: 'Cube.stl', path: '/catalog/cube.stl
 const duct = makeModelFile({ id: '3', name: 'Duct.gcode', path: '/catalog/duct.gcode', printDataState: 'sliced' });
 const box = makeModelFile({ id: '4', name: 'Box.bgcode', path: '/catalog/box.bgcode', printDataState: 'not_recognized' });
 let files = [benchy, cube, duct, box];
-const summary = (model: ReturnType<typeof makeModelFile>) => ({ ...makeModelFileSummary(model), fileType: model.path.endsWith('code') ? 'gcode' : model.path.endsWith('.stl') ? 'stl' : '3mf' });
+const summary = (model: ReturnType<typeof makeModelFile>) => ({ ...makeModelFileSummary(model), fileType: model.path.endsWith('code') ? 'gcode' : model.path.endsWith('.ctb') ? 'resin' : model.path.endsWith('.stl') ? 'stl' : '3mf' });
 
 beforeEach(() => {
   files = [benchy, cube, duct, box];
@@ -86,4 +86,26 @@ it('does not show the file type filter in a catalog without G-code', async () =>
   files = [benchy, cube];
   const { bar } = await open();
   expect(within(bar).queryByRole('group', { name: de.fileKindFilter })).toBeNull();
+});
+
+it('offers "Resin" with its own count and filters the list to resin files', async () => {
+  files = [benchy, cube, duct, makeModelFile({ id: '5', name: 'Layers.ctb', path: '/catalog/layers.ctb' })];
+  const { main, bar } = await open();
+  const group = within(bar).getByRole('group', { name: de.fileKindFilter });
+  const button = (name: string) => within(group).getByRole('button', { name: new RegExp(`^${name}`) });
+  expect(button(de.fileKindAll)).toHaveTextContent('4');
+  expect(button(de.fileKindModels)).toHaveTextContent('2');
+  expect(button(de.fileKindGcode)).toHaveTextContent('1');
+  expect(button(de.fileKindResin)).toHaveTextContent('1');
+  fireEvent.click(button(de.fileKindResin));
+  await waitFor(() => expect(main).not.toHaveTextContent('Benchy.3mf'));
+  expect(main).toHaveTextContent('Layers.ctb');
+  expect(main).not.toHaveTextContent('Duct.gcode');
+  expect(within(bar).getByText('1 von 4')).toBeInTheDocument();
+});
+
+it('offers the file type filter for a catalog that holds only resin files besides models', async () => {
+  files = [benchy, makeModelFile({ id: '5', name: 'Layers.ctb', path: '/catalog/layers.ctb' })];
+  const { bar } = await open();
+  expect(within(bar).getByRole('group', { name: de.fileKindFilter })).toBeInTheDocument();
 });

@@ -640,7 +640,10 @@ mod folder_contents_tests {
         let named = [dir.join("print.gcode"), dir.join("print.BGCODE")];
         assert_eq!(scan_candidates(&job, &named, usize::MAX).len(), 2, "single files are always handed on");
         assert!(files::is_catalog_extension(&named[0]) && files::is_catalog_extension(&named[1]));
-        assert!(!files::is_catalog_extension(&dir.join("layer.ctb")), "resin endings join in with the resin catalog");
+        let resin = [dir.join("layer.ctb")];
+        assert!(files::is_catalog_extension(&resin[0]), "a resin file is catalogued like G-code");
+        assert_eq!(scan_candidates(&job, &resin, usize::MAX).len(), 1, "a single resin file is handed on");
+        assert!(!files::is_catalog_extension(&dir.join("layer.lys")), "project files of resin slicers are not print output");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

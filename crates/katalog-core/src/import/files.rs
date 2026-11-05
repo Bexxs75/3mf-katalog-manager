@@ -53,14 +53,23 @@ pub fn is_model_extension(path: &Path) -> bool {
         })
         .unwrap_or(false)
 }
-/// Sliced output (G-Code, bgcode). Catalogable, but never a model: a folder or archive run does not
-/// pick these up by itself and an archive's companion files never attach to them. Only files the
-/// user names one by one (dialog, drag and drop) are taken in. Resin endings join in with the
-/// resin catalog.
+/// Endings of resin slicer output that the catalog stores as `resin`. The list holds sliced files
+/// only, formats a printer reads; project files of resin slicers are no print output and stay out.
+/// Compared in lower case.
+pub const RESIN_EXTENSIONS: &[&str] = &["ctb", "cbddlp", "goo", "pwmx", "pwms", "sl1"];
+
+/// True for an ending (any case, no dot) of a resin slicer file.
+pub fn is_resin_extension(extension: &str) -> bool {
+    RESIN_EXTENSIONS.iter().any(|known| known.eq_ignore_ascii_case(extension))
+}
+
+/// Sliced output (G-Code, bgcode, resin files). Catalogable, but never a model: a folder or
+/// archive run does not pick these up by itself and an archive's companion files never attach to
+/// them. Only files the user names one by one (dialog, drag and drop) are taken in.
 pub fn is_sliced_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| matches!(e.to_lowercase().as_str(), "gcode" | "bgcode"))
+        .map(|e| matches!(e.to_lowercase().as_str(), "gcode" | "bgcode") || is_resin_extension(e))
         .unwrap_or(false)
 }
 /// Everything the catalog can hold: models and sliced output.
@@ -238,6 +247,18 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
                 read.slice_info_json,
             )
         }
+        // Resin files are only catalogued: nothing of their content is read.
+        Some(e) if is_resin_extension(e) => (
+            FileType::Resin,
+            None,
+            None,
+            None,
+            Vec::new(),
+            BTreeMap::new(),
+            None,
+            None,
+            None,
+        ),
         _ => return Err("nicht unterstütztes Dateiformat".into()),
     };
 
@@ -444,6 +465,18 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
                 read.slice_info_json,
             )
         }
+        // Resin files are only catalogued: nothing of their content is read.
+        Some(e) if is_resin_extension(e) => (
+            FileType::Resin,
+            None,
+            None,
+            None,
+            Vec::new(),
+            BTreeMap::new(),
+            None,
+            None,
+            None,
+        ),
         _ => return Err("unsupported".into()),
     };
 

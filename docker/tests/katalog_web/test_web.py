@@ -635,6 +635,18 @@ class WebTests(unittest.TestCase):
         self.assertNotIn('Ä &quot; file.3mf', html)
         self.assertIn('text/x.gcode', self.request('/katalog/download/5')[1]['Content-Type'])
 
+    def test_resin_entries_get_a_download_and_their_ending_but_no_slicer_links(self):
+        self.add_file(6, 'Layers.CTB', 'resin', b'\x01\x02\x03 not readable')
+        html = self.request('/katalog/?type=resin')[2].decode()
+        self.assertIn('Layers.CTB', html)
+        self.assertIn('/katalog/download/6', html)
+        self.assertIn('>CTB<', html)
+        self.assertNotIn('<span>RESIN</span>', html)
+        for slicer in ('Bambu Studio', 'SuperSlicer', 'OrcaSlicer', 'Cura'):
+            self.assertNotIn(f'>{slicer}</a>', html)
+        self.assertIn('application/octet-stream', self.request('/katalog/download/6')[1]['Content-Type'])
+        self.assertNotIn('Layers.CTB', self.request('/katalog/?type=gcode')[2].decode())
+
     def test_filters_sort_pagination(self):
         self.add_file(2, 'Zebra.stl', data=b'zzzz')
         self.add_file(3, 'Alpha.stl')
