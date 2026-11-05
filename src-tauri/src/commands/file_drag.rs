@@ -20,14 +20,11 @@ impl NativeDragState {
         if active.is_some_and(|start| start.elapsed() >= DRAG_TIMEOUT) { *active = None; }
         active.is_some()
     }
-    fn begin(&self, cleanup: impl FnOnce()) -> CmdResult<std::time::Instant> {
+    fn begin(&self) -> CmdResult<std::time::Instant> {
         let mut active = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if active.is_some_and(|start| start.elapsed() < DRAG_TIMEOUT) {
             return Err(CmdError::coded_with(ErrorCode::DragFailed, [String::new()]));
         }
-        // Serialize collection with session creation, while no drag owns the guard.
-        *active = None;
-        cleanup();
         let token = std::time::Instant::now();
         *active = Some(token);
         Ok(token)
@@ -125,7 +122,7 @@ pub fn start_file_drag(
     let storage = window.try_state::<crate::drag_storage::DragStorage>()
         .ok_or_else(|| CmdError::coded_with(ErrorCode::DragFailed, [String::new()]))?;
     let native = window.state::<NativeDragState>().inner().clone();
-    let token = native.begin(|| storage.collect_sessions(std::time::SystemTime::now()))?;
+    let token = native.begin()?;
     let watchdog = native.clone();
     let watchdog_window = window.clone();
     std::thread::spawn(move || {
@@ -182,21 +179,21 @@ mod tests {
     fn native_drag_guard_refuses_overlap_and_releases_after_end() {
         let state = NativeDragState::default();
         assert!(!state.is_active());
-        let token = state.begin(|| {}).unwrap();
+        let token = state.begin().unwrap();
         assert!(state.is_active());
-        assert!(state.begin(|| {}).is_err());
+        assert!(state.begin().is_err());
         state.finish(token, || {});
         assert!(!state.is_active());
-        state.begin(|| {}).unwrap();
+        state.begin().unwrap();
     }
 
     #[test]
     fn missing_callback_expires_and_late_finish_cannot_clear_next_drag() {
         let state = NativeDragState::default();
-        let old = std::time::Instant::now() - DRAG_TIMEOUT;
+        let old = std::time::Instant::now().checked_sub(DRAG_TIMEOUT).expect("monotonic clock must represent the timeout interval");
         *state.0.lock().unwrap() = Some(old);
         assert!(!state.is_active());
-        let current = state.begin(|| {}).unwrap();
+        let current = state.begin().unwrap();
         state.finish(old, || panic!("stale session must not emit"));
         assert!(state.is_active());
         state.finish(current, || {});
@@ -204,10 +201,10 @@ mod tests {
     }
 
     #[test]
-    fn overlap_does_not_collect_or_stage_files() {
+    fn overlap_is_refused_before_staging() {
         let state = NativeDragState::default();
-        state.begin(|| {}).unwrap();
-        assert!(state.begin(|| panic!("active drag must prevent cleanup")).is_err());
+        state.begin().unwrap();
+        assert!(state.begin().is_err());
     }
 
     #[test]

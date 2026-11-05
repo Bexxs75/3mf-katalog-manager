@@ -53,11 +53,33 @@ The requester must rerun `cargo test --workspace --no-default-features` and
 against these uncommitted changes. Rust execution is unavailable in this work
 order; the green Docker results for base `6b8c6b7a` do not validate this patch.
 New Rust tests cover timeout recovery, stale callbacks, overlap exclusion and
-six-hour collection of this instance's sessions. The three-platform native drag
+preservation of orphaned sessions between six and 24 hours old; only unlocked orphaned instance folders older than 24 hours are collected at startup/exit, never at the next drag. The three-platform native drag
 acceptance remains open.
 
 Der Auftraggeber misst die beiden obigen Befehle erneut auf diesen uncommitteten
 Änderungen. Rust ist in diesem Auftrag nicht ausführbar; die grünen Docker-Werte
 für `6b8c6b7a` sind kein Nachweis für diese Nachbesserung. Neue Rust-Tests prüfen
-Timeout-Freigabe, verspätete Callbacks, überlappende Starts und die Bereinigung
-eigener Sitzungen nach sechs Stunden. Die native Drei-System-Abnahme bleibt offen.
+Timeout-Freigabe, verspätete Callbacks, überlappende Starts und den Erhalt
+verwaister Sitzungen zwischen sechs und 24 Stunden. Nur verwaiste, entsperrte
+Instanzordner älter als 24 Stunden werden beim Start/Beenden bereinigt, nie beim
+nächsten Drag. Die native Drei-System-Abnahme bleibt offen.
+
+## Nachbesserung 2 — additional acceptance / zusätzliche Abnahme
+
+- [ ] Hold a native drag for more than 60 seconds: the watchdog releases the guard
+  while the user may still be holding the mouse button. Check a subsequent drop
+  into the catalog/image zone for unwanted import or assignment. Self-drop
+  suppression is time-limited; this case is **not accepted** by automated tests.
+- [ ] Check click without movement, exactly four pixels, movement beyond four
+  pixels, release, focus loss, and dragging outside the handle on each platform.
+- [ ] Run the Rust tests, including the 12-hour orphan retention counterprobe and
+  the `checked_sub` timeout test, plus workspace Clippy. Rust was not run here.
+
+- [ ] Nativen Drag länger als 60 Sekunden halten: Der Wächter gibt die Sperre
+  frei, obwohl die Maustaste noch gedrückt sein kann. Anschließende Ablage im
+  Katalog/Bildbereich auf unerwünschten Import oder Bildzuweisung prüfen. Die
+  Eigen-Drop-Sperre ist zeitlich begrenzt; dieser Fall ist **nicht abgenommen**.
+- [ ] Klick ohne Bewegung, genau vier Pixel, Bewegung über vier Pixel, Loslassen,
+  Fokusverlust und Ziehen außerhalb des Anfassers auf jeder Plattform prüfen.
+- [ ] Rust-Tests einschließlich 12-Stunden-Aufbewahrungs-Gegenprobe und
+  `checked_sub`-Timeout-Test sowie Workspace-Clippy ausführen. Hier nicht gemessen.

@@ -11,9 +11,15 @@ beforeEach(() => start.mockClear());
 function view(file = model, container = false, parent = vi.fn()) {
   return render(<LanguageProvider><RuntimeEnvironmentProvider value={{container}}><div onMouseDown={parent}><NativeDragHandle model={file} selectedIds={new Set(['1','2','step','gcode'])} selectionModels={[model, {...model,id:'2',path:'b.OBJ'}, {...model,id:'step',path:'c.step'}, {...model,id:'gcode',path:'c.gcode'}]} /></div></RuntimeEnvironmentProvider></LanguageProvider>);
 }
-it('starts the selected IDs on mouse down and does not start folder drag', () => {
+it('starts the selected IDs once after moving more than four pixels and does not start folder drag', () => {
   const parent = vi.fn(); view(model, false, parent);
   fireEvent.mouseDown(screen.getByRole('button', {hidden:true}), {button:0});
+  expect(start).not.toHaveBeenCalled();
+  fireEvent.mouseMove(window, {buttons:1, clientX:4});
+  expect(start).not.toHaveBeenCalled();
+  fireEvent.mouseMove(window, {buttons:1, clientX:5});
+  fireEvent.mouseMove(window, {buttons:1, clientX:10});
+  expect(start).toHaveBeenCalledTimes(1);
   expect(start).toHaveBeenCalledWith(['1','2']);
   expect(parent).not.toHaveBeenCalled();
 });
@@ -32,6 +38,7 @@ it('has no native action in containers', () => {
 });
 it('uses only the grabbed ID when it is outside the selection', () => {
   view({...model,id:'3'}); fireEvent.mouseDown(screen.getByRole('button', {hidden:true}), {button:0});
+  fireEvent.mouseMove(window, {buttons:1, clientY:5});
   expect(start).toHaveBeenCalledWith(['3']);
 });
 
@@ -46,5 +53,27 @@ it('reports the 64-file limit without invoking native drag', () => {
   render(<LanguageProvider><RuntimeEnvironmentProvider value={{container:false}}><NativeDragHandle model={model} selectedIds={new Set(files.map(f => f.id))} selectionModels={files} /></RuntimeEnvironmentProvider></LanguageProvider>);
   fireEvent.mouseDown(screen.getByRole('button', {hidden:true}), {button:0});
   expect(start).not.toHaveBeenCalled();
+  fireEvent.mouseMove(window, {buttons:1, clientX:5});
   expect(screen.getByRole('alert')).toHaveTextContent('64');
+});
+
+it('does not start for a click, released button, blur or unmount', () => {
+  const rendered = view(); const button = screen.getByRole('button', {hidden:true});
+  fireEvent.mouseDown(button, {button:0});
+  fireEvent.mouseUp(window);
+  fireEvent.click(button);
+  fireEvent.mouseMove(window, {buttons:1, clientX:10});
+  expect(start).not.toHaveBeenCalled();
+  fireEvent.mouseDown(button, {button:0});
+  fireEvent.mouseMove(window, {buttons:0, clientX:10});
+  fireEvent.mouseMove(window, {buttons:1, clientX:10});
+  expect(start).not.toHaveBeenCalled();
+  fireEvent.mouseDown(button, {button:0});
+  fireEvent.blur(window);
+  fireEvent.mouseMove(window, {buttons:1, clientX:10});
+  expect(start).not.toHaveBeenCalled();
+  fireEvent.mouseDown(button, {button:0});
+  rendered.unmount();
+  fireEvent.mouseMove(window, {buttons:1, clientX:10});
+  expect(start).not.toHaveBeenCalled();
 });

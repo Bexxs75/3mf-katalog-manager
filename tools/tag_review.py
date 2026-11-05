@@ -1,4 +1,5 @@
 """Read-only tag inventory. Supply an owner-provided catalog COPY, never the live DB."""
+from contextlib import closing
 import argparse
 import json
 import sqlite3
@@ -11,7 +12,7 @@ def analyze(copy, dictionary):
         raise ValueError('Supply a standalone, checkpointed catalog copy without WAL/journal sidecars')
     ambiguous = {'mini', 'large', 'grande'}
     aliases = {name.strip().lower(): key for key, names in dictionary.items() for name in names.values() if name.strip().lower() not in ambiguous}
-    with sqlite3.connect(copy.as_uri() + '?mode=ro&immutable=1') as db:
+    with closing(sqlite3.connect(copy.as_uri() + '?mode=ro&immutable=1', uri=True)) as db:
         db.execute('PRAGMA query_only=ON')
         db.execute('BEGIN')
         tags = dict(db.execute('SELECT id, name FROM tags'))

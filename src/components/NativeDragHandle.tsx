@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ModelFile } from '../types';
 import { useT } from '../i18n/LanguageContext';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
@@ -14,6 +14,8 @@ export function NativeDragHandle({ model, selectedIds, selectionModels = [], cla
   const environment = useRuntimeEnvironment();
   const supported = !isReadOnly() && !environment.container && !environment.web;
   const enabled = useNativeDragEnabled();
+  const cancelGesture = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => cancelGesture.current?.(), [supported, enabled, model.id]);
   useEffect(() => { if (supported) void loadNativeDragEnabled(); }, [supported]);
   if (!supported || !enabled || model.deletedAt) return null;
   const extension = model.path.split('.').pop()?.toLowerCase();
@@ -27,12 +29,29 @@ export function NativeDragHandle({ model, selectedIds, selectionModels = [], cla
       event.stopPropagation();
       if (event.button !== 0) return;
       event.preventDefault();
-      const ids = selectedIds?.has(model.id)
-        ? selectionModels.filter(file => selectedIds.has(file.id) && !file.deletedAt && /\.(3mf|stl|obj)$/i.test(file.path)).map(file => file.id)
-        : [model.id];
-      setOverLimit(ids.length > 64);
-      if (ids.length === 0 || ids.length > 64) return;
-      void startNativeDrag(ids).catch(reportMetadataError);
+      cancelGesture.current?.();
+      const { clientX, clientY } = event;
+      const cancel = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', cancel);
+        window.removeEventListener('blur', cancel);
+        cancelGesture.current = undefined;
+      };
+      const move = (movement: MouseEvent) => {
+        if ((movement.buttons & 1) === 0) { cancel(); return; }
+        if (Math.hypot(movement.clientX - clientX, movement.clientY - clientY) <= 4) return;
+        cancel();
+        const ids = selectedIds?.has(model.id)
+          ? selectionModels.filter(file => selectedIds.has(file.id) && !file.deletedAt && /\.(3mf|stl|obj)$/i.test(file.path)).map(file => file.id)
+          : [model.id];
+        setOverLimit(ids.length > 64);
+        if (ids.length === 0 || ids.length > 64) return;
+        void startNativeDrag(ids).catch(reportMetadataError);
+      };
+      cancelGesture.current = cancel;
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', cancel);
+      window.addEventListener('blur', cancel);
     }}>
     <span aria-hidden="true">⠿</span>
   </button>{overLimit && <span role="alert" className="text-caption text-[var(--crit)]">{t('dgLimit')}</span>}</>;

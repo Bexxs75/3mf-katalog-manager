@@ -2,6 +2,7 @@ import hashlib
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from tag_review import analyze
 
@@ -27,6 +28,29 @@ class TagReviewTests(unittest.TestCase):
             self.assertEqual(result['merge_preview']['alias_rows_removed'], 0)
             Path(str(path) + '-wal').touch()
             with self.assertRaises(ValueError): analyze(path, {})
+
+    def test_connection_is_read_only_and_closed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'copy.db'
+            db = sqlite3.connect(path)
+            db.executescript("CREATE TABLE tags(id INTEGER, name TEXT); CREATE TABLE file_tags(file_id INTEGER, tag_id INTEGER);")
+            db.close()
+            connect = sqlite3.connect
+            connections = []
+
+            def inspect_connection(*args, **kwargs):
+                self.assertTrue(kwargs.get("uri"))
+                connection = connect(*args, **kwargs)
+                connections.append(connection)
+                # Probe before query_only is enabled: the URI itself must deny writes.
+                with self.assertRaises(sqlite3.OperationalError):
+                    connection.execute('CREATE TABLE forbidden(value INTEGER)')
+                return connection
+
+            with patch('tag_review.sqlite3.connect', side_effect=inspect_connection):
+                analyze(path, {})
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connections[0].execute('SELECT 1')
 
     def test_missing_copy_is_not_created(self):
         with tempfile.TemporaryDirectory() as folder:

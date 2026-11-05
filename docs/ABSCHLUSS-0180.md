@@ -175,3 +175,109 @@ beim vorzeitigen Abbruch außerdem eine Diagnose zur nicht abgewarteten Assertio
 im grünen Lauf tritt sie nicht auf. Keine schreibende Aktion wurde von der
 Sandbox abgewiesen. Dieser Bericht ist beratend; die unabhängige Prüfung durch
 den anderen Anbieter steht aus.
+
+
+## Nachbesserung 2 — G1–G5
+
+Frozen order: `FIX2.md`, SHA256
+`3567a044f094c9d4b4beb74293c3b3cee1822d755189bd30d5bf0154d620d227`.
+Base: `378695d3`. All source paths were resolved in this checkout.
+
+- G1: Removed `collect_sessions` and its pre-drag invocation. One 24-hour
+  retention constant remains for startup/exit collection of orphaned, unlocked
+  instance folders. Added a 12-hour orphan preservation test; the existing test
+  retains locked instances even beyond 24 hours. This supersedes F3's six-hour
+  collection described above.
+- G2: Left-button movement beyond four pixels starts exactly one drag. A click,
+  release, blur or unmount cancels the pending gesture. Selection filtering and
+  the 64-file limit remain covered.
+- G3: SQLite opens with `uri=True` inside `contextlib.closing`. The new test
+  checks URI mode, rejects a write before `query_only`, and verifies closure.
+  Byte identity and absence of sidecar files remain tested.
+- G4: The shared webview adapter suppresses every drag/drop event while
+  `NativeDragState.isActive()`. All three consumers use that adapter, including
+  image drops and external folder highlighting. Regression coverage includes
+  event delivery resuming after the native drag ends and listener disposal.
+- G5: The Rust timeout test now uses `Instant::now().checked_sub(DRAG_TIMEOUT)`.
+  The greater-than-60-second held drag is listed as an open native acceptance
+  case: timeout recovery ends self-drop suppression while the mouse may remain
+  held.
+
+**Implementation ruling:** G1's “same constant” is satisfied by removing the
+second cleanup policy altogether, rather than retaining per-drag collection at
+24 hours. The latter would still violate “no deletion on the next drag” and the
+live-instance lock rule. Cost: copies from long-running live instances stay
+until that instance exits and a later startup/exit finds them old and unlocked.
+No other functional deviation. No dependencies, commits, pushes, publication or
+changes to an original checkout. No sandbox-denied action was attempted.
+Rust execution is unavailable by agreement; owner workspace tests and Clippy
+remain required. A read-only code review found no actionable issues; this report
+is advisory and does not replace the other provider's final independent review.
+
+**Deutsch:** G1–G5 umgesetzt. G1 entfernt die Bereinigung beim nächsten Drag;
+alle Aufräumvorgänge für aufbewahrte Kopien folgen derselben 24-Stunden-Grenze
+und prüfen verwaiste, entsperrte Instanzen beim Start/Beenden. Der neue Rust-Test
+prüft zwölf Stunden alte Kopien. Dies ersetzt die oben dokumentierte
+Sechs-Stunden-Regel aus F3. G2 startet erst nach mehr als vier Pixeln Bewegung
+mit gedrückter linker Taste, einmalig; Klick, Loslassen, Fokusverlust und Unmount
+lösen keinen Drag aus. G3 erzwingt URI-Modus und Verbindungsschließung mit
+Schreibversuchs-Test. G4 schützt alle Webview-Verbraucher zentral. G5 verwendet
+`checked_sub`; der Langdrag nach Wächterfreigabe bleibt offene Plattformabnahme.
+
+**Auslegung/Abweichung:** Statt nur die zweite Konstante auf 24 Stunden zu setzen,
+entfällt die widersprüchliche Bereinigung beim nächsten Drag vollständig.
+Kopien lange laufender Instanzen belegen daher weiter Speicher, bis nach ihrem
+Ende ein Start/Beenden verwaiste, ausreichend alte Ordner bereinigt. Sonst keine
+funktionale Abweichung. Keine abgewiesenen Aktionen; Rust bleibt
+vereinbarungsgemäß ungemessen. Kein Commit, Push oder Veröffentlichen, keine
+neuen Abhängigkeiten, keine Änderungen an Original-Checkouts. Die unabhängige
+Abschlussprüfung durch den anderen Anbieter bleibt erforderlich.
+
+### Files changed / Geänderte Dateien (Nachbesserung 2)
+
+- `CHANGELOG.md`
+- `docs/ABNAHME-0180.md`
+- `docs/ABSCHLUSS-0180.md`
+- `src-tauri/src/commands/file_drag.rs`
+- `src-tauri/src/drag_storage.rs`
+- `src/components/NativeDragHandle.tsx`
+- `src/components/NativeDragHandle.test.tsx`
+- `src/lib/webview.ts`
+- `src/lib/webview.test.ts`
+- `tools/tag_review.py`
+- `tools/test_tag_review.py`
+
+### Proof / Nachweise (Nachbesserung 2)
+
+| Command / Befehl | Result / Ergebnis |
+|---|---|
+| `npx tsc --noEmit` | PASS, exit 0, no diagnostics / keine Diagnosen |
+| Targeted grip and webview tests / gezielte Anfasser- und Webview-Tests | PASS, 2 files, 9 tests; initially 3 failed / zunächst 3 fehlgeschlagen |
+| `python3 -m unittest discover -s tools -p test_tag_review.py` | PASS, exit 0, 4 tests; connection closure test initially failed / Verbindungsschließung zunächst fehlgeschlagen |
+| `npx --no-install vitest run --configLoader runner` (first full run / erster Gesamtlauf) | FAIL, exit 1: 361 files passed, 1 failed; 4,686 tests passed, 1 failed; 160.40 s |
+| Isolated `src/components/AutoTagBlock.web.test.tsx` retry / isolierte Wiederholung | PASS, exit 0, 2 tests, 2.06 s; no code change / ohne Codeänderung |
+| Rust workspace tests and Clippy | Not executed as agreed; owner must measure / vereinbarungsgemäß nicht ausgeführt, Auftraggeber misst |
+
+The first full run timed out after 5,000 ms in
+`AutoTagBlock.web.test.tsx > offers remove-and-block in the web build and sends the block through the web command`.
+That run also emitted duplicate React key warnings for `model-1`. Both tests
+passed on isolated retry without code changes; this suggests a timing-sensitive
+failure, but does not establish its root cause. No unrelated fix was made.
+
+Im ersten Gesamtlauf scheiterte der oben genannte Test am 5.000-ms-Limit;
+zusätzlich erschienen React-Warnungen zum doppelten Schlüssel `model-1`.
+Isoliert bestanden beide Tests ohne Codeänderung. Ein zeitabhängiger Fehler ist
+damit plausibel, seine Ursache aber nicht bewiesen; keine sachfremde Korrektur.
+
+Logs under / Protokolle unter `.proof-0180/`: `fix2-red.log`, `fix2-green.log`,
+`fix2-tsc.log`, `fix2-python.log`, `fix2-vitest.log`, `fix2-retry.log`.
+
+The unchanged full proof command passed on repeat: **362 files, 4,687 tests,
+exit 0, 154.36 s**, without the earlier duplicate-key warnings. Log:
+`.proof-0180/fix2-vitest-repeat.log`. Final `git diff --check`: PASS, exit 0,
+no output (`.proof-0180/fix2-diff-check.log`).
+
+Der unveränderte vollständige Prüfbefehl bestand bei Wiederholung:
+**362 Dateien, 4.687 Tests, Exit 0, 154,36 s**, ohne die vorherigen Warnungen zu
+doppelten Schlüsseln. Abschließend `git diff --check`: bestanden, Exit 0,
+keine Ausgabe. Der erste Timeout bleibt oben ausdrücklich dokumentiert.
