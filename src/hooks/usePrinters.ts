@@ -56,8 +56,8 @@ export function usePrinters() {
     deletePrinter: (printerId: string) => run(printersApi.deletePrinter(printerId)),
     addUnit: (printerId: string, kind: UnitKind, name: string, slotCount: number | null) =>
       run(printersApi.addUnit(printerId, kind, name, slotCount)),
-    updateUnit: (unitId: string, name: string, slotCount: number | null) =>
-      run(printersApi.updateUnit(unitId, name, slotCount)),
+    updateUnit: (unitId: string, name: string, slotCount: number | null, kind?: UnitKind) =>
+      run(printersApi.updateUnit(unitId, name, slotCount, kind)),
     deleteUnit: (unitId: string) => run(printersApi.deleteUnit(unitId)),
     reorderUnits: (printerId: string, unitIds: string[]) => run(printersApi.reorderUnits(printerId, unitIds)),
   };

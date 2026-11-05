@@ -352,6 +352,7 @@ describe('unit management replacing PrinterManagePanel', () => {
 
 it.each([
   ['Bambu AMS', 'bambu_ams', 'AMS B'],
+  ['Bambu AMS 2 Pro', 'bambu_ams_2_pro', 'AMS 2 Pro 1'],
   ['Spulenhalter', 'external', 'Spulenhalter 2'],
 ])('adds the %s template with its suggested name', async (label, kind, name) => {
   setup(); await screen.findByTitle('1 · PLA · Rot');
@@ -567,4 +568,30 @@ it('limits manufacturer and model input lengths', async () => {
   setup('1');
   expect(await screen.findByLabelText('Hersteller')).toHaveAttribute('maxlength', '120');
   expect(screen.getByLabelText('Modell')).toHaveAttribute('maxlength', '120');
+});
+
+it('changes the type of a Bambu unit inside the family and sends nothing when it is left alone', async () => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(units()).getAllByRole('button', { name: 'Bearbeiten' })[0]);
+  let dialog = screen.getByRole('dialog');
+  const select = within(dialog).getByLabelText(/^Art/);
+  expect(within(select).getAllByRole('option').map(o => o.getAttribute('value'))).toEqual(['bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro']);
+  expect(dialog).toHaveTextContent('Fächer und eingelegte Spulen bleiben unverändert.');
+  fireEvent.change(select, { target: { value: 'bambu_ams_2_pro' } });
+  fireEvent.submit(dialog.querySelector('form')!);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_unit', { unitId: 'u1', name: 'AMS A', slotCount: null, kind: 'bambu_ams_2_pro' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  vi.mocked(invoke).mockClear();
+  fireEvent.click(within(units()).getAllByRole('button', { name: 'Bearbeiten' })[0]);
+  dialog = screen.getByRole('dialog');
+  fireEvent.submit(dialog.querySelector('form')!);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_unit', { unitId: 'u1', name: 'AMS A', slotCount: null }));
+  expect(invoke).not.toHaveBeenCalledWith('update_unit', expect.objectContaining({ kind: expect.anything() }));
+});
+
+it('offers no type choice for units outside the Bambu family', async () => {
+  list[0].units[0] = { ...list[0].units[0], kind: 'custom', name: 'Box' };
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(units()).getAllByRole('button', { name: 'Bearbeiten' })[0]);
+  expect(within(screen.getByRole('dialog')).queryByLabelText(/^Art/)).toBeNull();
 });

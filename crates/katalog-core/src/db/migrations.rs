@@ -166,6 +166,9 @@ const MIGRATIONS: &[MigrationStep] = &[
     // Failure reason and note per fetched print, and the flag for prints the program closed itself.
     // New columns only; stored prints start without a reason and not auto-closed.
     MigrationStep::Simple(add_printer_job_failure_columns),
+    // New unit kind `bambu_ams_2_pro`. Only the CHECK of `material_units.kind` changes (rebuild);
+    // no existing unit is switched over, every row and every spool in its slot stays as it is.
+    MigrationStep::Rebuild(add_ams_2_pro_unit_kind),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -283,6 +286,66 @@ fn add_printer_job_failure_columns(conn: &Connection) -> Result<(), DbError> {
     exec(conn, "ALTER TABLE printer_jobs ADD COLUMN failure_reason TEXT")?;
     exec(conn, "ALTER TABLE printer_jobs ADD COLUMN failure_note TEXT")?;
     exec(conn, "ALTER TABLE printer_jobs ADD COLUMN auto_closed INTEGER NOT NULL DEFAULT 0 CHECK (auto_closed IN (0, 1))")
+}
+
+/// Schema version after the unit kind `bambu_ams_2_pro`.
+#[cfg(test)]
+pub(crate) const AMS_2_PRO_MIGRATION_VERSION: i64 = 62;
+
+/// Adds 'bambu_ams_2_pro' to the CHECK of `material_units.kind`, via a rebuild like
+/// [`add_resin_printers`] and with the same trap: `filament_spools.unit_id` has `ON DELETE SET NULL`,
+/// so with `foreign_keys` on the rebuild would throw every spool out of its slot. Existing units are
+/// not converted (the program cannot know whether someone owns an AMS or an AMS 2 Pro); the user
+/// changes the type of a unit by hand. Keep the CHECK in step with `schema.sql`.
+fn add_ams_2_pro_unit_kind(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
+    // Fresh DBs already have the kind. A missing table only occurs in tests with partial DBs.
+    let already_migrated = conn
+        .query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'material_units'", [], |r| r.get::<_, String>(0))
+        .optional()?
+        .is_none_or(|sql| sql.contains("'bambu_ams_2_pro'"));
+
+    let previously_enabled: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
+    conn.pragma_update(None, "foreign_keys", false)?;
+
+    let result = (|| -> Result<(), DbError> {
+        let tx = conn.transaction()?;
+        if !already_migrated {
+            // Explicit columns instead of `SELECT *`: the column order of an imported backup need not match ours.
+            tx.execute_batch(
+                "CREATE TABLE material_units_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro', 'bambu_ams_ht', 'creality_cfs',
+                                                       'prusa_mmu3', 'anycubic_ace', 'external', 'custom', 'resin_vat')),
+                    slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
+                    bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
+                    position INTEGER NOT NULL DEFAULT 0
+                );
+                INSERT INTO material_units_new (id, printer_id, name, kind, slot_count, bambu_ams_index, position)
+                    SELECT id, printer_id, name, kind, slot_count, bambu_ams_index, position FROM material_units;
+                DROP TABLE material_units;
+                ALTER TABLE material_units_new RENAME TO material_units;",
+            )?;
+            for table in ["filament_spools", "material_units"] {
+                let has_violation = tx
+                    .query_row(&format!("PRAGMA foreign_key_check({table})"), [], |_| Ok(()))
+                    .optional()?
+                    .is_some();
+                if has_violation {
+                    return Err(DbError::Other(format!(
+                        "AMS-2-Pro-Migration: foreign_key_check fand verwaiste Referenzen in {table}"
+                    )));
+                }
+            }
+        }
+        tx.pragma_update(None, "user_version", step_version)?;
+        tx.commit()?;
+        Ok(())
+    })();
+
+    conn.pragma_update(None, "foreign_keys", previously_enabled)?;
+    result
 }
 
 /// Schema version after the companion kind `other`.
@@ -1432,14 +1495,15 @@ mod tests {
         assert_eq!(declined, 1, "the declined source files are another table and stay");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, PRINTER_JOB_FAILURE_MIGRATION_VERSION, "the print failure step is the newest one");
+        assert_eq!(CURRENT_SCHEMA_VERSION, AMS_2_PRO_MIGRATION_VERSION, "the AMS 2 Pro step is the newest one");
         assert_eq!(GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 2, "after the table of remembered copies, which follows the color column");
         assert_eq!(BUNDLE_TABLES_MIGRATION_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION + 1, "the bundle tables follow the file type step");
         assert_eq!(PRINTER_FAILURES_MIGRATION_VERSION, BUNDLE_TABLES_MIGRATION_VERSION + 1, "the failure counter follows the bundle tables");
         assert_eq!(PRINTER_API_KEY_MIGRATION_VERSION, PRINTER_FAILURES_MIGRATION_VERSION + 1, "the API key follows the failure counter");
         assert_eq!(COMPANION_OTHER_KIND_MIGRATION_VERSION, PRINTER_API_KEY_MIGRATION_VERSION + 1, "the companion kind follows the API key");
         assert_eq!(PRINTER_JOB_FAILURE_MIGRATION_VERSION, COMPANION_OTHER_KIND_MIGRATION_VERSION + 1, "the print failure step follows the companion kind");
-        assert_eq!(CURRENT_SCHEMA_VERSION, 61);
+        assert_eq!(AMS_2_PRO_MIGRATION_VERSION, PRINTER_JOB_FAILURE_MIGRATION_VERSION + 1, "the AMS 2 Pro step follows the print failure step");
+        assert_eq!(CURRENT_SCHEMA_VERSION, 62);
     }
 
     #[test]
@@ -1856,7 +1920,7 @@ mod tests {
             "every old print stays as it was: not closed by the program, no reason"
         );
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, PRINTER_JOB_FAILURE_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION, "the later steps run as well");
         assert!(conn.execute("UPDATE printer_jobs SET auto_closed = 2", []).is_err(), "the flag is 0 or 1");
     }
 
@@ -2371,7 +2435,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 22);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 23);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.
@@ -2528,5 +2592,96 @@ mod tests {
             .query_row("SELECT sql FROM sqlite_master WHERE name = 'material_units'", [], |r| r.get(0))
             .unwrap();
         assert!(sql.contains("'resin_vat'"));
+    }
+
+    /// State before step 62: the unit CHECK of step 37, two units, one spool in a slot.
+    fn db_before_ams_2_pro() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys = OFF;
+             DROP TABLE material_units;
+             CREATE TABLE material_units (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
+                                                   'prusa_mmu3', 'anycubic_ace', 'external', 'custom', 'resin_vat')),
+                slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
+                bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
+                position INTEGER NOT NULL DEFAULT 0
+             );
+             INSERT INTO printers (id, name, position) VALUES (1, 'X1C', 0);
+             INSERT INTO material_units (id, printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (10, 1, 'AMS A', 'bambu_ams', 4, 0, 0), (11, 1, 'AMS lite', 'bambu_ams_lite', 4, 1, 1);
+             INSERT INTO filament_spools (id, material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index, home_location)
+                 VALUES (100, 'PLA', 1.75, 1000, 600, '2026-09-01', 10, 2, 'Regal 2');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", AMS_2_PRO_MIGRATION_VERSION - 1).unwrap();
+        conn
+    }
+
+    #[test]
+    fn the_ams_2_pro_step_allows_the_new_kind_and_keeps_every_unit_and_loaded_spool() {
+        let mut conn = db_before_ams_2_pro();
+        assert!(
+            conn.execute("INSERT INTO material_units (printer_id, name, kind, slot_count) VALUES (1, 'X', 'bambu_ams_2_pro', 4)", []).is_err(),
+            "precondition: the old CHECK refuses the kind"
+        );
+        // As in repository::init: foreign_keys is on BEFORE the migrations, which arms the cascade trap.
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+        run_migrations(&mut conn).unwrap();
+
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, AMS_2_PRO_MIGRATION_VERSION);
+        let fk: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert!(fk, "foreign_keys is back on afterwards");
+
+        let units: Vec<(i64, String, String, i64, Option<i64>, i64)> = conn
+            .prepare("SELECT id, name, kind, slot_count, bambu_ams_index, position FROM material_units ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            units,
+            vec![
+                (10, "AMS A".into(), "bambu_ams".into(), 4, Some(0), 0),
+                (11, "AMS lite".into(), "bambu_ams_lite".into(), 4, Some(1), 1),
+            ],
+            "no unit is converted automatically"
+        );
+        let slot: (Option<i64>, Option<i64>, Option<String>) = conn
+            .query_row("SELECT unit_id, slot_index, home_location FROM filament_spools WHERE id = 100", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(slot, (Some(10), Some(2), Some("Regal 2".into())), "the spool stays in its slot");
+
+        conn.execute("INSERT INTO material_units (printer_id, name, kind, slot_count, position) VALUES (1, 'AMS 2 Pro', 'bambu_ams_2_pro', 4, 2)", [])
+            .expect("the new kind is allowed");
+        assert!(conn
+            .execute("INSERT INTO material_units (printer_id, name, kind, slot_count, position) VALUES (1, 'X', 'toaster', 1, 3)", [])
+            .is_err());
+        conn.execute("DELETE FROM material_units WHERE id = 10", []).unwrap();
+        let unit_id: Option<i64> = conn.query_row("SELECT unit_id FROM filament_spools WHERE id = 100", [], |r| r.get(0)).unwrap();
+        assert_eq!(unit_id, None, "ON DELETE SET NULL still applies");
+    }
+
+    #[test]
+    fn the_ams_2_pro_step_is_a_no_op_rebuild_on_a_fresh_db_and_repeatable() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        conn.execute("INSERT INTO printers (id, name) VALUES (1, 'X1C')", []).unwrap();
+        conn.execute("INSERT INTO material_units (id, printer_id, name, kind, slot_count) VALUES (5, 1, 'AMS 2 Pro', 'bambu_ams_2_pro', 4)", []).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.pragma_update(None, "user_version", AMS_2_PRO_MIGRATION_VERSION - 1).unwrap();
+        run_migrations(&mut conn).unwrap();
+        let kind: String = conn.query_row("SELECT kind FROM material_units WHERE id = 5", [], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "bambu_ams_2_pro");
     }
 }

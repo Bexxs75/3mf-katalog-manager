@@ -273,10 +273,11 @@ pub fn update_unit(
     id: i64,
     name: &str,
     slots: Option<i64>,
+    kind: Option<&str>,
 ) -> WriteResult<Outcome<usize>> {
     transaction(c, |c| {
         exists(c, "material_units", id)?;
-        let n = p::update_unit(c, id, name, slots).map_err(business)?;
+        let n = p::update_unit(c, id, name, slots, kind).map_err(business)?;
         Ok(outcome(n, c.changes()))
     })
 }

@@ -13,7 +13,7 @@ describe('filamentColors', () => {
     expect(FILAMENT_PALETTE).toHaveLength(16);
     expect(FILAMENT_PALETTE.every(isValidColorHex)).toBe(true);
     expect(UNIT_TEMPLATES.map((t) => t.kind)).toEqual([
-      'bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
+      'bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro', 'bambu_ams_ht', 'creality_cfs',
       'prusa_mmu3', 'anycubic_ace', 'external', 'custom',
     ]);
   });

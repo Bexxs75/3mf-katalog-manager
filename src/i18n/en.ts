@@ -1563,6 +1563,8 @@ export const en: Translations = {
   printersReorderHint: 'Drag the handle to reorder',
   printersKindBambuAms: 'Bambu AMS',
   printersKindBambuAmsLite: 'Bambu AMS lite',
+  printersKindBambuAms2Pro: 'Bambu AMS 2 Pro',
+  printersUnitTypeKeepHint: 'Slots and loaded spools stay unchanged.',
   printersKindBambuAmsHt: 'Bambu AMS HT',
   printersKindCrealityCfs: 'Creality CFS',
   printersKindPrusaMmu3: 'Prusa MMU3',

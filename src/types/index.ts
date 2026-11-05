@@ -350,6 +350,7 @@ export interface FilamentSpool {
 export type UnitKind =
   | 'bambu_ams'
   | 'bambu_ams_lite'
+  | 'bambu_ams_2_pro'
   | 'bambu_ams_ht'
   | 'creality_cfs'
   | 'prusa_mmu3'

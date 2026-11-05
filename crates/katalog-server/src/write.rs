@@ -642,6 +642,7 @@ pub(crate) fn execute(
             id(a, "unitId")?,
             text(a, "name")?,
             slots(a)?,
+            optional(a, "kind")?.as_deref(),
         )),
         "delete_unit" => encode(web::delete_unit(c, id(a, "unitId")?)),
         "reorder_units" => encode(web::reorder_units(
