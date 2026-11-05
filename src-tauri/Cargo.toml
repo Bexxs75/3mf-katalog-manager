@@ -54,6 +54,8 @@ unicode-normalization = "0.1.25"
 os_info = "3"
 # Anonymizing the host name in a log export before it leaves the computer.
 gethostname = "1"
+# Prototype P5-7: native drag-out of catalog files into other programs (off by default).
+drag = "2.1.1"
 
 [dev-dependencies]
 katalog-core = { path = "../crates/katalog-core", default-features = false, features = ["test-support"] }

@@ -187,6 +187,7 @@ pub fn run() {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
             commands::purge_expired_trash_on_startup(&conn, &trash_dir);
+            commands::clean_drag_temp(&commands::temp_root());
             let sensitive_dirs = sensitive_dirs(app.handle());
             // Mirrors the stored close wish so the window hook never touches the database lock.
             let close_behavior = tray::CloseBehavior::from_db(&conn);
@@ -398,6 +399,9 @@ pub fn run() {
             commands::extract_archives,
             commands::get_model_geometry,
             commands::export_model_as_stl,
+            commands::get_drag_out_enabled,
+            commands::set_drag_out_enabled,
+            commands::start_file_drag,
             commands::get_thingiverse_settings,
             commands::set_thingiverse_enabled,
             commands::test_thingiverse_token,
