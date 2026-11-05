@@ -81,6 +81,7 @@ export function usePrinterLink() {
     clearApiKey: (printerId: string) => after(api.clearPrinterApiKey(printerId)),
     removeConnection: (printerId: string) => after(api.removePrinterConnection(printerId)),
     syncNow: () => api.syncPrintersNow(),
+    includeOlderHistory: (printerId: string) => after(api.includeOlderPrinterHistory(printerId)),
     ignoreJob: (jobId: string) => after(api.ignorePrinterJob(jobId)),
     confirmJobs: (decisions: JobDecision[]) => after(api.confirmPrinterJobs(decisions)),
     previewJob: (jobId: string, spoolId: string) => api.previewPrinterJob(jobId, spoolId),

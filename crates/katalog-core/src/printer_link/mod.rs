@@ -5,6 +5,7 @@
 pub mod address;
 pub mod api_key;
 pub mod booking;
+pub mod failure;
 pub mod matching;
 pub mod moonraker;
 pub mod status;
@@ -50,7 +51,11 @@ pub struct RemoteJob {
     pub raw_status: String,
     pub ended_at: f64,
     pub print_duration_s: f64,
+    /// 0 when the printer reported no usage.
     pub used_mm: f64,
+    /// Whether there is filament to deduct. A print without usage (cancelled right at the start,
+    /// shut down before extruding) is still taken over, but only as history.
+    pub deductible: bool,
     pub slicer_total_mm: Option<f64>,
     pub slicer_weight_g: Option<f64>,
     pub material: Option<String>,
@@ -120,6 +125,11 @@ pub trait PrinterLink: Send {
     fn jobs_ended_since(&self, info: &ConnectionInfo, since: f64) -> Result<Vec<RemoteJob>, LinkError>;
     /// Thumbnail (PNG) for a path from `RemoteJob::thumbnail_path`.
     fn thumbnail(&self, base_url: &str, path: &str) -> Result<Vec<u8>, LinkError>;
+    /// Finished prints that ended at or before `before` (local Unix seconds), newest first, as many
+    /// as the paging limit allows. Adapters that cannot look back return nothing.
+    fn jobs_ended_before(&self, _info: &ConnectionInfo, _before: f64) -> Result<Vec<RemoteJob>, LinkError> {
+        Ok(Vec::new())
+    }
     /// Hard end of everything this link still does (all printers together get one budget per pass).
     /// Adapters without time limits ignore it.
     fn set_deadline(&mut self, _deadline: std::time::Instant) {}

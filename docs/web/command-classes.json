@@ -90,6 +90,7 @@
     "import_files": "B",
     "import_folder": "B",
     "import_source_files": "B",
+    "include_older_printer_history": "B",
     "inspect_archives": "B",
     "install_app_update": "C",
     "is_preview_build": "web",

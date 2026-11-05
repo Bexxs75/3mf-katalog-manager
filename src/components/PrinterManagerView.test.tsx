@@ -25,7 +25,7 @@ let list: Printer[];
 let history: PrinterHistoryJob[];
 const link = (): PrinterLinkState => ({ refreshKey: 0, enabled: false, connections: [], jobs: [], error: null,
   refresh: vi.fn().mockResolvedValue(undefined), setEnabled: vi.fn().mockResolvedValue(undefined),
-  testConnection: vi.fn(), removeConnection: vi.fn(), clearApiKey: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn() });
+  testConnection: vi.fn(), removeConnection: vi.fn(), clearApiKey: vi.fn(), includeOlderHistory: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn() });
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -154,13 +154,30 @@ it('deletes only after confirmation with return-home count and supports Escape, 
 });
 
 it('renders history states and routes open jobs to the review dialog', async () => {
-  history = ['open', 'confirmed', 'ignored'].map((state, i) => ({ id: String(i), fileName: `job${i}.gcode`, outcome: 'completed', printDurationS: 120, usedMm: 100, grams: state === 'confirmed' ? 18.4 : null, state } as PrinterHistoryJob));
+  history = ['open', 'confirmed', 'ignored'].map((state, i) => ({ id: String(i), fileName: `job${i}.gcode`, outcome: 'completed', printDurationS: 120, usedMm: 100, grams: state === 'confirmed' ? 18.4 : null, state, endedAt: 1000 + i, rawStatus: 'completed', failureReason: null, failureNote: null, autoClosed: false } as PrinterHistoryJob));
   const { onMaterial } = setup();
   expect(await screen.findByText('job2.gcode')).toBeInTheDocument();
   expect(screen.getByText('gebucht')).toBeInTheDocument(); expect(screen.getByText('ignoriert')).toBeInTheDocument();
   expect(screen.getByText('18,4 g')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Im Material Manager bestätigen' }));
   expect(onMaterial).toHaveBeenCalledWith({ printerId: '1', reviewJobs: true });
+});
+
+it('marks prints the program closed itself and shows no usage as a dash', async () => {
+  const base = { outcome: 'partial', printDurationS: 60, grams: null, state: 'ignored', endedAt: 1000, rawStatus: 'klippy_shutdown', failureReason: null, failureNote: null } as const;
+  history = [
+    { ...base, id: '1', fileName: 'unused.gcode', usedMm: 0, autoClosed: true },
+    { ...base, id: '2', fileName: 'older.gcode', outcome: 'completed', rawStatus: 'completed', usedMm: 250, autoClosed: true },
+    { ...base, id: '3', fileName: 'decided.gcode', usedMm: 40, autoClosed: false },
+  ] as PrinterHistoryJob[];
+  setup();
+  expect(await screen.findByText('unused.gcode')).toBeInTheDocument();
+  expect(screen.getByText('ohne Verbrauch')).toHaveAttribute('title', 'klippy_shutdown');
+  expect(screen.getByText('älterer Verlauf')).toBeInTheDocument();
+  expect(screen.getAllByText('ignoriert')).toHaveLength(1);
+  expect(screen.getByText('–')).toBeInTheDocument();
+  expect(screen.getByText('40 mm')).toBeInTheDocument();
+  expect(screen.getByText('250 mm')).toBeInTheDocument();
 });
 
 it('shows connection controls only when enabled and clears them on resin selection', async () => {

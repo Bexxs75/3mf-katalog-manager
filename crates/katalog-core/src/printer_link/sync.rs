@@ -140,6 +140,47 @@ pub fn sync_with(db: &Mutex<Connection>, make: &LinkMaker, now: f64, options: &S
     Ok(new_jobs)
 }
 
+/// "Include older history": takes over the prints that ended before the connection was made, as
+/// history for the statistics. They are closed from the start and never offered for deduction.
+/// `Ok(Err(code))` is the reason nothing was read; `Ok(Ok(n))` the number of new rows. One attempt,
+/// no repetitions: the user is waiting and can press the button again.
+pub fn include_older_history(
+    db: &Mutex<Connection>,
+    make: &LinkMaker,
+    printer_id: i64,
+) -> Result<Result<usize, &'static str>, DbError> {
+    let (kind, address, api_key, before) = {
+        let conn = lock(db)?;
+        if !store::printer_link_enabled(&conn)? {
+            return Ok(Err("disabled"));
+        }
+        let Some(c) = store::get_connection(&conn, printer_id)? else { return Ok(Err("no_connection")) };
+        (c.kind, c.address, store::get_api_key(&conn, printer_id)?, c.connected_since)
+    };
+    let fetched = make(&kind, &address, api_key.as_ref()).and_then(|mut link| {
+        link.set_deadline(Instant::now() + super::moonraker::PRINTER_BUDGET);
+        let info = link.test()?;
+        link.jobs_ended_before(&info, before)
+    });
+    let jobs = match fetched {
+        Ok(jobs) => jobs,
+        Err(e) => return Ok(Err(e.code())),
+    };
+    let conn = lock(db)?;
+    // The connection may have been removed while the printer was asked.
+    if store::get_connection(&conn, printer_id)?.is_none() {
+        return Ok(Err("no_connection"));
+    }
+    let mut added = 0;
+    for job in &jobs {
+        if store::insert_older_job_if_new(&conn, printer_id, job)? {
+            added += 1;
+        }
+    }
+    log::info!(target: "drucker", "Drucker {printer_id}: {added} ältere Drucke als Verlauf übernommen");
+    Ok(Ok(added))
+}
+
 /// Whether the printer should still be contacted: the switch is on and the connection exists and
 /// is not paused. Turning the switch off ends the whole pass.
 fn still_wanted(db: &Mutex<Connection>, printer_id: i64, stop: &AtomicBool) -> Result<bool, DbError> {
@@ -538,6 +579,91 @@ mod tests {
         assert_eq!(sync_once(&db, &*test_maker(), 1100.0).unwrap(), 1);
     }
 
+    /// A printer whose history holds, besides a normal print after the connection, a cancelled
+    /// print without usage and two older prints. Answers both orders.
+    fn history_with_unused_and_older_prints() -> FakeServer {
+        FakeServer::start(|target| {
+            if target.starts_with("/server/info") {
+                return Some((200, crate::printer_link::fake_moonraker::fixture_bytes("server_info_v0_8_0_209.json")));
+            }
+            let job = |id: &str, status: &str, used: f64, end: f64| {
+                format!(r#"{{"job_id": "{id}", "status": "{status}", "filament_used": {used}, "end_time": {end}, "start_time": {}, "filename": "{id}.gcode", "metadata": {{}}, "print_duration": 5.0}}"#, end - 60.0)
+            };
+            let jobs = if target.contains("before=") {
+                [job("old2", "completed", 100.0, 900.0), job("old1", "cancelled", 0.0, 800.0)]
+            } else {
+                [job("none", "cancelled", 0.0, 1100.0), job("used", "completed", 50.0, 1200.0)]
+            };
+            Some((200, format!(r#"{{"result": {{"count": 2, "jobs": [{}, {}]}}}}"#, jobs[0], jobs[1]).into_bytes()))
+        })
+    }
+
+    #[test]
+    fn a_pass_records_a_print_without_usage_as_history_and_offers_the_other() {
+        let server = history_with_unused_and_older_prints();
+        let db = db_with_connection(&server.address(), 1000.0);
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        assert_eq!(sync_once(&db, &*test_maker(), 1300.0).unwrap(), 2);
+        let conn = db.lock().unwrap();
+        let rows: Vec<(String, String, bool)> = conn
+            .prepare("SELECT file_name, state, auto_closed FROM printer_jobs ORDER BY ended_at")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows, [("none.gcode".into(), "ignored".into(), true), ("used.gcode".into(), "open".into(), false)]);
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 1);
+        drop(conn);
+        // A second pass finds both again and adds nothing.
+        assert_eq!(sync_once(&db, &*test_maker(), 1400.0).unwrap(), 0);
+        let total: i64 = db.lock().unwrap().query_row("SELECT COUNT(*) FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn older_history_is_taken_as_history_only_and_asked_once_per_press() {
+        let server = history_with_unused_and_older_prints();
+        let db = db_with_connection(&server.address(), 1000.0);
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        assert_eq!(include_older_history(&db, &*test_maker(), 1).unwrap(), Ok(2));
+        let conn = db.lock().unwrap();
+        let rows: Vec<(String, String, bool, f64)> = conn
+            .prepare("SELECT file_name, state, auto_closed, used_mm FROM printer_jobs ORDER BY ended_at")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows, [("old1.gcode".into(), "ignored".into(), true, 0.0), ("old2.gcode".into(), "ignored".into(), true, 100.0)]);
+        assert!(list_open_jobs(&conn).unwrap().is_empty(), "nothing of it is offered");
+        assert_eq!(store::sync_from(&conn, 1, 2000.0).unwrap(), 1000.0, "the cursor of the normal pass stays at the connection");
+        drop(conn);
+        let asked = server.requests().iter().filter(|r| r.contains("before=")).count();
+        assert_eq!(asked, 1);
+        // Pressing again finds the same prints and adds nothing.
+        assert_eq!(include_older_history(&db, &*test_maker(), 1).unwrap(), Ok(0));
+        // The normal pass afterwards does not turn them into prints to confirm.
+        assert_eq!(sync_once(&db, &*test_maker(), 1300.0).unwrap(), 2);
+        assert_eq!(list_open_jobs(&db.lock().unwrap()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn older_history_needs_the_switch_and_a_connection_and_reports_what_the_printer_said() {
+        let server = history_with_unused_and_older_prints();
+        let db = db_with_connection(&server.address(), 1000.0);
+        assert_eq!(include_older_history(&db, &*test_maker(), 1).unwrap(), Err("disabled"));
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        assert_eq!(include_older_history(&db, &*test_maker(), 99).unwrap(), Err("no_connection"));
+        assert!(server.requests().is_empty(), "the printer is not asked in either case");
+        // A printer that is not there ends in its error code and writes nothing.
+        let gone = db_with_connection("127.0.0.1:1", 1000.0);
+        set_printer_link_enabled(&gone.lock().unwrap(), true).unwrap();
+        assert_eq!(include_older_history(&gone, &*test_maker(), 1).unwrap(), Err("connection_refused"));
+        let rows: i64 = gone.lock().unwrap().query_row("SELECT COUNT(*) FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0);
+    }
+
     /// `test()` of the first printer turns the connection off midway. The second
     /// printer must then not be contacted - the switch is checked again per printer
     /// during the pass, not just once when the plan is made.
@@ -605,6 +731,7 @@ mod tests {
                 ended_at: 1000.0,
                 print_duration_s: 9.0,
                 used_mm: 50.0,
+                deductible: true,
                 slicer_total_mm: None,
                 slicer_weight_g: None,
                 material: None,

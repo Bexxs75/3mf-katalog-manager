@@ -3,6 +3,7 @@ import type {
   ConfirmResult,
   JobDecision,
   JobPreview,
+  OlderHistoryResult,
   PrinterConnection,
   PrinterJob,
   PrinterTestResult,
@@ -33,6 +34,10 @@ export function removePrinterConnection(printerId: string) {
 }
 export function syncPrintersNow() {
   return invoke<void>('sync_printers_now');
+}
+/** Prints from before the connection become history for the statistics; none is offered for deduction. */
+export function includeOlderPrinterHistory(printerId: string) {
+  return invoke<OlderHistoryResult>('include_older_printer_history', { printerId });
 }
 export function listOpenPrinterJobs() {
   return invoke<PrinterJob[]>('list_open_printer_jobs');

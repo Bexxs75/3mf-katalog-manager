@@ -423,6 +423,14 @@ export interface PrinterHistoryJob {
   usedMm: number;
   grams: number | null;
   state: 'open' | 'confirmed' | 'ignored';
+  /** End of the print in local Unix seconds. */
+  endedAt: number;
+  /** The status as the printer reported it. */
+  rawStatus: string;
+  failureReason: string | null;
+  failureNote: string | null;
+  /** Closed by the program (no usage, or older history); never deducted. */
+  autoClosed: boolean;
 }
 
 export interface Printer extends PrinterDetails {
@@ -549,6 +557,13 @@ export interface PrinterTestResult {
   ok: boolean;
   error: PrinterConnectionError | null;
   connection: PrinterConnection | null;
+}
+
+export interface OlderHistoryResult {
+  /** New rows of history. */
+  added: number;
+  /** An error code of the connection, or `no_connection` when it was removed meanwhile. */
+  error: string | null;
 }
 
 export interface PrinterJob {

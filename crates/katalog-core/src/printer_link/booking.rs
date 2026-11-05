@@ -272,6 +272,7 @@ mod db_tests {
             ended_at: 1789042135.8,
             print_duration_s: 394.65,
             used_mm: 303.2658,
+            deductible: true,
             slicer_total_mm: Some(279.17),
             slicer_weight_g: Some(0.83),
             material: Some("PLA".into()),

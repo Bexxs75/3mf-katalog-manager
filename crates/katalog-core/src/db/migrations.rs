@@ -163,6 +163,9 @@ const MIGRATIONS: &[MigrationStep] = &[
     // New companion file kind `other` (CAD sources and documents that are stored but never opened).
     // Only the CHECK of `companion_files.kind` changes; every row stays as it is.
     MigrationStep::Rebuild(add_other_to_companion_kind_check),
+    // Failure reason and note per fetched print, and the flag for prints the program closed itself.
+    // New columns only; stored prints start without a reason and not auto-closed.
+    MigrationStep::Simple(add_printer_job_failure_columns),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -268,6 +271,18 @@ pub(crate) const PRINTER_API_KEY_MIGRATION_VERSION: i64 = 59;
 /// New nullable column only (`exec` tolerates a duplicate column). Keep in step with `schema.sql`.
 fn add_printer_connection_api_key(conn: &Connection) -> Result<(), DbError> {
     exec(conn, "ALTER TABLE printer_connections ADD COLUMN api_key TEXT")
+}
+
+/// Schema version after the failure columns of the fetched prints.
+#[cfg(test)]
+pub(crate) const PRINTER_JOB_FAILURE_MIGRATION_VERSION: i64 = 61;
+
+/// New columns only (`exec` tolerates a duplicate column). The reason is not constrained here: the
+/// list of codes lives in code and grows without a migration. Keep in step with `schema.sql`.
+fn add_printer_job_failure_columns(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "ALTER TABLE printer_jobs ADD COLUMN failure_reason TEXT")?;
+    exec(conn, "ALTER TABLE printer_jobs ADD COLUMN failure_note TEXT")?;
+    exec(conn, "ALTER TABLE printer_jobs ADD COLUMN auto_closed INTEGER NOT NULL DEFAULT 0 CHECK (auto_closed IN (0, 1))")
 }
 
 /// Schema version after the companion kind `other`.
@@ -1417,13 +1432,14 @@ mod tests {
         assert_eq!(declined, 1, "the declined source files are another table and stay");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, COMPANION_OTHER_KIND_MIGRATION_VERSION, "the companion kind step is the newest one");
+        assert_eq!(CURRENT_SCHEMA_VERSION, PRINTER_JOB_FAILURE_MIGRATION_VERSION, "the print failure step is the newest one");
         assert_eq!(GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 2, "after the table of remembered copies, which follows the color column");
         assert_eq!(BUNDLE_TABLES_MIGRATION_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION + 1, "the bundle tables follow the file type step");
         assert_eq!(PRINTER_FAILURES_MIGRATION_VERSION, BUNDLE_TABLES_MIGRATION_VERSION + 1, "the failure counter follows the bundle tables");
         assert_eq!(PRINTER_API_KEY_MIGRATION_VERSION, PRINTER_FAILURES_MIGRATION_VERSION + 1, "the API key follows the failure counter");
         assert_eq!(COMPANION_OTHER_KIND_MIGRATION_VERSION, PRINTER_API_KEY_MIGRATION_VERSION + 1, "the companion kind follows the API key");
-        assert_eq!(CURRENT_SCHEMA_VERSION, 60);
+        assert_eq!(PRINTER_JOB_FAILURE_MIGRATION_VERSION, COMPANION_OTHER_KIND_MIGRATION_VERSION + 1, "the print failure step follows the companion kind");
+        assert_eq!(CURRENT_SCHEMA_VERSION, 61);
     }
 
     #[test]
@@ -1752,7 +1768,7 @@ mod tests {
         run_migrations(&mut conn).unwrap();
         assert_eq!(rows(&conn), before, "no value of an existing row may change");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, COMPANION_OTHER_KIND_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
         conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'x.fcstd', '/models/a_extras/x.fcstd', 'other', 't')", [id]).unwrap();
         assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'y', '/y', 'exe', 't')", [id]).is_err(), "the rest stays invalid");
         assert!(conn.execute("INSERT INTO companion_files (file_id, name, path, kind, added_at) VALUES (?1, 'p.png', '/models/a_extras/p.png', 'image', 't')", [id]).is_err(), "the path is still unique");
@@ -1794,6 +1810,83 @@ mod tests {
         assert_eq!(shape(&migrated), before);
         let rows: i64 = migrated.query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
         assert_eq!(rows, 2);
+    }
+
+    /// A catalog at version 60: prints exist, the failure columns do not.
+    fn catalog_before_job_failure() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE printer_jobs DROP COLUMN failure_reason;
+             ALTER TABLE printer_jobs DROP COLUMN failure_note;
+             ALTER TABLE printer_jobs DROP COLUMN auto_closed;",
+        )
+        .unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'Sovol SV08', 0)", []).unwrap();
+        conn.execute_batch(
+            "INSERT INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s, used_mm, state, decided_at)
+                 VALUES (1, 'A@1', 'a.gcode', 'completed', 'completed', 2000.0, 10.0, 5.0, 'open', NULL),
+                        (1, 'B@2', 'b.gcode', 'partial', 'cancelled', 3000.0, 10.0, 7.0, 'ignored', 't');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", COMPANION_OTHER_KIND_MIGRATION_VERSION).unwrap();
+        conn
+    }
+
+    #[test]
+    fn the_job_failure_step_adds_empty_columns_and_keeps_the_prints() {
+        let mut conn = catalog_before_job_failure();
+        let columns = |c: &Connection| -> i64 {
+            c.query_row("SELECT COUNT(*) FROM pragma_table_info('printer_jobs') WHERE name IN ('failure_reason', 'failure_note', 'auto_closed')", [], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(columns(&conn), 0, "precondition: no columns yet");
+        run_migrations(&mut conn).unwrap();
+        assert_eq!(columns(&conn), 3);
+        let rows: Vec<String> = conn
+            .prepare("SELECT remote_id || '|' || state || '|' || ifnull(failure_reason, '-') || '|' || ifnull(failure_note, '-') || '|' || auto_closed FROM printer_jobs ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            ["A@1|open|-|-|0", "B@2|ignored|-|-|0"],
+            "every old print stays as it was: not closed by the program, no reason"
+        );
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, PRINTER_JOB_FAILURE_MIGRATION_VERSION);
+        assert!(conn.execute("UPDATE printer_jobs SET auto_closed = 2", []).is_err(), "the flag is 0 or 1");
+    }
+
+    #[test]
+    fn the_job_failure_step_is_repeatable_and_leaves_stored_values_alone() {
+        let conn = catalog_before_job_failure();
+        add_printer_job_failure_columns(&conn).unwrap();
+        conn.execute("UPDATE printer_jobs SET failure_reason = 'clog', failure_note = 'n', auto_closed = 1 WHERE remote_id = 'B@2'", []).unwrap();
+        add_printer_job_failure_columns(&conn).unwrap();
+        let row: (String, String, i64) = conn
+            .query_row("SELECT failure_reason, failure_note, auto_closed FROM printer_jobs WHERE remote_id = 'B@2'", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap();
+        assert_eq!(row, ("clog".into(), "n".into(), 1));
+    }
+
+    #[test]
+    fn the_job_failure_step_gives_the_same_columns_as_a_fresh_schema() {
+        let shape = |conn: &Connection| -> Vec<(String, String, bool, Option<String>)> {
+            conn.prepare("SELECT name, type, \"notnull\", dflt_value FROM pragma_table_info('printer_jobs') ORDER BY name")
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        let mut migrated = catalog_before_job_failure();
+        run_migrations(&mut migrated).unwrap();
+        assert_eq!(shape(&migrated), shape(&fresh));
     }
 
     /// A catalog at version 55 with the old `file_type` CHECK, rows in the tables that point at `files`.
@@ -2278,7 +2371,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 21);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 22);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

@@ -1,0 +1,15 @@
+{
+  "_comment": "Codes of the reason why a print ended early (printer_jobs.failure_reason), in the order the interface lists them. Read by a Rust test (katalog-core printer_link/failure.rs) and by printFailureReasons.test.ts, so the Rust list and the interface cannot drift apart. The database has no CHECK for it: the list grows without a migration.",
+  "maxNoteChars": 200,
+  "reasons": [
+    "adhesion",
+    "clog",
+    "filament",
+    "power_network",
+    "slicer",
+    "mechanical",
+    "spaghetti",
+    "intentional",
+    "other"
+  ]
+}

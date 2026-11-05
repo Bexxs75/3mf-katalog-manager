@@ -47,6 +47,10 @@ pub struct PrinterJobRecord {
     pub material: Option<String>,
     pub thumbnail_path: Option<String>,
     pub state: String,
+    pub failure_reason: Option<String>,
+    pub failure_note: Option<String>,
+    /// Closed by the program (no usage, or from before the connection): never offered, never deducted.
+    pub auto_closed: bool,
 }
 
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, DbError> {
@@ -265,7 +269,18 @@ pub fn open_job_limit_reached(conn: &Connection, printer_id: i64) -> Result<bool
 }
 
 /// Inserts a print if it doesn't exist yet for this printer. Returns `true` if it was new.
+/// A print with usage waits to be confirmed; one without is history from the start.
 pub fn insert_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) -> Result<bool, DbError> {
+    insert_job(conn, printer_id, job, !job.deductible)
+}
+
+/// Like [`insert_job_if_new`], but the print is history whatever it used: a print from before the
+/// connection counts for the statistics only and must never be deducted.
+pub fn insert_older_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) -> Result<bool, DbError> {
+    insert_job(conn, printer_id, job, true)
+}
+
+fn insert_job(conn: &Connection, printer_id: i64, job: &RemoteJob, auto_closed: bool) -> Result<bool, DbError> {
     if let Some((legacy_id, _)) = job.remote_id.split_once('@') {
         // Match the print as well as the ID, since Moonraker can reuse IDs.
         let exists: bool = conn.query_row(
@@ -281,9 +296,9 @@ pub fn insert_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) ->
     }
     let changed = conn.execute(
         "INSERT OR IGNORE INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at,
-             print_duration_s, used_mm, slicer_total_mm, slicer_weight_g, material, thumbnail_path)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
-         WHERE (SELECT COUNT(*) FROM printer_jobs WHERE printer_id = ?1 AND state = 'open') < ?13",
+             print_duration_s, used_mm, slicer_total_mm, slicer_weight_g, material, thumbnail_path, state, auto_closed)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, CASE WHEN ?14 THEN 'ignored' ELSE 'open' END, ?14
+         WHERE ?14 OR (SELECT COUNT(*) FROM printer_jobs WHERE printer_id = ?1 AND state = 'open') < ?13",
         params![
             printer_id,
             job.remote_id,
@@ -298,13 +313,15 @@ pub fn insert_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) ->
             job.material,
             job.thumbnail_path,
             MAX_OPEN_JOBS as i64,
+            auto_closed,
         ],
     )?;
     Ok(changed == 1)
 }
 
 const JOB_COLUMNS: &str = "id, printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s,
-    used_mm, slicer_total_mm, slicer_weight_g, material, thumbnail_path, state";
+    used_mm, slicer_total_mm, slicer_weight_g, material, thumbnail_path, state, failure_reason, failure_note,
+    auto_closed";
 
 fn job_from_row(r: &Row) -> rusqlite::Result<PrinterJobRecord> {
     Ok(PrinterJobRecord {
@@ -322,6 +339,9 @@ fn job_from_row(r: &Row) -> rusqlite::Result<PrinterJobRecord> {
         material: r.get(11)?,
         thumbnail_path: r.get(12)?,
         state: r.get(13)?,
+        failure_reason: r.get(14)?,
+        failure_note: r.get(15)?,
+        auto_closed: r.get::<_, i64>(16)? != 0,
     })
 }
 
@@ -386,6 +406,7 @@ mod tests {
             slicer_weight_g: Some(0.83),
             material: Some("PLA".into()),
             thumbnail_path: Some(".thumbs/a-300x300.png".into()),
+            deductible: true,
         }
     }
 
@@ -404,6 +425,86 @@ mod tests {
         mark_job_ignored(&conn, id, "now").unwrap();
         assert!(insert_job_if_new(&conn, 1, &job("extra", 2000.0)).unwrap());
         assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 1999.999);
+    }
+
+    fn row(conn: &Connection, remote_id: &str) -> PrinterJobRecord {
+        let id: i64 = conn.query_row("SELECT id FROM printer_jobs WHERE remote_id = ?1", [remote_id], |r| r.get(0)).unwrap();
+        get_job(conn, id).unwrap().unwrap()
+    }
+
+    fn without_usage(remote_id: &str, ended_at: f64) -> RemoteJob {
+        RemoteJob {
+            outcome: JobOutcome::Partial,
+            raw_status: "cancelled".into(),
+            used_mm: 0.0,
+            deductible: false,
+            slicer_total_mm: None,
+            slicer_weight_g: None,
+            ..job(remote_id, ended_at)
+        }
+    }
+
+    #[test]
+    fn a_print_without_usage_is_stored_closed_and_never_offered() {
+        let conn = setup();
+        assert!(insert_job_if_new(&conn, 1, &without_usage("A@1", 2000.0)).unwrap());
+        let stored = row(&conn, "A@1");
+        assert_eq!((stored.state.as_str(), stored.auto_closed, stored.used_mm), ("ignored", true, 0.0));
+        assert_eq!((stored.outcome.as_str(), stored.raw_status.as_str()), ("partial", "cancelled"));
+        let decided: Option<String> = conn.query_row("SELECT decided_at FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(decided, None, "nobody decided anything");
+        assert!(list_open_jobs(&conn).unwrap().is_empty());
+        // A print with usage stays what it was: offered, not closed.
+        assert!(insert_job_if_new(&conn, 1, &job("B@2", 2100.0)).unwrap());
+        let offered = row(&conn, "B@2");
+        assert_eq!((offered.state.as_str(), offered.auto_closed, offered.failure_reason, offered.failure_note), ("open", false, None, None));
+    }
+
+    #[test]
+    fn closed_prints_do_not_count_towards_the_open_limit() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "printer", None, "", "", 1000.0).unwrap();
+        for i in 0..MAX_OPEN_JOBS {
+            assert!(insert_job_if_new(&conn, 1, &job(&i.to_string(), 1e12)).unwrap());
+        }
+        assert!(open_job_limit_reached(&conn, 1).unwrap());
+        // The limit is full, yet a print that needs no decision is still recorded ...
+        assert!(insert_job_if_new(&conn, 1, &without_usage("none", 1e12)).unwrap());
+        assert!(insert_older_job_if_new(&conn, 1, &job("old", 5.0)).unwrap());
+        // ... and a print that would have to be decided is still refused.
+        assert!(!insert_job_if_new(&conn, 1, &job("extra", 1e12)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), MAX_OPEN_JOBS);
+        // Closed rows are not counted: with the limit full, one more open print is still refused,
+        // and with room left they do not take it away.
+        let id = list_open_jobs(&conn).unwrap()[0].id;
+        mark_job_ignored(&conn, id, "now").unwrap();
+        assert!(!open_job_limit_reached(&conn, 1).unwrap());
+        assert!(insert_job_if_new(&conn, 1, &job("extra", 1e12)).unwrap());
+    }
+
+    #[test]
+    fn a_print_without_usage_polled_twice_is_stored_once() {
+        let conn = setup();
+        let j = without_usage("A@1", 2000.0);
+        assert!(insert_job_if_new(&conn, 1, &j).unwrap());
+        assert!(!insert_job_if_new(&conn, 1, &j).unwrap());
+        assert!(!insert_older_job_if_new(&conn, 1, &j).unwrap(), "the older history finds it too");
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1);
+    }
+
+    #[test]
+    fn an_older_print_is_history_even_when_it_used_filament() {
+        let conn = setup();
+        assert!(insert_older_job_if_new(&conn, 1, &job("old@1", 50.0)).unwrap());
+        let stored = row(&conn, "old@1");
+        assert_eq!((stored.state.as_str(), stored.auto_closed), ("ignored", true));
+        assert_eq!(stored.used_mm, 303.2658, "what the printer reported stays");
+        let booked: Option<f64> = conn.query_row("SELECT booked_g FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(booked, None, "nothing is deducted");
+        assert!(list_open_jobs(&conn).unwrap().is_empty());
+        // The same print arriving later through the normal pass is not offered again.
+        assert!(!insert_job_if_new(&conn, 1, &job("old@1", 50.0)).unwrap());
     }
 
     #[test]
