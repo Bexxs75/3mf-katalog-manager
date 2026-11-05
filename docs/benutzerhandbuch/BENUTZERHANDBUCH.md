@@ -1318,6 +1318,15 @@ the request without telling you: allow 3MF Katalog Manager internet access there
 downloads a small file with the current version number. You can also download a new version from
 [3mfkatalog.de](https://3mfkatalog.de/) at any time and install it over the old one; your catalog is kept.
 
+### Update notice
+
+After an update, or after a manual install that upgraded the catalog database, a dialog tells you once what happened and how to go
+back: version and database schema before and after, name, date and size of the backup copy, its folder (with a button to open it),
+a button to download the previous version where known, and the steps to put the copy back. It also says what going back costs:
+entries and changes made since the update are lost. If the backup could not be made, the dialog says so and gives no steps. The
+app never restores the copy by itself. "Understood" or Escape closes the dialog for this version and schema. In the container version it only names the
+backup file and its folder.
+
 ### Restoring a backup after an update
 
 Before an in-app update is installed, the app copies the catalog database to `update-backups`
@@ -2833,6 +2842,15 @@ blockieren die Anfrage, ohne es zu melden: Gib dort dem 3MF Katalog Manager den 
 Die App lädt dabei nur eine kleine Datei mit der aktuellen Versionsnummer. Eine neue Version kannst du
 auch jederzeit auf [3mfkatalog.de](https://3mfkatalog.de/) herunterladen und einfach über die alte
 installieren; dein Katalog bleibt erhalten.
+
+### Hinweis nach einem Update
+
+Nach einem Update oder nach einer manuellen Installation, die die Katalogdatenbank aktualisiert hat, erklärt dir ein Dialog einmalig, was
+passiert ist und wie du zurückkommst: Version und Datenbankschema davor und danach, Name, Datum und Größe der Sicherungskopie, ihr
+Ordner (mit Knopf zum Öffnen), bei bekannter Version ein Knopf zum Herunterladen der vorherigen Version und die Schritte, um die Kopie
+zurückzuspielen. Er sagt auch, was ein Zurückgehen kostet: Einträge und Änderungen seit dem Update gehen verloren. Konnte die
+Sicherung nicht angelegt werden, sagt der Dialog das und nennt keine Schritte. Das Programm spielt die Kopie nie selbst zurück.
+„Verstanden“ oder Escape schließt den Dialog für diese Version und dieses Schema. In der Container-Version nennt er nur die Sicherungsdatei und ihren Ordner.
 
 ### Wiederherstellen einer Sicherung nach einem Update
 
