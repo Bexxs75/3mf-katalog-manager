@@ -179,6 +179,8 @@ error_codes! {
     TagNameTooLong => "tagNameTooLong",
     /// params: the highest number of blocked tags.
     BlockedTagsLimit => "blockedTagsLimit",
+    /// The "what do you print with" choice was none of filament, resin or both.
+    PrintTechnologyInvalid => "printTechnologyInvalid",
     PrinterNameEmpty => "printerNameEmpty",
     /// params: the highest number of characters.
     PrinterNameTooLong => "printerNameTooLong",

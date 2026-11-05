@@ -308,6 +308,22 @@ pub fn get_auto_tagging(conn: &Connection) -> ReadResult<bool> {
     db::blocked_tags::auto_tagging_enabled(conn).map_err(ReadError::from)
 }
 
+/// The "what do you print with" choice and whether the question was already answered.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintTechnologyDto {
+    /// `filament`, `resin` or `both`; `both` until chosen.
+    pub value: String,
+    pub asked: bool,
+}
+
+pub fn get_print_technology(conn: &Connection) -> ReadResult<PrintTechnologyDto> {
+    Ok(PrintTechnologyDto {
+        value: db::print_technology::print_technology(conn).map_err(ReadError::from)?.as_str().to_string(),
+        asked: db::print_technology::print_technology_asked(conn).map_err(ReadError::from)?,
+    })
+}
+
 /// Tags the app would suggest for this model today. The catalog does not record
 /// whether a tag was assigned automatically, so the detail view asks this to decide
 /// which tags may be blocked. Uses the stored dimensions, which for multi-plate

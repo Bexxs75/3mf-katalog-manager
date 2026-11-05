@@ -2,6 +2,7 @@ import { WebAuthGate } from './components/WebAuthGate';
 import { PhoneNotice } from './components/PhoneNotice';
 import { RuntimeEnvironmentProvider } from './hooks/useRuntimeEnvironment';
 import { ModelLayoutProvider } from "./hooks/ModelLayoutContext";
+import { PrintTechnologyProvider } from "./hooks/PrintTechnologyContext";
 import React, { useEffect } from "react";
 import { showAfterPaint } from "./lib/startup";
 import ReactDOM from "react-dom/client";
@@ -31,8 +32,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
           <DiagnosticsProvider>
             <ErrorBoundary fallback={(reload) => <CrashFallback onReload={reload} />}>
               {import.meta.env.VITE_TARGET === 'web'
-                ? <PhoneNotice><WebAuthGate><ModelLayoutProvider><App /></ModelLayoutProvider></WebAuthGate></PhoneNotice>
-                : <ModelLayoutProvider><App /></ModelLayoutProvider>}
+                ? <PhoneNotice><WebAuthGate><PrintTechnologyProvider><ModelLayoutProvider><App /></ModelLayoutProvider></PrintTechnologyProvider></WebAuthGate></PhoneNotice>
+                : <PrintTechnologyProvider><ModelLayoutProvider><App /></ModelLayoutProvider></PrintTechnologyProvider>}
             </ErrorBoundary>
           </DiagnosticsProvider>
         </UiDensityProvider>

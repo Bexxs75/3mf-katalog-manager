@@ -1,6 +1,8 @@
+import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
+import { lockedKind, showsKind } from '../lib/printTechnology';
 import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { invoke } from '../lib/transport';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
@@ -44,8 +46,11 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
   const [selected, setSelected] = useState<string | undefined>(printerId);
   const [adding, setAdding] = useState(false);
   useEffect(() => { setSelected(printerId); }, [printerId]);
-  const printer = state.printers.find(p => p.id === selected) ?? state.printers[0];
-  const order = usePrinterReorder(state.printers.map(p => p.id), state.reorderPrinters);
+  // Hidden kinds stay in the catalog and in the saved order; they are only not listed.
+  const technology = usePrintTechnology().technology;
+  const listed = useMemo(() => state.printers.filter(p => showsKind(technology, p.kind)), [state.printers, technology]);
+  const printer = listed.find(p => p.id === selected) ?? listed[0];
+  const order = usePrinterReorder(state.printers.map(p => p.id), state.reorderPrinters, listed.map(p => p.id));
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -65,11 +70,11 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
       <div className="flex items-center gap-2 p-3 max-[1023px]:group-data-[collapsed=true]:justify-center">
         <button type="button" ref={menuRef} aria-label={t('pmToggleList')} aria-expanded={open} className={`${pmButton} min-[1024px]:hidden !px-2`} onClick={() => setOpen(!open)}><Icon name={open ? 'collapse-all' : 'expand-all'} /></button>
         <h2 className="flex-1 ui-label text-[var(--ink-3)] max-[1023px]:group-data-[collapsed=true]:hidden">{t('pmPrinters')}</h2>
-        <span className="text-[var(--ink-3)] max-[1023px]:group-data-[collapsed=true]:hidden">{state.printers.length}</span>
+        <span className="text-[var(--ink-3)] max-[1023px]:group-data-[collapsed=true]:hidden">{listed.length}</span>
         <button type="button" className={`${pmButton} !px-2 max-[1023px]:group-data-[collapsed=true]:hidden`} aria-label={t('pmAddPrinter')} title={t('pmAddPrinter')} disabled={!canEdit} onClick={() => { if (canEditMetadata()) setAdding(true); }}><Icon name="plus" size={14} /></button>
       </div>
       <ul className="flex-1 min-h-0 overflow-auto px-2 space-y-0.5">
-        {state.printers.map((p, index) => {
+        {listed.map((p, index) => {
           const conn = printerLink.connections.find(c => c.printerId === p.id);
           const status = printerStatus(p, printerLink.enabled, conn);
           const active = printer?.id === p.id;
@@ -83,7 +88,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
                 onKeyDown={e => {
                   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
                   e.preventDefault();
-                  const next = state.printers[index + (e.key === 'ArrowDown' ? 1 : -1)];
+                  const next = listed[index + (e.key === 'ArrowDown' ? 1 : -1)];
                   if (next) {
                     setSelected(next.id);
                     const entries = e.currentTarget.closest('ul')?.querySelectorAll<HTMLButtonElement>('button[title]');
@@ -120,16 +125,19 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
 function AddPrinter({ state, onClose, onAdded }: { state: PrintersState; onClose: () => void; onAdded: (id: string) => void }) {
   const t = useT();
   const [name, setName] = useState('');
-  const [kind, setKind] = useState<PrinterKind>('filament');
+  // A printer of a hidden kind would vanish right after it is added.
+  const locked = lockedKind(usePrintTechnology().technology);
+  const [chosenKind, setKind] = useState<PrinterKind>('filament');
+  const kind = locked ?? chosenKind;
   return <PrinterManagerDialog title={t('pmAddPrinter')} onClose={onClose} submitLabel={t('printersAddPrinterButton')}
     onSubmit={async () => {
       const p = await state.addPrinter(name.trim(), t(kind === 'resin' ? 'printersKindResinVat' : 'printersKindExternal'), kind);
       onAdded(p.id);
     }}>
     <label>{t('pmName')}<input required maxLength={60} pattern=".*\S.*" className={pmField} value={name} onChange={e => setName(e.target.value)} /></label>
-    <SegmentedControl label={t('pmKind')} value={kind} onChange={setKind} options={[
+    {!locked && <SegmentedControl label={t('pmKind')} value={kind} onChange={setKind} options={[
       { value: 'filament', label: t('spoolKindFilament') }, { value: 'resin', label: t('spoolKindResin') },
-    ]} />
+    ]} />}
   </PrinterManagerDialog>;
 }
 

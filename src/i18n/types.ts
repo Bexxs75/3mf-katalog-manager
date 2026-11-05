@@ -2092,6 +2092,29 @@ export interface Translations {
   tvUsageEstimate: string;
   tvUsageWarn: string;
   tvPrivacy: string;
+  ptTitle: string;
+  ptIntro: string;
+  ptFilament: string;
+  ptResin: string;
+  ptBoth: string;
+  ptDefault: string;
+  ptFilamentDesc: string;
+  ptResinDesc: string;
+  ptBothDesc: string;
+  ptEffectFilament: string;
+  ptEffectResin: string;
+  ptEffectBoth: string;
+  ptNothingDeleted: string;
+  ptApply: string;
+  ptSaved: string;
+  ptSaveFailed: string;
+  ptNoticeText: string;
+  ptNoticeChoose: string;
+  ptNoticeClose: string;
+  ptWebReadOnly: string;
+  ptRailPrintersFilament: string;
+  ptRailPrintersResin: string;
+  errPrintTechnologyInvalid: string;
 }
 
 export function formatCount(forms: PluralForms, n: number, language: Language = 'de'): string {

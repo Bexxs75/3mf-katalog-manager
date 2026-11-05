@@ -157,6 +157,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "check_filament",
     "get_filament_spool_image",
     "get_auto_tagging",
+    "get_print_technology",
     "list_suggested_auto_tags",
     "list_blocked_auto_tags",
     "list_companions",
@@ -436,6 +437,7 @@ pub async fn invoke(
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
             "list_tag_counts" => encode(read::list_tag_counts(&conn)?),
             "get_auto_tagging" => encode(read::get_auto_tagging(&conn)?),
+            "get_print_technology" => encode(read::get_print_technology(&conn)?),
             "list_blocked_auto_tags" => encode(read::list_blocked_auto_tags(&conn)?),
             "list_suggested_auto_tags" => encode(read::suggested_auto_tags_with_conn(
                 &conn,
@@ -717,6 +719,11 @@ mod tests {
             let members = [print_id.parse().unwrap(), c.id.parse().unwrap()];
             db::bundles::create_bundle(&conn, "Pair", db::bundles::BundleKind::Parts, &members, "2026-11-04T10:00:00+00:00").unwrap();
         }
+        // A stored choice, so the comparison is not just the default.
+        {
+            let conn = db::connect(&c.db).unwrap();
+            db::print_technology::set_print_technology(&conn, "resin").unwrap();
+        }
         let before = Sha256::digest(std::fs::read(&c.db).unwrap());
         let names = entries(&c);
         let conn = db::open_read_only(&c.db).unwrap();
@@ -747,6 +754,11 @@ mod tests {
                 "list_tag_counts",
                 json!({}),
                 serde_json::to_value(read::list_tag_counts(&conn).unwrap()).unwrap(),
+            ),
+            (
+                "get_print_technology",
+                json!({}),
+                serde_json::to_value(read::get_print_technology(&conn).unwrap()).unwrap(),
             ),
             (
                 "list_print_log_entries",

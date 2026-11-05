@@ -1,3 +1,5 @@
+import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
+import { showsKind } from '../lib/printTechnology';
 import { WebFileActions } from './WebFileActions';
 import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
 import { readPrintLogPhoto } from '../lib/printLogPhoto';
@@ -183,6 +185,8 @@ export function ModelDetailPage({
   const rows = buildMetaRows(model, t, language);
   // Lengths without a weight (Cura) leave nothing to compare with the spools.
   const weightKnown = model.sliceInfo !== null && !isWeightUnknown(model.sliceInfo);
+  // The spool check and the cost estimate mean nothing to someone who only prints resin.
+  const showsFilament = showsKind(usePrintTechnology().technology, 'filament');
   const filamentCheck = useFilamentCheck(
     weightKnown ? [model.id] : [],
     JSON.stringify(model.sliceInfo ?? null),
@@ -424,14 +428,14 @@ export function ModelDetailPage({
       </div>
 
       {/* A current row explains itself in the print data card; the old hint stays for a file not read yet. */}
-      {isFilamentUsageMissing(model) && !model.printInfo?.readerCurrent && <FilamentUsageMissing />}
+      {showsFilament && isFilamentUsageMissing(model) && !model.printInfo?.readerCurrent && <FilamentUsageMissing />}
 
       {showsPrintData(model) && (
         <PrintDataCard
           key={model.id}
           model={model}
           variant="page"
-          footer={weightKnown && (
+          footer={weightKnown && showsFilament && (
             <>
               <FilamentCheckSection
                 check={filamentCheck.checks?.get(model.id) ?? null}

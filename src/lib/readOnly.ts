@@ -16,6 +16,7 @@ export const WEB_READ_COMMANDS = [
   'check_filament',
   'get_filament_spool_image',
   'get_auto_tagging',
+  'get_print_technology',
   'list_suggested_auto_tags',
   'list_blocked_auto_tags',
   'list_companions',

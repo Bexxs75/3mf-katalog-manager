@@ -1,3 +1,4 @@
+import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
 import { useEffect, useRef } from 'react';
 import type { MainView } from '../types';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
@@ -32,6 +33,9 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
     wasOpen.current = settingsOpen;
   }, [settingsOpen]);
 
+  // With one material only, the label says which printers the manager lists.
+  const technology = usePrintTechnology().technology;
+  const printersLabel = technology === 'resin' ? t('ptRailPrintersResin') : technology === 'filament' ? t('ptRailPrintersFilament') : t('railPrinters');
   return (
     <nav className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
       <div className="flex flex-col gap-1.5">
@@ -52,7 +56,7 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
         >
           <Icon name="spool" />
         </button>
-        <button onClick={() => onMainViewChange('printers')} title={t('railPrinters')} aria-label={t('railPrinters')}
+        <button onClick={() => onMainViewChange('printers')} title={printersLabel} aria-label={printersLabel}
           className={`${railBtnBase} ${mainView === 'printers' ? railBtnActive : ''}`}>
           <Icon name="printer" />
         </button>

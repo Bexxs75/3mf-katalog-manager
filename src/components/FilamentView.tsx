@@ -1,3 +1,5 @@
+import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
+import { lockedKind } from '../lib/printTechnology';
 import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { invalidateSpoolImage } from '../lib/spoolImages';
 import type { PrinterNavigation } from '../types';
@@ -72,7 +74,10 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const [toast, setToast] = useState<ToastState | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [highlightIds, setHighlightIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [kind, setKindState] = useState<SpoolKind>(() => printers.printers.find(p => p.id === printerContext?.printerId)?.kind ?? loadSpoolKind());
+  const [chosenKind, setKindState] = useState<SpoolKind>(() => printers.printers.find(p => p.id === printerContext?.printerId)?.kind ?? loadSpoolKind());
+  // Printing with only one material leaves nothing to switch between.
+  const locked = lockedKind(usePrintTechnology().technology);
+  const kind = locked ?? chosenKind;
   // Hides the hint banner as soon as the confirmation dialog is open.
   const [jobsOpen, setJobsOpen] = useState(!web && (printerContext?.reviewJobs ?? false));
   useEffect(() => {
@@ -316,7 +321,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
 
       <div className="flex-1 p-4 flex flex-col lg:flex-row lg:items-start gap-4">
       <div className="flex-1 min-w-0 w-full flex flex-col gap-3.5">
-        <SegmentedControl
+        {!locked && <SegmentedControl
           label={t('spoolKindLabel')}
           options={[
             { value: 'filament', label: t('spoolKindFilament') },
@@ -324,7 +329,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           ]}
           value={kind}
           onChange={changeKind}
-        />
+        />}
         {error && (
           <div className="text-[length:var(--font-size-title)] text-[var(--accent)] break-words">
             {t('filamentError')} <ErrorText error={error} />
