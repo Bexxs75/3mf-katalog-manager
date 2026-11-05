@@ -748,6 +748,43 @@ message reads:
 
 > This is the catalog location. To empty it, use “Reset catalog” in Settings.
 
+### Bundling models
+
+A **bundle** groups models that belong together, for example the same model for a 0.4 mm and a
+0.6 mm nozzle, or the parts of a multi-part project. Bundling only changes the catalog: **no file is
+moved, renamed or deleted.** A bundle has 2 to 200 models, a name (up to 120 characters) and a
+**kind**:
+
+- **Variants** — alternatives of the same model, for example 3MF and STL or two nozzle sizes.
+- **Parts** — parts that are printed or assembled together.
+
+Select two or more models and choose **Bundle …** in the context menu. In the dialog you set the
+name and kind, reorder the models (drag, or the arrow keys) and give each an optional label of up to
+60 characters, such as "0.4 mm nozzle". Position 1 is the **title model**: it supplies the preview
+image and the sort value of the bundle. A model can be in one bundle at a time; if you add it to
+another one, the dialog tells you which bundle it leaves and dissolves a bundle that would drop below 2
+models.
+
+In the catalog, a bundle appears as one card with a count ("3 variants", "2 of 5 parts printed") and can
+be expanded to show its members. The switch **Show bundles as one card** (on by default) turns this
+off, so every model appears on its own with a "Part of …" note. Actions on a bundle (mark all as
+printed, add all to the queue, favorite all) apply to all its members.
+
+- **Edit** changes name, kind, order and labels; **Add to bundle …** appends models; **Remove from
+  bundle** takes one model out (the file stays).
+- **Dissolve bundle** keeps all files in the catalog; the bundle's name, kind, order and labels are lost,
+  but **Undo** brings the bundle back. *Known limit:* members that are in the trash at that moment are
+  not restored by Undo.
+- **Delete …** asks whether to only dissolve the bundle or to also move all its models to the app trash.
+  A model in the trash stays a member of its bundle and shows "was part of bundle …"; restoring it
+  brings it back. Deleting it permanently removes it from the bundle, and a bundle left with fewer than
+  2 models disappears.
+
+**Bundle suggestions** (Tools in the sidebar) list groups that look related: the same platform model ID
+with different profiles, or similar names in the same folder. The program **never bundles on its own**.
+You tick what you want, check the kind and choose "Bundle selected". "Don't suggest" hides a whole group
+for good ("Suggest again" brings it back); a dismissible note after an import tells you about new suggestions and can be switched off.
+
 ## Collections
 
 Collections are a third organizational mechanism alongside folders and tags: you explicitly
@@ -2134,6 +2171,42 @@ Der Katalog-Speicherort und seine übergeordneten Ordner im Katalog lassen sich 
 Die Meldung lautet:
 
 > Das ist der Speicherort des Katalogs. Zum Leeren „Katalog zurücksetzen“ in den Einstellungen verwenden.
+
+### Modelle bündeln
+
+Ein **Bündel** fasst zusammengehörige Modelle zusammen, zum Beispiel dasselbe Modell für eine 0,4er- und
+eine 0,6er-Düse oder die Teile eines mehrteiligen Projekts. Das Bündeln ändert nur den Katalog: **Es wird
+keine Datei verschoben, umbenannt oder gelöscht.** Ein Bündel hat 2 bis 200 Modelle, einen Namen (bis zu 120
+Zeichen) und eine **Art**:
+
+- **Varianten** — Alternativen desselben Modells, zum Beispiel 3MF und STL oder zwei Düsengrößen.
+- **Teile** — Teile, die zusammen gedruckt oder zusammengebaut werden.
+
+Zwei oder mehr Modelle auswählen und im Kontextmenü **Bündeln …** wählen. Im Dialog legst du Name und Art
+fest, ordnest die Modelle (Ziehen oder Pfeiltasten) und vergibst je Modell eine optionale Beschriftung von
+bis zu 60 Zeichen, etwa „0,4 mm Düse“. Position 1 ist das **Titelmodell**: Es liefert das Vorschaubild und
+den Sortierwert des Bündels. Ein Modell gehört immer nur zu einem Bündel; fügst du es einem anderen hinzu,
+sagt der Dialog, aus welchem Bündel es wechselt, und löst ein Bündel auf, das dadurch unter 2 Modelle fiele.
+
+Im Katalog erscheint ein Bündel als eine Karte mit einer Zählung („3 Varianten“, „2 von 5 Teilen gedruckt“)
+und lässt sich aufklappen. Der Schalter **Bündel als eine Karte zeigen** (standardmäßig an) schaltet das ab:
+Dann steht jedes Modell einzeln da, mit dem Hinweis „Teil von …“. Aktionen auf einem Bündel (alle als
+gedruckt markieren, alle zur Warteschlange, alle als Favoriten) gelten für alle Mitglieder.
+
+- **Bearbeiten** ändert Name, Art, Reihenfolge und Beschriftungen; **Zu Bündel hinzufügen …** hängt Modelle
+  an; **Aus Bündel entfernen** nimmt ein Modell heraus (die Datei bleibt).
+- **Bündel auflösen** lässt alle Dateien im Katalog; Name, Art, Reihenfolge und Beschriftungen gehen
+  verloren, **Rückgängig** stellt das Bündel wieder her. *Bekannte Grenze:* Mitglieder, die in diesem Moment im
+  Papierkorb liegen, stellt „Rückgängig“ nicht wieder her.
+- **Löschen …** fragt, ob nur das Bündel aufgelöst oder auch alle Modelle in den App-Papierkorb gelegt werden.
+  Ein Modell im Papierkorb bleibt Mitglied seines Bündels und zeigt „war Teil von Bündel …“; beim
+  Wiederherstellen ist es wieder da. Endgültiges Löschen nimmt es aus dem Bündel, und ein Bündel mit
+  weniger als 2 Modellen verschwindet.
+
+**Bündel-Vorschläge** (Werkzeuge in der Seitenleiste) listen Gruppen, die zusammengehören könnten: dieselbe
+Modell-ID einer Plattform mit verschiedenen Profilen oder ähnliche Namen im selben Ordner. Das Programm
+**bündelt nie von selbst**. Du setzt Haken, prüfst die Art und wählst „Ausgewählte bündeln“. „Nicht
+vorschlagen“ blendet eine ganze Gruppe dauerhaft aus („Wieder vorschlagen“ holt sie zurück); ein abschaltbarer Hinweis nach einem Import meldet neue Vorschläge.
 
 ## Sammlungen
 
