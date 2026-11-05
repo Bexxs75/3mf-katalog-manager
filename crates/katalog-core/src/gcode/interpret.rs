@@ -152,15 +152,16 @@ pub(super) fn parse_duration(text: &str) -> Option<u64> {
     let mut total = 0u64;
     let mut seen = false;
     for part in text.split_whitespace() {
-        let (digits, unit) = part.split_at(part.len().checked_sub(1)?);
-        let n: u64 = digits.parse().ok()?;
-        let factor = match unit {
-            "d" => 86_400,
-            "h" => 3_600,
-            "m" => 60,
-            "s" => 1,
+        // The unit is one ASCII character; a byte split could land inside a multi-byte character.
+        let factor = match part.chars().next_back()? {
+            'd' => 86_400,
+            'h' => 3_600,
+            'm' => 60,
+            's' => 1,
             _ => return None,
         };
+        let digits = &part[..part.len() - 1];
+        let n: u64 = digits.parse().ok()?;
         total = total.checked_add(n.checked_mul(factor)?)?;
         seen = true;
     }
