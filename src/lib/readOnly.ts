@@ -12,6 +12,7 @@ export const WEB_READ_COMMANDS = [
   'list_filament_spools',
   'list_printers',
   'list_printer_history',
+  'get_print_statistics',
   'get_last_printer_for_file',
   'check_filament',
   'get_filament_spool_image',

@@ -1,5 +1,5 @@
 import { invoke } from '../transport';
-import type { MaterialUnit, PrinterDetails, PrinterHistoryJob, Printer, PrinterKind, UnitKind } from '../../types';
+import type { MaterialUnit, PrintStatistics, PrinterDetails, PrinterHistoryJob, Printer, PrinterKind, UnitKind } from '../../types';
 
 export function listPrinters() {
   return invoke<Printer[]>('list_printers');
@@ -48,4 +48,8 @@ export function reorderPrinters(ids: string[]) {
 }
 export function listPrinterHistory(printerId: string) {
   return invoke<PrinterHistoryJob[]>('list_printer_history', { printerId });
+}
+/** Print rows for the statistics (newest first, at most 5000); all printers when `printerId` is left out. */
+export function getPrintStatistics(printerId?: string) {
+  return invoke<PrintStatistics>('get_print_statistics', printerId ? { printerId } : {});
 }

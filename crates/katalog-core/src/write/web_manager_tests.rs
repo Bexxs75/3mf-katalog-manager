@@ -645,3 +645,67 @@ fn colors_and_amounts_are_rejected_with_their_codes() {
     kind.kind = "plastic".into();
     assert_eq!(code(add_filament_spool(&mut c, kind)), (ErrorCode::InvalidMaterialKind, vec![]));
 }
+#[test]
+fn print_statistics_return_every_state_newest_first_grams_only_when_confirmed_and_filter_by_printer() {
+    let (c, p, _, _) = setup();
+    let other = db::printers::insert_printer(&c, "Other").unwrap();
+    c.execute_batch(&format!(
+        "INSERT INTO printer_connections(printer_id,kind,address,connected_since) VALUES ({p},'moonraker','a',900.5),({other},'moonraker','b',800);
+         INSERT INTO printer_jobs(printer_id,remote_id,file_name,outcome,raw_status,ended_at,print_duration_s,used_mm,material,state,booked_g,failure_reason,auto_closed)
+         VALUES ({p},'a','x','completed','completed',1000,60,10,'PLA','confirmed',12.5,NULL,0),
+                ({p},'b','x','partial','cancelled',1200,30,5,'PETG','open',7,'user_cancel',0),
+                ({p},'c','x','partial','klippy_shutdown',1100,20,0,NULL,'ignored',3,NULL,1),
+                ({other},'d','x','completed','completed',1050,10,1,NULL,'open',NULL,NULL,0);"
+    ))
+    .unwrap();
+    let all = r::print_statistics_rows(&c, None, 5000).unwrap();
+    assert_eq!(all.rows.iter().map(|j| j.ended_at as i64).collect::<Vec<_>>(), [1200, 1100, 1050, 1000]);
+    assert!(!all.truncated);
+    assert_eq!(all.first_connected_at, Some(800.0));
+    // Grams only from confirmed prints, even if a column value exists on another state.
+    assert_eq!(all.rows.iter().map(|j| j.grams).collect::<Vec<_>>(), [None, None, None, Some(12.5)]);
+    assert_eq!((all.rows[1].auto_closed, all.rows[0].failure_reason.as_deref(), all.rows[3].material.as_deref()), (true, Some("user_cancel"), Some("PLA")));
+    let one = r::print_statistics_rows(&c, Some(p), 5000).unwrap();
+    assert_eq!(one.rows.len(), 3);
+    assert!(one.rows.iter().all(|j| j.printer_id == p.to_string()));
+    assert_eq!(one.first_connected_at, Some(900.5));
+    let none = r::print_statistics_rows(&c, Some(999), 5000).unwrap();
+    assert!((none.rows.is_empty(), none.truncated, none.first_connected_at) == (true, false, None));
+    let json = serde_json::to_value(&all.rows[0]).unwrap();
+    for key in ["printerId", "endedAt", "outcome", "rawStatus", "printDurationS", "grams", "usedMm", "material", "state", "autoClosed", "failureReason"] {
+        assert!(json.get(key).is_some(), "{key}");
+    }
+    assert!(serde_json::to_value(&all).unwrap().get("firstConnectedAt").is_some());
+}
+#[test]
+fn print_statistics_stop_at_the_limit_and_say_so() {
+    let (c, p, _, _) = setup();
+    c.execute_batch(&format!("WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<6) INSERT INTO printer_jobs(printer_id,remote_id,file_name,outcome,raw_status,ended_at,print_duration_s,used_mm) SELECT {p},n,'one','completed','completed',n,1,1 FROM seq;")).unwrap();
+    let five = r::print_statistics_rows(&c, None, 5).unwrap();
+    assert!(five.truncated);
+    assert_eq!(five.rows.len(), 5);
+    assert_eq!(five.rows[0].ended_at, 6.0, "the newest rows stay");
+    let six = r::print_statistics_rows(&c, None, 6).unwrap();
+    assert!(!six.truncated && six.rows.len() == 6);
+    c.execute_batch("PRAGMA query_only=ON").unwrap();
+    assert!(r::print_statistics_rows(&c, None, 6).is_ok(), "read only");
+}
+/// Measurement for P6-6: `cargo test -p katalog-core --release --no-default-features --lib measure_print_statistics -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn measure_print_statistics_with_5000_rows() {
+    let (c, p, _, _) = setup();
+    c.execute_batch(&format!("WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<6000) INSERT INTO printer_jobs(printer_id,remote_id,file_name,outcome,raw_status,ended_at,print_duration_s,used_mm,material,state,booked_g,failure_reason) SELECT {p},n,'file '||n,CASE WHEN n%7=0 THEN 'partial' ELSE 'completed' END,CASE WHEN n%7=0 THEN 'cancelled' ELSE 'completed' END,1700000000+n*3600.5,1234.5+n,1234.567+n,'PETG',CASE n%3 WHEN 0 THEN 'confirmed' WHEN 1 THEN 'open' ELSE 'ignored' END,12.3456+n%50,CASE WHEN n%7=0 THEN 'user_cancel' END FROM seq;")).unwrap();
+    let mut times = Vec::new();
+    let mut size = 0;
+    for _ in 0..20 {
+        let t = std::time::Instant::now();
+        let dto = r::print_statistics_rows(&c, None, 5000).unwrap();
+        let bytes = serde_json::to_vec(&dto).unwrap();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+        size = bytes.len();
+        assert!(dto.truncated && dto.rows.len() == 5000);
+    }
+    times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    println!("MEASURE rows=5000 bytes={size} query+serialize ms: min={:.2} median={:.2} max={:.2}", times[0], times[10], times[19]);
+}
