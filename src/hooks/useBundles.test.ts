@@ -90,4 +90,67 @@ describe('useBundles', () => {
     await act(async () => { answers[0]([]); });
     expect(result.current.bundles).toEqual([bundle]);
   });
+
+  describe('composite changes', () => {
+    async function ready() {
+      vi.mocked(invoke).mockImplementation(command => Promise.resolve(command === 'create_bundle' ? bundle : []));
+      const view = renderHook(() => useBundles());
+      await waitFor(() => expect(invoke).toHaveBeenCalledWith('list_bundles'));
+      vi.mocked(invoke).mockClear();
+      return view;
+    }
+    const commands = () => vi.mocked(invoke).mock.calls.map(call => [call[0], call[1]]);
+
+    it('creates a bundle, labels only the members that have a label, and reads the list once at the end', async () => {
+      const { result } = await ready();
+      await act(async () => { await result.current.createLabelledBundle('Vase', 'parts', [{ fileId: '1', label: '' }, { fileId: '2', label: 'Lid' }]); });
+      expect(commands()).toEqual([
+        ['create_bundle', { name: 'Vase', kind: 'parts', fileIds: ['1', '2'] }],
+        ['update_bundle_member', { fileId: '2', label: 'Lid' }],
+        ['list_bundles', undefined],
+      ]);
+    });
+
+    it('restores a dissolved bundle from its snapshot', async () => {
+      const { result } = await ready();
+      await act(async () => { await result.current.restoreBundle({ name: 'Vase', kind: 'variants', members: [{ fileId: '2', label: 'b' }, { fileId: '1', label: '' }] }); });
+      expect(commands()[0]).toEqual(['create_bundle', { name: 'Vase', kind: 'variants', fileIds: ['2', '1'] }]);
+      expect(commands()[1]).toEqual(['update_bundle_member', { fileId: '2', label: 'b' }]);
+    });
+
+    it('saves an edit in the order removals, name and kind, title swaps, labels', async () => {
+      const { result } = await ready();
+      await act(async () => {
+        await result.current.saveBundleEdit('b1', { dissolve: false, name: 'New', kind: 'variants', removeIds: ['3'], titleSteps: ['2'], labelChanges: [{ fileId: '1', label: 'x' }] });
+      });
+      expect(commands().map(call => call[0])).toEqual(['update_bundle', 'remove_files_from_bundle', 'update_bundle_member', 'update_bundle_member', 'list_bundles']);
+      expect(commands()[0][1]).toMatchObject({ bundleId: 'b1', name: 'New', kind: 'variants' });
+      expect(commands()[2][1]).toEqual({ fileId: '2', makeTitle: true });
+      expect(commands()[3][1]).toEqual({ fileId: '1', label: 'x' });
+    });
+
+    it('dissolves instead of editing when the plan says so, and asks for nothing else', async () => {
+      const { result } = await ready();
+      await act(async () => { await result.current.saveBundleEdit('b1', { dissolve: true, removeIds: ['2'], titleSteps: [], labelChanges: [] }); });
+      expect(commands().map(call => call[0])).toEqual(['dissolve_bundle', 'list_bundles']);
+    });
+
+    it('dissolves several bundles one after the other', async () => {
+      const { result } = await ready();
+      await act(async () => { await result.current.dissolveBundles(['b1', 'b2']); });
+      expect(commands().map(call => [call[0], (call[1] as { bundleId?: string } | undefined)?.bundleId])).toEqual([
+        ['dissolve_bundle', 'b1'], ['dissolve_bundle', 'b2'], ['list_bundles', undefined],
+      ]);
+    });
+
+    it('does nothing without the right to edit', async () => {
+      const { result } = await ready();
+      gate.canEdit = false;
+      await act(async () => {
+        await result.current.saveBundleEdit('b1', { dissolve: true, removeIds: [], titleSteps: [], labelChanges: [] });
+        await result.current.createLabelledBundle('V', 'parts', [{ fileId: '1', label: 'a' }, { fileId: '2', label: '' }]);
+      });
+      expect(invoke).not.toHaveBeenCalled();
+    });
+  });
 });

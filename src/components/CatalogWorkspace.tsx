@@ -21,7 +21,7 @@ import { GroupedModelList } from './GroupedModelList';
 import { DetailPanel } from './DetailPanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
-import { BulkActionToolbar } from './BulkActionToolbar';
+import { BulkActionToolbar, type BulkBundleActions } from './BulkActionToolbar';
 import type { ModelFile, Folder, TagCount, ViewMode, SortKey, SortDirection, Collection, SlicerConfig, FolderTrashResult, Printer, Bundle } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
@@ -167,10 +167,14 @@ interface CatalogWorkspaceProps {
   bundles?: Bundle[];
   collapseBundles?: boolean;
   setCollapseBundles?: (collapse: boolean) => void;
+  /** Bundle entries of the selection bar; absent where the catalog has no bundles to offer. */
+  bundleActions?: BulkBundleActions;
+  /** Whole bundle cards in the selection, for the announcement. */
+  selectedBundleCount?: number;
   filtered: ModelFile[];
   collectionLoading?: boolean;
   selectedId: string | null;
-  setContextMenu: (value: { modelId: string; x: number; y: number } | null) => void;
+  setContextMenu: (value: { modelId: string; x: number; y: number; bundleId?: string } | null) => void;
   toggleBulkSelect: (id: string) => void;
   reorderCollection: (orderedIds: string[]) => void;
   onDragFileStart: (id: string) => void;
@@ -298,6 +302,8 @@ export function CatalogWorkspace({
   bundles = NO_BUNDLES,
   collapseBundles = false,
   setCollapseBundles,
+  bundleActions,
+  selectedBundleCount,
   filtered,
   collectionLoading = false,
   selectedId,
@@ -572,7 +578,7 @@ export function CatalogWorkspace({
       />
 
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
-        <SelectionAnnouncer count={selectedForBulk.size} />
+        <SelectionAnnouncer count={selectedForBulk.size} bundleCount={selectedBundleCount} />
         {importRow}
         {!duplicatesMode && (setUsage || setPrintStatus || setPrintFilter || showBundleSwitch || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
           <section ref={barRef} aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
@@ -681,6 +687,7 @@ export function CatalogWorkspace({
             tagsInSelection={tagsInSelection}
             onBulkRemoveTag={bulkRemoveTag}
             onDateRenamed={onDateRenamed}
+            bundleActions={bundleActions}
           />
           </div>
         )}
@@ -769,7 +776,7 @@ export function CatalogWorkspace({
                 selectedId={selectedId}
                 onSelect={selectModel}
                 onOpenDetail={setDetailModelId}
-                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                onContextMenu={(id, x, y, bundleId) => setContextMenu({ modelId: id, x, y, bundleId })}
                 onToggleFavorite={toggleFavorite}
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
@@ -786,7 +793,7 @@ export function CatalogWorkspace({
                 selectedId={selectedId}
                 onSelect={selectModel}
                 onOpenDetail={setDetailModelId}
-                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                onContextMenu={(id, x, y, bundleId) => setContextMenu({ modelId: id, x, y, bundleId })}
                 onToggleFavorite={toggleFavorite}
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
@@ -810,7 +817,7 @@ export function CatalogWorkspace({
                 selectedId={selectedId}
                 onSelect={selectModel}
                 onOpenDetail={setDetailModelId}
-                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                onContextMenu={(id, x, y, bundleId) => setContextMenu({ modelId: id, x, y, bundleId })}
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
                 onDragFileStart={jobActive ? undefined : onDragFileStart}

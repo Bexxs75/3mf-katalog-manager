@@ -15,6 +15,27 @@ import { useFormatError } from '../diagnostics/useFormatError';
 import { isGcode } from '../lib/fileKind';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
+/** Bundle entries of the file menu; an action that does not apply to the selection is left out. */
+export interface BundleMenuActions {
+  onCreate?: () => void;
+  onAddTo?: () => void;
+  onRemove?: () => void;
+}
+
+const MENU_BUTTON = 'w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]';
+
+function BundleMenuEntries({ actions, onClose }: { actions: BundleMenuActions; onClose: () => void }) {
+  const t = useT();
+  const entries = [
+    [actions.onCreate, 'bundleMake'], [actions.onAddTo, 'bundleAddTo'], [actions.onRemove, 'bundleRemoveFrom'],
+  ] as const;
+  if (entries.every(([action]) => !action)) return null;
+  return <>
+    <div className="border-t border-[var(--line)]" />
+    {entries.map(([action, label]) => action && <button key={label} className={MENU_BUTTON} onClick={() => { action(); onClose(); }}>{t(label)}</button>)}
+  </>;
+}
+
 interface Props {
   x: number;
   y: number;
@@ -37,6 +58,7 @@ interface Props {
   onSaveAsStl?: () => void;
   /** Type and name of the file, for deciding whether "Save as STL" is offered. */
   stlModel?: { fileType?: string; name?: string; path?: string };
+  bundleActions?: BundleMenuActions;
 }
 
 type View = 'menu' | 'confirmDelete' | 'confirmRemove' | 'rename';
@@ -59,6 +81,7 @@ function ModelContextMenu({
   onOpenPlateOverview,
   onSaveAsStl,
   stlModel,
+  bundleActions,
 }: Props) {
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
@@ -270,6 +293,7 @@ function ModelContextMenu({
             className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50">
             {t('moveContextLabel')}
           </button>}
+          {bundleActions && <BundleMenuEntries actions={bundleActions} onClose={onClose} />}
           {onRemove && <>
             <div className="border-t border-[var(--line)]" />
             <button {...lockProps} onClick={() => { setMenuError(null); setView('confirmRemove'); }}
@@ -310,6 +334,7 @@ export function ContextMenu(props: Props | CollectionMenuProps) {
     {canEdit && <>
       <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onToggleQueue(); props.onClose(); }}>{t(props.inQueue ? 'removeFromQueue' : 'addToQueue')}</button>
       <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onTogglePrintStatus(); props.onClose(); }}>{t(props.printed ? 'notPrintedLabel' : 'printedBadge')}</button>
+      {props.bundleActions && <BundleMenuEntries actions={props.bundleActions} onClose={props.onClose} />}
       <WebRemoveFromCatalogButton name={props.currentName} onRemove={props.onRemove} onRemoved={props.onClose}
         className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" />
     </>}
@@ -328,7 +353,7 @@ function isWebConfirmationOpen() {
   return import.meta.env.VITE_TARGET === 'web' && document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
 }
 
-function ContextMenuFrame({ x, y, onClose, onEscape = onClose, children }: {
+export function ContextMenuFrame({ x, y, onClose, onEscape = onClose, children }: {
   x: number; y: number; onClose: () => void; onEscape?: () => void; children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);

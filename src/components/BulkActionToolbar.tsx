@@ -17,6 +17,23 @@ import { usePrintDataReread } from '../hooks/usePrintDataReread';
 import { PrintDataRereadJob } from './PrintDataRereadJob';
 import { DateRenameDialog, type DateRenameOutcome } from './DateRenameDialog';
 
+/** Bundle entries of the "More" menu; each handler gets the element focus should return to. */
+export interface BulkBundleActions {
+  /** Two or more models selected. */
+  canCreate: boolean;
+  canAddTo: boolean;
+  canRemove: boolean;
+  /** The selection holds whole bundle cards. */
+  canDissolve: boolean;
+  /** The selection is exactly one bundle. */
+  canEdit: boolean;
+  onCreate: (returnTo: HTMLElement | null) => void;
+  onAddTo: (returnTo: HTMLElement | null) => void;
+  onRemove: () => void;
+  onDissolve: () => void;
+  onEdit: (returnTo: HTMLElement | null) => void;
+}
+
 interface BulkActionToolbarProps {
   selectedCount: number;
   selectedNames?: string[];
@@ -56,6 +73,7 @@ interface BulkActionToolbarProps {
    * moves into the "More" menu, so the bar keeps one row and its height.
    */
   compact?: boolean;
+  bundleActions?: BulkBundleActions;
 }
 
 const BUTTON = 'h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)] ' +
@@ -136,6 +154,7 @@ export function BulkActionToolbar({
   selectedIds,
   onDateRenamed,
   compact = false,
+  bundleActions,
 }: BulkActionToolbarProps) {
   const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
@@ -299,6 +318,13 @@ export function BulkActionToolbar({
     ] : []),
     ...(selectedIds && onDateRenamed ? [{ key: 'dateRename', label: t('dateRenameMenu'), locked: true, opensOwnUi: true, onSelect: () => setDateRenameIds([...selectedIds]) }] : []),
     { key: 'rereadPrintData', label: t('printDataRereadSelected'), locked: true, disabledReason: rereadState.status === 'running' || rereadState.status === 'cancelling' ? t('printDataRereadBusy') : undefined, onSelect: () => { startReread('selection', selectedIds ?? []); } },
+    ...(bundleActions ? [
+      { key: 'bundleMake', label: t('bundleMake'), opensOwnUi: true, separatorBefore: true, disabledReason: bundleActions.canCreate ? undefined : t('bundleDlgNeedTwo'), onSelect: () => bundleActions.onCreate(moreRef.current) },
+      ...(bundleActions.canAddTo ? [{ key: 'bundleAddTo', label: t('bundleAddTo'), opensOwnUi: true, onSelect: () => bundleActions.onAddTo(moreRef.current) }] : []),
+      ...(bundleActions.canEdit ? [{ key: 'bundleEdit', label: t('bundleEdit'), opensOwnUi: true, onSelect: () => bundleActions.onEdit(moreRef.current) }] : []),
+      ...(bundleActions.canRemove ? [{ key: 'bundleRemove', label: t('bundleRemoveFrom'), onSelect: bundleActions.onRemove }] : []),
+      ...(bundleActions.canDissolve ? [{ key: 'bundleDissolve', label: t('bundleDissolve'), onSelect: bundleActions.onDissolve }] : []),
+    ] : []),
     ...(activeCollection ? [{ key: 'removeFromCollection', label: t('removeFromCollectionLabel'), onSelect: onBulkRemoveFromCollection }] : []),
     ...(onBulkRemove ? [{ key: 'removeCatalog', label: t('removeCatalogShort'), locked: true, opensOwnUi: true, separatorBefore: true, onSelect: () => { setError(null); setConfirmRemove(true); } }] : []),
   ];
