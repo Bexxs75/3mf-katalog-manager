@@ -1,5 +1,5 @@
 import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
-import { canEditMetadata, canManageFiles } from './lib/webSession';
+import { canEditMetadata, canManageFiles, useCanEditMetadata } from './lib/webSession';
 import { reportMetadataError } from './lib/metadataErrors';
 import { WebImport } from './components/WebImport';
 import { isReadOnly } from './lib/readOnly';
@@ -75,6 +75,9 @@ import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { useBundles } from './hooks/useBundles';
 import { useBundleActions } from './hooks/useBundleActions';
 import { BundleDialog } from './components/BundleDialog';
+import { useBundleSuggestions } from './hooks/useBundleSuggestions';
+import { BundleSuggestionsDialog } from './components/BundleSuggestionsDialog';
+import { BundleSuggestionHint } from './components/BundleSuggestionHint';
 import { BundleDeleteChoiceDialog } from './components/BundleDeleteChoiceDialog';
 import { BundleContextMenu } from './components/BundleContextMenu';
 import { BundleToast } from './components/BundleToast';
@@ -124,6 +127,7 @@ export default function App() {
   const { language } = useLanguage();
   const bundleStore = useBundles();
   const { bundles, refreshBundles } = bundleStore;
+  const suggestions = useBundleSuggestions({ models: store.models, bundles, enabled: useCanEditMetadata() });
   const [collapseBundles, setCollapseBundlesState] = useState(loadBundleCollapse);
   const setCollapseBundles = useCallback((collapse: boolean) => { setCollapseBundlesState(collapse); saveBundleCollapse(collapse); }, []);
   // The search also finds a bundle by its name, but only while the bundle is shown as a card.
@@ -182,6 +186,7 @@ export default function App() {
     rootFolderId: store.folders.find(f => f.path === catalogBaseDir)?.id,
     targetName: store.folders.find(f => f.id === filters.activeFolderId)?.name ?? catalogBaseDir ?? undefined,
     onImported: store.mergeImported,
+    onAdded: suggestions.notifyAdded,
     refreshTags: store.refreshTags,
     refreshFolders: store.refreshFolders,
     refreshFiles: store.refreshFiles,
@@ -665,7 +670,7 @@ export default function App() {
       {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}
       <Header
         onDiskSyncScanned={store.refreshFolders}
-        onDiskSyncApplied={reloadAfterDiskSync}
+        onDiskSyncApplied={result => { suggestions.notifyAdded(result.fileIds); return reloadAfterDiskSync(); }}
         detailPanel={detailPanel} onDetailPanelChange={setDetailPanel}
         onOpenTips={() => setTipsOpen(true)}
         allFoldersCollapsed={allFoldersCollapsed}
@@ -862,6 +867,8 @@ export default function App() {
               onOpenCleanup={() => void cleanup.scanCatalogIssues()}
               cleanupScanning={cleanup.cleanupScanning}
               cleanupError={cleanup.cleanupError}
+              bundleSuggestionCount={suggestions.open.length}
+              onOpenBundleSuggestions={suggestions.openDialog}
             />
           ) : mainView === 'thingiverse' ? (
             <ThingiverseView onOpenSettings={() => { setGeneralTabRequest(n => n + 1); setCatalogTabRequest(0); setSettingsOpen(true); }} />
@@ -992,6 +999,10 @@ export default function App() {
               />
             )}
 
+            <BundleSuggestionHint count={suggestions.noticeCount}
+              // The notice disappears on opening, so the focus returns to the catalog instead of to its button.
+              onView={() => suggestions.openDialog(document.querySelector<HTMLElement>('[data-catalog-main]'))}
+              onClose={() => { suggestions.dismissNotice(); setTimeout(() => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus(), 0); }} />
             <BulkDeleteFailureBanner names={bulk.deleteFailures} onClose={bulk.dismissDeleteFailures} />
             <StartSyncBanner notice={startSync.notice} onView={() => { startSync.dismiss(); requestDiskSync(); }} onClose={() => { startSync.dismiss(); setTimeout(() => document.querySelector<HTMLElement>('[data-catalog-main]')?.focus(), 0); }} />
             <DateRenameBanner outcome={dateRenameOutcome} onClose={dismissDateRenameNotice} />
@@ -1041,6 +1052,11 @@ export default function App() {
           {bundleActions.dialog && (
             <BundleDialog request={bundleActions.dialog} models={store.models} bundles={bundles} returnFocus={bundleActions.returnFocus}
               onClose={bundleActions.closeDialog} onCreate={bundleActions.create} onAdd={bundleActions.add} onSaveEdit={bundleActions.saveEdit} />
+          )}
+          {suggestions.dialogOpen && (
+            <BundleSuggestionsDialog open={suggestions.open} dismissed={suggestions.dismissed} models={store.models} folders={store.folders}
+              hint={suggestions.hint} onHintChange={suggestions.setHint} onDismiss={suggestions.dismiss} onRestore={suggestions.restore}
+              onBundle={bundleActions.createSuggested} onClose={suggestions.closeDialog} returnFocus={suggestions.returnFocus} />
           )}
           {bundleActions.deleteChoice && (
             <BundleDeleteChoiceDialog bundleNames={bundleActions.deleteNames.bundles} fileNames={bundleActions.deleteNames.files}

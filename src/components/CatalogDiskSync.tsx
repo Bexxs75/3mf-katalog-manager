@@ -142,7 +142,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   </div>, document.body);
 }
 
-export function CatalogDiskSync({ onApplied, onScanned, active = true }: { onApplied?: () => Promise<unknown>; onScanned?: () => unknown; active?: boolean }) {
+export function CatalogDiskSync({ onApplied, onScanned, active = true }: { onApplied?: (result: DiskApplied) => Promise<unknown>; onScanned?: () => unknown; active?: boolean }) {
   const t = useT(); const count = useFormatCount(); const { language } = useLanguage();
   const { jobActive } = useImportLock();
   const [busy, setBusy] = useState(false);
@@ -188,7 +188,7 @@ export function CatalogDiskSync({ onApplied, onScanned, active = true }: { onApp
     try {
       const result = await applyCatalogDiskSync(scan, remove, picked);
       setScan(null);
-      try { await onApplied?.(); }
+      try { await onApplied?.(result); }
       catch (e) { console.error('Catalog refresh after disk sync failed', e); }
       setFresh(result);
       const failures = result.failedPaths;

@@ -95,6 +95,16 @@ describe('catalog disk sync', () => {
     await waitFor(() => expect(reload).toHaveBeenCalledOnce());
     expect(await screen.findByRole('status')).toHaveTextContent('1 neue Datei');
   });
+  it('hands the applied result (with the new file ids) to the caller', async () => {
+    const applied = { fileIds: ['7'], folderIds: [], failedPaths: [], removedCount: 0 };
+    vi.mocked(invoke).mockResolvedValueOnce(changes).mockResolvedValueOnce(applied);
+    const onApplied = renderSync();
+    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    await screen.findByRole('dialog');
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Änderungen übernehmen' }));
+    await waitFor(() => expect(onApplied).toHaveBeenCalledWith(expect.objectContaining({ fileIds: ['7'] })));
+  });
   it('keeps the success toast when refreshing after apply fails', async () => {
     vi.mocked(invoke).mockResolvedValueOnce(changes).mockResolvedValueOnce({ fileIds: ['7'], folderIds: [], failedPaths: [], removedCount: 0 });
     renderSync(vi.fn().mockRejectedValue(new Error('refresh failed')));

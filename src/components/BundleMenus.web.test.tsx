@@ -5,6 +5,7 @@ vi.mock('../lib/transport', () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 import { ContextMenu } from './ContextMenu';
 import { BundleContextMenu } from './BundleContextMenu';
 import { BulkActionToolbar } from './BulkActionToolbar';
+import { ToolsSection } from './ToolsSection';
 import { LanguageProviderWithDiagnostics } from '../test/renderWithDiagnostics';
 import { de } from '../i18n/de';
 import { login, authenticationFailed } from '../lib/webSession';
@@ -45,4 +46,22 @@ it('mounts neither the bundle card menu nor the selection bar without the right 
   </LanguageProviderWithDiagnostics>);
   expect(container).toBeEmptyDOMElement();
   expect(action).not.toHaveBeenCalled();
+});
+
+const suggestionTools = () => render(<LanguageProviderWithDiagnostics>
+  <ToolsSection queue={[]} onQueueReorder={noop} onQueueRemove={noop} onQueueSelect={noop} toolView={null} onToolViewChange={noop}
+    counts={{ recent: 0, new: 0, favorites: 0, duplicateGroups: 0 }} onOpenCleanup={noop} cleanupScanning={false} cleanupError={null}
+    bundleSuggestionCount={2} onOpenBundleSuggestions={noop} />
+</LanguageProviderWithDiagnostics>);
+
+it('offers no bundle suggestions in the read-only web version', () => {
+  suggestionTools();
+  expect(screen.queryByRole('button', { name: new RegExp(de.toolBundleSuggestions) })).toBeNull();
+});
+
+it('offers the bundle suggestions once the session may edit metadata', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: true, csrfToken: 'csrf' })));
+  await login('test');
+  suggestionTools();
+  expect(screen.getByRole('button', { name: new RegExp(de.toolBundleSuggestions) })).toBeInTheDocument();
 });

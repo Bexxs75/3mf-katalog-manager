@@ -191,6 +191,8 @@ interface CatalogWorkspaceProps {
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
   cleanupError: AppError | null;
+  bundleSuggestionCount?: number;
+  onOpenBundleSuggestions?: (returnTo: HTMLElement | null) => void;
 }
 
 const NO_BUNDLES: Bundle[] = [];
@@ -325,6 +327,8 @@ export function CatalogWorkspace({
   onOpenCleanup,
   cleanupScanning,
   cleanupError,
+  bundleSuggestionCount,
+  onOpenBundleSuggestions,
 }: CatalogWorkspaceProps) {
   const [narrow, setNarrow] = useState(() => window.matchMedia?.('(max-width: 999px)').matches ?? false);
   useEffect(() => {
@@ -591,6 +595,8 @@ export function CatalogWorkspace({
         onOpenCleanup={onOpenCleanup}
         cleanupScanning={cleanupScanning}
         cleanupError={cleanupError}
+        bundleSuggestionCount={bundleSuggestionCount}
+        onOpenBundleSuggestions={onOpenBundleSuggestions}
       />
 
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">

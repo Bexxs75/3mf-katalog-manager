@@ -19,9 +19,9 @@ beforeEach(() => {
   vi.mocked(invoke).mockImplementation(async cmd => cmd === 'start_import' ? { jobId: 'j1' } : null);
 });
 function setup(folder = 'first') {
-  const refreshTags = vi.fn(), refreshFiles = vi.fn(), refreshFolders = vi.fn(), onImported = vi.fn();
-  const hook = renderHook(({ folder }) => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: folder, onImported, refreshTags, refreshFiles, refreshFolders }), { initialProps: { folder } });
-  return { ...hook, refreshTags, refreshFiles, refreshFolders };
+  const refreshTags = vi.fn(), refreshFiles = vi.fn(), refreshFolders = vi.fn(), onImported = vi.fn(), onAdded = vi.fn();
+  const hook = renderHook(({ folder }) => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: folder, onImported, onAdded, refreshTags, refreshFiles, refreshFolders }), { initialProps: { folder } });
+  return { ...hook, refreshTags, refreshFiles, refreshFolders, onImported, onAdded };
 }
 it('starts a job with the captured target and updates from progress', async () => {
   const { result, rerender } = setup();
@@ -37,6 +37,19 @@ it.each((['files', 'folder', 'folderContents', 'dropped', 'setupAdopt', 'archive
   const { result, refreshFiles, refreshFolders, refreshTags } = setup();
   await act(async () => events.handlers['import://finished']({payload: {...finished(state), source}}));
   expect(result.current.result?.state).toBe(state); expect(refreshFiles).toHaveBeenCalledOnce(); expect(refreshFolders).toHaveBeenCalledOnce(); expect(refreshTags).toHaveBeenCalledOnce();
+});
+it('reports the files a finished job added, also those left unplaced', async () => {
+  const { onAdded } = setup();
+  const value = finished();
+  value.groups.imported = [{ path: '/a.3mf', fileId: 'a', folderId: 'f' }];
+  value.groups.importedNotPlaced = [{ path: '/b.3mf', fileId: 'b', reason: 'cancelled' }];
+  await act(async () => events.handlers['import://finished']({payload: value}));
+  expect(onAdded).toHaveBeenCalledWith(['a', 'b']);
+});
+it('reports the files of a legacy import result (setup adoption)', () => {
+  const { result, onAdded } = setup();
+  act(() => result.current.mergeImported({ imported: [{ id: 'x' }, { id: 'y' }] as never, duplicateCount: 0 }));
+  expect(onAdded).toHaveBeenCalledWith(['x', 'y']);
 });
 it('counts queued jobs independently and cancels the running job', async () => {
   const { result } = setup();

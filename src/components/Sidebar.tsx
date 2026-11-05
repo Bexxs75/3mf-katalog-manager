@@ -70,6 +70,8 @@ interface Props {
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
   cleanupError: AppError | null;
+  bundleSuggestionCount?: number;
+  onOpenBundleSuggestions?: (returnTo: HTMLElement | null) => void;
 }
 
 export function Sidebar({
@@ -123,6 +125,8 @@ export function Sidebar({
   onOpenCleanup,
   cleanupScanning,
   cleanupError,
+  bundleSuggestionCount,
+  onOpenBundleSuggestions,
 }: Props) {
   const canEdit = useCanEditMetadata();
   const canManage = useCanManageFiles();
@@ -492,6 +496,8 @@ export function Sidebar({
           onOpenCleanup={onOpenCleanup}
           cleanupScanning={cleanupScanning}
           cleanupError={cleanupError}
+          bundleSuggestionCount={bundleSuggestionCount}
+          onOpenBundleSuggestions={onOpenBundleSuggestions}
         />
       </div>
       {collectionError && !deletingCollection && <p role="alert" className="px-3 text-[var(--crit)]">{collectionError}</p>}
