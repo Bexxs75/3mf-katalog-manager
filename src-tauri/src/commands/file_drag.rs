@@ -1,11 +1,5 @@
-//! Prototype P5-7: drag catalog files out of the window into other programs (slicer,
-//! file manager). Off by default (setting `drag_out_enabled`).
-//!
-//! The command takes file ids, never paths. Only 3MF, STL and OBJ are offered. The drag
-//! always runs in "copy" mode, and by default the operating system receives a temporary
-//! COPY of each file, not the catalog file itself: whatever the target does (move, delete),
-//! the catalog stays intact. `DRAG_ORIGINAL_FILE` switches to the original once a probe on
-//! all three systems has shown that "copy only" holds; that probe is not done yet.
+//! Experimental native dragging uses private temporary copies, never catalog originals.
+//! File IDs are resolved in the backend; only 3MF, STL and OBJ are offered.
 
 use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use super::*;
@@ -15,9 +9,18 @@ use katalog_core::error_code::ErrorCode;
 pub(crate) const SETTING_DRAG_OUT_ENABLED: &str = "drag_out_enabled";
 /// More files per drag are refused (a selection of thousands must not be copied).
 const MAX_DRAG_FILES: usize = 64;
-/// Hand the catalog file itself to the system. Stays `false` until the probe (P5-7) passed.
+/// Keep originals private until the native copy-mode probe passes on every platform.
 const DRAG_ORIGINAL_FILE: bool = false;
-const TEMP_ROOT_NAME: &str = "3mf-katalog-drag";
+#[derive(Default, Clone)]
+pub struct NativeDragState(std::sync::Arc<std::sync::atomic::AtomicBool>);
+impl NativeDragState {
+    pub fn is_active(&self) -> bool { self.0.load(std::sync::atomic::Ordering::SeqCst) }
+    fn begin(&self) -> CmdResult<()> {
+        self.0.compare_exchange(false, true, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst)
+            .map(|_| ()).map_err(|_| CmdError::coded_with(ErrorCode::DragFailed, [String::new()]))
+    }
+    fn finish(&self) { self.0.store(false, std::sync::atomic::Ordering::SeqCst); }
+}
 /// Preview image of the drag (the app icon, 32 px).
 const DRAG_PREVIEW_PNG: &[u8] = include_bytes!("../../icons/32x32.png");
 
@@ -52,19 +55,6 @@ fn resolve_drag_files(conn: &Connection, file_ids: &[String]) -> CmdResult<Vec<P
         paths.push(path);
     }
     Ok(paths)
-}
-
-pub(crate) fn temp_root() -> PathBuf {
-    std::env::temp_dir().join(TEMP_ROOT_NAME)
-}
-
-/// Removes the temporary copies of earlier drags (called at start and before each drag).
-pub(crate) fn clean_drag_temp(root: &Path) {
-    if root.exists() {
-        if let Err(e) = std::fs::remove_dir_all(root) {
-            log::warn!(target: "drag", "temporary drag copies not removed: {e}");
-        }
-    }
 }
 
 /// Copies each file into its own numbered subfolder under `root` (same name, no collisions)
@@ -112,25 +102,38 @@ pub fn start_file_drag(
         }
         resolve_drag_files(&conn, &file_ids)?
     };
-    let root = temp_root();
-    clean_drag_temp(&root);
-    let folder = root.join(format!("{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)));
+    use tauri::{Emitter, Manager};
+    let storage = window.try_state::<crate::drag_storage::DragStorage>()
+        .ok_or_else(|| CmdError::coded_with(ErrorCode::DragFailed, [String::new()]))?;
+    let folder = storage.session().map_err(|e| CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]))?;
     let files = stage_drag_files(&sources, &folder, DRAG_ORIGINAL_FILE)?;
     let count = files.len();
     let item = drag::DragItem::Files(files);
     let preview = drag::Image::Raw(DRAG_PREVIEW_PNG.to_vec());
+    let native = window.state::<NativeDragState>().inner().clone();
+    native.begin()?;
+    let finished = native.clone();
+    let event_window = window.clone();
     let callback = move |result: drag::DragResult, _: drag::CursorPosition| {
         log::info!(target: "drag", "drag of {count} file(s) ended: {result:?}");
+        // Keep self-drops suppressed through delivery of the queued window event.
+        let finished = finished.clone();
+        let event_window = event_window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            finished.finish();
+            let _ = event_window.emit("native-drag-ended", ());
+        });
     };
     let options = drag::Options { mode: drag::DragMode::Copy, ..Default::default() };
     #[cfg(target_os = "linux")]
     let started = {
-        let gtk_window = window.gtk_window().map_err(|e| CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]))?;
+        let gtk_window = window.gtk_window().map_err(|e| { native.finish(); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })?;
         drag::start_drag(&gtk_window, item, preview, callback, options)
     };
     #[cfg(not(target_os = "linux"))]
     let started = drag::start_drag(&window, item, preview, callback, options);
-    started.map_err(|e| CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]))
+    started.map_err(|e| { native.finish(); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })
 }
 
 #[cfg(test)]
@@ -141,6 +144,18 @@ mod tests {
         let conn = db::connect_in_memory().unwrap();
         let id = db::test_insert_minimal_file(&conn, &path.to_string_lossy(), None).unwrap();
         (conn, id.to_string())
+    }
+
+    #[test]
+    fn native_drag_guard_refuses_overlap_and_releases_after_end() {
+        let state = NativeDragState::default();
+        assert!(!state.is_active());
+        state.begin().unwrap();
+        assert!(state.is_active());
+        assert!(state.begin().is_err());
+        state.finish();
+        assert!(!state.is_active());
+        state.begin().unwrap();
     }
 
     #[test]
@@ -200,7 +215,7 @@ mod tests {
         // Simulated "move" by the target: the catalog files must still be there.
         std::fs::remove_file(&staged[0]).unwrap();
         assert!(a.is_file() && b.is_file());
-        clean_drag_temp(&root);
+        std::fs::remove_dir_all(&root).unwrap();
         assert!(!root.exists());
         assert!(a.is_file());
         let _ = std::fs::remove_dir_all(&dir);

@@ -1,3 +1,4 @@
+import { setNativeDragEnabled } from '../lib/nativeDrag';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
@@ -5,7 +6,7 @@ import * as api from '../lib/api/fileDrag';
 import { ToggleSwitch } from './ToggleSwitch';
 import { ErrorText } from '../diagnostics/ErrorText';
 
-/** Prototype P5-7: switch for dragging files out of the window (off by default; no drag handle yet). */
+/** Experimental native dragging is opt-in. */
 export function DragOutSetting() {
   const t = useT();
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -23,6 +24,7 @@ export function DragOutSetting() {
     try {
       await api.setDragOutEnabled(next);
       if (mounted.current) setEnabled(next);
+      setNativeDragEnabled(next);
     } catch (e) {
       if (mounted.current) setError(toAppError(e));
     }

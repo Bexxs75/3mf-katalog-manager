@@ -87,6 +87,10 @@ still installed):
 
 Your model files themselves are never touched — they stay in your catalog folder.
 
+### Browser server: operator precautions
+
+Keep the optional web server on a home network or VPN; never forward its port or expose it through a public tunnel. Use a dedicated host name and an HTTPS proxy for encrypted access. Behind a proxy, users share the login lock unless client addresses are forwarded correctly. Set `KATALOG_TRUST_PROXY=1` only behind a shielding proxy that overwrites or appends `X-Forwarded-For`, with no direct access to the backend. The generated initial password remains in logs: change it after first sign-in and protect log access. Do not allow untrusted local writers in the model, upload or config directories; path checks cannot protect against hard links or concurrent directory replacement. See [SECURITY.md](../../SECURITY.md).
+
 ## Getting started
 
 The very first time you launch the app, it asks how your catalog should be organized:
@@ -3053,3 +3057,7 @@ findest du den Unterschied zwischen automatischen Datenbankkopien und ZIP-Import
 ist?** Das ist lediglich ein Platzhaltertext ("https://…") mit einem kleinen Stift-Symbol zum
 Bearbeiten daneben. Die Oberfläche nutzt Barlow und SVG-Symbole. Für Pfade und Adressen wird
 IBM Plex Mono verwendet.
+
+### Webserver: Hinweise für Betreiber
+
+Den optionalen Webserver nur im Heimnetz oder VPN betreiben; keine Portweiterleitung und keinen öffentlichen Tunnel verwenden. Eigenen Hostnamen und für verschlüsselten Zugriff einen HTTPS-Proxy einsetzen. Hinter einem Proxy teilen sich Nutzer die Anmeldesperre, sofern Client-Adressen nicht korrekt weitergereicht werden. `KATALOG_TRUST_PROXY=1` nur hinter einem abschirmenden Proxy setzen, der `X-Forwarded-For` überschreibt oder ergänzt; direkter Zugriff auf den Server muss ausgeschlossen sein. Das erzeugte Erstpasswort bleibt im Protokoll: nach der ersten Anmeldung ändern und Protokollzugriff schützen. Modell-, Upload- und Konfigurationsordner dürfen nicht von nicht vertrauenswürdigen lokalen Benutzern beschrieben werden; Pfadprüfungen schützen nicht vor Hardlinks oder gleichzeitigem Austausch von Verzeichnissen. Siehe [SECURITY.md](../../SECURITY.md).

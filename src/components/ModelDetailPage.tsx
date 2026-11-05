@@ -1,3 +1,4 @@
+import { NativeDragHandle } from './NativeDragHandle';
 import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
 import { showsKind } from '../lib/printTechnology';
 import { WebFileActions } from './WebFileActions';
@@ -267,6 +268,7 @@ export function ModelDetailPage({
           onClick={event => navigateByButton('next', event.currentTarget)}><Icon name="next" /></button>
         <h1 className="flex-1 min-w-0 text-[1.5rem] font-semibold leading-tight break-words">
           {displayName(model.name)}
+          <NativeDragHandle model={model} />
         </h1>
       </header>
 

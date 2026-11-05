@@ -1,3 +1,4 @@
+import { NativeDragState } from '../lib/nativeDrag';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWebview } from '../lib/webview';
 import * as api from '../lib/api/importExport';
@@ -150,7 +151,7 @@ export function useFileImport(args: UseFileImportArgs) {
   useEffect(() => {
     if (import.meta.env.VITE_TARGET === 'web') return;
     const subscription = getCurrentWebview().onDragDropEvent(event => {
-      if (event.payload.type !== 'drop' || !latest.current.enabled) return;
+      if (event.payload.type !== 'drop' || !latest.current.enabled || NativeDragState.isActive()) return;
       const target = latest.current.resolveDropTarget?.(event.payload.position) ?? { kind: 'none' };
       if (target.kind === 'invalid') latest.current.onDropRejected?.(target);
       else if (target.kind === 'folder') { setArchiveDropTarget(target.folder.path); void track(api.startDroppedImport(event.payload.paths, target.folder.id), {source: 'dropped', targetName: target.folder.name}); }

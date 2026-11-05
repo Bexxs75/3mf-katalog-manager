@@ -132,6 +132,21 @@ mod tests {
     }
 
     #[test]
+    fn one_hundred_preview_payloads_stay_within_the_cache_budget() {
+        let mut cache = Cache::<Vec<u8>>::new();
+        for id in 0..100 {
+            let preview = vec![0u8; 128 * 1024];
+            cache.put(k(id), preview, 128 * 1024, id as f64);
+            assert!(cache.total_bytes() <= MAX_BYTES);
+        }
+        assert!(cache.get(&k(0), 100.0).is_none());
+        assert_eq!(cache.get(&k(99), 100.0).unwrap().len(), 128 * 1024);
+        cache.clear();
+        assert_eq!(cache.total_bytes(), 0);
+        assert!(cache.get(&k(99), 100.0).is_none());
+    }
+
+    #[test]
     fn replacing_a_key_does_not_count_twice() {
         let mut c = Cache::<u8>::new();
         c.put(k(1), 1, 100, 0.0);

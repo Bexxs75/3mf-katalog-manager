@@ -303,3 +303,17 @@ describe('drop onto a folder', () => {
     expect(onDropRejected).toHaveBeenCalledWith(expect.objectContaining({ reason: 'catalogRoot' }));
   });
 });
+
+it('ignores self drops until the native drag has ended', async () => {
+  const { startNativeDrag, NativeDragState } = await import('../lib/nativeDrag');
+  setup();
+  await act(async () => { await startNativeDrag(['1']); });
+  expect(NativeDragState.isActive()).toBe(true);
+  vi.mocked(invoke).mockClear();
+  act(() => events.handlers.drop({payload:{type:'drop', paths:['/tmp/copy.stl'],position:{x:0,y:0}}}));
+  expect(invoke).not.toHaveBeenCalledWith('start_dropped_import', expect.anything());
+  act(() => events.handlers['native-drag-ended']({payload:null}));
+  expect(NativeDragState.isActive()).toBe(false);
+  await act(async () => events.handlers.drop({payload:{type:'drop', paths:['/tmp/external.stl'],position:{x:0,y:0}}}));
+  expect(invoke).toHaveBeenCalledWith('start_dropped_import', expect.anything());
+});

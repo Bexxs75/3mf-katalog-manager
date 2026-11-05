@@ -1,3 +1,4 @@
+mod drag_storage;
 use crate::commands::DesktopJobs;
 pub use katalog_core::archive;
 mod commands;
@@ -213,7 +214,11 @@ pub fn run() {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
             commands::purge_expired_trash_on_startup(&conn, &trash_dir);
-            commands::clean_drag_temp(&commands::temp_root());
+            app.manage(commands::NativeDragState::default());
+            match app.path().app_cache_dir().and_then(|cache| crate::drag_storage::DragStorage::new(&cache).map_err(Into::into)) {
+                Ok(storage) => { app.manage(storage); }
+                Err(e) => log::warn!(target: "drag", "drag storage unavailable: {e}"),
+            }
             let sensitive_dirs = sensitive_dirs(app.handle());
             // Mirrors the stored close wish so the window hook never touches the database lock.
             let close_behavior = tray::CloseBehavior::from_db(&conn);
@@ -291,6 +296,7 @@ pub fn run() {
                 }
             }
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if window.state::<commands::NativeDragState>().is_active() { return; }
                 window.state::<commands::AppState>().import_jobs.observe_drop(paths);
                 if let Some(images) = window.try_state::<commands::DroppedImages>() {
                     images.observe_drop(paths);
@@ -523,6 +529,9 @@ pub fn run() {
         .build(context)
         .expect("error while building tauri application")
         .run(|_app, _event| {
+            if let (tauri::RunEvent::Exit, Some(storage)) = (&_event, _app.try_state::<crate::drag_storage::DragStorage>()) {
+                storage.cleanup();
+            }
             // Dock click on macOS while the window is hidden in the tray.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { has_visible_windows, .. } = _event {

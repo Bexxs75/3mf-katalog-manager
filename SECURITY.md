@@ -8,7 +8,7 @@ Security fixes are made for the **latest release** only. Please update to the ne
 
 | Version | Security fixes |
 |---|---|
-| latest release (currently 0.14.x) | yes |
+| latest stable release | yes |
 | older versions | no, please update |
 
 ## Reporting a vulnerability
@@ -39,6 +39,8 @@ The desktop app (this repository) and the website [3mfkatalog.de](https://3mfkat
 These apply to the optional `katalog-server` (browser access). They are known limits, not vulnerabilities to report:
 
 - **Do not share a model root, the upload directory or the config folder with untrusted local writers.** Path checks guard against traversal and symlinks, but they cannot protect against another local user who may rename or replace directories in the same tree at the same time.
+- **Initial password in logs.** Without a supplied initial password, the generated password remains in the server/container log even after it is changed. Change it immediately after first sign-in; restrict log access and retention. Changing the password does not erase old log copies.
+- **Hard links.** Path containment cannot identify an in-root hard link to a file outside the allowed roots. Only trusted local users may write to the roots.
 - **Cookies are not separated by port.** The session cookie (`katalog_session`) is also sent to other HTTP services on the same host name. Use a dedicated host or domain name for the catalog.
 - **Older kernels without mount IDs.** File management (`KATALOG_FILE_OPS=1`) detects mount-point crossings via the mount ID. Where the kernel does not provide it, only the device ID is compared, so a bind mount of the same device inside a root is not detected.
 - **Do not expose the server directly to the internet.** It is built for a home network, a VPN (for example Tailscale) or an HTTPS reverse proxy that shields it. It has no HTTPS of its own, so without one the password and the session cookie travel unencrypted. Do not forward its port on your router and do not publish it through a public tunnel (for example Tailscale Funnel).
@@ -54,7 +56,7 @@ Sicherheitskorrekturen gibt es nur für die **neueste Version**. Bitte aktualisi
 
 | Version | Sicherheitskorrekturen |
 |---|---|
-| neueste Version (derzeit 0.14.x) | ja |
+| neueste stabile Version | ja |
 | ältere Versionen | nein, bitte aktualisieren |
 
 ### Sicherheitslücke melden
@@ -85,6 +87,8 @@ Die Desktop-App (dieses Repository) und die Webseite [3mfkatalog.de](https://3mf
 Diese gelten für den optionalen `katalog-server` (Zugriff per Browser). Es sind bekannte Grenzen, keine zu meldenden Sicherheitslücken:
 
 - **Modellwurzeln, Upload-Ordner und Konfigurationsordner nicht mit nicht vertrauenswürdigen lokalen Schreibern teilen.** Pfadprüfungen schützen vor Pfad-Tricks und Symlinks, nicht aber vor einem anderen lokalen Benutzer, der im selben Baum gleichzeitig Verzeichnisse umbenennen oder ersetzen darf.
+- **Erstpasswort im Protokoll.** Ohne vorgegebenes Erstpasswort bleibt das erzeugte Passwort auch nach einer Änderung im Server-/Containerprotokoll. Nach der ersten Anmeldung sofort ändern; Protokollzugriff und Aufbewahrung beschränken. Eine Passwortänderung löscht alte Protokollkopien nicht.
+- **Hardlinks.** Die Pfadprüfung erkennt nicht, dass ein Hardlink innerhalb der erlaubten Wurzeln auf eine Datei außerhalb verweist. Nur vertrauenswürdige lokale Benutzer dürfen die Wurzeln beschreiben.
 - **Cookies sind nicht nach Port getrennt.** Das Sitzungscookie (`katalog_session`) geht auch an andere HTTP-Dienste auf demselben Hostnamen. Für den Katalog einen eigenen Host- oder Domainnamen verwenden.
 - **Ältere Kernel ohne Mount-ID.** Die Dateiverwaltung (`KATALOG_FILE_OPS=1`) erkennt Mountpunkt-Übergänge über die Mount-ID. Liefert der Kernel sie nicht, wird nur die Geräte-ID verglichen; ein Bind-Mount desselben Geräts innerhalb einer Wurzel wird dann nicht erkannt.
 - **Den Server nicht direkt ins Internet stellen.** Er ist für ein Heimnetz, ein VPN (zum Beispiel Tailscale) oder einen abschirmenden HTTPS-Reverse-Proxy gedacht. Er hat kein eigenes HTTPS; ohne eines laufen Passwort und Sitzungs-Cookie unverschlüsselt. Seinen Port nicht im Router weiterleiten und nicht über einen öffentlichen Tunnel (zum Beispiel Tailscale Funnel) veröffentlichen.

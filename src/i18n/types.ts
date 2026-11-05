@@ -2113,6 +2113,8 @@ export interface Translations {
   owViewerLabel: string;
   dgSwitchLabel: string;
   dgSwitchHint: string;
+  dgHandle: string;
+  dgStepHint: string;
   errDragDisabled: string;
   errDragFileMissing: string;
   errDragNotSliceable: string;
