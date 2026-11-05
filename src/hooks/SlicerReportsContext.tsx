@@ -53,6 +53,9 @@ export function SlicerReportsProvider({ children }: { children: ReactNode }) {
     listen(api.SLICER_REPORTS_EVENT, () => { void refresh(); }).then((fn) => {
       if (!alive.current) fn();
       else unlisten = fn;
+    }).catch((e) => {
+      // Without the event the focus and timer refreshes below still pick up new reports.
+      console.warn('[slicer-reports] could not listen for new reports:', e);
     });
     void refresh();
     const onFocus = () => { void refresh(); };
