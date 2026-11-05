@@ -690,6 +690,51 @@ To get the usage, open the file in your slicer (for example Bambu Studio or Orca
 plate and export it as a sliced plate, that is a 3MF with slicer data. The detail page then shows
 the real usage. For a file that is already in the catalog, "Rescan metadata" re-reads the values.
 
+### G-code and resin files
+
+Besides models, the catalog can hold files that were already sliced. **G-code** (`.gcode`, `.bgcode`) and **resin**
+files (`.ctb`, `.cbddlp`, `.goo`, `.pwmx`, `.pwms`, `.sl1`) are added one by one (Import → Files, or drag and drop). A
+folder, archive or source-folder run never takes them in by itself. Project files of resin slicers (`.lys`,
+`.chitubox`, `.voxl`) are not accepted.
+
+- **G-code** entries show a "G-Code" or "bgcode" badge, the embedded preview picture (otherwise "No preview") and, in the
+  detail view and panel, the card **Print data (from slicer)** instead of the 3D viewer: print time, filament use
+  per filament, layer height, nozzle, temperatures, filament types and colors, target printer, slicer and version. The app only
+  reads what the slicer wrote into the file (the first and last 256 KiB of a text file) and never calculates anything: missing
+  values and placeholders stay unknown, a file without a slicer line says "No print data recognised", and a damaged binary file
+  is marked as unreadable. "Rescan metadata" (or Settings → Catalog → "Read print data") reads entries added
+  earlier. "Is there enough filament?" works on a G-code file like on a 3MF; if only lengths are stated (CuraEngine), there
+  is no weight, cost or check. There is no "Open in slicer" and no 3D snapshot for G-code.
+- **Resin** entries are only catalogued: name, size, folder, tags, notes and trash work as usual, the ending (CTB, GOO …)
+  is shown as a badge, and nothing of the content is read. The filter bar offers "File type: Resin" as soon as such files exist.
+  In the web version these files can be uploaded; an `.sl1` must be a ZIP container, and none of them is ever opened or unpacked.
+
+### Dropping onto a folder
+
+Files and folders dragged from the file manager onto a folder in the sidebar are moved into that folder (like "Import →
+Files"); a dropped folder becomes a subfolder with its structure. The folder under the pointer is framed and says where the
+files go. The catalog folder itself and a missing folder are no targets: nothing is imported, and a message says why. Dropped
+beside the tree, files stay where they are, as before.
+
+### Saving a model as STL
+
+3MF, OBJ and STEP models can be saved as a binary **STL** from the context menu, the detail page and the detail panel (not for STL
+files, not in the web version). For a 3MF with several plates you choose everything or one plate. STL stores neither colors nor
+materials, and positions follow the build plate. An existing file is never overwritten.
+
+### More companion formats
+
+Besides pictures, PDF and text, a model can keep FreeCAD (`.fcstd`), OpenSCAD (`.scad`), DXF, CSV, Word (`.docx`) and OpenDocument
+text (`.odt`) files as [companion files](#companion-files). They are stored and handed back, never opened by the program: the app
+offers "Show in file manager" instead of "Open".
+
+### What do you print with?
+
+In Settings → General you choose **Filament**, **Resin** or **Both** (the default). A new installation asks once on first start;
+an existing one only shows a small notice and keeps showing everything until you choose. With "Filament" the resin switch and resin
+printers are hidden; with "Resin" the stock shows resin only, and the filament check and cost estimate are hidden. Nothing is deleted:
+hidden data returns when you change the choice. The browser version shows the choice but changes it only in the desktop app.
+
 ## Quick actions: context menu and multi-select
 
 Right-clicking a model opens a context menu with the most important actions:
@@ -2130,6 +2175,52 @@ Um den Verbrauch zu bekommen, öffnest du die Datei in deinem Slicer (z. B. Bamb
 OrcaSlicer), slicest die Platte und exportierst sie als geslicte Platte, also als 3MF mit
 Slicer-Daten. Die Detailseite zeigt dann den echten Verbrauch. Bei einer Datei, die schon im
 Katalog ist, liest „Metadaten neu einlesen“ die Werte neu ein.
+
+### G-Code- und Resin-Dateien
+
+Neben Modellen kann der Katalog auch bereits gesliceste Dateien aufnehmen. **G-Code** (`.gcode`, `.bgcode`) und **Resin**-Dateien
+(`.ctb`, `.cbddlp`, `.goo`, `.pwmx`, `.pwms`, `.sl1`) werden einzeln hinzugefügt (Import → Dateien oder Ziehen und Ablegen). Ein
+Ordner-, Archiv- oder Quellordner-Lauf nimmt sie nie von selbst auf. Projektdateien von Resin-Slicern (`.lys`, `.chitubox`, `.voxl`)
+werden nicht angenommen.
+
+- **G-Code**-Einträge zeigen ein Kennzeichen „G-Code“ oder „bgcode“, das eingebettete Vorschaubild (sonst „Keine Vorschau“) und in der
+  Detailansicht und im Panel die Karte **Druckdaten (vom Slicer)** statt des 3D-Viewers: Druckzeit, Filamentverbrauch je Filament,
+  Schichthöhe, Düse, Temperaturen, Filamentarten und -farben, Zieldrucker, Slicer und Version. Das Programm liest nur, was der Slicer in
+  die Datei geschrieben hat (bei Textdateien die ersten und letzten 256 KiB), und rechnet nie etwas aus: Fehlende Werte und Platzhalter
+  bleiben unbekannt, eine Datei ohne Slicer-Zeile meldet „Keine Druckdaten erkannt“, eine beschädigte Binärdatei wird als unlesbar
+  markiert. „Metadaten neu einlesen“ (oder Einstellungen → Katalog → „Druckdaten einlesen“) liest früher aufgenommene Einträge. „Reicht das
+  Filament?“ funktioniert bei G-Code wie bei 3MF; werden nur Längen angegeben (CuraEngine), gibt es kein Gewicht, keine Kosten und keine
+  Prüfung. „Im Slicer öffnen“ und ein 3D-Schnappschuss gibt es für G-Code nicht.
+- **Resin**-Einträge werden nur katalogisiert: Name, Größe, Ordner, Tags, Notizen und Papierkorb funktionieren wie sonst, die
+  Endung (CTB, GOO …) erscheint als Kennzeichen, vom Inhalt wird nichts gelesen. Die Filterleiste bietet „Dateiart: Resin“, sobald es
+  solche Dateien gibt. In der Web-Version lassen sich diese Dateien hochladen; eine `.sl1` muss ein ZIP-Container sein, und keine davon
+  wird je geöffnet oder entpackt.
+
+### Auf einen Ordner ziehen
+
+Dateien und Ordner, die aus dem Dateimanager auf einen Ordner in der Seitenleiste gezogen werden, landen in diesem Ordner (wie
+„Import → Dateien“); ein abgelegter Ordner wird zu einem Unterordner mit seiner Struktur. Der Ordner unter dem Zeiger wird umrahmt und
+sagt, wohin die Dateien gehen. Der Katalogordner selbst und ein fehlender Ordner sind keine Ziele: Es wird nichts importiert, und eine
+Meldung nennt den Grund. Neben dem Baum abgelegt, bleiben Dateien wie bisher an ihrem Ort.
+
+### Modell als STL speichern
+
+3MF-, OBJ- und STEP-Modelle lassen sich über das Kontextmenü, die Detailseite und das Detailpanel als binäre **STL** speichern (nicht
+für STL-Dateien, nicht in der Web-Version). Bei einer 3MF mit mehreren Platten wählst du alles oder eine Platte. STL kennt weder Farben
+noch Materialien, und die Positionen folgen dem Druckbett. Eine vorhandene Datei wird nie überschrieben.
+
+### Weitere Begleitdatei-Formate
+
+Neben Bildern, PDF und Text kann ein Modell auch FreeCAD- (`.fcstd`), OpenSCAD- (`.scad`), DXF-, CSV-, Word- (`.docx`) und
+OpenDocument-Text-Dateien (`.odt`) als [Begleitdateien](#begleitdateien) behalten. Sie werden gespeichert und zurückgegeben, aber nie vom
+Programm geöffnet: Statt „Öffnen“ bietet die App „Im Dateimanager zeigen“ an.
+
+### Womit druckst du?
+
+In Einstellungen → Allgemein wählst du **Filament**, **Resin** oder **Beides** (Standard). Eine Neuinstallation fragt einmal beim ersten Start;
+eine bestehende zeigt nur einen kleinen Hinweis und zeigt weiter alles, bis du wählst. Bei „Filament“ sind der Resin-Schalter und die
+Resin-Drucker ausgeblendet; bei „Resin“ zeigt der Bestand nur Resin, Filament-Prüfung und Kostenschätzung entfallen. Nichts wird gelöscht:
+Ausgeblendete Daten kommen mit der Auswahl zurück. Die Browser-Version zeigt die Auswahl, ändert sie aber nur in der Desktop-App.
 
 ## Schnelle Aktionen: Kontextmenü und Mehrfachauswahl
 
