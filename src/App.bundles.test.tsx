@@ -49,25 +49,31 @@ async function open() {
 const cardIds = (main: HTMLElement) => [...main.querySelectorAll('[role="row"][data-model-id]')].map(row => row.getAttribute('data-model-id'));
 
 // The names sort as Benchy small, Benchy, Cube; the bundle "Harbour" sorts after Cube.
-it('keeps every file on its own card at first and marks the bundle members', async () => {
+it('shows the bundle as one card at first, with the switch on', async () => {
   const main = await open();
-  await waitFor(() => expect(screen.getByRole('switch', { name: de.bundleCollapseToggle })).toBeInTheDocument());
-  expect(screen.getByRole('switch', { name: de.bundleCollapseToggle })).toHaveAttribute('aria-checked', 'false');
-  expect(cardIds(main)).toEqual(['2', '1', '3']);
-  expect(main.querySelectorAll('[data-part-of]')).toHaveLength(2);
-});
-
-it('shows the bundle as one card after the switch is turned on, and remembers the choice', async () => {
-  const main = await open();
-  fireEvent.click(await screen.findByRole('switch', { name: de.bundleCollapseToggle }));
+  const toggle = await screen.findByRole('switch', { name: de.bundleCollapseToggle });
   await waitFor(() => expect(cardIds(main)).toEqual(['3', '1']));
+  expect(toggle).toHaveAttribute('aria-checked', 'true');
   // The grid stays hidden until it has a measured width, which jsdom never gives, so look it up by attribute.
   expect(main.querySelector('[data-bundle-id="b1"]')).toHaveAttribute('aria-label', 'Bündel Harbour, 2 Varianten');
-  expect(localStorage.getItem('3mf-katalog-bundle-collapse')).toBe('on');
 });
 
-it('starts with the bundle as one card when the choice was saved, and finds it by its name', async () => {
-  localStorage.setItem('3mf-katalog-bundle-collapse', 'on');
+it('keeps every file on its own card after the switch is turned off, marks the members and remembers the choice', async () => {
+  const main = await open();
+  fireEvent.click(await screen.findByRole('switch', { name: de.bundleCollapseToggle }));
+  await waitFor(() => expect(cardIds(main)).toEqual(['2', '1', '3']));
+  expect(main.querySelectorAll('[data-part-of]')).toHaveLength(2);
+  expect(localStorage.getItem('3mf-katalog-bundle-collapse')).toBe('off');
+});
+
+it('keeps every file single at the start when "off" was saved', async () => {
+  localStorage.setItem('3mf-katalog-bundle-collapse', 'off');
+  const main = await open();
+  await waitFor(() => expect(screen.getByRole('switch', { name: de.bundleCollapseToggle })).toHaveAttribute('aria-checked', 'false'));
+  expect(cardIds(main)).toEqual(['2', '1', '3']);
+});
+
+it('finds the bundle by its name while it is shown as a card', async () => {
   const main = await open();
   await waitFor(() => expect(cardIds(main)).toEqual(['3', '1']));
   fireEvent.change(screen.getByPlaceholderText(de.searchPlaceholder), { target: { value: 'harbour' } });
@@ -75,6 +81,7 @@ it('starts with the bundle as one card when the choice was saved, and finds it b
 });
 
 it('does not find the files by the bundle name while the bundle is not shown as a card', async () => {
+  localStorage.setItem('3mf-katalog-bundle-collapse', 'off');
   const main = await open();
   await screen.findByRole('switch', { name: de.bundleCollapseToggle });
   fireEvent.change(screen.getByPlaceholderText(de.searchPlaceholder), { target: { value: 'harbour' } });

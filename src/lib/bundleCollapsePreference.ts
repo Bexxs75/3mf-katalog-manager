@@ -1,11 +1,11 @@
 const STORAGE_KEY = '3mf-katalog-bundle-collapse';
 
-/** Whether the catalog shows a bundle as one card; off unless the user turned it on, also without readable storage. */
+/** Whether the catalog shows a bundle as one card; on unless the user turned it off, also without readable storage. */
 export function loadBundleCollapse(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'on';
+    return localStorage.getItem(STORAGE_KEY) !== 'off';
   } catch {
-    return false;
+    return true;
   }
 }
 

@@ -50,7 +50,7 @@ it('offers no switch while the catalog has no bundle', () => {
   expect(screen.queryByRole('switch', { name: 'Bündel als eine Karte zeigen' })).toBeNull();
 });
 
-it('offers the switch off by default once bundles exist, and reports the choice', () => {
+it('offers the switch once bundles exist (off while the caller says so), and reports the choice', () => {
   const setCollapse = vi.fn();
   setup({ bundles: [bundle], setCollapseBundles: setCollapse });
   const toggle = screen.getByRole('switch', { name: 'Bündel als eine Karte zeigen' });

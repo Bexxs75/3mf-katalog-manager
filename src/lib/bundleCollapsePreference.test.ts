@@ -4,8 +4,8 @@ import { loadBundleCollapse, saveBundleCollapse } from './bundleCollapsePreferen
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
 
 describe('bundle collapse preference', () => {
-  it('is off until the user turns it on', () => {
-    expect(loadBundleCollapse()).toBe(false);
+  it('is on until the user turns it off', () => {
+    expect(loadBundleCollapse()).toBe(true);
   });
 
   it('remembers both choices', () => {
@@ -15,15 +15,17 @@ describe('bundle collapse preference', () => {
     expect(loadBundleCollapse()).toBe(false);
   });
 
-  it('reads an unknown value as off', () => {
-    localStorage.setItem('3mf-katalog-bundle-collapse', 'maybe');
+  it('keeps a saved off, and reads an unknown value as the default', () => {
+    localStorage.setItem('3mf-katalog-bundle-collapse', 'off');
     expect(loadBundleCollapse()).toBe(false);
+    localStorage.setItem('3mf-katalog-bundle-collapse', 'maybe');
+    expect(loadBundleCollapse()).toBe(true);
   });
 
   it('works without readable or writable storage', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
-    expect(loadBundleCollapse()).toBe(false);
+    expect(loadBundleCollapse()).toBe(true);
     expect(() => saveBundleCollapse(true)).not.toThrow();
   });
 });
