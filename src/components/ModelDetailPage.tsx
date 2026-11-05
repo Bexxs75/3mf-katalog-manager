@@ -33,6 +33,8 @@ import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { SourcePlatformRows } from './SourcePlatformRows';
 import { isSafeHttpUrl } from '../lib/safeUrl';
+import { GcodePreview } from './GcodePreview';
+import { isGcode } from '../lib/fileKind';
 import { ModelPreview } from './ModelPreview';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
@@ -49,7 +51,7 @@ import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { FilamentUsageMissing } from './FilamentUsageMissing';
 import { isFilamentUsageMissing } from '../lib/filamentUsageHelp';
-import { showsPrintData } from '../lib/printData';
+import { isWeightUnknown, showsPrintData } from '../lib/printData';
 import { PrintDataCard } from './PrintDataCard';
 
 interface Props {
@@ -155,6 +157,7 @@ export function ModelDetailPage({
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const imageUpload = useImageUpload(model?.id, onUploadImage);
+  const gcode = isGcode(model);
   const { language } = useLanguage();
   const [addToCollectionMenuOpen, setAddToCollectionMenuOpen] = useState(false);
   const {
@@ -172,8 +175,10 @@ export function ModelDetailPage({
   );
 
   const rows = buildMetaRows(model, t, language);
+  // Lengths without a weight (Cura) leave nothing to compare with the spools.
+  const weightKnown = model.sliceInfo !== null && !isWeightUnknown(model.sliceInfo);
   const filamentCheck = useFilamentCheck(
-    model.sliceInfo ? [model.id] : [],
+    weightKnown ? [model.id] : [],
     JSON.stringify(model.sliceInfo ?? null),
   );
 
@@ -262,7 +267,9 @@ export function ModelDetailPage({
               if (event.target === event.currentTarget || event.target instanceof HTMLCanvasElement) event.currentTarget.focus();
             }}
             className="relative rounded-[10px] border border-[var(--line)] bg-[var(--plate)] overflow-hidden">
-            {showCustomImage && resolvedImage ? (
+            {gcode ? (
+              <GcodePreview model={model} surfaceClassName="aspect-[4/3]" />
+            ) : showCustomImage && resolvedImage ? (
               <img src={resolvedImage} alt={displayName(model.name)} className="aspect-[4/3] w-full object-contain" />
             ) : (
               <ModelPreview surfaceClassName="aspect-[4/3]"
@@ -274,7 +281,7 @@ export function ModelDetailPage({
                 showRotationControls
               />
             )}
-            {resolvedImage && (
+            {resolvedImage && !gcode && (
               <div className="absolute top-3 right-3 flex bg-[var(--panel-2)] border border-[var(--line)] rounded-full overflow-hidden font-medium tabular-nums text-caption">
                 <button
                   data-detail-view-toggle
@@ -398,7 +405,7 @@ export function ModelDetailPage({
         </div>
       </div>
 
-      <BuildPlateFit model={model} printers={printers} variant="page" />
+      {!gcode && <BuildPlateFit model={model} printers={printers} variant="page" />}
 
       {/* The web build lists and downloads companions only; the desktop section also edits them. */}
       <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
@@ -415,7 +422,7 @@ export function ModelDetailPage({
           key={model.id}
           model={model}
           variant="page"
-          footer={model.sliceInfo && (
+          footer={weightKnown && (
             <>
               <FilamentCheckSection
                 check={filamentCheck.checks?.get(model.id) ?? null}
@@ -625,7 +632,7 @@ export function ModelDetailPage({
           <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-          {!container && (<>{!isReadOnly() && <button
+          {!container && !gcode && (<>{!isReadOnly() && <button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}
             className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-body font-semibold disabled:opacity-50"

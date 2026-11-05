@@ -911,6 +911,17 @@ export interface Translations {
   printDataNoDataChip: string;
   printDataNoDataHint: string;
   printDataNotRecognizedHint: string;
+  fileKindFilter: string;
+  fileKindAll: string;
+  fileKindModels: string;
+  fileKindGcode: string;
+  previewLabelNone: string;
+  gcodeNoPreviewTitle: string;
+  gcodeNoPreviewBody: string;
+  printDataNotRecognizedChip: string;
+  printDataGcodeNotRecognizedHint: string;
+  printDataGcodeNothingKnown: string;
+  printDataLengthOnly: string;
   printDataUnreadableHint: string;
   printDataSettingsUnreadable: string;
   printDataWeight: string;

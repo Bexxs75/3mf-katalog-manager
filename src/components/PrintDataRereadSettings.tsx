@@ -5,7 +5,7 @@ import { usePrintDataReread } from '../hooks/usePrintDataReread';
 import { useCanEditMetadata } from '../lib/webSession';
 import { PrintDataRereadJob } from './PrintDataRereadJob';
 
-/** Settings block (catalog tab): reads the print data of all 3MF files that were not read yet. */
+/** Settings block (catalog tab): reads the print data of all 3MF and G-code files that were not read yet. */
 export function PrintDataRereadSettings() {
   const t = useT();
   const canEdit = useCanEditMetadata();

@@ -13,6 +13,7 @@ import { formatBytes, formatVolumeCm3 } from '../i18n/format';
 import { BulkCheckbox } from './BulkCheckbox';
 import { shortTagLabel, tagLabel } from '../lib/autoTags';
 import { useActivePrintFilter } from '../hooks/PrintFilterContext';
+import { fileKindOf, gcodeBadge } from '../lib/fileKind';
 import { missingFilterNames } from './PrintFactsExtra';
 import { FILTER_LABEL_KEY } from '../lib/printFilterLabels';
 
@@ -70,7 +71,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           role="row"
           aria-rowindex={window.startIndex + index + 2}
           {...selectionAria(m.id)}
-          aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
+          aria-label={fileKindOf(m) === 'gcode' ? `${modelLicenseAriaLabel(displayName(m.name), m.license, t)}, ${gcodeBadge(m.path)}` : modelLicenseAriaLabel(displayName(m.name), m.license, t)}
           tabIndex={-1}
           onClick={() => onSelect(m.id)}
           onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -101,6 +102,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           <span role="gridcell" className="flex items-center gap-1.5 min-w-0">
             {onDragFileStart && !readOnly && canEdit && <DragGrip />}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
+            {fileKindOf(m) === 'gcode' && <span data-kind-badge aria-hidden="true" className="flex-none font-bold tracking-[0.05em] text-caption px-1.5 py-px rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">{gcodeBadge(m.path)}</span>}
             <LicenseBadge license={m.license} />
             {printFilter && (() => {
               const missing = missingFilterNames(m, printFilter, key => t(FILTER_LABEL_KEY[key]) as string);

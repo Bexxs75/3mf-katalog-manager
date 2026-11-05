@@ -31,6 +31,7 @@ import { invoke } from './lib/transport';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { isWebGLUnavailable } from './lib/webglAvailability';
+import { fileKindOf } from './lib/fileKind';
 import { nextRendererGeneration, snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -339,6 +340,7 @@ export default function App() {
     filters.setActiveTag(null);
     filters.setUsage(null);
     filters.setPrintStatus(null);
+    filters.setFileKind('all');
     filters.setFitPrinterId(null);
     filters.setPrintFilter(EMPTY_FILTER);
     filters.setQuery('');
@@ -406,11 +408,12 @@ export default function App() {
     })
       .filter(model => !filters.printStatus || (model.printStatus === 'printed') === (filters.printStatus === 'printed'))
       .filter(model => !filters.usage || licenseUsage(model.license) === filters.usage)
+      .filter(model => filters.fileKind === 'all' || fileKindOf(model) === filters.fileKind)
       .filter(model => !filters.fitBed || modelMayFitBed(model.dimensionsMm, filters.fitBed));
     // The print data filter applies in a collection as well; the notice counts what it holds back there.
     const split = splitByPrintData(members, filters.printFilter);
     return { displayedModels: split.visible, printNotice: { hidden: split.hidden, shownUnknown: split.shownUnknown, unread: split.unread } };
-  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printNotice, filters.printFilter, filters.printStatus, filters.usage, filters.fitBed, store.models]);
+  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printNotice, filters.printFilter, filters.printStatus, filters.usage, filters.fileKind, filters.fitBed, store.models]);
   const filteredIds = displayedModels.map(model => model.id);
   const navigateDetail = (direction: DetailDirection) => {
     const id = detailNeighbor(filteredIds, detailModelId, direction);
@@ -479,6 +482,7 @@ export default function App() {
     filters.query,
     filters.usage,
     filters.printStatus,
+    filters.fileKind,
     filters.fitPrinterId,
     filters.printFilter,
     collections.activeCollection,
@@ -750,6 +754,8 @@ export default function App() {
               setModelLicenses={store.setModelLicenses}
               printStatus={filters.printStatus}
               setPrintStatus={filters.setPrintStatus}
+              fileKind={filters.fileKind}
+              setFileKind={filters.setFileKind}
               usage={filters.usage}
               setUsage={filters.setUsage}
               printers={printers.printers}

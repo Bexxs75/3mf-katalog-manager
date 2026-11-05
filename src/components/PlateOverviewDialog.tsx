@@ -90,7 +90,7 @@ export function PlateOverviewDialog({ model, onClose, onReread }: Props) {
   const missing = <><span aria-hidden="true" className="text-[var(--ink-2)]">–</span><span className="sr-only">{t('poNotGiven')}</span></>;
   const waiting = <span aria-hidden="true" className="text-[var(--ink-3)]">…</span>;
 
-  const plateRows: PlateRow[] = rows.map(row => ({ plateIndex: row.plateIndex, name: row.name, printSeconds: row.printSeconds, weightG: row.weightG, filaments: [] }));
+  const plateRows: PlateRow[] = rows.map(row => ({ plateIndex: row.plateIndex, name: row.name, printSeconds: row.printSeconds, weightG: row.weightG, weightUnknown: false, filaments: [] }));
   const time = sumPrintTime(plateRows);
   const weightKnown = rows.filter(row => row.weightG !== null).length;
   const weight = sumWeightG(plateRows);

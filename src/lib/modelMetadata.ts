@@ -1,5 +1,6 @@
 import type { ModelFile } from '../types';
 import type { Language, Translations } from '../i18n/types';
+import { isGcode } from './fileKind';
 import { formatBytes, formatDate, formatDimensions, formatVolumeCm3, formatWeightG } from '../i18n/format';
 
 export type TFunction = <K extends keyof Translations>(key: K) => Translations[K];
@@ -22,14 +23,18 @@ export function buildMetaRows(
         : `≈ ${formatWeightG(model.estimatedWeightG, language)}`;
   const weightLabel = model.weightSource === 'slicer' ? t('metaWeightFromSlicer') : t('metaWeight');
 
+  // Slicer output has no model shape: size, volume and object count would only ever be empty.
+  const gcode = isGcode(model);
   const rows = [
-    { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
-    { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
+    ...(gcode ? [] : [
+      { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
+      { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
+    ]),
     { label: weightLabel, value: weightValue },
-    { label: t('metaObjectCount'), value: objectCountValue },
+    ...(gcode ? [] : [{ label: t('metaObjectCount'), value: objectCountValue }]),
   ];
 
-  if (model.plateCount != null) {
+  if (model.plateCount != null && !gcode) {
     rows.push({ label: t('metaPlateCount'), value: String(model.plateCount) });
   }
 

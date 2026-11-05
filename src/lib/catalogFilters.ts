@@ -3,12 +3,15 @@ import { isFileInFolderOrDescendant } from './folderTree';
 import { tagMatches } from './autoTags';
 import { applyToolView, type RecentSnapshot, type ToolView } from './toolViews';
 import { modelMayFitBed, type Dimensions3 } from './buildPlateFit';
+import { fileKindOf, type FileKindFilter } from './fileKind';
 import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, SortKey, SortDirection } from '../types';
 
 export interface CatalogFilterCriteria {
   printStatus?: ModelFile['printStatus'] | null;
   usage?: LicenseUsage | null;
+  // Models only, slicer output only, or both (default): keeps G-code from flooding the model list.
+  fileKind?: FileKindFilter;
   // Build volume of the chosen printer; hides models that certainly do not fit.
   // Models without known size stay visible.
   fitBed?: Dimensions3 | null;
@@ -62,6 +65,7 @@ export function filterAndSortModels(
   const matched = base
     .filter(m => !criteria.printStatus || (m.printStatus === 'printed') === (criteria.printStatus === 'printed'))
     .filter(m => !criteria.usage || licenseUsage(m.license) === criteria.usage)
+    .filter(m => !criteria.fileKind || criteria.fileKind === 'all' || fileKindOf(m) === criteria.fileKind)
     .filter(m => !criteria.fitBed || modelMayFitBed(m.dimensionsMm, criteria.fitBed))
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))

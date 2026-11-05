@@ -1,4 +1,5 @@
-import type { FilamentUsage, ModelFile, PrintDataState, PrintFacts } from '../types';
+import type { FilamentUsage, ModelFile, PrintDataState, PrintFacts, SliceInfo } from '../types';
+import { isGcodePath } from './fileKind';
 
 /**
  * Display state of the print-data card. The first four are the stored slice
@@ -15,7 +16,10 @@ export interface PlateRow {
   name: string | null;
   /** Estimated print time; the first-layer time is never used here. */
   printSeconds: number | null;
+  /** Null when the file gives none (`weightUnknown` tells a length-only usage from a missing one). */
   weightG: number | null;
+  /** The slicer reported lengths but no weight (CuraEngine): the stored 0 g are not a weight. */
+  weightUnknown: boolean;
   filaments: FilamentUsage[];
 }
 
@@ -65,6 +69,21 @@ function mixedNumber(value: { value: number | null; mixed: boolean }): SharedVal
   return value.value === null ? missing : { kind: 'value', value: value.value };
 }
 
+/** A filament whose weight the file does not give: a length next to 0 g (a used filament never weighs 0 g). */
+export function isFilamentWeightUnknown(filament: FilamentUsage): boolean {
+  return filament.usedG <= 0 && filament.usedM > 0;
+}
+
+/**
+ * Same rule as the backend's `SliceInfo::weight_unknown`: every filament has a length and no weight, and
+ * the total is 0. Such a usage must never be shown, summed or checked as grams.
+ */
+export function isWeightUnknown(slice: Pick<SliceInfo, 'totalWeightG' | 'plates'> | null): boolean {
+  if (slice === null || slice.totalWeightG > 0) return false;
+  const filaments = slice.plates.flatMap(plate => plate.filaments);
+  return filaments.length > 0 && filaments.every(isFilamentWeightUnknown);
+}
+
 /** Time sum over plate rows: known plates only, in seconds. */
 export function sumPrintTime(rows: readonly PlateRow[]): TimeSum {
   let seconds = 0;
@@ -81,19 +100,21 @@ export function sumPrintTime(rows: readonly PlateRow[]): TimeSum {
 function plateRows(model: Pick<ModelFile, 'sliceInfo' | 'printInfo'>, useInfo: boolean): PlateRow[] {
   const infoByIndex = new Map((useInfo ? model.printInfo?.plates ?? [] : []).map(p => [p.plateIndex, p]));
   if (model.sliceInfo) {
+    const weightUnknown = isWeightUnknown(model.sliceInfo);
     return model.sliceInfo.plates.map(plate => {
       const info = infoByIndex.get(plate.plateIndex);
       return {
         plateIndex: plate.plateIndex,
         name: info?.name ?? null,
         printSeconds: info?.printSeconds ?? null,
-        weightG: plate.weightG,
+        weightG: weightUnknown ? null : plate.weightG,
+        weightUnknown,
         filaments: plate.filaments,
       };
     });
   }
   return [...infoByIndex.values()].map(info => ({
-    plateIndex: info.plateIndex, name: info.name, printSeconds: info.printSeconds, weightG: null, filaments: [],
+    plateIndex: info.plateIndex, name: info.name, printSeconds: info.printSeconds, weightG: null, weightUnknown: false, filaments: [],
   }));
 }
 
@@ -150,9 +171,14 @@ export function sumWeightG(rows: readonly PlateRow[]): number | null {
   return known.length === 0 ? null : known.reduce((total, row) => total + (row.weightG ?? 0), 0);
 }
 
-/** True for a 3MF whose print data are loaded in full (not a list summary, not a trash record without them). */
+/** A file that carries slicer data: a 3MF, or the G-code a slicer wrote. Models without them (STL, OBJ, STEP) have none. */
+export function canHavePrintData(path: string): boolean {
+  return path.toLowerCase().endsWith('.3mf') || isGcodePath(path);
+}
+
+/** True for a 3MF or G-code file whose print data are loaded in full (not a list summary, not a trash record without them). */
 export function showsPrintData(model: Pick<ModelFile, 'path' | 'summaryOnly' | 'deletedAt'>): boolean {
-  return model.path.toLowerCase().endsWith('.3mf') && !model.summaryOnly && model.deletedAt === null;
+  return canHavePrintData(model.path) && !model.summaryOnly && model.deletedAt === null;
 }
 
 /**
@@ -161,7 +187,7 @@ export function showsPrintData(model: Pick<ModelFile, 'path' | 'summaryOnly' | '
  */
 export function printDataStateOf(model: Pick<ModelFile, 'path' | 'printDataState' | 'printInfo'>): PrintDataState {
   if (model.printDataState) return model.printDataState;
-  if (!model.path.toLowerCase().endsWith('.3mf')) return 'none';
+  if (!canHavePrintData(model.path)) return 'none';
   return model.printInfo?.readerCurrent ? model.printInfo.sliceState : 'unread';
 }
 
@@ -189,10 +215,10 @@ export function printFactsOf(model: Pick<ModelFile, 'printInfo' | 'printFacts'>)
 }
 
 /**
- * The files a bulk read visits. `all`: every 3MF whose print data are not read yet or were read by
+ * The files a bulk read visits. `all`: every 3MF or G-code file whose print data are not read yet or were read by
  * another reader version (any slicer, with or without a slicer weight: a file without print data
- * still gives its project settings). `selected`: the chosen 3MF files, whatever their state (a
- * non-3MF has nothing to read).
+ * still gives its project settings). `selected`: the chosen files, whatever their state (a
+ * model without slicer data has nothing to read).
  */
 export function rereadTargets(
   models: readonly Pick<ModelFile, 'id' | 'path' | 'deletedAt' | 'printDataState' | 'printInfo'>[],

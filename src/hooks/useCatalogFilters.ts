@@ -5,6 +5,7 @@ import type { ModelFile, Folder, ViewMode, SortKey, SortDirection, Printer } fro
 import { printerBuildVolume } from '../lib/buildPlateFit';
 import type { RecentSnapshot, ToolView } from '../lib/toolViews';
 import { defaultSortDirection, filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
+import type { FileKindFilter } from '../lib/fileKind';
 import { EMPTY_FILTER, splitByPrintData, type PrintDataFilter } from '../lib/printDataFilter';
 
 export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de', printers: readonly Printer[] = []) {
@@ -19,6 +20,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   };
   const [printStatus, setPrintStatus] = useState<ModelFile['printStatus'] | null>(null);
   const [usage, setUsage] = useState<LicenseUsage | null>(null);
+  const [fileKind, setFileKind] = useState<FileKindFilter>('all');
   const [fitPrinterChoice, setFitPrinterId] = useState<string | null>(null);
   // Not kept over a restart, like the other filters.
   const [printFilter, setPrintFilter] = useState<PrintDataFilter>(EMPTY_FILTER);
@@ -44,6 +46,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
     const matched = filterAndSortModels(models, folders, {
       usage,
       printStatus,
+      fileKind,
       fitBed,
       activeFolderId,
       activeTag,
@@ -56,7 +59,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
     });
     // After the other filters and the sort: a second pass that keeps the order.
     return splitByPrintData(matched, printFilter);
-  }, [models, folders, usage, printStatus, fitBed, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot, printFilter]);
+  }, [models, folders, usage, printStatus, fileKind, fitBed, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot, printFilter]);
   const filtered = printSplit.visible;
   const printNotice = useMemo(
     () => ({ hidden: printSplit.hidden, shownUnknown: printSplit.shownUnknown, unread: printSplit.unread }),
@@ -68,6 +71,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   return {
     usage, setUsage,
     printStatus, setPrintStatus,
+    fileKind, setFileKind,
     fitPrinterId: fitPrinter?.id ?? null, setFitPrinterId, fitBed,
     printFilter, setPrintFilter, printNotice,
     view, setView,
