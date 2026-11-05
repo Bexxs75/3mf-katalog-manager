@@ -348,11 +348,33 @@ pub fn create_bundle(
     kind: &str,
     ids: &[i64],
 ) -> WriteResult<Outcome<read::BundleDto>> {
+    create_bundle_with(c, name, kind, ids, None, false)
+}
+/// `create_bundle` with member labels and the restore mode of "Undo" (see the desktop variant).
+pub fn create_bundle_with(
+    c: &mut Connection,
+    name: &str,
+    kind: &str,
+    ids: &[i64],
+    labels: Option<Vec<String>>,
+    restore: bool,
+) -> WriteResult<Outcome<read::BundleDto>> {
     count(ids.len())?;
     let kind = bundle_kind(kind)?;
     transaction(c, |c| {
-        let id = db::bundles::create_bundle(c, name, kind, ids, &chrono::Utc::now().to_rfc3339())?;
-        Ok(outcome(bundle_dto(c, id)?, ids.len() as u64))
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let (id, joined) = if restore {
+            let members = super::restore_members(ids, labels)?;
+            let (id, left_out) = db::bundles::restore_bundle(c, name, kind, &members, &created_at)?;
+            (id, ids.len() - left_out)
+        } else {
+            let id = db::bundles::create_bundle(c, name, kind, ids, &created_at)?;
+            if let Some(labels) = labels {
+                db::bundles::label_members(c, ids, &labels)?;
+            }
+            (id, ids.len())
+        };
+        Ok(outcome(bundle_dto(c, id)?, joined as u64))
     })
 }
 pub fn update_bundle(

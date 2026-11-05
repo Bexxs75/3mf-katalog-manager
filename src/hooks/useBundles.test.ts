@@ -111,11 +111,20 @@ describe('useBundles', () => {
       ]);
     });
 
-    it('restores a dissolved bundle from its snapshot', async () => {
+    it('restores a dissolved bundle in one backend call with every member, those in the trash included', async () => {
       const { result } = await ready();
-      await act(async () => { await result.current.restoreBundle({ name: 'Vase', kind: 'variants', members: [{ fileId: '2', label: 'b' }, { fileId: '1', label: '' }] }); });
-      expect(commands()[0]).toEqual(['create_bundle', { name: 'Vase', kind: 'variants', fileIds: ['2', '1'] }]);
-      expect(commands()[1]).toEqual(['update_bundle_member', { fileId: '2', label: 'b' }]);
+      let restored: Awaited<ReturnType<typeof result.current.restoreBundle>>;
+      await act(async () => {
+        restored = await result.current.restoreBundle({
+          name: 'Vase', kind: 'variants',
+          members: [{ fileId: '2', label: 'b', inTrash: false }, { fileId: '1', label: '', inTrash: false }, { fileId: '7', label: 'x', inTrash: true }],
+        });
+      });
+      expect(commands()).toEqual([
+        ['create_bundle', { name: 'Vase', kind: 'variants', fileIds: ['2', '1', '7'], labels: ['b', '', 'x'], restore: true }],
+        ['list_bundles', undefined],
+      ]);
+      expect(restored!).toEqual({ bundle, left: 1 });
     });
 
     it('saves an edit in the order removals, name and kind, title swaps, labels', async () => {

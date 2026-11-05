@@ -233,3 +233,42 @@ fn the_kind_text_round_trips() {
     }
     assert_eq!(BundleKind::parse("other"), None);
 }
+
+#[test]
+fn restoring_a_bundle_brings_back_members_in_the_trash_with_position_and_label() {
+    let conn = connect_in_memory().unwrap();
+    let f = files(&conn, 4);
+    soft_delete_file(&conn, f[2], None, "now").unwrap();
+    let members: Vec<(i64, String)> = vec![(f[1], "A".into()), (f[2], "Lid".into()), (f[0], String::new())];
+    let (id, left_out) = restore_bundle(&conn, "Vase", BundleKind::Parts, &members, "t").unwrap();
+    assert_eq!(left_out, 0);
+    let bundle = get_bundle(&conn, id).unwrap().unwrap();
+    let rows: Vec<_> = bundle.members.iter().map(|m| (m.file_id, m.position, m.label.clone(), m.in_trash)).collect();
+    assert_eq!(rows, vec![(f[1], 0, Some("A".into()), false), (f[2], 1, Some("Lid".into()), true), (f[0], 2, None, false)]);
+}
+
+#[test]
+fn restoring_leaves_out_deleted_and_re_bundled_members_and_counts_them() {
+    let conn = connect_in_memory().unwrap();
+    let f = files(&conn, 5);
+    delete_file(&conn, f[1]).unwrap();
+    create_bundle(&conn, "Other", BundleKind::Parts, &[f[2], f[4]], "t").unwrap();
+    let members: Vec<(i64, String)> = f[..4].iter().map(|id| (*id, String::new())).collect();
+    let (id, left_out) = restore_bundle(&conn, "Vase", BundleKind::Variants, &members, "t").unwrap();
+    assert_eq!(left_out, 2);
+    assert_eq!(member_ids(&conn, id), vec![f[0], f[3]]);
+    assert_eq!(member_ids(&conn, 1), vec![f[2], f[4]], "the other bundle keeps its members");
+}
+
+#[test]
+fn restoring_with_fewer_than_two_members_left_writes_nothing() {
+    let conn = connect_in_memory().unwrap();
+    let f = files(&conn, 3);
+    delete_file(&conn, f[1]).unwrap();
+    let members: Vec<(i64, String)> = vec![(f[0], "x".into()), (f[1], String::new())];
+    assert_eq!(coded(restore_bundle(&conn, "Vase", BundleKind::Parts, &members, "t").unwrap_err()), ErrorCode::BundleTooFewFiles);
+    assert_eq!((count(&conn, "bundles"), count(&conn, "bundle_members")), (0, 0));
+    let bad_label = vec![(f[0], "l".repeat(61)), (f[2], String::new())];
+    assert_eq!(coded(restore_bundle(&conn, "Vase", BundleKind::Parts, &bad_label, "t").unwrap_err()), ErrorCode::BundleLabelInvalid);
+    assert_eq!(count(&conn, "bundles"), 0);
+}

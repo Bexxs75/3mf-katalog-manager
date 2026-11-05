@@ -80,10 +80,19 @@ export function useBundles() {
     }),
     [change],
   );
-  /** Brings back a dissolved bundle from the state it had; members that cannot join any more make it fail. */
+  /**
+   * Brings back a dissolved bundle in one step: order, labels and members in the trash included.
+   * `left` counts the members that could not come back (deleted for good, or in another bundle by now).
+   */
   const restoreBundle = useCallback(
-    (snapshot: BundleSnapshot) => createLabelledBundle(snapshot.name, snapshot.kind, snapshot.members),
-    [createLabelledBundle],
+    (snapshot: BundleSnapshot) => change(async () => {
+      const bundle = await bundlesApi.createBundle(snapshot.name, snapshot.kind, snapshot.members.map(member => member.fileId), {
+        labels: snapshot.members.map(member => member.label),
+        restore: true,
+      });
+      return { bundle, left: snapshot.members.length - bundle.members.length };
+    }),
+    [change],
   );
   /** Carries out an edit of the bundle dialog: removals first, then the order, then the labels. */
   const saveBundleEdit = useCallback(

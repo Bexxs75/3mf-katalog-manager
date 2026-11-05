@@ -125,15 +125,25 @@ export function useBundleActions({ bundleStore, models, selection, selectIds, co
   const restore = useCallback(async (snapshots: BundleSnapshot[]) => {
     await guarded(async () => {
       let last: Bundle | undefined;
-      for (const snapshot of snapshots) last = (await bundleStore.restoreBundle(snapshot)) ?? last;
+      let left = 0;
+      const back: string[] = [];
+      for (const snapshot of snapshots) {
+        const restored = await bundleStore.restoreBundle(snapshot);
+        if (!restored) continue;
+        last = restored.bundle;
+        left += restored.left;
+        back.push(...restored.bundle.members.filter(member => !member.inTrash).map(member => member.fileId));
+      }
       if (!last) return;
-      selectIds(snapshots.flatMap(snapshot => snapshot.members.map(member => member.fileId)));
-      show(snapshots.length === 1
+      selectIds(back);
+      const done = snapshots.length === 1
         ? t('bundleToastRestored').replace('{name}', displayName(snapshots[0].name))
-        : t('bundleToastRestoredMany').replace('{bundles}', String(snapshots.length)));
+        : t('bundleToastRestoredMany').replace('{bundles}', String(snapshots.length));
+      // The plain success text would claim a full restore, so a loss is named.
+      show(left > 0 ? `${done} ${formatCount(t('bundleToastRestoredLeft'), left)}` : done);
       focusLater(cardSelector(last.id));
     });
-  }, [bundleStore, selectIds, show, t, focusLater, guarded]);
+  }, [bundleStore, selectIds, show, t, formatCount, focusLater, guarded]);
 
   const saveEdit = useCallback(async (bundle: Bundle, draft: { name: string; kind: BundleKind; rows: EditRow[] }) => {
     const plan = planBundleEdit(bundle, draft);

@@ -1268,6 +1268,7 @@ export const de: Translations = {
   bundleToastDissolvedMany: "{bundles} Bündel aufgelöst. Die {count} Modelle bleiben erhalten.",
   bundleToastRestored: "Auflösen rückgängig: Bündel „{name}“ mit Reihenfolge und Beschriftungen wiederhergestellt.",
   bundleToastRestoredMany: "Auflösen rückgängig: {bundles} Bündel mit Reihenfolge und Beschriftungen wiederhergestellt.",
+  bundleToastRestoredLeft: { one: "{count} Modell konnte nicht zurück: Die Datei wurde endgültig gelöscht oder gehört inzwischen zu einem anderen Bündel.", other: "{count} Modelle konnten nicht zurück: Die Dateien wurden endgültig gelöscht oder gehören inzwischen zu anderen Bündeln." },
   bundleToastRemoved: { one: "{count} Modell aus dem Bündel entfernt. Die Datei bleibt erhalten.", other: "{count} Modelle aus ihren Bündeln entfernt. Die Dateien bleiben erhalten." },
   bundleToastRemovedDissolved: "Ein Bündel mit weniger als 2 verbliebenen Modellen wurde aufgelöst.",
   bundleSelectionBundles: { one: "{count} Bündel", other: "{count} Bündel" },

@@ -945,6 +945,7 @@ export interface Translations {
   bundleToastDissolvedMany: string;
   bundleToastRestored: string;
   bundleToastRestoredMany: string;
+  bundleToastRestoredLeft: PluralForms;
   bundleToastRemoved: PluralForms;
   bundleToastRemovedDissolved: string;
   bundleSelectionBundles: PluralForms;

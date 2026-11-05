@@ -9,9 +9,16 @@ pub fn list_bundles(state: State<AppState>) -> CmdResult<Vec<BundleDto>> {
     katalog_core::read::list_bundles(&conn).map_err(Into::into)
 }
 #[tauri::command]
-pub fn create_bundle(state: State<AppState>, name: String, kind: String, file_ids: Vec<String>) -> CmdResult<BundleDto> {
+pub fn create_bundle(
+    state: State<AppState>,
+    name: String,
+    kind: String,
+    file_ids: Vec<String>,
+    labels: Option<Vec<String>>,
+    restore: Option<bool>,
+) -> CmdResult<BundleDto> {
     let conn = lock_db(&state)?;
-    katalog_core::write::create_bundle(&conn, name, kind, file_ids).map_err(Into::into)
+    katalog_core::write::create_bundle_with(&conn, name, kind, file_ids, labels, restore).map_err(Into::into)
 }
 #[tauri::command]
 pub fn update_bundle(state: State<AppState>, bundle_id: String, name: Option<String>, kind: Option<String>) -> CmdResult<()> {

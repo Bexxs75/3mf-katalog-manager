@@ -16,6 +16,11 @@ describe('bundles api', () => {
     await bundlesApi.createBundle('Vase', 'parts', ['1', '2']);
     expect(invoke).toHaveBeenCalledWith('create_bundle', { name: 'Vase', kind: 'parts', fileIds: ['1', '2'] });
   });
+  it('createBundle passes labels and the restore flag only when given', async () => {
+    vi.mocked(invoke).mockResolvedValue({ id: 'b1' });
+    await bundlesApi.createBundle('Vase', 'parts', ['1', '2'], { labels: ['', 'Lid'], restore: true });
+    expect(invoke).toHaveBeenCalledWith('create_bundle', { name: 'Vase', kind: 'parts', fileIds: ['1', '2'], labels: ['', 'Lid'], restore: true });
+  });
   it('updateBundle sends only the fields it is given', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
     await bundlesApi.updateBundle('b1', { name: 'Neu' });
