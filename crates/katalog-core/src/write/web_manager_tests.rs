@@ -189,10 +189,17 @@ fn manager_printer_and_unit_contracts_and_missing_ids() {
         .id
         .parse()
         .unwrap();
-    assert_eq!(update_unit(&mut c, custom, "B", Some(2)).unwrap().value, 0);
-    invalid(update_unit(&mut c, custom, "B", Some(0)));
-    invalid(update_unit(&mut c, custom, &"x".repeat(61), None));
-    missing(update_unit(&mut c, 999, "A", None));
+    assert_eq!(update_unit(&mut c, custom, "B", Some(2), None).unwrap().value, 0);
+    invalid(update_unit(&mut c, custom, "B", Some(0), None));
+    invalid(update_unit(&mut c, custom, &"x".repeat(61), None, None));
+    missing(update_unit(&mut c, 999, "A", None, None));
+    // Type change: only inside the Bambu AMS family.
+    let ams = add_unit(&mut c, p, "bambu_ams", "AMS", None).unwrap().value.id.parse().unwrap();
+    update_unit(&mut c, ams, "AMS", None, Some("bambu_ams_2_pro")).unwrap();
+    assert_eq!(db::printers::list_units(&c).unwrap().into_iter().find(|u| u.id == ams).unwrap().kind, "bambu_ams_2_pro");
+    invalid(update_unit(&mut c, ams, "AMS", None, Some("custom")));
+    invalid(update_unit(&mut c, custom, "A", None, Some("bambu_ams")));
+    delete_unit(&mut c, ams).unwrap();
     missing(delete_unit(&mut c, 999));
     missing(reorder_units(&mut c, 999, &[]));
     reorder_units(&mut c, p, &[custom, u]).unwrap();
@@ -252,7 +259,7 @@ fn manager_resin_vat_is_fixed_and_material_kind_cannot_change_in_a_slot() {
     let vat = resin.units[0].id.parse().unwrap();
     invalid(add_unit(&mut c, rp, "external", "A", None));
     invalid(add_unit(&mut c, p, "resin_vat", "A", None));
-    invalid(update_unit(&mut c, vat, "B", None));
+    invalid(update_unit(&mut c, vat, "B", None, None));
     invalid(delete_unit(&mut c, vat));
     invalid(load_spool(&mut c, a, vat, 0));
     let mut s = spool();
@@ -370,7 +377,7 @@ fn manager_shrink_and_delete_unit_restore_home_locations_and_failed_delete_rolls
         .parse()
         .unwrap();
     load_spool(&mut c, s, unit, 2).unwrap();
-    let result = update_unit(&mut c, unit, "Small", Some(2)).unwrap();
+    let result = update_unit(&mut c, unit, "Small", Some(2), None).unwrap();
     assert_eq!(result.value, 1);
     assert_eq!(result.changes, 1);
     assert_eq!(
@@ -404,7 +411,7 @@ fn manager_quotas_only_restrict_creation_including_default_units() {
         db::printers::insert_unit(&c, p, "external", "H", None).unwrap();
     }
     invalid(add_unit(&mut c, p, "external", "New", None));
-    update_unit(&mut c, u, "Old", None).unwrap();
+    update_unit(&mut c, u, "Old", None, None).unwrap();
     delete_unit(&mut c, u).unwrap();
     add_unit(&mut c, p, "external", "New", None).unwrap();
     delete_printer(&mut c, p).unwrap();

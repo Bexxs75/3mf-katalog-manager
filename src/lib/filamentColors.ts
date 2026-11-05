@@ -24,6 +24,7 @@ export interface UnitTemplate {
 export const UNIT_TEMPLATES: readonly UnitTemplate[] = [
   { kind: 'bambu_ams', slotCount: 4, defaultName: 'AMS' },
   { kind: 'bambu_ams_lite', slotCount: 4, defaultName: 'AMS lite' },
+  { kind: 'bambu_ams_2_pro', slotCount: 4, defaultName: 'AMS 2 Pro' },
   { kind: 'bambu_ams_ht', slotCount: 1, defaultName: 'AMS HT' },
   { kind: 'creality_cfs', slotCount: 4, defaultName: 'CFS' },
   { kind: 'prusa_mmu3', slotCount: 5, defaultName: 'MMU3' },

@@ -172,9 +172,10 @@ pub fn update_unit(
     unit_id: String,
     name: String,
     slot_count: Option<i64>,
+    kind: Option<String>,
 ) -> WriteResult<usize> {
     let id = parse_id(&unit_id, "Einheit")?;
-    in_tx(conn, |tx| p::update_unit(tx, id, &name, slot_count))
+    in_tx(conn, |tx| p::update_unit(tx, id, &name, slot_count, kind.as_deref()))
 }
 pub fn delete_unit(conn: &mut Connection, unit_id: String) -> WriteResult<usize> {
     let id = parse_id(&unit_id, "Einheit")?;

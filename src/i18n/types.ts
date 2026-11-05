@@ -1568,6 +1568,8 @@ export interface Translations {
   printersReorderHint: string;
   printersKindBambuAms: string;
   printersKindBambuAmsLite: string;
+  printersKindBambuAms2Pro: string;
+  printersUnitTypeKeepHint: string;
   printersKindBambuAmsHt: string;
   printersKindCrealityCfs: string;
   printersKindPrusaMmu3: string;

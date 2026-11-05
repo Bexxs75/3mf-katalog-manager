@@ -113,9 +113,10 @@ pub fn update_unit(
     unit_id: String,
     name: String,
     slot_count: Option<i64>,
+    kind: Option<String>,
 ) -> CmdResult<usize> {
     let mut conn = lock_db(&state)?;
-    katalog_core::write::printers::update_unit(&mut conn, unit_id, name, slot_count)
+    katalog_core::write::printers::update_unit(&mut conn, unit_id, name, slot_count, kind)
         .map_err(Into::into)
 }
 

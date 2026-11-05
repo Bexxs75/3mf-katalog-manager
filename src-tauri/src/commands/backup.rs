@@ -2348,6 +2348,15 @@ mod tests {
         assert!(result.is_err(), "eine Einheit mit unbekanntem 'kind' muss abgelehnt werden");
     }
     #[test]
+    fn validate_catalog_db_bytes_accepts_an_ams_2_pro_unit() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let (printer, _) = printer_with_one_ams_unit(conn);
+            crate::db::printers::insert_unit(conn, printer, "bambu_ams_2_pro", "AMS 2 Pro", None).unwrap();
+        });
+        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
+        assert!(result.is_ok(), "ein Katalog mit AMS-2-Pro-Einheit muss gehen: {result:?}");
+    }
+    #[test]
     fn validate_catalog_db_bytes_rejects_a_material_unit_with_slot_count_out_of_range() {
         let tmp_path = unique_test_db_path("validate_db_unit_bad_slot_count");
         {

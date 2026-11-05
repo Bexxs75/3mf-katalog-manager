@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS material_units (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
+    kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro', 'bambu_ams_ht', 'creality_cfs',
                                        'prusa_mmu3', 'anycubic_ace', 'external', 'custom', 'resin_vat')),
     slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
     bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),

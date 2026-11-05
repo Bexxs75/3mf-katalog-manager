@@ -147,6 +147,7 @@ pub fn backfill_color_hex(conn: &Connection) -> Result<(), DbError> {
 pub const UNIT_KINDS: &[&str] = &[
     "bambu_ams",
     "bambu_ams_lite",
+    "bambu_ams_2_pro",
     "bambu_ams_ht",
     "creality_cfs",
     "prusa_mmu3",
@@ -171,10 +172,13 @@ const MAX_SLOTS: i64 = 16;
 /// Bambu numbers AMS and AMS lite per printer as 0-3.
 const MAX_BAMBU_AMS: i64 = 4;
 
+/// Units that share Bambu's AMS numbering 0-3 and four slots; "Change type" works within this family only.
+pub const BAMBU_AMS_FAMILY: &[&str] = &["bambu_ams", "bambu_ams_lite", "bambu_ams_2_pro"];
+
 /// Fixed slot count of the templates; `None` = free choice ("Custom...").
 pub fn template_slot_count(kind: &str) -> Option<i64> {
     match kind {
-        "bambu_ams" | "bambu_ams_lite" | "creality_cfs" | "anycubic_ace" => Some(4),
+        "bambu_ams" | "bambu_ams_lite" | "bambu_ams_2_pro" | "creality_cfs" | "anycubic_ace" => Some(4),
         "bambu_ams_ht" | "external" | "resin_vat" => Some(1),
         "prusa_mmu3" => Some(5),
         _ => None,
@@ -182,7 +186,7 @@ pub fn template_slot_count(kind: &str) -> Option<i64> {
 }
 
 fn uses_bambu_ams_index(kind: &str) -> bool {
-    matches!(kind, "bambu_ams" | "bambu_ams_lite")
+    BAMBU_AMS_FAMILY.contains(&kind)
 }
 
 fn clean_name(name: &str) -> Result<String, DbError> {
@@ -394,15 +398,32 @@ fn insert_unit_row(
     Ok(conn.last_insert_rowid())
 }
 
-/// Changes the name and (only for "custom") the slot count. Spools in removed
-/// slots return to their home location. The caller holds a transaction.
-pub fn update_unit(conn: &Connection, unit_id: i64, name: &str, slot_count: Option<i64>) -> Result<usize, DbError> {
+/// Changes the name, (only for "custom") the slot count and, within the Bambu AMS family only
+/// (AMS, AMS lite, AMS 2 Pro), the type. A type change keeps the row, number, slots and spools; the
+/// name is not touched. `kind` equal to the current kind is no change. Spools in removed slots
+/// return to their home location. The caller holds a transaction.
+pub fn update_unit(
+    conn: &Connection,
+    unit_id: i64,
+    name: &str,
+    slot_count: Option<i64>,
+    kind: Option<&str>,
+) -> Result<usize, DbError> {
     let unit = get_unit(conn, unit_id)?;
     if unit.kind == UNIT_KIND_RESIN_VAT {
         return Err(DbError::Other("Die Harzwanne kann nicht geaendert werden".into()));
     }
+    let new_kind = match kind {
+        Some(k) if k != unit.kind => {
+            if !BAMBU_AMS_FAMILY.contains(&k) || !BAMBU_AMS_FAMILY.contains(&unit.kind.as_str()) {
+                return Err(DbError::Other("Typ kann nicht geaendert werden".into()));
+            }
+            k
+        }
+        _ => unit.kind.as_str(),
+    };
     let name = clean_name(name)?;
-    let slots = match template_slot_count(&unit.kind) {
+    let slots = match template_slot_count(new_kind) {
         Some(fixed) => fixed,
         None => slot_count.unwrap_or(unit.slot_count),
     };
@@ -411,8 +432,8 @@ pub fn update_unit(conn: &Connection, unit_id: i64, name: &str, slot_count: Opti
     }
     let returned = return_spools_home(conn, "unit_id = ?1 AND slot_index >= ?2", &[&unit_id, &slots])?;
     conn.execute(
-        "UPDATE material_units SET name = ?1, slot_count = ?2 WHERE id = ?3",
-        params![name, slots, unit_id],
+        "UPDATE material_units SET name = ?1, slot_count = ?2, kind = ?3 WHERE id = ?4",
+        params![name, slots, new_kind, unit_id],
     )?;
     Ok(returned)
 }
@@ -743,6 +764,62 @@ mod tests {
     }
 
     #[test]
+    fn the_ams_2_pro_is_a_four_slot_bambu_unit_with_its_own_ams_number() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (printer, _, _) = x1c_with_two_ams(&conn);
+        let id = insert_unit(&conn, printer, "bambu_ams_2_pro", "AMS 2 Pro", Some(9)).unwrap();
+        let unit = get_unit(&conn, id).unwrap();
+        assert_eq!((unit.kind.as_str(), unit.slot_count, unit.bambu_ams_index), ("bambu_ams_2_pro", 4, Some(2)));
+        insert_unit(&conn, printer, "bambu_ams_lite", "C", None).unwrap();
+        assert!(insert_unit(&conn, printer, "bambu_ams_2_pro", "E", None).is_err(), "at most 4 AMS in total, all kinds counted");
+    }
+
+    #[test]
+    fn changing_the_type_inside_the_bambu_family_keeps_number_slots_spools_and_name() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (_, ams_a, _) = x1c_with_two_ams(&conn);
+        let pla = spool(&conn, "PLA", Some("Regal 2"));
+        load_spool(&conn, pla, ams_a, 3).unwrap();
+        let before = get_unit(&conn, ams_a).unwrap();
+
+        assert_eq!(update_unit(&conn, ams_a, &before.name, None, Some("bambu_ams_2_pro")).unwrap(), 0);
+        let after = get_unit(&conn, ams_a).unwrap();
+        assert_eq!(after.kind, "bambu_ams_2_pro");
+        assert_eq!((after.id, after.name.as_str(), after.slot_count, after.bambu_ams_index), (before.id, before.name.as_str(), 4, before.bambu_ams_index));
+        assert_eq!(placement(&conn, pla).2, Some(ams_a), "the spool stays in its slot");
+
+        update_unit(&conn, ams_a, "Renamed", None, Some("bambu_ams_lite")).unwrap();
+        let again = get_unit(&conn, ams_a).unwrap();
+        assert_eq!((again.kind.as_str(), again.name.as_str()), ("bambu_ams_lite", "Renamed"));
+        update_unit(&conn, ams_a, "Renamed", None, Some("bambu_ams_lite")).unwrap();
+        update_unit(&conn, ams_a, "Renamed", None, None).unwrap();
+        assert_eq!(get_unit(&conn, ams_a).unwrap().kind, "bambu_ams_lite", "same or no kind changes nothing");
+    }
+
+    #[test]
+    fn changing_the_type_outside_the_bambu_family_is_refused() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (printer, ams_a, _) = x1c_with_two_ams(&conn);
+        let ht = insert_unit(&conn, printer, "bambu_ams_ht", "HT", None).unwrap();
+        let custom = insert_unit(&conn, printer, "custom", "Box", Some(4)).unwrap();
+        for (unit, kind) in [
+            (ams_a, "bambu_ams_ht"),
+            (ams_a, "custom"),
+            (ams_a, "resin_vat"),
+            (ams_a, "toaster"),
+            (ht, "bambu_ams"),
+            (ht, "bambu_ams_2_pro"),
+            (custom, "bambu_ams"),
+        ] {
+            let err = update_unit(&conn, unit, "X", None, Some(kind)).unwrap_err();
+            assert!(err.to_string().contains("Typ kann nicht geaendert werden"), "{kind}: {err}");
+        }
+        assert_eq!(get_unit(&conn, ams_a).unwrap().kind, "bambu_ams");
+        assert_eq!(get_unit(&conn, ht).unwrap().kind, "bambu_ams_ht");
+        assert_eq!(get_unit(&conn, ams_a).unwrap().name, "AMS A", "a refused change changes nothing, not even the name");
+    }
+
+    #[test]
     fn unloading_goes_home_or_to_a_given_location() {
         let conn = crate::db::connect_in_memory().unwrap();
         let (_, ams_a, _) = x1c_with_two_ams(&conn);
@@ -771,10 +848,10 @@ mod tests {
         load_spool(&conn, c, ams_a, 0).unwrap();
         load_spool(&conn, d, ams_b, 0).unwrap();
 
-        assert_eq!(update_unit(&conn, custom, "Box 4", Some(4)).unwrap(), 1);
+        assert_eq!(update_unit(&conn, custom, "Box 4", Some(4), None).unwrap(), 1);
         assert_eq!(placement(&conn, a), (Some("R1".into()), None, None, None));
         assert_eq!(placement(&conn, b).2, Some(custom));
-        assert_eq!(update_unit(&conn, ams_a, "AMS Links", Some(9)).unwrap(), 0, "Vorlagen behalten ihre Fachanzahl");
+        assert_eq!(update_unit(&conn, ams_a, "AMS Links", Some(9), None).unwrap(), 0, "Vorlagen behalten ihre Fachanzahl");
         assert_eq!(list_units(&conn).unwrap().iter().find(|u| u.id == ams_a).unwrap().slot_count, 4);
 
         assert_eq!(delete_unit(&conn, custom).unwrap(), 1);
@@ -897,7 +974,7 @@ mod tests {
     fn the_vat_can_be_neither_renamed_nor_deleted() {
         let conn = crate::db::connect_in_memory().unwrap();
         let (_, vat) = saturn_with_vat(&conn);
-        assert!(update_unit(&conn, vat, "Wanne 2", None).is_err());
+        assert!(update_unit(&conn, vat, "Wanne 2", None, None).is_err());
         assert!(delete_unit(&conn, vat).is_err());
         assert_eq!(list_units(&conn).unwrap().len(), 1);
     }

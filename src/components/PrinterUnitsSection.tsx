@@ -11,6 +11,7 @@ import { PrinterManagerDialog, pmButton, pmField } from './PrinterManagerDialog'
 type KindLabelKey =
   | 'printersKindBambuAms'
   | 'printersKindBambuAmsLite'
+  | 'printersKindBambuAms2Pro'
   | 'printersKindBambuAmsHt'
   | 'printersKindCrealityCfs'
   | 'printersKindPrusaMmu3'
@@ -22,6 +23,7 @@ type KindLabelKey =
 const KIND_LABEL: Record<UnitKind, KindLabelKey> = {
   bambu_ams: 'printersKindBambuAms',
   bambu_ams_lite: 'printersKindBambuAmsLite',
+  bambu_ams_2_pro: 'printersKindBambuAms2Pro',
   bambu_ams_ht: 'printersKindBambuAmsHt',
   creality_cfs: 'printersKindCrealityCfs',
   prusa_mmu3: 'printersKindPrusaMmu3',
@@ -31,11 +33,14 @@ const KIND_LABEL: Record<UnitKind, KindLabelKey> = {
   resin_vat: 'printersKindResinVat',
 };
 
+/** Units that share Bambu's AMS numbering; the type of such a unit can be changed within the family. */
+const BAMBU_AMS_FAMILY: readonly UnitKind[] = ['bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro'];
+
 /** Follow the existing unit naming scheme and skip occupied names. */
 export function suggestUnitName(printer: Printer, kind: UnitKind, defaultName: string): string {
   const units = printer.units.filter(u => u.kind === kind);
   const names = new Set(printer.units.map(u => u.name));
-  if (kind !== 'bambu_ams' && kind !== 'bambu_ams_lite') {
+  if (!BAMBU_AMS_FAMILY.includes(kind)) {
     if (!units.length && !names.has(defaultName)) return defaultName;
     let suffix = units.length + 1;
     while (names.has(`${defaultName} ${suffix}`)) suffix++;
@@ -112,7 +117,7 @@ function UnitDialog({ printer, unit, actions, onClose, onChanged }: {
   const [slots, setSlots] = useState(unit?.slotCount ?? 4);
   return <PrinterManagerDialog title={unit ? t('pmEdit') : t('printersAddUnitButton')} onClose={onClose}
     submitLabel={unit ? t('printersSave') : t('printersAddUnitButton')} onSubmit={async () => {
-      if (unit) await actions.updateUnit(unit.id, name.trim(), kind === 'custom' ? slots : null);
+      if (unit) await actions.updateUnit(unit.id, name.trim(), kind === 'custom' ? slots : null, unit && kind !== unit.kind ? kind : undefined);
       else await actions.addUnit(printer.id, kind, name.trim(), kind === 'custom' ? slots : null);
       onChanged();
     }}>
@@ -122,6 +127,11 @@ function UnitDialog({ printer, unit, actions, onClose, onChanged }: {
         setName(suggestUnitName(printer, template.kind, template.defaultName || t(KIND_LABEL[template.kind])));
         setSlots(template.slotCount ?? 4);
       }}>{t(KIND_LABEL[template.kind])} · {template.slotCount ?? '1–16'}</button>)}</div>}
+    {unit && BAMBU_AMS_FAMILY.includes(unit.kind) && <label>{t('pmKind')}
+      <select className={pmField} value={kind} onChange={e => setKind(e.target.value as UnitKind)}>
+        {BAMBU_AMS_FAMILY.map(k => <option key={k} value={k}>{t(KIND_LABEL[k])}</option>)}
+      </select>
+      <small className="block text-[var(--ink-3)]">{t('printersUnitTypeKeepHint')}</small></label>}
     <label>{t('pmName')}<input required maxLength={60} className={pmField} value={name} onChange={e => setName(e.target.value)} /></label>
     {kind === 'custom' && <label>{t('printersSlotsLabel')}<input type="number" required min={1} max={16} step={1}
       className={pmField} value={slots} onChange={e => setSlots(Number(e.target.value))} /></label>}
