@@ -2093,6 +2093,12 @@ export interface Translations {
   owSkipNote: string;
   owCatalogEntry: string;
   owViewerLabel: string;
+  dgSwitchLabel: string;
+  dgSwitchHint: string;
+  errDragDisabled: string;
+  errDragFileMissing: string;
+  errDragNotSliceable: string;
+  errDragFailed: string;
   errOpenSourceUnknown: string;
   errSourceNoCatalogFolder: string;
   errSourceNoFilesSelected: string;

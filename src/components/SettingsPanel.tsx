@@ -29,6 +29,7 @@ import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
 import { PrintDataRereadSettings } from './PrintDataRereadSettings';
 import { ThingiverseSettings } from './ThingiverseSettings';
+import { DragOutSetting } from './DragOutSetting';
 import { getAppVersion } from '../lib/api/update';
 
 type SettingsTab = 'general' | 'slicer' | 'catalog' | 'info';
@@ -333,6 +334,7 @@ export function SettingsPanel({
                   {t('addSlicerError')} <ErrorText error={addSlicerError} />
                 </div>
               )}
+              <DragOutSetting />
             </>
           )}
 

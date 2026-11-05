@@ -262,6 +262,12 @@ error_codes! {
     StlWriteFailed => "stlWriteFailed",
     // Files the operating system opened with the app.
     OpenSourceUnknown => "openSourceUnknown",
+    // Dragging catalog files out of the window (prototype, off by default).
+    DragDisabled => "dragDisabled",
+    DragFileMissing => "dragFileMissing",
+    DragNotSliceable => "dragNotSliceable",
+    /// params: the reason reported by the system.
+    DragFailed => "dragFailed",
     // Thingiverse search with the user's own key. The key, the address and the search
     // term never appear in a code or its params.
     ThingiverseDisabled => "thingiverseDisabled",
