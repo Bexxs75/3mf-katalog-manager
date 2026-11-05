@@ -10,8 +10,8 @@ interface Props {
   count: number;
   allPrinted: boolean;
   allFavorite: boolean;
-  /** Variants are alternatives, so "queue them all" makes no sense; the entry only exists for parts. */
-  canQueue: boolean;
+  /** Variants are alternatives, so the entry does not queue them all: it opens the question which one. */
+  queueChoice: boolean;
   /** Trashing needs the right to manage files, which the web version may lack. */
   canDelete: boolean;
   onClose: () => void;
@@ -26,7 +26,7 @@ interface Props {
 const ITEM = 'w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50';
 
 /** Menu of a bundle card: every action works on all living members, and the text says how many. */
-export function BundleContextMenu({ x, y, count, allPrinted, allFavorite, canQueue, canDelete, onClose, onEdit, onTogglePrinted, onQueueAll, onToggleFavorite, onDissolve, onDelete }: Props) {
+export function BundleContextMenu({ x, y, count, allPrinted, allFavorite, queueChoice, canDelete, onClose, onEdit, onTogglePrinted, onQueueAll, onToggleFavorite, onDissolve, onDelete }: Props) {
   const t = useT();
   const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
@@ -42,7 +42,7 @@ export function BundleContextMenu({ x, y, count, allPrinted, allFavorite, canQue
       <div role="group" aria-label={t('bundleMenuLabel')}>
         {entry(t('bundleEdit'), onEdit)}
         {entry(named(allPrinted ? 'bundleMarkAllNotPrinted' : 'bundleMarkAllPrinted'), onTogglePrinted)}
-        {canQueue && entry(named('bundleQueueAll'), onQueueAll)}
+        {entry(queueChoice ? t('bundleQueueOpen') : named('bundleQueueAll'), onQueueAll)}
         {entry(named(allFavorite ? 'bundleUnfavoriteAll' : 'bundleFavoriteAll'), onToggleFavorite)}
         <div className="border-t border-[var(--line)]" />
         {entry(t('bundleDissolve'), onDissolve)}

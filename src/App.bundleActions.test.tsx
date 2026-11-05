@@ -166,8 +166,9 @@ it('offers the bundle card menu on a right click and applies "printed" to every 
   await open();
   fireEvent.contextMenu(document.querySelector('[data-bundle-id="b1"]') as HTMLElement);
   const menu = within(await screen.findByRole('group', { name: de.bundleMenuLabel }));
-  // Variants are alternatives; no "queue them all" there.
-  expect(menu.queryByRole('button', { name: /Warteschlange/ })).toBeNull();
+  // Variants are alternatives; the menu asks which one instead of queueing them all.
+  expect(menu.queryByRole('button', { name: /Alle 2 zur Warteschlange/ })).toBeNull();
+  expect(menu.getByRole('button', { name: de.bundleQueueOpen })).toBeInTheDocument();
   fireEvent.click(menu.getByRole('button', { name: 'Alle 2 als gedruckt markieren' }));
   await waitFor(() => expect(calls('set_print_status')).toHaveLength(2));
   expect(calls('set_print_status')).toEqual([{ fileId: '1', status: 'printed' }, { fileId: '2', status: 'printed' }]);
@@ -188,4 +189,52 @@ it('offers the file menu entries "Bundle …" and "Add to bundle …" on a singl
   expect(await screen.findByRole('button', { name: de.bundleMake })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: de.bundleAddTo })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: de.bundleRemoveFrom })).toBeNull();
+});
+
+const cardOf = (id: string) => document.querySelector(`[data-bundle-id="${id}"]`) as HTMLElement;
+const withoutRefetch = () => {
+  const base = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation((cmd, args) => cmd === 'list_files_by_ids' && (args as { ids: string[] }).ids.length === 1 ? Promise.resolve([]) : base(cmd, args));
+};
+
+it('opens the bundle panel for a clicked bundle card and applies "printed" to every member from there', async () => {
+  withoutRefetch();
+  await open();
+  fireEvent.click(cardOf('b1'));
+  const panel = within(await screen.findByRole('heading', { level: 2, name: 'Harbour' }).then(heading => heading.closest('[data-bundle-panel]') as HTMLElement));
+  expect(panel.getByRole('list', { name: de.bundleMembers })).toBeInTheDocument();
+  fireEvent.click(panel.getByRole('button', { name: 'Alle 2 als gedruckt markieren' }));
+  await waitFor(() => expect(calls('set_print_status')).toEqual([{ fileId: '1', status: 'printed' }, { fileId: '2', status: 'printed' }]));
+});
+
+it('asks which variant from the card menu, in the panel, and queues only that one', async () => {
+  withoutRefetch();
+  await open();
+  fireEvent.contextMenu(cardOf('b1'));
+  // The right click opens the panel too, which has an entry of the same name: take the one in the menu.
+  fireEvent.click(within(await screen.findByRole('group', { name: de.bundleMenuLabel })).getByRole('button', { name: de.bundleQueueOpen }));
+  const question = await screen.findByRole('group', { name: de.bundleQueueWhich });
+  expect(screen.getByRole('heading', { level: 2, name: 'Harbour' })).toBeInTheDocument();
+  fireEvent.click(within(question).getByRole('radio', { name: /Benchy small/ }));
+  fireEvent.click(within(question).getByRole('button', { name: de.bundleQueueAddVariant }));
+  await waitFor(() => expect(calls('add_to_queue')).toEqual([{ fileId: '2' }]));
+});
+
+it('opens a member from the panel on its detail page with the variant switch and jumps to the other variant', async () => {
+  await open();
+  fireEvent.click(cardOf('b1'));
+  fireEvent.click(await screen.findByRole('button', { name: /Benchy small\.3mf/ }));
+  const switcher = await screen.findByRole('group', { name: de.bundleSwitchHeading });
+  expect(within(switcher).getByRole('button', { name: 'Benchy small.3mf' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(within(switcher).getByRole('button', { name: 'big' }));
+  const next = await screen.findByRole('group', { name: de.bundleSwitchHeading });
+  await waitFor(() => expect(within(next).getByRole('button', { name: 'big' })).toHaveFocus());
+  expect(screen.getByRole('heading', { level: 1, name: 'Benchy.3mf' })).toBeInTheDocument();
+});
+
+it('edits the bundle from its detail page and from the panel through the same dialog', async () => {
+  await open();
+  fireEvent.click(cardOf('b1'));
+  fireEvent.click(await screen.findByRole('button', { name: de.bundleEdit }));
+  expect(await screen.findByRole('dialog', { name: de.bundleDlgEditTitle })).toBeInTheDocument();
 });

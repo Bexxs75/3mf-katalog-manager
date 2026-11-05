@@ -19,6 +19,10 @@ import { SelectionAnnouncer } from './SelectionAnnouncer';
 import { GroupedModelGrid } from './GroupedModelGrid';
 import { GroupedModelList } from './GroupedModelList';
 import { DetailPanel } from './DetailPanel';
+import { BundlePanel, type BundleViewActions } from './BundlePanel';
+import { buildCards, indexBundles, type BundleCard } from '../lib/bundles';
+import { isCardOpen } from '../lib/bundleCards';
+import { panelMembers } from '../lib/bundlePanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
 import { BulkActionToolbar, type BulkBundleActions } from './BulkActionToolbar';
@@ -171,6 +175,8 @@ interface CatalogWorkspaceProps {
   bundleActions?: BulkBundleActions;
   /** Whole bundle cards in the selection, for the announcement. */
   selectedBundleCount?: number;
+  /** What the bundle panel and the detail page of a member can do with their bundle. */
+  bundleView?: BundleViewActions;
   filtered: ModelFile[];
   collectionLoading?: boolean;
   selectedId: string | null;
@@ -304,6 +310,7 @@ export function CatalogWorkspace({
   setCollapseBundles,
   bundleActions,
   selectedBundleCount,
+  bundleView,
   filtered,
   collectionLoading = false,
   selectedId,
@@ -417,6 +424,15 @@ export function CatalogWorkspace({
     const flat = toolView !== null || activeCollection !== null;
     return { bundles, collapse: collapseBundles && !flat, sort: flat ? undefined : sort, sortDirection };
   }, [bundles, collapseBundles, toolView, activeCollection, sort, sortDirection]);
+  // The card that is open in the detail panel; a bundle card then gets the bundle panel instead.
+  const openBundleCard = useMemo<BundleCard | null>(() => {
+    if (!bundleView || !bundleCards.collapse || selectedId === null) return null;
+    const card = buildCards(displayedModels, bundles, { collapse: true }).find(item => item.type === 'bundle' && isCardOpen(item, selectedId));
+    return card?.type === 'bundle' ? card : null;
+  }, [bundleView, bundleCards.collapse, selectedId, displayedModels, bundles]);
+  const bundleOfFile = useMemo(() => indexBundles(bundles), [bundles]);
+  const detailBundle = detailModel && bundleView ? bundleOfFile.get(detailModel.id) : undefined;
+  const detailBundleMembers = useMemo(() => detailBundle ? panelMembers(detailBundle, models) : [], [detailBundle, models]);
   // The switch is the way back to single files, so it stays while it is on, and appears once bundles exist.
   const showBundleSwitch = !!setCollapseBundles && (bundles.length > 0 || collapseBundles);
   // The selection survives filter changes, so the confirmation must say how much of it is out of sight.
@@ -747,6 +763,9 @@ export function CatalogWorkspace({
             }
             rescanSuccess={rescanFeedback?.fileId === detailModel.id && rescanFeedback.status === 'success'}
             displayPreference={displayPreference}
+            bundleView={detailBundle && bundleView && detailBundleMembers.length >= 2
+              ? { bundle: detailBundle, members: detailBundleMembers, onOpenMember: setDetailModelId, actions: bundleView }
+              : null}
           />
         ) : (
           <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onClick={event => {
@@ -839,7 +858,21 @@ export function CatalogWorkspace({
       {settingsPanel ? settingsPanel(narrow || !!detailModel) : !detailModel && (detailPanel === 'pinned' || selectedId !== null) && (
         <div role="complementary" aria-label={t('detailPanelTitle')} className={`detail-panel-shell ${narrow ? 'detail-panel-overlay' : ''}`}>
         {detailPanel === 'auto' && <button type="button" className="detail-panel-close" aria-label={t('detailPanelClose')} title={`${t('detailPanelClose')} (Esc)`} onClick={closeDetails}><Icon name="close" size={16} /></button>}
-        <DetailPanel
+        {openBundleCard && bundleView ? (
+          <BundlePanel
+            card={openBundleCard}
+            members={panelMembers(openBundleCard.bundle, models)}
+            allTags={tags.map(tag => tag.label)}
+            displayPreference={displayPreference}
+            actions={bundleView}
+            onOpenMember={setDetailModelId}
+            onSetPrinted={(targets) => targets.forEach(model => togglePrintStatus(model.id))}
+            onSetFavorite={(targets) => targets.forEach(model => toggleFavorite(model.id))}
+            onAddTag={(targets, tag) => targets.forEach(model => addTag(model.id, tag))}
+            onSetLicense={setModelLicenses}
+            onQueue={(targets) => targets.forEach(model => addToQueue(model.id))}
+          />
+        ) : <DetailPanel
           filament={selectedFilament.error ? null : selectedFilament.checks?.get(selected?.id ?? '')}
           lastPrinter={lastPrinter}
           printers={printers}
@@ -862,7 +895,7 @@ export function CatalogWorkspace({
           hasSlicer={slicers.length > 0}
           onRemoveFromCatalog={selected && onRemoveModelFromCatalog ? () => onRemoveModelFromCatalog(selected.id) : undefined}
           slicerError={slicerError}
-        />
+        />}
         </div>
       )}
     </div>

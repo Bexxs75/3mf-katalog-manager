@@ -43,7 +43,7 @@ describe('file context menu, bundle entries', () => {
 
 describe('bundle card context menu', () => {
   const props = {
-    x: 0, y: 0, count: 3, allPrinted: false, allFavorite: false, canQueue: true, canDelete: true, onClose: noop,
+    x: 0, y: 0, count: 3, allPrinted: false, allFavorite: false, queueChoice: false, canDelete: true, onClose: noop,
     onEdit: vi.fn(), onTogglePrinted: vi.fn(), onQueueAll: vi.fn(), onToggleFavorite: vi.fn(), onDissolve: vi.fn(), onDelete: vi.fn(),
   };
   const menu = (extra: Partial<typeof props> = {}) => render(<LanguageProvider><BundleContextMenu {...props} {...extra} /></LanguageProvider>);
@@ -62,9 +62,11 @@ describe('bundle card context menu', () => {
     expect(screen.getByRole('button', { name: 'Alle 3 aus den Favoriten nehmen' })).toBeInTheDocument();
   });
 
-  it('leaves out the queue entry for variants and the delete entry without the right to delete', () => {
-    menu({ canQueue: false, canDelete: false });
-    expect(screen.queryByRole('button', { name: /Warteschlange/ })).toBeNull();
+  it('asks which variant instead of queueing all, and leaves out the delete entry without the right to delete', () => {
+    menu({ queueChoice: true, canDelete: false });
+    expect(screen.queryByRole('button', { name: 'Alle 3 zur Warteschlange hinzufügen' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: de.bundleQueueOpen }));
+    expect(props.onQueueAll).toHaveBeenCalledOnce();
     expect(screen.queryByRole('button', { name: de.bundleDeleteEntry })).toBeNull();
     expect(screen.getByRole('button', { name: de.bundleDissolve })).toBeInTheDocument();
   });
