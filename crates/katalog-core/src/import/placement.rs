@@ -368,7 +368,9 @@ mod move_tests {
         assert_eq!(copied_mode(0o2755, false), 0o755, "special bits dropped");
         assert_eq!(copied_mode(0o660, true), 0o600, "with an ACL the group bits are only the mask");
     }
-    #[cfg(unix)]
+    // The ACL is set through the Linux-only "system.posix_acl_access" xattr (libc::setxattr has six
+    // arguments on macOS), so the test is Linux-only like the production code it covers.
+    #[cfg(target_os = "linux")]
     #[test]
     fn copy_fallback_keeps_the_group_closed_for_a_source_with_an_acl() {
         use std::os::unix::ffi::OsStrExt;
