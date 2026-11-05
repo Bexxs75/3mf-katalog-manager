@@ -245,3 +245,28 @@ fn a_vanished_or_released_source_gives_no_proof() {
     sources.release(&id);
     assert!(prove_external_source(&sources, &jobs, &id).is_err());
 }
+
+/// The file associations announced to the operating system (`tauri.conf.json`, inherited by
+/// the Preview variant, which only overrides name and identifier) must cover exactly the model
+/// extensions the start-argument handling accepts, and must never claim to be the default.
+#[test]
+fn file_associations_match_model_extensions_and_stay_alternate() {
+    let conf: serde_json::Value = serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+    let preview: serde_json::Value = serde_json::from_str(include_str!("../../tauri.preview.conf.json")).unwrap();
+    assert!(preview.pointer("/bundle/fileAssociations").is_none(), "Preview must inherit, not redefine");
+    let entries = conf.pointer("/bundle/fileAssociations").and_then(|v| v.as_array()).expect("fileAssociations");
+    let mut declared: Vec<String> = Vec::new();
+    for entry in entries {
+        assert_eq!(entry["rank"], "Alternate", "must not take over as default program: {entry}");
+        assert_eq!(entry["role"], "Viewer", "{entry}");
+        assert!(entry["mimeType"].as_str().is_some_and(|m| m.starts_with("model/")), "{entry}");
+        for ext in entry["ext"].as_array().unwrap() {
+            declared.push(ext.as_str().unwrap().to_string());
+        }
+    }
+    declared.sort();
+    assert_eq!(declared, strings(&["3mf", "obj", "step", "stl", "stp"]));
+    for ext in &declared {
+        assert!(is_model_extension(Path::new(&format!("x.{ext}"))), "{ext}");
+    }
+}

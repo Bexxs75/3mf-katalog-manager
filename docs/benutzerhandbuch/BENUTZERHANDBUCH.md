@@ -797,6 +797,26 @@ which of them is your **default slicer**, is configured in Settings (see below).
 > manually instead, you need to select the program file **inside** the `.app` bundle in the
 > picker (not the bundle itself) — see [Known limitations](#known-limitations).
 
+## Opening model files with the app (file association)
+
+The installer announces the app as an additional program for `.3mf`, `.stl`, `.obj`, `.step` and
+`.stp` files. It does **not** make itself the default program: your slicer or CAD program keeps
+opening these files on a double-click. A file opened with this app that is not in the catalog
+shows the "View only" dialog; nothing is changed or moved until you choose "Add to catalog".
+The Preview variant announces the same file types under its own name, so both variants can
+appear in the "Open with" list.
+
+To open a file with the app:
+
+- **Windows:** right-click the file, "Open with", "Choose another app", pick the app. Tick
+  "Always use this app" only if it should become your default program (Windows leaves that
+  decision to you). Alternatively: Settings, Apps, Default apps, search for the file type.
+- **macOS:** right-click the file, "Open With", pick the app. To make it the default: "Get Info",
+  "Open with", choose the app, "Change All...". The entry appears once macOS has registered the
+  app (app in the Applications folder, sometimes only after the first start).
+- **Linux:** the published package is an AppImage, which registers nothing by itself: use a tool such as AppImageLauncher, or start the
+  AppImage with the file as argument (`./3MF-Katalog-Manager.AppImage model.3mf`).
+
 ## The Material Manager
 
 The Material Manager is an independent manager for your filament spools, separate from the model
@@ -2168,6 +2188,29 @@ welcher davon dein **Standard-Slicer** ist, richtest du in den Einstellungen ein
 > stattdessen einen Slicer manuell hinzu, musst du im Auswahldialog gezielt die Programmdatei
 > **innerhalb** des `.app`-Bundles auswählen (nicht das Bundle selbst) — siehe
 > [Bekannte Einschränkungen](#bekannte-einschränkungen).
+
+## Modelldateien mit dem Programm öffnen (Dateizuordnung)
+
+Der Installer meldet das Programm als zusätzliches Programm für `.3mf`-, `.stl`-, `.obj`-,
+`.step`- und `.stp`-Dateien an. Es macht sich **nicht** zum Standardprogramm: Dein Slicer oder
+CAD-Programm öffnet diese Dateien bei einem Doppelklick weiterhin. Eine Datei, die du mit
+diesem Programm öffnest und die nicht im Katalog liegt, zeigt den Dialog „Nur ansehen“; erst mit
+„Zum Katalog hinzufügen“ wird etwas verändert oder verschoben. Die Preview-Variante meldet
+dieselben Dateitypen unter ihrem eigenen Namen an, deshalb können in der Liste „Öffnen mit“
+beide Varianten erscheinen.
+
+So öffnest du eine Datei mit dem Programm:
+
+- **Windows:** Rechtsklick auf die Datei, „Öffnen mit“, „Andere App auswählen“, das Programm
+  wählen. „Immer diese App verwenden“ nur ankreuzen, wenn es dein Standardprogramm werden soll
+  (Windows überlässt diese Entscheidung dir). Alternativ: Einstellungen, Apps, Standard-Apps,
+  nach dem Dateityp suchen.
+- **macOS:** Rechtsklick auf die Datei, „Öffnen mit“, das Programm wählen. Als Standard:
+  „Informationen“, „Öffnen mit“, Programm wählen, „Alle ändern ...“. Der Eintrag erscheint,
+  sobald macOS das Programm registriert hat (Programm im Ordner „Programme“, manchmal erst nach
+  dem ersten Start).
+- **Linux:** Veröffentlicht wird ein AppImage, das von selbst nichts registriert: nutze ein Werkzeug wie AppImageLauncher oder starte das
+  AppImage mit der Datei als Argument (`./3MF-Katalog-Manager.AppImage modell.3mf`).
 
 ## Der Material Manager
 
