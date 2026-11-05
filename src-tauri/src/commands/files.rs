@@ -2620,6 +2620,75 @@ mod tests {
         assert_eq!(record.file_type, FileType::Gcode);
     }
     #[test]
+    fn resin_files_are_catalogued_without_reading_them_and_behave_like_other_files() {
+        use katalog_core::import::files::{is_catalog_extension, is_sliced_extension};
+        for name in ["a.ctb", "a.CTB", "a.cbddlp", "a.goo", "a.pwmx", "a.pwms", "a.sl1"] {
+            assert!(is_sliced_extension(Path::new(name)) && is_catalog_extension(Path::new(name)), "{name}");
+            assert!(!is_model_extension(Path::new(name)) && !is_sliceable_extension(Path::new(name)), "{name}: no model, nothing to open in a slicer");
+        }
+        // Project files of resin slicers are no print output.
+        for name in ["a.lys", "a.chitubox", "a.voxl", "a.ctbx"] {
+            assert!(!is_catalog_extension(Path::new(name)), "{name}");
+        }
+
+        let dir = unique_test_dir("import_resin");
+        std::fs::create_dir_all(&dir).unwrap();
+        // Content that no parser could read: the catalog must not care.
+        let content: Vec<u8> = (0u8..=255).cycle().take(5000).collect();
+        std::fs::write(dir.join("a.ctb"), &content).unwrap();
+        std::fs::write(dir.join("b.goo"), b"another resin file").unwrap();
+        std::fs::write(dir.join("c.ctb"), &content).unwrap();
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        // The way the dialog and drag and drop import: one file at a time.
+        for name in ["a.ctb", "b.goo", "c.ctb"] {
+            import_one(&conn, &dir.join(name), None, None, None).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        }
+        let again = import_one(&conn, &dir.join("a.ctb"), None, None, None).expect_err("the same path twice");
+        assert!(again.expected, "a known path is an expected duplicate");
+        let files = crate::db::list_files(&conn).unwrap();
+        assert_eq!(files.len(), 3);
+        // The same content under another name carries the same hash, which is what duplicate detection compares.
+        let hash_of = |name: &str| katalog_core::import::files::compute_content_hash(&dir.join(name)).unwrap();
+        assert_eq!(hash_of("a.ctb"), hash_of("c.ctb"));
+        assert_ne!(hash_of("a.ctb"), hash_of("b.goo"));
+        for file in &files {
+            assert_eq!(file.file_type, FileType::Resin);
+            assert!(file.dimensions_mm.is_none() && file.volume_cm3.is_none() && file.thumbnail_png.is_none());
+            assert!(file.print_info.is_none(), "no reader: no print data");
+            assert!(file.file_size_bytes > 0);
+        }
+        let id = files.iter().find(|f| f.name == "a.ctb").unwrap().id;
+        let size = files.iter().find(|f| f.name == "a.ctb").unwrap().file_size_bytes;
+        assert_eq!(size, 5000);
+
+        // Tags and the trash work as for any file.
+        db::add_tag_to_file(&conn, id, "Harz").unwrap();
+        assert!(crate::db::list_all_file_tags(&conn).unwrap().contains(&(id, "Harz".to_string())));
+        db::soft_delete_file(&conn, id, None, "2026-01-01T00:00:00Z").unwrap();
+        assert_eq!(crate::db::list_files(&conn).unwrap().len(), 2);
+        db::restore_file(&conn, id, None).unwrap();
+        assert_eq!(crate::db::list_files(&conn).unwrap().len(), 3);
+
+        // A rescan refreshes size and hash only and keeps the type.
+        let before = crate::db::get_file(&conn, id).unwrap().unwrap().content_hash;
+        std::fs::write(dir.join("a.ctb"), b"changed after slicing again").unwrap();
+        let rescanned = rescan_file(&mut conn, id).expect("rescan of a resin file");
+        let after = crate::db::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(rescanned.id, id.to_string());
+        assert_eq!(after.file_type, FileType::Resin);
+        assert_eq!(after.file_size_bytes, 27);
+        assert_ne!(after.content_hash, before);
+
+        // The web reader takes the same files through its own entry point.
+        let path = dir.join("web.pwmx");
+        std::fs::write(&path, b"resin from the web").unwrap();
+        let file = std::fs::File::open(&path).unwrap();
+        let record = katalog_core::import::files::read_web_model(file, &path, "web.pwmx", Default::default()).expect("web read");
+        assert_eq!(record.file_type, FileType::Resin);
+        assert!(record.print_info.is_none() && record.thumbnail_png.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
     fn rescan_file_refreshes_an_obj_file() {
         let path = unique_test_dir("rescan_obj").join("wuerfel.obj");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();

@@ -4,6 +4,8 @@ import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, ViewMode, SortKey, SortDirection, Printer, Bundle } from '../types';
 import { fileIdsOfBundlesMatching } from '../lib/bundles';
 import { printerBuildVolume } from '../lib/buildPlateFit';
+import { showsKind } from '../lib/printTechnology';
+import { usePrintTechnology } from './PrintTechnologyContext';
 import type { RecentSnapshot, ToolView } from '../lib/toolViews';
 import { defaultSortDirection, filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
 import type { FileKindFilter } from '../lib/fileKind';
@@ -41,9 +43,10 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
     setRecentSnapshot(next === 'recent' ? new Map(models.map((m) => [m.id, m.lastViewedAt])) : null);
   };
 
-  // A printer that was deleted or lost its build volume no longer filters
-  // (and no longer shows as a chip), instead of silently hiding everything.
-  const fitPrinter = printers.find(printer => printer.id === fitPrinterChoice && printerBuildVolume(printer)) ?? null;
+  const { technology } = usePrintTechnology();
+  // A printer that was deleted, lost its build volume or is hidden by the chosen print technology
+  // no longer filters (and no longer shows as a chip), instead of silently hiding everything.
+  const fitPrinter = printers.find(printer => printer.id === fitPrinterChoice && printerBuildVolume(printer) && showsKind(technology, printer.kind)) ?? null;
   const fitBed = useMemo(() => (fitPrinter ? printerBuildVolume(fitPrinter) : null), [fitPrinter]);
 
   const bundleMatchIds = useMemo(() => fileIdsOfBundlesMatching([...searchedBundles], query), [searchedBundles, query]);

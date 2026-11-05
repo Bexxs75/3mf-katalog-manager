@@ -183,3 +183,57 @@ it('says it on the detail page too, offers no filament check and shows no cost',
   expect(screen.queryByText(de.filamentCheckHeading)).toBeNull();
   expect(screen.queryByText(de.metaCostEstimate)).toBeNull();
 });
+
+// A resin file is only catalogued: no content is read, so nothing but the placeholder, the file facts and the note.
+const resin = (extra: Partial<ModelFile> = {}) => makeModelFile({ id: 'r1', name: 'Layers', path: '/c/layers.ctb', fileType: 'resin', dimensionsMm: null, volumeCm3: null, objectCount: null, sliceInfo: null, printInfo: null, ...extra });
+
+it.each(['compact', 'comfort'])('shows the resin note, its type and no viewer, slicer, fit or print data in the %s panel', density => {
+  panel(density, resin());
+  expect(screen.queryByText('Viewer')).toBeNull();
+  expect(screen.getByRole('heading', { name: de.resinNoPreviewTitle })).toBeVisible();
+  expect(screen.getByText(de.resinNoPreviewBody)).toBeVisible();
+  expect(document.body).toHaveTextContent('Resin-Dateien werden bisher nur katalogisiert');
+  expect(screen.queryByRole('heading', { name: de.gcodeNoPreviewTitle })).toBeNull();
+  expect(document.querySelector('[data-sliced-preview] [data-kind-badge]')).toHaveTextContent('CTB');
+  expect(screen.queryByRole('button', { name: new RegExp(de.openInSlicer) })).toBeNull();
+  expect(screen.queryByRole('region', { name: de.plateFitHeading })).toBeNull();
+  expect(screen.queryByRole('region', { name: de.printDataHeading })).toBeNull();
+  expect(screen.queryByText(de.metaDimensions)).toBeNull();
+  expect(screen.queryByText(de.metaObjectCount)).toBeNull();
+});
+
+it('shows the detail page of a resin file with the note, the file facts and without model-only parts', () => {
+  check.value = { checks: new Map(), error: false };
+  page(resin());
+  expect(screen.queryByText('Viewer')).toBeNull();
+  expect(screen.getByRole('heading', { name: de.resinNoPreviewTitle })).toBeVisible();
+  expect(screen.queryByRole('button', { name: new RegExp(`^${de.openInSlicer}`) })).toBeNull();
+  expect(screen.queryByRole('region', { name: de.plateFitHeading })).toBeNull();
+  expect(screen.queryByRole('table', { name: de.printDataHeading })).toBeNull();
+  expect(screen.queryByText(de.metaDimensions)).toBeNull();
+  expect(screen.queryByText(de.metaVolume)).toBeNull();
+  expect(screen.queryByText(de.metaWeight)).toBeNull();
+  expect(screen.getByText(de.metaFileSize)).toBeVisible();
+});
+
+it.each(['compact', 'comfort'])('marks a resin card with the ending as its type and a name that says it (%s)', density => {
+  const { container } = grid([resin(), resin({ id: 'r2', name: 'Goo', path: '/c/goo.GOO' }), makeModelFile({ id: 'm', path: '/c/m.stl', name: 'Plain model' })], density);
+  const cards = [...container.querySelectorAll<HTMLElement>('[data-model-id]')];
+  expect(cards[0].querySelector('[data-kind-badge]')).toHaveTextContent('CTB');
+  expect(cards[0]).toHaveAttribute('aria-label', expect.stringContaining('CTB'));
+  expect(cards[0].querySelector('[data-card-print-time]')).toBeNull();
+  expect(cards[1].querySelector('[data-kind-badge]')).toHaveTextContent('GOO');
+  expect(cards[2].querySelector('[data-kind-badge]')).toBeNull();
+  // The compact placeholder says there is no preview instead of promising a 3D one; the comfortable one has no label.
+  if (density === 'compact') {
+    expect(within(cards[0]).getByText(de.previewLabelNone)).toBeInTheDocument();
+    expect(within(cards[2]).getByText(de.previewLabel3d)).toBeInTheDocument();
+  }
+});
+
+it('labels a resin row of the list view with its ending', () => {
+  const props = { models: [resin()], selectedId: null, onSelect: vi.fn(), onOpenDetail: vi.fn(), onContextMenu: vi.fn(), selectedForBulk: new Set<string>(), onToggleBulkSelect: vi.fn() };
+  const { container } = render(<LanguageProvider><ModelList {...props} /></LanguageProvider>);
+  expect(container.querySelector('[data-kind-badge]')).toHaveTextContent('CTB');
+  expect(container.querySelector('[data-model-id]')).toHaveAttribute('aria-label', expect.stringContaining('CTB'));
+});

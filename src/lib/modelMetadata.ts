@@ -1,6 +1,6 @@
 import type { ModelFile } from '../types';
 import type { Language, Translations } from '../i18n/types';
-import { isGcode } from './fileKind';
+import { isResin, isSlicedOutput } from './fileKind';
 import { formatBytes, formatDate, formatDimensions, formatVolumeCm3, formatWeightG } from '../i18n/format';
 
 export type TFunction = <K extends keyof Translations>(key: K) => Translations[K];
@@ -24,17 +24,19 @@ export function buildMetaRows(
   const weightLabel = model.weightSource === 'slicer' ? t('metaWeightFromSlicer') : t('metaWeight');
 
   // Slicer output has no model shape: size, volume and object count would only ever be empty.
-  const gcode = isGcode(model);
+  const sliced = isSlicedOutput(model);
+  // A resin file is only catalogued: its content is not read, so there is no weight to show either.
+  const resin = isResin(model);
   const rows = [
-    ...(gcode ? [] : [
+    ...(sliced ? [] : [
       { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
       { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
     ]),
-    { label: weightLabel, value: weightValue },
-    ...(gcode ? [] : [{ label: t('metaObjectCount'), value: objectCountValue }]),
+    ...(resin ? [] : [{ label: weightLabel, value: weightValue }]),
+    ...(sliced ? [] : [{ label: t('metaObjectCount'), value: objectCountValue }]),
   ];
 
-  if (model.plateCount != null && !gcode) {
+  if (model.plateCount != null && !sliced) {
     rows.push({ label: t('metaPlateCount'), value: String(model.plateCount) });
   }
 

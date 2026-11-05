@@ -1326,6 +1326,36 @@ async fn gcode_uploads_need_text_or_the_bgcode_magic_and_never_come_out_of_an_ar
 }
 
 #[tokio::test]
+async fn resin_uploads_refuse_executables_and_an_sl1_must_be_a_zip_and_none_comes_out_of_an_archive() {
+    let f = Fixture::new(true);
+    // Formats without a known signature only pass the generic rule; SL1 is a ZIP container.
+    let opaque = (1u8..=255).cycle().take(2000).collect::<Vec<u8>>();
+    let mut sl1 = b"PK\x03\x04".to_vec();
+    sl1.extend_from_slice(&[20, 0, 0, 0, 0, 0]);
+    for (name, bytes) in [("a.ctb", opaque.clone()), ("b.GOO", opaque.clone()), ("c.pwmx", opaque.clone()), ("d.sl1", sl1.clone())] {
+        assert_eq!(f.send(f.upload_request(name, &bytes)).await.status(), 200, "{name}");
+    }
+    for (name, bytes) in [
+        ("exe.ctb", b"MZ\x90\x00rest".to_vec()),
+        ("elf.cbddlp", b"\x7fELF\x02\x01\x01".to_vec()),
+        ("script.pwms", b"#!/bin/sh\necho x\n".to_vec()),
+        ("text.sl1", b"not a zip at all".to_vec()),
+        ("emptyzip.sl1", b"PK\x05\x06\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0".to_vec()),
+    ] {
+        let r = f.send(f.upload_request(name, &bytes)).await;
+        assert_eq!(r.status(), 400, "{name}");
+        assert_eq!(value(r).await["kind"], "invalid_signature", "{name}");
+    }
+    // Project files of resin slicers are not print output and stay refused by name.
+    for name in ["x.lys", "x.chitubox", "x.voxl"] {
+        assert_eq!(f.send(f.upload_request(name, &opaque)).await.status(), 415, "{name}");
+    }
+    assert_eq!(upload_names(&f).len(), 4, "only the four good files were stored");
+    let (_, result) = run_archive(&f, "pack.zip", &zip_bytes(&[("layers.ctb", opaque)])).await;
+    assert_eq!(result["files"][0]["kind"], "archive_no_models", "{result}");
+}
+
+#[tokio::test]
 async fn hostile_paths_never_write_outside_the_upload_folder() {
     let f = Fixture::new(true);
     let long_ok = format!("{}tief.obj", "d/".repeat(150));

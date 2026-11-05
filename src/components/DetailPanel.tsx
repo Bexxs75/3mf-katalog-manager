@@ -31,8 +31,8 @@ import { useAutoTagBlock } from '../hooks/useAutoTagBlock';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelPreview } from './ModelPreview';
-import { GcodePreview } from './GcodePreview';
-import { isGcode } from '../lib/fileKind';
+import { SlicedPreview } from './SlicedPreview';
+import { isSlicedOutput } from '../lib/fileKind';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { SourcePlatformRows } from './SourcePlatformRows';
@@ -106,7 +106,7 @@ export function DetailPanel({
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const imageUpload = useImageUpload(model?.id, onUploadImage);
-  const gcode = model ? isGcode(model) : false;
+  const sliced = model ? isSlicedOutput(model) : false;
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const autoTagBlock = useAutoTagBlock(trashMode || !canEdit ? null : model, onRemoveTag, onAddTag);
@@ -150,8 +150,8 @@ export function DetailPanel({
         </div>
 
         <div className="relative h-[248px] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-          {isGcode(model)
-            ? <GcodePreview model={model} surfaceClassName="h-full" />
+          {isSlicedOutput(model)
+            ? <SlicedPreview model={model} surfaceClassName="h-full" />
             : <ModelPreview model={model} needsSnapshot={false} onSnapshotCaptured={() => {}} />}
         </div>
 
@@ -211,14 +211,14 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 11px)',
             }}
           />
-          {gcode ? <GcodePreview model={model} surfaceClassName="h-[248px]" /> : <ModelPreview surfaceClassName="h-[248px]"
+          {sliced ? <SlicedPreview model={model} surfaceClassName="h-[248px]" /> : <ModelPreview surfaceClassName="h-[248px]"
             model={model}
             needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />}
-          {!gcode && <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
+          {!sliced && <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>}
           <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]" />
@@ -353,7 +353,7 @@ export function DetailPanel({
         </div>
 
         {showsPrintData(model) && <PrintDataCard key={model.id} model={model} variant="compact" />}
-        {!gcode && <BuildPlateFit model={model} printers={printers} variant="compact" />}
+        {!sliced && <BuildPlateFit model={model} printers={printers} variant="compact" />}
         {import.meta.env.VITE_TARGET === 'web'
           ? <CompanionWebSection key={model.id} fileId={model.id} variant="compact" />
           : <CompanionSection key={model.id} fileId={model.id} variant="compact" />}
@@ -395,7 +395,7 @@ export function DetailPanel({
               <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-            {!container && !gcode && (<>{!isReadOnly() && <button
+            {!container && !sliced && (<>{!isReadOnly() && <button
                 onClick={() => onOpenInSlicer()}
                 className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
@@ -432,7 +432,7 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 12px)',
             }}
           />
-          {gcode ? <GcodePreview model={model} surfaceClassName="h-[284px]" /> : <ModelPreview surfaceClassName="h-[284px]"
+          {sliced ? <SlicedPreview model={model} surfaceClassName="h-[284px]" /> : <ModelPreview surfaceClassName="h-[284px]"
             model={model}
             needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
@@ -550,7 +550,7 @@ export function DetailPanel({
         </div>
 
         {showsPrintData(model) && <PrintDataCard key={model.id} model={model} variant="comfort" />}
-        {!gcode && <BuildPlateFit model={model} printers={printers} variant="comfort" />}
+        {!sliced && <BuildPlateFit model={model} printers={printers} variant="comfort" />}
         {import.meta.env.VITE_TARGET === 'web'
           ? <CompanionWebSection key={model.id} fileId={model.id} variant="comfort" />
           : <CompanionSection key={model.id} fileId={model.id} variant="comfort" />}
@@ -592,7 +592,7 @@ export function DetailPanel({
             <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-            {!container && !gcode && (<>{!isReadOnly() && <button
+            {!container && !sliced && (<>{!isReadOnly() && <button
               onClick={() => onOpenInSlicer()}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
               style={{ fontSize: 'var(--font-size-body)' }}

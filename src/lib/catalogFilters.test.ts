@@ -268,17 +268,19 @@ describe('file type filtering', () => {
     makeModelFile({ id: 'g', name: 'Output', path: '/c/o.gcode' }),
     makeModelFile({ id: 'b', name: 'Binary', path: '/c/b.bgcode', fileType: 'gcode' }),
     makeModelFile({ id: 's', name: 'Solid', path: '/c/s.stl' }),
+    makeModelFile({ id: 'r', name: 'Layers', path: '/c/l.ctb', fileType: 'resin' }),
   ];
   const criteria = { activeFolderId: 'all', activeTag: null, query: '', sort: 'name' as const };
-  const ids = (fileKind?: 'all' | 'model' | 'gcode') => filterAndSortModels(models, [], { ...criteria, fileKind }).map(m => m.id);
+  const ids = (fileKind?: 'all' | 'model' | 'gcode' | 'resin') => filterAndSortModels(models, [], { ...criteria, fileKind }).map(m => m.id);
 
   it('shows everything by default and for "all"', () => {
-    expect(ids()).toEqual(['b', 'm', 'g', 's']);
-    expect(ids('all')).toEqual(['b', 'm', 'g', 's']);
+    expect(ids()).toEqual(['b', 'r', 'm', 'g', 's']);
+    expect(ids('all')).toEqual(['b', 'r', 'm', 'g', 's']);
   });
   it('keeps only models, or only G-code of both formats', () => {
     expect(ids('model')).toEqual(['m', 's']);
     expect(ids('gcode')).toEqual(['b', 'g']);
+    expect(ids('resin')).toEqual(['r']);
   });
   it('combines with the search', () => {
     expect(filterAndSortModels(models, [], { ...criteria, fileKind: 'gcode', query: 'bin' }).map(m => m.id)).toEqual(['b']);

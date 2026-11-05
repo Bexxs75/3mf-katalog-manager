@@ -12,7 +12,7 @@ import { useT } from '../i18n/LanguageContext';
 import { splitFileName } from '../lib/fileName';
 import { toAppError, type AppError } from '../lib/errors';
 import { useFormatError } from '../diagnostics/useFormatError';
-import { isGcode } from '../lib/fileKind';
+import { isSlicedOutput } from '../lib/fileKind';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
 /** Bundle entries of the file menu; an action that does not apply to the selection is left out. */
@@ -224,7 +224,7 @@ function ModelContextMenu({
       ) : (
         <>
           {/* Slicer output is what a slicer writes, not something to open in one. */}
-          {!container && !(stlModel?.path && isGcode({ path: stlModel.path, fileType: stlModel.fileType })) && (<button
+          {!container && !(stlModel?.path && isSlicedOutput({ path: stlModel.path, fileType: stlModel.fileType })) && (<button
             onClick={() => {
               onOpenInSlicer();
               onClose();

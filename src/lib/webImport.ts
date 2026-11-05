@@ -3,7 +3,7 @@ import { authenticationFailed, canUpload, getSnapshot, readResponse, subscribe }
 
 export type UploadTextKey = { [K in keyof Translations]: Translations[K] extends string ? K : never }[keyof Translations];
 
-export const MODEL_UPLOAD_ACCEPT = '.3mf,.stl,.obj,.stp,.step,.gcode,.bgcode,.zip,.7z';
+export const MODEL_UPLOAD_ACCEPT = '.3mf,.stl,.obj,.stp,.step,.gcode,.bgcode,.ctb,.cbddlp,.goo,.pwmx,.pwms,.sl1,.zip,.7z';
 // Formats the server recognises but does not unpack in the browser (desktop app only).
 const UNPACKED_ELSEWHERE = /\.(rar|tar|tgz|tbz2|txz|tzst)$|\.tar\.(gz|bz2|xz|zst)$/i;
 // Why an upload or archive was set aside, as reported by the server in `kind`.

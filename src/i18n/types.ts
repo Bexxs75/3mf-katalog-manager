@@ -1089,9 +1089,12 @@ export interface Translations {
   fileKindAll: string;
   fileKindModels: string;
   fileKindGcode: string;
+  fileKindResin: string;
   previewLabelNone: string;
   gcodeNoPreviewTitle: string;
   gcodeNoPreviewBody: string;
+  resinNoPreviewTitle: string;
+  resinNoPreviewBody: string;
   printDataNotRecognizedChip: string;
   printDataGcodeNotRecognizedHint: string;
   printDataGcodeNothingKnown: string;

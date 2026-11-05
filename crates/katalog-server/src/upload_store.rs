@@ -220,10 +220,10 @@ pub(crate) fn clean_name(decoded: &str) -> Result<String, StoreError> {
 pub(crate) fn is_model_extension(ext: &str) -> bool {
     matches!(ext, "3mf" | "stl" | "obj" | "stp" | "step")
 }
-/// Sliced output (G-Code, bgcode). Accepted as a single upload only, never out of an archive,
-/// like the desktop import.
+/// Sliced output (G-Code, bgcode, resin files). Accepted as a single upload only, never out of an
+/// archive, like the desktop import.
 pub(crate) fn is_sliced_extension(ext: &str) -> bool {
-    matches!(ext, "gcode" | "bgcode")
+    matches!(ext, "gcode" | "bgcode") || katalog_core::import::files::is_resin_extension(ext)
 }
 /// Archives the web upload unpacks itself; every other archive format is refused.
 pub(crate) fn is_archive_name(name: &str) -> bool {
@@ -1167,6 +1167,10 @@ pub(crate) fn signature_ok(ext: &str, head: &[u8]) -> bool {
         "bgcode" => head.starts_with(b"GCDE"),
         // Text G-Code: the start must be text, so a renamed binary never gets in.
         "gcode" => text_like(head) && !head.starts_with(b"#!"),
+        // SL1 is a ZIP container (the empty-archive end record alone is not a print file).
+        "sl1" => head.starts_with(b"PK\x03\x04"),
+        // The other resin formats have no signature checked here: they get the generic rule below
+        // (no executable, no script header) and are never opened or unpacked.
         _ => !head.starts_with(b"MZ") && !head.starts_with(b"\x7fELF") && !head.starts_with(b"#!"),
     }
 }

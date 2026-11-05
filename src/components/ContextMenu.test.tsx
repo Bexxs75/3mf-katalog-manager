@@ -202,7 +202,7 @@ describe('ContextMenu and G-code', () => {
     </LanguageProvider>,
   );
 
-  it.each(['a.gcode', 'a.bgcode'])('does not offer "Open in slicer" for slicer output (%s)', name => {
+  it.each(['a.gcode', 'a.bgcode', 'a.ctb', 'a.GOO'])('does not offer "Open in slicer" for slicer output (%s)', name => {
     menu({ name, path: `/c/${name}` });
     expect(screen.queryByRole('button', { name: 'In Slicer öffnen' })).toBeNull();
   });

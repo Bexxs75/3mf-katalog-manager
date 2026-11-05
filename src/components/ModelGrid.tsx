@@ -13,7 +13,7 @@ import type { BundleCard } from '../lib/bundles';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { formatPrintDuration, formatWeightG } from '../i18n/format';
-import { fileKindOf, gcodeBadge } from '../lib/fileKind';
+import { fileKindOf, isSlicedOutput, kindBadge } from '../lib/fileKind';
 import { printFactsOf } from '../lib/printData';
 import { tagLabel } from '../lib/autoTags';
 import { BulkCheckbox } from './BulkCheckbox';
@@ -102,22 +102,22 @@ function gcodePrintSeconds(model: ModelFile): number | null {
 /** Accessible name of a card: the name and license, plus the file type for slicer output (the badge is only a picture to the eye). */
 function cardAriaLabel(model: ModelFile, t: ReturnType<typeof useT>, partOf: string | null): string {
   const label = modelLicenseAriaLabel(displayName(model.name), model.license, t);
-  const named = fileKindOf(model) === 'gcode' ? `${label}, ${gcodeBadge(model.path)}` : label;
+  const named = isSlicedOutput(model) ? `${label}, ${kindBadge(model)}` : label;
   return partOf ? `${named}, ${partOf}` : named;
 }
 
 /** Type badge on the picture of slicer output; a model needs none. */
 function KindBadge({ model, comfort }: { model: ModelFile; comfort: boolean }) {
-  if (fileKindOf(model) !== 'gcode') return null;
+  if (!isSlicedOutput(model)) return null;
   return <span data-kind-badge aria-hidden="true"
     className={`absolute z-[1] font-bold tracking-[0.05em] text-caption border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] ${comfort ? 'left-2.5 top-2.5 px-2 py-0.5 rounded-lg' : 'left-[7px] top-[7px] px-1.5 py-px rounded'}`}>
-    {gcodeBadge(model.path)}
+    {kindBadge(model)}
   </span>;
 }
 
 /** Where the "new" badge sits: below the type badge when there is one. */
 function newBadgePosition(model: ModelFile, comfort: boolean): string {
-  if (fileKindOf(model) === 'gcode') return comfort ? 'left-2.5 top-11' : 'left-[7px] top-[30px]';
+  if (isSlicedOutput(model)) return comfort ? 'left-2.5 top-11' : 'left-[7px] top-[30px]';
   return comfort ? 'left-2.5 top-2.5' : 'left-[7px] top-[7px]';
 }
 
@@ -298,7 +298,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 <div className="flex flex-col items-center gap-1.5">
                   <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
                   <div className="text-compact-label ui-label text-[var(--ink-3)]">
-                    {t(fileKindOf(m) === 'gcode' ? 'previewLabelNone' : 'previewLabel3d')}
+                    {t(isSlicedOutput(m) ? 'previewLabelNone' : 'previewLabel3d')}
                   </div>
                 </div>
               </div>
