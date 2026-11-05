@@ -1,5 +1,5 @@
 import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
-import { canEditMetadata } from './lib/webSession';
+import { canEditMetadata, canManageFiles } from './lib/webSession';
 import { reportMetadataError } from './lib/metadataErrors';
 import { WebImport } from './components/WebImport';
 import { isReadOnly } from './lib/readOnly';
@@ -72,6 +72,13 @@ import { modelMayFitBed } from './lib/buildPlateFit';
 import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { useBundles } from './hooks/useBundles';
+import { useBundleActions } from './hooks/useBundleActions';
+import { BundleDialog } from './components/BundleDialog';
+import { BundleDeleteChoiceDialog } from './components/BundleDeleteChoiceDialog';
+import { BundleContextMenu } from './components/BundleContextMenu';
+import { BundleToast } from './components/BundleToast';
+import type { BulkBundleActions } from './components/BulkActionToolbar';
+import { selectionBundleState } from './lib/bundleEdit';
 import { loadBundleCollapse, saveBundleCollapse } from './lib/bundleCollapsePreference';
 import { EMPTY_FILTER, splitByPrintData } from './lib/printDataFilter';
 import { useCollections } from './hooks/useCollections';
@@ -113,7 +120,8 @@ export default function App() {
   const store = useCatalogStore({ detailModelId, preselectFirst: detailPanel === 'pinned' });
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
   const { language } = useLanguage();
-  const { bundles, refreshBundles } = useBundles();
+  const bundleStore = useBundles();
+  const { bundles, refreshBundles } = bundleStore;
   const [collapseBundles, setCollapseBundlesState] = useState(loadBundleCollapse);
   const setCollapseBundles = useCallback((collapse: boolean) => { setCollapseBundlesState(collapse); saveBundleCollapse(collapse); }, []);
   // The search also finds a bundle by its name, but only while the bundle is shown as a card.
@@ -218,7 +226,7 @@ export default function App() {
   const [setupDialogOpen, setSetupDialogOpen] = useState(import.meta.env.VITE_TARGET !== 'web' && !setupSeen);
   // The update notice goes before other start-up questions, so they wait for it.
   const [upgradeNoticeSettled, setUpgradeNoticeSettled] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number; bundleId?: string } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
   const reloadAfterDiskSync = () => Promise.all([
@@ -317,6 +325,32 @@ export default function App() {
     setTrashToast(result);
     refreshAfterRemoval();
   };
+  // One notice at a time: the newest "Undo" is the one a shortcut reaches.
+  const dismissOtherToasts = useCallback(() => { dragDrop.dismissMoveToast(); setRenameToast(null); setTrashToast(null); }, [dragDrop.dismissMoveToast]);
+  const bundleActions = useBundleActions({
+    bundleStore, models: store.models, selection: bulk.selectedForBulk, selectIds: bulk.selectAllVisible,
+    collapse: collapseBundles, onBeforeToast: dismissOtherToasts,
+  });
+  const { dismissToast: dismissBundleToast } = bundleActions;
+  const otherToastShown = !!dragDrop.moveToast || !!renameToast || !!trashToast;
+  useEffect(() => { if (otherToastShown) dismissBundleToast(); }, [otherToastShown, dismissBundleToast]);
+  // "Delete" on whole bundle cards asks what to do first; the plain confirmation follows only for the rest.
+  const setConfirmBulkDelete = useCallback((value: boolean) => {
+    if (value && bundleActions.interceptDelete()) return;
+    bulk.setConfirmBulkDelete(value);
+  }, [bundleActions.interceptDelete, bulk.setConfirmBulkDelete]);
+  const toolbarBundleActions: BulkBundleActions = {
+    canCreate: bulk.selectedForBulk.size >= 2,
+    canAddTo: bundles.length > 0,
+    canRemove: bundleActions.state.bundledIds.length > 0,
+    canDissolve: bundleActions.state.covered.length > 0,
+    canEdit: bundleActions.state.exact !== null,
+    onCreate: returnTo => bundleActions.openDialog({ mode: 'create', fileIds: [...bulk.selectedForBulk] }, returnTo),
+    onAddTo: returnTo => bundleActions.openDialog({ mode: 'add', fileIds: [...bulk.selectedForBulk], targetId: null }, returnTo),
+    onRemove: () => void bundleActions.remove(bundleActions.state.bundledIds),
+    onDissolve: () => void bundleActions.dissolve(bundleActions.state.covered.map(bundle => bundle.id)),
+    onEdit: returnTo => { const bundle = bundleActions.state.exact; if (bundle) bundleActions.openDialog({ mode: 'edit', bundleId: bundle.id }, returnTo); },
+  };
   const [dateRenameOutcome, setDateRenameOutcome] = useState<{ renamed: number; failed: number } | null>(null);
   const dismissDateRenameNotice = useCallback(() => setDateRenameOutcome(null), []);
   // Names and paths changed on disk and in the catalog, so the list is reloaded rather than patched.
@@ -399,6 +433,13 @@ export default function App() {
   const selected = store.models.find((m) => m.id === store.selectedId) ?? null;
   const detailModel = detailModelId ? store.models.find((m) => m.id === detailModelId) ?? null : null;
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
+  // A bundle card menu works on all living members; a file menu on the selection when the file belongs to it.
+  const contextBundle = contextMenu?.bundleId ? bundles.find(bundle => bundle.id === contextMenu.bundleId) ?? null : null;
+  const contextBundleModels = contextBundle
+    ? contextBundle.members.flatMap(member => member.inTrash ? [] : store.models.find(model => model.id === member.fileId) ?? [])
+    : [];
+  const contextFileIds = contextModel ? (bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id]) : [];
+  const contextBundledIds = selectionBundleState(contextFileIds, bundles).bundledIds;
 
   // The plate overview needs the full record (plate names, weights); it is loaded when the dialog opens.
   const [plateOverviewId, setPlateOverviewId] = useState<string | null>(null);
@@ -443,14 +484,14 @@ export default function App() {
     selectedId: store.selectedId,
     selectModel: store.selectModel,
     hasBulkSelection: bulk.selectedForBulk.size > 0,
-    openBulkDeleteConfirm: () => { if (!fileImport.jobActive) bulk.setConfirmBulkDelete(true); },
+    openBulkDeleteConfirm: () => { if (!fileImport.jobActive) setConfirmBulkDelete(true); },
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
     toggleBulkSelect: bulk.toggleBulkSelect,
     onMoveSelection: web ? undefined : () => {
       const ids = bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
       openMoveDialog(ids, ids.length === 1 ? tileOf(ids[0]) : (document.activeElement as HTMLElement | null));
     },
-    onUndo: web || fileImport.jobActive ? undefined : () => void dragDrop.undo(),
+    onUndo: bundleActions.undoable ? bundleActions.runUndo : web || fileImport.jobActive ? undefined : () => void dragDrop.undo(),
   });
 
   useEffect(() => {
@@ -726,7 +767,7 @@ export default function App() {
               detailModel={detailModel}
               selectedForBulk={bulk.selectedForBulk}
               confirmBulkDelete={bulk.confirmBulkDelete}
-              setConfirmBulkDelete={bulk.setConfirmBulkDelete}
+              setConfirmBulkDelete={setConfirmBulkDelete}
               bulkDelete={bulk.bulkDelete}
               onBulkMove={web ? undefined : () => openMoveDialog([...bulk.selectedForBulk], document.activeElement as HTMLElement | null)}
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
@@ -789,6 +830,8 @@ export default function App() {
               bundles={bundles}
               collapseBundles={collapseBundles}
               setCollapseBundles={setCollapseBundles}
+              bundleActions={toolbarBundleActions}
+              selectedBundleCount={collapseBundles ? bundleActions.state.covered.length : 0}
               filtered={displayedModels}
               collectionLoading={collections.collectionLoading}
               selectedId={store.selectedId}
@@ -817,7 +860,30 @@ export default function App() {
 
           {settingsOpen && mainView !== 'catalog' && renderSettingsPanel(true)}
 
-          {contextMenu && contextModel && (
+          {contextMenu && contextModel && contextBundle && (
+            <BundleContextMenu
+              x={contextMenu.x} y={contextMenu.y}
+              count={contextBundleModels.length}
+              allPrinted={contextBundleModels.every(model => model.printStatus === 'printed')}
+              allFavorite={contextBundleModels.every(model => model.favorite)}
+              canQueue={contextBundle.kind === 'parts'}
+              canDelete={canManageFiles() && !web}
+              onClose={() => setContextMenu(null)}
+              onEdit={() => bundleActions.openDialog({ mode: 'edit', bundleId: contextBundle.id }, tileOf(contextModel.id))}
+              onTogglePrinted={() => {
+                const printed = contextBundleModels.every(model => model.printStatus === 'printed');
+                for (const model of contextBundleModels) if ((model.printStatus === 'printed') === printed) void store.togglePrintStatus(model.id);
+              }}
+              onQueueAll={() => { for (const model of contextBundleModels) if (model.queuePosition === null) void store.addToQueue(model.id); }}
+              onToggleFavorite={() => {
+                const favorite = contextBundleModels.every(model => model.favorite);
+                for (const model of contextBundleModels) if (model.favorite === favorite) void store.toggleFavorite(model.id);
+              }}
+              onDissolve={() => void bundleActions.dissolve([contextBundle.id])}
+              onDelete={() => bundleActions.askDeleteBundle(contextBundle, tileOf(contextModel.id))}
+            />
+          )}
+          {contextMenu && contextModel && !contextBundle && (
             <ContextMenu
               x={contextMenu.x}
               y={contextMenu.y}
@@ -841,6 +907,11 @@ export default function App() {
               onRename={(name) => store.renameFile(contextModel.id, name)}
               onMove={web ? undefined : () => openMoveDialog(
                 bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
+              bundleActions={{
+                onCreate: contextFileIds.length >= 2 ? () => bundleActions.openDialog({ mode: 'create', fileIds: contextFileIds }, tileOf(contextModel.id)) : undefined,
+                onAddTo: bundles.length > 0 ? () => bundleActions.openDialog({ mode: 'add', fileIds: contextFileIds, targetId: null }, tileOf(contextModel.id)) : undefined,
+                onRemove: contextBundledIds.length > 0 ? () => void bundleActions.remove(contextBundledIds) : undefined,
+              }}
             />
           )}
 
@@ -941,6 +1012,18 @@ export default function App() {
           {renameToast && <RenameToast from={renameToast.from} to={renameToast.to} count={renameToast.count} onDone={dismissRenameToast}
             onUndo={web || fileImport.jobActive ? undefined : () => { focusCatalogMain(); dismissRenameToast(); void dragDrop.undo(); }} />}
           {trashToast && <FolderTrashToast result={trashToast} onDone={dismissTrashToast} />}
+          {bundleActions.toast && <BundleToast text={bundleActions.toast.text} onUndo={bundleActions.undoable ? bundleActions.runUndo : undefined} onDone={bundleActions.dismissToast} />}
+          {bundleActions.dialog && (
+            <BundleDialog request={bundleActions.dialog} models={store.models} bundles={bundles} returnFocus={bundleActions.returnFocus}
+              onClose={bundleActions.closeDialog} onCreate={bundleActions.create} onAdd={bundleActions.add} onSaveEdit={bundleActions.saveEdit} />
+          )}
+          {bundleActions.deleteChoice && (
+            <BundleDeleteChoiceDialog bundleNames={bundleActions.deleteNames.bundles} fileNames={bundleActions.deleteNames.files}
+              returnFocus={bundleActions.returnFocus} onClose={bundleActions.closeDeleteChoice}
+              onDissolve={bundleActions.dissolveCovered}
+              // The web version keeps its own confirmation (with the password prompt) for the trash.
+              onTrash={async () => { if (web) bulk.setConfirmBulkDelete(true); else await bulk.bulkDelete(); }} />
+          )}
         </div>
       </div>
       {setupDialogOpen && (

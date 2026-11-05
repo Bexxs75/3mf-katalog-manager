@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as bundlesApi from '../lib/api/bundles';
 import { indexBundles } from '../lib/bundles';
+import type { BundleEditPlan, BundleSnapshot } from '../lib/bundleEdit';
 import { reportMetadataError } from '../lib/metadataErrors';
 import { canEditMetadata } from '../lib/webSession';
 import type { Bundle, BundleKind } from '../types';
@@ -68,6 +69,44 @@ export function useBundles() {
     [change],
   );
 
+  /** Creates a bundle and gives its members their labels (the command itself takes none). */
+  const createLabelledBundle = useCallback(
+    (name: string, kind: BundleKind, members: { fileId: string; label: string }[]) => change(async () => {
+      const created = await bundlesApi.createBundle(name, kind, members.map(member => member.fileId));
+      for (const member of members) {
+        if (member.label) await bundlesApi.updateBundleMember(member.fileId, { label: member.label });
+      }
+      return created;
+    }),
+    [change],
+  );
+  /** Brings back a dissolved bundle from the state it had; members that cannot join any more make it fail. */
+  const restoreBundle = useCallback(
+    (snapshot: BundleSnapshot) => createLabelledBundle(snapshot.name, snapshot.kind, snapshot.members),
+    [createLabelledBundle],
+  );
+  /** Carries out an edit of the bundle dialog: removals first, then the order, then the labels. */
+  const saveBundleEdit = useCallback(
+    (bundleId: string, plan: BundleEditPlan) => change(async () => {
+      if (plan.dissolve) {
+        await bundlesApi.dissolveBundle(bundleId);
+        return;
+      }
+      if (plan.name !== undefined || plan.kind !== undefined) await bundlesApi.updateBundle(bundleId, { name: plan.name, kind: plan.kind });
+      if (plan.removeIds.length > 0) await bundlesApi.removeFilesFromBundle(plan.removeIds);
+      for (const fileId of plan.titleSteps) await bundlesApi.updateBundleMember(fileId, { makeTitle: true });
+      for (const { fileId, label } of plan.labelChanges) await bundlesApi.updateBundleMember(fileId, { label });
+    }),
+    [change],
+  );
+  /** Dissolves several bundles in one go (a selection can hold more than one). */
+  const dissolveBundles = useCallback(
+    (bundleIds: string[]) => change(async () => {
+      for (const bundleId of bundleIds) await bundlesApi.dissolveBundle(bundleId);
+    }),
+    [change],
+  );
+
   return {
     bundles,
     bundleOfFile,
@@ -78,5 +117,9 @@ export function useBundles() {
     removeFilesFromBundle,
     dissolveBundle,
     updateBundleMember,
+    createLabelledBundle,
+    restoreBundle,
+    saveBundleEdit,
+    dissolveBundles,
   };
 }

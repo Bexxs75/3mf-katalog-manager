@@ -33,7 +33,8 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
-  onContextMenu: (id: string, x: number, y: number) => void;
+  /** `bundleId` is set when the menu is for a bundle card (the id is then its title model). */
+  onContextMenu: (id: string, x: number, y: number, bundleId?: string) => void;
   onToggleFavorite: (id: string) => void;
   readOnly?: boolean;
   selectedForBulk: Set<string>;
@@ -242,7 +243,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         metadataHeight={comfort ? 124 + extra(true) : 88 + extra(false)}
         onSelect={() => onSelect(card.title.id)}
         onOpenDetail={() => onOpenDetail(card.title.id)}
-        onContextMenu={(x, y) => onContextMenu(card.title.id, x, y)}
+        onContextMenu={(x, y) => onContextMenu(card.title.id, x, y, card.bundle.id)}
         onToggleChecked={() => cardToggleIds(card, selectedForBulk).forEach(onToggleBulkSelect)}
       />
     );

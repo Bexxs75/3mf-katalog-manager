@@ -30,7 +30,8 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
-  onContextMenu: (id: string, x: number, y: number) => void;
+  /** `bundleId` is set when the menu is for a bundle row (the id is then its title model). */
+  onContextMenu: (id: string, x: number, y: number, bundleId?: string) => void;
   readOnly?: boolean;
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
@@ -178,7 +179,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
         onContextMenu={(e) => {
           e.preventDefault();
           onSelect(card.title.id);
-          onContextMenu(card.title.id, e.clientX, e.clientY);
+          onContextMenu(card.title.id, e.clientX, e.clientY, card.bundle.id);
         }}
         className={`group min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
           open ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--panel-2)]'

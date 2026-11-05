@@ -98,6 +98,15 @@ describe.each(['compact', 'comfort'])('bundle card in the grid (%s)', density =>
     expect(h.onOpenDetail).toHaveBeenCalledWith('v1');
   });
 
+  it('opens the context menu for the bundle, not for the title model alone, and for a single card without a bundle', () => {
+    const h = handlers();
+    render(grid(h));
+    fireEvent.contextMenu(screen.getByRole('row', { name: /^Bündel Holder/ }), { clientX: 5, clientY: 6 });
+    expect(h.onContextMenu).toHaveBeenLastCalledWith('v1', 5, 6, 'b1');
+    fireEvent.contextMenu(screen.getByRole('row', { name: 'Solo.stl' }), { clientX: 7, clientY: 8 });
+    expect(h.onContextMenu).toHaveBeenLastCalledWith('solo', 7, 8);
+  });
+
   it('marks the card as open when any shown member is open', () => {
     render(grid(handlers(), settings(), { selectedId: 'v3' }));
     expect(screen.getByRole('row', { name: /^Bündel Holder/ })).toHaveAttribute('aria-current', 'true');
@@ -130,6 +139,13 @@ describe.each(['compact', 'comfort'])('bundle card in the grid (%s)', density =>
 });
 
 describe('bundle row in the list', () => {
+  it('opens the context menu for the bundle on its row', () => {
+    const h = handlers();
+    render(wrap(<ModelList {...h} models={models} selectedId={null} selectedForBulk={new Set()} />, settings()));
+    fireEvent.contextMenu(screen.getByRole('row', { name: /^Bündel Holder/ }), { clientX: 3, clientY: 4 });
+    expect(h.onContextMenu).toHaveBeenLastCalledWith('v1', 3, 4, 'b1');
+  });
+
   const list = (h = handlers(), value: BundleCardsSettings | null = settings()) =>
     wrap(<ModelList {...h} models={models} selectedId={null} selectedForBulk={new Set()} />, value);
 
