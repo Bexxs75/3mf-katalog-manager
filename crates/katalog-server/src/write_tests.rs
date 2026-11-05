@@ -2292,3 +2292,33 @@ async fn bundle_commands_refuse_what_is_invalid_with_registered_codes() {
     assert_eq!(listed.as_array().unwrap().len(), 1, "the rejected calls changed nothing");
     assert_eq!(listed[0]["members"].as_array().unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn create_bundle_restores_trashed_members_with_labels_over_http() {
+    let f = Fixture::new(true);
+    let (second, third) = {
+        let c = db::connect(&f.app.config.db_path).unwrap();
+        let second = db::test_insert_minimal_file(&c, "/second.3mf", None).unwrap();
+        let third = db::test_insert_minimal_file(&c, "/third.3mf", None).unwrap();
+        db::soft_delete_file(&c, third, Some("/trash/third.3mf"), "today").unwrap();
+        (second.to_string(), third.to_string())
+    };
+    let plain = f.send("create_bundle", json!({"name":"Vase","kind":"parts","fileIds":[f.id, second, third]})).await;
+    assert_eq!(plain.status(), 422, "a plain create still refuses a file in the trash");
+    let r = f
+        .send("create_bundle", json!({"name":"Vase","kind":"parts","fileIds":[f.id, second, third],"labels":["","Lid","Base"],"restore":true}))
+        .await;
+    assert_eq!(r.status(), 200);
+    let bundle = value(r).await;
+    assert_eq!(bundle["members"][1], json!({"fileId":second,"position":1,"label":"Lid","inTrash":false}));
+    assert_eq!(bundle["members"][2], json!({"fileId":third,"position":2,"label":"Base","inTrash":true}));
+    let r = f.send("create_bundle", json!({"name":"V","kind":"parts","fileIds":[f.id, second],"labels":["a"],"restore":true})).await;
+    assert_eq!(r.status(), 422, "one label for two files");
+    for args in [
+        json!({"name":"V","kind":"parts","fileIds":[f.id, second],"labels":[1,2]}),
+        json!({"name":"V","kind":"parts","fileIds":[f.id, second],"restore":"yes"}),
+    ] {
+        let r = f.send("create_bundle", args.clone()).await;
+        assert_eq!(r.status(), 400, "{args}");
+    }
+}

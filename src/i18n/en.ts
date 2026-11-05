@@ -1268,6 +1268,7 @@ export const en: Translations = {
   bundleToastDissolvedMany: "{bundles} bundles dissolved. The {count} models stay in the catalog.",
   bundleToastRestored: "Dissolving undone: bundle “{name}” restored with its order and labels.",
   bundleToastRestoredMany: "Dissolving undone: {bundles} bundles restored with their order and labels.",
+  bundleToastRestoredLeft: { one: "{count} model could not come back: its file was deleted for good or belongs to another bundle by now.", other: "{count} models could not come back: their files were deleted for good or belong to other bundles by now." },
   bundleToastRemoved: { one: "{count} model removed from its bundle. The file is kept.", other: "{count} models removed from their bundles. The files are kept." },
   bundleToastRemovedDissolved: "A bundle with fewer than 2 models left was dissolved.",
   bundleSelectionBundles: { one: "{count} bundle", other: "{count} bundles" },

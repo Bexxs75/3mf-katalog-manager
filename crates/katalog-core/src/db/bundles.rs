@@ -161,6 +161,66 @@ pub fn create_bundle(
     Ok(bundle_id)
 }
 
+/// Brings a dissolved bundle back from the members it had (position order, one label each, empty
+/// for none). Unlike `create_bundle` it takes members that sit in the trash, and it never takes a
+/// file away from another bundle: a member that was deleted for good, or that joined another
+/// bundle in the meantime, is left out. All or nothing: fewer than two members left is an error
+/// and nothing is written. Returns the new bundle and how many members could not come back.
+pub fn restore_bundle(
+    conn: &Connection,
+    name: &str,
+    kind: BundleKind,
+    members: &[(i64, String)],
+    created_at: &str,
+) -> Result<(i64, usize), DbError> {
+    let name = validate_bundle_name(name)?;
+    if members.len() > MAX_BUNDLE_MEMBERS {
+        return Err(DbError::coded_with(ErrorCode::BundleTooManyFiles, [MAX_BUNDLE_MEMBERS]));
+    }
+    let ids: Vec<i64> = members.iter().map(|(id, _)| *id).collect();
+    require_distinct(&ids)?;
+    let labels = members
+        .iter()
+        .map(|(_, label)| validate_bundle_label(label))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut exists = conn.prepare("SELECT 1 FROM files WHERE id = ?1")?;
+    let mut taken = conn.prepare("SELECT 1 FROM bundle_members WHERE file_id = ?1")?;
+    let mut back: Vec<(i64, Option<String>)> = Vec::new();
+    for (id, label) in ids.iter().zip(labels) {
+        let present = exists.query_row([id], |r| r.get::<_, i64>(0)).optional()?.is_some();
+        if present && taken.query_row([id], |r| r.get::<_, i64>(0)).optional()?.is_none() {
+            back.push((*id, label));
+        }
+    }
+    drop((exists, taken));
+    require_member_count(back.len())?;
+
+    conn.execute(
+        "INSERT INTO bundles (name, kind, created_at) VALUES (?1, ?2, ?3)",
+        params![name, kind.as_str(), created_at],
+    )?;
+    let bundle_id = conn.last_insert_rowid();
+    let mut join = conn.prepare("INSERT INTO bundle_members (file_id, bundle_id, position, label) VALUES (?1, ?2, ?3, ?4)")?;
+    for (position, (id, label)) in back.iter().enumerate() {
+        join.execute(params![id, bundle_id, position as i64, label])?;
+    }
+    Ok((bundle_id, members.len() - back.len()))
+}
+
+/// Sets the label of each file (same order as `file_ids`; an empty text leaves none).
+pub fn label_members(conn: &Connection, file_ids: &[i64], labels: &[String]) -> Result<(), DbError> {
+    if file_ids.len() != labels.len() {
+        return Err(DbError::coded(ErrorCode::ReqInvalidArguments));
+    }
+    for (id, label) in file_ids.iter().zip(labels) {
+        if let Some(label) = validate_bundle_label(label)? {
+            conn.execute("UPDATE bundle_members SET label = ?1 WHERE file_id = ?2", params![label, id])?;
+        }
+    }
+    Ok(())
+}
+
 /// Appends files at the end of a bundle. A file already in this bundle stays where it is; a file
 /// of another bundle moves over. The bundle never exceeds 200 members.
 pub fn add_files_to_bundle(conn: &Connection, bundle_id: i64, file_ids: &[i64]) -> Result<(), DbError> {

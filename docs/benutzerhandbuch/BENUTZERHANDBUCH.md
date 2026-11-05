@@ -818,8 +818,9 @@ printed, add all to the queue, favorite all) apply to all its members.
 - **Edit** changes name, kind, order and labels; **Add to bundle …** appends models; **Remove from
   bundle** takes one model out (the file stays).
 - **Dissolve bundle** keeps all files in the catalog; the bundle's name, kind, order and labels are lost,
-  but **Undo** brings the bundle back. *Known limit:* members that are in the trash at that moment are
-  not restored by Undo.
+  but **Undo** brings the bundle back, including members that are in the trash at that moment. A model
+  whose file was deleted for good in the meantime, or that joined another bundle, cannot come back; the
+  notice tells you how many.
 - **Delete …** asks whether to only dissolve the bundle or to also move all its models to the app trash.
   A model in the trash stays a member of its bundle and shows "was part of bundle …"; restoring it
   brings it back. Deleting it permanently removes it from the bundle, and a bundle left with fewer than
@@ -2321,8 +2322,9 @@ gedruckt markieren, alle zur Warteschlange, alle als Favoriten) gelten für alle
 - **Bearbeiten** ändert Name, Art, Reihenfolge und Beschriftungen; **Zu Bündel hinzufügen …** hängt Modelle
   an; **Aus Bündel entfernen** nimmt ein Modell heraus (die Datei bleibt).
 - **Bündel auflösen** lässt alle Dateien im Katalog; Name, Art, Reihenfolge und Beschriftungen gehen
-  verloren, **Rückgängig** stellt das Bündel wieder her. *Bekannte Grenze:* Mitglieder, die in diesem Moment im
-  Papierkorb liegen, stellt „Rückgängig“ nicht wieder her.
+  verloren, **Rückgängig** stellt das Bündel wieder her, auch mit Mitgliedern, die in diesem Moment im
+  Papierkorb liegen. Ein Modell, dessen Datei inzwischen endgültig gelöscht wurde oder das in ein anderes
+  Bündel gewechselt ist, kommt nicht zurück; die Meldung nennt, wie viele.
 - **Löschen …** fragt, ob nur das Bündel aufgelöst oder auch alle Modelle in den App-Papierkorb gelegt werden.
   Ein Modell im Papierkorb bleibt Mitglied seines Bündels und zeigt „war Teil von Bündel …“; beim
   Wiederherstellen ist es wieder da. Endgültiges Löschen nimmt es aus dem Bündel, und ein Bündel mit

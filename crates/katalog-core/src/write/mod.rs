@@ -251,14 +251,47 @@ pub fn create_bundle(
     kind: String,
     file_ids: Vec<String>,
 ) -> WriteResult<BundleDto> {
+    create_bundle_with(conn, name, kind, file_ids, None, None)
+}
+
+/// `create_bundle` with the optional parts of "Undo": `labels` (one per file, in the same order)
+/// and `restore`. A restore also takes members that sit in the trash and leaves out the ones that
+/// are gone for good or belong to another bundle by now; the caller sees that in the member list.
+pub fn create_bundle_with(
+    conn: &Connection,
+    name: String,
+    kind: String,
+    file_ids: Vec<String>,
+    labels: Option<Vec<String>>,
+    restore: Option<bool>,
+) -> WriteResult<BundleDto> {
     let kind = db::bundles::BundleKind::parse(&kind)
         .ok_or_else(|| WriteError::coded(ErrorCode::BundleKindInvalid))?;
     let ids = catalog_ids(&file_ids)?;
     let tx = conn.unchecked_transaction()?;
-    let id = db::bundles::create_bundle(&tx, &name, kind, &ids, &chrono::Utc::now().to_rfc3339())?;
+    let created_at = chrono::Utc::now().to_rfc3339();
+    let id = if restore == Some(true) {
+        let members = restore_members(&ids, labels)?;
+        db::bundles::restore_bundle(&tx, &name, kind, &members, &created_at)?.0
+    } else {
+        let id = db::bundles::create_bundle(&tx, &name, kind, &ids, &created_at)?;
+        if let Some(labels) = labels {
+            db::bundles::label_members(&tx, &ids, &labels)?;
+        }
+        id
+    };
     let dto = bundle_dto(&tx, id)?;
     tx.commit()?;
     Ok(dto)
+}
+
+/// Pairs ids with labels for a restore; without labels every member has none.
+pub fn restore_members(ids: &[i64], labels: Option<Vec<String>>) -> WriteResult<Vec<(i64, String)>> {
+    let labels = labels.unwrap_or_else(|| vec![String::new(); ids.len()]);
+    if labels.len() != ids.len() {
+        return Err(WriteError::coded(ErrorCode::ReqInvalidArguments));
+    }
+    Ok(ids.iter().copied().zip(labels).collect())
 }
 
 pub fn update_bundle(

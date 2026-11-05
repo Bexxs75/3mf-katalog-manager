@@ -1268,6 +1268,7 @@ export const es: Translations = {
   bundleToastDissolvedMany: "{bundles} lotes disueltos. Los {count} modelos se conservan.",
   bundleToastRestored: "Disolución deshecha: lote «{name}» restaurado con su orden y sus etiquetas.",
   bundleToastRestoredMany: "Disolución deshecha: {bundles} lotes restaurados con su orden y sus etiquetas.",
+  bundleToastRestoredLeft: { one: "{count} modelo no pudo volver: su archivo se eliminó definitivamente o ya pertenece a otro lote.", other: "{count} modelos no pudieron volver: sus archivos se eliminaron definitivamente o ya pertenecen a otros lotes." },
   bundleToastRemoved: { one: "{count} modelo quitado de su lote. El archivo se conserva.", other: "{count} modelos quitados de sus lotes. Los archivos se conservan." },
   bundleToastRemovedDissolved: "Se disolvió un lote que se quedó con menos de 2 modelos.",
   bundleSelectionBundles: { one: "{count} lote", other: "{count} lotes" },

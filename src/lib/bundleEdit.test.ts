@@ -88,9 +88,12 @@ describe('planBundleEdit', () => {
 });
 
 describe('snapshotBundle', () => {
-  it('keeps name, kind, order and labels of the living members', () => {
+  it('keeps name, kind, order and labels of all members, those in the trash included', () => {
     const b = bundle('b1', [['2', 1, 'b'], ['1', 0, 'a'], ['9', 2, 'gone', true]], { name: 'Pair', kind: 'variants' });
-    expect(snapshotBundle(b)).toEqual({ name: 'Pair', kind: 'variants', members: [{ fileId: '1', label: 'a' }, { fileId: '2', label: 'b' }] });
+    expect(snapshotBundle(b)).toEqual({
+      name: 'Pair', kind: 'variants',
+      members: [{ fileId: '1', label: 'a', inTrash: false }, { fileId: '2', label: 'b', inTrash: false }, { fileId: '9', label: 'gone', inTrash: true }],
+    });
   });
 });
 

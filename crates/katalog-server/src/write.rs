@@ -413,6 +413,17 @@ fn ids(v: &Value) -> Result<Vec<i64>, Box<Response>> {
     }
     values.iter().map(id_value).collect()
 }
+fn labels(v: &Value) -> Result<Option<Vec<String>>, Box<Response>> {
+    match v.get("labels") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(values)) if values.len() <= 500 => values
+            .iter()
+            .map(|label| label.as_str().map(str::to_string).ok_or_else(bad))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some),
+        _ => Err(bad()),
+    }
+}
 fn updates(v: &Value) -> Result<Vec<(i64, i64)>, Box<Response>> {
     let values = v.get("updates").and_then(Value::as_array).ok_or_else(bad)?;
     if values.len() > 500 {
@@ -724,7 +735,18 @@ pub(crate) fn execute(
             id(a, "collectionId")?,
             &updates(a)?,
         )),
-        "create_bundle" => encode(web::create_bundle(c, text(a, "name")?, text(a, "kind")?, &ids(a)?)),
+        "create_bundle" => encode(web::create_bundle_with(
+            c,
+            text(a, "name")?,
+            text(a, "kind")?,
+            &ids(a)?,
+            labels(a)?,
+            match a.get("restore") {
+                None | Some(Value::Null) => false,
+                Some(Value::Bool(flag)) => *flag,
+                Some(_) => return Err(bad()),
+            },
+        )),
         "update_bundle" => encode(web::update_bundle(
             c,
             id(a, "bundleId")?,

@@ -79,8 +79,8 @@ export function planBundleEdit(bundle: Bundle, draft: { name: string; kind: Bund
 export interface BundleSnapshot {
   name: string;
   kind: BundleKind;
-  /** Living members by position; a member in the trash cannot join a new bundle. */
-  members: { fileId: string; label: string }[];
+  /** All members by position; the ones in the trash come back with the bundle as long as their file exists. */
+  members: { fileId: string; label: string; inTrash: boolean }[];
 }
 
 /** The state "Undo" brings back after a bundle was dissolved. */
@@ -90,8 +90,7 @@ export function snapshotBundle(bundle: Bundle): BundleSnapshot {
     kind: bundle.kind,
     members: [...bundle.members]
       .sort((a, b) => a.position - b.position)
-      .filter(member => !member.inTrash)
-      .map(member => ({ fileId: member.fileId, label: member.label ?? '' })),
+      .map(member => ({ fileId: member.fileId, label: member.label ?? '', inTrash: member.inTrash })),
   };
 }
 

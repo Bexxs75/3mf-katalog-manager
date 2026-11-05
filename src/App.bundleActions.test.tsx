@@ -85,10 +85,26 @@ it('dissolves the selected bundle card, offers "Undo" and brings the bundle back
   await waitFor(() => expect(calls('dissolve_bundle')).toEqual([{ bundleId: 'b1' }]));
   expect(await screen.findByText('Bündel „Harbour“ aufgelöst. Die 2 Modelle bleiben erhalten.')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: de.undoButton }));
-  await waitFor(() => expect(calls('create_bundle')).toEqual([{ name: 'Harbour', kind: 'variants', fileIds: ['1', '2'] }]));
-  expect(calls('update_bundle_member')).toEqual([{ fileId: '1', label: 'big' }]);
+  await waitFor(() => expect(calls('create_bundle')).toEqual([{ name: 'Harbour', kind: 'variants', fileIds: ['1', '2'], labels: ['big', ''], restore: true }]));
+  expect(calls('update_bundle_member')).toEqual([]);
   expect(await screen.findByText(/Auflösen rückgängig: Bündel „Harbour“/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: de.undoButton })).toBeNull();
+});
+
+it('says so when "Undo" cannot bring back every member, and asks the backend to restore with the trash', async () => {
+  const withTrash = { ...harbour, members: [...harbour.members, { fileId: '9', position: 2, label: 'Lid', inTrash: true }] };
+  const base = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => (cmd === 'list_bundles' ? [withTrash] : base(cmd, args)));
+  await open();
+  fireEvent.click(tick('1'));
+  clickBulkMore(de.bundleDissolve);
+  await screen.findByText(/aufgelöst/);
+  fireEvent.click(screen.getByRole('button', { name: de.undoButton }));
+  await waitFor(() => expect(calls('create_bundle')).toEqual([
+    { name: 'Harbour', kind: 'variants', fileIds: ['1', '2', '9'], labels: ['big', '', 'Lid'], restore: true },
+  ]));
+  expect(calls('update_bundle_member')).toEqual([]);
+  expect(await screen.findByText(/Auflösen rückgängig: Bündel „Harbour“ .*1 Modell konnte nicht zurück/)).toBeInTheDocument();
 });
 
 it('undoes a dissolve with Ctrl+Z as well', async () => {
@@ -97,7 +113,7 @@ it('undoes a dissolve with Ctrl+Z as well', async () => {
   clickBulkMore(de.bundleDissolve);
   await screen.findByText('Bündel „Harbour“ aufgelöst. Die 2 Modelle bleiben erhalten.');
   fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
-  await waitFor(() => expect(calls('create_bundle')).toEqual([{ name: 'Harbour', kind: 'variants', fileIds: ['1', '2'] }]));
+  await waitFor(() => expect(calls('create_bundle')).toEqual([{ name: 'Harbour', kind: 'variants', fileIds: ['1', '2'], labels: ['big', ''], restore: true }]));
 });
 
 it('asks before the Delete key does anything on a bundle card, and dissolves by default', async () => {

@@ -4,8 +4,13 @@ import type { Bundle, BundleKind } from '../../types';
 export function listBundles() {
   return invoke<Bundle[]>('list_bundles');
 }
-export function createBundle(name: string, kind: BundleKind, fileIds: string[]) {
-  return invoke<Bundle>('create_bundle', { name, kind, fileIds });
+/**
+ * `labels` (one per file) are set in the same step. `restore` brings back a dissolved bundle: members
+ * in the trash join too, while members that are deleted for good or belong to another bundle by now
+ * are left out (the answer shows who made it).
+ */
+export function createBundle(name: string, kind: BundleKind, fileIds: string[], options: { labels?: string[]; restore?: boolean } = {}) {
+  return invoke<Bundle>('create_bundle', { name, kind, fileIds, ...options });
 }
 /** A field left out stays as it is. */
 export function updateBundle(bundleId: string, patch: { name?: string; kind?: BundleKind }) {

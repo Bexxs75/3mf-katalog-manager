@@ -637,6 +637,26 @@ fn web_bundles_are_created_changed_and_dissolved_with_counted_changes() {
 }
 
 #[test]
+fn web_restore_brings_back_trashed_members_and_counts_the_ones_left_out() {
+    let mut c = db::connect_in_memory().unwrap();
+    let f = bundle_files(&c, 4);
+    db::soft_delete_file(&c, f[2], None, "now").unwrap();
+    db::delete_file(&c, f[3]).unwrap();
+    let labels = Some(vec!["a".to_string(), "Lid".to_string(), String::new(), "gone".to_string()]);
+    let restored = create_bundle_with(&mut c, "Vase", "parts", &f, labels, true).unwrap();
+    assert_eq!(restored.changes, 3, "three members came back");
+    let members: Vec<_> = restored.value.members.iter().map(|m| (m.file_id.as_str(), m.label.as_deref(), m.in_trash)).collect();
+    let (a, b) = (f[0].to_string(), f[1].to_string());
+    let trashed = f[2].to_string();
+    assert_eq!(members, vec![(a.as_str(), Some("a"), false), (b.as_str(), Some("Lid"), false), (trashed.as_str(), None, true)]);
+    // A plain create still refuses a file in the trash.
+    let again: Vec<i64> = (0..2).map(|i| db::test_insert_minimal_file(&c, &format!("/again{i}.3mf"), None).unwrap()).collect();
+    db::soft_delete_file(&c, again[0], None, "now").unwrap();
+    assert!(create_bundle_with(&mut c, "X", "parts", &again, None, false).is_err());
+    assert!(create_bundle_with(&mut c, "X", "parts", &again, Some(vec![String::new()]), true).is_err(), "labels must match the files");
+}
+
+#[test]
 fn web_bundle_rejections_carry_codes_and_change_nothing() {
     use crate::error_code::ErrorCode;
     use crate::write::CodedKind;
