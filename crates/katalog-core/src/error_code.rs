@@ -181,6 +181,12 @@ error_codes! {
     BlockedTagsLimit => "blockedTagsLimit",
     /// The "what do you print with" choice was none of filament, resin or both.
     PrintTechnologyInvalid => "printTechnologyInvalid",
+    /// The slicer report is gone (already handled elsewhere, or removed).
+    SlicerReportNotFound => "slicerReportNotFound",
+    /// The chosen model is not an active model of the catalog (G-code and resin entries do not count).
+    SlicerReportModelInvalid => "slicerReportModelInvalid",
+    /// The decision was neither link nor dismiss.
+    SlicerReportActionInvalid => "slicerReportActionInvalid",
     PrinterNameEmpty => "printerNameEmpty",
     /// params: the highest number of characters.
     PrinterNameTooLong => "printerNameTooLong",

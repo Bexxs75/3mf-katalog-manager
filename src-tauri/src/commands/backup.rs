@@ -231,6 +231,10 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("file_print_plates", &["file_id", "plate_index", "first_layer_seconds"]),
     ("bundles", &["id", "name", "kind", "created_at"]),
     ("bundle_members", &["file_id", "bundle_id", "position"]),
+    ("slicer_reports", &[
+        "id", "reported_at", "reported_path", "file_name", "file_size_bytes", "summary_json", "state",
+        "suggested_file_id", "model_file_id",
+    ]),
 ];
 
 fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
@@ -470,6 +474,18 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("bundle_members", "bundle_id", ColType::Integer, false),
     ("bundle_members", "position", ColType::Integer, false),
     ("bundle_members", "label", ColType::Text, true),
+    // slicer_reports - see db/slicer_reports.rs.
+    ("slicer_reports", "id", ColType::Integer, false),
+    ("slicer_reports", "reported_at", ColType::Text, false),
+    ("slicer_reports", "reported_path", ColType::Text, false),
+    ("slicer_reports", "file_name", ColType::Text, false),
+    ("slicer_reports", "file_size_bytes", ColType::Integer, false),
+    ("slicer_reports", "slicer", ColType::Text, true),
+    ("slicer_reports", "summary_json", ColType::Text, false),
+    ("slicer_reports", "state", ColType::Text, false),
+    ("slicer_reports", "suggested_file_id", ColType::Integer, true),
+    ("slicer_reports", "model_file_id", ColType::Integer, true),
+    ("slicer_reports", "decided_at", ColType::Text, true),
 ];
 /// Checks the storage classes from `COLUMN_TYPES`. A crafted DB can bring tables
 /// without type affinity, e.g. `slot_count = 4.5`: it passes every value check but
@@ -845,6 +861,52 @@ fn validate_print_info_rows(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// Slicer reports are shown in the UI and their paths are shown to the user (never opened by the app
+/// before a decision), so a foreign backup must not bring oversized or control text; the rules the CHECK
+/// clauses would enforce are checked on the data itself (a crafted backup can omit them).
+fn validate_slicer_report_rows(conn: &Connection) -> Result<(), String> {
+    use crate::db::slicer_reports::MAX_SUMMARY_BYTES;
+    let reject = |what: &str| format!("Katalog-Datenbank enthaelt ungueltige Slicer-Meldungen ({what})");
+    let bad_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM slicer_reports
+              WHERE state IS NULL OR state NOT IN ('open', 'linked', 'dismissed')
+                 OR file_size_bytes IS NULL OR file_size_bytes < 0
+                 OR length(CAST(summary_json AS BLOB)) > ?1",
+            [MAX_SUMMARY_BYTES as i64],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad_rows > 0 {
+        return Err(reject("Zustand, Groesse oder Zusammenfassung"));
+    }
+    let mut stmt = conn
+        .prepare("SELECT reported_at, reported_path, file_name, slicer, summary_json, decided_at FROM slicer_reports")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?))
+        })
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let (reported_at, path, name, slicer, summary, decided_at) = row.map_err(|e| e.to_string())?;
+        if chrono::DateTime::parse_from_rfc3339(&reported_at).is_err() || decided_at.is_some_and(|d| chrono::DateTime::parse_from_rfc3339(&d).is_err()) {
+            return Err(reject("Zeitpunkt"));
+        }
+        let texts_fit = path.chars().count() <= 1024
+            && name.chars().count() <= 255
+            && slicer.as_deref().is_none_or(|s| s.chars().count() <= 200)
+            && [Some(path.as_str()), Some(name.as_str()), slicer.as_deref()].into_iter().flatten().all(|t| !t.chars().any(|c| c.is_control()));
+        if !texts_fit || name.is_empty() {
+            return Err(reject("Text"));
+        }
+        if serde_json::from_str::<katalog_core::slicer_report::Summary>(&summary).is_err() {
+            return Err(reject("Zusammenfassung"));
+        }
+    }
+    Ok(())
+}
+
 /// Bundle names and labels are shown in the UI, so a foreign backup must not bring oversized or
 /// control text, and the rules the CHECK clauses would enforce are checked on the data itself
 /// (a crafted backup can omit them). A bundle with fewer than two members is accepted on purpose:
@@ -1036,6 +1098,7 @@ fn validate_catalog_db_bytes(
             validate_printer_link_rows(&conn)?;
             validate_print_info_rows(&conn)?;
             validate_bundle_rows(&conn)?;
+            validate_slicer_report_rows(&conn)?;
             // quick_check doesn't catch FK violations; check them after the migration.
             conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
             let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check").map_err(|e| e.to_string())?;
@@ -3344,6 +3407,55 @@ mod tests {
         for (what, setup) in cases {
             let (_, restore) = bundle_case(&setup);
             assert!(restore.is_err(), "{what}: the restore validation must refuse it");
+        }
+    }
+
+    /// A backup whose `slicer_reports` carries no CHECK (as a crafted file can); `setup` adds the rows under test.
+    fn slicer_report_case(setup: &str) -> Result<(), String> {
+        static TEMPLATE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+        let template = TEMPLATE.get_or_init(|| {
+            backup_test_db_with(|conn| {
+                conn.execute_batch(
+                    "DROP TABLE slicer_reports;
+                     CREATE TABLE slicer_reports (id INTEGER PRIMARY KEY, reported_at TEXT, reported_path TEXT, file_name TEXT,
+                         file_size_bytes INTEGER, slicer TEXT, summary_json TEXT, state TEXT, suggested_file_id INTEGER,
+                         model_file_id INTEGER, decided_at TEXT);",
+                )
+                .unwrap();
+            })
+            .0
+        });
+        let path = unique_test_db_path("slicer_report_case");
+        std::fs::write(&path, template).unwrap();
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(setup).unwrap();
+        }
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir(), &[]).map_err(|e| e.message)
+    }
+
+    const GOOD_REPORT: &str = "INSERT INTO slicer_reports (reported_at, reported_path, file_name, file_size_bytes, summary_json, state)
+        VALUES ('2026-11-05T10:00:00+00:00', '/o/Box.gcode', 'Box.gcode', 5, '{\"printSeconds\":60}', 'open');";
+
+    #[test]
+    fn slicer_reports_survive_the_restore_check_and_crafted_ones_do_not() {
+        assert_eq!(slicer_report_case(GOOD_REPORT), Ok(()));
+        let cases: Vec<(&str, String)> = vec![
+            ("unknown state", format!("{GOOD_REPORT} UPDATE slicer_reports SET state = 'done';")),
+            ("negative size", format!("{GOOD_REPORT} UPDATE slicer_reports SET file_size_bytes = -1;")),
+            ("size NULL", format!("{GOOD_REPORT} UPDATE slicer_reports SET file_size_bytes = NULL;")),
+            ("control character in the path", format!("{GOOD_REPORT} UPDATE slicer_reports SET reported_path = '/o/a' || char(7) || 'b';")),
+            ("name empty", format!("{GOOD_REPORT} UPDATE slicer_reports SET file_name = '';")),
+            ("path too long", format!("{GOOD_REPORT} UPDATE slicer_reports SET reported_path = '/{}';", "p".repeat(1100))),
+            ("time not a time", format!("{GOOD_REPORT} UPDATE slicer_reports SET reported_at = 'gestern';")),
+            ("summary not JSON", format!("{GOOD_REPORT} UPDATE slicer_reports SET summary_json = 'x';")),
+            ("summary too large", format!("{GOOD_REPORT} UPDATE slicer_reports SET summary_json = '{{\"x\":\"{}\"}}';", "a".repeat(17_000))),
+            ("name stored as a BLOB", format!("{GOOD_REPORT} UPDATE slicer_reports SET file_name = x'4142';")),
+        ];
+        for (what, setup) in cases {
+            assert!(slicer_report_case(&setup).is_err(), "{what}: the restore validation must refuse it");
         }
     }
 

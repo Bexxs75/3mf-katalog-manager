@@ -169,6 +169,9 @@ const MIGRATIONS: &[MigrationStep] = &[
     // New unit kind `bambu_ams_2_pro`. Only the CHECK of `material_units.kind` changes (rebuild);
     // no existing unit is switched over, every row and every spool in its slot stays as it is.
     MigrationStep::Rebuild(add_ams_2_pro_unit_kind),
+    // Reports of sliced files that the slicer sent to the program (post-processing script). New table
+    // only; nothing existing is touched.
+    MigrationStep::Simple(add_slicer_reports_table),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -291,6 +294,30 @@ fn add_printer_job_failure_columns(conn: &Connection) -> Result<(), DbError> {
 /// Schema version after the unit kind `bambu_ams_2_pro`.
 #[cfg(test)]
 pub(crate) const AMS_2_PRO_MIGRATION_VERSION: i64 = 62;
+
+/// Schema version after the slicer reports.
+#[cfg(test)]
+pub(crate) const SLICER_REPORTS_MIGRATION_VERSION: i64 = 63;
+
+/// New table only; `IF NOT EXISTS` so a catalog that already got it from the base schema is left alone.
+/// `files` is not touched. The links to files are `ON DELETE SET NULL`: a deleted model leaves the
+/// report standing. Keep the statements in step with `schema.sql`.
+fn add_slicer_reports_table(conn: &Connection) -> Result<(), DbError> {
+    exec(conn, "CREATE TABLE IF NOT EXISTS slicer_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reported_at TEXT NOT NULL,
+        reported_path TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes >= 0),
+        slicer TEXT,
+        summary_json TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'linked', 'dismissed')),
+        suggested_file_id INTEGER REFERENCES files (id) ON DELETE SET NULL,
+        model_file_id INTEGER REFERENCES files (id) ON DELETE SET NULL,
+        decided_at TEXT
+    )")?;
+    exec(conn, "CREATE INDEX IF NOT EXISTS idx_slicer_reports_name ON slicer_reports (file_name)")
+}
 
 /// Adds 'bambu_ams_2_pro' to the CHECK of `material_units.kind`, via a rebuild like
 /// [`add_resin_printers`] and with the same trap: `filament_spools.unit_id` has `ON DELETE SET NULL`,
@@ -1495,7 +1522,7 @@ mod tests {
         assert_eq!(declined, 1, "the declined source files are another table and stay");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, AMS_2_PRO_MIGRATION_VERSION, "the AMS 2 Pro step is the newest one");
+        assert_eq!(CURRENT_SCHEMA_VERSION, SLICER_REPORTS_MIGRATION_VERSION, "the slicer report step is the newest one");
         assert_eq!(GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 2, "after the table of remembered copies, which follows the color column");
         assert_eq!(BUNDLE_TABLES_MIGRATION_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION + 1, "the bundle tables follow the file type step");
         assert_eq!(PRINTER_FAILURES_MIGRATION_VERSION, BUNDLE_TABLES_MIGRATION_VERSION + 1, "the failure counter follows the bundle tables");
@@ -1503,7 +1530,8 @@ mod tests {
         assert_eq!(COMPANION_OTHER_KIND_MIGRATION_VERSION, PRINTER_API_KEY_MIGRATION_VERSION + 1, "the companion kind follows the API key");
         assert_eq!(PRINTER_JOB_FAILURE_MIGRATION_VERSION, COMPANION_OTHER_KIND_MIGRATION_VERSION + 1, "the print failure step follows the companion kind");
         assert_eq!(AMS_2_PRO_MIGRATION_VERSION, PRINTER_JOB_FAILURE_MIGRATION_VERSION + 1, "the AMS 2 Pro step follows the print failure step");
-        assert_eq!(CURRENT_SCHEMA_VERSION, 62);
+        assert_eq!(SLICER_REPORTS_MIGRATION_VERSION, AMS_2_PRO_MIGRATION_VERSION + 1, "the slicer report step follows the AMS 2 Pro step");
+        assert_eq!(CURRENT_SCHEMA_VERSION, 63);
     }
 
     #[test]
@@ -1636,6 +1664,70 @@ mod tests {
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
         assert_eq!(BUNDLE_TABLES_MIGRATION_VERSION, 57, "the bundle step keeps its number");
+    }
+
+    /// A catalog at version 62: everything but the slicer report table, with rows around it.
+    fn catalog_before_slicer_reports() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("DROP TABLE slicer_reports").unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/a.3mf", None).unwrap();
+        conn.execute("INSERT INTO tags (id, name, color_hue) VALUES (1, 'deko', 10)", []).unwrap();
+        conn.execute("INSERT INTO file_tags VALUES (?1, 1)", [id]).unwrap();
+        conn.pragma_update(None, "user_version", AMS_2_PRO_MIGRATION_VERSION).unwrap();
+        conn
+    }
+
+    #[test]
+    fn the_slicer_report_step_adds_one_empty_table_and_keeps_every_row_of_every_table() {
+        let mut conn = catalog_before_slicer_reports();
+        assert!(!table_exists(&conn, "slicer_reports"), "precondition: no table yet");
+        let before = catalog_snapshot(&conn);
+        let counts_before = row_counts(&conn);
+
+        run_migrations(&mut conn).unwrap();
+
+        assert_eq!(catalog_snapshot(&conn), before);
+        let mut expected = counts_before;
+        expected.push(("slicer_reports".to_string(), 0));
+        expected.sort();
+        assert_eq!(row_counts(&conn), expected, "only the new table appears, and it is empty");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, SLICER_REPORTS_MIGRATION_VERSION);
+        assert_eq!(SLICER_REPORTS_MIGRATION_VERSION, 63, "the slicer report step is number 63");
+    }
+
+    #[test]
+    fn the_slicer_report_step_is_repeatable_and_gives_the_same_table_and_rules_as_a_fresh_schema() {
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        fresh.execute("INSERT INTO slicer_reports (reported_at, reported_path, file_name, file_size_bytes, summary_json) VALUES ('t', '/o/a.gcode', 'a.gcode', 1, '{}')", []).unwrap();
+        add_slicer_reports_table(&fresh).unwrap();
+        add_slicer_reports_table(&fresh).unwrap();
+        let rows: i64 = fresh.query_row("SELECT COUNT(*) FROM slicer_reports", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1, "repeating the step keeps the rows");
+
+        let by_step = Connection::open_in_memory().unwrap();
+        by_step.execute_batch("CREATE TABLE files (id INTEGER PRIMARY KEY)").unwrap();
+        add_slicer_reports_table(&by_step).unwrap();
+        let shape = |conn: &Connection| -> Vec<(String, String, bool, Option<String>, bool)> {
+            conn.prepare("SELECT name, type, \"notnull\", dflt_value, pk FROM pragma_table_info('slicer_reports') ORDER BY cid")
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        assert_eq!(shape(&by_step), shape(&fresh), "schema.sql and the step must describe the table the same way");
+        assert_eq!(shape(&fresh).len(), 11);
+        let index: i64 = by_step.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_slicer_reports_name'", [], |r| r.get(0)).unwrap();
+        assert_eq!(index, 1);
+        for conn in [&fresh, &by_step] {
+            let bad = |sql: &str| conn.execute(sql, []).is_err();
+            assert!(bad("INSERT INTO slicer_reports (reported_at, reported_path, file_name, file_size_bytes, summary_json, state) VALUES ('t', 'p', 'n', 1, '{}', 'weird')"));
+            assert!(bad("INSERT INTO slicer_reports (reported_at, reported_path, file_name, file_size_bytes, summary_json) VALUES ('t', 'p', 'n', -1, '{}')"));
+        }
     }
 
     #[test]
@@ -2492,7 +2584,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 23);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 24);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.
@@ -2693,7 +2785,7 @@ mod tests {
         run_migrations(&mut conn).unwrap();
 
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, AMS_2_PRO_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION, "the later steps run as well");
         let fk: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
         assert!(fk, "foreign_keys is back on afterwards");
 

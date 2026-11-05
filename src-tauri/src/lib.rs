@@ -93,8 +93,34 @@ fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
     dirs
 }
 
+/// The report call of a slicer: 0 = ticket written. The inbox lies in the app data folder, which is found
+/// without the app (same rule as Tauri's `app_data_dir`). Nothing is printed on success.
+fn report_sliced_and_exit_code(request: Result<std::path::PathBuf, katalog_core::slicer_report::ReportError>, identifier: &str) -> i32 {
+    use katalog_core::slicer_report as report;
+    let Some(base) = dirs::data_dir() else {
+        eprintln!("3MF Katalog Manager: the data folder of the user is unknown");
+        return 2;
+    };
+    let inbox = base.join(identifier).join(report::INBOX_DIR);
+    let output_name = std::env::var(report::OUTPUT_NAME_ENV).ok();
+    match report::report_sliced(request, output_name.as_deref(), &inbox) {
+        Ok(_) => 0,
+        Err(error) => {
+            eprintln!("3MF Katalog Manager: {error}");
+            1
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    // A slicer reports a sliced file (`--report-sliced <file>`): leave a ticket in the inbox and end.
+    // Before the window and before any database access, so it works while the program is open, closed or busy.
+    let args: Vec<String> = std::env::args_os().map(|a| a.to_string_lossy().into_owned()).collect();
+    if let Some(request) = katalog_core::slicer_report::report_request(&args) {
+        std::process::exit(report_sliced_and_exit_code(request, &context.config().identifier));
+    }
     let mut builder = tauri::Builder::default();
     let allow_multiple = std::env::var(single_instance::ALLOW_MULTIPLE_ENV).ok();
     if single_instance::single_instance_enabled(cfg!(debug_assertions), allow_multiple.as_deref()) {
@@ -102,6 +128,8 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             // Files of the second start wait in the backend; the frontend collects them.
             commands::queue_and_notify(app, commands::open_requests_from_args(&args, std::path::Path::new(&cwd)));
+            // A second start also wakes the intake of slicer reports (a start with `--report-sliced` ends before it gets here).
+            commands::ingest_and_notify(app);
             if let Some(window) = app.get_webview_window("main") {
                 single_instance::bring_to_front(&window);
             } else {
@@ -109,7 +137,6 @@ pub fn run() {
             }
         }));
     }
-    let context = tauri::generate_context!();
     let mut log_builder = tauri_plugin_log::Builder::new().clear_targets();
     for kind in log_target::resolve_log_targets(&context.config().identifier, &context.package_info().name) {
         log_builder = log_builder.target(tauri_plugin_log::Target::new(kind));
@@ -117,7 +144,6 @@ pub fn run() {
     // A path given at the first start is earlier than the window; it waits here.
     let pending_open = commands::PendingOpenFiles::default();
     if let Ok(cwd) = std::env::current_dir() {
-        let args: Vec<String> = std::env::args_os().map(|a| a.to_string_lossy().into_owned()).collect();
         pending_open.push(commands::open_requests_from_args(&args, &cwd));
     }
     builder
@@ -231,6 +257,8 @@ pub fn run() {
             app.manage(commands::DiagnosticsState::default());
             app.manage(commands::UpdaterState::default());
             commands::sync_linux_menu_path();
+            // Reports that slicers left while the program was closed.
+            commands::ingest_and_notify(app.handle());
             startup::create_window(app)?;
             if wants_tray {
                 // A failed build (e.g. no appindicator library) leaves the behavior at "quit".
@@ -374,6 +402,11 @@ pub fn run() {
             commands::set_auto_tagging,
             commands::get_print_technology,
             commands::set_print_technology,
+            commands::get_slicer_report_setup,
+            commands::set_slicer_report_enabled,
+            commands::send_slicer_test_report,
+            commands::list_slicer_reports,
+            commands::resolve_slicer_report,
             commands::delete_file,
             commands::set_print_status,
             commands::set_favorite,

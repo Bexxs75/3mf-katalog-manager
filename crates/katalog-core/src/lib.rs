@@ -17,6 +17,7 @@ pub mod disk_report;
 pub mod tagging;
 pub mod filament_check;
 pub mod printer_link;
+pub mod slicer_report;
 pub mod thingiverse;
 pub mod backup;
 pub mod schema_versions;

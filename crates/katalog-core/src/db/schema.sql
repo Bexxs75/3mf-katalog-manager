@@ -317,3 +317,22 @@ CREATE TABLE IF NOT EXISTS bundle_members (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bundle_members_bundle_id ON bundle_members (bundle_id);
+
+-- Sliced files that a slicer reported through its post-processing script (`--report-sliced`). The program
+-- only remembers and suggests; nothing is assigned or moved without the user. Links to files are
+-- `SET NULL`: a deleted model leaves the report standing.
+CREATE TABLE IF NOT EXISTS slicer_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reported_at TEXT NOT NULL,
+    reported_path TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes >= 0),
+    slicer TEXT,
+    summary_json TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'linked', 'dismissed')),
+    suggested_file_id INTEGER REFERENCES files (id) ON DELETE SET NULL,
+    model_file_id INTEGER REFERENCES files (id) ON DELETE SET NULL,
+    decided_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_slicer_reports_name ON slicer_reports (file_name);

@@ -1198,6 +1198,38 @@ SuperSlicer, UltiMaker Cura, Creality Print) and adds any it finds automatically
 including self-built or modified versions. The radio button sets which slicer is used as the
 **default** when opening a model.
 
+#### Reporting sliced files automatically
+
+Your slicer can tell the catalog when it has finished a file. The catalog then suggests the matching model, so a print is
+recognised by the model you chose and not only by a similar file name. This works on the desktop only (not in the web version,
+not in a container) and is **off** until you switch it on.
+
+1. Settings → Slicer → switch on "Report sliced files automatically". One command line per slicer (PrusaSlicer, SuperSlicer,
+   OrcaSlicer, Bambu Studio, Creality Print) appears; "Copy" puts it on the clipboard.
+2. In the slicer open the print settings, go to the post-processing scripts and paste the command line there. The slicer adds the
+   path of the finished file itself.
+
+From then on every finished slicing leaves a small note for the catalog; the program does not have to be open. At the next start,
+or when you start the program a second time, the notes are taken over. A notice "Slicers reported … new files" opens the list
+**New slicer files** (also under Settings → Slicer). For each file it shows the name, time, weight, material, slicer and path, and
+the model it suggests, marked **sure** (the names are the same) or **unsure**.
+
+- **Assign** remembers the link. The printer connection then knows the model for prints of that file, without guessing from the
+  name. Nothing else happens: the file is not moved and not changed.
+- **Choose another model** lets you pick a different model (G-code and resin entries are not offered).
+- **Dismiss** removes the report; the file is not touched.
+- **Also add to the catalog (moves the file)** is a separate tick. Only with it the file is moved from the slicer's output folder
+  into the catalog, like any import.
+
+"Send test report" tries the whole route without a slicer; the test report shows up in the list and can be dismissed. If the
+program is moved or reinstalled in another place, the command lines point to the old place: the page then says "The program path
+has changed"; "Create command lines again" gives the current ones, which you paste into the slicers again. The AppImage is
+recognised by the file you started, not by its temporary mount. If a call from a slicer fails (for example the file is no G-code),
+Settings → Slicer shows the reason of the last failed call.
+
+*Not checked with real slicers yet: the exact menu names differ between slicers and versions. The command line has been checked
+only with the program itself.*
+
 ### Catalog
 
 ![Settings: Catalog](bilder/en/19-einstellungen-katalog.png)
@@ -2724,6 +2756,38 @@ Die App durchsucht beim Start bekannte Installationsorte (Bambu Studio, OrcaSlic
 SuperSlicer, UltiMaker Cura, Creality Print) und trägt gefundene Slicer automatisch ein; über "+ Hinzufügen"
 ergänzt du weitere, auch selbst kompilierte oder abgewandelte Versionen. Der Radiobutton legt
 fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
+
+#### Geslichte Dateien automatisch melden
+
+Dein Slicer kann dem Katalog melden, wenn er eine Datei fertig geslict hat. Der Katalog schlägt dann das passende Modell vor, sodass
+ein Druck am gewählten Modell erkannt wird und nicht nur an einem ähnlichen Dateinamen. Das gibt es nur auf dem Desktop (nicht in der
+Web-Version, nicht im Container) und ist **aus**, bis du es einschaltest.
+
+1. Einstellungen → Slicer → „Geslichte Dateien automatisch melden“ einschalten. Es erscheint je Slicer (PrusaSlicer, SuperSlicer,
+   OrcaSlicer, Bambu Studio, Creality Print) eine Befehlszeile; „Kopieren“ legt sie in die Zwischenablage.
+2. Im Slicer die Druckeinstellungen öffnen, zu den Nachbearbeitungsskripten gehen und die Befehlszeile dort einfügen. Den Pfad der
+   fertigen Datei hängt der Slicer selbst an.
+
+Danach hinterlässt jedes fertige Slicen eine kleine Notiz für den Katalog; das Programm muss dafür nicht geöffnet sein. Beim nächsten
+Start oder wenn du das Programm ein zweites Mal startest, werden die Notizen übernommen. Ein Hinweis „Slicer haben … neue Dateien
+gemeldet“ öffnet die Liste **Neue Slicer-Dateien** (auch unter Einstellungen → Slicer). Sie zeigt je Datei Name, Zeit, Gewicht,
+Material, Slicer und Pfad sowie das vorgeschlagene Modell, gekennzeichnet als **sicher** (gleicher Name) oder **unsicher**.
+
+- **Zuordnen** merkt die Verknüpfung. Die Druckeranbindung kennt das Modell dann für Drucke dieser Datei, ohne am Namen zu raten.
+  Sonst passiert nichts: Die Datei wird weder verschoben noch verändert.
+- **Anderes Modell wählen** lässt dich ein anderes Modell aussuchen (G-Code- und Resin-Einträge werden nicht angeboten).
+- **Verwerfen** entfernt die Meldung; die Datei bleibt unberührt.
+- **Auch in den Katalog aufnehmen (verschiebt die Datei)** ist ein eigener Haken. Nur damit wird die Datei wie bei jedem Import aus
+  dem Ausgabeordner des Slicers in den Katalog verschoben.
+
+„Testmeldung senden“ probiert den ganzen Weg ohne Slicer aus; die Testmeldung erscheint in der Liste und kann verworfen werden. Wird
+das Programm verschoben oder an anderer Stelle neu installiert, zeigen die Befehlszeilen auf den alten Ort: Die Seite meldet dann
+„Der Programmpfad hat sich geändert“; „Befehlszeilen neu erzeugen“ liefert die aktuellen, die du in den Slicern erneut einfügst. Ein
+AppImage wird an der gestarteten Datei erkannt, nicht an seinem temporären Einhängepunkt. Schlägt ein Aufruf eines Slicers fehl (zum
+Beispiel weil die Datei kein G-Code ist), zeigt Einstellungen → Slicer den Grund des letzten fehlgeschlagenen Aufrufs.
+
+*Mit echten Slicern noch nicht geprüft: Die Menünamen unterscheiden sich je Slicer und Version. Die Befehlszeile ist bisher nur mit
+dem Programm selbst geprüft.*
 
 ### Katalog
 
