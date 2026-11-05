@@ -1,6 +1,6 @@
 import { type ComponentProps } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { CatalogWorkspace } from './CatalogWorkspace';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { UiDensityProvider } from '../hooks/UiDensityContext';
@@ -92,4 +92,63 @@ it('sorts bundle cards by the summed size, the smallest first', () => {
 it('leaves files single in a tool view, which has an order of its own', () => {
   setup({ bundles: [bundle], collapseBundles: true, setCollapseBundles: vi.fn(), toolView: 'recent' });
   expect(cardIds()).toEqual(['a', 'b', 'c']);
+});
+
+const view = () => ({ onEdit: vi.fn(), onDissolve: vi.fn(), onRemoveMember: vi.fn(), queueAskBundleId: null, setQueueAskBundleId: vi.fn() });
+
+it('shows the bundle panel instead of the detail panel when a bundle card is open', () => {
+  setup({ bundles: [bundle], collapseBundles: true, setCollapseBundles: vi.fn(), bundleView: view(), selectedId: 'a', selected: files[0] });
+  expect(screen.getByRole('heading', { level: 2, name: 'Zeta set' })).toBeInTheDocument();
+  expect(screen.getByRole('list', { name: 'Mitglieder' })).toBeInTheDocument();
+});
+
+it('also shows it when another visible member than the title is the open one', () => {
+  setup({ bundles: [bundle], collapseBundles: true, setCollapseBundles: vi.fn(), bundleView: view(), selectedId: 'b', selected: files[1] });
+  expect(screen.getByRole('heading', { level: 2, name: 'Zeta set' })).toBeInTheDocument();
+});
+
+it('keeps the detail panel for a single card, with the switch off, and in tool views', () => {
+  const common = { bundles: [bundle], setCollapseBundles: vi.fn(), bundleView: view() };
+  const { unmount } = setup({ ...common, collapseBundles: true, selectedId: 'c', selected: files[2] });
+  expect(screen.queryByRole('list', { name: 'Mitglieder' })).toBeNull();
+  unmount();
+  const off = setup({ ...common, collapseBundles: false, selectedId: 'a', selected: files[0] });
+  expect(screen.queryByRole('list', { name: 'Mitglieder' })).toBeNull();
+  off.unmount();
+  setup({ ...common, collapseBundles: true, toolView: 'recent', selectedId: 'a', selected: files[0] });
+  expect(screen.queryByRole('list', { name: 'Mitglieder' })).toBeNull();
+});
+
+it('keeps the detail panel when the bundle shrinks to one visible member under a filter', () => {
+  setup({ bundles: [bundle], collapseBundles: true, setCollapseBundles: vi.fn(), bundleView: view(), models: files, filtered: [files[0], files[2]], selectedId: 'a', selected: files[0] });
+  expect(screen.queryByRole('list', { name: 'Mitglieder' })).toBeNull();
+});
+
+it('opens a member of the panel in the detail page', () => {
+  const setDetailModelId = vi.fn();
+  setup({ bundles: [bundle], collapseBundles: true, setCollapseBundles: vi.fn(), bundleView: view(), selectedId: 'a', selected: files[0], setDetailModelId });
+  fireEvent.click(screen.getByRole('button', { name: /Beta.stl/ }));
+  expect(setDetailModelId).toHaveBeenCalledWith('b');
+});
+
+it('applies "mark as printed" to the members that are not printed, through the single-file actions', () => {
+  const togglePrintStatus = vi.fn();
+  const mixed = [makeModelFile({ id: 'a', name: 'Alpha.stl', printStatus: 'printed' }), files[1], files[2]];
+  setup({ bundles: [bundle], collapseBundles: true, setCollapseBundles: vi.fn(), bundleView: view(), models: mixed, filtered: mixed, selectedId: 'a', selected: mixed[0], togglePrintStatus });
+  fireEvent.click(screen.getByRole('button', { name: 'Alle 2 als gedruckt markieren' }));
+  expect(togglePrintStatus.mock.calls).toEqual([['b']]);
+});
+
+it('adds the switch and the section to the detail page of a member', () => {
+  const setDetailModelId = vi.fn();
+  setup({ bundles: [bundle], collapseBundles: true, bundleView: view(), detailModel: files[0], selectedId: 'a', selected: files[0], setDetailModelId });
+  expect(screen.getByRole('group', { name: 'Variante wählen' })).toBeInTheDocument();
+  expect(screen.getByText('Teil von „Zeta set“ · Varianten')).toBeInTheDocument();
+  fireEvent.click(within(screen.getByRole('group', { name: 'Variante wählen' })).getByRole('button', { name: 'Beta.stl' }));
+  expect(setDetailModelId).toHaveBeenCalledWith('b');
+});
+
+it('shows no bundle elements on the detail page of a file outside any bundle', () => {
+  setup({ bundles: [bundle], collapseBundles: true, bundleView: view(), detailModel: files[2], selectedId: 'c', selected: files[2] });
+  expect(screen.queryByRole('group', { name: 'Variante wählen' })).toBeNull();
 });

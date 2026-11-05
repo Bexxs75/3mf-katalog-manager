@@ -28,7 +28,7 @@ import { TagRemoveButton } from './TagRemoveButton';
 import { AutoTagBlockStatus } from './AutoTagBlockStatus';
 import { useAutoTagBlock } from '../hooks/useAutoTagBlock';
 import { invoke } from '../lib/transport';
-import type { ModelFile, SlicerConfig, Collection, Printer } from '../types';
+import type { Bundle, ModelFile, SlicerConfig, Collection, Printer } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { SourcePlatformRows } from './SourcePlatformRows';
@@ -53,6 +53,9 @@ import { FilamentUsageMissing } from './FilamentUsageMissing';
 import { isFilamentUsageMissing } from '../lib/filamentUsageHelp';
 import { isWeightUnknown, showsPrintData } from '../lib/printData';
 import { PrintDataCard } from './PrintDataCard';
+import { BundleBar, BundleDetailSection } from './BundleDetail';
+import type { BundleViewActions } from './BundlePanel';
+import type { PanelMember } from '../lib/bundlePanel';
 
 interface Props {
   allTags: string[];
@@ -86,6 +89,8 @@ interface Props {
   rescanError: AppError | null;
   rescanSuccess: boolean;
   displayPreference: DisplayPreference;
+  /** The bundle this file belongs to, with its living members; the page then shows the switch or parts list. */
+  bundleView?: { bundle: Bundle; members: PanelMember[]; onOpenMember: (fileId: string) => void; actions: BundleViewActions } | null;
 }
 
 export function ModelDetailPage({
@@ -118,6 +123,7 @@ export function ModelDetailPage({
   rescanError,
   rescanSuccess,
   displayPreference,
+  bundleView,
 }: Props) {
   const canEdit = useCanEditMetadata();
   const [pendingNavigation, setPendingNavigation] = useState<DetailDirection | null>(null);
@@ -260,6 +266,8 @@ export function ModelDetailPage({
         </h1>
       </header>
 
+      {bundleView && <BundleBar bundle={bundleView.bundle} members={bundleView.members} currentId={model.id} onOpenMember={bundleView.onOpenMember} />}
+
       <div className="flex gap-7 flex-wrap items-start">
         <div className="flex-1 min-w-[320px]">
           <div data-detail-viewer tabIndex={0}
@@ -305,6 +313,7 @@ export function ModelDetailPage({
         </div>
 
         <div className="w-[540px] max-w-full flex-none min-w-0 flex flex-col gap-4">
+          {bundleView && <BundleDetailSection bundle={bundleView.bundle} members={bundleView.members} currentId={model.id} onOpenMember={bundleView.onOpenMember} actions={bundleView.actions} />}
           <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
             <LicenseEditor key={model.id} onDirtyChange={setLicenseDirty} value={model.license} onSave={onSetLicense ? value => onSetLicense([model.id], value) : undefined} />
             {rows.map((row) => (

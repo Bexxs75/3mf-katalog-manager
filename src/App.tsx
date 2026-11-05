@@ -78,6 +78,7 @@ import { BundleDeleteChoiceDialog } from './components/BundleDeleteChoiceDialog'
 import { BundleContextMenu } from './components/BundleContextMenu';
 import { BundleToast } from './components/BundleToast';
 import type { BulkBundleActions } from './components/BulkActionToolbar';
+import type { BundleViewActions } from './components/BundlePanel';
 import { selectionBundleState } from './lib/bundleEdit';
 import { loadBundleCollapse, saveBundleCollapse } from './lib/bundleCollapsePreference';
 import { EMPTY_FILTER, splitByPrintData } from './lib/printDataFilter';
@@ -350,6 +351,16 @@ export default function App() {
     onRemove: () => void bundleActions.remove(bundleActions.state.bundledIds),
     onDissolve: () => void bundleActions.dissolve(bundleActions.state.covered.map(bundle => bundle.id)),
     onEdit: returnTo => { const bundle = bundleActions.state.exact; if (bundle) bundleActions.openDialog({ mode: 'edit', bundleId: bundle.id }, returnTo); },
+  };
+  // The bundle whose "Which variant?" question is open in its panel (also opened from the card menu).
+  const [queueAskBundleId, setQueueAskBundleId] = useState<string | null>(null);
+  useEffect(() => { if (store.selectedId === null) setQueueAskBundleId(null); }, [store.selectedId]);
+  const bundleView: BundleViewActions = {
+    onEdit: (bundleId, returnTo) => bundleActions.openDialog({ mode: 'edit', bundleId }, returnTo),
+    onDissolve: bundleId => void bundleActions.dissolve([bundleId]),
+    onRemoveMember: fileId => void bundleActions.remove([fileId]),
+    queueAskBundleId,
+    setQueueAskBundleId,
   };
   const [dateRenameOutcome, setDateRenameOutcome] = useState<{ renamed: number; failed: number } | null>(null);
   const dismissDateRenameNotice = useCallback(() => setDateRenameOutcome(null), []);
@@ -832,6 +843,7 @@ export default function App() {
               setCollapseBundles={setCollapseBundles}
               bundleActions={toolbarBundleActions}
               selectedBundleCount={collapseBundles ? bundleActions.state.covered.length : 0}
+              bundleView={bundleView}
               filtered={displayedModels}
               collectionLoading={collections.collectionLoading}
               selectedId={store.selectedId}
@@ -866,7 +878,7 @@ export default function App() {
               count={contextBundleModels.length}
               allPrinted={contextBundleModels.every(model => model.printStatus === 'printed')}
               allFavorite={contextBundleModels.every(model => model.favorite)}
-              canQueue={contextBundle.kind === 'parts'}
+              queueChoice={contextBundle.kind === 'variants'}
               canDelete={canManageFiles() && !web}
               onClose={() => setContextMenu(null)}
               onEdit={() => bundleActions.openDialog({ mode: 'edit', bundleId: contextBundle.id }, tileOf(contextModel.id))}
@@ -874,7 +886,15 @@ export default function App() {
                 const printed = contextBundleModels.every(model => model.printStatus === 'printed');
                 for (const model of contextBundleModels) if ((model.printStatus === 'printed') === printed) void store.togglePrintStatus(model.id);
               }}
-              onQueueAll={() => { for (const model of contextBundleModels) if (model.queuePosition === null) void store.addToQueue(model.id); }}
+              onQueueAll={() => {
+                // Variants are alternatives: the panel asks which one, so the card has to be open.
+                if (contextBundle.kind === 'variants') {
+                  store.setSelectedId(contextMenu.modelId);
+                  setQueueAskBundleId(contextBundle.id);
+                  return;
+                }
+                for (const model of contextBundleModels) if (model.queuePosition === null) void store.addToQueue(model.id);
+              }}
               onToggleFavorite={() => {
                 const favorite = contextBundleModels.every(model => model.favorite);
                 for (const model of contextBundleModels) if (model.favorite === favorite) void store.toggleFavorite(model.id);

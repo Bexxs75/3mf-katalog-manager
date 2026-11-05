@@ -19,8 +19,10 @@ type Action = 'rename' | 'move' | 'trash' | 'restore' | 'permanent' | 'empty';
 export { webFileNameParts };
 
 /** Web-only actions share one confirmation and never route through desktop handlers. */
-export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, trash = false, empty = false, onDone, requestTrashConfirm = false, onConfirmationClosed }: {
+export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, trash = false, empty = false, onDone, requestTrashConfirm = false, onConfirmationClosed, onTrashRequest }: {
   fileIds?: string[]; names?: string[]; hiddenCount?: number; name?: string; trash?: boolean; empty?: boolean; onDone?: () => void; requestTrashConfirm?: boolean; onConfirmationClosed?: () => void;
+  /** The caller decides how a trash request goes on (it may ask something first); it answers through `requestTrashConfirm`. */
+  onTrashRequest?: () => void;
 }) {
   const allowed = useCanManageFiles();
   const { lockProps } = useImportLock();
@@ -73,7 +75,9 @@ export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, tra
     setAction(null); setPassword(''); onConfirmationClosed?.();
   };
   const open = (value: Action, button: HTMLButtonElement) => {
-    opener.current = button; ids.current = [...fileIds]; snapshotNames.current = { names: [...(names ?? [])], hidden: hiddenCount };
+    opener.current = button;
+    if (value === 'trash' && onTrashRequest) { onTrashRequest(); return; }
+    ids.current = [...fileIds]; snapshotNames.current = { names: [...(names ?? [])], hidden: hiddenCount };
     setAction(value); setError(null); setNotice(null); setPassword(''); setTarget('');
     setSummary(null); setProgress(null); setBase(webFileNameParts(name ?? '').base);
   };

@@ -521,7 +521,7 @@ export function BulkActionToolbar({
             {compact && removeTagPopover}
           </div>
           <span aria-hidden="true" className="w-px h-6 mx-1 bg-[var(--line-strong)]" />
-          <WebFileActions fileIds={selectedIds ?? []} names={selectedNames} hiddenCount={hiddenSelectedCount} onDone={onClearSelection} requestTrashConfirm={confirmBulkDelete} onConfirmationClosed={() => onConfirmBulkDeleteChange(false)} />
+          <WebFileActions fileIds={selectedIds ?? []} names={selectedNames} hiddenCount={hiddenSelectedCount} onDone={onClearSelection} requestTrashConfirm={confirmBulkDelete} onConfirmationClosed={() => onConfirmBulkDeleteChange(false)} onTrashRequest={() => onConfirmBulkDeleteChange(true)} />
           {!isReadOnly() && <button type="button" {...idle} {...lockProps} ref={deleteRef} onClick={act(() => onConfirmBulkDeleteChange(true))} className={`${BUTTON} !border-[var(--line-strong)] !text-red-400 hover:!border-red-400`}>
             {t('delete')}
           </button>}

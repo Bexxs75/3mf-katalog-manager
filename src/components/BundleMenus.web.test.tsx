@@ -34,7 +34,7 @@ it('offers the file menu entries once the session may edit metadata', async () =
 it('mounts neither the bundle card menu nor the selection bar without the right to edit', () => {
   const action = vi.fn();
   const { container } = render(<LanguageProviderWithDiagnostics>
-    <BundleContextMenu x={0} y={0} count={2} allPrinted={false} allFavorite={false} canQueue canDelete onClose={action} onEdit={action}
+    <BundleContextMenu x={0} y={0} count={2} allPrinted={false} allFavorite={false} queueChoice={false} canDelete onClose={action} onEdit={action}
       onTogglePrinted={action} onQueueAll={action} onToggleFavorite={action} onDissolve={action} onDelete={action} />
     <BulkActionToolbar selectedCount={2} confirmBulkDelete={false} onConfirmBulkDeleteChange={action} onSelectAllVisible={action} onClearSelection={action}
       onBulkAddToQueue={action} addToCollectionMenuOpen={false} onAddToCollectionMenuOpenChange={action} collections={[]} onBulkAddToCollection={action}
