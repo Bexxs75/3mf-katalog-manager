@@ -5,6 +5,8 @@ mod repository;
 mod collections;
 pub mod bundles;
 mod tag_fragments;
+mod folder_subtree;
+pub use folder_subtree::{folder_subtree_ids, FOLDER_SUBTREE_CTE};
 pub mod companions;
 pub mod sources;
 pub mod known_copies;

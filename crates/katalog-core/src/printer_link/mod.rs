@@ -10,6 +10,7 @@ pub mod matching;
 pub mod moonraker;
 pub mod status;
 pub mod sync;
+pub mod views;
 #[cfg(test)]
 pub(crate) mod fake_moonraker;
 

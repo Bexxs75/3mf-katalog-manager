@@ -1,4 +1,5 @@
-use super::catalog_removal::{parse_id, SUBTREE};
+use super::catalog_removal::parse_id;
+use crate::db::FOLDER_SUBTREE_CTE;
 use super::*;
 use tauri::Manager;
 
@@ -69,7 +70,7 @@ fn is_catalog_root_or_ancestor(conn: &Connection, folders: &[db::models::FolderR
 fn active_files_in_subtree(conn: &Connection, root_id: i64) -> CmdResult<Vec<(i64, String)>> {
     let mut stmt = conn
         .prepare(&format!(
-            "{SUBTREE} SELECT id, path FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL ORDER BY id"
+            "{FOLDER_SUBTREE_CTE} SELECT id, path FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL ORDER BY id"
         ))
         .map_err(DbError::from)?;
     let rows = stmt
@@ -242,7 +243,7 @@ fn trash_folder_with_conn(
     if !remaining_ids.is_empty() {
         let mut stmt = conn
             .prepare(&format!(
-                "{SUBTREE} SELECT DISTINCT folder_id FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"
+                "{FOLDER_SUBTREE_CTE} SELECT DISTINCT folder_id FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"
             ))
             .map_err(DbError::from)?;
         let holders = stmt

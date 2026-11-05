@@ -1,0 +1,505 @@
+locate "<DIR>/models/sub/f.stl": Ok (0, "sub/f.stl")
+locate "<DIR>/models/file.stl": Ok (0, "file.stl")
+locate "<DIR>/models/": Err path_unresolvable
+locate "<DIR>/models": Err path_unresolvable
+locate "<DIR>/modelsx/f": Err path_unresolvable
+locate "<DIR>/models/sub/../file.stl": Err path_unresolvable
+locate "<DIR>/models//file.stl": Err path_unresolvable
+locate "<DIR>/models/./file.stl": Err path_unresolvable
+locate "<DIR>/models/a\\b": Err path_unresolvable
+locate "<DIR>/other/z": Ok (1, "z")
+locate "<DIR>/other": Err path_unresolvable
+locate "/": Err path_unresolvable
+locate "/nonexistent/x": Err path_unresolvable
+locate "relative/x": Err path_unresolvable
+locate "": Err path_unresolvable
+locate "<DIR>/models/upload/x": Ok (0, "upload/x")
+locate "<DIR>/models/link/x": Ok (0, "link/x")
+locate "<DIR>/models/a b/x": Ok (0, "a b/x")
+locate "<DIR>/models/é": Ok (0, "é")
+resolve_relative root=0 Source "file.stl": Ok "root=0 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=0 Source "sub/f.stl": Ok "root=0 relative=\"sub/f.stl\" name=\"f.stl\""
+resolve_relative root=0 Source "sub": Ok "root=0 relative=\"sub\" name=\"sub\""
+resolve_relative root=0 Source "sub/deep": Ok "root=0 relative=\"sub/deep\" name=\"deep\""
+resolve_relative root=0 Source "sub/deep/x": Ok "root=0 relative=\"sub/deep/x\" name=\"x\""
+resolve_relative root=0 Source "missing": Ok "root=0 relative=\"missing\" name=\"missing\""
+resolve_relative root=0 Source "missing/x": Err not_found
+resolve_relative root=0 Source "": Err path_unresolvable
+resolve_relative root=0 Source "/file.stl": Err path_unresolvable
+resolve_relative root=0 Source "sub//f.stl": Err path_unresolvable
+resolve_relative root=0 Source "./file.stl": Err path_unresolvable
+resolve_relative root=0 Source "sub/../file.stl": Err path_unresolvable
+resolve_relative root=0 Source "sub/.": Err path_unresolvable
+resolve_relative root=0 Source "a b": Ok "root=0 relative=\"a b\" name=\"a b\""
+resolve_relative root=0 Source "a b/x": Ok "root=0 relative=\"a b/x\" name=\"x\""
+resolve_relative root=0 Source "link": Ok "root=0 relative=\"link\" name=\"link\""
+resolve_relative root=0 Source "link/x": Err path_unresolvable
+resolve_relative root=0 Source "sublink": Ok "root=0 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=0 Source "sublink/f.stl": Err path_unresolvable
+resolve_relative root=0 Source "upload": Err protected
+resolve_relative root=0 Source "upload/x": Ok "root=0 relative=\"upload/x\" name=\"x\""
+resolve_relative root=0 Source "upload/sub/x": Err protected
+resolve_relative root=0 Source "sub\\f": Err path_unresolvable
+resolve_relative root=0 Source "sub/\0": Err path_unresolvable
+resolve_relative root=0 Source "file.stl/x": Err path_unresolvable
+resolve_relative root=0 Source ".katalog-papierkorb": Err protected
+resolve_relative root=0 Source ".katalog-papierkorb/x": Err protected
+resolve_relative root=1 Source "file.stl": Ok "root=1 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=1 Source "sub/f.stl": Err not_found
+resolve_relative root=1 Source "sub": Ok "root=1 relative=\"sub\" name=\"sub\""
+resolve_relative root=1 Source "sub/deep": Err not_found
+resolve_relative root=1 Source "sub/deep/x": Err not_found
+resolve_relative root=1 Source "missing": Ok "root=1 relative=\"missing\" name=\"missing\""
+resolve_relative root=1 Source "missing/x": Err not_found
+resolve_relative root=1 Source "": Err path_unresolvable
+resolve_relative root=1 Source "/file.stl": Err path_unresolvable
+resolve_relative root=1 Source "sub//f.stl": Err path_unresolvable
+resolve_relative root=1 Source "./file.stl": Err path_unresolvable
+resolve_relative root=1 Source "sub/../file.stl": Err path_unresolvable
+resolve_relative root=1 Source "sub/.": Err path_unresolvable
+resolve_relative root=1 Source "a b": Ok "root=1 relative=\"a b\" name=\"a b\""
+resolve_relative root=1 Source "a b/x": Err not_found
+resolve_relative root=1 Source "link": Ok "root=1 relative=\"link\" name=\"link\""
+resolve_relative root=1 Source "link/x": Err not_found
+resolve_relative root=1 Source "sublink": Ok "root=1 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=1 Source "sublink/f.stl": Err not_found
+resolve_relative root=1 Source "upload": Ok "root=1 relative=\"upload\" name=\"upload\""
+resolve_relative root=1 Source "upload/x": Err not_found
+resolve_relative root=1 Source "upload/sub/x": Err not_found
+resolve_relative root=1 Source "sub\\f": Err path_unresolvable
+resolve_relative root=1 Source "sub/\0": Err path_unresolvable
+resolve_relative root=1 Source "file.stl/x": Err not_found
+resolve_relative root=1 Source ".katalog-papierkorb": Err protected
+resolve_relative root=1 Source ".katalog-papierkorb/x": Err protected
+resolve_relative root=2 Source "file.stl": Err path_unresolvable
+resolve_relative root=2 Source "sub/f.stl": Err path_unresolvable
+resolve_relative root=2 Source "sub": Err path_unresolvable
+resolve_relative root=2 Source "sub/deep": Err path_unresolvable
+resolve_relative root=2 Source "sub/deep/x": Err path_unresolvable
+resolve_relative root=2 Source "missing": Err path_unresolvable
+resolve_relative root=2 Source "missing/x": Err path_unresolvable
+resolve_relative root=2 Source "": Err path_unresolvable
+resolve_relative root=2 Source "/file.stl": Err path_unresolvable
+resolve_relative root=2 Source "sub//f.stl": Err path_unresolvable
+resolve_relative root=2 Source "./file.stl": Err path_unresolvable
+resolve_relative root=2 Source "sub/../file.stl": Err path_unresolvable
+resolve_relative root=2 Source "sub/.": Err path_unresolvable
+resolve_relative root=2 Source "a b": Err path_unresolvable
+resolve_relative root=2 Source "a b/x": Err path_unresolvable
+resolve_relative root=2 Source "link": Err path_unresolvable
+resolve_relative root=2 Source "link/x": Err path_unresolvable
+resolve_relative root=2 Source "sublink": Err path_unresolvable
+resolve_relative root=2 Source "sublink/f.stl": Err path_unresolvable
+resolve_relative root=2 Source "upload": Err path_unresolvable
+resolve_relative root=2 Source "upload/x": Err path_unresolvable
+resolve_relative root=2 Source "upload/sub/x": Err path_unresolvable
+resolve_relative root=2 Source "sub\\f": Err path_unresolvable
+resolve_relative root=2 Source "sub/\0": Err path_unresolvable
+resolve_relative root=2 Source "file.stl/x": Err path_unresolvable
+resolve_relative root=2 Source ".katalog-papierkorb": Err path_unresolvable
+resolve_relative root=2 Source ".katalog-papierkorb/x": Err path_unresolvable
+resolve_relative root=0 MoveTarget "file.stl": Ok "root=0 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=0 MoveTarget "sub/f.stl": Ok "root=0 relative=\"sub/f.stl\" name=\"f.stl\""
+resolve_relative root=0 MoveTarget "sub": Ok "root=0 relative=\"sub\" name=\"sub\""
+resolve_relative root=0 MoveTarget "sub/deep": Ok "root=0 relative=\"sub/deep\" name=\"deep\""
+resolve_relative root=0 MoveTarget "sub/deep/x": Ok "root=0 relative=\"sub/deep/x\" name=\"x\""
+resolve_relative root=0 MoveTarget "missing": Ok "root=0 relative=\"missing\" name=\"missing\""
+resolve_relative root=0 MoveTarget "missing/x": Err not_found
+resolve_relative root=0 MoveTarget "": Err path_unresolvable
+resolve_relative root=0 MoveTarget "/file.stl": Err path_unresolvable
+resolve_relative root=0 MoveTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=0 MoveTarget "./file.stl": Err path_unresolvable
+resolve_relative root=0 MoveTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=0 MoveTarget "sub/.": Err path_unresolvable
+resolve_relative root=0 MoveTarget "a b": Ok "root=0 relative=\"a b\" name=\"a b\""
+resolve_relative root=0 MoveTarget "a b/x": Ok "root=0 relative=\"a b/x\" name=\"x\""
+resolve_relative root=0 MoveTarget "link": Ok "root=0 relative=\"link\" name=\"link\""
+resolve_relative root=0 MoveTarget "link/x": Err path_unresolvable
+resolve_relative root=0 MoveTarget "sublink": Ok "root=0 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=0 MoveTarget "sublink/f.stl": Err path_unresolvable
+resolve_relative root=0 MoveTarget "upload": Err protected
+resolve_relative root=0 MoveTarget "upload/x": Err protected
+resolve_relative root=0 MoveTarget "upload/sub/x": Err protected
+resolve_relative root=0 MoveTarget "sub\\f": Err path_unresolvable
+resolve_relative root=0 MoveTarget "sub/\0": Err path_unresolvable
+resolve_relative root=0 MoveTarget "file.stl/x": Err path_unresolvable
+resolve_relative root=0 MoveTarget ".katalog-papierkorb": Err protected
+resolve_relative root=0 MoveTarget ".katalog-papierkorb/x": Err protected
+resolve_relative root=1 MoveTarget "file.stl": Ok "root=1 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=1 MoveTarget "sub/f.stl": Err not_found
+resolve_relative root=1 MoveTarget "sub": Ok "root=1 relative=\"sub\" name=\"sub\""
+resolve_relative root=1 MoveTarget "sub/deep": Err not_found
+resolve_relative root=1 MoveTarget "sub/deep/x": Err not_found
+resolve_relative root=1 MoveTarget "missing": Ok "root=1 relative=\"missing\" name=\"missing\""
+resolve_relative root=1 MoveTarget "missing/x": Err not_found
+resolve_relative root=1 MoveTarget "": Err path_unresolvable
+resolve_relative root=1 MoveTarget "/file.stl": Err path_unresolvable
+resolve_relative root=1 MoveTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=1 MoveTarget "./file.stl": Err path_unresolvable
+resolve_relative root=1 MoveTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=1 MoveTarget "sub/.": Err path_unresolvable
+resolve_relative root=1 MoveTarget "a b": Ok "root=1 relative=\"a b\" name=\"a b\""
+resolve_relative root=1 MoveTarget "a b/x": Err not_found
+resolve_relative root=1 MoveTarget "link": Ok "root=1 relative=\"link\" name=\"link\""
+resolve_relative root=1 MoveTarget "link/x": Err not_found
+resolve_relative root=1 MoveTarget "sublink": Ok "root=1 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=1 MoveTarget "sublink/f.stl": Err not_found
+resolve_relative root=1 MoveTarget "upload": Ok "root=1 relative=\"upload\" name=\"upload\""
+resolve_relative root=1 MoveTarget "upload/x": Err not_found
+resolve_relative root=1 MoveTarget "upload/sub/x": Err not_found
+resolve_relative root=1 MoveTarget "sub\\f": Err path_unresolvable
+resolve_relative root=1 MoveTarget "sub/\0": Err path_unresolvable
+resolve_relative root=1 MoveTarget "file.stl/x": Err not_found
+resolve_relative root=1 MoveTarget ".katalog-papierkorb": Err protected
+resolve_relative root=1 MoveTarget ".katalog-papierkorb/x": Err protected
+resolve_relative root=2 MoveTarget "file.stl": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub/f.stl": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub/deep": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub/deep/x": Err path_unresolvable
+resolve_relative root=2 MoveTarget "missing": Err path_unresolvable
+resolve_relative root=2 MoveTarget "missing/x": Err path_unresolvable
+resolve_relative root=2 MoveTarget "": Err path_unresolvable
+resolve_relative root=2 MoveTarget "/file.stl": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=2 MoveTarget "./file.stl": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub/.": Err path_unresolvable
+resolve_relative root=2 MoveTarget "a b": Err path_unresolvable
+resolve_relative root=2 MoveTarget "a b/x": Err path_unresolvable
+resolve_relative root=2 MoveTarget "link": Err path_unresolvable
+resolve_relative root=2 MoveTarget "link/x": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sublink": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sublink/f.stl": Err path_unresolvable
+resolve_relative root=2 MoveTarget "upload": Err path_unresolvable
+resolve_relative root=2 MoveTarget "upload/x": Err path_unresolvable
+resolve_relative root=2 MoveTarget "upload/sub/x": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub\\f": Err path_unresolvable
+resolve_relative root=2 MoveTarget "sub/\0": Err path_unresolvable
+resolve_relative root=2 MoveTarget "file.stl/x": Err path_unresolvable
+resolve_relative root=2 MoveTarget ".katalog-papierkorb": Err path_unresolvable
+resolve_relative root=2 MoveTarget ".katalog-papierkorb/x": Err path_unresolvable
+resolve_relative root=0 RenameTarget "file.stl": Ok "root=0 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=0 RenameTarget "sub/f.stl": Ok "root=0 relative=\"sub/f.stl\" name=\"f.stl\""
+resolve_relative root=0 RenameTarget "sub": Ok "root=0 relative=\"sub\" name=\"sub\""
+resolve_relative root=0 RenameTarget "sub/deep": Ok "root=0 relative=\"sub/deep\" name=\"deep\""
+resolve_relative root=0 RenameTarget "sub/deep/x": Ok "root=0 relative=\"sub/deep/x\" name=\"x\""
+resolve_relative root=0 RenameTarget "missing": Ok "root=0 relative=\"missing\" name=\"missing\""
+resolve_relative root=0 RenameTarget "missing/x": Err not_found
+resolve_relative root=0 RenameTarget "": Err path_unresolvable
+resolve_relative root=0 RenameTarget "/file.stl": Err path_unresolvable
+resolve_relative root=0 RenameTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=0 RenameTarget "./file.stl": Err path_unresolvable
+resolve_relative root=0 RenameTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=0 RenameTarget "sub/.": Err path_unresolvable
+resolve_relative root=0 RenameTarget "a b": Ok "root=0 relative=\"a b\" name=\"a b\""
+resolve_relative root=0 RenameTarget "a b/x": Ok "root=0 relative=\"a b/x\" name=\"x\""
+resolve_relative root=0 RenameTarget "link": Ok "root=0 relative=\"link\" name=\"link\""
+resolve_relative root=0 RenameTarget "link/x": Err path_unresolvable
+resolve_relative root=0 RenameTarget "sublink": Ok "root=0 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=0 RenameTarget "sublink/f.stl": Err path_unresolvable
+resolve_relative root=0 RenameTarget "upload": Err protected
+resolve_relative root=0 RenameTarget "upload/x": Ok "root=0 relative=\"upload/x\" name=\"x\""
+resolve_relative root=0 RenameTarget "upload/sub/x": Err protected
+resolve_relative root=0 RenameTarget "sub\\f": Err path_unresolvable
+resolve_relative root=0 RenameTarget "sub/\0": Err path_unresolvable
+resolve_relative root=0 RenameTarget "file.stl/x": Err path_unresolvable
+resolve_relative root=0 RenameTarget ".katalog-papierkorb": Err protected
+resolve_relative root=0 RenameTarget ".katalog-papierkorb/x": Err protected
+resolve_relative root=1 RenameTarget "file.stl": Ok "root=1 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=1 RenameTarget "sub/f.stl": Err not_found
+resolve_relative root=1 RenameTarget "sub": Ok "root=1 relative=\"sub\" name=\"sub\""
+resolve_relative root=1 RenameTarget "sub/deep": Err not_found
+resolve_relative root=1 RenameTarget "sub/deep/x": Err not_found
+resolve_relative root=1 RenameTarget "missing": Ok "root=1 relative=\"missing\" name=\"missing\""
+resolve_relative root=1 RenameTarget "missing/x": Err not_found
+resolve_relative root=1 RenameTarget "": Err path_unresolvable
+resolve_relative root=1 RenameTarget "/file.stl": Err path_unresolvable
+resolve_relative root=1 RenameTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=1 RenameTarget "./file.stl": Err path_unresolvable
+resolve_relative root=1 RenameTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=1 RenameTarget "sub/.": Err path_unresolvable
+resolve_relative root=1 RenameTarget "a b": Ok "root=1 relative=\"a b\" name=\"a b\""
+resolve_relative root=1 RenameTarget "a b/x": Err not_found
+resolve_relative root=1 RenameTarget "link": Ok "root=1 relative=\"link\" name=\"link\""
+resolve_relative root=1 RenameTarget "link/x": Err not_found
+resolve_relative root=1 RenameTarget "sublink": Ok "root=1 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=1 RenameTarget "sublink/f.stl": Err not_found
+resolve_relative root=1 RenameTarget "upload": Ok "root=1 relative=\"upload\" name=\"upload\""
+resolve_relative root=1 RenameTarget "upload/x": Err not_found
+resolve_relative root=1 RenameTarget "upload/sub/x": Err not_found
+resolve_relative root=1 RenameTarget "sub\\f": Err path_unresolvable
+resolve_relative root=1 RenameTarget "sub/\0": Err path_unresolvable
+resolve_relative root=1 RenameTarget "file.stl/x": Err not_found
+resolve_relative root=1 RenameTarget ".katalog-papierkorb": Err protected
+resolve_relative root=1 RenameTarget ".katalog-papierkorb/x": Err protected
+resolve_relative root=2 RenameTarget "file.stl": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub/f.stl": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub/deep": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub/deep/x": Err path_unresolvable
+resolve_relative root=2 RenameTarget "missing": Err path_unresolvable
+resolve_relative root=2 RenameTarget "missing/x": Err path_unresolvable
+resolve_relative root=2 RenameTarget "": Err path_unresolvable
+resolve_relative root=2 RenameTarget "/file.stl": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=2 RenameTarget "./file.stl": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub/.": Err path_unresolvable
+resolve_relative root=2 RenameTarget "a b": Err path_unresolvable
+resolve_relative root=2 RenameTarget "a b/x": Err path_unresolvable
+resolve_relative root=2 RenameTarget "link": Err path_unresolvable
+resolve_relative root=2 RenameTarget "link/x": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sublink": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sublink/f.stl": Err path_unresolvable
+resolve_relative root=2 RenameTarget "upload": Err path_unresolvable
+resolve_relative root=2 RenameTarget "upload/x": Err path_unresolvable
+resolve_relative root=2 RenameTarget "upload/sub/x": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub\\f": Err path_unresolvable
+resolve_relative root=2 RenameTarget "sub/\0": Err path_unresolvable
+resolve_relative root=2 RenameTarget "file.stl/x": Err path_unresolvable
+resolve_relative root=2 RenameTarget ".katalog-papierkorb": Err path_unresolvable
+resolve_relative root=2 RenameTarget ".katalog-papierkorb/x": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "file.stl": Ok "root=0 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=0 RestoreTarget "sub/f.stl": Ok "root=0 relative=\"sub/f.stl\" name=\"f.stl\""
+resolve_relative root=0 RestoreTarget "sub": Ok "root=0 relative=\"sub\" name=\"sub\""
+resolve_relative root=0 RestoreTarget "sub/deep": Ok "root=0 relative=\"sub/deep\" name=\"deep\""
+resolve_relative root=0 RestoreTarget "sub/deep/x": Ok "root=0 relative=\"sub/deep/x\" name=\"x\""
+resolve_relative root=0 RestoreTarget "missing": Ok "root=0 relative=\"missing\" name=\"missing\""
+resolve_relative root=0 RestoreTarget "missing/x": Err not_found
+resolve_relative root=0 RestoreTarget "": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "/file.stl": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "./file.stl": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "sub/.": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "a b": Ok "root=0 relative=\"a b\" name=\"a b\""
+resolve_relative root=0 RestoreTarget "a b/x": Ok "root=0 relative=\"a b/x\" name=\"x\""
+resolve_relative root=0 RestoreTarget "link": Ok "root=0 relative=\"link\" name=\"link\""
+resolve_relative root=0 RestoreTarget "link/x": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "sublink": Ok "root=0 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=0 RestoreTarget "sublink/f.stl": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "upload": Err protected
+resolve_relative root=0 RestoreTarget "upload/x": Ok "root=0 relative=\"upload/x\" name=\"x\""
+resolve_relative root=0 RestoreTarget "upload/sub/x": Err protected
+resolve_relative root=0 RestoreTarget "sub\\f": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "sub/\0": Err path_unresolvable
+resolve_relative root=0 RestoreTarget "file.stl/x": Err path_unresolvable
+resolve_relative root=0 RestoreTarget ".katalog-papierkorb": Err protected
+resolve_relative root=0 RestoreTarget ".katalog-papierkorb/x": Err protected
+resolve_relative root=1 RestoreTarget "file.stl": Ok "root=1 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=1 RestoreTarget "sub/f.stl": Err not_found
+resolve_relative root=1 RestoreTarget "sub": Ok "root=1 relative=\"sub\" name=\"sub\""
+resolve_relative root=1 RestoreTarget "sub/deep": Err not_found
+resolve_relative root=1 RestoreTarget "sub/deep/x": Err not_found
+resolve_relative root=1 RestoreTarget "missing": Ok "root=1 relative=\"missing\" name=\"missing\""
+resolve_relative root=1 RestoreTarget "missing/x": Err not_found
+resolve_relative root=1 RestoreTarget "": Err path_unresolvable
+resolve_relative root=1 RestoreTarget "/file.stl": Err path_unresolvable
+resolve_relative root=1 RestoreTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=1 RestoreTarget "./file.stl": Err path_unresolvable
+resolve_relative root=1 RestoreTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=1 RestoreTarget "sub/.": Err path_unresolvable
+resolve_relative root=1 RestoreTarget "a b": Ok "root=1 relative=\"a b\" name=\"a b\""
+resolve_relative root=1 RestoreTarget "a b/x": Err not_found
+resolve_relative root=1 RestoreTarget "link": Ok "root=1 relative=\"link\" name=\"link\""
+resolve_relative root=1 RestoreTarget "link/x": Err not_found
+resolve_relative root=1 RestoreTarget "sublink": Ok "root=1 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=1 RestoreTarget "sublink/f.stl": Err not_found
+resolve_relative root=1 RestoreTarget "upload": Ok "root=1 relative=\"upload\" name=\"upload\""
+resolve_relative root=1 RestoreTarget "upload/x": Err not_found
+resolve_relative root=1 RestoreTarget "upload/sub/x": Err not_found
+resolve_relative root=1 RestoreTarget "sub\\f": Err path_unresolvable
+resolve_relative root=1 RestoreTarget "sub/\0": Err path_unresolvable
+resolve_relative root=1 RestoreTarget "file.stl/x": Err not_found
+resolve_relative root=1 RestoreTarget ".katalog-papierkorb": Err protected
+resolve_relative root=1 RestoreTarget ".katalog-papierkorb/x": Err protected
+resolve_relative root=2 RestoreTarget "file.stl": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub/f.stl": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub/deep": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub/deep/x": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "missing": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "missing/x": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "/file.stl": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub//f.stl": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "./file.stl": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub/../file.stl": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub/.": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "a b": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "a b/x": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "link": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "link/x": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sublink": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sublink/f.stl": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "upload": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "upload/x": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "upload/sub/x": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub\\f": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "sub/\0": Err path_unresolvable
+resolve_relative root=2 RestoreTarget "file.stl/x": Err path_unresolvable
+resolve_relative root=2 RestoreTarget ".katalog-papierkorb": Err path_unresolvable
+resolve_relative root=2 RestoreTarget ".katalog-papierkorb/x": Err path_unresolvable
+resolve_relative root=0 Trash "file.stl": Err trash_foreign
+resolve_relative root=0 Trash "sub/f.stl": Err trash_foreign
+resolve_relative root=0 Trash "sub": Err trash_foreign
+resolve_relative root=0 Trash "sub/deep": Err trash_foreign
+resolve_relative root=0 Trash "sub/deep/x": Err trash_foreign
+resolve_relative root=0 Trash "missing": Err trash_foreign
+resolve_relative root=0 Trash "missing/x": Err not_found
+resolve_relative root=0 Trash "": Err path_unresolvable
+resolve_relative root=0 Trash "/file.stl": Err path_unresolvable
+resolve_relative root=0 Trash "sub//f.stl": Err path_unresolvable
+resolve_relative root=0 Trash "./file.stl": Err path_unresolvable
+resolve_relative root=0 Trash "sub/../file.stl": Err path_unresolvable
+resolve_relative root=0 Trash "sub/.": Err path_unresolvable
+resolve_relative root=0 Trash "a b": Err trash_foreign
+resolve_relative root=0 Trash "a b/x": Err trash_foreign
+resolve_relative root=0 Trash "link": Err trash_foreign
+resolve_relative root=0 Trash "link/x": Err path_unresolvable
+resolve_relative root=0 Trash "sublink": Err trash_foreign
+resolve_relative root=0 Trash "sublink/f.stl": Err path_unresolvable
+resolve_relative root=0 Trash "upload": Err trash_foreign
+resolve_relative root=0 Trash "upload/x": Err trash_foreign
+resolve_relative root=0 Trash "upload/sub/x": Err not_found
+resolve_relative root=0 Trash "sub\\f": Err path_unresolvable
+resolve_relative root=0 Trash "sub/\0": Err path_unresolvable
+resolve_relative root=0 Trash "file.stl/x": Err path_unresolvable
+resolve_relative root=0 Trash ".katalog-papierkorb": Err trash_foreign
+resolve_relative root=0 Trash ".katalog-papierkorb/x": Ok "root=0 relative=\".katalog-papierkorb/x\" name=\"x\""
+resolve_relative root=1 Trash "file.stl": Err trash_foreign
+resolve_relative root=1 Trash "sub/f.stl": Err not_found
+resolve_relative root=1 Trash "sub": Err trash_foreign
+resolve_relative root=1 Trash "sub/deep": Err not_found
+resolve_relative root=1 Trash "sub/deep/x": Err not_found
+resolve_relative root=1 Trash "missing": Err trash_foreign
+resolve_relative root=1 Trash "missing/x": Err not_found
+resolve_relative root=1 Trash "": Err path_unresolvable
+resolve_relative root=1 Trash "/file.stl": Err path_unresolvable
+resolve_relative root=1 Trash "sub//f.stl": Err path_unresolvable
+resolve_relative root=1 Trash "./file.stl": Err path_unresolvable
+resolve_relative root=1 Trash "sub/../file.stl": Err path_unresolvable
+resolve_relative root=1 Trash "sub/.": Err path_unresolvable
+resolve_relative root=1 Trash "a b": Err trash_foreign
+resolve_relative root=1 Trash "a b/x": Err not_found
+resolve_relative root=1 Trash "link": Err trash_foreign
+resolve_relative root=1 Trash "link/x": Err not_found
+resolve_relative root=1 Trash "sublink": Err trash_foreign
+resolve_relative root=1 Trash "sublink/f.stl": Err not_found
+resolve_relative root=1 Trash "upload": Err trash_foreign
+resolve_relative root=1 Trash "upload/x": Err not_found
+resolve_relative root=1 Trash "upload/sub/x": Err not_found
+resolve_relative root=1 Trash "sub\\f": Err path_unresolvable
+resolve_relative root=1 Trash "sub/\0": Err path_unresolvable
+resolve_relative root=1 Trash "file.stl/x": Err not_found
+resolve_relative root=1 Trash ".katalog-papierkorb": Err trash_foreign
+resolve_relative root=1 Trash ".katalog-papierkorb/x": Ok "root=1 relative=\".katalog-papierkorb/x\" name=\"x\""
+resolve_relative root=2 Trash "file.stl": Err path_unresolvable
+resolve_relative root=2 Trash "sub/f.stl": Err path_unresolvable
+resolve_relative root=2 Trash "sub": Err path_unresolvable
+resolve_relative root=2 Trash "sub/deep": Err path_unresolvable
+resolve_relative root=2 Trash "sub/deep/x": Err path_unresolvable
+resolve_relative root=2 Trash "missing": Err path_unresolvable
+resolve_relative root=2 Trash "missing/x": Err path_unresolvable
+resolve_relative root=2 Trash "": Err path_unresolvable
+resolve_relative root=2 Trash "/file.stl": Err path_unresolvable
+resolve_relative root=2 Trash "sub//f.stl": Err path_unresolvable
+resolve_relative root=2 Trash "./file.stl": Err path_unresolvable
+resolve_relative root=2 Trash "sub/../file.stl": Err path_unresolvable
+resolve_relative root=2 Trash "sub/.": Err path_unresolvable
+resolve_relative root=2 Trash "a b": Err path_unresolvable
+resolve_relative root=2 Trash "a b/x": Err path_unresolvable
+resolve_relative root=2 Trash "link": Err path_unresolvable
+resolve_relative root=2 Trash "link/x": Err path_unresolvable
+resolve_relative root=2 Trash "sublink": Err path_unresolvable
+resolve_relative root=2 Trash "sublink/f.stl": Err path_unresolvable
+resolve_relative root=2 Trash "upload": Err path_unresolvable
+resolve_relative root=2 Trash "upload/x": Err path_unresolvable
+resolve_relative root=2 Trash "upload/sub/x": Err path_unresolvable
+resolve_relative root=2 Trash "sub\\f": Err path_unresolvable
+resolve_relative root=2 Trash "sub/\0": Err path_unresolvable
+resolve_relative root=2 Trash "file.stl/x": Err path_unresolvable
+resolve_relative root=2 Trash ".katalog-papierkorb": Err path_unresolvable
+resolve_relative root=2 Trash ".katalog-papierkorb/x": Err path_unresolvable
+resolve_relative root=0 Directory "file.stl": Ok "root=0 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=0 Directory "sub/f.stl": Ok "root=0 relative=\"sub/f.stl\" name=\"f.stl\""
+resolve_relative root=0 Directory "sub": Ok "root=0 relative=\"sub\" name=\"sub\""
+resolve_relative root=0 Directory "sub/deep": Ok "root=0 relative=\"sub/deep\" name=\"deep\""
+resolve_relative root=0 Directory "sub/deep/x": Ok "root=0 relative=\"sub/deep/x\" name=\"x\""
+resolve_relative root=0 Directory "missing": Ok "root=0 relative=\"missing\" name=\"missing\""
+resolve_relative root=0 Directory "missing/x": Err not_found
+resolve_relative root=0 Directory "": Err path_unresolvable
+resolve_relative root=0 Directory "/file.stl": Err path_unresolvable
+resolve_relative root=0 Directory "sub//f.stl": Err path_unresolvable
+resolve_relative root=0 Directory "./file.stl": Err path_unresolvable
+resolve_relative root=0 Directory "sub/../file.stl": Err path_unresolvable
+resolve_relative root=0 Directory "sub/.": Err path_unresolvable
+resolve_relative root=0 Directory "a b": Ok "root=0 relative=\"a b\" name=\"a b\""
+resolve_relative root=0 Directory "a b/x": Ok "root=0 relative=\"a b/x\" name=\"x\""
+resolve_relative root=0 Directory "link": Ok "root=0 relative=\"link\" name=\"link\""
+resolve_relative root=0 Directory "link/x": Err path_unresolvable
+resolve_relative root=0 Directory "sublink": Ok "root=0 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=0 Directory "sublink/f.stl": Err path_unresolvable
+resolve_relative root=0 Directory "upload": Err protected
+resolve_relative root=0 Directory "upload/x": Err protected
+resolve_relative root=0 Directory "upload/sub/x": Err protected
+resolve_relative root=0 Directory "sub\\f": Err path_unresolvable
+resolve_relative root=0 Directory "sub/\0": Err path_unresolvable
+resolve_relative root=0 Directory "file.stl/x": Err path_unresolvable
+resolve_relative root=0 Directory ".katalog-papierkorb": Err protected
+resolve_relative root=0 Directory ".katalog-papierkorb/x": Err protected
+resolve_relative root=1 Directory "file.stl": Ok "root=1 relative=\"file.stl\" name=\"file.stl\""
+resolve_relative root=1 Directory "sub/f.stl": Err not_found
+resolve_relative root=1 Directory "sub": Ok "root=1 relative=\"sub\" name=\"sub\""
+resolve_relative root=1 Directory "sub/deep": Err not_found
+resolve_relative root=1 Directory "sub/deep/x": Err not_found
+resolve_relative root=1 Directory "missing": Ok "root=1 relative=\"missing\" name=\"missing\""
+resolve_relative root=1 Directory "missing/x": Err not_found
+resolve_relative root=1 Directory "": Err path_unresolvable
+resolve_relative root=1 Directory "/file.stl": Err path_unresolvable
+resolve_relative root=1 Directory "sub//f.stl": Err path_unresolvable
+resolve_relative root=1 Directory "./file.stl": Err path_unresolvable
+resolve_relative root=1 Directory "sub/../file.stl": Err path_unresolvable
+resolve_relative root=1 Directory "sub/.": Err path_unresolvable
+resolve_relative root=1 Directory "a b": Ok "root=1 relative=\"a b\" name=\"a b\""
+resolve_relative root=1 Directory "a b/x": Err not_found
+resolve_relative root=1 Directory "link": Ok "root=1 relative=\"link\" name=\"link\""
+resolve_relative root=1 Directory "link/x": Err not_found
+resolve_relative root=1 Directory "sublink": Ok "root=1 relative=\"sublink\" name=\"sublink\""
+resolve_relative root=1 Directory "sublink/f.stl": Err not_found
+resolve_relative root=1 Directory "upload": Ok "root=1 relative=\"upload\" name=\"upload\""
+resolve_relative root=1 Directory "upload/x": Err not_found
+resolve_relative root=1 Directory "upload/sub/x": Err not_found
+resolve_relative root=1 Directory "sub\\f": Err path_unresolvable
+resolve_relative root=1 Directory "sub/\0": Err path_unresolvable
+resolve_relative root=1 Directory "file.stl/x": Err not_found
+resolve_relative root=1 Directory ".katalog-papierkorb": Err protected
+resolve_relative root=1 Directory ".katalog-papierkorb/x": Err protected
+resolve_relative root=2 Directory "file.stl": Err path_unresolvable
+resolve_relative root=2 Directory "sub/f.stl": Err path_unresolvable
+resolve_relative root=2 Directory "sub": Err path_unresolvable
+resolve_relative root=2 Directory "sub/deep": Err path_unresolvable
+resolve_relative root=2 Directory "sub/deep/x": Err path_unresolvable
+resolve_relative root=2 Directory "missing": Err path_unresolvable
+resolve_relative root=2 Directory "missing/x": Err path_unresolvable
+resolve_relative root=2 Directory "": Err path_unresolvable
+resolve_relative root=2 Directory "/file.stl": Err path_unresolvable
+resolve_relative root=2 Directory "sub//f.stl": Err path_unresolvable
+resolve_relative root=2 Directory "./file.stl": Err path_unresolvable
+resolve_relative root=2 Directory "sub/../file.stl": Err path_unresolvable
+resolve_relative root=2 Directory "sub/.": Err path_unresolvable
+resolve_relative root=2 Directory "a b": Err path_unresolvable
+resolve_relative root=2 Directory "a b/x": Err path_unresolvable
+resolve_relative root=2 Directory "link": Err path_unresolvable
+resolve_relative root=2 Directory "link/x": Err path_unresolvable
+resolve_relative root=2 Directory "sublink": Err path_unresolvable
+resolve_relative root=2 Directory "sublink/f.stl": Err path_unresolvable
+resolve_relative root=2 Directory "upload": Err path_unresolvable
+resolve_relative root=2 Directory "upload/x": Err path_unresolvable
+resolve_relative root=2 Directory "upload/sub/x": Err path_unresolvable
+resolve_relative root=2 Directory "sub\\f": Err path_unresolvable
+resolve_relative root=2 Directory "sub/\0": Err path_unresolvable
+resolve_relative root=2 Directory "file.stl/x": Err path_unresolvable
+resolve_relative root=2 Directory ".katalog-papierkorb": Err path_unresolvable
+resolve_relative root=2 Directory ".katalog-papierkorb/x": Err path_unresolvable

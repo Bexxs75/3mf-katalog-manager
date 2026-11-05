@@ -2309,6 +2309,38 @@ mod tests {
         assert!(zip.by_name("settings.json").is_ok());
     }
 
+    #[test]
+    fn catalog_backup_stores_the_given_settings_verbatim_in_the_two_entries_in_order() {
+        // The desktop takes the settings text from the UI as it is; the core
+        // export writes a fixed all-null document instead.
+        let db = std::sync::Mutex::new(crate::db::connect_in_memory().unwrap());
+        let dest = unique_test_dir("backup_settings_verbatim").join("backup.zip");
+        let settings = r#"{"3mf-katalog-theme":"dark","extra":[1,2]}"#;
+
+        write_catalog_backup(&db, &dest, settings).unwrap();
+
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        let names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().unwrap().to_string()).collect();
+        assert_eq!(names, ["catalog.db", "settings.json"]);
+        let mut stored = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("settings.json").unwrap(), &mut stored).unwrap();
+        assert_eq!(stored, settings);
+    }
+
+    #[test]
+    fn catalog_backup_replaces_an_existing_target_and_leaves_none_on_failure() {
+        let db = std::sync::Mutex::new(crate::db::connect_in_memory().unwrap());
+        let dir = unique_test_dir("backup_target");
+        let dest = dir.join("backup.zip");
+        std::fs::write(&dest, b"old content").unwrap();
+        write_catalog_backup(&db, &dest, "{}").unwrap();
+        assert!(zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).is_ok());
+
+        let missing = dir.join("no-such-folder").join("backup.zip");
+        assert!(write_catalog_backup(&db, &missing, "{}").is_err());
+        assert!(!missing.exists());
+    }
+
     #[cfg(unix)]
     #[test]
     fn backup_zip_ignores_a_planted_temp_symlink_and_is_private() {

@@ -162,7 +162,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             op_id,
             operation,
             phase: Phase::Prepared,
-            root_path: root.path.to_str().unwrap().to_owned(),
+            root_path: root.native.as_str().to_owned(),
             root_identity: root.identity,
             source: None,
             target: None,
@@ -406,7 +406,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             .context
             .roots
             .iter()
-            .position(|r| r.path.to_str() == Some(&i.root_path) && r.identity == i.root_identity)
+            .position(|r| r.is_at(&i.root_path) && r.identity == i.root_identity)
             .ok_or(Error::Changed)?;
         // The entry has exactly the shape this code writes; anything else was not ours.
         let [step] = i.companions.as_slice() else { return Err(Error::Changed) };

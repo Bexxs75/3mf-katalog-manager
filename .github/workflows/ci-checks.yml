@@ -121,6 +121,9 @@ jobs:
         shell: pwsh
         run: .\src-tauri\scripts\stage-vc-runtime.ps1
 
+      - name: Test the core (portable file operations included)
+        run: cargo test -p katalog-core --no-default-features
+
       # Only the desktop crate and the core it depends on: the web server is Linux/Docker only.
       - name: Compile the desktop app (core included)
         run: cargo check -p mf-katalog-manager --no-default-features --all-targets

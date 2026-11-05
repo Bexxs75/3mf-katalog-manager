@@ -210,7 +210,7 @@ fn folder_summary(
         return Ok(None);
     };
     let (folder_count,model_count):(i64,i64)=conn.query_row(
-        "WITH RECURSIVE tree(id) AS (SELECT id FROM folders WHERE id=?1 UNION SELECT f.id FROM folders f JOIN tree t ON f.parent_id=t.id) SELECT (SELECT COUNT(*) FROM tree)-1,(SELECT COUNT(*) FROM files WHERE folder_id IN (SELECT id FROM tree) AND deleted_at IS NULL)",
+        &format!("{} SELECT (SELECT COUNT(*) FROM subtree)-1,(SELECT COUNT(*) FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL)",db::FOLDER_SUBTREE_CTE),
         [id],|row|Ok((row.get(0)?,row.get(1)?))).map_err(internal)?;
     Ok(Some(
         json!({"name":name,"subfolderCount":folder_count,"modelCount":model_count}),

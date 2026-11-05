@@ -1,0 +1,274 @@
+file_rename end completed
+file_rename phase Prepared crashed
+file_rename phase TmpRenamed NOT REACHED (completed)
+file_rename phase Renamed crashed
+file_rename phase CompanionsMoved NOT REACHED (completed)
+file_rename phase Unlinked NOT REACHED (completed)
+file_rename phase Committed crashed
+file_rename point before_commit#0 crashed
+file_rename point after_mkdir#0 NOT REACHED (completed)
+file_rename point after_companion#0 NOT REACHED (completed)
+file_rename point after_companion#1 NOT REACHED (completed)
+file_rename_case end completed
+file_rename_case phase Prepared crashed
+file_rename_case phase TmpRenamed crashed
+file_rename_case phase Renamed crashed
+file_rename_case phase CompanionsMoved NOT REACHED (completed)
+file_rename_case phase Unlinked NOT REACHED (completed)
+file_rename_case phase Committed crashed
+file_rename_case point before_commit#0 crashed
+file_rename_case point after_mkdir#0 NOT REACHED (completed)
+file_rename_case point after_companion#0 NOT REACHED (completed)
+file_rename_case point after_companion#1 NOT REACHED (completed)
+file_move end completed
+file_move phase Prepared crashed
+file_move phase TmpRenamed NOT REACHED (completed)
+file_move phase Renamed crashed
+file_move phase CompanionsMoved NOT REACHED (completed)
+file_move phase Unlinked NOT REACHED (completed)
+file_move phase Committed crashed
+file_move point before_commit#0 crashed
+file_move point after_mkdir#0 NOT REACHED (completed)
+file_move point after_companion#0 NOT REACHED (completed)
+file_move point after_companion#1 NOT REACHED (completed)
+file_trash end completed
+file_trash phase Prepared crashed
+file_trash phase TmpRenamed NOT REACHED (completed)
+file_trash phase Renamed crashed
+file_trash phase CompanionsMoved NOT REACHED (completed)
+file_trash phase Unlinked NOT REACHED (completed)
+file_trash phase Committed crashed
+file_trash point before_commit#0 crashed
+file_trash point after_mkdir#0 NOT REACHED (completed)
+file_trash point after_companion#0 NOT REACHED (completed)
+file_trash point after_companion#1 NOT REACHED (completed)
+file_restore end completed
+file_restore phase Prepared crashed
+file_restore phase TmpRenamed NOT REACHED (completed)
+file_restore phase Renamed crashed
+file_restore phase CompanionsMoved NOT REACHED (completed)
+file_restore phase Unlinked NOT REACHED (completed)
+file_restore phase Committed crashed
+file_restore point before_commit#0 crashed
+file_restore point after_mkdir#0 NOT REACHED (completed)
+file_restore point after_companion#0 NOT REACHED (completed)
+file_restore point after_companion#1 NOT REACHED (completed)
+file_delete_permanently end completed
+file_delete_permanently phase Prepared crashed
+file_delete_permanently phase TmpRenamed NOT REACHED (completed)
+file_delete_permanently phase Renamed NOT REACHED (completed)
+file_delete_permanently phase CompanionsMoved NOT REACHED (completed)
+file_delete_permanently phase Unlinked crashed
+file_delete_permanently phase Committed crashed
+file_delete_permanently point after_unlink#0 NOT REACHED (completed)
+file_delete_permanently point after_unlink#1 NOT REACHED (completed)
+file_delete_permanently point after_companion#0 NOT REACHED (completed)
+dbonly_move_to_no_folder end completed
+dbonly_move_to_no_folder phase Prepared crashed
+dbonly_move_to_no_folder phase TmpRenamed NOT REACHED (completed)
+dbonly_move_to_no_folder phase Renamed NOT REACHED (completed)
+dbonly_move_to_no_folder phase CompanionsMoved NOT REACHED (completed)
+dbonly_move_to_no_folder phase Unlinked NOT REACHED (completed)
+dbonly_move_to_no_folder phase Committed crashed
+dbonly_trash_of_missing_file end completed
+dbonly_trash_of_missing_file phase Prepared crashed
+dbonly_trash_of_missing_file phase TmpRenamed NOT REACHED (completed)
+dbonly_trash_of_missing_file phase Renamed NOT REACHED (completed)
+dbonly_trash_of_missing_file phase CompanionsMoved NOT REACHED (completed)
+dbonly_trash_of_missing_file phase Unlinked NOT REACHED (completed)
+dbonly_trash_of_missing_file phase Committed crashed
+dbonly_delete_of_missing_trash_file end completed
+dbonly_delete_of_missing_trash_file phase Prepared crashed
+dbonly_delete_of_missing_trash_file phase TmpRenamed NOT REACHED (completed)
+dbonly_delete_of_missing_trash_file phase Renamed NOT REACHED (completed)
+dbonly_delete_of_missing_trash_file phase CompanionsMoved NOT REACHED (completed)
+dbonly_delete_of_missing_trash_file phase Unlinked NOT REACHED (completed)
+dbonly_delete_of_missing_trash_file phase Committed crashed
+file_rename_with_companions end completed
+file_rename_with_companions phase Prepared crashed
+file_rename_with_companions phase TmpRenamed NOT REACHED (completed)
+file_rename_with_companions phase Renamed crashed
+file_rename_with_companions phase CompanionsMoved crashed
+file_rename_with_companions phase Unlinked NOT REACHED (completed)
+file_rename_with_companions phase Committed crashed
+file_rename_with_companions point before_commit#0 crashed
+file_rename_with_companions point after_mkdir#0 crashed
+file_rename_with_companions point after_companion#0 crashed
+file_rename_with_companions point after_companion#1 crashed
+file_rename_case_with_companions end completed
+file_rename_case_with_companions phase Prepared crashed
+file_rename_case_with_companions phase TmpRenamed crashed
+file_rename_case_with_companions phase Renamed crashed
+file_rename_case_with_companions phase CompanionsMoved crashed
+file_rename_case_with_companions phase Unlinked NOT REACHED (completed)
+file_rename_case_with_companions phase Committed crashed
+file_rename_case_with_companions point before_commit#0 crashed
+file_rename_case_with_companions point after_mkdir#0 crashed
+file_rename_case_with_companions point after_companion#0 crashed
+file_rename_case_with_companions point after_companion#1 crashed
+file_move_with_companions end completed
+file_move_with_companions phase Prepared crashed
+file_move_with_companions phase TmpRenamed NOT REACHED (completed)
+file_move_with_companions phase Renamed crashed
+file_move_with_companions phase CompanionsMoved crashed
+file_move_with_companions phase Unlinked NOT REACHED (completed)
+file_move_with_companions phase Committed crashed
+file_move_with_companions point before_commit#0 crashed
+file_move_with_companions point after_mkdir#0 crashed
+file_move_with_companions point after_companion#0 crashed
+file_move_with_companions point after_companion#1 crashed
+file_trash_with_companions end completed
+file_trash_with_companions phase Prepared crashed
+file_trash_with_companions phase TmpRenamed NOT REACHED (completed)
+file_trash_with_companions phase Renamed crashed
+file_trash_with_companions phase CompanionsMoved crashed
+file_trash_with_companions phase Unlinked NOT REACHED (completed)
+file_trash_with_companions phase Committed crashed
+file_trash_with_companions point before_commit#0 crashed
+file_trash_with_companions point after_mkdir#0 NOT REACHED (completed)
+file_trash_with_companions point after_companion#0 crashed
+file_trash_with_companions point after_companion#1 crashed
+file_restore_with_companions end completed
+file_restore_with_companions phase Prepared crashed
+file_restore_with_companions phase TmpRenamed NOT REACHED (completed)
+file_restore_with_companions phase Renamed crashed
+file_restore_with_companions phase CompanionsMoved crashed
+file_restore_with_companions phase Unlinked NOT REACHED (completed)
+file_restore_with_companions phase Committed crashed
+file_restore_with_companions point before_commit#0 crashed
+file_restore_with_companions point after_mkdir#0 crashed
+file_restore_with_companions point after_companion#0 crashed
+file_restore_with_companions point after_companion#1 crashed
+file_delete_permanently_with_companions end completed
+file_delete_permanently_with_companions phase Prepared crashed
+file_delete_permanently_with_companions phase TmpRenamed NOT REACHED (completed)
+file_delete_permanently_with_companions phase Renamed NOT REACHED (completed)
+file_delete_permanently_with_companions phase CompanionsMoved crashed
+file_delete_permanently_with_companions phase Unlinked crashed
+file_delete_permanently_with_companions phase Committed crashed
+file_delete_permanently_with_companions point after_unlink#0 crashed
+file_delete_permanently_with_companions point after_unlink#1 crashed
+file_delete_permanently_with_companions point after_companion#0 NOT REACHED (completed)
+folder_create end completed
+folder_create phase Prepared crashed
+folder_create phase TmpRenamed NOT REACHED (completed)
+folder_create phase Renamed crashed
+folder_create phase CompanionsMoved NOT REACHED (completed)
+folder_create phase Unlinked NOT REACHED (completed)
+folder_create phase Committed crashed
+folder_rename end completed
+folder_rename phase Prepared crashed
+folder_rename phase TmpRenamed NOT REACHED (completed)
+folder_rename phase Renamed crashed
+folder_rename phase CompanionsMoved NOT REACHED (completed)
+folder_rename phase Unlinked NOT REACHED (completed)
+folder_rename phase Committed crashed
+folder_move end completed
+folder_move phase Prepared crashed
+folder_move phase TmpRenamed NOT REACHED (completed)
+folder_move phase Renamed crashed
+folder_move phase CompanionsMoved NOT REACHED (completed)
+folder_move phase Unlinked NOT REACHED (completed)
+folder_move phase Committed crashed
+folder_move_with_models end completed
+folder_move_with_models phase Prepared crashed
+folder_move_with_models phase TmpRenamed NOT REACHED (completed)
+folder_move_with_models phase Renamed crashed
+folder_move_with_models phase CompanionsMoved NOT REACHED (completed)
+folder_move_with_models phase Unlinked NOT REACHED (completed)
+folder_move_with_models phase Committed crashed
+folder_rename_with_models end completed
+folder_rename_with_models phase Prepared crashed
+folder_rename_with_models phase TmpRenamed NOT REACHED (completed)
+folder_rename_with_models phase Renamed crashed
+folder_rename_with_models phase CompanionsMoved NOT REACHED (completed)
+folder_rename_with_models phase Unlinked NOT REACHED (completed)
+folder_rename_with_models phase Committed crashed
+folder_remove end completed
+folder_remove phase Prepared crashed
+folder_remove phase TmpRenamed NOT REACHED (completed)
+folder_remove phase Renamed NOT REACHED (completed)
+folder_remove phase CompanionsMoved NOT REACHED (completed)
+folder_remove phase Unlinked NOT REACHED (completed)
+folder_remove phase Committed crashed
+folder_remove_with_models end completed
+folder_remove_with_models phase Prepared crashed
+folder_remove_with_models phase TmpRenamed NOT REACHED (completed)
+folder_remove_with_models phase Renamed NOT REACHED (completed)
+folder_remove_with_models phase CompanionsMoved NOT REACHED (completed)
+folder_remove_with_models phase Unlinked NOT REACHED (completed)
+folder_remove_with_models phase Committed crashed
+companion_trash end completed
+companion_trash phase Prepared crashed
+companion_trash phase TmpRenamed NOT REACHED (completed)
+companion_trash phase Renamed NOT REACHED (completed)
+companion_trash phase CompanionsMoved crashed
+companion_trash phase Unlinked NOT REACHED (completed)
+companion_trash phase Committed crashed
+companion_trash point before_commit#0 crashed
+companion_trash point after_companion#0 crashed
+companion_trash point before_unlink#0 NOT REACHED (completed)
+companion_trash point after_unlink#0 NOT REACHED (completed)
+companion_trash_last_file end completed
+companion_trash_last_file phase Prepared crashed
+companion_trash_last_file phase TmpRenamed NOT REACHED (completed)
+companion_trash_last_file phase Renamed NOT REACHED (completed)
+companion_trash_last_file phase CompanionsMoved crashed
+companion_trash_last_file phase Unlinked NOT REACHED (completed)
+companion_trash_last_file phase Committed crashed
+companion_trash_last_file point before_commit#0 crashed
+companion_trash_last_file point after_companion#0 crashed
+companion_trash_last_file point before_unlink#0 NOT REACHED (completed)
+companion_trash_last_file point after_unlink#0 NOT REACHED (completed)
+companion_restore end completed
+companion_restore phase Prepared crashed
+companion_restore phase TmpRenamed NOT REACHED (completed)
+companion_restore phase Renamed NOT REACHED (completed)
+companion_restore phase CompanionsMoved crashed
+companion_restore phase Unlinked NOT REACHED (completed)
+companion_restore phase Committed crashed
+companion_restore point before_commit#0 crashed
+companion_restore point after_companion#0 crashed
+companion_restore point before_unlink#0 NOT REACHED (completed)
+companion_restore point after_unlink#0 NOT REACHED (completed)
+companion_purge end completed
+companion_purge phase Prepared crashed
+companion_purge phase TmpRenamed NOT REACHED (completed)
+companion_purge phase Renamed NOT REACHED (completed)
+companion_purge phase CompanionsMoved crashed
+companion_purge phase Unlinked crashed
+companion_purge phase Committed crashed
+companion_purge point before_commit#0 NOT REACHED (completed)
+companion_purge point after_companion#0 NOT REACHED (completed)
+companion_purge point before_unlink#0 crashed
+companion_purge point after_unlink#0 crashed
+companion_add end completed
+companion_add phase Prepared crashed
+companion_add phase TmpRenamed NOT REACHED (completed)
+companion_add phase Renamed NOT REACHED (completed)
+companion_add phase CompanionsMoved crashed
+companion_add phase Unlinked NOT REACHED (completed)
+companion_add phase Committed crashed
+companion_add point after_temp_create#0 crashed
+companion_add point after_temp_inode#0 crashed
+companion_add point mid_write#0 crashed
+companion_add point after_fsync_identity#0 crashed
+companion_add point after_rename#0 crashed
+companion_add point before_commit#0 crashed
+companion_add point after_commit#0 crashed
+companion_add point after_undo#0 NOT REACHED (completed)
+companion_add_into_existing_folder end completed
+companion_add_into_existing_folder phase Prepared crashed
+companion_add_into_existing_folder phase TmpRenamed NOT REACHED (completed)
+companion_add_into_existing_folder phase Renamed NOT REACHED (completed)
+companion_add_into_existing_folder phase CompanionsMoved crashed
+companion_add_into_existing_folder phase Unlinked NOT REACHED (completed)
+companion_add_into_existing_folder phase Committed crashed
+companion_add_into_existing_folder point after_temp_create#0 crashed
+companion_add_into_existing_folder point after_temp_inode#0 crashed
+companion_add_into_existing_folder point mid_write#0 crashed
+companion_add_into_existing_folder point after_fsync_identity#0 crashed
+companion_add_into_existing_folder point after_rename#0 crashed
+companion_add_into_existing_folder point before_commit#0 crashed
+companion_add_into_existing_folder point after_commit#0 crashed
+companion_add_into_existing_folder point after_undo#0 NOT REACHED (completed)

@@ -1,0 +1,102 @@
+tree base="/m/a" folder "/m/a": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/a/": Err inconsistent
+tree base="/m/a" folder "/m/a0": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/a.b": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/a/b": Err inconsistent
+tree base="/m/a" folder "/m/a/b/c": Err inconsistent
+tree base="/m/a" folder "/m/a-": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/a1": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/a\u{1}": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/a/\u{10ffff}": Err inconsistent
+tree base="/m/a" folder "/m/a_": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/ax": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/a/b\\c": Err inconsistent
+tree base="/m/a" folder "/m/a//b": Err inconsistent
+tree base="/m/a" folder "/m/ax/y": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/a.b/c": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" folder "/m/aé": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/a": Err inconsistent
+tree base="/m/a" file "/m/a/": Err inconsistent
+tree base="/m/a" file "/m/a0": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/a.b": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/a/b": Ok folders=[1] files=[2] companions=[]
+tree base="/m/a" file "/m/a/b/c": Ok folders=[1] files=[2] companions=[]
+tree base="/m/a" file "/m/a-": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/a1": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/a\u{1}": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/a/\u{10ffff}": Ok folders=[1] files=[2] companions=[]
+tree base="/m/a" file "/m/a_": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/ax": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/a/b\\c": Err inconsistent
+tree base="/m/a" file "/m/a//b": Err inconsistent
+tree base="/m/a" file "/m/ax/y": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/a.b/c": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" file "/m/aé": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a/": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a" companion "/m/a0": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a.b": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a/b": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a" companion "/m/a/b/c": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a" companion "/m/a-": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a1": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a\u{1}": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a/\u{10ffff}": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a" companion "/m/a_": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/ax": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a/b\\c": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a" companion "/m/a//b": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a" companion "/m/ax/y": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/a.b/c": Ok folders=[1] files=[] companions=[]
+tree base="/m/a" companion "/m/aé": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b/": Err inconsistent
+tree base="/m/a_b" folder "/m/a_b0": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b.b": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b/b": Err inconsistent
+tree base="/m/a_b" folder "/m/a_b/b/c": Err inconsistent
+tree base="/m/a_b" folder "/m/a_b-": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b1": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b\u{1}": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b/\u{10ffff}": Err inconsistent
+tree base="/m/a_b" folder "/m/a_b_": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_bx": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b/b\\c": Err inconsistent
+tree base="/m/a_b" folder "/m/a_b//b": Err inconsistent
+tree base="/m/a_b" folder "/m/a_bx/y": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_b.b/c": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" folder "/m/a_bé": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_b": Err inconsistent
+tree base="/m/a_b" file "/m/a_b/": Err inconsistent
+tree base="/m/a_b" file "/m/a_b0": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_b.b": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_b/b": Ok folders=[1] files=[2] companions=[]
+tree base="/m/a_b" file "/m/a_b/b/c": Ok folders=[1] files=[2] companions=[]
+tree base="/m/a_b" file "/m/a_b-": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_b1": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_b\u{1}": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_b/\u{10ffff}": Ok folders=[1] files=[2] companions=[]
+tree base="/m/a_b" file "/m/a_b_": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_bx": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_b/b\\c": Err inconsistent
+tree base="/m/a_b" file "/m/a_b//b": Err inconsistent
+tree base="/m/a_b" file "/m/a_bx/y": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_b.b/c": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" file "/m/a_bé": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b/": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a_b" companion "/m/a_b0": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b.b": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b/b": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a_b" companion "/m/a_b/b/c": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a_b" companion "/m/a_b-": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b1": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b\u{1}": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b/\u{10ffff}": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a_b" companion "/m/a_b_": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_bx": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b/b\\c": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a_b" companion "/m/a_b//b": Ok folders=[1] files=[] companions=[1]
+tree base="/m/a_b" companion "/m/a_bx/y": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_b.b/c": Ok folders=[1] files=[] companions=[]
+tree base="/m/a_b" companion "/m/a_bé": Ok folders=[1] files=[] companions=[]

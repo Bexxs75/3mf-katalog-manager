@@ -39,6 +39,8 @@ pub mod write;
 
 pub mod import;
 
+pub mod fs_portable;
+
 #[cfg(unix)]
 pub mod upload_fs;
 

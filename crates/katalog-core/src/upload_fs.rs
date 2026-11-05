@@ -9,12 +9,11 @@ use std::{
     },
     path::{Component, Path},
 };
-use unicode_normalization::UnicodeNormalization;
-
-pub fn nfc(value: &str) -> String {
-    value.nfc().collect()
-}
+pub use crate::fs_portable::nfc;
 pub struct Directory(File);
+// Contract adapter for `fs_portable::backend`; only additional impls.
+#[cfg(target_os = "linux")]
+pub mod backend;
 fn cstring(name: &str) -> io::Result<CString> {
     if name.is_empty() || name == "." || name == ".." || name.contains('/') {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));

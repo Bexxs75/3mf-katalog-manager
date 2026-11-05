@@ -2,7 +2,8 @@ use super::*;
 use rusqlite::OptionalExtension;
 use tauri::Manager;
 
-pub(super) const SUBTREE: &str = "WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id = ?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id)";
+use crate::db::FOLDER_SUBTREE_CTE;
+
 const BASE_DIR_ERROR: ErrorCode = ErrorCode::CatalogBaseDirProtected;
 
 #[derive(Debug, Serialize)]
@@ -64,12 +65,12 @@ fn folder_summary_with_conn(conn: &Connection, folder_id: &str) -> CmdResult<Fol
         .ok_or_else(|| CmdError::coded(ErrorCode::FolderNotFound))?;
     let subfolder_count = conn
         .query_row(
-            &format!("{SUBTREE} SELECT COUNT(*) - 1 FROM subtree"),
+            &format!("{FOLDER_SUBTREE_CTE} SELECT COUNT(*) - 1 FROM subtree"),
             [id],
             |r| r.get(0),
         )
         .map_err(DbError::from)?;
-    let model_count = conn.query_row(&format!("{SUBTREE} SELECT COUNT(*) FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id], |r| r.get(0)).map_err(DbError::from)?;
+    let model_count = conn.query_row(&format!("{FOLDER_SUBTREE_CTE} SELECT COUNT(*) FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id], |r| r.get(0)).map_err(DbError::from)?;
     Ok(FolderRemovalSummary {
         name,
         subfolder_count,
@@ -85,11 +86,11 @@ pub(super) fn remove_folder_with_conn(
     let tx = conn.unchecked_transaction().map_err(DbError::from)?;
     let summary = folder_summary_with_conn(&tx, folder_id)?;
     // Protect ancestors too: cascading their removal must not bypass the base-directory guard.
-    let contains_base: bool = tx.query_row(&format!("{SUBTREE} SELECT EXISTS(SELECT 1 FROM folders WHERE id IN (SELECT id FROM subtree) AND path = (SELECT value FROM app_settings WHERE key = ?2))"), rusqlite::params![id, folders::SETTING_CATALOG_BASE_DIR], |r| r.get(0)).map_err(DbError::from)?;
+    let contains_base: bool = tx.query_row(&format!("{FOLDER_SUBTREE_CTE} SELECT EXISTS(SELECT 1 FROM folders WHERE id IN (SELECT id FROM subtree) AND path = (SELECT value FROM app_settings WHERE key = ?2))"), rusqlite::params![id, folders::SETTING_CATALOG_BASE_DIR], |r| r.get(0)).map_err(DbError::from)?;
     if contains_base {
         return Err(CmdError::coded(BASE_DIR_ERROR));
     }
-    tx.execute(&format!("{SUBTREE} DELETE FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id]).map_err(DbError::from)?;
+    tx.execute(&format!("{FOLDER_SUBTREE_CTE} DELETE FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id]).map_err(DbError::from)?;
     db::bundles::prune_bundles(&tx)?;
     tx.execute("DELETE FROM folders WHERE id = ?1", [id])
         .map_err(DbError::from)?;
@@ -492,6 +493,54 @@ mod tests {
                 .as_deref(),
             Some("yes")
         );
+    }
+
+    fn file_count(conn: &Connection) -> i64 {
+        count(conn, "files")
+    }
+
+    #[test]
+    fn file_removal_rejects_unknown_and_trashed_ids_without_deleting_anything() {
+        let (conn, _root, _child, active, trash) = fixture();
+        for bad in [trash, 9999] {
+            let err = remove_files_with_conn(&conn, vec![active.to_string(), bad.to_string()]).unwrap_err();
+            assert!(err.is(ErrorCode::ModelNotFoundOrTrashed, &[]), "{bad}");
+            assert_eq!(file_count(&conn), 2, "the valid id must survive a rejected batch");
+        }
+        for bad in ["0", "-3", "abc", ""] {
+            let err = remove_files_with_conn(&conn, vec![bad.to_string()]).unwrap_err();
+            assert!(err.is(ErrorCode::InvalidCatalogId, &[]), "{bad:?}");
+        }
+        assert_eq!(file_count(&conn), 2);
+    }
+
+    #[test]
+    fn file_removal_counts_duplicates_once_and_accepts_more_than_two_hundred_ids() {
+        let (conn, _root, child, active, _trash) = fixture();
+        assert_eq!(
+            remove_files_with_conn(&conn, vec![active.to_string(), active.to_string()]).unwrap(),
+            1
+        );
+        assert_eq!(remove_files_with_conn(&conn, vec![]).unwrap(), 0);
+        // The desktop command has no batch limit; select-all on a large catalog relies on it.
+        let ids: Vec<String> = (0..250)
+            .map(|i| db::test_insert_minimal_file(&conn, &format!("/catalog/child/bulk{i}.stl"), Some(child)).unwrap().to_string())
+            .collect();
+        assert_eq!(remove_files_with_conn(&conn, ids).unwrap(), 250);
+        assert_eq!(file_count(&conn), 1, "only the trashed row remains");
+    }
+
+    #[test]
+    fn file_removal_keeps_tags_and_drops_dependent_rows_with_the_file() {
+        let (conn, _root, _child, active, trash) = fixture();
+        related_rows(&conn, active, trash);
+        db::companions::insert_companion(&conn, active, "p.png", "/catalog/child/p.png", "image", None, "now").unwrap();
+        remove_files_with_conn(&conn, vec![active.to_string()]).unwrap();
+        assert_eq!(count(&conn, "tags"), 1, "unused tags are not cleaned up here");
+        assert_eq!(count(&conn, "companion_files"), 0);
+        // The trashed model's rows are untouched.
+        assert_eq!(count(&conn, "file_tags"), 1);
+        assert_eq!(file_count(&conn), 1);
     }
 }
 

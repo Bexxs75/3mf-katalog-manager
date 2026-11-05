@@ -1,0 +1,20 @@
+one root: Ok 1
+two roots: Ok 2
+no roots: Ok 0
+same root twice: Err protected
+nested roots: Err protected
+nested roots reversed: Err protected
+missing root: Err not_found
+root is a file: Err path_unresolvable
+root through symlink: Ok 1
+root with backslash: Err path_unresolvable
+root with trailing dot: Ok 1
+root with dot segments: Ok 1
+upload folder inside root: Ok 1
+forbidden folder inside root: Err protected
+forbidden folder is the root: Err protected
+forbidden folder above root: Err protected
+upload folder above root: Err protected
+catalog base above root: Ok 1
+missing protected folder: Err not_found
+protected folder through symlink: Err protected

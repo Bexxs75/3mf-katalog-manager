@@ -143,7 +143,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     pub(super) fn name_trash_steps(&self, steps: &mut [CompanionStep], root: usize, op_id: &str) -> Result<()> {
         for step in steps.iter_mut().filter(|s| s.source.is_some()) {
             let name = companion_trash_name(step.before.id, op_id, &step.before.name)?;
-            let relative = format!("{TRASH}/{name}");
+            let relative = RelPath::parse(TRASH)?.child(&name)?.as_str().to_owned();
             let place = self.context.resolve_relative(root, &relative, Access::Trash)?;
             if let Some(after) = &mut step.after {
                 after.trash_path = Some(self.context.absolute(&place));
@@ -270,7 +270,8 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             if validate_name(&name).map_or(true, |n| n != name) {
                 continue;
             }
-            let path = new_dir.join(&name).to_str().ok_or(Error::PathUnresolvable)?.to_owned();
+            let new_dir_str = new_dir.to_str().ok_or(Error::PathUnresolvable)?;
+            let path = paths::join(new_dir_str, &name).ok_or(Error::PathUnresolvable)?;
             let on_disk = dir
                 .handle
                 .as_ref()
