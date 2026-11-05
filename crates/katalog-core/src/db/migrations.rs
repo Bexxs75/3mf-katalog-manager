@@ -1953,6 +1953,63 @@ mod tests {
         assert_eq!(shape(&migrated), shape(&fresh));
     }
 
+    /// Measurement for the schema 60 step (spec P4, 6.2): 50 000 companion rows in a catalog
+    /// file on disk. Run on purpose, it prints the time:
+    /// `cargo test -p katalog-core --lib measure_other_kind_step -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "measurement, not a check"]
+    fn measure_other_kind_step_with_50000_companion_rows() {
+        const MODELS: i64 = 1_000;
+        const PER_MODEL: i64 = 50;
+        let dir = std::env::temp_dir().join(format!("mfk-mig60-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("catalog.db");
+        let mut conn = Connection::open(&path).unwrap();
+        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;").unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        conn.execute_batch(
+            "DROP TABLE companion_files;
+             CREATE TABLE companion_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE,
+                kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text')),
+                size_bytes INTEGER,
+                added_at TEXT NOT NULL,
+                deleted_at TEXT,
+                trash_path TEXT
+             );
+             CREATE INDEX idx_companion_files_file_id ON companion_files (file_id);",
+        )
+        .unwrap();
+        {
+            let tx = conn.transaction().unwrap();
+            for model in 0..MODELS {
+                let id = crate::db::test_insert_minimal_file(&tx, &format!("/models/m{model}.3mf"), None).unwrap();
+                for n in 0..PER_MODEL {
+                    tx.execute(
+                        "INSERT INTO companion_files (file_id, name, path, kind, size_bytes, added_at) VALUES (?1, ?2, ?3, 'image', 1000, 't')",
+                        rusqlite::params![id, format!("p{n}.png"), format!("/models/m{model}_extras/p{n}.png")],
+                    )
+                    .unwrap();
+                }
+            }
+            tx.commit().unwrap();
+        }
+        conn.pragma_update(None, "user_version", PRINTER_API_KEY_MIGRATION_VERSION).unwrap();
+        let started = std::time::Instant::now();
+        add_other_to_companion_kind_check(&mut conn, COMPANION_OTHER_KIND_MIGRATION_VERSION).unwrap();
+        let elapsed = started.elapsed();
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM companion_files", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, MODELS * PER_MODEL, "every row survives");
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, COMPANION_OTHER_KIND_MIGRATION_VERSION);
+        println!("MIGRATION60_MEASURE rows={rows} elapsed_ms={}", elapsed.as_millis());
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A catalog at version 55 with the old `file_type` CHECK, rows in the tables that point at `files`.
     fn catalog_with_old_file_type_check() -> (Connection, i64) {
         let conn = crate::db::connect_in_memory().unwrap();

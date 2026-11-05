@@ -1172,6 +1172,35 @@ fn dropped_folder_becomes_a_subfolder_with_its_structure() {
 }
 
 #[test]
+fn dropped_folder_with_a_protected_subfolder_leaves_those_files_where_they_are() {
+    // The target itself is fine, but a folder of the dropped structure would lie in a
+    // protected place: nothing is created there and the file stays at its source.
+    let fixture = Fixture::new();
+    let drop = fixture.0.join("drop");
+    std::fs::create_dir_all(drop.join("a")).unwrap();
+    for (name, seed) in [("y.stl", 1), ("a/x.stl", 2)] {
+        std::fs::rename(fixture.stl(seed), drop.join(name)).unwrap();
+    }
+    let target = fixture.0.join("target");
+    std::fs::create_dir(&target).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let id = db::insert_folder_with_parent(&conn, "target", None, &target.to_string_lossy()).unwrap();
+    let service = ImportJobs::default();
+    let job = dropped_job(&service, Some(id));
+    let sensitive = vec![target.join("drop/a")];
+    run_models(&service, &job, &mut &mut conn, std::slice::from_ref(&drop), &sensitive).unwrap();
+    job.finish(None);
+    let result = job.result().unwrap();
+    assert_eq!((result.counts.imported, result.counts.imported_not_placed), (1, 1));
+    assert_eq!(result.groups.imported_not_placed[0].reason, "protected");
+    assert!(drop.join("a/x.stl").exists(), "the refused file stays at its source");
+    assert!(!target.join("drop/a").exists(), "no protected folder is created");
+    assert!(target.join("drop/y.stl").exists() && !drop.join("y.stl").exists());
+    let folders = db::list_folders(&conn).unwrap();
+    assert!(folders.iter().all(|f| Path::new(&f.path) != target.join("drop/a")));
+}
+
+#[test]
 fn dropping_another_folder_of_the_same_name_reuses_the_subfolder() {
     let fixture = Fixture::new();
     let target = fixture.0.join("target");

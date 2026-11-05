@@ -220,6 +220,26 @@ fn only_paths_the_scan_lists_as_copies_are_remembered() {
 }
 
 #[test]
+fn only_the_copies_the_user_declined_are_remembered() {
+    // Two copies are listed; the request names one of them. The other must stay offered
+    // (it may be a copy the user ticked, or one that appeared after the dialog opened).
+    let mut w = World::new();
+    w.write("copy_a.obj", OBJ_A);
+    w.write("copy_b.obj", OBJ_A);
+    let declined = w.root.join("copy_a.obj").to_string_lossy().into_owned();
+
+    let applied = apply(&mut w.conn, DiskSelection { declined_copies: vec![declined], ..Default::default() }).unwrap();
+
+    assert_eq!((applied.noted_copy_count, applied.known_copy_count), (1, 1));
+    let rows = w.known();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].path.ends_with("copy_a.obj"));
+    let (scan, _) = w.counted_scan(false);
+    assert_eq!(World::offered_paths(&scan), vec!["copy_b.obj"]);
+    assert_eq!(scan.known_copy_count, 1);
+}
+
+#[test]
 fn resetting_forgets_everything_and_the_copy_is_offered_again() {
     let mut w = World::new();
     w.write("copy.obj", OBJ_A);
