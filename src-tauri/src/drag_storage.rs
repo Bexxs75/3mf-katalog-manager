@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+const SESSION_RETENTION: Duration = Duration::from_secs(6 * 60 * 60);
 const RETENTION: Duration = Duration::from_secs(24 * 60 * 60);
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -67,6 +68,24 @@ impl DragStorage {
         unique_dir(&self.root, "drag")
     }
 
+    // Caller holds the native guard with no active session, before starting a new drag.
+    pub(crate) fn collect_sessions(&self, now: SystemTime) {
+        let Ok(entries) = fs::read_dir(&self.root) else { return };
+        for entry in entries.flatten() {
+            if !entry.file_name().to_string_lossy().starts_with("drag-") { continue; }
+            let path = entry.path();
+            let Ok(meta) = fs::symlink_metadata(&path) else { continue };
+            if !meta.is_dir() || meta.file_type().is_symlink() { continue; }
+            let old = meta.modified().ok().and_then(|time| now.duration_since(time).ok())
+                .is_some_and(|age| age > SESSION_RETENTION);
+            if old {
+                if let Err(e) = fs::remove_dir_all(&path) {
+                    log::warn!(target: "drag", "old drag session not removed: {e}");
+                }
+            }
+        }
+    }
+
     fn collect(parent: &Path, now: SystemTime) {
         let Ok(entries) = fs::read_dir(parent) else { return };
         for entry in entries.flatten() {
@@ -97,6 +116,27 @@ impl DragStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collects_only_old_sessions_from_this_instance() {
+        let base = unique_dir(&std::env::temp_dir(), "drag-test").unwrap();
+        let first = DragStorage::new(&base).unwrap();
+        let second = DragStorage::new(&base).unwrap();
+        let old = first.session().unwrap();
+        let recent = first.session().unwrap();
+        let other = second.session().unwrap();
+        let now = SystemTime::now();
+        first.collect_sessions(now);
+        assert!(old.exists());
+        assert!(recent.exists());
+        first.collect_sessions(now + SESSION_RETENTION + Duration::from_secs(10));
+        assert!(!old.exists());
+        assert!(!recent.exists());
+        assert!(other.exists());
+        drop(first);
+        drop(second);
+        fs::remove_dir_all(base).unwrap();
+    }
 
     #[test]
     fn sequential_drags_and_parallel_instances_keep_every_source() {

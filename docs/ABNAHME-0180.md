@@ -45,3 +45,19 @@ Keine Release-Freigabe. Automatisierte Prüfungen ersetzen keine nativen Proben.
 - [ ] **Eigenständige, konsistente Katalogkopie ohne WAL/Journal** liefern, Tag-Inventar/Trockenlauf prüfen, neue Begriffe und Übersetzungen freigeben. Die 19 ausdrücklich genannten Einträge existieren; keine zusätzlichen Begriffe/Messzahlen erfunden.
 
 Pflichtbefehle siehe oben. Rust hier mangels `cargo` blockiert. Der vereinbarte Vitest-Aufruf scheitert am schreibgeschützten `node_modules`-Link; ergänzend läuft `--configLoader runner`, ohne den anderen Checkout zu ändern. Ergebnisse und Anzahlen stehen im [Abschlussbericht](ABSCHLUSS-0180.md).
+
+## Nachbesserung 1 — Rust proof / Rust-Nachweis
+
+The requester must rerun `cargo test --workspace --no-default-features` and
+`cargo clippy --workspace --no-default-features --all-targets -- -D warnings`
+against these uncommitted changes. Rust execution is unavailable in this work
+order; the green Docker results for base `6b8c6b7a` do not validate this patch.
+New Rust tests cover timeout recovery, stale callbacks, overlap exclusion and
+six-hour collection of this instance's sessions. The three-platform native drag
+acceptance remains open.
+
+Der Auftraggeber misst die beiden obigen Befehle erneut auf diesen uncommitteten
+Änderungen. Rust ist in diesem Auftrag nicht ausführbar; die grünen Docker-Werte
+für `6b8c6b7a` sind kein Nachweis für diese Nachbesserung. Neue Rust-Tests prüfen
+Timeout-Freigabe, verspätete Callbacks, überlappende Starts und die Bereinigung
+eigener Sitzungen nach sechs Stunden. Die native Drei-System-Abnahme bleibt offen.

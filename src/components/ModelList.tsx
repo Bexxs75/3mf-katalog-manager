@@ -113,7 +113,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           )}
           <span role="gridcell" className="flex items-center gap-1.5 min-w-0">
             {onDragFileStart && !readOnly && canEdit && <DragGrip />}
-            {!readOnly && <NativeDragHandle model={m} selectedIds={selectedForBulk} />}
+            {!readOnly && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} />}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
             {isSlicedOutput(m) && <span data-kind-badge aria-hidden="true" className="flex-none font-bold tracking-[0.05em] text-caption px-1.5 py-px rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">{kindBadge(m)}</span>}
             <LicenseBadge license={m.license} />

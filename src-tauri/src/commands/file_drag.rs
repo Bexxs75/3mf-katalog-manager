@@ -11,15 +11,34 @@ pub(crate) const SETTING_DRAG_OUT_ENABLED: &str = "drag_out_enabled";
 const MAX_DRAG_FILES: usize = 64;
 /// Keep originals private until the native copy-mode probe passes on every platform.
 const DRAG_ORIGINAL_FILE: bool = false;
+const DRAG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 #[derive(Default, Clone)]
-pub struct NativeDragState(std::sync::Arc<std::sync::atomic::AtomicBool>);
+pub struct NativeDragState(std::sync::Arc<std::sync::Mutex<Option<std::time::Instant>>>);
 impl NativeDragState {
-    pub fn is_active(&self) -> bool { self.0.load(std::sync::atomic::Ordering::SeqCst) }
-    fn begin(&self) -> CmdResult<()> {
-        self.0.compare_exchange(false, true, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst)
-            .map(|_| ()).map_err(|_| CmdError::coded_with(ErrorCode::DragFailed, [String::new()]))
+    pub fn is_active(&self) -> bool {
+        let mut active = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if active.is_some_and(|start| start.elapsed() >= DRAG_TIMEOUT) { *active = None; }
+        active.is_some()
     }
-    fn finish(&self) { self.0.store(false, std::sync::atomic::Ordering::SeqCst); }
+    fn begin(&self, cleanup: impl FnOnce()) -> CmdResult<std::time::Instant> {
+        let mut active = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if active.is_some_and(|start| start.elapsed() < DRAG_TIMEOUT) {
+            return Err(CmdError::coded_with(ErrorCode::DragFailed, [String::new()]));
+        }
+        // Serialize collection with session creation, while no drag owns the guard.
+        *active = None;
+        cleanup();
+        let token = std::time::Instant::now();
+        *active = Some(token);
+        Ok(token)
+    }
+    fn finish(&self, token: std::time::Instant, notify: impl FnOnce()) {
+        let mut active = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if *active == Some(token) {
+            *active = None;
+            notify();
+        }
+    }
 }
 /// Preview image of the drag (the app icon, 32 px).
 const DRAG_PREVIEW_PNG: &[u8] = include_bytes!("../../icons/32x32.png");
@@ -105,13 +124,27 @@ pub fn start_file_drag(
     use tauri::{Emitter, Manager};
     let storage = window.try_state::<crate::drag_storage::DragStorage>()
         .ok_or_else(|| CmdError::coded_with(ErrorCode::DragFailed, [String::new()]))?;
-    let folder = storage.session().map_err(|e| CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]))?;
-    let files = stage_drag_files(&sources, &folder, DRAG_ORIGINAL_FILE)?;
+    let native = window.state::<NativeDragState>().inner().clone();
+    let token = native.begin(|| storage.collect_sessions(std::time::SystemTime::now()))?;
+    let watchdog = native.clone();
+    let watchdog_window = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(DRAG_TIMEOUT);
+        watchdog.finish(token, || { let _ = watchdog_window.emit("native-drag-ended", ()); });
+    });
+    let folder = storage.session().map_err(|e| { native.finish(token, || {}); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })?;
+    let files = stage_drag_files(&sources, &folder, DRAG_ORIGINAL_FILE).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&folder);
+        native.finish(token, || {});
+    })?;
+    if token.elapsed() >= DRAG_TIMEOUT {
+        let _ = std::fs::remove_dir_all(&folder);
+        native.finish(token, || {});
+        return Err(CmdError::coded_with(ErrorCode::DragFailed, [String::new()]));
+    }
     let count = files.len();
     let item = drag::DragItem::Files(files);
     let preview = drag::Image::Raw(DRAG_PREVIEW_PNG.to_vec());
-    let native = window.state::<NativeDragState>().inner().clone();
-    native.begin()?;
     let finished = native.clone();
     let event_window = window.clone();
     let callback = move |result: drag::DragResult, _: drag::CursorPosition| {
@@ -121,19 +154,18 @@ pub fn start_file_drag(
         let event_window = event_window.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(250));
-            finished.finish();
-            let _ = event_window.emit("native-drag-ended", ());
+            finished.finish(token, || { let _ = event_window.emit("native-drag-ended", ()); });
         });
     };
     let options = drag::Options { mode: drag::DragMode::Copy, ..Default::default() };
     #[cfg(target_os = "linux")]
     let started = {
-        let gtk_window = window.gtk_window().map_err(|e| { native.finish(); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })?;
+        let gtk_window = window.gtk_window().map_err(|e| { let _ = std::fs::remove_dir_all(&folder); native.finish(token, || {}); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })?;
         drag::start_drag(&gtk_window, item, preview, callback, options)
     };
     #[cfg(not(target_os = "linux"))]
     let started = drag::start_drag(&window, item, preview, callback, options);
-    started.map_err(|e| { native.finish(); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })
+    started.map_err(|e| { let _ = std::fs::remove_dir_all(&folder); native.finish(token, || {}); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })
 }
 
 #[cfg(test)]
@@ -150,12 +182,32 @@ mod tests {
     fn native_drag_guard_refuses_overlap_and_releases_after_end() {
         let state = NativeDragState::default();
         assert!(!state.is_active());
-        state.begin().unwrap();
+        let token = state.begin(|| {}).unwrap();
         assert!(state.is_active());
-        assert!(state.begin().is_err());
-        state.finish();
+        assert!(state.begin(|| {}).is_err());
+        state.finish(token, || {});
         assert!(!state.is_active());
-        state.begin().unwrap();
+        state.begin(|| {}).unwrap();
+    }
+
+    #[test]
+    fn missing_callback_expires_and_late_finish_cannot_clear_next_drag() {
+        let state = NativeDragState::default();
+        let old = std::time::Instant::now() - DRAG_TIMEOUT;
+        *state.0.lock().unwrap() = Some(old);
+        assert!(!state.is_active());
+        let current = state.begin(|| {}).unwrap();
+        state.finish(old, || panic!("stale session must not emit"));
+        assert!(state.is_active());
+        state.finish(current, || {});
+        assert!(!state.is_active());
+    }
+
+    #[test]
+    fn overlap_does_not_collect_or_stage_files() {
+        let state = NativeDragState::default();
+        state.begin(|| {}).unwrap();
+        assert!(state.begin(|| panic!("active drag must prevent cleanup")).is_err());
     }
 
     #[test]

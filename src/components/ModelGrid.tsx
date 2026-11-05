@@ -273,7 +273,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
       >
         <div role="gridcell" className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           {onDragFileStart && !readOnly && canEdit && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-          {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} className="absolute bottom-1.5 right-1.5 z-10" />}
+          {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} className="absolute bottom-1.5 right-1.5 z-10" />}
           {!readOnly && canEdit && (
             <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
@@ -389,7 +389,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             <div aria-hidden="true" className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div role="gridcell" className="relative aspect-square bg-[var(--plate)] overflow-hidden">
               {onDragFileStart && !readOnly && canEdit && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-          {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} className="absolute bottom-1.5 right-1.5 z-10" />}
+              {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} className="absolute bottom-1.5 right-1.5 z-10" />}
               {!readOnly && canEdit && (
                 <BulkCheckbox
                   checked={selectedForBulk.has(m.id)}

@@ -2072,6 +2072,7 @@ export const en: Translations = {
   owViewerLabel: "3D view of {name}",
   dgSwitchLabel: "Drag files out of the catalog (experimental)",
   dgSwitchHint: "Experimental, not yet accepted on any system. Off by default. The handle hands temporary copies to a slicer or file manager; catalog files stay intact.",
+  dgLimit: "You can drag at most 64 files at once. Please reduce the selection.",
   dgHandle: "Drag into slicer (experimental). Keyboard: use “Open in slicer”.",
   dgStepHint: "Slicers cannot open STEP: save as STL.",
   errDragDisabled: "Dragging files out is switched off. You can switch it on in the settings (Slicer).",

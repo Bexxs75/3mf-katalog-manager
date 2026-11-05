@@ -2,21 +2,30 @@ import { useSyncExternalStore } from 'react';
 import { listen } from './events';
 import { getDragOutEnabled, startFileDrag } from './api/fileDrag';
 
-let active = false;
+let session: { finish: () => void } | undefined;
 export const NativeDragState = {
-  isActive: () => active,
-  finish: () => { active = false; },
+  isActive: () => session !== undefined,
+  finish: () => { session?.finish(); },
 };
 export async function startNativeDrag(fileIds: string[]) {
-  if (active) return;
-  active = true;
+  if (session) return;
   let off: (() => void) | undefined;
+  const current = { finish: () => {
+    clearTimeout(timer);
+    off?.();
+    off = undefined;
+    if (session === current) session = undefined;
+  } };
+  session = current;
+  const timer = setTimeout(current.finish, 60_000);
   try {
-    off = await listen('native-drag-ended', () => { NativeDragState.finish(); off?.(); });
+    off = await listen('native-drag-ended', current.finish);
+    if (session !== current) { off(); return; }
     await startFileDrag(fileIds);
     // On Linux/macOS invoke can resolve before the native session ends.
   } catch (error) {
-    NativeDragState.finish(); off?.(); throw error;
+    current.finish();
+    throw error;
   }
 }
 let enabled = false;

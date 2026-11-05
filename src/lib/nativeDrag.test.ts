@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn(), off: vi.fn(), end: () => {} }));
 vi.mock('./api/fileDrag', () => ({ startFileDrag: mocks.invoke, getDragOutEnabled: async () => false }));
 vi.mock('./events', () => ({ listen: mocks.listen }));
@@ -27,4 +27,30 @@ it('refuses overlapping starts without releasing the active guard', async () => 
   expect(mocks.invoke).toHaveBeenCalledTimes(1);
   expect(NativeDragState.isActive()).toBe(true);
   mocks.end();
+});
+
+afterEach(() => { NativeDragState.finish(); vi.useRealTimers(); });
+it('releases a hung session after 60 seconds and ignores its late rejection', async () => {
+  vi.useFakeTimers();
+  let reject!: (reason: Error) => void;
+  mocks.invoke.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  const first = startNativeDrag(['1']);
+  const failed = expect(first).rejects.toThrow('late');
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(NativeDragState.isActive()).toBe(false);
+  expect(mocks.off).toHaveBeenCalled();
+  await startNativeDrag(['2']);
+  reject(new Error('late'));
+  await failed;
+  expect(NativeDragState.isActive()).toBe(true);
+});
+it('does not invoke after listener setup outlives the watchdog', async () => {
+  vi.useFakeTimers();
+  let ready!: (off: () => void) => void;
+  mocks.listen.mockImplementationOnce(() => new Promise(resolve => { ready = resolve; }));
+  const pending = startNativeDrag(['1']);
+  await vi.advanceTimersByTimeAsync(60000);
+  ready(mocks.off);
+  await pending;
+  expect(mocks.invoke).not.toHaveBeenCalled();
 });

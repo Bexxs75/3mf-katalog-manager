@@ -89,3 +89,89 @@ Logs: `.proof-0180/cargo-test.log`, `clippy.log`, `flaky.log`, `tsc.log`, `vites
 - `src/lib/nativeDrag.ts`
 - `tools/tag_review.py`
 - `tools/test_tag_review.py`
+
+## Nachbesserung 1
+
+Frozen order: `FIX1.md`, SHA256
+`bf15b7e578a905df5a9f65a169af8f3d0abf1254c38538d56c2a7898bc8e3d79`.
+
+- F1: Desktop `rust-version = "1.89"`; all discovered Rust toolchain workflow
+  entries use `dtolnay/rust-toolchain@stable`. Workflows were only read.
+- F2: Independent 60-second frontend/backend watchdogs release hung sessions.
+  Session identity prevents late completion/rejection from releasing a newer
+  guard. Listener setup that completes after expiry cannot start a native drag.
+  Staging that exceeds the deadline cannot start a native session afterwards.
+- F3: Acquire the guard before staging. Failed staging, GTK acquisition and native
+  starts remove the session folder. Before each new drag, while holding the guard
+  with no active session, collect only this instance's session directories older
+  than six hours. Recent copies and other instances remain untouched.
+- F4: Mouse-only grip has `tabIndex={-1}` and `aria-hidden`; detail grip is outside
+  the heading.
+- F5: Grid/list provide model metadata to filter selected IDs to live 3MF/STL/OBJ
+  files. Selections above 64 supported files show an inline alert in DE/EN/ES/FR
+  and do not invoke the backend.
+- F6: Corrected indentation of the second grid insertion.
+
+**Deutsch:** F1–F6 sind umgesetzt: Rust-Mindestversion nach CI-Leseprüfung,
+60-Sekunden-Wächter auf beiden Seiten, Sperre vor dem Kopieren, Aufräumen bei
+Startfehlern und vor neuen Drags (nur eigene Sitzungen älter als sechs Stunden),
+nicht fokussierbarer Anfasser außerhalb der Überschrift, Auswahlfilter plus
+64-Dateien-Meldung in vier Sprachen und Raster-Einrückung.
+
+**Scope / Grenzen:** No commits, push, publication, dependencies or changes to an
+original checkout. The requested per-finding commits were omitted because the
+current user instruction expressly forbids commits. No product requirement was
+redesigned; the timeout alternative was chosen over mouse/focus release. Rust
+proof is delegated to the requester as specified, not claimed as passed. The
+referenced private `docs/intern/release-baseline-v0.16.0.md` is absent from this
+checkout; the supplied instructions and frozen orders were followed.
+
+Keine Commits, kein Push, keine Veröffentlichung, keine neuen Abhängigkeiten und
+keine Änderungen an einem Ursprungscheckout. Einzelcommits entfallen wegen des
+aktuellen ausdrücklichen Commit-Verbots. Keine Umgestaltung der Anforderungen;
+die erlaubte Timeout-Variante wurde gewählt. Rust-Nachweise misst der Auftraggeber.
+Das referenzierte private Baseline-Dokument fehlt in diesem Checkout.
+
+### Changed files / Geänderte Dateien (Nachbesserung 1)
+
+- `docs/ABNAHME-0180.md`
+- `docs/ABSCHLUSS-0180.md`
+- `src-tauri/Cargo.toml`
+- `src-tauri/src/commands/file_drag.rs`
+- `src-tauri/src/drag_storage.rs`
+- `src/components/ModelDetailPage.tsx`
+- `src/components/ModelGrid.tsx`
+- `src/components/ModelList.tsx`
+- `src/components/NativeDragHandle.test.tsx`
+- `src/components/NativeDragHandle.tsx`
+- `src/i18n/de.ts`
+- `src/i18n/en.ts`
+- `src/i18n/es.ts`
+- `src/i18n/fr.ts`
+- `src/i18n/types.ts`
+- `src/lib/nativeDrag.test.ts`
+- `src/lib/nativeDrag.ts`
+
+### Proof / Nachweise (Nachbesserung 1)
+
+| Command / Befehl | Result / Ergebnis |
+|---|---|
+| `npx tsc --noEmit` | PASS, exit 0, no diagnostics / keine Diagnosen |
+| `npx --no-install vitest run --configLoader runner` | PASS, exit 0: 361 files, 4,685 tests, 155.33 s |
+| Targeted native drag Vitest tests / gezielte Drag-Tests | PASS: 2 files, 12 tests |
+| `git diff --check` | PASS, exit 0, no output / keine Ausgabe |
+| Rust workspace tests and Clippy | Not executed as agreed; requester must measure / vereinbarungsgemäß nicht ausgeführt, Auftraggeber misst |
+
+Regression tests first failed on the missing timeout, filtering, accessibility
+attributes and limit handling (5 failed, 7 passed); they pass after the fixes.
+The failed timeout test also produced an unawaited-assertion diagnostic when its
+early assertion aborted the test; the green run has no such diagnostic.
+Logs: `.proof-0180/fix1-tsc.log`, `fix1-vitest.log`, `fix1-target.log`,
+`fix1-red.log` (all under `.proof-0180/`). No sandbox-denied mutation was attempted.
+
+Die Gegenproben scheiterten zuerst an den fehlenden Korrekturen (5 fehlgeschlagen,
+7 bestanden); nach der Umsetzung sind alle grün. Im roten Timeout-Test entstand
+beim vorzeitigen Abbruch außerdem eine Diagnose zur nicht abgewarteten Assertion;
+im grünen Lauf tritt sie nicht auf. Keine schreibende Aktion wurde von der
+Sandbox abgewiesen. Dieser Bericht ist beratend; die unabhängige Prüfung durch
+den anderen Anbieter steht aus.

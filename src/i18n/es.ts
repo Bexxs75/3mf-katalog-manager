@@ -2072,6 +2072,7 @@ export const es: Translations = {
   owViewerLabel: "Vista 3D de {name}",
   dgSwitchLabel: "Arrastrar archivos fuera del catálogo (experimental)",
   dgSwitchHint: "Experimental, aún no validado en ningún sistema. Desactivado por defecto. El asa entrega copias temporales al slicer o gestor de archivos; los archivos del catálogo se conservan.",
+  dgLimit: "Puedes arrastrar un máximo de 64 archivos a la vez. Reduce la selección.",
   dgHandle: "Arrastrar al slicer (experimental). Teclado: usar «Abrir en slicer».",
   dgStepHint: "Los slicers no abren STEP: guardar como STL.",
   errDragDisabled: "El arrastre de archivos está desactivado. Puede activarlo en los ajustes (Slicer).",

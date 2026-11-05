@@ -2072,6 +2072,7 @@ export const de: Translations = {
   owViewerLabel: "3D-Ansicht von {name}",
   dgSwitchLabel: "Dateien aus dem Katalog ziehen (experimentell)",
   dgSwitchHint: "Experimentell, noch auf keinem System abgenommen. Standardmäßig aus. Über den Anfasser werden temporäre Kopien an den Slicer oder Dateimanager übergeben; Katalogdateien bleiben erhalten.",
+  dgLimit: "Pro Ziehen sind höchstens 64 Dateien möglich. Bitte verkleinere die Auswahl.",
   dgHandle: "In den Slicer ziehen (experimentell). Tastatur: „Im Slicer öffnen“ verwenden.",
   dgStepHint: "STEP kann Slicer nicht öffnen: Als STL speichern.",
   errDragDisabled: "Das Herausziehen von Dateien ist ausgeschaltet. Sie können es in den Einstellungen (Slicer) einschalten.",

@@ -2072,6 +2072,7 @@ export const fr: Translations = {
   owViewerLabel: "Vue 3D de {name}",
   dgSwitchLabel: "Glisser des fichiers hors du catalogue (expérimental)",
   dgSwitchHint: "Expérimental, pas encore validé sur un système. Désactivé par défaut. La poignée transmet des copies temporaires au slicer ou au gestionnaire de fichiers ; les fichiers du catalogue sont conservés.",
+  dgLimit: "Vous pouvez glisser au maximum 64 fichiers à la fois. Réduisez la sélection.",
   dgHandle: "Glisser vers le slicer (expérimental). Clavier : utiliser « Ouvrir dans le slicer ».",
   dgStepHint: "Les slicers ne peuvent pas ouvrir STEP : enregistrer en STL.",
   errDragDisabled: "Le glissement de fichiers est désactivé. Vous pouvez l’activer dans les réglages (Slicer).",
