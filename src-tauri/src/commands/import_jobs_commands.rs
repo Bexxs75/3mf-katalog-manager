@@ -155,12 +155,18 @@ pub(super) fn pick_models(
     }
     let mut extensions = vec!["3mf", "stl", "stp", "step", "obj"];
     extensions.extend_from_slice(crate::archive::DIALOG_EXTENSIONS);
-    Ok(app
-        .dialog()
-        .file()
-        .add_filter("3D-Modelle & Archive", &extensions)
-        .blocking_pick_files()
-        .map(|p| p.into_iter().filter_map(|p| p.into_path().ok()).collect()))
+    Ok(non_empty_selection(
+        app.dialog()
+            .file()
+            .add_filter("3D-Modelle & Archive", &extensions)
+            .blocking_pick_files()
+            .map(|p| p.into_iter().filter_map(|p| p.into_path().ok()).collect()),
+    ))
+}
+/// The zenity dialog (used without a desktop portal, e.g. in the container) reports "cancelled" as an
+/// empty list instead of `None`; both mean nothing was chosen and must not start an import.
+fn non_empty_selection(paths: Option<Vec<PathBuf>>) -> Option<Vec<PathBuf>> {
+    paths.filter(|p| !p.is_empty())
 }
 #[tauri::command]
 pub async fn start_import(
@@ -417,4 +423,22 @@ pub fn discard_archive_imports(state: State<AppState>, paths: Vec<String>) {
         .lock()
         .unwrap()
         .retain(|(_, path), grant| grant.expires.is_none() || !paths.contains(path));
+}
+
+#[cfg(test)]
+mod pick_tests {
+    use super::non_empty_selection;
+    use std::path::PathBuf;
+
+    #[test]
+    fn cancelled_dialog_starts_no_import() {
+        assert_eq!(non_empty_selection(None), None);
+        assert_eq!(non_empty_selection(Some(Vec::new())), None);
+    }
+
+    #[test]
+    fn chosen_files_are_kept() {
+        let files = vec![PathBuf::from("a.3mf"), PathBuf::from("b.stl")];
+        assert_eq!(non_empty_selection(Some(files.clone())), Some(files));
+    }
 }

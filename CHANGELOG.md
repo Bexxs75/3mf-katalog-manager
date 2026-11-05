@@ -7,6 +7,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [0.17.2] - 2026-11-03
+
+### Fixed
+
+- **Slicers (Linux AppImage):** A slicer started from the AppImage no longer inherits the AppImage's own `APPDIR`, `APPIMAGE`, `ARGV0` and `OWD` variables. Start scripts that resolve their libraries relative to `APPDIR` (for example the one of the `orca-slicer-unstable-bin` package) looked in the app's folder and failed with "error while loading shared libraries".
+
+## [0.17.1] - 2026-11-02
+
+### Fixed
+
+- **Import:** Cancelling the file dialog of "Import → Files…" no longer opens an empty import window with 0 items. This happened where the app uses the zenity dialog (the container version, Linux without a desktop portal).
+- **Tag menu:** the menu of an automatic tag ("Remove and do not assign automatically again") no longer closes by itself when it is opened right after the model's tag suggestions have loaded.
+- **Slicers:** Registering a slicer that is already registered (for example the same program chosen again or reached through a link) no longer fails with a database error; the existing entry is kept.
+
 ## [0.17.0] - 2026-10-28
 
 ### Added
@@ -691,6 +705,20 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [0.17.2] - 2026-11-03
+
+### Behoben
+
+- **Slicer (Linux-AppImage):** Ein aus der AppImage gestarteter Slicer erbt die AppImage-eigenen Variablen `APPDIR`, `APPIMAGE`, `ARGV0` und `OWD` nicht mehr. Startskripte, die ihre Bibliotheken relativ zu `APPDIR` suchen (zum Beispiel das des Pakets `orca-slicer-unstable-bin`), suchten im Ordner der App und brachen mit „error while loading shared libraries“ ab.
+
+## [0.17.1] - 2026-11-02
+
+### Behoben
+
+- **Import:** Bricht man den Dateidialog von „Import → Dateien …“ ab, öffnet sich kein leeres Import-Fenster mit 0 Elementen mehr. Das passierte dort, wo die App den Zenity-Dialog verwendet (Container-Version, Linux ohne Desktop-Portal).
+- **Tag-Menü:** Das Menü eines automatischen Tags („Entfernen und nicht mehr automatisch vergeben“) schließt sich nicht mehr von selbst, wenn es unmittelbar nach dem Laden der Tag-Vorschläge des Modells geöffnet wird.
+- **Slicer:** Das Registrieren eines Slicers, der schon registriert ist (zum Beispiel dasselbe Programm erneut gewählt oder über einen Link erreicht), schlägt nicht mehr mit einem Datenbankfehler fehl; der vorhandene Eintrag bleibt erhalten.
 
 ## [0.17.0] - 2026-10-28
 
