@@ -281,3 +281,99 @@ Der unveränderte vollständige Prüfbefehl bestand bei Wiederholung:
 **362 Dateien, 4.687 Tests, Exit 0, 154,36 s**, ohne die vorherigen Warnungen zu
 doppelten Schlüsseln. Abschließend `git diff --check`: bestanden, Exit 0,
 keine Ausgabe. Der erste Timeout bleibt oben ausdrücklich dokumentiert.
+
+
+## Nachbesserung 3 — RV-1–RV-4
+
+Frozen order: `FIX3.md`, SHA256
+`d02828b3406ace7d6cdb1eddf7413ed86f4f9ee090c1d1136ab4302255e55a9c`.
+Base: `35c6fcd5`. Sources resolved only in this checkout.
+
+- RV-1: Hourly background sweep and exit cleanup remove this instance's completed
+  `drag-*` directories older than 24 hours. No collection on the next drag.
+  A shared session guard protects staging and the native callback/grace period,
+  independently of the 60-second UI timeout. Creation and sweeping share a mutex;
+  a weak timer reference does not keep storage alive. Missing callbacks keep
+  copies protected while the native callback retains its guard. Added Rust test
+  source for 12-hour retention, deletion after 24 hours, active/callback guard
+  protection, release, other-instance isolation and unknown/symlink preservation.
+  This supersedes the long-running-instance storage limitation in correction 2.
+- RV-2: Both named state lookups use `try_state`. Missing native state means
+  inactive in the event hook and `DragFailed` in the command. State registration
+  is the first setup operation.
+- RV-3: Orphaned `file_tags` rows are skipped and counted in `orphaned_file_tags`.
+  `links_before` still includes them; `distinct_links_after` counts valid links.
+  `alias_collisions` lists normalized aliases and their sorted canonical keys,
+  including collisions in excluded ambiguous words. Colliding aliases are not
+  assigned an arbitrary winner. Two regression tests initially failed with
+  KeyErrors and now pass; dictionary order does not change the result.
+- RV-4: Acceptance text distinguishes unexecuted Rust test source from verified
+  coverage. It names the untested hourly timer scheduling, 250-ms grace thread
+  and 60-s backend watchdog thread, Rust ≥1.89, the existing desktop MSRV, stable
+  CI and the digest-pinned Docker server build that does not compile src-tauri.
+
+**Deutsch:** RV-1–RV-4 sind im Quelltext umgesetzt. Stündlicher Hintergrundlauf
+und Beenden bereinigen abgeschlossene eigene Drag-Sitzungen nach 24 Stunden,
+niemals der nächste Drag. Aktive Sitzungen sind durch einen eigenen Guard auch
+nach UI-Timeout geschützt. Beide Zustandszugriffe sind optional, die Registrierung
+steht am Setup-Anfang. Verwaiste Tag-Zuordnungen werden gezählt statt abzustürzen;
+Alias-Kollisionen werden vollständig gemeldet und nicht willkürlich aufgelöst.
+Die Abnahme beschreibt Rust-Testquelltext, ausstehende Ausführung und fehlende
+Thread-Zeitnachweise ausdrücklich.
+
+### Files changed / Geänderte Dateien
+
+- `src-tauri/src/drag_storage.rs`
+- `src-tauri/src/commands/file_drag.rs`
+- `src-tauri/src/lib.rs`
+- `tools/tag_review.py`
+- `tools/test_tag_review.py`
+- `docs/ABNAHME-0180.md`
+- `docs/ABSCHLUSS-0180.md`
+
+### Scope, blockers and deviations / Grenzen, Blockaden und Abweichungen
+
+No functional requirement was dropped or redesigned. Conservative collision
+handling excludes conflicting aliases from automatic merge suggestions. No new
+dependencies, commits, pushes, publication or edits to an original checkout.
+No sandbox-denied action was attempted. Rust compilation, tests and Clippy were
+not executed, as the order explicitly delegates that proof to the requester;
+**zero Rust tests executed here**. The private baseline and desktop collaboration
+prompt are absent at the supplied paths. The supplied rules and frozen orders
+were followed. This report is advisory; the other provider's independent final
+review remains required.
+
+Keine funktionale Anforderung verworfen oder umgestaltet; kollidierende Aliase
+werden vorsorglich von automatischen Zusammenführungsvorschlägen ausgeschlossen.
+Keine neuen Abhängigkeiten, Commits, Pushes, Veröffentlichung oder Änderungen am
+Ursprungscheckout. Keine von der Sandbox abgewiesene Aktion. Rust ist laut
+Auftrag nicht ausführbar: **0 ausgeführte Rust-Tests**, kein Build-/Clippy-Nachweis.
+Private Baseline und Desktop-Zusammenarbeitsprompt fehlen an den angegebenen
+Pfaden; die gelieferten Regeln und eingefrorenen Aufträge wurden befolgt.
+Beratender Bericht, unabhängige Abschlussprüfung durch den anderen Anbieter offen.
+
+
+### Proof / Nachweise (Nachbesserung 3)
+
+| Command / Befehl | Result / Ergebnis |
+|---|---|
+| `npx tsc --noEmit` | PASS, exit 0, no diagnostics / keine Diagnosen |
+| `npx --no-install vitest run --configLoader runner` | FAIL, exit 1: 361 files passed, 1 failed; 4,686 tests passed, 1 failed; 156.00 s |
+| `npx --no-install vitest run --configLoader runner src/components/AutoTagBlock.web.test.tsx` | PASS, exit 0: 1 file, 2 tests; 2.07 s; no code change / ohne Codeänderung |
+| `python3 -m unittest discover -s tools -p test_tag_review.py` | PASS, exit 0: 6 tests; initially 2 errors and 4 passed / zunächst 2 Fehler und 4 bestanden |
+| `git diff --check` | PASS, exit 0, no output / keine Ausgabe |
+| Rust workspace tests and Clippy | Not executed as agreed; zero Rust tests / vereinbarungsgemäß nicht ausgeführt; 0 Rust-Tests |
+
+Full-run failure: `AutoTagBlock.web.test.tsx > offers remove-and-block in the web
+build and sends the block through the web command` exceeded 5,000 ms and emitted
+duplicate React key warnings for `model-1`. The previous correction report records
+the same failure. Both tests pass on isolated retry without changes; that does
+not make this full run green or prove the timeout's root cause. No unrelated
+frontend fix was made. Full output: `.proof-0180/fix3-vitest.log`; isolated retry:
+`.proof-0180/fix3-vitest-retry.log`.
+
+Der Gesamtlauf scheiterte im genannten Test am 5.000-ms-Limit; dazu erschienen
+React-Warnungen zu `model-1`. Derselbe Fehler ist bereits in Nachbesserung 2
+dokumentiert. Isoliert bestehen beide Tests ohne Änderungen. Der Gesamtlauf
+bleibt trotzdem fehlgeschlagen; die Ursache des Timeouts ist nicht bewiesen.
+Keine sachfremde Frontend-Korrektur. Vollständige Protokolle siehe oben.

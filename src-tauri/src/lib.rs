@@ -191,6 +191,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            app.manage(commands::NativeDragState::default());
             // The window is created last: if the data folder or catalog cannot be opened,
             // no webview exists whose commands would hit state that was never managed.
             let (mut conn, migration_report, db_path, trash_dir) = match open_storage(app) {
@@ -214,9 +215,12 @@ pub fn run() {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
             commands::purge_expired_trash_on_startup(&conn, &trash_dir);
-            app.manage(commands::NativeDragState::default());
             match app.path().app_cache_dir().and_then(|cache| crate::drag_storage::DragStorage::new(&cache).map_err(Into::into)) {
-                Ok(storage) => { app.manage(storage); }
+                Ok(storage) => {
+                    let storage = std::sync::Arc::new(storage);
+                    storage.start_timer();
+                    app.manage(storage);
+                }
                 Err(e) => log::warn!(target: "drag", "drag storage unavailable: {e}"),
             }
             let sensitive_dirs = sensitive_dirs(app.handle());
@@ -296,7 +300,7 @@ pub fn run() {
                 }
             }
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
-                if window.state::<commands::NativeDragState>().is_active() { return; }
+                if window.try_state::<commands::NativeDragState>().is_some_and(|state| state.is_active()) { return; }
                 window.state::<commands::AppState>().import_jobs.observe_drop(paths);
                 if let Some(images) = window.try_state::<commands::DroppedImages>() {
                     images.observe_drop(paths);
@@ -529,7 +533,7 @@ pub fn run() {
         .build(context)
         .expect("error while building tauri application")
         .run(|_app, _event| {
-            if let (tauri::RunEvent::Exit, Some(storage)) = (&_event, _app.try_state::<crate::drag_storage::DragStorage>()) {
+            if let (tauri::RunEvent::Exit, Some(storage)) = (&_event, _app.try_state::<std::sync::Arc<crate::drag_storage::DragStorage>>()) {
                 storage.cleanup();
             }
             // Dock click on macOS while the window is hidden in the tray.

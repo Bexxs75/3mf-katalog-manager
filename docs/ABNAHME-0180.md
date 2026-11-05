@@ -7,7 +7,7 @@ This is not release approval. Automated checks cannot replace the native probes.
 ### Mandatory before release
 
 - [ ] **P5-8 three-system prototype gate:** Windows, macOS, Linux X11 and Wayland, each with a real slicer and file manager. Drag one file, a selection, identical basenames, spaces/accents and large files. Originals must remain byte-identical even when the target moves/deletes its input. Check cancel and failure paths, repeat a drag, and drop into the catalog window: no import, no folder move. Verify keyboard “Open in slicer”, STEP → STL alternative, disabled switch and container/web exclusion. The function is experimental and off by default. **Without a passing probe, remove or hide before release; owner decides.**
-- [ ] **Copy lifetime:** read the first drag source after a second drag and after drag end/app exit. Run normal/preview and parallel processes; neither may delete the other's files. Startup/exit must preserve recent copies and locked live instances, collecting only own unlocked folders older than 24 h. Unknown directories and symlinks must survive. Confirm file-lock behavior on Windows/macOS; the standard-library lock requires Rust 1.89 or later.
+- [ ] **Copy lifetime:** read the first drag source after a second drag and after drag end/app exit. Run normal/preview and parallel processes; neither may delete the other's files. Startup/exit must preserve recent copies and other locked live instances. An hourly background sweep and exit cleanup also remove completed drag sessions of the current instance older than 24 h; active sessions remain protected independently of the UI timeout. Never collect on the next drag. Unknown directories and symlinks must survive. Confirm file-lock behavior on Windows/macOS; the standard-library lock requires Rust 1.89 or later.
 - [ ] **P7-7:** GNOME with/without AppIndicator, missing Linux library, Wayland focus, macOS Dock reopen (owner), tray show/hide/quit, second launch, logout, restored tray setting without an icon, container rejection. Measure idle CPU for five minutes with hidden window; no measurement is claimed here.
 - [ ] Windows installer/upgrade/uninstall matrix (P7-5, outside this stage): MSI/NSIS, normal/preview separation, optional data deletion, updater signatures and file associations. Never use a live catalog.
 - [ ] **P10 T6:** real user key, invalid/revoked key, offline, deleted Thing, rate limit/Cloudflare, key secrecy in DTO/errors/logs/backups, leaving the view/disable/remove clears cache. Measure process memory for 100 results/images; the cache byte-accounting unit test is not an RSS measurement. DE/EN owner read-through; ES/FR native-speaker review remains pending.
@@ -36,7 +36,7 @@ The agreed Vitest command cannot write the config bundle through this checkout's
 Keine Release-Freigabe. Automatisierte Prüfungen ersetzen keine nativen Proben. GUI, VM, echter Schlüssel, Live-Katalog, Server und Netz wurden nicht zur Abnahme genutzt.
 
 - [ ] **P5-8 Pflichtprobe:** Windows, macOS, Linux X11 und Wayland, echter Slicer und Dateimanager. Einzel-/Mehrfachauswahl, gleiche Dateinamen, Leerzeichen/Umlaute, große Dateien, Abbruch und Fehler prüfen. Originale bleiben bytegleich, auch bei Verschieben/Löschen durch das Ziel. Wiederholtes Ziehen und Ablegen ins eigene Fenster: kein Import und kein Ordnerverschieben. Tastaturweg, STEP-Hinweis, Schalter aus sowie Container/Web prüfen. **Experimentell, standardmäßig aus; ohne bestandene Probe vor Release entfernen oder verbergen (Auftraggeberentscheidung).**
-- [ ] **Lebensdauer:** Erste Drag-Quelle nach zweitem Drag, Drag-Ende und App-Ende lesen. Normal-/Preview- und parallele Instanzen dürfen einander nichts löschen. Start/Ende erhalten junge Kopien und laufende gesperrte Instanzen; nur eigene verwaiste Ordner älter als 24 h löschen. Fremde Ordner/Symlinks erhalten. Dateisperren auf Windows/macOS prüfen; Standardbibliothek benötigt Rust ab 1.89.
+- [ ] **Lebensdauer:** Erste Drag-Quelle nach zweitem Drag, Drag-Ende und App-Ende lesen. Normal-/Preview- und parallele Instanzen dürfen einander nichts löschen. Start/Ende erhalten junge Kopien und andere laufende gesperrte Instanzen. Ein stündlicher Hintergrundlauf und die Bereinigung beim Beenden entfernen außerdem abgeschlossene Drag-Sitzungen der eigenen Instanz älter als 24 h; aktive Sitzungen bleiben unabhängig vom UI-Timeout geschützt. Nie beim nächsten Drag bereinigen. Fremde Ordner/Symlinks erhalten. Dateisperren auf Windows/macOS prüfen; Standardbibliothek benötigt Rust ab 1.89.
 - [ ] **P7-7:** GNOME mit/ohne Erweiterung, fehlende Bibliothek, Wayland-Fokus, macOS-Dock (User), Tray öffnen/verstecken/beenden, Zweitstart, Abmelden, Backup mit Tray-Wunsch ohne Icon, Container-Sperre. CPU-Ruhelast fünf Minuten messen; hier keine Messung behauptet.
 - [ ] Windows-Installer-/Update-/Deinstallationsmatrix P7-5 separat: MSI/NSIS, Preview-Trennung, Datenlöschoption, Signaturen und Zuordnungen; nur Wegwerfkatalog.
 - [ ] **P10 T6:** Echter/falscher/widerrufener Schlüssel, offline, gelöschtes Thing, Drossel/Cloudflare, Geheimnisfreiheit von Antworten/Protokollen/Sicherungen, Cache-Leerung prüfen. Prozessspeicher bei 100 Treffern/Bildern messen; Cache-Bytezählertest ist keine RSS-Messung. DE/EN gegenlesen; ES/FR-Prüfung offen.
@@ -52,17 +52,21 @@ The requester must rerun `cargo test --workspace --no-default-features` and
 `cargo clippy --workspace --no-default-features --all-targets -- -D warnings`
 against these uncommitted changes. Rust execution is unavailable in this work
 order; the green Docker results for base `6b8c6b7a` do not validate this patch.
-New Rust tests cover timeout recovery, stale callbacks, overlap exclusion and
-preservation of orphaned sessions between six and 24 hours old; only unlocked orphaned instance folders older than 24 hours are collected at startup/exit, never at the next drag. The three-platform native drag
-acceptance remains open.
+Rust test source exists for timeout-state recovery, stale callbacks, overlap
+exclusion and preservation of orphaned sessions between six and 24 hours old.
+Coverage is not verified until the requester runs these tests successfully.
+Startup/exit collection of orphaned instances and the current-instance sweep
+use the same 24-hour retention; neither runs on the next drag. The three-platform
+native drag acceptance remains open.
 
 Der Auftraggeber misst die beiden obigen Befehle erneut auf diesen uncommitteten
 Änderungen. Rust ist in diesem Auftrag nicht ausführbar; die grünen Docker-Werte
-für `6b8c6b7a` sind kein Nachweis für diese Nachbesserung. Neue Rust-Tests prüfen
-Timeout-Freigabe, verspätete Callbacks, überlappende Starts und den Erhalt
-verwaister Sitzungen zwischen sechs und 24 Stunden. Nur verwaiste, entsperrte
-Instanzordner älter als 24 Stunden werden beim Start/Beenden bereinigt, nie beim
-nächsten Drag. Die native Drei-System-Abnahme bleibt offen.
+für `6b8c6b7a` sind kein Nachweis für diese Nachbesserung. Rust-Testquelltext für
+Timeout-Zustandsfreigabe, verspätete Callbacks, überlappende Starts und den Erhalt
+verwaister Sitzungen zwischen sechs und 24 Stunden ist vorhanden. Die Abdeckung
+ist erst nach erfolgreichem Lauf durch den Auftraggeber bestätigt. Verwaiste
+Instanzen und abgeschlossene eigene Sitzungen haben dieselbe 24-Stunden-Grenze;
+keine Bereinigung beim nächsten Drag. Die native Drei-System-Abnahme bleibt offen.
 
 ## Nachbesserung 2 — additional acceptance / zusätzliche Abnahme
 
@@ -83,3 +87,36 @@ nächsten Drag. Die native Drei-System-Abnahme bleibt offen.
   Fokusverlust und Ziehen außerhalb des Anfassers auf jeder Plattform prüfen.
 - [ ] Rust-Tests einschließlich 12-Stunden-Aufbewahrungs-Gegenprobe und
   `checked_sub`-Timeout-Test sowie Workspace-Clippy ausführen. Hier nicht gemessen.
+
+
+## Nachbesserung 3 — proof limits / Nachweisgrenzen
+
+The new Rust sweep test exercises the function used by the hourly timer with
+injected timestamps: copies younger than 24 hours survive, older completed
+copies are removed, active copies survive and become eligible after release.
+It has **not been run here**. There is no dedicated test of the hourly thread's
+scheduling, the 250 ms grace thread or the 60 s backend watchdog thread. Existing
+state-method tests do not establish those threads' runtime behavior. Owner Rust
+workspace tests, Clippy and native platform acceptance remain required.
+
+`lease.try_lock()` requires Rust **≥ 1.89**. `src-tauri/Cargo.toml` already declares
+`rust-version = "1.89"`; CI Rust toolchain entries use `stable`. The Docker server
+image in `docker-web/Dockerfile` uses the older digest-pinned `rust:1-bookworm`
+base, but builds only `katalog-server` and its dependencies, not the `src-tauri`
+desktop crate. Copying that workspace member into the image is not compiling it.
+No toolchain, Dockerfile or workflow was changed in this correction.
+
+Der neue Rust-Sweep-Test prüft die vom stündlichen Timer verwendete Funktion mit
+vorgegebenen Zeitpunkten: Kopien unter 24 Stunden bleiben, ältere abgeschlossene
+Kopien verschwinden, aktive Kopien bleiben bis zur Freigabe geschützt. Er wurde
+**hier nicht ausgeführt**. Für die Zeitsteuerung des stündlichen Threads, den
+250-ms-Grace-Thread und den 60-s-Backend-Wächter gibt es keinen eigenen Test.
+Zustandsmethoden-Tests weisen deren tatsächliches Thread-Verhalten nicht nach.
+Rust-Workspace-Tests, Clippy und native Plattformabnahme bleiben beim Auftraggeber.
+
+`lease.try_lock()` benötigt Rust **≥ 1.89**. `src-tauri/Cargo.toml` deklariert
+bereits `rust-version = "1.89"`; die CI-Rust-Toolchains verwenden `stable`. Das
+Docker-Server-Image (`docker-web/Dockerfile`, älterer per Digest fixierter
+`rust:1-bookworm`-Stand) baut nur `katalog-server` und dessen Abhängigkeiten,
+nicht das Desktop-Crate `src-tauri`. Das Kopieren des Workspace-Mitglieds ist
+kein Kompilieren. Keine Toolchain-, Dockerfile- oder Workflow-Änderungen.

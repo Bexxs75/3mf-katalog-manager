@@ -1,9 +1,11 @@
 //! Private drag copies outlive the native session. A process-held file lock prevents
 //! another process from collecting its files, even when a drag lasts more than a day.
+use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const RETENTION: Duration = Duration::from_secs(24 * 60 * 60);
@@ -13,6 +15,18 @@ pub(crate) struct DragStorage {
     parent: PathBuf,
     root: PathBuf,
     _lease: File,
+    active_sessions: Mutex<HashSet<PathBuf>>,
+}
+
+pub(crate) struct DragSession {
+    pub(crate) path: PathBuf,
+    storage: Arc<DragStorage>,
+}
+
+impl Drop for DragSession {
+    fn drop(&mut self) {
+        self.storage.active_sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.path);
+    }
 }
 
 fn private_dir(path: &Path) -> io::Result<()> {
@@ -60,11 +74,49 @@ impl DragStorage {
         let root = unique_dir(&parent, "instance")?;
         let lease = OpenOptions::new().read(true).write(true).create_new(true).open(root.join("lease"))?;
         lease.try_lock().map_err(io::Error::other)?;
-        Ok(Self { parent, root, _lease: lease })
+        Ok(Self { parent, root, _lease: lease, active_sessions: Mutex::new(HashSet::new()) })
     }
 
+    #[cfg(test)]
     pub(crate) fn session(&self) -> io::Result<PathBuf> {
         unique_dir(&self.root, "drag")
+    }
+
+    pub(crate) fn active_session(self: &Arc<Self>) -> io::Result<Arc<DragSession>> {
+        // Serialize creation and sweeping so even staging is protected from collection.
+        let mut active = self.active_sessions.lock().unwrap_or_else(|e| e.into_inner());
+        let path = unique_dir(&self.root, "drag")?;
+        active.insert(path.clone());
+        Ok(Arc::new(DragSession { path, storage: Arc::clone(self) }))
+    }
+
+    pub(crate) fn start_timer(self: &Arc<Self>) {
+        let storage = Arc::downgrade(self);
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(60 * 60));
+            let Some(storage) = storage.upgrade() else { break };
+            storage.sweep_sessions(SystemTime::now());
+        });
+    }
+
+    fn sweep_sessions(&self, now: SystemTime) {
+        // Hold the lock through deletion; a drag cannot become active mid-sweep.
+        // This guard is independent of the 60-second UI self-drop timeout.
+        let active = self.active_sessions.lock().unwrap_or_else(|e| e.into_inner());
+        let Ok(entries) = fs::read_dir(&self.root) else { return };
+        for entry in entries.flatten() {
+            if !entry.file_name().to_string_lossy().starts_with("drag-") { continue; }
+            let path = entry.path();
+            if active.contains(&path) { continue; }
+            let Ok(meta) = fs::symlink_metadata(&path) else { continue };
+            if !meta.is_dir() || meta.file_type().is_symlink() { continue; }
+            let old = meta.modified().ok().and_then(|time| now.duration_since(time).ok()).is_some_and(|age| age > RETENTION);
+            if old {
+                if let Err(e) = fs::remove_dir_all(&path) {
+                    log::warn!(target: "drag", "expired drag session not removed: {e}");
+                }
+            }
+        }
     }
 
     fn collect(parent: &Path, now: SystemTime) {
@@ -90,6 +142,7 @@ impl DragStorage {
     }
 
     pub(crate) fn cleanup(&self) {
+        self.sweep_sessions(SystemTime::now());
         Self::collect(&self.parent, SystemTime::now());
     }
 }
@@ -97,6 +150,43 @@ impl DragStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timer_sweep_preserves_recent_and_active_sessions() {
+        let base = unique_dir(&std::env::temp_dir(), "drag-test").unwrap();
+        let storage = std::sync::Arc::new(DragStorage::new(&base).unwrap());
+        let old = storage.session().unwrap();
+        let active = storage.active_session().unwrap();
+        let callback_guard = active.clone();
+        let active_path = active.path.clone();
+        let other = DragStorage::new(&base).unwrap();
+        let other_session = other.session().unwrap();
+        let unknown = storage.root.join("unrelated");
+        fs::create_dir(&unknown).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&unknown, storage.root.join("drag-link")).unwrap();
+        let now = SystemTime::now();
+        // The timer calls this same sweep with wall time; no real-day sleep is needed.
+        storage.sweep_sessions(now + Duration::from_secs(12 * 60 * 60));
+        assert!(old.exists(), "copies younger than 24 hours survive");
+        let later = now + RETENTION + Duration::from_secs(10);
+        storage.sweep_sessions(later);
+        assert!(!old.exists());
+        assert!(active_path.exists(), "active copies survive even beyond retention");
+        drop(active);
+        storage.sweep_sessions(later);
+        assert!(active_path.exists(), "the native callback still holds its guard");
+        drop(callback_guard);
+        storage.sweep_sessions(later);
+        assert!(!active_path.exists(), "completed old sessions can be collected");
+        assert!(other_session.exists(), "another instance is never swept");
+        assert!(unknown.exists());
+        #[cfg(unix)]
+        assert!(storage.root.join("drag-link").is_symlink());
+        drop(other);
+        drop(storage);
+        fs::remove_dir_all(base).unwrap();
+    }
 
     #[test]
     fn orphaned_sessions_between_six_and_twenty_four_hours_survive() {

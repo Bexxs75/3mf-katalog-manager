@@ -119,9 +119,10 @@ pub fn start_file_drag(
         resolve_drag_files(&conn, &file_ids)?
     };
     use tauri::{Emitter, Manager};
-    let storage = window.try_state::<crate::drag_storage::DragStorage>()
+    let storage = window.try_state::<std::sync::Arc<crate::drag_storage::DragStorage>>()
         .ok_or_else(|| CmdError::coded_with(ErrorCode::DragFailed, [String::new()]))?;
-    let native = window.state::<NativeDragState>().inner().clone();
+    let native = window.try_state::<NativeDragState>()
+        .ok_or_else(|| CmdError::coded_with(ErrorCode::DragFailed, [String::new()]))?.inner().clone();
     let token = native.begin()?;
     let watchdog = native.clone();
     let watchdog_window = window.clone();
@@ -129,7 +130,8 @@ pub fn start_file_drag(
         std::thread::sleep(DRAG_TIMEOUT);
         watchdog.finish(token, || { let _ = watchdog_window.emit("native-drag-ended", ()); });
     });
-    let folder = storage.session().map_err(|e| { native.finish(token, || {}); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })?;
+    let session = storage.active_session().map_err(|e| { native.finish(token, || {}); CmdError::coded_with(ErrorCode::DragFailed, [e.to_string()]) })?;
+    let folder = session.path.clone();
     let files = stage_drag_files(&sources, &folder, DRAG_ORIGINAL_FILE).inspect_err(|_| {
         let _ = std::fs::remove_dir_all(&folder);
         native.finish(token, || {});
@@ -144,14 +146,18 @@ pub fn start_file_drag(
     let preview = drag::Image::Raw(DRAG_PREVIEW_PNG.to_vec());
     let finished = native.clone();
     let event_window = window.clone();
+    let callback_session = std::sync::Arc::new(std::sync::Mutex::new(Some(session.clone())));
     let callback = move |result: drag::DragResult, _: drag::CursorPosition| {
         log::info!(target: "drag", "drag of {count} file(s) ended: {result:?}");
         // Keep self-drops suppressed through delivery of the queued window event.
         let finished = finished.clone();
         let event_window = event_window.clone();
+        // Release storage protection on native completion, not on the UI timeout.
+        let session = callback_session.lock().unwrap_or_else(|e| e.into_inner()).take();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(250));
             finished.finish(token, || { let _ = event_window.emit("native-drag-ended", ()); });
+            drop(session);
         });
     };
     let options = drag::Options { mode: drag::DragMode::Copy, ..Default::default() };

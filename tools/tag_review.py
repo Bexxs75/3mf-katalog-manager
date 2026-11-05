@@ -11,7 +11,13 @@ def analyze(copy, dictionary):
     if any(Path(str(copy) + suffix).exists() for suffix in ('-wal', '-shm', '-journal')):
         raise ValueError('Supply a standalone, checkpointed catalog copy without WAL/journal sidecars')
     ambiguous = {'mini', 'large', 'grande'}
-    aliases = {name.strip().lower(): key for key, names in dictionary.items() for name in names.values() if name.strip().lower() not in ambiguous}
+    alias_keys = {}
+    for key, names in dictionary.items():
+        for name in names.values():
+            alias_keys.setdefault(name.strip().lower(), set()).add(key)
+    collisions = {name: sorted(keys) for name, keys in sorted(alias_keys.items()) if len(keys) > 1}
+    aliases = {name: next(iter(keys)) for name, keys in alias_keys.items()
+               if len(keys) == 1 and name not in ambiguous}
     with closing(sqlite3.connect(copy.as_uri() + '?mode=ro&immutable=1', uri=True)) as db:
         db.execute('PRAGMA query_only=ON')
         db.execute('BEGIN')
@@ -22,13 +28,20 @@ def analyze(copy, dictionary):
         normalized = name.strip().lower()
         grouped.setdefault(normalized, {'name': normalized, 'assignments': 0, 'files': set(), 'canonical': aliases.get(normalized)})
     canonical_links = set()
+    orphaned_links = 0
     for file_id, tag_id in links:
-        name = tags[tag_id].strip().lower()
+        tag_name = tags.get(tag_id)
+        if tag_name is None:
+            orphaned_links += 1
+            continue
+        name = tag_name.strip().lower()
         grouped[name]['assignments'] += 1
         grouped[name]['files'].add(file_id)
-        canonical_links.add((file_id, aliases.get(name, tags[tag_id])))
+        canonical_links.add((file_id, aliases.get(name, tag_name)))
     rows = [{**row, 'files': len(row['files'])} for row in grouped.values()]
     return {
+        'orphaned_file_tags': orphaned_links,
+        'alias_collisions': collisions,
         'top40': sorted(rows, key=lambda row: (-row['assignments'], row['name']))[:40],
         'merge_preview': {
             'alias_rows_removed': sum(1 for name in tags.values() if (key := aliases.get(name.strip().lower())) is not None and name != key),
