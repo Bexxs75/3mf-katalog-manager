@@ -323,13 +323,32 @@ fn create_file_without_replacing(target: &Path, write: impl FnOnce(&mut File) ->
     let result = result.and_then(|()| match std::fs::hard_link(&temp, target) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Err(e),
-        Err(_) if std::fs::symlink_metadata(target).is_ok() => Err(io::ErrorKind::AlreadyExists.into()),
-        Err(_) => std::fs::rename(&temp, target),
+        Err(_) => copy_into_new_file(&temp, target),
     });
-    // After a successful link the temp name is the second name of the file; after a
-    // rename it is gone already (the error is ignored then).
+    // After a successful link the temp name is the second name of the file.
     let _ = std::fs::remove_file(&temp);
     result
+}
+
+/// Fallback for file systems without hard links: the target is opened exclusively
+/// (`create_new`, so an existing file or symlink is never touched) and the finished
+/// temp file is copied into it. Not atomic, but it can never replace a file; if the
+/// copy fails, the half-written file this call created is removed again.
+pub(crate) fn copy_into_new_file(temp: &Path, target: &Path) -> io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o666);
+    }
+    let mut out = options.open(target)?;
+    let copied = File::open(temp).and_then(|mut input| io::copy(&mut input, &mut out)).and_then(|_| out.sync_all());
+    drop(out);
+    if copied.is_err() {
+        let _ = std::fs::remove_file(target);
+    }
+    copied
 }
 
 /// Exclusive temp file (never follows a planted symlink) with the default

@@ -77,6 +77,12 @@ pub(crate) enum TrayError {
 /// Builds and removes the native icon. A trait so tests need no display (pattern of `single_instance::MainWindow`).
 pub(crate) trait TrayHost {
     fn build(&self, labels: &TrayLabels) -> Result<(), String>;
+    /// Checks cheaply, before `build`, that the system pieces exist. The release profile uses
+    /// `panic = "abort"`, so a panic inside `build` cannot be caught: whatever can be known in
+    /// advance must come back here as a regular error.
+    fn preflight(&self) -> Result<(), String> {
+        Ok(())
+    }
     /// Replaces the menu texts of an existing icon.
     fn update_labels(&self, labels: &TrayLabels) -> Result<(), String>;
     fn remove(&self);
@@ -139,7 +145,7 @@ impl CloseBehavior {
     }
 
     /// Brings the icon in line with `action`. Returns whether the tray is available afterwards.
-    /// A panic while building (Linux without libayatana-appindicator) counts as a failed build;
+    /// A failed preflight (Linux without libayatana-appindicator) or build counts as a failed build;
     /// the close behavior then stays "quit".
     pub(crate) fn apply(&self, action: CloseAction, container: bool, host: &impl TrayHost) -> Result<bool, TrayError> {
         if action == CloseAction::Tray && container {
@@ -156,16 +162,23 @@ impl CloseBehavior {
             CloseAction::Tray => {
                 if !self.tray_ok() && !self.tray_failed() {
                     let labels = self.labels();
-                    let built = match catch_unwind(AssertUnwindSafe(|| host.build(&labels))) {
-                        Ok(Ok(())) => true,
-                        Ok(Err(error)) => {
-                            log::warn!(target: "tray", "could not create the tray icon: {error}");
+                    let built = match host.preflight() {
+                        Err(error) => {
+                            log::warn!(target: "tray", "tray icon is not available: {error}");
                             false
                         }
-                        Err(_) => {
-                            log::warn!(target: "tray", "creating the tray icon panicked (missing system library?)");
-                            false
-                        }
+                        Ok(()) => match catch_unwind(AssertUnwindSafe(|| host.build(&labels))) {
+                            Ok(Ok(())) => true,
+                            Ok(Err(error)) => {
+                                log::warn!(target: "tray", "could not create the tray icon: {error}");
+                                false
+                            }
+                            // Only effective with unwinding (tests, debug); the release build aborts.
+                            Err(_) => {
+                                log::warn!(target: "tray", "creating the tray icon panicked (missing system library?)");
+                                false
+                            }
+                        },
                     };
                     self.tray_ok.store(built, Ordering::SeqCst);
                     self.tray_failed.store(!built, Ordering::SeqCst);
@@ -192,7 +205,47 @@ fn tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, labels: &TrayLabels) 
 /// The real icon of a running app.
 pub(crate) struct AppTray<R: tauri::Runtime>(pub tauri::AppHandle<R>);
 
+/// Linux loads the appindicator library lazily and panics when it is missing; with
+/// `panic = "abort"` that would end the process. Probing with `dlopen` (the same names as
+/// `libappindicator-sys`) turns it into a regular error.
+#[cfg(target_os = "linux")]
+fn appindicator_available() -> bool {
+    use std::ffi::{c_char, c_int, c_void, CStr};
+    #[link(name = "dl")]
+    extern "C" {
+        fn dlopen(filename: *const c_char, flag: c_int) -> *mut c_void;
+        fn dlclose(handle: *mut c_void) -> c_int;
+    }
+    const RTLD_LAZY: c_int = 1;
+    const NAMES: [&CStr; 4] = [
+        c"libayatana-appindicator3.so.1",
+        c"libappindicator3.so.1",
+        c"libayatana-appindicator3.so",
+        c"libappindicator3.so",
+    ];
+    NAMES.iter().any(|name| {
+        // SAFETY: plain C calls with a valid NUL-terminated name; the handle is closed at once.
+        unsafe {
+            let handle = dlopen(name.as_ptr(), RTLD_LAZY);
+            if handle.is_null() {
+                false
+            } else {
+                dlclose(handle);
+                true
+            }
+        }
+    })
+}
+
 impl<R: tauri::Runtime> TrayHost for AppTray<R> {
+    fn preflight(&self) -> Result<(), String> {
+        #[cfg(target_os = "linux")]
+        if !appindicator_available() {
+            return Err("libayatana-appindicator3 / libappindicator3 not found".into());
+        }
+        Ok(())
+    }
+
     fn build(&self, labels: &TrayLabels) -> Result<(), String> {
         use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
@@ -259,10 +312,13 @@ mod tests {
         removes: Cell<u32>,
         seen_labels: RefCell<Vec<TrayLabels>>,
         updates: RefCell<Vec<TrayLabels>>,
-        mode: &'static str, // "", "err", "panic"
+        mode: &'static str, // "", "err", "panic", "preflight"
     }
 
     impl TrayHost for FakeHost {
+        fn preflight(&self) -> Result<(), String> {
+            if self.mode == "preflight" { Err("library missing".into()) } else { Ok(()) }
+        }
         fn build(&self, labels: &TrayLabels) -> Result<(), String> {
             self.builds.set(self.builds.get() + 1);
             self.seen_labels.borrow_mut().push(labels.clone());
@@ -347,6 +403,17 @@ mod tests {
             assert!(!behavior.tray_ok());
             assert_eq!(behavior.decide(false, "main"), CloseDecision::Close, "{mode}");
         }
+    }
+
+    #[test]
+    fn missing_library_is_refused_before_any_build() {
+        // With `panic = "abort"` a build attempt would end the process: it must not even start.
+        let behavior = CloseBehavior::default();
+        let host = FakeHost { mode: "preflight", ..Default::default() };
+        assert_eq!(behavior.apply(CloseAction::Tray, false, &host), Ok(false));
+        assert_eq!(host.builds.get(), 0);
+        assert!(behavior.tray_failed());
+        assert_eq!(behavior.decide(false, "main"), CloseDecision::Close);
     }
 
     #[test]

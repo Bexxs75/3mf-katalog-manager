@@ -1,7 +1,7 @@
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 
-use super::writer::{replace_file_atomically, BLOCK_TRIANGLES};
+use super::writer::{copy_into_new_file, replace_file_atomically, BLOCK_TRIANGLES};
 use super::*;
 use crate::geometry::{signed_volume, BoundingBox, RenderMesh};
 use crate::unique_test_dir;
@@ -356,6 +356,28 @@ fn target_equal_to_source_is_refused_and_the_source_stays_intact() {
     // A different target next to it works.
     write_stl_file(&d.join("model.stl"), Some(&source), &[&mesh]).unwrap();
     assert_eq!(std::fs::read(&source).unwrap(), b"original");
+}
+
+#[test]
+fn copy_fallback_for_filesystems_without_hard_links_never_replaces() {
+    let d = dir("stl_copy_fallback");
+    let temp = d.join("temp.tmp");
+    std::fs::write(&temp, b"fresh").unwrap();
+
+    let taken = d.join("taken.stl");
+    std::fs::write(&taken, b"precious").unwrap();
+    let err = copy_into_new_file(&temp, &taken).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(std::fs::read(&taken).unwrap(), b"precious");
+
+    let free = d.join("free.stl");
+    copy_into_new_file(&temp, &free).unwrap();
+    assert_eq!(std::fs::read(&free).unwrap(), b"fresh");
+
+    // A temp file that cannot be read leaves no half-written target behind.
+    let broken = d.join("broken.stl");
+    assert!(copy_into_new_file(&d.join("missing.tmp"), &broken).is_err());
+    assert!(!broken.exists());
 }
 
 #[test]

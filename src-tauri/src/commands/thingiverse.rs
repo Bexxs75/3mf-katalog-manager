@@ -106,6 +106,9 @@ pub fn get_thingiverse_settings(state: State<AppState>) -> CmdResult<Thingiverse
 pub fn set_thingiverse_enabled(state: State<AppState>, service: State<'_, Arc<Service>>, enabled: bool) -> CmdResult<()> {
     let conn = lock_db(&state)?;
     store::set_enabled(&conn, enabled)?;
+    if !enabled {
+        service.invalidate_key_tests();
+    }
     drop(conn);
     if !enabled {
         service.clear();
@@ -123,15 +126,17 @@ pub async fn test_thingiverse_token(app: tauri::AppHandle, token: Option<String>
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let service = app.state::<Arc<Service>>();
-        let key = {
+        let (key, generation) = {
             let conn = state.db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
-            match &candidate {
+            let generation = service.key_generation();
+            let key = match &candidate {
                 Some(_) => {
                     enabled_with_conn(&conn)?;
                     None
                 }
                 None => Some(ready_with_conn(&conn)?),
-            }
+            };
+            (key, generation)
         };
         let gate = || {
             let conn = state.db.lock().unwrap_or_else(|p| p.into_inner());
@@ -143,7 +148,7 @@ pub async fn test_thingiverse_token(app: tauri::AppHandle, token: Option<String>
         };
         if let Some(token) = &candidate {
             let conn = state.db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
-            store::set_token(&conn, token)?;
+            save_tested_candidate(&conn, &service, token, generation)?;
             drop(conn);
             // Results of the old key must not outlive the change.
             service.clear();
@@ -154,11 +159,24 @@ pub async fn test_thingiverse_token(app: tauri::AppHandle, token: Option<String>
     .map_err(|e| CmdError::from(e.to_string()))?
 }
 
+/// Stores a key that passed its test, unless it was removed or the area switched off while the
+/// test ran (`generation` is the value seen when the test started). Called under the database lock.
+fn save_tested_candidate(conn: &Connection, service: &Service, token: &Token, generation: u64) -> CmdResult<()> {
+    enabled_with_conn(conn)?;
+    if service.key_generation() != generation {
+        return Err(CmdError::coded(ErrorCode::ThingiverseNoToken));
+    }
+    store::set_token(conn, token)?;
+    Ok(())
+}
+
 /// Removes the key from this computer only; at Thingiverse it stays valid until revoked there.
 #[tauri::command]
 pub fn remove_thingiverse_token(state: State<AppState>, service: State<'_, Arc<Service>>) -> CmdResult<()> {
     let conn = lock_db(&state)?;
     store::clear_token(&conn)?;
+    // A key test that is still on its way must not bring the key back.
+    service.invalidate_key_tests();
     drop(conn);
     service.clear();
     Ok(())
@@ -232,6 +250,35 @@ mod tests {
         assert!(ready_with_conn(&conn).err().expect("refused").is(ErrorCode::ThingiverseNoToken, &[]));
         store::set_token(&conn, &Token::parse(KEY).unwrap()).unwrap();
         assert!(ready_with_conn(&conn).is_ok());
+    }
+
+    #[test]
+    fn a_key_test_that_finishes_after_the_removal_does_not_bring_the_key_back() {
+        let conn = connect_in_memory().unwrap();
+        store::set_enabled(&conn, true).unwrap();
+        let service = Service::new();
+        let token = Token::parse(KEY).unwrap();
+
+        // Normal case: nothing happened meanwhile.
+        let started = service.key_generation();
+        save_tested_candidate(&conn, &service, &token, started).unwrap();
+        assert!(store::get_token(&conn).unwrap().is_some());
+
+        // The user removes the key while a test of a new candidate is on its way.
+        let started = service.key_generation();
+        store::clear_token(&conn).unwrap();
+        service.invalidate_key_tests();
+        let err = save_tested_candidate(&conn, &service, &token, started).unwrap_err();
+        assert!(err.is(ErrorCode::ThingiverseNoToken, &[]));
+        assert!(store::get_token(&conn).unwrap().is_none(), "the confirmed removal stays");
+
+        // Switching the area off invalidates as well (and the disabled area stores nothing).
+        let started = service.key_generation();
+        service.invalidate_key_tests();
+        assert!(save_tested_candidate(&conn, &service, &token, started).is_err());
+        store::set_enabled(&conn, false).unwrap();
+        assert!(save_tested_candidate(&conn, &service, &token, service.key_generation()).is_err());
+        assert!(store::get_token(&conn).unwrap().is_none());
     }
 
     #[test]

@@ -182,21 +182,44 @@ fn an_ambiguous_hash_is_external_and_a_vanished_file_is_dropped() {
 fn only_registered_sources_resolve_and_the_store_is_bounded() {
     let sources = ExternalSources::default();
     let first = PathBuf::from("/first.3mf");
-    let id = sources.register(&first);
-    assert_eq!(sources.register(&first), id, "the same path keeps its id");
+    let id = sources.register(&first).unwrap();
+    assert_eq!(sources.register(&first).as_deref(), Some(id.as_str()), "the same path keeps its id");
     assert_eq!(sources.resolve(&id).unwrap(), first);
     assert!(sources.resolve("ext-forged").is_err());
     assert!(sources.resolve("/etc/passwd").is_err());
 
-    for i in 0..MAX_EXTERNAL_SOURCES {
-        sources.register(&PathBuf::from(format!("/m{i}.3mf")));
+    for i in 1..MAX_EXTERNAL_SOURCES {
+        assert!(sources.register(&PathBuf::from(format!("/m{i}.3mf"))).is_some());
     }
-    assert!(sources.resolve(&id).is_err(), "the oldest source is pushed out at the limit");
+    assert!(sources.register(&PathBuf::from("/newest.3mf")).is_none(), "a full table refuses instead of pushing out");
+    assert_eq!(sources.resolve(&id).unwrap(), first, "an issued id stays valid");
     assert_eq!(sources.0.lock().unwrap().len(), MAX_EXTERNAL_SOURCES);
 
-    let newest = sources.register(&PathBuf::from("/newest.3mf"));
+    sources.release(&id);
+    let newest = sources.register(&PathBuf::from("/newest.3mf")).expect("room again after a release");
     sources.release(&newest);
     assert!(sources.resolve(&newest).is_err());
+}
+
+#[test]
+fn a_full_hand_over_keeps_every_issued_id_valid() {
+    let dir = unique_test_dir("open_full_handover");
+    let conn = db::connect_in_memory().unwrap();
+    let files: Vec<PathBuf> = (0..MAX_OPEN_FILES).map(|i| touch(&dir, &format!("f{i}.3mf"))).collect();
+    let sources = ExternalSources::default();
+    let found = resolve_open_requests(&conn, &sources, files);
+    assert_eq!(found.len(), MAX_OPEN_FILES);
+    for request in &found {
+        let OpenRequest::External { source_id, .. } = request else { panic!("external expected") };
+        assert!(sources.resolve(source_id).is_ok(), "{source_id} must stay valid");
+    }
+    // A further hand-over neither displaces them nor hands out ids that cannot work.
+    let extra = touch(&dir, "extra.3mf");
+    assert!(resolve_open_requests(&conn, &sources, vec![extra]).is_empty());
+    for request in &found {
+        let OpenRequest::External { source_id, .. } = request else { unreachable!() };
+        assert!(sources.resolve(source_id).is_ok());
+    }
 }
 
 #[test]
@@ -216,7 +239,7 @@ fn an_external_source_is_vouched_for_by_the_backend_for_the_import() {
     let file = touch(&dir, "viewed.3mf");
     let sources = ExternalSources::default();
     let jobs = ImportJobs::default();
-    let id = sources.register(&file);
+    let id = sources.register(&file).unwrap();
 
     // Without the hand-over no proof exists: neither a forged id nor the plain path is accepted.
     assert!(prove_external_source(&sources, &jobs, "ext-forged").is_err());
@@ -234,14 +257,14 @@ fn a_vanished_or_released_source_gives_no_proof() {
     let file = touch(&dir, "soon-gone.stl");
     let sources = ExternalSources::default();
     let jobs = ImportJobs::default();
-    let id = sources.register(&file);
+    let id = sources.register(&file).unwrap();
     std::fs::remove_file(&file).unwrap();
     let error = prove_external_source(&sources, &jobs, &id).unwrap_err();
     assert!(error.is(ErrorCode::FileNotFound, &[]));
     assert!(jobs.authorize_models(ImportSource::Dropped, std::slice::from_ref(&file), false, &[]).is_err());
 
     let again = touch(&dir, "released.stl");
-    let id = sources.register(&again);
+    let id = sources.register(&again).unwrap();
     sources.release(&id);
     assert!(prove_external_source(&sources, &jobs, &id).is_err());
 }

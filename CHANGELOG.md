@@ -66,6 +66,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- **Review fixes (tray, STL export, open with, Thingiverse key):** without the system library for the notification-area icon (Linux) the app now checks for it beforehand and keeps "quit" instead of ending the program; the STL export on file systems without hard links never replaces an existing file any more (the target is created exclusively and copied into); up to 64 files handed over at once keep valid ids (a full list refuses further files instead of silently invalidating earlier ones); removing or switching off the Thingiverse key while a key test is still running is no longer undone by the late answer.
 - **Slicers (Linux AppImage):** A slicer started from the AppImage no longer inherits the AppImage's own `APPDIR`, `APPIMAGE`, `ARGV0` and `OWD` variables. Start scripts that resolve their libraries relative to `APPDIR` (for example the one of the `orca-slicer-unstable-bin` package) looked in the app's folder and failed with "error while loading shared libraries".
 - **Import:** Cancelling the file dialog of "Import → Files…" no longer opens an empty import window with 0 items. This happened where the app uses the zenity dialog (the container version, Linux without a desktop portal).
 - **Tag menu:** the menu of an automatic tag ("Remove and do not assign automatically again") no longer closes by itself when it is opened right after the model's tag suggestions have loaded.
@@ -819,6 +820,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- **Prüfungsfunde (Infobereich, STL-Export, Öffnen mit, Thingiverse-Schlüssel):** Fehlt unter Linux die Systembibliothek für das Infobereichs-Symbol, prüft die App das jetzt vorher und bleibt bei „Beenden“, statt das Programm abzubrechen; der STL-Export ersetzt auf Dateisystemen ohne Hardlinks nie mehr eine vorhandene Datei (das Ziel wird exklusiv angelegt und hineinkopiert); bis zu 64 gleichzeitig übergebene Dateien behalten gültige Kennungen (eine volle Liste lehnt weitere Dateien ab, statt frühere still ungültig zu machen); Entfernen oder Abschalten des Thingiverse-Schlüssels während einer laufenden Schlüsselprüfung wird von der späten Antwort nicht mehr rückgängig gemacht.
 - **Slicer (Linux-AppImage):** Ein aus der AppImage gestarteter Slicer erbt die AppImage-eigenen Variablen `APPDIR`, `APPIMAGE`, `ARGV0` und `OWD` nicht mehr. Startskripte, die ihre Bibliotheken relativ zu `APPDIR` suchen (zum Beispiel das des Pakets `orca-slicer-unstable-bin`), suchten im Ordner der App und brachen mit „error while loading shared libraries“ ab.
 - **Import:** Bricht man den Dateidialog von „Import → Dateien …“ ab, öffnet sich kein leeres Import-Fenster mit 0 Elementen mehr. Das passierte dort, wo die App den Zenity-Dialog verwendet (Container-Version, Linux ohne Desktop-Portal).
 - **Tag-Menü:** Das Menü eines automatischen Tags („Entfernen und nicht mehr automatisch vergeben“) schließt sich nicht mehr von selbst, wenn es unmittelbar nach dem Laden der Tag-Vorschläge des Modells geöffnet wird.

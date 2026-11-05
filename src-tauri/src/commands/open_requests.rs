@@ -16,8 +16,9 @@ use katalog_core::import::files::{compute_content_hash, is_model_extension};
 
 /// More files per hand-over are dropped (a selection of thousands must not flood the queue).
 pub(crate) const MAX_OPEN_FILES: usize = 64;
-/// External sources kept at once; a new one pushes out the oldest.
-pub(crate) const MAX_EXTERNAL_SOURCES: usize = 16;
+/// External sources kept at once. At least one full hand-over fits; ids that were issued stay
+/// valid until released, so a full table refuses new sources instead of pushing out old ones.
+pub(crate) const MAX_EXTERNAL_SOURCES: usize = MAX_OPEN_FILES;
 /// Frontend event: "there are paths to collect".
 pub(crate) const OPEN_FILES_EVENT: &str = "open-files-requested";
 
@@ -133,21 +134,22 @@ fn random_source_id() -> String {
 }
 
 impl ExternalSources {
-    /// Returns the id of `path` (the same path keeps its id); at the limit the oldest source goes.
-    pub(crate) fn register(&self, path: &Path) -> String {
+    /// Returns the id of `path` (the same path keeps its id). An id that was handed out is never
+    /// taken back silently: at the limit this returns `None` until a source is released.
+    pub(crate) fn register(&self, path: &Path) -> Option<String> {
         let mut sources = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if let Some((id, _)) = sources.iter().find(|(_, known)| known == path) {
-            return id.clone();
+            return Some(id.clone());
         }
         if sources.len() >= MAX_EXTERNAL_SOURCES {
-            sources.remove(0);
+            return None;
         }
         let mut id = random_source_id();
         while sources.iter().any(|(known, _)| *known == id) {
             id = random_source_id();
         }
         sources.push((id.clone(), path.to_path_buf()));
-        id
+        Some(id)
     }
 
     /// The path behind an id; unknown ids (also forged ones) are an error.
@@ -215,7 +217,13 @@ pub(crate) fn resolve_open_requests(conn: &Connection, sources: &ExternalSources
         requests.push(match hit {
             Some(id) => OpenRequest::Catalog { file_id: id.to_string() },
             None => OpenRequest::External {
-                source_id: sources.register(&path),
+                source_id: match sources.register(&path) {
+                    Some(source_id) => source_id,
+                    None => {
+                        log::warn!(target: "open_requests", "too many open external files; skipped {}", path.display());
+                        continue;
+                    }
+                },
                 name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
                 size_bytes: meta.len(),
                 extension: path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default(),
