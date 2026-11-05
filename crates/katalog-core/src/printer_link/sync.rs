@@ -29,6 +29,27 @@ pub fn unix_now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
+/// What a result of the network request belongs to. Removing and re-adding a printer connection, or
+/// testing it against another address, gives a different identity under the same printer id.
+#[derive(Clone, PartialEq)]
+struct ConnectionIdentity {
+    kind: String,
+    address: String,
+    connected_since: f64,
+}
+
+impl ConnectionIdentity {
+    fn of(c: &store::PrinterConnectionRecord) -> Self {
+        Self { kind: c.kind.clone(), address: c.address.clone(), connected_since: c.connected_since }
+    }
+}
+
+/// Whether the printer still has exactly the connection the request was made for. Call it with the
+/// database locked, right before writing the result.
+fn connection_unchanged(conn: &Connection, printer_id: i64, identity: &ConnectionIdentity) -> Result<bool, DbError> {
+    Ok(store::get_connection(conn, printer_id)?.is_some_and(|c| ConnectionIdentity::of(&c) == *identity))
+}
+
 fn lock(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connection>, DbError> {
     db.lock().map_err(|_| DbError::Other("database lock poisoned".into()))
 }
@@ -147,13 +168,14 @@ pub fn include_older_history(
     make: &LinkMaker,
     printer_id: i64,
 ) -> Result<Result<usize, &'static str>, DbError> {
-    let (kind, address, api_key, before) = {
+    let (kind, address, api_key, before, identity) = {
         let conn = lock(db)?;
         if !store::printer_link_enabled(&conn)? {
             return Ok(Err("disabled"));
         }
         let Some(c) = store::get_connection(&conn, printer_id)? else { return Ok(Err("no_connection")) };
-        (c.kind, c.address, store::get_api_key(&conn, printer_id)?, store::older_history_before(&conn, printer_id, c.connected_since)?)
+        let identity = ConnectionIdentity::of(&c);
+        (c.kind, c.address, store::get_api_key(&conn, printer_id)?, store::older_history_before(&conn, printer_id, c.connected_since)?, identity)
     };
     let fetched = make(&kind, &address, api_key.as_ref()).and_then(|mut link| {
         link.set_deadline(Instant::now() + super::moonraker::PRINTER_BUDGET);
@@ -165,8 +187,9 @@ pub fn include_older_history(
         Err(e) => return Ok(Err(e.code())),
     };
     let conn = lock(db)?;
-    // The connection may have been removed while the printer was asked.
-    if store::get_connection(&conn, printer_id)?.is_none() {
+    // The connection may have been removed, re-created or pointed at another printer while this one
+    // was asked; the answer then belongs to the old printer.
+    if !connection_unchanged(&conn, printer_id, &identity)? {
         return Ok(Err("no_connection"));
     }
     let mut added = 0;
@@ -202,6 +225,7 @@ fn sync_printer(
 ) -> Result<Option<&'static str>, DbError> {
     let printer_id = item.printer_id;
     let mut api_key: Option<ApiKey>;
+    let identity;
     if new_jobs.load(Ordering::SeqCst) >= MAX_NEW_JOBS {
         return Ok(None);
     }
@@ -215,7 +239,8 @@ fn sync_printer(
             return Ok(None);
         }
         match store::get_connection(&conn, printer_id)? {
-            Some(c) if !c.paused => {}
+            // The plan may be older than an address change: then this item is stale.
+            Some(c) if !c.paused && c.kind == item.kind && c.address == item.address => identity = ConnectionIdentity::of(&c),
             _ => return Ok(None),
         }
         // The plan holds no key: read it now, so one deleted or replaced since is not sent.
@@ -255,9 +280,9 @@ fn sync_printer(
     };
 
     let conn = lock(db)?;
-    // The connection may have been removed during the network request; then the
-    // result must not be written anymore.
-    if store::get_connection(&conn, printer_id)?.is_none() {
+    // The connection may have been removed, re-created or pointed at another printer during the
+    // network request; then the result must not be written anymore.
+    if !connection_unchanged(&conn, printer_id, &identity)? {
         return Ok(None);
     }
     match result {
@@ -899,6 +924,110 @@ mod tests {
         assert_eq!(sync_once(&db, &*maker, 2e9).unwrap(), 0);
         assert!(get_connection(&db.lock().unwrap(), 1).unwrap().is_none());
         assert_eq!(list_open_jobs(&db.lock().unwrap()).unwrap().len(), 0);
+    }
+
+    /// While the printer is asked, the connection is replaced behind its back (`change`). Whatever the
+    /// old printer answers must not end up with the new connection.
+    struct ChangeOnTest {
+        db: Arc<Mutex<Connection>>,
+        change: fn(&Connection),
+    }
+
+    impl ChangeOnTest {
+        fn job() -> RemoteJob {
+            RemoteJob {
+                remote_id: "A".into(),
+                file_name: "a.gcode".into(),
+                outcome: JobOutcome::Completed,
+                raw_status: "completed".into(),
+                ended_at: 1000.0,
+                print_duration_s: 9.0,
+                used_mm: 50.0,
+                deductible: true,
+                slicer_total_mm: None,
+                slicer_weight_g: None,
+                material: None,
+                thumbnail_path: None,
+            }
+        }
+    }
+
+    impl PrinterLink for ChangeOnTest {
+        fn test(&self) -> Result<ConnectionInfo, LinkError> {
+            (self.change)(&self.db.lock().unwrap());
+            Ok(ConnectionInfo { version: "old".into(), base_url: "http://old-printer".into(), clock_offset_s: 0.0 })
+        }
+        fn jobs_ended_since(&self, _info: &ConnectionInfo, _since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+            Ok(vec![Self::job()])
+        }
+        fn jobs_ended_before(&self, _info: &ConnectionInfo, _before: f64) -> Result<Vec<RemoteJob>, LinkError> {
+            Ok(vec![Self::job()])
+        }
+        fn thumbnail(&self, _base_url: &str, _path: &str) -> Result<Vec<u8>, LinkError> {
+            Err(LinkError::Unreachable)
+        }
+    }
+
+    fn address_changed(conn: &Connection) {
+        save_connection_after_test(conn, 1, "moonraker", "printer-2", None, "http://new-printer", "new", 5.0).unwrap();
+    }
+
+    fn removed_and_added_again(conn: &Connection) {
+        store::delete_connection(conn, 1).unwrap();
+        save_connection_after_test(conn, 1, "moonraker", "printer-1", None, "http://new-printer", "new", 5.0).unwrap();
+    }
+
+    fn change_maker(db: &Arc<Mutex<Connection>>, change: fn(&Connection)) -> Box<LinkMaker> {
+        let maker_db = db.clone();
+        Box::new(move |_kind: &str, _address: &str, _key: Option<&ApiKey>| {
+            Ok(Box::new(ChangeOnTest { db: maker_db.clone(), change }) as Box<dyn PrinterLink>)
+        })
+    }
+
+    fn db_for_change() -> Arc<Mutex<Connection>> {
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'A', 0)", []).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "printer-1", None, "http://old", "v", 0.0).unwrap();
+        set_printer_link_enabled(&conn, true).unwrap();
+        Arc::new(Mutex::new(conn))
+    }
+
+    fn assert_new_connection_untouched(db: &Arc<Mutex<Connection>>) {
+        let conn = db.lock().unwrap();
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0, "nothing of the old printer is taken over");
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert_eq!((c.base_url.as_deref(), c.remote_version.as_deref(), c.last_synced_at), (Some("http://new-printer"), Some("new"), None));
+    }
+
+    #[test]
+    fn a_pass_drops_the_answer_when_the_address_changed_meanwhile() {
+        let db = db_for_change();
+        sync_once(&db, &*change_maker(&db, address_changed), 2e9).unwrap();
+        assert_new_connection_untouched(&db);
+    }
+
+    #[test]
+    fn a_pass_drops_the_answer_when_the_connection_was_made_again_meanwhile() {
+        let db = db_for_change();
+        sync_once(&db, &*change_maker(&db, removed_and_added_again), 2e9).unwrap();
+        assert_new_connection_untouched(&db);
+    }
+
+    #[test]
+    fn older_history_drops_the_answer_when_the_address_changed_meanwhile() {
+        let db = db_for_change();
+        let outcome = include_older_history(&db, &*change_maker(&db, address_changed), 1).unwrap();
+        assert_eq!(outcome, Err("no_connection"));
+        assert_new_connection_untouched(&db);
+    }
+
+    #[test]
+    fn older_history_drops_the_answer_when_the_connection_was_made_again_meanwhile() {
+        let db = db_for_change();
+        let outcome = include_older_history(&db, &*change_maker(&db, removed_and_added_again), 1).unwrap();
+        assert_eq!(outcome, Err("no_connection"));
+        assert_new_connection_untouched(&db);
     }
 
     // ---- connection foundation: retries, counter, back-off, side-by-side pass ----
