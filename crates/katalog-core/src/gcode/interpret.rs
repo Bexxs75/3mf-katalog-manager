@@ -245,9 +245,36 @@ fn filament_use(kv: &BTreeMap<String, String>, types: &[String], colours: &[Stri
 }
 
 /// Only when every used filament has a weight: the file then holds what "is there enough
-/// filament" needs. Length alone (CuraEngine) is not turned into a weight.
+/// filament" needs. A length alone (CuraEngine) is never turned into a weight; it is kept as a
+/// length with 0 g (see `SliceInfo::weight_unknown`) so the catalog can say "length known, weight
+/// unknown" instead of showing nothing. A mix of filaments with and without weight is not kept.
 fn slice_info(kv: &BTreeMap<String, String>, filaments: &[FilamentFacts]) -> Option<SliceInfo> {
-    if filaments.is_empty() || filaments.iter().any(|f| !f.weight_g.is_some_and(|g| g > 0.0)) {
+    if filaments.is_empty() {
+        return None;
+    }
+    let positive = |v: Option<f64>| v.is_some_and(|v| v > 0.0);
+    if filaments.iter().all(|f| !positive(f.weight_g)) {
+        if !filaments.iter().all(|f| positive(f.length_mm)) {
+            return None;
+        }
+        return Some(SliceInfo {
+            total_weight_g: 0.0,
+            plates: vec![PlateFilamentUsage {
+                plate_index: 1,
+                weight_g: 0.0,
+                filaments: filaments
+                    .iter()
+                    .map(|f| FilamentUsage {
+                        filament_type: f.filament_type.clone().unwrap_or_default(),
+                        color: f.color.clone(),
+                        used_g: 0.0,
+                        used_m: f.length_mm.map_or(0.0, |mm| mm / 1000.0),
+                    })
+                    .collect(),
+            }],
+        });
+    }
+    if filaments.iter().any(|f| !positive(f.weight_g)) {
         return None;
     }
     let sum: f64 = filaments.iter().filter_map(|f| f.weight_g).sum();

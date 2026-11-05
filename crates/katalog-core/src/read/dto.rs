@@ -152,6 +152,10 @@ pub fn estimate_material_cost(
     slice_info: &threemf::SliceInfo,
     spools: &[db::models::FilamentSpoolRecord],
 ) -> CostEstimateDto {
+    // Lengths without weights (CuraEngine) cannot be priced; the zeros stored for them are not a weight.
+    if slice_info.weight_unknown() {
+        return CostEstimateDto { total_cost: None, has_unpriced_filaments: true };
+    }
     let mut total_cost = 0.0;
     let mut priced_any = false;
     let mut has_unpriced = false;
@@ -259,8 +263,8 @@ pub fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord]) -> M
         .as_deref()
         .and_then(|s| serde_json::from_str(s).ok());
     let (estimated_weight_g, weight_source) = match &slice_info {
-        Some(info) => (Some(info.total_weight_g), "slicer".to_string()),
-        None => (
+        Some(info) if !info.weight_unknown() => (Some(info.total_weight_g), "slicer".to_string()),
+        _ => (
             estimate_weight_g(
                 file.volume_cm3,
                 file.materials.first().map(|m| m.name.as_str()),
@@ -425,6 +429,14 @@ mod tests {
         let cost = estimate_material_cost(&slice_info, &spools);
         assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6);
         assert!(!cost.has_unpriced_filaments);
+    }
+    #[test]
+    fn estimate_material_cost_does_not_price_the_zeros_of_a_length_only_usage() {
+        let mut slice_info = sample_slice_info_single_filament("PLA", 0.0);
+        slice_info.plates[0].filaments[0].used_m = 1.5;
+        let cost = estimate_material_cost(&slice_info, &[sample_spool("PLA", 1000.0, Some(20.0))]);
+        assert_eq!(cost.total_cost, None, "0 g at a price is not a cost of 0");
+        assert!(cost.has_unpriced_filaments);
     }
     #[test]
     fn estimate_material_cost_averages_multiple_matching_spools() {
