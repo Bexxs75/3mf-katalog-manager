@@ -261,3 +261,26 @@ describe('print bed filtering', () => {
     expect(filterAndSortModels(models, [], criteria)).toHaveLength(4);
   });
 });
+
+describe('file type filtering', () => {
+  const models = [
+    makeModelFile({ id: 'm', name: 'Model', path: '/c/m.3mf' }),
+    makeModelFile({ id: 'g', name: 'Output', path: '/c/o.gcode' }),
+    makeModelFile({ id: 'b', name: 'Binary', path: '/c/b.bgcode', fileType: 'gcode' }),
+    makeModelFile({ id: 's', name: 'Solid', path: '/c/s.stl' }),
+  ];
+  const criteria = { activeFolderId: 'all', activeTag: null, query: '', sort: 'name' as const };
+  const ids = (fileKind?: 'all' | 'model' | 'gcode') => filterAndSortModels(models, [], { ...criteria, fileKind }).map(m => m.id);
+
+  it('shows everything by default and for "all"', () => {
+    expect(ids()).toEqual(['b', 'm', 'g', 's']);
+    expect(ids('all')).toEqual(['b', 'm', 'g', 's']);
+  });
+  it('keeps only models, or only G-code of both formats', () => {
+    expect(ids('model')).toEqual(['m', 's']);
+    expect(ids('gcode')).toEqual(['b', 'g']);
+  });
+  it('combines with the search', () => {
+    expect(filterAndSortModels(models, [], { ...criteria, fileKind: 'gcode', query: 'bin' }).map(m => m.id)).toEqual(['b']);
+  });
+});

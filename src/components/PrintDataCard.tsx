@@ -5,8 +5,9 @@ import {
 } from '../i18n/format';
 import type { Translations } from '../i18n/types';
 import { displayName } from '../lib/displayName';
+import { isGcodePath } from '../lib/fileKind';
 import {
-  mergeFilaments, sumPrintTime, sumWeightG, summarizePrintData,
+  isFilamentWeightUnknown, mergeFilaments, sumPrintTime, sumWeightG, summarizePrintData,
   type PlateRow, type PrintDataSummary, type SharedValue,
 } from '../lib/printData';
 import type { FilamentUsage, ModelFile } from '../types';
@@ -40,7 +41,9 @@ function FilamentLine({ filament }: { filament: FilamentUsage }) {
         style={filament.color ? { backgroundColor: filament.color.slice(0, 7) } : undefined} />
       <span>
         {filament.type}{' '}
-        <span className="text-[var(--ink-3)]">{formatUsageG(filament.usedG, language)} · {formatUsageM(filament.usedM, language)}</span>
+        <span className="text-[var(--ink-3)]">
+          {isFilamentWeightUnknown(filament) ? formatUsageM(filament.usedM, language) : `${formatUsageG(filament.usedG, language)} · ${formatUsageM(filament.usedM, language)}`}
+        </span>
       </span>
     </span>
   );
@@ -58,7 +61,7 @@ function Filaments({ filaments, notFound, align }: { filaments: FilamentUsage[];
 
 /** The card "Print data (from slicer)": the panel shows one selected plate at a time, the page lists all plates in a table. */
 export function PrintDataCard({ model, variant, footer }: {
-  model: Pick<ModelFile, 'sliceInfo' | 'printInfo'> & Partial<Pick<ModelFile, 'id'>>;
+  model: Pick<ModelFile, 'sliceInfo' | 'printInfo'> & Partial<Pick<ModelFile, 'id' | 'path'>>;
   variant: Variant;
   /** Page only: what belongs under the plate block (filament check, cost). */
   footer?: ReactNode;
@@ -68,16 +71,20 @@ export function PrintDataCard({ model, variant, footer }: {
   const headingId = useId();
   const openPlateOverview = useOpenPlateOverview();
   const [selected, setSelected] = useState<number | null>(null);
+  // Slicer output: one "plate", no 3MF plate overview, and its own words for "nothing found".
+  const gcode = model.path !== undefined && isGcodePath(model.path);
   const summary = summarizePrintData(model);
   const { state, plates } = summary;
   const duration = (seconds: number) => formatPrintDuration(seconds, language, t);
   const notFound = t('printDataNotFound');
+  const lengthOnly = t('printDataLengthOnly');
+  const anyWeightUnknown = plates.some(plate => plate.weightUnknown);
   const sharedReason = summary.settingsUnreadable ? t('printDataSettingsUnreadable') : notFound;
 
   const showTime = state === 'sliced' || state === 'partial';
   const showShared = summary.sharedKind !== 'none';
   const projectOnly = summary.sharedKind === 'project';
-  const hintKey = NO_DATA_HINT[state];
+  const hintKey = gcode && state === 'not_recognized' ? 'printDataGcodeNotRecognizedHint' : NO_DATA_HINT[state];
   const current = plates.find(plate => plate.plateIndex === selected) ?? null;
   const scope: PlateRow[] = current ? [current] : plates;
   const allTime = summary.sum;
@@ -88,15 +95,15 @@ export function PrintDataCard({ model, variant, footer }: {
   const plateLabel = (plate: PlateRow) => `${t('viewerPlate').replace('{n}', String(plate.plateIndex))}${plate.name ? ` · ${displayName(plate.name)}` : ''}`;
 
   // The overview reads the file itself, so it needs the id; the card of a bare summary has none.
-  const overviewButton = openPlateOverview && model.id !== undefined && plates.length > 0 && (
+  const overviewButton = !gcode && openPlateOverview && model.id !== undefined && plates.length > 0 && (
     <button type="button" onClick={() => openPlateOverview(model.id as string)}
       className={`ml-auto px-2.5 py-0.5 rounded-[5px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${focusClass}`}>
       {t('poOpen')}
     </button>
   );
 
-  const unreadText = variant === 'page'
-    ? t(model.sliceInfo ? 'printDataUnreadKnown' : 'printDataUnreadPlain')
+  const unreadText = variant === 'page' || gcode
+    ? t(model.sliceInfo && !gcode ? 'printDataUnreadKnown' : 'printDataUnreadPlain')
     : t('printDataUnreadPanel');
 
   const sharedValue = <T extends string | number>(value: SharedValue<T>, format: (value: T) => string): ReactNode => {
@@ -118,10 +125,17 @@ export function PrintDataCard({ model, variant, footer }: {
     ]),
   ];
 
-  const chip = state === 'no_slice_data' && (
+  const chipText = state === 'no_slice_data' ? t('printDataNoDataChip') : gcode && state === 'not_recognized' ? t('printDataNotRecognizedChip') : null;
+  const chip = chipText !== null && (
     <span className="inline-flex items-center h-[22px] px-[9px] rounded-full border border-[var(--line-strong)] bg-[var(--panel-2)] text-[var(--ink-2)] text-caption font-semibold">
-      {t('printDataNoDataChip')}
+      {chipText}
     </span>
+  );
+  // A slicer output nobody could read values from says which values are therefore unknown.
+  const nothingKnown = gcode && (state === 'not_recognized' || state === 'unreadable') && (
+    <div className="rounded-md border border-dashed border-[var(--line-strong)] bg-[var(--panel-2)] px-3 py-2.5 my-2">
+      <p className="m-0 text-small text-[var(--ink-2)]">{t('printDataGcodeNothingKnown')}</p>
+    </div>
   );
   const hint = hintKey && <p className="m-0 text-small text-[var(--ink-3)] py-1.5 break-words">{t(hintKey) as string}</p>;
   const unreadBox = state === 'unread' && (
@@ -168,7 +182,7 @@ export function PrintDataCard({ model, variant, footer }: {
                             : <>{t('viewerPlate').replace('{n}', String(plate.plateIndex))}{plate.name && <span className="block text-caption font-normal text-[var(--ink-3)]">{displayName(plate.name)}</span>}</>}
                         </th>
                         {showTime && <td className="py-2 pr-8 tabular-nums">{plate.printSeconds === null ? <Missing reason={notFound} /> : duration(plate.printSeconds)}</td>}
-                        <td className="py-2 pr-8 tabular-nums">{plate.weightG === null ? <Missing reason={notFound} /> : formatUsageG(plate.weightG, language)}</td>
+                        <td className="py-2 pr-8 tabular-nums">{plate.weightG === null ? <Missing reason={plate.weightUnknown ? lengthOnly : notFound} /> : formatUsageG(plate.weightG, language)}</td>
                         <td className="py-2 tabular-nums"><Filaments filaments={plate.filaments} notFound={notFound} align="start" /></td>
                       </tr>
                     ))}
@@ -181,16 +195,18 @@ export function PrintDataCard({ model, variant, footer }: {
                             {partialNote(allTime) && <span className="block text-caption font-normal text-[var(--ink-3)]">{partialNote(allTime)}</span>}
                           </>}
                         </td>}
-                        <td className="py-2 pr-8 tabular-nums">{sumWeightG(plates) === null ? <Missing reason={notFound} /> : formatUsageG(sumWeightG(plates) ?? 0, language)}</td>
+                        <td className="py-2 pr-8 tabular-nums">{sumWeightG(plates) === null ? <Missing reason={plates.some(plate => plate.weightUnknown) ? lengthOnly : notFound} /> : formatUsageG(sumWeightG(plates) ?? 0, language)}</td>
                         <td />
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+              {anyWeightUnknown && <p className="m-0 mt-2 text-small text-[var(--ink-3)]">{lengthOnly}</p>}
             </>
           )}
           {unreadBox}
+          {nothingKnown}
           {footer}
         </section>
         {showShared && (
@@ -241,13 +257,15 @@ export function PrintDataCard({ model, variant, footer }: {
           {showTime && row(t('printDataTime'),
             scopeTime.seconds === null ? <Missing reason={notFound} /> : duration(scopeTime.seconds),
             current ? null : partialNote(scopeTime))}
-          {row(t('printDataWeight'), scopeWeight === null ? <Missing reason={notFound} /> : formatUsageG(scopeWeight, language))}
+          {row(t('printDataWeight'), scopeWeight !== null ? formatUsageG(scopeWeight, language)
+            : scope.some(plate => plate.weightUnknown) ? <span className="font-normal text-[var(--ink-2)]">{lengthOnly}</span> : <Missing reason={notFound} />)}
           {row(t('metaMaterial'), <Filaments filaments={mergeFilaments(scope)} notFound={notFound} align="end" />)}
           {showTime && current && plates.length > 1 && row(t('printDataTotal'),
             allTime.seconds === null ? <Missing reason={notFound} /> : duration(allTime.seconds), partialNote(allTime), true)}
         </>
       )}
       {unreadBox}
+      {nothingKnown}
       {showShared && (
         <>
           <div className="text-caption font-semibold text-[var(--ink-2)] pt-2.5 pb-0.5">{projectOnly ? t('printDataProjectSettings') : t('printDataSharedHeadingPanel')}</div>

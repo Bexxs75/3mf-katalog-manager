@@ -3,7 +3,8 @@ import { de } from '../i18n/de';
 import { formatPrintDuration } from '../i18n/format';
 import { makePrintInfo } from '../test/factories';
 import type { SliceInfo } from '../types';
-import { mergeFilaments, showsPrintData, summarizePrintData, sumPrintTime, sumWeightG } from './printData';
+import { makeModelFile } from '../test/factories';
+import { isWeightUnknown, mergeFilaments, printDataStateOf, printFactsOf, rereadTargets, showsPrintData, summarizePrintData, sumPrintTime, sumWeightG } from './printData';
 
 const filament = (type: string, usedG: number) => ({ type, color: '#2b2b2b', usedG, usedM: usedG / 3 });
 const sliceInfo = (count: number): SliceInfo => ({
@@ -161,5 +162,70 @@ describe('plate helpers', () => {
     expect(showsPrintData({ ...base, path: '/c/a.STL' })).toBe(false);
     expect(showsPrintData({ ...base, summaryOnly: true })).toBe(false);
     expect(showsPrintData({ ...base, deletedAt: '2026-01-01T00:00:00Z' })).toBe(false);
+  });
+});
+
+describe('G-code files', () => {
+  const gcodeInfo = makePrintInfo({ sliceState: 'sliced', printerModel: 'Prusa MK4S', plates: [
+    { plateIndex: 1, name: null, printSeconds: 4020, firstLayerSeconds: null, plateBedType: null }] });
+
+  it('shows print data for a fully loaded G-code file, text or binary, but not for a model without slicer data', () => {
+    const base = { summaryOnly: undefined, deletedAt: null };
+    expect(showsPrintData({ ...base, path: '/c/a.gcode' })).toBe(true);
+    expect(showsPrintData({ ...base, path: '/c/a.BGCODE' })).toBe(true);
+    expect(showsPrintData({ ...base, path: '/c/a.obj' })).toBe(false);
+    expect(showsPrintData({ ...base, path: '/c/a.gcode', summaryOnly: true })).toBe(false);
+  });
+
+  it('derives the print data state of a G-code file from its row like for a 3MF', () => {
+    expect(printDataStateOf({ path: '/c/a.gcode', printDataState: undefined, printInfo: gcodeInfo })).toBe('sliced');
+    expect(printDataStateOf({ path: '/c/a.gcode', printDataState: undefined, printInfo: null })).toBe('unread');
+    expect(printDataStateOf({ path: '/c/a.gcode', printDataState: undefined, printInfo: { ...gcodeInfo, readerCurrent: false } })).toBe('unread');
+    expect(printDataStateOf({ path: '/c/a.stl', printDataState: undefined, printInfo: null })).toBe('none');
+  });
+
+  it('turns the print time and weight of the single plate into one row and one total', () => {
+    const summary = summarizePrintData({ sliceInfo: sliceInfo(1), printInfo: gcodeInfo });
+    expect(summary.state).toBe('partial');
+    expect(summary.plates).toHaveLength(1);
+    expect(summary.sum.seconds).toBe(4020);
+    expect(printFactsOf({ printInfo: gcodeInfo, printFacts: undefined })?.printSecondsComplete).toBe(true);
+  });
+
+  it('includes unread G-code in "read all", next to unread 3MF files, and leaves read ones and models alone', () => {
+    const unread3mf = makeModelFile({ id: 'a', path: '/c/a.3mf' });
+    const unreadGcode = makeModelFile({ id: 'b', path: '/c/b.gcode' });
+    const unreadBgcode = makeModelFile({ id: 'c', path: '/c/c.bgcode', printDataState: 'unread' });
+    const readGcode = makeModelFile({ id: 'd', path: '/c/d.gcode', printInfo: gcodeInfo });
+    const stl = makeModelFile({ id: 'e', path: '/c/e.stl' });
+    const trashed = makeModelFile({ id: 'f', path: '/c/f.gcode', deletedAt: '2026-01-01T00:00:00Z' });
+    const all = [unread3mf, unreadGcode, unreadBgcode, readGcode, stl, trashed];
+    expect(rereadTargets(all, 'all')).toEqual(['a', 'b', 'c']);
+    expect(rereadTargets(all, 'selected', new Set(['d', 'e']))).toEqual(['d']);
+  });
+});
+
+describe('length-only usage', () => {
+  const only = (usedG: number, usedM: number, total = 0): SliceInfo => ({ totalWeightG: total, plates: [{ plateIndex: 1, weightG: total, filaments: [{ type: 'PLA', color: null, usedG, usedM }] }] });
+
+  it('is recognised like the backend does: lengths next to zero grams, nothing else', () => {
+    expect(isWeightUnknown(only(0, 1.5))).toBe(true);
+    expect(isWeightUnknown(only(4, 1.5, 4))).toBe(false);
+    expect(isWeightUnknown(only(0, 0))).toBe(false);
+    expect(isWeightUnknown({ totalWeightG: 0, plates: [] })).toBe(false);
+    expect(isWeightUnknown(null)).toBe(false);
+  });
+
+  it('gives a plate without a weight instead of 0 g, and a total that is unknown too', () => {
+    const rows = summarizePrintData({ sliceInfo: only(0, 1.5), printInfo: null }).plates;
+    expect(rows[0].weightG).toBeNull();
+    expect(rows[0].weightUnknown).toBe(true);
+    expect(sumWeightG(rows)).toBeNull();
+  });
+
+  it('leaves a normal usage alone', () => {
+    const rows = summarizePrintData({ sliceInfo: sliceInfo(1), printInfo: null }).plates;
+    expect(rows[0].weightG).toBe(10);
+    expect(rows[0].weightUnknown).toBe(false);
   });
 });

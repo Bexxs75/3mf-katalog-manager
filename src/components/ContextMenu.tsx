@@ -12,6 +12,7 @@ import { useT } from '../i18n/LanguageContext';
 import { splitFileName } from '../lib/fileName';
 import { toAppError, type AppError } from '../lib/errors';
 import { useFormatError } from '../diagnostics/useFormatError';
+import { isGcode } from '../lib/fileKind';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
 interface Props {
@@ -199,7 +200,8 @@ function ModelContextMenu({
         </div>
       ) : (
         <>
-          {!container && (<button
+          {/* Slicer output is what a slicer writes, not something to open in one. */}
+          {!container && !(stlModel?.path && isGcode({ path: stlModel.path, fileType: stlModel.fileType })) && (<button
             onClick={() => {
               onOpenInSlicer();
               onClose();

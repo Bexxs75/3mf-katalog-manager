@@ -11,7 +11,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import type { ModelFile } from '../types';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
-import { formatWeightG } from '../i18n/format';
+import { formatPrintDuration, formatWeightG } from '../i18n/format';
+import { fileKindOf, gcodeBadge } from '../lib/fileKind';
+import { printFactsOf } from '../lib/printData';
 import { tagLabel } from '../lib/autoTags';
 import { BulkCheckbox } from './BulkCheckbox';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
@@ -86,10 +88,40 @@ function CardTags({ tags, comfort }: { tags: string[]; comfort: boolean }) {
   </div>;
 }
 
+/** Print time of a slicer output, taken from the list's facts; only a time the slicer gave (never a partial sum). */
+function gcodePrintSeconds(model: ModelFile): number | null {
+  const facts = printFactsOf(model);
+  return facts?.printSecondsComplete && facts.printSeconds !== undefined ? facts.printSeconds : null;
+}
+
+/** Accessible name of a card: the name and license, plus the file type for slicer output (the badge is only a picture to the eye). */
+function cardAriaLabel(model: ModelFile, t: ReturnType<typeof useT>): string {
+  const label = modelLicenseAriaLabel(displayName(model.name), model.license, t);
+  return fileKindOf(model) === 'gcode' ? `${label}, ${gcodeBadge(model.path)}` : label;
+}
+
+/** Type badge on the picture of slicer output; a model needs none. */
+function KindBadge({ model, comfort }: { model: ModelFile; comfort: boolean }) {
+  if (fileKindOf(model) !== 'gcode') return null;
+  return <span data-kind-badge aria-hidden="true"
+    className={`absolute z-[1] font-bold tracking-[0.05em] text-caption border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] ${comfort ? 'left-2.5 top-2.5 px-2 py-0.5 rounded-lg' : 'left-[7px] top-[7px] px-1.5 py-px rounded'}`}>
+    {gcodeBadge(model.path)}
+  </span>;
+}
+
+/** Where the "new" badge sits: below the type badge when there is one. */
+function newBadgePosition(model: ModelFile, comfort: boolean): string {
+  if (fileKindOf(model) === 'gcode') return comfort ? 'left-2.5 top-11' : 'left-[7px] top-[30px]';
+  return comfort ? 'left-2.5 top-2.5' : 'left-[7px] top-[7px]';
+}
+
 function CardMeta({ model, comfort }: { model: ModelFile; comfort: boolean }) {
   const { language } = useLanguage();
+  const t = useT();
+  const seconds = fileKindOf(model) === 'gcode' ? gcodePrintSeconds(model) : null;
   return <div className="flex items-center gap-3 text-[var(--ink-3)] font-medium overflow-hidden whitespace-nowrap shrink-0"
     style={{ height: comfort ? 20 : 15, lineHeight: comfort ? '20px' : '15px', fontSize: 'var(--font-size-meta)' }}>
+    {seconds !== null && <span data-card-print-time className="shrink-0">{formatPrintDuration(seconds, language, t)}</span>}
     {model.materials[0] && <span className="truncate"><Icon name="box" size={14} /> {model.materials[0].name}</span>}
     {model.estimatedWeightG !== null && <span className="shrink-0"><Icon name="weight" size={14} /> {model.weightSource === 'slicer'
       ? formatWeightG(model.estimatedWeightG, language)
@@ -182,7 +214,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         key={m.id}
         data-model-id={m.id}
         {...rowAria(m, index)}
-        aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
+        aria-label={cardAriaLabel(m, t)}
         tabIndex={-1}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -225,14 +257,15 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 <div className="flex flex-col items-center gap-1.5">
                   <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
                   <div className="text-compact-label ui-label text-[var(--ink-3)]">
-                    {t('previewLabel3d')}
+                    {t(fileKindOf(m) === 'gcode' ? 'previewLabelNone' : 'previewLabel3d')}
                   </div>
                 </div>
               </div>
             </>
           )}
+          <KindBadge model={m} comfort={false} />
           {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
-            <div className="absolute left-[7px] top-[7px] font-semibold text-caption px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
+            <div className={`absolute ${newBadgePosition(m, false)} font-semibold text-caption px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]`}>
               {t('newBadge')}
             </div>
           )}
@@ -292,7 +325,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             key={m.id}
             data-model-id={m.id}
             {...rowAria(m, index)}
-            aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
+            aria-label={cardAriaLabel(m, t)}
             tabIndex={-1}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -333,8 +366,9 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                   </div>
                 </>
               )}
+              <KindBadge model={m} comfort />
               {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
-                <div className="absolute left-2.5 top-2.5 font-semibold text-caption px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]">
+                <div className={`absolute ${newBadgePosition(m, true)} font-semibold text-caption px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]`}>
                   {t('newBadge')}
                 </div>
               )}

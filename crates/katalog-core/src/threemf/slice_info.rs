@@ -11,6 +11,23 @@ pub struct SliceInfo {
     pub plates: Vec<PlateFilamentUsage>,
 }
 
+impl SliceInfo {
+    /// True for a usage that only gives lengths (CuraEngine writes no weight): the G-code reader stores
+    /// such a file with 0 g everywhere and the length in `used_m`. A used filament never weighs 0 g, so
+    /// "0 g and a positive length for every filament" cannot be a real weight; callers must not show,
+    /// sum or price those zeros.
+    pub fn weight_unknown(&self) -> bool {
+        let mut any = false;
+        for filament in self.plates.iter().flat_map(|plate| &plate.filaments) {
+            if filament.used_g > 0.0 || filament.used_m <= 0.0 {
+                return false;
+            }
+            any = true;
+        }
+        any && self.total_weight_g <= 0.0
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlateFilamentUsage {
     pub plate_index: u32,
@@ -296,6 +313,31 @@ fn scan_slice_info<R: Read + Seek>(
 
 #[cfg(test)]
 mod tests {
+
+    fn usage(total: f64, filaments: &[(f64, f64)]) -> SliceInfo {
+        SliceInfo {
+            total_weight_g: total,
+            plates: vec![PlateFilamentUsage {
+                plate_index: 1,
+                weight_g: total,
+                filaments: filaments
+                    .iter()
+                    .map(|&(used_g, used_m)| FilamentUsage { filament_type: "PLA".into(), color: None, used_g, used_m })
+                    .collect(),
+            }],
+        }
+    }
+
+    #[test]
+    fn weight_is_unknown_only_for_lengths_next_to_zero_grams() {
+        assert!(usage(0.0, &[(0.0, 1.5)]).weight_unknown());
+        assert!(usage(0.0, &[(0.0, 1.5), (0.0, 0.2)]).weight_unknown());
+        assert!(!usage(4.0, &[(4.0, 1.5)]).weight_unknown(), "a real weight");
+        assert!(!usage(1.0, &[(0.0, 1.5), (1.0, 0.2)]).weight_unknown(), "one filament has a weight");
+        assert!(!usage(0.0, &[(0.0, 0.0)]).weight_unknown(), "no length either: nothing known, nothing to say");
+        assert!(!usage(0.0, &[]).weight_unknown(), "an empty usage is not a length-only one");
+        assert!(!SliceInfo { total_weight_g: 0.0, plates: vec![] }.weight_unknown());
+    }
     use super::*;
     use std::io::{Cursor, Write};
     use zip::write::SimpleFileOptions;

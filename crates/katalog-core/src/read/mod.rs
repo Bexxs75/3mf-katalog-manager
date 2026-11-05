@@ -153,8 +153,8 @@ pub fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
         .as_deref()
         .and_then(|json| serde_json::from_str::<threemf::SliceInfo>(json).ok());
     let (estimated_weight_g, weight_source) = match slice_info {
-        Some(info) => (Some(info.total_weight_g), "slicer"),
-        None => (
+        Some(info) if !info.weight_unknown() => (Some(info.total_weight_g), "slicer"),
+        _ => (
             estimate_weight_g(s.volume_cm3, s.materials.first().map(|m| m.name.as_str())),
             "estimated",
         ),

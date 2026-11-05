@@ -192,3 +192,23 @@ describe('ContextMenu plate overview', () => {
     expect(screen.queryByRole('button', { name: 'Plattenübersicht' })).toBeNull();
   });
 });
+
+describe('ContextMenu and G-code', () => {
+  const menu = (stlModel: { name: string; path: string }) => render(
+    <LanguageProvider>
+      <ContextMenu x={0} y={0} onClose={() => {}} onOpenInSlicer={() => {}} onDelete={() => {}} inQueue={false}
+        onToggleQueue={() => {}} printed={false} onTogglePrintStatus={() => {}} fileId="42" currentName={stlModel.name}
+        onRename={async () => {}} stlModel={stlModel} />
+    </LanguageProvider>,
+  );
+
+  it.each(['a.gcode', 'a.bgcode'])('does not offer "Open in slicer" for slicer output (%s)', name => {
+    menu({ name, path: `/c/${name}` });
+    expect(screen.queryByRole('button', { name: 'In Slicer öffnen' })).toBeNull();
+  });
+
+  it('still offers it for a model', () => {
+    menu({ name: 'a.3mf', path: '/c/a.3mf' });
+    expect(screen.getByRole('button', { name: 'In Slicer öffnen' })).toBeVisible();
+  });
+});

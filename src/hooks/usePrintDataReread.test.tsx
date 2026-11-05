@@ -181,6 +181,11 @@ describe('patches', () => {
     expect(patchOf(answer('a', { printInfo: { ...answer('a').printInfo!, readerCurrent: false } })).printDataState).toBe('unread');
   });
 
+  it('gives a read G-code file the state of its stored row, not "none"', () => {
+    expect(patchOf(answer('a', { path: '/m/a.gcode' })).printDataState).toBe('sliced');
+    expect(patchOf(answer('a', { path: '/m/a.bgcode', printInfo: { ...answer('a').printInfo!, sliceState: 'not_recognized' } })).printDataState).toBe('not_recognized');
+  });
+
   it('derives the print facts of the list from the stored row', () => {
     expect(patchOf(answer('a')).printFacts).toEqual({ printerModel: 'P', layerHeightMm: 0.2, nozzleMm: 0.4, plateCount: 0 });
   });

@@ -321,6 +321,28 @@ fn summary_serialization_has_presence_flags_and_no_image_fields() {
 }
 
 #[test]
+fn a_length_only_usage_is_no_weight_in_the_summary_and_the_detail() {
+    let conn = db::connect_in_memory().unwrap();
+    let id = db::test_insert_minimal_file(&conn, "/tmp/cura.gcode", None).unwrap();
+    conn.execute(
+        "UPDATE files SET slice_info_json = ?1 WHERE id = ?2",
+        rusqlite::params![
+            r#"{"total_weight_g":0.0,"plates":[{"plate_index":1,"weight_g":0.0,"filaments":[{"filament_type":"","color":null,"used_g":0.0,"used_m":1.5}]}]}"#,
+            id
+        ],
+    )
+    .unwrap();
+    let dto = summary_to_dto(db::list_file_summaries(&conn).unwrap().remove(0));
+    assert_eq!(dto.weight_source, "estimated", "0 g is not what the slicer weighed");
+    assert_ne!(dto.estimated_weight_g, Some(0.0));
+    let detail = to_dto(db::get_file(&conn, id).unwrap().unwrap(), &[]);
+    assert_eq!(detail.weight_source, "estimated");
+    let json = serde_json::to_value(&detail).unwrap();
+    // The length still reaches the interface.
+    assert_eq!(json["sliceInfo"]["plates"][0]["filaments"][0]["usedM"], 1.5);
+}
+
+#[test]
 fn summary_print_data_state_follows_the_reader_version_of_each_file_type() {
     use crate::db::print_info_tests::{new_file, plate, record};
     use crate::threemf::print_info::{SliceState, PRINT_INFO_READER_VERSION};

@@ -37,6 +37,7 @@ import { DuplicatesView } from './DuplicatesView';
 import { PrintFilterContext } from '../hooks/PrintFilterContext';
 import { isActive as printFilterActive, printDataFacets, type FilterKey, type PrintDataFilter } from '../lib/printDataFilter';
 import { printFilterChips } from '../lib/printFilterLabels';
+import { countByKind, FILE_KIND_FILTERS, type FileKindFilter } from '../lib/fileKind';
 
 interface CatalogWorkspaceProps {
   initialLoading?: boolean;
@@ -131,6 +132,9 @@ interface CatalogWorkspaceProps {
   setModelLicenses?: (ids: string[], license: string | null) => Promise<void>;
   printStatus?: ModelFile['printStatus'] | null;
   setPrintStatus?: (status: ModelFile['printStatus'] | null) => void;
+  /** File type filter (models, G-code); the group only appears once the catalog holds G-code. */
+  fileKind?: FileKindFilter;
+  setFileKind?: (kind: FileKindFilter) => void;
   usage?: LicenseUsage | null;
   setUsage?: (usage: LicenseUsage | null) => void;
   /** Printers of the Printer Manager; those with a build volume feed the "Fits on" filter and the print-bed section. */
@@ -260,6 +264,8 @@ export function CatalogWorkspace({
   setModelLicenses,
   printStatus = null,
   setPrintStatus,
+  fileKind = 'all',
+  setFileKind,
   usage = null,
   setUsage,
   printers = [],
@@ -377,7 +383,7 @@ export function CatalogWorkspace({
   const t = useT();
   const formatCount = useFormatCount();
   const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
-    view, sort, language, query, usage, printStatus, fitPrinterId, printFilter, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
+    view, sort, language, query, usage, printStatus, fileKind, fitPrinterId, printFilter, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
   const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
@@ -396,6 +402,10 @@ export function CatalogWorkspace({
   const hiddenSelectedCount = [...selectedForBulk].filter(id => !visibleIds.has(id)).length;
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
+  const kindCounts = useMemo(() => countByKind(models), [models]);
+  const kindLabel = (kind: FileKindFilter) => t(kind === 'all' ? 'fileKindAll' : kind === 'model' ? 'fileKindModels' : 'fileKindGcode');
+  // Only worth a control once there is slicer output to filter out; a chosen filter stays visible until removed.
+  const showKindFilter = !!setFileKind && (kindCounts.gcode > 0 || fileKind !== 'all');
   const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');
   const fitPrinters = printers.filter(printer => printerBuildVolume(printer));
   const fitPrinter = fitPrinters.find(printer => printer.id === fitPrinterId) ?? null;
@@ -415,6 +425,8 @@ export function CatalogWorkspace({
   const baseChips = [
     ...(printStatus ? [{kind: 'printStatusFilter' as const, value: printStatusLabel,
       removeLabel: t('chipRemove').replace('{label}', printStatusLabel), remove: () => setPrintStatus?.(null)}] : []),
+    ...(fileKind !== 'all' ? [{kind: 'fileKindFilter' as const, value: kindLabel(fileKind),
+      removeLabel: t('chipRemove').replace('{label}', `${t('fileKindFilter')} ${kindLabel(fileKind)}`), remove: () => setFileKind?.('all')}] : []),
     ...(usage ? [{kind: 'licenseUsage' as const, value: t(usageLabels[usage]),
       removeLabel: t('chipRemove').replace('{label}', t(usageLabels[usage])), remove: () => setUsage?.(null)}] : []),
     ...(fitPrinter ? [{kind: 'fitPrinterFilter' as const, value: fitPrinter.name,
@@ -447,7 +459,7 @@ export function CatalogWorkspace({
   // The duplicates view stands in for the catalog list: it has its own selection and ignores the filters.
   const duplicatesMode = toolView === 'duplicates' && !detailModel && !collectionsGalleryOpen && !activeCollection;
   const showBulkBar = !detailModel && !duplicatesMode && (selectedForBulk.size > 0 || (!collectionsGalleryOpen && models.length > 0));
-  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && !fitPrinter && !printFilterIsActive;
+  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && fileKind === 'all' && !fitPrinter && !printFilterIsActive;
   return (
     <PrintFilterContext.Provider value={printFilterIsActive && printFilter ? printFilter : null}>
     <div ref={rootRef} className="relative flex-1 flex min-h-0">
@@ -561,6 +573,17 @@ export function CatalogWorkspace({
                 <option value="not_printed">{t('printStatusNotPrinted')}</option>
               </select>
             </label>}
+            {showKindFilter && setFileKind && (
+              <div role="group" aria-labelledby="filter-file-kind" className="flex flex-wrap items-center gap-1.5 text-small text-[var(--ink-2)]">
+                <span id="filter-file-kind">{t('fileKindFilter')}</span>
+                {FILE_KIND_FILTERS.map(kind => (
+                  <button key={kind} type="button" aria-pressed={fileKind === kind} data-file-kind={kind} onClick={() => setFileKind(kind)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 cursor-pointer text-[var(--ink)] hover:border-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${fileKind === kind ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--line-strong)]'}`}>
+                    {kindLabel(kind)} <span className="tabular-nums text-[var(--ink-3)]">{kindCounts[kind]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {setFitPrinterId && fitPrinters.length > 0 && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
               {t('fitPrinterFilter')}
               <select aria-label={t('fitPrinterFilter')} value={fitPrinter?.id ?? ''} onChange={event => setFitPrinterId(event.target.value || null)}
