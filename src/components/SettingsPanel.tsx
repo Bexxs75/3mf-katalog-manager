@@ -1,4 +1,5 @@
 import { PrintTechnologySettings } from './PrintTechnologySettings';
+import { SlicerReportSettings } from './SlicerReportSettings';
 import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { ImportRenameSetting } from './ImportRenameSetting';
@@ -333,6 +334,7 @@ export function SettingsPanel({
                   {t('addSlicerError')} <ErrorText error={addSlicerError} />
                 </div>
               )}
+              <div className="mt-5 pt-4 border-t border-[var(--line)]"><SlicerReportSettings /></div>
             </>
           )}
 

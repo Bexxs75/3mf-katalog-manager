@@ -52,6 +52,9 @@ import { RenameToast } from './components/RenameToast';
 import { FolderTrashToast } from './components/FolderTrashToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { PrintTechnologyPrompt } from './components/PrintTechnologyPrompt';
+import { SlicerReportNotice } from './components/SlicerReportNotice';
+import { SlicerReportInbox } from './components/SlicerReportInbox';
+import { useSlicerReports } from './hooks/SlicerReportsContext';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
 import { UpgradeNoticeDialog } from './components/UpgradeNoticeDialog';
@@ -176,6 +179,7 @@ export default function App() {
   }, [thingiverseAllowed, requestedMainView]);
   // Files the system handed over ("Open with"); the effect further down shows them once the start-up dialogs are done.
   const openRequests = useOpenRequests();
+  const slicerReports = useSlicerReports();
   const externalDrop = useExternalDropTarget({ enabled: mainView === 'catalog', folders: store.folders, catalogBaseDir });
   const fileImport = useFileImport({
     enabled: mainView === 'catalog',
@@ -981,9 +985,12 @@ export default function App() {
             />
           )}
 
+          {!web && slicerReports.inboxOpen && <SlicerReportInbox models={store.models} onImportPaths={async (paths) => { await fileImport.importPaths(paths); }} />}
+
           <NoticeStack>
             {!web && <PrintTechnologyPrompt firstRun={firstRunRef.current} wait={setupDialogOpen || !upgradeNoticeSettled}
               onChoose={() => { setGeneralTabRequest(n => n + 1); setCatalogTabRequest(0); setSettingsOpen(true); }} />}
+            {!web && <SlicerReportNotice />}
             {sourceCheck.notice && <SourceFolderNotice notice={sourceCheck.notice} onView={sourceCheck.openDialog} onClose={sourceCheck.dismissNotice} />}
             {fileImport.importBanner && (
               <ImportSummaryBanner

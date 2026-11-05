@@ -152,13 +152,9 @@ pub(crate) fn list_open_printer_jobs_with_conn(conn: &Connection) -> CmdResult<V
     if jobs.is_empty() {
         return Ok(Vec::new());
     }
-    let candidates: Vec<Candidate> = conn
-        .prepare("SELECT id, name, imported_at FROM files WHERE deleted_at IS NULL")
-        .and_then(|mut s| {
-            s.query_map([], |r| Ok(Candidate { file_id: r.get(0)?, name: r.get(1)?, imported_at: r.get(2)? }))?
-                .collect()
-        })
-        .map_err(|e| e.to_string())?;
+    // Models only: a G-code or resin entry of the catalog would win by name and take the print away
+    // from the model.
+    let candidates: Vec<Candidate> = katalog_core::slicer_report::model_candidates(conn).map_err(|e| e.to_string())?;
     let mut out = Vec::with_capacity(jobs.len());
     for j in jobs {
         let printer_name: String = conn
@@ -175,11 +171,16 @@ pub(crate) fn list_open_printer_jobs_with_conn(conn: &Connection) -> CmdResult<V
         let material_mismatch = spool
             .as_ref()
             .is_some_and(|s| !booking::materials_match(j.material.as_deref(), &s.material));
-        let model_match = best_match(&j.file_name, &candidates).map(|m| ModelMatchDto {
-            file_id: m.file_id.to_string(),
-            file_name: m.file_name,
-            sure: m.kind == MatchKind::Sure,
-        });
+        // A report the user confirmed names the model by the sliced file, no guessing from the name.
+        let confirmed = db::slicer_reports::confirmed_model_for_name(conn, &j.file_name).map_err(|e| e.to_string())?;
+        let model_match = match confirmed {
+            Some((file_id, file_name)) => Some(ModelMatchDto { file_id: file_id.to_string(), file_name, sure: true }),
+            None => best_match(&j.file_name, &candidates).map(|m| ModelMatchDto {
+                file_id: m.file_id.to_string(),
+                file_name: m.file_name,
+                sure: m.kind == MatchKind::Sure,
+            }),
+        };
         out.push(OpenPrinterJobDto {
             id: j.id.to_string(),
             printer_id: j.printer_id.to_string(),
@@ -665,6 +666,42 @@ mod tests {
         let m = j.model_match.as_ref().unwrap();
         assert!(m.sure);
         assert_eq!(m.file_name, "Distanzhülse 13,40mm.3mf");
+    }
+
+    #[test]
+    fn a_gcode_entry_of_the_catalog_never_takes_the_print_away_from_the_model() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
+             VALUES ('Distanzhulse_13,40mm.gcode', '/c/g.gcode', 'gcode', 1, '2099-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let m = list_open_printer_jobs_with_conn(&conn).unwrap().remove(0).model_match.unwrap();
+        assert_eq!(m.file_name, "Distanzhülse 13,40mm.3mf", "the newer G-code entry with the very same name is no candidate");
+    }
+
+    #[test]
+    fn a_confirmed_slicer_report_makes_the_match_sure_whatever_the_name_says() {
+        let conn = setup();
+        let other = crate::db::test_insert_minimal_file(&conn, "Völlig anderes Teil.3mf", None).unwrap();
+        let before = list_open_printer_jobs_with_conn(&conn).unwrap().remove(0).model_match.unwrap();
+        assert_eq!(before.file_name, "Distanzhülse 13,40mm.3mf");
+        let (report, _) = db::slicer_reports::insert_or_merge(&conn, &db::slicer_reports::NewReport {
+            reported_at: "2026-11-05T10:00:00Z".into(),
+            reported_path: "/o/DISTANZHULSE_13,40mm_PLA_0.2_6m29s.GCODE".into(),
+            file_name: "DISTANZHULSE_13,40mm_PLA_0.2_6m29s.GCODE".into(),
+            file_size_bytes: 1,
+            slicer: None,
+            summary_json: "{}".into(),
+        })
+        .unwrap();
+        let open = list_open_printer_jobs_with_conn(&conn).unwrap().remove(0).model_match.unwrap();
+        assert_eq!(open.file_name, "Distanzhülse 13,40mm.3mf", "an open report decides nothing");
+        db::slicer_reports::link(&conn, report, other, "2026-11-05T11:00:00Z").unwrap();
+        let m = list_open_printer_jobs_with_conn(&conn).unwrap().remove(0).model_match.unwrap();
+        assert!(m.sure);
+        assert_eq!((m.file_id, m.file_name.as_str()), (other.to_string(), "Völlig anderes Teil.3mf"));
     }
 
     #[test]

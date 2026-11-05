@@ -14,6 +14,7 @@ pub mod printers;
 // Printer connection: settings, connections, fetched prints.
 pub mod printer_link;
 pub mod print_technology;
+pub mod slicer_reports;
 pub mod thingiverse;
 pub use thingiverse::scrub_secrets;
 mod migrations;
