@@ -284,3 +284,26 @@ describe('file type filtering', () => {
     expect(filterAndSortModels(models, [], { ...criteria, fileKind: 'gcode', query: 'bin' }).map(m => m.id)).toEqual(['b']);
   });
 });
+
+describe('filterAndSortModels with bundle names', () => {
+  const models = [
+    makeModelFile({ id: '1', name: 'Left half.stl' }),
+    makeModelFile({ id: '2', name: 'Right half.stl' }),
+    makeModelFile({ id: '3', name: 'Other.stl' }),
+  ];
+  const criteria = { activeFolderId: 'all', activeTag: null, sort: 'name' as const };
+
+  it('lets the files of a bundle whose name matches pass the search', () => {
+    const result = filterAndSortModels(models, [], { ...criteria, query: 'vase', bundleMatchIds: new Set(['1', '2']) });
+    expect(result.map(m => m.id)).toEqual(['1', '2']);
+  });
+
+  it('finds nothing by a bundle name when no bundle matches', () => {
+    expect(filterAndSortModels(models, [], { ...criteria, query: 'vase' })).toEqual([]);
+  });
+
+  it('keeps matching by the file name next to the bundle name', () => {
+    const result = filterAndSortModels(models, [], { ...criteria, query: 'other', bundleMatchIds: new Set(['1']) });
+    expect(result.map(m => m.id)).toEqual(['1', '3']);
+  });
+});

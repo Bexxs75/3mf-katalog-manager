@@ -9,6 +9,7 @@ import { useModelWindow } from '../hooks/useModelWindow';
 import { DragGrip } from './DragGrip';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ModelFile } from '../types';
+import type { BundleCard } from '../lib/bundles';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { formatPrintDuration, formatWeightG } from '../i18n/format';
@@ -21,6 +22,9 @@ import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { DRAG_THRESHOLD_PX, useDragThreshold } from '../hooks/useDragThreshold';
 import { useActivePrintFilter } from '../hooks/PrintFilterContext';
 import { PrintFactsExtra, printFactsExtraHeight } from './PrintFactsExtra';
+import { useBundleCardsSettings, useCardItems } from '../hooks/BundleCardsContext';
+import { BundleGridCard, PartOfChip, usePartOfText } from './BundleCardParts';
+import { cardNavId, cardSelectionState, cardToggleIds, isCardOpen } from '../lib/bundleCards';
 
 interface Props {
   models: ModelFile[];
@@ -95,9 +99,10 @@ function gcodePrintSeconds(model: ModelFile): number | null {
 }
 
 /** Accessible name of a card: the name and license, plus the file type for slicer output (the badge is only a picture to the eye). */
-function cardAriaLabel(model: ModelFile, t: ReturnType<typeof useT>): string {
+function cardAriaLabel(model: ModelFile, t: ReturnType<typeof useT>, partOf: string | null): string {
   const label = modelLicenseAriaLabel(displayName(model.name), model.license, t);
-  return fileKindOf(model) === 'gcode' ? `${label}, ${gcodeBadge(model.path)}` : label;
+  const named = fileKindOf(model) === 'gcode' ? `${label}, ${gcodeBadge(model.path)}` : label;
+  return partOf ? `${named}, ${partOf}` : named;
 }
 
 /** Type badge on the picture of slicer output; a model needs none. */
@@ -136,13 +141,17 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   // Only while a print data filter is active; then every card gets the same extra height.
   const printFilter = useActivePrintFilter();
   const extra = (comfort: boolean) => printFilter ? printFactsExtraHeight(comfort) : 0;
-  const ids = useMemo(() => models.map(model => model.id), [models]);
+  // A bundle shown as one card stands for its title model in the navigation order and the picture list.
+  const items = useCardItems(models);
+  const trash = useBundleCardsSettings()?.trash ?? false;
+  const partOfText = usePartOfText(trash);
+  const ids = useMemo(() => items.map(cardNavId), [items]);
   // Tiles keep one fixed width. A stretching row (1fr) hands the leftover width to the tiles,
   // so they grow and shrink every time the detail panel opens or the window changes.
   const fixedTileWidth = density === 'comfort' ? 232 : 190;
   const window = useModelWindow({ ids, containerRef, minWidth: fixedTileWidth, gap: 14,
     fallbackHeight: (density === 'comfort' ? 350 : 265) + extra(density === 'comfort'), disabled: reorderable || !windowed });
-  const visible = models.slice(window.startIndex, window.endIndex);
+  const visible = items.slice(window.startIndex, window.endIndex);
   const images = useModelImages(ids.slice(window.imageStartIndex, window.imageEndIndex));
   const imageFor = (model: ModelFile) => resolveDisplayImage(model, displayPreference, images.get(model.id));
 
@@ -208,13 +217,44 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
     ...selectionAria(m.id),
   });
 
-  function renderCompactCard(m: ModelFile, index: number) {
+  function renderBundleCard(card: BundleCard, index: number) {
+    const comfort = density === 'comfort';
+    const state = cardSelectionState(card, selectedForBulk);
+    const open = isCardOpen(card, selectedId);
+    // Selected means every member is in the batch selection; with no batch selection the open card counts.
+    const base = selectionAria(open && selectedId !== null ? selectedId : card.title.id);
+    const rowProps = {
+      role: 'row' as const,
+      'aria-rowindex': window.startIndex + index + 1,
+      'aria-selected': selectedForBulk.size > 0 ? state === 'all' : base['aria-selected'],
+      'aria-current': open ? ('true' as const) : undefined,
+    };
+    return (
+      <BundleGridCard
+        key={card.key}
+        card={card}
+        comfort={comfort}
+        rowProps={rowProps}
+        open={open}
+        image={imageFor(card.title)}
+        checked={state === 'all'}
+        readOnly={readOnly}
+        metadataHeight={comfort ? 124 + extra(true) : 88 + extra(false)}
+        onSelect={() => onSelect(card.title.id)}
+        onOpenDetail={() => onOpenDetail(card.title.id)}
+        onContextMenu={(x, y) => onContextMenu(card.title.id, x, y)}
+        onToggleChecked={() => cardToggleIds(card, selectedForBulk).forEach(onToggleBulkSelect)}
+      />
+    );
+  }
+
+  function renderCompactCard(m: ModelFile, index: number, partOf: string | null) {
     return (
       <div
         key={m.id}
         data-model-id={m.id}
         {...rowAria(m, index)}
-        aria-label={cardAriaLabel(m, t)}
+        aria-label={cardAriaLabel(m, t, partOf)}
         tabIndex={-1}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -300,7 +340,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             {displayName(m.name)}
           </div>
           <CardMeta model={m} comfort={false} />
-          <CardTags tags={m.tags} comfort={false} />
+          {partOf ? <PartOfChip text={partOf} comfort={false} /> : <CardTags tags={m.tags} comfort={false} />}
           {printFilter && <PrintFactsExtra model={m} filter={printFilter} comfort={false} />}
         </div>
       </div>
@@ -309,7 +349,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
 
   return (
     <div ref={window.rootRef} role="grid" data-catalog-grid aria-label={label ?? t('modelListLabel')} aria-multiselectable="true"
-      aria-rowcount={models.length} aria-colcount={2} style={{ visibility: window.measured ? 'visible' : 'hidden' }}>
+      aria-rowcount={items.length} aria-colcount={2} style={{ visibility: window.measured ? 'visible' : 'hidden' }}>
       {window.emptyHeight !== null ? <div data-window-spacer="empty" style={{ height: window.emptyHeight }} /> : <>
       <div data-window-spacer="top" aria-hidden="true" style={{ height: window.topSpacer }} />
     <div
@@ -319,13 +359,16 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         ? { gridTemplateColumns: `repeat(${window.columns}, minmax(0, ${fixedTileWidth}px))`, justifyContent: 'start' }
         : { gridTemplateColumns: `repeat(${window.columns}, minmax(0, 1fr))` }}
     >
-      {visible.map((m, index) =>
-        density === 'comfort' ? (
+      {visible.map((item, index) => {
+        if (item.type === 'bundle') return renderBundleCard(item, index);
+        const m = item.model;
+        const partOf = item.partOf ? partOfText(item.partOf.name) : null;
+        return density === 'comfort' ? (
           <div
             key={m.id}
             data-model-id={m.id}
             {...rowAria(m, index)}
-            aria-label={cardAriaLabel(m, t)}
+            aria-label={cardAriaLabel(m, t, partOf)}
             tabIndex={-1}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -405,14 +448,14 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 {displayName(m.name)}
               </div>
               <CardMeta model={m} comfort />
-              <CardTags tags={m.tags} comfort />
+              {partOf ? <PartOfChip text={partOf} comfort /> : <CardTags tags={m.tags} comfort />}
               {printFilter && <PrintFactsExtra model={m} filter={printFilter} comfort />}
             </div>
           </div>
         ) : (
-          renderCompactCard(m, index)
-        ),
-      )}
+          renderCompactCard(m, index, partOf)
+        );
+      })}
     </div>
       <div data-window-spacer="bottom" aria-hidden="true" style={{ height: window.bottomSpacer }} />
       </>}

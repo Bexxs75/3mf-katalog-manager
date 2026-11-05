@@ -71,6 +71,8 @@ import { licenseUsage } from './lib/licenses';
 import { modelMayFitBed } from './lib/buildPlateFit';
 import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
+import { useBundles } from './hooks/useBundles';
+import { loadBundleCollapse, saveBundleCollapse } from './lib/bundleCollapsePreference';
 import { EMPTY_FILTER, splitByPrintData } from './lib/printDataFilter';
 import { useCollections } from './hooks/useCollections';
 import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
@@ -111,7 +113,16 @@ export default function App() {
   const store = useCatalogStore({ detailModelId, preselectFirst: detailPanel === 'pinned' });
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
   const { language } = useLanguage();
-  const filters = useCatalogFilters(store.models, store.folders, language, printers.printers);
+  const { bundles, refreshBundles } = useBundles();
+  const [collapseBundles, setCollapseBundlesState] = useState(loadBundleCollapse);
+  const setCollapseBundles = useCallback((collapse: boolean) => { setCollapseBundlesState(collapse); saveBundleCollapse(collapse); }, []);
+  // The search also finds a bundle by its name, but only while the bundle is shown as a card.
+  const filters = useCatalogFilters(store.models, store.folders, language, printers.printers, collapseBundles ? bundles : undefined);
+  // Files that move into or out of the trash change which bundle members count; read the bundles again then.
+  const trashedCount = store.trashModels.length;
+  useEffect(() => {
+    refreshBundles().catch(error => console.error('[bundles] refresh failed:', error));
+  }, [refreshBundles, trashedCount, store.models.length]);
   const collections = useCollections();
   const collapsedFolders = useCollapsedFolders();
   const expansion = useFolderExpansion();
@@ -649,6 +660,7 @@ export default function App() {
               onRestore={store.restoreModel}
               onDeletePermanently={store.deleteModelPermanently}
               displayPreference={displayPreference}
+              bundles={bundles}
             />
           ) : mainView === 'catalog' ? (
             <CatalogWorkspace detailPanel={detailPanel} settingsPanel={settingsOpen ? renderSettingsPanel : undefined} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}
@@ -773,6 +785,10 @@ export default function App() {
               displayPreference={displayPreference}
               view={filters.view}
               sort={filters.sort}
+              sortDirection={filters.sortDirection}
+              bundles={bundles}
+              collapseBundles={collapseBundles}
+              setCollapseBundles={setCollapseBundles}
               filtered={displayedModels}
               collectionLoading={collections.collectionLoading}
               selectedId={store.selectedId}

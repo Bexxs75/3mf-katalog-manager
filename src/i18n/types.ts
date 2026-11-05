@@ -755,6 +755,21 @@ export interface Translations {
   columnSelect: string;
   selectionAnnounce: PluralForms;
   selectionCleared: string;
+  bundleCollapseToggle: string;
+  bundleCountVariants: PluralForms;
+  bundleCountVariantsPartial: PluralForms;
+  bundleCountParts: PluralForms;
+  bundleCountPartsPartial: PluralForms;
+  bundlePrintedOf: string;
+  bundlePrintedShown: string;
+  bundleCardAria: string;
+  bundlePartOf: string;
+  bundleWasPartOf: string;
+  bundleKindVariants: string;
+  bundleKindParts: string;
+  bundleExpand: string;
+  bundleCollapse: string;
+  bundleMemberRow: string;
   newBadge: string;
 
   filamentDialogTitle: string;
