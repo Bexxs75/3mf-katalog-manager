@@ -1,8 +1,11 @@
 //! STEP preview via Open CASCADE.
 //!
-//! Reads a STEP file into a TopoDS_Shape, tessellates it and builds ONE RenderMesh
-//! from it in the existing format (non-indexed, flat normals). Everything lives
-//! behind the `step-preview` feature; without it, STEP files are only cataloged.
+//! Reads a STEP file into a TopoDS_Shape, tessellates it and builds one RenderMesh
+//! per body from it in the existing format (non-indexed, flat normals). The OCCT part
+//! is deliberately small: it only delivers one triangle list per body; how the lists
+//! become parts (limit, collective part, mesh format) is decided in `crate::step_parts`,
+//! which is tested without the feature. Everything here lives behind the `step-preview`
+//! feature; without it, STEP files are only cataloged.
 
 pub mod mesh;
 pub mod props;
@@ -10,7 +13,10 @@ pub mod reader;
 
 use std::{fmt, path::Path};
 
+use opencascade_sys::{top_abs::TopAbs_ShapeEnum, top_exp::TopExp_Explorer_new, topo_ds::TopoDS_Shape};
+
 use crate::geometry::RenderMesh;
+use crate::step_parts::{bodies_to_meshes, MAX_PARTS};
 
 /// File size limit above which parsing isn't even attempted. Applies to
 /// metadata AND geometry, so an import over a very large file doesn't hang.
@@ -95,7 +101,51 @@ pub fn parse_step_file(path: &Path) -> Result<StepDocument, StepError> {
     })
 }
 
-/// Deliberately returns exactly one mesh for the whole file, even for assemblies.
+fn count_faces(shape: &TopoDS_Shape) -> usize {
+    let mut faces = TopExp_Explorer_new(shape, TopAbs_ShapeEnum::TopAbs_FACE);
+    let mut count = 0usize;
+    while faces.More() {
+        count += 1;
+        faces.pin_mut().Next();
+    }
+    count
+}
+
+/// One triangle list per SOLID body, in file order. Faces that belong to no solid
+/// (surface models, or loose faces next to solids) cannot be told apart per body here;
+/// then, and for files without solids, the whole shape stays ONE list as before.
+fn body_triangles(shape: &TopoDS_Shape, deflection: f64) -> Result<Vec<Vec<[f64; 3]>>, StepError> {
+    let mut bodies: Vec<Vec<[f64; 3]>> = Vec::new();
+    let mut triangles = 0usize;
+    let mut solid_faces = 0usize;
+    let mut solids = TopExp_Explorer_new(shape, TopAbs_ShapeEnum::TopAbs_SOLID);
+    while solids.More() {
+        let solid = solids.Current();
+        solid_faces += count_faces(solid);
+        // The limit applies to the whole file, so each body gets what is left.
+        match mesh::raw_triangles_limited(solid, deflection, MAX_TRIANGLES - triangles) {
+            Ok(list) => {
+                triangles += list.len() / 3;
+                bodies.push(list);
+            }
+            // An empty body (no face got a triangulation) is simply not a part.
+            Err(StepError::NoGeometry) => {}
+            Err(StepError::TooComplex { triangles: more, .. }) => {
+                return Err(StepError::TooComplex { triangles: triangles + more, limit: MAX_TRIANGLES })
+            }
+            Err(err) => return Err(err),
+        }
+        solids.pin_mut().Next();
+    }
+
+    if bodies.is_empty() || solid_faces != count_faces(shape) {
+        return Ok(vec![mesh::raw_triangles_limited(shape, deflection, MAX_TRIANGLES)?]);
+    }
+    Ok(bodies)
+}
+
+/// One mesh per body (at most [`MAX_PARTS`]; further bodies form one collective
+/// part). A file with a single body or without solids gives one mesh as before.
 pub fn parse_step_geometry(path: &Path) -> Result<Vec<RenderMesh>, StepError> {
     let bytes = std::fs::metadata(path).map_err(StepError::Io)?.len();
     check_size(bytes, MAX_PARSE_BYTES)?;
@@ -109,23 +159,23 @@ pub fn parse_step_geometry(path: &Path) -> Result<Vec<RenderMesh>, StepError> {
         .ok_or(StepError::NoGeometry)?;
 
     let deflection = mesh::deflection_for(diagonal);
-    let triangles = match mesh::raw_triangles_limited(&shape, deflection, MAX_TRIANGLES) {
-        Ok(triangles) => triangles,
+    let bodies = match body_triangles(&shape, deflection) {
+        Ok(bodies) => bodies,
         // A coarser second attempt is better for a preview than a complete failure on
         // a detailed assembly. OCCT only replaces an existing finer triangulation if the
         // requested precision needs it; so we read the shape fresh for the second attempt.
         Err(StepError::TooComplex { .. }) => {
             let shape = reader::read_shape(path)?;
-            mesh::raw_triangles_limited(
-                &shape,
-                deflection * RETRY_DEFLECTION_FACTOR,
-                MAX_TRIANGLES,
-            )?
+            body_triangles(&shape, deflection * RETRY_DEFLECTION_FACTOR)?
         }
         Err(err) => return Err(err),
     };
 
-    Ok(vec![mesh::to_render_mesh(&triangles)])
+    let meshes = bodies_to_meshes(bodies, MAX_PARTS);
+    if meshes.is_empty() {
+        return Err(StepError::NoGeometry);
+    }
+    Ok(meshes)
 }
 
 #[cfg(test)]
@@ -171,11 +221,29 @@ mod tests {
     fn parse_step_geometry_returns_one_usable_mesh_for_the_cube() {
         let meshes = parse_step_geometry(&fixture("wuerfel-10mm.step")).expect("geometry");
 
-        assert_eq!(meshes.len(), 1, "bewusst ein Mesh fuer die ganze Datei");
+        assert_eq!(meshes.len(), 1, "ein Koerper, ein Mesh");
         let mesh = &meshes[0];
         assert_eq!(mesh.positions.len(), 36, "12 Dreiecke, nicht indiziert");
         assert_eq!(mesh.indices.len(), 12);
         assert!(mesh.normals.is_some());
+    }
+
+    #[test]
+    fn parse_step_geometry_returns_one_mesh_per_body_with_the_offset_kept() {
+        let meshes = parse_step_geometry(&fixture("zwei-koerper.step")).expect("geometry");
+
+        assert_eq!(meshes.len(), 2, "zwei Koerper, zwei Meshes");
+        let min_x = |m: &RenderMesh| m.positions.iter().map(|p| p[0]).fold(f32::MAX, f32::min);
+        assert!(
+            (min_x(&meshes[0]) - min_x(&meshes[1])).abs() > 1.0,
+            "die Koerper liegen auseinander"
+        );
+        // Same triangles as the old single list, only split.
+        let whole = mesh::raw_triangles(&reader::read_shape(&fixture("zwei-koerper.step")).unwrap(), 0.01)
+            .unwrap()
+            .len()
+            / 3;
+        assert_eq!(meshes.iter().map(|m| m.indices.len()).sum::<usize>(), whole);
     }
 
     #[test]

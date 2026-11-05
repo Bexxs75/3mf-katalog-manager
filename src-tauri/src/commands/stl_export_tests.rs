@@ -150,3 +150,64 @@ fn plate_numbers_of_the_overview_select_the_same_meshes() {
     assert_eq!(offered, in_meshes);
     assert!(offered.len() > 1);
 }
+
+fn triangle_mesh(count: usize) -> RenderMesh {
+    let mut mesh = RenderMesh::default();
+    for i in 0..count {
+        let base = (i * 3) as u32;
+        mesh.positions.extend([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, i as f32]]);
+        mesh.indices.push([base, base + 1, base + 2]);
+    }
+    mesh
+}
+
+#[test]
+fn part_files_are_numbered_by_list_position_and_padded_to_the_count() {
+    assert_eq!(part_file_name("Getriebe", 0, 12), "Getriebe_Teil01.stl");
+    assert_eq!(part_file_name("Getriebe", 11, 12), "Getriebe_Teil12.stl");
+    assert_eq!(part_file_name("Getriebe", 2, 9), "Getriebe_Teil3.stl");
+    assert_eq!(part_file_name("a", 255, 256), "a_Teil256.stl");
+}
+
+#[test]
+fn each_part_is_written_to_its_own_file_and_empty_parts_are_skipped() {
+    let dir = unique_test_dir("stl_each_part");
+    let meshes = vec![triangle_mesh(2), RenderMesh::default(), triangle_mesh(5)];
+    let (files, triangles) = write_each_part(&meshes, Path::new("/nowhere/Baugruppe.step"), &dir).unwrap();
+    assert_eq!((files, triangles), (2, 7));
+    // The number is the position in the parts list: part 2 is empty, so there is no Teil2.
+    assert_eq!(names(&dir), vec!["Baugruppe_Teil1.stl", "Baugruppe_Teil3.stl"]);
+    assert_eq!(triangles_in(&dir.join("Baugruppe_Teil1.stl")), 2);
+    assert_eq!(triangles_in(&dir.join("Baugruppe_Teil3.stl")), 5);
+}
+
+#[test]
+fn each_part_writes_nothing_when_one_target_already_exists() {
+    let dir = unique_test_dir("stl_each_part_exists");
+    std::fs::write(dir.join("Teile_Teil2.stl"), b"do not touch").unwrap();
+    let meshes = vec![triangle_mesh(1), triangle_mesh(1)];
+    let error = write_each_part(&meshes, Path::new("/nowhere/Teile.step"), &dir).unwrap_err();
+    assert!(error.is(ErrorCode::StlTargetExists, &["Teile_Teil2.stl"]), "{error:?}");
+    assert_eq!(names(&dir), vec!["Teile_Teil2.stl"]);
+    assert_eq!(std::fs::read(dir.join("Teile_Teil2.stl")).unwrap(), b"do not touch");
+}
+
+#[test]
+fn each_part_without_any_triangles_is_nothing_to_export() {
+    let dir = unique_test_dir("stl_each_part_empty");
+    let error = write_each_part(&[RenderMesh::default()], Path::new("/nowhere/x.step"), &dir).unwrap_err();
+    assert!(error.is(ErrorCode::StlNothingToExport, &[]), "{error:?}");
+}
+
+#[test]
+fn a_single_target_write_refuses_the_each_part_scope() {
+    let dir = unique_test_dir("stl_each_part_single");
+    let error = write_stl_export(&fixture("creality-3plates.3mf"), &StlExportScope::EachPart, &dir.join("x.stl")).unwrap_err();
+    assert!(error.is(ErrorCode::ReqInvalidArguments, &[]), "{error:?}");
+}
+
+#[test]
+fn the_each_part_scope_comes_from_the_interface_as_a_plain_kind() {
+    let scope: StlExportScope = serde_json::from_str(r#"{"kind":"eachPart"}"#).unwrap();
+    assert_eq!(scope, StlExportScope::EachPart);
+}

@@ -6,6 +6,7 @@ pub mod stl;
 pub mod obj;
 #[cfg(feature = "step-preview")]
 pub mod step;
+pub mod step_parts;
 pub mod archive;
 pub mod geometry;
 pub mod safe_file;

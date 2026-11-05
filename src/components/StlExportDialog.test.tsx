@@ -20,7 +20,7 @@ const showFolder = vi.mocked(stlApi.showFolderInFileManager);
 const readPlateOverview = vi.mocked(filesApi.readPlateOverview);
 const hasStepPreview = vi.mocked(stepApi.hasStepPreview);
 
-const saved = { name: 'Box.stl', folder: '/lib', triangles: 12, inCatalogFolder: false };
+const saved = { name: 'Box.stl', folder: '/lib', triangles: 12, fileCount: 1, inCatalogFolder: false };
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');

@@ -1,10 +1,11 @@
 import { invoke } from '../transport';
 
-/** Which part of the model is written; the dialog offers everything or one plate. */
+/** Which part of the model is written: everything, one plate, chosen parts, or one file per part (target = folder). */
 export type StlScope =
   | { kind: 'all' }
   | { kind: 'plate'; number: number }
-  | { kind: 'parts'; indices: number[] };
+  | { kind: 'parts'; indices: number[] }
+  | { kind: 'eachPart' };
 
 export interface StlExportResult {
   /** File name of the new STL. */
@@ -12,6 +13,8 @@ export interface StlExportResult {
   /** Folder it was written to. */
   folder: string;
   triangles: number;
+  /** How many STL files were written (more than one only for `eachPart`). */
+  fileCount: number;
   /** The folder lies inside the catalog folder, so "Sync with disk" will find the file. */
   inCatalogFolder: boolean;
 }

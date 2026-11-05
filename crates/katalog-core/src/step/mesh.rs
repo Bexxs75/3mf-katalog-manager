@@ -10,7 +10,7 @@ use opencascade_sys::{
     topo_ds::{TopoDS, TopoDS_Shape},
 };
 
-use crate::geometry::{compute_flat_normals, RenderMesh};
+use crate::geometry::RenderMesh;
 
 use super::{StepError, DEFLECTION_DIVISOR, DEFLECTION_MIN_MM};
 
@@ -49,7 +49,7 @@ pub(crate) fn raw_triangles_limited(
         faces.pin_mut().Next();
     }
 
-    // Deliberately only ONE mesh for the whole file, even with several bodies.
+    // One triangle list for exactly the given shape (the caller passes the whole file or one body).
     let mesh = IncrementalMesh_new(shape, deflection);
     if !mesh.IsDone() {
         return Err(StepError::TessellationFailed);
@@ -104,26 +104,10 @@ pub(crate) fn raw_triangles_limited(
     Ok(positions)
 }
 
-/// Triangle list -> RenderMesh: the positions already are the triangle corners,
-/// so the indices are trivial; the normals come from the existing flat normal
-/// computation.
+/// Triangle list -> RenderMesh (the format itself lives in `step_parts`, which the
+/// standard test run also covers).
 pub fn to_render_mesh(positions: &[[f64; 3]]) -> RenderMesh {
-    let indices: Vec<[u32; 3]> = (0..positions.len() / 3)
-        .map(|i| {
-            let base = (i * 3) as u32;
-            [base, base + 1, base + 2]
-        })
-        .collect();
-
-    RenderMesh {
-        positions: positions
-            .iter()
-            .map(|p| [p[0] as f32, p[1] as f32, p[2] as f32])
-            .collect(),
-        normals: Some(compute_flat_normals(positions, &indices)),
-        indices,
-        ..Default::default()
-    }
+    crate::step_parts::triangles_to_mesh(positions)
 }
 
 #[cfg(test)]
