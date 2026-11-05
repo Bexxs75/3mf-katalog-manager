@@ -245,6 +245,29 @@ mod tests {
     }
 
     #[test]
+    fn an_update_backup_never_carries_the_key_of_a_printer() {
+        const KEY: &str = "PRKEY0123456789abcdef0123456789";
+        let dir = tmp("no-printer-key");
+        let work = dir.join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let db_path = work.join("catalog.db");
+        let conn = crate::db::connect(&db_path).unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'Sovol SV08', 0)", []).unwrap();
+        let key = crate::printer_link::api_key::ApiKey::parse(KEY).unwrap();
+        crate::db::printer_link::save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", Some(&key), "", "", 1.0).unwrap();
+        let has_key = |p: &Path| std::fs::read(p).unwrap().windows(KEY.len()).any(|w| w == KEY.as_bytes());
+        assert!(has_key(&db_path), "precondition: the working database holds the key");
+        let copy = create(&conn, &dir.join("backups"), "0.17.1", "0.18.0").unwrap();
+        assert!(!has_key(&copy), "the key is in the bytes of the update backup");
+        let restored = Connection::open(&copy).unwrap();
+        let connection = crate::db::printer_link::get_connection(&restored, 1).unwrap().unwrap();
+        assert_eq!(connection.address, "192.168.1.60");
+        assert!(!connection.has_api_key);
+        assert!(has_key(&db_path));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn backup_names_are_read_back_and_look_alikes_are_refused() {
         let update = parse_backup_name("Katalog-Sicherung_2026-11-03_1432_vor-Update_0.17.1_auf_0.18.0.db").unwrap();
         assert_eq!((update.from_version.as_deref(), update.to_version.as_deref()), (Some("0.17.1"), Some("0.18.0")));

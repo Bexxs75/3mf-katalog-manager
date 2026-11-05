@@ -9,6 +9,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
+use super::api_key::ApiKey;
 use super::{LinkError, PrinterLink};
 use crate::db::error::DbError;
 use crate::db::printer_link as store;
@@ -22,7 +23,7 @@ pub const MAX_PARALLEL: usize = 4;
 /// passes (printer restarting, Wi-Fi hiccup).
 const RETRY_PAUSES: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(5)];
 
-pub type LinkMaker = dyn Fn(&str, &str) -> Result<Box<dyn PrinterLink>, LinkError> + Send + Sync;
+pub type LinkMaker = dyn Fn(&str, &str, Option<&ApiKey>) -> Result<Box<dyn PrinterLink>, LinkError> + Send + Sync;
 
 pub fn unix_now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
@@ -59,6 +60,7 @@ struct PlanItem {
     printer_id: i64,
     kind: String,
     address: String,
+    api_key: Option<ApiKey>,
     since: f64,
 }
 
@@ -84,7 +86,8 @@ pub fn sync_with(db: &Mutex<Connection>, make: &LinkMaker, now: f64, options: &S
                 continue;
             }
             let since = store::sync_from(&conn, c.printer_id, now)?;
-            plan.push(PlanItem { printer_id: c.printer_id, kind: c.kind, address: c.address, since });
+            let api_key = store::get_api_key(&conn, c.printer_id)?;
+            plan.push(PlanItem { printer_id: c.printer_id, kind: c.kind, address: c.address, api_key, since });
         }
         (plan, waiting)
     };
@@ -184,7 +187,7 @@ fn sync_printer(
     let deadline = Instant::now() + options.printer_budget;
     let mut repetition = 0;
     let result = loop {
-        let attempt = make(&item.kind, &item.address).and_then(|mut link| {
+        let attempt = make(&item.kind, &item.address, item.api_key.as_ref()).and_then(|mut link| {
             link.set_deadline(deadline);
             let info = link.test()?;
             let jobs = link.jobs_ended_since(&info, item.since)?;
@@ -300,12 +303,12 @@ mod tests {
     fn db_with_connection(address: &str, connected_since: f64) -> Mutex<Connection> {
         let conn = crate::db::connect_in_memory().unwrap();
         conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'Sovol SV08', 0)", []).unwrap();
-        save_connection_after_test(&conn, 1, "moonraker", address, "", "", connected_since).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", address, None, "", "", connected_since).unwrap();
         Mutex::new(conn)
     }
 
     fn test_maker() -> Box<LinkMaker> {
-        Box::new(|kind: &str, address: &str| crate::printer_link::make_link(kind, address, AddressPolicy::TEST))
+        Box::new(|kind: &str, address: &str, key: Option<&ApiKey>| crate::printer_link::make_link(kind, address, key, AddressPolicy::TEST))
     }
 
     struct BoundedHistory;
@@ -332,12 +335,12 @@ mod tests {
     fn bounded_batches_keep_tied_end_times_without_sockets() {
         let db = db_with_connection("printer", 0.0);
         set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
-        let make: Box<LinkMaker> = Box::new(|_, _| Ok(Box::new(BoundedHistory)));
+        let make: Box<LinkMaker> = Box::new(|_, _, _| Ok(Box::new(BoundedHistory)));
         for expected in [200, 200, 100] {
             assert_eq!(sync_once(&db, &*make, 2000.0).unwrap(), expected);
         }
         // Once full, the preflight must explain the limit without contacting the printer.
-        let never_contact: Box<LinkMaker> = Box::new(|_, _| panic!("full queue contacted printer"));
+        let never_contact: Box<LinkMaker> = Box::new(|_, _, _| panic!("full queue contacted printer"));
         assert_eq!(sync_once(&db, &*never_contact, 2001.0).unwrap(), 0);
         let conn = db.lock().unwrap();
         let jobs = list_open_jobs(&conn).unwrap();
@@ -362,7 +365,7 @@ mod tests {
         {
             let conn = db.lock().unwrap();
             conn.execute("INSERT INTO printers (id, name, position) VALUES (2, 'B', 1)", []).unwrap();
-            save_connection_after_test(&conn, 2, "moonraker", &server.address(), "", "", 0.0).unwrap();
+            save_connection_after_test(&conn, 2, "moonraker", &server.address(), None, "", "", 0.0).unwrap();
             set_printer_link_enabled(&conn, true).unwrap();
         }
         assert_eq!(sync_once(&db, &*test_maker(), 2000.0).unwrap(), MAX_NEW_JOBS);
@@ -461,6 +464,56 @@ mod tests {
         assert_eq!(server.requests().len(), before);
     }
 
+    /// A printer with the login on: it answers only to its own key.
+    fn locked_server(expected: &'static str) -> FakeServer {
+        FakeServer::start_replying(move |request| {
+            if request.header("x-api-key") != Some(expected) {
+                return Reply::Answer(401, b"{}".to_vec());
+            }
+            let path = request.target.split('?').next().unwrap_or("");
+            match path {
+                "/server/info" => Reply::Answer(200, crate::printer_link::fake_moonraker::fixture_bytes("server_info_v0_8_0_209.json")),
+                "/server/history/list" => Reply::Answer(200, crate::printer_link::fake_moonraker::fixture_bytes("history_completed.json")),
+                _ => Reply::Answer(404, b"{}".to_vec()),
+            }
+        })
+    }
+
+    #[test]
+    fn the_stored_key_is_used_by_the_pass() {
+        const KEY: &str = "0123456789abcdef0123456789abcdef";
+        let server = locked_server(KEY);
+        let db = db_with_connection(&server.address(), 0.0);
+        {
+            let conn = db.lock().unwrap();
+            save_connection_after_test(&conn, 1, "moonraker", &server.address(), Some(&ApiKey::parse(KEY).unwrap()), "", "", 0.0).unwrap();
+            set_printer_link_enabled(&conn, true).unwrap();
+        }
+        sync_once(&db, &*test_maker(), 1e10).unwrap();
+        let c = get_connection(&db.lock().unwrap(), 1).unwrap().unwrap();
+        assert_eq!((c.last_error, c.paused), (None, false), "the key did not reach the printer");
+        assert!(c.last_synced_at.is_some());
+    }
+
+    #[test]
+    fn a_wrong_stored_key_ends_in_a_paused_connection_with_its_own_error() {
+        let server = locked_server("0123456789abcdef0123456789abcdef");
+        let db = db_with_connection(&server.address(), 0.0);
+        {
+            let conn = db.lock().unwrap();
+            let wrong = ApiKey::parse("ffffffffffffffffffffffffffffffff").unwrap();
+            save_connection_after_test(&conn, 1, "moonraker", &server.address(), Some(&wrong), "", "", 0.0).unwrap();
+            set_printer_link_enabled(&conn, true).unwrap();
+        }
+        sync_once(&db, &*test_maker(), 5.0).unwrap();
+        let c = get_connection(&db.lock().unwrap(), 1).unwrap().unwrap();
+        assert_eq!(c.last_error.as_deref(), Some("auth_rejected"));
+        assert!(c.paused);
+        let before = server.requests().len();
+        sync_once(&db, &*test_maker(), 6.0).unwrap();
+        assert_eq!(server.requests().len(), before, "a paused connection is not asked again");
+    }
+
     #[test]
     fn a_running_print_is_taken_once_it_has_ended() {
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -511,17 +564,17 @@ mod tests {
         let conn = crate::db::connect_in_memory().unwrap();
         conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'A', 0)", []).unwrap();
         conn.execute("INSERT INTO printers (id, name, position) VALUES (2, 'B', 1)", []).unwrap();
-        save_connection_after_test(&conn, 1, "moonraker", "printer-1", "", "", 0.0).unwrap();
-        save_connection_after_test(&conn, 2, "moonraker", &server2.address(), "", "", 0.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "printer-1", None, "", "", 0.0).unwrap();
+        save_connection_after_test(&conn, 2, "moonraker", &server2.address(), None, "", "", 0.0).unwrap();
         set_printer_link_enabled(&conn, true).unwrap();
         let db = Arc::new(Mutex::new(conn));
         let maker_db = db.clone();
 
-        let maker: Box<LinkMaker> = Box::new(move |kind: &str, address: &str| {
+        let maker: Box<LinkMaker> = Box::new(move |kind: &str, address: &str, key: Option<&ApiKey>| {
             if address == "printer-1" {
                 Ok(Box::new(SwitchOffOnTest { db: maker_db.clone() }) as Box<dyn PrinterLink>)
             } else {
-                crate::printer_link::make_link(kind, address, AddressPolicy::TEST)
+                crate::printer_link::make_link(kind, address, key, AddressPolicy::TEST)
             }
         });
 
@@ -567,12 +620,12 @@ mod tests {
     fn connection_removed_during_the_network_call_is_not_written_to() {
         let conn = crate::db::connect_in_memory().unwrap();
         conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'A', 0)", []).unwrap();
-        save_connection_after_test(&conn, 1, "moonraker", "printer-1", "", "", 0.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "printer-1", None, "", "", 0.0).unwrap();
         set_printer_link_enabled(&conn, true).unwrap();
         let db = Arc::new(Mutex::new(conn));
         let maker_db = db.clone();
 
-        let maker: Box<LinkMaker> = Box::new(move |_kind: &str, _address: &str| {
+        let maker: Box<LinkMaker> = Box::new(move |_kind: &str, _address: &str, _key: Option<&ApiKey>| {
             Ok(Box::new(DeleteSelfOnTest { db: maker_db.clone(), printer_id: 1 }) as Box<dyn PrinterLink>)
         });
 
@@ -633,6 +686,7 @@ mod tests {
     fn failures_that_need_the_user_are_never_repeated() {
         for (error, expected) in [
             (LinkError::AuthRequired, "auth_required"),
+            (LinkError::AuthRejected, "auth_rejected"),
             (LinkError::HistoryMissing, "history_missing"),
             (LinkError::AddressNotAllowed, "address_not_allowed"),
             (LinkError::BadResponse("x".into()), "bad_response"),
@@ -641,7 +695,7 @@ mod tests {
             let tries = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let counted = tries.clone();
             let failing = error.clone();
-            let make: Box<LinkMaker> = Box::new(move |_, _| {
+            let make: Box<LinkMaker> = Box::new(move |_, _, _| {
                 counted.fetch_add(1, Ordering::SeqCst);
                 Err(failing.clone())
             });
@@ -741,7 +795,7 @@ mod tests {
         let conn = crate::db::connect_in_memory().unwrap();
         for id in 1..=count {
             conn.execute("INSERT INTO printers (id, name, position) VALUES (?1, ?2, ?1)", rusqlite::params![id, format!("P{id}")]).unwrap();
-            save_connection_after_test(&conn, id, "moonraker", &format!("printer-{id}"), "", "", 0.0).unwrap();
+            save_connection_after_test(&conn, id, "moonraker", &format!("printer-{id}"), None, "", "", 0.0).unwrap();
         }
         set_printer_link_enabled(&conn, true).unwrap();
         Mutex::new(conn)
@@ -752,7 +806,7 @@ mod tests {
         let gate = std::sync::Arc::new((Mutex::new(0usize), std::sync::Condvar::new()));
         let peak = std::sync::Arc::new(AtomicUsize::new(0));
         let (g, p) = (gate.clone(), peak.clone());
-        let make: Box<LinkMaker> = Box::new(move |_, _| {
+        let make: Box<LinkMaker> = Box::new(move |_, _, _| {
             Ok(Box::new(MeetingLink { gate: g.clone(), peak: p.clone(), wait_for: printers.min(max_parallel as i64) as usize }) as Box<dyn PrinterLink>)
         });
         sync_with(&db, &*make, 10.0, &SyncOptions { max_parallel, ..quick() }).unwrap();
@@ -786,12 +840,12 @@ mod tests {
         let conn = crate::db::connect_in_memory().unwrap();
         for (id, address) in [(1, slow.address()), (2, fast.address())] {
             conn.execute("INSERT INTO printers (id, name, position) VALUES (?1, ?2, ?1)", rusqlite::params![id, format!("P{id}")]).unwrap();
-            save_connection_after_test(&conn, id, "moonraker", &address, "", "", 1_788_970_000.0).unwrap();
+            save_connection_after_test(&conn, id, "moonraker", &address, None, "", "", 1_788_970_000.0).unwrap();
         }
         set_printer_link_enabled(&conn, true).unwrap();
         let db = Mutex::new(conn);
         // The slow printer needs its whole time limit; the fast one is done long before.
-        let make: Box<LinkMaker> = Box::new(|_kind: &str, address: &str| {
+        let make: Box<LinkMaker> = Box::new(|_kind: &str, address: &str, _key: Option<&ApiKey>| {
             let link = crate::printer_link::moonraker::MoonrakerLink::new_with_timeout(address, AddressPolicy::TEST, Duration::from_millis(700));
             Ok(Box::new(link) as Box<dyn PrinterLink>)
         });
@@ -843,7 +897,7 @@ mod tests {
         let db = std::sync::Arc::new(db_with_printers(2));
         let free = std::sync::Arc::new(AtomicBool::new(false));
         let (d, f) = (db.clone(), free.clone());
-        let make: Box<LinkMaker> = Box::new(move |_, _| Ok(Box::new(LockProbe { db: d.clone(), free: f.clone() }) as Box<dyn PrinterLink>));
+        let make: Box<LinkMaker> = Box::new(move |_, _, _| Ok(Box::new(LockProbe { db: d.clone(), free: f.clone() }) as Box<dyn PrinterLink>));
         sync_with(&db, &*make, 10.0, &quick()).unwrap();
         assert!(free.load(Ordering::SeqCst));
     }
@@ -873,7 +927,7 @@ mod tests {
         let db = db_with_printers(1);
         let seen = std::sync::Arc::new(Mutex::new(None));
         let s = seen.clone();
-        let make: Box<LinkMaker> = Box::new(move |_, _| Ok(Box::new(DeadlineProbe { seen: s.clone() }) as Box<dyn PrinterLink>));
+        let make: Box<LinkMaker> = Box::new(move |_, _, _| Ok(Box::new(DeadlineProbe { seen: s.clone() }) as Box<dyn PrinterLink>));
         let before = Instant::now();
         sync_with(&db, &*make, 10.0, &SyncOptions { printer_budget: Duration::from_secs(30), ..quick() }).unwrap();
         let deadline = seen.lock().unwrap().expect("a deadline was handed over");
@@ -885,7 +939,7 @@ mod tests {
         let db = std::sync::Arc::new(db_with_printers(1));
         let tries = std::sync::Arc::new(AtomicUsize::new(0));
         let (d, t) = (db.clone(), tries.clone());
-        let make: Box<LinkMaker> = Box::new(move |_, _| {
+        let make: Box<LinkMaker> = Box::new(move |_, _, _| {
             // The first try fails and switches the connection off while the pass waits to repeat it.
             if t.fetch_add(1, Ordering::SeqCst) == 0 {
                 set_printer_link_enabled(&d.lock().unwrap(), false).unwrap();
@@ -901,7 +955,7 @@ mod tests {
         let db = db_with_printers(1);
         let tries = std::sync::Arc::new(AtomicUsize::new(0));
         let t = tries.clone();
-        let make: Box<LinkMaker> = Box::new(move |_, _| {
+        let make: Box<LinkMaker> = Box::new(move |_, _, _| {
             t.fetch_add(1, Ordering::SeqCst);
             Err(LinkError::Timeout)
         });

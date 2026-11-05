@@ -3,6 +3,7 @@
 //! confirmation. Home network only, read-only requests, off by default.
 
 pub mod address;
+pub mod api_key;
 pub mod booking;
 pub mod matching;
 pub mod moonraker;
@@ -72,6 +73,8 @@ pub enum LinkError {
     ContainerLocalName,
     ContainerLoopback,
     AuthRequired,
+    /// The printer answered 401/403 although a key was sent.
+    AuthRejected,
     BadResponse(String),
     HistoryMissing,
     AddressNotAllowed,
@@ -90,6 +93,7 @@ impl LinkError {
             LinkError::ContainerLocalName => "container_local_name",
             LinkError::ContainerLoopback => "container_loopback",
             LinkError::AuthRequired => "auth_required",
+            LinkError::AuthRejected => "auth_rejected",
             LinkError::BadResponse(_) => "bad_response",
             LinkError::HistoryMissing => "history_missing",
             LinkError::AddressNotAllowed => "address_not_allowed",
@@ -121,9 +125,14 @@ pub trait PrinterLink: Send {
     fn set_deadline(&mut self, _deadline: std::time::Instant) {}
 }
 
-pub fn make_link(kind: &str, address: &str, policy: address::AddressPolicy) -> Result<Box<dyn PrinterLink>, LinkError> {
+pub fn make_link(
+    kind: &str,
+    address: &str,
+    api_key: Option<&api_key::ApiKey>,
+    policy: address::AddressPolicy,
+) -> Result<Box<dyn PrinterLink>, LinkError> {
     match kind {
-        KIND_MOONRAKER => Ok(Box::new(moonraker::MoonrakerLink::try_new(address, policy)?)),
+        KIND_MOONRAKER => Ok(Box::new(moonraker::MoonrakerLink::try_new(address, api_key.cloned(), policy)?)),
         other => Err(LinkError::BadResponse(format!("unbekannter Druckertyp {other}"))),
     }
 }

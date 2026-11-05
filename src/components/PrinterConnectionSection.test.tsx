@@ -12,6 +12,7 @@ function link(testResult: unknown): PrinterLinkState {
   return {
     enabled: true, connections: [], jobs: [], error: null, refresh: vi.fn(), setEnabled: vi.fn(),
     testConnection: vi.fn().mockResolvedValue(testResult), removeConnection: vi.fn().mockResolvedValue(undefined),
+    clearApiKey: vi.fn().mockResolvedValue(undefined),
     syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
   } as unknown as PrinterLinkState;
 }
@@ -20,6 +21,9 @@ const okConnection: PrinterConnection = {
   printerId: '1', kind: 'moonraker', address: '192.168.1.60', baseUrl: 'http://192.168.1.60',
   remoteVersion: 'v0.8.0-209', connectedSince: 1790271120, lastSyncedAt: null, lastError: null, errorSince: null, paused: false, clockOffsetS: 0,
 };
+
+/** The test button in every language (the key field has a second button, so a bare role query is ambiguous). */
+const connectButton = /^(Verbindung (testen|einrichten)|Test connection|Set up connection|Probar conexión|Configurar conexión|Tester la connexion|Configurer la connexion)$/;
 
 function renderIt(l: PrinterLinkState, connection: PrinterConnection | null = null) {
   return render(<LanguageProvider><PrinterConnectionSection printerId="1" connection={connection} link={l} /></LanguageProvider>);
@@ -31,7 +35,7 @@ describe('PrinterConnectionSection', () => {
     renderIt(l);
     fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '192.168.1.60' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
-    expect(l.testConnection).toHaveBeenCalledWith('1', '192.168.1.60');
+    expect(l.testConnection).toHaveBeenCalledWith('1', '192.168.1.60', null);
     expect(screen.getByText('Verbunden')).toBeInTheDocument();
     expect(screen.getByText(/v0\.8\.0-209 · Port 80/)).toBeInTheDocument();
   });
@@ -45,7 +49,9 @@ describe('PrinterConnectionSection', () => {
     ['name_resolution_failed', /Der Name „10.0.0.9“ konnte nicht aufgelöst werden/],
     ['container_local_name', /\*\.local.*IP/],
     ['container_loopback', /Nur Adressen im Heimnetz.*host.docker.internal:host-gateway/],
-    ['auth_required', /Anmeldung nötig/],
+    ['auth_required', /Anmeldung nötig.*Feld „API-Schlüssel“/],
+    ['auth_rejected', /API-Schlüssel wurde abgelehnt/],
+    ['api_key_invalid', /keine Leerzeichen, Umlaute/],
     ['address_not_allowed', /Nur Adressen im Heimnetz/],
     ['history_missing', /Druckhistorie ist am Drucker nicht eingeschaltet/],
     ['disabled', /Die Druckeranbindung ist ausgeschaltet/],
@@ -77,7 +83,7 @@ describe('PrinterConnectionSection', () => {
   });
 
   it('keeps the red alarm for an error that needs the user and for a printer gone for a day', () => {
-    for (const lastError of ['auth_required', 'timeout'] as const) {
+    for (const lastError of ['auth_required', 'auth_rejected', 'timeout'] as const) {
       const c: PrinterConnection = { ...okConnection, lastError, errorSince: 1, failures: 9, status: 'error' };
       const { unmount } = renderIt(link(null), c);
       expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -90,6 +96,77 @@ describe('PrinterConnectionSection', () => {
     renderIt(link({ ok: false, error: 'connection_refused', connection: null }), c);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung testen/ })));
     expect(screen.getByRole('alert')).toHaveTextContent('Läuft Moonraker?');
+  });
+
+  describe('API key', () => {
+    const keyField = () => screen.getByLabelText('API-Schlüssel') as HTMLInputElement;
+
+    it('is a hidden field that can be shown, with the promise about backups next to it', () => {
+      renderIt(link(null));
+      expect(keyField().type).toBe('password');
+      expect(keyField().autocomplete).toBe('off');
+      expect(keyField()).toHaveAttribute('placeholder', 'Nur nötig, wenn dein Drucker eine Anmeldung verlangt');
+      expect(screen.getByText('Der Schlüssel liegt nur auf diesem Rechner und wird nicht in Sicherungen gespeichert.')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Anzeigen' }));
+      expect(keyField().type).toBe('text');
+      fireEvent.click(screen.getByRole('button', { name: 'Verbergen' }));
+      expect(keyField().type).toBe('password');
+    });
+
+    it('sends what was typed with the test and empties the field once the key is saved', async () => {
+      const saved: PrinterConnection = { ...okConnection, hasApiKey: true };
+      const l = link({ ok: true, error: null, connection: saved });
+      renderIt(l);
+      fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '192.168.1.60' } });
+      fireEvent.change(keyField(), { target: { value: '  0123456789abcdef  ' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
+      expect(l.testConnection).toHaveBeenCalledWith('1', '192.168.1.60', '0123456789abcdef');
+      expect(screen.getByText('Schlüssel gespeichert')).toBeInTheDocument();
+      expect(screen.queryByLabelText('API-Schlüssel')).toBeNull();
+      expect(document.body.innerHTML).not.toContain('0123456789abcdef');
+    });
+
+    it('never puts a stored key into the field: it shows only that one exists', () => {
+      renderIt(link(null), { ...okConnection, hasApiKey: true });
+      expect(screen.getByText('Schlüssel gespeichert')).toBeInTheDocument();
+      expect(screen.queryByLabelText('API-Schlüssel')).toBeNull();
+      expect(document.querySelectorAll('input[type=password]')).toHaveLength(0);
+    });
+
+    it('tests with the stored key when nothing is typed', async () => {
+      const l = link({ ok: true, error: null, connection: { ...okConnection, hasApiKey: true } });
+      renderIt(l, { ...okConnection, hasApiKey: true });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung testen/ })));
+      expect(l.testConnection).toHaveBeenCalledWith('1', '192.168.1.60', null);
+    });
+
+    it('replaces a stored key through an empty field', async () => {
+      const l = link({ ok: true, error: null, connection: { ...okConnection, hasApiKey: true } });
+      renderIt(l, { ...okConnection, hasApiKey: true });
+      fireEvent.click(screen.getByRole('button', { name: 'Ersetzen' }));
+      expect(keyField().value).toBe('');
+      fireEvent.change(keyField(), { target: { value: 'ffffffffffffffff' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung testen/ })));
+      expect(l.testConnection).toHaveBeenCalledWith('1', '192.168.1.60', 'ffffffffffffffff');
+    });
+
+    it('removes a stored key and offers the empty field again', async () => {
+      const l = link(null);
+      renderIt(l, { ...okConnection, hasApiKey: true });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Entfernen' })));
+      expect(l.clearApiKey).toHaveBeenCalledWith('1');
+      expect(keyField().value).toBe('');
+    });
+
+    it('keeps the typed key in the field when the test fails, so the user can correct it', async () => {
+      const l = link({ ok: false, error: 'auth_rejected', connection: null });
+      renderIt(l);
+      fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '192.168.1.60' } });
+      fireEvent.change(keyField(), { target: { value: 'wrongwrongwrong' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
+      expect(screen.getByRole('alert')).toHaveTextContent('API-Schlüssel wurde abgelehnt');
+      expect(keyField().value).toBe('wrongwrongwrong');
+    });
   });
 
   it('removes an existing connection', async () => {
@@ -236,7 +313,7 @@ it.each([
   ] as const) {
     const view = renderIt(link({ ok: false, error: code, connection: null }));
     fireEvent.change(screen.getByPlaceholderText('192.168.1.60'), { target: { value: 'printer.invalid:7125' } });
-    await act(async () => fireEvent.click(screen.getByRole('button')));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: connectButton })));
     expect(screen.getByRole('alert')).toHaveTextContent(pattern as RegExp);
     if (code === 'name_resolution_failed') {
       expect(screen.getByRole('alert')).toHaveTextContent('printer.invalid');
@@ -254,7 +331,7 @@ it('keeps DNS errors tied to the tested host when the input changes', async () =
   renderIt(l);
   const input = screen.getByPlaceholderText('192.168.1.60');
   fireEvent.change(input, { target: { value: 'old.invalid:7125' } });
-  fireEvent.click(screen.getByRole('button'));
+  fireEvent.click(screen.getByRole('button', { name: connectButton }));
   fireEvent.change(input, { target: { value: 'new.invalid' } });
   await act(async () => finish({ ok: false, error: 'name_resolution_failed', connection: null }));
   expect(screen.getByRole('alert')).toHaveTextContent('„old.invalid“');

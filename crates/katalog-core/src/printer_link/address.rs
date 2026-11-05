@@ -172,6 +172,7 @@ mod tests {
         assert_eq!(resolve("http://printer.invalid", AddressPolicy::HOME_NETWORK), Err(LinkError::AddressNotAllowed));
         assert_eq!(LinkError::Unreachable.code(), "unreachable");
         assert_eq!(LinkError::AuthRequired.code(), "auth_required");
+        assert_eq!(LinkError::AuthRejected.code(), "auth_rejected");
         assert_eq!(LinkError::BadResponse("x".into()).code(), "bad_response");
         assert_eq!(LinkError::HistoryMissing.code(), "history_missing");
     }

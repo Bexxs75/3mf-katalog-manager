@@ -3,6 +3,7 @@
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use super::error::DbError;
+use crate::printer_link::api_key::ApiKey;
 use crate::printer_link::RemoteJob;
 
 pub const SETTING_PRINTER_LINK_ENABLED: &str = "printer_link_enabled";
@@ -25,6 +26,9 @@ pub struct PrinterConnectionRecord {
     pub failures: i64,
     /// When the background pass last contacted the printer (success or failure); `None` = never.
     pub last_attempt_at: Option<f64>,
+    /// Whether a key is stored. The key itself is only readable through [`get_api_key`], which
+    /// hands out a type that cannot be printed, so this record can be logged freely.
+    pub has_api_key: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,7 +73,8 @@ pub fn set_printer_link_enabled(conn: &Connection, enabled: bool) -> Result<(), 
 }
 
 const CONNECTION_COLUMNS: &str = "printer_id, kind, address, base_url, remote_version, connected_since,
-    last_synced_at, last_error, error_since, paused, clock_offset_s, failures, last_attempt_at";
+    last_synced_at, last_error, error_since, paused, clock_offset_s, failures, last_attempt_at,
+    api_key IS NOT NULL";
 
 fn connection_from_row(r: &Row) -> rusqlite::Result<PrinterConnectionRecord> {
     Ok(PrinterConnectionRecord {
@@ -86,22 +91,79 @@ fn connection_from_row(r: &Row) -> rusqlite::Result<PrinterConnectionRecord> {
         clock_offset_s: r.get(10)?,
         failures: r.get(11)?,
         last_attempt_at: r.get(12)?,
+        has_api_key: r.get(13)?,
     })
 }
 
+/// The stored key of a connection, if it is a valid one (a hand-edited value counts as no key).
+pub fn get_api_key(conn: &Connection, printer_id: i64) -> Result<Option<ApiKey>, DbError> {
+    let raw: Option<Option<String>> = conn
+        .query_row("SELECT api_key FROM printer_connections WHERE printer_id = ?1", params![printer_id], |r| r.get(0))
+        .optional()?;
+    Ok(raw.flatten().and_then(|k| ApiKey::parse(&k).ok()))
+}
+
+/// Removes the key of a connection; the freed bytes are overwritten, not left in a free page.
+pub fn clear_api_key(conn: &Connection, printer_id: i64) -> Result<(), DbError> {
+    super::thingiverse::with_secure_delete(conn, || {
+        conn.execute("UPDATE printer_connections SET api_key = NULL WHERE printer_id = ?1", params![printer_id])?;
+        Ok(())
+    })
+}
+
+/// Empties every key in a COPY of the database (backup, export, update copy, restore). Runs
+/// before the copy's `VACUUM`, so the old pages go with it. A copy of a database from before the
+/// column existed has nothing to empty.
+pub(super) fn scrub_api_keys(conn: &Connection) -> Result<(), DbError> {
+    let has_column: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('printer_connections') WHERE name = 'api_key')",
+        [],
+        |r| r.get(0),
+    )?;
+    if has_column {
+        conn.execute("UPDATE printer_connections SET api_key = NULL WHERE api_key IS NOT NULL", [])?;
+    }
+    Ok(())
+}
+
 /// Saves a successfully tested connection. `connected_since` is only set the
-/// first time ("from now on"); error and pause are cleared.
+/// first time ("from now on"); error and pause are cleared. `api_key`: `Some` replaces the
+/// stored key, `None` keeps it, unless the address changed: a key belongs to one printer.
+#[allow(clippy::too_many_arguments)]
 pub fn save_connection_after_test(
     conn: &Connection,
     printer_id: i64,
     kind: &str,
     address: &str,
+    api_key: Option<&ApiKey>,
     base_url: &str,
     version: &str,
     now: f64,
 ) -> Result<PrinterConnectionRecord, DbError> {
     // Resin printers have no printer connection.
     crate::db::printers::ensure_filament_printer(conn, printer_id)?;
+    super::thingiverse::with_secure_delete(conn, || {
+        save_connection_row(conn, printer_id, kind, address, api_key, base_url, version, now)
+    })?;
+    get_connection(conn, printer_id)?.ok_or_else(|| DbError::Other("Verbindung fehlt nach dem Speichern".into()))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn save_connection_row(
+    conn: &Connection,
+    printer_id: i64,
+    kind: &str,
+    address: &str,
+    api_key: Option<&ApiKey>,
+    base_url: &str,
+    version: &str,
+    now: f64,
+) -> Result<(), DbError> {
+    // The old key must not travel to another printer under the new address.
+    conn.execute(
+        "UPDATE printer_connections SET api_key = NULL WHERE printer_id = ?1 AND address <> ?2",
+        params![printer_id, address],
+    )?;
     conn.execute(
         "INSERT INTO printer_connections (printer_id, kind, address, base_url, remote_version, connected_since)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -111,7 +173,10 @@ pub fn save_connection_after_test(
              failures = 0, last_attempt_at = NULL",
         params![printer_id, kind, address, base_url, version, now],
     )?;
-    get_connection(conn, printer_id)?.ok_or_else(|| DbError::Other("Verbindung fehlt nach dem Speichern".into()))
+    if let Some(key) = api_key {
+        conn.execute("UPDATE printer_connections SET api_key = ?2 WHERE printer_id = ?1", params![printer_id, key.expose()])?;
+    }
+    Ok(())
 }
 
 pub fn get_connection(conn: &Connection, printer_id: i64) -> Result<Option<PrinterConnectionRecord>, DbError> {
@@ -136,8 +201,10 @@ pub fn list_connections(conn: &Connection) -> Result<Vec<PrinterConnectionRecord
 /// Confirmed and ignored prints stay as history.
 pub fn delete_connection(conn: &Connection, printer_id: i64) -> Result<(), DbError> {
     conn.execute("DELETE FROM printer_jobs WHERE printer_id = ?1 AND state = 'open'", params![printer_id])?;
-    conn.execute("DELETE FROM printer_connections WHERE printer_id = ?1", params![printer_id])?;
-    Ok(())
+    super::thingiverse::with_secure_delete(conn, || {
+        conn.execute("DELETE FROM printer_connections WHERE printer_id = ?1", params![printer_id])?;
+        Ok(())
+    })
 }
 
 /// Stores the clock offset measured by the last test or sync.
@@ -160,12 +227,12 @@ pub fn record_sync_success(conn: &Connection, printer_id: i64, now: f64, base_ur
 }
 
 /// Remembers the error and counts it; `error_since` stays at the first error.
-/// `auth_required` pauses the connection until the next test.
+/// `auth_required` and `auth_rejected` pause the connection until the next test.
 pub fn record_sync_error(conn: &Connection, printer_id: i64, code: &str, now: f64) -> Result<(), DbError> {
     conn.execute(
         "UPDATE printer_connections SET last_error = ?2, error_since = COALESCE(error_since, ?3),
              failures = failures + 1, last_attempt_at = ?3,
-             paused = CASE WHEN ?2 = 'auth_required' THEN 1 ELSE paused END
+             paused = CASE WHEN ?2 IN ('auth_required', 'auth_rejected') THEN 1 ELSE paused END
          WHERE printer_id = ?1",
         params![printer_id, code, now],
     )?;
@@ -325,7 +392,7 @@ mod tests {
     #[test]
     fn insertion_caps_open_jobs_and_future_sync_time() {
         let conn = setup();
-        save_connection_after_test(&conn, 1, "moonraker", "printer", "", "", 1000.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "printer", None, "", "", 1000.0).unwrap();
         for i in 0..MAX_OPEN_JOBS {
             assert!(insert_job_if_new(&conn, 1, &job(&i.to_string(), 1e12)).unwrap());
         }
@@ -404,9 +471,9 @@ mod tests {
     #[test]
     fn connected_since_is_kept_when_testing_again() {
         let conn = setup();
-        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
         record_sync_error(&conn, 1, "auth_required", 1100.0).unwrap();
-        let c = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.61", "http://192.168.1.61", "v0.8.1", 2000.0).unwrap();
+        let c = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.61", None, "http://192.168.1.61", "v0.8.1", 2000.0).unwrap();
         assert_eq!(c.connected_since, 1000.0);
         assert_eq!(c.address, "192.168.1.61");
         assert!(!c.paused);
@@ -416,7 +483,7 @@ mod tests {
     #[test]
     fn errors_are_counted_and_a_success_or_a_test_resets_the_count() {
         let conn = setup();
-        let fresh = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        let fresh = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
         assert_eq!((fresh.failures, fresh.last_attempt_at), (0, None));
         record_sync_error(&conn, 1, "timeout", 1100.0).unwrap();
         record_sync_error(&conn, 1, "connection_refused", 1400.0).unwrap();
@@ -426,14 +493,14 @@ mod tests {
         let c = get_connection(&conn, 1).unwrap().unwrap();
         assert_eq!((c.failures, c.last_attempt_at, c.last_error), (0, Some(1700.0), None));
         record_sync_error(&conn, 1, "timeout", 2000.0).unwrap();
-        let tested = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 3000.0).unwrap();
+        let tested = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 3000.0).unwrap();
         assert_eq!((tested.failures, tested.last_attempt_at), (0, None), "a successful test starts over");
     }
 
     #[test]
     fn auth_errors_pause_the_connection_and_keep_error_since() {
         let conn = setup();
-        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
         record_sync_error(&conn, 1, "unreachable", 1100.0).unwrap();
         record_sync_error(&conn, 1, "auth_required", 1400.0).unwrap();
         let c = get_connection(&conn, 1).unwrap().unwrap();
@@ -444,6 +511,132 @@ mod tests {
         let c = get_connection(&conn, 1).unwrap().unwrap();
         assert_eq!(c.error_since, None);
         assert_eq!(c.last_synced_at, Some(1500.0));
+    }
+
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    fn key(raw: &str) -> ApiKey {
+        ApiKey::parse(raw).unwrap()
+    }
+
+    fn save(conn: &Connection, address: &str, api_key: Option<&ApiKey>) -> PrinterConnectionRecord {
+        save_connection_after_test(conn, 1, "moonraker", address, api_key, &format!("http://{address}"), "v0.8.0", 1000.0).unwrap()
+    }
+
+    #[test]
+    fn the_key_is_stored_with_the_connection_and_never_shows_in_the_record() {
+        let conn = setup();
+        let without = save(&conn, "192.168.1.60", None);
+        assert!(!without.has_api_key);
+        assert!(get_api_key(&conn, 1).unwrap().is_none());
+        let with = save(&conn, "192.168.1.60", Some(&key(KEY)));
+        assert!(with.has_api_key);
+        assert_eq!(get_api_key(&conn, 1).unwrap().unwrap().expose(), KEY);
+        assert!(!format!("{with:?}").contains(KEY), "the record's Debug text carries the key");
+        assert!(get_api_key(&conn, 2).unwrap().is_none(), "no connection, no key");
+    }
+
+    #[test]
+    fn a_test_without_a_new_key_keeps_the_stored_one_and_a_new_key_replaces_it() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        assert!(save(&conn, "192.168.1.60", None).has_api_key);
+        assert_eq!(get_api_key(&conn, 1).unwrap().unwrap().expose(), KEY);
+        save(&conn, "192.168.1.60", Some(&key("ffffffffffffffffffffffffffffffff")));
+        assert_eq!(get_api_key(&conn, 1).unwrap().unwrap().expose(), "ffffffffffffffffffffffffffffffff");
+    }
+
+    #[test]
+    fn the_key_stays_with_its_address() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        let moved = save(&conn, "192.168.1.61", None);
+        assert!(!moved.has_api_key, "the key of one printer went along to another address");
+        // A new address with a new key keeps the new key.
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        let moved = save(&conn, "192.168.1.62", Some(&key("ffffffffffffffffffffffffffffffff")));
+        assert!(moved.has_api_key);
+        assert_eq!(get_api_key(&conn, 1).unwrap().unwrap().expose(), "ffffffffffffffffffffffffffffffff");
+    }
+
+    #[test]
+    fn clearing_the_key_keeps_the_connection() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        clear_api_key(&conn, 1).unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert!(!c.has_api_key);
+        assert_eq!(c.address, "192.168.1.60");
+        clear_api_key(&conn, 99).unwrap();
+    }
+
+    #[test]
+    fn a_stored_value_that_is_not_a_key_counts_as_no_key() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", None);
+        conn.execute("UPDATE printer_connections SET api_key = 'bad value with spaces'", []).unwrap();
+        assert!(get_api_key(&conn, 1).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_rejected_key_pauses_the_connection_like_a_missing_one() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        record_sync_error(&conn, 1, "auth_rejected", 1100.0).unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert!(c.paused);
+        assert_eq!(c.last_error.as_deref(), Some("auth_rejected"));
+        assert!(c.has_api_key, "the key stays, the user decides");
+        // A transient error does not pause.
+        let other = setup();
+        save(&other, "192.168.1.60", Some(&key(KEY)));
+        record_sync_error(&other, 1, "timeout", 1100.0).unwrap();
+        assert!(!get_connection(&other, 1).unwrap().unwrap().paused);
+    }
+
+    #[test]
+    fn scrubbing_a_copy_empties_every_key_and_leaves_the_connection() {
+        let conn = setup();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (2, 'Other', 1)", []).unwrap();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        save_connection_after_test(&conn, 2, "moonraker", "192.168.1.70", Some(&key("ffffffffffffffffffffffffffffffff")), "", "", 1.0).unwrap();
+        scrub_api_keys(&conn).unwrap();
+        assert!(list_connections(&conn).unwrap().iter().all(|c| !c.has_api_key));
+        assert_eq!(list_connections(&conn).unwrap().len(), 2);
+        // A database from before the column existed has nothing to scrub and must not fail.
+        let old = Connection::open_in_memory().unwrap();
+        old.execute_batch("CREATE TABLE printer_connections (printer_id INTEGER)").unwrap();
+        scrub_api_keys(&old).unwrap();
+    }
+
+    #[test]
+    fn a_removed_or_cleared_key_leaves_no_bytes_in_the_working_file() {
+        let dir = std::env::temp_dir().join(format!("mfk-printer-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("catalog.db");
+        let has_key = || {
+            let mut bytes = std::fs::read(&path).unwrap();
+            // The write-ahead log is part of the database too.
+            if let Ok(wal) = std::fs::read(dir.join("catalog.db-wal")) {
+                bytes.extend(wal);
+            }
+            bytes.windows(KEY.len()).any(|w| w == KEY.as_bytes())
+        };
+        {
+            let conn = crate::db::connect(&path).unwrap();
+            conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'A', 0), (2, 'B', 1)", []).unwrap();
+            save(&conn, "192.168.1.60", Some(&key(KEY)));
+            assert!(has_key(), "precondition: the file holds the key");
+            clear_api_key(&conn, 1).unwrap();
+            conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).unwrap();
+            assert!(!has_key(), "the cleared key is still in the file");
+            save(&conn, "192.168.1.60", Some(&key(KEY)));
+            delete_connection(&conn, 1).unwrap();
+            conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).unwrap();
+            assert!(!has_key(), "the key of a removed connection is still in the file");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -458,19 +651,19 @@ mod tests {
     #[test]
     fn clock_offset_starts_at_zero_and_is_stored() {
         let conn = setup();
-        let c = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.7.1", 1000.0).unwrap();
+        let c = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.7.1", 1000.0).unwrap();
         assert_eq!(c.clock_offset_s, 0.0);
         set_clock_offset(&conn, 1, -87_000_000.0).unwrap();
         assert_eq!(get_connection(&conn, 1).unwrap().unwrap().clock_offset_s, -87_000_000.0);
         // A new test keeps the column until the command stores the new measurement.
-        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.7.1", 2000.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.7.1", 2000.0).unwrap();
         assert_eq!(list_connections(&conn).unwrap()[0].clock_offset_s, -87_000_000.0);
     }
 
     #[test]
     fn sync_from_is_connected_since_or_latest_job_end() {
         let conn = setup();
-        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
         assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 1000.0);
         insert_job_if_new(&conn, 1, &job("A", 4000.0)).unwrap();
         assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 3999.999);
@@ -479,7 +672,7 @@ mod tests {
     #[test]
     fn removing_a_connection_deletes_only_open_jobs() {
         let conn = setup();
-        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
         insert_job_if_new(&conn, 1, &job("A", 4000.0)).unwrap();
         insert_job_if_new(&conn, 1, &job("B", 4100.0)).unwrap();
         let b = list_open_jobs(&conn).unwrap().into_iter().find(|j| j.remote_id == "B").unwrap();

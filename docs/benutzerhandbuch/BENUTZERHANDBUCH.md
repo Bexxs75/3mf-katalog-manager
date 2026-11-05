@@ -958,7 +958,11 @@ Klipper printers should work the same way; if you want to test yours, the
 2. Select the printer → "Connection & network" → enter the address (the same IP or name you'd use to open Mainsail in a browser) → "Test
    connection". If it works, the app shows the version and port, plus the point in time from
    which prints will be deducted — older prints are left alone. If the printer reports "Login
-   required", it has a login set up that this version doesn't support yet. If the printer's
+   required", the printer asks for an API key: create one in Moonraker's settings (the
+   `[authorization]` section), enter it in the "API key" field and test again. The key stays
+   on this computer only, is shown as "Key saved" afterwards (with "Replace" and "Remove"),
+   and is not stored in backups or in update copies; after restoring a backup, enter it
+   again. It is sent unencrypted over your home network. If the printer's
    clock is wrong (no time sync), a note "The printer's clock is wrong" shows both times: the app
    corrects the difference automatically, but it's better to turn on time sync (NTP) on the
    printer.
@@ -2329,8 +2333,12 @@ Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, 
 2. Drucker auswählen → "Anbindung & Netzwerk" → Adresse eintragen (dieselbe IP oder denselben Namen, mit dem du z. B. Mainsail im Browser
    öffnest) → "Verbindung testen". Klappt es, zeigt die App Version und Port sowie ab welchem
    Zeitpunkt Drucke abgebucht werden — ältere Drucke bleiben unberührt. Meldet der Drucker
-   "Anmeldung nötig", ist am Drucker eine Anmeldung eingerichtet, die diese Version noch nicht
-   unterstützt. Geht die Uhr des Druckers falsch (ohne Zeitabgleich), zeigt der Hinweis "Die Uhr
+   "Anmeldung nötig", verlangt der Drucker einen API-Schlüssel: Erzeuge einen in den
+   Moonraker-Einstellungen (Abschnitt `[authorization]`), trage ihn im Feld "API-Schlüssel"
+   ein und teste erneut. Der Schlüssel bleibt nur auf diesem Rechner, steht danach als
+   "Schlüssel gespeichert" da (mit "Ersetzen" und "Entfernen") und wird weder in Sicherungen
+   noch in Update-Kopien gespeichert; nach dem Wiederherstellen einer Sicherung trägst du ihn
+   neu ein. Er geht unverschlüsselt durch dein Heimnetz. Geht die Uhr des Druckers falsch (ohne Zeitabgleich), zeigt der Hinweis "Die Uhr
    des Druckers geht falsch" beide Uhrzeiten: Die App gleicht die Abweichung selbst aus, besser
    ist aber, am Drucker den Zeitabgleich (NTP) einzuschalten.
 3. Danach fragt die App den Drucker beim Start, alle 5 Minuten und über den "↻"-Knopf neben

@@ -170,7 +170,9 @@ CREATE TABLE IF NOT EXISTS printer_connections (
     paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
     clock_offset_s REAL NOT NULL DEFAULT 0,
     failures INTEGER NOT NULL DEFAULT 0 CHECK (failures >= 0),
-    last_attempt_at REAL
+    last_attempt_at REAL,
+    -- The printer's API key; never sent to the interface and cleared in every copy that leaves the machine.
+    api_key TEXT
 );
 
 CREATE TABLE IF NOT EXISTS printer_jobs (

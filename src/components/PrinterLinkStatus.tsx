@@ -40,12 +40,12 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
   } else if (c.status === 'offline') {
     dot = 'bg-[var(--unk)]';
     text = t('printerUnreachableSince').replace('{time}', () => formatDateTime(c.errorSince ?? 0, language));
-  } else if (c.paused && c.lastError !== 'auth_required') {
+  } else if (c.paused && c.lastError !== 'auth_required' && c.lastError !== 'auth_rejected') {
     dot = 'bg-[var(--warn)]';
     text = t('printerPausedRetest');
-  } else if (c.lastError === 'auth_required') {
+  } else if (c.lastError === 'auth_required' || c.lastError === 'auth_rejected') {
     dot = 'bg-[var(--warn)]';
-    text = t('printerAuthNeeded');
+    text = t(c.lastError === 'auth_required' ? 'printerAuthNeeded' : 'printerAuthRejected');
   } else if (c.lastError === 'unreachable' || (c.status === 'error' && c.lastError && isTransient(c.lastError))) {
     dot = 'bg-[var(--crit)]';
     text = t('printerUnreachableSince').replace('{time}', () => formatDateTime(c.errorSince ?? 0, language));

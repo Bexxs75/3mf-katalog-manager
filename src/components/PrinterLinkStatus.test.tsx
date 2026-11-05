@@ -16,7 +16,7 @@ const base: PrinterConnection = {
 function link(c: PrinterConnection | null, jobs = 0): PrinterLinkState {
   return {
     refreshKey: 0, enabled: true, connections: c ? [c] : [], error: null, refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
-    removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
+    removeConnection: vi.fn(), clearApiKey: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
     jobs: Array.from({ length: jobs }, (_, i) => ({ id: String(i), printerId: '1' })) as PrinterLinkState['jobs'],
   } as PrinterLinkState;
 }
@@ -55,7 +55,7 @@ describe('PrinterLinkStatus', () => {
     render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
     expect(screen.getByText(/abgeglichen/)).toBeInTheDocument();
     expect(screen.getByText('3 Drucke zu bestätigen')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Jetzt abgleichen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt verbinden' }));
     expect(l.syncNow).toHaveBeenCalled();
   });
 
@@ -65,7 +65,7 @@ describe('PrinterLinkStatus', () => {
     const l = link(base);
     l.syncNow = vi.fn().mockRejectedValue('offline');
     render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
-    fireEvent.click(screen.getByRole('button', { name: 'Jetzt abgleichen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt verbinden' }));
     const message = await screen.findByText('offline');
     expect(message.closest('div')).toHaveTextContent('Das hat nicht geklappt: offline');
   });
@@ -77,6 +77,8 @@ describe('PrinterLinkStatus', () => {
     expect(screen.getByText(/nicht erreichbar seit/)).toBeInTheDocument();
     rerender(<LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, lastError: 'auth_required', paused: true })} /></LanguageProvider>);
     expect(screen.getByText('Anmeldung nötig')).toBeInTheDocument();
+    rerender(<LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, lastError: 'auth_rejected', paused: true })} /></LanguageProvider>);
+    expect(screen.getByText('Schlüssel abgelehnt')).toBeInTheDocument();
   });
 
   it('shows a paused-retest hint instead of a healthy status when paused without an error', () => {

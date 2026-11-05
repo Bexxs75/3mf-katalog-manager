@@ -516,6 +516,12 @@ export interface Translations {
   pmHost: string;
   pmApiKey: string;
   pmApiPlaceholder: string;
+  pmApiKeyHint: string;
+  pmApiKeySaved: string;
+  pmApiKeyReplace: string;
+  pmApiKeyRemove: string;
+  pmApiKeyShow: string;
+  pmApiKeyHide: string;
   pmWhatHappens: string;
   pmSyncInterval: string;
   pmSwitchedOff: string;
@@ -1537,6 +1543,9 @@ export interface Translations {
   printerErrorConnectionReset: string;
   printerErrorServerBusy: string;
   printerErrorAuthRequired: string;
+  printerErrorAuthRejected: string;
+  printerErrorApiKeyInvalid: string;
+  printerAuthRejected: string;
   printerErrorBadResponse: string;
   printerErrorTooManyOpenJobs: string;
   printerErrorHistoryMissing: string;

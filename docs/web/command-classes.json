@@ -20,6 +20,7 @@
     "cancel_import": "web",
     "check_app_update": "C",
     "check_filament": "web",
+    "clear_printer_api_key": "B",
     "companion_image_data": "web",
     "companion_open_info": "B",
     "confirm_printer_jobs": "B",
