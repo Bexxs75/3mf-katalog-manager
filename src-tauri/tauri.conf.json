@@ -38,6 +38,40 @@
         "displayLanguageSelector": true
       }
     },
+    "fileAssociations": [
+      {
+        "ext": ["3mf"],
+        "name": "3MF model",
+        "description": "3MF model",
+        "mimeType": "model/3mf",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["stl"],
+        "name": "STL model",
+        "description": "STL model",
+        "mimeType": "model/stl",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["obj"],
+        "name": "OBJ model",
+        "description": "OBJ model",
+        "mimeType": "model/obj",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["step", "stp"],
+        "name": "STEP model",
+        "description": "STEP model",
+        "mimeType": "model/step",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ],
     "license": "MIT",
     "licenseFile": "../LICENSE",
     "resources": {
