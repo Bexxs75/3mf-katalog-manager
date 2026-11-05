@@ -5,12 +5,13 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatDateTime, formatDurationMinutes, formatLengthMm, formatStockG } from '../i18n/format';
 import { toAppError, type AppError } from '../lib/errors';
-import { getPrinterJobThumbnail } from '../lib/api/printerLink';
+import { getPrinterJobThumbnail, setPrinterJobFailure } from '../lib/api/printerLink';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { FilamentSpool, PrinterJob } from '../types';
 import { ModelPicker, type ModelOption } from './ModelPicker';
 import { SpoolPicker } from './SpoolPicker';
 import { ErrorText } from '../diagnostics/ErrorText';
+import { PrintFailureReasonField } from './PrintFailureReasonField';
 
 interface Props {
   open: boolean;
@@ -31,6 +32,9 @@ interface RowState {
   /** Chosen by the user instead of taken from the suggestion? Then a `spools`
    * list arriving later must no longer overwrite the choice. */
   userChosenSpool: boolean;
+  /** Why a print that ended early failed; optional, never preselected. */
+  reason: string | null;
+  note: string;
 }
 
 function Thumb({ job }: { job: PrinterJob }) {
@@ -95,6 +99,8 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
             grams: j.grams,
             mismatch: j.materialMismatch,
             userChosenSpool: false,
+            reason: null,
+            note: '',
           };
         }
       }
@@ -138,6 +144,15 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
       .catch((e) => setActionError(toAppError(e)));
   };
 
+  /** Saves the optional reason of a print that ended early. It runs before the decision, which closes the print. */
+  const saveReason = async (jobId: string) => {
+    const row = rows[jobId];
+    if (!row?.reason) return;
+    await setPrinterJobFailure(jobId, row.reason, row.reason === 'other' ? row.note : null);
+  };
+  /** Whether a reason is waiting; checked first so a decision without one stays a single, immediate call. */
+  const hasReason = (jobId: string) => !!rows[jobId]?.reason && jobs.find((j) => j.id === jobId)?.outcome === 'partial';
+
   const confirmJobs = (ids: string[]) => {
     const decisions = ids
       .map((id) => ({ id, row: rows[id] }))
@@ -149,6 +164,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
       setActionError(null);
       setFailed(0);
       try {
+        for (const id of confirmIds) if (hasReason(id)) await saveReason(id);
         const r = await link.confirmJobs(decisions);
         setFailed(r.failed);
         if (r.confirmed > 0) onBooked();
@@ -163,6 +179,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
     withPending([jobId], async () => {
       setActionError(null);
       try {
+        if (hasReason(jobId)) await saveReason(jobId);
         await link.ignoreJob(jobId);
       } catch (e) {
         setActionError(toAppError(e));
@@ -202,7 +219,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
 
         <div className="flex-1 overflow-y-auto">
           {jobs.map((job, i) => {
-            const row = rows[job.id] ?? { spoolId: null, fileId: null, grams: null, mismatch: false, userChosenSpool: false };
+            const row = rows[job.id] ?? { spoolId: null, fileId: null, grams: null, mismatch: false, userChosenSpool: false, reason: null, note: '' };
             const spool = row.spoolId ? spoolById.get(row.spoolId) : undefined;
             const model = row.fileId ? modelById.get(row.fileId) ?? (job.modelMatch?.fileId === row.fileId ? { id: row.fileId, name: job.modelMatch.fileName } : undefined) : undefined;
             const isSuggestedModel = !!model && job.modelMatch?.fileId === model.id;
@@ -227,6 +244,16 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                       {formatDateTime(job.endedAt, language)} · {t('printerJobsMinutes').replace('{min}', () => formatDurationMinutes(job.printDurationS, language))}
                     </div>
                     <div className="mt-1.5">{chip}</div>
+                    {job.outcome === 'partial' && (
+                      <PrintFailureReasonField
+                        className="mt-2"
+                        reason={row.reason}
+                        note={row.note}
+                        hint={t('pfHint')}
+                        disabled={busy}
+                        onChange={(reason, note) => setRows((r) => ({ ...r, [job.id]: { ...r[job.id], reason, note } }))}
+                      />
+                    )}
                   </div>
                   <div className="tabular-nums text-title font-semibold">
                     {row.grams !== null ? formatStockG(row.grams, language) : '–'}

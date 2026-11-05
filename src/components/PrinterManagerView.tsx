@@ -1,7 +1,6 @@
 import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
 import { lockedKind, showsKind } from '../lib/printTechnology';
 import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
-import { displayName } from '../lib/displayName';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { invoke } from '../lib/transport';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
@@ -16,6 +15,7 @@ import { usePrinterReorder } from '../hooks/usePrinterReorder';
 import { PrinterConnectionSection } from './PrinterConnectionSection';
 import { PrinterLinkControl } from './PrinterLinkControl';
 import { PrinterUnitsSection } from './PrinterUnitsSection';
+import { PrinterHistoryTable } from './PrinterHistoryTable';
 import { PrinterManagerDialog, pmButton, pmField } from './PrinterManagerDialog';
 import { SegmentedControl } from './SegmentedControl';
 import { Icon } from './Icon';
@@ -147,7 +147,6 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
   const t = useT();
   const canEdit = useCanEditMetadata();
   const formatCount = useFormatCount();
-  const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
   const [jobs, setJobs] = useState<PrinterHistoryJob[]>([]);
   const [spoolsReady, setSpoolsReady] = useState(false);
@@ -163,7 +162,6 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
     return () => { active = false; };
   }, [printer.id, revision, link.jobs]);
   const count = spools.filter(s => printer.units.some(u => u.id === s.unitId)).length;
-  const number = new Intl.NumberFormat(language, { maximumFractionDigits: 1 });
   const connection = link.connections.find(c => c.printerId === printer.id);
   return <div className="min-w-0 grid grid-cols-1 min-[1320px]:grid-cols-2 gap-4 items-start max-w-[1500px]">
     {error && <div role="alert" className="p-3 text-[var(--crit)] min-[1320px]:col-span-2"><ErrorText error={error} /></div>}
@@ -187,17 +185,7 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
         onChanged={() => setRevision(n => n + 1)} onMaterial={() => onMaterial({ printerId: printer.id })} />}
     </Card>
     {jobs.length > 0 && <Card title={t('pmJobs')}>
-      <div className="overflow-auto"><table className="w-full text-left text-small">
-        <thead className="ui-label text-[var(--ink-3)]"><tr>{(['pmFile', 'pmDuration', 'pmUsage', 'pmStatus'] as const).map(k => <th className="p-2 border-b border-[var(--line)]" key={k}>{t(k)}</th>)}</tr></thead>
-        <tbody>{jobs.map(j => {
-          const grams = j.grams ?? link.jobs.find(open => open.id === j.id)?.grams;
-          return <tr key={j.id}>
-          <td className="p-2" title={t(j.outcome === 'completed' ? 'printerJobCompleted' : 'printerJobPartial')}>{displayName(j.fileName)}</td>
-          <td className="p-2 whitespace-nowrap">{t('printerJobsMinutes').replace('{min}', number.format(j.printDurationS / 60))}</td>
-          <td className="p-2 whitespace-nowrap">{grams != null ? `${number.format(grams)} g` : j.usedMm > 0 ? `${number.format(j.usedMm)} mm` : '–'}</td>
-          <td className="p-2">{j.autoClosed ? <span title={j.rawStatus}>{t(j.usedMm > 0 ? 'pmOlderHistory' : 'pmNoUsage')}</span> : j.state === 'open' ? import.meta.env.VITE_TARGET === 'web' ? t('webManagerJobOpen') : <button className={`${pmButton} h-6 !py-0`} onClick={() => onMaterial({ printerId: printer.id, reviewJobs: true })}>{t('pmConfirmJobs')}</button> : t(j.state === 'confirmed' ? 'pmBooked' : 'pmIgnored')}</td>
-        </tr>; })}</tbody>
-      </table></div>
+      <PrinterHistoryTable printerId={printer.id} jobs={jobs} link={link} onMaterial={onMaterial} onChanged={() => setRevision(n => n + 1)} />
     </Card>}
     {canEdit && deleting && <PrinterManagerDialog title={t('printersDeletePrinterConfirm').replace('{name}', printer.name)} onClose={() => setDeleting(false)}
       submitLabel={t('pmDeletePrinter')} onSubmit={async () => { await state.deletePrinter(printer.id); if (import.meta.env.VITE_TARGET !== 'web') await link.refresh(); }}>

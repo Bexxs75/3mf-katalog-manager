@@ -60,7 +60,7 @@ const printer: Printer = { id: 'p1', name: 'Printer', kind: 'filament', manufact
   { id: 'u1', printerId: 'p1', name: 'Custom', kind: 'custom', slotCount: 4, bambuAmsIndex: null },
   { id: 'u2', printerId: 'p1', name: 'Holder', kind: 'external', slotCount: 1, bambuAmsIndex: null },
 ] };
-const history: PrinterHistoryJob = { id: 'job', fileName: 'saved.gcode', outcome: 'completed', printDurationS: 60, usedMm: 10, grams: 1, state: 'open', endedAt: 123 } as PrinterHistoryJob;
+const history: PrinterHistoryJob = { id: 'job', fileName: 'saved.gcode', outcome: 'completed', printDurationS: 60, usedMm: 10, grams: 1, state: 'open', endedAt: 123, rawStatus: 'completed', failureReason: null, failureNote: null, autoClosed: false } as PrinterHistoryJob;
 const writes = () => calls.filter(c => !(WEB_READ_COMMANDS as readonly string[]).includes(c.command));
 function mockManager(extra?: (command: string, args: any) => Response | undefined) {
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
@@ -204,7 +204,7 @@ it('shows a failed reorder and a failed reload without optimistic ordering', asy
   cleanup(); clearMetadataError(); calls=[]; failRead=true;
   managers('printers'); await screen.findAllByText('offline');
 });
-it.each(['set_printer_link_enabled','test_printer_connection','remove_printer_connection','clear_printer_api_key','include_older_printer_history','sync_printers_now','preview_printer_job','get_printer_job_thumbnail','confirm_printer_jobs','ignore_printer_job','pick_and_read_image'])('never sends forbidden %s even in write mode', async command => {
+it.each(['set_printer_link_enabled','test_printer_connection','remove_printer_connection','clear_printer_api_key','include_older_printer_history','sync_printers_now','preview_printer_job','get_printer_job_thumbnail','confirm_printer_jobs','ignore_printer_job','set_printer_job_failure','pick_and_read_image'])('never sends forbidden %s even in write mode', async command => {
   await expect(invoke(command,{})).rejects.toBeDefined(); expect(calls).toEqual([]);
 });
 it('waits for image validation before saving and never silently drops a selected image', async () => {

@@ -189,6 +189,7 @@
     "set_linux_menu_enabled": "C",
     "set_print_status": "web",
     "set_print_technology": "B",
+    "set_printer_job_failure": "B",
     "set_printer_link_enabled": "B",
     "set_render_snapshot": "web",
     "set_source_check_on_start": "B",

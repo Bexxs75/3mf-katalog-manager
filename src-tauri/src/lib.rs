@@ -358,6 +358,7 @@ pub fn run() {
             commands::preview_printer_job,
             commands::get_printer_job_thumbnail,
             commands::ignore_printer_job,
+            commands::set_printer_job_failure,
             commands::confirm_printer_jobs,
             commands::pick_and_read_image,
             commands::read_dropped_image,

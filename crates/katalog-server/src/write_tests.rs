@@ -1045,6 +1045,7 @@ async fn manager_http_all_writes_round_trip_and_rejected_commands_stay_closed() 
         "clear_printer_api_key",
         "sync_printers_now",
         "include_older_printer_history",
+        "set_printer_job_failure",
         "pick_and_read_image",
     ] {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");

@@ -5,6 +5,7 @@ use std::f64::consts::PI;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::db::error::DbError;
+use crate::error_code::ErrorCode;
 use crate::db::models::NewPrintLogEntry;
 use crate::db::printer_link::{get_job, mark_job_confirmed, mark_job_ignored};
 use crate::db::printers::round_tenth;
@@ -177,6 +178,30 @@ pub fn ignore_job(conn: &Connection, job_id: i64, decided_at: &str) -> Result<()
     Ok(())
 }
 
+/// Sets or clears why a print ended early (`reason = None` clears reason and note). Works in
+/// every state, also for prints the program closed itself. The note is trimmed, an empty one
+/// is dropped and a long one is cut at a character boundary.
+pub fn set_job_failure(conn: &Connection, job_id: i64, reason: Option<&str>, note: Option<&str>) -> Result<(), DbError> {
+    if let Some(code) = reason {
+        if !crate::printer_link::failure::is_failure_reason(code) {
+            return Err(DbError::coded(ErrorCode::PrintFailureReasonUnknown));
+        }
+    }
+    let job = get_job(conn, job_id)?.ok_or_else(|| DbError::coded(ErrorCode::PrinterJobNotFound))?;
+    if job.outcome != "partial" {
+        return Err(DbError::coded(ErrorCode::PrinterJobNotPartial));
+    }
+    let note = reason.and_then(|_| {
+        let trimmed = note?.trim();
+        (!trimmed.is_empty()).then(|| trimmed.chars().take(crate::printer_link::failure::MAX_NOTE_CHARS).collect::<String>())
+    });
+    conn.execute(
+        "UPDATE printer_jobs SET failure_reason = ?2, failure_note = ?3 WHERE id = ?1",
+        params![job_id, reason, note],
+    )?;
+    Ok(())
+}
+
 /// Each decision in its own transaction. Returns (confirmed, failed).
 pub fn confirm_many(conn: &mut Connection, decisions: &[Decision], decided_at: &str) -> (usize, usize) {
     let mut ok = 0;
@@ -249,6 +274,7 @@ mod pure_tests {
 mod db_tests {
     use super::*;
     use crate::db::printer_link::{insert_job_if_new, list_open_jobs};
+    use crate::printer_link::failure::MAX_NOTE_CHARS;
     use crate::printer_link::{JobOutcome, RemoteJob};
 
     fn setup() -> Connection {
@@ -390,6 +416,82 @@ mod db_tests {
         ignore_job(&conn, job, "t").unwrap();
         assert!(ignore_job(&conn, job, "t").is_err());
         assert!(confirm_job(&mut conn, &Decision { job_id: job, spool_id: 100, file_id: None }, "t").is_err());
+    }
+
+    /// A print that ended early, in the given way: offered (with usage) or closed by the program (without).
+    fn ended_early(conn: &Connection, remote_id: &str, deductible: bool) -> i64 {
+        insert_job_if_new(conn, 1, &RemoteJob {
+            remote_id: remote_id.into(),
+            file_name: "Halter.gcode".into(),
+            outcome: JobOutcome::Partial,
+            raw_status: "cancelled".into(),
+            ended_at: 1789042200.0,
+            print_duration_s: 120.0,
+            used_mm: if deductible { 150.0 } else { 0.0 },
+            deductible,
+            slicer_total_mm: None,
+            slicer_weight_g: None,
+            material: None,
+            thumbnail_path: None,
+        })
+        .unwrap();
+        conn.query_row("SELECT id FROM printer_jobs WHERE remote_id = ?1", [remote_id], |r| r.get(0)).unwrap()
+    }
+
+    fn failure_of(conn: &Connection, job: i64) -> (Option<String>, Option<String>) {
+        let j = get_job(conn, job).unwrap().unwrap();
+        (j.failure_reason, j.failure_note)
+    }
+
+    fn code_of(error: DbError, code: ErrorCode) -> bool {
+        matches!(error, DbError::Coded { code: found, .. } if found == code)
+    }
+
+    #[test]
+    fn a_reason_is_set_changed_and_cleared_in_every_state() {
+        let mut conn = setup();
+        let open = ended_early(&conn, "A@1", true);
+        let closed = ended_early(&conn, "B@2", false);
+        let confirmed = ended_early(&conn, "C@3", true);
+        confirm_job(&mut conn, &Decision { job_id: confirmed, spool_id: 100, file_id: None }, "t").unwrap();
+        let ignored = ended_early(&conn, "D@4", true);
+        ignore_job(&conn, ignored, "t").unwrap();
+        for job in [open, closed, confirmed, ignored] {
+            set_job_failure(&conn, job, Some("clog"), None).unwrap();
+            assert_eq!(failure_of(&conn, job), (Some("clog".into()), None), "job {job}");
+            set_job_failure(&conn, job, Some("other"), Some("  Kabel  ")).unwrap();
+            assert_eq!(failure_of(&conn, job), (Some("other".into()), Some("Kabel".into())));
+            set_job_failure(&conn, job, None, Some("left over")).unwrap();
+            assert_eq!(failure_of(&conn, job), (None, None), "null clears both fields");
+        }
+        // Setting a reason decides nothing: state, booking and the auto flag stay.
+        let stored = get_job(&conn, closed).unwrap().unwrap();
+        assert_eq!((stored.state.as_str(), stored.auto_closed), ("ignored", true));
+    }
+
+    #[test]
+    fn a_long_note_is_cut_at_a_character_and_an_empty_one_is_dropped() {
+        let conn = setup();
+        let job = ended_early(&conn, "A@1", true);
+        let long = "ä".repeat(MAX_NOTE_CHARS + 25);
+        set_job_failure(&conn, job, Some("other"), Some(&long)).unwrap();
+        assert_eq!(failure_of(&conn, job).1, Some("ä".repeat(MAX_NOTE_CHARS)));
+        set_job_failure(&conn, job, Some("other"), Some("   ")).unwrap();
+        assert_eq!(failure_of(&conn, job).1, None);
+    }
+
+    #[test]
+    fn only_a_listed_reason_on_a_print_that_ended_early_is_accepted() {
+        let conn = setup();
+        let early = ended_early(&conn, "A@1", true);
+        let finished = first_job(&conn);
+        set_job_failure(&conn, early, Some("clog"), None).unwrap();
+        assert!(code_of(set_job_failure(&conn, early, Some("Clog"), None).unwrap_err(), ErrorCode::PrintFailureReasonUnknown));
+        assert!(code_of(set_job_failure(&conn, early, Some(""), None).unwrap_err(), ErrorCode::PrintFailureReasonUnknown));
+        assert_eq!(failure_of(&conn, early).0.as_deref(), Some("clog"), "a refused change leaves the old reason");
+        assert!(code_of(set_job_failure(&conn, finished, Some("clog"), None).unwrap_err(), ErrorCode::PrinterJobNotPartial));
+        assert!(code_of(set_job_failure(&conn, finished, None, None).unwrap_err(), ErrorCode::PrinterJobNotPartial));
+        assert!(code_of(set_job_failure(&conn, 424242, Some("clog"), None).unwrap_err(), ErrorCode::PrinterJobNotFound));
     }
 
     #[test]

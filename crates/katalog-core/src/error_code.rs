@@ -186,6 +186,10 @@ error_codes! {
     PrinterNameTooLong => "printerNameTooLong",
     PrinterOrderIncomplete => "printerOrderIncomplete",
     PrinterNotFound => "printerNotFound",
+    PrinterJobNotFound => "printerJobNotFound",
+    /// A reason for ending early can only be set on a print that ended early.
+    PrinterJobNotPartial => "printerJobNotPartial",
+    PrintFailureReasonUnknown => "printFailureReasonUnknown",
     /// params: the highest number of characters.
     PrinterManufacturerTooLong => "printerManufacturerTooLong",
     /// params: the highest number of characters.

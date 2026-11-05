@@ -77,6 +77,10 @@ export async function getPrinterJobThumbnail(jobId: string) {
 export function ignorePrinterJob(jobId: string) {
   return invoke<void>('ignore_printer_job', { jobId });
 }
+/** Sets why a print ended early; `reason = null` clears reason and note. Desktop only. */
+export function setPrinterJobFailure(jobId: string, reason: string | null, note: string | null) {
+  return invoke<void>('set_printer_job_failure', { jobId, reason, note });
+}
 export function confirmPrinterJobs(decisions: JobDecision[]) {
   return invoke<ConfirmResult>('confirm_printer_jobs', { decisions });
 }

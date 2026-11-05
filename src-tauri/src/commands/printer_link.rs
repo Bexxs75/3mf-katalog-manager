@@ -496,6 +496,13 @@ pub fn ignore_printer_job(state: State<AppState>, job_id: String) -> CmdResult<(
     booking::ignore_job(&conn, id(&job_id, "Druck")?, &now_rfc3339()).map_err(|e| e.to_string().into())
 }
 
+/// Sets (or, with `reason = null`, clears) why a print ended early. Works in every state of the print.
+#[tauri::command]
+pub fn set_printer_job_failure(state: State<AppState>, job_id: String, reason: Option<String>, note: Option<String>) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    booking::set_job_failure(&conn, id(&job_id, "Druck")?, reason.as_deref(), note.as_deref()).map_err(Into::into)
+}
+
 // async for the same reason as `list_open_printer_jobs`.
 #[tauri::command]
 pub async fn confirm_printer_jobs(app: tauri::AppHandle, decisions: Vec<JobDecisionDto>) -> CmdResult<ConfirmResultDto> {
