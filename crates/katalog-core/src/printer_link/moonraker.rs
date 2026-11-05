@@ -91,8 +91,8 @@ fn main_material(meta: &Value) -> Option<String> {
     Some(types[index].to_string()).filter(|s| !s.is_empty())
 }
 
-/// `None` = don't take over (still running, a required field is missing, or no
-/// filament was used - e.g. cancelled right at the start - so nothing to deduct).
+/// `None` = don't take over (still running or a required field is missing). A print without
+/// usage (e.g. cancelled right at the start) is taken over with `deductible = false`.
 fn parse_job(j: &Value) -> Option<RemoteJob> {
     let status = j.get("status")?.as_str()?;
     if status == "in_progress" {
@@ -109,10 +109,8 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
     if remote_id.len() > 512 {
         return None;
     }
-    let used_mm = j.get("filament_used")?.as_f64()?;
-    if used_mm <= 0.0 {
-        return None;
-    }
+    // A missing, zero or nonsensical value all mean "nothing to deduct".
+    let used_mm = positive(j.get("filament_used"));
     let filename = j.get("filename").and_then(Value::as_str).unwrap_or("");
     let (dir, file_name) = match filename.rsplit_once('/') {
         Some((d, f)) => (Some(d), f),
@@ -145,7 +143,8 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
         raw_status: bounded_text(status, 512),
         ended_at,
         print_duration_s: j.get("print_duration").and_then(Value::as_f64).unwrap_or(0.0),
-        used_mm,
+        used_mm: used_mm.unwrap_or(0.0),
+        deductible: used_mm.is_some(),
         slicer_total_mm: positive(meta.and_then(|m| m.get("filament_total"))),
         slicer_weight_g: positive(meta.and_then(|m| m.get("filament_weight_total"))),
         material,
@@ -453,6 +452,41 @@ fn valid_thumbnail_path(path: &str) -> bool {
         && !path.contains(['?', '#', '%', '\\'])
 }
 
+impl MoonrakerLink {
+    /// Reads history pages in the printer's own time until the end or the page limit. `filter` is
+    /// the query part that picks the jobs and their order. The pages read so far are kept when a
+    /// later page stalls: the next pass continues after the newest stored print (the cursor is the
+    /// newest stored end time). Only a first page that fails is an error.
+    fn read_pages(&self, base: &str, filter: &str) -> Result<Vec<RemoteJob>, LinkError> {
+        let mut jobs = Vec::new();
+        let mut start = 0usize;
+        for _ in 0..MAX_PAGES {
+            let answer = self
+                .fetch(
+                    url(base, &format!("/server/history/list?{filter}&limit={PAGE}&start={start}"))?,
+                    MAX_JSON_BYTES,
+                    self.page_timeout,
+                )
+                .and_then(|f| serde_json::from_slice::<Value>(&f.body).map_err(|e| bad(&e.to_string())))
+                .and_then(|v| parse_history_page(&v));
+            let page = match answer {
+                Ok(page) => page,
+                Err(e) if e.is_transient() && start > 0 => {
+                    log::warn!(target: "drucker", "history only partly read ({})", e.code());
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
+            jobs.extend(page.jobs);
+            start += PAGE;
+            if page.raw_len < PAGE || start as u64 >= page.count {
+                break;
+            }
+        }
+        Ok(jobs)
+    }
+}
+
 impl PrinterLink for MoonrakerLink {
     fn test(&self) -> Result<ConnectionInfo, LinkError> {
         let mut last = LinkError::Unreachable;
@@ -481,37 +515,30 @@ impl PrinterLink for MoonrakerLink {
         // the query and shift the answers back into local time.
         let offset = info.clock_offset_s;
         let query_since = (since + offset - LOOKBACK_S).max(0.0);
-        let mut jobs = Vec::new();
-        let mut start = 0usize;
-        for _ in 0..MAX_PAGES {
-            let answer = self
-                .fetch(
-                    url(base, &format!("/server/history/list?since={query_since}&order=asc&limit={PAGE}&start={start}"))?,
-                    MAX_JSON_BYTES,
-                    self.page_timeout,
-                )
-                .and_then(|f| serde_json::from_slice::<Value>(&f.body).map_err(|e| bad(&e.to_string())))
-                .and_then(|v| parse_history_page(&v));
-            let page = match answer {
-                Ok(page) => page,
-                // The pages read so far are kept: the next pass continues after the newest one
-                // (the cursor is the newest stored end time). Only a first page that fails is an error.
-                Err(e) if e.is_transient() && start > 0 => {
-                    log::warn!(target: "drucker", "history only partly read ({})", e.code());
-                    break;
-                }
-                Err(e) => return Err(e),
-            };
-            jobs.extend(page.jobs.into_iter().filter_map(|mut j| {
+        let jobs = self.read_pages(base, &format!("since={query_since}&order=asc"))?;
+        Ok(jobs
+            .into_iter()
+            .filter_map(|mut j| {
                 j.ended_at -= offset;
                 (j.ended_at > since).then_some(j)
-            }));
-            start += PAGE;
-            if page.raw_len < PAGE || start as u64 >= page.count {
-                break;
-            }
-        }
-        Ok(jobs)
+            })
+            .collect())
+    }
+
+    fn jobs_ended_before(&self, info: &ConnectionInfo, before: f64) -> Result<Vec<RemoteJob>, LinkError> {
+        let base = info.base_url.as_str();
+        self.check_base(base)?;
+        let offset = info.clock_offset_s;
+        // Moonraker filters `before` by the job start, which is never later than the end.
+        let query_before = (before + offset).max(0.0);
+        let jobs = self.read_pages(base, &format!("before={query_before}&order=desc"))?;
+        Ok(jobs
+            .into_iter()
+            .filter_map(|mut j| {
+                j.ended_at -= offset;
+                (j.ended_at <= before).then_some(j)
+            })
+            .collect())
     }
 
     fn thumbnail(&self, base: &str, path: &str) -> Result<Vec<u8>, LinkError> {
@@ -693,19 +720,27 @@ mod parse_tests {
     }
 
     #[test]
-    fn second_kobra_s1_report_skips_a_print_without_usage() {
+    fn second_kobra_s1_report_takes_a_print_without_usage_as_not_deductible() {
         // Real test report (Anycubic Kobra S1, Rinkhals, ACE Pro): a print cancelled right
-        // at the start reports 0 mm; there is nothing to deduct, so it is not offered.
+        // at the start reports 0 mm; there is nothing to deduct, but the print happened, so it
+        // is taken over as history.
         assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1_ace.json")).unwrap(), "?");
         let page = parse_history_page(&fixture("history_rinkhals_kobra_s1_ace.json")).unwrap();
         assert_eq!(page.count, 5);
         let ids: Vec<&str> = page.jobs.iter().map(|j| j.remote_id.as_str()).collect();
-        assert_eq!(ids, ["00001B@1790428000", "00001A@1790311232", "000019@1790184112", "000018@1790095590"]);
-        let slide = &page.jobs[0];
+        assert_eq!(
+            ids,
+            ["00001C@1790439674", "00001B@1790428000", "00001A@1790311232", "000019@1790184112", "000018@1790095590"]
+        );
+        let aborted = &page.jobs[0];
+        assert_eq!((aborted.outcome, aborted.used_mm, aborted.deductible), (JobOutcome::Partial, 0.0, false));
+        assert_eq!(aborted.raw_status, "cancelled");
+        let slide = &page.jobs[1];
         assert_eq!(slide.file_name, "0926-1506-slide(01)_PETG_0.12_2h56m50s.gcode");
         assert_eq!(slide.outcome, JobOutcome::Completed);
+        assert!(slide.deductible);
         assert_eq!(slide.slicer_weight_g, Some(66.69));
-        assert_eq!(page.jobs[1].file_name, "Axle Cleaning Tool_plate_1(1).gcode");
+        assert_eq!(page.jobs[2].file_name, "Axle Cleaning Tool_plate_1(1).gcode");
         // "PLA;PETG" with weights [0.35, 66.34]: almost everything was PETG.
         assert_eq!(slide.material.as_deref(), Some("PETG"));
     }
@@ -756,10 +791,38 @@ mod parse_tests {
     }
 
     #[test]
-    fn a_finished_print_without_usage_is_skipped() {
-        let v = serde_json::json!({"end_time": 2.0, "filament_used": 0.0, "filename": "x.gcode",
-            "metadata": {}, "print_duration": 1.0, "status": "completed", "job_id": "1"});
-        assert!(parse_job(&v).is_none());
+    fn a_print_without_usage_is_taken_over_as_not_deductible() {
+        let job = |usage: serde_json::Value, status: &str| {
+            let mut v = serde_json::json!({"end_time": 2.0, "filename": "x.gcode",
+                "metadata": {}, "print_duration": 1.0, "status": status, "job_id": "1"});
+            if !usage.is_null() {
+                v["filament_used"] = usage;
+            }
+            parse_job(&v)
+        };
+        for (usage, status) in [
+            (serde_json::json!(0.0), "completed"),
+            (serde_json::json!(0.0), "cancelled"),
+            (serde_json::json!(-4.0), "error"),
+            (serde_json::json!("12"), "klippy_shutdown"),
+            (serde_json::Value::Null, "cancelled"),
+        ] {
+            let j = job(usage.clone(), status).unwrap_or_else(|| panic!("{usage} / {status} must be taken over"));
+            assert_eq!((j.used_mm, j.deductible), (0.0, false), "{usage} / {status}");
+            assert_eq!(j.raw_status, status);
+        }
+        let used = job(serde_json::json!(12.5), "cancelled").unwrap();
+        assert_eq!((used.used_mm, used.deductible, used.outcome), (12.5, true, JobOutcome::Partial));
+    }
+
+    #[test]
+    fn a_running_print_and_a_print_without_identity_are_still_not_taken_over() {
+        let running = serde_json::json!({"end_time": 2.0, "filament_used": 0.0, "status": "in_progress", "job_id": "1"});
+        assert!(parse_job(&running).is_none());
+        let no_end = serde_json::json!({"filament_used": 0.0, "status": "cancelled", "job_id": "1"});
+        assert!(parse_job(&no_end).is_none());
+        let no_id = serde_json::json!({"end_time": 2.0, "filament_used": 0.0, "status": "cancelled"});
+        assert!(parse_job(&no_id).is_none());
     }
 
     #[test]

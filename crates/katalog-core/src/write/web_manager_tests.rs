@@ -421,6 +421,28 @@ fn manager_ams_limit_and_failed_default_unit_leave_no_partial_creation() {
     assert_eq!(r::list_printers_with_conn(&c).unwrap().len(), 1);
 }
 #[test]
+fn manager_history_carries_end_time_raw_status_failure_fields_and_the_closed_flag() {
+    let (c, p, _, _) = setup();
+    c.execute_batch(&format!(
+        "INSERT INTO printer_jobs(printer_id,remote_id,file_name,outcome,raw_status,ended_at,print_duration_s,used_mm,state,failure_reason,failure_note,auto_closed)
+         VALUES ({p},'a','one','partial','klippy_shutdown',1500.5,3,0,'ignored','power_network','Stecker',1),
+                ({p},'b','two','completed','completed',1600,3,10,'open',NULL,NULL,0);"
+    ))
+    .unwrap();
+    let rows = r::list_printer_history_with_conn(&c, p).unwrap();
+    let closed = rows.iter().find(|j| j.file_name == "one").unwrap();
+    assert_eq!(
+        (closed.ended_at, closed.raw_status.as_str(), closed.failure_reason.as_deref(), closed.failure_note.as_deref(), closed.auto_closed),
+        (1500.5, "klippy_shutdown", Some("power_network"), Some("Stecker"), true)
+    );
+    let open = rows.iter().find(|j| j.file_name == "two").unwrap();
+    assert_eq!((open.failure_reason.as_deref(), open.failure_note.as_deref(), open.auto_closed), (None, None, false));
+    let json = serde_json::to_value(closed).unwrap();
+    for key in ["endedAt", "rawStatus", "failureReason", "failureNote", "autoClosed"] {
+        assert!(json.get(key).is_some(), "{key}");
+    }
+}
+#[test]
 fn manager_history_is_bounded_only_in_web_and_check_is_read_only() {
     let (c, p, _, s) = setup();
     let file = db::test_insert_minimal_file(&c, "/one", None).unwrap();

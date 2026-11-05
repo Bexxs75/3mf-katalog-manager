@@ -103,6 +103,9 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const [showKey, setShowKey] = useState(false);
   const [replacingKey, setReplacingKey] = useState(false);
   const [clearingKey, setClearingKey] = useState(false);
+  const [readingOlder, setReadingOlder] = useState(false);
+  // What the last "include older history" found: a count, or the error code of the connection.
+  const [olderResult, setOlderResult] = useState<{ added: number } | { error: string } | null>(null);
   const [error, setError] = useState<PrinterConnectionError | null>(null);
   const [actionError, setActionError] = useState<AppError | null>(null);
   const [current, setCurrent] = useState<PrinterConnection | null>(connection);
@@ -155,6 +158,20 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
       setActionError(toAppError(e));
     } finally {
       setClearingKey(false);
+    }
+  };
+
+  const runOlderHistory = async () => {
+    setReadingOlder(true);
+    setOlderResult(null);
+    setActionError(null);
+    try {
+      const r = await link.includeOlderHistory(printerId);
+      setOlderResult(r.error ? { error: r.error } : { added: r.added });
+    } catch (e) {
+      setActionError(toAppError(e));
+    } finally {
+      setReadingOlder(false);
     }
   };
 
@@ -249,11 +266,27 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           {testing ? t('printerConnectionTesting') : t(current ? 'printerConnectionTest' : 'pmSetupConnection')}
         </button>
         {current && (
+          <button type="button" className={smallButton} disabled={!link.enabled || readingOlder || removing} onClick={runOlderHistory}>
+            {readingOlder ? t('printerOlderHistoryReading') : t('printerOlderHistory')}
+          </button>
+        )}
+        {current && (
           <button type="button" className={smallButton} disabled={removing} onClick={runRemove}>
             {t('printerConnectionRemove')}
           </button>
         )}
       </div>
+      {current && <p className="text-caption text-[var(--ink-3)]">{t('printerOlderHistoryHint')}</p>}
+      {olderResult && 'error' in olderResult && (
+        <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-small text-[var(--crit)]">
+          <p>{t(errorKeyFor(olderResult.error)).replace('{host}', () => printerErrorHost(current?.address ?? ''))}</p>
+        </div>
+      )}
+      {olderResult && 'added' in olderResult && (
+        <div role="status" className="text-small text-[var(--ink-2)]">
+          {olderResult.added > 0 ? formatCount(t('printerOlderHistoryAdded'), olderResult.added) : t('printerOlderHistoryNone')}
+        </div>
+      )}
       {!link.enabled ? <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmSwitchedOff')}</b><p>{t('pmLinkOff')}</p></div> :
         !current && !error && <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmNotLinked')}</b></div>}
       {actionError && (

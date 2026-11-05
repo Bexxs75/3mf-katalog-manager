@@ -352,6 +352,7 @@ pub fn run() {
             commands::test_printer_connection,
             commands::clear_printer_api_key,
             commands::remove_printer_connection,
+            commands::include_older_printer_history,
             commands::sync_printers_now,
             commands::list_open_printer_jobs,
             commands::preview_printer_job,

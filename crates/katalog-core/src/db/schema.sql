@@ -194,6 +194,13 @@ CREATE TABLE IF NOT EXISTS printer_jobs (
     booked_file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
     booked_g REAL,
     decided_at TEXT,
+    -- Why a print ended early: a code from the fixed list in `printer_link::failure`, checked in code
+    -- (not here) so the list can grow without a migration. Only for outcome 'partial'.
+    failure_reason TEXT,
+    failure_note TEXT,
+    -- Closed by the program, never offered for confirmation, never deducted: prints without usage and
+    -- prints from the history before the connection. These rows are always state 'ignored'.
+    auto_closed INTEGER NOT NULL DEFAULT 0 CHECK (auto_closed IN (0, 1)),
     UNIQUE (printer_id, remote_id)
 );
 

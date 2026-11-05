@@ -70,6 +70,14 @@ pub struct PrinterHistoryJobDto {
     pub used_mm: f64,
     pub grams: Option<f64>,
     pub state: String,
+    /// End of the print in local Unix seconds.
+    pub ended_at: f64,
+    /// The status as the printer reported it, shortened.
+    pub raw_status: String,
+    pub failure_reason: Option<String>,
+    pub failure_note: Option<String>,
+    /// Closed by the program: no usage, or from before the connection. Never deducted.
+    pub auto_closed: bool,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -208,7 +216,7 @@ pub fn list_printer_history_limit(
     printer_id: i64,
     limit: i64,
 ) -> ReadResult<Vec<PrinterHistoryJobDto>> {
-    let mut stmt = conn.prepare("SELECT id, file_name, outcome, print_duration_s, used_mm, booked_g, state FROM printer_jobs WHERE printer_id=?1 ORDER BY ended_at DESC, id DESC LIMIT ?2").map_err(sql_error)?;
+    let mut stmt = conn.prepare("SELECT id, file_name, outcome, print_duration_s, used_mm, booked_g, state, ended_at, raw_status, failure_reason, failure_note, auto_closed FROM printer_jobs WHERE printer_id=?1 ORDER BY ended_at DESC, id DESC LIMIT ?2").map_err(sql_error)?;
     let rows = stmt
         .query_map([printer_id, limit], |r| {
             Ok(PrinterHistoryJobDto {
@@ -219,6 +227,11 @@ pub fn list_printer_history_limit(
                 used_mm: r.get(4)?,
                 grams: r.get(5)?,
                 state: r.get(6)?,
+                ended_at: r.get(7)?,
+                raw_status: r.get(8)?,
+                failure_reason: r.get(9)?,
+                failure_note: r.get(10)?,
+                auto_closed: r.get::<_, i64>(11)? != 0,
             })
         })
         .map_err(sql_error)?

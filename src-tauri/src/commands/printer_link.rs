@@ -42,6 +42,15 @@ pub struct TestResultDto {
     pub connection: Option<PrinterConnectionDto>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OlderHistoryResultDto {
+    /// New rows of history.
+    pub added: usize,
+    /// Why nothing was read (an error code of the connection), if so.
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelMatchDto {
@@ -351,6 +360,24 @@ pub fn remove_printer_connection(state: State<AppState>, printer_id: String) -> 
     store::delete_connection(&conn, id(&printer_id, "Drucker")?).map_err(|e| e.to_string().into())
 }
 
+/// "Include older history": prints from before the connection become history for the statistics.
+/// Nothing of it is offered for deduction. The printer is asked on a worker thread, the database
+/// is not locked meanwhile.
+#[tauri::command]
+pub async fn include_older_printer_history(app: tauri::AppHandle, printer_id: String) -> CmdResult<OlderHistoryResultDto> {
+    let pid = id(&printer_id, "Drucker")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let maker = |kind: &str, address: &str, key: Option<&ApiKey>| make_link(kind, address, key, AddressPolicy::HOME_NETWORK);
+        match crate::printer_link::sync::include_older_history(&state.db, &maker, pid).map_err(|e| e.to_string())? {
+            Ok(added) => Ok(OlderHistoryResultDto { added, error: None }),
+            Err(code) => Ok(OlderHistoryResultDto { added: 0, error: Some(code.to_string()) }),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn sync_printers_now(app: tauri::AppHandle) -> CmdResult<()> {
     wake_now(&app);
@@ -607,6 +634,7 @@ mod tests {
             ended_at: 1789042135.8,
             print_duration_s: 394.65,
             used_mm: 303.2658,
+            deductible: true,
             slicer_total_mm: Some(279.17),
             slicer_weight_g: Some(0.83),
             material: Some("PLA".into()),

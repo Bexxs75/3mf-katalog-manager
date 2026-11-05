@@ -194,8 +194,8 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
           return <tr key={j.id}>
           <td className="p-2" title={t(j.outcome === 'completed' ? 'printerJobCompleted' : 'printerJobPartial')}>{displayName(j.fileName)}</td>
           <td className="p-2 whitespace-nowrap">{t('printerJobsMinutes').replace('{min}', number.format(j.printDurationS / 60))}</td>
-          <td className="p-2 whitespace-nowrap">{grams != null ? `${number.format(grams)} g` : `${number.format(j.usedMm)} mm`}</td>
-          <td className="p-2">{j.state === 'open' ? import.meta.env.VITE_TARGET === 'web' ? t('webManagerJobOpen') : <button className={`${pmButton} h-6 !py-0`} onClick={() => onMaterial({ printerId: printer.id, reviewJobs: true })}>{t('pmConfirmJobs')}</button> : t(j.state === 'confirmed' ? 'pmBooked' : 'pmIgnored')}</td>
+          <td className="p-2 whitespace-nowrap">{grams != null ? `${number.format(grams)} g` : j.usedMm > 0 ? `${number.format(j.usedMm)} mm` : '–'}</td>
+          <td className="p-2">{j.autoClosed ? <span title={j.rawStatus}>{t(j.usedMm > 0 ? 'pmOlderHistory' : 'pmNoUsage')}</span> : j.state === 'open' ? import.meta.env.VITE_TARGET === 'web' ? t('webManagerJobOpen') : <button className={`${pmButton} h-6 !py-0`} onClick={() => onMaterial({ printerId: printer.id, reviewJobs: true })}>{t('pmConfirmJobs')}</button> : t(j.state === 'confirmed' ? 'pmBooked' : 'pmIgnored')}</td>
         </tr>; })}</tbody>
       </table></div>
     </Card>}

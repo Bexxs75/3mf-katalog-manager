@@ -435,6 +435,10 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("printer_jobs", "booked_file_id", ColType::Integer, true),
     ("printer_jobs", "booked_g", ColType::Real, true),
     ("printer_jobs", "decided_at", ColType::Text, true),
+    // Not in REQUIRED_COLUMNS on purpose: an older backup gets the columns from the migration that runs first.
+    ("printer_jobs", "failure_reason", ColType::Text, true),
+    ("printer_jobs", "failure_note", ColType::Text, true),
+    ("printer_jobs", "auto_closed", ColType::Integer, false),
     // Print data of a 3MF - see db/repository.rs (load_print_info).
     ("file_print_info", "file_id", ColType::Integer, false),
     ("file_print_info", "reader_version", ColType::Integer, false),
@@ -665,7 +669,24 @@ fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
-    if bad > 0 {
+    // The failure fields: a code of the list (no CHECK in the database holds it), only on a print
+    // that ended early, a short note, and the flag only on prints nobody has to decide. The codes
+    // are constants of ours, so joining them into the statement is safe.
+    let reasons = crate::printer_link::failure::FAILURE_REASONS.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(", ");
+    let bad_jobs: i64 = conn
+        .query_row(
+            &format!(
+                "SELECT COUNT(*) FROM printer_jobs WHERE auto_closed NOT IN (0, 1)
+                    OR (auto_closed = 1 AND state <> 'ignored')
+                    OR (failure_reason IS NOT NULL AND (failure_reason NOT IN ({reasons}) OR outcome <> 'partial'))
+                    OR length(failure_note) > {}",
+                crate::printer_link::failure::MAX_NOTE_CHARS
+            ),
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad + bad_jobs > 0 {
         return Err("Katalog-Datenbank enthaelt ungueltige Druckeranbindungs-Eintraege".to_string());
     }
     Ok(())
@@ -1952,7 +1973,7 @@ mod tests {
         // A table without the CHECK, as a crafted backup could bring it.
         conn.execute_batch(
             "CREATE TABLE printers (id INTEGER, kind TEXT);
-             CREATE TABLE printer_jobs (outcome TEXT, state TEXT);
+             CREATE TABLE printer_jobs (outcome TEXT, state TEXT, auto_closed INTEGER, failure_reason TEXT, failure_note TEXT);
              CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER, api_key TEXT);
              INSERT INTO printer_connections VALUES (1, 'moonraker', 0, -3, NULL);",
         )
@@ -1961,12 +1982,62 @@ mod tests {
         conn.execute("UPDATE printer_connections SET failures = 0", []).unwrap();
         assert!(validate_printer_link_rows(&conn).is_ok());
     }
+    /// Prints as a crafted backup could bring them: a table without the CHECK clauses of ours.
+    fn jobs_table(rows: &str) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TABLE printers (id INTEGER, kind TEXT);
+             CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER, api_key TEXT);
+             CREATE TABLE printer_jobs (outcome TEXT, state TEXT, auto_closed INTEGER, failure_reason TEXT, failure_note TEXT);
+             {rows}"
+        ))
+        .unwrap();
+        conn
+    }
+    #[test]
+    fn the_failure_fields_of_a_print_are_accepted_when_they_follow_the_rules() {
+        let conn = jobs_table(
+            "INSERT INTO printer_jobs VALUES
+                 ('completed', 'open', 0, NULL, NULL),
+                 ('partial', 'open', 0, 'clog', 'nozzle'),
+                 ('partial', 'confirmed', 0, 'other', NULL),
+                 ('partial', 'ignored', 1, NULL, NULL),
+                 ('partial', 'ignored', 1, 'intentional', NULL),
+                 ('completed', 'ignored', 1, NULL, NULL);",
+        );
+        assert!(validate_printer_link_rows(&conn).is_ok());
+        for code in crate::printer_link::failure::FAILURE_REASONS {
+            conn.execute("UPDATE printer_jobs SET failure_reason = ?1 WHERE failure_reason = 'clog'", [code]).unwrap();
+            assert!(validate_printer_link_rows(&conn).is_ok(), "{code}");
+        }
+        let at_limit = "\u{e4}".repeat(crate::printer_link::failure::MAX_NOTE_CHARS);
+        conn.execute("UPDATE printer_jobs SET failure_note = ?1 WHERE failure_note = 'nozzle'", [at_limit]).unwrap();
+        assert!(validate_printer_link_rows(&conn).is_ok(), "200 characters, though more than 200 bytes");
+    }
+    #[test]
+    fn a_print_with_a_broken_failure_field_makes_the_backup_unusable() {
+        let too_long = "x".repeat(crate::printer_link::failure::MAX_NOTE_CHARS + 1);
+        let cases: Vec<(&str, String)> = vec![
+            ("unknown code", "('partial', 'open', 0, 'made_up', NULL)".into()),
+            ("code in another case", "('partial', 'open', 0, 'Clog', NULL)".into()),
+            ("empty code", "('partial', 'open', 0, '', NULL)".into()),
+            ("reason on a completed print", "('completed', 'open', 0, 'clog', NULL)".into()),
+            ("note too long", format!("('partial', 'open', 0, 'clog', '{too_long}')")),
+            ("flag out of range", "('partial', 'ignored', 2, NULL, NULL)".into()),
+            ("closed by the program but still open", "('partial', 'open', 1, NULL, NULL)".into()),
+            ("closed by the program but confirmed", "('completed', 'confirmed', 1, NULL, NULL)".into()),
+        ];
+        for (what, row) in cases {
+            let conn = jobs_table(&format!("INSERT INTO printer_jobs VALUES {row};"));
+            assert!(validate_printer_link_rows(&conn).is_err(), "{what}");
+        }
+    }
     #[test]
     fn a_damaged_api_key_value_is_rejected_and_an_absent_one_is_not() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE printers (id INTEGER, kind TEXT);
-             CREATE TABLE printer_jobs (outcome TEXT, state TEXT);
+             CREATE TABLE printer_jobs (outcome TEXT, state TEXT, auto_closed INTEGER, failure_reason TEXT, failure_note TEXT);
              CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER, api_key TEXT);
              INSERT INTO printer_connections VALUES (1, 'moonraker', 0, 0, NULL);",
         )

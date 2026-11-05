@@ -549,6 +549,8 @@ export interface Translations {
   pmStatus: string;
   pmBooked: string;
   pmIgnored: string;
+  pmNoUsage: string;
+  pmOlderHistory: string;
   pmDeletePrinter: string;
   pmInvalidNozzle: string;
   pmInvalidBed: string;
@@ -1597,6 +1599,11 @@ export interface Translations {
   printerConnectionTest: string;
   printerConnectionTesting: string;
   printerConnectionRemove: string;
+  printerOlderHistory: string;
+  printerOlderHistoryReading: string;
+  printerOlderHistoryHint: string;
+  printerOlderHistoryNone: string;
+  printerOlderHistoryAdded: PluralForms;
   printerConnectionOk: string;
   printerConnectionOkDetail: string;
   printerConnectionSince: string;

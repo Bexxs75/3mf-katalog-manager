@@ -13,6 +13,7 @@ function link(testResult: unknown): PrinterLinkState {
     enabled: true, connections: [], jobs: [], error: null, refresh: vi.fn(), setEnabled: vi.fn(),
     testConnection: vi.fn().mockResolvedValue(testResult), removeConnection: vi.fn().mockResolvedValue(undefined),
     clearApiKey: vi.fn().mockResolvedValue(undefined),
+    includeOlderHistory: vi.fn().mockResolvedValue({ added: 0, error: null }),
     syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
   } as unknown as PrinterLinkState;
 }
@@ -342,4 +343,44 @@ it('uses the saved host for background DNS errors even while editing', () => {
   renderIt(link(null), { ...okConnection, address: 'saved.invalid:7125', lastError: 'name_resolution_failed' });
   fireEvent.change(screen.getByPlaceholderText('192.168.1.60'), { target: { value: 'edited.invalid' } });
   expect(screen.getByRole('alert')).toHaveTextContent('„saved.invalid“');
+});
+
+describe('older history', () => {
+  const button = () => screen.getByRole('button', { name: 'Älteren Verlauf einbeziehen' });
+
+  it('is offered only for a connected printer and says that nothing is deducted', () => {
+    renderIt(link(null));
+    expect(screen.queryByRole('button', { name: 'Älteren Verlauf einbeziehen' })).toBeNull();
+    renderIt(link(null), okConnection);
+    expect(button()).toBeEnabled();
+    expect(screen.getByText(/Es wird nichts abgebucht und nichts zur Bestätigung angeboten/)).toBeInTheDocument();
+  });
+
+  it('asks for this printer and reports how many prints were taken over', async () => {
+    const l = link(null);
+    (l.includeOlderHistory as ReturnType<typeof vi.fn>).mockResolvedValue({ added: 12, error: null });
+    renderIt(l, okConnection);
+    await act(async () => fireEvent.click(button()));
+    expect(l.includeOlderHistory).toHaveBeenCalledWith('1');
+    expect(screen.getByRole('status')).toHaveTextContent('12 ältere Drucke als Verlauf übernommen.');
+  });
+
+  it('says so when nothing new was found', async () => {
+    renderIt(link(null), okConnection);
+    await act(async () => fireEvent.click(button()));
+    expect(screen.getByRole('status')).toHaveTextContent('Keine weiteren älteren Drucke gefunden.');
+  });
+
+  it('explains why the printer could not be read', async () => {
+    const l = link(null);
+    (l.includeOlderHistory as ReturnType<typeof vi.fn>).mockResolvedValue({ added: 0, error: 'connection_refused' });
+    renderIt(l, okConnection);
+    await act(async () => fireEvent.click(button()));
+    expect(screen.getByRole('alert')).toHaveTextContent(/lehnt die Verbindung ab/);
+  });
+
+  it('is off while the connection is switched off', () => {
+    renderIt({ ...link(null), enabled: false } as PrinterLinkState, okConnection);
+    expect(button()).toBeDisabled();
+  });
 });

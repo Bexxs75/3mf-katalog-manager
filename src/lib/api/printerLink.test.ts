@@ -44,6 +44,12 @@ describe('printerLink api', () => {
     await api.syncPrintersNow();
     expect(invoke).toHaveBeenCalledWith('sync_printers_now');
   });
+  it('includes the older history of one printer', async () => {
+    invoke.mockResolvedValue({ added: 3, error: null });
+    const result = await api.includeOlderPrinterHistory('7');
+    expect(invoke).toHaveBeenCalledWith('include_older_printer_history', { printerId: '7' });
+    expect(result).toEqual({ added: 3, error: null });
+  });
   it('lists open jobs', async () => {
     await api.listOpenPrinterJobs();
     expect(invoke).toHaveBeenCalledWith('list_open_printer_jobs');
