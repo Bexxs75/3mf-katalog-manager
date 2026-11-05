@@ -148,6 +148,9 @@ pub struct Service {
     clock: Clock,
     state: Mutex<State>,
     http: Mutex<Option<Arc<Http>>>,
+    /// Counts removals and switch-offs of the key. A key test remembers the value it started
+    /// with and may store its candidate only while the value is unchanged.
+    key_generation: std::sync::atomic::AtomicU64,
 }
 
 impl Service {
@@ -159,7 +162,7 @@ impl Service {
     pub fn with_config(cfg: Config, clock: Clock) -> Self {
         let limiter = Limiter::new(cfg.limits);
         let image_limiter = Limiter::new(cfg.image_limits);
-        Service { cfg, clock, state: Mutex::new(State { limiter, image_limiter, cache: Cache::new() }), http: Mutex::new(None) }
+        Service { cfg, clock, state: Mutex::new(State { limiter, image_limiter, cache: Cache::new() }), http: Mutex::new(None), key_generation: Default::default() }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
@@ -173,6 +176,17 @@ impl Service {
             *slot = Some(Arc::new(Http::new(self.cfg.timeout, self.cfg.local_test)?));
         }
         slot.clone().ok_or_else(|| TvError::new(ErrorCode::ThingiverseOffline))
+    }
+
+    /// The current key generation (see [`Service::invalidate_key_tests`]).
+    pub fn key_generation(&self) -> u64 {
+        self.key_generation.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Makes every running key test stale: the key was removed or the area switched off.
+    /// Callers hold the database lock, the same lock the test takes before it stores.
+    pub fn invalidate_key_tests(&self) {
+        self.key_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// Drops every cached result and image and the request history. Called when the
