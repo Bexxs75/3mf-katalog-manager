@@ -351,11 +351,11 @@ pub fn image_data_uri(file: &mut File, head: Vec<u8>, name: &str) -> Result<Stri
 }
 
 /// Sniffs nothing: the download type comes from the stored kind, never from the file.
-/// Images keep their image type, everything else (PDF, text) is served as opaque bytes.
+/// Images keep their image type, everything else (PDF, text, other formats) is served as opaque bytes.
 pub fn download_content_type(kind: CompanionKind, name: &str) -> &'static str {
     match kind {
         CompanionKind::Image => image_mime(name),
-        CompanionKind::Pdf | CompanionKind::Text => "application/octet-stream",
+        CompanionKind::Pdf | CompanionKind::Text | CompanionKind::Other => "application/octet-stream",
     }
 }
 
@@ -590,6 +590,8 @@ mod tests {
     fn downloads_never_get_a_renderable_type_except_images() {
         assert_eq!(download_content_type(CompanionKind::Pdf, "a.pdf"), "application/octet-stream");
         assert_eq!(download_content_type(CompanionKind::Text, "a.md"), "application/octet-stream");
+        assert_eq!(download_content_type(CompanionKind::Other, "a.fcstd"), "application/octet-stream");
+        assert_eq!(download_content_type(CompanionKind::Other, "a.png"), "application/octet-stream", "the name never decides for this kind");
         assert_eq!(download_content_type(CompanionKind::Image, "a.webp"), "image/webp");
     }
 }

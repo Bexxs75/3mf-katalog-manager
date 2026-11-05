@@ -51,6 +51,16 @@ describe('CompanionWebSection', () => {
     }
   });
 
+  it('lists a file of another format as a plain download row, without a preview', async () => {
+    const cad = { ...base, id: '7', name: 'Modell.fcstd', kind: 'other', sizeBytes: 4096 };
+    api.list.mockResolvedValue([cad]);
+    show();
+    expect(await screen.findByText('Modell.fcstd')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Modell\.fcstd herunterladen/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /öffnen|zeigen/i })).toBeNull();
+    expect(api.image).not.toHaveBeenCalled();
+  });
+
   it('shows the empty state and a load error', async () => {
     api.list.mockResolvedValueOnce([]);
     const { unmount } = show();

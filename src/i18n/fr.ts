@@ -1216,6 +1216,8 @@ export const fr: Translations = {
   companionOpenContainer: "Le fichier ne peut pas être ouvert dans le conteneur, car aucun programme n’y tourne pour l’ouvrir. Ouvrez-le directement sur votre hôte Docker.",
   companionMenu: "Autres actions pour {name}",
   companionReveal: "Afficher dans le gestionnaire de fichiers",
+  companionRevealNamed: "Afficher {name} dans le gestionnaire de fichiers",
+  companionOtherNote: "Stocké uniquement, jamais ouvert",
   companionRemoveNamed: "Retirer {name}",
   companionRestoreAtDesktop: "Cette entrée est dans la corbeille du bureau. Restaurez-la sur le bureau.",
   companionRemove: "Retirer",

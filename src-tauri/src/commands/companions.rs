@@ -16,11 +16,9 @@ pub(crate) use katalog_core::companions::{
 };
 use katalog_core::companion_read::{self, FolderProblem, RowError};
 pub(super) use katalog_core::companion_read::{read_head, same_dir_with, MAX_PREVIEW_BYTES};
-use katalog_core::companions::{has_parent_component, kind_for_extension, lowercase_extension};
+use katalog_core::companions::{has_parent_component, is_text_name, kind_for_extension, lowercase_extension, ALLOWED_EXTENSIONS};
 #[cfg(test)]
 use katalog_core::companions::CONTENT_CHECK_BYTES;
-/// Extensions of the allowed types, for the file picker.
-const PICKER_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md"];
 
 /// The user-facing text for a refusal; the rule itself lives in `katalog_core::companions`.
 trait RefusalText {
@@ -30,7 +28,7 @@ trait RefusalText {
 impl RefusalText for Refusal {
     fn message(self) -> &'static str {
         match self {
-            Self::Type => "Dieser Dateityp ist als Begleitdatei nicht erlaubt. Erlaubt sind Bilder (PNG, JPG, GIF, WebP), PDF und Textdateien (TXT, MD).",
+            Self::Type => "Dieser Dateityp ist als Begleitdatei nicht erlaubt. Erlaubt sind Bilder (PNG, JPG, GIF, WebP), PDF, Textdateien (TXT, MD) und weitere Formate (FCStd, SCAD, DXF, CSV, DOCX, ODT).",
             Self::Content => "Der Inhalt der Datei passt nicht zu ihrem Dateityp und wird nicht übernommen.",
         }
     }
@@ -258,7 +256,7 @@ pub(super) fn add_companion_with_conn(
     let kind = classify(source_name, &head).map_err(|r| CmdError::expected(r.message()))?;
     let name = companion_file_name(source).ok_or_else(|| CmdError::expected("Der Dateiname ist nicht verwendbar."))?;
     // A text file is valid from its first to its last byte, not just in the inspected head.
-    if kind == CompanionKind::Text {
+    if is_text_name(&name) {
         use std::io::Seek;
         let mut scan = katalog_core::companions::TextScan::default();
         let mut ok = scan.feed(&head);
@@ -883,7 +881,7 @@ pub async fn list_companions(app: tauri::AppHandle, file_id: String) -> CmdResul
 pub async fn pick_companion_files(app: tauri::AppHandle) -> CmdResult<Vec<String>> {
     blocking(app, |app| {
         use tauri::Manager;
-        let picked = app.dialog().file().add_filter("Bilder, PDF, Text", PICKER_EXTENSIONS).blocking_pick_files();
+        let picked = app.dialog().file().add_filter("Bilder, PDF, Text, weitere Formate", ALLOWED_EXTENSIONS).blocking_pick_files();
         let paths: Vec<PathBuf> = picked.unwrap_or_default().into_iter().filter_map(|p| p.into_path().ok()).collect();
         let state = app.state::<AppState>();
         for path in &paths {
@@ -961,6 +959,15 @@ pub async fn companion_open_info(app: tauri::AppHandle, companion_id: String) ->
     .await
 }
 
+/// A file of the `other` kind is never handed to a program: the default program of a document or a
+/// CAD source may run active content (macros, scripts).
+fn refuse_unopenable(info: &CompanionOpenInfoDto) -> CmdResult<()> {
+    if CompanionKind::parse(&info.kind) == Some(CompanionKind::Other) {
+        return Err(CmdError::expected("Dieses Format wird nicht geöffnet. Die Datei kann im Ordner angezeigt werden."));
+    }
+    Ok(())
+}
+
 /// Opens a companion with the system's default program. It takes an id, never a path:
 /// the only files that can be opened are catalog companions that pass the checks again
 /// at this moment (allowed type, matching content, a regular file in an extras folder).
@@ -976,7 +983,28 @@ pub async fn open_companion(app: tauri::AppHandle, companion_id: String) -> CmdR
             let conn = lock_db(&state)?;
             open_info_with_conn(&conn, id, &state.sensitive_dirs)?
         };
+        refuse_unopenable(&info)?;
         open_external(&info.path, environment)
+    })
+    .await
+}
+
+/// Shows a companion in the system's file manager, selected. Like [`open_companion`] it takes an
+/// id and checks the row again; unlike it, it starts no program on the file, so it is also
+/// the one way to reach a file of a format that is never opened.
+#[tauri::command]
+pub async fn reveal_companion(app: tauri::AppHandle, companion_id: String) -> CmdResult<()> {
+    blocking(app, move |app| {
+        use tauri::Manager;
+        let state = app.state::<AppState>();
+        let environment = *app.state::<RuntimeEnvironment>();
+        environment.require_desktop(runtime_environment::DesktopFeature::FileManager)?;
+        let id = parse_companion_id(&companion_id)?;
+        let info = {
+            let conn = lock_db(&state)?;
+            open_info_with_conn(&conn, id, &state.sensitive_dirs)?
+        };
+        super::files::reveal_catalog_path(Path::new(&info.path))
     })
     .await
 }

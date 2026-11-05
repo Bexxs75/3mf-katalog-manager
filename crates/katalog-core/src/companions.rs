@@ -21,6 +21,8 @@ pub enum CompanionKind {
     Image,
     Pdf,
     Text,
+    /// Stored and handed back, never opened, shown or run: CAD sources and documents.
+    Other,
 }
 
 impl CompanionKind {
@@ -29,6 +31,7 @@ impl CompanionKind {
             Self::Image => "image",
             Self::Pdf => "pdf",
             Self::Text => "text",
+            Self::Other => "other",
         }
     }
 
@@ -37,6 +40,7 @@ impl CompanionKind {
             "image" => Some(Self::Image),
             "pdf" => Some(Self::Pdf),
             "text" => Some(Self::Text),
+            "other" => Some(Self::Other),
             _ => None,
         }
     }
@@ -60,8 +64,25 @@ pub fn kind_for_extension(extension: &str) -> Option<CompanionKind> {
         "png" | "jpg" | "jpeg" | "gif" | "webp" => Some(CompanionKind::Image),
         "pdf" => Some(CompanionKind::Pdf),
         "txt" | "md" => Some(CompanionKind::Text),
+        "fcstd" | "scad" | "dxf" | "csv" | "docx" | "odt" => Some(CompanionKind::Other),
         _ => None,
     }
+}
+
+/// Every extension that is accepted, in the order the lists in the interface show them. The
+/// frontend keeps a copy; a test compares both against `companion-extensions.json`.
+pub const ALLOWED_EXTENSIONS: &[&str] =
+    &["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "fcstd", "scad", "dxf", "csv", "docx", "odt"];
+
+/// Whether the content of a file with this extension must be valid UTF-8 text without NUL
+/// bytes from its first to its last byte.
+pub fn is_text_extension(extension: &str) -> bool {
+    matches!(extension, "txt" | "md" | "scad" | "dxf" | "csv")
+}
+
+/// Whether a file name carries an extension whose content is checked as text.
+pub fn is_text_name(name: &str) -> bool {
+    lowercase_extension(name).is_some_and(|e| is_text_extension(&e))
 }
 
 /// Text must be free of NUL bytes and valid UTF-8. A multi-byte character cut at the
@@ -85,7 +106,10 @@ fn content_matches(extension: &str, head: &[u8]) -> bool {
         "gif" => head.starts_with(b"GIF87a") || head.starts_with(b"GIF89a"),
         "webp" => head.starts_with(b"RIFF") && head.get(8..12) == Some(&b"WEBP"[..]),
         "pdf" => head.starts_with(b"%PDF-"),
-        "txt" | "md" => text_content_ok(head),
+        // A ZIP container. Only the local file header is checked: the files are never
+        // unpacked or opened here.
+        "fcstd" | "docx" | "odt" => head.starts_with(b"PK\x03\x04"),
+        e if is_text_extension(e) => text_content_ok(head),
         _ => false,
     }
 }
@@ -108,7 +132,7 @@ pub fn classify(name: &str, head: &[u8]) -> Result<CompanionKind, Refusal> {
 /// opened as text.
 pub fn classify_full(name: &str, bytes: &[u8]) -> Result<CompanionKind, Refusal> {
     let kind = classify(name, &bytes[..bytes.len().min(CONTENT_CHECK_BYTES)])?;
-    if kind == CompanionKind::Text && (bytes.contains(&0) || std::str::from_utf8(bytes).is_err()) {
+    if is_text_name(name) && (bytes.contains(&0) || std::str::from_utf8(bytes).is_err()) {
         return Err(Refusal::Content);
     }
     Ok(kind)
@@ -285,5 +309,92 @@ mod tests {
         assert_eq!(classify("a.png", b"\x89PNG\r\n\x1a\n"), Ok(CompanionKind::Image));
         assert_eq!(classify("a.jpg", b"\x89PNG\r\n\x1a\n"), Err(Refusal::Content));
         assert_eq!(classify("a.exe", b"MZ"), Err(Refusal::Type));
+    }
+
+    const ZIP: &[u8] = b"PK\x03\x04\x14\x00\x00\x00";
+
+    #[test]
+    fn the_formats_for_other_files_need_their_own_signature() {
+        for name in ["m.fcstd", "d.docx", "d.odt", "M.FCStd"] {
+            assert_eq!(classify(name, ZIP), Ok(CompanionKind::Other), "{name}");
+            assert_eq!(classify(name, b"\x89PNG\r\n\x1a\n"), Err(Refusal::Content), "{name} with a PNG inside");
+            assert_eq!(classify(name, b"plain text"), Err(Refusal::Content), "{name} with text inside");
+            assert_eq!(classify(name, b""), Err(Refusal::Content), "{name} empty");
+        }
+        for name in ["part.scad", "plan.dxf", "table.csv"] {
+            assert_eq!(classify(name, b"cube(10);\n"), Ok(CompanionKind::Other), "{name}");
+            assert_eq!(classify(name, b"a\0b"), Err(Refusal::Content), "{name} with a NUL byte");
+            assert_eq!(classify(name, ZIP), Err(Refusal::Content), "{name} with a ZIP inside");
+            assert_eq!(classify(name, &[0xff, 0xfe, b'a']), Err(Refusal::Content), "{name} that is not UTF-8");
+        }
+        assert_eq!(classify("a.fcstd.exe", ZIP), Err(Refusal::Type), "only the last extension counts");
+    }
+
+    #[test]
+    fn a_text_like_other_file_is_checked_to_its_last_byte() {
+        let mut long = vec![b'a'; CONTENT_CHECK_BYTES + 10];
+        long[CONTENT_CHECK_BYTES + 5] = 0;
+        assert_eq!(classify_full("p.scad", &long), Err(Refusal::Content));
+        assert!(is_text_name("T.CSV") && is_text_name("n.md") && !is_text_name("m.fcstd") && !is_text_name("p.png"));
+        // A ZIP is binary on purpose: the NUL bytes of its header are no reason to refuse it.
+        let mut zip = ZIP.to_vec();
+        zip.extend_from_slice(&[0, 1, 2, 0, 0]);
+        assert_eq!(classify_full("m.fcstd", &zip), Ok(CompanionKind::Other));
+    }
+
+    #[test]
+    fn no_extension_of_the_blocklist_is_ever_accepted() {
+        for extension in crate::archive::BLOCKED_EXTENSIONS {
+            assert_eq!(kind_for_extension(extension), None, "{extension}");
+            // Whatever the content claims, the type decides first.
+            assert_eq!(classify(&format!("x.{extension}"), ZIP), Err(Refusal::Type), "{extension}");
+            assert_eq!(classify(&format!("x.{extension}"), b"hello"), Err(Refusal::Type), "{extension}");
+        }
+        for extension in ALLOWED_EXTENSIONS {
+            assert!(!crate::archive::is_blocked_path(Path::new(&format!("x.{extension}"))), "{extension} is on the blocklist");
+        }
+        for extension in ["step", "stp", "stl", "3mf", "obj", "svg", "zip", "7z", "rar", "html", "docm", "xlsm", "json"] {
+            assert_eq!(kind_for_extension(extension), None, "{extension} must not be a companion");
+        }
+    }
+
+    #[test]
+    fn the_extension_lists_agree_with_each_other_and_with_the_shared_gold_list() {
+        let gold: serde_json::Value = serde_json::from_str(include_str!("../../../src/lib/companionExtensions.json")).unwrap();
+        let gold: std::collections::BTreeMap<String, String> = gold["extensions"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(extension, kind)| (extension.clone(), kind.as_str().unwrap().to_string()))
+            .collect();
+        let by_function: std::collections::BTreeMap<String, String> = ALLOWED_EXTENSIONS
+            .iter()
+            .map(|e| (e.to_string(), kind_for_extension(e).expect("listed extensions have a kind").as_str().to_string()))
+            .collect();
+        assert_eq!(by_function, gold);
+        assert_eq!(ALLOWED_EXTENSIONS.len(), gold.len(), "no extension is listed twice");
+        // Nothing outside the list maps to a kind.
+        for probe in ["bmp", "tif", "rtf", "doc", "xlsx", "odp", "ods", "stp", "exe", ""] {
+            assert_eq!(kind_for_extension(probe), None, "{probe}");
+        }
+    }
+
+    #[test]
+    fn the_limits_stay_where_they_were() {
+        assert_eq!(MAX_COMPANION_BYTES, 50 * 1024 * 1024);
+        assert_eq!(MAX_COMPANIONS_PER_MODEL, 100);
+    }
+
+    #[test]
+    fn a_stored_other_row_must_have_an_allowed_extension() {
+        let row = |name: &str, kind: &str| validate_stored_fields(name, &format!("/c/Foo_extras/{name}"), kind);
+        assert_eq!(row("m.fcstd", "other"), Ok(CompanionKind::Other));
+        assert_eq!(row("m.exe", "other"), Err("type"), "a foreign catalog may claim anything");
+        assert_eq!(row("m.js", "other"), Err("type"));
+        assert_eq!(row("m.step", "other"), Err("type"));
+        assert_eq!(row("m.fcstd", "text"), Err("type"), "the kind must be the one the extension gives");
+        assert_eq!(row("a.png", "other"), Err("type"));
+        assert_eq!(CompanionKind::parse("other"), Some(CompanionKind::Other));
+        assert_eq!(CompanionKind::parse("exe"), None);
     }
 }

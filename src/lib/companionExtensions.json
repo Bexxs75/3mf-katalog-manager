@@ -1,0 +1,19 @@
+{
+  "_comment": "The file extensions accepted as companion files and the kind each one gets. Read by a Rust test (katalog-core companions.rs) and by companionUpload.test.ts, so the Rust list and the web form cannot drift apart. STEP/STP are catalog models, SVG can carry scripts and archives hide their content: none of them belongs here.",
+  "extensions": {
+    "png": "image",
+    "jpg": "image",
+    "jpeg": "image",
+    "gif": "image",
+    "webp": "image",
+    "pdf": "pdf",
+    "txt": "text",
+    "md": "text",
+    "fcstd": "other",
+    "scad": "other",
+    "dxf": "other",
+    "csv": "other",
+    "docx": "other",
+    "odt": "other"
+  }
+}

@@ -297,6 +297,7 @@ pub fn run() {
             commands::restore_companion,
             commands::companion_open_info,
             commands::open_companion,
+            commands::reveal_companion,
             commands::companion_image_data,
             commands::list_file_images,
             commands::list_all_file_tags,

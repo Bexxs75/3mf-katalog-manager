@@ -8,6 +8,7 @@ const GIF: &[u8] = b"GIF89a\x01\0\x01\0";
 const WEBP: &[u8] = b"RIFF\x10\0\0\0WEBPVP8 ";
 const PDF: &[u8] = b"%PDF-1.7\n1 0 obj\n";
 const TEXT: &[u8] = "Lizenz: CC-BY, ünï\n".as_bytes();
+const ZIP: &[u8] = b"PK\x03\x04\x14\0\0\0";
 const EXE: &[u8] = b"MZ\x90\0\x03\0\0\0";
 
 struct Fixture {
@@ -98,6 +99,12 @@ fn every_allowed_type_is_accepted_with_matching_content() {
         ("a.txt", TEXT, CompanionKind::Text),
         ("a.md", TEXT, CompanionKind::Text),
         ("empty.txt", b"", CompanionKind::Text),
+        ("a.FCStd", ZIP, CompanionKind::Other),
+        ("a.docx", ZIP, CompanionKind::Other),
+        ("a.odt", ZIP, CompanionKind::Other),
+        ("a.scad", TEXT, CompanionKind::Other),
+        ("a.dxf", TEXT, CompanionKind::Other),
+        ("a.csv", TEXT, CompanionKind::Other),
     ] {
         assert_eq!(classify(name, bytes), Ok(kind), "{name}");
     }
@@ -120,7 +127,7 @@ fn a_png_with_the_wrong_extension_is_refused() {
 
 #[test]
 fn scripts_archives_and_unknown_types_are_never_allowed() {
-    for name in ["run.sh", "tool.exe", "setup.msi", "x.bat", "x.ps1", "x.zip", "x.7z", "x.docx", "x.svg", "x.html", "x.FCStd", "x.png.exe", "png", ".png"] {
+    for name in ["run.sh", "tool.exe", "setup.msi", "x.bat", "x.ps1", "x.zip", "x.7z", "x.docm", "x.svg", "x.html", "x.step", "x.stp", "x.png.exe", "png", ".png"] {
         assert_eq!(classify(name, PNG), Err(Refusal::Type), "{name}");
         assert_eq!(classify(name, TEXT), Err(Refusal::Type), "{name}");
     }
@@ -657,6 +664,39 @@ fn open_info_and_image_data_work_only_for_allowed_content() {
     let data = image_data_with_conn(&f.conn, pic.id, &[]).unwrap();
     assert!(data.starts_with("data:image/png;base64,"));
     assert!(image_data_with_conn(&f.conn, doc.id, &[]).is_err(), "only pictures");
+}
+
+#[test]
+fn an_other_file_is_stored_and_listed_but_never_opened_or_previewed() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let cad = f.add(id, "Foo.FCStd", ZIP);
+    assert_eq!((cad.kind.as_str(), cad.name.as_str()), ("other", "Foo.fcstd"));
+    assert_eq!(to_dto(cad.clone()).kind, "other");
+    let info = open_info_with_conn(&f.conn, cad.id, &[]).unwrap();
+    assert_eq!(info.kind, "other", "the checks still pass, so the folder can be shown");
+    assert!(refuse_unopenable(&info).is_err(), "the default program is never started on it");
+    assert!(image_data_with_conn(&f.conn, cad.id, &[]).is_err(), "no data address for it");
+    // Counter-check: the other kinds are still handed over.
+    let pdf = f.add(id, "doc.pdf", PDF);
+    assert!(refuse_unopenable(&open_info_with_conn(&f.conn, pdf.id, &[]).unwrap()).is_ok());
+}
+
+#[test]
+fn a_text_like_other_file_is_checked_beyond_the_inspected_head_when_it_is_copied() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let mut late_nul = vec![b'a'; CONTENT_CHECK_BYTES + 500];
+    late_nul[CONTENT_CHECK_BYTES + 100] = 0;
+    for name in ["part.scad", "plan.dxf", "table.csv"] {
+        assert!(add_companion_with_conn(&f.conn, id, &f.source(name, &late_nul), &[]).is_err(), "{name}");
+    }
+    assert!(!f.root.join("Foo_extras").exists(), "nothing was made for a refused file");
+    let mut zip_with_nul = ZIP.to_vec();
+    zip_with_nul.extend(vec![0u8; CONTENT_CHECK_BYTES + 100]);
+    assert_eq!(f.add(id, "m.fcstd", &zip_with_nul).kind, "other", "a ZIP is binary and may hold NUL bytes");
+    assert!(add_companion_with_conn(&f.conn, id, &f.source("run.exe", ZIP), &[]).is_err());
+    assert!(add_companion_with_conn(&f.conn, id, &f.source("fake.docx", b"hello"), &[]).is_err());
 }
 
 #[test]

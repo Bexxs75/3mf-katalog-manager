@@ -197,7 +197,7 @@ CREATE TABLE IF NOT EXISTS printer_jobs (
     UNIQUE (printer_id, remote_id)
 );
 
--- Extra files that belong to one model (pictures, PDFs, text notes). The files
+-- Extra files that belong to one model (pictures, PDFs, text notes, CAD sources and documents). The files
 -- live in a `<model name>_extras` folder next to the model; this table only knows
 -- them. A row with `deleted_at` sits in the app trash at `trash_path`.
 CREATE TABLE IF NOT EXISTS companion_files (
@@ -205,7 +205,7 @@ CREATE TABLE IF NOT EXISTS companion_files (
     file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     path TEXT NOT NULL UNIQUE,
-    kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text')),
+    kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text', 'other')),
     size_bytes INTEGER,
     added_at TEXT NOT NULL,
     deleted_at TEXT,

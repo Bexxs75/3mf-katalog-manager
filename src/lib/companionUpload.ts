@@ -4,8 +4,8 @@ import { blockFileOperations } from './webSession';
 import { fileOpsError } from './fileOpsErrors';
 
 /** The types the server accepts; the server decides by extension and content anyway. */
-export const COMPANION_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md';
-const ALLOWED_NAME = /\.(png|jpe?g|gif|webp|pdf|txt|md)$/i;
+export const COMPANION_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md,.fcstd,.scad,.dxf,.csv,.docx,.odt';
+const ALLOWED_NAME = /\.(png|jpe?g|gif|webp|pdf|txt|md|fcstd|scad|dxf|csv|docx|odt)$/i;
 export const isAllowedCompanionName = (name: string): boolean => ALLOWED_NAME.test(name);
 
 /**

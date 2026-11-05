@@ -38,6 +38,10 @@ export function companionOpenInfo(companionId: string) {
 export function openCompanion(companionId: string) {
   return invoke<void>('open_companion', { companionId });
 }
+// Shows the companion in the system's file manager (by id, never by path); starts no program on the file.
+export function revealCompanion(companionId: string) {
+  return invoke<void>('reveal_companion', { companionId });
+}
 // The picture as a data URI (images only, size-capped).
 export function companionImageData(companionId: string) {
   return invoke<string>('companion_image_data', { companionId });

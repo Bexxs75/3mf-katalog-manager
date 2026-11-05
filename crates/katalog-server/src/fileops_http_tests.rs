@@ -1436,6 +1436,35 @@ async fn a_companion_is_uploaded_into_the_extras_folder_and_listed() {
 }
 
 #[tokio::test]
+async fn the_upload_route_takes_the_formats_that_are_stored_but_never_opened() {
+    let f = Fixture::new(true).await;
+    let id = f.file("Foo.3mf");
+    let kind = |r: Response| async move { (r.status().as_u16(), value(r).await["kind"].as_str().unwrap_or_default().to_owned()) };
+    let zip = || {
+        let mut v = b"PK\x03\x04".to_vec();
+        v.resize(4000, 0);
+        v
+    };
+    let accepted = value(f.upload(&id, "Model.FCStd", zip()).await).await;
+    assert_eq!((accepted["name"].as_str(), accepted["kind"].as_str()), (Some("Model.fcstd"), Some("other")));
+    assert_eq!(value(f.upload(&id, "part.scad", b"cube(10);".to_vec()).await).await["kind"], "other");
+    assert_eq!(f.companion_count(), 2);
+    // The download is an opaque attachment, whatever the name says.
+    let cid = accepted["id"].as_str().unwrap();
+    let d = router(f.app.clone()).oneshot(f.request("GET", &format!("/api/companions/{cid}/download"), Body::empty())).await.unwrap();
+    assert_eq!(d.status(), 200);
+    assert_eq!(d.headers()["content-type"], "application/octet-stream");
+    assert!(d.headers()["content-disposition"].to_str().unwrap().starts_with("attachment;"));
+    // Content must fit, and nothing outside the list gets in.
+    assert_eq!(kind(f.upload(&id, "x.docx", b"hello".to_vec()).await).await, (422, "companion_content".into()));
+    assert_eq!(kind(f.upload(&id, "x.csv", b"a\0b".to_vec()).await).await, (422, "companion_content".into()));
+    assert_eq!(kind(f.upload(&id, "x.exe", zip()).await).await, (415, "companion_type".into()));
+    assert_eq!(kind(f.upload(&id, "x.docm", zip()).await).await, (415, "companion_type".into()));
+    assert_eq!(kind(f.upload(&id, "x.step", b"ISO-10303".to_vec()).await).await, (415, "companion_type".into()));
+    assert_eq!(f.companion_count(), 2);
+}
+
+#[tokio::test]
 async fn the_upload_route_has_the_same_gates_as_the_other_writes() {
     let f = Fixture::new(true).await;
     let id = f.file("Foo.3mf");

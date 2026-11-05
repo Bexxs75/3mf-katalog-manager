@@ -347,12 +347,15 @@ fn add_companion_file(f: &Fx, name: &str, body: &[u8], kind: &str) -> i64 {
 #[tokio::test]
 async fn every_kind_is_delivered_as_an_attachment_and_only_images_keep_their_type() {
     let f = Fx::new(false).await;
-    let cases: [(&str, &[u8], &str, &str); 5] = [
+    let cases: [(&str, &[u8], &str, &str); 7] = [
         ("a.jpg", b"\xff\xd8\xffbody", "image", "image/jpeg"),
         ("a.gif", b"GIF89abody", "image", "image/gif"),
         ("a.webp", b"RIFF\0\0\0\0WEBPbody", "image", "image/webp"),
         ("notes.txt", b"<html><script>alert(1)</script></html>", "text", "application/octet-stream"),
         ("readme.md", b"# title", "text", "application/octet-stream"),
+        ("model.fcstd", b"PK\x03\x04body", "other", "application/octet-stream"),
+        // Even a name that looks like a picture does not give an `other` row a picture type.
+        ("table.csv", b"<svg onload=alert(1)>", "other", "application/octet-stream"),
     ];
     for (name, body, kind, content_type) in cases {
         let id = add_companion_file(&f, name, body, kind);
@@ -405,7 +408,7 @@ fn the_accept_list_of_the_web_form_matches_the_rust_list() {
     let mut offered: Vec<&str> = accept.split(',').map(|e| e.strip_prefix('.').expect("leading dot")).collect();
     offered.sort_unstable();
     // Every extension anyone would try; the list may grow, a candidate missing here is not a drift.
-    let candidates = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "tif", "tiff", "heic", "pdf", "txt", "md", "rtf", "doc", "docx", "csv", "json", "html", "htm", "step", "stp", "stl", "3mf", "obj", "zip", "exe", "js"];
+    let candidates = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "tif", "tiff", "heic", "pdf", "txt", "md", "rtf", "doc", "docx", "docm", "odt", "csv", "fcstd", "scad", "dxf", "json", "html", "htm", "step", "stp", "stl", "3mf", "obj", "zip", "exe", "js"];
     let mut accepted: Vec<&str> = candidates.into_iter().filter(|e| katalog_core::companions::kind_for_extension(e).is_some()).collect();
     accepted.sort_unstable();
     assert_eq!(offered, accepted);
