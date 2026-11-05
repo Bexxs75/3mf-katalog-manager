@@ -690,6 +690,51 @@ To get the usage, open the file in your slicer (for example Bambu Studio or Orca
 plate and export it as a sliced plate, that is a 3MF with slicer data. The detail page then shows
 the real usage. For a file that is already in the catalog, "Rescan metadata" re-reads the values.
 
+### G-code and resin files
+
+Besides models, the catalog can hold files that were already sliced. **G-code** (`.gcode`, `.bgcode`) and **resin**
+files (`.ctb`, `.cbddlp`, `.goo`, `.pwmx`, `.pwms`, `.sl1`) are added one by one (Import → Files, or drag and drop). A
+folder, archive or source-folder run never takes them in by itself. Project files of resin slicers (`.lys`,
+`.chitubox`, `.voxl`) are not accepted.
+
+- **G-code** entries show a "G-Code" or "bgcode" badge, the embedded preview picture (otherwise "No preview") and, in the
+  detail view and panel, the card **Print data (from slicer)** instead of the 3D viewer: print time, filament use
+  per filament, layer height, nozzle, temperatures, filament types and colors, target printer, slicer and version. The app only
+  reads what the slicer wrote into the file (the first and last 256 KiB of a text file) and never calculates anything: missing
+  values and placeholders stay unknown, a file without a slicer line says "No print data recognised", and a damaged binary file
+  is marked as unreadable. "Rescan metadata" (or Settings → Catalog → "Read print data") reads entries added
+  earlier. "Is there enough filament?" works on a G-code file like on a 3MF; if only lengths are stated (CuraEngine), there
+  is no weight, cost or check. There is no "Open in slicer" and no 3D snapshot for G-code.
+- **Resin** entries are only catalogued: name, size, folder, tags, notes and trash work as usual, the ending (CTB, GOO …)
+  is shown as a badge, and nothing of the content is read. The filter bar offers "File type: Resin" as soon as such files exist.
+  In the web version these files can be uploaded; an `.sl1` must be a ZIP container, and none of them is ever opened or unpacked.
+
+### Dropping onto a folder
+
+Files and folders dragged from the file manager onto a folder in the sidebar are moved into that folder (like "Import →
+Files"); a dropped folder becomes a subfolder with its structure. The folder under the pointer is framed and says where the
+files go. The catalog folder itself and a missing folder are no targets: nothing is imported, and a message says why. Dropped
+beside the tree, files stay where they are, as before.
+
+### Saving a model as STL
+
+3MF, OBJ and STEP models can be saved as a binary **STL** from the context menu, the detail page and the detail panel (not for STL
+files, not in the web version). For a 3MF with several plates you choose everything or one plate. STL stores neither colors nor
+materials, and positions follow the build plate. An existing file is never overwritten.
+
+### More companion formats
+
+Besides pictures, PDF and text, a model can keep FreeCAD (`.fcstd`), OpenSCAD (`.scad`), DXF, CSV, Word (`.docx`) and OpenDocument
+text (`.odt`) files as [companion files](#companion-files). They are stored and handed back, never opened by the program: the app
+offers "Show in file manager" instead of "Open".
+
+### What do you print with?
+
+In Settings → General you choose **Filament**, **Resin** or **Both** (the default). A new installation asks once on first start;
+an existing one only shows a small notice and keeps showing everything until you choose. With "Filament" the resin switch and resin
+printers are hidden; with "Resin" the stock shows resin only, and the filament check and cost estimate are hidden. Nothing is deleted:
+hidden data returns when you change the choice. The browser version shows the choice but changes it only in the desktop app.
+
 ## Quick actions: context menu and multi-select
 
 Right-clicking a model opens a context menu with the most important actions:
@@ -747,6 +792,43 @@ Removing the catalog location folder or one of its ancestors in the catalog is r
 message reads:
 
 > This is the catalog location. To empty it, use “Reset catalog” in Settings.
+
+### Bundling models
+
+A **bundle** groups models that belong together, for example the same model for a 0.4 mm and a
+0.6 mm nozzle, or the parts of a multi-part project. Bundling only changes the catalog: **no file is
+moved, renamed or deleted.** A bundle has 2 to 200 models, a name (up to 120 characters) and a
+**kind**:
+
+- **Variants** — alternatives of the same model, for example 3MF and STL or two nozzle sizes.
+- **Parts** — parts that are printed or assembled together.
+
+Select two or more models and choose **Bundle …** in the context menu. In the dialog you set the
+name and kind, reorder the models (drag, or the arrow keys) and give each an optional label of up to
+60 characters, such as "0.4 mm nozzle". Position 1 is the **title model**: it supplies the preview
+image and the sort value of the bundle. A model can be in one bundle at a time; if you add it to
+another one, the dialog tells you which bundle it leaves and dissolves a bundle that would drop below 2
+models.
+
+In the catalog, a bundle appears as one card with a count ("3 variants", "2 of 5 parts printed") and can
+be expanded to show its members. The switch **Show bundles as one card** (on by default) turns this
+off, so every model appears on its own with a "Part of …" note. Actions on a bundle (mark all as
+printed, add all to the queue, favorite all) apply to all its members.
+
+- **Edit** changes name, kind, order and labels; **Add to bundle …** appends models; **Remove from
+  bundle** takes one model out (the file stays).
+- **Dissolve bundle** keeps all files in the catalog; the bundle's name, kind, order and labels are lost,
+  but **Undo** brings the bundle back. *Known limit:* members that are in the trash at that moment are
+  not restored by Undo.
+- **Delete …** asks whether to only dissolve the bundle or to also move all its models to the app trash.
+  A model in the trash stays a member of its bundle and shows "was part of bundle …"; restoring it
+  brings it back. Deleting it permanently removes it from the bundle, and a bundle left with fewer than
+  2 models disappears.
+
+**Bundle suggestions** (Tools in the sidebar) list groups that look related: the same platform model ID
+with different profiles, or similar names in the same folder. The program **never bundles on its own**.
+You tick what you want, check the kind and choose "Bundle selected". "Don't suggest" hides a whole group
+for good ("Suggest again" brings it back); a dismissible note after an import tells you about new suggestions and can be switched off.
 
 ## Collections
 
@@ -907,6 +989,10 @@ to change "Name", "Manufacturer", "Model", "Nozzle" (filament printers) and
 sets up the printer link, and "Recent prints" shows its print history.
 Loading spools or resin bottles and confirming new prints remain in Material Manager.
 
+**AMS 2 Pro.** "Add unit" offers "Bambu AMS 2 Pro" (4 slots). The app doesn't talk to Bambu printers, so this is bookkeeping
+only. Existing units are never converted automatically; to change an existing AMS or AMS lite into an AMS 2 Pro (or back),
+use "Edit" → "Type". Slots and loaded spools stay unchanged. The type can only be changed within this Bambu family.
+
 ![Printer Manager with hardware, units and connection](bilder/en/33-printer-manager.png)
 
 ![Printers & AMS slots](bilder/en/22-drucker-ams.png)
@@ -999,6 +1085,27 @@ Klipper printers should work the same way; if you want to test yours, the
 ![Material Manager with the new-prints notice and connection status](bilder/en/26-druckeranbindung-lager.png)
 
 !["New prints" dialog](bilder/en/27-neue-drucke.png)
+
+### Print history, failure reasons and statistics
+
+"Recent prints" in the Printer Manager lists the prints the printer connection has seen, including cancelled ones. Three
+things are worth knowing:
+
+- **Prints without usage.** A print for which the printer reports no filament (or 0) is no longer dropped. It is
+  listed as "without usage", is never offered for deduction and does not count towards the limit of 500 open
+  prints. The new button **Include older history** (under "Connection & network") additionally takes over
+  prints that ended *before* you set up the connection, up to 2000 at a time; they are history only and are never
+  deducted. Prints that were discarded before this update are not recovered.
+- **Failure reason.** For a cancelled print you can optionally pick a reason (adhesion, clogged nozzle, filament,
+  power or network, slicer error, mechanics, print came off the bed, stopped on purpose, other) and, for "other", a short
+  note of up to 200 characters. It is never required and never preselected, because the printer only reports *that* a print
+  stopped, not why. In the history, the pencil adds or changes the reason afterwards (desktop only; the web
+  version only displays it). A chosen reason decides how the print counts: "stopped on purpose" counts as cancelled,
+  every other reason counts as failed.
+- **Statistics.** A card below the printer details shows prints, success rate, total print time, filament in grams
+  (confirmed prints only; prints without grams are counted separately), prints per month or per 5 days as a chart or a
+  table, and the failure reasons, for one printer or all. It counts from the first printer connection on, shows at most the
+  newest 5000 prints and says so when it truncates.
 
 ## Print log
 
@@ -2069,6 +2176,52 @@ OrcaSlicer), slicest die Platte und exportierst sie als geslicte Platte, also al
 Slicer-Daten. Die Detailseite zeigt dann den echten Verbrauch. Bei einer Datei, die schon im
 Katalog ist, liest „Metadaten neu einlesen“ die Werte neu ein.
 
+### G-Code- und Resin-Dateien
+
+Neben Modellen kann der Katalog auch bereits gesliceste Dateien aufnehmen. **G-Code** (`.gcode`, `.bgcode`) und **Resin**-Dateien
+(`.ctb`, `.cbddlp`, `.goo`, `.pwmx`, `.pwms`, `.sl1`) werden einzeln hinzugefügt (Import → Dateien oder Ziehen und Ablegen). Ein
+Ordner-, Archiv- oder Quellordner-Lauf nimmt sie nie von selbst auf. Projektdateien von Resin-Slicern (`.lys`, `.chitubox`, `.voxl`)
+werden nicht angenommen.
+
+- **G-Code**-Einträge zeigen ein Kennzeichen „G-Code“ oder „bgcode“, das eingebettete Vorschaubild (sonst „Keine Vorschau“) und in der
+  Detailansicht und im Panel die Karte **Druckdaten (vom Slicer)** statt des 3D-Viewers: Druckzeit, Filamentverbrauch je Filament,
+  Schichthöhe, Düse, Temperaturen, Filamentarten und -farben, Zieldrucker, Slicer und Version. Das Programm liest nur, was der Slicer in
+  die Datei geschrieben hat (bei Textdateien die ersten und letzten 256 KiB), und rechnet nie etwas aus: Fehlende Werte und Platzhalter
+  bleiben unbekannt, eine Datei ohne Slicer-Zeile meldet „Keine Druckdaten erkannt“, eine beschädigte Binärdatei wird als unlesbar
+  markiert. „Metadaten neu einlesen“ (oder Einstellungen → Katalog → „Druckdaten einlesen“) liest früher aufgenommene Einträge. „Reicht das
+  Filament?“ funktioniert bei G-Code wie bei 3MF; werden nur Längen angegeben (CuraEngine), gibt es kein Gewicht, keine Kosten und keine
+  Prüfung. „Im Slicer öffnen“ und ein 3D-Schnappschuss gibt es für G-Code nicht.
+- **Resin**-Einträge werden nur katalogisiert: Name, Größe, Ordner, Tags, Notizen und Papierkorb funktionieren wie sonst, die
+  Endung (CTB, GOO …) erscheint als Kennzeichen, vom Inhalt wird nichts gelesen. Die Filterleiste bietet „Dateiart: Resin“, sobald es
+  solche Dateien gibt. In der Web-Version lassen sich diese Dateien hochladen; eine `.sl1` muss ein ZIP-Container sein, und keine davon
+  wird je geöffnet oder entpackt.
+
+### Auf einen Ordner ziehen
+
+Dateien und Ordner, die aus dem Dateimanager auf einen Ordner in der Seitenleiste gezogen werden, landen in diesem Ordner (wie
+„Import → Dateien“); ein abgelegter Ordner wird zu einem Unterordner mit seiner Struktur. Der Ordner unter dem Zeiger wird umrahmt und
+sagt, wohin die Dateien gehen. Der Katalogordner selbst und ein fehlender Ordner sind keine Ziele: Es wird nichts importiert, und eine
+Meldung nennt den Grund. Neben dem Baum abgelegt, bleiben Dateien wie bisher an ihrem Ort.
+
+### Modell als STL speichern
+
+3MF-, OBJ- und STEP-Modelle lassen sich über das Kontextmenü, die Detailseite und das Detailpanel als binäre **STL** speichern (nicht
+für STL-Dateien, nicht in der Web-Version). Bei einer 3MF mit mehreren Platten wählst du alles oder eine Platte. STL kennt weder Farben
+noch Materialien, und die Positionen folgen dem Druckbett. Eine vorhandene Datei wird nie überschrieben.
+
+### Weitere Begleitdatei-Formate
+
+Neben Bildern, PDF und Text kann ein Modell auch FreeCAD- (`.fcstd`), OpenSCAD- (`.scad`), DXF-, CSV-, Word- (`.docx`) und
+OpenDocument-Text-Dateien (`.odt`) als [Begleitdateien](#begleitdateien) behalten. Sie werden gespeichert und zurückgegeben, aber nie vom
+Programm geöffnet: Statt „Öffnen“ bietet die App „Im Dateimanager zeigen“ an.
+
+### Womit druckst du?
+
+In Einstellungen → Allgemein wählst du **Filament**, **Resin** oder **Beides** (Standard). Eine Neuinstallation fragt einmal beim ersten Start;
+eine bestehende zeigt nur einen kleinen Hinweis und zeigt weiter alles, bis du wählst. Bei „Filament“ sind der Resin-Schalter und die
+Resin-Drucker ausgeblendet; bei „Resin“ zeigt der Bestand nur Resin, Filament-Prüfung und Kostenschätzung entfallen. Nichts wird gelöscht:
+Ausgeblendete Daten kommen mit der Auswahl zurück. Die Browser-Version zeigt die Auswahl, ändert sie aber nur in der Desktop-App.
+
 ## Schnelle Aktionen: Kontextmenü und Mehrfachauswahl
 
 Rechtsklick auf ein Modell öffnet ein Kontextmenü mit den wichtigsten Aktionen:
@@ -2134,6 +2287,42 @@ Der Katalog-Speicherort und seine übergeordneten Ordner im Katalog lassen sich 
 Die Meldung lautet:
 
 > Das ist der Speicherort des Katalogs. Zum Leeren „Katalog zurücksetzen“ in den Einstellungen verwenden.
+
+### Modelle bündeln
+
+Ein **Bündel** fasst zusammengehörige Modelle zusammen, zum Beispiel dasselbe Modell für eine 0,4er- und
+eine 0,6er-Düse oder die Teile eines mehrteiligen Projekts. Das Bündeln ändert nur den Katalog: **Es wird
+keine Datei verschoben, umbenannt oder gelöscht.** Ein Bündel hat 2 bis 200 Modelle, einen Namen (bis zu 120
+Zeichen) und eine **Art**:
+
+- **Varianten** — Alternativen desselben Modells, zum Beispiel 3MF und STL oder zwei Düsengrößen.
+- **Teile** — Teile, die zusammen gedruckt oder zusammengebaut werden.
+
+Zwei oder mehr Modelle auswählen und im Kontextmenü **Bündeln …** wählen. Im Dialog legst du Name und Art
+fest, ordnest die Modelle (Ziehen oder Pfeiltasten) und vergibst je Modell eine optionale Beschriftung von
+bis zu 60 Zeichen, etwa „0,4 mm Düse“. Position 1 ist das **Titelmodell**: Es liefert das Vorschaubild und
+den Sortierwert des Bündels. Ein Modell gehört immer nur zu einem Bündel; fügst du es einem anderen hinzu,
+sagt der Dialog, aus welchem Bündel es wechselt, und löst ein Bündel auf, das dadurch unter 2 Modelle fiele.
+
+Im Katalog erscheint ein Bündel als eine Karte mit einer Zählung („3 Varianten“, „2 von 5 Teilen gedruckt“)
+und lässt sich aufklappen. Der Schalter **Bündel als eine Karte zeigen** (standardmäßig an) schaltet das ab:
+Dann steht jedes Modell einzeln da, mit dem Hinweis „Teil von …“. Aktionen auf einem Bündel (alle als
+gedruckt markieren, alle zur Warteschlange, alle als Favoriten) gelten für alle Mitglieder.
+
+- **Bearbeiten** ändert Name, Art, Reihenfolge und Beschriftungen; **Zu Bündel hinzufügen …** hängt Modelle
+  an; **Aus Bündel entfernen** nimmt ein Modell heraus (die Datei bleibt).
+- **Bündel auflösen** lässt alle Dateien im Katalog; Name, Art, Reihenfolge und Beschriftungen gehen
+  verloren, **Rückgängig** stellt das Bündel wieder her. *Bekannte Grenze:* Mitglieder, die in diesem Moment im
+  Papierkorb liegen, stellt „Rückgängig“ nicht wieder her.
+- **Löschen …** fragt, ob nur das Bündel aufgelöst oder auch alle Modelle in den App-Papierkorb gelegt werden.
+  Ein Modell im Papierkorb bleibt Mitglied seines Bündels und zeigt „war Teil von Bündel …“; beim
+  Wiederherstellen ist es wieder da. Endgültiges Löschen nimmt es aus dem Bündel, und ein Bündel mit
+  weniger als 2 Modellen verschwindet.
+
+**Bündel-Vorschläge** (Werkzeuge in der Seitenleiste) listen Gruppen, die zusammengehören könnten: dieselbe
+Modell-ID einer Plattform mit verschiedenen Profilen oder ähnliche Namen im selben Ordner. Das Programm
+**bündelt nie von selbst**. Du setzt Haken, prüfst die Art und wählst „Ausgewählte bündeln“. „Nicht
+vorschlagen“ blendet eine ganze Gruppe dauerhaft aus („Wieder vorschlagen“ holt sie zurück); ein abschaltbarer Hinweis nach einem Import meldet neue Vorschläge.
 
 ## Sammlungen
 
@@ -2303,6 +2492,11 @@ Filament-Druckern) und "Bauraum X × Y × Z". Unter "Materialzuordnung" verwalte
 unter "Anbindung & Netzwerk" richtest du die Verbindung ein. "Letzte Drucke" zeigt den Druckverlauf.
 Spulen oder Resin-Flaschen einlegen und neue Drucke bestätigen kannst du weiterhin im Material Manager.
 
+**AMS 2 Pro.** „Einheit hinzufügen“ bietet „Bambu AMS 2 Pro“ (4 Fächer) an. Das Programm spricht nicht mit Bambu-Druckern,
+der Typ dient nur der Buchführung. Bestehende Einheiten werden nie automatisch umgestellt; um ein vorhandenes AMS oder
+AMS lite zu einem AMS 2 Pro zu machen (oder zurück), nutzt du „Bearbeiten“ → „Typ“. Fächer und eingelegte Spulen bleiben
+unverändert. Der Typ lässt sich nur innerhalb dieser Bambu-Familie ändern.
+
 ![Printer Manager mit Hardware, Einheiten und Anbindung](bilder/33-printer-manager.png)
 
 ![Drucker & AMS-Fächer](bilder/22-drucker-ams.png)
@@ -2397,6 +2591,27 @@ Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, 
 ![Material Manager mit Hinweis auf neue Drucke und Verbindungsstatus](bilder/26-druckeranbindung-lager.png)
 
 ![Dialog „Neue Drucke“](bilder/27-neue-drucke.png)
+
+### Druckverlauf, Fehlergründe und Statistik
+
+„Letzte Drucke“ im Druckerverwalter listet die Drucke, die die Druckeranbindung gesehen hat, auch abgebrochene. Drei
+Dinge sind wichtig:
+
+- **Drucke ohne Verbrauch.** Ein Druck, für den der Drucker kein Filament (oder 0) meldet, wird nicht mehr verworfen. Er
+  steht als „ohne Verbrauch“ im Verlauf, wird nie zur Abbuchung angeboten und zählt nicht zur Grenze von 500 offenen
+  Drucken. Der neue Knopf **Älteren Verlauf einbeziehen** (unter „Anbindung & Netzwerk“) übernimmt zusätzlich Drucke, die
+  *vor* dem Einrichten der Anbindung endeten, bis zu 2000 pro Klick; sie sind nur Verlauf und werden nie abgebucht. Drucke,
+  die vor diesem Update verworfen wurden, kommen nicht nach.
+- **Fehlergrund.** Bei einem abgebrochenen Druck kannst du optional einen Grund wählen (Haftung, verstopfte Düse,
+  Filament, Strom oder Netz, Slicer-Fehler, Mechanik, Druck vom Bett gelöst, absichtlich gestoppt, Sonstiges) und bei
+  „Sonstiges“ eine Kurznotiz mit bis zu 200 Zeichen. Der Grund ist nie Pflicht und nie vorausgewählt, weil der Drucker nur
+  meldet, *dass* ein Druck gestoppt wurde, nicht warum. Im Verlauf ergänzt oder ändert der Stift den Grund nachträglich
+  (nur am Desktop; die Web-Version zeigt ihn nur an). Der gewählte Grund bestimmt die Zählung: „absichtlich gestoppt“ zählt als
+  abgebrochen, jeder andere Grund als fehlgeschlagen.
+- **Statistik.** Eine Karte unter den Druckerdetails zeigt Drucke, Erfolgsquote, gesamte Druckzeit, Filament in Gramm
+  (nur bestätigte Drucke; Drucke ohne Gramm werden gesondert gezählt), Drucke pro Monat oder pro 5 Tage als Diagramm oder
+  Tabelle sowie die Fehlergründe, für einen Drucker oder alle. Sie zählt ab der ersten Druckeranbindung, zeigt höchstens die
+  neuesten 5000 Drucke und weist darauf hin, wenn sie kürzt.
 
 ## Druckprotokoll
 
