@@ -22,7 +22,7 @@ import { DetailPanel } from './DetailPanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
 import { BulkActionToolbar } from './BulkActionToolbar';
-import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig, FolderTrashResult, Printer } from '../types';
+import type { ModelFile, Folder, TagCount, ViewMode, SortKey, SortDirection, Collection, SlicerConfig, FolderTrashResult, Printer, Bundle } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
@@ -35,6 +35,8 @@ import { PrintDataFilterBar } from './PrintDataFilterBar';
 import { PrintDataNotice } from './PrintDataNotice';
 import { DuplicatesView } from './DuplicatesView';
 import { PrintFilterContext } from '../hooks/PrintFilterContext';
+import { BundleCardsContext, type BundleCardsSettings } from '../hooks/BundleCardsContext';
+import { ToggleSwitch } from './ToggleSwitch';
 import { isActive as printFilterActive, printDataFacets, type FilterKey, type PrintDataFilter } from '../lib/printDataFilter';
 import { printFilterChips } from '../lib/printFilterLabels';
 import { countByKind, FILE_KIND_FILTERS, type FileKindFilter } from '../lib/fileKind';
@@ -160,6 +162,11 @@ interface CatalogWorkspaceProps {
   displayPreference: DisplayPreference;
   view: ViewMode;
   sort: SortKey;
+  sortDirection?: SortDirection;
+  /** Bundles of the catalog; with "show as one card" on, the lists show each as a single card. */
+  bundles?: Bundle[];
+  collapseBundles?: boolean;
+  setCollapseBundles?: (collapse: boolean) => void;
   filtered: ModelFile[];
   collectionLoading?: boolean;
   selectedId: string | null;
@@ -175,6 +182,8 @@ interface CatalogWorkspaceProps {
   cleanupScanning: boolean;
   cleanupError: AppError | null;
 }
+
+const NO_BUNDLES: Bundle[] = [];
 
 export function CatalogWorkspace({
   initialLoading = false, initialLoadFailed = false,
@@ -285,6 +294,10 @@ export function CatalogWorkspace({
   displayPreference,
   view,
   sort,
+  sortDirection,
+  bundles = NO_BUNDLES,
+  collapseBundles = false,
+  setCollapseBundles,
   filtered,
   collectionLoading = false,
   selectedId,
@@ -393,6 +406,13 @@ export function CatalogWorkspace({
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
   const displayedModels = filtered;
+  // Tool views and open collections have an order of their own and list files, not bundles.
+  const bundleCards = useMemo<BundleCardsSettings>(() => {
+    const flat = toolView !== null || activeCollection !== null;
+    return { bundles, collapse: collapseBundles && !flat, sort: flat ? undefined : sort, sortDirection };
+  }, [bundles, collapseBundles, toolView, activeCollection, sort, sortDirection]);
+  // The switch is the way back to single files, so it stays while it is on, and appears once bundles exist.
+  const showBundleSwitch = !!setCollapseBundles && (bundles.length > 0 || collapseBundles);
   // The selection survives filter changes, so the confirmation must say how much of it is out of sight.
   const visibleIds = useMemo(() => new Set(displayedModels.map(model => model.id)), [displayedModels]);
   const selectedNames = useMemo(() => {
@@ -462,6 +482,7 @@ export function CatalogWorkspace({
   const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && fileKind === 'all' && !fitPrinter && !printFilterIsActive;
   return (
     <PrintFilterContext.Provider value={printFilterIsActive && printFilter ? printFilter : null}>
+    <BundleCardsContext.Provider value={bundleCards}>
     <div ref={rootRef} className="relative flex-1 flex min-h-0">
       <Sidebar
         catalogKey={catalogKey}
@@ -553,7 +574,7 @@ export function CatalogWorkspace({
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
         <SelectionAnnouncer count={selectedForBulk.size} />
         {importRow}
-        {!duplicatesMode && (setUsage || setPrintStatus || setPrintFilter || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
+        {!duplicatesMode && (setUsage || setPrintStatus || setPrintFilter || showBundleSwitch || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
           <section ref={barRef} aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
             <span ref={filterHeadingRef} tabIndex={-1} className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
             {setUsage && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
@@ -573,6 +594,12 @@ export function CatalogWorkspace({
                 <option value="not_printed">{t('printStatusNotPrinted')}</option>
               </select>
             </label>}
+            {showBundleSwitch && (
+              <div className="flex items-center gap-2 text-small text-[var(--ink-2)]">
+                <span id="filter-bundle-collapse">{t('bundleCollapseToggle')}</span>
+                <ToggleSwitch checked={collapseBundles} label={t('bundleCollapseToggle')} onChange={setCollapseBundles} />
+              </div>
+            )}
             {showKindFilter && setFileKind && (
               <div role="group" aria-labelledby="filter-file-kind" className="flex flex-wrap items-center gap-1.5 text-small text-[var(--ink-2)]">
                 <span id="filter-file-kind">{t('fileKindFilter')}</span>
@@ -832,6 +859,7 @@ export function CatalogWorkspace({
         </div>
       )}
     </div>
+    </BundleCardsContext.Provider>
     </PrintFilterContext.Provider>
   );
 }

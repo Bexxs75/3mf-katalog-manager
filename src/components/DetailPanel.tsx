@@ -21,7 +21,7 @@ import { BuildPlateFit } from './BuildPlateFit';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
 import { StatusBadges } from './StatusBadges';
-import type { FilamentCheck, Printer } from '../types';
+import type { BundleKind, FilamentCheck, Printer } from '../types';
 import type { LastPrinter } from '../lib/api/lastPrinter';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
@@ -53,6 +53,8 @@ interface Props {
   tagHues?: Record<string, number>;
   model: ModelFile | null;
   trashMode?: boolean;
+  /** Trash only: the bundle the file belongs to and comes back to when restored. */
+  trashBundle?: { name: string; kind: BundleKind; label: string | null } | null;
   /** Printers of the Printer Manager, for the "print bed" section (those with a build volume). */
   printers?: Printer[];
   onRestore?: () => void;
@@ -79,6 +81,7 @@ export function DetailPanel({
   allTags,
   tagHues,
   trashMode,
+  trashBundle,
   printers = [],
   onRestore,
   onDeletePermanently,
@@ -138,6 +141,12 @@ export function DetailPanel({
         <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
           <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
           <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{displayName(model.path)}</div>
+          {trashBundle && (
+            <div data-was-part-of className="flex flex-wrap items-baseline gap-x-2 pt-1.5 text-caption text-[var(--ink-2)]">
+              <span className="font-semibold">{t('bundleWasPartOf').replace('{name}', displayName(trashBundle.name))}</span>
+              <span className="text-[var(--ink-3)]">{[t(trashBundle.kind === 'parts' ? 'bundleKindParts' : 'bundleKindVariants'), trashBundle.label].filter(Boolean).join(' · ')}</span>
+            </div>
+          )}
         </div>
 
         <div className="relative h-[248px] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">

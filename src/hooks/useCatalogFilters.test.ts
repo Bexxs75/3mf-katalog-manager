@@ -226,4 +226,18 @@ describe('print bed filter', () => {
       expect(result.current.printNotice.hidden).toBe(0);
     });
   });
+
+  it('finds the files of a bundle by the bundle name only when the bundles are handed over', () => {
+    const models = [makeModelFile({ id: '1', name: 'Left.stl' }), makeModelFile({ id: '2', name: 'Right.stl' }), makeModelFile({ id: '3', name: 'Other.stl' })];
+    const bundles = [{
+      id: 'b', name: 'Vase set', kind: 'parts' as const, createdAt: '2026-11-01T00:00:00Z',
+      members: [{ fileId: '1', position: 0, label: null, inTrash: false }, { fileId: '2', position: 1, label: null, inTrash: false }],
+    }];
+    const withBundles = renderHook(() => useCatalogFilters(models, [], 'de', [], bundles));
+    act(() => withBundles.result.current.setQuery('vase'));
+    expect(withBundles.result.current.filtered.map(m => m.id)).toEqual(['1', '2']);
+    const without = renderHook(() => useCatalogFilters(models, []));
+    act(() => without.result.current.setQuery('vase'));
+    expect(without.result.current.filtered).toEqual([]);
+  });
 });

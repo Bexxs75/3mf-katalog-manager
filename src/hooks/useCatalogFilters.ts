@@ -1,14 +1,18 @@
 import type { LicenseUsage } from '../lib/licenses';
 import { useMemo, useState } from 'react';
 import type { Language } from '../i18n/types';
-import type { ModelFile, Folder, ViewMode, SortKey, SortDirection, Printer } from '../types';
+import type { ModelFile, Folder, ViewMode, SortKey, SortDirection, Printer, Bundle } from '../types';
+import { fileIdsOfBundlesMatching } from '../lib/bundles';
 import { printerBuildVolume } from '../lib/buildPlateFit';
 import type { RecentSnapshot, ToolView } from '../lib/toolViews';
 import { defaultSortDirection, filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
 import type { FileKindFilter } from '../lib/fileKind';
 import { EMPTY_FILTER, splitByPrintData, type PrintDataFilter } from '../lib/printDataFilter';
 
-export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de', printers: readonly Printer[] = []) {
+const NO_BUNDLES: readonly Bundle[] = [];
+
+/** `searchedBundles`: the bundles whose name the search also looks at (empty keeps the search on the files). */
+export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de', printers: readonly Printer[] = [], searchedBundles: readonly Bundle[] = NO_BUNDLES) {
   const [view, setView] = useState<ViewMode>('grid');
   const [sorting, setSorting] = useState<{ sort: SortKey; sortDirection: SortDirection }>({ sort: 'name', sortDirection: 'asc' });
   const { sort, sortDirection } = sorting;
@@ -42,6 +46,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   const fitPrinter = printers.find(printer => printer.id === fitPrinterChoice && printerBuildVolume(printer)) ?? null;
   const fitBed = useMemo(() => (fitPrinter ? printerBuildVolume(fitPrinter) : null), [fitPrinter]);
 
+  const bundleMatchIds = useMemo(() => fileIdsOfBundlesMatching([...searchedBundles], query), [searchedBundles, query]);
   const printSplit = useMemo(() => {
     const matched = filterAndSortModels(models, folders, {
       usage,
@@ -56,10 +61,11 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
       language,
       toolView,
       recentSnapshot: recentSnapshot ?? undefined,
+      bundleMatchIds,
     });
     // After the other filters and the sort: a second pass that keeps the order.
     return splitByPrintData(matched, printFilter);
-  }, [models, folders, usage, printStatus, fileKind, fitBed, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot, printFilter]);
+  }, [models, folders, usage, printStatus, fileKind, fitBed, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot, printFilter, bundleMatchIds]);
   const filtered = printSplit.visible;
   const printNotice = useMemo(
     () => ({ hidden: printSplit.hidden, shownUnknown: printSplit.shownUnknown, unread: printSplit.unread }),

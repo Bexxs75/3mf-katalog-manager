@@ -5,7 +5,10 @@ import { ModelGrid } from './ModelGrid';
 import { ModelList } from './ModelList';
 import { DetailPanel } from './DetailPanel';
 import { useT } from '../i18n/LanguageContext';
-import type { ModelFile, ViewMode } from '../types';
+import { useMemo } from 'react';
+import { BundleCardsContext } from '../hooks/BundleCardsContext';
+import { indexBundles } from '../lib/bundles';
+import type { Bundle, ModelFile, ViewMode } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 
 interface TrashViewProps {
@@ -19,6 +22,8 @@ interface TrashViewProps {
   onRestore: (id: string) => void;
   onDeletePermanently: (id: string) => void;
   displayPreference: DisplayPreference;
+  /** Bundles of the catalog: a file in the trash stays a member and says which bundle it was part of. */
+  bundles?: Bundle[];
 }
 
 export function TrashView({
@@ -32,6 +37,7 @@ export function TrashView({
   onRestore,
   onDeletePermanently,
   displayPreference,
+  bundles,
 }: TrashViewProps) {
   const { lockProps } = useImportLock();
   const t = useT();
@@ -40,7 +46,17 @@ export function TrashView({
   // flat display if the shared toggle is set to a grouped option
   // while the trash view is shown.
   const effectiveIsGrid = view === 'grid' || view === 'groupedGrid';
+  // Files of a bundle stay single cards here (so each can be restored or deleted on its own) and are marked.
+  const bundleCards = useMemo(() => ({ bundles: bundles ?? [], collapse: false, trash: true }), [bundles]);
+  const selectedModel = trashModels.find((m) => m.id === selectedId) ?? null;
+  const selectedBundle = useMemo(() => {
+    if (!selectedModel || !bundles) return null;
+    const bundle = indexBundles(bundles).get(selectedModel.id);
+    if (!bundle) return null;
+    return { name: bundle.name, kind: bundle.kind, label: bundle.members.find(member => member.fileId === selectedModel.id)?.label ?? null };
+  }, [bundles, selectedModel]);
   return (
+    <BundleCardsContext.Provider value={bundleCards}>
     <div className="flex flex-1 min-h-0">
       <main className="flex-1 min-w-0 flex flex-col">
         <div className="flex-none flex items-center justify-between px-4 py-3 border-b border-[var(--line)]">
@@ -105,8 +121,9 @@ export function TrashView({
       </main>
       <DetailPanel
         allTags={[]}
-        model={trashModels.find((m) => m.id === selectedId) ?? null}
+        model={selectedModel}
         trashMode
+        trashBundle={selectedBundle}
         onRestore={() => selectedId && onRestore(selectedId)}
         onDeletePermanently={() => selectedId && onDeletePermanently(selectedId)}
         onAddTag={() => {}}
@@ -122,5 +139,6 @@ export function TrashView({
         slicerError={null}
       />
     </div>
+    </BundleCardsContext.Provider>
   );
 }

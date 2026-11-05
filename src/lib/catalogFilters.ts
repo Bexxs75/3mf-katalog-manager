@@ -24,6 +24,8 @@ export interface CatalogFilterCriteria {
   language?: Language;
   // Tool view of the sidebar; determines selection AND order.
   toolView?: ToolView | null;
+  // Files whose bundle name matches the search; they pass the search like a name match.
+  bundleMatchIds?: ReadonlySet<string>;
   // Reference time for "Recently added" (tests pin it).
   now?: Date;
   // Frozen lastViewedAt state for the "recent" view (see
@@ -76,7 +78,8 @@ export function filterAndSortModels(
         m.name.toLowerCase().includes(q) ||
         m.path.toLowerCase().includes(q) ||
         (m.creator?.toLowerCase().includes(q) ?? false) ||
-        m.tags.some((tag) => tagMatches(tag, q, language))
+        m.tags.some((tag) => tagMatches(tag, q, language)) ||
+        (criteria.bundleMatchIds?.has(m.id) ?? false)
       );
     });
   if (toolView) return matched;
