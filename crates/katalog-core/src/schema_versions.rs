@@ -14,7 +14,7 @@ pub const SCHEMA_APP_VERSIONS: &[(i64, &str)] = &[
     (37, "0.14.0"),
     (39, "0.15.4"),
     (47, "0.16.3"),
-    (52, "0.17.1"),
+    (52, "0.17.2"),
     (63, "0.18.0"),
 ];
 
@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn unknown_schemas_give_no_guess() {
-        assert_eq!(app_version_for_schema(52), Some("0.17.1"));
+        assert_eq!(app_version_for_schema(52), Some("0.17.2"));
         // Development-only schemas: no release can read them.
         assert_eq!(app_version_for_schema(53), None);
         assert_eq!(app_version_for_schema(54), None);

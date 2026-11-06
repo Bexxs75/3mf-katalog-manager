@@ -269,14 +269,14 @@ fn a_vanished_or_released_source_gives_no_proof() {
     assert!(prove_external_source(&sources, &jobs, &id).is_err());
 }
 
-/// The file associations announced to the operating system (`tauri.conf.json`, inherited by
-/// the Preview variant, which only overrides name and identifier) must cover exactly the model
-/// extensions the start-argument handling accepts, and must never claim to be the default.
+/// The file associations announced to the operating system (`tauri.conf.json`) must cover exactly
+/// the model extensions the start-argument handling accepts, and must never claim to be the
+/// default. The Preview variant repeats them with " (Preview)" behind every name, so that its
+/// ProgIDs cannot collide with a normal installation; everything else must stay identical.
 #[test]
 fn file_associations_match_model_extensions_and_stay_alternate() {
     let conf: serde_json::Value = serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
     let preview: serde_json::Value = serde_json::from_str(include_str!("../../tauri.preview.conf.json")).unwrap();
-    assert!(preview.pointer("/bundle/fileAssociations").is_none(), "Preview must inherit, not redefine");
     let entries = conf.pointer("/bundle/fileAssociations").and_then(|v| v.as_array()).expect("fileAssociations");
     let mut declared: Vec<String> = Vec::new();
     for entry in entries {
@@ -285,6 +285,16 @@ fn file_associations_match_model_extensions_and_stay_alternate() {
         assert!(entry["mimeType"].as_str().is_some_and(|m| m.starts_with("model/")), "{entry}");
         for ext in entry["ext"].as_array().unwrap() {
             declared.push(ext.as_str().unwrap().to_string());
+        }
+    }
+    let preview_entries = preview.pointer("/bundle/fileAssociations").and_then(|v| v.as_array()).expect("Preview fileAssociations");
+    assert_eq!(preview_entries.len(), entries.len());
+    for (base, variant) in entries.iter().zip(preview_entries) {
+        for key in ["ext", "mimeType", "role", "rank"] {
+            assert_eq!(base[key], variant[key], "Preview must not differ in {key}: {variant}");
+        }
+        for key in ["name", "description"] {
+            assert_eq!(variant[key].as_str().unwrap(), format!("{} (Preview)", base[key].as_str().unwrap()), "{variant}");
         }
     }
     declared.sort();

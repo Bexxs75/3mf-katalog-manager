@@ -230,11 +230,11 @@ mod tests {
         let path = db(&dir);
         let notice = build_notice(&inputs(&path, Some(&r))).expect("a copy exists");
         assert_eq!(notice.backup.as_ref().unwrap().file_name, SCHEMA_COPY);
-        assert_eq!(notice.from_version.as_deref(), Some("0.17.1"));
+        assert_eq!(notice.from_version.as_deref(), Some("0.17.2"));
         assert!(notice.from_version_derived);
         assert_eq!((notice.from_schema, notice.to_schema), (Some(52), CURRENT));
         assert!(!notice.backup_failed);
-        assert_eq!(notice.previous_release_url.as_deref(), Some("https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.17.1"));
+        assert_eq!(notice.previous_release_url.as_deref(), Some("https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.17.2"));
         assert_eq!(notice.backup.unwrap().size_bytes, 4);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -357,7 +357,7 @@ mod tests {
         input.container = true;
         let notice = build_notice(&input).unwrap();
         assert!(notice.container && notice.previous_release_url.is_none());
-        assert_eq!(notice.from_version.as_deref(), Some("0.17.1"));
+        assert_eq!(notice.from_version.as_deref(), Some("0.17.2"));
         let mut input = inputs(&path, Some(&r));
         input.preview = true;
         assert!(build_notice(&input).unwrap().previous_release_url.is_none());
