@@ -66,7 +66,9 @@ describe('SourceFoldersSettings', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Quellordner /home/a/Downloads entfernen' }));
     await waitFor(() => expect(screen.queryByText(/\/home\/a\/Downloads/)).not.toBeInTheDocument());
     expect(api.removeSourceFolder).toHaveBeenCalledWith('f1');
-    expect(screen.getByRole('button', { name: 'Ordner hinzufügen …' })).toHaveFocus();
+    // The component parks focus on the add button in an effect that runs once the action is over and the button is enabled
+    // again, so it lands after the row has disappeared; under load the immediate check used to run too early.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Ordner hinzufügen …' })).toHaveFocus());
   });
 
   it('saves the start check setting in both directions', async () => {
