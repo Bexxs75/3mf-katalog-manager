@@ -26,8 +26,7 @@ pub use migrations::run_migrations;
 #[cfg(feature = "test-support")]
 pub use migrations::{BLOCKED_AUTO_TAGS_MIGRATION_VERSION, SOURCE_COLUMNS_MIGRATION_VERSION, SPOOL_COLOR_LIST_MIGRATION_VERSION};
 
-/// Schema version of this build (for tests that check the migration backup).
-#[cfg(any(test, feature = "test-support"))]
+/// Schema version of this build (update notice and tests that check the migration backup).
 pub fn migrations_current_version() -> i64 {
     migrations::CURRENT_SCHEMA_VERSION
 }
