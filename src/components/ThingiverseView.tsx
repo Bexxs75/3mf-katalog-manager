@@ -24,8 +24,8 @@ function Card({ thing, image, onNeedImage, onDetails, onCopy }: {
       <div className="min-w-0">
         <div className="font-semibold text-small break-words">{thing.name}</div>
         <div className="text-caption text-[var(--ink-2)]">{thing.authorName ? t('tvAuthorBy').replace('{0}', thing.authorName) : t('tvAuthorUnknown')}</div>
-        <span className="inline-block mt-1 px-1.5 rounded border border-[var(--line-strong)] text-caption text-[var(--ink-2)]" title={thing.licenseName ? t('tvLicenseTip') : t('tvLicenseNone')}>
-          {thing.licenseName ?? t('tvLicenseNone')}
+        <span className="inline-block mt-1 px-1.5 rounded border border-[var(--line-strong)] text-caption text-[var(--ink-2)]" title={thing.licenseName ? t('tvLicenseTip') : t('tvLicenseSeeDetails')}>
+          {thing.licenseName ?? t('tvLicenseSeeDetails')}
         </span>
       </div>
       <div className="flex flex-wrap gap-1.5 mt-auto">

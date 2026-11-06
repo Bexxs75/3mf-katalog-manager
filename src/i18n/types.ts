@@ -2168,7 +2168,7 @@ export interface Translations {
   tvResultSummary: string;
   tvAuthorBy: string;
   tvAuthorUnknown: string;
-  tvLicenseNone: string;
+  tvLicenseSeeDetails: string;
   tvLicenseTip: string;
   tvNoImage: string;
   tvImageLoading: string;

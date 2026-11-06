@@ -2127,7 +2127,7 @@ export const en: Translations = {
   tvResultSummary: "{0} results for “{1}”",
   tvAuthorBy: "by {0}",
   tvAuthorUnknown: "Author unknown",
-  tvLicenseNone: "License not stated",
+  tvLicenseSeeDetails: "License: see details",
   tvLicenseTip: "License according to Thingiverse",
   tvNoImage: "No image",
   tvImageLoading: "Preview image loading",

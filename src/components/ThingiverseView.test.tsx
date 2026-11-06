@@ -81,12 +81,13 @@ describe('ThingiverseView search', () => {
     const first = await screen.findByRole('article', { name: 'Thing 1' });
     expect(within(first).getByText('von Author 1')).toBeInTheDocument();
     expect(within(first).getByText('CC BY 4.0')).toBeInTheDocument();
+    expect(within(first).queryByText(de.tvLicenseSeeDetails)).toBeNull();
     expect(within(first).getByRole('button', { name: new RegExp(de.tvDetails) })).toBeInTheDocument();
     expect(within(first).getByRole('button', { name: new RegExp(de.tvOpen) })).toBeInTheDocument();
     expect(within(first).getByRole('button', { name: new RegExp(de.tvCopyLink) })).toBeInTheDocument();
     const second = screen.getByRole('article', { name: 'Thing 2' });
     expect(within(second).getByText(de.tvAuthorUnknown)).toBeInTheDocument();
-    expect(within(second).getByText(de.tvLicenseNone)).toBeInTheDocument();
+    expect(within(second).getByText(de.tvLicenseSeeDetails)).toBeInTheDocument();
     expect(screen.getByText('2 Treffer für „kabel“')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /herunterladen|download|speichern|katalog/i })).toBeNull();
   });
