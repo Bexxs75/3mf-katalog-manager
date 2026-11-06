@@ -298,7 +298,10 @@ describe('catalog disk sync', () => {
       vi.mocked(invoke).mockResolvedValueOnce(scan);
       const reload = renderSync();
       fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
-      return { reload, dialog: await screen.findByRole('dialog') };
+      const dialog = await screen.findByRole('dialog');
+      // The dialog's mount effect re-seeds the ticks; under load it can run after the first click and undo it.
+      await act(async () => {});
+      return { reload, dialog };
     };
     const box = (name: string) => screen.getByRole('checkbox', { name });
     const applied = { fileIds: [], folderIds: [], renamedIds: ['1', '2'], renamedCount: 2, removedCount: 0, failedPaths: [] };
