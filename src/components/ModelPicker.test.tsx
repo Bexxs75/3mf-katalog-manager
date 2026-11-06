@@ -110,3 +110,13 @@ describe('ModelPicker', () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe('ModelPicker stacking', () => {
+  // Dialogs (CatalogActionDialog) use z-[100]; the popup has to sit above them.
+  it('sits above dialogs', () => {
+    renderPicker();
+    const popup = document.body.querySelector('[class*="z-["]') as HTMLElement;
+    const z = Number(/z-\[(\d+)\]/.exec(popup.className)?.[1]);
+    expect(z).toBeGreaterThan(100);
+  });
+});

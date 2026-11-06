@@ -67,7 +67,7 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
     <div
       ref={popupRef}
       style={style}
-      className="z-[60] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] p-1.5 flex flex-col gap-1"
+      className="z-[110] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] p-1.5 flex flex-col gap-1"
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           // Don't pass it on to the surrounding dialog - Escape should only
