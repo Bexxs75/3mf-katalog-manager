@@ -13,6 +13,8 @@ The first build downloads Rust crates and Debian build dependencies. No desktop,
 real printer, catalog, credentials or host ports are used. If the private test
 subnet conflicts with a local network, choose another unused RFC1918 subnet.
 
+The image builds the `katalog-core` library tests from the workspace root
+(`cargo test -p katalog-core --locked --no-default-features --lib --no-run`).
 The smallest test-only entry point is two explicitly ignored library tests:
 `serve_container_fixture` keeps the existing `fake_moonraker` server alive on
 port 7125; `container_network_smoke` runs the real Moonraker adapter with
@@ -39,6 +41,8 @@ Der erste Bau lädt Rust-Crates und Debian-Bauabhängigkeiten. Kein Desktop,
 echter Drucker, Katalog, Zugangsschlüssel oder freigegebener Host-Port nötig.
 Bei einer Netzüberlappung ein anderes freies privates RFC1918-Subnetz wählen.
 
+Das Image baut die Bibliothekstests von `katalog-core` aus der Workspace-Wurzel
+(`cargo test -p katalog-core --locked --no-default-features --lib --no-run`).
 Zwei ausdrücklich ignorierte Bibliothekstests sind die kleinste Testlösung:
 `serve_container_fixture` hält den vorhandenen `fake_moonraker` auf Port 7125
 am Leben; `container_network_smoke` prüft den echten Moonraker-Adapter mit

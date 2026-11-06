@@ -4,11 +4,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     patchelf pkg-config libssl-dev python3 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /work
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY .cargo ./.cargo
 COPY src-tauri ./src-tauri
 COPY LICENSE THIRD-PARTY-LICENSES.md ./
-COPY src/lib/autoTags.json ./src/lib/autoTags.json
+COPY src/lib/autoTags.json src/lib/licensePresets.json ./src/lib/
 RUN mkdir -p dist && printf '<html></html>' > dist/index.html
-WORKDIR /work/src-tauri
-RUN cargo test --locked --no-default-features --lib --no-run --message-format=json > /tmp/artifacts.json \
-    && python3 -c 'import json, shutil; rows = [json.loads(line) for line in open("/tmp/artifacts.json")]; paths = [r["executable"] for r in rows if r.get("reason") == "compiler-artifact" and r.get("profile", {}).get("test") and r.get("executable")]; assert len(paths) == 1, paths; shutil.copy2(paths[0], "/usr/local/bin/printer-tests")'
+RUN cargo test -p katalog-core --locked --no-default-features --lib --no-run --message-format=json > /tmp/artifacts.json \
+    && python3 -c 'import json, shutil; rows = [json.loads(line) for line in open("/tmp/artifacts.json")]; paths = [r["executable"] for r in rows if r.get("reason") == "compiler-artifact" and r.get("target", {}).get("name") == "katalog_core" and r.get("target", {}).get("kind") == ["lib"] and r.get("profile", {}).get("test") and r.get("executable")]; assert len(paths) == 1, paths; shutil.copy2(paths[0], "/usr/local/bin/printer-tests")'
 ENTRYPOINT ["/usr/local/bin/printer-tests"]
