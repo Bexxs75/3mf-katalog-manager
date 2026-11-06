@@ -1,5 +1,50 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "3MF Katalog Manager Preview",
-  "identifier": "com.thebexxs.mfkatalogmanager.preview"
+  "identifier": "com.thebexxs.mfkatalogmanager.preview",
+  "bundle": {
+    "fileAssociations": [
+      {
+        "ext": [
+          "3mf"
+        ],
+        "name": "3MF model (Preview)",
+        "description": "3MF model (Preview)",
+        "mimeType": "model/3mf",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [
+          "stl"
+        ],
+        "name": "STL model (Preview)",
+        "description": "STL model (Preview)",
+        "mimeType": "model/stl",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [
+          "obj"
+        ],
+        "name": "OBJ model (Preview)",
+        "description": "OBJ model (Preview)",
+        "mimeType": "model/obj",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [
+          "step",
+          "stp"
+        ],
+        "name": "STEP model (Preview)",
+        "description": "STEP model (Preview)",
+        "mimeType": "model/step",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ]
+  }
 }

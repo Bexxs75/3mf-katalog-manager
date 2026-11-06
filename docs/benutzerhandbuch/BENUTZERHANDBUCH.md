@@ -70,6 +70,12 @@ suffix. Users of the former standard package receive it with their next in-app u
   "is damaged and can't be opened", move it to the Applications folder first and then run
   `xattr -cr "/Applications/3MF Katalog Manager.app"` in the Terminal.
 
+For preview builds that also offer an NSIS installer (`…-Windows-x64-Setup.exe`),
+uninstall the other variant under Windows Settings → Apps **before switching between MSI
+and NSIS in either direction**. Installing both can create two entries in Apps without a
+warning. Silent NSIS setup (`/S`) does not delete user data. For preview version `0.18.0-2`,
+Windows displays the MSI version as `0.18.0.2`.
+
 ### Uninstalling
 
 Uninstalling removes the program, but deliberately **keeps your catalog, settings and logs** — so a
@@ -1552,6 +1558,12 @@ Die App steht für Linux, Windows und macOS zum Download bereit (siehe die
   starten. Meldet macOS, die App sei „beschädigt und kann nicht geöffnet werden“, zieh sie zuerst
   in den Programme-Ordner und führe dann im Terminal
   `xattr -cr "/Applications/3MF Katalog Manager.app"` aus.
+
+Bei Vorabversionen, die zusätzlich einen NSIS-Installer (`…-Windows-x64-Setup.exe`) anbieten,
+musst du **vor dem Wechsel zwischen MSI und NSIS in beiden Richtungen** die andere Variante
+unter Windows-Einstellungen → Apps deinstallieren. Bei paralleler Installation können ohne
+Warnung zwei Einträge unter Apps entstehen. Das stille NSIS-Setup (`/S`) löscht keine
+Benutzerdaten. Bei der Vorabversion `0.18.0-2` zeigt Windows die MSI-Version als `0.18.0.2` an.
 
 ### Deinstallieren
 
