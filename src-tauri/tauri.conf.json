@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "3MF Katalog Manager",
-  "version": "0.18.0-1",
+  "version": "0.18.0-3",
   "identifier": "com.thebexxs.mfkatalogmanager",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -35,13 +35,20 @@
       "nsis": {
         "installMode": "currentUser",
         "installerHooks": "windows/installer-hooks.nsh",
-        "languages": ["German", "English", "Spanish", "French"],
+        "languages": [
+          "German",
+          "English",
+          "Spanish",
+          "French"
+        ],
         "displayLanguageSelector": true
       }
     },
     "fileAssociations": [
       {
-        "ext": ["3mf"],
+        "ext": [
+          "3mf"
+        ],
         "name": "3MF model",
         "description": "3MF model",
         "mimeType": "model/3mf",
@@ -49,7 +56,9 @@
         "rank": "Alternate"
       },
       {
-        "ext": ["stl"],
+        "ext": [
+          "stl"
+        ],
         "name": "STL model",
         "description": "STL model",
         "mimeType": "model/stl",
@@ -57,7 +66,9 @@
         "rank": "Alternate"
       },
       {
-        "ext": ["obj"],
+        "ext": [
+          "obj"
+        ],
         "name": "OBJ model",
         "description": "OBJ model",
         "mimeType": "model/obj",
@@ -65,7 +76,10 @@
         "rank": "Alternate"
       },
       {
-        "ext": ["step", "stp"],
+        "ext": [
+          "step",
+          "stp"
+        ],
         "name": "STEP model",
         "description": "STEP model",
         "mimeType": "model/step",
