@@ -285,7 +285,8 @@ want to look at should not make it disappear from, say, your Downloads folder.
 ## Browsing and organizing your catalog
 
 Top right, next to "Import", you switch between three views: **grid** (image tiles, see the
-screenshot above), **folder**, and **list**:
+screenshot above), **folder**, and **list**.
+Your choice is remembered per browser or app profile, independently of your account, including after a restart or signing in again.
 
 ![Catalog in list view](bilder/en/03-katalog-liste.png)
 
@@ -1837,7 +1838,8 @@ ansehen will, will nicht, dass sie zum Beispiel aus dem Downloads-Ordner verschw
 ## Katalog durchsuchen und organisieren
 
 Oben rechts neben "Importieren" wechselst du zwischen drei Ansichten: **Raster** (Bildkacheln,
-siehe Screenshot oben), **Ordner** und **Liste**:
+siehe Screenshot oben), **Ordner** und **Liste**.
+Deine Auswahl bleibt pro Browser- bzw. App-Profil unabhängig vom Konto auch nach einem Neustart oder einer erneuten Anmeldung erhalten.
 
 ![Katalog in der Listen-Ansicht](bilder/03-katalog-liste.png)
 
