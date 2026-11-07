@@ -798,6 +798,7 @@ export const en: Translations = {
   cancel: 'Cancel',
   delete: 'Delete',
   openInSlicer: 'Open in slicer',
+  webSlicerBambuHint: 'Bambu Studio asks whether the website is trusted when opening a file and needs the Network plug-in.',
   webSlicerHint: 'The slicer must be able to reach the server (same network). Many slicers reject the link when HTTPS uses a self-signed certificate.',
   webSlicerError: 'The slicer link could not be created.',
   webSlicerNotInstalled: 'If the slicer is not installed, nothing happens.',

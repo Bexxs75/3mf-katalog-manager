@@ -807,6 +807,7 @@ export interface Translations {
   cancel: string;
   delete: string;
   openInSlicer: string;
+  webSlicerBambuHint: string;
   webSlicerHint: string;
   webSlicerError: string;
   webSlicerNotInstalled: string;

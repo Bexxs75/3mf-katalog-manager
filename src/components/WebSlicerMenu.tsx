@@ -24,6 +24,7 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
   const menu = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const hintId = useId();
+  const bambuHintId = useId();
   useEffect(() => {
     request.current++; setOpen(false); setBusy(false); setError(null);
     return () => { request.current++; };
@@ -85,9 +86,10 @@ export function WebSlicerMenu({ fileId, fileName, fileType, className }: {
     </button>
     {open && <div ref={menu} id={menuId} role="menu" aria-label={t('openInSlicer')} aria-describedby={hintId} onKeyDown={navigate}
       className={`absolute bottom-full ${alignRight ? 'right-0' : 'left-0'} z-20 mb-1 w-64 max-w-[calc(100vw-1rem)] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] p-1 shadow-lg`}>
-      {slicers.map(slicer => <button key={slicer.id} role="menuitem" tabIndex={-1} disabled={busy}
+      {slicers.map(slicer => <button key={slicer.id} aria-describedby={slicer.id === 'bambu' ? bambuHintId : undefined} role="menuitem" tabIndex={-1} disabled={busy}
         className="block w-full px-3 py-1.5 text-left text-small text-[var(--ink)] hover:bg-[var(--panel-2)] hover:text-[var(--accent)] disabled:opacity-50"
         onClick={() => void launch(slicer)}>{slicer.name}</button>)}
+      {slicers.some(slicer => slicer.id === 'bambu') && <p id={bambuHintId} className="px-3 py-1.5 text-caption text-[var(--ink-3)]">{t('webSlicerBambuHint')}</p>}
       <p id={hintId} className="px-3 py-1.5 text-caption text-[var(--ink-3)]">{t('webSlicerHint')} {t('webSlicerNotInstalled')}</p>
     </div>}
     {error && <p role="alert" className="text-small text-[var(--accent)]">{`${t('webSlicerError')} ${formatAppError(t, error)}`.trim()}</p>}

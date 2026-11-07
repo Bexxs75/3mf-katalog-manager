@@ -4,6 +4,7 @@ import {
   isDroppableImagePath,
   isOverDropZone,
   isWindowsPlatform,
+  isMacPlatform,
   physicalToCss,
   toCssPosition,
 } from './imageDrop';
@@ -101,5 +102,20 @@ describe('evaluateImageDrop', () => {
     expect(evaluateImageDrop(['/a.png', '/b.png'], { x: 150, y: 100 }, 1, true, ZONE)).toEqual({ kind: 'rejected', reason: 'multiple' });
     expect(evaluateImageDrop(['/a.3mf'], { x: 150, y: 100 }, 1, true, ZONE)).toEqual({ kind: 'rejected', reason: 'not-image' });
     expect(evaluateImageDrop([], { x: 150, y: 100 }, 1, true, ZONE)).toEqual({ kind: 'rejected', reason: 'not-image' });
+  });
+});
+
+describe('isMacPlatform', () => {
+  it('detects macOS from either browser field', () => {
+    expect(isMacPlatform({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', platform: '' })).toBe(true);
+    expect(isMacPlatform({ userAgent: '', platform: 'MacIntel' })).toBe(true);
+    expect(isMacPlatform({ userAgent: '', platform: '' })).toBe(false);
+  });
+
+  it('excludes iOS devices, including iPadOS with a desktop user agent', () => {
+    for (const device of ['iPad', 'iPhone', 'iPod']) {
+      expect(isMacPlatform({ userAgent: `${device}; CPU OS 18_0 like Mac OS X`, platform: 'MacIntel' })).toBe(false);
+    }
+    expect(isMacPlatform({ userAgent: 'Macintosh; Intel Mac OS X 10_15_7', platform: 'MacIntel', maxTouchPoints: 5 })).toBe(false);
   });
 });

@@ -798,6 +798,7 @@ export const fr: Translations = {
   cancel: 'Annuler',
   delete: 'Supprimer',
   openInSlicer: 'Ouvrir dans le slicer',
+  webSlicerBambuHint: 'À l’ouverture d’un fichier, Bambu Studio demande si le site est fiable et nécessite le module réseau (Network plug-in).',
   webSlicerHint: 'Le slicer doit pouvoir joindre le serveur (même réseau). Beaucoup de slicers refusent le lien lorsque HTTPS utilise un certificat autosigné.',
   webSlicerError: 'Le lien pour le slicer n’a pas pu être créé.',
   webSlicerNotInstalled: 'Si le slicer n’est pas installé, rien ne se passe.',

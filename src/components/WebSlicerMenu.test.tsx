@@ -29,6 +29,7 @@ const openMenu = () => fireEvent.click(screen.getByRole('button', { name: /In Sl
 const names = () => screen.getAllByRole('menuitem').map(item => item.textContent);
 
 beforeEach(() => {
+  vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', platform: 'Win32', maxTouchPoints: 0 });
   vi.stubEnv('VITE_TARGET', 'web'); localStorage.setItem('3mf-katalog-language', 'de'); launched = [];
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { launched.push(this.getAttribute('href')!); });
 });
@@ -191,4 +192,23 @@ it('handles Escape itself: the key stays unhandled for window shortcuts and the 
   expect(screen.queryByRole('menu')).toBeNull();
   expect(reached).toEqual([true]);
   expect(screen.getByRole('button', { name: /In Slicer öffnen/ })).toHaveFocus();
+});
+
+it('launches Bambu Studio with its macOS handler', async () => {
+  vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', platform: 'MacIntel', maxTouchPoints: 0 });
+  server({ slicerLinks: true }, () => Response.json({ path: '/dl/42/1.abc.sig/a.3mf', expiresAt: 1, name: 'a.3mf' }));
+  await show('a.3mf'); openMenu();
+  await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Bambu Studio' })));
+  expect(launched).toEqual(['bambustudioopen://' + encodeURIComponent(window.location.origin + '/dl/42/1.abc.sig/a.3mf')]);
+});
+
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('shows the Bambu hint only when offered, in %s', async (language, dictionary) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  server({ slicerLinks: true }); await show('a.3mf');
+  fireEvent.click(screen.getByRole('button', { name: dictionary.openInSlicer }));
+  expect(screen.getByText(dictionary.webSlicerBambuHint)).toBeVisible();
+  expect(screen.getByRole('menuitem', { name: 'Bambu Studio' })).toHaveAccessibleDescription(dictionary.webSlicerBambuHint);
+  cleanup(); await show('a.stl');
+  fireEvent.click(screen.getByRole('button', { name: dictionary.openInSlicer }));
+  expect(screen.queryByText(dictionary.webSlicerBambuHint)).toBeNull();
 });
