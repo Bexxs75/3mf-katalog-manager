@@ -1,0 +1,2 @@
+export const DETAIL_PANEL_COMPACT_WIDTH_CLASS = 'w-[336px]';
+export const DETAIL_PANEL_COMFORT_WIDTH = '380px';

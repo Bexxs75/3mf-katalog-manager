@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { BundlePanel, type BundleViewActions } from './BundlePanel';
+import { UiDensityProvider } from '../hooks/UiDensityContext';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { de } from '../i18n/de';
 import { buildCards } from '../lib/bundles';
@@ -15,11 +16,11 @@ beforeEach(() => { localStorage.clear(); localStorage.setItem('3mf-katalog-langu
 afterEach(cleanup);
 
 const plateTime = (seconds: number, complete = true) => ({ plateCount: 1, printSeconds: seconds, ...(complete ? { printSecondsComplete: true as const } : {}) });
-function fixture(kind: BundleKind) {
+function fixture(kind: BundleKind, longName?: string) {
   const models: ModelFile[] = [
     makeModelFile({ id: 'a', name: 'Wall 04.3mf', fileType: '3mf', tags: ['home', 'holder'], license: 'CC-BY-4.0', estimatedWeightG: 38, printStatus: 'printed',
       materials: [{ name: 'PLA', displayColor: null }], printFacts: plateTime(6720), fileSizeBytes: 2_400_000 }),
-    makeModelFile({ id: 'b', name: 'Wall 06.3mf', fileType: '3mf', tags: ['home'], license: 'CC-BY-NC-4.0', estimatedWeightG: 36, printStatus: 'not_printed',
+    makeModelFile({ id: 'b', name: longName ?? 'Wall 06.3mf', fileType: '3mf', tags: ['home'], license: 'CC-BY-NC-4.0', estimatedWeightG: 36, printStatus: 'not_printed',
       materials: [{ name: 'PETG', displayColor: null }], printFacts: plateTime(4440), fileSizeBytes: 2_300_000 }),
     makeModelFile({ id: 'c', name: 'Wall raw.stl', fileType: 'stl', tags: ['holder', 'home'], license: 'CC-BY-4.0', printStatus: 'not_printed', queuePosition: 2, fileSizeBytes: 5_800_000 }),
   ];
@@ -30,8 +31,8 @@ function fixture(kind: BundleKind) {
   return { models, bundle, card };
 }
 
-function setup(kind: BundleKind, extra: { actions?: Partial<BundleViewActions>; onSetLicense?: boolean } = {}) {
-  const { models, bundle, card } = fixture(kind);
+function setup(kind: BundleKind, extra: { actions?: Partial<BundleViewActions>; onSetLicense?: boolean; longName?: string; overlay?: boolean } = {}) {
+  const { models, bundle, card } = fixture(kind, extra.longName);
   const handlers = {
     onOpenMember: vi.fn(), onSetPrinted: vi.fn(), onSetFavorite: vi.fn(), onAddTag: vi.fn(), onQueue: vi.fn(),
     onSetLicense: vi.fn().mockResolvedValue(undefined),
@@ -41,14 +42,42 @@ function setup(kind: BundleKind, extra: { actions?: Partial<BundleViewActions>; 
   function Host() {
     const [ask, setAsk] = useState<string | null>(null);
     const actions: BundleViewActions = { ...base, queueAskBundleId: ask, setQueueAskBundleId: setAsk, ...extra.actions };
-    return <LanguageProvider><BundlePanel card={card} members={panelMembers(bundle, models)} allTags={['home', 'holder', 'other']}
+    return <LanguageProvider><UiDensityProvider><div className={`detail-panel-shell ${extra.overlay ? 'detail-panel-overlay' : ''}`}><BundlePanel card={card} members={panelMembers(bundle, models)} allTags={['home', 'holder', 'other']}
       displayPreference="thumbnail" actions={actions} onOpenMember={handlers.onOpenMember} onSetPrinted={handlers.onSetPrinted}
       onSetFavorite={handlers.onSetFavorite} onAddTag={handlers.onAddTag} onSetLicense={extra.onSetLicense === false ? undefined : handlers.onSetLicense}
-      onQueue={handlers.onQueue} /></LanguageProvider>;
+      onQueue={handlers.onQueue} /></div></UiDensityProvider></LanguageProvider>;
   }
   render(<Host />);
   return { ...handlers, ...base, models };
 }
+
+describe('BundlePanel layout', () => {
+  it.each(['compact', 'comfort'])('uses the model panel width and scrolling structure in %s density', density => {
+    localStorage.setItem('3mf-katalog-density', density);
+    setup('variants', { overlay: true });
+    const aside = screen.getByRole('complementary');
+    expect(aside.parentElement).toHaveClass('detail-panel-shell', 'detail-panel-overlay');
+    expect(aside).toHaveClass('flex-none', 'flex', 'flex-col', 'min-h-0', 'bg-[var(--panel)]', 'border-l', 'border-[var(--line)]');
+    if (density === 'compact') expect(aside).toHaveClass('w-[336px]');
+    else expect(aside).toHaveStyle({ width: '380px' });
+    expect(aside.firstElementChild).toHaveAttribute('data-bundle-panel');
+    expect(aside.firstElementChild).toHaveClass('flex-1', 'min-w-0', 'overflow-y-auto', 'overflow-x-hidden', 'break-words');
+  });
+
+  it.each(['compact', 'comfort'])('constrains long member filenames in the list and variant picker in %s density', density => {
+    localStorage.setItem('3mf-katalog-density', density);
+    const longName = `${'VeryLongUnbrokenFilename'.repeat(30)}.3mf`;
+    setup('variants', { longName });
+    const list = screen.getByRole('list', { name: de.bundleMembers });
+    const name = within(list).getByText(longName);
+    expect(name).toHaveClass('truncate');
+    expect(name.parentElement).toHaveClass('min-w-0');
+    expect(name.nextElementSibling).toHaveClass('truncate');
+    fireEvent.click(screen.getByRole('button', { name: de.bundleQueueOpen }));
+    const picker = screen.getByRole('group', { name: de.bundleQueueWhich });
+    expect(within(picker).getByText(longName)).toHaveClass('min-w-0', 'break-words');
+  });
+});
 
 describe('BundlePanel content', () => {
   it('names the bundle, its kind and title model, and lists every member with label, status and a Title badge', () => {

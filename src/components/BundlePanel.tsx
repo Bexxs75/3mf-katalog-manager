@@ -1,3 +1,5 @@
+import { DETAIL_PANEL_COMPACT_WIDTH_CLASS, DETAIL_PANEL_COMFORT_WIDTH } from './detailPanelWidth';
+import { useUiDensity } from '../hooks/UiDensityContext';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useCanEditMetadata } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
@@ -70,6 +72,7 @@ function MemberThumb({ model, displayPreference, images }: { model: ModelFile; d
 /** Panel of a bundle card: members, combined values and the actions that reach every member. */
 export function BundlePanel({ card, members, allTags, displayPreference, actions, onOpenMember, onSetPrinted, onSetFavorite, onAddTag, onSetLicense, onQueue }: Props) {
   const t = useT();
+  const { density } = useUiDensity();
   const formatCount = useFormatCount();
   const { language } = useLanguage();
   const canEdit = useCanEditMetadata();
@@ -142,7 +145,9 @@ export function BundlePanel({ card, members, allTags, displayPreference, actions
   const perMember = <span className="flex-1 min-w-0 text-right text-[var(--ink-3)]">{t('bundlePerVariant')}</span>;
 
   return (
-    <div data-bundle-panel className="flex flex-col min-w-0">
+    <aside className={`flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)] ${density === 'compact' ? DETAIL_PANEL_COMPACT_WIDTH_CLASS : ''}`}
+      style={density === 'comfort' ? { width: DETAIL_PANEL_COMFORT_WIDTH } : undefined}>
+    <div data-bundle-panel className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden break-words">
       <div className="px-4 pt-3.5">
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-small font-bold text-[var(--ink-2)]">
           <Icon name="layers" size={13} />{t('bundlePanelKind').replace('{kind}', t(bundle.kind === 'variants' ? 'bundleKindVariants' : 'bundleKindParts'))}
@@ -217,7 +222,7 @@ export function BundlePanel({ card, members, allTags, displayPreference, actions
         <h4 className="mt-2.5 mb-1 text-caption font-semibold text-[var(--ink-2)]">{t('bundleSumTags')}</h4>
         {summary.tags.length > 0
           ? <ul className="list-none m-0 p-0 flex flex-wrap gap-1">{summary.tags.map(tag =>
-            <li key={tag} className="text-caption font-medium px-1.5 py-px rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">#{tagLabel(tag, language)}</li>)}</ul>
+            <li key={tag} className="min-w-0 max-w-full break-words text-caption font-medium px-1.5 py-px rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">#{tagLabel(tag, language)}</li>)}</ul>
           : <p className="m-0 text-small text-[var(--ink-3)]">{t('noValue')}</p>}
       </section>
 
@@ -265,7 +270,7 @@ export function BundlePanel({ card, members, allTags, displayPreference, actions
                     <label key={member.model.id} className={`flex items-center gap-2.5 border rounded-md px-2.5 py-1.5 cursor-pointer bg-[var(--panel)] ${variantId === member.model.id ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--line)]'}`}>
                       <input type="radio" name={`${askId}-variant`} value={member.model.id} checked={variantId === member.model.id}
                         className="accent-[var(--accent)]" onChange={() => setVariantId(member.model.id)} />
-                      <span className="font-semibold text-small">{displayName(memberTitle(member))}
+                      <span className="min-w-0 break-words font-semibold text-small">{displayName(memberTitle(member))}
                         {member.model.queuePosition !== null && <span className="ml-1.5 font-normal text-[var(--ink-3)]">{t('bundleQueueIn')}</span>}
                       </span>
                     </label>
@@ -291,5 +296,6 @@ export function BundlePanel({ card, members, allTags, displayPreference, actions
         <p role="status" className="mt-1.5 mb-0 text-caption text-[var(--ink-2)] min-h-[1em]">{status}</p>
       </section>
     </div>
+    </aside>
   );
 }

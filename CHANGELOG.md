@@ -88,6 +88,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- **Bundle panel:** matches the model panel width in each display density; long names no longer widen it.
+
 - **Slicer reports, "Choose another model":** the model list opened behind the dialog and could not be clicked. The model and spool pickers now sit above dialogs.
 - **Printer connection changed during a query:** if the printer's address was changed, or its connection removed and made again, while a printer query (regular pass or "include older history") was still under way, the answer of the old printer could be written to the new connection. The answer is now dropped when the connection's type, address or creation time differs from what the query started with. No change to the database.
 - **Bundles (Undo):** "Undo" after dissolving a bundle now brings back every former member, including models that are in the trash at that moment, with their place and label. Before, those members were silently lost. Members whose file was deleted for good in the meantime, or that joined another bundle, stay out; the notice then says how many models could not come back. The bundle is restored in one step in the backend (the existing `create_bundle` command takes the new optional arguments `labels` and `restore`, also in the web version); if fewer than two members can come back, nothing changes. New notice text in German, English, Spanish and French (Spanish and French were written by the model and not checked by native speakers). No new command and no change to the database.
@@ -865,6 +867,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Wiederherstellen behält den Thingiverse-Schlüssel:** Der Schlüssel dieses Rechners (und der Schalter) bleibt beim Wiederherstellen einer Sicherung jetzt erhalten, statt gelöscht zu werden. Ein Schlüssel ist weiterhin nie Teil einer Sicherung, und einer in einer wiederhergestellten Datei wird ignoriert. Der Wiederherstellen-Dialog, die Thingiverse-Einstellungen und das Handbuch sagen: „Dein Thingiverse-Schlüssel bleibt auf diesem Rechner erhalten und ist in keiner Sicherung enthalten.“
 
 ### Behoben
+
+- **Bündel-Panel:** hat in der jeweiligen Darstellungsdichte dieselbe Breite wie das Modell-Panel; lange Namen verbreitern es nicht mehr.
 
 - **Slicer-Meldungen, „Anderes Modell wählen“:** Die Modellliste öffnete sich hinter dem Dialog und ließ sich nicht bedienen. Modell- und Spulenauswahl liegen jetzt über Dialogen.
 - **Druckerverbindung während einer Abfrage geändert:** Wurde die Adresse eines Druckers geändert oder seine Verbindung entfernt und neu angelegt, während noch eine Druckerabfrage lief (regulärer Abgleich oder „Ältere Drucke übernehmen“), konnte die Antwort des alten Druckers in die neue Verbindung geschrieben werden. Die Antwort wird jetzt verworfen, wenn Art, Adresse oder Anlegezeit der Verbindung vom Beginn der Abfrage abweichen. Keine Änderung an der Datenbank.

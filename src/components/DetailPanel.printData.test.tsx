@@ -65,3 +65,10 @@ it.each(['compact', 'comfort'])('shows no print data card for an STL, a list sum
   panel(density, makeModelFile({ path: '/c/a.3mf', deletedAt: '2026-01-01T00:00:00Z' }), { trashMode: true });
   expect(screen.queryByRole('region', { name: de.printDataHeading })).toBeNull();
 });
+
+it.each(['compact', 'comfort'])('preserves the model panel width in %s density', density => {
+  const { container } = panel(density, makeModelFile());
+  const aside = container.querySelector('aside');
+  if (density === 'compact') expect(aside).toHaveClass('w-[336px]');
+  else expect(aside).toHaveStyle({ width: '380px' });
+});
