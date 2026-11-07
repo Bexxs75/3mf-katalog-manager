@@ -50,6 +50,15 @@ describe('CloseBehaviorSettings', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('tells a failed read from "not supported" and reads again on request', async () => {
+    vi.mocked(api.getCloseBehavior).mockRejectedValueOnce(new Error('boom')).mockResolvedValue(base);
+    wrap(<CloseBehaviorSettings />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingLoadFailed);
+    fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+    expect(await screen.findByRole('radio', { name: de.closeActionExit })).toBeChecked();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('loads the state, saves a change and keeps the keyboard-reachable radios', async () => {
     vi.mocked(api.getCloseBehavior).mockResolvedValue(base);
     vi.mocked(api.setCloseBehavior).mockResolvedValue({ ...base, action: 'tray', trayAvailable: true });
@@ -96,7 +105,7 @@ describe('CloseBehaviorSettings', () => {
     vi.mocked(api.setCloseBehavior).mockRejectedValue({ message: 'boom', expected: true });
     wrap(<CloseBehaviorSettings />);
     fireEvent.click(await screen.findByRole('radio', { name: de.closeActionTray }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(de.closeActionFailed);
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingSaveFailedKept);
     expect(screen.getByRole('radio', { name: de.closeActionExit })).toBeChecked();
   });
 });

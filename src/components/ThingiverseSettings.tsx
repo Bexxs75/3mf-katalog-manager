@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
+import { SettingLoadStatus, SettingSaveStatus, useLoadedSetting } from './SettingState';
 import { isReadOnly } from '../lib/readOnly';
 import * as api from '../lib/api/thingiverse';
 import type { ThingiverseSettings as Settings } from '../types';
@@ -23,13 +24,21 @@ const smallButton = 'h-7 px-2 rounded-[3px] border border-[var(--line-strong)] b
  * the backend only reports that one exists and a mask with its last four characters.
  */
 export function ThingiverseSettings({ onEnabledChange }: { onEnabledChange: (enabled: boolean) => void }) {
+  // The web build has no such area, and the hook must not run there (no backend to ask).
+  if (isReadOnly()) return null;
+  return <ThingiverseSettingsBlock onEnabledChange={onEnabledChange} />;
+}
+
+function ThingiverseSettingsBlock({ onEnabledChange }: { onEnabledChange: (enabled: boolean) => void }) {
   const t = useT();
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const { value: settings, confirm, state: loadState, error: loadError, reload: reloadSettings } = useLoadedSetting<Settings>(api.getThingiverseSettings);
   const [dialog, setDialog] = useState<'on' | 'remove' | null>(null);
   const [token, setToken] = useState('');
   const [show, setShow] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [switchError, setSwitchError] = useState<AppError | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [howOpen, setHowOpen] = useState(false);
@@ -38,23 +47,37 @@ export function ThingiverseSettings({ onEnabledChange }: { onEnabledChange: (ena
   const fieldId = useId();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
+  // Refresh after a key change: a failed read keeps the last confirmed settings and says so.
   const reload = () => api.getThingiverseSettings()
-    .then(s => { if (mounted.current) setSettings(s); })
+    .then(s => { if (mounted.current) confirm(s); })
     .catch(e => { if (mounted.current) setError(toAppError(e)); });
-  useEffect(() => { if (!isReadOnly()) void reload(); }, []);
 
-  if (isReadOnly() || !settings) return null;
+  if (!settings) {
+    return (
+      <section className="mt-4 mb-4 p-2 border border-[var(--line)] rounded text-small">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">{t('tvSettingsTitle')}</h3>
+          <span className="px-1.5 rounded-full border border-[var(--line-strong)] text-caption text-[var(--ink-2)]">{t('tvExperimental')}</span>
+        </div>
+        <SettingLoadStatus state={loadState} error={loadError} onReload={() => void reloadSettings()} className="mt-1" />
+      </section>
+    );
+  }
 
   const setEnabled = async (next: boolean) => {
-    setError(null);
+    if (saving) return;
+    setSaving(true);
+    setSwitchError(null);
     try {
       await api.setThingiverseEnabled(next);
       if (!mounted.current) return;
-      setSettings({ ...settings, enabled: next });
+      confirm({ ...settings, enabled: next });
       if (!next) { setToken(''); setReplacing(false); setUserName(null); }
       onEnabledChange(next);
     } catch (e) {
-      if (mounted.current) setError(toAppError(e));
+      if (mounted.current) setSwitchError(toAppError(e));
+    } finally {
+      if (mounted.current) setSaving(false);
     }
   };
 
@@ -99,8 +122,9 @@ export function ThingiverseSettings({ onEnabledChange }: { onEnabledChange: (ena
           <span className="font-semibold">{t('tvSwitchLabel')}</span>
           <span className="block text-caption text-[var(--ink-3)]">{t('tvSwitchHint')}</span>
         </span>
-        <ToggleSwitch checked={enabled} label={t('tvSwitchLabel')} onChange={next => { if (next) setDialog('on'); else void setEnabled(false); }} />
+        <ToggleSwitch checked={enabled} label={t('tvSwitchLabel')} disabled={saving} onChange={next => { if (next) setDialog('on'); else void setEnabled(false); }} />
       </div>
+      <SettingSaveStatus saving={saving} error={switchError} keptValue className="mt-1" />
 
       {enabled && (
         <div className="mt-3 space-y-2">

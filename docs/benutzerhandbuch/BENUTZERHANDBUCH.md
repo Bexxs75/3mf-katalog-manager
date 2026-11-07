@@ -410,6 +410,11 @@ spare part, lamp and small. The German name is what is stored; names you typed b
 - **Lift a block:** Settings → Catalog lists all blocked tags under "Blocked automatic tags".
   "Lift block" ends a block. The list stays in force if you turn "Assign tags automatically" off
   and on again.
+- **When a setting cannot be read or saved:** Settings show "Loading setting …" while they read a
+  value. If reading fails, the setting stays visible with the message "The setting could not be
+  loaded." and a "Reload" button; its switch is locked until the value is known, so it never shows
+  a guessed state. If saving fails, an alert says so, and the previous value stays (for the start
+  menu entry, which changes files, you are asked to reload the setting).
 
 ### Moving models and managing folders
 
@@ -1917,6 +1922,12 @@ Name; von Hand getippte Namen wie „lid“ oder „couvercle“ werden mit „d
 - **Sperre aufheben:** Einstellungen → Katalog listet alle gesperrten Tags unter „Gesperrte
   automatische Tags“. „Sperre aufheben“ beendet eine Sperre. Die Sperrliste gilt weiter, falls du
   „Tags automatisch vergeben“ aus- und wieder einschaltest.
+- **Wenn eine Einstellung nicht gelesen oder gespeichert werden kann:** Einstellungen zeigen
+  „Einstellung wird geladen …“, solange sie einen Wert lesen. Scheitert das Lesen, bleibt die
+  Einstellung sichtbar, mit der Meldung „Einstellung konnte nicht geladen werden.“ und der Taste
+  „Erneut laden“; der Schalter bleibt gesperrt, bis der Wert bekannt ist, und zeigt nie einen
+  geratenen Zustand. Scheitert das Speichern, meldet das eine Warnung und der bisherige Wert bleibt
+  (beim Startmenü-Eintrag, der Dateien ändert, wirst du gebeten, die Einstellung erneut zu laden).
 
 ### Modelle verschieben und Ordner verwalten
 

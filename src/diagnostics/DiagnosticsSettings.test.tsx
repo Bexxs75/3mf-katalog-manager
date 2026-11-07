@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { DiagnosticsSettings } from './DiagnosticsSettings';
+import { de } from '../i18n/de';
 import * as diagnosticsApi from '../lib/api/diagnostics';
 
 vi.mock('../lib/api/diagnostics');
@@ -31,6 +32,27 @@ function renderSettings() {
     </LanguageProvider>,
   );
 }
+
+describe('DiagnosticsSettings states', () => {
+  it('does not guess the switch when the stored state cannot be read', async () => {
+    vi.mocked(diagnosticsApi.getVerboseLogging).mockRejectedValueOnce(new Error('boom')).mockResolvedValue({ enabled: true, untilMs: Date.parse('2026-10-03') });
+    renderSettings();
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingLoadFailed);
+    expect(screen.getByRole('switch')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+    await waitFor(() => expect(screen.getByRole('switch')).toBeEnabled());
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('keeps the confirmed state and reports a failed save', async () => {
+    vi.mocked(diagnosticsApi.setVerboseLogging).mockRejectedValue(new Error('boom'));
+    renderSettings();
+    await waitFor(() => expect(screen.getByRole('switch')).toBeEnabled());
+    fireEvent.click(screen.getByRole('switch'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingSaveFailedKept);
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
+  });
+});
 
 describe('DiagnosticsSettings', () => {
   it('calls openBugReport when the bug button is clicked', () => {

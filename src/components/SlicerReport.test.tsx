@@ -7,6 +7,8 @@ import { SlicerReportsProvider, useSlicerReports } from '../hooks/SlicerReportsC
 import { SlicerReportSettings } from './SlicerReportSettings';
 import { SlicerReportInbox } from './SlicerReportInbox';
 import { SlicerReportNotice } from './SlicerReportNotice';
+import { de } from '../i18n/de';
+import { LanguageProviderWithDiagnostics } from '../test/renderWithDiagnostics';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -52,6 +54,32 @@ beforeEach(() => {
 
 const wrap = (ui: ReactNode) => render(<LanguageProvider><SlicerReportsProvider>{ui}</SlicerReportsProvider></LanguageProvider>);
 const calls = (name: string) => vi.mocked(invoke).mock.calls.filter(c => c[0] === name);
+
+// Failures are unexpected errors here, which add a report link that needs the diagnostics context.
+const wrapDiag = (ui: ReactNode) => render(<LanguageProviderWithDiagnostics><SlicerReportsProvider>{ui}</SlicerReportsProvider></LanguageProviderWithDiagnostics>);
+
+describe('settings load and save states', () => {
+  it('reports a failed read instead of leaving a dead switch, and reads again on request', async () => {
+    failing = { get_slicer_report_setup: new Error('boom') };
+    wrapDiag(<SlicerReportSettings />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingLoadFailed);
+    expect(screen.getByRole('switch', { name: de.srTitle })).toBeDisabled();
+    failing = {};
+    fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+    await waitFor(() => expect(screen.getByRole('switch', { name: de.srTitle })).toBeEnabled());
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('keeps the confirmed setup and reports a failed save', async () => {
+    failing = { set_slicer_report_enabled: new Error('boom') };
+    wrapDiag(<SlicerReportSettings />);
+    const toggle = await screen.findByRole('switch', { name: de.srTitle });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    fireEvent.click(toggle);
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingSaveFailedKept);
+    expect(toggle).toBeChecked();
+  });
+});
 
 describe('settings', () => {
   it('shows the switch, one command line per slicer and the two steps', async () => {

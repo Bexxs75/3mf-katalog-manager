@@ -83,7 +83,7 @@ export function DiskSyncSettings() {
           </li>))}</ul>
         {list.total > list.items.length && <p className="mt-1 text-small text-[var(--ink-2)]">{count(t('kcMore'), list.total - list.items.length)}</p>}
       </>}
-      {error && <p role="alert" className="text-small text-[var(--danger)]"><ErrorText error={error} /></p>}
+      {error && <p role="alert" className="text-small text-[var(--crit)]"><ErrorText error={error} /></p>}
     </section>
   );
 }

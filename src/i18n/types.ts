@@ -1486,7 +1486,13 @@ export interface Translations {
   autoTaggingLabel: string;
   autoTaggingHint: string;
   autoTaggingBlockedNote: string;
-  autoTaggingError: string;
+  settingLoading: string;
+  settingLoadFailed: string;
+  settingReload: string;
+  settingSaving: string;
+  settingSaveFailedKept: string;
+  settingSaveFailedReload: string;
+  infoVersionLoadFailed: string;
   blockedAutoTagsTitle: string;
   blockedAutoTagsHint: string;
   blockedAutoTagsEmpty: string;
@@ -1800,7 +1806,6 @@ export interface Translations {
   closeActionNoteLabel: string;
   closeActionLinuxWarning: string;
   closeActionUnavailable: string;
-  closeActionFailed: string;
   closeActionTrayOpen: string;
   closeActionTrayQuit: string;
   infoFoldersHeading: string;
@@ -2297,7 +2302,6 @@ export interface Translations {
   srTest: string;
   srTestSent: string;
   srTestFailed: string;
-  srSaveFailed: string;
   srLastError: string;
   srOpenInbox: PluralForms;
   srInboxTitle: string;

@@ -100,6 +100,24 @@ it('shows the app version in the Info tab of the web build', async () => {
   expect(await screen.findByTestId('web-version')).toHaveTextContent('0.17.0');
 });
 
+it('says so when the version cannot be read in the web build, and reads again on request', async () => {
+  let failVersion = true;
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.startsWith('/api/invoke/')) {
+      if (url.endsWith('get_app_version')) return failVersion ? new Response('no', { status: 500 }) : Response.json('0.17.0');
+      return Response.json([]);
+    }
+    return Response.json({ authenticated: true, writable: false, csrfToken: 'token', mustChangePassword: false });
+  }));
+  await getSession();
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+  expect(await screen.findByText(new RegExp(de.infoVersionLoadFailed))).toBeInTheDocument();
+  failVersion = false;
+  fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+  expect(await screen.findByTestId('web-version')).toHaveTextContent('0.17.0');
+});
+
 it('offers no close-behavior group in the web build and never asks the backend for it', async () => {
   renderCatalogTab();
   fireEvent.click(screen.getByRole('tab', { name: 'Allgemein' }));

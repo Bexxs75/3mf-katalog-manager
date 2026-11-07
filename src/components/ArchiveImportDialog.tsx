@@ -219,7 +219,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
             );
           })}
           {error && (
-            <div className="text-[length:var(--font-size-meta)] text-[var(--danger,#d33)]">
+            <div className="text-[length:var(--font-size-meta)] text-[var(--crit)]">
               <ErrorText error={{ ...error, message: displayName(error.message) }} />
             </div>
           )}

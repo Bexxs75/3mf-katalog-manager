@@ -33,6 +33,7 @@ import { ThingiverseSettings } from './ThingiverseSettings';
 import { DragOutSetting } from './DragOutSetting';
 import { RadioSegments } from './RadioSegments';
 import { getAppVersion } from '../lib/api/update';
+import { useLoadedSetting } from './SettingState';
 
 type SettingsTab = 'general' | 'slicer' | 'catalog' | 'info';
 const TABS: readonly SettingsTab[] = import.meta.env.VITE_TARGET === 'web' ? ['general', 'catalog', 'info'] : ['general', 'slicer', 'catalog', 'info'];
@@ -515,17 +516,20 @@ export function SettingsPanel({
 /** The web build has no updater panel (which shows the version on the desktop), so the version gets its own row. */
 function WebVersionRow() {
   const t = useT();
-  const [version, setVersion] = useState('');
-  useEffect(() => {
-    let alive = true;
-    getAppVersion().then(v => { if (alive) setVersion(v); }).catch(() => {});
-    return () => { alive = false; };
-  }, []);
-  if (!version) return null;
+  const { value: version, state, error, reload } = useLoadedSetting(getAppVersion);
   return (
-    <div className="flex justify-between text-caption py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
-      <span>{t('infoVersionLabel')}</span>
-      <span data-testid="web-version">{version}</span>
+    <div className="py-2 border-t border-[var(--line)] mt-3 text-caption text-[var(--ink-2)]">
+      <div className="flex justify-between">
+        <span>{t('infoVersionLabel')}</span>
+        {version && <span data-testid="web-version">{version}</span>}
+      </div>
+      {state === 'loading' && <p role="status" className="text-[var(--ink-3)]">{t('settingLoading')}</p>}
+      {state === 'failed' && (
+        <>
+          <p role="alert" className="text-[var(--crit)]">{t('infoVersionLoadFailed')} <ErrorText error={error} /></p>
+          <button type="button" onClick={() => void reload()} className="mt-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] font-semibold cursor-pointer hover:border-[var(--accent)]">{t('settingReload')}</button>
+        </>
+      )}
     </div>
   );
 }

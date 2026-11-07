@@ -6,6 +6,7 @@ import * as api from '../lib/api/slicerReports';
 import type { SlicerReportSetup } from '../lib/slicerReports';
 import { useSlicerReports } from '../hooks/SlicerReportsContext';
 import { ToggleSwitch } from './ToggleSwitch';
+import { SettingLoadStatus } from './SettingState';
 
 const button = 'h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
@@ -18,19 +19,28 @@ export function SlicerReportSettings() {
   const formatCount = useFormatCount();
   const { open, openInbox, refresh } = useSlicerReports();
   const [setup, setSetup] = useState<SlicerReportSetup | null>(null);
+  // Only the first read can fail visibly; later refreshes keep the last confirmed setup.
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const [loadError, setLoadError] = useState<AppError | null>(null);
   const [status, setStatus] = useState('');
   const [error, setError] = useState<{ text: string; error: AppError } | null>(null);
   const [busy, setBusy] = useState(false);
   const alive = useRef(true);
 
+  const hasSetup = useRef(false);
   const load = useCallback(async () => {
     try {
       const next = await api.getSlicerReportSetup();
-      if (alive.current) setSetup(next);
+      if (!alive.current) return;
+      hasSetup.current = true;
+      setSetup(next);
+      setLoadState('ready');
     } catch (e) {
       console.warn('[slicer-reports] could not read the setup:', e);
+      if (alive.current && !hasSetup.current) { setLoadError(toAppError(e)); setLoadState('failed'); }
     }
   }, []);
+  const reloadSetup = () => { setLoadState('loading'); void load(); };
   useEffect(() => {
     alive.current = true;
     void load();
@@ -42,14 +52,17 @@ export function SlicerReportSettings() {
   const setEnabled = async (enabled: boolean, regenerate = false) => {
     setBusy(true);
     setError(null);
-    setStatus('');
+    setStatus(t('settingSaving'));
     try {
       const next = await api.setSlicerReportEnabled(enabled);
+      hasSetup.current = true;
       setSetup(next);
-      if (regenerate) setStatus(t('srRegenerated'));
+      setLoadState('ready');
+      setStatus(regenerate ? t('srRegenerated') : '');
       void refresh();
     } catch (e) {
-      setError({ text: t('srSaveFailed'), error: toAppError(e) });
+      setStatus('');
+      setError({ text: t('settingSaveFailedKept'), error: toAppError(e) });
     } finally {
       setBusy(false);
     }
@@ -88,6 +101,7 @@ export function SlicerReportSettings() {
         <ToggleSwitch checked={enabled} label={t('srTitle')} disabled={busy || setup === null} onChange={(next) => void setEnabled(next)} />
       </div>
       <p className="text-caption leading-relaxed text-[var(--ink-3)] mb-2">{t('srHelp')}</p>
+      <SettingLoadStatus state={loadState} error={loadError} onReload={reloadSetup} className="mb-2" />
 
       {enabled && setup?.pathChanged && (
         <div role="alert" className="mb-2 p-2 border border-[var(--crit)] rounded text-caption">
@@ -133,7 +147,7 @@ export function SlicerReportSettings() {
       {!enabled && setup && <p className="text-caption text-[var(--ink-3)]">{t('srOffNote')}</p>}
       {setup?.lastError && <p className="mt-1 text-caption text-[var(--ink-3)] [overflow-wrap:anywhere]">{t('srLastError').replace('{message}', setup.lastError)}</p>}
       <p role="status" aria-live="polite" className="mt-1 text-caption text-[var(--ink-2)]">{status}</p>
-      {error && <p role="alert" className="text-caption text-[var(--crit)]">{error.text} <ErrorText error={error.error} /></p>}
+      {error && <p role="alert" className="text-caption text-[var(--crit)] break-words">{error.text} <ErrorText error={error.error} /></p>}
     </section>
   );
 }

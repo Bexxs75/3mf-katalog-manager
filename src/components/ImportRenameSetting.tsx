@@ -37,7 +37,7 @@ export function ImportRenameSetting() {
         <ToggleSwitch checked={enabled} label={t('importRenameTitle')} disabled={busy} onChange={change} />
       </div>
       <p className="mt-1 text-small text-[var(--ink-2)]">{t('importRenameDescription')}</p>
-      {error && <p role="alert" className="text-small text-[var(--danger)]"><ErrorText error={error} /></p>}
+      {error && <p role="alert" className="text-small text-[var(--crit)]"><ErrorText error={error} /></p>}
     </div>
   );
 }

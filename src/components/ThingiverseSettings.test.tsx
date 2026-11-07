@@ -32,6 +32,16 @@ beforeEach(() => {
 });
 
 describe('ThingiverseSettings', () => {
+  it('keeps the section with an error and "Reload" when the settings cannot be read', async () => {
+    vi.mocked(api.getThingiverseSettings).mockRejectedValueOnce(new Error('boom')).mockImplementation(async () => ({ ...stored }));
+    setup();
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingLoadFailed);
+    expect(screen.getByRole('heading', { name: de.tvSettingsTitle })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+    expect(await screen.findByRole('switch', { name: de.tvSwitchLabel })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('is off by default and shows no key field, but always the privacy note', async () => {
     setup();
     const toggle = await screen.findByRole('switch', { name: de.tvSwitchLabel });

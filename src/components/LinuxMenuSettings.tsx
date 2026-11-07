@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import * as api from '../lib/api/linuxMenu';
 import { toAppError, type AppError } from '../lib/errors';
-import { ErrorText } from '../diagnostics/ErrorText';
+import { SettingLoadStatus, SettingSaveStatus, useLoadedSetting } from './SettingState';
 import { ToggleSwitch } from './ToggleSwitch';
 
 /** Settings switch for the start-menu entry; renders nothing unless this is a Linux AppImage. */
 export function LinuxMenuSettings() {
   const t = useT();
-  const [status, setStatus] = useState<api.LinuxMenuStatus | null>(null);
+  const { value: status, confirm, state: loadState, error: loadError, reload } = useLoadedSetting(api.getLinuxMenuStatus);
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -16,9 +16,8 @@ export function LinuxMenuSettings() {
   // Set to true again on setup: StrictMode runs setup, cleanup, setup, and a
   // cleanup-only reset would leave the ref false for the real mount.
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
-  useEffect(() => {
-    api.getLinuxMenuStatus().then(s => mountedRef.current && setStatus(s)).catch(() => {});
-  }, []);
+  // `null` is the loaded answer "not a Linux AppImage": nothing is shown then, unlike a failed read.
+  if (loadState !== 'ready') return <SettingLoadStatus state={loadState} label={t('linuxMenuTitle')} error={loadError} onReload={() => void reload()} className="mt-4 mb-2" />;
   if (!status) return null;
   // Without our own entry, a foreign file or another tool's integration blocks the switch.
   const blocked = !status.installed && (status.thirdParty || status.conflict);
@@ -29,7 +28,7 @@ export function LinuxMenuSettings() {
     try {
       const next = await api.setLinuxMenuEnabled(enabled);
       if (!mountedRef.current) return;
-      if (next) setStatus(next);
+      if (next) confirm(next);
       setJustAdded(enabled && next?.installed === true);
     } catch (e) {
       if (mountedRef.current) setError(toAppError(e));
@@ -49,6 +48,7 @@ export function LinuxMenuSettings() {
         : t('linuxMenuHint')}
     </p>
     {justAdded && <p role="status" className="mt-1 text-caption leading-[1.4] text-[var(--ink-2)]">{t('linuxMenuAdded')}</p>}
-    {error && <p role="alert" className="mt-1 text-caption text-[var(--crit)]">{t('linuxMenuFailed')} <ErrorText error={error} /></p>}
+    {/* Files are written here, so after a failure the real state is read again rather than promised. */}
+    <SettingSaveStatus saving={busy} error={error} keptValue={false} onReload={() => { setError(null); void reload(); }} className="mt-1" />
   </>;
 }

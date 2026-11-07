@@ -43,16 +43,30 @@ describe('AutoTaggingSetting', () => {
     vi.mocked(api.setAutoTagging).mockRejectedValue(new Error('boom'));
     setup();
     fireEvent.click(await screen.findByRole('switch'));
-    expect(await screen.findByRole('alert')).toHaveTextContent(de.autoTaggingError);
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingSaveFailedKept);
     expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('dims the blocked-tags section while off but keeps it usable', async () => {
+  it('keeps the blocked-tags section fully readable and usable while off, and says that it can still be edited', async () => {
     vi.mocked(api.getAutoTagging).mockResolvedValue(false);
     setup();
     expect(await screen.findByText(de.autoTaggingBlockedNote)).toBeInTheDocument();
     const unblock = await screen.findByRole('button', { name: 'Sperre für #miniatur aufheben' });
     expect(unblock).toBeEnabled();
-    expect(unblock.closest('[class*="opacity-"]')).not.toBeNull();
+    expect(unblock.closest('[class*="opacity-[0"]')).toBeNull();
+  });
+
+  it('does not claim "on" when the stored state cannot be read, and reads again on request', async () => {
+    vi.mocked(api.getAutoTagging).mockRejectedValueOnce(new Error('boom')).mockResolvedValue(false);
+    setup();
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingLoadFailed);
+    const box = screen.getByRole('switch', { name: de.autoTaggingLabel });
+    expect(box).toBeDisabled();
+    expect(box).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByText(de.autoTaggingBlockedNote)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+    await waitFor(() => expect(screen.getByRole('switch')).toBeEnabled());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText(de.autoTaggingBlockedNote)).toBeInTheDocument();
   });
 });

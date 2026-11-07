@@ -2,20 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import * as api from '../lib/api/closeBehavior';
 import { toAppError, type AppError } from '../lib/errors';
-import { ErrorText } from '../diagnostics/ErrorText';
+import { SettingLoadStatus, SettingSaveStatus, useLoadedSetting } from './SettingState';
 
 /** Radio group "when the window is closed"; renders nothing where there is no notification area. */
 export function CloseBehaviorSettings() {
   const t = useT();
-  const [state, setState] = useState<api.CloseBehavior | null>(null);
+  const { value: state, confirm, state: loadState, error: loadError, reload } = useLoadedSetting(api.getCloseBehavior);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const mountedRef = useRef(true);
   // Set to true again on setup: StrictMode runs setup, cleanup, setup.
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
-  useEffect(() => {
-    api.getCloseBehavior().then(s => mountedRef.current && setState(s)).catch(() => {});
-  }, []);
+  // `null` is the loaded answer "no notification area": the group stays hidden then.
+  if (loadState !== 'ready') return <SettingLoadStatus state={loadState} label={t('closeActionTitle')} error={loadError} onReload={() => void reload()} className="mt-4" />;
   if (!state) return null;
   const mac = state.platform === 'macos';
   const linux = state.platform === 'linux';
@@ -27,7 +26,7 @@ export function CloseBehaviorSettings() {
     setError(null);
     try {
       const next = await api.setCloseBehavior(action);
-      if (mountedRef.current && next) setState(next);
+      if (mountedRef.current && next) confirm(next);
     } catch (e) {
       if (mountedRef.current) setError(toAppError(e));
     } finally {
@@ -47,6 +46,6 @@ export function CloseBehaviorSettings() {
     <p id="close-action-help" className="mt-1 text-caption leading-[1.4] text-[var(--ink-3)]">{t(mac ? 'closeActionHelpMac' : 'closeActionHelp')}</p>
     {linux && <p className="mt-1 text-caption leading-[1.4] text-[var(--ink-2)]"><b>{t('closeActionNoteLabel')}</b> {t('closeActionLinuxWarning')}</p>}
     {unavailable && <p role="alert" className="mt-1 text-caption text-[var(--crit)]">{t('closeActionUnavailable')}</p>}
-    {error && <p role="alert" className="mt-1 text-caption text-[var(--crit)]">{t('closeActionFailed')} <ErrorText error={error} /></p>}
+    <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1" />
   </fieldset>;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
-import { ErrorText } from '../diagnostics/ErrorText';
+import { SettingLoadStatus, SettingSaveStatus, useLoadedSetting } from './SettingState';
 import { ToggleSwitch } from './ToggleSwitch';
 import { BlockedAutoTagsSettings } from './BlockedAutoTagsSettings';
 import * as api from '../lib/api/autoTags';
@@ -14,22 +14,19 @@ export function AutoTaggingSetting() {
   // In the web catalog tab the switch is the first block, so it needs no top margin.
   const web = isReadOnly();
   const canEdit = useCanEditMetadata();
-  const [enabled, setEnabled] = useState(true);
+  // No stored value is not the same as "unknown": the backend answers true then, so only a failed read leaves it open.
+  const { value, confirm, state, error: loadError, reload } = useLoadedSetting(api.getAutoTagging);
+  const enabled = value === undefined ? null : value !== false;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
-  // A failed read leaves the default (on), which is what the backend assumes without a stored value.
-  useEffect(() => {
-    api.getAutoTagging().then(on => { if (mounted.current) setEnabled(on !== false); }).catch(e => console.error('Reading the automatic tagging setting failed', e));
-  }, []);
-
   const change = async (next: boolean) => {
     setBusy(true); setError(null);
     try {
       await api.setAutoTagging(next);
-      if (mounted.current) setEnabled(next);
+      if (mounted.current) confirm(next);
     } catch (e) {
       if (mounted.current) setError(toAppError(e));
     } finally {
@@ -42,19 +39,16 @@ export function AutoTaggingSetting() {
       <div className={web ? undefined : 'mt-4'}>
         <div className="flex items-center justify-between gap-2 text-small">
           <span className="font-semibold">{t('autoTaggingLabel')}</span>
-          <ToggleSwitch checked={enabled} label={t('autoTaggingLabel')} disabled={busy || !canEdit} onChange={next => void change(next)} />
+          <ToggleSwitch checked={enabled === true} label={t('autoTaggingLabel')} disabled={busy || !canEdit || enabled === null} onChange={next => void change(next)} />
         </div>
         <p className="mt-1 text-small text-[var(--ink-2)]">{t('autoTaggingHint')}</p>
-        {error && (
-          <div role="alert" className="mt-1.5 font-medium tabular-nums text-caption text-[var(--accent)] break-words">
-            {t('autoTaggingError')} <ErrorText error={error} />
-          </div>
-        )}
+        <SettingLoadStatus state={state} error={loadError} onReload={() => void reload()} className="mt-1.5" />
+        <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1.5" />
       </div>
-      {/* Dimmed, not disabled: the list still applies if the switch is turned back on, and blocks can still be lifted. */}
-      <div className={enabled ? undefined : 'opacity-[0.45]'}>
+      {/* Stays fully readable when tagging is off: blocks can still be lifted, and they apply again once it is switched on. */}
+      <div>
         <BlockedAutoTagsSettings />
-        {!enabled && <p className="mt-1 text-caption text-[var(--ink-3)]">{t('autoTaggingBlockedNote')}</p>}
+        {enabled === false && <p className="mt-1 text-caption text-[var(--ink-3)]">{t('autoTaggingBlockedNote')}</p>}
       </div>
     </>
   );
