@@ -1,3 +1,4 @@
+import { DETAIL_PANEL_COMPACT_WIDTH_CLASS, DETAIL_PANEL_COMFORT_WIDTH } from './detailPanelWidth';
 import { WebFileActions } from './WebFileActions';
 import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
 import { useCanEditMetadata } from '../lib/webSession';
@@ -125,7 +126,7 @@ export function DetailPanel({
 
   if (!model) {
     return (
-      <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-body px-6 text-center">
+      <aside role={trashMode ? undefined : "presentation"} className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-body px-6 text-center`}>
         {t('emptyStateText')}
       </aside>
     );
@@ -137,7 +138,7 @@ export function DetailPanel({
       ? new Date(new Date(model.deletedAt).getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000)
       : null;
     return (
-      <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
+      <aside className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]`}>
         <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
           <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
           <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{displayName(model.path)}</div>
@@ -195,7 +196,7 @@ export function DetailPanel({
 
   if (density === 'compact') {
     return (
-    <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
+    <aside role={trashMode ? undefined : "presentation"} className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]`}>
       <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
         <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
         <StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} />
@@ -421,7 +422,7 @@ export function DetailPanel({
   return (
     <aside role={trashMode ? undefined : "presentation"}
       className="flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]"
-      style={{ width: '380px' }}
+      style={{ width: DETAIL_PANEL_COMFORT_WIDTH }}
     >
       <div className="flex-1 overflow-y-auto">
         <div className="relative bg-[var(--plate)] overflow-hidden">
