@@ -48,6 +48,7 @@ describe('settings in the right-hand panel', () => {
     expect(details()).toBeNull();
     // Models, folders and the rail stay uncovered: the panel is a layout sibling, not an overlay.
     expect(settings()).not.toHaveClass('settings-panel-overlay');
+    expect(document.querySelector('[data-catalog-main]')).toHaveClass('isolate', 'overflow-hidden', 'min-w-0');
     expect(tile('a')).toBeInTheDocument();
     fireEvent.click(gear());
     expect(settings()).toBeNull();

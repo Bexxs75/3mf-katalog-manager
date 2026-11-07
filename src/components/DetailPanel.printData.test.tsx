@@ -72,3 +72,18 @@ it.each(['compact', 'comfort'])('preserves the model panel width in %s density',
   if (density === 'compact') expect(aside).toHaveClass('w-[336px]');
   else expect(aside).toHaveStyle({ width: '380px' });
 });
+
+it.each(['compact', 'comfort'])('wraps long unbroken model names without horizontal panel scrolling (%s)', density => {
+  const name = 'VeryLongModelName'.repeat(20);
+  const path = `/catalog/${name}.3mf`;
+  const { container } = panel(density, makeModelFile({ name, path }));
+  expect(container.querySelector('aside')).toHaveClass('min-w-0', 'overflow-x-hidden');
+  if (density === 'compact') {
+    expect(screen.getByText(path)).toHaveClass('[overflow-wrap:anywhere]');
+    expect(screen.getByText(name)).toHaveClass('break-words');
+  } else {
+    expect(screen.getByText(name)).toHaveClass('min-w-0', '[overflow-wrap:anywhere]');
+    expect(container.querySelector('aside')).toHaveClass('model-panel-comfort');
+    expect(container.querySelector('.model-panel-content')).toHaveClass('min-h-0', 'overflow-x-hidden');
+  }
+});

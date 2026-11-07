@@ -273,7 +273,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
       >
         <div role="gridcell" className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           {onDragFileStart && !readOnly && canEdit && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-          {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} className="absolute bottom-1.5 right-1.5 z-10" />}
+          {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} className="absolute bottom-12 right-1.5 z-10" />}
           {!readOnly && canEdit && (
             <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
@@ -312,7 +312,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
               {t('newBadge')}
             </div>
           )}
-          {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-2 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
+          {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-10 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
             <LicenseBadge license={m.license} />
           </div>}
           {m.printStatus === 'printed' && (
@@ -328,7 +328,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
               }}
               aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
               {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}
-              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute left-[7px] bottom-[7px] font-semibold text-caption px-1 py-0.5 rounded border cursor-pointer ${
+              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute min-w-6 min-h-6 left-[7px] bottom-[7px] font-semibold text-caption px-1 py-0.5 rounded border cursor-pointer ${
                 m.favorite
                   ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
                   : 'border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]'
@@ -389,7 +389,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             <div aria-hidden="true" className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div role="gridcell" className="relative aspect-square bg-[var(--plate)] overflow-hidden">
               {onDragFileStart && !readOnly && canEdit && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-              {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} className="absolute bottom-1.5 right-1.5 z-10" />}
+              {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} className="absolute bottom-12 right-1.5 z-10" />}
               {!readOnly && canEdit && (
                 <BulkCheckbox
                   checked={selectedForBulk.has(m.id)}
@@ -419,7 +419,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                   {t('newBadge')}
                 </div>
               )}
-              {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-2 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
+              {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-10 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
                 <LicenseBadge license={m.license} />
               </div>}
               {m.printStatus === 'printed' && (
@@ -436,7 +436,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                   aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
                   {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}
                   style={{ width: 'var(--icon-badge-size)', height: 'var(--icon-badge-size)' }}
-                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-title ${
+                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute min-w-6 min-h-6 right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-title ${
                     m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'
                   }`}
                 >

@@ -30,7 +30,7 @@ export function UpdatePanel({ view }: { view: UpdaterView }) {
 
   return (
     <>
-      <div className="text-center mb-3">
+      <div className="text-left mb-3">
         {/* Shown in every state (checking, up to date, update available, error, ...) -
             a preview build's Info tab needs to say so regardless of what the updater is doing. */}
         {view.preview && (

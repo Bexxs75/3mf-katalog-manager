@@ -21,7 +21,7 @@ export function NativeDragHandle({ model, selectedIds, selectionModels = [], cla
   const extension = model.path.split('.').pop()?.toLowerCase();
   if (extension === 'step' || extension === 'stp') return <span className={`text-caption ${className}`} title={t('dgStepHint')}>{t('dgStepHint')}</span>;
   if (!extension || !['3mf', 'stl', 'obj'].includes(extension)) return null;
-  return <><button type="button" className={`rounded border border-[var(--line)] bg-[var(--panel)] px-1 text-[var(--ink-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${className}`}
+  return <><button type="button" className={`min-w-6 min-h-6 shrink-0 rounded border border-[var(--line)] bg-[var(--panel)] px-1 text-[var(--ink-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${className}`}
     tabIndex={-1} aria-hidden="true" title={t('dgHandle')}
     onClick={event => event.stopPropagation()}
     onDoubleClick={event => event.stopPropagation()}

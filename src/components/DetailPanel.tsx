@@ -138,10 +138,10 @@ export function DetailPanel({
       ? new Date(new Date(model.deletedAt).getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000)
       : null;
     return (
-      <aside className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]`}>
+      <aside className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex flex-col min-h-0 min-w-0 overflow-x-hidden bg-[var(--panel)] border-l border-[var(--line)]`}>
         <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
           <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
-          <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{displayName(model.path)}</div>
+          <div className="font-code text-caption text-[var(--ink-3)] pt-1.5 min-w-0 [overflow-wrap:anywhere]">{displayName(model.path)}</div>
           {trashBundle && (
             <div data-was-part-of className="flex flex-wrap items-baseline gap-x-2 pt-1.5 text-caption text-[var(--ink-2)]">
               <span className="font-semibold">{t('bundleWasPartOf').replace('{name}', displayName(trashBundle.name))}</span>
@@ -196,14 +196,14 @@ export function DetailPanel({
 
   if (density === 'compact') {
     return (
-    <aside role={trashMode ? undefined : "presentation"} className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]`}>
+    <aside role={trashMode ? undefined : "presentation"} className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex flex-col min-h-0 min-w-0 overflow-x-hidden bg-[var(--panel)] border-l border-[var(--line)]`}>
       <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
         <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
         <StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} />
-        <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{displayName(model.path)}</div>
+        <div className="font-code text-caption text-[var(--ink-3)] pt-1.5 min-w-0 [overflow-wrap:anywhere]">{displayName(model.path)}</div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="model-panel-content flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="relative bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           <div
             className="absolute inset-0"
@@ -421,10 +421,10 @@ export function DetailPanel({
 
   return (
     <aside role={trashMode ? undefined : "presentation"}
-      className="flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]"
+      className="model-panel-comfort flex-none flex flex-col min-h-0 min-w-0 overflow-x-hidden bg-[var(--panel)] border-l border-[var(--line)]"
       style={{ width: DETAIL_PANEL_COMFORT_WIDTH }}
     >
-      <div className="flex-1 overflow-y-auto">
+      <div className="model-panel-content flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="relative bg-[var(--plate)] overflow-hidden">
           <div
             className="absolute inset-0"
@@ -445,7 +445,7 @@ export function DetailPanel({
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
         <div className="px-[18px] pt-4 pb-1 flex items-start justify-between gap-3">
-          <div className="font-semibold leading-tight break-words" style={{ fontSize: 'var(--font-size-title)' }}>
+          <div className="min-w-0 font-semibold leading-tight [overflow-wrap:anywhere]" style={{ fontSize: 'var(--font-size-title)' }}>
             {displayName(model.name)}
           </div>
           <button

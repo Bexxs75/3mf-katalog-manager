@@ -77,3 +77,8 @@ it('does not start for a click, released button, blur or unmount', () => {
   fireEvent.mouseMove(window, {buttons:1, clientX:10});
   expect(start).not.toHaveBeenCalled();
 });
+
+it('keeps the drag target at least 24 by 24 pixels even in a shrinking list row', () => {
+  view();
+  expect(screen.getByRole('button', { hidden: true })).toHaveClass('min-w-6', 'min-h-6', 'shrink-0');
+});

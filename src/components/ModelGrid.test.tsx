@@ -5,6 +5,7 @@ import { UiDensityProvider } from '../hooks/UiDensityContext';
 import { makeModelFile } from '../test/factories';
 import { ModelGrid } from './ModelGrid';
 import { ModelList } from './ModelList';
+vi.mock('../lib/nativeDrag', () => ({ useNativeDragEnabled: () => true, loadNativeDragEnabled: async () => {}, startNativeDrag: vi.fn() }));
 beforeEach(() => localStorage.clear());
 const props = { models: [makeModelFile()], selectedId: null, onSelect: vi.fn(), onOpenDetail: vi.fn(), onContextMenu: vi.fn(), onToggleFavorite: vi.fn(), selectedForBulk: new Set<string>(), onToggleBulkSelect: vi.fn(), displayPreference: 'thumbnail' as const };
 it.each(['compact', 'comfort', 'list'])('shows a grip only for movable models (%s)', (view) => {
@@ -206,4 +207,24 @@ it('shortens long tag chips in ModelList and exposes the full tooltip', () => {
   expect(text).toHaveClass('whitespace-nowrap');
   expect(text.parentElement).toHaveAttribute('title', '#' + tag);
   expect(text.parentElement).toHaveClass('shrink-0');
+});
+
+it.each(['compact', 'comfort'])('separates the native drag grip from the favorite target (%s)', density => {
+  localStorage.setItem('3mf-katalog-density', density);
+  const { container, getByLabelText } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} windowed={false} models={[makeModelFile({ path: '/model.stl' })]} /></UiDensityProvider></LanguageProvider>);
+  const grip = container.querySelector('button[aria-hidden="true"]');
+  expect(grip).toHaveClass('absolute', 'bottom-12', 'right-1.5', 'min-w-6', 'min-h-6');
+  const favorite = getByLabelText('Zu Favoriten hinzufügen');
+  expect(favorite).toHaveClass('min-w-6', 'min-h-6');
+  expect(favorite).toHaveClass(density === 'compact' ? 'bottom-[7px]' : 'bottom-2.5');
+});
+
+it.each(['compact', 'comfort'])('keeps the list drag grip in normal flow beside the filename (%s)', density => {
+  localStorage.setItem('3mf-katalog-density', density);
+  const { container } = render(<LanguageProvider><UiDensityProvider><ModelList {...props} models={[makeModelFile({ path: '/model.stl' })]} /></UiDensityProvider></LanguageProvider>);
+  const grip = container.querySelector('button[aria-hidden="true"]');
+  expect(grip).toHaveClass('min-w-6', 'min-h-6', 'shrink-0');
+  expect(grip).not.toHaveClass('absolute');
+  expect(grip?.parentElement).toHaveClass('flex', 'gap-1.5');
+  expect(grip?.nextElementSibling).toHaveTextContent('Test Model');
 });

@@ -221,8 +221,21 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 /* Settings panel: own classes, so the detail panel's shared overlay rules stay untouched.
    --settings-panel-width and --settings-pad come from resolveSettingsLayout (src/lib/settingsLayout.ts). */
 .settings-panel-aside { width: var(--settings-panel-width, 480px); max-width: 100%; }
-.settings-panel-overlay { position: absolute; top: var(--detail-overlay-top, 0px); right: 0; bottom: 0; width: var(--settings-panel-width, 480px); max-width: 100%; z-index: 20; box-shadow: var(--shadow); }
-.settings-panel-overlay > .settings-panel-aside { width: 100%; }
+/* Native window decorations sit outside the viewport; cover every application toolbar. */
+.settings-panel-overlay { position: fixed; inset: 0; z-index: 40; display: flex; justify-content: flex-end; }
+.settings-panel-scrim { position: absolute; inset: 0; background: var(--scrim); }
+.settings-panel-overlay > .settings-panel-aside { position: relative; box-shadow: var(--shadow); }
+.settings-panel input[type="radio"] { accent-color: var(--accent); }
+.settings-panel :is(button, input[type="radio"], summary, [role="switch"]):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--panel);
+}
+/* At low window heights the actions scroll with the details instead of consuming the viewport. */
+@media (max-height: 800px) {
+  .model-panel-comfort { overflow-y: auto; overflow-x: hidden; }
+  .model-panel-comfort > .model-panel-content { flex: none; overflow: visible; }
+}
 .settings-panel-pad-x { padding-left: var(--settings-pad, 20px); padding-right: var(--settings-pad, 20px); }
 .settings-panel-margin-x { margin-left: var(--settings-pad, 20px); margin-right: var(--settings-pad, 20px); }
 /* Paths wrap anywhere and can be selected and copied instead of being cut off. */

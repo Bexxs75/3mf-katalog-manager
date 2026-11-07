@@ -233,6 +233,7 @@ export function SettingsPanel({
     <div ref={dialogRef} role={overlay ? 'dialog' : 'complementary'} aria-modal={overlay ? true : undefined} aria-label={t('settingsTitle')}
       style={{ '--settings-panel-width': layout.width === null ? '100%' : `${layout.width}px`, '--settings-pad': `${layout.pad}px` } as CSSProperties}
       className={`detail-panel-shell settings-panel ${overlay ? 'settings-panel-overlay' : ''}`}>
+      {overlay && <div aria-hidden="true" className="settings-panel-scrim" />}
       <aside ref={panelRef} className="settings-panel-aside flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
         <div className="flex-none flex items-center justify-between settings-panel-pad-x pt-3.5 pb-2.5">
           <h2 className="text-[length:var(--font-size-title)] font-semibold text-[var(--ink)]">{t('settingsTitle')}</h2>
