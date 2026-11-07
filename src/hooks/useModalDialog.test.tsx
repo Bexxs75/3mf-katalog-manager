@@ -62,3 +62,23 @@ it('keeps a dialog with no enabled controls focusable', () => {
   fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
   expect(screen.getByRole('dialog')).toHaveFocus();
 });
+
+it('includes native summaries and excludes closed details, hidden ancestors and negative tab stops', () => {
+  function Disclosures() {
+    const ref = useModalDialog({ open: true, onClose: vi.fn() });
+    return <div ref={ref}><button>Start</button>
+      <details><summary>First disclosure</summary><button>Closed content</button></details>
+      <details><summary>Last disclosure</summary><button>Expanded content</button></details>
+      <div hidden><button>Hidden tab</button></div>
+      <div style={{ display: 'none' }}><button>Invisible ancestor</button></div>
+      <summary tabIndex={-1}>Not tabbable</summary>
+    </div>;
+  }
+  render(<Disclosures />);
+  const first = screen.getByText('Start'); const last = screen.getByText('Last disclosure');
+  fireEvent.keyDown(first, { key: 'Tab', shiftKey: true }); expect(last).toHaveFocus();
+  fireEvent.keyDown(last, { key: 'Tab' }); expect(first).toHaveFocus();
+  (last.parentElement as HTMLDetailsElement).open = true;
+  fireEvent.keyDown(first, { key: 'Tab', shiftKey: true }); expect(screen.getByText('Expanded content')).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: 'Tab' }); expect(first).toHaveFocus();
+});

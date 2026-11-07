@@ -68,10 +68,10 @@ export function DiskSyncSettings() {
       </div>
       <p id="sync-auto-add-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddDescription')}</p>
       <p id="sync-auto-add-warning" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddWarning')}</p>
-      <div className="flex items-center gap-2 mt-4 text-small">
-        <span id="known-copies-count" ref={countRef} tabIndex={-1} className="flex-1 focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{count(t('kcCount'), known)}</span>
-        <button type="button" className={`${smallButton} shrink-0`} disabled={busy || known === 0} aria-expanded={list !== null} aria-controls="known-copies-list" aria-describedby="known-copies-count" onClick={() => void toggleList()}>{t(list ? 'kcHide' : 'kcShow')}</button>
-        <button type="button" className={`${smallButton} shrink-0`} disabled={busy || jobActive || known === 0} aria-describedby="known-copies-count known-copies-reset-note" {...lockProps} onClick={() => void reset()}>{t('kcReset')}</button>
+      <div className="flex flex-wrap min-w-0 items-center gap-2 mt-4 text-small">
+        <span id="known-copies-count" ref={countRef} tabIndex={-1} className="flex-1 min-w-0 focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{count(t('kcCount'), known)}</span>
+        <button type="button" className={`${smallButton} min-w-0 [overflow-wrap:anywhere]`} disabled={busy || known === 0} aria-expanded={list !== null} aria-controls="known-copies-list" aria-describedby="known-copies-count" onClick={() => void toggleList()}>{t(list ? 'kcHide' : 'kcShow')}</button>
+        <button type="button" className={`${smallButton} min-w-0 [overflow-wrap:anywhere]`} disabled={busy || jobActive || known === 0} aria-describedby="known-copies-count known-copies-reset-note" {...lockProps} onClick={() => void reset()}>{t('kcReset')}</button>
       </div>
       <p className="mt-1.5 text-small text-[var(--ink-2)]">{t(known === 0 ? 'kcEmpty' : 'kcHint')}</p>
       {known > 0 && <p id="known-copies-reset-note" className="mt-1 text-small text-[var(--ink-2)]">{t('kcResetNote')}</p>}

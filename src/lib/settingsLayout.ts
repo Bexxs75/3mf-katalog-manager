@@ -42,5 +42,5 @@ export function resolveSettingsLayout(windowWidth: number, forceOverlay = false)
     && available - panelWidth >= SETTINGS_MIN_WORKSPACE_WIDTH;
   if (docked) return { overlay: false, width: panelWidth, pad };
   if (windowWidth < SETTINGS_FULL_WIDTH_BELOW) return { overlay: true, width: null, pad };
-  return { overlay: true, width: Math.min(panelWidth, Math.max(0, available - SETTINGS_OVERLAY_MARGIN)), pad };
+  return { overlay: true, width: Math.min(SETTINGS_WIDTH_WIDE, Math.max(0, available - SETTINGS_OVERLAY_MARGIN)), pad };
 }

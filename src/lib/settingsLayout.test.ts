@@ -1,3 +1,4 @@
+import manual from '../../docs/benutzerhandbuch/BENUTZERHANDBUCH.md?raw';
 import { describe, expect, it } from 'vitest';
 import {
   resolveSettingsLayout, SETTINGS_MIN_WORKSPACE_WIDTH, SETTINGS_RAIL_WIDTH,
@@ -11,7 +12,7 @@ describe('resolveSettingsLayout', () => {
     [600, true, 480, 20],
     [800, true, 480, 20],
     [999, true, 480, 20],
-    [1000, true, 440, 20],
+    [1000, true, 480, 20],
     [1279, false, 440, 20],
     [1280, false, 480, 20],
     [1920, false, 480, 20],
@@ -38,7 +39,19 @@ describe('resolveSettingsLayout', () => {
 
   it('is an overlay whenever the view cannot dock it, with the same width rules', () => {
     expect(resolveSettingsLayout(1600, true)).toEqual({ overlay: true, width: 480, pad: 20 });
-    expect(resolveSettingsLayout(1100, true)).toEqual({ overlay: true, width: 440, pad: 20 });
+    expect(resolveSettingsLayout(1100, true)).toEqual({ overlay: true, width: 480, pad: 20 });
     expect(resolveSettingsLayout(500, true)).toEqual({ overlay: true, width: null, pad: 16 });
   });
+});
+
+it('documents the final navigation and browser sections in both manual languages', async () => {
+  expect(manual).toContain('Settings → Slicers & services → Thingiverse');
+  expect(manual).toContain('Einstellungen → Slicer & Dienste → Thingiverse');
+  expect(manual).toContain('Settings → Catalog → Storage location');
+  expect(manual).toContain('Einstellungen → Katalog → Speicherort');
+  expect(manual).not.toMatch(/Settings, General, "Thingiverse"|„Allgemein“, „Thingiverse“/);
+  expect(manual).toContain('(browser: Automatic tags and Print data only)');
+  expect(manual).toContain('(Browser: nur Automatische Tags und Druckdaten)');
+  expect(manual).toContain('(browser: Version and About the app only;');
+  expect(manual).toContain('(Browser: nur Version und Über die App;');
 });

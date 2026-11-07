@@ -586,3 +586,80 @@ describe('SettingsPanel switches and container paths', () => {
     expect(screen.getByText(de.containerCatalogPath.replace('{path}', '/config/catalog'))).toBeVisible();
   });
 });
+
+it.each([[1440, 800], [800, 1440]])('returns focus to the original opener after resize %i → %i', (start, end) => {
+  const original = window.innerWidth;
+  const opener = document.createElement('button'); document.body.append(opener); opener.focus();
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: start });
+  const { unmountAll } = renderPanel();
+  const selected = tab('Allgemein'); selected.focus();
+  act(() => { Object.defineProperty(window, 'innerWidth', { configurable: true, value: end }); window.dispatchEvent(new Event('resize')); });
+  expect(selected).toHaveFocus();
+  unmountAll(); expect(opener).toHaveFocus();
+  opener.remove(); Object.defineProperty(window, 'innerWidth', { configurable: true, value: original });
+});
+
+it('keeps an open reset confirmation above the panel when resizing to an overlay', async () => {
+  const original = window.innerWidth;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
+  const { props } = renderPanel({ initialTab: 'maintenance' });
+  const reset = screen.getByRole('button', { name: `${de.resetCatalog} …` });
+  reset.focus(); fireEvent.click(reset);
+  const confirmation = screen.getByRole('dialog', { name: de.resetCatalogQuestion });
+  const cancel = within(confirmation).getByRole('button', { name: de.cancel });
+  expect(cancel).toHaveFocus();
+  act(() => { Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 }); window.dispatchEvent(new Event('resize')); });
+  expect(screen.getByRole('dialog', { name: de.resetCatalogQuestion })).toBe(confirmation);
+  expect(cancel).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', { name: de.settingsClose }));
+  expect(props.onClose).not.toHaveBeenCalled();
+  fireEvent.click(within(confirmation).getByRole('button', { name: de.resetBackupFirst }));
+  await waitFor(() => expect(props.onExportCatalog).toHaveBeenCalledOnce());
+  await within(confirmation).findByRole('button', { name: de.resetBackupDone });
+  fireEvent.keyDown(cancel, { key: 'Escape' });
+  expect(screen.queryByRole('dialog', { name: de.resetCatalogQuestion })).toBeNull();
+  expect(props.onClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  expect(props.onClose).toHaveBeenCalledOnce();
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: original });
+});
+
+it('preserves token drafts only for the open panel and never duplicates section IDs', async () => {
+  const previous = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === 'get_thingiverse_settings'
+    ? { enabled: true, hasToken: false, tokenMask: null, usageToday: 0, dailyLimit: 1000 } : previous(command, args));
+  try {
+    const { unmountAll } = renderPanel({ initialTab: 'services', overlay: true });
+    const field = await screen.findByLabelText(de.tvTokenLabel);
+    fireEvent.change(field, { target: { value: 'unsaved-secret' } });
+    fireEvent.click(tab('Allgemein'));
+    expect(field).not.toBeVisible();
+    const close = screen.getByRole('button', { name: de.settingsClose });
+    close.focus();
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement?.closest('[hidden]')).toBeNull();
+    expect(field).not.toHaveFocus();
+    fireEvent.click(tab('Slicer & Dienste'));
+    expect(screen.getByLabelText(de.tvTokenLabel)).toBe(field);
+    expect(field).toHaveValue('unsaved-secret');
+    const ids = [...document.querySelectorAll('[id]')].map(node => node.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'test_thingiverse_token')).toHaveLength(0);
+    unmountAll();
+    renderPanel({ initialTab: 'services' });
+    expect(await screen.findByLabelText(de.tvTokenLabel)).toHaveValue('');
+  } finally { vi.mocked(invoke).mockImplementation(previous); }
+});
+
+it('does not skip the Windows disclosure while tabbing through Services', async () => {
+  const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
+  try {
+    renderPanel({ initialTab: 'services', overlay: true });
+    const summary = await screen.findByText(de.dgWinSummary);
+    summary.focus();
+    expect(fireEvent.keyDown(summary, { key: 'Tab' })).toBe(true);
+    expect(summary).toHaveFocus();
+    expect(fireEvent.keyDown(summary, { key: 'Tab', shiftKey: true })).toBe(true);
+    expect(summary).toHaveFocus();
+  } finally { platform.mockRestore(); }
+});

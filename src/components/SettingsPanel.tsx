@@ -39,7 +39,7 @@ import { useLoadedSetting } from './SettingState';
 import { SettingsSection } from './SettingsSection';
 import { UpdateChannelControl } from './UpdateChannelControl';
 import { isUpdateCheckDisabled } from '../hooks/useUpdater';
-import { useModalDialog } from '../hooks/useModalDialog';
+import { ModalDialogOwner, useModalDialog } from '../hooks/useModalDialog';
 import { SETTINGS_TARGETS, settingsHeadingId, type SettingsRequest, type SettingsTab, type SettingsTarget } from '../lib/settingsNav';
 
 const TABS: readonly SettingsTab[] = import.meta.env.VITE_TARGET === 'web'
@@ -135,20 +135,13 @@ export function SettingsPanel({
   const bodyRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement | null>>>({});
 
-  // As a overlay the panel is a modal window: focus stays inside, the background cannot be used, Escape closes the top layer.
-  const dialogRef = useModalDialog<HTMLDivElement>({ open: overlay, onClose, initialFocus: '[role="tab"][aria-selected="true"]' });
-
-  // A docked panel gives the focus back to whatever opened it when it closes.
-  const trigger = useRef<HTMLElement | null>(null);
-  if (trigger.current === null && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) trigger.current = document.activeElement;
-  const overlayRef = useRef(overlay);
-  overlayRef.current = overlay;
+  // The opener belongs to the panel lifetime, not to its current layout.
+  const [trigger] = useState(() => document.activeElement as HTMLElement | null);
+  const dialogRef = useModalDialog<HTMLDivElement>({ open: overlay, onClose, restoreFocus: false, initialFocus: '[role="tab"][aria-selected="true"]' });
   useLayoutEffect(() => () => {
-    const target = trigger.current;
-    const active = document.activeElement;
-    if (overlayRef.current || !target?.isConnected) return;
-    if (!active || active === document.body || panelRef.current?.contains(active)) target.focus({ preventScroll: true });
-  }, []);
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  }, [trigger]);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set<SettingsTab>([activeSettingsTab]));
 
   // After a slicer is removed the focus moves on to the next entry, or to the add button when the last one went.
   const slicerRadioRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -161,7 +154,7 @@ export function SettingsPanel({
     (pending.next ? slicerRadioRefs.current[pending.next] : addSlicerRef.current)?.focus();
   }, [slicers]);
 
-  const selectTab = (tab: SettingsTab) => { setActiveSettingsTab(tab); onTabChange?.(tab); };
+  const selectTab = (tab: SettingsTab) => { setVisitedTabs(previous => new Set([...previous, tab])); setActiveSettingsTab(tab); onTabChange?.(tab); };
 
   // The one way to a section: the app's requests and the link inside the panel both go through here.
   const pendingSection = useRef<string | null>(null);
@@ -236,6 +229,7 @@ export function SettingsPanel({
   );
 
   return (
+    <ModalDialogOwner.Provider value={dialogRef}>
     <div ref={dialogRef} role={overlay ? 'dialog' : 'complementary'} aria-modal={overlay ? true : undefined} aria-label={t('settingsTitle')}
       style={{ '--settings-panel-width': layout.width === null ? '100%' : `${layout.width}px`, '--settings-pad': `${layout.pad}px` } as CSSProperties}
       className={`detail-panel-shell settings-panel ${overlay ? 'settings-panel-overlay' : ''}`}>
@@ -264,8 +258,8 @@ export function SettingsPanel({
         </div>
         <div ref={bodyRef} role="tabpanel" id="settings-tabpanel" aria-labelledby={`settings-tab-${activeSettingsTab}`}
           className="flex-1 min-h-0 overflow-y-auto scrollbar-stable settings-panel-pad-x pb-4">
-          {activeSettingsTab === 'general' && (
-            <>
+          {visitedTabs.has('general') && (
+            <div hidden={activeSettingsTab !== 'general'}>
               <SettingsSection id="appearance" title={t('settingsSecAppearance')}>
                 <RadioSegments
                   legend={t('themeLegend')}
@@ -360,11 +354,11 @@ export function SettingsPanel({
                   <LinuxMenuSettings />
                 </SettingsSection>
               )}
-            </>
+            </div>
           )}
 
-          {activeSettingsTab === 'catalog' && (
-            <>
+          {visitedTabs.has('catalog') && (
+            <div hidden={activeSettingsTab !== 'catalog'}>
               {!web && (
                 <>
                   <SettingsSection id="storage" title={t('settingsSecStorage')}>
@@ -397,11 +391,11 @@ export function SettingsPanel({
               )}
               <SettingsSection id="autoTags" title={t('settingsSecAutoTags')}><AutoTaggingSetting /></SettingsSection>
               <SettingsSection id="printData" title={t('settingsSecPrintData')}><PrintDataRereadSettings /></SettingsSection>
-            </>
+            </div>
           )}
 
-          {!web && activeSettingsTab === 'services' && (
-            <>
+          {!web && visitedTabs.has('services') && (
+            <div hidden={activeSettingsTab !== 'services'}>
               {container && <p className="mb-2 p-2 rounded border border-[var(--line)] bg-[var(--panel-2)] text-small text-[var(--ink-2)]">{t('containerSlicerUnavailable')}</p>}
               {!container && (
                 <>
@@ -466,17 +460,17 @@ export function SettingsPanel({
                       </div>
                     )}
                   </SettingsSection>
-                  <SettingsSection id="slicerReports" title={t('settingsSecSlicerReports')}><SlicerReportSettings /></SettingsSection>
+                  <SettingsSection id="slicerReports" title={t('settingsSecSlicerReports')}><SlicerReportSettings active={activeSettingsTab === 'services'} /></SettingsSection>
                 </>
               )}
               {printersSection}
               <SettingsSection id="thingiverse" title={t('settingsSecThingiverse')} experimental>
                 <ThingiverseSettings onEnabledChange={enabled => onThingiverseEnabledChange?.(enabled)} />
               </SettingsSection>
-            </>
+            </div>
           )}
 
-          {activeSettingsTab === 'maintenance' && (web ? (
+          {visitedTabs.has('maintenance') && <div hidden={activeSettingsTab !== 'maintenance'}>{web ? (
             <SettingsSection id="webBackup" title={t('settingsSecWebBackup')}><WebCatalogBackup /></SettingsSection>
           ) : (
             <>
@@ -545,10 +539,10 @@ export function SettingsPanel({
                   onExport={onExportCatalog} onReset={onCatalogReset} backupError={catalogBackupError} />
               </SettingsSection>
             </>
-          ))}
+          )}</div>}
 
-          {activeSettingsTab === 'info' && (
-            <>
+          {visitedTabs.has('info') && (
+            <div hidden={activeSettingsTab !== 'info'}>
               <SettingsSection id="version" title={t(web ? 'settingsSecVersionWeb' : 'settingsSecVersion')}>
                 {web ? <WebVersionRow /> : <UpdatePanel view={update} />}
               </SettingsSection>
@@ -606,11 +600,12 @@ export function SettingsPanel({
                   </span>
                 </div>
               </SettingsSection>
-            </>
+            </div>
           )}
         </div>
       </aside>
     </div>
+    </ModalDialogOwner.Provider>
   );
 }
 

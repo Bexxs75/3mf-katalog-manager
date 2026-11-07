@@ -162,3 +162,23 @@ it('shows the print method in the web build as an information line, not as a cho
   expect(screen.getByText(`${de.ptCurrent.replace('{choice}', de.ptBoth)} ${de.ptWebReadOnly}`)).toBeVisible();
   expect(screen.queryByRole('radio', { name: new RegExp(de.ptFilament) })).toBeNull();
 });
+
+it('keeps the complete web-maintenance disclosure sequence in the modal Tab cycle', () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
+  renderCatalogTab();
+  const link = screen.getByRole('link', { name: de.exportCatalogWebButton });
+  const summaries = [...screen.getByRole('tabpanel').querySelectorAll('summary')];
+  expect(summaries.length).toBeGreaterThan(1);
+  // jsdom has no native Tab action: unprevented events leave the next native stop reachable.
+  for (const element of [link, ...summaries.slice(0, -1)]) {
+    element.focus();
+    expect(fireEvent.keyDown(element, { key: 'Tab' })).toBe(true);
+    expect(element).toHaveFocus();
+  }
+  const last = summaries[summaries.length - 1]; last.focus();
+  expect(fireEvent.keyDown(last, { key: 'Tab' })).toBe(false);
+  const close = screen.getByRole('button', { name: de.settingsClose });
+  expect(close).toHaveFocus();
+  fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+  expect(last).toHaveFocus();
+});

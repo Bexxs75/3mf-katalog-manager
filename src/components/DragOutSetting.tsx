@@ -43,12 +43,12 @@ export function DragOutSetting() {
         <ToggleSwitch
           checked={enabled === true}
           label={t('dgSwitchLabel')}
-          disabled={enabled === null || busy}
+          disabled={state !== 'ready' || enabled === null || busy}
           onChange={(v) => void change(v)}
           aria-describedby={windows ? 'drag-out-hint drag-out-experimental drag-out-windows' : 'drag-out-hint drag-out-experimental'}
         />
       </div>
-      <SettingLoadStatus state={state} error={loadError} onReload={() => void reload()} className="mt-1" />
+      <SettingLoadStatus keptValue={value !== undefined && value !== null} state={state} error={loadError} onReload={() => void reload()} className="mt-1" />
       <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1" />
       <p id="drag-out-experimental" className="mt-2 text-caption text-[var(--ink-3)]">{t('dgExperimentalNote')}</p>
       {windows && (

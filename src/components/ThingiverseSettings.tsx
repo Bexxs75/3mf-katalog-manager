@@ -48,9 +48,7 @@ function ThingiverseSettingsBlock({ onEnabledChange }: { onEnabledChange: (enabl
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   // Refresh after a key change: a failed read keeps the last confirmed settings and says so.
-  const reload = () => api.getThingiverseSettings()
-    .then(s => { if (mounted.current) confirm(s); })
-    .catch(e => { if (mounted.current) setError(toAppError(e)); });
+  const reload = reloadSettings;
 
   if (!settings) {
     return (
@@ -108,13 +106,14 @@ function ThingiverseSettingsBlock({ onEnabledChange }: { onEnabledChange: (enabl
   const showField = enabled && (!hasToken || replacing);
   return (
     <div className="text-small">
+      <SettingLoadStatus keptValue state={loadState} error={loadError} onReload={() => void reloadSettings()} />
       <p className="text-[var(--ink-2)]">{t('tvSettingsIntro')}</p>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span>
           <span className="font-semibold">{t('tvSwitchLabel')}</span>
           <span className="block text-caption text-[var(--ink-3)]">{t('tvSwitchHint')}</span>
         </span>
-        <ToggleSwitch checked={enabled} label={t('tvSwitchLabel')} disabled={saving} onChange={next => { if (next) setDialog('on'); else void setEnabled(false); }} />
+        <ToggleSwitch checked={enabled} label={t('tvSwitchLabel')} disabled={saving || loadState !== 'ready'} onChange={next => { if (next) setDialog('on'); else void setEnabled(false); }} />
       </div>
       <SettingSaveStatus saving={saving} error={switchError} keptValue className="mt-1" />
 

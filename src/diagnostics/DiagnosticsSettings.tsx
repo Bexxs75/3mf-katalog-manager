@@ -58,14 +58,14 @@ export function DiagnosticsSettings() {
           <ToggleSwitch
             checked={verbose?.enabled === true}
             label={t('infoVerboseLoggingLabel')}
-            disabled={!verbose || busy}
+            disabled={state !== 'ready' || !verbose || busy}
             onChange={(on) => void change(on)}
           />
         </div>
         <p className={`mt-1 text-caption leading-[1.4] ${verbose?.enabled ? 'text-[var(--warn)]' : 'text-[var(--ink-3)]'}`}>
           {verbose?.enabled ? t('infoVerboseLoggingOn').replace('{date}', until) : t('infoVerboseLoggingHint')}
         </p>
-        <SettingLoadStatus state={state} error={loadError} onReload={() => void reload()} className="mt-1" />
+        <SettingLoadStatus keptValue={verbose !== undefined && verbose !== null} state={state} error={loadError} onReload={() => void reload()} className="mt-1" />
         <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1" />
       </div>
     </>

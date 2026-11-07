@@ -259,3 +259,16 @@ describe('notice and inbox', () => {
     expect(screen.getByText(/zugeordnet: Box.3mf/)).toBeInTheDocument();
   });
 });
+
+it('keeps local settings mounted without reading setup while its tab is inactive', async () => {
+  const ui = (active: boolean) => <LanguageProvider><SlicerReportSettings active={active} /></LanguageProvider>;
+  const view = render(ui(true));
+  await waitFor(() => expect(calls('get_slicer_report_setup')).toHaveLength(1));
+  await screen.findByRole('switch');
+  view.rerender(ui(false));
+  expect(calls('get_slicer_report_setup')).toHaveLength(1);
+  view.rerender(ui(false));
+  expect(calls('get_slicer_report_setup')).toHaveLength(1);
+  view.rerender(ui(true));
+  await waitFor(() => expect(calls('get_slicer_report_setup')).toHaveLength(2));
+});

@@ -14,7 +14,7 @@ const button = 'h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-[va
  * Settings → Slicer: switch for the report intake, one command line per slicer (copy it into the post-processing
  * script of the slicer) and a test report. Desktop only. Nothing here assigns or moves a file.
  */
-export function SlicerReportSettings() {
+export function SlicerReportSettings({ active = true }: { active?: boolean }) {
   const t = useT();
   const formatCount = useFormatCount();
   const { open, openInbox, refresh } = useSlicerReports();
@@ -43,11 +43,10 @@ export function SlicerReportSettings() {
   const reloadSetup = () => { setLoadState('loading'); void load(); };
   useEffect(() => {
     alive.current = true;
-    void load();
     return () => { alive.current = false; };
   }, [load]);
   // A report that arrives while the page is open changes the count and the last error.
-  useEffect(() => { void load(); }, [open.length, load]);
+  useEffect(() => { if (active) void load(); }, [active, open.length, load]);
 
   const setEnabled = async (enabled: boolean, regenerate = false) => {
     setBusy(true);

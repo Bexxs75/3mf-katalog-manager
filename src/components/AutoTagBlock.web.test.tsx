@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { DetailPanel } from './DetailPanel';
@@ -41,7 +41,9 @@ const renderPanel = (onRemoveTag = vi.fn()) => {
 };
 
 it('offers remove-and-block in the web build and sends the block through the web command', async () => {
-  const onRemoveTag = renderPanel();
+  let onRemoveTag!: ReturnType<typeof renderPanel>;
+  // Complete the async suggestions render (including passive effects) before the click.
+  await act(async () => { onRemoveTag = renderPanel(); });
   fireEvent.click(await screen.findByRole('button', { name: 'miniatur entfernen, Menü' }, { timeout: 5000 }));
   fireEvent.click(await screen.findByRole('menuitem', { name: de.autoTagRemoveAndBlock }, { timeout: 5000 }));
   await waitFor(() => expect(calls.find(c => c.command === 'block_auto_tag')?.args).toEqual({ tag: 'miniatur' }));
@@ -57,4 +59,23 @@ it('shows no remove control and requests no suggestions for a read-only session'
   expect(screen.queryByRole('button', { name: /entfernen/ })).toBeNull();
   expect(calls.map(c => c.command)).not.toContain('list_suggested_auto_tags');
   expect(calls.map(c => c.command)).not.toContain('block_auto_tag');
+});
+
+it('keeps the tag menu usable after delayed suggestions and a session refresh', async () => {
+  const originalFetch = fetch;
+  let release!: (response: Response) => void;
+  vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => url.endsWith('/list_suggested_auto_tags')
+    ? new Promise<Response>(resolve => { release = resolve; }) : originalFetch(url, options)));
+  const errors = vi.spyOn(console, 'error');
+  try {
+    await act(async () => { renderPanel(); });
+    expect(screen.getByRole('button', { name: 'miniatur entfernen' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'miniatur entfernen, Menü' })).toBeNull();
+    await act(async () => { await getSession(); release(Response.json(['miniatur'])); });
+    const button = screen.getByRole('button', { name: 'miniatur entfernen, Menü' });
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('menuitem', { name: de.autoTagRemoveAndBlock })).toBeVisible();
+    expect(errors.mock.calls.flat().join(' ')).not.toContain('same key');
+  } finally { errors.mockRestore(); }
 });

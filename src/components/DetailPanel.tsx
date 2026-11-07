@@ -353,7 +353,7 @@ export function DetailPanel({
           <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
         </div>
 
-        {showsPrintData(model) && <PrintDataCard key={model.id} model={model} variant="compact" />}
+        {showsPrintData(model) && <PrintDataCard key={`print-data-${model.id}`} model={model} variant="compact" />}
         {!sliced && <BuildPlateFit model={model} printers={printers} variant="compact" />}
         {import.meta.env.VITE_TARGET === 'web'
           ? <CompanionWebSection key={model.id} fileId={model.id} variant="compact" />
@@ -550,7 +550,7 @@ export function DetailPanel({
           </div>
         </div>
 
-        {showsPrintData(model) && <PrintDataCard key={model.id} model={model} variant="comfort" />}
+        {showsPrintData(model) && <PrintDataCard key={`print-data-${model.id}`} model={model} variant="comfort" />}
         {!sliced && <BuildPlateFit model={model} printers={printers} variant="comfort" />}
         {import.meta.env.VITE_TARGET === 'web'
           ? <CompanionWebSection key={model.id} fileId={model.id} variant="comfort" />

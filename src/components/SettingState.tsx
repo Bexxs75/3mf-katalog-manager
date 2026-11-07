@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useT } from '../i18n/LanguageContext';
+import { useLanguage, useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
@@ -8,7 +8,7 @@ export type SettingLoadState = 'loading' | 'ready' | 'failed';
 /**
  * Loads one setting and tells loading, loaded and failed apart. A value of `null` is the loaded answer
  * "not supported here" (callers hide the block), so it is never confused with a failed read.
- * A later reload keeps the last confirmed value when it fails; only a first read can end in `failed`.
+ * A later reload keeps the last confirmed value when it fails; every read reports its progress and failure.
  */
 export function useLoadedSetting<T>(load: () => Promise<T>) {
   const [value, setValue] = useState<T | undefined>(undefined);
@@ -18,23 +18,22 @@ export function useLoadedSetting<T>(load: () => Promise<T>) {
   const request = useRef(0);
   const loadRef = useRef(load);
   loadRef.current = load;
-  const hasValue = useRef(false);
 
   /** Resolves with whether the read succeeded. */
   const reload = useCallback(async (): Promise<boolean> => {
     const mine = ++request.current;
-    setState(s => (s === 'failed' ? 'loading' : s));
+    setState('loading');
+    setError(null);
     try {
       const next = await loadRef.current();
       if (!mounted.current || mine !== request.current) return true;
-      hasValue.current = true;
       setValue(next);
       setError(null);
       setState('ready');
       return true;
     } catch (e) {
       if (mounted.current && mine === request.current) {
-        if (!hasValue.current) { setError(toAppError(e)); setState('failed'); }
+        setError(toAppError(e)); setState('failed');
       }
       return false;
     }
@@ -48,7 +47,7 @@ export function useLoadedSetting<T>(load: () => Promise<T>) {
   }, [reload]);
 
   /** Adopts a value the caller just wrote and the backend confirmed. */
-  const confirm = useCallback((next: T) => { hasValue.current = true; setValue(next); setState('ready'); }, []);
+  const confirm = useCallback((next: T) => { ++request.current; setValue(next); setError(null); setState('ready'); }, []);
 
   return { value, confirm, state, error, reload };
 }
@@ -56,7 +55,8 @@ export function useLoadedSetting<T>(load: () => Promise<T>) {
 const retryButton = 'ml-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
 /** Shown in place of a setting's control while it is read, or when reading it failed (with "Reload"). */
-export function SettingLoadStatus({ state, label, error, onReload, className }: {
+export function SettingLoadStatus({ state, label, error, onReload, className, keptValue = false }: {
+  keptValue?: boolean;
   state: SettingLoadState;
   /** Name of the setting, so the message is not orphaned when the setting's own heading is not rendered. */
   label?: string;
@@ -65,12 +65,21 @@ export function SettingLoadStatus({ state, label, error, onReload, className }: 
   className?: string;
 }) {
   const t = useT();
+  const { language } = useLanguage();
+  const lastConfirmed = {
+    de: 'Angezeigt wird der zuletzt bestätigte Wert.',
+    en: 'Showing the last confirmed value.',
+    es: 'Se muestra el último valor confirmado.',
+    fr: 'La dernière valeur confirmée est affichée.',
+  }[language];
+  const retained = keptValue && <p className="text-caption text-[var(--ink-3)]">{lastConfirmed}</p>;
   if (state === 'ready') return null;
   const title = label && <p className="text-[length:var(--font-size-body)] font-semibold">{label}</p>;
   if (state === 'loading') {
     return (
       <div className={className}>
         {title}
+        {retained}
         <p role="status" className="text-caption text-[var(--ink-3)]">{t('settingLoading')}</p>
       </div>
     );
@@ -78,6 +87,7 @@ export function SettingLoadStatus({ state, label, error, onReload, className }: 
   return (
     <div className={`text-caption ${className ?? ''}`}>
       {title}
+      {retained}
       <p role="alert" className="text-[var(--crit)] break-words">
         {t('settingLoadFailed')} <ErrorText error={error ?? null} />
       </p>

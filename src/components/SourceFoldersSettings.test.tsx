@@ -1,3 +1,6 @@
+import { en } from '../i18n/en';
+import { es } from '../i18n/es';
+import { fr } from '../i18n/fr';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
@@ -121,4 +124,19 @@ describe('SourceFoldersSettings', () => {
     }
     expect(screen.getByText(/Während eines Imports lässt sich die Liste/)).toBeInTheDocument();
   });
+});
+
+
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('keeps the full declined-file action operable in %s', async (language, texts) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  setup();
+  const reset = await screen.findByRole('button', { name: texts.sfResetRejected });
+  await waitFor(() => expect(reset).toBeEnabled());
+  expect(reset.parentElement).toHaveClass('flex-wrap', 'min-w-0');
+  expect(reset).not.toHaveClass('shrink-0');
+  vi.mocked(api.listRejectedCount).mockResolvedValue(0);
+  fireEvent.click(reset);
+  await waitFor(() => expect(api.resetRejectedSourceFiles).toHaveBeenCalledOnce());
+  await waitFor(() => expect(reset).toBeDisabled());
+  expect(document.getElementById('source-rejected-count')).toHaveTextContent(texts.sfRejected.replace('{count}', '0'));
 });

@@ -17,7 +17,7 @@ export function CloseBehaviorSettings() {
   // Tells a section around this block whether there is anything to show: a read in progress or failed is, a loaded "no" is not.
   useSectionContent(loadState !== 'ready' || Boolean(state));
   // `null` is the loaded answer "no notification area": the group stays hidden then.
-  if (loadState !== 'ready') return <SettingLoadStatus state={loadState} label={t('closeActionTitle')} error={loadError} onReload={() => void reload()} className="mt-1" />;
+  if (!state && loadState !== 'ready') return <SettingLoadStatus state={loadState} label={t('closeActionTitle')} error={loadError} onReload={() => void reload()} className="mt-1" />;
   if (!state) return null;
   const mac = state.platform === 'macos';
   const linux = state.platform === 'linux';
@@ -40,7 +40,9 @@ export function CloseBehaviorSettings() {
     { value: 'exit', label: t('closeActionExit') },
     { value: 'tray', label: t(mac ? 'closeActionTrayMac' : linux ? 'closeActionTrayLinux' : 'closeActionTray') },
   ];
-  return <fieldset disabled={busy} aria-describedby="close-action-help">
+  return <>
+    <SettingLoadStatus keptValue state={loadState} error={loadError} onReload={() => void reload()} />
+    <fieldset disabled={busy || loadState !== 'ready'} aria-describedby="close-action-help">
     <legend className="text-[length:var(--font-size-body)] font-semibold">{t('closeActionTitle')}</legend>
     {options.map(option => <label key={option.value} className="flex items-start gap-2 mt-1">
       <input type="radio" name="closeAction" className="mt-1" checked={shown === option.value} onChange={() => void choose(option.value)} />
@@ -50,5 +52,5 @@ export function CloseBehaviorSettings() {
     {linux && <p className="mt-1 text-caption leading-[1.4] text-[var(--ink-2)]"><b>{t('closeActionNoteLabel')}</b> {t('closeActionLinuxWarning')}</p>}
     {unavailable && <p role="alert" className="mt-1 text-caption text-[var(--crit)]">{t('closeActionUnavailable')}</p>}
     <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1" />
-  </fieldset>;
+  </fieldset></>;
 }

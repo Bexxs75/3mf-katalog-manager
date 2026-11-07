@@ -120,7 +120,7 @@ re-sorted within the catalog. You have two options:
   (`/ \ : * ? " < > |`) are rejected with a hint. If you'd rather use a folder you already have,
   click "pick an existing folder directly".
 
-You can change this choice at any time in Settings under "Catalog location". The dialog can also
+You can change this choice at any time under Settings → Catalog → Storage location. The dialog can also
 be skipped with the "Set up later" button.
 
 Already-packed archives (e.g. `.zip`) are not picked up by the automatic scan and are left
@@ -1156,7 +1156,7 @@ model; companion files removed on their own are restored from the model (see
 
 The Thingiverse area is an extra for finding models on Thingiverse. It is **off by default** and **experimental**: it needs a key of your own, and it is not yet confirmed that Thingiverse permits this way of using its interface. It only searches and shows; it never downloads files and never writes into your catalog.
 
-**Switching it on.** In Settings, General, "Thingiverse", turn on "Show the Thingiverse area". A dialog tells you first what happens: your search terms, your IP address and your key go to Thingiverse (and to Cloudflare, its protection service); there is no server of ours in between; a Thingiverse key has no partial permissions, so it gives full access to your Thingiverse account, and this app only uses it for reading; you enter into an agreement with Thingiverse yourself, its terms apply, and Thingiverse can block your access at any time. Only after you confirm does the entry "Thingiverse" appear in the bar on the left. Turning the switch off removes the entry again and drops everything held in memory.
+**Switching it on.** In Settings → Slicers & services → Thingiverse, turn on "Show the Thingiverse area". A dialog tells you first what happens: your search terms, your IP address and your key go to Thingiverse (and to Cloudflare, its protection service); there is no server of ours in between; a Thingiverse key has no partial permissions, so it gives full access to your Thingiverse account, and this app only uses it for reading; you enter into an agreement with Thingiverse yourself, its terms apply, and Thingiverse can block your access at any time. Only after you confirm does the entry "Thingiverse" appear in the bar on the left. Turning the switch off removes the entry again and drops everything held in memory.
 
 **Getting a key.** Every user needs a key of his or her own: the program contains none and there is no server of ours. The settings block has a folding guide ("How to get a key"): sign in at Thingiverse with your account (an account is required), open the page "Create an app" (there is a button for it), choose "Desktop App" as the platform, enter a name and a short description, and tick the box for the MakerBot API terms. The app name may contain only letters, numbers and spaces (no hyphens or special characters), and no web addresses are needed. After creating it, the page shows three values under "API INFORMATION": copy the **App Token** (not the Client Secret and not the Client ID) into the key field. The app stays private and unpublished; only you use it. The steps were checked against the real site on 4 November 2026; Thingiverse can change them. Never give your token to anyone. "Check and save" tests the key with one request and stores it only if Thingiverse accepts it; the field is emptied afterwards and the key is never shown again, only a mask with its last four characters. "Replace" and "Remove" are next to it; removing deletes the key on this computer only, at Thingiverse it stays valid until you revoke it there.
 
@@ -1178,15 +1178,17 @@ your models and folders. They're split into five tabs, in this order:
 "Slicers & services" tab. In the container version that tab says "Local slicers and file handover are not available in the
 container." and offers only printers and Thingiverse. Each tab is divided into titled sections.
 
-How wide the panel is depends on the window: from 1280 px of window width it sits docked beside the catalog at 480 px, from 1000 to 1279 px at 440 px. Below 1000 px, or when fewer than about 520 px would stay for the catalog, it lies over the view instead (480 px, at most the free width minus 32 px; below 600 px over the full width). On the detail page and in the other main views it always lies over the view. When the five tab labels do not fit in one row they wrap onto a second row; all tabs stay visible and reachable with the arrow keys. Paths, for example the catalog folder, wrap instead of being cut off and can be selected and copied.
+Unsaved Thingiverse key drafts survive tab changes while Settings is open; closing Settings discards them.
+
+How wide the panel is depends on the window: from 1280 px of window width it sits docked beside the catalog at 480 px, from 1000 to 1279 px at 440 px. Below 1000 px, or when fewer than about 520 px would stay for the catalog, it lies over the view instead (480 px, at most the free width minus 32 px; below 600 px over the full width). On the detail page and in the other main views it always lies over the view, also at 480 px between 1000 and 1279 px window width (subject to the same available-width limit). When the five tab labels do not fit in one row they wrap onto a second row; all tabs stay visible and reachable with the arrow keys. Paths, for example the catalog folder, wrap instead of being cut off and can be selected and copied.
 
 | Tab | Sections |
 |---|---|
 | General | Appearance, Language, Controls, Printing method, App behavior (browser: Printers) |
-| Catalog | Storage location, Source folders, On import, Sync the catalog folder, Automatic tags, Print data |
+| Catalog | Storage location, Source folders, On import, Sync the catalog folder, Automatic tags, Print data (browser: Automatic tags and Print data only) |
 | Slicers & services | Passing files on, Installed slicers, Messages from the slicer, Printers, Thingiverse |
 | Maintenance | Check the catalog, Back up and restore, Reset the catalog (browser: Back up the catalog) |
-| Info | Version and updates, Preview versions, Help and troubleshooting, App data and logs, About the app |
+| Info | Version and updates, Preview versions, Help and troubleshooting, App data and logs, About the app (browser: Version and About the app only; container: no Preview versions) |
 
 Other parts of the app that point into Settings jump straight to the right section: the tab opens, the page scrolls to the
 section and the focus lands on its heading. Opened with the gear, the panel shows the tab you used last in this session
@@ -1520,7 +1522,7 @@ there.
 
 **How do I get my existing folder structure into the catalog?**
 Choose "Use existing folder structure" during initial setup (see
-[Getting started](#getting-started)), or later via "Catalog location" in Settings.
+[Getting started](#getting-started)), or later via Settings → Catalog → Storage location.
 
 **Can I use the same catalog on multiple computers?**
 Not automatically/synced — there's currently no cloud connection for that (see
@@ -1658,7 +1660,7 @@ tatsächlich abgelegt, nicht nur im Katalog umsortiert. Du hast zwei Möglichkei
   Willst du lieber einen Ordner nehmen, den du schon hast, klickst du auf „einen vorhandenen
   Ordner direkt wählen“.
 
-Du kannst diese Wahl jederzeit in den Einstellungen unter "Katalog-Speicherort" ändern. Über
+Du kannst diese Wahl jederzeit unter Einstellungen → Katalog → Speicherort ändern. Über
 dem Knopf "Später einrichten" lässt sich der Dialog auch überspringen.
 
 Bereits gepackte Archive (z. B. `.zip`) werden beim automatischen Einlesen nicht berücksichtigt
@@ -2774,7 +2776,7 @@ Begleitdateien stellst du über das Modell wieder her (siehe [Begleitdateien](#b
 
 Der Bereich „Thingiverse“ ist ein Zusatz, um Modelle bei Thingiverse zu finden. Er ist **standardmäßig aus** und **experimentell**: Er braucht einen eigenen Schlüssel, und es ist noch nicht bestätigt, dass Thingiverse diese Art der Nutzung seiner Schnittstelle erlaubt. Er sucht und zeigt nur; er lädt nie Dateien herunter und schreibt nie in deinen Katalog.
 
-**Einschalten.** In den Einstellungen unter „Allgemein“, „Thingiverse“, den Schalter „Thingiverse-Bereich anzeigen“ einschalten. Ein Dialog sagt dir vorher, was geschieht: Deine Suchbegriffe, deine IP-Adresse und dein Schlüssel gehen an Thingiverse (und an Cloudflare, dessen Schutzdienst); es gibt keinen Server von uns dazwischen; ein Thingiverse-Schlüssel hat keine Teilberechtigungen und erlaubt damit vollen Zugriff auf dein Thingiverse-Konto, diese App benutzt ihn nur lesend; du schließt selbst eine Vereinbarung mit Thingiverse, es gelten dessen Bedingungen, und Thingiverse kann deinen Zugang jederzeit sperren. Erst nach deiner Bestätigung erscheint der Eintrag „Thingiverse“ in der Leiste links. Ausschalten entfernt den Eintrag wieder und verwirft alles, was im Arbeitsspeicher liegt.
+**Einschalten.** Unter Einstellungen → Slicer & Dienste → Thingiverse den Schalter „Thingiverse-Bereich anzeigen“ einschalten. Ein Dialog sagt dir vorher, was geschieht: Deine Suchbegriffe, deine IP-Adresse und dein Schlüssel gehen an Thingiverse (und an Cloudflare, dessen Schutzdienst); es gibt keinen Server von uns dazwischen; ein Thingiverse-Schlüssel hat keine Teilberechtigungen und erlaubt damit vollen Zugriff auf dein Thingiverse-Konto, diese App benutzt ihn nur lesend; du schließt selbst eine Vereinbarung mit Thingiverse, es gelten dessen Bedingungen, und Thingiverse kann deinen Zugang jederzeit sperren. Erst nach deiner Bestätigung erscheint der Eintrag „Thingiverse“ in der Leiste links. Ausschalten entfernt den Eintrag wieder und verwirft alles, was im Arbeitsspeicher liegt.
 
 **Einen Schlüssel besorgen.** Jede Person braucht einen eigenen Schlüssel: Das Programm enthält keinen, und es gibt keinen Server von uns. Der Einstellungsblock hat eine aufklappbare Anleitung („So bekommst du einen Schlüssel“): bei Thingiverse mit deinem Konto anmelden (ein Konto ist nötig), die Seite „App erstellen“ öffnen (dafür gibt es einen Knopf), als Plattform „Desktop App“ wählen, Name und kurze Beschreibung eintragen und den Haken bei den API-Bedingungen von MakerBot setzen. Der App-Name darf nur Buchstaben, Zahlen und Leerzeichen enthalten (keine Bindestriche oder Sonderzeichen); Webadressen sind nicht nötig. Nach dem Anlegen zeigt die Seite unter „API INFORMATION“ drei Werte: Kopiere den **App Token** (nicht das Client Secret und nicht die Client ID) in das Schlüsselfeld. Die App bleibt privat und unveröffentlicht; nur du benutzt sie. Die Schritte wurden am 4. November 2026 an der echten Seite geprüft; Thingiverse kann sie ändern. Gib deinen Token niemandem weiter. „Prüfen und speichern“ testet den Schlüssel mit einer Anfrage und speichert ihn nur, wenn Thingiverse ihn annimmt; danach ist das Feld leer, und der Schlüssel wird nie wieder angezeigt, nur eine Maske mit den letzten vier Zeichen. „Ersetzen“ und „Entfernen“ stehen daneben; Entfernen löscht den Schlüssel nur auf diesem Rechner, bei Thingiverse bleibt er gültig, bis du ihn dort widerrufst.
 
@@ -2796,15 +2798,17 @@ fünf Reiter aufgeteilt, in dieser Reihenfolge: **Allgemein**, **Katalog**, **Sl
 Die Browserversion hat keinen Reiter „Slicer & Dienste“. In der Container-Version steht dort „Lokale Slicer und Dateiübergabe sind im
 Container nicht verfügbar.“, dazu nur Drucker und Thingiverse. Jeder Reiter ist in Abschnitte mit Überschrift gegliedert.
 
-Die Breite des Bereichs richtet sich nach dem Fenster: Ab 1280 px Fensterbreite sitzt er angedockt neben dem Katalog (480 px), von 1000 bis 1279 px mit 440 px. Unter 1000 px oder wenn für den Katalog weniger als etwa 520 px blieben, legt er sich stattdessen über die Ansicht (480 px, höchstens die freie Breite minus 32 px; unter 600 px über die volle Breite). Auf der Detailseite und in den anderen Hauptansichten liegt er immer über der Ansicht. Passen die fünf Reiter nicht in eine Zeile, brechen sie in eine zweite um; alle Reiter bleiben sichtbar und mit den Pfeiltasten erreichbar. Pfade, zum Beispiel der Katalogordner, brechen um statt abgeschnitten zu werden und lassen sich markieren und kopieren.
+Nicht gespeicherte Thingiverse-Schlüsselentwürfe bleiben beim Reiterwechsel erhalten, solange die Einstellungen geöffnet sind; beim Schließen werden sie verworfen.
+
+Die Breite des Bereichs richtet sich nach dem Fenster: Ab 1280 px Fensterbreite sitzt er angedockt neben dem Katalog (480 px), von 1000 bis 1279 px mit 440 px. Unter 1000 px oder wenn für den Katalog weniger als etwa 520 px blieben, legt er sich stattdessen über die Ansicht (480 px, höchstens die freie Breite minus 32 px; unter 600 px über die volle Breite). Auf der Detailseite und in den anderen Hauptansichten liegt er immer über der Ansicht, auch bei 1000–1279 px Fensterbreite mit 480 px (mit derselben Begrenzung auf die verfügbare Breite). Passen die fünf Reiter nicht in eine Zeile, brechen sie in eine zweite um; alle Reiter bleiben sichtbar und mit den Pfeiltasten erreichbar. Pfade, zum Beispiel der Katalogordner, brechen um statt abgeschnitten zu werden und lassen sich markieren und kopieren.
 
 | Reiter | Abschnitte |
 |---|---|
 | Allgemein | Darstellung, Sprache, Bedienung, Druckverfahren, Programmverhalten (Browser: Drucker) |
-| Katalog | Speicherort, Quellordner, Beim Import, Katalogordner abgleichen, Automatische Tags, Druckdaten |
+| Katalog | Speicherort, Quellordner, Beim Import, Katalogordner abgleichen, Automatische Tags, Druckdaten (Browser: nur Automatische Tags und Druckdaten) |
 | Slicer & Dienste | Dateien weitergeben, Installierte Slicer, Meldungen vom Slicer, Drucker, Thingiverse |
 | Wartung | Katalog prüfen, Sichern und wiederherstellen, Katalog zurücksetzen (Browser: Katalog sichern) |
-| Info | Version und Updates, Vorab-Versionen, Hilfe und Fehlersuche, App-Daten und Protokolle, Über die App |
+| Info | Version und Updates, Vorab-Versionen, Hilfe und Fehlersuche, App-Daten und Protokolle, Über die App (Browser: nur Version und Über die App; Container: keine Vorab-Versionen) |
 
 Andere Stellen der App, die in die Einstellungen verweisen, springen gleich zum passenden Abschnitt: Der Reiter öffnet sich, die Seite
 scrollt zum Abschnitt und der Fokus landet auf dessen Überschrift. Mit dem Zahnrad geöffnet zeigt das Panel den in dieser Sitzung
@@ -3157,7 +3161,7 @@ wiederherstellen.
 
 **Wie bekomme ich meine vorhandene Ordnerstruktur in den Katalog?**
 Bei der Ersteinrichtung "Bestehende Ordnerstruktur übernehmen" wählen (siehe
-[Erste Schritte](#erste-schritte)), oder später über "Katalog-Speicherort" in den Einstellungen.
+[Erste Schritte](#erste-schritte)), oder später über Einstellungen → Katalog → Speicherort.
 
 **Kann ich denselben Katalog auf mehreren Rechnern nutzen?**
 Nicht automatisch/synchronisiert — dafür gibt es aktuell keine Cloud-Anbindung (siehe

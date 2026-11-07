@@ -1,3 +1,6 @@
+import { en } from '../i18n/en';
+import { es } from '../i18n/es';
+import { fr } from '../i18n/fr';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -178,4 +181,18 @@ it('shows the error and keeps the count when resetting fails', async () => {
   fireEvent.click(reset);
   expect(await screen.findByRole('alert')).toHaveTextContent('Datenbank gesperrt');
   expect(screen.getByText('3 gemerkte Kopien')).toBeVisible();
+});
+
+
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('keeps the full re-offer action operable in %s', async (language, texts) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  vi.mocked(invoke).mockImplementation(async command => command === 'count_known_copies' ? 12 : command === 'list_known_copies' ? { total: 12, items: [] } : false);
+  render(<LanguageProviderWithDiagnostics><DiskSyncSettings /></LanguageProviderWithDiagnostics>);
+  const reset = await screen.findByRole('button', { name: texts.kcReset });
+  await waitFor(() => expect(reset).toBeEnabled());
+  expect(reset.parentElement).toHaveClass('flex-wrap', 'min-w-0');
+  expect(reset).not.toHaveClass('shrink-0');
+  fireEvent.click(reset);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('reset_known_copies'));
+  expect(await screen.findByRole('status')).toHaveTextContent(texts.kcResetDone);
 });
