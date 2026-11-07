@@ -8,10 +8,11 @@ import { DiskSyncSettings } from './DiskSyncSettings';
 import { AutoTaggingSetting } from './AutoTaggingSetting';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
+import { useSettingsLayout } from '../hooks/useSettingsLayout';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { invoke } from '../lib/transport';
 import type { SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
@@ -94,7 +95,7 @@ const segBase =
   'h-[26px] px-3 rounded-[2px] text-[length:var(--font-size-control)] font-medium cursor-pointer transition-colors';
 const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
-const dashedButton = 'h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]';
+const dashedButton = 'min-h-7 py-1 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]';
 
 const LANGUAGE_LABELS: Record<Language, string> = {
   de: 'Deutsch',
@@ -104,7 +105,7 @@ const LANGUAGE_LABELS: Record<Language, string> = {
 };
 
 export function SettingsPanel({
-  overlay, onClose, onOpenPrinters, onThingiverseEnabledChange,
+  overlay: forceOverlay, onClose, onOpenPrinters, onThingiverseEnabledChange,
   detailPanel = 'auto', onDetailPanelChange,
   singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips,
   request, initialTab, onTabChange,
@@ -117,6 +118,9 @@ export function SettingsPanel({
   onClearCatalogBackupError, catalogBackupError, catalogBaseDir, onOpenCatalogSetup,
   update,
 }: SettingsPanelProps) {
+  // The view says whether it can dock the panel at all; the width rules decide the rest.
+  const layout = useSettingsLayout(forceOverlay);
+  const overlay = layout.overlay;
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
   const t = useT();
@@ -233,16 +237,17 @@ export function SettingsPanel({
 
   return (
     <div ref={dialogRef} role={overlay ? 'dialog' : 'complementary'} aria-modal={overlay ? true : undefined} aria-label={t('settingsTitle')}
-      className={`detail-panel-shell ${overlay ? 'detail-panel-overlay' : ''}`}>
-      <aside ref={panelRef} className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
-        <div className="flex-none flex items-center justify-between px-4 pt-3.5 pb-2.5">
+      style={{ '--settings-panel-width': layout.width === null ? '100%' : `${layout.width}px`, '--settings-pad': `${layout.pad}px` } as CSSProperties}
+      className={`detail-panel-shell settings-panel ${overlay ? 'settings-panel-overlay' : ''}`}>
+      <aside ref={panelRef} className="settings-panel-aside flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
+        <div className="flex-none flex items-center justify-between settings-panel-pad-x pt-3.5 pb-2.5">
           <h2 className="text-[length:var(--font-size-title)] font-semibold text-[var(--ink)]">{t('settingsTitle')}</h2>
           <button type="button" aria-label={t('settingsClose')} title={`${t('settingsClose')} (Esc)`} onClick={onClose}
             className="w-[26px] h-[26px] grid place-items-center rounded-[3px] text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
             <Icon name="close" size={16} />
           </button>
         </div>
-        <div role="tablist" aria-label={t('settingsTabsLabel')} className="flex-none flex flex-wrap p-0.5 gap-0.5 mx-4 mb-3 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
+        <div role="tablist" aria-label={t('settingsTabsLabel')} className="flex-none flex flex-wrap p-0.5 gap-0.5 settings-panel-margin-x mb-3 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
           {TABS.map((key, index) => (
             <button
               key={key}
@@ -251,14 +256,14 @@ export function SettingsPanel({
               aria-selected={activeSettingsTab === key} tabIndex={activeSettingsTab === key ? 0 : -1}
               onClick={() => selectTab(key)}
               onKeyDown={event => onTabKeyDown(event, index)}
-              className={`${segBase} flex-auto whitespace-nowrap !h-[24px] !px-2 text-caption focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${activeSettingsTab === key ? segActive : segInactive}`}
+              className={`${segBase} flex-auto whitespace-nowrap !h-auto min-h-[26px] [@media(pointer:coarse)]:min-h-[44px] !px-2 !py-1 text-caption focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${activeSettingsTab === key ? segActive : segInactive}`}
             >
               {tabLabels[key]}
             </button>
           ))}
         </div>
         <div ref={bodyRef} role="tabpanel" id="settings-tabpanel" aria-labelledby={`settings-tab-${activeSettingsTab}`}
-          className="flex-1 min-h-0 overflow-y-auto scrollbar-stable px-4 pb-4">
+          className="flex-1 min-h-0 overflow-y-auto scrollbar-stable settings-panel-pad-x pb-4">
           {activeSettingsTab === 'general' && (
             <>
               <SettingsSection id="appearance" title={t('settingsSecAppearance')}>
@@ -340,7 +345,7 @@ export function SettingsPanel({
                   </div>
                   <p id="single-key-shortcuts-desc" className="mt-1 text-small text-[var(--ink-2)] mb-3">{t('singleKeyShortcutsDescription')}</p>
                 </>}
-                <button onClick={onOpenTips} className="w-full h-8 border border-[var(--line-strong)] rounded cursor-pointer">{t('keyboardTipsTitle')}</button>
+                <button onClick={onOpenTips} className="w-full min-h-8 py-1 border border-[var(--line-strong)] rounded cursor-pointer">{t('keyboardTipsTitle')}</button>
               </SettingsSection>
 
               <SettingsSection id="printMethod" title={t('settingsSecPrintMethod')}>
@@ -364,16 +369,16 @@ export function SettingsPanel({
                 <>
                   <SettingsSection id="storage" title={t('settingsSecStorage')}>
                     {catalogBaseDir && container
-                      ? <div className="text-caption text-[var(--ink-3)] break-all mb-1.5">{t('containerCatalogPath').replace('{path}', displayName(catalogBaseDir))}</div>
-                      : <div className={`${catalogBaseDir ? 'font-code' : 'text-caption'} text-[var(--ink-3)] truncate mb-1.5`}>
+                      ? <div className="text-caption text-[var(--ink-3)] settings-path mb-1.5">{t('containerCatalogPath').replace('{path}', displayName(catalogBaseDir))}</div>
+                      : <div className={`${catalogBaseDir ? 'font-code' : 'text-caption'} text-[var(--ink-3)] settings-path mb-1.5`}>
                         {catalogBaseDir ? displayName(catalogBaseDir) : t('catalogBaseDirNotSet')}
                       </div>}
-                    <div className="flex gap-1.5">
-                      <button onClick={onOpenCatalogSetup} className={`flex-1 ${dashedButton}`}>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button onClick={onOpenCatalogSetup} className={`flex-1 min-w-[10rem] ${dashedButton}`}>
                         {catalogBaseDir ? t('catalogBaseDirChangeButton') : t('catalogBaseDirSetupButton')}
                       </button>
                       {catalogBaseDir && !container && (
-                        <button onClick={() => invoke('open_in_file_manager', { path: catalogBaseDir })} className={`flex-1 ${dashedButton}`}>
+                        <button onClick={() => invoke('open_in_file_manager', { path: catalogBaseDir })} className={`flex-1 min-w-[10rem] ${dashedButton}`}>
                           {t('catalogBaseDirOpenButton')}
                         </button>
                       )}
@@ -423,14 +428,14 @@ export function SettingsPanel({
                                 />
                               </label>
                               <div className="flex-1 min-w-0">
-                                <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
+                                <div className="text-[length:var(--font-size-title)] text-[var(--ink)] [overflow-wrap:anywhere]">{s.name}</div>
                                 <div className="flex items-center gap-1.5">
                                   {isPrimary && (
                                     <span className="flex-none text-compact-label ui-label px-1.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                                       {t('slicerPrimaryChip')}
                                     </span>
                                   )}
-                                  <div className="flex-1 min-w-0 font-code text-[var(--ink-3)] truncate">
+                                  <div className="flex-1 min-w-0 font-code text-[var(--ink-3)] settings-path">
                                     {displayName(s.path)}
                                   </div>
                                 </div>
@@ -479,7 +484,7 @@ export function SettingsPanel({
                 <button
                   onClick={onScanCatalogIssues}
                   disabled={cleanupScanning} {...lockProps}
-                  className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small ${
+                  className={`min-h-7 py-1 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small ${
                     cleanupScanning ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
                   }`}
                 >
@@ -502,19 +507,19 @@ export function SettingsPanel({
                       {t('importCatalogConfirmQuestion')}
                     </div>
                     {!isReadOnly() && <div className="text-caption text-[var(--ink-3)]">{t('tvKeptOnRestore')}</div>}
-                    <div className="flex gap-1.5">
+                    <div className="flex flex-wrap gap-1.5">
                       <button {...lockProps}
                         onClick={() => {
                           setConfirmImportCatalog(false);
                           onImportCatalog();
                         }}
-                        className="flex-1 h-7 rounded-[3px] border border-[var(--crit)] bg-transparent text-[var(--crit)] text-small cursor-pointer hover:bg-[var(--panel-2)]"
+                        className="flex-1 min-w-[8rem] min-h-7 py-1 rounded-[3px] border border-[var(--crit)] bg-transparent text-[var(--crit)] text-small cursor-pointer hover:bg-[var(--panel-2)]"
                       >
                         {t('importCatalogConfirmYes')}
                       </button>
                       <button
                         onClick={() => setConfirmImportCatalog(false)}
-                        className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)]"
+                        className="flex-1 min-w-[8rem] min-h-7 py-1 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)]"
                       >
                         {t('cancel')}
                       </button>
@@ -623,7 +628,7 @@ function WebVersionRow() {
       {state === 'failed' && (
         <>
           <p role="alert" className="text-[var(--crit)]">{t('infoVersionLoadFailed')} <ErrorText error={error} /></p>
-          <button type="button" onClick={() => void reload()} className="mt-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] font-semibold cursor-pointer hover:border-[var(--accent)]">{t('settingReload')}</button>
+          <button type="button" onClick={() => void reload()} className="mt-1 min-h-7 py-1 px-2 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] font-semibold cursor-pointer hover:border-[var(--accent)]">{t('settingReload')}</button>
         </>
       )}
     </div>

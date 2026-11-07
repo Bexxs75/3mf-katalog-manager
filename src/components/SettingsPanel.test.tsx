@@ -1,6 +1,6 @@
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { SettingsPanel, type SettingsPanelProps } from './SettingsPanel';
 import { invoke } from '@tauri-apps/api/core';
@@ -171,15 +171,70 @@ describe('SettingsPanel structure and keyboard', () => {
   });
 });
 
+function setWindowWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width });
+}
+
 describe('SettingsPanel layout', () => {
-  it('takes the detail panel place by default and lies over the view as an overlay', () => {
-    const { rerender } = renderPanel();
+  const originalWidth = window.innerWidth;
+  afterEach(() => setWindowWidth(originalWidth));
+
+  it('docks at 480 px in a wide window and takes the detail panel place', () => {
+    setWindowWidth(1440);
+    renderPanel();
     const region = screen.getByRole('complementary', { name: 'Einstellungen' });
-    expect(region).toHaveClass('detail-panel-shell');
+    expect(region).toHaveClass('detail-panel-shell', 'settings-panel');
+    expect(region).not.toHaveClass('settings-panel-overlay');
     expect(region).not.toHaveClass('detail-panel-overlay');
-    expect(region.querySelector('aside')).toHaveClass('w-[336px]', 'min-h-0');
-    rerender({ overlay: true });
-    expect(screen.getByRole('dialog', { name: 'Einstellungen' })).toHaveClass('detail-panel-overlay');
+    expect(region.style.getPropertyValue('--settings-panel-width')).toBe('480px');
+    expect(region.style.getPropertyValue('--settings-pad')).toBe('20px');
+    expect(region.querySelector('aside')).toHaveClass('settings-panel-aside', 'min-h-0');
+  });
+
+  it('docks at 440 px in a medium window when the catalog keeps its room', () => {
+    setWindowWidth(1100);
+    renderPanel();
+    const region = screen.getByRole('complementary', { name: 'Einstellungen' });
+    expect(region.style.getPropertyValue('--settings-panel-width')).toBe('440px');
+  });
+
+  it('becomes a modal overlay when the view cannot dock it', () => {
+    setWindowWidth(1440);
+    renderPanel({ overlay: true });
+    const dialog = screen.getByRole('dialog', { name: 'Einstellungen' });
+    expect(dialog).toHaveClass('settings-panel-overlay');
+    expect(dialog).not.toHaveClass('detail-panel-overlay');
+    expect(dialog.style.getPropertyValue('--settings-panel-width')).toBe('480px');
+  });
+
+  it('becomes an overlay by itself when less than 520 px would stay for the catalog', () => {
+    setWindowWidth(1010);
+    renderPanel();
+    expect(screen.getByRole('dialog', { name: 'Einstellungen' })).toHaveClass('settings-panel-overlay');
+  });
+
+  it('covers the full width with 16 px padding below 600 px and follows window resizes', () => {
+    setWindowWidth(1440);
+    renderPanel();
+    expect(screen.getByRole('complementary', { name: 'Einstellungen' })).toBeInTheDocument();
+    act(() => { setWindowWidth(500); window.dispatchEvent(new Event('resize')); });
+    const dialog = screen.getByRole('dialog', { name: 'Einstellungen' });
+    expect(dialog.style.getPropertyValue('--settings-panel-width')).toBe('100%');
+    expect(dialog.style.getPropertyValue('--settings-pad')).toBe('16px');
+  });
+
+  it('shows the catalog path wrapped and selectable instead of cut off', () => {
+    renderPanel({ catalogBaseDir: '/home/user/a/very/long/path/to/the/catalog/folder' });
+    fireEvent.click(tab('Katalog'));
+    const path = screen.getByText(/very\/long\/path/);
+    expect(path).toHaveClass('settings-path');
+    expect(path).not.toHaveClass('truncate');
+  });
+
+  it('keeps every tab reachable: the bar wraps instead of clipping, and the buttons have no fixed height', () => {
+    renderPanel();
+    expect(screen.getByRole('tablist')).toHaveClass('flex-wrap');
+    for (const node of screen.getAllByRole('tab')) expect(node).toHaveClass('!h-auto', 'min-h-[26px]');
   });
 
   it('scrolls its content without a second floating scroller', () => {

@@ -1175,7 +1175,9 @@ The gear icon at the bottom of the navigation rail opens Settings in the right-h
 your models and folders. They're split into five tabs, in this order:
 **General**, **Catalog**, **Slicers & services**, **Maintenance**, and **Info**. The browser version has no
 "Slicers & services" tab. In the container version that tab says "Local slicers and file handover are not available in the
-container." and offers only printers and Thingiverse. Each tab is divided into titled sections:
+container." and offers only printers and Thingiverse. Each tab is divided into titled sections.
+
+How wide the panel is depends on the window: from 1280 px of window width it sits docked beside the catalog at 480 px, from 1000 to 1279 px at 440 px. Below 1000 px, or when fewer than about 520 px would stay for the catalog, it lies over the view instead (480 px, at most the free width minus 32 px; below 600 px over the full width). On the detail page and in the other main views it always lies over the view. When the five tab labels do not fit in one row they wrap onto a second row; all tabs stay visible and reachable with the arrow keys. Paths, for example the catalog folder, wrap instead of being cut off and can be selected and copied.
 
 | Tab | Sections |
 |---|---|
@@ -2790,7 +2792,9 @@ Der Bereich „Thingiverse“ ist ein Zusatz, um Modelle bei Thingiverse zu find
 Bereich neben deinen Modellen und Ordnern. Sie sind in
 fünf Reiter aufgeteilt, in dieser Reihenfolge: **Allgemein**, **Katalog**, **Slicer & Dienste**, **Wartung** und **Info**.
 Die Browserversion hat keinen Reiter „Slicer & Dienste“. In der Container-Version steht dort „Lokale Slicer und Dateiübergabe sind im
-Container nicht verfügbar.“, dazu nur Drucker und Thingiverse. Jeder Reiter ist in Abschnitte mit Überschrift gegliedert:
+Container nicht verfügbar.“, dazu nur Drucker und Thingiverse. Jeder Reiter ist in Abschnitte mit Überschrift gegliedert.
+
+Die Breite des Bereichs richtet sich nach dem Fenster: Ab 1280 px Fensterbreite sitzt er angedockt neben dem Katalog (480 px), von 1000 bis 1279 px mit 440 px. Unter 1000 px oder wenn für den Katalog weniger als etwa 520 px blieben, legt er sich stattdessen über die Ansicht (480 px, höchstens die freie Breite minus 32 px; unter 600 px über die volle Breite). Auf der Detailseite und in den anderen Hauptansichten liegt er immer über der Ansicht. Passen die fünf Reiter nicht in eine Zeile, brechen sie in eine zweite um; alle Reiter bleiben sichtbar und mit den Pfeiltasten erreichbar. Pfade, zum Beispiel der Katalogordner, brechen um statt abgeschnitten zu werden und lassen sich markieren und kopieren.
 
 | Reiter | Abschnitte |
 |---|---|

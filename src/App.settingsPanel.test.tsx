@@ -47,7 +47,7 @@ describe('settings in the right-hand panel', () => {
     expect(settings()).toBeVisible();
     expect(details()).toBeNull();
     // Models, folders and the rail stay uncovered: the panel is a layout sibling, not an overlay.
-    expect(settings()).not.toHaveClass('detail-panel-overlay');
+    expect(settings()).not.toHaveClass('settings-panel-overlay');
     expect(tile('a')).toBeInTheDocument();
     fireEvent.click(gear());
     expect(settings()).toBeNull();
@@ -141,7 +141,7 @@ describe('settings in the right-hand panel', () => {
     fireEvent.click(screen.getByRole('button', { name: de.railPrinters }));
     fireEvent.click(gear());
     expect(settings()).toBeVisible();
-    expect(settings()).toHaveClass('detail-panel-overlay');
+    expect(settings()).toHaveClass('settings-panel-overlay');
     expect(screen.getByRole('dialog', { name: de.settingsTitle })).toHaveAttribute('aria-modal', 'true');
     fireEvent.click(screen.getByRole('button', { name: de.settingsClose }));
     expect(settings()).toBeNull();
@@ -152,14 +152,14 @@ describe('settings in the right-hand panel', () => {
     await setup();
     fireEvent.click(gear());
     fireEvent.click(screen.getByRole('button', { name: de.railPrinters }));
-    expect(settings()).toHaveClass('detail-panel-overlay');
+    expect(settings()).toHaveClass('settings-panel-overlay');
     // As a modal window the overlay keeps the rail out of reach.
     fireEvent.click(screen.getByRole('button', { name: de.railCatalog }));
-    expect(settings()).toHaveClass('detail-panel-overlay');
+    expect(settings()).toHaveClass('settings-panel-overlay');
     fireEvent.click(screen.getByRole('button', { name: de.settingsClose }));
     fireEvent.click(screen.getByRole('button', { name: de.railCatalog }));
     fireEvent.click(gear());
-    expect(settings()).not.toHaveClass('detail-panel-overlay');
+    expect(settings()).not.toHaveClass('settings-panel-overlay');
     fireEvent.click(screen.getByRole('tab', { name: de.settingsTabServices }));
     fireEvent.click(screen.getByRole('button', { name: de.pmOpen }));
     expect(settings()).toBeNull();

@@ -218,6 +218,15 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .detail-panel-shell { display: flex; flex: none; min-height: 0; position: relative; }
 .detail-panel-overlay { position: absolute; top: var(--detail-overlay-top, 0px); right: 0; bottom: 0; width: min(340px, 92%); z-index: 20; box-shadow: var(--shadow); }
 .detail-panel-overlay > aside { width: 100% !important; }
+/* Settings panel: own classes, so the detail panel's shared overlay rules stay untouched.
+   --settings-panel-width and --settings-pad come from resolveSettingsLayout (src/lib/settingsLayout.ts). */
+.settings-panel-aside { width: var(--settings-panel-width, 480px); max-width: 100%; }
+.settings-panel-overlay { position: absolute; top: var(--detail-overlay-top, 0px); right: 0; bottom: 0; width: var(--settings-panel-width, 480px); max-width: 100%; z-index: 20; box-shadow: var(--shadow); }
+.settings-panel-overlay > .settings-panel-aside { width: 100%; }
+.settings-panel-pad-x { padding-left: var(--settings-pad, 20px); padding-right: var(--settings-pad, 20px); }
+.settings-panel-margin-x { margin-left: var(--settings-pad, 20px); margin-right: var(--settings-pad, 20px); }
+/* Paths wrap anywhere and can be selected and copied instead of being cut off. */
+.settings-path { overflow-wrap: anywhere; word-break: break-word; user-select: text; }
 .detail-panel-close { position: absolute; top: 4px; right: 4px; z-index: 21; width: 30px; height: 30px; display: grid; place-items: center; background: var(--panel); color: var(--ink-2); border-radius: 6px; cursor: pointer; }
 
 /* The arrows stay at both ends while only the numbers wrap in narrow viewer panels. */
