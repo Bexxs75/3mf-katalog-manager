@@ -89,6 +89,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Fixed
 
 - **Bundle panel:** matches the model panel width in each display density; long names no longer widen it.
+- **Web:** “Open in slicer” with Bambu Studio now works on macOS (Bambu Studio only understands `bambustudioopen://` there); added a note about the trust prompt and Network plug-in.
 
 - **Slicer reports, "Choose another model":** the model list opened behind the dialog and could not be clicked. The model and spool pickers now sit above dialogs.
 - **Printer connection changed during a query:** if the printer's address was changed, or its connection removed and made again, while a printer query (regular pass or "include older history") was still under way, the answer of the old printer could be written to the new connection. The answer is now dropped when the connection's type, address or creation time differs from what the query started with. No change to the database.
@@ -869,6 +870,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Behoben
 
 - **Bündel-Panel:** hat in der jeweiligen Darstellungsdichte dieselbe Breite wie das Modell-Panel; lange Namen verbreitern es nicht mehr.
+- **Web:** „In Slicer öffnen“ mit Bambu Studio funktioniert jetzt unter macOS (Bambu Studio versteht dort nur `bambustudioopen://`); Hinweis zu Vertrauensfrage und Network-Plug-in.
 
 - **Slicer-Meldungen, „Anderes Modell wählen“:** Die Modellliste öffnete sich hinter dem Dialog und ließ sich nicht bedienen. Modell- und Spulenauswahl liegen jetzt über Dialogen.
 - **Druckerverbindung während einer Abfrage geändert:** Wurde die Adresse eines Druckers geändert oder seine Verbindung entfernt und neu angelegt, während noch eine Druckerabfrage lief (regulärer Abgleich oder „Ältere Drucke übernehmen“), konnte die Antwort des alten Druckers in die neue Verbindung geschrieben werden. Die Antwort wird jetzt verworfen, wenn Art, Adresse oder Anlegezeit der Verbindung vom Beginn der Abfrage abweichen. Keine Änderung an der Datenbank.

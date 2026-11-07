@@ -798,6 +798,7 @@ export const es: Translations = {
   cancel: 'Cancelar',
   delete: 'Eliminar',
   openInSlicer: 'Abrir en el laminador',
+  webSlicerBambuHint: 'Al abrir un archivo, Bambu Studio pregunta si el sitio web es de confianza y necesita el complemento de red (Network plug-in).',
   webSlicerHint: 'El laminador debe poder acceder al servidor (misma red). Muchos laminadores rechazan el enlace si HTTPS usa un certificado autofirmado.',
   webSlicerError: 'No se pudo crear el enlace para el laminador.',
   webSlicerNotInstalled: 'Si el laminador no está instalado, no ocurre nada.',

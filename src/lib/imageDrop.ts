@@ -31,6 +31,15 @@ export function isWindowsPlatform(
   return /win/i.test(nav.userAgent ?? '') || /win/i.test(nav.platform ?? '');
 }
 
+/** iPadOS can use a Mac user agent/platform; multiple touch points distinguish it. */
+export function isMacPlatform(
+  nav: Pick<Navigator, 'userAgent' | 'platform'> & Partial<Pick<Navigator, 'maxTouchPoints'>> = typeof navigator === 'undefined' ? { userAgent: '', platform: '' } : navigator,
+): boolean {
+  if (/iPad|iPhone|iPod/i.test(`${nav.userAgent} ${nav.platform}`)) return false;
+  const mac = /Macintosh|Mac OS X/i.test(nav.userAgent ?? '') || /Mac/i.test(nav.platform ?? '');
+  return mac && (nav.maxTouchPoints ?? 0) <= 1;
+}
+
 /** Tauri delivers drop positions in physical pixels; getBoundingClientRect() works in CSS pixels. */
 export function physicalToCss(position: Point, devicePixelRatio: number): Point {
   const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
