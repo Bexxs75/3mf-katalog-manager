@@ -56,7 +56,13 @@ export function BlockedAutoTagsSettings() {
       <div className="text-[length:var(--font-size-body)] font-semibold mb-1">{t('blockedAutoTagsTitle')}</div>
       <p className="text-caption text-[var(--ink-3)] mb-2">{t('blockedAutoTagsHint')}</p>
       {loadFailed && (
-        <div role="alert" className="mb-1.5 text-caption text-[var(--accent)]">{t('blockedAutoTagsLoadError')}</div>
+        <div className="mb-1.5 text-caption">
+          <p role="alert" className="text-[var(--crit)]">{t('blockedAutoTagsLoadError')}</p>
+          <button type="button" onClick={() => void load()}
+            className="mt-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] font-semibold cursor-pointer hover:border-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+            {t('settingReload')}
+          </button>
+        </div>
       )}
       {tags !== null && tags.length === 0 && !loadFailed && (
         <p ref={emptyRef} tabIndex={-1} className="text-caption text-[var(--ink-3)] outline-none">{t('blockedAutoTagsEmpty')}</p>

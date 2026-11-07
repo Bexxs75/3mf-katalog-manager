@@ -71,4 +71,13 @@ describe('BlockedAutoTagsSettings', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(de.blockedAutoTagsLoadError);
     expect(screen.queryByText(de.blockedAutoTagsEmpty)).toBeNull();
   });
+
+  it('offers a reload that fetches the list again after a failed read', async () => {
+    vi.mocked(api.listBlockedAutoTags).mockRejectedValueOnce(new Error('x')).mockResolvedValue(['miniatur']);
+    setup();
+    expect(await screen.findByRole('alert')).toHaveClass('text-[var(--crit)]');
+    fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+    expect(await screen.findByText('#miniatur')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });

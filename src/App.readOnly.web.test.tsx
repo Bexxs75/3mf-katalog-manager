@@ -165,11 +165,16 @@ it('offers browser display preferences and read-only information without desktop
   for (const label of [de.railFilament, de.railPrinters]) expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
   await click(screen.getByRole('button', { name: de.settingsTitle }));
   expect(screen.getByRole('button', { name: de.pmOpen })).toBeInTheDocument();
-  for (const label of [de.settingsTabSlicer, de.singleKeyShortcutsTitle]) expect(screen.queryByText(label)).toBeNull();
-  // The web catalog tab holds the automatic-tags switch and the backup download: no cleanup or import.
+  // No tab for slicers and services in the browser, and no single-key switch.
+  expect(screen.queryByRole('tab', { name: de.settingsTabServices })).toBeNull();
+  expect(screen.getAllByRole('tab').map(node => node.textContent)).toEqual([de.settingsTabGeneral, de.settingsTabCatalog, de.settingsTabMaintenance, de.settingsTabInfo]);
+  expect(screen.queryByText(de.singleKeyShortcutsTitle)).toBeNull();
+  // The web catalog tab holds the automatic-tags switch, the maintenance tab the backup download: no cleanup, import or reset.
   await click(screen.getByRole('tab', { name: de.settingsTabCatalog }));
   expect(await screen.findByRole('switch', { name: de.autoTaggingLabel })).toBeInTheDocument();
-  expect(screen.queryByText(de.catalogCleanupTitle)).toBeNull();
+  await click(screen.getByRole('tab', { name: de.settingsTabMaintenance }));
+  expect(screen.queryByText(de.settingsSecCheck)).toBeNull();
+  expect(screen.queryByText(de.settingsSecReset)).toBeNull();
   expect(screen.queryByText(de.importCatalogButton)).toBeNull();
   expect(screen.getByRole('link', { name: de.exportCatalogButton })).toHaveAttribute('href', '/api/backup/export');
   await click(screen.getByRole('tab', { name: de.settingsTabGeneral }));

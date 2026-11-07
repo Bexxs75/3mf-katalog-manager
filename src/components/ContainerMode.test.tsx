@@ -39,7 +39,7 @@ it('keeps the version but never checks, downloads or installs updates', async ()
   await waitFor(() => expect(result.current.currentVersion).toBe('0.16.0'));
   act(() => { result.current.checkNow(); result.current.startUpdate(); result.current.install(); result.current.retry(); });
   expect(invoke).not.toHaveBeenCalled();
-  render(<UpdatePanel view={result.current} onExport={vi.fn()} />, { wrapper });
+  render(<UpdatePanel view={result.current} />, { wrapper });
   expect(screen.getByText('0.16.0')).toBeInTheDocument();
   expect(screen.getByText('docker compose pull').tagName).toBe('CODE');
   expect(screen.getByText('docker compose up -d').tagName).toBe('CODE');

@@ -54,13 +54,9 @@ function ThingiverseSettingsBlock({ onEnabledChange }: { onEnabledChange: (enabl
 
   if (!settings) {
     return (
-      <section className="mt-4 mb-4 p-2 border border-[var(--line)] rounded text-small">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold">{t('tvSettingsTitle')}</h3>
-          <span className="px-1.5 rounded-full border border-[var(--line-strong)] text-caption text-[var(--ink-2)]">{t('tvExperimental')}</span>
-        </div>
-        <SettingLoadStatus state={loadState} error={loadError} onReload={() => void reloadSettings()} className="mt-1" />
-      </section>
+      <div className="text-small">
+        <SettingLoadStatus state={loadState} error={loadError} onReload={() => void reloadSettings()} />
+      </div>
     );
   }
 
@@ -111,12 +107,8 @@ function ThingiverseSettingsBlock({ onEnabledChange }: { onEnabledChange: (enabl
   const { enabled, hasToken } = settings;
   const showField = enabled && (!hasToken || replacing);
   return (
-    <section className="mt-4 mb-4 p-2 border border-[var(--line)] rounded text-small" aria-labelledby={`${fieldId}-h`}>
-      <div className="flex items-center gap-2">
-        <h3 id={`${fieldId}-h`} className="font-semibold">{t('tvSettingsTitle')}</h3>
-        <span className="px-1.5 rounded-full border border-[var(--line-strong)] text-caption text-[var(--ink-2)]">{t('tvExperimental')}</span>
-      </div>
-      <p className="mt-1 text-[var(--ink-2)]">{t('tvSettingsIntro')}</p>
+    <div className="text-small">
+      <p className="text-[var(--ink-2)]">{t('tvSettingsIntro')}</p>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span>
           <span className="font-semibold">{t('tvSwitchLabel')}</span>
@@ -211,6 +203,6 @@ function ThingiverseSettingsBlock({ onEnabledChange }: { onEnabledChange: (enabl
           </div>
         </CatalogActionDialog>
       )}
-    </section>
+    </div>
   );
 }

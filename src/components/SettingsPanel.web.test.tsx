@@ -37,7 +37,7 @@ function renderCatalogTab() {
     update: {} as SettingsPanelProps['update'],
   } as SettingsPanelProps;
   render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}><SettingsPanel {...props} /></RuntimeEnvironmentProvider></LanguageProvider>);
-  fireEvent.click(screen.getByRole('tab', { name: 'Katalog' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Wartung' }));
   return props;
 }
 
@@ -121,8 +121,23 @@ it('says so when the version cannot be read in the web build, and reads again on
 it('offers no close-behavior group in the web build and never asks the backend for it', async () => {
   renderCatalogTab();
   fireEvent.click(screen.getByRole('tab', { name: 'Allgemein' }));
-  expect(await screen.findByText(de.languageTitle)).toBeInTheDocument();
+  expect(await screen.findByRole('group', { name: de.languageTitle })).toBeInTheDocument();
   expect(screen.queryByRole('group', { name: de.closeActionTitle })).toBeNull();
   const urls = vi.mocked(fetch).mock.calls.map(call => String(call[0]));
   expect(urls.some(url => url.includes('close_behavior') || url.includes('tray_labels'))).toBe(false);
+});
+
+it('has four tabs without Slicer & Dienste and only the sections the browser can use', async () => {
+  renderCatalogTab();
+  expect(screen.getAllByRole('tab').map(node => node.textContent)).toEqual(['Allgemein', 'Katalog', 'Wartung', 'Info']);
+  const headings = () => screen.getAllByRole('heading', { level: 3 }).map(node => node.textContent);
+  // Opened on Maintenance by the helper: only the download, no check, restore or reset.
+  expect(headings()).toEqual([de.settingsSecWebBackup]);
+  fireEvent.click(screen.getByRole('tab', { name: 'Allgemein' }));
+  expect(headings()).toEqual([de.settingsSecAppearance, de.settingsSecLanguage, de.settingsSecControls, de.settingsSecPrintMethod, de.settingsSecPrinters]);
+  expect(screen.queryByRole('switch', { name: de.singleKeyShortcutsTitle })).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: 'Katalog' }));
+  expect(headings()).toEqual([de.settingsSecAutoTags, de.settingsSecPrintData]);
+  fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+  expect(headings()).toEqual([de.settingsSecVersionWeb, de.settingsSecAbout]);
 });

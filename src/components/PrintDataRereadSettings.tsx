@@ -18,8 +18,7 @@ export function PrintDataRereadSettings() {
   const reason = !canEdit ? t('webReadOnly') : running ? t('printDataRereadBusy') : jobActive ? t('importLockedHint') : null;
 
   return (
-    <section aria-labelledby={`${reasonId}-title`}>
-      <div id={`${reasonId}-title`} className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-1.5">{t('printDataRereadTitle')}</div>
+    <div>
       <p className="text-caption text-[var(--ink-3)] mb-2">{t('printDataRereadIntro')}</p>
       <button
         ref={trigger} type="button"
@@ -31,6 +30,6 @@ export function PrintDataRereadSettings() {
       </button>
       {reason && <span id={reasonId} className="sr-only">{reason}</span>}
       <PrintDataRereadJob origin="settings" returnFocus={trigger} />
-    </section>
+    </div>
   );
 }

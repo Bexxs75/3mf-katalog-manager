@@ -54,8 +54,7 @@ export function DiskSyncSettings() {
     queueMicrotask(() => countRef.current?.focus());
   });
   return (
-    <section aria-labelledby="sync-settings-title" className="mb-4">
-      <h3 id="sync-settings-title" className="text-[length:var(--font-size-body)] font-semibold mb-1">{t('syncSettingsTitle')}</h3>
+    <div>
       <p className="text-small text-[var(--ink-2)] mb-2">{t('syncSettingsIntro')}</p>
       <label className="flex gap-2 items-start text-small cursor-pointer">
         <input type="checkbox" className={box} checked={onStart} disabled={busy} aria-describedby="sync-on-start-desc" onChange={e => void changeOnStart(e.target.checked)} />
@@ -84,6 +83,6 @@ export function DiskSyncSettings() {
         {list.total > list.items.length && <p className="mt-1 text-small text-[var(--ink-2)]">{count(t('kcMore'), list.total - list.items.length)}</p>}
       </>}
       {error && <p role="alert" className="text-small text-[var(--crit)]"><ErrorText error={error} /></p>}
-    </section>
+    </div>
   );
 }

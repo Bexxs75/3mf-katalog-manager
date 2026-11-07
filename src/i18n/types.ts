@@ -328,7 +328,6 @@ export interface Translations {
   keyboardFooter: string;
   importRenameTitle: string;
   importRenameDescription: string;
-  syncSettingsTitle: string;
   syncSettingsIntro: string;
   syncOnStartLabel: string;
   syncOnStartDescription: string;
@@ -770,7 +769,6 @@ export interface Translations {
   filesCount: PluralForms;
 
   settingsTitle: string;
-  appearanceTitle: string;
   themeLegend: string;
   densityLegend: string;
   themeSystem: string;
@@ -818,7 +816,6 @@ export interface Translations {
   renameExtensionLockedHint: string;
   deleteConfirmQuestion: string;
   deleteAriaLabel: string;
-  slicerSectionTitle: string;
   noSlicersConfigured: string;
   addSlicer: string;
   addSlicerError: string;
@@ -1318,7 +1315,6 @@ export interface Translations {
   printDurationHours: string;
   printDurationMinutes: string;
   printDurationUnderMinute: string;
-  catalogBackupTitle: string;
   exportCatalogButton: string;
   catalogBackupWebHint: string;
   catalogBackupWebFailureHint: string;
@@ -1361,7 +1357,6 @@ export interface Translations {
   catalogSetupNameTooLong: string;
   catalogSetupNewExistingFile: string;
   catalogSetupNewLink: string;
-  catalogBaseDirSectionTitle: string;
   catalogBaseDirNotSet: string;
   catalogBaseDirChangeButton: string;
   catalogBaseDirSetupButton: string;
@@ -1501,7 +1496,6 @@ export interface Translations {
   blockedAutoTagUnblock: string;
   blockedAutoTagUnblockAria: string;
 
-  catalogCleanupTitle: string;
   catalogCleanupScanButton: string;
   catalogCleanupScanning: string;
   catalogCleanupError: string;
@@ -1584,9 +1578,38 @@ export interface Translations {
   newFolderErrorTitle: string;
   newFolderErrorClose: string;
   settingsTabGeneral: string;
-  settingsTabSlicer: string;
   settingsTabCatalog: string;
   settingsTabInfo: string;
+  settingsTabServices: string;
+  settingsTabMaintenance: string;
+  settingsTabsLabel: string;
+  settingsGoToHandover: string;
+  settingsSecAppearance: string;
+  settingsSecLanguage: string;
+  settingsSecControls: string;
+  settingsSecPrintMethod: string;
+  settingsSecPrinters: string;
+  settingsSecProgram: string;
+  settingsSecStorage: string;
+  settingsSecSources: string;
+  settingsSecImport: string;
+  settingsSecSync: string;
+  settingsSecAutoTags: string;
+  settingsSecPrintData: string;
+  settingsSecHandover: string;
+  settingsSecSlicers: string;
+  settingsSecSlicerReports: string;
+  settingsSecThingiverse: string;
+  settingsSecCheck: string;
+  settingsSecBackup: string;
+  settingsSecWebBackup: string;
+  settingsSecReset: string;
+  settingsSecVersion: string;
+  settingsSecVersionWeb: string;
+  settingsSecPreRelease: string;
+  settingsSecHelp: string;
+  settingsSecAppData: string;
+  settingsSecAbout: string;
   infoAppVersionLabel: string;
   infoUpToDateLabel: string;
   infoUpdateCheckFailed: string;
@@ -1777,7 +1800,6 @@ export interface Translations {
   printerJobsConfirmFailed: PluralForms;
 
   infoReportBugButton: string;
-  infoDiagnosticsHeading: string;
   infoVerboseLoggingLabel: string;
   infoVerboseLoggingHint: string;
   /** `{date}` = local date the setting turns itself off */
@@ -1808,7 +1830,6 @@ export interface Translations {
   closeActionUnavailable: string;
   closeActionTrayOpen: string;
   closeActionTrayQuit: string;
-  infoFoldersHeading: string;
   infoOpenDataFolder: string;
   infoOpenDataFolderHint: string;
   infoOpenLogFolder: string;
@@ -1834,7 +1855,6 @@ export interface Translations {
   unexpectedErrorText: string;
   reportProblemLink: string;
   errorBoundaryReload: string;
-  sfTitle: string;
   sfDescription: string;
   sfNone: string;
   sfUnreachable: string;
@@ -2120,7 +2140,6 @@ export interface Translations {
   owViewerLabel: string;
   dgSwitchLabel: string;
   dgSwitchHint: string;
-  dgSectionTitle: string;
   dgExperimentalNote: string;
   dgWinLabel: string;
   dgWinText: string;
@@ -2235,7 +2254,6 @@ export interface Translations {
   errThingiverseBadResponse: string;
   errThingiverseNotFound: string;
   errThingiverseQueryInvalid: string;
-  tvSettingsTitle: string;
   tvSettingsIntro: string;
   tvSwitchLabel: string;
   tvSwitchHint: string;

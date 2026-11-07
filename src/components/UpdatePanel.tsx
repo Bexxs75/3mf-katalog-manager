@@ -1,7 +1,5 @@
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
-import type { AppError } from '../lib/errors';
-import { UpdateChannelControl } from './UpdateChannelControl';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import type { Language } from '../i18n/types';
 import type { UpdaterView } from '../hooks/useUpdater';
@@ -23,8 +21,8 @@ function formatLastUpdateDate(iso: string, language: Language): string {
   });
 }
 
-/** Settings > Info tab: version, update box (same content as the toast, inline) and recheck. */
-export function UpdatePanel({ view, onExport, exportError }: { view: UpdaterView; onExport?: () => Promise<boolean>; exportError?: AppError | null }) {
+/** Settings > Info > Version and updates: version, update box (same content as the toast, inline) and recheck. */
+export function UpdatePanel({ view }: { view: UpdaterView }) {
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const { language } = useLanguage();
@@ -77,7 +75,6 @@ export function UpdatePanel({ view, onExport, exportError }: { view: UpdaterView
           )
         )}
       </div>
-      {!container && view.preview === false && onExport && <UpdateChannelControl disabled={isUpdateCheckDisabled(view.phase)} onExport={onExport} exportError={exportError} onChanged={view.checkNow} />}
       {!container && <button
         onClick={view.checkNow}
         disabled={isUpdateCheckDisabled(view.phase)}

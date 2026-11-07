@@ -67,10 +67,10 @@ describe('DragOutSetting', () => {
     expect(setDragOutEnabled).toHaveBeenCalledWith(true);
   });
 
-  it('is a section with a heading, the experimental badge and the general platform sentence', async () => {
+  it('carries the switch hint and the general platform sentence; the section title belongs to the panel', async () => {
     render(<LanguageProvider><DragOutSetting /></LanguageProvider>);
-    const heading = await screen.findByRole('heading', { level: 3, name: new RegExp(de.dgSectionTitle) });
-    expect(heading).toHaveTextContent(de.tvExperimental);
+    await screen.findByRole('switch', { name: de.dgSwitchLabel });
+    expect(screen.queryByRole('heading')).toBeNull();
     expect(screen.getByText(de.dgSwitchHint)).toBeInTheDocument();
     expect(screen.getByText(de.dgExperimentalNote)).toBeInTheDocument();
   });

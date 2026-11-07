@@ -5,14 +5,11 @@ import { SettingLoadStatus, SettingSaveStatus, useLoadedSetting } from './Settin
 import { ToggleSwitch } from './ToggleSwitch';
 import { BlockedAutoTagsSettings } from './BlockedAutoTagsSettings';
 import * as api from '../lib/api/autoTags';
-import { isReadOnly } from '../lib/readOnly';
 import { useCanEditMetadata } from '../lib/webSession';
 
 /** Settings switch: whether the app assigns tags automatically at all. */
 export function AutoTaggingSetting() {
   const t = useT();
-  // In the web catalog tab the switch is the first block, so it needs no top margin.
-  const web = isReadOnly();
   const canEdit = useCanEditMetadata();
   // No stored value is not the same as "unknown": the backend answers true then, so only a failed read leaves it open.
   const { value, confirm, state, error: loadError, reload } = useLoadedSetting(api.getAutoTagging);
@@ -36,7 +33,7 @@ export function AutoTaggingSetting() {
 
   return (
     <>
-      <div className={web ? undefined : 'mt-4'}>
+      <div>
         <div className="flex items-center justify-between gap-2 text-small">
           <span className="font-semibold">{t('autoTaggingLabel')}</span>
           <ToggleSwitch checked={enabled === true} label={t('autoTaggingLabel')} disabled={busy || !canEdit || enabled === null} onChange={next => void change(next)} />
@@ -46,7 +43,7 @@ export function AutoTaggingSetting() {
         <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1.5" />
       </div>
       {/* Stays fully readable when tagging is off: blocks can still be lifted, and they apply again once it is switched on. */}
-      <div>
+      <div className="mt-4">
         <BlockedAutoTagsSettings />
         {enabled === false && <p className="mt-1 text-caption text-[var(--ink-3)]">{t('autoTaggingBlockedNote')}</p>}
       </div>

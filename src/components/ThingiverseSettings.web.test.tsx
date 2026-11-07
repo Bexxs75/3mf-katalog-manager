@@ -15,6 +15,6 @@ it('renders nothing in the web build and never asks the backend', async () => {
   const { container } = render(<LanguageProvider><ThingiverseSettings onEnabledChange={() => {}} /></LanguageProvider>);
   await new Promise(resolve => setTimeout(resolve, 20));
   expect(container).toBeEmptyDOMElement();
-  expect(screen.queryByText(de.tvSettingsTitle)).toBeNull();
+  expect(screen.queryByText(de.tvSwitchLabel)).toBeNull();
   expect(api.getThingiverseSettings).not.toHaveBeenCalled();
 });

@@ -65,8 +65,7 @@ export function SourceFoldersSettings() {
   }, true);
 
   return (
-    <section className="mb-4" aria-labelledby="source-folders-title">
-      <h3 id="source-folders-title" className="text-[length:var(--font-size-body)] font-semibold mb-1">{t('sfTitle')}</h3>
+    <div>
       <p className="text-small text-[var(--ink-2)] mb-2">{t('sfDescription')}</p>
       {folders.length === 0
         ? <p className="text-small text-[var(--ink-2)] mb-2">{t('sfNone')}</p>
@@ -94,6 +93,6 @@ export function SourceFoldersSettings() {
       </div>
       <p className="mt-2 rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{t('sfRules')}</p>
       {error && <p role="alert" className="mt-2 text-small text-[var(--crit)] whitespace-pre-wrap [overflow-wrap:anywhere]"><ErrorText error={error} /></p>}
-    </section>
+    </div>
   );
 }

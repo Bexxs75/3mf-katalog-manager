@@ -35,6 +35,7 @@ import { fileKindOf } from './lib/fileKind';
 import { nextRendererGeneration, snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
 import { SettingsPanel } from './components/SettingsPanel';
+import type { SettingsRequest, SettingsTab, SettingsTarget } from './lib/settingsNav';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportProgressRow } from './components/ImportProgressRow';
@@ -221,17 +222,25 @@ export default function App() {
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
-  const [generalTabRequest, setGeneralTabRequest] = useState(0);
-  const [catalogTabRequest, setCatalogTabRequest] = useState(0);
+  // The last tab used stays for the session; a request names the section the settings should show.
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [settingsRequest, setSettingsRequest] = useState<SettingsRequest | null>(null);
+  const requestCount = useRef(0);
+  const openSettingsAt = useCallback((target: SettingsTarget) => {
+    setSettingsRequest({ target, nonce: ++requestCount.current });
+    setSettingsOpen(true);
+  }, []);
+  // A request that was served must not move the panel again when it is opened the next time.
+  useEffect(() => { if (!settingsOpen) setSettingsRequest(null); }, [settingsOpen]);
   // Source folders, start sync, companions, date rename, move history and the Linux menu have no web server command.
   const web = import.meta.env.VITE_TARGET === 'web';
   const sourceCheck = useSourceFolderCheck({
     ready: !web && !store.initialLoading,
     jobActive: fileImport.jobActive,
     // Without a source folder the check has nothing to do; show where to add one.
-    onNoFolders: () => { setGeneralTabRequest(n => n + 1); setCatalogTabRequest(0); setSettingsOpen(true); },
+    onNoFolders: () => openSettingsAt('sourceFolders'),
   });
-  const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
+  const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => openSettingsAt('slicers'));
   const update = useUpdater();
 
   // Whether this start is the very first one decides how "what do you print with" is asked.
@@ -601,8 +610,9 @@ export default function App() {
       onClose={closeSettings}
       onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}
       onThingiverseEnabledChange={setThingiverseEnabled}
-      generalTabRequest={generalTabRequest}
-      catalogTabRequest={catalogTabRequest}
+      request={settingsRequest}
+      initialTab={settingsTab}
+      onTabChange={setSettingsTab}
       singleKeyShortcuts={singleKeyShortcuts}
       onSingleKeyShortcutsChange={setSingleKeyShortcuts}
       onOpenTips={() => setTipsOpen(true)}
@@ -867,7 +877,7 @@ export default function App() {
               toolView={filters.toolView}
               setToolView={filters.setToolView}
               onRemoveDuplicates={removeDuplicates}
-              onOpenPrintDataReread={() => { setCatalogTabRequest(n => n + 1); setGeneralTabRequest(0); setSettingsOpen(true); }}
+              onOpenPrintDataReread={() => openSettingsAt('printData')}
               onOpenCleanup={() => void cleanup.scanCatalogIssues()}
               cleanupScanning={cleanup.cleanupScanning}
               cleanupError={cleanup.cleanupError}
@@ -875,7 +885,7 @@ export default function App() {
               onOpenBundleSuggestions={suggestions.openDialog}
             />
           ) : mainView === 'thingiverse' ? (
-            <ThingiverseView onOpenSettings={() => { setGeneralTabRequest(n => n + 1); setCatalogTabRequest(0); setSettingsOpen(true); }} />
+            <ThingiverseView onOpenSettings={() => openSettingsAt('thingiverse')} />
           ) : mainView === 'printers' ? (
             <PrinterManagerView printers={printers} printerLink={printerLink} printerId={printerContext.printerId}
               onMaterial={context => changeMainView('filament', context)} />
@@ -989,7 +999,7 @@ export default function App() {
 
           <NoticeStack>
             {!web && <PrintTechnologyPrompt firstRun={firstRunRef.current} wait={setupDialogOpen || !upgradeNoticeSettled}
-              onChoose={() => { setGeneralTabRequest(n => n + 1); setCatalogTabRequest(0); setSettingsOpen(true); }} />}
+              onChoose={() => openSettingsAt('printMethod')} />}
             {!web && <SlicerReportNotice />}
             {sourceCheck.notice && <SourceFolderNotice notice={sourceCheck.notice} onView={sourceCheck.openDialog} onClose={sourceCheck.dismissNotice} />}
             {fileImport.importBanner && (

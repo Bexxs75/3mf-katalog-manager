@@ -53,8 +53,7 @@ export function DiagnosticsSettings() {
         {t('infoReportBugButton')}
       </button>
       <div className="mt-3 pt-3 border-t border-[var(--line)]">
-        <div className="ui-label text-[var(--ink-3)]">{t('infoDiagnosticsHeading')}</div>
-        <div className="mt-2 flex items-center justify-between text-caption text-[var(--ink)]">
+        <div className="flex items-center justify-between text-caption text-[var(--ink)]">
           <span>{t('infoVerboseLoggingLabel')}</span>
           <ToggleSwitch
             checked={verbose?.enabled === true}

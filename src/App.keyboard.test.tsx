@@ -40,7 +40,7 @@ it('opens help from ?, the header button and the settings Info tab', async () =>
   fireEvent.keyDown(screen.getByRole('tab', { name: de.keyboardTab }), { key: 'Escape' }); expect(screen.queryByRole('dialog')).toBeNull();
   const headerButton = within(screen.getByRole('banner')).getByRole('button', { name: de.keyboardTipsTitle }); headerButton.focus(); fireEvent.click(headerButton);
   fireEvent.keyDown(screen.getByRole('tab', { name: de.keyboardTab }), { key: 'Escape' }); expect(headerButton).toHaveFocus();
-  fireEvent.click(screen.getByRole('button', { name: de.settingsTitle })); fireEvent.click(screen.getByRole('tab', { name: de.settingsTabInfo }));
+  fireEvent.click(screen.getByRole('button', { name: de.settingsTitle }));
   const infoButton = within(screen.getByRole('complementary', { name: de.settingsTitle })).getByRole('button', { name: de.keyboardTipsTitle }); infoButton.focus(); fireEvent.click(infoButton);
   expect(screen.getByRole('dialog', { name: de.keyboardTipsTitle })).toBeVisible(); fireEvent.keyDown(screen.getByRole('tab', { name: de.keyboardTab }), { key: 'Escape' }); expect(infoButton).toHaveFocus();
 });

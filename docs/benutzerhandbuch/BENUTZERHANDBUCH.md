@@ -80,7 +80,7 @@ Windows displays the MSI version as `0.18.0.2`.
 
 Uninstalling removes the program, but deliberately **keeps your catalog, settings and logs** — so a
 reinstall or a manual update doesn't lose anything. To remove everything, delete these folders
-afterwards (Settings → Info → "Open data folder" / "Open log folder" shows them while the app is
+afterwards (Settings → Info → App data and logs → "Open data folder" / "Open log folder" shows them while the app is
 still installed):
 
 - **Windows:** `%APPDATA%\com.thebexxs.mfkatalogmanager` and
@@ -139,7 +139,7 @@ file manager afterwards.
   sorting and the "Import" button top left.
 - **Header:** identifies the current manager area.
 - **Detail panel on the right:** opens when you click a model. Under Settings → General →
-  "Detail panel", choose "Automatic (appears when clicked)" or "Always visible".
+  Appearance → "Detail panel", choose "Automatic (appears when clicked)" or "Always visible".
   It shows the preview, metadata and print status. Depending on the model's data, badges also
   show material, filament availability, favorite, queue membership and the last printer used.
 
@@ -153,7 +153,7 @@ into the catalog window. On import, dimensions, volume, object count, and (if pr
 file) material information are extracted automatically, and the app suggests matching hashtags
 that you're free to edit afterwards. Automatically assigned tags such as "multipart", "mini",
 "large" and "multicolor" appear in the interface language you selected; search finds them under
-both names. Under Settings → Catalog, the switch "Assign tags automatically" (on by default) controls
+both names. Under Settings → Catalog → Automatic tags, the switch "Assign tags automatically" (on by default) controls
 this: when it is off, import, [syncing with the disk](#syncing-with-the-disk) and
 [source folders](#source-folders) assign no tags automatically. Tags that already exist stay, and
 you can still add tags by hand. See [Automatic tags](#automatic-tags) for blocking single tags.
@@ -164,7 +164,7 @@ the reason names the catalog file the duplicate matches ("Same content as …" o
 catalog: …"), with a "Show" button. If the catalog file is ambiguous or no longer exists, a general
 reason is shown instead.
 
-**Date in the file name:** under Settings → General, the switch "Rename files on import" is off by
+**Date in the file name:** under Settings → Catalog → On import, the switch "Rename files on import" is off by
 default. When it is on, new model files that go into the catalog get the local date and time as a
 prefix, for example `2026-10-12_14-41_Model.3mf` (format `YYYY-MM-DD_HH-MM_`). External files that
 stay in their current location are not renamed. Existing entries are not changed; to add a date to
@@ -213,7 +213,7 @@ Source folders are folders where new models show up, for example your Downloads 
 looks into them on request and moves the files you choose into the catalog. Nothing happens by
 itself.
 
-- **Set up:** Settings → General → "Source folders". "Add folder …" adds a folder, "Remove" takes
+- **Set up:** Settings → Catalog → "Source folders". "Add folder …" adds a folder, "Remove" takes
   it off the list. A source folder must not be the catalog folder itself or inside it, and must
   not be a system folder. While an import is running, the list cannot be changed.
 - **Check:** "Import → Check source folders" looks for new models in all source folders. A notice
@@ -323,7 +323,7 @@ example a file without print data, a STL file, or a 3MF that has not been read y
 counted as matching nor as not matching: a line above the models says how many such files are
 hidden and offers "Show"; they then appear marked "Value missing: …". If some of the hidden files
 were never read, the line says how many and has a "Read now …" button that opens Settings →
-Catalog, where [Reading print data afterwards](#reading-print-data-afterwards) is. While a print
+Catalog → Print data, where [Reading print data afterwards](#reading-print-data-afterwards) is. While a print
 data filter is active the cards show the target printer, print time, layer height, nozzle and
 color dots, and an entry for the [plate overview](#plate-overview). A missing value is never shown
 as 0. "Reset filters" resets these filters too.
@@ -380,7 +380,7 @@ typing in a text field.
 Tab navigation has a visible focus indicator. Ctrl+A (Cmd+A on macOS) selects all visible
 models. Escape clears the selection or closes a menu or dialog; in search it leaves the field
 without clearing the query. Open "Keyboard shortcuts and tips" with `?`, the help icon in the
-header or Settings → Info. Settings → General → "Single-key shortcuts" disables shortcuts
+header or Settings → General → Controls. Settings → General → Controls → "Single-key shortcuts" disables shortcuts
 such as `/` and `?`; Ctrl/Cmd shortcuts remain available. With single-key shortcuts enabled, `M`
 moves the selected models to a folder. `F2` renames the focused folder in the folder tree, and
 Ctrl+Z (Cmd+Z on macOS) undoes the last move or folder rename (see
@@ -399,7 +399,7 @@ language: lid, drawer, hook, vase, box, organizer, wall mount, keychain, toy, ge
 spare part, lamp and small. The German name is what is stored; names you typed by hand, such as
 "lid" or "couvercle", are merged with "deckel".
 
-- **Turn off:** Settings → Catalog → "Assign tags automatically". When it is off, import, syncing
+- **Turn off:** Settings → Catalog → Automatic tags → "Assign tags automatically". When it is off, import, syncing
   with the disk and source folders assign no tags automatically. Existing tags stay, and you can
   still add tags by hand.
 - **Block a single tag:** for a tag the app would assign to the model by itself, the ✕ in the
@@ -407,7 +407,7 @@ spare part, lamp and small. The German name is what is stored; names you typed b
   and "Remove and do not assign automatically again". The blocked tag is no longer assigned on new
   imports and syncs, in every language and regardless of upper or lower case. You can still add
   it by hand.
-- **Lift a block:** Settings → Catalog lists all blocked tags under "Blocked automatic tags".
+- **Lift a block:** Settings → Catalog → Automatic tags lists all blocked tags under "Blocked automatic tags".
   "Lift block" ends a block. The list stays in force if you turn "Assign tags automatically" off
   and on again.
 - **When a setting cannot be read or saved:** Settings show "Loading setting …" while they read a
@@ -478,7 +478,7 @@ Refresh first only looks — nothing changes until you confirm:
   skipped. A notice counts these files: restore them there, or empty the trash, and sync again.
   The dialog also opens when this is the only finding.
 - **Missing files are kept by default.** Their entries stay in the catalog and still show up in the
-  catalog check (Settings → Catalog). To remove them, tick "Remove missing files from the
+  catalog check (Settings → Maintenance → Check the catalog). To remove them, tick "Remove missing files from the
   catalog"; the button then offers "Apply changes" (with new files) or "Remove" (only missing
   files). Removed entries go to the [trash](#the-trash), so you can still restore them;
   notes, tags and usage are lost once they are deleted permanently from there. Folders that no
@@ -500,7 +500,7 @@ Refresh first only looks — nothing changes until you confirm:
 - **After applying,** a notice sums up "N new files · N new folders · N files removed", and the new
   entries are briefly highlighted.
 
-**Sync at start:** under Settings → General → "Sync with disk", the switch "Sync at start" lets the
+**Sync at start:** under Settings → Catalog → Sync the catalog folder, the switch "Sync at start" lets the
 app check your catalog folders in the background when it starts. A notice appears only when
 something changed ("Found at start: …"); otherwise nothing happens. With large catalogs or network
 drives this can take a while. The second switch, "Add new files automatically", takes over new
@@ -676,7 +676,7 @@ Files that are already in the catalog are not read again automatically. There ar
 read the print data afterwards; the files themselves are never changed:
 
 - **One model:** on the detail page, "Rescan metadata".
-- **All unread 3MF files:** Settings → Catalog → **"Read print data"** → **"Read all unread 3MF
+- **All unread 3MF files:** Settings → Catalog → Print data → **"Read all unread 3MF
   files"**. It reads every 3MF file that has not been read yet, whichever slicer made it; a file
   without print data still gives its project settings.
 - **Selected models:** select them and choose **"Read print data"** in the "More" menu of the
@@ -717,7 +717,7 @@ folder, archive or source-folder run never takes them in by itself. Project file
   per filament, layer height, nozzle, temperatures, filament types and colors, target printer, slicer and version. The app only
   reads what the slicer wrote into the file (the first and last 256 KiB of a text file) and never calculates anything: missing
   values and placeholders stay unknown, a file without a slicer line says "No print data recognised", and a damaged binary file
-  is marked as unreadable. "Rescan metadata" (or Settings → Catalog → "Read print data") reads entries added
+  is marked as unreadable. "Rescan metadata" (or Settings → Catalog → Print data) reads entries added
   earlier. "Is there enough filament?" works on a G-code file like on a 3MF; if only lengths are stated (CuraEngine), there
   is no weight, cost or check. There is no "Open in slicer" and no 3D snapshot for G-code.
 - **Resin** entries are only catalogued: name, size, folder, tags, notes and trash work as usual, the ending (CTB, GOO …)
@@ -753,7 +753,7 @@ offers "Show in file manager" instead of "Open".
 
 ### What do you print with?
 
-In Settings → General you choose **Filament**, **Resin** or **Both** (the default). A new installation asks once on first start;
+In Settings → General → Printing method you choose **Filament**, **Resin** or **Both** (the default). A new installation asks once on first start;
 an existing one only shows a small notice and keeps showing everything until you choose. With "Filament" the resin switch and resin
 printers are hidden; with "Resin" the stock shows resin only, and the filament check and cost estimate are hidden. Nothing is deleted:
 hidden data returns when you change the choice. The browser version shows the choice but changes it only in the desktop app.
@@ -1173,8 +1173,24 @@ The Thingiverse area is an extra for finding models on Thingiverse. It is **off 
 ## Settings
 
 The gear icon at the bottom of the navigation rail opens Settings in the right-hand panel, next to
-your models and folders. They're split into four tabs:
-**General**, **Slicer**, **Catalog**, and **Info**.
+your models and folders. They're split into five tabs, in this order:
+**General**, **Catalog**, **Slicers & services**, **Maintenance**, and **Info**. The browser version has no
+"Slicers & services" tab. In the container version that tab says "Local slicers and file handover are not available in the
+container." and offers only printers and Thingiverse. Each tab is divided into titled sections:
+
+| Tab | Sections |
+|---|---|
+| General | Appearance, Language, Controls, Printing method, App behavior (browser: Printers) |
+| Catalog | Storage location, Source folders, On import, Sync the catalog folder, Automatic tags, Print data |
+| Slicers & services | Passing files on, Installed slicers, Messages from the slicer, Printers, Thingiverse |
+| Maintenance | Check the catalog, Back up and restore, Reset the catalog (browser: Back up the catalog) |
+| Info | Version and updates, Preview versions, Help and troubleshooting, App data and logs, About the app |
+
+Other parts of the app that point into Settings jump straight to the right section: the tab opens, the page scrolls to the
+section and the focus lands on its heading. Opened with the gear, the panel shows the tab you used last in this session
+(General the first time) and every tab starts at its top. When there is no room beside the catalog, Settings is laid over the
+view as a window: focus stays inside it, the background cannot be used, and Escape closes a confirmation first and then Settings.
+Closing returns the focus to the gear.
 
 ### General
 
@@ -1182,13 +1198,14 @@ your models and folders. They're split into four tabs:
 
 - **Appearance** — "Color scheme" follows your system setting automatically, or is fixed to
   light/dark. Right below it, "Display density": "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger
-  text, graphics, and controls, noticeably easier to read).
-- **Model preview** — whether the catalog and the detail page default to the stored preview
-  image or the rendered 3D view. Missing snapshots are rendered automatically in the
+  text, graphics, and controls, noticeably easier to read). "Model preview" decides whether the catalog and the detail
+  page default to the stored preview image or the rendered 3D view. Missing snapshots are rendered automatically in the
   background, one file after another. With "Image", this happens for files without an image of
-  their own (e.g. STL, OBJ).
+  their own (e.g. STL, OBJ). "Detail panel" is "Automatic (appears when clicked)" or "Always visible".
 - **Language** — German, English, Spanish, or French, effective immediately without a restart.
-- **When the window is closed** (desktop app only) — "Quit the program" (the default) or "Minimize
+- **Controls** — the switch for single-key shortcuts and the button "Keyboard shortcuts and tips" (the browser version only has the button).
+- **Printing method** — Filament, Resin or Both (see [What do you print with?](#what-do-you-print-with)).
+- **App behavior** (desktop app only), **when the window is closed** — "Quit the program" (the default) or "Minimize
   to the notification area" (on macOS: the menu bar). With the second choice, closing the window only
   hides it: imports and the printer connection keep running. To open the window again, click the
   icon (a click on "Open" in its menu does the same) or start the program again; "Quit" in the icon's
@@ -1197,14 +1214,9 @@ your models and folders. They're split into four tabs:
   from your desktop (on GNOME, for example, the AppIndicator extension). Without it you cannot see the
   icon: start the program again to bring the window back, then switch the setting back to "Quit". The
   choice is not offered in the container version.
-- **Rename files on import** — off by default; prefixes new catalog files with the date and time
-  (see [Importing files](#importing-files)).
-- **Sync with disk** — "Sync at start" and "Add new files automatically" (see
-  [Syncing with the disk](#syncing-with-the-disk)).
-- **Source folders** — folders that are checked for new models (see
-  [Source folders](#source-folders)).
+  The section also holds the start-menu switch on Linux (AppImage) where it is supported.
 
-### Slicer
+### Slicers & services
 
 ![Settings: slicer management](bilder/en/11-einstellungen-slicer.png)
 
@@ -1235,14 +1247,14 @@ Your slicer can tell the catalog when it has finished a file. The catalog then s
 recognised by the model you chose and not only by a similar file name. This works on the desktop only (not in the web version,
 not in a container) and is **off** until you switch it on.
 
-1. Settings → Slicer → switch on "Report sliced files automatically". One command line per slicer (PrusaSlicer, SuperSlicer,
+1. Settings → Slicers & services → Messages from the slicer → switch on "Report sliced files automatically". One command line per slicer (PrusaSlicer, SuperSlicer,
    OrcaSlicer, Bambu Studio, Creality Print) appears; "Copy" puts it on the clipboard.
 2. In the slicer open the print settings, go to the post-processing scripts and paste the command line there. The slicer adds the
    path of the finished file itself.
 
 From then on every finished slicing leaves a small note for the catalog; the program does not have to be open. At the next start,
 or when you start the program a second time, the notes are taken over. A notice "Slicers reported … new files" opens the list
-**New slicer files** (also under Settings → Slicer). For each file it shows the name, time, weight, material, slicer and path, and
+**New slicer files** (also under Settings → Slicers & services). For each file it shows the name, time, weight, material, slicer and path, and
 the model it suggests, marked **sure** (the names are the same) or **unsure**.
 
 - **Assign** remembers the link. The printer connection then knows the model for prints of that file, without guessing from the
@@ -1256,7 +1268,7 @@ the model it suggests, marked **sure** (the names are the same) or **unsure**.
 program is moved or reinstalled in another place, the command lines point to the old place: the page then says "The program path
 has changed"; "Create command lines again" gives the current ones, which you paste into the slicers again. The AppImage is
 recognised by the file you started, not by its temporary mount. If a call from a slicer fails (for example the file is no G-code),
-Settings → Slicer shows the reason of the last failed call.
+Settings → Slicers & services shows the reason of the last failed call.
 
 *Not checked with real slicers yet: the exact menu names differ between slicers and versions. The command line has been checked
 only with the program itself.*
@@ -1265,22 +1277,36 @@ only with the program itself.*
 
 ![Settings: Catalog](bilder/en/19-einstellungen-katalog.png)
 
-- **Check catalog** — a manually triggered scan finds orphaned file paths (a file listed in the
+- **Storage location** — shows the current base directory and lets you change it or open it
+  directly in the file manager. Changing it opens the same dialog as the initial setup. The link
+  "Hand files over to other programs →" jumps to the drag-out section under Slicers & services.
+- **Source folders** — folders that are checked for new models (see
+  [Source folders](#source-folders)), with the switch for the check at start and the list of rejected files.
+- **On import** — the switch "Rename files on import" (off by default) prefixes new catalog files with the date and
+  time (see [Importing files](#importing-files)).
+- **Sync the catalog folder** — "Sync at start" and "Add new files automatically", plus the remembered copies (see
+  [Syncing with the disk](#syncing-with-the-disk)).
+- **Automatic tags** — on by default. When it is off, import, syncing with the disk and
+  source folders assign no tags automatically (see [Automatic tags](#automatic-tags)). Below it the list of blocked
+  automatic tags: tags that the app no longer assigns by itself; "Lift block" ends a block.
+- **Print data** — "Read all sliced files" reads the print data of sliced files that were not
+  read yet (see [Reading print data afterwards](#reading-print-data-afterwards)).
+
+The browser version's Catalog tab only has Automatic tags and Print data.
+
+### Maintenance
+
+- **Check the catalog** — a manually triggered scan finds orphaned file paths (a file listed in the
   catalog but no longer present on disk) and inventory duplicates, with cleanup via a selection
   dialog.
-- **Assign tags automatically** — on by default. When it is off, import, syncing with the disk and
-  source folders assign no tags automatically (see [Automatic tags](#automatic-tags)).
-- **Blocked automatic tags** — lists tags that the app no longer assigns by itself; "Lift block"
-  ends a block.
-- **Read print data** — "Read all sliced files" reads the print data of sliced files that were not
-  read yet (see [Reading print data afterwards](#reading-print-data-afterwards)).
-- **Catalog backup** — see the next section.
-- **Catalog location** — shows the current base directory and lets you change it or open it
-  directly in the file manager. Changing it opens the same dialog as the initial setup.
+- **Back up and restore** — "Export catalog" and "Import catalog" (see
+  [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)). The browser version has the section
+  "Back up the catalog" with a download instead.
+- **Reset the catalog** — set apart in red at the bottom (not in the browser version).
 
 #### Reset catalog
 
-Under Settings → Catalog, **Reset catalog …** opens a confirmation with the number of models
+Under Settings → Maintenance → Reset the catalog, **Reset catalog …** opens a confirmation with the number of models
 outside the trash and the total number of catalog folders. **Reset** clears those models and
 folders, all tags and collections, and the removed models' metadata, queue entries and print log.
 Files and folders on disk stay unchanged.
@@ -1297,8 +1323,8 @@ the catalog location anew.
 
 ### Printers
 
-Under General, "Open Printer Manager" takes you to the printer area in the left rail.
-There is no separate Printers tab. The connection switch is at the bottom of the printer list;
+Under Slicers & services → Printers (in the browser version: under General → Printers), "Open Printer Manager" takes you to
+the printer area in the left rail. There is no separate Printers tab. The connection switch is at the bottom of the printer list;
 addresses and connection tests are in the selected printer's "Connection & network" section
 (see [Printer connection](#printer-connection)).
 
@@ -1314,9 +1340,9 @@ newer version is available, a "Check for updates again" button for a manual chec
 installing one from within the app — the date and backup file name of that update.
 
 The check button shows **Checking…** while checking; afterwards the tab shows the result or a
-check failure. **Report a bug** and **Detailed log** are also here (see [Reporting a bug](#reporting-a-bug)).
+check failure. **Report a bug** and **Detailed log** are in the section "Help and troubleshooting" (see [Reporting a bug](#reporting-a-bug)).
 
-Under **FOLDERS**, **Open data folder** opens the folder with your catalog and the backups taken
+Under **App data and logs**, **Open data folder** opens the folder with your catalog and the backups taken
 before updates (`update-backups`), and **Open log folder** opens the folder with the log files.
 There are two buttons because on Windows and macOS the log files are kept in a different system
 folder than the catalog.
@@ -1326,7 +1352,7 @@ The following screenshots compare the **light** and **dark** themes:
 ![Catalog in dark theme](bilder/en/14-dark-mode.png)
 ![Catalog in light theme](bilder/en/15-hell-mode-bonus.png)
 
-Under Settings → Info, the checkbox "Receive prerelease versions (Release Candidates)" enables
+Under Settings → Info → Preview versions, the checkbox "Receive prerelease versions (Release Candidates)" enables
 release candidates and the later final version for your existing catalog. Ticking it opens a
 warning: a catalog migration may prevent returning to an older version without a backup. Choose
 "Export catalog now", then "Enable now" after the export succeeds; "Enable anyway" proceeds
@@ -1347,7 +1373,7 @@ Common error messages (creating, renaming, moving and deleting folders, moving a
 models, source folders, removing models from the catalog, restoring a backup) appear in the
 language you selected. Technical errors keep their original text and the "Report problem" link.
 
-**Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open log folder** (under **FOLDERS**, see [Info](#info)) shows the log files.
+**Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open log folder** (under **App data and logs**, see [Info](#info)) shows the log files.
 
 ## Updating
 
@@ -1402,7 +1428,7 @@ backup file and its folder.
 ### Restoring a backup after an update
 
 Before an in-app update is installed, the app copies the catalog database to `update-backups`
-inside its data folder. Settings → Info → "Open data folder" opens the data folder; the copies are in its subfolder `update-backups`:
+inside its data folder. Settings → Info → App data and logs → "Open data folder" opens the data folder; the copies are in its subfolder `update-backups`:
 
 - Windows: `%APPDATA%\com.thebexxs.mfkatalogmanager\update-backups`
 - macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
@@ -1428,9 +1454,9 @@ Retention is separate for each kind:
 These automatic `.db` files are database copies, not ZIP catalog exports. "Import catalog"
 accepts only ZIP exports and cannot open them. To return using an automatic database copy:
 
-1. In Settings → Info, use "Open data folder" and open `update-backups`. Find the copy made
+1. In Settings → Info → App data and logs, use "Open data folder" and open `update-backups`. Find the copy made
    before the update you want to undo. Copy it somewhere safe.
-2. Export the current catalog under Settings → Catalog → "Export catalog" if the app still
+2. Export the current catalog under Settings → Maintenance → Back up and restore → "Export catalog" if the app still
    opens, then close the app completely.
 3. Install the previous version from the
    [Releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases), without starting it yet.
@@ -1445,14 +1471,14 @@ with the current catalog, its import dialog is unavailable; use the database-cop
 
 ## Backing up and restoring your catalog
 
-"Catalog backup" in Settings exports your complete catalog (database and settings) as a ZIP
+"Back up and restore" under Settings → Maintenance exports your complete catalog (database and settings) as a ZIP
 file — handy before switching systems or simply as a safety copy. When restoring such a backup,
 the app automatically backs up your existing database first, so an accidental import never
 overwrites anything irreversibly.
 
 To restore a ZIP export:
 
-1. Open Settings → Catalog → "Catalog Backup". Use "Export catalog" first if you want to
+1. Open Settings → Maintenance → "Back up and restore". Use "Export catalog" first if you want to
    retain the current state separately.
 2. Choose "Import catalog" and confirm "Yes, replace". This replaces the entire current catalog.
 3. Select the ZIP file created with "Export catalog". The app validates it before replacement.
@@ -1500,7 +1526,7 @@ the catalog to another computer manually.
 Only with a compatible backup. New versions can migrate the catalog database, which an older
 version may not be able to open. In-app updates create a database copy before installation;
 startup also attempts a copy before a schema migration, including after a manual installation.
-Create a ZIP export under Settings → Catalog before updating as well. See
+Create a ZIP export under Settings → Maintenance before updating as well. See
 [Restoring a backup after an update](#restoring-a-backup-after-an-update) for the difference
 between automatic database copies and ZIP imports, and the steps back.
 
@@ -1591,7 +1617,7 @@ Benutzerdaten. Bei der Vorabversion `0.18.0-2` zeigt Windows die MSI-Version als
 Beim Deinstallieren wird das Programm entfernt, **Katalog, Einstellungen und Logs bleiben aber
 absichtlich erhalten** – so geht bei einer Neuinstallation oder einem Update von Hand nichts
 verloren. Willst du alles loswerden, lösch danach diese Ordner (solange die App noch installiert
-ist, zeigt Einstellungen → Info → „Datenordner öffnen“ / „Log-Ordner öffnen“ sie dir):
+ist, zeigt Einstellungen → Info → App-Daten und Protokolle → „Datenordner öffnen“ / „Log-Ordner öffnen“ sie dir):
 
 - **Windows:** `%APPDATA%\com.thebexxs.mfkatalogmanager` und
   `%LOCALAPPDATA%\com.thebexxs.mfkatalogmanager` (Logs und Zwischenspeicher der Oberfläche)
@@ -1647,7 +1673,7 @@ Einrichtung direkt über den Katalog im Dateimanager.
   umschaltbar, dazu Sortierung und der "Importieren"-Button oben links.
 - **Kopfzeile:** nennt den aktuellen Manager-Bereich.
 - **Detailbereich rechts:** öffnet sich beim Anklicken eines Modells. Unter Einstellungen →
-  Allgemein → "Detailbereich" wählst du "Automatisch (erscheint beim Anklicken)" oder "Immer sichtbar".
+  Allgemein → Darstellung → "Detailbereich" wählst du "Automatisch (erscheint beim Anklicken)" oder "Immer sichtbar".
   Er zeigt Vorschau, Metadaten und Druckstatus. Je nach vorhandenen Daten zeigen Status-Badges
   außerdem Material, Filament-Prüfung, Favorit, Warteschlange und den zuletzt verwendeten Drucker.
 
@@ -1662,7 +1688,7 @@ Volumen, Objektanzahl und (falls in der Datei vorhanden) Materialangaben automat
 und die App schlägt passende Hashtags vor, die du danach frei bearbeiten kannst. Automatisch
 vergebene Tags wie „mehrteilig“, „miniatur“, „grossformat“ und „mehrfarbig“ erscheinen in der
 eingestellten Sprache der Oberfläche; die Suche findet sie unter beiden Namen. Der Schalter „Tags
-automatisch vergeben“ unter Einstellungen → Katalog (standardmäßig an) steuert das: Ist er aus,
+automatisch vergeben“ unter Einstellungen → Katalog → Automatische Tags (standardmäßig an) steuert das: Ist er aus,
 vergeben Import, [Abgleich mit der Festplatte](#mit-der-festplatte-abgleichen) und
 [Quellordner](#quellordner) keine Tags automatisch. Vorhandene Tags bleiben, von Hand kannst du
 weiterhin Tags vergeben. Wie du einzelne Tags sperrst, steht unter
@@ -1674,7 +1700,7 @@ Ergebnisliste nennt der Grund die Katalogdatei, zu der das Duplikat passt („Gl
 oder „Schon im Katalog: …“), mit einem Knopf „Anzeigen“. Ist die Katalogdatei nicht eindeutig oder
 nicht mehr vorhanden, steht stattdessen der allgemeine Grund.
 
-**Datum im Dateinamen:** Unter Einstellungen → Allgemein ist der Schalter „Dateien beim Import
+**Datum im Dateinamen:** Unter Einstellungen → Katalog → Beim Import ist der Schalter „Dateien beim Import
 umbenennen“ standardmäßig aus. Ist er an, bekommen neue Modelldateien, die in den Katalog kommen,
 das lokale Datum und die Uhrzeit als Präfix, z. B. `2026-10-12_14-41_Modell.3mf` (Format
 `JJJJ-MM-TT_HH-MM_`). Externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt.
@@ -1727,7 +1753,7 @@ Quellordner sind Ordner, in denen neue Modelle auftauchen, z. B. dein Downloads-
 schaut auf Anforderung hinein und verschiebt die Dateien, die du auswählst, in den Katalog. Von
 selbst passiert nichts.
 
-- **Einrichten:** Einstellungen → Allgemein → „Quellordner“. „Ordner hinzufügen …“ fügt einen
+- **Einrichten:** Einstellungen → Katalog → „Quellordner“. „Ordner hinzufügen …“ fügt einen
   Ordner hinzu, „Entfernen“ nimmt ihn aus der Liste. Ein Quellordner darf nicht der Katalogordner
   selbst oder darin liegen und kein Systemordner sein. Während ein Import läuft, lässt sich die
   Liste nicht ändern.
@@ -1849,7 +1875,7 @@ Beispiel eine Datei ohne Druckdaten, eine STL-Datei oder eine noch nicht gelesen
 sie weder als passend noch als unpassend: Eine Zeile über den Modellen sagt, wie viele solche
 Dateien ausgeblendet sind, und bietet „Einblenden“ an; sie erscheinen dann mit „Angabe fehlt: …“.
 Wurden einige der ausgeblendeten Dateien nie gelesen, sagt die Zeile auch, wie viele, und hat einen
-Knopf „Nachlesen …“, der Einstellungen → Katalog öffnet, wo
+Knopf „Nachlesen …“, der Einstellungen → Katalog → Druckdaten öffnet, wo
 [Druckdaten nachlesen](#druckdaten-nachlesen) steht. Solange ein Druckdaten-Filter aktiv ist,
 zeigen die Karten Zieldrucker, Druckzeit, Layerhöhe, Düse und Farbpunkte sowie einen Zugang zur
 [Plattenübersicht](#plattenübersicht). Ein fehlender Wert wird nie als 0 angezeigt. „Filter
@@ -1907,8 +1933,8 @@ Keines davon greift, solange du gerade in einem Textfeld tippst.
 Beim Navigieren mit Tab ist der Tastaturfokus sichtbar. Strg+A (Cmd+A unter macOS) wählt alle
 sichtbaren Modelle aus. Escape hebt die Auswahl auf oder schließt ein Menü oder einen Dialog.
 Im Suchfeld verlässt Escape das Feld, ohne den Suchtext zu löschen. "Tastenkürzel und Tipps"
-öffnest du mit `?`, dem Hilfesymbol in der Kopfzeile oder unter Einstellungen → Info.
-Einstellungen → Allgemein → "Einzeltasten-Kürzel" schaltet Kürzel wie `/` und `?` ab.
+öffnest du mit `?`, dem Hilfesymbol in der Kopfzeile oder unter Einstellungen → Allgemein → Bedienung.
+Einstellungen → Allgemein → Bedienung → "Einzeltasten-Kürzel" schaltet Kürzel wie `/` und `?` ab.
 Strg/Cmd-Kürzel bleiben verfügbar. Sind Einzeltasten-Kürzel eingeschaltet, verschiebt `M` die
 ausgewählten Modelle in einen Ordner. `F2` benennt den fokussierten Ordner im Ordnerbaum um, und
 Strg+Z (Cmd+Z unter macOS) macht das letzte Verschieben oder Umbenennen eines Ordners rückgängig
@@ -1927,7 +1953,7 @@ der App-Sprache: Deckel, Schublade, Haken, Vase, Box, Organizer, Wandhalterung, 
 Spielzeug, Zahnrad, Werkzeug, Adapter, Ersatzteil, Lampe und klein. Gespeichert wird der deutsche
 Name; von Hand getippte Namen wie „lid“ oder „couvercle“ werden mit „deckel“ zusammengeführt.
 
-- **Ausschalten:** Einstellungen → Katalog → „Tags automatisch vergeben“. Ist der Schalter aus,
+- **Ausschalten:** Einstellungen → Katalog → Automatische Tags → „Tags automatisch vergeben“. Ist der Schalter aus,
   vergeben Import, Abgleich mit der Festplatte und Quellordner keine Tags automatisch. Vorhandene
   Tags bleiben, von Hand kannst du weiterhin Tags vergeben.
 - **Einzelnen Tag sperren:** Bei einem Tag, den die App dem Modell selbst vergeben würde, bietet
@@ -1935,7 +1961,7 @@ Name; von Hand getippte Namen wie „lid“ oder „couvercle“ werden mit „d
   wieder automatisch vergeben werden) und „Entfernen und nicht mehr automatisch vergeben“. Der
   gesperrte Tag wird bei neuen Importen und Abgleichen nicht mehr vergeben, in jeder Sprache und
   unabhängig von Groß- und Kleinschreibung. Von Hand kannst du ihn weiterhin vergeben.
-- **Sperre aufheben:** Einstellungen → Katalog listet alle gesperrten Tags unter „Gesperrte
+- **Sperre aufheben:** Einstellungen → Katalog → Automatische Tags listet alle gesperrten Tags unter „Gesperrte
   automatische Tags“. „Sperre aufheben“ beendet eine Sperre. Die Sperrliste gilt weiter, falls du
   „Tags automatisch vergeben“ aus- und wieder einschaltest.
 - **Wenn eine Einstellung nicht gelesen oder gespeichert werden kann:** Einstellungen zeigen
@@ -2016,7 +2042,7 @@ Aktualisieren schaut zuerst nur nach – erst nach deiner Bestätigung ändert s
   leere den Papierkorb und gleiche danach erneut ab. Der Dialog öffnet sich auch, wenn das der
   einzige Befund ist.
 - **Fehlende Dateien bleiben standardmäßig erhalten.** Ihre Einträge bleiben im Katalog und
-  tauchen weiterhin in der Katalogprüfung auf (Einstellungen → Katalog). Zum Entfernen setzt du
+  tauchen weiterhin in der Katalogprüfung auf (Einstellungen → Wartung → Katalog prüfen). Zum Entfernen setzt du
   den Haken bei „Fehlende Dateien aus dem Katalog entfernen“; der Knopf heißt dann „Änderungen
   übernehmen“ (mit neuen Dateien) oder „Entfernen“ (nur fehlende Dateien). Entfernte Einträge
   landen im [Papierkorb](#der-papierkorb) und lassen sich dort wiederherstellen; Notizen, Tags und
@@ -2042,7 +2068,7 @@ Aktualisieren schaut zuerst nur nach – erst nach deiner Bestätigung ändert s
 - **Nach dem Übernehmen** fasst ein Hinweis „N neue Dateien · N neue Ordner · N Dateien entfernt“
   zusammen, und die neuen Einträge werden kurz hervorgehoben.
 
-**Beim Start abgleichen:** Unter Einstellungen → Allgemein → „Abgleich mit der Festplatte“ lässt
+**Beim Start abgleichen:** Unter Einstellungen → Katalog → Katalogordner abgleichen lässt
 der Schalter „Beim Start abgleichen“ die App beim Start im Hintergrund deine Katalogordner prüfen.
 Ein Hinweis erscheint nur, wenn sich etwas geändert hat („Beim Start gefunden: …“); sonst passiert
 nichts. Bei großen Katalogen oder Netzlaufwerken kann das etwas dauern. Der zweite Schalter, „Neue
@@ -2236,7 +2262,7 @@ Dateien, die schon im Katalog sind, werden nicht automatisch erneut gelesen. Es 
 die Druckdaten nachzulesen; die Dateien selbst werden dabei nie verändert:
 
 - **Ein Modell:** auf der Detailseite „Metadaten neu einlesen“.
-- **Alle noch nicht gelesenen 3MF-Dateien:** Einstellungen → Katalog → **„Druckdaten nachlesen“**
+- **Alle noch nicht gelesenen 3MF-Dateien:** Einstellungen → Katalog → Druckdaten
   → **„Alle noch nicht gelesenen 3MF-Dateien nachlesen“**. Das liest jede 3MF-Datei, die noch nicht
   gelesen wurde, egal mit welchem Slicer sie erstellt wurde; eine Datei ohne Druckdaten liefert
   trotzdem ihre Projekteinstellungen.
@@ -2281,7 +2307,7 @@ werden nicht angenommen.
   Schichthöhe, Düse, Temperaturen, Filamentarten und -farben, Zieldrucker, Slicer und Version. Das Programm liest nur, was der Slicer in
   die Datei geschrieben hat (bei Textdateien die ersten und letzten 256 KiB), und rechnet nie etwas aus: Fehlende Werte und Platzhalter
   bleiben unbekannt, eine Datei ohne Slicer-Zeile meldet „Keine Druckdaten erkannt“, eine beschädigte Binärdatei wird als unlesbar
-  markiert. „Metadaten neu einlesen“ (oder Einstellungen → Katalog → „Druckdaten einlesen“) liest früher aufgenommene Einträge. „Reicht das
+  markiert. „Metadaten neu einlesen“ (oder Einstellungen → Katalog → Druckdaten) liest früher aufgenommene Einträge. „Reicht das
   Filament?“ funktioniert bei G-Code wie bei 3MF; werden nur Längen angegeben (CuraEngine), gibt es kein Gewicht, keine Kosten und keine
   Prüfung. „Im Slicer öffnen“ und ein 3D-Schnappschuss gibt es für G-Code nicht.
 - **Resin**-Einträge werden nur katalogisiert: Name, Größe, Ordner, Tags, Notizen und Papierkorb funktionieren wie sonst, die
@@ -2319,7 +2345,7 @@ Programm geöffnet: Statt „Öffnen“ bietet die App „Im Dateimanager zeigen
 
 ### Womit druckst du?
 
-In Einstellungen → Allgemein wählst du **Filament**, **Resin** oder **Beides** (Standard). Eine Neuinstallation fragt einmal beim ersten Start;
+In Einstellungen → Allgemein → Druckverfahren wählst du **Filament**, **Resin** oder **Beides** (Standard). Eine Neuinstallation fragt einmal beim ersten Start;
 eine bestehende zeigt nur einen kleinen Hinweis und zeigt weiter alles, bis du wählst. Bei „Filament“ sind der Resin-Schalter und die
 Resin-Drucker ausgeblendet; bei „Resin“ zeigt der Bestand nur Resin, Filament-Prüfung und Kostenschätzung entfallen. Nichts wird gelöscht:
 Ausgeblendete Daten kommen mit der Auswahl zurück. Die Browser-Version zeigt die Auswahl, ändert sie aber nur in der Desktop-App.
@@ -2760,21 +2786,39 @@ Der Bereich „Thingiverse“ ist ein Zusatz, um Modelle bei Thingiverse zu find
 
 Über das Zahnrad-Symbol unten in der Navigationsleiste öffnest du die Einstellungen im rechten
 Bereich neben deinen Modellen und Ordnern. Sie sind in
-vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
+fünf Reiter aufgeteilt, in dieser Reihenfolge: **Allgemein**, **Katalog**, **Slicer & Dienste**, **Wartung** und **Info**.
+Die Browserversion hat keinen Reiter „Slicer & Dienste“. In der Container-Version steht dort „Lokale Slicer und Dateiübergabe sind im
+Container nicht verfügbar.“, dazu nur Drucker und Thingiverse. Jeder Reiter ist in Abschnitte mit Überschrift gegliedert:
+
+| Reiter | Abschnitte |
+|---|---|
+| Allgemein | Darstellung, Sprache, Bedienung, Druckverfahren, Programmverhalten (Browser: Drucker) |
+| Katalog | Speicherort, Quellordner, Beim Import, Katalogordner abgleichen, Automatische Tags, Druckdaten |
+| Slicer & Dienste | Dateien weitergeben, Installierte Slicer, Meldungen vom Slicer, Drucker, Thingiverse |
+| Wartung | Katalog prüfen, Sichern und wiederherstellen, Katalog zurücksetzen (Browser: Katalog sichern) |
+| Info | Version und Updates, Vorab-Versionen, Hilfe und Fehlersuche, App-Daten und Protokolle, Über die App |
+
+Andere Stellen der App, die in die Einstellungen verweisen, springen gleich zum passenden Abschnitt: Der Reiter öffnet sich, die Seite
+scrollt zum Abschnitt und der Fokus landet auf dessen Überschrift. Mit dem Zahnrad geöffnet zeigt das Panel den in dieser Sitzung
+zuletzt benutzten Reiter (beim ersten Mal Allgemein), und jeder Reiter beginnt oben. Ist neben dem Katalog kein Platz, liegen die
+Einstellungen als Fenster über der Ansicht: Der Fokus bleibt darin, der Hintergrund ist nicht bedienbar, und Escape schließt zuerst eine
+Rückfrage und dann die Einstellungen. Beim Schließen kehrt der Fokus zum Zahnrad zurück.
 
 ### Allgemein
 
 ![Einstellungen: Allgemein](bilder/18-einstellungen-allgemein.png)
 
-- **Erscheinungsbild** — das „Farbschema“ folgt automatisch deiner Systemeinstellung, oder ist
+- **Darstellung** — das „Farbschema“ folgt automatisch deiner Systemeinstellung, oder ist
   fest auf Hell/Dunkel gestellt. Direkt darunter die „Darstellungsdichte“: "Kompakt" (dicht, kleine Schrift, viel auf
-  einen Blick) oder "Komfort" (größere Schrift, Grafiken und Bedienelemente, deutlich lesbarer).
-- **Modellvorschau** — ob Katalog und Detailseite standardmäßig das hinterlegte Vorschaubild
+  einen Blick) oder "Komfort" (größere Schrift, Grafiken und Bedienelemente, deutlich lesbarer). Die „Modellvorschau“ legt fest,
+  ob Katalog und Detailseite standardmäßig das hinterlegte Vorschaubild
   oder die gerenderte 3D-Ansicht zeigen. Fehlende Schnappschüsse werden automatisch im Hintergrund
   nachgerendert, eine Datei nach der anderen. Bei „Bild“ passiert das für Dateien ohne eigenes Bild
-  (z. B. STL, OBJ).
+  (z. B. STL, OBJ). Der „Detailbereich“ ist „Automatisch (erscheint beim Anklicken)“ oder „Immer sichtbar“.
 - **Sprache** — Deutsch, Englisch, Spanisch oder Französisch, sofort wirksam ohne Neustart.
-- **Beim Schließen des Fensters** (nur Desktop-App) — „Programm beenden“ (Standard) oder „In den
+- **Bedienung** — der Schalter für Einzeltasten-Kürzel und der Knopf „Tastenkürzel und Tipps“ (die Browserversion hat nur den Knopf).
+- **Druckverfahren** — Filament, Resin oder Beides (siehe [Womit druckst du?](#womit-druckst-du)).
+- **Programmverhalten** (nur Desktop-App), **beim Schließen des Fensters** — „Programm beenden“ (Standard) oder „In den
   Infobereich minimieren“ (auf macOS: die Menüleiste). Bei der zweiten Wahl versteckt das Schließen
   das Fenster nur: Importe und Druckeranbindung laufen weiter. Zum Wiederöffnen klickst du auf das
   Symbol (ein Klick auf „Öffnen“ in seinem Menü tut dasselbe) oder startest das Programm erneut;
@@ -2784,14 +2828,9 @@ vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
   AppIndicator-Erweiterung). Ohne sie siehst du das Symbol nicht: Starte das Programm erneut, um das
   Fenster zurückzuholen, und stelle die Einstellung wieder auf „Beenden“. Im Container steht die Wahl
   nicht zur Verfügung.
-- **Dateien beim Import umbenennen** — standardmäßig aus; stellt neuen Katalogdateien Datum und
-  Uhrzeit voran (siehe [Dateien importieren](#dateien-importieren)).
-- **Abgleich mit der Festplatte** — „Beim Start abgleichen“ und „Neue Dateien automatisch
-  aufnehmen“ (siehe [Mit der Festplatte abgleichen](#mit-der-festplatte-abgleichen)).
-- **Quellordner** — Ordner, die auf neue Modelle geprüft werden (siehe
-  [Quellordner](#quellordner)).
+  Der Abschnitt enthält unter Linux (AppImage) auch den Schalter für den Eintrag im Startmenü, wo er unterstützt wird.
 
-### Slicer
+### Slicer & Dienste
 
 ![Einstellungen: Slicer-Verwaltung](bilder/11-einstellungen-slicer.png)
 
@@ -2822,14 +2861,14 @@ Dein Slicer kann dem Katalog melden, wenn er eine Datei fertig geslict hat. Der 
 ein Druck am gewählten Modell erkannt wird und nicht nur an einem ähnlichen Dateinamen. Das gibt es nur auf dem Desktop (nicht in der
 Web-Version, nicht im Container) und ist **aus**, bis du es einschaltest.
 
-1. Einstellungen → Slicer → „Geslichte Dateien automatisch melden“ einschalten. Es erscheint je Slicer (PrusaSlicer, SuperSlicer,
+1. Einstellungen → Slicer & Dienste → Meldungen vom Slicer → „Geslichte Dateien automatisch melden“ einschalten. Es erscheint je Slicer (PrusaSlicer, SuperSlicer,
    OrcaSlicer, Bambu Studio, Creality Print) eine Befehlszeile; „Kopieren“ legt sie in die Zwischenablage.
 2. Im Slicer die Druckeinstellungen öffnen, zu den Nachbearbeitungsskripten gehen und die Befehlszeile dort einfügen. Den Pfad der
    fertigen Datei hängt der Slicer selbst an.
 
 Danach hinterlässt jedes fertige Slicen eine kleine Notiz für den Katalog; das Programm muss dafür nicht geöffnet sein. Beim nächsten
 Start oder wenn du das Programm ein zweites Mal startest, werden die Notizen übernommen. Ein Hinweis „Slicer haben … neue Dateien
-gemeldet“ öffnet die Liste **Neue Slicer-Dateien** (auch unter Einstellungen → Slicer). Sie zeigt je Datei Name, Zeit, Gewicht,
+gemeldet“ öffnet die Liste **Neue Slicer-Dateien** (auch unter Einstellungen → Slicer & Dienste). Sie zeigt je Datei Name, Zeit, Gewicht,
 Material, Slicer und Pfad sowie das vorgeschlagene Modell, gekennzeichnet als **sicher** (gleicher Name) oder **unsicher**.
 
 - **Zuordnen** merkt die Verknüpfung. Die Druckeranbindung kennt das Modell dann für Drucke dieser Datei, ohne am Namen zu raten.
@@ -2843,7 +2882,7 @@ Material, Slicer und Pfad sowie das vorgeschlagene Modell, gekennzeichnet als **
 das Programm verschoben oder an anderer Stelle neu installiert, zeigen die Befehlszeilen auf den alten Ort: Die Seite meldet dann
 „Der Programmpfad hat sich geändert“; „Befehlszeilen neu erzeugen“ liefert die aktuellen, die du in den Slicern erneut einfügst. Ein
 AppImage wird an der gestarteten Datei erkannt, nicht an seinem temporären Einhängepunkt. Schlägt ein Aufruf eines Slicers fehl (zum
-Beispiel weil die Datei kein G-Code ist), zeigt Einstellungen → Slicer den Grund des letzten fehlgeschlagenen Aufrufs.
+Beispiel weil die Datei kein G-Code ist), zeigt Einstellungen → Slicer & Dienste den Grund des letzten fehlgeschlagenen Aufrufs.
 
 *Mit echten Slicern noch nicht geprüft: Die Menünamen unterscheiden sich je Slicer und Version. Die Befehlszeile ist bisher nur mit
 dem Programm selbst geprüft.*
@@ -2852,23 +2891,37 @@ dem Programm selbst geprüft.*
 
 ![Einstellungen: Katalog](bilder/19-einstellungen-katalog.png)
 
+- **Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
+  im Dateimanager zu öffnen. Ändern öffnet denselben Dialog wie bei der Ersteinrichtung. Der Verweis
+  „Dateien an andere Programme übergeben →“ springt zum Abschnitt zum Herausziehen unter Slicer & Dienste.
+- **Quellordner** — Ordner, die auf neue Modelle geprüft werden (siehe
+  [Quellordner](#quellordner)), mit dem Schalter für die Prüfung beim Start und der Liste abgelehnter Dateien.
+- **Beim Import** — der Schalter „Dateien beim Import umbenennen“ (standardmäßig aus) stellt neuen Katalogdateien Datum und
+  Uhrzeit voran (siehe [Dateien importieren](#dateien-importieren)).
+- **Katalogordner abgleichen** — „Beim Start abgleichen“ und „Neue Dateien automatisch
+  aufnehmen“ samt gemerkter Kopien (siehe [Mit der Festplatte abgleichen](#mit-der-festplatte-abgleichen)).
+- **Automatische Tags** — standardmäßig an. Ist der Schalter aus, vergeben Import,
+  Abgleich mit der Festplatte und Quellordner keine Tags automatisch (siehe
+  [Automatische Tags](#automatische-tags)). Darunter die Liste der gesperrten automatischen Tags: Tags, die die App nicht mehr selbst
+  vergibt; „Sperre aufheben“ beendet eine Sperre.
+- **Druckdaten** — „Alle geslicten Dateien nachlesen“ liest die Druckdaten geslicter
+  Dateien, die noch nicht gelesen wurden (siehe [Druckdaten nachlesen](#druckdaten-nachlesen)).
+
+Der Reiter Katalog der Browserversion hat nur Automatische Tags und Druckdaten.
+
+### Wartung
+
 - **Katalog prüfen** — ein manuell auslösbarer Scan findet verwaiste Dateipfade (Datei im Katalog
   eingetragen, aber auf der Festplatte nicht mehr vorhanden) und Bestands-Duplikate, mit
   Bereinigung per Auswahl-Dialog.
-- **Tags automatisch vergeben** — standardmäßig an. Ist der Schalter aus, vergeben Import,
-  Abgleich mit der Festplatte und Quellordner keine Tags automatisch (siehe
-  [Automatische Tags](#automatische-tags)).
-- **Gesperrte automatische Tags** — listet Tags, die die App nicht mehr selbst vergibt; „Sperre
-  aufheben“ beendet eine Sperre.
-- **Druckdaten nachlesen** — „Alle geslicten Dateien nachlesen“ liest die Druckdaten geslicter
-  Dateien, die noch nicht gelesen wurden (siehe [Druckdaten nachlesen](#druckdaten-nachlesen)).
-- **Katalog-Backup** — siehe nächster Abschnitt.
-- **Katalog-Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
-  im Dateimanager zu öffnen. Ändern öffnet denselben Dialog wie bei der Ersteinrichtung.
+- **Sichern und wiederherstellen** — „Katalog exportieren“ und „Katalog importieren“ (siehe
+  [Katalog sichern und wiederherstellen](#katalog-sichern-und-wiederherstellen-backup)). Die Browserversion hat stattdessen den Abschnitt
+  „Katalog sichern“ mit einem Download.
+- **Katalog zurücksetzen** — rot abgesetzt ganz unten (nicht in der Browserversion).
 
 #### Katalog zurücksetzen
 
-Unter Einstellungen → Katalog öffnet **Katalog zurücksetzen …** eine Bestätigung mit der Anzahl
+Unter Einstellungen → Wartung → Katalog zurücksetzen öffnet **Katalog zurücksetzen …** eine Bestätigung mit der Anzahl
 der Modelle außerhalb des Papierkorbs und aller Katalogordner. **Zurücksetzen** entfernt diese
 Modelle und Ordner, alle Tags und Sammlungen sowie die Metadaten, Warteschlangen-Einträge und das
 Druckprotokoll der entfernten Modelle. Dateien und Ordner auf der Festplatte bleiben unverändert.
@@ -2886,8 +2939,8 @@ Einrichtungsdialog erneut, damit du den Katalog-Speicherort neu einrichten kanns
 
 ### Drucker
 
-Unter Allgemein führt "Printer Manager öffnen" zum Druckerbereich in der linken Leiste.
-Einen eigenen Reiter Drucker gibt es nicht. Der Schalter für die Anbindung steht unten in der
+Unter Slicer & Dienste → Drucker (in der Browserversion: unter Allgemein → Drucker) führt "Printer Manager öffnen" zum
+Druckerbereich in der linken Leiste. Einen eigenen Reiter Drucker gibt es nicht. Der Schalter für die Anbindung steht unten in der
 Druckerliste. Adresse und Verbindungstest findest du beim gewählten Drucker unter
 "Anbindung & Netzwerk" (siehe [Druckeranbindung](#druckeranbindung)).
 
@@ -2904,10 +2957,10 @@ Drittanbieter-Komponenten, außerdem dieselben Update-Informationen wie im Absch
 Datum und Sicherungsdatei dieses Updates.
 
 Während der Prüfung zeigt der Knopf **Suche läuft…**; danach zeigt der Reiter das Ergebnis oder
-einen Fehler bei der Prüfung. Hier findest du auch **Fehler melden** und **Ausführliches Protokoll**
+einen Fehler bei der Prüfung. Im Abschnitt „Hilfe und Fehlersuche“ findest du **Fehler melden** und **Ausführliches Protokoll**
 (siehe [Fehler melden](#fehler-melden)).
 
-Unter **ORDNER** öffnet **Datenordner öffnen** den Ordner mit deinem Katalog und den Sicherungen
+Unter **App-Daten und Protokolle** öffnet **Datenordner öffnen** den Ordner mit deinem Katalog und den Sicherungen
 vor Updates (`update-backups`), **Log-Ordner öffnen** den Ordner mit den Logdateien. Es sind zwei
 Knöpfe, weil Windows und macOS die Logdateien in einem anderen Systemordner ablegen als den
 Katalog.
@@ -2917,7 +2970,7 @@ Die folgenden Screenshots zeigen das **Hell**- und **Dunkel**-Theme im Vergleich
 ![Katalog im Dunkel-Theme](bilder/14-dark-mode.png)
 ![Katalog im Hell-Theme](bilder/15-hell-mode-bonus.png)
 
-Unter Einstellungen → Info schaltet das Kontrollkästchen "Vorab-Versionen (Release Candidates)
+Unter Einstellungen → Info → Vorab-Versionen schaltet das Kontrollkästchen "Vorab-Versionen (Release Candidates)
 erhalten" den Empfang von Release Candidates und der späteren finalen Version für deinen
 vorhandenen Katalog frei. Beim Anhaken erscheint eine Warnung: Eine Katalog-Migration kann den
 Rückweg ohne Sicherung verhindern. Wähle "Katalog jetzt exportieren" und nach erfolgreichem Export
@@ -2940,7 +2993,7 @@ und umbenennen, Quellordner, Modelle aus dem Katalog entfernen, Sicherung wieder
 erscheinen in der gewählten Sprache. Technische Fehler behalten ihren Originaltext und den Link
 „Problem melden“.
 
-**Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Log-Ordner öffnen** (unter **ORDNER**, siehe [Info](#info-1)) zeigt die Protokolldateien.
+**Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Log-Ordner öffnen** (unter **App-Daten und Protokolle**, siehe [Info](#info-1)) zeigt die Protokolldateien.
 
 ## Aktualisieren
 
@@ -2997,7 +3050,7 @@ Sicherung nicht angelegt werden, sagt der Dialog das und nennt keine Schritte. D
 ### Wiederherstellen einer Sicherung nach einem Update
 
 Vor der Installation eines Updates aus der App kopiert sie die Katalog-Datenbank nach
-`update-backups` im Datenordner. Einstellungen → Info → "Datenordner öffnen" öffnet den Datenordner; die Kopien liegen im Unterordner `update-backups`:
+`update-backups` im Datenordner. Einstellungen → Info → App-Daten und Protokolle → "Datenordner öffnen" öffnet den Datenordner; die Kopien liegen im Unterordner `update-backups`:
 
 - Windows: `%APPDATA%\com.thebexxs.mfkatalogmanager\update-backups`
 - macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
@@ -3025,10 +3078,10 @@ Diese automatischen `.db`-Dateien sind Datenbankkopien, keine ZIP-Katalogexporte
 "Katalog importieren" akzeptiert nur ZIP-Exporte und kann sie nicht öffnen.
 So gehst du mit einer automatischen Datenbankkopie zurück:
 
-1. Öffne unter Einstellungen → Info über "Datenordner öffnen" den Ordner `update-backups`.
+1. Öffne unter Einstellungen → Info → App-Daten und Protokolle über "Datenordner öffnen" den Ordner `update-backups`.
    Suche die Kopie vor dem Update, das du rückgängig machen möchtest. Kopiere sie an einen
    sicheren Ort.
-2. Exportiere den aktuellen Katalog unter Einstellungen → Katalog → "Katalog exportieren",
+2. Exportiere den aktuellen Katalog unter Einstellungen → Wartung → Sichern und wiederherstellen → "Katalog exportieren",
    falls die App noch startet. Schließe die App anschließend vollständig.
 3. Installiere die vorherige Version von der
    [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases), ohne sie schon zu starten.
@@ -3045,7 +3098,7 @@ Nutze dann den Weg mit der Datenbankkopie oben.
 
 ## Katalog sichern und wiederherstellen (Backup)
 
-Über "Katalog-Backup" in den Einstellungen exportierst du deinen kompletten Katalog (Datenbank
+Über „Sichern und wiederherstellen“ unter Einstellungen → Wartung exportierst du deinen kompletten Katalog (Datenbank
 und Einstellungen) als ZIP-Datei — praktisch vor einem Systemwechsel oder einfach als
 Sicherheitskopie. Beim Wiedereinspielen einer solchen Sicherung legt die App automatisch vorher
 eine Sicherung deiner bestehenden Datenbank an, sodass ein versehentlicher Import nichts
@@ -3053,7 +3106,7 @@ unwiderruflich überschreibt.
 
 So spielst du einen ZIP-Export ein:
 
-1. Öffne Einstellungen → Katalog → "Katalog-Backup". Nutze zuerst "Katalog exportieren", wenn
+1. Öffne Einstellungen → Wartung → "Sichern und wiederherstellen". Nutze zuerst "Katalog exportieren", wenn
    du den aktuellen Stand separat behalten möchtest.
 2. Wähle "Katalog importieren" und bestätige mit "Ja, ersetzen". Das ersetzt den gesamten
    aktuellen Katalog.
@@ -3096,7 +3149,7 @@ Bei der Ersteinrichtung "Bestehende Ordnerstruktur übernehmen" wählen (siehe
 
 **Kann ich denselben Katalog auf mehreren Rechnern nutzen?**
 Nicht automatisch/synchronisiert — dafür gibt es aktuell keine Cloud-Anbindung (siehe
-[Bekannte Einschränkungen](#bekannte-einschränkungen)). Über "Katalog-Backup" (Export/Import)
+[Bekannte Einschränkungen](#bekannte-einschränkungen)). Über „Sichern und wiederherstellen“ (Export/Import)
 lässt sich der Katalog aber manuell auf einen anderen Rechner übertragen.
 
 **Kann ich nach einem Update wieder zur alten Version zurück?**
@@ -3104,7 +3157,7 @@ Nur mit einer kompatiblen Sicherung. Neue Versionen können die Katalog-Datenban
 sodass eine ältere Version sie nicht mehr öffnen kann. Updates aus der App erstellen vor der
 Installation eine Datenbankkopie. Beim Start versucht die App außerdem vor einer Schema-Migration
 eine Kopie anzulegen, auch nach einer Installation von Hand. Exportiere vor dem Update zusätzlich
-eine ZIP-Sicherung unter Einstellungen → Katalog. Unter
+eine ZIP-Sicherung unter Einstellungen → Wartung. Unter
 [Wiederherstellen einer Sicherung nach einem Update](#wiederherstellen-einer-sicherung-nach-einem-update)
 findest du den Unterschied zwischen automatischen Datenbankkopien und ZIP-Importen sowie den Rückweg.
 

@@ -95,7 +95,7 @@ export function SlicerReportSettings() {
 
   const enabled = setup?.enabled === true;
   return (
-    <section className="mb-4" aria-labelledby="sr-settings-title">
+    <div>
       <div className="flex items-center justify-between gap-3 mb-1">
         <span id="sr-settings-title" className="text-[length:var(--font-size-body)] font-semibold">{t('srTitle')}</span>
         <ToggleSwitch checked={enabled} label={t('srTitle')} disabled={busy || setup === null} onChange={(next) => void setEnabled(next)} />
@@ -148,6 +148,6 @@ export function SlicerReportSettings() {
       {setup?.lastError && <p className="mt-1 text-caption text-[var(--ink-3)] [overflow-wrap:anywhere]">{t('srLastError').replace('{message}', setup.lastError)}</p>}
       <p role="status" aria-live="polite" className="mt-1 text-caption text-[var(--ink-2)]">{status}</p>
       {error && <p role="alert" className="text-caption text-[var(--crit)] break-words">{error.text} <ErrorText error={error.error} /></p>}
-    </section>
+    </div>
   );
 }

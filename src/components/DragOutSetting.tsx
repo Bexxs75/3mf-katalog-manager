@@ -34,11 +34,7 @@ export function DragOutSetting() {
   // The platform never changes while the app runs.
   const windows = useRef(isWindowsPlatform()).current;
   return (
-    <section className="mb-5 pb-4 border-b border-[var(--line)]" aria-labelledby="drag-out-heading">
-      <h3 id="drag-out-heading" tabIndex={-1} className="text-[length:var(--font-size-body)] font-semibold mb-2 outline-none">
-        {t('dgSectionTitle')}{' '}
-        <span className="px-1.5 rounded-full border border-[var(--line-strong)] text-caption font-normal text-[var(--ink-2)]">{t('tvExperimental')}</span>
-      </h3>
+    <div>
       <div className="flex items-center justify-between gap-2 text-small">
         <span>
           <span className="font-semibold">{t('dgSwitchLabel')}</span>
@@ -74,6 +70,6 @@ export function DragOutSetting() {
           </details>
         </div>
       )}
-    </section>
+    </div>
   );
 }

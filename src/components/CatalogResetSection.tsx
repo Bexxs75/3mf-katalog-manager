@@ -18,8 +18,7 @@ export function CatalogResetSection({ modelCount, folderCount, onExport, onReset
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
-  return <section className="mt-4">
-    <h3 className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('resetCatalog')}</h3>
+  return <div>
     <button {...lockProps} className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 w-full rounded-[3px] border border-dashed border-[var(--crit)] bg-transparent text-[var(--crit)] text-small cursor-pointer`} onClick={() => { setSaved(false); setError(null); setOpen(true); }}>{t('resetCatalog')} …</button>
     <p className="text-[length:var(--font-size-meta)] text-[var(--ink-3)] mt-1.5">{t('resetCatalogHint')}</p>
     {open && <CatalogActionDialog title={t('resetCatalogQuestion')} onClose={() => { if (!busy) setOpen(false); }}>
@@ -44,5 +43,5 @@ export function CatalogResetSection({ modelCount, folderCount, onExport, onReset
         }}>{t('resetConfirm')}</button>
       </div>
     </CatalogActionDialog>}
-  </section>;
+  </div>;
 }

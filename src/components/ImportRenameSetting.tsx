@@ -31,7 +31,7 @@ export function ImportRenameSetting() {
     }
   };
   return (
-    <div className="mb-4">
+    <div>
       <div className="flex items-center justify-between gap-2 text-small">
         <span>{t('importRenameTitle')}</span>
         <ToggleSwitch checked={enabled} label={t('importRenameTitle')} disabled={busy} onChange={change} />

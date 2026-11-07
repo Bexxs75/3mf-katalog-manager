@@ -9,7 +9,7 @@ const views: { name: string; open: () => Promise<void>; close?: () => Promise<vo
   { name: 'Printer Manager', open: async () => { await railToAndWait('Printer Manager', async () => await $('h1=Testdrucker Alpha').isDisplayed()); } },
   { name: 'Material Manager', open: async () => { await railTo('Material Manager'); await browser.pause(400); } },
   { name: 'Papierkorb', open: async () => { await railTo('Papierkorb'); await browser.pause(400); } },
-  ...(['Allgemein', 'Slicer', 'Katalog', 'Info'] as const).map((tab) => ({
+  ...(['Allgemein', 'Katalog', 'Slicer & Dienste', 'Wartung', 'Info'] as const).map((tab) => ({
     name: `Einstellungen ${tab}`, open: async () => { await openSettings(tab); await browser.pause(300); }, close: closeSettings,
   })),
   { name: 'Kontextmenue', open: async () => {

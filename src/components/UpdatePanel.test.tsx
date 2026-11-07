@@ -44,10 +44,6 @@ describe('UpdatePanel', () => {
     screen.getByText('Was ist neu?').click();
     expect(view.openNotes).toHaveBeenCalledOnce();
   });
-  it.each([true, null])('hides channel controls when preview is %s', (preview) => {
-    render(<LanguageProvider><UpdatePanel view={makeView({ preview })} onExport={vi.fn()} /></LanguageProvider>);
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-  });
   it('shows the running version immediately, before the check has answered', () => {
     renderPanel(makeView({ info: null }));
     expect(screen.getByText('0.15.0')).toBeInTheDocument();

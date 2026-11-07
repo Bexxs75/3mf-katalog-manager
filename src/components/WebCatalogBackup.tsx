@@ -24,7 +24,6 @@ export function WebCatalogBackup() {
   const classes = 'block text-center leading-7 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small';
   return (
     <>
-      <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBackupTitle')}</div>
       {/* The same element stays mounted while paused, so keyboard focus is not lost. */}
       <a
         href="/api/backup/export"

@@ -148,5 +148,6 @@ it('says how many held-back files are unread and leads to the block that reads t
   expect(notice).toHaveTextContent('Davon ist 1 noch nicht gelesen.');
   fireEvent.click(within(notice).getByRole('button', { name: de.pfUnreadReread }));
   expect(await screen.findByRole('tab', { name: de.settingsTabCatalog, selected: true })).toBeInTheDocument();
-  expect(screen.getByText(de.printDataRereadTitle)).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: de.settingsSecPrintData })).toHaveFocus();
+  expect(screen.getByRole('button', { name: de.printDataRereadAll })).toBeVisible();
 });

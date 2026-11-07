@@ -36,7 +36,7 @@ describe('ThingiverseSettings', () => {
     vi.mocked(api.getThingiverseSettings).mockRejectedValueOnce(new Error('boom')).mockImplementation(async () => ({ ...stored }));
     setup();
     expect(await screen.findByRole('alert')).toHaveTextContent(de.settingLoadFailed);
-    expect(screen.getByRole('heading', { name: de.tvSettingsTitle })).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: de.tvSwitchLabel })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
     expect(await screen.findByRole('switch', { name: de.tvSwitchLabel })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -48,7 +48,6 @@ describe('ThingiverseSettings', () => {
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(screen.queryByLabelText(de.tvTokenLabel)).toBeNull();
     expect(screen.getByText(de.tvPrivacy)).toBeInTheDocument();
-    expect(screen.getByText(de.tvExperimental)).toBeInTheDocument();
   });
 
   it('asks before switching on: cancel keeps it off, confirm turns it on and tells the app', async () => {

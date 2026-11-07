@@ -67,6 +67,7 @@ describe('the Thingiverse area in the app', () => {
     await screen.findByText(de.tvAreaSource);
 
     fireEvent.click(screen.getByRole('button', { name: de.settingsTitle }));
+    fireEvent.click(screen.getByRole('tab', { name: de.settingsTabServices }));
     const off = await screen.findByRole('switch', { name: de.tvSwitchLabel });
     fireEvent.click(off);
     await waitFor(() => expect(railButton()).toBeNull());

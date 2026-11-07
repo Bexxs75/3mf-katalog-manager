@@ -37,7 +37,7 @@ beforeEach(() => {
 it('opens first-run setup after reset and reloads catalog data', async () => {
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   fireEvent.click(screen.getByRole('button', { name: de.settingsTitle }));
-  fireEvent.click(screen.getByText(de.settingsTabCatalog, { selector: 'button' }));
+  fireEvent.click(screen.getByText(de.settingsTabMaintenance, { selector: 'button' }));
   fireEvent.click(screen.getByText('Katalog zurücksetzen …'));
   fireEvent.click(screen.getByText('Zurücksetzen'));
   expect(await screen.findByText(de.catalogSetupAdoptTitle)).toBeTruthy();

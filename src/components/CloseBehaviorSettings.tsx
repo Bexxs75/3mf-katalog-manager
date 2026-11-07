@@ -14,7 +14,7 @@ export function CloseBehaviorSettings() {
   // Set to true again on setup: StrictMode runs setup, cleanup, setup.
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   // `null` is the loaded answer "no notification area": the group stays hidden then.
-  if (loadState !== 'ready') return <SettingLoadStatus state={loadState} label={t('closeActionTitle')} error={loadError} onReload={() => void reload()} className="mt-4" />;
+  if (loadState !== 'ready') return <SettingLoadStatus state={loadState} label={t('closeActionTitle')} error={loadError} onReload={() => void reload()} className="mt-1" />;
   if (!state) return null;
   const mac = state.platform === 'macos';
   const linux = state.platform === 'linux';
@@ -37,7 +37,7 @@ export function CloseBehaviorSettings() {
     { value: 'exit', label: t('closeActionExit') },
     { value: 'tray', label: t(mac ? 'closeActionTrayMac' : linux ? 'closeActionTrayLinux' : 'closeActionTray') },
   ];
-  return <fieldset className="mt-4" disabled={busy} aria-describedby="close-action-help">
+  return <fieldset disabled={busy} aria-describedby="close-action-help">
     <legend className="text-[length:var(--font-size-body)] font-semibold">{t('closeActionTitle')}</legend>
     {options.map(option => <label key={option.value} className="flex items-start gap-2 mt-1">
       <input type="radio" name="closeAction" className="mt-1" checked={shown === option.value} onChange={() => void choose(option.value)} />
