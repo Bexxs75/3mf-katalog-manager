@@ -513,7 +513,7 @@ Double-clicking a model opens the full detail page:
 
 Top right in the preview area, you switch between the **3D view** (free rotation by dragging with
 the mouse, plus auto-rotation and 15°-step buttons) and the stored **image** — which of the two
-is shown by default is set in Settings under "Preferred view". On the right you'll find all
+is shown by default is set in Settings under "Model preview". On the right you'll find all
 metadata (dimensions, volume, estimated weight, material, file size, import date, creator),
 followed by a **source** field (e.g. a link to the model's origin page) and your hashtags, with
 the option to add or remove more. If the file has already been sliced in OrcaSlicer or Bambu
@@ -1175,10 +1175,10 @@ your models and folders. They're split into four tabs:
 
 ![Settings: General](bilder/en/18-einstellungen-allgemein.png)
 
-- **Appearance** — follows your system setting automatically, or fixed to light/dark. Right below
-  it, the density setting: "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger
+- **Appearance** — "Color scheme" follows your system setting automatically, or is fixed to
+  light/dark. Right below it, "Display density": "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger
   text, graphics, and controls, noticeably easier to read).
-- **Preferred view** — whether the catalog and the detail page default to the stored preview
+- **Model preview** — whether the catalog and the detail page default to the stored preview
   image or the rendered 3D view. Missing snapshots are rendered automatically in the
   background, one file after another. With "Image", this happens for files without an image of
   their own (e.g. STL, OBJ).
@@ -2034,7 +2034,7 @@ Ein Doppelklick auf ein Modell öffnet die volle Detailseite:
 
 Oben rechts im Vorschaubereich schaltest du zwischen **3D-Ansicht** (freies Drehen per
 Maus-Ziehen, plus Auto-Rotation und 15°-Schritt-Buttons) und dem hinterlegten **Bild** um — welche
-der beiden standardmäßig angezeigt wird, legst du in den Einstellungen unter "Bevorzugte Ansicht"
+der beiden standardmäßig angezeigt wird, legst du in den Einstellungen unter "Modellvorschau"
 fest. Rechts siehst du alle Metadaten (Maße, Volumen, geschätztes Gewicht, Material, Dateigröße,
 Importdatum, Ersteller), darunter ein Feld für eine **Quelle** (z. B. ein Link zur
 Modell-Herkunftsseite) sowie deine Hashtags mit Möglichkeit, weitere hinzuzufügen oder zu
@@ -2739,10 +2739,10 @@ vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
 
 ![Einstellungen: Allgemein](bilder/18-einstellungen-allgemein.png)
 
-- **Erscheinungsbild** — folgt automatisch deiner Systemeinstellung, oder fest auf Hell/Dunkel
-  gestellt. Direkt darunter die Dichte-Einstellung: "Kompakt" (dicht, kleine Schrift, viel auf
+- **Erscheinungsbild** — das „Farbschema“ folgt automatisch deiner Systemeinstellung, oder ist
+  fest auf Hell/Dunkel gestellt. Direkt darunter die „Darstellungsdichte“: "Kompakt" (dicht, kleine Schrift, viel auf
   einen Blick) oder "Komfort" (größere Schrift, Grafiken und Bedienelemente, deutlich lesbarer).
-- **Bevorzugte Ansicht** — ob Katalog und Detailseite standardmäßig das hinterlegte Vorschaubild
+- **Modellvorschau** — ob Katalog und Detailseite standardmäßig das hinterlegte Vorschaubild
   oder die gerenderte 3D-Ansicht zeigen. Fehlende Schnappschüsse werden automatisch im Hintergrund
   nachgerendert, eine Datei nach der anderen. Bei „Bild“ passiert das für Dateien ohne eigenes Bild
   (z. B. STL, OBJ).

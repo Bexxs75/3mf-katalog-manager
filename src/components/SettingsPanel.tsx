@@ -31,6 +31,7 @@ import { UpdatePanel } from './UpdatePanel';
 import { PrintDataRereadSettings } from './PrintDataRereadSettings';
 import { ThingiverseSettings } from './ThingiverseSettings';
 import { DragOutSetting } from './DragOutSetting';
+import { RadioSegments } from './RadioSegments';
 import { getAppVersion } from '../lib/api/update';
 
 type SettingsTab = 'general' | 'slicer' | 'catalog' | 'info';
@@ -114,6 +115,17 @@ export function SettingsPanel({
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('general');
   const panelRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement | null>>>({});
+
+  // After a slicer is removed the focus moves on to the next entry, or to the add button when the last one went.
+  const slicerRadioRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const addSlicerRef = useRef<HTMLButtonElement>(null);
+  const slicerFocusAfterRemove = useRef<{ removed: string; next: string | null } | null>(null);
+  useEffect(() => {
+    const pending = slicerFocusAfterRemove.current;
+    if (!pending || slicers.some(s => s.id === pending.removed)) return;
+    slicerFocusAfterRemove.current = null;
+    (pending.next ? slicerRadioRefs.current[pending.next] : addSlicerRef.current)?.focus();
+  }, [slicers]);
 
   useEffect(() => { if (generalTabRequest) setActiveSettingsTab('general'); }, [generalTabRequest]);
   useEffect(() => { if (catalogTabRequest) setActiveSettingsTab('catalog'); }, [catalogTabRequest]);
@@ -200,17 +212,15 @@ export function SettingsPanel({
                 }}>{t('pmOpen')}</button>
               </div>
               <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('appearanceTitle')}</div>
-              <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-                {(['system', 'light', 'dark'] as ThemeSetting[]).map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => onThemeChange(opt)}
-                    className={`${segBase} flex-1 ${themeSetting === opt ? segActive : segInactive}`}
-                  >
-                    {opt === 'system' ? t('themeSystem') : opt === 'light' ? t('themeLight') : t('themeDark')}
-                  </button>
-                ))}
-              </div>
+              <RadioSegments
+                legend={t('themeLegend')}
+                options={(['system', 'light', 'dark'] as ThemeSetting[]).map(opt => ({
+                  value: opt,
+                  label: opt === 'system' ? t('themeSystem') : opt === 'light' ? t('themeLight') : t('themeDark'),
+                }))}
+                value={themeSetting}
+                onChange={onThemeChange}
+              />
               <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">
                 {themeSetting === 'system'
                   ? t('themeDescriptionSystem')
@@ -220,39 +230,37 @@ export function SettingsPanel({
                     )}
               </div>
 
-              <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)] mt-2.5">
-                {(['compact', 'comfort'] as UiDensity[]).map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => onUiDensityChange(opt)}
-                    className={`${segBase} flex-1 ${uiDensity === opt ? segActive : segInactive}`}
-                  >
-                    {opt === 'compact' ? t('densityCompact') : t('densityComfort')}
-                  </button>
-                ))}
-              </div>
+              <RadioSegments
+                className="mt-2.5"
+                legend={t('densityLegend')}
+                options={(['compact', 'comfort'] as UiDensity[]).map(opt => ({
+                  value: opt, label: opt === 'compact' ? t('densityCompact') : t('densityComfort'),
+                }))}
+                value={uiDensity}
+                onChange={onUiDensityChange}
+              />
               <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">
                 {uiDensity === 'compact' ? t('densityDescriptionCompact') : t('densityDescriptionComfort')}
               </div>
 
-              {onDetailPanelChange && <fieldset className="mt-3"><legend>{t('detailPanelLabel')}</legend>
-                {(['auto', 'pinned'] as const).map(mode => <label key={mode} className="flex items-center gap-2 mt-1">
-                  <input type="radio" name="detailPanel" checked={detailPanel === mode} onChange={() => onDetailPanelChange(mode)} />
-                  {t(mode === 'auto' ? 'detailPanelAuto' : 'detailPanelPinned')}
-                </label>)}
-              </fieldset>}
-              <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('displayPreferenceTitle')}</div>
-              <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-                {(['thumbnail', 'render'] as DisplayPreference[]).map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => onDisplayPreferenceChange(opt)}
-                    className={`${segBase} flex-1 ${displayPreference === opt ? segActive : segInactive}`}
-                  >
-                    {opt === 'thumbnail' ? t('displayPreferenceThumbnail') : t('displayPreferenceRender')}
-                  </button>
-                ))}
-              </div>
+              {onDetailPanelChange && <RadioSegments
+                className="mt-3"
+                legend={t('detailPanelLabel')}
+                options={(['auto', 'pinned'] as const).map(mode => ({
+                  value: mode, label: t(mode === 'auto' ? 'detailPanelAuto' : 'detailPanelPinned'),
+                }))}
+                value={detailPanel}
+                onChange={onDetailPanelChange}
+              />}
+              <RadioSegments
+                className="mt-4"
+                legend={t('displayPreferenceTitle')}
+                options={(['thumbnail', 'render'] as DisplayPreference[]).map(opt => ({
+                  value: opt, label: opt === 'thumbnail' ? t('displayPreferenceThumbnail') : t('displayPreferenceRender'),
+                }))}
+                value={displayPreference}
+                onChange={onDisplayPreferenceChange}
+              />
               <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">
                 {displayPreference === 'thumbnail'
                   ? t('displayPreferenceDescriptionThumbnail')
@@ -260,18 +268,14 @@ export function SettingsPanel({
               </div>
 
               <div className="mt-4"><PrintTechnologySettings /></div>
-              <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('languageTitle')}</div>
-              <div className="grid grid-cols-2 gap-0.5 p-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-                {(['de', 'en', 'es', 'fr'] as Language[]).map((lang) => (
-                  <button
-                    key={lang}
-                    onClick={() => setLanguage(lang)}
-                    className={`${segBase} ${language === lang ? segActive : segInactive}`}
-                  >
-                    {LANGUAGE_LABELS[lang]}
-                  </button>
-                ))}
-              </div>
+              <RadioSegments
+                className="mt-4"
+                grid
+                legend={t('languageTitle')}
+                options={(['de', 'en', 'es', 'fr'] as Language[]).map(lang => ({ value: lang, label: LANGUAGE_LABELS[lang] }))}
+                value={language}
+                onChange={setLanguage}
+              />
               {import.meta.env.VITE_TARGET !== 'web' && !container && <CloseBehaviorSettings />}
               {import.meta.env.VITE_TARGET !== 'web' && <LinuxMenuSettings />}
             </>
@@ -286,19 +290,21 @@ export function SettingsPanel({
                   {t('noSlicersConfigured')}
                 </div>
               ) : (
-                <div className="flex flex-col gap-1.5">
-                  {slicers.map((s) => {
+                <fieldset className="min-w-0 border-0 p-0 m-0">
+                  <legend className="sr-only">{t('slicerDefaultLegend')}</legend>
+                  <div className="flex flex-col gap-1.5">
+                  {slicers.map((s, index) => {
                     const isPrimary = s.id === primarySlicerId;
                     return (
-                      <div key={s.id} className="flex items-center gap-2">
-                        <button
-                          onClick={() => onSetPrimarySlicer(s.id)}
-                          aria-label={t('setPrimarySlicerAria')}
-                          className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none w-3.5 h-3.5 rounded-full border cursor-pointer grid place-items-center"
-                          style={{ borderColor: isPrimary ? 'var(--accent)' : 'var(--line-strong)' }}
-                        >
-                          {isPrimary && <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />}
-                        </button>
+                      <div key={s.id} className="flex items-center gap-1">
+                        <label className="flex-none grid place-items-center w-8 h-8 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 cursor-pointer">
+                          <input
+                            type="radio" name="primary-slicer" aria-label={s.name}
+                            ref={node => { slicerRadioRefs.current[s.id] = node; }}
+                            checked={isPrimary} onChange={() => onSetPrimarySlicer(s.id)}
+                            className="w-4 h-4 m-0 cursor-pointer accent-[var(--accent)]"
+                          />
+                        </label>
                         <div className="flex-1 min-w-0">
                           <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
                           <div className="flex items-center gap-1.5">
@@ -312,19 +318,25 @@ export function SettingsPanel({
                             </div>
                           </div>
                         </div>
-                        <span
-                          onClick={() => onRemoveSlicer(s.id)}
-                          aria-label={t('removeSlicerAria')}
-                          className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            slicerFocusAfterRemove.current = { removed: s.id, next: slicers[index + 1]?.id ?? null };
+                            onRemoveSlicer(s.id);
+                          }}
+                          aria-label={t('removeSlicerAria').replace('{name}', s.name)}
+                          className="flex-none w-8 h-8 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
                         >
                           <Icon name="close" size={14} />
-                        </span>
+                        </button>
                       </div>
                     );
                   })}
-                </div>
+                  </div>
+                </fieldset>
               )}
               <button
+                ref={addSlicerRef}
                 onClick={onAddSlicer}
                 className="mt-2 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >

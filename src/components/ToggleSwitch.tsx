@@ -3,10 +3,12 @@ interface Props {
   onChange: (next: boolean) => void;
   label: string;
   disabled?: boolean;
+  /** Id of the element that explains the switch (dependencies, platform notes). */
+  'aria-describedby'?: string;
 }
 
 /** Custom switch (native checkboxes ignore the dark theme). */
-export function ToggleSwitch({ checked, onChange, label, disabled }: Props) {
+export function ToggleSwitch({ checked, onChange, label, disabled, 'aria-describedby': describedBy }: Props) {
   const toggle = () => !disabled && onChange(!checked);
   return (
     <button
@@ -14,6 +16,7 @@ export function ToggleSwitch({ checked, onChange, label, disabled }: Props) {
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-describedby={describedBy}
       disabled={disabled}
       onClick={toggle}
       onKeyDown={(e) => {

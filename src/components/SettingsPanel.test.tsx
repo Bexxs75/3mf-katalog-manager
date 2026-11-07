@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { SettingsPanel, type SettingsPanelProps } from './SettingsPanel';
 import { invoke } from '@tauri-apps/api/core';
+import { de } from '../i18n/de';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async (command: string) => command === 'get_data_paths' ? { data: '/config/data', logs: '/config/logs' } : { enabled: false, untilMs: null }) }));
 vi.mock('../diagnostics/DiagnosticsContext', () => ({ useDiagnostics: () => ({ openBugReport: vi.fn() }) }));
@@ -213,5 +214,83 @@ describe('SettingsPanel catalog backup on the desktop', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Katalog exportieren' }));
     expect(props.onExportCatalog).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('link', { name: 'Katalog exportieren' })).toBeNull();
+  });
+});
+
+describe('SettingsPanel selection groups', () => {
+  it('offers appearance and language choices as named radio groups', () => {
+    const onThemeChange = vi.fn();
+    renderPanel({ onDetailPanelChange: vi.fn(), onThemeChange });
+    for (const [legend, options] of [
+      ['Farbschema', ['System', 'Hell', 'Dunkel']],
+      ['Darstellungsdichte', ['Kompakt', 'Komfort']],
+      ['Modellvorschau', ['Bild', '3D-Ansicht']],
+      ['Detailbereich', ['Automatisch (erscheint beim Anklicken)', 'Immer sichtbar']],
+      ['Sprache', ['Deutsch', 'English', 'Español', 'Français']],
+    ] as const) {
+      const group = screen.getByRole('group', { name: legend });
+      expect(within(group).getAllByRole('radio').map(r => r.closest('label')?.textContent)).toEqual(options);
+    }
+    expect(within(screen.getByRole('group', { name: 'Sprache' })).getByRole('radio', { name: 'Deutsch' })).toBeChecked();
+    fireEvent.click(within(screen.getByRole('group', { name: 'Farbschema' })).getByRole('radio', { name: 'Dunkel' }));
+    expect(onThemeChange).toHaveBeenCalledWith('dark');
+  });
+
+  it('switches the language through the radio group', () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole('radio', { name: 'English' }));
+    expect(screen.getByRole('group', { name: 'Language' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'English' })).toBeChecked();
+  });
+});
+
+describe('SettingsPanel slicer list', () => {
+  const slicers = [
+    { id: 'a', name: 'Bambu Studio', path: '/opt/bambu' },
+    { id: 'b', name: 'OrcaSlicer', path: '/opt/orca' },
+    { id: 'c', name: 'PrusaSlicer', path: '/opt/prusa' },
+  ];
+
+  it('removes with a real, individually named button', () => {
+    const { props } = renderPanel({ slicers, primarySlicerId: 'a' });
+    fireEvent.click(tab('Slicer'));
+    const button = screen.getByRole('button', { name: 'OrcaSlicer aus der Slicer-Liste entfernen' });
+    expect(button.tagName).toBe('BUTTON');
+    expect(button).toHaveAttribute('type', 'button');
+    expect(screen.getAllByRole('button', { name: /aus der Slicer-Liste entfernen/ })).toHaveLength(3);
+    fireEvent.click(button);
+    expect(props.onRemoveSlicer).toHaveBeenCalledWith('b');
+  });
+
+  it('offers the default slicer as a radio group with one named option per slicer', () => {
+    const { props } = renderPanel({ slicers, primarySlicerId: 'b' });
+    fireEvent.click(tab('Slicer'));
+    const group = screen.getByRole('group', { name: de.slicerDefaultLegend });
+    expect(within(group).getAllByRole('radio').map(r => r.getAttribute('aria-label'))).toEqual(['Bambu Studio', 'OrcaSlicer', 'PrusaSlicer']);
+    expect(within(group).getByRole('radio', { name: 'OrcaSlicer' })).toBeChecked();
+    expect(within(group).getByRole('radio', { name: 'Bambu Studio' })).not.toBeChecked();
+    fireEvent.click(within(group).getByRole('radio', { name: 'PrusaSlicer' }));
+    expect(props.onSetPrimarySlicer).toHaveBeenCalledWith('c');
+  });
+
+  it('moves the focus to the next entry after a removal, and to the add button after the last one', () => {
+    const { rerender } = renderPanel({ slicers, primarySlicerId: 'a' });
+    fireEvent.click(tab('Slicer'));
+    fireEvent.click(screen.getByRole('button', { name: 'OrcaSlicer aus der Slicer-Liste entfernen' }));
+    rerender({ slicers: [slicers[0], slicers[2]] });
+    expect(screen.getByRole('radio', { name: 'PrusaSlicer' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'PrusaSlicer aus der Slicer-Liste entfernen' }));
+    rerender({ slicers: [slicers[0]] });
+    expect(screen.getByRole('button', { name: 'Hinzufügen' })).toHaveFocus();
+  });
+
+  it('keeps the focus where it is while the removal has not happened', () => {
+    const { rerender } = renderPanel({ slicers, primarySlicerId: 'a' });
+    fireEvent.click(tab('Slicer'));
+    const button = screen.getByRole('button', { name: 'Bambu Studio aus der Slicer-Liste entfernen' });
+    button.focus();
+    fireEvent.click(button);
+    rerender({ slicers: [...slicers] });
+    expect(button).toHaveFocus();
   });
 });

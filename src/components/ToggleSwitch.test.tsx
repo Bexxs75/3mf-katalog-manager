@@ -13,4 +13,14 @@ describe('ToggleSwitch', () => {
     fireEvent.keyDown(sw, { key: ' ' });
     expect(onChange).toHaveBeenCalledTimes(2);
   });
+
+  it('passes aria-describedby on to the switch', () => {
+    render(<><ToggleSwitch checked label="Kürzel" onChange={vi.fn()} aria-describedby="hint" /><p id="hint">Erklärung</p></>);
+    expect(screen.getByRole('switch', { name: 'Kürzel' })).toHaveAccessibleDescription('Erklärung');
+  });
+
+  it('has no description reference unless one is given', () => {
+    render(<ToggleSwitch checked label="Kürzel" onChange={vi.fn()} />);
+    expect(screen.getByRole('switch', { name: 'Kürzel' })).not.toHaveAttribute('aria-describedby');
+  });
 });

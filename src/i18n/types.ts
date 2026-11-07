@@ -771,6 +771,8 @@ export interface Translations {
 
   settingsTitle: string;
   appearanceTitle: string;
+  themeLegend: string;
+  densityLegend: string;
   themeSystem: string;
   themeLight: string;
   themeDark: string;
@@ -824,7 +826,7 @@ export interface Translations {
   removeSlicerAria: string;
   slicerLaunchError: string;
   slicerPrimaryChip: string;
-  setPrimarySlicerAria: string;
+  slicerDefaultLegend: string;
 
   emptyStateText: string;
   dragToRotate: string;
