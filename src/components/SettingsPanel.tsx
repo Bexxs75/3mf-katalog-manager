@@ -285,6 +285,7 @@ export function SettingsPanel({
           {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'slicer' && container && <p className="text-small text-[var(--ink-3)]">{t('containerSlicerUnavailable')}</p>}
           {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'slicer' && !container && (
             <>
+              <DragOutSetting />
               <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('slicerSectionTitle')}</div>
               {slicers.length === 0 ? (
                 <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">
@@ -348,7 +349,6 @@ export function SettingsPanel({
                   {t('addSlicerError')} <ErrorText error={addSlicerError} />
                 </div>
               )}
-              <DragOutSetting />
               <div className="mt-5 pt-4 border-t border-[var(--line)]"><SlicerReportSettings /></div>
             </>
           )}

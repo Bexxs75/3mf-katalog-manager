@@ -2120,6 +2120,18 @@ export interface Translations {
   owViewerLabel: string;
   dgSwitchLabel: string;
   dgSwitchHint: string;
+  dgSectionTitle: string;
+  dgExperimentalNote: string;
+  dgWinLabel: string;
+  dgWinText: string;
+  dgWinSummary: string;
+  dgWinStepsTitle: string;
+  dgWinStep1: string;
+  dgWinStep2: string;
+  dgWinStep3: string;
+  dgWinStep4: string;
+  dgWinStep5: string;
+  dgWinUipi: string;
   dgLimit: string;
   dgHandle: string;
   dgStepHint: string;

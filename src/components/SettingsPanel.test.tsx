@@ -251,6 +251,15 @@ describe('SettingsPanel slicer list', () => {
     { id: 'c', name: 'PrusaSlicer', path: '/opt/prusa' },
   ];
 
+  it('puts the drag-out section above the slicer list', async () => {
+    renderPanel({ slicers, primarySlicerId: 'a' });
+    fireEvent.click(tab('Slicer'));
+    const heading = await screen.findByRole('heading', { level: 3, name: new RegExp(de.dgSectionTitle) });
+    expect(screen.getAllByRole('switch', { name: de.dgSwitchLabel })).toHaveLength(1);
+    const firstRemove = screen.getAllByRole('button', { name: /aus der Slicer-Liste entfernen/ })[0];
+    expect(heading.compareDocumentPosition(firstRemove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('removes with a real, individually named button', () => {
     const { props } = renderPanel({ slicers, primarySlicerId: 'a' });
     fireEvent.click(tab('Slicer'));

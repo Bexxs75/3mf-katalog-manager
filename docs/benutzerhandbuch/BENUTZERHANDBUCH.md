@@ -1208,6 +1208,22 @@ your models and folders. They're split into four tabs:
 
 ![Settings: slicer management](bilder/en/11-einstellungen-slicer.png)
 
+#### Passing files on (experimental)
+
+At the top of this tab, the section "Passing files on" carries the label "Experimental" and one switch, "Drag files out of the
+catalog" (**off** by default). With it on, cards, list rows and the detail page offer a drag handle: drag 3MF, STL and OBJ files
+by it into a slicer or file manager. Temporary copies are handed over; the files in the catalog stay intact. Whether dropping works
+depends on the operating system and the target program.
+
+**Windows:** if the target slicer (for example Bambu Studio or OrcaSlicer) runs as administrator, Windows blocks dropping from the
+normally started Catalog Manager. Start the slicer without administrator rights. This note shows under Windows even while the
+switch is off. "Dropping does not work?" unfolds a guide: show the "Elevated" column in the Task Manager (Details), close the
+slicer if it says "Yes", clear "Run this program as an administrator" under the program file's Compatibility properties (and, if
+you start it from a shortcut, under Shortcut → Advanced), then start the slicer normally. Windows separates programs with
+different privileges; this protection is called UIPI.
+
+#### Installed slicers
+
 The app scans known install locations on startup (Bambu Studio, OrcaSlicer, PrusaSlicer,
 SuperSlicer, UltiMaker Cura, Creality Print) and adds any it finds automatically; use "+ Add" to add others,
 including self-built or modified versions. The radio button sets which slicer is used as the
@@ -2778,6 +2794,22 @@ vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
 ### Slicer
 
 ![Einstellungen: Slicer-Verwaltung](bilder/11-einstellungen-slicer.png)
+
+#### Dateien weitergeben (experimentell)
+
+Ganz oben in diesem Reiter steht der Abschnitt „Dateien weitergeben“ mit der Plakette „Experimentell“ und einem Schalter
+„Dateien aus dem Katalog ziehen“ (standardmäßig **aus**). Ist er an, haben Karten, Listenzeilen und die Detailseite einen
+Ziehgriff: Ziehe 3MF-, STL- und OBJ-Dateien daran in einen Slicer oder Dateimanager. Dabei werden temporäre Kopien übergeben; die
+Dateien im Katalog bleiben erhalten. Ob das Ablegen funktioniert, hängt vom Betriebssystem und vom Zielprogramm ab.
+
+**Windows:** Läuft der Ziel-Slicer (etwa Bambu Studio oder OrcaSlicer) als Administrator, blockiert Windows das Ablegen aus dem
+normal gestarteten Katalog Manager. Starte den Slicer ohne Administratorrechte. Dieser Hinweis erscheint unter Windows auch bei
+ausgeschaltetem Schalter. „Funktioniert das Ablegen nicht?“ klappt eine Anleitung auf: im Task-Manager (Details) die Spalte
+„Erhöht“ einblenden, den Slicer beenden, wenn dort „Ja“ steht, in den Eigenschaften der Programmdatei unter „Kompatibilität“ den
+Haken bei „Programm als Administrator ausführen“ entfernen (bei Start über eine Verknüpfung auch unter Verknüpfung → Erweitert),
+dann den Slicer normal starten. Windows trennt Programme mit unterschiedlichen Berechtigungen; diese Schutzfunktion heißt UIPI.
+
+#### Installierte Slicer
 
 Die App durchsucht beim Start bekannte Installationsorte (Bambu Studio, OrcaSlicer, PrusaSlicer,
 SuperSlicer, UltiMaker Cura, Creality Print) und trägt gefundene Slicer automatisch ein; über "+ Hinzufügen"

@@ -10,9 +10,12 @@ vi.mock('../lib/api/fileDrag', () => ({
   setDragOutEnabled: (v: boolean) => setDragOutEnabled(v),
 }));
 
+const isWindowsPlatform = vi.fn(() => false);
+vi.mock('../lib/imageDrop', () => ({ isWindowsPlatform: () => isWindowsPlatform() }));
+
 import { DragOutSetting } from './DragOutSetting';
 
-beforeEach(() => { localStorage.setItem('3mf-katalog-language', 'de'); getDragOutEnabled.mockReset().mockResolvedValue(false); setDragOutEnabled.mockReset().mockResolvedValue(undefined); });
+beforeEach(() => { isWindowsPlatform.mockReset().mockReturnValue(false); localStorage.setItem('3mf-katalog-language', 'de'); getDragOutEnabled.mockReset().mockResolvedValue(false); setDragOutEnabled.mockReset().mockResolvedValue(undefined); });
 
 describe('DragOutSetting', () => {
   it('shows that it is loading instead of nothing, with the switch not yet usable', async () => {
@@ -62,5 +65,35 @@ describe('DragOutSetting', () => {
     fireEvent.click(toggle);
     await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
     expect(setDragOutEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it('is a section with a heading, the experimental badge and the general platform sentence', async () => {
+    render(<LanguageProvider><DragOutSetting /></LanguageProvider>);
+    const heading = await screen.findByRole('heading', { level: 3, name: new RegExp(de.dgSectionTitle) });
+    expect(heading).toHaveTextContent(de.tvExperimental);
+    expect(screen.getByText(de.dgSwitchHint)).toBeInTheDocument();
+    expect(screen.getByText(de.dgExperimentalNote)).toBeInTheDocument();
+  });
+
+  it('shows no Windows advice on other systems', async () => {
+    render(<LanguageProvider><DragOutSetting /></LanguageProvider>);
+    const toggle = await screen.findByRole('switch', { name: de.dgSwitchLabel });
+    expect(screen.queryByText(de.dgWinText)).toBeNull();
+    expect(screen.queryByText(de.dgWinSummary)).toBeNull();
+    expect(toggle.getAttribute('aria-describedby')).not.toContain('drag-out-windows');
+  });
+
+  it('shows the Windows advice and the guide even while the switch is off, and ties it to the switch', async () => {
+    isWindowsPlatform.mockReturnValue(true);
+    const { container } = render(<LanguageProvider><DragOutSetting /></LanguageProvider>);
+    const toggle = await screen.findByRole('switch', { name: de.dgSwitchLabel });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText(de.dgWinText)).toBeVisible();
+    expect(screen.getByText(de.dgWinSummary)).toBeVisible();
+    expect(screen.getByText(de.dgWinStep1)).toBeInTheDocument();
+    expect(container.querySelector('details')).not.toHaveAttribute('open');
+    const described = toggle.getAttribute('aria-describedby')!.split(' ');
+    expect(described).toContain('drag-out-windows');
+    for (const id of described) expect(container.querySelector(`#${id}`)).not.toBeNull();
   });
 });
