@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
+import { Disclosure } from './Disclosure';
 
 /** Matches the server's minimum gap between two exports of one session. */
 const COOLDOWN_MS = 30_000;
@@ -9,7 +10,8 @@ const COOLDOWN_MS = 30_000;
  * (the archive can be hundreds of MB, far too much to hold in a fetch response).
  * Server refusals (busy, interval, low disk space) arrive as an error page the browser
  * reports as a failed download; the hint below the button names those causes, and the
- * short local pause keeps a double click from triggering the interval refusal itself.
+ * short local pause keeps a double click from triggering the interval refusal itself. The
+ * component cannot tell when the download has finished, so it never reports a finished backup.
  */
 export function WebCatalogBackup() {
   const t = useT();
@@ -29,6 +31,7 @@ export function WebCatalogBackup() {
         href="/api/backup/export"
         download
         aria-disabled={paused ? 'true' : undefined}
+        aria-describedby={paused ? 'web-backup-pause' : undefined}
         onClick={(event) => {
           if (paused) { event.preventDefault(); return; }
           const at = Date.now();
@@ -37,10 +40,12 @@ export function WebCatalogBackup() {
         }}
         className={`${classes} no-underline ${paused ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'}`}
       >
-        {t('exportCatalogButton')}
+        {t('exportCatalogWebButton')}
       </a>
-      <div className="mt-1.5 text-caption text-[var(--ink-3)]">{t('catalogBackupWebHint')}</div>
-      <div className="mt-1 text-caption text-[var(--ink-3)]">{t('catalogBackupWebFailureHint')}</div>
+      {paused && <p id="web-backup-pause" role="status" className="mt-1.5 text-small text-[var(--ink-2)]">{t('catalogBackupWebPause')}</p>}
+      <p className="mt-1.5 text-small text-[var(--ink-2)]">{t('catalogBackupWebHint')}</p>
+      <Disclosure summary={t('catalogBackupWebRestoreTitle')} className="mt-1.5">{t('catalogBackupWebRestoreText')}</Disclosure>
+      <Disclosure summary={t('catalogBackupWebFailureTitle')} className="mt-1.5">{t('catalogBackupWebFailureHint')}</Disclosure>
     </>
   );
 }

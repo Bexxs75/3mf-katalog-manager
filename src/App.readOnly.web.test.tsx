@@ -176,7 +176,7 @@ it('offers browser display preferences and read-only information without desktop
   expect(screen.queryByText(de.settingsSecCheck)).toBeNull();
   expect(screen.queryByText(de.settingsSecReset)).toBeNull();
   expect(screen.queryByText(de.importCatalogButton)).toBeNull();
-  expect(screen.getByRole('link', { name: de.exportCatalogButton })).toHaveAttribute('href', '/api/backup/export');
+  expect(screen.getByRole('link', { name: de.exportCatalogWebButton })).toHaveAttribute('href', '/api/backup/export');
   await click(screen.getByRole('tab', { name: de.settingsTabGeneral }));
   await click(screen.getByRole('radio', { name: de.themeDark }));
   expect(document.documentElement.dataset.app).toBe('dark');

@@ -14,17 +14,17 @@ function setup() {
 describe('RC channel consent', () => {
   it('requires explicit consent and cancellation leaves stable selected', async () => {
     setup();
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     await waitFor(() => expect(toggle).not.toBeDisabled());
     fireEvent.click(toggle);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(api.setUpdateChannel).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Abbrechen'));
-    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
   });
   it('opens existing export without silently enabling RC', async () => {
     const { onExport } = setup();
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     await waitFor(() => expect(toggle).not.toBeDisabled());
     fireEvent.click(toggle);
     fireEvent.click(screen.getByText('Katalog jetzt exportieren'));
@@ -35,7 +35,7 @@ describe('RC channel consent', () => {
     const { onExport } = setup();
     let finish!: (saved: boolean) => void;
     onExport.mockImplementation(() => new Promise<boolean>(resolve => { finish = resolve; }));
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     await waitFor(() => expect(toggle).not.toBeDisabled());
     fireEvent.click(toggle);
     fireEvent.click(screen.getByText('Katalog jetzt exportieren'));
@@ -44,60 +44,60 @@ describe('RC channel consent', () => {
     await act(async () => finish(true));
     expect(within(screen.getByRole('dialog')).getByText('Katalog exportiert')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Jetzt aktivieren'));
-    await waitFor(() => expect(toggle).toBeChecked());
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
   });
   it('shows export errors inside the dialog and cancel leaves the channel off', async () => {
     const { onExport } = setup();
     onExport.mockRejectedValue(new Error('export failed'));
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     await waitFor(() => expect(toggle).not.toBeDisabled());
     fireEvent.click(toggle);
     fireEvent.click(screen.getByText('Katalog jetzt exportieren'));
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent('export failed'));
     expect(screen.queryByText('Jetzt aktivieren')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Abbrechen'));
-    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(api.setUpdateChannel).not.toHaveBeenCalled();
   });
   it('does not claim success when export returns false', async () => {
     const { onExport } = setup();
     onExport.mockResolvedValue(false);
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     await waitFor(() => expect(toggle).not.toBeDisabled());
     fireEvent.click(toggle);
     fireEvent.click(screen.getByText('Katalog jetzt exportieren'));
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeInTheDocument());
     expect(screen.queryByText('Katalog exportiert')).not.toBeInTheDocument();
-    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
   });
   it('explains disabling without offering a downgrade', async () => {
     vi.mocked(api.getUpdateChannel).mockResolvedValue('rc');
     setup();
-    const toggle = await screen.findByRole('checkbox');
-    await waitFor(() => expect(toggle).toBeChecked());
+    const toggle = await screen.findByRole('switch');
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
     fireEvent.click(toggle);
-    await waitFor(() => expect(toggle).not.toBeChecked());
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'));
     expect(screen.getByRole('status')).toHaveTextContent('bis eine neuere stabile Version verfügbar ist');
     expect(api.setUpdateChannel).toHaveBeenCalledWith('stable');
   });
   it('keeps stable selected when saving fails', async () => {
     vi.mocked(api.setUpdateChannel).mockRejectedValue(new Error('save failed'));
     const { onChanged } = setup();
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     await waitFor(() => expect(toggle).not.toBeDisabled());
     fireEvent.click(toggle);
     fireEvent.click(screen.getByText('Trotzdem aktivieren'));
     await screen.findByText('save failed');
-    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(onChanged).not.toHaveBeenCalled();
   });
   it('persists consent and rechecks the selected channel', async () => {
     const { onChanged } = setup();
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     await waitFor(() => expect(toggle).not.toBeDisabled());
     fireEvent.click(toggle);
     fireEvent.click(screen.getByText('Trotzdem aktivieren'));
-    await waitFor(() => expect(toggle).toBeChecked());
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
     expect(api.setUpdateChannel).toHaveBeenCalledWith('rc');
     expect(onChanged).toHaveBeenCalledOnce();
   });

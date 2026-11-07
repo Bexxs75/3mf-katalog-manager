@@ -84,7 +84,7 @@ describe('settings load and save states', () => {
 describe('settings', () => {
   it('shows the switch, one command line per slicer and the two steps', async () => {
     wrap(<SlicerReportSettings />);
-    const toggle = await screen.findByRole('switch', { name: 'Geslichte Dateien automatisch melden' });
+    const toggle = await screen.findByRole('switch', { name: de.srTitle });
     expect(toggle).toBeChecked();
     for (const slicer of SLICERS) expect(await screen.findByLabelText(`Befehlszeile für ${slicer}`)).toHaveValue(LINE);
     expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(2 + SLICERS.length);

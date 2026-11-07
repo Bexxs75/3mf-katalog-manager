@@ -53,8 +53,11 @@ it('read-only web: the start button is disabled with the reason and a start does
   render(<Harness />);
   const button = screen.getByRole('button', { name: de.printDataRereadAll });
   await waitFor(() => expect(button).toBeDisabled());
-  expect(button).toHaveAttribute('title', de.webReadOnly);
-  expect(button).toHaveAccessibleDescription(de.webReadOnly);
+  expect(button).toHaveAttribute('title', de.settingsReadOnlyNotice);
+  expect(button).toHaveAccessibleDescription(de.settingsReadOnlyNotice);
+  // The reason is written out on the page, not only in the tooltip.
+  expect(screen.getByText(de.settingsReadOnlyNotice)).toBeVisible();
+  expect(screen.getByText(de.settingsReadOnlyNotice)).not.toHaveClass('sr-only');
   expect(api.start('settings')).toBe('readOnly');
   expect(api.start('selection', ['a'])).toBe('readOnly');
   expect(calls).toEqual([]);

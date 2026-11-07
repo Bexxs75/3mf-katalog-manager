@@ -3,7 +3,7 @@ import { useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { SettingLoadStatus, SettingSaveStatus, useLoadedSetting } from './SettingState';
 import { ToggleSwitch } from './ToggleSwitch';
-import { BlockedAutoTagsSettings } from './BlockedAutoTagsSettings';
+import { BlockedAutoTagsSettings, READ_ONLY_NOTE_ID } from './BlockedAutoTagsSettings';
 import * as api from '../lib/api/autoTags';
 import { useCanEditMetadata } from '../lib/webSession';
 
@@ -36,9 +36,10 @@ export function AutoTaggingSetting() {
       <div>
         <div className="flex items-center justify-between gap-2 text-small">
           <span className="font-semibold">{t('autoTaggingLabel')}</span>
-          <ToggleSwitch checked={enabled === true} label={t('autoTaggingLabel')} disabled={busy || !canEdit || enabled === null} onChange={next => void change(next)} />
+          <ToggleSwitch checked={enabled === true} label={t('autoTaggingLabel')} disabled={busy || !canEdit || enabled === null} aria-describedby={canEdit ? undefined : READ_ONLY_NOTE_ID} onChange={next => void change(next)} />
         </div>
         <p className="mt-1 text-small text-[var(--ink-2)]">{t('autoTaggingHint')}</p>
+        {!canEdit && <p id={READ_ONLY_NOTE_ID} className="mt-1 text-small text-[var(--ink-2)]">{t('settingsReadOnlyNotice')}</p>}
         <SettingLoadStatus state={state} error={loadError} onReload={() => void reload()} className="mt-1.5" />
         <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1.5" />
       </div>

@@ -7,6 +7,7 @@ import { displayName } from '../lib/displayName';
 import { pickFolderPath } from '../lib/api/importExport';
 import * as api from '../lib/api/sourceFolders';
 import type { SourceFolder } from '../types';
+import { ToggleSwitch } from './ToggleSwitch';
 
 const button = 'px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer disabled:opacity-50 disabled:cursor-default hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
@@ -82,15 +83,17 @@ export function SourceFoldersSettings() {
           </li>))}</ul>}
       <button ref={addRef} type="button" className={button} disabled={busy || jobActive} {...lockProps} onClick={() => void add()}>{t('sfAdd')}</button>
       {jobActive && <p className="mt-1 text-small text-[var(--ink-2)]">{t('sfLockedNote')}</p>}
-      <label className="flex items-start gap-2 mt-3 text-small cursor-pointer">
-        <input type="checkbox" className="mt-0.5 shrink-0" checked={checkOnStart} disabled={busy}
-          onChange={e => void changeCheckOnStart(e.target.checked)} />
-        <span>{t('sfCheckOnStart')}<span className="block text-[var(--ink-2)]">{t('sfCheckOnStartHint')}</span></span>
-      </label>
-      <div className="flex items-center gap-2 mt-3 text-small">
-        <span className="flex-1">{t('sfRejected').replace('{count}', String(rejected))}</span>
-        <button type="button" className={`${button} shrink-0`} disabled={busy || jobActive || rejected === 0} {...lockProps} onClick={() => void reset()}>{t('sfResetRejected')}</button>
+      <div className="flex items-center justify-between gap-2 mt-3 text-small">
+        <span className="font-semibold">{t('sfCheckOnStart')}</span>
+        <ToggleSwitch checked={checkOnStart} label={t('sfCheckOnStart')} disabled={busy} aria-describedby="source-check-start-hint"
+          onChange={enabled => void changeCheckOnStart(enabled)} />
       </div>
+      <p id="source-check-start-hint" className="mt-1 text-small text-[var(--ink-2)]">{t('sfCheckOnStartHint')}</p>
+      <div className="flex items-center gap-2 mt-3 text-small">
+        <span id="source-rejected-count" className="flex-1">{t('sfRejected').replace('{count}', String(rejected))}</span>
+        <button type="button" className={`${button} shrink-0`} disabled={busy || jobActive || rejected === 0} aria-describedby="source-rejected-count source-rejected-note" {...lockProps} onClick={() => void reset()}>{t('sfResetRejected')}</button>
+      </div>
+      <p id="source-rejected-note" className="mt-1 text-small text-[var(--ink-2)]">{t('sfResetRejectedNote')}</p>
       <p className="mt-2 rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{t('sfRules')}</p>
       {error && <p role="alert" className="mt-2 text-small text-[var(--crit)] whitespace-pre-wrap [overflow-wrap:anywhere]"><ErrorText error={error} /></p>}
     </div>

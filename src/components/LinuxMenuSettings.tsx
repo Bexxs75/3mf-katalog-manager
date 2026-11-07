@@ -4,6 +4,7 @@ import * as api from '../lib/api/linuxMenu';
 import { toAppError, type AppError } from '../lib/errors';
 import { SettingLoadStatus, SettingSaveStatus, useLoadedSetting } from './SettingState';
 import { ToggleSwitch } from './ToggleSwitch';
+import { useSectionContent } from './SettingsSection';
 
 /** Settings switch for the start-menu entry; renders nothing unless this is a Linux AppImage. */
 export function LinuxMenuSettings() {
@@ -16,6 +17,8 @@ export function LinuxMenuSettings() {
   // Set to true again on setup: StrictMode runs setup, cleanup, setup, and a
   // cleanup-only reset would leave the ref false for the real mount.
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  // Tells a section around this block whether there is anything to show: a read in progress or failed is, a loaded "no" is not.
+  useSectionContent(loadState !== 'ready' || Boolean(status));
   // `null` is the loaded answer "not a Linux AppImage": nothing is shown then, unlike a failed read.
   if (loadState !== 'ready') return <SettingLoadStatus state={loadState} label={t('linuxMenuTitle')} error={loadError} onReload={() => void reload()} className="mt-4 mb-2" />;
   if (!status) return null;

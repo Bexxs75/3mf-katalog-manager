@@ -154,10 +154,12 @@ describe('ThingiverseSettings', () => {
     expect(screen.queryByText(de.tvTokenStored)).toBeNull();
   });
 
-  it('says that the key stays on this computer and is in no backup', async () => {
+  it('keeps the restore note out of the normal flow: it is shown where a backup is restored', async () => {
     stored = { enabled: true, hasToken: true, tokenMask: '••••a3f9', usageToday: 0, dailyLimit: 1000 };
     setup();
-    expect(await screen.findByText(de.tvKeptOnRestore)).toBeInTheDocument();
+    expect(await screen.findByText(de.tvTokenStored)).toBeInTheDocument();
+    expect(screen.queryByText(de.tvKeptOnRestore)).toBeNull();
+    expect(screen.getByText(de.tvPrivacy)).toBeVisible();
   });
 
   it('unfolds and folds the instructions', async () => {

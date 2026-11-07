@@ -4,9 +4,10 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { toAppError, type AppError } from '../lib/errors';
 import { displayName } from '../lib/displayName';
+import { ToggleSwitch } from './ToggleSwitch';
+import { Disclosure } from './Disclosure';
 import { countKnownCopies, getSyncAutoAdd, getSyncOnStart, listKnownCopies, resetKnownCopies, setSyncAutoAdd, setSyncOnStart, type KnownCopyList } from '../lib/api/diskSync';
 
-const box = 'mt-0.5 shrink-0';
 const smallButton = 'px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer disabled:opacity-50 disabled:cursor-default hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
 /** Settings for the sync with the disk at start (both off by default). */
@@ -56,23 +57,25 @@ export function DiskSyncSettings() {
   return (
     <div>
       <p className="text-small text-[var(--ink-2)] mb-2">{t('syncSettingsIntro')}</p>
-      <label className="flex gap-2 items-start text-small cursor-pointer">
-        <input type="checkbox" className={box} checked={onStart} disabled={busy} aria-describedby="sync-on-start-desc" onChange={e => void changeOnStart(e.target.checked)} />
-        <span>{t('syncOnStartLabel')}</span>
-      </label>
-      <p id="sync-on-start-desc" className="mt-1 ml-6 text-small text-[var(--ink-2)]">{t('syncOnStartDescription')}</p>
-      <label className={`flex gap-2 items-start text-small mt-3 ${onStart ? 'cursor-pointer' : 'opacity-60'}`}>
-        <input type="checkbox" className={box} checked={onStart && autoAdd} disabled={busy || !onStart} aria-describedby="sync-auto-add-desc sync-auto-add-warning" onChange={e => void changeAutoAdd(e.target.checked)} />
-        <span>{t('syncAutoAddLabel')}</span>
-      </label>
-      <p id="sync-auto-add-desc" className="mt-1 ml-6 text-small text-[var(--ink-2)]">{t('syncAutoAddDescription')}</p>
-      <p id="sync-auto-add-warning" className="mt-1 ml-6 text-small text-[var(--ink-2)]">{t('syncAutoAddWarning')}</p>
+      <div className="flex items-center justify-between gap-2 text-small">
+        <span className="font-semibold">{t('syncOnStartLabel')}</span>
+        <ToggleSwitch checked={onStart} label={t('syncOnStartLabel')} disabled={busy} aria-describedby="sync-on-start-desc" onChange={value => void changeOnStart(value)} />
+      </div>
+      <p id="sync-on-start-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncOnStartDescription')}</p>
+      <div className="flex items-center justify-between gap-2 text-small mt-3">
+        <span className="font-semibold">{t('syncAutoAddLabel')}</span>
+        <ToggleSwitch checked={onStart && autoAdd} label={t('syncAutoAddLabel')} disabled={busy || !onStart} aria-describedby="sync-auto-add-desc sync-auto-add-warning" onChange={value => void changeAutoAdd(value)} />
+      </div>
+      <p id="sync-auto-add-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddDescription')}</p>
+      <p id="sync-auto-add-warning" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddWarning')}</p>
       <div className="flex items-center gap-2 mt-4 text-small">
         <span id="known-copies-count" ref={countRef} tabIndex={-1} className="flex-1 focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{count(t('kcCount'), known)}</span>
         <button type="button" className={`${smallButton} shrink-0`} disabled={busy || known === 0} aria-expanded={list !== null} aria-controls="known-copies-list" aria-describedby="known-copies-count" onClick={() => void toggleList()}>{t(list ? 'kcHide' : 'kcShow')}</button>
-        <button type="button" className={`${smallButton} shrink-0`} disabled={busy || jobActive || known === 0} aria-describedby="known-copies-count" {...lockProps} onClick={() => void reset()}>{t('kcReset')}</button>
+        <button type="button" className={`${smallButton} shrink-0`} disabled={busy || jobActive || known === 0} aria-describedby="known-copies-count known-copies-reset-note" {...lockProps} onClick={() => void reset()}>{t('kcReset')}</button>
       </div>
       <p className="mt-1.5 text-small text-[var(--ink-2)]">{t(known === 0 ? 'kcEmpty' : 'kcHint')}</p>
+      {known > 0 && <p id="known-copies-reset-note" className="mt-1 text-small text-[var(--ink-2)]">{t('kcResetNote')}</p>}
+      <Disclosure summary={t('kcHowTitle')} className="mt-1.5">{t('kcHowText')}</Disclosure>
       {resetDone && known === 0 && <p role="status" className="mt-1 text-small text-[var(--ink-2)]">{t('kcResetDone')}</p>}
       {list && list.items.length > 0 && <>
         <ul id="known-copies-list" aria-label={t('kcListLabel')} className="mt-2">{list.items.map(item => (

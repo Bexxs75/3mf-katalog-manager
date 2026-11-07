@@ -43,11 +43,19 @@ function renderCatalogTab() {
 
 it('offers the backup as a plain download link, even for a read-only session, and no desktop import', async () => {
   const props = renderCatalogTab();
-  const link = await screen.findByRole('link', { name: de.exportCatalogButton });
+  const link = await screen.findByRole('link', { name: de.exportCatalogWebButton });
   expect(link).toHaveAttribute('href', '/api/backup/export');
   expect(link).toHaveAttribute('download');
   expect(screen.getByText(de.catalogBackupWebHint)).toBeInTheDocument();
-  expect(screen.getByText(de.catalogBackupWebFailureHint)).toBeInTheDocument();
+  // The long background sits in two closed disclosures; the short text stays visible.
+  expect(screen.getByText(de.catalogBackupWebHint)).toBeVisible();
+  for (const [title, text] of [[de.catalogBackupWebRestoreTitle, de.catalogBackupWebRestoreText], [de.catalogBackupWebFailureTitle, de.catalogBackupWebFailureHint]]) {
+    const details = screen.getByText(title).closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText(title));
+    expect(details).toHaveAttribute('open');
+    expect(screen.getByText(text)).toBeVisible();
+  }
   expect(screen.queryByRole('button', { name: de.importCatalogButton })).toBeNull();
   expect(screen.queryByRole('button', { name: de.exportCatalogButton })).toBeNull();
   link.addEventListener('click', event => event.preventDefault());
@@ -58,33 +66,39 @@ it('offers the backup as a plain download link, even for a read-only session, an
 it('keeps the same focused link while paused, blocks further clicks and re-enables it afterwards', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
   renderCatalogTab();
-  const link = screen.getByRole('link', { name: de.exportCatalogButton });
+  const link = screen.getByRole('link', { name: de.exportCatalogWebButton });
   // jsdom would try to navigate on the first (allowed) click; swallow that one only.
   link.addEventListener('click', event => event.preventDefault(), { once: true });
   link.focus();
   fireEvent.click(link);
-  const paused = screen.getByRole('link', { name: de.exportCatalogButton });
+  const paused = screen.getByRole('link', { name: de.exportCatalogWebButton });
   expect(paused).toBe(link);
   expect(paused).toHaveFocus();
   expect(paused).toHaveAttribute('aria-disabled', 'true');
   expect(paused).toHaveAttribute('href', '/api/backup/export');
+  // The pause is written out and tied to the link, and the click claims no finished backup.
+  expect(screen.getByRole('status')).toHaveTextContent(de.catalogBackupWebPause);
+  expect(paused).toHaveAccessibleDescription(de.catalogBackupWebPause);
+  expect(screen.queryByText(/Sicherung erstellt/)).toBeNull();
   const second = new MouseEvent('click', { bubbles: true, cancelable: true });
   paused.dispatchEvent(second);
   expect(second.defaultPrevented).toBe(true);
   await act(async () => { vi.advanceTimersByTime(30_100); });
-  const again = screen.getByRole('link', { name: de.exportCatalogButton });
+  const again = screen.getByRole('link', { name: de.exportCatalogWebButton });
   expect(again).toBe(link);
   expect(again).not.toHaveAttribute('aria-disabled');
+  expect(screen.queryByText(de.catalogBackupWebPause)).toBeNull();
 });
 
 it('has the new texts in all four languages', () => {
   for (const texts of [de, en, es, fr]) {
     expect(texts.catalogBackupWebHint.length).toBeGreaterThan(20);
     expect(texts.catalogBackupWebFailureHint.length).toBeGreaterThan(20);
+    expect(texts.catalogBackupWebPause).toContain('30');
   }
   expect(new Set([de, en, es, fr].map(t => t.catalogBackupWebHint)).size).toBe(4);
   // The real limits of a desktop restore are named.
-  for (const texts of [de, en, es, fr]) expect(texts.catalogBackupWebHint).toContain('256');
+  for (const texts of [de, en, es, fr]) expect(texts.catalogBackupWebRestoreText).toContain('256');
   expect(de.catalogBackupWebHint).toContain('Windows');
   expect(de.catalogBackupWebFailureHint).toContain('neu an');
 });
@@ -140,4 +154,11 @@ it('has four tabs without Slicer & Dienste and only the sections the browser can
   expect(headings()).toEqual([de.settingsSecAutoTags, de.settingsSecPrintData]);
   fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
   expect(headings()).toEqual([de.settingsSecVersionWeb, de.settingsSecAbout]);
+});
+
+it('shows the print method in the web build as an information line, not as a choice', () => {
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Allgemein' }));
+  expect(screen.getByText(`${de.ptCurrent.replace('{choice}', de.ptBoth)} ${de.ptWebReadOnly}`)).toBeVisible();
+  expect(screen.queryByRole('radio', { name: new RegExp(de.ptFilament) })).toBeNull();
 });

@@ -1,6 +1,6 @@
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { SettingsPanel, type SettingsPanelProps } from './SettingsPanel';
 import { invoke } from '@tauri-apps/api/core';
@@ -113,14 +113,14 @@ describe('SettingsPanel structure and keyboard', () => {
     renderPanel({ update: view });
     fireEvent.click(tab('Info'));
     expect(screen.queryByRole('heading', { name: 'Vorab-Versionen' })).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: de.updateChannelLabel })).toBeNull();
+    expect(screen.queryByRole('switch', { name: de.updateChannelLabel })).toBeNull();
   });
 
-  it('puts the preview-version checkbox under Info in its own section', () => {
+  it('puts the preview-version switch under Info in its own section', () => {
     renderPanel();
     fireEvent.click(tab('Info'));
     const section = screen.getByRole('heading', { level: 3, name: 'Vorab-Versionen' }).closest('section')!;
-    expect(within(section).getByRole('checkbox', { name: de.updateChannelLabel })).toBeVisible();
+    expect(within(section).getByRole('switch', { name: de.updateChannelLabel })).toBeVisible();
   });
 
   it('closes with the cross', () => {
@@ -271,7 +271,7 @@ describe('SettingsPanel content', () => {
     const { props } = renderPanel();
     expect(screen.queryByRole('tab', { name: 'Drucker' })).toBeNull();
     fireEvent.click(tab('Slicer & Dienste'));
-    expect(screen.getByText('Drucker findest du jetzt im Printer Manager in der linken Leiste.')).toBeInTheDocument();
+    expect(screen.getByText(de.settingsPrintersMovedHint)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Printer Manager öffnen' }));
     expect(props.onOpenPrinters).toHaveBeenCalledTimes(1);
   });
@@ -279,7 +279,7 @@ describe('SettingsPanel content', () => {
   it('clears backup feedback when opening the import confirmation', () => {
     const { props } = renderPanel();
     fireEvent.click(tab('Wartung'));
-    fireEvent.click(screen.getByRole('button', { name: 'Katalog importieren' }));
+    fireEvent.click(screen.getByRole('button', { name: de.importCatalogButton }));
     expect(props.onClearCatalogBackupError).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Ersetzt den kompletten aktuellen Katalog. Fortfahren?')).toBeVisible();
     expect(screen.getByText('Dein Thingiverse-Schlüssel bleibt auf diesem Rechner erhalten und ist in keiner Sicherung enthalten.')).toBeVisible();
@@ -335,9 +335,9 @@ describe('SettingsPanel catalog backup on the desktop', () => {
   it('keeps the export button that calls the backend and shows no web download link', () => {
     const { props } = renderPanel();
     fireEvent.click(tab('Wartung'));
-    fireEvent.click(screen.getByRole('button', { name: 'Katalog exportieren' }));
+    fireEvent.click(screen.getByRole('button', { name: de.exportCatalogButton }));
     expect(props.onExportCatalog).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('link', { name: 'Katalog exportieren' })).toBeNull();
+    expect(screen.queryByRole('link', { name: de.exportCatalogButton })).toBeNull();
   });
 });
 
@@ -348,8 +348,8 @@ describe('SettingsPanel selection groups', () => {
     for (const [legend, options] of [
       ['Farbschema', ['System', 'Hell', 'Dunkel']],
       ['Darstellungsdichte', ['Kompakt', 'Komfort']],
-      ['Modellvorschau', ['Bild', '3D-Ansicht']],
-      ['Detailbereich', ['Automatisch (erscheint beim Anklicken)', 'Immer sichtbar']],
+      ['Modellvorschau', [de.displayPreferenceThumbnail, de.displayPreferenceRender]],
+      ['Detailbereich', [de.detailPanelAuto, de.detailPanelPinned]],
       ['Sprache', ['Deutsch', 'English', 'Español', 'Français']],
     ] as const) {
       const group = screen.getByRole('group', { name: legend });
@@ -414,7 +414,7 @@ describe('SettingsPanel slicer list', () => {
     expect(screen.getByRole('radio', { name: 'PrusaSlicer' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'PrusaSlicer aus der Slicer-Liste entfernen' }));
     rerender({ slicers: [slicers[0]] });
-    expect(screen.getByRole('button', { name: 'Hinzufügen' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: de.addSlicer })).toHaveFocus();
   });
 
   it('keeps the focus where it is while the removal has not happened', () => {
@@ -491,5 +491,43 @@ describe('SettingsPanel focus handling', () => {
     fireEvent.click(outside);
     expect(onClick).not.toHaveBeenCalled();
     outside.remove();
+  });
+});
+
+describe('SettingsPanel program behavior section', () => {
+  const answer = (closeBehavior: unknown) => vi.mocked(invoke).mockImplementation((async (command: string) =>
+    command === 'get_close_behavior' ? closeBehavior : command === 'get_linux_menu_status' ? null : { enabled: false, untilMs: null }) as typeof invoke);
+
+  it('drops its title once both controls report that the system offers nothing', async () => {
+    answer(null);
+    renderPanel();
+    expect(await screen.findByRole('switch', { name: de.singleKeyShortcutsTitle })).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole('heading', { level: 3, name: de.settingsSecProgram })).toBeNull());
+    expect(screen.queryByRole('radio', { name: de.closeActionExit })).toBeNull();
+  });
+
+  it('shows the section while a control has something to offer', async () => {
+    answer({ action: 'exit', trayAvailable: true, supported: true, platform: 'windows' });
+    renderPanel();
+    expect(await screen.findByRole('radio', { name: de.closeActionExit })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 3, name: de.settingsSecProgram })).toBeVisible();
+  });
+});
+
+describe('SettingsPanel switches and container paths', () => {
+  it('turns the single-key shortcuts on and off with a switch that is tied to its explanation', () => {
+    const onSingleKeyShortcutsChange = vi.fn();
+    renderPanel({ singleKeyShortcuts: true, onSingleKeyShortcutsChange });
+    const toggle = screen.getByRole('switch', { name: de.singleKeyShortcutsTitle });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle).toHaveAccessibleDescription(de.singleKeyShortcutsDescription);
+    fireEvent.click(toggle);
+    expect(onSingleKeyShortcutsChange).toHaveBeenCalledWith(false);
+  });
+
+  it('marks the catalog path in the container as a container path', () => {
+    renderPanel({ catalogBaseDir: '/config/catalog' }, true);
+    fireEvent.click(tab('Katalog'));
+    expect(screen.getByText(de.containerCatalogPath.replace('{path}', '/config/catalog'))).toBeVisible();
   });
 });

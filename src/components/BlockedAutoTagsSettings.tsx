@@ -6,6 +6,9 @@ import { ErrorText } from '../diagnostics/ErrorText';
 import * as api from '../lib/api/autoTags';
 import { useCanEditMetadata } from '../lib/webSession';
 
+/** Id of the visible note (rendered by the tagging switch above) that says why the controls are locked. */
+export const READ_ONLY_NOTE_ID = 'auto-tags-read-only-note';
+
 /** Settings section: automatic tags the app no longer assigns, each with a way to lift the block. */
 export function BlockedAutoTagsSettings() {
   const t = useT();
@@ -83,7 +86,8 @@ export function BlockedAutoTagsSettings() {
                   )}
                 </span>
                 <button
-                  type="button" data-unblock disabled={!canEdit} title={canEdit ? undefined : t('webReadOnly')}
+                  type="button" data-unblock disabled={!canEdit} title={canEdit ? undefined : t('settingsReadOnlyNotice')}
+                  aria-describedby={canEdit ? undefined : READ_ONLY_NOTE_ID}
                   aria-label={t('blockedAutoTagUnblockAria').replace('{label}', label)}
                   onClick={() => void unblock(tag, index)}
                   className="flex-none px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-[var(--accent)]"

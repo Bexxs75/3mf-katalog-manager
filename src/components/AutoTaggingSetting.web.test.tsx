@@ -56,6 +56,26 @@ it('disables the switch for a read-only session', async () => {
   expect(calls.map(c => c.command)).not.toContain('set_auto_tagging');
 });
 
+it('says in words that the catalog is read-only and ties the locked controls to that note', async () => {
+  writable = false; blocked = ['miniatur'];
+  await getSession();
+  setup();
+  const box = await screen.findByRole('switch', { name: de.autoTaggingLabel });
+  const note = screen.getByText(de.settingsReadOnlyNotice);
+  expect(note).toBeVisible();
+  expect(box).toHaveAccessibleDescription(de.settingsReadOnlyNotice);
+  const unblock = await screen.findByRole('button', { name: /aufheben/ });
+  expect(unblock).toBeDisabled();
+  expect(unblock).toHaveAccessibleDescription(de.settingsReadOnlyNotice);
+  expect(screen.queryByText(de.webReadOnly)).toBeNull();
+});
+
+it('shows no read-only note when the session may write', async () => {
+  setup();
+  await screen.findByRole('switch', { name: de.autoTaggingLabel });
+  expect(screen.queryByText(de.settingsReadOnlyNotice)).toBeNull();
+});
+
 it('lists the block list through the web command and lifts a block', async () => {
   blocked = ['miniatur', 'kabelhalter'];
   setup();

@@ -32,6 +32,7 @@ import { PrintDataRereadSettings } from './PrintDataRereadSettings';
 import { ThingiverseSettings } from './ThingiverseSettings';
 import { DragOutSetting } from './DragOutSetting';
 import { RadioSegments } from './RadioSegments';
+import { ToggleSwitch } from './ToggleSwitch';
 import { getAppVersion } from '../lib/api/update';
 import { useLoadedSetting } from './SettingState';
 import { SettingsSection } from './SettingsSection';
@@ -316,6 +317,7 @@ export function SettingsPanel({
                   value={detailPanel}
                   onChange={onDetailPanelChange}
                 />}
+                {onDetailPanelChange && <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">{t('detailPanelHint')}</div>}
               </SettingsSection>
 
               <SettingsSection id="language" title={t('settingsSecLanguage')}>
@@ -331,10 +333,12 @@ export function SettingsPanel({
 
               <SettingsSection id="controls" title={t('settingsSecControls')}>
                 {!web && <>
-                  <button role="switch" aria-checked={singleKeyShortcuts} onClick={() => onSingleKeyShortcutsChange?.(!singleKeyShortcuts)} className="w-full text-left border border-[var(--line)] rounded p-2 mb-2 cursor-pointer">
-                    <span aria-hidden="true">{singleKeyShortcuts ? <Icon name="check" size={14} /> : '○ '}</span>{t('singleKeyShortcutsTitle')}
-                  </button>
-                  <p className="text-small text-[var(--ink-2)] mb-3">{t('singleKeyShortcutsDescription')}</p>
+                  <div className="flex items-center justify-between gap-2 text-small">
+                    <span className="font-semibold">{t('singleKeyShortcutsTitle')}</span>
+                    <ToggleSwitch checked={singleKeyShortcuts} label={t('singleKeyShortcutsTitle')} aria-describedby="single-key-shortcuts-desc"
+                      onChange={next => onSingleKeyShortcutsChange?.(next)} />
+                  </div>
+                  <p id="single-key-shortcuts-desc" className="mt-1 text-small text-[var(--ink-2)] mb-3">{t('singleKeyShortcutsDescription')}</p>
                 </>}
                 <button onClick={onOpenTips} className="w-full h-8 border border-[var(--line-strong)] rounded cursor-pointer">{t('keyboardTipsTitle')}</button>
               </SettingsSection>
@@ -359,9 +363,11 @@ export function SettingsPanel({
               {!web && (
                 <>
                   <SettingsSection id="storage" title={t('settingsSecStorage')}>
-                    <div className={`${catalogBaseDir ? 'font-code' : 'text-caption'} text-[var(--ink-3)] truncate mb-1.5`}>
-                      {catalogBaseDir ? displayName(catalogBaseDir) : t('catalogBaseDirNotSet')}
-                    </div>
+                    {catalogBaseDir && container
+                      ? <div className="text-caption text-[var(--ink-3)] break-all mb-1.5">{t('containerCatalogPath').replace('{path}', displayName(catalogBaseDir))}</div>
+                      : <div className={`${catalogBaseDir ? 'font-code' : 'text-caption'} text-[var(--ink-3)] truncate mb-1.5`}>
+                        {catalogBaseDir ? displayName(catalogBaseDir) : t('catalogBaseDirNotSet')}
+                      </div>}
                     <div className="flex gap-1.5">
                       <button onClick={onOpenCatalogSetup} className={`flex-1 ${dashedButton}`}>
                         {catalogBaseDir ? t('catalogBaseDirChangeButton') : t('catalogBaseDirSetupButton')}
@@ -447,7 +453,7 @@ export function SettingsPanel({
                       </fieldset>
                     )}
                     <button ref={addSlicerRef} onClick={onAddSlicer} className={`mt-2 ${dashedButton}`}>
-                      <Icon name="plus" size={14} /> {t('addSlicer')}
+                      {t('addSlicer')}
                     </button>
                     {addSlicerError && (
                       <div className="mt-1.5 font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">

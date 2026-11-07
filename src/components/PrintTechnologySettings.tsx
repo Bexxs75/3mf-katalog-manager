@@ -29,10 +29,10 @@ export function PrintTechnologySettings() {
     <fieldset className="mb-4" aria-describedby="pt-settings-help">
       <legend className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('ptTitle')}</legend>
       {web
-        ? <p className="text-small"><b>{label}</b></p>
+        ? <p className="text-small">{t('ptCurrent').replace('{choice}', label)} {t('ptWebReadOnly')}</p>
         : <PrintTechnologyChoice value={technology} onChange={(v) => void change(v)} variant="list" />}
       <p id="pt-settings-help" className="mt-2 text-caption leading-relaxed text-[var(--ink-3)]">
-        {effect} {t('ptNothingDeleted')} {web && t('ptWebReadOnly')}
+        {effect} {t('ptNothingDeleted')}
       </p>
       <p role="status" className="text-caption text-[var(--ink-2)]">
         {saved && t('ptSaved').replace('{choice}', t(saved === 'filament' ? 'ptFilament' : saved === 'resin' ? 'ptResin' : 'ptBoth'))}

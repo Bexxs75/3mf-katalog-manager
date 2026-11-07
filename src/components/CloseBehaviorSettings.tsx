@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import * as api from '../lib/api/closeBehavior';
 import { toAppError, type AppError } from '../lib/errors';
+import { useSectionContent } from './SettingsSection';
 import { SettingLoadStatus, SettingSaveStatus, useLoadedSetting } from './SettingState';
 
 /** Radio group "when the window is closed"; renders nothing where there is no notification area. */
@@ -13,6 +14,8 @@ export function CloseBehaviorSettings() {
   const mountedRef = useRef(true);
   // Set to true again on setup: StrictMode runs setup, cleanup, setup.
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  // Tells a section around this block whether there is anything to show: a read in progress or failed is, a loaded "no" is not.
+  useSectionContent(loadState !== 'ready' || Boolean(state));
   // `null` is the loaded answer "no notification area": the group stays hidden then.
   if (loadState !== 'ready') return <SettingLoadStatus state={loadState} label={t('closeActionTitle')} error={loadError} onReload={() => void reload()} className="mt-1" />;
   if (!state) return null;

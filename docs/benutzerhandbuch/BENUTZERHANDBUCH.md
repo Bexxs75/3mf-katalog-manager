@@ -216,17 +216,17 @@ itself.
 - **Set up:** Settings → Catalog → "Source folders". "Add folder …" adds a folder, "Remove" takes
   it off the list. A source folder must not be the catalog folder itself or inside it, and must
   not be a system folder. While an import is running, the list cannot be changed.
-- **Check:** "Import → Check source folders" looks for new models in all source folders. A notice
+- **Search:** "Import → Search source folders for new files" looks for new models in all source folders. A notice
   reports the result ("N new files in the source folder …", "No new files in the source folders");
   "View" opens the list, "Later" closes the notice. Nothing is moved before you confirm.
-- **Check at start:** the switch "Check when the app starts" (off by default) lets the app check
+- **Search at start:** the switch "Look for new files at start" (off by default) lets the app search
   once after it starts. It then only shows a notice.
 - **Dialog "New files in the source folder":** tick the files you want. "Move N to the catalog"
   moves them into the catalog folder like a normal import. "Decline selected" leaves the files
   where they are and the app does not offer them again. Files with the same content as a model in
   the catalog are not ticked in advance.
-- **Declined files:** the settings show "Declined files: N". "Reset list" makes the app offer
-  them again.
+- **Declined files:** the settings show "Declined files: N". "Offer declined files again" makes the
+  app offer them again at the next search of the source folders; it does not search by itself.
 - A source folder that is not reachable is marked "not reachable". If the check stops because of
   very many entries, a notice says there may be more files.
 
@@ -470,8 +470,8 @@ Refresh first only looks — nothing changes until you confirm:
   size): it is no longer offered or read again. It is offered again when the original is gone from
   the catalog or the file changes its size. With copies listed, "Apply changes" also works with
   nothing ticked; that is how you decline them. In the settings, "Sync with disk" shows
-  "N remembered copies" with "Show …" (the list, with the model each is a copy of) and "Reset"
-  (all are offered again).
+  "N remembered copies" with "Show …" (the list, with the model each is a copy of) and "Offer remembered
+  copies again" (all are offered again at the next sync). "How are copies recognised?" explains the detection.
 - **Select all / None:** every entry has its own checkbox. "Select all" and "None" tick or untick
   all entries of the lists of new files and of files with the same content as an existing model.
 - **Files in the trash:** a new file whose path is still held by the [trash](#the-trash) is
@@ -500,11 +500,11 @@ Refresh first only looks — nothing changes until you confirm:
 - **After applying,** a notice sums up "N new files · N new folders · N files removed", and the new
   entries are briefly highlighted.
 
-**Sync at start:** under Settings → Catalog → Sync the catalog folder, the switch "Sync at start" lets the
+**Sync at start:** under Settings → Catalog → Sync the catalog folder, the switch "Sync catalog folders at start" lets the
 app check your catalog folders in the background when it starts. A notice appears only when
 something changed ("Found at start: …"); otherwise nothing happens. With large catalogs or network
-drives this can take a while. The second switch, "Add new files automatically", takes over new
-files and detected renames at start without asking. It only works together with "Sync at start",
+drives this can take a while. The second switch, "Take over new files and detected renames automatically", takes over new
+files and detected renames at start without asking. It only works together with "Sync catalog folders at start",
 never removes anything from the catalog and never adds files with the same content as an existing
 model; you decide those in the sync dialog (F5).
 
@@ -650,7 +650,7 @@ This is not an error. What the card shows depends on the file:
   layer height and nozzle under "Project settings", without print time and temperatures.
   This also applies to a PrusaSlicer project (saved without slicing): the card shows its printer
   model, layer height and nozzle; the bed type is not stated there and shows a dash. To read such
-  files afterwards, use "Read all unread 3MF files" in the settings or select them and use
+  files afterwards, use "Read missing print data" in the settings or select them and use
   "Read print data" in the "More" menu.
 - **"No slicer print data recognised."** — the file has no slicer data the app knows.
 - **"The slicer data of this file could not be read."** — the slicer data is there but damaged or
@@ -676,8 +676,7 @@ Files that are already in the catalog are not read again automatically. There ar
 read the print data afterwards; the files themselves are never changed:
 
 - **One model:** on the detail page, "Rescan metadata".
-- **All unread 3MF files:** Settings → Catalog → Print data → **"Read all unread 3MF
-  files"**. It reads every 3MF file that has not been read yet, whichever slicer made it; a file
+- **All unread 3MF files:** Settings → Catalog → Print data → **"Read missing print data"**. It reads every 3MF file that has not been read yet, whichever slicer made it; a file
   without print data still gives its project settings.
 - **Selected models:** select them and choose **"Read print data"** in the "More" menu of the
   selection bar. This reads every selected 3MF file again, whatever its state.
@@ -1237,7 +1236,7 @@ different privileges; this protection is called UIPI.
 #### Installed slicers
 
 The app scans known install locations on startup (Bambu Studio, OrcaSlicer, PrusaSlicer,
-SuperSlicer, UltiMaker Cura, Creality Print) and adds any it finds automatically; use "+ Add" to add others,
+SuperSlicer, UltiMaker Cura, Creality Print) and adds any it finds automatically; use "Add slicer …" to add others,
 including self-built or modified versions. The radio button sets which slicer is used as the
 **default** when opening a model.
 
@@ -1247,7 +1246,7 @@ Your slicer can tell the catalog when it has finished a file. The catalog then s
 recognised by the model you chose and not only by a similar file name. This works on the desktop only (not in the web version,
 not in a container) and is **off** until you switch it on.
 
-1. Settings → Slicers & services → Messages from the slicer → switch on "Report sliced files automatically". One command line per slicer (PrusaSlicer, SuperSlicer,
+1. Settings → Slicers & services → Messages from the slicer → switch on "Receive reports of sliced files". One command line per slicer (PrusaSlicer, SuperSlicer,
    OrcaSlicer, Bambu Studio, Creality Print) appears; "Copy" puts it on the clipboard.
 2. In the slicer open the print settings, go to the post-processing scripts and paste the command line there. The slicer adds the
    path of the finished file itself.
@@ -1284,30 +1283,33 @@ only with the program itself.*
   [Source folders](#source-folders)), with the switch for the check at start and the list of rejected files.
 - **On import** — the switch "Rename files on import" (off by default) prefixes new catalog files with the date and
   time (see [Importing files](#importing-files)).
-- **Sync the catalog folder** — "Sync at start" and "Add new files automatically", plus the remembered copies (see
+- **Sync the catalog folder** — "Sync catalog folders at start" and "Take over new files and detected renames automatically", plus the remembered copies (see
   [Syncing with the disk](#syncing-with-the-disk)).
 - **Automatic tags** — on by default. When it is off, import, syncing with the disk and
   source folders assign no tags automatically (see [Automatic tags](#automatic-tags)). Below it the list of blocked
   automatic tags: tags that the app no longer assigns by itself; "Lift block" ends a block.
-- **Print data** — "Read all sliced files" reads the print data of sliced files that were not
-  read yet (see [Reading print data afterwards](#reading-print-data-afterwards)).
+- **Print data** — "Read missing print data" reads the print data of imported 3MF and G-code files that were not
+  processed yet (see [Reading print data afterwards](#reading-print-data-afterwards)).
 
-The browser version's Catalog tab only has Automatic tags and Print data.
+The browser version's Catalog tab only has Automatic tags and Print data. Without write access to the catalog, both say
+"You only have read access to this catalog." and their controls stay locked.
 
 ### Maintenance
 
 - **Check the catalog** — a manually triggered scan finds orphaned file paths (a file listed in the
   catalog but no longer present on disk) and inventory duplicates, with cleanup via a selection
   dialog.
-- **Back up and restore** — "Export catalog" and "Import catalog" (see
+- **Back up and restore** — "Back up catalog …" and "Restore catalog from backup …" (see
   [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)). The browser version has the section
-  "Back up the catalog" with a download instead.
+  "Back up the catalog" with a download instead ("Download catalog backup"). It states what the backup contains, keeps
+  "Requirements for restoring" and "Download failed?" as expandable notes, and, because the app cannot tell when the
+  download has finished, asks for 30 seconds between two downloads ("Another download is possible after 30 seconds.").
 - **Reset the catalog** — set apart in red at the bottom (not in the browser version).
 
 #### Reset catalog
 
 Under Settings → Maintenance → Reset the catalog, **Reset catalog …** opens a confirmation with the number of models
-outside the trash and the total number of catalog folders. **Reset** clears those models and
+outside the trash and the total number of catalog folders. **Reset catalog** clears those models and
 folders, all tags and collections, and the removed models' metadata, queue entries and print log.
 Files and folders on disk stay unchanged.
 
@@ -1352,11 +1354,11 @@ The following screenshots compare the **light** and **dark** themes:
 ![Catalog in dark theme](bilder/en/14-dark-mode.png)
 ![Catalog in light theme](bilder/en/15-hell-mode-bonus.png)
 
-Under Settings → Info → Preview versions, the checkbox "Receive prerelease versions (Release Candidates)" enables
-release candidates and the later final version for your existing catalog. Ticking it opens a
+Under Settings → Info → Preview versions, the switch "Receive prerelease versions (Release Candidates)" enables
+release candidates and the later final version for your existing catalog. Turning it on opens a
 warning: a catalog migration may prevent returning to an older version without a backup. Choose
 "Export catalog now", then "Enable now" after the export succeeds; "Enable anyway" proceeds
-without that export, and "Cancel" leaves the checkbox unticked. Unticking it again does not
+without that export, and "Cancel" leaves the switch off. Turning it off again does not
 uninstall an existing prerelease; it stays installed until a newer stable version is available.
 
 ![Warning when enabling prerelease updates](bilder/en/38-update-kanal-warnung.png)
@@ -1451,12 +1453,12 @@ Retention is separate for each kind:
 - Schema-migration copies: the newest two, independently of update copies.
 - Unrelated files are never deleted by this cleanup. The copy just created is protected.
 
-These automatic `.db` files are database copies, not ZIP catalog exports. "Import catalog"
+These automatic `.db` files are database copies, not ZIP catalog exports. "Restore catalog from backup"
 accepts only ZIP exports and cannot open them. To return using an automatic database copy:
 
 1. In Settings → Info → App data and logs, use "Open data folder" and open `update-backups`. Find the copy made
    before the update you want to undo. Copy it somewhere safe.
-2. Export the current catalog under Settings → Maintenance → Back up and restore → "Export catalog" if the app still
+2. Export the current catalog under Settings → Maintenance → Back up and restore → "Back up catalog …" if the app still
    opens, then close the app completely.
 3. Install the previous version from the
    [Releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases), without starting it yet.
@@ -1478,10 +1480,10 @@ overwrites anything irreversibly.
 
 To restore a ZIP export:
 
-1. Open Settings → Maintenance → "Back up and restore". Use "Export catalog" first if you want to
+1. Open Settings → Maintenance → "Back up and restore". Use "Back up catalog …" first if you want to
    retain the current state separately.
-2. Choose "Import catalog" and confirm "Yes, replace". This replaces the entire current catalog.
-3. Select the ZIP file created with "Export catalog". The app validates it before replacement.
+2. Choose "Restore catalog from backup …" and confirm "Replace catalog". This replaces the entire current catalog.
+3. Select the ZIP file created with "Back up catalog …". The app validates it before replacement.
    If it is rejected, the current catalog remains unchanged and an error is shown.
 4. After a successful import, the interface reloads with the restored catalog.
 
@@ -1757,18 +1759,18 @@ selbst passiert nichts.
   Ordner hinzu, „Entfernen“ nimmt ihn aus der Liste. Ein Quellordner darf nicht der Katalogordner
   selbst oder darin liegen und kein Systemordner sein. Während ein Import läuft, lässt sich die
   Liste nicht ändern.
-- **Prüfen:** „Importieren → Quellordner prüfen“ sucht in allen Quellordnern nach neuen Modellen.
+- **Suchen:** „Importieren → Quellordner nach neuen Dateien durchsuchen“ sucht in allen Quellordnern nach neuen Modellen.
   Ein Hinweis nennt das Ergebnis („N neue Dateien im Quellordner …“, „Keine neuen Dateien in den
   Quellordnern“); „Ansehen“ öffnet die Liste, „Später“ schließt den Hinweis. Vor deiner
   Bestätigung wird nichts verschoben.
-- **Beim Start prüfen:** Der Schalter „Beim Start der App prüfen“ (standardmäßig aus) lässt die App
-  einmal nach dem Start prüfen. Sie zeigt dann nur einen Hinweis.
+- **Beim Start suchen:** Der Schalter „Beim Start nach neuen Dateien suchen“ (standardmäßig aus) lässt die App
+  einmal nach dem Start suchen. Sie zeigt dann nur einen Hinweis.
 - **Dialog „Neue Dateien im Quellordner“:** Hake die gewünschten Dateien an. „N in den Katalog
   verschieben“ verschiebt sie wie bei einem normalen Import in den Katalogordner. „Ausgewählte
   ablehnen“ lässt die Dateien, wo sie sind, und die App bietet sie nicht mehr an. Dateien mit
   gleichem Inhalt wie ein Modell im Katalog sind nicht vorausgewählt.
-- **Abgelehnte Dateien:** Die Einstellungen zeigen „Abgelehnte Dateien: N“. „Liste zurücksetzen“
-  sorgt dafür, dass die App sie wieder anbietet.
+- **Abgelehnte Dateien:** Die Einstellungen zeigen „Abgelehnte Dateien: N“. „Abgelehnte Dateien wieder anbieten“
+  sorgt dafür, dass die App sie bei der nächsten Quellordnersuche wieder anbietet; sie sucht dabei nicht selbst.
 - Ein Quellordner, der nicht erreichbar ist, ist mit „nicht erreichbar“ markiert. Bricht die
   Prüfung bei sehr vielen Einträgen ab, weist ein Hinweis darauf hin, dass es weitere Dateien geben
   kann.
@@ -2033,7 +2035,7 @@ Aktualisieren schaut zuerst nur nach – erst nach deiner Bestätigung ändert s
   oder die Datei ihre Größe ändert. Sind Kopien gelistet, geht „Änderungen übernehmen“ auch ohne
   Häkchen; so lehnst du sie ab. In den Einstellungen zeigt „Abgleich mit der Festplatte“ die Zeile
   „N gemerkte Kopien“ mit „Anzeigen …“ (die Liste, mit dem Modell, von dem jede eine Kopie ist) und
-  „Zurücksetzen“ (alle werden wieder angeboten).
+  „Gemerkte Kopien wieder anbieten“ (alle werden beim nächsten Abgleich wieder angeboten). „Wie werden Kopien erkannt?“ erklärt die Erkennung.
 - **Alle auswählen / Keine:** Jeder Eintrag hat ein eigenes Kästchen. „Alle auswählen“ und „Keine“
   haken alle Einträge der Listen für neue Dateien und für Dateien mit gleichem Inhalt wie ein
   vorhandenes Modell an bzw. ab.
@@ -2069,11 +2071,11 @@ Aktualisieren schaut zuerst nur nach – erst nach deiner Bestätigung ändert s
   zusammen, und die neuen Einträge werden kurz hervorgehoben.
 
 **Beim Start abgleichen:** Unter Einstellungen → Katalog → Katalogordner abgleichen lässt
-der Schalter „Beim Start abgleichen“ die App beim Start im Hintergrund deine Katalogordner prüfen.
+der Schalter „Katalogordner beim Start abgleichen“ die App beim Start im Hintergrund deine Katalogordner prüfen.
 Ein Hinweis erscheint nur, wenn sich etwas geändert hat („Beim Start gefunden: …“); sonst passiert
 nichts. Bei großen Katalogen oder Netzlaufwerken kann das etwas dauern. Der zweite Schalter, „Neue
-Dateien automatisch aufnehmen“, übernimmt neue Dateien und erkannte Umbenennungen beim Start ohne
-Rückfrage. Er wirkt nur zusammen mit „Beim Start abgleichen“, entfernt nie etwas aus dem Katalog und
+Dateien und erkannte Umbenennungen automatisch übernehmen“, übernimmt neue Dateien und erkannte Umbenennungen beim Start ohne
+Rückfrage. Er wirkt nur zusammen mit „Katalogordner beim Start abgleichen“, entfernt nie etwas aus dem Katalog und
 nimmt keine Dateien mit gleichem Inhalt wie ein vorhandenes Modell auf; die entscheidest du weiter
 im Abgleich-Dialog (F5).
 
@@ -2235,7 +2237,7 @@ der Datei nicht gefunden“. Das ist kein Fehler. Was die Karte zeigt, hängt vo
   Druckzeit und Temperaturen.
   Das gilt auch für ein PrusaSlicer-Projekt (ohne Slicen gespeichert): die Karte zeigt Druckermodell,
   Layerhöhe und Düse; der Betttyp steht dort nicht und erscheint als Strich. Um solche Dateien
-  nachzulesen, nutze „Alle noch nicht gelesenen 3MF-Dateien nachlesen“ in den Einstellungen oder
+  nachzulesen, nutze „Fehlende Druckdaten einlesen“ in den Einstellungen oder
   wähle sie aus und nutze „Druckdaten nachlesen“ im Menü „Mehr“.
 - **„Keine Slicer-Druckdaten erkannt.“** — die Datei enthält keine Slicer-Daten, die die App kennt.
 - **„Die Slicer-Daten dieser Datei konnten nicht gelesen werden.“** — die Slicer-Daten sind da,
@@ -2263,7 +2265,7 @@ die Druckdaten nachzulesen; die Dateien selbst werden dabei nie verändert:
 
 - **Ein Modell:** auf der Detailseite „Metadaten neu einlesen“.
 - **Alle noch nicht gelesenen 3MF-Dateien:** Einstellungen → Katalog → Druckdaten
-  → **„Alle noch nicht gelesenen 3MF-Dateien nachlesen“**. Das liest jede 3MF-Datei, die noch nicht
+  → **„Fehlende Druckdaten einlesen“**. Das liest jede 3MF-Datei, die noch nicht
   gelesen wurde, egal mit welchem Slicer sie erstellt wurde; eine Datei ohne Druckdaten liefert
   trotzdem ihre Projekteinstellungen.
 - **Gewählte Modelle:** wählen und im Menü „Mehr“ der Auswahlleiste **„Druckdaten nachlesen“**
@@ -2851,7 +2853,7 @@ dann den Slicer normal starten. Windows trennt Programme mit unterschiedlichen B
 #### Installierte Slicer
 
 Die App durchsucht beim Start bekannte Installationsorte (Bambu Studio, OrcaSlicer, PrusaSlicer,
-SuperSlicer, UltiMaker Cura, Creality Print) und trägt gefundene Slicer automatisch ein; über "+ Hinzufügen"
+SuperSlicer, UltiMaker Cura, Creality Print) und trägt gefundene Slicer automatisch ein; über "Slicer hinzufügen …"
 ergänzt du weitere, auch selbst kompilierte oder abgewandelte Versionen. Der Radiobutton legt
 fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
 
@@ -2861,7 +2863,7 @@ Dein Slicer kann dem Katalog melden, wenn er eine Datei fertig geslict hat. Der 
 ein Druck am gewählten Modell erkannt wird und nicht nur an einem ähnlichen Dateinamen. Das gibt es nur auf dem Desktop (nicht in der
 Web-Version, nicht im Container) und ist **aus**, bis du es einschaltest.
 
-1. Einstellungen → Slicer & Dienste → Meldungen vom Slicer → „Geslichte Dateien automatisch melden“ einschalten. Es erscheint je Slicer (PrusaSlicer, SuperSlicer,
+1. Einstellungen → Slicer & Dienste → Meldungen vom Slicer → „Meldungen geslichter Dateien empfangen“ einschalten. Es erscheint je Slicer (PrusaSlicer, SuperSlicer,
    OrcaSlicer, Bambu Studio, Creality Print) eine Befehlszeile; „Kopieren“ legt sie in die Zwischenablage.
 2. Im Slicer die Druckeinstellungen öffnen, zu den Nachbearbeitungsskripten gehen und die Befehlszeile dort einfügen. Den Pfad der
    fertigen Datei hängt der Slicer selbst an.
@@ -2898,31 +2900,35 @@ dem Programm selbst geprüft.*
   [Quellordner](#quellordner)), mit dem Schalter für die Prüfung beim Start und der Liste abgelehnter Dateien.
 - **Beim Import** — der Schalter „Dateien beim Import umbenennen“ (standardmäßig aus) stellt neuen Katalogdateien Datum und
   Uhrzeit voran (siehe [Dateien importieren](#dateien-importieren)).
-- **Katalogordner abgleichen** — „Beim Start abgleichen“ und „Neue Dateien automatisch
-  aufnehmen“ samt gemerkter Kopien (siehe [Mit der Festplatte abgleichen](#mit-der-festplatte-abgleichen)).
+- **Katalogordner abgleichen** — „Katalogordner beim Start abgleichen“ und „Neue Dateien und erkannte Umbenennungen automatisch
+  übernehmen“ samt gemerkter Kopien (siehe [Mit der Festplatte abgleichen](#mit-der-festplatte-abgleichen)).
 - **Automatische Tags** — standardmäßig an. Ist der Schalter aus, vergeben Import,
   Abgleich mit der Festplatte und Quellordner keine Tags automatisch (siehe
   [Automatische Tags](#automatische-tags)). Darunter die Liste der gesperrten automatischen Tags: Tags, die die App nicht mehr selbst
   vergibt; „Sperre aufheben“ beendet eine Sperre.
-- **Druckdaten** — „Alle geslicten Dateien nachlesen“ liest die Druckdaten geslicter
-  Dateien, die noch nicht gelesen wurden (siehe [Druckdaten nachlesen](#druckdaten-nachlesen)).
+- **Druckdaten** — „Fehlende Druckdaten einlesen“ liest die Druckdaten bereits importierter 3MF- und G-Code-Dateien,
+  die noch nicht verarbeitet wurden (siehe [Druckdaten nachlesen](#druckdaten-nachlesen)).
 
-Der Reiter Katalog der Browserversion hat nur Automatische Tags und Druckdaten.
+Der Reiter Katalog der Browserversion hat nur Automatische Tags und Druckdaten. Ohne Schreibrecht für den Katalog steht dort
+„Du hast für diesen Katalog nur Leserechte.“, und die Bedienelemente bleiben gesperrt.
 
 ### Wartung
 
 - **Katalog prüfen** — ein manuell auslösbarer Scan findet verwaiste Dateipfade (Datei im Katalog
   eingetragen, aber auf der Festplatte nicht mehr vorhanden) und Bestands-Duplikate, mit
   Bereinigung per Auswahl-Dialog.
-- **Sichern und wiederherstellen** — „Katalog exportieren“ und „Katalog importieren“ (siehe
+- **Sichern und wiederherstellen** — „Katalog sichern …“ und „Katalog aus Sicherung wiederherstellen …“ (siehe
   [Katalog sichern und wiederherstellen](#katalog-sichern-und-wiederherstellen-backup)). Die Browserversion hat stattdessen den Abschnitt
-  „Katalog sichern“ mit einem Download.
+  „Katalog sichern“ mit einem Download („Katalog-Sicherung herunterladen“). Er nennt den Inhalt der Sicherung, hält
+  „Voraussetzungen für die Wiederherstellung“ und „Download fehlgeschlagen?“ als aufklappbare Hinweise bereit und bittet,
+  weil die App das Ende des Downloads nicht erkennt, zwischen zwei Downloads 30 Sekunden zu warten („Ein weiterer Download
+  ist nach 30 Sekunden möglich.“).
 - **Katalog zurücksetzen** — rot abgesetzt ganz unten (nicht in der Browserversion).
 
 #### Katalog zurücksetzen
 
 Unter Einstellungen → Wartung → Katalog zurücksetzen öffnet **Katalog zurücksetzen …** eine Bestätigung mit der Anzahl
-der Modelle außerhalb des Papierkorbs und aller Katalogordner. **Zurücksetzen** entfernt diese
+der Modelle außerhalb des Papierkorbs und aller Katalogordner. **Katalog zurücksetzen** entfernt diese
 Modelle und Ordner, alle Tags und Sammlungen sowie die Metadaten, Warteschlangen-Einträge und das
 Druckprotokoll der entfernten Modelle. Dateien und Ordner auf der Festplatte bleiben unverändert.
 
@@ -2970,12 +2976,12 @@ Die folgenden Screenshots zeigen das **Hell**- und **Dunkel**-Theme im Vergleich
 ![Katalog im Dunkel-Theme](bilder/14-dark-mode.png)
 ![Katalog im Hell-Theme](bilder/15-hell-mode-bonus.png)
 
-Unter Einstellungen → Info → Vorab-Versionen schaltet das Kontrollkästchen "Vorab-Versionen (Release Candidates)
+Unter Einstellungen → Info → Vorab-Versionen schaltet der Schalter "Vorab-Versionen (Release Candidates)
 erhalten" den Empfang von Release Candidates und der späteren finalen Version für deinen
-vorhandenen Katalog frei. Beim Anhaken erscheint eine Warnung: Eine Katalog-Migration kann den
+vorhandenen Katalog frei. Beim Einschalten erscheint eine Warnung: Eine Katalog-Migration kann den
 Rückweg ohne Sicherung verhindern. Wähle "Katalog jetzt exportieren" und nach erfolgreichem Export
-"Jetzt aktivieren". "Trotzdem aktivieren" fährt ohne diesen Export fort. "Abbrechen" lässt das
-Kontrollkästchen ohne Haken. Nimmst du den Haken wieder heraus, entfernt das eine installierte
+"Jetzt aktivieren". "Trotzdem aktivieren" fährt ohne diesen Export fort. "Abbrechen" lässt den
+Schalter aus. Schaltest du ihn wieder aus, entfernt das eine installierte
 Vorab-Version nicht. Sie bleibt installiert, bis eine neuere stabile Version verfügbar ist.
 
 ![Warnung beim Aktivieren von Vorab-Versionen](bilder/38-update-kanal-warnung.png)
@@ -3075,13 +3081,13 @@ Die Aufbewahrung erfolgt getrennt nach Art der Sicherung:
 - Fremde Dateien löscht diese Bereinigung nie. Die gerade erstellte Kopie ist geschützt.
 
 Diese automatischen `.db`-Dateien sind Datenbankkopien, keine ZIP-Katalogexporte.
-"Katalog importieren" akzeptiert nur ZIP-Exporte und kann sie nicht öffnen.
+"Katalog aus Sicherung wiederherstellen" akzeptiert nur ZIP-Exporte und kann sie nicht öffnen.
 So gehst du mit einer automatischen Datenbankkopie zurück:
 
 1. Öffne unter Einstellungen → Info → App-Daten und Protokolle über "Datenordner öffnen" den Ordner `update-backups`.
    Suche die Kopie vor dem Update, das du rückgängig machen möchtest. Kopiere sie an einen
    sicheren Ort.
-2. Exportiere den aktuellen Katalog unter Einstellungen → Wartung → Sichern und wiederherstellen → "Katalog exportieren",
+2. Exportiere den aktuellen Katalog unter Einstellungen → Wartung → Sichern und wiederherstellen → "Katalog sichern …",
    falls die App noch startet. Schließe die App anschließend vollständig.
 3. Installiere die vorherige Version von der
    [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases), ohne sie schon zu starten.
@@ -3106,11 +3112,11 @@ unwiderruflich überschreibt.
 
 So spielst du einen ZIP-Export ein:
 
-1. Öffne Einstellungen → Wartung → "Sichern und wiederherstellen". Nutze zuerst "Katalog exportieren", wenn
+1. Öffne Einstellungen → Wartung → "Sichern und wiederherstellen". Nutze zuerst "Katalog sichern …", wenn
    du den aktuellen Stand separat behalten möchtest.
-2. Wähle "Katalog importieren" und bestätige mit "Ja, ersetzen". Das ersetzt den gesamten
+2. Wähle "Katalog aus Sicherung wiederherstellen …" und bestätige mit "Katalog ersetzen". Das ersetzt den gesamten
    aktuellen Katalog.
-3. Wähle die mit "Katalog exportieren" erstellte ZIP-Datei. Die App prüft sie vor dem Ersetzen.
+3. Wähle die mit "Katalog sichern …" erstellte ZIP-Datei. Die App prüft sie vor dem Ersetzen.
    Wird sie abgelehnt, bleibt der aktuelle Katalog unverändert und eine Fehlermeldung erscheint.
 4. Nach erfolgreichem Import lädt die Oberfläche mit dem wiederhergestellten Katalog neu.
 

@@ -26,31 +26,31 @@ beforeEach(() => {
   });
 });
 const setup = () => render(<LanguageProviderWithDiagnostics><DiskSyncSettings /></LanguageProviderWithDiagnostics>);
-const onStart = () => screen.getByRole('checkbox', { name: de.syncOnStartLabel }) as HTMLInputElement;
-const autoAdd = () => screen.getByRole('checkbox', { name: de.syncAutoAddLabel }) as HTMLInputElement;
+const onStart = () => screen.getByRole('switch', { name: de.syncOnStartLabel });
+const autoAdd = () => screen.getByRole('switch', { name: de.syncAutoAddLabel });
 
-it('starts with both off and the second box greyed out until the first is on', async () => {
+it('starts with both off and the second switch unavailable until the first is on', async () => {
   setup();
   await waitFor(() => expect(onStart()).toBeEnabled());
-  expect(onStart().checked).toBe(false);
-  expect(autoAdd().checked).toBe(false);
+  expect(onStart()).toHaveAttribute('aria-checked', 'false');
+  expect(autoAdd()).toHaveAttribute('aria-checked', 'false');
   expect(autoAdd()).toBeDisabled();
   fireEvent.click(onStart());
   await waitFor(() => expect(autoAdd()).toBeEnabled());
   expect(invoke).toHaveBeenCalledWith('set_sync_on_start', { enabled: true });
   fireEvent.click(autoAdd());
-  await waitFor(() => expect(autoAdd().checked).toBe(true));
+  await waitFor(() => expect(autoAdd()).toHaveAttribute('aria-checked', 'true'));
   expect(invoke).toHaveBeenCalledWith('set_sync_auto_add', { enabled: true });
 });
 
-it('turning the first box off also clears and disables the automatic take-over', async () => {
+it('turning the first switch off also clears and disables the automatic take-over', async () => {
   saved = { sync_on_start: true, sync_auto_add: true };
   setup();
-  await waitFor(() => expect(onStart().checked).toBe(true));
-  expect(autoAdd().checked).toBe(true);
+  await waitFor(() => expect(onStart()).toHaveAttribute('aria-checked', 'true'));
+  expect(autoAdd()).toHaveAttribute('aria-checked', 'true');
   fireEvent.click(onStart());
-  await waitFor(() => expect(onStart().checked).toBe(false));
-  expect(autoAdd().checked).toBe(false);
+  await waitFor(() => expect(onStart()).toHaveAttribute('aria-checked', 'false'));
+  expect(autoAdd()).toHaveAttribute('aria-checked', 'false');
   expect(autoAdd()).toBeDisabled();
   expect(saved).toEqual({ sync_on_start: false, sync_auto_add: false });
 });
@@ -61,7 +61,7 @@ it('describes both options and warns about the limits for assistive technology',
   const text = (box: HTMLElement) => box.getAttribute('aria-describedby')!.split(' ').map(id => document.getElementById(id)!.textContent).join(' ');
   expect(text(onStart())).toBe(de.syncOnStartDescription);
   expect(text(autoAdd())).toBe(`${de.syncAutoAddDescription} ${de.syncAutoAddWarning}`);
-  expect(screen.getByText(de.syncAutoAddWarning)).toHaveTextContent('nie Dateien aus dem Katalog entfernt');
+  expect(screen.getByText(de.syncAutoAddWarning)).toHaveTextContent('keine Katalogeinträge automatisch entfernt');
 });
 
 it('keeps the saved state and shows the error when writing fails', async () => {
@@ -73,7 +73,7 @@ it('keeps the saved state and shows the error when writing fails', async () => {
   await waitFor(() => expect(onStart()).toBeEnabled());
   fireEvent.click(onStart());
   expect(await screen.findByRole('alert')).toBeTruthy();
-  expect(onStart().checked).toBe(false);
+  expect(onStart()).toHaveAttribute('aria-checked', 'false');
 });
 
 const rememberedThree = () => [
@@ -88,6 +88,27 @@ it('shows the empty state without remembered copies and disables both buttons', 
   expect(screen.getByText('0 gemerkte Kopien')).toBeVisible();
   expect(screen.getByRole('button', { name: de.kcShow })).toBeDisabled();
   expect(screen.getByRole('button', { name: de.kcReset })).toBeDisabled();
+});
+
+it('keeps the copy detection in a closed disclosure and says at the reset button when the files return', async () => {
+  copies = rememberedThree();
+  const { container } = setup();
+  expect(await screen.findByText(de.kcHint)).toBeVisible();
+  const details = container.querySelector('details')!;
+  expect(details).not.toHaveAttribute('open');
+  expect(screen.getByText(de.kcHowTitle)).toBeVisible();
+  fireEvent.click(screen.getByText(de.kcHowTitle));
+  expect(details).toHaveAttribute('open');
+  expect(screen.getByText(de.kcHowText)).toBeVisible();
+  expect(screen.getByRole('button', { name: de.kcReset })).toHaveAccessibleDescription(`3 gemerkte Kopien ${de.kcResetNote}`);
+});
+
+it('shows the dependency of the automatic take-over at the switch while the sync at start is off', async () => {
+  setup();
+  await waitFor(() => expect(onStart()).toBeEnabled());
+  expect(autoAdd()).toBeDisabled();
+  expect(autoAdd()).toHaveAccessibleDescription(`${de.syncAutoAddDescription} ${de.syncAutoAddWarning}`);
+  expect(screen.getByText(de.syncAutoAddWarning)).toBeVisible();
 });
 
 it('names the number of remembered copies and lists them with their original on request', async () => {
