@@ -1144,6 +1144,11 @@ export interface Translations {
   filamentCheckError: string;
   fitPrinterFilter: string;
   fitPrinterAll: string;
+  plateFitPerPlate: string;
+  plateFitAllPlates: string;
+  plateFitPlate: string;
+  plateSizeLargest: string;
+  plateSizeHint: string;
   plateFitHeading: string;
   plateFitModelSize: string;
   plateFitFits: string;

@@ -172,7 +172,7 @@ describe('large catalogs (5000 mock files)', () => {
 
 describe('patches', () => {
   it('carries only the listed fields and never a picture', () => {
-    expect(Object.keys(patchOf(answer('a'))).sort()).toEqual(['contentHash', 'costEstimate', 'estimatedWeightG', 'fileModifiedAt', 'fileSizeBytes', 'hasThumbnail', 'materials', 'plateCount', 'printDataState', 'printFacts', 'printInfo', 'sliceInfo', 'sourceModelId', 'sourcePlatform', 'sourceProfileId', 'weightSource']);
+    expect(Object.keys(patchOf(answer('a'))).sort()).toEqual(['contentHash', 'costEstimate', 'dimensionsMm', 'estimatedWeightG', 'fileModifiedAt', 'fileSizeBytes', 'hasThumbnail', 'materials', 'plateCount', 'plateDimensions', 'printDataState', 'printFacts', 'printInfo', 'sliceInfo', 'sourceModelId', 'sourcePlatform', 'sourceProfileId', 'weightSource']);
   });
 
   it('derives the new list state from the stored row', () => {

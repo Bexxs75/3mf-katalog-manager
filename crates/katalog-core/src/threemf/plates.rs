@@ -49,6 +49,8 @@ pub fn read_plate_metadata<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Opti
 pub struct PlateAssignments {
     pub plates: std::collections::BTreeMap<u32, Option<String>>,
     pub objects: std::collections::HashMap<String, u32>,
+    /// Object IDs alone cannot identify instances assigned more than once.
+    pub ambiguous: bool,
     /// Extruders used by objects or parts; `None` = not known (no objects named).
     pub used_extruders: Option<std::collections::BTreeSet<u32>>,
 }
@@ -120,8 +122,10 @@ pub fn parse_assignments(xml: &str) -> PlateAssignments {
                     b"model_instance" => in_instance = false,
                     b"plate" => {
                         if let Some(PendingPlate { number: Some(number), name, objects }) = plate.take() {
-                            result.plates.insert(number, name);
-                            for object in objects { result.objects.insert(object, number); }
+                            if result.plates.insert(number, name).is_some() { result.ambiguous = true; }
+                            for object in objects {
+                                if result.objects.insert(object, number).is_some() { result.ambiguous = true; }
+                            }
                         }
                     }
                     _ => {}
@@ -157,6 +161,15 @@ mod tests {
         assert!(!result.objects.contains_key("27"));
         assert_eq!(result.plates.get(&1), Some(&None));
         assert_eq!(result.plates.get(&2), Some(&Some("Regal & Böden".into())));
+    }
+
+    #[test]
+    fn repeated_object_ids_do_not_guess_instance_assignments() {
+        let result = parse_assignments(r#"<config>
+          <plate><metadata key="plater_id" value="1"/><model_instance object_id="4"/></plate>
+          <plate><metadata key="plater_id" value="2"/><model_instance object_id="4"/></plate>
+        </config>"#);
+        assert!(result.ambiguous);
     }
 
     #[test]

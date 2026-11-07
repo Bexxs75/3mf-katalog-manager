@@ -106,6 +106,12 @@ export interface ModelImages {
   deferred?: boolean;
 }
 
+export interface PlateDimensions {
+  number: number;
+  name: string | null;
+  dimensionsMm: [number, number, number];
+}
+
 export interface ModelFile {
   /** Catalog file type ('3mf', 'stl', 'stp', 'obj', 'gcode', 'resin'); absent on models loaded in full. */
   fileType?: string;
@@ -124,6 +130,7 @@ export interface ModelFile {
   origin: Origin;
   sync: SyncStatus;
   dimensionsMm: [number, number, number] | null;
+  plateDimensions?: PlateDimensions[] | null;
   volumeCm3: number | null;
   objectCount: number | null;
   plateCount: number | null;
@@ -167,6 +174,7 @@ export interface ModelFile {
  * loads the full data on selection.
  */
 export interface ModelFileSummary {
+  plateCount?: number | null;
   license: string | null;
   /** Stable lowercase key such as 'makerworld'; null when the file does not prove its origin. */
   sourcePlatform: string | null;
@@ -182,6 +190,7 @@ export interface ModelFileSummary {
   weightSource: ModelFile['weightSource'];
   fileSizeBytes: number;
   dimensionsMm: [number, number, number] | null;
+  plateDimensions?: PlateDimensions[] | null;
   volumeCm3: number | null;
   objectCount: number | null;
   importedAt: string;

@@ -813,6 +813,7 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &mut Vec<Entry>) 
             Ok(new_file) => {
                 batch_bytes += new_file.thumbnail_png.as_ref().map_or(0, Vec::len)
                     + new_file.slice_info_json.as_ref().map_or(0, String::len)
+                    + new_file.plate_dimensions_json.as_ref().map_or(0, String::len)
                     + new_file
                         .metadata
                         .iter()

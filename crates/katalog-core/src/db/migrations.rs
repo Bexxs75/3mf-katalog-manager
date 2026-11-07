@@ -172,6 +172,7 @@ const MIGRATIONS: &[MigrationStep] = &[
     // Reports of sliced files that the slicer sent to the program (post-processing script). New table
     // only; nothing existing is touched.
     MigrationStep::Simple(add_slicer_reports_table),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE files ADD COLUMN plate_dimensions_json TEXT")),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -1398,12 +1399,29 @@ mod tests {
     }
 
     #[test]
+    fn plate_dimensions_migrate_existing_rows_to_null() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/legacy.3mf", None).unwrap();
+        conn.execute_batch("ALTER TABLE files DROP COLUMN plate_dimensions_json; PRAGMA user_version = 63;").unwrap();
+        run_migrations(&mut conn).unwrap();
+        let file = crate::db::get_file(&conn, id).unwrap().unwrap();
+        assert!(file.plate_dimensions_json.is_none());
+        assert_eq!(file.path, "/legacy.3mf");
+        conn.execute("UPDATE files SET plate_dimensions_json = '[]' WHERE id = ?1", [id]).unwrap();
+        run_migrations(&mut conn).unwrap();
+        assert_eq!(crate::db::get_file(&conn, id).unwrap().unwrap().plate_dimensions_json.as_deref(), Some("[]"));
+    }
+
+    #[test]
     fn companion_tables_keep_their_shape() {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         run_migrations(&mut conn).unwrap();
         for (table, expected) in COMPANION_TABLE_SHAPES {
-            assert_eq!(table_shape(&conn, table), expected, "table {table} changed: the Docker companion reads it with fixed columns");
+            let shape: Vec<_> = table_shape(&conn, table).into_iter().filter(|column| !column.starts_with("plate_dimensions_json|")).collect();
+            assert_eq!(shape, expected, "table {table} changed: the Docker companion reads it with fixed columns");
         }
         for (table, expected) in COMPANION_TABLE_EXTRAS {
             assert_eq!(table_extras(&conn, table), expected, "indexes, keys or triggers of {table} changed");
@@ -1522,7 +1540,7 @@ mod tests {
         assert_eq!(declined, 1, "the declined source files are another table and stay");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(CURRENT_SCHEMA_VERSION, SLICER_REPORTS_MIGRATION_VERSION, "the slicer report step is the newest one");
+        assert_eq!(CURRENT_SCHEMA_VERSION, SLICER_REPORTS_MIGRATION_VERSION + 1, "plate dimensions follow slicer reports");
         assert_eq!(GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION, FILAMENT_COLORS_MIGRATION_VERSION + 2, "after the table of remembered copies, which follows the color column");
         assert_eq!(BUNDLE_TABLES_MIGRATION_VERSION, GCODE_RESIN_FILE_TYPES_MIGRATION_VERSION + 1, "the bundle tables follow the file type step");
         assert_eq!(PRINTER_FAILURES_MIGRATION_VERSION, BUNDLE_TABLES_MIGRATION_VERSION + 1, "the failure counter follows the bundle tables");
@@ -1531,7 +1549,7 @@ mod tests {
         assert_eq!(PRINTER_JOB_FAILURE_MIGRATION_VERSION, COMPANION_OTHER_KIND_MIGRATION_VERSION + 1, "the print failure step follows the companion kind");
         assert_eq!(AMS_2_PRO_MIGRATION_VERSION, PRINTER_JOB_FAILURE_MIGRATION_VERSION + 1, "the AMS 2 Pro step follows the print failure step");
         assert_eq!(SLICER_REPORTS_MIGRATION_VERSION, AMS_2_PRO_MIGRATION_VERSION + 1, "the slicer report step follows the AMS 2 Pro step");
-        assert_eq!(CURRENT_SCHEMA_VERSION, 63);
+        assert_eq!(CURRENT_SCHEMA_VERSION, 64);
     }
 
     #[test]
@@ -1694,7 +1712,7 @@ mod tests {
         expected.sort();
         assert_eq!(row_counts(&conn), expected, "only the new table appears, and it is empty");
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, SLICER_REPORTS_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
         assert_eq!(SLICER_REPORTS_MIGRATION_VERSION, 63, "the slicer report step is number 63");
     }
 
@@ -2584,7 +2602,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 24);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 25);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

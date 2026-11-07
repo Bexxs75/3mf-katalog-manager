@@ -283,6 +283,7 @@ pub struct NewFile {
     pub favorite: bool,
     pub plate_count: Option<i64>,
     pub slice_info_json: Option<String>,
+    pub plate_dimensions_json: Option<String>,
     /// 3MF only (`None` for every other type); written in the same transaction as the file.
     pub print_info: Option<PrintInfoRecord>,
 }
@@ -296,6 +297,7 @@ pub struct ScannedMetadataUpdate {
     pub thumbnail_png: Option<Vec<u8>>,
     pub plate_count: Option<i64>,
     pub slice_info_json: Option<String>,
+    pub plate_dimensions_json: Option<String>,
     pub materials: Vec<MaterialRecord>,
     pub metadata: BTreeMap<String, String>,
     pub file_size_bytes: i64,
@@ -346,6 +348,7 @@ pub struct FileRecord {
     pub favorite: bool,
     pub plate_count: Option<i64>,
     pub slice_info_json: Option<String>,
+    pub plate_dimensions_json: Option<String>,
     pub deleted_at: Option<String>,
     pub trash_path: Option<String>,
     pub source_platform: Option<String>,

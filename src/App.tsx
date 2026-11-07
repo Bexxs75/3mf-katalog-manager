@@ -493,7 +493,7 @@ export default function App() {
       .filter(model => !filters.printStatus || (model.printStatus === 'printed') === (filters.printStatus === 'printed'))
       .filter(model => !filters.usage || licenseUsage(model.license) === filters.usage)
       .filter(model => filters.fileKind === 'all' || fileKindOf(model) === filters.fileKind)
-      .filter(model => !filters.fitBed || modelMayFitBed(model.dimensionsMm, filters.fitBed));
+      .filter(model => !filters.fitBed || modelMayFitBed(model.dimensionsMm, filters.fitBed, model.plateDimensions, model.plateCount));
     // The print data filter applies in a collection as well; the notice counts what it holds back there.
     const split = splitByPrintData(members, filters.printFilter);
     return { displayedModels: split.visible, printNotice: { hidden: split.hidden, shownUnknown: split.shownUnknown, unread: split.unread } };

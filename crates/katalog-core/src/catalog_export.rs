@@ -164,7 +164,9 @@ mod tests {
     #[test]
     fn snapshot_is_a_complete_valid_catalog_with_the_same_schema_version() {
         let dir = unique_test_dir("export-snapshot");
-        let (path, _writer) = seeded(&dir);
+        let (path, writer) = seeded(&dir);
+        let dimensions = r#"[{"number":1,"name":"lithophane","dimensionsMm":[144,108,2.5]}]"#;
+        writer.execute("UPDATE files SET plate_dimensions_json = ?1", [dimensions]).unwrap();
         let reader = db::open_read_only(&path).unwrap();
         let dest = empty_target(&dir, "out.db");
         snapshot(&reader, &dest).unwrap();
@@ -176,6 +178,8 @@ mod tests {
         assert_eq!(version, db::migrations_current_version());
         let files: i64 = copy.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap();
         assert_eq!(files, 2);
+        let dimensions_copy: String = copy.query_row("SELECT plate_dimensions_json FROM files LIMIT 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(dimensions_copy, dimensions);
         // The desktop import rejects foreign code in the schema.
         let foreign: i64 = copy
             .query_row(
@@ -188,6 +192,7 @@ mod tests {
         // Tables the desktop import requires.
         for (table, column) in [
             ("files", "trash_path"),
+            ("files", "plate_dimensions_json"),
             ("folders", "path"),
             ("app_settings", "value"),
             ("printer_connections", "address"),

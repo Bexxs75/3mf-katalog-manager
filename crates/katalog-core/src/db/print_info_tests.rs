@@ -51,6 +51,7 @@ pub(crate) fn new_file(path: &str, file_type: FileType, print_info: Option<Print
         queue_position: None,
         favorite: false,
         plate_count: None,
+        plate_dimensions_json: None,
         slice_info_json: None,
         print_info,
     }
@@ -98,6 +99,7 @@ fn update_with(print_info: Option<PrintInfoRecord>) -> ScannedMetadataUpdate {
         object_count: None,
         thumbnail_png: None,
         plate_count: None,
+        plate_dimensions_json: None,
         slice_info_json: None,
         materials: Vec::new(),
         metadata: BTreeMap::new(),
@@ -375,4 +377,17 @@ fn filament_colors_are_stored_as_one_text_and_no_colors_as_null() {
     newer.filament_colors = vec!["#123456".into()];
     update_scanned_metadata(&mut conn, with_id, &update_with(Some(newer))).unwrap();
     assert_eq!(stored(&conn, with_id).as_deref(), Some("#123456"));
+}
+
+#[test]
+fn metadata_rescan_replaces_and_clears_plate_dimensions() {
+    let mut conn = connect_in_memory().unwrap();
+    let id = insert_file(&mut conn, &new_file("/plates.3mf", FileType::ThreeMf, None)).unwrap();
+    let mut update = update_with(None);
+    update.plate_dimensions_json = Some(r#"[{"number":2,"name":"photo frame","dimensionsMm":[28.5,126,162]}]"#.into());
+    update_scanned_metadata(&mut conn, id, &update).unwrap();
+    assert_eq!(get_file(&conn, id).unwrap().unwrap().plate_dimensions_json, update.plate_dimensions_json);
+    update.plate_dimensions_json = None;
+    update_scanned_metadata(&mut conn, id, &update).unwrap();
+    assert!(get_file(&conn, id).unwrap().unwrap().plate_dimensions_json.is_none());
 }

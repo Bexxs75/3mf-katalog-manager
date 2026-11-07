@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS files (
     favorite INTEGER NOT NULL DEFAULT 0,
     plate_count INTEGER,
     slice_info_json TEXT,
+    plate_dimensions_json TEXT,
     deleted_at TEXT,
     trash_path TEXT,
     source_platform TEXT,

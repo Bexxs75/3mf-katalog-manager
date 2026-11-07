@@ -163,7 +163,7 @@ export function DetailPanel({
           {rows.map((row) => (
             <div key={row.label} className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]">
               <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">{row.label}</span>
-              <span className="flex-1 font-medium tabular-nums text-small text-right">{row.value}</span>
+              <span className="flex-1 min-w-0 break-words font-medium tabular-nums text-small text-right">{row.value}</span>
             </div>
           ))}
         </div>
@@ -276,7 +276,7 @@ export function DetailPanel({
               <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">
                 {row.label}
               </span>
-              <span className="flex-1 font-medium tabular-nums text-small text-right">{row.value}</span>
+              <span className="flex-1 min-w-0 break-words font-medium tabular-nums text-small text-right">{row.value}</span>
             </div>
           ))}
           <SourcePlatformRows model={model} variant="compact" />

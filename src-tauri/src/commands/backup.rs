@@ -324,6 +324,7 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("files", "favorite", ColType::Integer, false),
     ("files", "plate_count", ColType::Integer, true),
     ("files", "slice_info_json", ColType::Text, true),
+    ("files", "plate_dimensions_json", ColType::Text, true),
     ("files", "deleted_at", ColType::Text, true),
     ("files", "trash_path", ColType::Text, true),
     // folders - see list_folders (repository.rs).
@@ -1682,6 +1683,7 @@ mod tests {
             queue_position: None,
             favorite: false,
             plate_count: None,
+            plate_dimensions_json: None,
             slice_info_json: None,
             print_info: None,
         }
@@ -2919,6 +2921,7 @@ mod tests {
                 queue_position: Some(1),
                 favorite: true,
                 plate_count: Some(2),
+                plate_dimensions_json: None,
                 slice_info_json: Some("{}".to_string()),
                 print_info: None,
             };
@@ -3009,7 +3012,9 @@ mod tests {
             let mut conn = source.db.lock().unwrap();
             sliced = print_record(SliceState::Sliced, &[1, 2]);
             no_data = print_record(SliceState::NoSliceData, &[1, 2, 4]);
-            sliced_id = db::insert_file(&mut conn, &file_with_print_data(&dir.join("sliced.3mf"), sliced.clone())).unwrap();
+            let mut sliced_file = file_with_print_data(&dir.join("sliced.3mf"), sliced.clone());
+            sliced_file.plate_dimensions_json = Some(r#"[{"number":1,"name":"lithophane","dimensionsMm":[144,108,2.5]}]"#.into());
+            sliced_id = db::insert_file(&mut conn, &sliced_file).unwrap();
             source_id = db::insert_file(&mut conn, &file_with_print_data(&dir.join("source.3mf"), no_data.clone())).unwrap();
         }
         let zip_path = dir.join("backup.zip");
@@ -3025,6 +3030,9 @@ mod tests {
         let restored = |id: i64| db::get_file(&conn, id).unwrap().unwrap().print_info.expect("print data restored");
         assert_eq!(restored(sliced_id), sliced);
         assert_eq!(restored(source_id), no_data);
+        assert_eq!(db::get_file(&conn, sliced_id).unwrap().unwrap().plate_dimensions_json.as_deref(),
+            Some(r#"[{"number":1,"name":"lithophane","dimensionsMm":[144,108,2.5]}]"#));
+        assert!(db::get_file(&conn, source_id).unwrap().unwrap().plate_dimensions_json.is_none());
     }
 
     #[test]
@@ -3034,7 +3042,7 @@ mod tests {
             let mut conn = old.db.lock().unwrap();
             let file = sample_new_file_for_rescan_test(&dir.join("old.3mf"));
             db::insert_file(&mut conn, &file).unwrap();
-            conn.execute_batch("DROP TABLE file_print_plates; DROP TABLE file_print_info").unwrap();
+            conn.execute_batch("DROP TABLE file_print_plates; DROP TABLE file_print_info; ALTER TABLE files DROP COLUMN plate_dimensions_json;").unwrap();
             conn.pragma_update(None, "user_version", 52).unwrap(); // the version before the print tables (a shipped number, not derived from the current one)
         }
         let zip_path = dir.join("old-backup.zip");
@@ -3054,6 +3062,7 @@ mod tests {
         let count = |table: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap();
         assert_eq!((count("file_print_info"), count("file_print_plates")), (0, 0), "tables exist and are empty");
         assert_eq!(db::list_files(&conn).unwrap().len(), 1, "the file itself is kept");
+        assert!(db::list_files(&conn).unwrap()[0].plate_dimensions_json.is_none());
     }
 
     #[test]

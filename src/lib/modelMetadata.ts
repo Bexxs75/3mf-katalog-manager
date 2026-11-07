@@ -27,9 +27,12 @@ export function buildMetaRows(
   const sliced = isSlicedOutput(model);
   // A resin file is only catalogued: its content is not read, so there is no weight to show either.
   const resin = isResin(model);
+  const plates = model.plateDimensions;
+  const largest = plates && plates.length > 1
+    ? plates.reduce((a, b) => a.dimensionsMm.reduce((v, n) => v * n, 1) >= b.dimensionsMm.reduce((v, n) => v * n, 1) ? a : b) : null;
   const rows = [
     ...(sliced ? [] : [
-      { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
+      { label: largest ? t('plateSizeLargest') : t('metaDimensions'), value: largest ? t('plateSizeHint').replace('{size}', formatDimensions(largest.dimensionsMm, language)) : formatDimensions(model.dimensionsMm, language) },
       { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
     ]),
     ...(resin ? [] : [{ label: weightLabel, value: weightValue }]),

@@ -68,7 +68,7 @@ export function filterAndSortModels(
     .filter(m => !criteria.printStatus || (m.printStatus === 'printed') === (criteria.printStatus === 'printed'))
     .filter(m => !criteria.usage || licenseUsage(m.license) === criteria.usage)
     .filter(m => !criteria.fileKind || criteria.fileKind === 'all' || fileKindOf(m) === criteria.fileKind)
-    .filter(m => !criteria.fitBed || modelMayFitBed(m.dimensionsMm, criteria.fitBed))
+    .filter(m => !criteria.fitBed || modelMayFitBed(m.dimensionsMm, criteria.fitBed, m.plateDimensions, m.plateCount))
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))
     .filter((m) => {

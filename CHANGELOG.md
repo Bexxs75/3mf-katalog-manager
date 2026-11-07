@@ -88,6 +88,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Multi-plate 3MF print-bed checks and printer filters now use stored dimensions per plate. Legacy entries can be updated with a metadata rescan; uncertain multi-plate sizes stay visible in the filter. The detail size shows the largest plate instead of the workspace extent.
+
 - **Settings fixes:** Open confirmations keep focus and Escape priority when resizing between docked and overlay layouts; closing returns focus to the original opener. Keyboard navigation includes disclosure summaries. Reload progress and errors remain visible with the last confirmed value and another retry. Unsaved Thingiverse keys survive tab changes until Settings closes. Re-offer actions wrap at narrow widths. Forced overlays use 480 px even at window widths of 1000–1279 px, limited by the available space.
 
 - **Bundle panel:** matches the model panel width in each display density; long names no longer widen it.
@@ -871,6 +873,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Wiederherstellen behält den Thingiverse-Schlüssel:** Der Schlüssel dieses Rechners (und der Schalter) bleibt beim Wiederherstellen einer Sicherung jetzt erhalten, statt gelöscht zu werden. Ein Schlüssel ist weiterhin nie Teil einer Sicherung, und einer in einer wiederhergestellten Datei wird ignoriert. Der Wiederherstellen-Dialog, die Thingiverse-Einstellungen und das Handbuch sagen: „Dein Thingiverse-Schlüssel bleibt auf diesem Rechner erhalten und ist in keiner Sicherung enthalten.“
 
 ### Behoben
+
+- Druckbett-Prüfung und Druckerfilter nutzen bei Mehrplatten-3MF gespeicherte Maße je Platte. Ältere Einträge lassen sich neu einlesen; unbekannte Mehrplatten-Passformen bleiben im Filter sichtbar. Die Detailgröße zeigt die größte Platte statt der Arbeitsraum-Ausdehnung.
 
 - **Einstellungen korrigiert:** Offene Bestätigungen behalten beim Wechsel zwischen angedocktem Bereich und Overlay den Fokus und Escape-Vorrang; Schließen gibt den Fokus an den ursprünglichen Auslöser zurück. Aufklapphinweise sind per Tab erreichbar. Nachladen zeigt Fortschritt und Fehler samt zuletzt bestätigtem Wert und erneuter Wiederholungsmöglichkeit. Nicht gespeicherte Thingiverse-Schlüssel bleiben beim Reiterwechsel bis zum Schließen erhalten. Aktionen zum erneuten Anbieten brechen bei wenig Platz um. Erzwungene Overlays sind auch bei 1000–1279 px Fensterbreite 480 px breit, begrenzt durch den verfügbaren Platz.
 

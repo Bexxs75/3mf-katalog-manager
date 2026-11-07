@@ -217,6 +217,7 @@ pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_a
         queue_position: None,
         favorite: false,
         plate_count: None,
+        plate_dimensions_json: None,
         slice_info_json: None,
         deleted_at: None,
         trash_path: None,

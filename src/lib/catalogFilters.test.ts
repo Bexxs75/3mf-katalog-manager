@@ -309,3 +309,16 @@ describe('filterAndSortModels with bundle names', () => {
     expect(result.map(m => m.id)).toEqual(['1', '3']);
   });
 });
+
+it('keeps fitting and legacy multi-plate entries but excludes a known oversized plate', () => {
+  const multi = makeModelFile({ id: 'multi', name: 'Multi', plateCount: 3, dimensionsMm: [384.5, 445.2, 162], plateDimensions: [
+    { number: 1, name: 'lithophane', dimensionsMm: [144, 108, 2.5] },
+    { number: 2, name: 'photo frame', dimensionsMm: [28.5, 126, 162] },
+    { number: 3, name: 'light guide plate', dimensionsMm: [108, 150, 1.4] },
+  ] });
+  const old = { ...multi, id: 'old', name: 'Old', plateDimensions: null };
+  const large = { ...multi, id: 'large', plateDimensions: [{ number: 1, name: null, dimensionsMm: [300, 300, 20] as [number, number, number] }] };
+  expect(filterAndSortModels([multi, old, large], [], {
+    activeFolderId: 'all', activeTag: null, query: '', sort: 'name', fitBed: [256, 256, 256],
+  }).map(m => m.id)).toEqual(['multi', 'old']);
+});

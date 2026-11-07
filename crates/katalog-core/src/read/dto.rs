@@ -12,6 +12,7 @@ pub struct ModelFileDto {
     pub origin: String,
     pub sync: String,
     pub dimensions_mm: Option<[f64; 3]>,
+    pub plate_dimensions: Option<Vec<crate::threemf::PlateDimensions>>,
     pub volume_cm3: Option<f64>,
     pub object_count: Option<i64>,
     pub materials: Vec<MaterialDto>,
@@ -287,6 +288,7 @@ pub fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord]) -> M
         origin: file.origin,
         sync: file.sync_status,
         dimensions_mm: file.dimensions_mm,
+        plate_dimensions: file.plate_dimensions_json.as_deref().and_then(|s| serde_json::from_str(s).ok()),
         volume_cm3: file.volume_cm3,
         object_count: file.object_count,
         materials: file
@@ -377,6 +379,7 @@ mod tests {
             queue_position: None,
             favorite: false,
             plate_count: None,
+            plate_dimensions_json: None,
             slice_info_json: None,
             deleted_at: None,
             trash_path: None,

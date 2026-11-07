@@ -22,6 +22,7 @@ use std::collections::HashMap;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
+    pub plate_count: Option<i64>,
     pub license: Option<String>,
     pub source_platform: Option<String>,
     pub source_model_id: Option<String>,
@@ -37,6 +38,7 @@ pub struct FileSummaryDto {
     pub folder_id: String,
     pub file_size_bytes: i64,
     pub dimensions_mm: Option<[f64; 3]>,
+    pub plate_dimensions: Option<Vec<crate::threemf::PlateDimensions>>,
     pub volume_cm3: Option<f64>,
     pub object_count: Option<i64>,
     pub imported_at: String,
@@ -181,6 +183,8 @@ pub fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
         folder_id: s.folder_id.map(|id| id.to_string()).unwrap_or_default(),
         file_size_bytes: s.file_size_bytes,
         dimensions_mm: s.dimensions_mm,
+        plate_count: s.plate_count,
+        plate_dimensions: s.plate_dimensions_json.as_deref().and_then(|s| serde_json::from_str(s).ok()),
         volume_cm3: s.volume_cm3,
         object_count: s.object_count,
         imported_at: s.imported_at,

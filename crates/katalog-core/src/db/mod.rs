@@ -175,6 +175,7 @@ mod tests {
             queue_position: None,
             favorite: false,
             plate_count: None,
+            plate_dimensions_json: None,
             slice_info_json: None,
             print_info: None,
         }
@@ -194,6 +195,24 @@ mod tests {
         assert_eq!(stored.last_viewed_at, None);
         assert_eq!(stored.creator, Some("Jane".to_string()));
         assert_eq!(stored.content_hash, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn plate_dimensions_roundtrip_in_full_and_summary_reads() {
+        let mut conn = connect_in_memory().unwrap();
+        let mut file = sample_file();
+        file.plate_dimensions_json = Some(r#"[{"number":1,"name":"lithophane","dimensionsMm":[144,108,2.5]}]"#.into());
+        let id = insert_file(&mut conn, &file).unwrap();
+        let fetched = get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(fetched.plate_dimensions_json, file.plate_dimensions_json);
+        let summaries = list_file_summaries(&conn).unwrap();
+        assert_eq!(summaries[0].plate_dimensions_json, file.plate_dimensions_json);
+        let dto = crate::read::summary_to_dto(summaries.into_iter().next().unwrap());
+        assert_eq!(dto.plate_dimensions.unwrap()[0].dimensions_mm, [144.0, 108.0, 2.5]);
+        let mut legacy = sample_file();
+        legacy.path = "/tmp/legacy.3mf".into();
+        let id = insert_file(&mut conn, &legacy).unwrap();
+        assert!(get_file(&conn, id).unwrap().unwrap().plate_dimensions_json.is_none());
     }
 
     #[test]

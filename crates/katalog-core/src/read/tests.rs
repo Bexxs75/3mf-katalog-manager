@@ -282,6 +282,8 @@ fn summary_keeps_card_values_after_rename_move_restore_and_metadata_reload() {
 #[test]
 fn summary_serialization_has_presence_flags_and_no_image_fields() {
     let summary = FileSummaryDto {
+        plate_dimensions: None,
+        plate_count: None,
         source_platform: None,
         source_model_id: None,
         source_profile_id: None,
@@ -453,6 +455,7 @@ fn add_and_list_print_log_entry_roundtrips_through_dto() {
         queue_position: None,
         favorite: false,
         plate_count: None,
+        plate_dimensions_json: None,
         slice_info_json: None,
         print_info: None,
     };

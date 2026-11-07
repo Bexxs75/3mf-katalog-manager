@@ -127,6 +127,7 @@ fn catalog_file(path: &Path, hash: Option<&str>) -> NewFile {
         queue_position: None,
         favorite: false,
         plate_count: None,
+        plate_dimensions_json: None,
         slice_info_json: None,
         print_info: None,
     }

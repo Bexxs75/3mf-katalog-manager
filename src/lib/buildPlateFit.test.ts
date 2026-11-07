@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkPlateFit, modelMayFitBed, plateFitForPrinters, printerBuildVolume, usableModelSize } from './buildPlateFit';
+import { checkPlatesFit, checkPlateFit, modelMayFitBed, plateFitForPrinters, printerBuildVolume, usableModelSize } from './buildPlateFit';
 
 const bed: [number, number, number] = [256, 256, 256];
 const printer = (name: string, x: number | null, y: number | null, z: number | null) => ({
@@ -83,5 +83,40 @@ describe('modelMayFitBed and usableModelSize', () => {
     expect(modelMayFitBed([5, 5, 5], [10, 10, 10])).toBe(true);
     expect(modelMayFitBed([50, 5, 5], [10, 10, 10])).toBe(false);
     expect(usableModelSize([0, 1, 1])).toBeNull();
+  });
+});
+
+describe('checkPlatesFit', () => {
+  const plates = [
+    { number: 1, name: 'lithophane', dimensionsMm: [144, 108, 2.5] as [number, number, number] },
+    { number: 2, name: 'photo frame', dimensionsMm: [28.5, 126, 162] as [number, number, number] },
+    { number: 3, name: 'light guide plate', dimensionsMm: [108, 150, 1.4] as [number, number, number] },
+  ];
+  it('checks every plate independently of the workspace extent', () => {
+    const result = checkPlatesFit([384.5, 445.2, 162], bed, plates, 3);
+    expect(result.fit.status).toBe('fits');
+    expect(result.plates.map(p => p.fit.status)).toEqual(['fits', 'fits', 'fits']);
+    expect(modelMayFitBed([384.5, 445.2, 162], bed, plates, 3)).toBe(true);
+  });
+  it('retains the number and name of a failing plate and does not tip its height', () => {
+    const result = checkPlatesFit(null, [256, 256, 150], plates);
+    expect(result.fit.status).toBe('tooLarge');
+    expect(result.plates.filter(p => p.fit.status === 'tooLarge')).toEqual([
+      { ...plates[1], fit: { status: 'tooLarge', excess: [{ axis: 'height', modelMm: 162 }] } },
+    ]);
+  });
+  it('allows Z rotation independently on each plate', () => {
+    const rotated = [...plates, { number: 4, name: null, dimensionsMm: [150, 100, 50] as [number, number, number] }];
+    expect(checkPlatesFit(null, [144, 160, 200], rotated).fit.status).toBe('fits');
+  });
+  it('falls back for legacy entries and keeps uncertain multi-plate models visible', () => {
+    expect(checkPlatesFit([300, 300, 20], bed).fit.status).toBe('tooLarge');
+    expect(checkPlatesFit([300, 300, 20], bed, null, 3).fit.status).toBe('unknown');
+    expect(modelMayFitBed([300, 300, 20], bed, [], 3)).toBe(true);
+    expect(checkPlatesFit([20, 20, 20], bed, null, 3).fit.status).toBe('fits');
+    expect(checkPlatesFit(null, bed).fit.status).toBe('unknown');
+  });
+  it('keeps single-plate results identical to the existing check', () => {
+    expect(checkPlatesFit(plates[0].dimensionsMm, bed, [plates[0]], 1).fit).toEqual(checkPlateFit(plates[0].dimensionsMm, bed));
   });
 });

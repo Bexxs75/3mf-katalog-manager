@@ -12,15 +12,16 @@ const EXCESS_KEY = { width: 'plateFitTooWide', depth: 'plateFitTooDeep', height:
 // "Does it fit the print bed?" per printer of the Printer Manager. The
 // verdict is always spelled out; the icon only repeats it.
 export function BuildPlateFit({ model, printers, variant }: {
-  model: Pick<ModelFile, 'dimensionsMm'>;
+  model: Pick<ModelFile, 'dimensionsMm' | 'plateDimensions' | 'plateCount'>;
   printers: readonly NamedPrinter[];
   variant: 'compact' | 'comfort' | 'page';
 }) {
   const t = useT();
   const { language } = useLanguage();
   const headingId = useId();
-  const rows = plateFitForPrinters(model.dimensionsMm, printers);
+  const rows = plateFitForPrinters(model.dimensionsMm, printers, model.plateDimensions, model.plateCount);
   if (rows.length === 0) return null;
+  const multi = (model.plateDimensions?.length ?? 0) > 1;
   const size = usableModelSize(model.dimensionsMm);
 
   const wrapper = variant === 'compact' ? 'px-4 pt-3.5 pb-3 border-t border-[var(--line)]'
@@ -33,10 +34,10 @@ export function BuildPlateFit({ model, printers, variant }: {
     <section aria-labelledby={headingId} className={wrapper}>
       <h3 id={headingId} className={`m-0 mb-1 ${headingClass}`} style={headingStyle}>{t('plateFitHeading')}</h3>
       <p className="m-0 mb-1.5 text-small text-[var(--ink-2)]">
-        {size ? t('plateFitModelSize').replace('{size}', () => formatDimensions(size, language)) : t('plateFitUnknown')}
+        {multi ? t('plateFitPerPlate') : size ? t('plateFitModelSize').replace('{size}', () => formatDimensions(size, language)) : t('plateFitUnknown')}
       </p>
       <ul className="m-0 p-0 list-none flex flex-col gap-1">
-        {rows.map(({ printer, bed, fit }) => {
+        {rows.map(({ printer, bed, fit, plates }) => {
           const fits = fit.status === 'fits';
           const verdict = fit.status === 'unknown' ? t('plateFitUnknown') : t(fits ? 'plateFitFits' : 'plateFitTooLarge');
           const tone = fits ? 'text-[var(--good)]' : fit.status === 'tooLarge' ? 'text-[var(--crit)]' : 'text-[var(--ink-3)]';
@@ -44,14 +45,22 @@ export function BuildPlateFit({ model, printers, variant }: {
             <li key={printer.id} className="text-small flex flex-wrap items-baseline gap-x-2">
               <span className={`inline-flex items-center gap-1 font-semibold ${tone}`}>
                 {fit.status !== 'unknown' && <span aria-hidden="true"><Icon name={fits ? 'check' : 'close'} size={14} /></span>}
-                {verdict}
+                {fits && multi ? t('plateFitAllPlates').replace('{count}', String(plates.length)) : verdict}
               </span>
               <span className="min-w-0 break-words text-[var(--ink)]">
                 {printer.name} ({formatDimensions(bed, language).replace(/ mm$/, '')})
-                {fit.status === 'tooLarge' && ': ' + fit.excess
+                {!multi && fit.status === 'tooLarge' && ': ' + fit.excess
                   .map(({ axis, modelMm }) => t(EXCESS_KEY[axis]).replace('{mm}', () => String(modelMm)))
                   .join(', ')}
               </span>
+              {multi && plates.filter(plate => plate.fit.status !== 'fits').map(plate => (
+                <span key={plate.number} className="w-full min-w-0 break-words text-[var(--ink-2)]">
+                  {t('plateFitPlate').replace('{number}', String(plate.number))}{plate.name ? ` “${plate.name}”` : ''}: {' '}
+                  {plate.fit.status === 'tooLarge' ? plate.fit.excess.map(({ axis, modelMm }) =>
+                    t(EXCESS_KEY[axis]).replace('{mm}', String(Math.ceil(modelMm - bed[{ width: 0, depth: 1, height: 2 }[axis]]))))
+                    .join(', ') : t('plateFitUnknown')}
+                </span>
+              ))}
             </li>
           );
         })}

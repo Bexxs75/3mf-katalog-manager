@@ -27,6 +27,7 @@ pub struct ThreeMfMaterial {
 
 #[derive(Debug, Clone)]
 pub struct ThreeMfDocument {
+    pub plate_dimensions: Option<Vec<PlateDimensions>>,
     pub object_count: usize,
     pub dimensions_mm: Option<[f64; 3]>,
     pub tagging_extent_mm: Option<f64>,
@@ -408,9 +409,17 @@ pub(crate) fn parse_web_reader<R: std::io::Read + std::io::Seek>(reader: R, limi
     document_from_package(container::read_web_package(reader, limits)?)
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlateDimensions {
+    pub number: u32,
+    pub name: Option<String>,
+    pub dimensions_mm: [f64; 3],
+}
+
 fn document_from_package(package: PackageParts) -> Result<ThreeMfDocument, ThreeMfError> {
 
-    let (bbox, volume_mm3, tagging_extent_mm) = resolve_geometry(&package)?;
+    let (bbox, volume_mm3, tagging_extent_mm, plate_dimensions) = resolve_geometry(&package)?;
 
     let dimensions_mm = bbox.is_valid().then(|| bbox.size());
     let volume_cm3 = bbox.is_valid().then_some(volume_mm3 / 1000.0);
@@ -419,6 +428,7 @@ fn document_from_package(package: PackageParts) -> Result<ThreeMfDocument, Three
         object_count: package.root_model.build_items.len(),
         dimensions_mm,
         tagging_extent_mm,
+        plate_dimensions,
         volume_cm3,
         materials: package
             .root_model
@@ -437,14 +447,17 @@ fn document_from_package(package: PackageParts) -> Result<ThreeMfDocument, Three
     })
 }
 
-fn resolve_geometry(package: &PackageParts) -> Result<(BoundingBox, f64, Option<f64>), ThreeMfError> {
+type ResolvedGeometry = (BoundingBox, f64, Option<f64>, Option<Vec<PlateDimensions>>);
+
+fn resolve_geometry(package: &PackageParts) -> Result<ResolvedGeometry, ThreeMfError> {
     let mut bbox = BoundingBox::empty();
     let mut volume_mm3 = 0.0;
     let mut plate_boxes = BTreeMap::new();
-    let mut complete_assignments = true;
+    let mut complete_assignments = !package.plate_assignments.ambiguous;
 
     let mut budget = WorkBudget::new();
     for item in &package.root_model.build_items {
+        complete_assignments &= package.plate_assignments.objects.contains_key(&item.object_id);
         let transform = item.transform.unwrap_or_else(Matrix3x4::identity);
         let mut path = Vec::new();
         let mut item_box = BoundingBox::empty();
@@ -475,7 +488,14 @@ fn resolve_geometry(package: &PackageParts) -> Result<(BoundingBox, f64, Option<
     let tagging_extent_mm = complete_assignments.then(|| plate_boxes.values()
         .flat_map(|bbox: &BoundingBox| bbox.size()).fold(0.0_f64, f64::max))
         .filter(|_| !plate_boxes.is_empty());
-    Ok((bbox, volume_mm3, tagging_extent_mm))
+    let plate_dimensions = (complete_assignments && !plate_boxes.is_empty()).then(|| {
+        plate_boxes.into_iter().map(|(number, bbox)| PlateDimensions {
+            number,
+            name: package.plate_assignments.plates.get(&number).cloned().flatten(),
+            dimensions_mm: bbox.size(),
+        }).collect()
+    });
+    Ok((bbox, volume_mm3, tagging_extent_mm, plate_dimensions))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -561,6 +581,54 @@ mod tests {
         })
     }
 
+    #[test]
+    fn plate_dimensions_preserve_sizes_names_and_workspace_extent() {
+        let sizes = [[144.0, 108.0, 2.5], [28.5, 126.0, 162.0], [108.0, 150.0, 1.4]];
+        let names = ["lithophane", "photo frame", "light guide plate"];
+        let mut objects = String::new();
+        let mut settings = String::from("<config>");
+        for (index, [x, y, z]) in sizes.iter().enumerate() {
+            let id = index + 1;
+            objects.push_str(&format!(r#"<object id="{id}"><mesh><vertices>
+                <vertex x="0" y="0" z="0"/><vertex x="{x}" y="{y}" z="0"/>
+                <vertex x="0" y="0" z="{z}"/></vertices><triangles>
+                <triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>"#));
+            settings.push_str(&format!(r#"<plate><metadata key="plater_id" value="{id}"/>
+                <metadata key="plater_name" value="{}"/><model_instance object_id="{id}"/></plate>"#, names[index]));
+        }
+        settings.push_str("</config>");
+        let model = format!(r#"<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+            <resources>{objects}</resources><build><item objectid="1"/>
+            <item objectid="2" transform="1 0 0 0 1 0 0 0 1 295.9 261 0"/>
+            <item objectid="3" transform="1 0 0 0 1 0 0 0 1 4 -379.2 0"/></build></model>"#);
+        let mut bytes = build_zip_with_model_xml(&model);
+        {
+            let mut zip = ZipWriter::new_append(std::io::Cursor::new(&mut bytes)).unwrap();
+            zip.start_file("Metadata/model_settings.config", SimpleFileOptions::default()).unwrap();
+            zip.write_all(settings.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let doc = parse_3mf_bytes(&bytes).unwrap();
+        let plates = doc.plate_dimensions.unwrap();
+        assert_eq!(plates.len(), 3);
+        for (i, plate) in plates.iter().enumerate() {
+            assert_eq!(plate.number, i as u32 + 1);
+            assert_eq!(plate.name.as_deref(), Some(names[i]));
+            for (actual, expected) in plate.dimensions_mm.iter().zip(sizes[i]) { assert!((actual - expected).abs() < 1e-6); }
+        }
+        for (actual, expected) in doc.dimensions_mm.unwrap().iter().zip([324.4, 766.2, 162.0]) {
+            assert!((actual - expected).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn plate_dimensions_single_and_absent_assignments() {
+        let doc = parse_3mf_bytes(&plate_size_fixture(80.0, false, true)).unwrap();
+        assert_eq!(doc.plate_dimensions.unwrap()[0].dimensions_mm, doc.dimensions_mm.unwrap());
+        let doc = parse_3mf_bytes(&plate_size_fixture(80.0, true, false)).unwrap();
+        assert!(doc.plate_dimensions.is_none());
+    }
+
     fn plate_size_fixture(length: f64, second: bool, assignments: bool) -> Vec<u8> {
         let object = |id| format!(r#"<object id="{id}"><mesh><vertices>
             <vertex x="0" y="0" z="0"/><vertex x="{length}" y="0" z="0"/>
@@ -615,7 +683,7 @@ mod tests {
         let mut package = container::read_package(std::io::Cursor::new(
             plate_size_fixture(20.0, true, true))).unwrap();
         package.plate_assignments.objects.insert("2".into(), 1);
-        let (_, _, extent) = resolve_geometry(&package).unwrap();
+        let (_, _, extent, _) = resolve_geometry(&package).unwrap();
         assert_eq!(extent, Some(1020.0));
     }
 
@@ -624,8 +692,9 @@ mod tests {
         let mut package = container::read_package(std::io::Cursor::new(
             plate_size_fixture(20.0, true, true))).unwrap();
         package.plate_assignments.objects.remove("2");
-        let (bbox, _, extent) = resolve_geometry(&package).unwrap();
+        let (bbox, _, extent, plates) = resolve_geometry(&package).unwrap();
         assert_eq!(extent, None);
+        assert!(plates.is_none());
         assert_eq!(bbox.size(), [1020.0, 510.0, 10.0]);
     }
 
@@ -824,7 +893,7 @@ mod tests {
         zip.write_all(b"</triangles></mesh></object></resources><build><item objectid='1'/></build></model>").unwrap();
         zip.finish().unwrap();
         let package = container::read_package(std::fs::File::open(&path).unwrap()).unwrap();
-        let (bbox, volume, _) = resolve_geometry(&package).unwrap();
+        let (bbox, volume, _, _) = resolve_geometry(&package).unwrap();
         assert_eq!(bbox.size(), [1000.0, 1000.0, 100.0]);
         assert!((volume - 100_000_000.0).abs() < 0.01);
     }

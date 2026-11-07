@@ -153,6 +153,7 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
+    let mut plate_dimensions_json = None;
     let mut tagging_extent_mm = None;
     let mut print_info = None;
     let (
@@ -168,6 +169,7 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
     ) = match extension.as_deref() {
         Some("3mf") => {
             let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
+            plate_dimensions_json = doc.plate_dimensions.as_ref().and_then(|p| serde_json::to_string(p).ok());
             tagging_extent_mm = doc.tagging_extent_mm;
             print_info = print_info_record(doc.print_info.as_ref());
             (
@@ -300,6 +302,7 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
         favorite: false,
         plate_count,
         slice_info_json,
+        plate_dimensions_json,
         print_info,
     })
 }
@@ -372,6 +375,7 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
+    let mut plate_dimensions_json = None;
     let mut tagging_extent_mm = None;
     let mut print_info = None;
     let (
@@ -387,6 +391,7 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
     ) = match extension.as_deref() {
         Some("3mf") => {
             let doc = threemf::parse_web_reader(&mut file, WebImportLimits { max_unpacked_bytes: limits.max_unpacked_bytes.min(1024 * 1024 * 1024), ..limits }).map_err(|_| "invalid")?;
+            plate_dimensions_json = doc.plate_dimensions.as_ref().and_then(|p| serde_json::to_string(p).ok());
             tagging_extent_mm = doc.tagging_extent_mm;
             print_info = print_info_record(doc.print_info.as_ref());
             (
@@ -533,6 +538,7 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
         favorite: false,
         plate_count,
         slice_info_json,
+        plate_dimensions_json,
         print_info,
     })
 }

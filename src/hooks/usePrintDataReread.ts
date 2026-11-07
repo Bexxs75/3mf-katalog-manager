@@ -15,7 +15,7 @@ export type RereadOrigin = 'settings' | 'selection';
  * three base64 pictures per file through the list) and no `fullyLoadedIds` entry.
  */
 export type RereadPatch = Pick<ModelFile, 'printInfo' | 'printDataState' | 'printFacts' | 'sliceInfo' | 'estimatedWeightG' | 'weightSource' | 'costEstimate'
-  | 'plateCount' | 'materials' | 'fileSizeBytes' | 'contentHash' | 'fileModifiedAt' | 'sourcePlatform' | 'sourceModelId' | 'sourceProfileId' | 'hasThumbnail'>;
+  | 'plateDimensions' | 'dimensionsMm' | 'plateCount' | 'materials' | 'fileSizeBytes' | 'contentHash' | 'fileModifiedAt' | 'sourcePlatform' | 'sourceModelId' | 'sourceProfileId' | 'hasThumbnail'>;
 
 export const REREAD_FLUSH_FILES = 50;
 export const REREAD_FLUSH_MS = 250;
@@ -35,6 +35,8 @@ export function patchOf(model: ModelFile): RereadPatch {
     weightSource: model.weightSource,
     costEstimate: model.costEstimate,
     plateCount: model.plateCount,
+    plateDimensions: model.plateDimensions,
+    dimensionsMm: model.dimensionsMm,
     materials: model.materials,
     fileSizeBytes: model.fileSizeBytes,
     contentHash: model.contentHash,

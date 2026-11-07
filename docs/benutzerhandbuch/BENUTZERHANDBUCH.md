@@ -601,6 +601,14 @@ changed.
 
 ### Print bed
 
+Multi-plate 3MF files are checked **per plate** when all objects have a readable plate assignment.
+All plates must fit the selected printer. The size row shows the largest plate by bounding-box volume;
+the overall workspace size includes the distance between plates and is not meaningful for this check.
+For older entries, use **Rescan metadata**, or select the files and choose **Read print data** in **More**.
+Until reread, entries with several plates and missing plate dimensions stay visible in the filter when
+only their overall size is too large (fit unknown). Missing or incomplete assignments use this same fallback.
+The automatic unread-only action does not select previously read entries solely for missing plate dimensions.
+
 For every printer of the Printer Manager that has a build volume entered (Printer Manager →
 "Edit" → "Build volume X × Y × Z"), the detail panel and the detail page show under "Print bed"
 whether the model fits. The line "Model" gives the size of the model. Each printer is marked "fits"
@@ -2188,6 +2196,15 @@ Auswahlfeld und übernimmt die Wahl für alle ausgewählten Modelle. Vorhandene 
 unverändert.
 
 ### Druckbett
+
+Mehrplatten-3MF werden bei vollständiger lesbarer Objektzuordnung **je Platte** geprüft.
+Alle Platten müssen auf den gewählten Drucker passen. Die Größenzeile zeigt die nach Quader-Volumen
+größte Platte; das Gesamtmaß im Arbeitsraum enthält die Abstände zwischen den Platten und ist dafür
+nicht aussagekräftig. Ältere Einträge über **Metadaten neu einlesen** oder nach Auswahl über
+**Mehr → Druckdaten einlesen** aktualisieren. Bis dahin bleiben Mehrplatten-Einträge ohne Einzelmaße
+im Filter sichtbar, wenn nur das Gesamtmaß zu groß ist (Passform unbekannt). Bei fehlender oder
+unvollständiger Zuordnung gilt derselbe Rückfall. Die automatische Aktion für ungelesene Dateien
+wählt bereits gelesene Einträge nicht allein wegen fehlender Plattenmaße aus.
 
 Für jeden Drucker des Printer Managers, bei dem ein Bauraum eingetragen ist (Printer Manager →
 „Bearbeiten“ → „Bauraum X × Y × Z“), zeigen Detailbereich und Detailseite unter „Druckbett“, ob das
