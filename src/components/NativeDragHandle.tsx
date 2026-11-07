@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
 import type { ModelFile } from '../types';
 import { useT } from '../i18n/LanguageContext';
@@ -53,6 +54,6 @@ export function NativeDragHandle({ model, selectedIds, selectionModels = [], cla
       window.addEventListener('mouseup', cancel);
       window.addEventListener('blur', cancel);
     }}>
-    <span aria-hidden="true">⠿</span>
+    <Icon name="external" size={16} className="mx-auto" />
   </button>{overLimit && <span role="alert" className="text-caption text-[var(--crit)]">{t('dgLimit')}</span>}</>;
 }

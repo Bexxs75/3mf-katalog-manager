@@ -228,3 +228,37 @@ it.each(['compact', 'comfort'])('keeps the list drag grip in normal flow beside 
   expect(grip?.parentElement).toHaveClass('flex', 'gap-1.5');
   expect(grip?.nextElementSibling).toHaveTextContent('Test Model');
 });
+
+it.each(['compact', 'comfort', 'list-compact', 'list-comfort'])('distinguishes both grips and bubbles the move tooltip gesture to the card (%s)', async view => {
+  const { de } = await import('../i18n/de');
+  const { icons } = await import('./icons.generated');
+  const list = view.startsWith('list-');
+  localStorage.setItem('3mf-katalog-density', view.replace('list-', ''));
+  const Component = list ? ModelList : ModelGrid;
+  const move = vi.fn();
+  const { container, getByTitle } = render(<LanguageProvider><UiDensityProvider><Component {...props}
+    models={[makeModelFile({ path: '/model.stl', license: 'cc-by' })]} onDragFileStart={move} /></UiDensityProvider></LanguageProvider>);
+  const grip = getByTitle(de.dgMoveHint);
+  const native = getByTitle(de.dgHandle);
+  expect(grip).toHaveAttribute('data-drag-grip');
+  expect(grip).not.toHaveClass('pointer-events-none');
+  expect(grip.querySelector('svg')).toHaveClass('pointer-events-none');
+  expect(grip.querySelectorAll('circle')).toHaveLength(6);
+  expect(native.querySelector('svg')).toContainHTML(icons.external);
+  expect(native).toHaveClass('min-w-6', 'min-h-6', 'shrink-0');
+  if (!list) {
+    expect(grip).toHaveClass('absolute', 'top-1.5', 'right-9');
+    expect(native).toHaveClass('absolute', 'bottom-12', 'right-1.5');
+  } else {
+    expect(native).not.toHaveClass('absolute');
+  }
+  fireEvent.mouseDown(grip, { button: 0, clientX: 10, clientY: 10 });
+  fireEvent.mouseMove(document, { buttons: 1, clientX: 15, clientY: 10 });
+  expect(move).not.toHaveBeenCalled();
+  fireEvent.mouseMove(document, { buttons: 1, clientX: 16, clientY: 10 });
+  fireEvent.mouseMove(document, { buttons: 1, clientX: 20, clientY: 10 });
+  expect(move).toHaveBeenCalledExactlyOnceWith(props.models[0].id);
+  expect(container.querySelector('[data-model-id]')).toHaveClass('opacity-50');
+  fireEvent.mouseUp(document);
+  expect(container.querySelector('[data-model-id]')).not.toHaveClass('opacity-50');
+});

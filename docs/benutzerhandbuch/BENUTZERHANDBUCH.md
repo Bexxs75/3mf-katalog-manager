@@ -1235,9 +1235,10 @@ Closing returns the focus to the gear.
 #### Passing files on (experimental)
 
 At the top of this tab, the section "Passing files on" carries the label "Experimental" and one switch, "Drag files out of the
-catalog" (**off** by default). With it on, cards, list rows and the detail page offer a drag handle: drag 3MF, STL and OBJ files
-by it into a slicer or file manager. Temporary copies are handed over; the files in the catalog stay intact. Whether dropping works
+catalog" (**off** by default). With it on, cards, list rows and the detail page offer an arrow-out-of-a-frame icon: drag 3MF, STL and OBJ files
+by it into a slicer, file manager or onto the desktop. On grid cards this icon is at the bottom right; in list rows it is beside the filename. Temporary copies are handed over; the files in the catalog stay intact. Whether dropping works
 depends on the operating system and the target program.
+The six-dot symbol indicates moving within the catalog: drag the card itself onto a folder on the left to move the file there, including on disk. Hover over either symbol for its explanation. Keyboard users can use “Open in slicer”.
 
 **Windows:** if the target slicer (for example Bambu Studio or OrcaSlicer) runs as administrator, Windows blocks dropping from the
 normally started Catalog Manager. Start the slicer without administrator rights. This note shows under Windows even while the
@@ -2867,8 +2868,9 @@ Rückfrage und dann die Einstellungen. Beim Schließen kehrt der Fokus zum Zahnr
 
 Ganz oben in diesem Reiter steht der Abschnitt „Dateien weitergeben“ mit der Plakette „Experimentell“ und einem Schalter
 „Dateien aus dem Katalog ziehen“ (standardmäßig **aus**). Ist er an, haben Karten, Listenzeilen und die Detailseite einen
-Ziehgriff: Ziehe 3MF-, STL- und OBJ-Dateien daran in einen Slicer oder Dateimanager. Dabei werden temporäre Kopien übergeben; die
+Pfeil aus einem Rahmen als Ziehgriff: Ziehe 3MF-, STL- und OBJ-Dateien daran in einen Slicer, Dateimanager oder auf den Desktop. Im Raster sitzt das Symbol unten rechts auf der Karte, in der Liste neben dem Dateinamen. Dabei werden temporäre Kopien übergeben; die
 Dateien im Katalog bleiben erhalten. Ob das Ablegen funktioniert, hängt vom Betriebssystem und vom Zielprogramm ab.
+Das Sechs-Punkte-Symbol steht für das Verschieben im Katalog: Ziehe die Karte selbst auf einen Ordner links, um die Datei dorthin zu verschieben, auch auf der Festplatte. Beim Überfahren erklären Tooltips beide Symbole. Per Tastatur steht „Im Slicer öffnen“ zur Verfügung.
 
 **Windows:** Läuft der Ziel-Slicer (etwa Bambu Studio oder OrcaSlicer) als Administrator, blockiert Windows das Ablegen aus dem
 normal gestarteten Katalog Manager. Starte den Slicer ohne Administratorrechte. Dieser Hinweis erscheint unter Windows auch bei

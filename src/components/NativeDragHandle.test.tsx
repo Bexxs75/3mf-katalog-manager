@@ -82,3 +82,13 @@ it('keeps the drag target at least 24 by 24 pixels even in a shrinking list row'
   view();
   expect(screen.getByRole('button', { hidden: true })).toHaveClass('min-w-6', 'min-h-6', 'shrink-0');
 });
+
+it('uses the external icon and the localized explanation for dragging out', async () => {
+  const { de } = await import('../i18n/de');
+  const { icons } = await import('./icons.generated');
+  view();
+  const button = screen.getByRole('button', { hidden: true });
+  expect(button).toHaveAttribute('title', de.dgHandle);
+  expect(button.querySelector('svg')).toContainHTML(icons.external);
+  expect(button).not.toHaveTextContent('⠿');
+});
