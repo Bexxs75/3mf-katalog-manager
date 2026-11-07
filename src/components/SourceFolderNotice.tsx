@@ -12,13 +12,13 @@ const small = 'px-2.5 py-1 rounded-[4px] border border-[var(--line-strong)] bg-t
 export function SourceFolderNotice({ notice, onView, onClose }: { notice: SourceNotice; onView: () => void; onClose: () => void }) {
   const t = useT();
   const count = useFormatCount();
-  // The "nothing new" answer is only a status; everything else waits for the user.
-  const transient = notice.kind === 'none' && !notice.truncated && notice.skipped === 0 && notice.unreachable === 0;
+  // Informational results expire; discoveries and problems wait for the user.
+  const transient = notice.kind === 'noFolders' || (notice.kind === 'none' && !notice.truncated && notice.skipped === 0 && notice.unreachable === 0);
   useEffect(() => {
     if (!transient) return;
     const timer = setTimeout(onClose, 6000);
     return () => clearTimeout(timer);
-  }, [transient, onClose]);
+  }, [notice, transient, onClose]);
 
   // A click removes the button that had focus; hand focus to the catalog. The timer must not do this.
   const dismiss = () => { document.querySelector<HTMLElement>('[data-catalog-main]')?.focus(); onClose(); };

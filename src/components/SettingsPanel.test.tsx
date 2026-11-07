@@ -207,8 +207,8 @@ describe('SettingsPanel layout', () => {
     expect(dialog.style.getPropertyValue('--settings-panel-width')).toBe('480px');
   });
 
-  it('becomes an overlay by itself when less than 520 px would stay for the catalog', () => {
-    setWindowWidth(1010);
+  it('becomes an overlay below the exact 1000 px window threshold', () => {
+    setWindowWidth(999);
     renderPanel();
     expect(screen.getByRole('dialog', { name: 'Einstellungen' })).toHaveClass('settings-panel-overlay');
   });
@@ -662,4 +662,17 @@ it('does not skip the Windows disclosure while tabbing through Services', async 
     expect(fireEvent.keyDown(summary, { key: 'Tab', shiftKey: true })).toBe(true);
     expect(summary).toHaveFocus();
   } finally { platform.mockRestore(); }
+});
+
+it('renders an inert scrim beside the scrollable overlay content', () => {
+  renderPanel({ overlay: true });
+  const dialog = screen.getByRole('dialog', { name: de.settingsTitle });
+  const scrim = dialog.querySelector('.settings-panel-scrim');
+  expect(scrim).toHaveAttribute('aria-hidden', 'true');
+  expect(scrim?.nextElementSibling).toHaveClass('settings-panel-aside');
+  expect(dialog.querySelector('.overflow-y-auto')).not.toBeNull();
+});
+it('aligns the version block with the other settings content', () => {
+  renderPanel({ initialTab: 'info' });
+  expect(screen.getByText('3MF Katalog Manager').parentElement).toHaveClass('text-left');
 });

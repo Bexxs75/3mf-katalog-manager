@@ -90,7 +90,7 @@ export function SourceFoldersSettings() {
       </div>
       <p id="source-check-start-hint" className="mt-1 text-small text-[var(--ink-2)]">{t('sfCheckOnStartHint')}</p>
       <div className="flex flex-wrap min-w-0 items-center gap-2 mt-3 text-small">
-        <span id="source-rejected-count" className="flex-1 min-w-0">{t('sfRejected').replace('{count}', String(rejected))}</span>
+        <span id="source-rejected-count" className="flex-auto min-w-0 whitespace-nowrap">{t('sfRejected').replace('{count}', String(rejected))}</span>
         <button type="button" className={`${button} min-w-0 [overflow-wrap:anywhere]`} disabled={busy || jobActive || rejected === 0} aria-describedby="source-rejected-count source-rejected-note" {...lockProps} onClick={() => void reset()}>{t('sfResetRejected')}</button>
       </div>
       <p id="source-rejected-note" className="mt-1 text-small text-[var(--ink-2)]">{t('sfResetRejectedNote')}</p>

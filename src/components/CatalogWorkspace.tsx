@@ -603,7 +603,7 @@ export function CatalogWorkspace({
         onOpenBundleSuggestions={onOpenBundleSuggestions}
       />
 
-      <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
+      <main tabIndex={-1} data-catalog-main className="isolate overflow-hidden flex-1 min-w-0 flex flex-col min-h-0">
         <SelectionAnnouncer count={selectedForBulk.size} bundleCount={selectedBundleCount} />
         {importRow}
         {!duplicatesMode && (setUsage || setPrintStatus || setPrintFilter || showBundleSwitch || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (

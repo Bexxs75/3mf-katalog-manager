@@ -5,8 +5,8 @@
 
 /** Width of the navigation rail (60 px plus its 1 px border) that sits left of the main area. */
 export const SETTINGS_RAIL_WIDTH = 61;
-/** Draft value from the layout review: below this much room the catalog workspace is not usable beside the panel. */
-export const SETTINGS_MIN_WORKSPACE_WIDTH = 520;
+/** Workspace remaining at the exact 1000 px docking threshold (1000 - 61 - 440). */
+export const SETTINGS_MIN_WORKSPACE_WIDTH = 499;
 /** From this window width on the panel may dock at all; below it the panel is always an overlay. */
 export const SETTINGS_DOCK_MIN_WINDOW = 1000;
 /** From this window width on the docked panel is wide. */

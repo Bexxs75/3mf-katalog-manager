@@ -12,7 +12,9 @@ describe('resolveSettingsLayout', () => {
     [600, true, 480, 20],
     [800, true, 480, 20],
     [999, true, 480, 20],
-    [1000, true, 480, 20],
+    [1000, false, 440, 20],
+    [1020, false, 440, 20],
+    [1021, false, 440, 20],
     [1279, false, 440, 20],
     [1280, false, 480, 20],
     [1920, false, 480, 20],
@@ -27,7 +29,7 @@ describe('resolveSettingsLayout', () => {
     }
   });
 
-  it('docks only while the catalog keeps at least 520 px', () => {
+  it('docks only while the catalog keeps at least 499 px', () => {
     // 440 px panel: the workspace keeps width - rail - 440.
     const edge = SETTINGS_MIN_WORKSPACE_WIDTH + SETTINGS_RAIL_WIDTH + 440;
     expect(resolveSettingsLayout(edge - 1).overlay).toBe(true);

@@ -196,3 +196,8 @@ it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('keeps the fu
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('reset_known_copies'));
   expect(await screen.findByRole('status')).toHaveTextContent(texts.kcResetDone);
 });
+
+it('keeps the remembered-copy count together when the actions wrap', async () => {
+  render(<LanguageProviderWithDiagnostics><DiskSyncSettings /></LanguageProviderWithDiagnostics>);
+  await waitFor(() => expect(document.getElementById('known-copies-count')).toHaveClass('whitespace-nowrap', 'flex-auto'));
+});

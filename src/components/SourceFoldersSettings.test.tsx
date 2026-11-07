@@ -140,3 +140,9 @@ it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('keeps the fu
   await waitFor(() => expect(reset).toBeDisabled());
   expect(document.getElementById('source-rejected-count')).toHaveTextContent(texts.sfRejected.replace('{count}', '0'));
 });
+
+it('keeps the rejected-file count together when the actions wrap', async () => {
+  setup();
+  await screen.findByText(/12/);
+  expect(document.getElementById('source-rejected-count')).toHaveClass('whitespace-nowrap', 'flex-auto');
+});
