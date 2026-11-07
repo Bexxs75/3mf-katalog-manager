@@ -1,5 +1,5 @@
 import type { LicenseUsage } from '../lib/licenses';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, ViewMode, SortKey, SortDirection, Printer, Bundle } from '../types';
 import { fileIdsOfBundlesMatching } from '../lib/bundles';
@@ -10,12 +10,18 @@ import type { RecentSnapshot, ToolView } from '../lib/toolViews';
 import { defaultSortDirection, filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
 import type { FileKindFilter } from '../lib/fileKind';
 import { EMPTY_FILTER, splitByPrintData, type PrintDataFilter } from '../lib/printDataFilter';
+import { loadView, saveView } from '../lib/viewPreference';
 
 const NO_BUNDLES: readonly Bundle[] = [];
 
 /** `searchedBundles`: the bundles whose name the search also looks at (empty keeps the search on the files). */
 export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de', printers: readonly Printer[] = [], searchedBundles: readonly Bundle[] = NO_BUNDLES) {
-  const [view, setView] = useState<ViewMode>('grid');
+  const [view, setViewState] = useState<ViewMode>(loadView);
+  // Only the explicit view choice in the header calls this setter.
+  const setView = useCallback((next: ViewMode) => {
+    setViewState(next);
+    saveView(next);
+  }, []);
   const [sorting, setSorting] = useState<{ sort: SortKey; sortDirection: SortDirection }>({ sort: 'name', sortDirection: 'asc' });
   const { sort, sortDirection } = sorting;
   const setSort = (next: SortKey) => {
