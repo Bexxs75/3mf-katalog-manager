@@ -1,4 +1,3 @@
-import { NativeDragHandle } from './NativeDragHandle';
 import { useCanEditMetadata } from '../lib/webSession';
 import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
@@ -7,7 +6,6 @@ import { licenseUsage, modelLicenseAriaLabel } from '../lib/licenses';
 import { Icon } from './Icon';
 import { useModelImages } from '../hooks/useModelImages';
 import { useModelWindow } from '../hooks/useModelWindow';
-import { DragGrip } from './DragGrip';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ModelFile } from '../types';
 import type { BundleCard } from '../lib/bundles';
@@ -272,8 +270,6 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
       >
         <div role="gridcell" className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-          {onDragFileStart && !readOnly && canEdit && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-          {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} className="absolute bottom-12 right-1.5 z-10" />}
           {!readOnly && canEdit && (
             <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
@@ -388,8 +384,6 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
           >
             <div aria-hidden="true" className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div role="gridcell" className="relative aspect-square bg-[var(--plate)] overflow-hidden">
-              {onDragFileStart && !readOnly && canEdit && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-              {!readOnly && !reorderable && <NativeDragHandle model={m} selectedIds={selectedForBulk} selectionModels={models} className="absolute bottom-12 right-1.5 z-10" />}
               {!readOnly && canEdit && (
                 <BulkCheckbox
                   checked={selectedForBulk.has(m.id)}

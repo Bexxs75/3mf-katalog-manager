@@ -9,9 +9,9 @@ import { NativeDragHandle } from './NativeDragHandle';
 const model = {id:'1',path:'/catalog/a.stl',name:'a.stl'} as ModelFile;
 beforeEach(() => start.mockClear());
 function view(file = model, container = false, parent = vi.fn()) {
-  return render(<LanguageProvider><RuntimeEnvironmentProvider value={{container}}><div onMouseDown={parent}><NativeDragHandle model={file} selectedIds={new Set(['1','2','step','gcode'])} selectionModels={[model, {...model,id:'2',path:'b.OBJ'}, {...model,id:'step',path:'c.step'}, {...model,id:'gcode',path:'c.gcode'}]} /></div></RuntimeEnvironmentProvider></LanguageProvider>);
+  return render(<LanguageProvider><RuntimeEnvironmentProvider value={{container}}><div onMouseDown={parent}><NativeDragHandle model={file} /></div></RuntimeEnvironmentProvider></LanguageProvider>);
 }
-it('starts the selected IDs once after moving more than four pixels and does not start folder drag', () => {
+it('starts the detail model once after moving more than four pixels and does not start folder drag', () => {
   const parent = vi.fn(); view(model, false, parent);
   fireEvent.mouseDown(screen.getByRole('button', {hidden:true}), {button:0});
   expect(start).not.toHaveBeenCalled();
@@ -20,7 +20,7 @@ it('starts the selected IDs once after moving more than four pixels and does not
   fireEvent.mouseMove(window, {buttons:1, clientX:5});
   fireEvent.mouseMove(window, {buttons:1, clientX:10});
   expect(start).toHaveBeenCalledTimes(1);
-  expect(start).toHaveBeenCalledWith(['1','2']);
+  expect(start).toHaveBeenCalledWith(['1']);
   expect(parent).not.toHaveBeenCalled();
 });
 it('does not start on keyboard click or right mouse button', () => {
@@ -36,7 +36,7 @@ it('omits the grip for STEP and displays the STL alternative', () => {
 it('has no native action in containers', () => {
   view(model, true); expect(screen.queryByRole('button')).toBeNull();
 });
-it('uses only the grabbed ID when it is outside the selection', () => {
+it('uses the displayed detail model ID', () => {
   view({...model,id:'3'}); fireEvent.mouseDown(screen.getByRole('button', {hidden:true}), {button:0});
   fireEvent.mouseMove(window, {buttons:1, clientY:5});
   expect(start).toHaveBeenCalledWith(['3']);
@@ -78,7 +78,7 @@ it('does not start for a click, released button, blur or unmount', () => {
   expect(start).not.toHaveBeenCalled();
 });
 
-it('keeps the drag target at least 24 by 24 pixels even in a shrinking list row', () => {
+it('keeps the drag target at least 24 by 24 pixels on the detail page', () => {
   view();
   expect(screen.getByRole('button', { hidden: true })).toHaveClass('min-w-6', 'min-h-6', 'shrink-0');
 });

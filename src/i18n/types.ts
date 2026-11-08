@@ -2174,7 +2174,6 @@ export interface Translations {
   dgWinUipi: string;
   dgOutsideOffHint: string;
   dgLimit: string;
-  dgMoveHint: string;
   dgHandle: string;
   dgStepHint: string;
   errDragDisabled: string;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-// Locally modified: encoded file URIs and completion-time handler cleanup.
+// Locally modified: encoded file URIs, completion-time handler cleanup and released-button guard.
 // See ../../../VENDORING.md for provenance and upstream restoration.
 
 use crate::{CursorPosition, DragItem, DragResult, Error, Image, Options};
@@ -22,6 +22,16 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// Unknown state counts as held so a failed query never blocks a legitimate drag.
+fn primary_button_held(window: &gtk::ApplicationWindow) -> bool {
+    let Some(gdk_window) = window.window() else { return true };
+    let Some(pointer) = window.display().default_seat().and_then(|seat| seat.pointer()) else {
+        return true;
+    };
+    let (_, _, _, mask) = gdk_window.device_position(&pointer);
+    mask.contains(gdk::ModifierType::BUTTON1_MASK)
+}
+
 pub fn start_drag<F: Fn(DragResult, CursorPosition) + Send + 'static>(
     window: &gtk::ApplicationWindow,
     item: DragItem,
@@ -30,6 +40,16 @@ pub fn start_drag<F: Fn(DragResult, CursorPosition) + Send + 'static>(
     options: Options,
 ) -> crate::Result<()> {
     log::debug!("Starting drag operation with mode: {:?}", options.mode);
+    if !primary_button_held(window) {
+        // A drag begun after release grabs the pointer with no release left to end it,
+        // or drops wherever the pointer rests.
+        log::debug!("Primary button already released; not starting the drag");
+        on_drop_callback(
+            DragResult::Cancel,
+            get_cursor_position(window).unwrap_or(CursorPosition { x: 0, y: 0 }),
+        );
+        return Ok(());
+    }
     let handler_ids: Arc<Mutex<Vec<SignalHandlerId>>> = Arc::new(Mutex::new(vec![]));
     // Catalog originals must never be offered for a destructive move.
     let drag_action = gdk::DragAction::COPY;

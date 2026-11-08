@@ -6,6 +6,7 @@ import { ModelDetailPage } from './ModelDetailPage';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { makeModelFile, makePrinter } from '../test/factories';
 import { de } from '../i18n/de';
+import { setNativeDragEnabled } from '../lib/nativeDrag';
 import { filamentUsageHelpUrl } from '../lib/filamentUsageHelp';
 
 vi.mock('./ModelPreview', () => ({ ModelPreview: () => <>
@@ -366,4 +367,17 @@ it('lists the print bed verdict per printer on the detail page, without printers
 it('shows no print bed section without printers that have a build volume', () => {
   renderPage({ model: makeModelFile({ dimensionsMm: [10, 10, 10] }), printers: [makePrinter({ bedZMm: 0 })] });
   expect(screen.queryByRole('region', { name: de.plateFitHeading })).toBeNull();
+});
+
+it('retains the native drag handle on the detail page when enabled', () => {
+  setNativeDragEnabled(true);
+  try {
+    renderPage({ model: makeModelFile({ path: '/model.stl' }) });
+    const handle = screen.getByTitle(de.dgHandle);
+    expect(handle).toHaveAttribute('tabindex', '-1');
+    expect(handle).toHaveAttribute('aria-hidden', 'true');
+    expect(handle).toHaveClass('min-w-6', 'min-h-6');
+  } finally {
+    act(() => setNativeDragEnabled(false));
+  }
 });

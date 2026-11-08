@@ -56,8 +56,15 @@ it('silently refuses while a native session is still active', () => {
   mocks.active = true; const { handover } = setup(); move(-1, 0);
   expect(handover).not.toHaveBeenCalled(); expect(mocks.begin).not.toHaveBeenCalled();
 });
-it('keeps observing outside moves and mouseup after handover', () => {
-  const { rerender } = setup(); move(-1, 0); rerender({ active: false }); move(-2, 0);
+it('logs only one concise line per handover, without observing subsequent events', () => {
+  const { rerender, unmount } = setup(); move(-1, 0); rerender({ active: false }); move(-2, 0);
   act(() => window.dispatchEvent(new MouseEvent('mouseup')));
-  expect(mocks.info).toHaveBeenCalledWith(expect.stringContaining('mousemove_outside=2 mouseup=true'));
+  act(() => window.dispatchEvent(new MouseEvent('mousedown')));
+  unmount();
+  expect(mocks.info).toHaveBeenCalledExactlyOnceWith('dragout handover trigger=mousemove files=1');
+});
+it('logs mouseleave and the eligible file count', () => {
+  setup([model, makeModelFile({ id: 'b', path: '/b.obj' }), makeModelFile({ id: 'step', path: '/c.step' })]);
+  act(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave', { buttons: 1 })));
+  expect(mocks.info).toHaveBeenCalledExactlyOnceWith('dragout handover trigger=mouseleave files=2');
 });

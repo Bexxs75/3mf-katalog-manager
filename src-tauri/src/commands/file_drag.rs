@@ -40,6 +40,38 @@ impl NativeDragState {
 /// Preview image of the drag (the app icon, 32 px).
 const DRAG_PREVIEW_PNG: &[u8] = include_bytes!("../../icons/32x32.png");
 
+// GetAsyncKeyState's high bit is the current state; the low bit only records a past press.
+#[cfg(any(target_os = "windows", test))]
+fn key_state_down(state: i16) -> bool {
+    (state as u16) & 0x8000 != 0
+}
+
+#[cfg(target_os = "windows")]
+fn primary_button_down() -> bool {
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetAsyncKeyState(vkey: i32) -> i16;
+        fn GetSystemMetrics(index: i32) -> i32;
+    }
+    // Starting after mouseup hangs until the next press and drops at that location.
+    // These APIs have no separate failure result: a zero key state also means released.
+    unsafe {
+        let button = if GetSystemMetrics(23) != 0 { 0x02 } else { 0x01 };
+        key_state_down(GetAsyncKeyState(button))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn primary_button_down() -> bool {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGEventSourceButtonState(state_id: i32, button: u32) -> bool;
+    }
+    // Staging can outlast mouseup; a new session then has no release left to end it.
+    // Combined session state, left mouse button. The API has no failure sentinel.
+    unsafe { CGEventSourceButtonState(0, 0) }
+}
+
 fn is_draggable(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "3mf" | "stl" | "obj"))
 }
@@ -110,8 +142,7 @@ pub fn set_drag_out_enabled(state: State<AppState>, enabled: bool) -> CmdResult<
 pub fn start_file_drag(
     window: tauri::WebviewWindow, state: State<AppState>, environment: State<'_, RuntimeEnvironment>, file_ids: Vec<String>,
 ) -> CmdResult<()> {
-    let invoked = std::time::Instant::now();
-    log::info!(target: "drag", "start_file_drag invoked t_ms_since_call=0");
+    log::info!(target: "drag", "start_file_drag invoked");
     environment.require_desktop(DesktopFeature::ExternalAction)?;
     let sources = {
         let conn = lock_db(&state)?;
@@ -143,7 +174,6 @@ pub fn start_file_drag(
         native.finish(token, || {});
         return Err(CmdError::coded_with(ErrorCode::DragFailed, [String::new()]));
     }
-    log::info!(target: "drag", "start_file_drag invoked staged t_ms_since_call={}", invoked.elapsed().as_millis());
     let count = files.len();
     let item = drag::DragItem::Files(files);
     let preview = drag::Image::Raw(DRAG_PREVIEW_PNG.to_vec());
@@ -163,6 +193,12 @@ pub fn start_file_drag(
             drop(session);
         });
     };
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    if !primary_button_down() {
+        log::info!(target: "drag", "start_file_drag skipped: primary button already released");
+        callback(drag::DragResult::Cancel, drag::CursorPosition { x: 0, y: 0 });
+        return Ok(());
+    }
     let options = drag::Options { mode: drag::DragMode::Copy, ..Default::default() };
     #[cfg(target_os = "linux")]
     let started = {
@@ -177,6 +213,14 @@ pub fn start_file_drag(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn key_state_uses_current_press_not_press_history() {
+        assert!(!key_state_down(0));
+        assert!(!key_state_down(1));
+        assert!(key_state_down(i16::MIN));
+        assert!(key_state_down(-1));
+    }
 
     fn conn_with(path: &Path) -> (Connection, String) {
         let conn = db::connect_in_memory().unwrap();

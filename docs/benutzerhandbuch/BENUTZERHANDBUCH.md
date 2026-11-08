@@ -1240,10 +1240,11 @@ Closing returns the focus to the gear.
 #### Passing files on (experimental)
 
 At the top of this tab, the section "Passing files on" carries the label "Experimental" and one switch, "Drag files out of the
-catalog" (**off** by default). With it on, cards, list rows and the detail page offer an arrow-out-of-a-frame icon: drag 3MF, STL and OBJ files
-by it into a slicer, file manager or onto the desktop. On grid cards this icon is at the bottom right; in list rows it is beside the filename. Temporary copies are handed over; the files in the catalog stay intact. Whether dropping works
-depends on the operating system and the target program.
-The six-dot symbol indicates moving within the catalog: drag the card itself onto a folder on the left to move the file there, including on disk. Hover over either symbol for its explanation. Keyboard users can use “Open in slicer”.
+catalog" (**off** by default). Dragging a card or list row onto a folder inside the window moves the file there, including on disk.
+With the switch on, drag the card out of the window into a slicer, file manager or onto the desktop to hand over a 3MF, STL or OBJ file.
+Temporary copies are handed over; the files in the catalog stay intact. Whether dropping works depends on the operating system and the target program.
+Only the detail page keeps its arrow-out-of-a-frame drag handle. Keyboard users can use “Open in slicer” or “Move to …”.
+Bundle cards and collection reordering do not support dragging out; cards cannot be dragged during an import.
 
 **Windows:** if the target slicer (for example Bambu Studio or OrcaSlicer) runs as administrator, Windows blocks dropping from the
 normally started Catalog Manager. Start the slicer without administrator rights. This note shows under Windows even while the
@@ -1756,7 +1757,7 @@ und der Hinweis „Neu hinzugefügt ansehen“ an; das öffnet die Ansicht „Ne
 
 ![Import-Ergebnis mit Dateinamen und Gründen](bilder/36-import-ergebnisliste.png)
 
-Zum Verschieben ziehst du ein Katalogmodell am Griff seiner Karte auf einen Ordner. Eine Vorschau
+Zum Verschieben ziehst du die Karte eines Katalogmodells auf einen Ordner. Eine Vorschau
 folgt dem Mauszeiger, passende Ziele werden hervorgehoben. Zugeklappte Ordner mit Unterordnern
 öffnen sich beim Drüberhalten. Ziehst du ein Modell auf eine Sammlung, wird es ihr hinzugefügt.
 Mehrere Modelle auf einmal zu verschieben steht unter
@@ -2877,10 +2878,11 @@ Rückfrage und dann die Einstellungen. Beim Schließen kehrt der Fokus zum Zahnr
 #### Dateien weitergeben (experimentell)
 
 Ganz oben in diesem Reiter steht der Abschnitt „Dateien weitergeben“ mit der Plakette „Experimentell“ und einem Schalter
-„Dateien aus dem Katalog ziehen“ (standardmäßig **aus**). Ist er an, haben Karten, Listenzeilen und die Detailseite einen
-Pfeil aus einem Rahmen als Ziehgriff: Ziehe 3MF-, STL- und OBJ-Dateien daran in einen Slicer, Dateimanager oder auf den Desktop. Im Raster sitzt das Symbol unten rechts auf der Karte, in der Liste neben dem Dateinamen. Dabei werden temporäre Kopien übergeben; die
-Dateien im Katalog bleiben erhalten. Ob das Ablegen funktioniert, hängt vom Betriebssystem und vom Zielprogramm ab.
-Das Sechs-Punkte-Symbol steht für das Verschieben im Katalog: Ziehe die Karte selbst auf einen Ordner links, um die Datei dorthin zu verschieben, auch auf der Festplatte. Beim Überfahren erklären Tooltips beide Symbole. Per Tastatur steht „Im Slicer öffnen“ zur Verfügung.
+„Dateien aus dem Katalog ziehen“ (standardmäßig **aus**). Ziehst du eine Karte oder Listenzeile im Fenster auf einen Ordner, wird die Datei dorthin verschoben, auch auf der Festplatte.
+Bei eingeschaltetem Schalter ziehst du die Karte aus dem Fenster in einen Slicer, Dateimanager oder auf den Desktop, um eine 3MF-, STL- oder OBJ-Datei zu übergeben.
+Dabei werden temporäre Kopien übergeben; die Dateien im Katalog bleiben erhalten. Ob das Ablegen funktioniert, hängt vom Betriebssystem und vom Zielprogramm ab.
+Nur die Detailseite behält den Ziehgriff mit dem Pfeil aus einem Rahmen. Per Tastatur stehen „Im Slicer öffnen“ und „Verschieben nach …“ zur Verfügung.
+Bündelkarten und das Umsortieren in Sammlungen unterstützen kein Herausziehen; während eines Imports lassen sich Karten nicht ziehen.
 
 **Windows:** Läuft der Ziel-Slicer (etwa Bambu Studio oder OrcaSlicer) als Administrator, blockiert Windows das Ablegen aus dem
 normal gestarteten Katalog Manager. Starte den Slicer ohne Administratorrechte. Dieser Hinweis erscheint unter Windows auch bei

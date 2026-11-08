@@ -55,6 +55,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
+- Cards can now be dragged straight out of the window into a slicer, file manager or the desktop when "Drag files out of the catalog" is on; the separate drag handles on cards and in the list are gone (the detail page keeps its handle). Linux: dropping into Bambu Studio, OrcaSlicer and text editors now works, also for names with spaces or umlauts.
+
 - The drag-out handle now has its own arrow-out-of-a-frame icon and tooltip; both card drag grips have explanatory tooltips.
 
 - **Settings, width and wrapping:** the panel is 480 px wide when docked from 1280 px window width and 440 px from 1000 to 1279 px. Below 1000 px, it lies over the view (480 px, at most the free width minus 32 px; below 600 px over the full width); on the detail page and in the other main views it always does. The rule lives in one place (`src/lib/settingsLayout.ts`); the settings have their own style classes, the detail panel's shared overlay is unchanged. Inner padding is 20 px, 16 px below 600 px. Buttons grow with multi-line labels instead of having a fixed height, button pairs stack when they do not fit side by side, and the catalog folder and slicer paths wrap and can be selected instead of ending in an ellipsis. The five tabs wrap onto a second row when they do not fit.
@@ -91,6 +93,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Restoring a backup keeps the Thingiverse key:** the key of this computer (and the switch) now stays when you restore a backup, instead of being deleted. A key is still never part of a backup, and one found in a restored file is ignored. The restore dialog, the Thingiverse settings and the manual say: "Your Thingiverse key stays on this computer and is not contained in any backup."
 
 ### Fixed
+
+- Linux: dragging files out accepts names with spaces and umlauts; Windows/Linux/macOS: a drag no longer starts when the mouse button has already been released.
 
 - Settings: switches and the "When the window is closed" choice no longer lose the keyboard focus while they save (the focus used to fall back to the catalog).
 
@@ -849,6 +853,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Geändert
 
+- Karten lassen sich bei eingeschaltetem „Dateien aus dem Katalog ziehen“ direkt aus dem Fenster in einen Slicer, Dateimanager oder auf den Desktop ziehen; die separaten Ziehgriffe auf Karten und in der Liste entfallen (die Detailseite behält ihren Griff). Linux: Das Ablegen in Bambu Studio, OrcaSlicer und Texteditoren funktioniert jetzt auch bei Namen mit Leerzeichen oder Umlauten.
+
 - Der Ziehgriff zum Herausziehen hat ein eigenes Symbol (Pfeil aus einem Rahmen) und einen Tooltip; beide Ziehgriffe der Karte sind beschriftet.
 
 - **Einstellungen, Breite und Umbruch:** Der Bereich ist angedockt ab 1280 px Fensterbreite 480 px breit, von 1000 bis 1279 px 440 px. Unter 1000 px legt er sich über die Ansicht (480 px, höchstens die freie Breite minus 32 px; unter 600 px über die volle Breite); auf der Detailseite und in den anderen Hauptansichten immer. Die Regel steht an einer Stelle (`src/lib/settingsLayout.ts`); die Einstellungen haben eigene Stilklassen, das gemeinsame Overlay des Detailbereichs bleibt unverändert. Innenabstand 20 px, unter 600 px 16 px. Knöpfe wachsen bei mehrzeiligen Beschriftungen mit statt feste Höhe zu haben, Knopfpaare stehen untereinander, wenn sie nicht nebeneinander passen, und Katalog- und Slicerpfade brechen um und lassen sich markieren statt mit Ellipse zu enden. Die fünf Reiter brechen in eine zweite Zeile um, wenn sie nicht nebeneinander passen.
@@ -884,6 +890,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Wiederherstellen behält den Thingiverse-Schlüssel:** Der Schlüssel dieses Rechners (und der Schalter) bleibt beim Wiederherstellen einer Sicherung jetzt erhalten, statt gelöscht zu werden. Ein Schlüssel ist weiterhin nie Teil einer Sicherung, und einer in einer wiederhergestellten Datei wird ignoriert. Der Wiederherstellen-Dialog, die Thingiverse-Einstellungen und das Handbuch sagen: „Dein Thingiverse-Schlüssel bleibt auf diesem Rechner erhalten und ist in keiner Sicherung enthalten.“
 
 ### Behoben
+
+- Linux: Herausziehen nimmt Namen mit Leerzeichen und Umlauten an; Windows/Linux/macOS: Ein Zug startet nicht mehr, wenn die Maustaste schon losgelassen ist.
 
 - Einstellungen: Schalter und die Auswahl „Beim Schließen des Fensters“ verlieren beim Speichern nicht mehr den Tastaturfokus (er fiel bisher in den Katalog zurück).
 

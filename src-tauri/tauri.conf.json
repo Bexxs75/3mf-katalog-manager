@@ -15,6 +15,7 @@
         "title": "3MF Katalog Manager",
         "create": false,
         "visible": false,
+        "acceptFirstMouse": true,
         "width": 1000,
         "height": 600,
         "minWidth": 900,

@@ -5,17 +5,23 @@ import { UiDensityProvider } from '../hooks/UiDensityContext';
 import { makeModelFile } from '../test/factories';
 import { ModelGrid } from './ModelGrid';
 import { ModelList } from './ModelList';
+import { useFolderDragAndDrop } from '../hooks/useFolderDragAndDrop';
+import { useDragOutTransition } from '../hooks/useDragOutTransition';
+import { invoke } from '@tauri-apps/api/core';
+import { makeFolder } from '../test/factories';
+import { beginDragOut } from '../lib/nativeDrag';
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }));
 vi.mock('../lib/nativeDrag', async importOriginal => ({ ...await importOriginal<typeof import('../lib/nativeDrag')>(), useNativeDragEnabled: () => true, loadNativeDragEnabled: async () => {}, beginDragOut: vi.fn() }));
 beforeEach(() => localStorage.clear());
 const props = { models: [makeModelFile()], selectedId: null, onSelect: vi.fn(), onOpenDetail: vi.fn(), onContextMenu: vi.fn(), onToggleFavorite: vi.fn(), selectedForBulk: new Set<string>(), onToggleBulkSelect: vi.fn(), displayPreference: 'thumbnail' as const };
-it.each(['compact', 'comfort', 'list'])('shows a grip only for movable models (%s)', (view) => {
+it.each(['compact', 'comfort', 'list'])('renders no move grip even for movable models (%s)', (view) => {
   localStorage.setItem('3mf-katalog-density', view);
   const Component = view === 'list' ? ModelList : ModelGrid;
   const ui = (extra = {}) => <LanguageProvider><UiDensityProvider><Component {...props} {...extra} /></UiDensityProvider></LanguageProvider>;
   const { container, rerender } = render(ui());
   expect(container.querySelector('[data-drag-grip]')).toBeNull();
   rerender(ui({ onDragFileStart: vi.fn() }));
-  expect(container.querySelector('[data-drag-grip]')).toHaveAttribute('aria-hidden', 'true');
+  expect(container.querySelector('[data-drag-grip]')).toBeNull();
   rerender(ui({ onDragFileStart: vi.fn(), readOnly: true }));
   expect(container.querySelector('[data-drag-grip]')).toBeNull();
   if (view !== 'list') {
@@ -185,13 +191,18 @@ it.each([false, true])('retains metadata selection and collection drag with web 
   try {
     await act(async () => { await login('test'); });
     const select = vi.fn();
-    const { container, unmount } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} onSelect={select} onDragFileStart={vi.fn()} /></UiDensityProvider></LanguageProvider>);
+    const drag = vi.fn();
+    const { container, unmount } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} onSelect={select} onDragFileStart={drag} /></UiDensityProvider></LanguageProvider>);
     // Drag also supports DB-only collection assignment; folder drops check fileOps themselves.
-    expect(container.querySelector('[data-drag-grip]')).not.toBeNull();
+    expect(container.querySelector('[data-drag-grip]')).toBeNull();
     const card = container.querySelector('[data-model-id]');
     expect(card).not.toBeNull();
     fireEvent.click(card!);
     expect(select).toHaveBeenCalledWith(props.models[0].id);
+    fireEvent.mouseDown(card!, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 20, clientY: 10 });
+    expect(drag).toHaveBeenCalledWith(props.models[0].id);
+    fireEvent.mouseUp(document);
     unmount();
   } finally {
     act(() => authenticationFailed(401));
@@ -209,56 +220,57 @@ it('shortens long tag chips in ModelList and exposes the full tooltip', () => {
   expect(text.parentElement).toHaveClass('shrink-0');
 });
 
-it.each(['compact', 'comfort'])('separates the native drag grip from the favorite target (%s)', density => {
-  localStorage.setItem('3mf-katalog-density', density);
-  const { container, getByLabelText } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} windowed={false} models={[makeModelFile({ path: '/model.stl' })]} /></UiDensityProvider></LanguageProvider>);
-  const grip = container.querySelector('button[aria-hidden="true"]');
-  expect(grip).toHaveClass('absolute', 'bottom-12', 'right-1.5', 'min-w-6', 'min-h-6');
-  const favorite = getByLabelText('Zu Favoriten hinzufügen');
-  expect(favorite).toHaveClass('min-w-6', 'min-h-6');
-  expect(favorite).toHaveClass(density === 'compact' ? 'bottom-[7px]' : 'bottom-2.5');
-});
-
-it.each(['compact', 'comfort'])('keeps the list drag grip in normal flow beside the filename (%s)', density => {
-  localStorage.setItem('3mf-katalog-density', density);
-  const { container } = render(<LanguageProvider><UiDensityProvider><ModelList {...props} models={[makeModelFile({ path: '/model.stl' })]} /></UiDensityProvider></LanguageProvider>);
-  const grip = container.querySelector('button[aria-hidden="true"]');
-  expect(grip).toHaveClass('min-w-6', 'min-h-6', 'shrink-0');
-  expect(grip).not.toHaveClass('absolute');
-  expect(grip?.parentElement).toHaveClass('flex', 'gap-1.5');
-  expect(grip?.nextElementSibling).toHaveTextContent('Test Model');
-});
-
-it.each(['compact', 'comfort', 'list-compact', 'list-comfort'])('distinguishes both grips and bubbles the move tooltip gesture to the card (%s)', async view => {
-  const { de } = await import('../i18n/de');
-  const { icons } = await import('./icons.generated');
+it.each(['compact', 'comfort', 'list-compact', 'list-comfort'])('has no drag handles and still starts a card gesture (%s)', view => {
   const list = view.startsWith('list-');
   localStorage.setItem('3mf-katalog-density', view.replace('list-', ''));
   const Component = list ? ModelList : ModelGrid;
   const move = vi.fn();
-  const { container, getByTitle } = render(<LanguageProvider><UiDensityProvider><Component {...props}
+  const { container, getByLabelText } = render(<LanguageProvider><UiDensityProvider><Component {...props}
     models={[makeModelFile({ path: '/model.stl', license: 'cc-by' })]} onDragFileStart={move} /></UiDensityProvider></LanguageProvider>);
-  const grip = getByTitle(de.dgMoveHint);
-  const native = getByTitle(de.dgHandle);
-  expect(grip).toHaveAttribute('data-drag-grip');
-  expect(grip).not.toHaveClass('pointer-events-none');
-  expect(grip.querySelector('svg')).toHaveClass('pointer-events-none');
-  expect(grip.querySelectorAll('circle')).toHaveLength(6);
-  expect(native.querySelector('svg')).toContainHTML(icons.external);
-  expect(native).toHaveClass('min-w-6', 'min-h-6', 'shrink-0');
+  expect(container.querySelector('[data-drag-grip]')).toBeNull();
+  expect(container.querySelector('button[aria-hidden="true"]')).toBeNull();
   if (!list) {
-    expect(grip).toHaveClass('absolute', 'top-1.5', 'right-9');
-    expect(native).toHaveClass('absolute', 'bottom-12', 'right-1.5');
-  } else {
-    expect(native).not.toHaveClass('absolute');
+    const favorite = getByLabelText('Zu Favoriten hinzufügen');
+    expect(favorite).toHaveClass('min-w-6', 'min-h-6');
+    expect(favorite).toHaveClass(view === 'compact' ? 'bottom-[7px]' : 'bottom-2.5');
   }
-  fireEvent.mouseDown(grip, { button: 0, clientX: 10, clientY: 10 });
+  const card = container.querySelector('[data-model-id]')!;
+  fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
   fireEvent.mouseMove(document, { buttons: 1, clientX: 15, clientY: 10 });
   expect(move).not.toHaveBeenCalled();
   fireEvent.mouseMove(document, { buttons: 1, clientX: 16, clientY: 10 });
   fireEvent.mouseMove(document, { buttons: 1, clientX: 20, clientY: 10 });
   expect(move).toHaveBeenCalledExactlyOnceWith(props.models[0].id);
-  expect(container.querySelector('[data-model-id]')).toHaveClass('opacity-50');
+  expect(card).toHaveClass('opacity-50');
   fireEvent.mouseUp(document);
-  expect(container.querySelector('[data-model-id]')).not.toHaveClass('opacity-50');
+  expect(card).not.toHaveClass('opacity-50');
+});
+
+it.each(['compact', 'comfort', 'list'])('moves a card onto a folder inside the window and retains undo (%s)', async view => {
+  localStorage.setItem('3mf-katalog-density', view);
+  const Component = view === 'list' ? ModelList : ModelGrid;
+  const model = makeModelFile({ id: 'move-me', path: '/source/model.stl', folderId: 'source' });
+  const models = [model];
+  const folders = [makeFolder({ id: 'source', path: '/source' }), makeFolder({ id: 'target', path: '/target' })];
+  vi.mocked(invoke).mockImplementation(async command => command === 'move_files_to_folder'
+    ? [{ id: model.id, status: 'moved', fromFolderId: 'source', fromPath: model.path }] : undefined);
+  vi.mocked(invoke).mockClear();
+  vi.mocked(beginDragOut).mockClear();
+  function Workspace() {
+    const drag = useFolderDragAndDrop(models, folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() });
+    useDragOutTransition({ active: drag.draggedFileId !== null, ids: drag.draggedFileIds, models, onHandOver: drag.cancelFileDrag });
+    return <>
+      <Component {...props} models={models} onDragFileStart={drag.onDragFileStart} />
+      <div data-testid="folder" onMouseEnter={() => drag.handleFolderMouseEnter('target')}>Target</div>
+      <output>{drag.moveToast?.to} undo:{drag.undoCount}</output>
+    </>;
+  }
+  const { container, getByTestId, getByText } = render(<LanguageProvider><UiDensityProvider><Workspace /></UiDensityProvider></LanguageProvider>);
+  fireEvent.mouseDown(container.querySelector('[data-model-id]')!, { button: 0, clientX: 100, clientY: 100 });
+  fireEvent.mouseMove(document, { buttons: 1, clientX: 120, clientY: 100 });
+  fireEvent.mouseEnter(getByTestId('folder'));
+  await act(async () => { fireEvent.mouseUp(document); });
+  expect(invoke).toHaveBeenCalledWith('move_files_to_folder', { fileIds: ['move-me'], folderId: 'target' });
+  expect(getByText('/target undo:1')).toBeInTheDocument();
+  expect(beginDragOut).not.toHaveBeenCalled();
 });
