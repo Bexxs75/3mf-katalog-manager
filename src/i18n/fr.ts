@@ -255,6 +255,8 @@ export const fr: Translations = {
   detailPanelPinned: "Toujours visible",
   detailPanelClose: "Fermer les détails",
   detailPanelPin: "Épingler le panneau de détails",
+  detailPanelResizeLabel: "Redimensionner le panneau de détails",
+  detailPanelResizeHint: "Faites glisser ou utilisez les flèches (Maj : pas plus grands). Double-clic : largeur par défaut.",
   detailPanelTitle: "Détails",
 
   viewerOpenSlicer: "Ouvrir dans le trancheur",

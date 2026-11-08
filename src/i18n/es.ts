@@ -255,6 +255,8 @@ export const es: Translations = {
   detailPanelPinned: "Siempre visible",
   detailPanelClose: "Cerrar detalles",
   detailPanelPin: "Fijar panel de detalles",
+  detailPanelResizeLabel: "Cambiar el ancho del panel de detalles",
+  detailPanelResizeHint: "Arrastra o usa las flechas (Mayús: pasos mayores). Doble clic: ancho predeterminado.",
   detailPanelTitle: "Detalles",
 
   viewerOpenSlicer: "Abrir en el laminador",

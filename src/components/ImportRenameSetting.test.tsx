@@ -44,3 +44,28 @@ it('keeps the saved state when writing fails', async () => {
   expect(toggle).toHaveAttribute('aria-checked', 'false');
   expect(screen.getByText(/database unavailable/)).toBeVisible();
 });
+
+it('keeps focus while set_import_rename_enabled is pending and after it completes', async () => {
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  vi.mocked(invoke).mockImplementation(async command => {
+    if (command === 'set_import_rename_enabled') return pending;
+    if (command === 'get_sync_on_start') return true;
+    if (command === 'count_known_copies') return 0;
+    return false;
+  });
+  setup();
+  const toggle = screen.getByRole('switch', { name: 'Dateien beim Import umbenennen' });
+  await waitFor(() => expect(toggle).toBeEnabled());
+  toggle.focus();
+  fireEvent.keyDown(toggle, { key: ' ' });
+  expect(toggle).toHaveAttribute('aria-busy', 'true');
+  expect(toggle).toHaveAttribute('aria-disabled', 'true');
+  expect(toggle).toBeEnabled();
+  expect(document.activeElement).toBe(toggle);
+  fireEvent.click(toggle);
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_import_rename_enabled')).toHaveLength(1);
+  finish();
+  await waitFor(() => expect(toggle).not.toHaveAttribute('aria-busy'));
+  expect(document.activeElement).toBe(toggle);
+});

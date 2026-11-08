@@ -41,7 +41,9 @@ function setup(extra: Partial<ComponentProps<typeof CatalogWorkspace>> = {}) {
     onAddTag: vi.fn(), onRemoveTag: vi.fn(), addTag: vi.fn(), removeTag: vi.fn(),
     setUsage: vi.fn(),
     ...extra } as unknown as ComponentProps<typeof CatalogWorkspace>;
-  return render(<LanguageProvider><UiDensityProvider><CatalogWorkspace {...props} /></UiDensityProvider></LanguageProvider>);
+  const wrap = (next: Partial<ComponentProps<typeof CatalogWorkspace>>) => <LanguageProvider><UiDensityProvider><CatalogWorkspace {...props} {...next} /></UiDensityProvider></LanguageProvider>;
+  const result = render(wrap({}));
+  return { ...result, update: (next: Partial<ComponentProps<typeof CatalogWorkspace>>) => result.rerender(wrap(next)) };
 }
 const cardIds = () => [...document.querySelectorAll('[role="row"][data-model-id]')].map(row => row.getAttribute('data-model-id'));
 
@@ -151,4 +153,21 @@ it('adds the switch and the section to the detail page of a member', () => {
 it('shows no bundle elements on the detail page of a file outside any bundle', () => {
   setup({ bundles: [bundle], collapseBundles: true, bundleView: view(), detailModel: files[2], selectedId: 'c', selected: files[2] });
   expect(screen.queryByRole('group', { name: 'Variante wählen' })).toBeNull();
+});
+
+it('keeps a stored width through model and bundle switches and removes it on reset', () => {
+  localStorage.setItem('3mf-katalog-detail-width', '440');
+  const { update } = setup({ bundles: [bundle], collapseBundles: true, bundleView: view(), selectedId: 'c', selected: files[2] });
+  const shellWidth = () => screen.getByRole('complementary', { name: 'Details' }).style.getPropertyValue('--detail-panel-width');
+  expect(shellWidth()).toBe('440px');
+  update({ selectedId: 'a', selected: files[0] });
+  expect(screen.getByRole('list', { name: 'Mitglieder' })).toBeInTheDocument();
+  expect(shellWidth()).toBe('440px');
+  fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowLeft' });
+  update({ selectedId: 'c', selected: files[2] });
+  expect(screen.queryByRole('list', { name: 'Mitglieder' })).toBeNull();
+  expect(shellWidth()).toBe('456px');
+  fireEvent.doubleClick(screen.getByRole('separator'));
+  expect(localStorage.getItem('3mf-katalog-detail-width')).toBeNull();
+  expect(screen.getByRole('complementary', { name: 'Details' })).not.toHaveClass('detail-panel-resized');
 });

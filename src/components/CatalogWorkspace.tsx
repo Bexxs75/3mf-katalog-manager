@@ -1,3 +1,8 @@
+import { useDetailPanelWidth } from '../hooks/useDetailPanelWidth';
+import { useUiDensity } from '../hooks/UiDensityContext';
+import { clampDetailPanelWidth } from '../lib/detailPanelWidthPreference';
+import { DetailPanelResizer } from './DetailPanelResizer';
+import type { CSSProperties } from 'react';
 import { displayName } from '../lib/displayName';
 import { usageLabels, type LicenseUsage } from '../lib/licenses';
 import { printerBuildVolume } from '../lib/buildPlateFit';
@@ -358,6 +363,28 @@ export function CatalogWorkspace({
   }, [panelVisible, narrow, selectedId, detailModel, layouts]);
   const rootRef = useRef<HTMLDivElement>(null);
   const barWrapRef = useRef<HTMLDivElement>(null);
+  const { density } = useUiDensity();
+  const { width: preferredWidth, setWidth: setDetailWidth, reset: resetDetailWidth } = useDetailPanelWidth();
+  const [workspaceWidth, setWorkspaceWidth] = useState(1200);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const main = root?.querySelector<HTMLElement>('[data-catalog-main]');
+    if (!root || !main) return;
+    const update = () => {
+      const bounds = root.getBoundingClientRect();
+      setWorkspaceWidth(Math.max(0, bounds.right - main.getBoundingClientRect().left));
+    };
+    update();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(root);
+    observer?.observe(main);
+    window.addEventListener('resize', update);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', update); };
+  }, []);
+  const defaultDetailWidth = density === 'comfort' ? 380 : 336;
+  const displayedDetailWidth = clampDetailPanelWidth(preferredWidth ?? defaultDetailWidth, workspaceWidth);
+  const resizedDetail = !narrow && (preferredWidth !== null || displayedDetailWidth !== defaultDetailWidth);
+
   // The narrow-window detail panel floats over the catalog. It starts below the
   // selection bar so the bar stays fully visible and usable at its full width.
   useLayoutEffect(() => {
@@ -866,7 +893,9 @@ export function CatalogWorkspace({
       </main>
 
       {settingsPanel ? settingsPanel(narrow || !!detailModel) : !detailModel && (detailPanel === 'pinned' || selectedId !== null) && (
-        <div role="complementary" aria-label={t('detailPanelTitle')} className={`detail-panel-shell ${narrow ? 'detail-panel-overlay' : ''}`}>
+        <div role="complementary" aria-label={t('detailPanelTitle')} className={`detail-panel-shell ${narrow ? 'detail-panel-overlay' : ''} ${resizedDetail ? 'detail-panel-resized' : ''}`}
+          style={resizedDetail ? { '--detail-panel-width': `${displayedDetailWidth}px` } as CSSProperties : undefined}>
+        {!narrow && <DetailPanelResizer width={displayedDetailWidth} workspaceWidth={workspaceWidth} setWidth={setDetailWidth} reset={resetDetailWidth} />}
         {detailPanel === 'auto' && <button type="button" className="detail-panel-close" aria-label={t('detailPanelClose')} title={`${t('detailPanelClose')} (Esc)`} onClick={closeDetails}><Icon name="close" size={16} /></button>}
         {openBundleCard && bundleView ? (
           <BundlePanel

@@ -145,7 +145,7 @@ export function BundlePanel({ card, members, allTags, displayPreference, actions
   const perMember = <span className="flex-1 min-w-0 text-right text-[var(--ink-3)]">{t('bundlePerVariant')}</span>;
 
   return (
-    <aside className={`flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)] ${density === 'compact' ? DETAIL_PANEL_COMPACT_WIDTH_CLASS : ''}`}
+    <aside className={`flex-none flex flex-col min-h-0 min-w-0 overflow-x-hidden bg-[var(--panel)] border-l border-[var(--line)] ${density === 'compact' ? DETAIL_PANEL_COMPACT_WIDTH_CLASS : ''}`}
       style={density === 'comfort' ? { width: DETAIL_PANEL_COMFORT_WIDTH } : undefined}>
     <div data-bundle-panel className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden break-words">
       <div className="px-4 pt-3.5">

@@ -58,7 +58,7 @@ export function DiagnosticsSettings() {
           <ToggleSwitch
             checked={verbose?.enabled === true}
             label={t('infoVerboseLoggingLabel')}
-            disabled={state !== 'ready' || !verbose || busy}
+            disabled={state !== 'ready' || !verbose} busy={busy}
             onChange={(on) => void change(on)}
           />
         </div>

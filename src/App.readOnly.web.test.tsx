@@ -100,7 +100,7 @@ it('navigates all read views, search, filters, sorts, and previous/next details 
   await click(screen.getByRole('button', { name: de.detailPrevious }));
   expect(screen.getByRole('heading', { name: 'Alpha.stl' })).toBeInTheDocument();
   await click(screen.getByTitle(de.backToCatalog));
-  const sidebar = within(screen.getByRole('separator').closest('aside')!);
+  const sidebar = within(screen.getByRole('separator', { name: 'Breite der Seitenleiste' }).closest('aside')!);
   await click(sidebar.getByText('Web folder'));
   await click(sidebar.getByText(de.tagsHeading));
   await click(sidebar.getByRole('button', { name: /#web-tag/ }));

@@ -85,7 +85,7 @@ export function SourceFoldersSettings() {
       {jobActive && <p className="mt-1 text-small text-[var(--ink-2)]">{t('sfLockedNote')}</p>}
       <div className="flex items-center justify-between gap-2 mt-3 text-small">
         <span className="font-semibold">{t('sfCheckOnStart')}</span>
-        <ToggleSwitch checked={checkOnStart} label={t('sfCheckOnStart')} disabled={busy} aria-describedby="source-check-start-hint"
+        <ToggleSwitch checked={checkOnStart} label={t('sfCheckOnStart')} busy={busy} aria-describedby="source-check-start-hint"
           onChange={enabled => void changeCheckOnStart(enabled)} />
       </div>
       <p id="source-check-start-hint" className="mt-1 text-small text-[var(--ink-2)]">{t('sfCheckOnStartHint')}</p>

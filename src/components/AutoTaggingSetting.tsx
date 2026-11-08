@@ -36,7 +36,7 @@ export function AutoTaggingSetting() {
       <div>
         <div className="flex items-center justify-between gap-2 text-small">
           <span className="font-semibold">{t('autoTaggingLabel')}</span>
-          <ToggleSwitch checked={enabled === true} label={t('autoTaggingLabel')} disabled={state !== 'ready' || busy || !canEdit || enabled === null} aria-describedby={canEdit ? undefined : READ_ONLY_NOTE_ID} onChange={next => void change(next)} />
+          <ToggleSwitch checked={enabled === true} label={t('autoTaggingLabel')} disabled={state !== 'ready' || !canEdit || enabled === null} busy={busy} aria-describedby={canEdit ? undefined : READ_ONLY_NOTE_ID} onChange={next => void change(next)} />
         </div>
         <p className="mt-1 text-small text-[var(--ink-2)]">{t('autoTaggingHint')}</p>
         {!canEdit && <p id={READ_ONLY_NOTE_ID} className="mt-1 text-small text-[var(--ink-2)]">{t('settingsReadOnlyNotice')}</p>}

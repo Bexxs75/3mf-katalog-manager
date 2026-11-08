@@ -25,6 +25,7 @@ export function CloseBehaviorSettings() {
   const unavailable = state.action === 'tray' && !state.trayAvailable;
   const shown = unavailable ? 'exit' : state.action;
   async function choose(action: api.CloseAction) {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -42,7 +43,7 @@ export function CloseBehaviorSettings() {
   ];
   return <>
     <SettingLoadStatus keptValue state={loadState} error={loadError} onReload={() => void reload()} />
-    <fieldset disabled={busy || loadState !== 'ready'} aria-describedby="close-action-help">
+    <fieldset disabled={loadState !== 'ready'} aria-busy={busy} className={busy ? 'opacity-60' : undefined} aria-describedby="close-action-help">
     <legend className="text-[length:var(--font-size-body)] font-semibold">{t('closeActionTitle')}</legend>
     {options.map(option => <label key={option.value} className="flex items-start gap-2 mt-1">
       <input type="radio" name="closeAction" className="mt-1" checked={shown === option.value} onChange={() => void choose(option.value)} />

@@ -102,3 +102,25 @@ describe('RC channel consent', () => {
     expect(onChanged).toHaveBeenCalledOnce();
   });
 });
+
+it('keeps switch focus during and after a pending save', async () => {
+  vi.mocked(api.getUpdateChannel).mockResolvedValue('rc');
+  let finish!: (value: void) => void;
+  vi.mocked(api.setUpdateChannel).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  setup();
+  const toggle = await screen.findByRole('switch');
+  await waitFor(() => expect(toggle).toBeEnabled());
+  toggle.focus();
+  fireEvent.keyDown(toggle, { key: ' ' });
+  await waitFor(() => expect(toggle).toHaveAttribute('aria-busy', 'true'));
+  expect(toggle).toHaveAttribute('aria-disabled', 'true');
+  expect(toggle).toBeEnabled();
+  expect(document.activeElement).toBe(toggle);
+  fireEvent.click(toggle);
+  fireEvent.keyDown(toggle, { key: 'Enter' });
+  expect(api.setUpdateChannel).toHaveBeenCalledTimes(1);
+  finish(undefined);
+  await waitFor(() => expect(toggle).not.toHaveAttribute('aria-busy'));
+  expect(toggle).toHaveAttribute('aria-checked', 'false');
+  expect(document.activeElement).toBe(toggle);
+});

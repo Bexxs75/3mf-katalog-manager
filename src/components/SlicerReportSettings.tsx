@@ -97,7 +97,7 @@ export function SlicerReportSettings({ active = true }: { active?: boolean }) {
     <div>
       <div className="flex items-center justify-between gap-3 mb-1">
         <span id="sr-settings-title" className="text-[length:var(--font-size-body)] font-semibold">{t('srTitle')}</span>
-        <ToggleSwitch checked={enabled} label={t('srTitle')} disabled={busy || setup === null} onChange={(next) => void setEnabled(next)} />
+        <ToggleSwitch checked={enabled} label={t('srTitle')} disabled={setup === null} busy={busy} onChange={(next) => void setEnabled(next)} />
       </div>
       <p className="text-caption leading-relaxed text-[var(--ink-3)] mb-2">{t('srHelp')}</p>
       <SettingLoadStatus state={loadState} error={loadError} onReload={reloadSetup} className="mb-2" />

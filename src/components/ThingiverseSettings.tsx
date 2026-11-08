@@ -113,7 +113,7 @@ function ThingiverseSettingsBlock({ onEnabledChange }: { onEnabledChange: (enabl
           <span className="font-semibold">{t('tvSwitchLabel')}</span>
           <span className="block text-caption text-[var(--ink-3)]">{t('tvSwitchHint')}</span>
         </span>
-        <ToggleSwitch checked={enabled} label={t('tvSwitchLabel')} disabled={saving || loadState !== 'ready'} onChange={next => { if (next) setDialog('on'); else void setEnabled(false); }} />
+        <ToggleSwitch checked={enabled} label={t('tvSwitchLabel')} disabled={loadState !== 'ready'} busy={saving} onChange={next => { if (next) setDialog('on'); else void setEnabled(false); }} />
       </div>
       <SettingSaveStatus saving={saving} error={switchError} keptValue className="mt-1" />
 
