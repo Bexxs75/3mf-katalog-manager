@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { ModelFile } from '../types';
 import { listen } from './events';
 import { getDragOutEnabled, startFileDrag } from './api/fileDrag';
 
@@ -41,3 +42,15 @@ export function loadNativeDragEnabled() {
 }
 const subscribe = (fn: () => void) => { subscribers.add(fn); return () => { subscribers.delete(fn); }; };
 export const useNativeDragEnabled = () => useSyncExternalStore(subscribe, () => enabled);
+
+export const MAX_NATIVE_DRAG_FILES = 64;
+// Callers pass the resolved selection only when the grabbed card belongs to it.
+export function nativeDragIdsFor(model: ModelFile, selection?: readonly ModelFile[]): string[] {
+  const candidates = selection ?? [model];
+  return candidates.filter(file => !file.deletedAt && /\.(3mf|stl|obj)$/i.test(file.path)).map(file => file.id);
+}
+
+export async function beginDragOut(ids: string[]) {
+  if (!ids.length || ids.length > MAX_NATIVE_DRAG_FILES || NativeDragState.isActive()) return;
+  await startNativeDrag(ids);
+}

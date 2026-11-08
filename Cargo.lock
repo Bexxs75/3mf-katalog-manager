@@ -1281,8 +1281,6 @@ dependencies = [
 [[package]]
 name = "drag"
 version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e90b4a25ace5ce0561534b073943594cbcd21af936e64d09aec444568411f8c"
 dependencies = [
  "core-graphics 0.24.0",
  "dunce",

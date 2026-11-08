@@ -8,6 +8,7 @@ resolver = "2"
 # version); rationale and maintenance notes are in
 # `src-tauri/vendor/opencascade-sys/VENDORING.md`.
 [patch.crates-io]
+drag = { path = "src-tauri/vendor/drag" }
 opencascade-sys = { path = "src-tauri/vendor/opencascade-sys" }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

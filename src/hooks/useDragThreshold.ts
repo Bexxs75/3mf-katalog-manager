@@ -1,3 +1,4 @@
+import { listen } from '../lib/events';
 import { canEditMetadata } from '../lib/webSession';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -14,6 +15,27 @@ export function useDragThreshold(onStart: ((id: string) => void) | undefined) {
   const [candidateId, setCandidateId] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const startPos = useRef<{ x: number; y: number } | null>(null);
+
+  const reset = useCallback(() => {
+    startPos.current = null;
+    setCandidateId(null);
+    setArmed(false);
+  }, []);
+  useEffect(() => {
+    window.addEventListener('blur', reset);
+    document.addEventListener('mousedown', reset, true);
+    let disposed = false;
+    let off: (() => void) | undefined;
+    void listen('native-drag-ended', reset).then(fn => {
+      if (disposed) fn(); else off = fn;
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+      off?.();
+      window.removeEventListener('blur', reset);
+      document.removeEventListener('mousedown', reset, true);
+    };
+  }, [reset]);
 
   useEffect(() => {
     if (!candidateId) return;
@@ -39,6 +61,7 @@ export function useDragThreshold(onStart: ((id: string) => void) | undefined) {
 
   const begin = useCallback((e: { clientX: number; clientY: number }, id: string) => {
     if (!canEditMetadata()) return Promise.resolve();
+    setArmed(false);
     startPos.current = { x: e.clientX, y: e.clientY };
     setCandidateId(id);
   }, []);

@@ -66,8 +66,20 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     [recordUndo],
   );
 
+  const fileDragCancelled = useRef(false);
+  const cancelFileDrag = useCallback(() => {
+    // React state alone cannot guard a mouseup delivered before the next render.
+    fileDragCancelled.current = true;
+    setDraggedFileId(null);
+    setDraggedFileIds([]);
+    setDragOverFolderId(null);
+    setDragOverCollectionId(null);
+    hoveredFolderId.current = null;
+  }, []);
+
   const onDragFileStart = useCallback((id: string) => {
     if (!canEditMetadata()) return;
+    fileDragCancelled.current = false;
     setDraggedFileId(id);
     setDraggedFileIds(selectedIds?.has(id) ? [...selectedIds] : [id]);
   }, [selectedIds]);
@@ -228,6 +240,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   useEffect(() => {
     if (!draggedFileId) return;
     const handleMouseUp = () => {
+      if (fileDragCancelled.current) return;
       const fileId = draggedFileId;
       const fileIds = draggedFileIds;
       const folderId = dragOverFolderId;
@@ -303,6 +316,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   }, [draggedFolderId, folders, refreshFolders, refreshFiles, catalogBaseDir, recordUndo]);
 
   return {
+    cancelFileDrag,
     draggedFileId,
     draggedFileIds,
     draggedFilesFolderId,

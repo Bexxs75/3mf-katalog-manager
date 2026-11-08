@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { getCurrentWebview } from '../lib/webview';
 import { isWindowsPlatform, type Point } from '../lib/imageDrop';
 import { noDropTarget, resolveExternalDropTarget, type DropTarget } from '../lib/externalDrop';
+import { NativeDragState } from '../lib/nativeDrag';
 import type { Folder } from '../types';
 
 interface Options {
@@ -39,8 +40,9 @@ export function useExternalDropTarget({ enabled, folders, catalogBaseDir }: Opti
     if (import.meta.env.VITE_TARGET === 'web' || !enabled) return;
     let active = true;
     const clear = () => setState((s) => (s.target.kind === 'none' && s.count === 0 ? s : { target: noDropTarget, count: 0 }));
-    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+    const unlisten = getCurrentWebview(true).onDragDropEvent((event) => {
       if (!active) return;
+      if (NativeDragState.isActive()) { clear(); return; }
       const payload = event.payload;
       if (payload.type === 'enter' || payload.type === 'over') {
         const target = resolve(payload.position);

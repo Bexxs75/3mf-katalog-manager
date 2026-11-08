@@ -54,3 +54,21 @@ it('does not invoke after listener setup outlives the watchdog', async () => {
   await pending;
   expect(mocks.invoke).not.toHaveBeenCalled();
 });
+
+it('shares selection filtering without silently truncating over-limit lists', async () => {
+  const { nativeDragIdsFor, beginDragOut } = await import('./nativeDrag');
+  const { makeModelFile } = await import('../test/factories');
+  const a = makeModelFile({ id: 'a', path: '/a.OBJ' });
+  const b = makeModelFile({ id: 'b', path: '/b.STL' });
+  const deleted = makeModelFile({ id: 'c', path: '/c.3mf', deletedAt: 'today' });
+  const step = makeModelFile({ id: 'd', path: '/d.step' });
+  expect(nativeDragIdsFor(a, [a, b, deleted, step])).toEqual(['a', 'b']);
+  expect(nativeDragIdsFor(a)).toEqual(['a']);
+  expect(nativeDragIdsFor(a, [])).toEqual([]);
+  expect(nativeDragIdsFor(deleted)).toEqual([]);
+  await beginDragOut([]);
+  await beginDragOut(Array.from({ length: 65 }, (_, i) => String(i)));
+  expect(mocks.invoke).not.toHaveBeenCalled();
+  await beginDragOut(['a']); await beginDragOut(['b']);
+  expect(mocks.invoke).toHaveBeenCalledTimes(1);
+});

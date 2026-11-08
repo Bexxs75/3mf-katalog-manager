@@ -302,3 +302,23 @@ describe('dragging a mixed selection', () => {
     expect(result.current.dragOverFolderId).toBe('b');
   });
 });
+
+it('cancels a file drag synchronously so immediate and late mouseup cannot move files', () => {
+  const { result } = renderHook(() => useFolderDragAndDrop(
+    [makeModelFile({ id: 'm1' })], [makeFolder({ id: 'f1', path: '/Target' })],
+    { refreshFolders: vi.fn(), refreshFiles: vi.fn() },
+  ));
+  act(() => result.current.onDragFileStart('m1'));
+  act(() => result.current.handleFolderMouseEnter('f1'));
+  act(() => {
+    result.current.cancelFileDrag();
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+  act(() => document.dispatchEvent(new MouseEvent('mouseup')));
+  expect(invoke).not.toHaveBeenCalled();
+  expect(result.current.draggedFileId).toBeNull();
+  expect(result.current.draggedFileIds).toEqual([]);
+  expect(result.current.dragOverFolderId).toBeNull();
+  expect(result.current.dragOverCollectionId).toBeNull();
+  expect(result.current.moveToast).toBeNull();
+});

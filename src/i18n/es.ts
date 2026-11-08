@@ -2129,6 +2129,7 @@ export const es: Translations = {
   dgWinStep4: "Si inicias el laminador desde un acceso directo, revisa además \"Propiedades → Acceso directo → Opciones avanzadas → Ejecutar como administrador\".",
   dgWinStep5: "Inicia el laminador normalmente e inténtalo de nuevo.",
   dgWinUipi: "Windows separa los programas con permisos distintos. Esta protección se llama UIPI.",
+  dgOutsideOffHint: 'Para arrastrar a otros programas, actívalo en Ajustes → Laminador y servicios → «Pasar archivos a otros programas».',
   dgLimit: "Puedes arrastrar un máximo de 64 archivos a la vez. Reduce la selección.",
   dgMoveHint: "Para mover: arrastra la tarjeta a una carpeta de la izquierda (el archivo también se mueve en el disco)",
   dgHandle: "Arrastrar a otro programa (experimental): laminador, gestor de archivos o escritorio. Teclado: usar «Abrir en el laminador».",

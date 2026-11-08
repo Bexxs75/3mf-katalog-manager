@@ -2129,6 +2129,7 @@ export const fr: Translations = {
   dgWinStep4: "Si vous lancez le slicer depuis un raccourci, vérifiez aussi « Propriétés → Raccourci → Avancé → Exécuter en tant qu'administrateur ».",
   dgWinStep5: "Lancez le slicer normalement et réessayez.",
   dgWinUipi: "Windows sépare les programmes ayant des droits différents. Cette protection s'appelle UIPI.",
+  dgOutsideOffHint: 'Pour glisser vers d’autres programmes, activez cette option dans Paramètres → Slicers et services → «Transmettre des fichiers».',
   dgLimit: "Vous pouvez glisser au maximum 64 fichiers à la fois. Réduisez la sélection.",
   dgMoveHint: "Pour déplacer : glissez la carte sur un dossier à gauche (le fichier est également déplacé sur le disque)",
   dgHandle: "Glisser vers un autre programme (expérimental) : slicer, gestionnaire de fichiers ou bureau. Clavier : utiliser « Ouvrir dans le slicer ».",

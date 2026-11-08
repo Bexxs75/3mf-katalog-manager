@@ -4,7 +4,7 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import type { ModelFile } from '../types';
 const start = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock('../lib/nativeDrag', () => ({ useNativeDragEnabled: () => true, loadNativeDragEnabled: async () => {}, startNativeDrag: start }));
+vi.mock('../lib/nativeDrag', async importOriginal => ({ ...await importOriginal<typeof import('../lib/nativeDrag')>(), useNativeDragEnabled: () => true, loadNativeDragEnabled: async () => {}, beginDragOut: start }));
 import { NativeDragHandle } from './NativeDragHandle';
 const model = {id:'1',path:'/catalog/a.stl',name:'a.stl'} as ModelFile;
 beforeEach(() => start.mockClear());

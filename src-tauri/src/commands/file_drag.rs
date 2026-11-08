@@ -110,6 +110,8 @@ pub fn set_drag_out_enabled(state: State<AppState>, enabled: bool) -> CmdResult<
 pub fn start_file_drag(
     window: tauri::WebviewWindow, state: State<AppState>, environment: State<'_, RuntimeEnvironment>, file_ids: Vec<String>,
 ) -> CmdResult<()> {
+    let invoked = std::time::Instant::now();
+    log::info!(target: "drag", "start_file_drag invoked t_ms_since_call=0");
     environment.require_desktop(DesktopFeature::ExternalAction)?;
     let sources = {
         let conn = lock_db(&state)?;
@@ -141,6 +143,7 @@ pub fn start_file_drag(
         native.finish(token, || {});
         return Err(CmdError::coded_with(ErrorCode::DragFailed, [String::new()]));
     }
+    log::info!(target: "drag", "start_file_drag invoked staged t_ms_since_call={}", invoked.elapsed().as_millis());
     let count = files.len();
     let item = drag::DragItem::Files(files);
     let preview = drag::Image::Raw(DRAG_PREVIEW_PNG.to_vec());

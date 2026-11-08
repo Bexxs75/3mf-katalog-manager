@@ -21,6 +21,8 @@ import { PrinterManagerView } from './components/PrinterManagerView';
 import { ThingiverseView } from './components/ThingiverseView';
 import { getThingiverseSettings } from './lib/api/thingiverse';
 import type { MainView, PrinterNavigation, FolderTrashResult } from './types';
+import { useDragOutTransition } from './hooks/useDragOutTransition';
+import { DragOutToast } from './components/DragOutToast';
 import { DragGhost } from './components/DragGhost';
 import { DragDropTip } from './components/DragDropTip';
 import { resolveDisplayImage } from './lib/resolveDisplayImage';
@@ -215,6 +217,8 @@ export default function App() {
     refreshFolders: store.refreshFolders,
     refreshFiles: store.refreshFiles,
   }, collections, catalogBaseDir, bulk.selectedForBulk);
+
+  const dragOut = useDragOutTransition({ active: dragDrop.draggedFileId !== null, ids: dragDrop.draggedFileIds, models: store.models, onHandOver: dragDrop.cancelFileDrag });
 
   const [uploadRefreshKey, setUploadRefreshKey] = useState(0);
   const [webImportOpen, setWebImportOpen] = useState(false);
@@ -1039,6 +1043,7 @@ export default function App() {
             />
           )}
 
+          {dragOut.hint && <DragOutToast hint={dragOut.hint} onDone={dragOut.dismissHint} onSettings={() => openSettingsAt('dragOut')} />}
           {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} count={dragDrop.draggedFileIds.length} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
           {dragDrop.moveToast && (
             <MoveToast

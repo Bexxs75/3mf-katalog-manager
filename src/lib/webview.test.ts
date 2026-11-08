@@ -20,3 +20,11 @@ it('suppresses every native drop event during drag-out and resumes afterward', a
   off();
   expect(native.unlisten).toHaveBeenCalledOnce();
 });
+it('lets highlight observers see own-drag events while the default still suppresses them', async () => {
+  native.active = true;
+  const receive = vi.fn();
+  await getCurrentWebview(true).onDragDropEvent(receive);
+  native.handler!({ payload: { type: 'leave' } } as Event<DragDropEvent>);
+  expect(receive).toHaveBeenCalledOnce();
+  native.active = false;
+});

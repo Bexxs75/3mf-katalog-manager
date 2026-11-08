@@ -107,7 +107,9 @@ unter MIT- bzw. Apache-2.0-Lizenzen.
 
 Verwendet für das Herausziehen von Dateien aus dem Programmfenster in andere
 Programme (Prototyp, standardmäßig ausgeschaltet): Crate `drag` 2.1.1,
-veröffentlicht auf crates.io.
+veröffentlicht auf crates.io. Vendored mit Linux-Änderungen unter
+`src-tauri/vendor/drag` (URI-Kodierung, Datenbereitstellung bis Zugende, nur COPY).
+Windows-/macOS-Quellen unverändert; Herkunft und Rückweg siehe `VENDORING.md`.
 
 - **Lizenz:** MIT oder Apache-2.0 (nach Wahl), wie die Projektlizenz (MIT)
   kompatibel.

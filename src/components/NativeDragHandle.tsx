@@ -4,7 +4,7 @@ import type { ModelFile } from '../types';
 import { useT } from '../i18n/LanguageContext';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { isReadOnly } from '../lib/readOnly';
-import { loadNativeDragEnabled, startNativeDrag, useNativeDragEnabled } from '../lib/nativeDrag';
+import { loadNativeDragEnabled, beginDragOut, nativeDragIdsFor, MAX_NATIVE_DRAG_FILES, useNativeDragEnabled } from '../lib/nativeDrag';
 import { reportMetadataError } from '../lib/metadataErrors';
 
 export function NativeDragHandle({ model, selectedIds, selectionModels = [], className = '' }: {
@@ -42,12 +42,11 @@ export function NativeDragHandle({ model, selectedIds, selectionModels = [], cla
         if ((movement.buttons & 1) === 0) { cancel(); return; }
         if (Math.hypot(movement.clientX - clientX, movement.clientY - clientY) <= 4) return;
         cancel();
-        const ids = selectedIds?.has(model.id)
-          ? selectionModels.filter(file => selectedIds.has(file.id) && !file.deletedAt && /\.(3mf|stl|obj)$/i.test(file.path)).map(file => file.id)
-          : [model.id];
-        setOverLimit(ids.length > 64);
-        if (ids.length === 0 || ids.length > 64) return;
-        void startNativeDrag(ids).catch(reportMetadataError);
+        const ids = nativeDragIdsFor(model, selectedIds?.has(model.id)
+          ? selectionModels.filter(file => selectedIds.has(file.id)) : undefined);
+        setOverLimit(ids.length > MAX_NATIVE_DRAG_FILES);
+        if (ids.length === 0 || ids.length > MAX_NATIVE_DRAG_FILES) return;
+        void beginDragOut(ids).catch(reportMetadataError);
       };
       cancelGesture.current = cancel;
       window.addEventListener('mousemove', move);

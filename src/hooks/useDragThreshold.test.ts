@@ -1,3 +1,5 @@
+const events = vi.hoisted(() => ({ end: () => {} }));
+vi.mock('../lib/events', () => ({ listen: async (_: string, cb: () => void) => { events.end = cb; return () => {}; } }));
 import { describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { DRAG_THRESHOLD_PX, useDragThreshold } from './useDragThreshold';
@@ -29,4 +31,22 @@ describe('useDragThreshold', () => {
     act(() => document.dispatchEvent(new MouseEvent('mouseup')));
     expect(result.current.draggingId).toBeNull();
   });
+});
+
+it.each(['blur', 'native-end', 'mousedown'])('resets on %s and allows the next drag', async kind => {
+  const onStart = vi.fn();
+  const { result } = renderHook(() => useDragThreshold(onStart));
+  act(() => result.current.begin({ clientX: 0, clientY: 0 }, 'a'));
+  act(() => move(20, 20));
+  await act(async () => {
+    if (kind === 'native-end') events.end();
+    else if (kind === 'blur') window.dispatchEvent(new Event('blur'));
+    else document.dispatchEvent(new MouseEvent('mousedown'));
+  });
+  expect(result.current.draggingId).toBeNull();
+  act(() => move(30, 30));
+  expect(onStart).toHaveBeenCalledTimes(1);
+  act(() => result.current.begin({ clientX: 0, clientY: 0 }, 'b'));
+  act(() => move(20, 20));
+  expect(onStart).toHaveBeenLastCalledWith('b');
 });

@@ -69,3 +69,14 @@ describe('useExternalDropTarget', () => {
     expect(result.current.rejected).toBeNull();
   });
 });
+
+it('clears and suppresses folder highlights during an outgoing native session', async () => {
+  const { NativeDragState } = await import('../lib/nativeDrag');
+  const { result } = setup(); rowAt('s');
+  emit({ type: 'enter', paths: ['/a.3mf'], position: { x: 1, y: 1 } });
+  vi.spyOn(NativeDragState, 'isActive').mockReturnValue(true);
+  emit({ type: 'over', position: { x: 1, y: 1 } });
+  expect(result.current.state).toEqual({ target: { kind: 'none' }, count: 0 });
+  emit({ type: 'enter', paths: ['/a.3mf'], position: { x: 1, y: 1 } });
+  expect(result.current.state.target.kind).toBe('none');
+});

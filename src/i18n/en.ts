@@ -2129,6 +2129,7 @@ export const en: Translations = {
   dgWinStep4: "If you start the slicer from a shortcut, also check \"Properties → Shortcut → Advanced → Run as administrator\".",
   dgWinStep5: "Start the slicer normally and try again.",
   dgWinUipi: "Windows separates programs with different privileges. This protection is called UIPI.",
+  dgOutsideOffHint: 'To drag into other programs, enable it in Settings → Slicers & services → “Passing files on”.',
   dgLimit: "You can drag at most 64 files at once. Please reduce the selection.",
   dgMoveHint: "To move: drag the card onto a folder on the left (the file is also moved on disk)",
   dgHandle: "Drag into another program (experimental): slicer, file manager or desktop. Keyboard: use “Open in slicer”.",

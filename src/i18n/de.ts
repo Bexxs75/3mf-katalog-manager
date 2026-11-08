@@ -2129,6 +2129,7 @@ export const de: Translations = {
   dgWinStep4: "Startest du den Slicer über eine Verknüpfung, prüfe zusätzlich „Eigenschaften → Verknüpfung → Erweitert → Als Administrator ausführen“.",
   dgWinStep5: "Starte den Slicer normal und versuche es erneut.",
   dgWinUipi: "Windows trennt Programme mit unterschiedlichen Berechtigungen. Diese Schutzfunktion heißt UIPI.",
+  dgOutsideOffHint: 'In andere Programme ziehen: in Einstellungen → Slicer & Dienste → „Dateien weitergeben“ einschalten.',
   dgLimit: "Pro Ziehen sind höchstens 64 Dateien möglich. Bitte verkleinere die Auswahl.",
   dgMoveHint: "Zum Verschieben: Karte auf einen Ordner links ziehen (die Datei wird auch auf der Festplatte verschoben)",
   dgHandle: "In ein anderes Programm ziehen (experimentell): Slicer, Dateimanager oder Desktop. Tastatur: „Im Slicer öffnen“ verwenden.",

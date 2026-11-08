@@ -5,7 +5,7 @@ import { UiDensityProvider } from '../hooks/UiDensityContext';
 import { makeModelFile } from '../test/factories';
 import { ModelGrid } from './ModelGrid';
 import { ModelList } from './ModelList';
-vi.mock('../lib/nativeDrag', () => ({ useNativeDragEnabled: () => true, loadNativeDragEnabled: async () => {}, startNativeDrag: vi.fn() }));
+vi.mock('../lib/nativeDrag', async importOriginal => ({ ...await importOriginal<typeof import('../lib/nativeDrag')>(), useNativeDragEnabled: () => true, loadNativeDragEnabled: async () => {}, beginDragOut: vi.fn() }));
 beforeEach(() => localStorage.clear());
 const props = { models: [makeModelFile()], selectedId: null, onSelect: vi.fn(), onOpenDetail: vi.fn(), onContextMenu: vi.fn(), onToggleFavorite: vi.fn(), selectedForBulk: new Set<string>(), onToggleBulkSelect: vi.fn(), displayPreference: 'thumbnail' as const };
 it.each(['compact', 'comfort', 'list'])('shows a grip only for movable models (%s)', (view) => {

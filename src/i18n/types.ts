@@ -2170,6 +2170,7 @@ export interface Translations {
   dgWinStep4: string;
   dgWinStep5: string;
   dgWinUipi: string;
+  dgOutsideOffHint: string;
   dgLimit: string;
   dgMoveHint: string;
   dgHandle: string;
