@@ -44,7 +44,7 @@ export function formatDimensions(
   language: Language,
 ): string {
   if (dimensionsMm === null) return '–';
-  const nf = new Intl.NumberFormat(localeFor(language), { maximumFractionDigits: 0 });
+  const nf = new Intl.NumberFormat(localeFor(language), { maximumFractionDigits: 1 });
   const [x, y, z] = dimensionsMm;
   return `${nf.format(x)} × ${nf.format(y)} × ${nf.format(z)} mm`;
 }

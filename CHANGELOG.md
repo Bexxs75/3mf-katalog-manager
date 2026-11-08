@@ -94,6 +94,13 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Settings overlays close after a click on the dimmed area, ignore drags from the panel and clicks behind an open confirmation, and restore focus to the opener.
+- Selection toolbar groups wrap within the available catalog width when a panel is docked.
+- Print-bed overshoots use unrounded dimensions and display one decimal place when needed, as does the model size.
+- Printing-method radio cards draw an accent-colored selected dot in both light and dark themes, including macOS.
+- Favorite hearts in compact and comfort grids use 18 px icons with click targets of at least 24 × 24 px.
+- Settings radios, checkboxes and switches show an accent-colored 2 px focus ring with a 2 px offset.
+
 - Linux: dragging files out accepts names with spaces and umlauts; Windows/Linux/macOS: a drag no longer starts when the mouse button has already been released.
 
 - Settings: switches and the "When the window is closed" choice no longer lose the keyboard focus while they save (the focus used to fall back to the catalog).
@@ -890,6 +897,13 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Wiederherstellen behält den Thingiverse-Schlüssel:** Der Schlüssel dieses Rechners (und der Schalter) bleibt beim Wiederherstellen einer Sicherung jetzt erhalten, statt gelöscht zu werden. Ein Schlüssel ist weiterhin nie Teil einer Sicherung, und einer in einer wiederhergestellten Datei wird ignoriert. Der Wiederherstellen-Dialog, die Thingiverse-Einstellungen und das Handbuch sagen: „Dein Thingiverse-Schlüssel bleibt auf diesem Rechner erhalten und ist in keiner Sicherung enthalten.“
 
 ### Behoben
+
+- Einstellungs-Overlays schließen nach einem Klick auf die Abdunklung, ignorieren Ziehen aus dem Panel und Klicks hinter einer offenen Bestätigung und geben den Fokus an den Auslöser zurück.
+- Die Gruppen der Auswahlleiste brechen bei angedocktem Panel innerhalb der verfügbaren Katalogbreite um.
+- Druckbett-Überschreitungen werden aus ungerundeten Maßen berechnet und wie die Modellgröße bei Bedarf mit einer Nachkommastelle angezeigt.
+- Radiokarten für das Druckverfahren zeichnen den ausgewählten Punkt in Hell und Dunkel auch unter macOS in der Akzentfarbe.
+- Favoriten-Herzen im Kompakt- und Komfort-Raster zeigen 18-px-Symbole mit mindestens 24 × 24 px großen Klickflächen.
+- Radios, Checkboxen und Schalter in den Einstellungen zeigen einen 2 px starken Fokusring in Akzentfarbe mit 2 px Abstand.
 
 - Linux: Herausziehen nimmt Namen mit Leerzeichen und Umlauten an; Windows/Linux/macOS: Ein Zug startet nicht mehr, wenn die Maustaste schon losgelassen ist.
 

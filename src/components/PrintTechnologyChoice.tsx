@@ -39,7 +39,7 @@ export function PrintTechnologyChoice({ value, onChange, variant, disabled = fal
           <label key={option}
             className={`relative flex gap-2 rounded-lg border p-3 ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-[var(--panel-2)]'} ${checked ? 'border-[var(--accent)] bg-[var(--sel)]' : 'border-[var(--line)]'} ${variant === 'tiles' ? 'flex-col' : 'items-start'} has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[var(--accent)]`}>
             <input type="radio" name={name} value={option} checked={checked} disabled={disabled}
-              onChange={() => onChange(option)} className={variant === 'tiles' ? 'sr-only' : 'mt-1'} data-initial-focus={checked ? true : undefined} />
+              onChange={() => onChange(option)} className={variant === 'tiles' ? 'sr-only' : 'print-technology-radio mt-1'} data-initial-focus={checked ? true : undefined} />
             {variant === 'tiles' && (
               <span aria-hidden="true" className="flex items-center gap-1.5 text-[var(--ink-2)]">
                 <Icon name={ICON[option]} size={20} />

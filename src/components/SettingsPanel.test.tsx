@@ -676,3 +676,46 @@ it('aligns the version block with the other settings content', () => {
   renderPanel({ initialTab: 'info' });
   expect(screen.getByText('3MF Katalog Manager').parentElement).toHaveClass('text-left');
 });
+
+function mouseClick(target: Element) {
+  fireEvent.mouseDown(target, { button: 0 });
+  fireEvent.mouseUp(target, { button: 0 });
+  fireEvent.click(target);
+}
+
+it('closes on a complete scrim click and restores the opener on unmount', () => {
+  const opener = document.createElement('button');
+  document.body.append(opener); opener.focus();
+  const { props, unmountAll } = renderPanel({ overlay: true });
+  mouseClick(document.querySelector('.settings-panel-scrim')!);
+  expect(props.onClose).toHaveBeenCalledTimes(1);
+  unmountAll();
+  expect(opener).toHaveFocus();
+  opener.remove();
+});
+
+it('ignores panel clicks, incomplete clicks, right clicks and drags out of the panel', () => {
+  const { props } = renderPanel({ overlay: true });
+  const scrim = document.querySelector('.settings-panel-scrim')!;
+  const panel = document.querySelector('.settings-panel-aside')!;
+  mouseClick(panel);
+  fireEvent.mouseUp(scrim, { button: 0 });
+  fireEvent.mouseDown(panel, { button: 0 });
+  fireEvent.mouseUp(scrim, { button: 0 });
+  fireEvent.click(scrim);
+  fireEvent.mouseDown(scrim, { button: 2 });
+  fireEvent.mouseUp(scrim, { button: 2 });
+  expect(props.onClose).not.toHaveBeenCalled();
+});
+
+it('ignores the scrim while a reset confirmation is above the settings', () => {
+  const { props } = renderPanel({ overlay: true });
+  fireEvent.click(tab('Wartung'));
+  fireEvent.click(screen.getByRole('button', { name: 'Katalog zurücksetzen …' }));
+  mouseClick(document.querySelector('.settings-panel-scrim')!);
+  expect(screen.getAllByRole('dialog')).toHaveLength(2);
+  expect(props.onClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  mouseClick(document.querySelector('.settings-panel-scrim')!);
+  expect(props.onClose).toHaveBeenCalledTimes(1);
+});

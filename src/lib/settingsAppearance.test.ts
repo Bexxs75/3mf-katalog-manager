@@ -32,7 +32,8 @@ it('uses a full viewport scrim without changing the detail overlay offset', () =
 });
 it('gives native radios the project accent and panel controls a separate two-pixel focus ring', () => {
   expect(css).toContain('.settings-panel input[type="radio"] { accent-color: var(--accent); }');
-  expect(css).toMatch(/\.settings-panel :is\(button, input\[type="radio"\], summary, \[role="switch"\]\):focus-visible \{\s*outline: 2px solid var\(--ink\);\s*outline-offset: 2px;\s*box-shadow: 0 0 0 2px var\(--panel\);/);
+  expect(css).toMatch(/\.settings-panel :is\(input\[type="radio"\], input\[type="checkbox"\], \[role="switch"\]\):focus-visible \{\s*outline: 2px solid var\(--accent\);\s*outline-offset: 2px;\s*box-shadow: 0 0 0 2px var\(--panel\);/);
+  expect(css).toMatch(/\.settings-panel :is\(button, summary\):focus-visible \{\s*outline: 2px solid var\(--ink\);\s*outline-offset: 2px;\s*box-shadow: 0 0 0 2px var\(--panel\);/);
 });
 it('lets comfort actions scroll with the content in short windows', () => {
   expect(css).toMatch(/@media \(max-height: 800px\) \{\s*\.model-panel-comfort \{ overflow-y: auto; overflow-x: hidden; \}\s*\.model-panel-comfort > \.model-panel-content \{ flex: none; overflow: visible; \}/);

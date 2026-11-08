@@ -31,6 +31,9 @@ for (const [theme, selector] of [['light', '[data-app]'], ['dark', '[data-app="d
   describe(`${theme} text contrast`, () => {
     const block = css.slice(css.indexOf(`${selector} {`)).split('}')[0];
     const tokens = Object.fromEntries(Array.from(block.matchAll(/--([\w-]+):\s*(oklch\([^;]+\));/g), match => [match[1], match[2]]));
+    it.each(['panel', 'panel-2', 'bg', 'sel'])('focus accent on %s is at least 3:1', background => {
+      expect(contrast(tokens.accent, tokens[background])).toBeGreaterThanOrEqual(3);
+    });
     it.each(pairs)('%s on %s is at least 4.5:1', (foreground, background) => {
       expect(contrast(tokens[foreground], tokens[background])).toBeGreaterThanOrEqual(4.5);
     });

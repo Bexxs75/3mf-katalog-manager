@@ -230,8 +230,13 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .settings-panel-scrim { position: absolute; inset: 0; background: var(--scrim); }
 .settings-panel-overlay > .settings-panel-aside { position: relative; box-shadow: var(--shadow); }
 .settings-panel input[type="radio"] { accent-color: var(--accent); }
-.settings-panel :is(button, input[type="radio"], summary, [role="switch"]):focus-visible {
+.settings-panel :is(button, summary):focus-visible {
   outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--panel);
+}
+.settings-panel :is(input[type="radio"], input[type="checkbox"], [role="switch"]):focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--panel);
 }
@@ -268,3 +273,18 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 [data-viewer-surface][data-compact="true"] + .plate-selector > .plate-arrow,
 .viewer-controls-compact .plate-selector > .plate-arrow,
 .plate-selector[data-compact="true"] > .plate-arrow { width: 32px; height: 32px; }
+
+/* Draw the radio ourselves: native WebKit dark controls can hide the selected dot. */
+.print-technology-radio {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--ink-3);
+  border-radius: 50%;
+  background: var(--panel);
+}
+.print-technology-radio:checked {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 4px, var(--panel) 4px);
+}

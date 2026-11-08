@@ -30,7 +30,7 @@ it.each(['compact', 'comfort'])('lists the print bed verdict per printer with a 
   const rows = within(section).getAllByRole('listitem');
   expect(rows.map(row => row.textContent)).toEqual([
     `${de.plateFitFits}X1C (256 × 256 × 256)`,
-    `${de.plateFitTooLarge}Mini (180 × 180 × 180): 220 mm zu breit`,
+    `${de.plateFitTooLarge}Mini (180 × 180 × 180): 40 mm zu breit`,
   ]);
   expect(section).toHaveTextContent(de.plateFitHint);
 });
@@ -58,6 +58,6 @@ it.each(['compact', 'comfort'])('shows the largest plate and the workspace cavea
     { number: 3, name: 'light guide plate', dimensionsMm: [108, 150, 1.4] },
   ] }));
   expect(screen.getByText(de.plateSizeLargest)).toBeInTheDocument();
-  expect(screen.getByText(de.plateSizeHint.replace('{size}', '29 × 126 × 162 mm'))).toBeInTheDocument();
+  expect(screen.getByText(de.plateSizeHint.replace('{size}', '28,5 × 126 × 162 mm'))).toBeInTheDocument();
   expect(screen.queryByText('384 × 445 × 162 mm')).toBeNull();
 });

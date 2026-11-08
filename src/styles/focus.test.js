@@ -31,3 +31,14 @@ describe('field focus contract', () => {
     }
   });
 });
+
+it('gives settings radios, checkboxes and switches a separated accent focus ring', () => {
+  const rule = css.match(/\.settings-panel :is\(input[^}]+:focus-visible \{[^}]*\}/)?.[0] ?? '';
+  for (const selector of ['input[type="radio"]', 'input[type="checkbox"]', '[role="switch"]']) expect(rule).toContain(selector);
+  expect(rule).toContain('outline: 2px solid var(--accent)');
+  expect(rule).toContain('outline-offset: 2px');
+});
+it('draws the selected printing-method radio dot independently of native appearance', () => {
+  expect(css.match(/\.print-technology-radio \{[^}]*\}/)?.[0]).toContain('appearance: none');
+  expect(css.match(/\.print-technology-radio:checked \{[^}]*\}/)?.[0]).toContain('radial-gradient(circle, var(--accent) 0 4px');
+});

@@ -232,6 +232,8 @@ it.each(['compact', 'comfort', 'list-compact', 'list-comfort'])('has no drag han
   if (!list) {
     const favorite = getByLabelText('Zu Favoriten hinzufügen');
     expect(favorite).toHaveClass('min-w-6', 'min-h-6');
+    expect(favorite.querySelector('svg')).toHaveAttribute('width', '18');
+    expect(favorite.querySelector('svg')).toHaveAttribute('height', '18');
     expect(favorite).toHaveClass(view === 'compact' ? 'bottom-[7px]' : 'bottom-2.5');
   }
   const card = container.querySelector('[data-model-id]')!;

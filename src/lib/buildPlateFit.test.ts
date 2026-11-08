@@ -33,9 +33,9 @@ describe('checkPlateFit', () => {
     });
   });
 
-  it('reports the orientation with fewer overshoots and rounds the shown size up', () => {
+  it('reports the orientation with fewer overshoots and preserves the raw size', () => {
     const fit = checkPlateFit([220.2, 100, 50], [180, 180, 180]);
-    expect(fit).toEqual({ status: 'tooLarge', excess: [{ axis: 'width', modelMm: 221 }] });
+    expect(fit).toEqual({ status: 'tooLarge', excess: [{ axis: 'width', modelMm: 220.2 }] });
   });
 
   it('lists every axis that is too large', () => {

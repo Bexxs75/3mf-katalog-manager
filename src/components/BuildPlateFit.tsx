@@ -19,6 +19,9 @@ export function BuildPlateFit({ model, printers, variant }: {
   const t = useT();
   const { language } = useLanguage();
   const headingId = useId();
+  const millimetres = new Intl.NumberFormat(language, { maximumFractionDigits: 1 });
+  const excessText = (axis: PlateFitAxis, modelMm: number, bed: readonly number[]) =>
+    t(EXCESS_KEY[axis]).replace('{mm}', millimetres.format(modelMm - bed[{ width: 0, depth: 1, height: 2 }[axis]]));
   const rows = plateFitForPrinters(model.dimensionsMm, printers, model.plateDimensions, model.plateCount);
   if (rows.length === 0) return null;
   const multi = (model.plateDimensions?.length ?? 0) > 1;
@@ -50,14 +53,14 @@ export function BuildPlateFit({ model, printers, variant }: {
               <span className="min-w-0 break-words text-[var(--ink)]">
                 {printer.name} ({formatDimensions(bed, language).replace(/ mm$/, '')})
                 {!multi && fit.status === 'tooLarge' && ': ' + fit.excess
-                  .map(({ axis, modelMm }) => t(EXCESS_KEY[axis]).replace('{mm}', () => String(modelMm)))
+                  .map(({ axis, modelMm }) => excessText(axis, modelMm, bed))
                   .join(', ')}
               </span>
               {multi && plates.filter(plate => plate.fit.status !== 'fits').map(plate => (
                 <span key={plate.number} className="w-full min-w-0 break-words text-[var(--ink-2)]">
                   {t('plateFitPlate').replace('{number}', String(plate.number))}{plate.name ? ` “${plate.name}”` : ''}: {' '}
                   {plate.fit.status === 'tooLarge' ? plate.fit.excess.map(({ axis, modelMm }) =>
-                    t(EXCESS_KEY[axis]).replace('{mm}', String(Math.ceil(modelMm - bed[{ width: 0, depth: 1, height: 2 }[axis]]))))
+                    excessText(axis, modelMm, bed))
                     .join(', ') : t('plateFitUnknown')}
                 </span>
               ))}

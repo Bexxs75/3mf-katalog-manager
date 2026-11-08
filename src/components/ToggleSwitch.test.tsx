@@ -8,6 +8,7 @@ describe('ToggleSwitch', () => {
     render(<ToggleSwitch checked={false} onChange={onChange} label="Druckeranbindung" />);
     const sw = screen.getByRole('switch', { name: 'Druckeranbindung' });
     expect(sw).toHaveAttribute('aria-checked', 'false');
+    expect(sw).toHaveClass('focus-visible:outline-2', 'focus-visible:outline-offset-2', 'focus-visible:outline-[var(--accent)]');
     fireEvent.click(sw);
     expect(onChange).toHaveBeenCalledWith(true);
     fireEvent.keyDown(sw, { key: ' ' });

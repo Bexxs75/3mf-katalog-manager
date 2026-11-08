@@ -25,3 +25,24 @@ it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('renders mult
   expect(region).toHaveTextContent(t.plateFitTooHigh.replace('{mm}', '12'));
   expect(region).not.toHaveTextContent('384');
 });
+
+it.each([126, 126.00001])('rounds raw per-plate overshoots once (%s mm deep)', depth => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  const model = makeModelFile({ plateCount: 2, plateDimensions: [
+    { number: 1, name: 'frame', dimensionsMm: [28.52, depth, 162.01] },
+    { number: 2, name: null, dimensionsMm: [10, 10, 10] },
+  ] });
+  render(<LanguageProvider><BuildPlateFit model={model} variant="page" printers={[
+    makePrinter({ bedXMm: 120, bedYMm: 120, bedZMm: 120 }),
+  ]} /></LanguageProvider>);
+  expect(screen.getByRole('region')).toHaveTextContent('6 mm zu tief, 42 mm zu hoch');
+});
+
+it('subtracts fractional bed sizes before rounding and localizes single-plate values', () => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  render(<LanguageProvider><BuildPlateFit model={makeModelFile({ dimensionsMm: [28.5, 126.04, 162.25] })} variant="page" printers={[
+    makePrinter({ bedXMm: 119.96, bedYMm: 119.96, bedZMm: 120 }),
+  ]} /></LanguageProvider>);
+  expect(screen.getByRole('region')).toHaveTextContent('28,5 × 126 × 162,3 mm');
+  expect(screen.getByRole('region')).toHaveTextContent('6,1 mm zu tief, 42,3 mm zu hoch');
+});

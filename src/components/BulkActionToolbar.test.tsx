@@ -581,3 +581,15 @@ describe('BulkActionToolbar focus handover from the More menu', () => {
     expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
   });
 });
+
+it.each([false, true])('wraps toolbar groups without clipping controls (compact=%s)', compact => {
+  renderToolbar({ compact });
+  const toolbar = screen.getByRole('toolbar');
+  expect(toolbar).toHaveClass('flex-wrap', 'min-h-12');
+  expect(toolbar).not.toHaveClass('overflow-hidden');
+  within(toolbar).getAllByRole('group').forEach(group => {
+    expect(group).toHaveClass('flex-wrap', 'min-w-0', 'max-w-full');
+    expect(group).not.toHaveClass('overflow-hidden');
+  });
+  within(toolbar).getAllByRole('button').forEach(button => expect(button).toBeVisible());
+});

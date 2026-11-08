@@ -36,6 +36,8 @@ interface Options {
   open: boolean;
   onClose: () => void;
   busy?: boolean;
+  /** Only this surface may dismiss on a complete primary-button click. */
+  backdropSelector?: string;
   restoreFocus?: boolean;
   returnFocus?: RefObject<HTMLElement | null>;
   initialFocus?: string | RefObject<HTMLElement | null>;
@@ -97,6 +99,21 @@ export function useModalDialog<T extends HTMLElement = HTMLDivElement>({ open, .
       if (event.target === dialog.parentElement && dialog.parentElement !== document.body) return;
       event.preventDefault(); event.stopImmediatePropagation();
     };
+    let backdropDown = false;
+    const onBackdrop = (event: MouseEvent) => {
+      const selector = latest.current.backdropSelector;
+      const onBackdrop = !!selector && event.target instanceof Element
+        && dialog.contains(event.target) && event.target.matches(selector);
+      if (event.type === 'mousedown') {
+        backdropDown = top() && event.button === 0 && onBackdrop;
+      } else {
+        const dismiss = backdropDown && top() && event.button === 0 && onBackdrop;
+        backdropDown = false;
+        if (dismiss && !latest.current.busy) latest.current.onClose();
+      }
+    };
+    document.addEventListener('mousedown', onBackdrop, true);
+    document.addEventListener('mouseup', onBackdrop, true);
     document.addEventListener('focusin', focusin);
     // Bubble so a nested picker can consume Escape before its parent dialog.
     document.addEventListener('keydown', keydown);
@@ -104,6 +121,8 @@ export function useModalDialog<T extends HTMLElement = HTMLDivElement>({ open, .
     return () => {
       modals.splice(modals.indexOf(dialog), 1);
       owners.delete(dialog);
+      document.removeEventListener('mousedown', onBackdrop, true);
+      document.removeEventListener('mouseup', onBackdrop, true);
       document.removeEventListener('focusin', focusin);
       document.removeEventListener('keydown', keydown);
       for (const type of ['pointerdown', 'mousedown', 'click']) document.removeEventListener(type, pointer, true);

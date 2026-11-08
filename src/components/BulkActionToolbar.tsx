@@ -81,7 +81,7 @@ const BUTTON = 'h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--pan
   'aria-disabled:opacity-45 aria-disabled:cursor-default aria-disabled:hover:text-[var(--ink-2)] disabled:opacity-50 disabled:cursor-default';
 const MENU_ITEM = 'w-full text-left px-3 py-1.5 text-body text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap ' +
   'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-50 disabled:cursor-default';
-const GROUP = 'flex items-center gap-2 pr-3 mr-1 border-r border-[var(--line-strong)]';
+const GROUP = 'flex flex-wrap min-w-0 max-w-full items-center gap-2 pr-3 mr-1 border-r border-[var(--line-strong)]';
 
 interface MoreItem {
   key: string;

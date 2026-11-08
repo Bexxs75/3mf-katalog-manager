@@ -360,7 +360,7 @@ it('lists the print bed verdict per printer on the detail page, without printers
   const rows = within(section).getAllByRole('listitem');
   expect(rows).toHaveLength(2);
   expect(rows[0]).toHaveTextContent(`${de.plateFitFits}X1C (256 × 256 × 256)`);
-  expect(rows[1]).toHaveTextContent(`${de.plateFitTooLarge}Mini (180 × 180 × 180): 220 mm zu breit`);
+  expect(rows[1]).toHaveTextContent(`${de.plateFitTooLarge}Mini (180 × 180 × 180): 40 mm zu breit`);
   expect(section).not.toHaveTextContent('NoBed');
 });
 

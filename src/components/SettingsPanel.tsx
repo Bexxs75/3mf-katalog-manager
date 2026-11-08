@@ -137,7 +137,7 @@ export function SettingsPanel({
 
   // The opener belongs to the panel lifetime, not to its current layout.
   const [trigger] = useState(() => document.activeElement as HTMLElement | null);
-  const dialogRef = useModalDialog<HTMLDivElement>({ open: overlay, onClose, restoreFocus: false, initialFocus: '[role="tab"][aria-selected="true"]' });
+  const dialogRef = useModalDialog<HTMLDivElement>({ open: overlay, onClose, backdropSelector: '.settings-panel-scrim', restoreFocus: false, initialFocus: '[role="tab"][aria-selected="true"]' });
   useLayoutEffect(() => () => {
     if (trigger?.isConnected) trigger.focus({ preventScroll: true });
   }, [trigger]);

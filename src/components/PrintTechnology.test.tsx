@@ -61,6 +61,7 @@ describe('settings group', () => {
     wrap(<PrintTechnologySettings />);
     expect(await screen.findByRole('radiogroup', { name: 'Womit druckst du?' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /^Beides/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /^Beides/ })).toHaveClass('print-technology-radio');
     await choose('Resin');
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_print_technology', { value: 'resin' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Gespeichert: Resin.');

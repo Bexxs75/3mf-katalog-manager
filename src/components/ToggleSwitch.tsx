@@ -28,7 +28,7 @@ export function ToggleSwitch({ checked, onChange, label, disabled, busy, 'aria-d
           toggle();
         }
       }}
-      className={`${disabled || busy ? 'opacity-50' : 'hover:outline hover:outline-2 hover:outline-[var(--ink-3)]'} relative flex-none w-9 h-5 rounded-full transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+      className={`${disabled || busy ? 'opacity-50' : 'hover:outline hover:outline-2 hover:outline-[var(--ink-3)]'} relative flex-none w-9 h-5 rounded-full transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
         checked ? 'bg-[var(--accent)]' : 'bg-[var(--line-strong)]'
       }`}
     >

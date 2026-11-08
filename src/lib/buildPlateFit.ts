@@ -8,7 +8,7 @@ export type PlateFitAxis = 'width' | 'depth' | 'height';
 export type PlateFit =
   | { status: 'unknown' }
   | { status: 'fits' }
-  /** `excess` lists every axis that is too large, with the model's extent on it (rounded up). */
+  /** `excess` lists every axis that is too large, with the model's unrounded extent on it. */
   | { status: 'tooLarge'; excess: { axis: PlateFitAxis; modelMm: number }[] };
 
 const AXES: PlateFitAxis[] = ['width', 'depth', 'height'];
@@ -60,8 +60,7 @@ export function checkPlateFit(dimensionsMm: readonly number[] | null | undefined
   const chosen = best!;
   return {
     status: 'tooLarge',
-    // Rounded up so the shown number is visibly above the bed size it is compared with.
-    excess: chosen.excess.map(axis => ({ axis, modelMm: Math.ceil(chosen.model[AXES.indexOf(axis)] - EPSILON) })),
+    excess: chosen.excess.map(axis => ({ axis, modelMm: chosen.model[AXES.indexOf(axis)] })),
   };
 }
 
