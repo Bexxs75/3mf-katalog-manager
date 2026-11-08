@@ -8,6 +8,7 @@ import { ToggleSwitch } from './ToggleSwitch';
 export function ImportRenameSetting() {
   const t = useT();
   const [enabled, setEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<AppError | null>(null);
   useEffect(() => {
@@ -15,7 +16,7 @@ export function ImportRenameSetting() {
     invoke<boolean>('get_import_rename_enabled')
       .then(value => { if (active) setEnabled(value === true); })
       .catch(e => { if (active) setError(toAppError(e)); })
-      .finally(() => { if (active) setBusy(false); });
+      .finally(() => { if (active) { setLoading(false); setBusy(false); } });
     return () => { active = false; };
   }, []);
   const change = async (value: boolean) => {
@@ -34,7 +35,7 @@ export function ImportRenameSetting() {
     <div>
       <div className="flex items-center justify-between gap-2 text-small">
         <span>{t('importRenameTitle')}</span>
-        <ToggleSwitch checked={enabled} label={t('importRenameTitle')} disabled={busy} onChange={change} />
+        <ToggleSwitch checked={enabled} label={t('importRenameTitle')} disabled={loading} busy={busy} onChange={change} />
       </div>
       <p className="mt-1 text-small text-[var(--ink-2)]">{t('importRenameDescription')}</p>
       {error && <p role="alert" className="text-small text-[var(--crit)]"><ErrorText error={error} /></p>}

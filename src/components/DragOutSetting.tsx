@@ -43,7 +43,7 @@ export function DragOutSetting() {
         <ToggleSwitch
           checked={enabled === true}
           label={t('dgSwitchLabel')}
-          disabled={state !== 'ready' || enabled === null || busy}
+          disabled={state !== 'ready' || enabled === null} busy={busy}
           onChange={(v) => void change(v)}
           aria-describedby={windows ? 'drag-out-hint drag-out-experimental drag-out-windows' : 'drag-out-hint drag-out-experimental'}
         />

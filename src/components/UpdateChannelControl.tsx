@@ -54,7 +54,7 @@ export function UpdateChannelControl({ disabled, onExport, onChanged, exportErro
     <div className="flex items-center justify-between gap-2">
       <span className="font-semibold">{t('updateChannelLabel')}</span>
       {/* The switch only moves once the dialog has been confirmed; until then it keeps showing the current channel. */}
-      <ToggleSwitch checked={channel === 'rc'} label={t('updateChannelLabel')} aria-describedby="update-channel-help" disabled={disabled || busy || channel === null}
+      <ToggleSwitch checked={channel === 'rc'} label={t('updateChannelLabel')} aria-describedby="update-channel-help" disabled={disabled || channel === null} busy={busy}
         onChange={() => {
           if (channel === 'rc') void change('stable');
           else { setError(null); setExported(false); setExportIncomplete(false); setConfirm(true); }

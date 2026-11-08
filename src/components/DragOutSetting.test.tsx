@@ -39,13 +39,19 @@ describe('DragOutSetting', () => {
     setDragOutEnabled.mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
     render(<LanguageProvider><DragOutSetting /></LanguageProvider>);
     const toggle = await screen.findByRole('switch', { name: de.dgSwitchLabel });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    toggle.focus();
     fireEvent.click(toggle);
     expect(await screen.findByRole('status')).toHaveTextContent(de.settingSaving);
-    expect(toggle).toBeDisabled();
+    expect(toggle).toBeEnabled();
+    expect(toggle).toHaveAttribute('aria-busy', 'true');
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).toBe(toggle);
     fireEvent.click(toggle);
     expect(setDragOutEnabled).toHaveBeenCalledTimes(1);
     finish();
-    await waitFor(() => expect(toggle).toBeEnabled());
+    await waitFor(() => expect(toggle).not.toHaveAttribute('aria-busy'));
+    expect(document.activeElement).toBe(toggle);
     expect(toggle).toHaveAttribute('aria-checked', 'true');
   });
 

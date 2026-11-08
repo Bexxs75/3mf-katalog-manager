@@ -21,6 +21,7 @@ export function DiskSyncSettings() {
   const countRef = useRef<HTMLSpanElement>(null);
   const [onStart, setOnStart] = useState(false);
   const [autoAdd, setAutoAdd] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<AppError | null>(null);
   useEffect(() => {
@@ -28,7 +29,7 @@ export function DiskSyncSettings() {
     Promise.all([getSyncOnStart(), getSyncAutoAdd(), countKnownCopies()])
       .then(([start, add, copies]) => { if (active) { setOnStart(start === true); setAutoAdd(add === true); setKnown(typeof copies === 'number' ? copies : 0); } })
       .catch(e => { if (active) setError(toAppError(e)); })
-      .finally(() => { if (active) setBusy(false); });
+      .finally(() => { if (active) { setLoading(false); setBusy(false); } });
     return () => { active = false; };
   }, []);
   const save = async (write: () => Promise<unknown>, apply: () => void) => {
@@ -59,12 +60,12 @@ export function DiskSyncSettings() {
       <p className="text-small text-[var(--ink-2)] mb-2">{t('syncSettingsIntro')}</p>
       <div className="flex items-center justify-between gap-2 text-small">
         <span className="font-semibold">{t('syncOnStartLabel')}</span>
-        <ToggleSwitch checked={onStart} label={t('syncOnStartLabel')} disabled={busy} aria-describedby="sync-on-start-desc" onChange={value => void changeOnStart(value)} />
+        <ToggleSwitch checked={onStart} label={t('syncOnStartLabel')} disabled={loading} busy={busy} aria-describedby="sync-on-start-desc" onChange={value => void changeOnStart(value)} />
       </div>
       <p id="sync-on-start-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncOnStartDescription')}</p>
       <div className="flex items-center justify-between gap-2 text-small mt-3">
         <span className="font-semibold">{t('syncAutoAddLabel')}</span>
-        <ToggleSwitch checked={onStart && autoAdd} label={t('syncAutoAddLabel')} disabled={busy || !onStart} aria-describedby="sync-auto-add-desc sync-auto-add-warning" onChange={value => void changeAutoAdd(value)} />
+        <ToggleSwitch checked={onStart && autoAdd} label={t('syncAutoAddLabel')} disabled={loading || !onStart} busy={busy} aria-describedby="sync-auto-add-desc sync-auto-add-warning" onChange={value => void changeAutoAdd(value)} />
       </div>
       <p id="sync-auto-add-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddDescription')}</p>
       <p id="sync-auto-add-warning" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddWarning')}</p>

@@ -90,6 +90,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Settings: switches and the "When the window is closed" choice no longer lose the keyboard focus while they save (the focus used to fall back to the catalog).
+
 - Multi-plate 3MF print-bed checks and printer filters now use stored dimensions per plate. Legacy entries can be updated with a metadata rescan; uncertain multi-plate sizes stay visible in the filter. The detail size shows the largest plate instead of the workspace extent.
 - **VM acceptance fixes:** Settings dock from exactly 1000 px; catalog controls stay inside their workspace. The overlay covers the application height with a dimmed background. Radios use the project accent and panel controls have a contrasting focus ring. Model titles and paths wrap, comfort actions scroll in short windows, and drag handles no longer overlap favorites. Source-folder setup hints expire after six seconds, count/action rows wrap cleanly, version information is left-aligned, and revised French instructions use “vous”.
 
@@ -878,6 +880,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Wiederherstellen behält den Thingiverse-Schlüssel:** Der Schlüssel dieses Rechners (und der Schalter) bleibt beim Wiederherstellen einer Sicherung jetzt erhalten, statt gelöscht zu werden. Ein Schlüssel ist weiterhin nie Teil einer Sicherung, und einer in einer wiederhergestellten Datei wird ignoriert. Der Wiederherstellen-Dialog, die Thingiverse-Einstellungen und das Handbuch sagen: „Dein Thingiverse-Schlüssel bleibt auf diesem Rechner erhalten und ist in keiner Sicherung enthalten.“
 
 ### Behoben
+
+- Einstellungen: Schalter und die Auswahl „Beim Schließen des Fensters“ verlieren beim Speichern nicht mehr den Tastaturfokus (er fiel bisher in den Katalog zurück).
 
 - Druckbett-Prüfung und Druckerfilter nutzen bei Mehrplatten-3MF gespeicherte Maße je Platte. Ältere Einträge lassen sich neu einlesen; unbekannte Mehrplatten-Passformen bleiben im Filter sichtbar. Die Detailgröße zeigt die größte Platte statt der Arbeitsraum-Ausdehnung.
 

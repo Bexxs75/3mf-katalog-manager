@@ -43,7 +43,7 @@ export function LinuxMenuSettings() {
     <SettingLoadStatus keptValue state={loadState} error={loadError} onReload={() => void reload()} />
     <div className="flex items-center justify-between gap-2 mt-4 mb-2">
       <span className="text-[length:var(--font-size-body)] font-semibold">{t('linuxMenuTitle')}</span>
-      <ToggleSwitch checked={status.installed} label={t('linuxMenuTitle')} disabled={busy || blocked || loadState !== 'ready'} onChange={on => void change(on)} />
+      <ToggleSwitch checked={status.installed} label={t('linuxMenuTitle')} disabled={blocked || loadState !== 'ready'} busy={busy} onChange={on => void change(on)} />
     </div>
     <p className="mt-1 text-caption leading-[1.4] text-[var(--ink-3)]">
       {status.thirdParty && !status.installed ? t('linuxMenuThirdParty')

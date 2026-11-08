@@ -201,3 +201,53 @@ it('keeps the remembered-copy count together when the actions wrap', async () =>
   render(<LanguageProviderWithDiagnostics><DiskSyncSettings /></LanguageProviderWithDiagnostics>);
   await waitFor(() => expect(document.getElementById('known-copies-count')).toHaveClass('whitespace-nowrap', 'flex-auto'));
 });
+
+it('keeps focus while set_sync_on_start is pending and after it completes', async () => {
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  vi.mocked(invoke).mockImplementation(async command => {
+    if (command === 'set_sync_on_start') return pending;
+    if (command === 'get_sync_on_start') return true;
+    if (command === 'count_known_copies') return 0;
+    return false;
+  });
+  setup();
+  const toggle = screen.getByRole('switch', { name: de.syncOnStartLabel });
+  await waitFor(() => expect(toggle).toBeEnabled());
+  toggle.focus();
+  fireEvent.keyDown(toggle, { key: ' ' });
+  expect(toggle).toHaveAttribute('aria-busy', 'true');
+  expect(toggle).toHaveAttribute('aria-disabled', 'true');
+  expect(toggle).toBeEnabled();
+  expect(document.activeElement).toBe(toggle);
+  fireEvent.click(toggle);
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_sync_on_start')).toHaveLength(1);
+  finish();
+  await waitFor(() => expect(toggle).not.toHaveAttribute('aria-busy'));
+  expect(document.activeElement).toBe(toggle);
+});
+
+it('keeps focus while set_sync_auto_add is pending and after it completes', async () => {
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  vi.mocked(invoke).mockImplementation(async command => {
+    if (command === 'set_sync_auto_add') return pending;
+    if (command === 'get_sync_on_start') return true;
+    if (command === 'count_known_copies') return 0;
+    return false;
+  });
+  setup();
+  const toggle = screen.getByRole('switch', { name: de.syncAutoAddLabel });
+  await waitFor(() => expect(toggle).toBeEnabled());
+  toggle.focus();
+  fireEvent.keyDown(toggle, { key: ' ' });
+  expect(toggle).toHaveAttribute('aria-busy', 'true');
+  expect(toggle).toHaveAttribute('aria-disabled', 'true');
+  expect(toggle).toBeEnabled();
+  expect(document.activeElement).toBe(toggle);
+  fireEvent.click(toggle);
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_sync_auto_add')).toHaveLength(1);
+  finish();
+  await waitFor(() => expect(toggle).not.toHaveAttribute('aria-busy'));
+  expect(document.activeElement).toBe(toggle);
+});
