@@ -2534,7 +2534,7 @@ dependencies = [
 
 [[package]]
 name = "katalog-core"
-version = "0.18.0-6"
+version = "0.18.0-9"
 dependencies = [
  "base64 0.22.1",
  "bzip2",
@@ -2564,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "katalog-server"
-version = "0.18.0-6"
+version = "0.18.0-9"
 dependencies = [
  "argon2",
  "axum",
@@ -2768,7 +2768,7 @@ dependencies = [
 
 [[package]]
 name = "mf-katalog-manager"
-version = "0.18.0-6"
+version = "0.18.0-9"
 dependencies = [
  "base64 0.22.1",
  "chrono",
