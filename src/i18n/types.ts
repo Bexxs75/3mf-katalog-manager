@@ -262,6 +262,8 @@ export interface Translations {
   detailPanelPinned: string;
   detailPanelClose: string;
   detailPanelPin: string;
+  detailPanelResizeLabel: string;
+  detailPanelResizeHint: string;
   detailPanelTitle: string;
 
   viewerOpenSlicer: string;

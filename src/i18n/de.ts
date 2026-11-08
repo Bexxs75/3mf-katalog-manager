@@ -255,6 +255,8 @@ export const de: Translations = {
   detailPanelPinned: "Immer sichtbar",
   detailPanelClose: "Details schließen",
   detailPanelPin: "Detailbereich festhalten",
+  detailPanelResizeLabel: "Breite des Detailbereichs ändern",
+  detailPanelResizeHint: "Ziehen oder Pfeiltasten (Umschalt: größere Schritte). Doppelklick: Standardbreite.",
   detailPanelTitle: "Details",
 
   viewerOpenSlicer: "Im Slicer öffnen",

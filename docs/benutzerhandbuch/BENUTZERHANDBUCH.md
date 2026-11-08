@@ -143,6 +143,11 @@ file manager afterwards.
   It shows the preview, metadata and print status. Depending on the model's data, badges also
   show material, filament availability, favorite, queue membership and the last printer used.
 
+**Resize the panel:** Drag the left edge of the docked details panel (models and bundles).
+You can also focus the edge with Tab: Left/Right changes the width by 16 px (Shift: 64 px),
+Home/End selects the minimum/maximum, and Enter or a double-click restores the default width.
+The shared width is remembered in this browser. Resizing is unavailable in the narrow-window overlay.
+
 ## Importing files
 
 The red "+ Import" button top left offers several ways in: pick individual files via a dialog,
@@ -1692,6 +1697,11 @@ Einrichtung direkt über den Katalog im Dateimanager.
   Allgemein → Darstellung → "Detailbereich" wählst du "Automatisch (erscheint beim Anklicken)" oder "Immer sichtbar".
   Er zeigt Vorschau, Metadaten und Druckstatus. Je nach vorhandenen Daten zeigen Status-Badges
   außerdem Material, Filament-Prüfung, Favorit, Warteschlange und den zuletzt verwendeten Drucker.
+
+**Breite ändern:** Zieh an der linken Kante des angedockten Detailbereichs (Modell und Bündel).
+Du kannst die Kante auch mit Tab fokussieren: Links/Rechts ändert die Breite um 16 px (Umschalt: 64 px),
+Pos1/Ende wählt die kleinste/größte Breite, Enter oder Doppelklick stellt die Standardbreite wieder her.
+Die gemeinsame Breite wird in diesem Browser gemerkt. Im Overlay bei schmalem Fenster ist sie nicht verstellbar.
 
 ## Dateien importieren
 

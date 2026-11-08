@@ -53,7 +53,7 @@ it('starts and opens model details using only allowed read commands', async () =
   for (const view of [de.viewList, de.viewFolder, de.viewGrid]) {
     await act(async () => fireEvent.click(header.getByRole('button', { name: view })));
   }
-  const sidebar = within(screen.getByRole('separator').closest('aside')!);
+  const sidebar = within(screen.getByRole('separator', { name: 'Breite der Seitenleiste' }).closest('aside')!);
   await act(async () => fireEvent.click(sidebar.getByText('Web folder')));
   fireEvent.click(sidebar.getByText(de.tagsHeading));
   await act(async () => fireEvent.click(sidebar.getByRole('button', { name: /#web-tag/ })));
