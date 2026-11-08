@@ -361,6 +361,7 @@ export type UnitKind =
   | 'bambu_ams_lite'
   | 'bambu_ams_2_pro'
   | 'bambu_ams_ht'
+  | 'bambu_ams_3h'
   | 'creality_cfs'
   | 'prusa_mmu3'
   | 'anycubic_ace'

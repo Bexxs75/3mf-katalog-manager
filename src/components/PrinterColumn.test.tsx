@@ -286,3 +286,18 @@ describe('PrinterColumn slot menu suggestion', () => {
     expect(screen.queryByText('Vorschlag: geringster Rest')).toBeNull();
   });
 });
+
+it('renders all nine AMS 3H slots vertically and loads the ninth slot', () => {
+  const printer: Printer = { ...X1C, name: 'H3C', units: [
+    { id: 'u1', printerId: 'p1', name: 'AMS 3H', kind: 'bambu_ams_3h', slotCount: 9, bambuAmsIndex: null },
+  ] };
+  const { onLoad } = renderColumn({ printers: [printer] });
+  expect(screen.getByText('1/9')).toBeInTheDocument();
+  expect(screen.getAllByTestId(/^slot-u1-/)).toHaveLength(9);
+  const ninth = screen.getByTestId('slot-u1-8');
+  expect(ninth).toHaveTextContent('9');
+  expect(ninth.parentElement?.parentElement).toHaveClass('flex-col');
+  fireEvent.click(ninth);
+  fireEvent.click(screen.getByRole('button', { name: /PETG · Rot/ }));
+  expect(onLoad).toHaveBeenCalledWith('store', 'u1', 8);
+});

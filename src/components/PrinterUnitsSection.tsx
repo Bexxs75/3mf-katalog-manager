@@ -13,6 +13,7 @@ type KindLabelKey =
   | 'printersKindBambuAmsLite'
   | 'printersKindBambuAms2Pro'
   | 'printersKindBambuAmsHt'
+  | 'printersKindBambuAms3h'
   | 'printersKindCrealityCfs'
   | 'printersKindPrusaMmu3'
   | 'printersKindAnycubicAce'
@@ -25,6 +26,7 @@ const KIND_LABEL: Record<UnitKind, KindLabelKey> = {
   bambu_ams_lite: 'printersKindBambuAmsLite',
   bambu_ams_2_pro: 'printersKindBambuAms2Pro',
   bambu_ams_ht: 'printersKindBambuAmsHt',
+  bambu_ams_3h: 'printersKindBambuAms3h',
   creality_cfs: 'printersKindCrealityCfs',
   prusa_mmu3: 'printersKindPrusaMmu3',
   anycubic_ace: 'printersKindAnycubicAce',
