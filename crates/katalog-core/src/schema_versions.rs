@@ -16,6 +16,7 @@ pub const SCHEMA_APP_VERSIONS: &[(i64, &str)] = &[
     (47, "0.16.3"),
     (52, "0.17.2"),
     (64, "0.18.0"),
+    (65, "0.18.0"),
 ];
 
 /// The release to reinstall for a catalog that is at `schema`, if one is known.
@@ -44,7 +45,7 @@ mod tests {
         for (schema, version) in SCHEMA_APP_VERSIONS {
             assert!(*schema > last_schema, "schema {schema} out of order");
             let parsed = semver::Version::parse(version).expect("a plain release version");
-            assert!(parsed.pre.is_empty() && parsed > last_version, "{version} out of order");
+            assert!(parsed.pre.is_empty() && parsed >= last_version, "{version} out of order");
             assert!(*schema <= migrations_current_version());
             last_schema = *schema;
             last_version = parsed;
@@ -63,11 +64,12 @@ mod tests {
         assert_eq!(app_version_for_schema(58), None);
         assert_eq!(app_version_for_schema(59), None);
         assert_eq!(app_version_for_schema(60), None);
-        // 61 through 63 only existed in development builds; 0.18.0 ships with 64.
+        // 61 through 63 only existed in development builds.
         assert_eq!(app_version_for_schema(61), None);
         assert_eq!(app_version_for_schema(62), None);
         assert_eq!(app_version_for_schema(63), None);
         assert_eq!(app_version_for_schema(64), Some("0.18.0"));
+        assert_eq!(app_version_for_schema(65), Some("0.18.0"));
         assert_eq!(app_version_for_schema(0), None);
     }
 }

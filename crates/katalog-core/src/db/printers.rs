@@ -149,6 +149,7 @@ pub const UNIT_KINDS: &[&str] = &[
     "bambu_ams_lite",
     "bambu_ams_2_pro",
     "bambu_ams_ht",
+    "bambu_ams_3h",
     "creality_cfs",
     "prusa_mmu3",
     "anycubic_ace",
@@ -181,6 +182,7 @@ pub fn template_slot_count(kind: &str) -> Option<i64> {
         "bambu_ams" | "bambu_ams_lite" | "bambu_ams_2_pro" | "creality_cfs" | "anycubic_ace" => Some(4),
         "bambu_ams_ht" | "external" | "resin_vat" => Some(1),
         "prusa_mmu3" => Some(5),
+        "bambu_ams_3h" => Some(9),
         _ => None,
     }
 }
@@ -761,6 +763,48 @@ mod tests {
             params![ams_a, petg],
         );
         assert!(direct.is_err());
+    }
+
+    #[test]
+    fn the_ams_3h_has_nine_loadable_slots_and_is_not_in_the_numbered_family() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (printer, ams, _) = x1c_with_two_ams(&conn);
+        insert_unit(&conn, printer, "bambu_ams", "C", None).unwrap();
+        insert_unit(&conn, printer, "bambu_ams_2_pro", "D", None).unwrap();
+        assert_eq!(template_slot_count("bambu_ams_3h"), Some(9));
+        assert!(!BAMBU_AMS_FAMILY.contains(&"bambu_ams_3h"));
+        assert!(!uses_bambu_ams_index("bambu_ams_3h"));
+        let id = insert_unit(&conn, printer, "bambu_ams_3h", "AMS 3H", Some(4)).unwrap();
+        let unit = get_unit(&conn, id).unwrap();
+        assert_eq!((unit.kind.as_str(), unit.slot_count, unit.bambu_ams_index), ("bambu_ams_3h", 9, None));
+        assert!(list_units(&conn).unwrap().iter().any(|u| u.id == id && u.slot_count == 9));
+        for slot in 0..9 {
+            let pla = spool(&conn, "PLA", Some("Shelf"));
+            load_spool(&conn, pla, id, slot).unwrap();
+            assert_eq!(placement(&conn, pla), (None, Some("Shelf".into()), Some(id), Some(slot)));
+        }
+        let extra = spool(&conn, "PLA", None);
+        assert!(load_spool(&conn, extra, id, 9).is_err());
+        assert!(load_spool(&conn, extra, id, -1).is_err());
+        for kind in BAMBU_AMS_FAMILY {
+            assert!(update_unit(&conn, id, "AMS 3H", None, Some(kind)).is_err());
+        }
+        assert!(update_unit(&conn, ams, "AMS", None, Some("bambu_ams_3h")).is_err());
+        assert_eq!(get_unit(&conn, id).unwrap().kind, "bambu_ams_3h");
+    }
+
+    #[test]
+    fn every_registered_unit_kind_is_accepted_by_the_schema() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let printer = insert_printer(&conn, "Printer").unwrap();
+        assert_eq!(UNIT_KINDS.iter().filter(|&&k| k == "bambu_ams_3h").count(), 1);
+        for kind in UNIT_KINDS {
+            let slots = template_slot_count(kind).unwrap_or(16);
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count) VALUES (?1, ?2, ?2, ?3)",
+                params![printer, kind, slots],
+            ).unwrap();
+        }
     }
 
     #[test]

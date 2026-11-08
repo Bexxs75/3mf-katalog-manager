@@ -1679,6 +1679,7 @@ export const fr: Translations = {
   printersKindBambuAms2Pro: 'Bambu AMS 2 Pro',
   printersUnitTypeKeepHint: 'Les emplacements et les bobines chargées restent inchangés.',
   printersKindBambuAmsHt: 'Bambu AMS HT',
+  printersKindBambuAms3h: 'Bambu AMS 3H',
   printersKindCrealityCfs: 'Creality CFS',
   printersKindPrusaMmu3: 'Prusa MMU3',
   printersKindAnycubicAce: 'Anycubic ACE Pro',

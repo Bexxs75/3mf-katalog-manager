@@ -11,6 +11,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Printer Manager:** new Bambu AMS 3H template (9 slots, for the Bambu Lab H3C).
+
 - The details panel (models and bundles) can be resized at its left edge with the mouse or keyboard; its width is remembered.
 
 - **STEP parts (stage A):** a STEP file with several bodies is now split into one mesh per body instead of one mesh for the whole file; the splitting rules live outside the STEP feature and are covered by the standard tests. In the viewer of a cataloged STEP file a collapsible "Parts (n)" list appears: a checkbox per part shows or hides it, hovering or focusing a row tints that part in the picture, the name selects it and shows its size, "Show all" brings everything back, and the arrow keys move between the checkboxes (a screen reader hears "Part 3 of 12, shown"). The same list offers "Save Part n as STL", "Save shown parts as STL" and "Save each part as its own file …"; the last one asks for a folder and writes files named `<name>_Teil<N>.stl` without overwriting anything. All of it uses the existing `export_model_as_stl` command with the scopes `parts` and the new `eachPart`; no new command and no change to the database. Files with more than 256 bodies show the 256th entry as one collective part "Further parts". A file with a single body, files opened from outside the catalog and the small preview show no list. The STEP code itself (OCCT) is not built in the automated tests and was only compiled and read, not run, for this change. New texts in German, English, Spanish and French (Spanish and French were written by the model and not checked by native speakers).
@@ -808,6 +810,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ## [Unreleased]
 
 ### Hinzugefügt
+
+- **Printer Manager:** neue Vorlage Bambu AMS 3H (9 Plätze, für den Bambu Lab H3C).
 
 - Der Detailbereich (Modell und Bündel) lässt sich an der linken Kante mit Maus oder Tastatur in der Breite ändern; die Breite wird gemerkt.
 

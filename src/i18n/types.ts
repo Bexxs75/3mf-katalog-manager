@@ -1713,6 +1713,7 @@ export interface Translations {
   printersKindBambuAms2Pro: string;
   printersUnitTypeKeepHint: string;
   printersKindBambuAmsHt: string;
+  printersKindBambuAms3h: string;
   printersKindCrealityCfs: string;
   printersKindPrusaMmu3: string;
   printersKindAnycubicAce: string;
