@@ -86,6 +86,7 @@ it('uses the window media query for overlay and drops duplicate material metadat
   try {
     setup(); fireEvent.click(screen.getByText('Cube'));
     expect(screen.getByRole('complementary')).toHaveClass('detail-panel-overlay');
+    expect(screen.queryByRole('separator')).toBeNull();
     expect(screen.queryByText('Material')).toBeNull();
     expect(within(screen.getByRole('complementary')).getByText('PLA')).toBeVisible();
   } finally { window.matchMedia = original; }
@@ -122,7 +123,31 @@ it('responds to window width changes while open', () => {
     // matchMedia, rather than grid measurements, owns this breakpoint.
     act(() => change());
     expect(screen.getByRole('complementary')).toHaveClass('detail-panel-overlay');
+    expect(screen.queryByRole('separator')).toBeNull();
     media.matches = false; act(() => change());
     expect(screen.getByRole('complementary')).not.toHaveClass('detail-panel-overlay');
   } finally { window.matchMedia = original; }
+});
+
+it('does not render the resizer for settings', () => {
+  setup({ detailPanel: 'pinned', settingsPanel: () => <aside className="settings-panel">Settings</aside> });
+  expect(screen.queryByRole('separator')).toBeNull();
+});
+it.each(['compact', 'comfort'])('resets to the density default in %s', density => {
+  localStorage.setItem('3mf-katalog-density', density);
+  localStorage.setItem('3mf-katalog-detail-width', '450');
+  setup({ detailPanel: 'pinned' });
+  expect(screen.getByRole('complementary').style.getPropertyValue('--detail-panel-width')).toBe('450px');
+  fireEvent.keyDown(screen.getByRole('separator'), { key: 'Enter' });
+  expect(localStorage.getItem('3mf-katalog-detail-width')).toBeNull();
+  expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', density === 'comfort' ? '380' : '336');
+});
+it('only clamps the displayed width when the workspace shrinks', () => {
+  localStorage.setItem('3mf-katalog-detail-width', '700');
+  setup({ detailPanel: 'pinned' });
+  expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', '480');
+  expect(localStorage.getItem('3mf-katalog-detail-width')).toBe('700');
+  vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({ width: 1400, height: 400, top: 0, left: 0, right: 1400, bottom: 400, x: 0, y: 0, toJSON: () => ({}) });
+  fireEvent.resize(window);
+  expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', '700');
 });

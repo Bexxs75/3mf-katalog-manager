@@ -255,6 +255,8 @@ export const en: Translations = {
   detailPanelPinned: "Always visible",
   detailPanelClose: "Close details",
   detailPanelPin: "Pin detail panel",
+  detailPanelResizeLabel: "Resize details panel",
+  detailPanelResizeHint: "Drag or use the arrow keys (Shift: larger steps). Double-click: default width.",
   detailPanelTitle: "Details",
 
   viewerOpenSlicer: "Open in slicer",
