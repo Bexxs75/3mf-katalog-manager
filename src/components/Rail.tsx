@@ -94,7 +94,7 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
         aria-expanded={settingsOpen}
         title={t('settingsTitle')}
         aria-label={t('settingsTitle')}
-        className={`${railBtnBase} ${railBtnActive}`}
+        className={`${railBtnBase} ${settingsOpen ? railBtnActive : ''}`}
       >
         <Icon name="settings" />
       </button>

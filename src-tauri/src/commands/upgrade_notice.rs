@@ -15,6 +15,35 @@ const SEEN_KEY: &str = "upgrade_notice_seen";
 
 /// What the migration at this start did, kept until the interface asks for it.
 pub struct UpgradeReport(pub Option<MigrationReport>);
+pub struct PreviousAppVersion(pub Option<String>);
+
+const RUN_VERSION_KEY: &str = "app_run_versions";
+
+#[derive(Serialize, serde::Deserialize)]
+struct RunVersions {
+    version: String,
+    previous: Option<String>,
+}
+
+fn plausible_version(value: &str) -> bool {
+    let (base, suffix) = value.split_once('-').map_or((value, None), |(a, b)| (a, Some(b)));
+    let numeric = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    base.split('.').count() == 3 && base.split('.').all(numeric)
+        && suffix.is_none_or(numeric)
+}
+
+/// Keep the previous version across restarts until the next version change.
+/// Reading before writing ensures the notice never mistakes this start for the previous one.
+pub fn remember_app_version(conn: &Connection, version: &str) -> CmdResult<PreviousAppVersion> {
+    let stored = get_setting(conn, RUN_VERSION_KEY).map_err(|e| e.to_string())?
+        .and_then(|raw| serde_json::from_str::<RunVersions>(&raw).ok());
+    let previous = stored.and_then(|s| if s.version == version { s.previous } else { Some(s.version) })
+        .filter(|v| plausible_version(v) && v != version);
+    let json = serde_json::to_string(&RunVersions { version: version.to_string(), previous: previous.clone() })
+        .map_err(|e| e.to_string())?;
+    set_setting(conn, RUN_VERSION_KEY, &json).map_err(|e| e.to_string())?;
+    Ok(PreviousAppVersion(previous))
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
 struct SeenNotice {
@@ -57,6 +86,7 @@ pub struct UpgradeNoticeDto {
 /// Everything the decision needs, so tests can supply it without an app handle.
 struct NoticeInputs<'a> {
     seen: Option<&'a str>,
+    previous_version: Option<&'a str>,
     last_update: Option<LastUpdateInfo>,
     report: Option<&'a MigrationReport>,
     db_path: &'a Path,
@@ -103,8 +133,10 @@ fn build_notice(input: &NoticeInputs) -> Option<UpgradeNoticeDto> {
             let file = input.report.and_then(|r| r.backup.as_deref())
                 .and_then(|p| p.file_name()?.to_str())
                 .and_then(|name| backup_file(&dir, name));
-            let from = input.report.and_then(|r| app_version_for_schema(r.from)).map(str::to_string);
-            let derived = from.is_some();
+            let exact = input.previous_version.filter(|v| plausible_version(v) && *v != input.version);
+            let from = exact.map(str::to_string)
+                .or_else(|| input.report.and_then(|r| app_version_for_schema(r.from)).map(str::to_string));
+            let derived = exact.is_none() && from.is_some();
             (file, from, derived)
         }
     };
@@ -143,7 +175,7 @@ fn read_last_update(conn: &rusqlite::Connection, version: &str) -> Option<LastUp
 /// The notice for this start, or nothing when there is nothing to tell or the
 /// user already confirmed it for this version and schema.
 #[tauri::command]
-pub fn get_upgrade_notice(state: State<'_, AppState>, report: State<'_, UpgradeReport>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<Option<UpgradeNoticeDto>> {
+pub fn get_upgrade_notice(state: State<'_, AppState>, report: State<'_, UpgradeReport>, previous: State<'_, PreviousAppVersion>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<Option<UpgradeNoticeDto>> {
     let version = env!("CARGO_PKG_VERSION");
     let (seen, last_update) = {
         let conn = lock_db(&state)?;
@@ -151,6 +183,7 @@ pub fn get_upgrade_notice(state: State<'_, AppState>, report: State<'_, UpgradeR
     };
     Ok(build_notice(&NoticeInputs {
         seen: seen.as_deref(),
+        previous_version: previous.0.as_deref(),
         last_update,
         report: report.0.as_ref(),
         db_path: &state.db_path,
@@ -189,6 +222,35 @@ fn open_backup_folder(db_path: &Path, environment: RuntimeEnvironment, open: imp
 mod tests {
     use super::*;
 
+    #[test]
+    fn remembers_versions_without_losing_previous_on_restart() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);").unwrap();
+        assert!(remember_app_version(&conn, "0.18.0-10").unwrap().0.is_none());
+        assert_eq!(remember_app_version(&conn, "0.18.0-11").unwrap().0.as_deref(), Some("0.18.0-10"));
+        assert_eq!(remember_app_version(&conn, "0.18.0-11").unwrap().0.as_deref(), Some("0.18.0-10"));
+        assert_eq!(remember_app_version(&conn, "0.18.0").unwrap().0.as_deref(), Some("0.18.0-11"));
+        set_setting(&conn, RUN_VERSION_KEY, r#"{"version":"invalid","previous":null}"#).unwrap();
+        assert!(remember_app_version(&conn, "0.18.0").unwrap().0.is_none());
+    }
+
+    #[test]
+    fn stored_version_overrides_schema_only_when_plausible() {
+        let dir = temp("stored-version");
+        put(&dir, SCHEMA_COPY);
+        let r = report(&dir, Some(SCHEMA_COPY), false);
+        let path = db(&dir);
+        for value in ["0.18.0-6", "0.17.2", "invalid", "1.2", "1.2.3-beta", "1.2.3-", "1.2.3.4"] {
+            let mut input = inputs(&path, Some(&r));
+            input.previous_version = Some(value);
+            let notice = build_notice(&input).unwrap();
+            let valid = matches!(value, "0.18.0-6" | "0.17.2");
+            assert_eq!(notice.from_version.as_deref(), Some(if valid { value } else { "0.17.2" }));
+            assert_eq!(notice.from_version_derived, !valid);
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     const CURRENT: i64 = 54;
 
     fn temp(name: &str) -> PathBuf {
@@ -208,7 +270,7 @@ mod tests {
     const UPDATE_COPY: &str = "Katalog-Sicherung_2026-11-03_1430_vor-Update_0.17.1_auf_0.18.0.db";
 
     fn inputs<'a>(dir: &'a Path, report: Option<&'a MigrationReport>) -> NoticeInputs<'a> {
-        NoticeInputs { seen: None, last_update: None, report, db_path: dir, version: "0.18.0", schema: CURRENT, container: false, preview: false }
+        NoticeInputs { seen: None, previous_version: None, last_update: None, report, db_path: dir, version: "0.18.0", schema: CURRENT, container: false, preview: false }
     }
 
     fn report(dir: &Path, name: Option<&str>, failed: bool) -> MigrationReport {

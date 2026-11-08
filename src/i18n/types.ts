@@ -1812,6 +1812,8 @@ export interface Translations {
   printerJobModelSureHint: string;
   printerJobModelUnsureHint: string;
   printerJobModelNoneHint: string;
+  folderCreateFailed: string;
+  modelPickerMoreHits: string;
   printerJobModelSearch: string;
   printerJobModelNoModel: string;
   printerJobConfirm: string;

@@ -90,6 +90,15 @@ describe('UpgradeNoticeDialog', () => {
     expect(calls('dismiss_upgrade_notice')).toHaveLength(1);
   });
 
+  it('shows an exact RC version without the schema-derived qualifier', async () => {
+    answer({ ...base, fromVersion: '0.18.0-10', toVersion: '0.18.0-11', fromVersionDerived: false });
+    renderDialog();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('0.18.0-10');
+    expect(dialog).toHaveTextContent('0.18.0-11');
+    expect(dialog).not.toHaveTextContent('aus dem Datenbank-Schema abgeleitet');
+  });
+
   it('a manual install shows a derived previous version and says so', async () => {
     answer({ ...base, fromVersionDerived: true, backup: { ...base.backup, fileName: SCHEMA_COPY, path: `/data/update-backups/${SCHEMA_COPY}` } });
     renderDialog();

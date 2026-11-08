@@ -46,7 +46,7 @@ export function CloseBehaviorSettings() {
     <fieldset disabled={loadState !== 'ready'} aria-busy={busy} className={busy ? 'opacity-60' : undefined} aria-describedby="close-action-help">
     <legend className="text-[length:var(--font-size-body)] font-semibold">{t('closeActionTitle')}</legend>
     {options.map(option => <label key={option.value} className="flex items-start gap-2 mt-1">
-      <input type="radio" name="closeAction" className="mt-1" checked={shown === option.value} onChange={() => void choose(option.value)} />
+      <input type="radio" name="closeAction" className="mt-1 print-technology-radio focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]" checked={shown === option.value} onChange={() => void choose(option.value)} />
       {option.label}
     </label>)}
     <p id="close-action-help" className="mt-1 text-caption leading-[1.4] text-[var(--ink-3)]">{t(mac ? 'closeActionHelpMac' : 'closeActionHelp')}</p>

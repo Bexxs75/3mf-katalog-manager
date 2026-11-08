@@ -201,6 +201,12 @@ pub fn run() {
                     return Ok(());
                 }
             };
+            let previous_version = commands::remember_app_version(&conn, env!("CARGO_PKG_VERSION"))
+                .unwrap_or_else(|error| {
+                    log::warn!("Could not remember app version: {error:?}");
+                    commands::PreviousAppVersion(None)
+                });
+            app.manage(previous_version);
             app.manage(commands::UpgradeReport(migration_report));
             commands::apply_verbose_state(&conn);
             diagnostics::log_startup(&conn);

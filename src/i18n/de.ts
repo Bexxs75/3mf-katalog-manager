@@ -1775,6 +1775,8 @@ export const de: Translations = {
   printerJobModelSureHint: '+ Eintrag im Druckprotokoll, „Gedruckt“',
   printerJobModelUnsureHint: 'Vorschlag, bitte prüfen',
   printerJobModelNoneHint: 'nur Abbuchung, kein Protokolleintrag',
+  folderCreateFailed: "Der Ordner konnte nicht angelegt werden. Prüfe den Speicherort und die Zugriffsrechte.",
+  modelPickerMoreHits: "Es werden die ersten {shown} von {total} Treffern angezeigt. Gib einen Namen ein, um einzugrenzen.",
   printerJobModelSearch: 'Modell suchen …',
   printerJobModelNoModel: 'Kein Modell',
   printerJobConfirm: 'Bestätigen',

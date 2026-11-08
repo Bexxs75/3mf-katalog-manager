@@ -34,7 +34,7 @@ pub async fn create_folder(
     state: State<'_, AppState>,
     parent_id: Option<String>,
     name: String,
-) -> CmdResult<FolderDto> {
+) -> CmdResult<Option<FolderDto>> {
     validate_folder_name(&name)?;
     let parent: Option<i64> = parent_id
         .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
@@ -51,7 +51,7 @@ pub async fn create_folder(
             None => {
                 let picked = app.dialog().file().blocking_pick_folder();
                 let Some(picked) = picked else {
-                    return Err(CmdError::expected("cancelled"));
+                    return Ok(None);
                 };
                 picked.into_path().map_err(|e| e.to_string())?.join(&name)
             }
@@ -59,7 +59,7 @@ pub async fn create_folder(
     };
 
     let conn = lock_db(&state)?;
-    create_folder_with_conn(&conn, parent, name, &new_dir, &state.sensitive_dirs)
+    create_folder_with_conn(&conn, parent, name, &new_dir, &state.sensitive_dirs).map(Some)
 }
 
 /// Creation after path selection, without UI state so disk/DB outcomes are testable.

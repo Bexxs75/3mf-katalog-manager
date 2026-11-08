@@ -80,8 +80,10 @@ describe('Rail settings gear', () => {
     const props = renderRail('catalog', 0, true);
     const gear = screen.getByRole('button', { name: 'Einstellungen' });
     expect(gear).toHaveAttribute('aria-expanded', 'false');
+    expect(gear).not.toHaveClass('bg-[var(--accent-soft)]');
     fireEvent.click(gear);
     expect(gear).toHaveAttribute('aria-expanded', 'true');
+    expect(gear).toHaveClass('bg-[var(--accent-soft)]');
     fireEvent.click(gear);
     expect(props.onSettingsOpenChange).toHaveBeenNthCalledWith(2, false);
   });

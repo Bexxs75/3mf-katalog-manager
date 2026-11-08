@@ -1775,6 +1775,8 @@ export const en: Translations = {
   printerJobModelSureHint: '+ print log entry, “Printed”',
   printerJobModelUnsureHint: 'Suggestion, please check',
   printerJobModelNoneHint: 'deduction only, no log entry',
+  folderCreateFailed: "The folder could not be created. Check the location and access permissions.",
+  modelPickerMoreHits: "Showing the first {shown} of {total} matches. Enter a name to narrow the results.",
   printerJobModelSearch: 'Search model …',
   printerJobModelNoModel: 'No model',
   printerJobConfirm: 'Confirm',

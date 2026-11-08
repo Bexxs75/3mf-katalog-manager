@@ -137,7 +137,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     (parentId: string | null, name: string) =>
       (!canManageFiles() || (isReadOnly() && (!parentId || !window.confirm(`${folderOpsMessages().create}: ${name}?`) || !canManageFiles()))) ? Promise.resolve() : foldersApi
         .createFolder(parentId, name)
-        .then(() => { if (!isReadOnly()) refreshFolders(); })
+        .then((created) => { if (!isReadOnly() && created !== null) refreshFolders(); })
         .catch((e) => {
           if (!isReadOnly()) console.error('[folders] creating failed:', e);
           // Show the error next to the folder tree; catalogBackupError would be invisible without an open panel.

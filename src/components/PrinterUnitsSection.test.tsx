@@ -30,6 +30,7 @@ function setup(language: string) {
 it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)(
   'labels AMS 3H in %s and renders nine wrapping slots', (language, translations) => {
     setup(language);
+    expect(screen.getByText('AMS 3H').parentElement).toHaveClass('min-w-[8rem]');
     expect(translations.printersKindBambuAms3h).toBe('Bambu AMS 3H');
     expect(screen.getByText(/^Bambu AMS 3H ·/)).toBeInTheDocument();
     const slots = screen.getAllByTitle(/^\d+ ·/);

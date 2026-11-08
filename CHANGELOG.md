@@ -96,6 +96,14 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- The settings gear is highlighted only while settings are open.
+- Selection checkboxes keep their 16 px appearance and position with a 28 × 28 px click area.
+- Model selection explains when only the first 50 matches are shown.
+- Cancelling the folder dialog after New folder ends silently; creation errors are translated.
+- Material units with nine slots wrap their slots below the name when space is limited, keeping the name readable and actions accessible.
+- Window close behavior radios use the custom accent-colored indicator so the selected option is visible on macOS.
+- The update notice uses the last recorded app version when available, with schema inference as a fallback; version recording starts with this build.
+
 - Settings overlays close after a click on the dimmed area, ignore drags from the panel and clicks behind an open confirmation, and restore focus to the opener.
 - Print-bed overshoots use unrounded dimensions and display one decimal place when needed, as does the model size.
 - Printing-method radio cards draw an accent-colored selected dot in both light and dark themes, including macOS.
@@ -900,6 +908,14 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Wiederherstellen behält den Thingiverse-Schlüssel:** Der Schlüssel dieses Rechners (und der Schalter) bleibt beim Wiederherstellen einer Sicherung jetzt erhalten, statt gelöscht zu werden. Ein Schlüssel ist weiterhin nie Teil einer Sicherung, und einer in einer wiederhergestellten Datei wird ignoriert. Der Wiederherstellen-Dialog, die Thingiverse-Einstellungen und das Handbuch sagen: „Dein Thingiverse-Schlüssel bleibt auf diesem Rechner erhalten und ist in keiner Sicherung enthalten.“
 
 ### Behoben
+
+- Das Einstellungszahnrad ist nur bei geöffneten Einstellungen hervorgehoben.
+- Auswahlkästchen behalten Aussehen und Lage mit 16 px bei und erhalten eine Klickfläche von 28 × 28 px.
+- Die Modellauswahl weist darauf hin, wenn nur die ersten 50 Treffer angezeigt werden.
+- Ein Abbruch der Ordnerauswahl nach Neuer Ordner endet still; Fehler beim Anlegen werden übersetzt.
+- Materialeinheiten mit neun Plätzen lassen die Platzgruppe bei Platzmangel unter den Namen umbrechen, sodass der Name lesbar und die Schaltflächen erreichbar bleiben.
+- Die Radios zum Verhalten beim Fensterschließen verwenden den eigenen Punkt in Akzentfarbe, damit die Auswahl auch unter macOS sichtbar ist.
+- Der Update-Hinweis verwendet die zuletzt gespeicherte App-Version, soweit vorhanden, sonst die Schema-Ableitung; die Versionsaufzeichnung beginnt mit diesem Build.
 
 - Einstellungs-Overlays schließen nach einem Klick auf die Abdunklung, ignorieren Ziehen aus dem Panel und Klicks hinter einer offenen Bestätigung und geben den Fokus an den Auslöser zurück.
 - Druckbett-Überschreitungen werden aus ungerundeten Maßen berechnet und wie die Modellgröße bei Bedarf mit einer Nachkommastelle angezeigt.

@@ -1775,6 +1775,8 @@ export const fr: Translations = {
   printerJobModelSureHint: '+ entrée au journal, « Imprimé »',
   printerJobModelUnsureHint: 'Suggestion, à vérifier',
   printerJobModelNoneHint: 'déduction seule, sans journal',
+  folderCreateFailed: "Le dossier n’a pas pu être créé. Vérifiez l’emplacement et les droits d’accès.",
+  modelPickerMoreHits: "Les {shown} premiers résultats sur {total} sont affichés. Saisissez un nom pour affiner la recherche.",
   printerJobModelSearch: 'Chercher un modèle …',
   printerJobModelNoModel: 'Aucun modèle',
   printerJobConfirm: 'Confirmer',

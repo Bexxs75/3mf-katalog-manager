@@ -75,21 +75,23 @@ export function PrinterUnitsSection({ printer, spools, actions, onChanged, onMat
   return <>
     {printer.units.map(unit => <div key={unit.id} onMouseEnter={() => order.enter(unit.id)}
       className={`group/unit flex flex-wrap items-center gap-3 py-2 border-b ${order.over === unit.id ? 'border-[var(--sel-line)]' : 'border-[var(--line)]'}`}>
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-        {canEdit && unit.kind !== 'resin_vat' && <button type="button" className="text-[var(--ink-3)] cursor-grab opacity-0 group-hover/unit:opacity-80 focus-visible:opacity-100 focus-visible:outline-2"
-          aria-label={`${t('printersReorderHint')} ${unit.name}`} onMouseDown={e => { if (e.button === 0) order.begin(e, unit.id); }} onKeyDown={e => order.key(e, unit.id)}>⋮⋮</button>}
-        <Icon name={unit.kind === 'external' ? 'spool' : unit.kind === 'resin_vat' ? 'resin' : 'ams'} size={24} className="shrink-0 text-[var(--ink-2)]" />
-        <div className="min-w-0"><b className="block break-words">{unit.name}</b>
-          <small className="block text-[var(--ink-3)]">{t(KIND_LABEL[unit.kind])} · {formatCount(t('printersUnitSlotCount'), unit.slotCount)} · {t('pmOccupied').replace('{count}', String(spools.filter(s => s.unitId === unit.id && s.slotIndex !== null && s.slotIndex >= 0 && s.slotIndex < unit.slotCount).length))}</small>
+      <div className="flex flex-wrap items-center gap-3 min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-1">
+          {canEdit && unit.kind !== 'resin_vat' && <button type="button" className="text-[var(--ink-3)] cursor-grab opacity-0 group-hover/unit:opacity-80 focus-visible:opacity-100 focus-visible:outline-2"
+            aria-label={`${t('printersReorderHint')} ${unit.name}`} onMouseDown={e => { if (e.button === 0) order.begin(e, unit.id); }} onKeyDown={e => order.key(e, unit.id)}>⋮⋮</button>}
+          <Icon name={unit.kind === 'external' ? 'spool' : unit.kind === 'resin_vat' ? 'resin' : 'ams'} size={24} className="shrink-0 text-[var(--ink-2)]" />
+          <div className="min-w-[8rem] flex-1"><b className="block break-words">{unit.name}</b>
+            <small className="block text-[var(--ink-3)]">{t(KIND_LABEL[unit.kind])} · {formatCount(t('printersUnitSlotCount'), unit.slotCount)} · {t('pmOccupied').replace('{count}', String(spools.filter(s => s.unitId === unit.id && s.slotIndex !== null && s.slotIndex >= 0 && s.slotIndex < unit.slotCount).length))}</small>
+          </div>
         </div>
+        <div className="flex flex-wrap gap-1.5">{Array.from({ length: Math.min(16, unit.slotCount) }, (_, i) => {
+          const spool = spools.find(s => s.unitId === unit.id && s.slotIndex === i);
+          const label = `${i + 1} · ${spool ? [spool.material, spool.color].filter(Boolean).join(' · ') : t('printersSlotEmpty')}`;
+          return <span key={i} title={label} aria-label={label} className="w-6 h-6 rounded-full border border-[var(--line-strong)] shrink-0"
+            style={{ background: !spool ? 'repeating-linear-gradient(45deg, transparent 0 3px, var(--line) 3px 4px)' : spool.colorHex && isValidColorHex(spool.colorHex) ? spool.colorHex : 'var(--unk-soft)' }} />;
+        })}</div>
       </div>
-      <div className="flex flex-wrap gap-1.5">{Array.from({ length: Math.min(16, unit.slotCount) }, (_, i) => {
-        const spool = spools.find(s => s.unitId === unit.id && s.slotIndex === i);
-        const label = `${i + 1} · ${spool ? [spool.material, spool.color].filter(Boolean).join(' · ') : t('printersSlotEmpty')}`;
-        return <span key={i} title={label} aria-label={label} className="w-6 h-6 rounded-full border border-[var(--line-strong)] shrink-0"
-          style={{ background: !spool ? 'repeating-linear-gradient(45deg, transparent 0 3px, var(--line) 3px 4px)' : spool.colorHex && isValidColorHex(spool.colorHex) ? spool.colorHex : 'var(--unk-soft)' }} />;
-      })}</div>
-      {canEdit && unit.kind !== 'resin_vat' && <div className="flex flex-wrap gap-1.5 max-[639px]:w-full">
+      {canEdit && unit.kind !== 'resin_vat' && <div className="flex shrink-0 flex-wrap gap-1.5 max-[639px]:w-full">
         <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] max-[639px]:w-full`} onClick={() => setEditing(unit)}>{t('pmEdit')}</button>
         <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] text-[var(--ink-2)] max-[639px]:w-full`} aria-label={`${t('printersDelete')} ${unit.name}`} onClick={() => setDeleting(unit)}>{t('printersDelete')}</button>
       </div>}

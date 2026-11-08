@@ -1,3 +1,6 @@
+import { toAppError } from '../errors';
+import { legacyCodeKey } from '../errorMessage';
+import errorCodes from '../errorCodes.json';
 import { isReadOnly } from '../readOnly';
 import { fileOp, fileOpsBatch } from '../fileOps';
 import { invoke } from '../transport';
@@ -11,7 +14,14 @@ export function createFolder(parentId: string | null, name: string) {
     if (!parentId) return Promise.reject(new Error('A parent folder is required.'));
     return fileOp('create_folder', { parentId, name });
   }
-  return invoke('create_folder', { parentId, name });
+  return invoke<Folder | null>('create_folder', { parentId, name }).catch((reason: unknown) => {
+    const error = toAppError(reason);
+    if (!errorCodes.registered.includes(error.message) && !legacyCodeKey(error.message)) {
+      console.error('[folders] creating failed:', reason);
+      throw { message: 'folderCreateFailed', expected: false };
+    }
+    throw reason;
+  });
 }
 export function moveFileToFolder(fileId: string, folderId: string) {
   if (isReadOnly()) return fileOpsBatch('move_files_to_folder', [fileId], { folderId });

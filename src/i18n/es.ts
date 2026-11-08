@@ -1775,6 +1775,8 @@ export const es: Translations = {
   printerJobModelSureHint: '+ entrada en el registro, «Impreso»',
   printerJobModelUnsureHint: 'Sugerencia, compruébala',
   printerJobModelNoneHint: 'solo descuento, sin registro',
+  folderCreateFailed: "No se pudo crear la carpeta. Comprueba la ubicación y los permisos de acceso.",
+  modelPickerMoreHits: "Se muestran los primeros {shown} de {total} resultados. Escribe un nombre para limitar la búsqueda.",
   printerJobModelSearch: 'Buscar modelo …',
   printerJobModelNoModel: 'Sin modelo',
   printerJobConfirm: 'Confirmar',

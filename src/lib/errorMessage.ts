@@ -13,6 +13,7 @@ type Translate = <K extends keyof Translations>(key: K) => Translations[K];
  * `message` and keep the dictionary key they always had.
  */
 const LEGACY_KEYS = {
+  folderCreateFailed: 'folderCreateFailed',
   container: 'containerUpdates',
   containerExternalUnavailable: 'containerExternalUnavailable',
   containerSlicerUnavailable: 'containerSlicerUnavailable',

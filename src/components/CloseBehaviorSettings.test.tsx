@@ -13,6 +13,7 @@ it('keeps radio focus and ignores further choices until the save completes', asy
   vi.mocked(api.setCloseBehavior).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
   render(<LanguageProviderWithDiagnostics><CloseBehaviorSettings /></LanguageProviderWithDiagnostics>);
   const radios = await screen.findAllByRole('radio');
+  for (const option of radios) expect(option).toHaveClass('print-technology-radio', 'mt-1', 'focus-visible:outline');
   const radio = radios[1];
   radio.focus();
   fireEvent.click(radio);
