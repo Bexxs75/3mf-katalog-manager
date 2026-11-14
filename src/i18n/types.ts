@@ -774,7 +774,8 @@ export interface Translations {
   themeLegend: string;
   densityLegend: string;
   themeSystem: string;
-  themeLight: string;
+  themeSand: string;
+  themeSlate: string;
   themeDark: string;
   themeDescriptionSystem: string;
   themeDescriptionManual: string;

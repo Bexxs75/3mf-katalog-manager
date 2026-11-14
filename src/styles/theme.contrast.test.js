@@ -27,7 +27,7 @@ function contrast(a, b) {
 const pairs = [['ink-2', 'panel-2'], ['ink-3', 'bg'], ['ink-3', 'panel'], ['ink-3', 'panel-2'],
   ['accent', 'accent-soft'], ['accent', 'bg'], ['good', 'good-soft'], ['good', 'panel'],
   ['crit', 'crit-soft'], ['crit', 'panel'], ['warn', 'warn-soft'], ['warn', 'panel']];
-for (const [theme, selector] of [['light', '[data-app]'], ['dark', '[data-app="dark"]']]) {
+for (const [theme, selector] of [['light', '[data-app]'], ['dark', '[data-app="dark"]'], ['slate', '[data-app="slate"]']]) {
   describe(`${theme} text contrast`, () => {
     const block = css.slice(css.indexOf(`${selector} {`)).split('}')[0];
     const tokens = Object.fromEntries(Array.from(block.matchAll(/--([\w-]+):\s*(oklch\([^;]+\));/g), match => [match[1], match[2]]));

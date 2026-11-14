@@ -34,40 +34,40 @@ img[draggable="false"] { -webkit-user-drag: none; user-select: none; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* Light theme (default) */
+/* Sand theme (internal value "light", default) */
 [data-app] {
   color-scheme: light;
-  --bg: oklch(0.965 0.004 60);
-  --panel: oklch(1 0 0);
-  --panel-2: oklch(0.985 0.003 60);
-  --line: oklch(0.895 0.006 60);
-  --line-strong: oklch(0.82 0.008 60);
-  --ink: oklch(0.245 0.01 45);
-  --ink-2: oklch(0.505 0.01 50);
-  --ink-3: oklch(0.544 0.008 50);
-  --accent: oklch(0.545 0.165 30);
+  --bg: oklch(0.855 0.008 70);
+  --panel: oklch(0.915 0.006 70);
+  --panel-2: oklch(0.89 0.007 70);
+  --line: oklch(0.79 0.010 70);
+  --line-strong: oklch(0.55 0.012 70);
+  --ink: oklch(0.235 0.01 45);
+  --ink-2: oklch(0.40 0.01 50);
+  --ink-3: oklch(0.40 0.009 50);
+  --accent: oklch(0.46 0.15 30);
   --accent-ink: oklch(0.99 0.01 30);
-  --accent-soft: oklch(0.945 0.03 30);
-  --plate: oklch(0.915 0.006 60);
-  --plate-2: oklch(0.955 0.004 60);
-  --grid: oklch(0.82 0.008 60);
-  --hatch: rgba(40, 28, 24, 0.09);
-  --scrim: rgb(0 0 0 / 0.35);
-  --shadow: 0 1px 2px rgba(40, 28, 24, 0.06), 0 8px 24px rgba(40, 28, 24, 0.05);
+  --accent-soft: oklch(0.80 0.06 30);
+  --plate: oklch(0.80 0.008 70);
+  --plate-2: oklch(0.83 0.007 70);
+  --grid: oklch(0.62 0.010 70);
+  --hatch: rgba(40, 28, 24, 0.10);
+  --scrim: rgb(0 0 0 / 0.40);
+  --shadow: 0 1px 2px rgba(40, 28, 24, 0.10), 0 8px 24px rgba(40, 28, 24, 0.10);
   /* Semantic status colors (inventory stock etc.) - deliberately different hues
      from --accent (30deg) so "status" isn't confused with "brand/primary
      action". --good also covers the existing
      var(--good,var(--accent)) fallback in the print status badge. */
-  --good: oklch(0.515 0.13 150);
-  --good-soft: oklch(0.94 0.045 150);
-  --warn: oklch(0.528 0.14 80);
-  --warn-soft: oklch(0.94 0.05 85);
-  --crit: oklch(0.539 0.18 18);
-  --crit-soft: oklch(0.94 0.045 18);
-  --sel: oklch(0.935 0.014 250);
-  --sel-line: oklch(0.65 0.05 250);
-  --unk: oklch(0.55 0.02 250);
-  --unk-soft: oklch(0.94 0.012 250);
+  --good: oklch(0.42 0.11 150);
+  --good-soft: oklch(0.86 0.06 150);
+  --warn: oklch(0.44 0.11 80);
+  --warn-soft: oklch(0.87 0.07 85);
+  --crit: oklch(0.45 0.16 18);
+  --crit-soft: oklch(0.86 0.06 18);
+  --sel: oklch(0.82 0.02 250);
+  --sel-line: oklch(0.50 0.07 250);
+  --unk: oklch(0.42 0.03 250);
+  --unk-soft: oklch(0.85 0.015 250);
 }
 
 /* Dark theme */
@@ -100,6 +100,38 @@ img[draggable="false"] { -webkit-user-drag: none; user-select: none; }
   --sel-line: oklch(0.5 0.03 250);
   --unk: oklch(0.72 0.03 250);
   --unk-soft: oklch(0.28 0.02 250);
+}
+
+/* Schiefer theme (warm mid-dark grey, manual choice only) */
+[data-app="slate"] {
+  color-scheme: dark;
+  --bg: oklch(0.35 0.008 60);
+  --panel: oklch(0.40 0.009 60);
+  --panel-2: oklch(0.43 0.009 60);
+  --line: oklch(0.49 0.010 60);
+  --line-strong: oklch(0.70 0.012 60);
+  --ink: oklch(0.975 0.004 60);
+  --ink-2: oklch(0.915 0.006 60);
+  --ink-3: oklch(0.865 0.008 60);
+  --accent: oklch(0.85 0.13 34);
+  --accent-ink: oklch(0.17 0.03 30);
+  --accent-soft: oklch(0.50 0.080 32);
+  --plate: oklch(0.46 0.009 60);
+  --plate-2: oklch(0.47 0.009 60);
+  --grid: oklch(0.62 0.010 60);
+  --hatch: rgba(255, 255, 255, 0.08);
+  --scrim: rgb(0 0 0 / 0.45);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.22), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --good: oklch(0.82 0.14 150);
+  --good-soft: oklch(0.37 0.06 150);
+  --warn: oklch(0.85 0.14 85);
+  --warn-soft: oklch(0.39 0.07 85);
+  --crit: oklch(0.83 0.14 18);
+  --crit-soft: oklch(0.38 0.08 18);
+  --sel: oklch(0.45 0.025 250);
+  --sel-line: oklch(0.75 0.06 250);
+  --unk: oklch(0.86 0.03 250);
+  --unk-soft: oklch(0.38 0.025 250);
 }
 
 .font-code { font-family: 'IBM Plex Mono', monospace; font-weight: 400; font-size: var(--fs-caption); }

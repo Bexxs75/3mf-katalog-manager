@@ -19,7 +19,11 @@ const MARKER: &str = "window-theme";
 
 /// Explicit choices override the OS; system keeps following the platform theme.
 fn background(marker: &str, system: Option<Theme>) -> Color {
+    const DARK: Color = Color(16, 14, 12, 255);
+    const SAND: Color = Color(211, 206, 202, 255);
+    const SLATE: Color = Color(62, 58, 54, 255);
     let dark = match marker.trim() {
+        "slate" => return SLATE,
         "dark" => true,
         "light" => false,
         "system:dark" | "system:light" => system.map(|theme| theme == Theme::Dark)
@@ -27,7 +31,7 @@ fn background(marker: &str, system: Option<Theme>) -> Color {
         _ => system == Some(Theme::Dark),
     };
     // sRGB equivalents of the first-frame colors in public/theme-boot.css.
-    if dark { Color(16, 14, 12, 255) } else { Color(245, 243, 241, 255) }
+    if dark { DARK } else { SAND }
 }
 
 pub fn create_window(app: &tauri::App) -> tauri::Result<()> {
@@ -54,7 +58,7 @@ pub fn frontend_ready(window: WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 pub fn save_window_theme(window: WebviewWindow, setting: String, resolved: String) -> Result<(), String> {
-    if !matches!(setting.as_str(), "light" | "dark" | "system") || !matches!(resolved.as_str(), "light" | "dark") {
+    if !matches!(setting.as_str(), "light" | "slate" | "dark" | "system") || !matches!(resolved.as_str(), "light" | "slate" | "dark") {
         return Err("Ungültiges Design".into());
     }
     let marker = if setting == "system" { format!("system:{resolved}") } else { setting };
@@ -64,7 +68,7 @@ pub fn save_window_theme(window: WebviewWindow, setting: String, resolved: Strin
     std::fs::write(&path, &marker).map_err(|e| e.to_string())?;
     crate::safe_file::harden_permissions(&path);
     // The frontend's media query is authoritative if the platform cannot report it.
-    window.set_background_color(Some(background(&marker, Some(if resolved == "dark" { Theme::Dark } else { Theme::Light }))))
+    window.set_background_color(Some(background(&marker, Some(if resolved == "light" { Theme::Light } else { Theme::Dark }))))
         .map_err(|e| e.to_string())
 }
 
@@ -74,13 +78,16 @@ mod tests {
     #[test]
     fn explicit_and_system_backgrounds() {
         let dark = Color(16, 14, 12, 255);
-        let light = Color(245, 243, 241, 255);
+        let light = Color(211, 206, 202, 255);
+        let slate = Color(62, 58, 54, 255);
         assert_eq!(background("dark", Some(Theme::Light)), dark);
         assert_eq!(background("light", Some(Theme::Dark)), light);
         assert_eq!(background("system:light", Some(Theme::Dark)), dark);
         assert_eq!(background("system:dark", Some(Theme::Light)), light);
         assert_eq!(background("system:dark", None), dark);
         assert_eq!(background("system:light", None), light);
+        assert_eq!(background("slate", Some(Theme::Light)), slate);
+        assert_eq!(background("slate", None), slate);
         assert_eq!(background("invalid", Some(Theme::Dark)), dark);
         assert_eq!(background("", None), light);
     }

@@ -401,7 +401,7 @@ describe('SettingsPanel selection groups', () => {
     const onThemeChange = vi.fn();
     renderPanel({ onDetailPanelChange: vi.fn(), onThemeChange });
     for (const [legend, options] of [
-      ['Farbschema', ['System', 'Hell', 'Dunkel']],
+      ['Farbschema', ['System', 'Sand', 'Schiefer', 'Dunkel']],
       ['Darstellungsdichte', ['Kompakt', 'Komfort']],
       ['Modellvorschau', [de.displayPreferenceThumbnail, de.displayPreferenceRender]],
       ['Detailbereich', [de.detailPanelAuto, de.detailPanelPinned]],

@@ -124,6 +124,9 @@ export function SettingsPanel({
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
   const t = useT();
+  const themeLabel = (opt: ThemeSetting) => ({
+    system: t('themeSystem'), light: t('themeSand'), slate: t('themeSlate'), dark: t('themeDark'),
+  })[opt];
   const { language, setLanguage } = useLanguage();
   const web = import.meta.env.VITE_TARGET === 'web';
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
@@ -264,9 +267,9 @@ export function SettingsPanel({
               <SettingsSection id="appearance" title={t('settingsSecAppearance')}>
                 <RadioSegments
                   legend={t('themeLegend')}
-                  options={(['system', 'light', 'dark'] as ThemeSetting[]).map(opt => ({
+                  options={(['system', 'light', 'slate', 'dark'] as ThemeSetting[]).map(opt => ({
                     value: opt,
-                    label: opt === 'system' ? t('themeSystem') : opt === 'light' ? t('themeLight') : t('themeDark'),
+                    label: themeLabel(opt),
                   }))}
                   value={themeSetting}
                   onChange={onThemeChange}
@@ -276,7 +279,7 @@ export function SettingsPanel({
                     ? t('themeDescriptionSystem')
                     : t('themeDescriptionManual').replace(
                         '{mode}',
-                        themeSetting === 'light' ? t('themeLight') : t('themeDark'),
+                        themeLabel(themeSetting),
                       )}
                 </div>
 

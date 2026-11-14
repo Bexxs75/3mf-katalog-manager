@@ -1,11 +1,16 @@
-html[data-app] { --plate: oklch(0.915 0.006 60); }
+html[data-app] { --plate: oklch(0.80 0.008 70); }
 html[data-app="dark"] { --plate: oklch(0.195 0.006 60); }
+html[data-app="slate"] { --plate: oklch(0.46 0.009 60); }
 /* First-frame colors: keep these values in sync with src/styles/theme.css. */
 html, body {
-  background: oklch(0.965 0.004 60);
-  color: oklch(0.245 0.01 45);
+  background: oklch(0.855 0.008 70);
+  color: oklch(0.235 0.01 45);
 }
 html[data-app="dark"], html[data-app="dark"] body {
   background: oklch(0.165 0.005 60);
   color: oklch(0.945 0.005 60);
+}
+html[data-app="slate"], html[data-app="slate"] body {
+  background: oklch(0.35 0.008 60);
+  color: oklch(0.975 0.004 60);
 }
