@@ -136,6 +136,20 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Restore:** the fallback copy `catalog.db.bak-…` of the replaced database no longer keeps API keys or the Thingiverse key once the restored catalog is open.
 - **G-code:** a print time with a non-ASCII character (for example `1µ`) no longer aborts the import of the file; it counts as no time.
 
+## [0.17.2] - 2026-11-03
+
+### Fixed
+
+- **Slicers (Linux AppImage):** A slicer started from the AppImage no longer inherits the AppImage's own `APPDIR`, `APPIMAGE`, `ARGV0` and `OWD` variables. Start scripts that resolve their libraries relative to `APPDIR` (for example the one of the `orca-slicer-unstable-bin` package) looked in the app's folder and failed with "error while loading shared libraries".
+
+## [0.17.1] - 2026-11-02
+
+### Fixed
+
+- **Import:** Cancelling the file dialog of "Import → Files…" no longer opens an empty import window with 0 items. This happened where the app uses the zenity dialog (the container version, Linux without a desktop portal).
+- **Tag menu:** the menu of an automatic tag ("Remove and do not assign automatically again") no longer closes by itself when it is opened right after the model's tag suggestions have loaded.
+- **Slicers:** Registering a slicer that is already registered (for example the same program chosen again or reached through a link) no longer fails with a database error; the existing entry is kept.
+
 ## [0.17.0] - 2026-10-28
 
 ### Added
@@ -947,6 +961,20 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Druckeranbindung:** Drucke, die nicht mehr in die 500 offenen Drucke passten, werden später nicht mehr übersprungen (der nächste Abruf setzt beim ersten ausgelassenen Druck fort); „Ältere Drucke einbeziehen“ setzt hinter den bereits übernommenen Drucken fort, statt die neuesten erneut zu lesen; ein gelöschter API-Schlüssel wird von einem bereits laufenden Durchgang nicht mehr gesendet.
 - **Wiederherstellung:** Die Rückfallkopie `catalog.db.bak-…` der ersetzten Datenbank behält keine API-Schlüssel und keinen Thingiverse-Schlüssel mehr, sobald der wiederhergestellte Katalog geöffnet ist.
 - **G-Code:** Eine Druckzeit mit einem Nicht-ASCII-Zeichen (zum Beispiel `1µ`) bricht den Import der Datei nicht mehr ab; sie gilt als keine Zeit.
+
+## [0.17.2] - 2026-11-03
+
+### Behoben
+
+- **Slicer (Linux-AppImage):** Ein aus der AppImage gestarteter Slicer erbt die AppImage-eigenen Variablen `APPDIR`, `APPIMAGE`, `ARGV0` und `OWD` nicht mehr. Startskripte, die ihre Bibliotheken relativ zu `APPDIR` suchen (zum Beispiel das des Pakets `orca-slicer-unstable-bin`), suchten im Ordner der App und brachen mit „error while loading shared libraries“ ab.
+
+## [0.17.1] - 2026-11-02
+
+### Behoben
+
+- **Import:** Bricht man den Dateidialog von „Import → Dateien …“ ab, öffnet sich kein leeres Import-Fenster mit 0 Elementen mehr. Das passierte dort, wo die App den Zenity-Dialog verwendet (Container-Version, Linux ohne Desktop-Portal).
+- **Tag-Menü:** Das Menü eines automatischen Tags („Entfernen und nicht mehr automatisch vergeben“) schließt sich nicht mehr von selbst, wenn es unmittelbar nach dem Laden der Tag-Vorschläge des Modells geöffnet wird.
+- **Slicer:** Das Registrieren eines Slicers, der schon registriert ist (zum Beispiel dasselbe Programm erneut gewählt oder über einen Link erreicht), schlägt nicht mehr mit einem Datenbankfehler fehl; der vorhandene Eintrag bleibt erhalten.
 
 ## [0.17.0] - 2026-10-28
 

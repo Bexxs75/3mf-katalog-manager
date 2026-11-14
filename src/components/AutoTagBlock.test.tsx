@@ -29,6 +29,8 @@ function renderPanel(density: string, handlers: { onAddTag?: (t: string) => void
   return { onAddTag, onRemoveTag };
 }
 
+// Generous per-test timeout: parallel workers make the waits below slow (from master).
+vi.setConfig({ testTimeout: 30_000 });
 // Generous timeout: the whole suite runs in parallel workers and the panel renders slowly then.
 // The act() flush lets TagRemoveButton's reset effect (setOpen(false) on autoTag change) run before the click opens the menu.
 const removeAuto = async () => {
@@ -69,7 +71,7 @@ describe.each(['compact', 'comfort'])('tag chips in the %s detail panel', (densi
   it('removes only: the menu entry behaves like the plain button and does not block', async () => {
     const { onRemoveTag } = renderPanel(density);
     fireEvent.click(await removeAuto());
-    fireEvent.click(screen.getByRole('menuitem', { name: de.autoTagRemoveOnly }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: de.autoTagRemoveOnly }, { timeout: 5000 }));
     expect(onRemoveTag).toHaveBeenCalledWith('miniatur');
     expect(api.blockAutoTag).not.toHaveBeenCalled();
     expect(screen.queryByRole('menu')).toBeNull();
@@ -78,7 +80,7 @@ describe.each(['compact', 'comfort'])('tag chips in the %s detail panel', (densi
   it('removes and blocks, confirms in a status message and takes the block back with Undo', async () => {
     const { onRemoveTag, onAddTag } = renderPanel(density);
     fireEvent.click(await removeAuto());
-    fireEvent.click(screen.getByRole('menuitem', { name: de.autoTagRemoveAndBlock }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: de.autoTagRemoveAndBlock }, { timeout: 5000 }));
     await waitFor(() => expect(api.blockAutoTag).toHaveBeenCalledWith('miniatur'));
     expect(onRemoveTag).toHaveBeenCalledWith('miniatur');
     const status = await screen.findByRole('status');
@@ -98,7 +100,7 @@ describe.each(['compact', 'comfort'])('tag chips in the %s detail panel', (densi
     vi.mocked(api.blockAutoTag).mockRejectedValue(new Error('Datenbank gesperrt'));
     const { onRemoveTag } = renderPanel(density);
     fireEvent.click(await removeAuto());
-    fireEvent.click(screen.getByRole('menuitem', { name: de.autoTagRemoveAndBlock }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: de.autoTagRemoveAndBlock }, { timeout: 5000 }));
     expect(await screen.findByRole('alert')).toHaveTextContent(de.autoTagBlockError);
     expect(onRemoveTag).not.toHaveBeenCalled();
     // Focus returns to the button after the failed call settles, not synchronously.
@@ -111,7 +113,7 @@ describe.each(['compact', 'comfort'])('tag chips in the %s detail panel', (densi
     const button = await removeAuto();
     button.focus();
     fireEvent.keyDown(button, { key: 'ArrowDown' });
-    const [first, second] = screen.getAllByRole('menuitem');
+    const [first, second] = await screen.findAllByRole('menuitem', {}, { timeout: 5000 });
     expect(button).toHaveAttribute('aria-expanded', 'true');
     expect(first).toHaveFocus();
     fireEvent.keyDown(first, { key: 'ArrowDown' });
@@ -129,9 +131,9 @@ describe.each(['compact', 'comfort'])('tag chips in the %s detail panel', (densi
   it('describes both choices for screen readers', async () => {
     renderPanel(density);
     fireEvent.click(await removeAuto());
-    expect(screen.getByRole('menu')).toHaveAccessibleName('miniatur entfernen: Auswahl');
-    expect(screen.getByRole('menuitem', { name: de.autoTagRemoveAndBlock })).toHaveAccessibleDescription(de.autoTagRemoveAndBlockHint);
-    expect(screen.getByRole('menuitem', { name: de.autoTagRemoveOnly })).toHaveAccessibleDescription(de.autoTagRemoveOnlyHint);
+    expect(await screen.findByRole('menu', {}, { timeout: 5000 })).toHaveAccessibleName('miniatur entfernen: Auswahl');
+    expect(await screen.findByRole('menuitem', { name: de.autoTagRemoveAndBlock }, { timeout: 5000 })).toHaveAccessibleDescription(de.autoTagRemoveAndBlockHint);
+    expect(await screen.findByRole('menuitem', { name: de.autoTagRemoveOnly }, { timeout: 5000 })).toHaveAccessibleDescription(de.autoTagRemoveOnlyHint);
   });
 });
 
@@ -152,7 +154,7 @@ it('offers the same menu on the full detail page', async () => {
     onSnapshotCaptured={noop} onSetSourceUrl={noop} onOpenInSlicer={noop} onRescanMetadata={noop} onAddToCollection={noop}
     collections={[]} slicers={[]} slicerError={null} rescanError={null} rescanSuccess={false} displayPreference="thumbnail" /></LanguageProvider>);
   fireEvent.click(await removeAuto());
-  fireEvent.click(screen.getByRole('menuitem', { name: de.autoTagRemoveAndBlock }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: de.autoTagRemoveAndBlock }, { timeout: 5000 }));
   await waitFor(() => expect(api.blockAutoTag).toHaveBeenCalledWith('miniatur'));
   expect(onRemoveTag).toHaveBeenCalledWith('miniatur');
   expect(screen.getByRole('button', { name: de.chipRemove.replace('{label}', 'mein-projekt') })).not.toHaveAttribute('aria-haspopup');

@@ -716,7 +716,9 @@ class WebTests(unittest.TestCase):
         self.assertEqual(header, "attachment; filename*=UTF-8''a.3mf")
 
     def test_schema_from_checkout_and_missing_table(self):
-        schema = Path(__file__).resolve().parents[3] / 'crates/katalog-core/src/db/schema.sql'
+        root = Path(__file__).resolve().parents[3]
+        # The schema moved from src-tauri/ to the shared core crate with the web integration; accept both layouts.
+        schema = next(p for p in (root / 'crates/katalog-core/src/db/schema.sql', root / 'src-tauri/src/db/schema.sql') if p.exists())
         full_db = self.base / 'full.db'
         with contextlib.closing(sqlite3.connect(full_db)) as con, con:
             con.executescript(schema.read_text())
