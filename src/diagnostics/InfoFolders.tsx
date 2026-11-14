@@ -41,9 +41,8 @@ export function InfoFolders() {
   ];
 
   return (
-    <div className="mt-3 pt-3 border-t border-[var(--line)]">
-      <div className="ui-label text-[var(--ink-3)]">{t('infoFoldersHeading')}</div>
-      <div className="mt-2 flex flex-col gap-1.5">
+    <div>
+      <div className="flex flex-col gap-1.5">
         {container ? paths && <>
           <p className="text-small break-all select-text">{t('containerDataPath').replace('{path}', displayName(paths.data))}</p>
           <p className="text-small break-all select-text">{t('containerLogPath').replace('{path}', displayName(paths.logs))}</p>

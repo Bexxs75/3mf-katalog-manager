@@ -1,0 +1,184 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
+import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
+import { LanguageProvider } from '../i18n/LanguageContext';
+import { SettingsPanel, type SettingsPanelProps } from './SettingsPanel';
+import { getSession } from '../lib/webSession';
+import { de } from '../i18n/de';
+import { en } from '../i18n/en';
+import { es } from '../i18n/es';
+import { fr } from '../i18n/fr';
+
+vi.mock('../diagnostics/DiagnosticsContext', () => ({ useDiagnostics: () => ({ openBugReport: vi.fn() }) }));
+
+beforeEach(async () => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.startsWith('/api/invoke/')) return Response.json(url.endsWith('list_blocked_auto_tags') ? [] : true);
+    return Response.json({ authenticated: true, writable: false, csrfToken: 'token', mustChangePassword: false });
+  }));
+  await getSession();
+});
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+function renderCatalogTab() {
+  const props = {
+    overlay: false, onClose: vi.fn(), onOpenPrinters: vi.fn(),
+    themeSetting: 'system', onThemeChange: vi.fn(),
+    uiDensity: 'compact', onUiDensityChange: vi.fn(),
+    displayPreference: 'thumbnail', onDisplayPreferenceChange: vi.fn(),
+    slicers: [], primarySlicerId: null, onAddSlicer: vi.fn(), addSlicerError: null,
+    onRemoveSlicer: vi.fn(), onSetPrimarySlicer: vi.fn(),
+    onScanCatalogIssues: vi.fn(), cleanupScanning: false, cleanupError: null,
+    onExportCatalog: vi.fn(async () => true), catalogModelCount: 0, catalogFolderCount: 0,
+    onCatalogReset: vi.fn(), onImportCatalog: vi.fn(), onClearCatalogBackupError: vi.fn(), catalogBackupError: null,
+    catalogBaseDir: null, onOpenCatalogSetup: vi.fn(),
+    update: {} as SettingsPanelProps['update'],
+  } as SettingsPanelProps;
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}><SettingsPanel {...props} /></RuntimeEnvironmentProvider></LanguageProvider>);
+  fireEvent.click(screen.getByRole('tab', { name: 'Wartung' }));
+  return props;
+}
+
+it('offers the backup as a plain download link, even for a read-only session, and no desktop import', async () => {
+  const props = renderCatalogTab();
+  const link = await screen.findByRole('link', { name: de.exportCatalogWebButton });
+  expect(link).toHaveAttribute('href', '/api/backup/export');
+  expect(link).toHaveAttribute('download');
+  expect(screen.getByText(de.catalogBackupWebHint)).toBeInTheDocument();
+  // The long background sits in two closed disclosures; the short text stays visible.
+  expect(screen.getByText(de.catalogBackupWebHint)).toBeVisible();
+  for (const [title, text] of [[de.catalogBackupWebRestoreTitle, de.catalogBackupWebRestoreText], [de.catalogBackupWebFailureTitle, de.catalogBackupWebFailureHint]]) {
+    const details = screen.getByText(title).closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText(title));
+    expect(details).toHaveAttribute('open');
+    expect(screen.getByText(text)).toBeVisible();
+  }
+  expect(screen.queryByRole('button', { name: de.importCatalogButton })).toBeNull();
+  expect(screen.queryByRole('button', { name: de.exportCatalogButton })).toBeNull();
+  link.addEventListener('click', event => event.preventDefault());
+  fireEvent.click(link);
+  expect(props.onExportCatalog).not.toHaveBeenCalled();
+});
+
+it('keeps the same focused link while paused, blocks further clicks and re-enables it afterwards', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  renderCatalogTab();
+  const link = screen.getByRole('link', { name: de.exportCatalogWebButton });
+  // jsdom would try to navigate on the first (allowed) click; swallow that one only.
+  link.addEventListener('click', event => event.preventDefault(), { once: true });
+  link.focus();
+  fireEvent.click(link);
+  const paused = screen.getByRole('link', { name: de.exportCatalogWebButton });
+  expect(paused).toBe(link);
+  expect(paused).toHaveFocus();
+  expect(paused).toHaveAttribute('aria-disabled', 'true');
+  expect(paused).toHaveAttribute('href', '/api/backup/export');
+  // The pause is written out and tied to the link, and the click claims no finished backup.
+  expect(screen.getByRole('status')).toHaveTextContent(de.catalogBackupWebPause);
+  expect(paused).toHaveAccessibleDescription(de.catalogBackupWebPause);
+  expect(screen.queryByText(/Sicherung erstellt/)).toBeNull();
+  const second = new MouseEvent('click', { bubbles: true, cancelable: true });
+  paused.dispatchEvent(second);
+  expect(second.defaultPrevented).toBe(true);
+  await act(async () => { vi.advanceTimersByTime(30_100); });
+  const again = screen.getByRole('link', { name: de.exportCatalogWebButton });
+  expect(again).toBe(link);
+  expect(again).not.toHaveAttribute('aria-disabled');
+  expect(screen.queryByText(de.catalogBackupWebPause)).toBeNull();
+});
+
+it('has the new texts in all four languages', () => {
+  for (const texts of [de, en, es, fr]) {
+    expect(texts.catalogBackupWebHint.length).toBeGreaterThan(20);
+    expect(texts.catalogBackupWebFailureHint.length).toBeGreaterThan(20);
+    expect(texts.catalogBackupWebPause).toContain('30');
+  }
+  expect(new Set([de, en, es, fr].map(t => t.catalogBackupWebHint)).size).toBe(4);
+  // The real limits of a desktop restore are named.
+  for (const texts of [de, en, es, fr]) expect(texts.catalogBackupWebRestoreText).toContain('256');
+  expect(de.catalogBackupWebHint).toContain('Windows');
+  expect(de.catalogBackupWebFailureHint).toContain('neu an');
+});
+
+it('shows the app version in the Info tab of the web build', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.startsWith('/api/invoke/')) return Response.json(url.endsWith('get_app_version') ? '0.17.0' : []);
+    return Response.json({ authenticated: true, writable: false, csrfToken: 'token', mustChangePassword: false });
+  }));
+  await getSession();
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+  expect(await screen.findByTestId('web-version')).toHaveTextContent('0.17.0');
+});
+
+it('says so when the version cannot be read in the web build, and reads again on request', async () => {
+  let failVersion = true;
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.startsWith('/api/invoke/')) {
+      if (url.endsWith('get_app_version')) return failVersion ? new Response('no', { status: 500 }) : Response.json('0.17.0');
+      return Response.json([]);
+    }
+    return Response.json({ authenticated: true, writable: false, csrfToken: 'token', mustChangePassword: false });
+  }));
+  await getSession();
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+  expect(await screen.findByText(new RegExp(de.infoVersionLoadFailed))).toBeInTheDocument();
+  failVersion = false;
+  fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+  expect(await screen.findByTestId('web-version')).toHaveTextContent('0.17.0');
+});
+
+it('offers no close-behavior group in the web build and never asks the backend for it', async () => {
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Allgemein' }));
+  expect(await screen.findByRole('group', { name: de.languageTitle })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: de.closeActionTitle })).toBeNull();
+  const urls = vi.mocked(fetch).mock.calls.map(call => String(call[0]));
+  expect(urls.some(url => url.includes('close_behavior') || url.includes('tray_labels'))).toBe(false);
+});
+
+it('has four tabs without Slicer & Dienste and only the sections the browser can use', async () => {
+  renderCatalogTab();
+  expect(screen.getAllByRole('tab').map(node => node.textContent)).toEqual(['Allgemein', 'Katalog', 'Wartung', 'Info']);
+  const headings = () => screen.getAllByRole('heading', { level: 3 }).map(node => node.textContent);
+  // Opened on Maintenance by the helper: only the download, no check, restore or reset.
+  expect(headings()).toEqual([de.settingsSecWebBackup]);
+  fireEvent.click(screen.getByRole('tab', { name: 'Allgemein' }));
+  expect(headings()).toEqual([de.settingsSecAppearance, de.settingsSecLanguage, de.settingsSecControls, de.settingsSecPrintMethod, de.settingsSecPrinters]);
+  expect(screen.queryByRole('switch', { name: de.singleKeyShortcutsTitle })).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: 'Katalog' }));
+  expect(headings()).toEqual([de.settingsSecAutoTags, de.settingsSecPrintData]);
+  fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+  expect(headings()).toEqual([de.settingsSecVersionWeb, de.settingsSecAbout]);
+});
+
+it('shows the print method in the web build as an information line, not as a choice', () => {
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Allgemein' }));
+  expect(screen.getByText(`${de.ptCurrent.replace('{choice}', de.ptBoth)} ${de.ptWebReadOnly}`)).toBeVisible();
+  expect(screen.queryByRole('radio', { name: new RegExp(de.ptFilament) })).toBeNull();
+});
+
+it('keeps the complete web-maintenance disclosure sequence in the modal Tab cycle', () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
+  renderCatalogTab();
+  const link = screen.getByRole('link', { name: de.exportCatalogWebButton });
+  const summaries = [...screen.getByRole('tabpanel').querySelectorAll('summary')];
+  expect(summaries.length).toBeGreaterThan(1);
+  // jsdom has no native Tab action: unprevented events leave the next native stop reachable.
+  for (const element of [link, ...summaries.slice(0, -1)]) {
+    element.focus();
+    expect(fireEvent.keyDown(element, { key: 'Tab' })).toBe(true);
+    expect(element).toHaveFocus();
+  }
+  const last = summaries[summaries.length - 1]; last.focus();
+  expect(fireEvent.keyDown(last, { key: 'Tab' })).toBe(false);
+  const close = screen.getByRole('button', { name: de.settingsClose });
+  expect(close).toHaveFocus();
+  fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+  expect(last).toHaveFocus();
+});

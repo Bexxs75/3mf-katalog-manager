@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 
 /** Whether this build can render STEP geometry at all (see `has_step_preview`). */
 export function hasStepPreview() {

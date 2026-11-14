@@ -1,109 +1,28 @@
 //! Tauri commands of the printer connection. Network work runs in `spawn_blocking`, the database isn't locked meanwhile.
 
 use super::*;
-use serde::Deserialize;
 use tauri::Manager;
 
 use crate::db::printer_link as store;
 use crate::printer_link::address::AddressPolicy;
-use crate::printer_link::booking::{self, Decision};
-use crate::printer_link::matching::{best_match, Candidate, MatchKind};
+use crate::printer_link::booking;
 use crate::printer_link::sync::{unix_now, SyncWaker};
+use crate::printer_link::api_key::ApiKey;
 use crate::printer_link::{make_link, LinkError};
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PrinterConnectionDto {
-    pub printer_id: String,
-    pub kind: String,
-    pub address: String,
-    pub base_url: Option<String>,
-    pub remote_version: Option<String>,
-    pub connected_since: f64,
-    pub last_synced_at: Option<f64>,
-    pub last_error: Option<String>,
-    pub error_since: Option<f64>,
-    pub paused: bool,
-    pub clock_offset_s: f64,
-}
+pub use crate::printer_link::views::{
+    ConfirmResultDto, JobDecisionDto, JobPreviewDto, OpenPrinterJobDto, PrinterConnectionDto,
+    TestResultDto,
+};
+use crate::printer_link::views::{self, connection_dto, parse_id as id};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TestResultDto {
-    pub ok: bool,
+pub struct OlderHistoryResultDto {
+    /// New rows of history.
+    pub added: usize,
+    /// Why nothing was read (an error code of the connection), if so.
     pub error: Option<String>,
-    pub connection: Option<PrinterConnectionDto>,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelMatchDto {
-    pub file_id: String,
-    pub file_name: String,
-    pub sure: bool,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenPrinterJobDto {
-    pub id: String,
-    pub printer_id: String,
-    pub printer_name: String,
-    pub file_name: String,
-    pub outcome: String,
-    pub raw_status: String,
-    pub ended_at: f64,
-    pub print_duration_s: f64,
-    pub used_mm: f64,
-    pub partial_percent: Option<u8>,
-    pub material: Option<String>,
-    pub has_thumbnail: bool,
-    pub suggested_spool_id: Option<String>,
-    pub grams: Option<f64>,
-    pub material_mismatch: bool,
-    pub model_match: Option<ModelMatchDto>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JobPreviewDto {
-    pub grams: f64,
-    pub material_mismatch: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JobDecisionDto {
-    pub job_id: String,
-    pub spool_id: String,
-    pub file_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConfirmResultDto {
-    pub confirmed: usize,
-    pub failed: usize,
-}
-
-fn id(value: &str, what: &str) -> CmdResult<i64> {
-    value.parse().map_err(|_| format!("ungueltige {what}-ID").into())
-}
-
-fn connection_dto(c: store::PrinterConnectionRecord) -> PrinterConnectionDto {
-    PrinterConnectionDto {
-        printer_id: c.printer_id.to_string(),
-        kind: c.kind,
-        address: c.address,
-        base_url: c.base_url,
-        remote_version: c.remote_version,
-        connected_since: c.connected_since,
-        last_synced_at: c.last_synced_at,
-        last_error: c.last_error,
-        error_since: c.error_since,
-        paused: c.paused,
-        clock_offset_s: c.clock_offset_s,
-    }
 }
 
 fn now_rfc3339() -> String {
@@ -116,106 +35,32 @@ fn wake(app: &tauri::AppHandle) {
     }
 }
 
+/// "Connect now": the pass also contacts printers that are waiting after failures.
+fn wake_now(app: &tauri::AppHandle) {
+    if let Some(w) = app.try_state::<SyncWaker>() {
+        w.wake_now();
+    }
+}
+
 pub(crate) fn list_printer_connections_with_conn(conn: &Connection) -> CmdResult<Vec<PrinterConnectionDto>> {
-    Ok(store::list_connections(conn).map_err(|e| e.to_string())?.into_iter().map(connection_dto).collect())
+    Ok(views::list_printer_connections(conn)?)
 }
 
 pub(crate) fn list_open_printer_jobs_with_conn(conn: &Connection) -> CmdResult<Vec<OpenPrinterJobDto>> {
-    let jobs = store::list_open_jobs(conn).map_err(|e| e.to_string())?;
-    if jobs.is_empty() {
-        return Ok(Vec::new());
-    }
-    let candidates: Vec<Candidate> = conn
-        .prepare("SELECT id, name, imported_at FROM files WHERE deleted_at IS NULL")
-        .and_then(|mut s| {
-            s.query_map([], |r| Ok(Candidate { file_id: r.get(0)?, name: r.get(1)?, imported_at: r.get(2)? }))?
-                .collect()
-        })
-        .map_err(|e| e.to_string())?;
-    let mut out = Vec::with_capacity(jobs.len());
-    for j in jobs {
-        let printer_name: String = conn
-            .query_row("SELECT name FROM printers WHERE id = ?1", [j.printer_id], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
-        let suggested = booking::suggest_spool(conn, j.printer_id).map_err(|e| e.to_string())?;
-        let spool = match suggested {
-            Some(sid) => booking::spool_info(conn, sid).map_err(|e| e.to_string())?,
-            None => None,
-        };
-        let grams = spool.as_ref().map(|s| {
-            booking::grams(j.used_mm, j.slicer_total_mm, j.slicer_weight_g, s.diameter_mm, &s.material)
-        });
-        let material_mismatch = spool
-            .as_ref()
-            .is_some_and(|s| !booking::materials_match(j.material.as_deref(), &s.material));
-        let model_match = best_match(&j.file_name, &candidates).map(|m| ModelMatchDto {
-            file_id: m.file_id.to_string(),
-            file_name: m.file_name,
-            sure: m.kind == MatchKind::Sure,
-        });
-        out.push(OpenPrinterJobDto {
-            id: j.id.to_string(),
-            printer_id: j.printer_id.to_string(),
-            printer_name,
-            partial_percent: if j.outcome == "partial" { booking::partial_percent(j.used_mm, j.slicer_total_mm) } else { None },
-            file_name: j.file_name,
-            outcome: j.outcome,
-            raw_status: j.raw_status,
-            ended_at: j.ended_at,
-            print_duration_s: j.print_duration_s,
-            used_mm: j.used_mm,
-            material: j.material,
-            has_thumbnail: j.thumbnail_path.is_some(),
-            suggested_spool_id: suggested.map(|s| s.to_string()),
-            grams,
-            material_mismatch,
-            model_match,
-        });
-    }
-    Ok(out)
+    Ok(views::list_open_printer_jobs(conn)?)
 }
 
 pub(crate) fn preview_printer_job_with_conn(conn: &Connection, job_id: &str, spool_id: &str) -> CmdResult<JobPreviewDto> {
-    let job = store::get_job(conn, id(job_id, "Druck")?)
-        .map_err(|e| e.to_string())?
-        .ok_or("Druck nicht gefunden")?;
-    let spool_id = id(spool_id, "Spulen")?;
-    booking::ensure_filament(conn, spool_id).map_err(|e| e.to_string())?;
-    let spool = booking::spool_info(conn, spool_id)
-        .map_err(|e| e.to_string())?
-        .ok_or("Spule nicht gefunden")?;
-    Ok(JobPreviewDto {
-        grams: booking::grams(job.used_mm, job.slicer_total_mm, job.slicer_weight_g, spool.diameter_mm, &spool.material),
-        material_mismatch: !booking::materials_match(job.material.as_deref(), &spool.material),
-    })
+    Ok(views::preview_printer_job(conn, job_id, spool_id)?)
 }
 
-/// Gate before `test_printer_connection`: if the printer connection is off, not a
-/// single packet goes to a printer, not even for the test. `Some(...)` = return the
-/// result directly, `None` = continue. Resin printers and unknown IDs give an
-/// error before anything goes to the network.
+/// Gate before `test_printer_connection`, see `views::test_printer_connection_gate`.
 pub(crate) fn test_printer_connection_gate_with_conn(conn: &Connection, printer_id: i64) -> CmdResult<Option<TestResultDto>> {
-    db::printers::ensure_filament_printer(conn, printer_id).map_err(|e| e.to_string())?;
-    if store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
-        Ok(None)
-    } else {
-        Ok(Some(TestResultDto { ok: false, error: Some("disabled".into()), connection: None }))
-    }
+    Ok(views::test_printer_connection_gate(conn, printer_id)?)
 }
 
 pub(crate) fn confirm_printer_jobs_with_conn(conn: &mut Connection, decisions: Vec<JobDecisionDto>) -> CmdResult<ConfirmResultDto> {
-    let parsed = decisions
-        .iter()
-        .map(|d| {
-            Ok(Decision {
-                job_id: id(&d.job_id, "Druck")?,
-                spool_id: id(&d.spool_id, "Spulen")?,
-                file_id: d.file_id.as_deref().map(|f| id(f, "Modell")).transpose()?,
-            })
-        })
-        .collect::<CmdResult<Vec<_>>>()?;
-    let (confirmed, failed) = booking::confirm_many(conn, &parsed, &now_rfc3339());
-    Ok(ConfirmResultDto { confirmed, failed })
+    Ok(views::confirm_printer_jobs(conn, decisions, &now_rfc3339())?)
 }
 
 #[tauri::command]
@@ -230,7 +75,7 @@ pub fn set_printer_link_enabled(app: tauri::AppHandle, state: State<AppState>, e
     store::set_printer_link_enabled(&conn, enabled).map_err(|e| e.to_string())?;
     drop(conn);
     if enabled {
-        wake(&app);
+        wake_now(&app);
     }
     Ok(())
 }
@@ -241,10 +86,34 @@ pub fn list_printer_connections(state: State<AppState>) -> CmdResult<Vec<Printer
     list_printer_connections_with_conn(&conn)
 }
 
-fn test_link(kind: &str, address: &str, container: bool) -> Result<crate::printer_link::ConnectionInfo, LinkError> {
+/// The key typed into the form: `None` = nothing typed (keep the stored one), a code for the
+/// interface when what was typed can't be a key. The code carries nothing of the value.
+fn parse_new_key(typed: Option<&str>) -> Result<Option<ApiKey>, &'static str> {
+    match typed.map(str::trim).filter(|k| !k.is_empty()) {
+        None => Ok(None),
+        Some(raw) => ApiKey::parse(raw).map(Some).map_err(|_| "api_key_invalid"),
+    }
+}
+
+/// The key a test sends: the one just typed, else the stored one, but a stored key only goes to
+/// the address it was saved for.
+pub(crate) fn key_for_test_with_conn(conn: &Connection, printer_id: i64, address: &str, typed: Option<ApiKey>) -> CmdResult<Option<ApiKey>> {
+    if typed.is_some() {
+        return Ok(typed);
+    }
+    let same_address = store::get_connection(conn, printer_id)
+        .map_err(|e| e.to_string())?
+        .is_some_and(|c| c.address == address);
+    if !same_address {
+        return Ok(None);
+    }
+    store::get_api_key(conn, printer_id).map_err(|e| e.to_string().into())
+}
+
+fn test_link(kind: &str, address: &str, api_key: Option<&ApiKey>, container: bool) -> Result<crate::printer_link::ConnectionInfo, LinkError> {
     use crate::printer_link::address::{check_container_address, explain_address_error};
     check_container_address(address, container)?;
-    make_link(kind, address, AddressPolicy::HOME_NETWORK)
+    make_link(kind, address, api_key, AddressPolicy::HOME_NETWORK)
         .and_then(|link| link.test())
         .map_err(|error| explain_address_error(address, container, error))
 }
@@ -256,26 +125,32 @@ pub async fn test_printer_connection(
     printer_id: String,
     kind: String,
     address: String,
+    api_key: Option<String>,
     environment: State<'_, RuntimeEnvironment>,
 ) -> CmdResult<TestResultDto> {
     let pid = id(&printer_id, "Drucker")?;
-    {
+    let new_key = match parse_new_key(api_key.as_deref()) {
+        Ok(key) => key,
+        Err(code) => return Ok(TestResultDto { ok: false, error: Some(code.into()), connection: None }),
+    };
+    let key = {
         let conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
         if let Some(disabled) = test_printer_connection_gate_with_conn(&conn, pid)? {
             return Ok(disabled);
         }
-    }
+        key_for_test_with_conn(&conn, pid, address.trim(), new_key.clone())?
+    };
     let container = environment.container;
     let (k, a) = (kind.clone(), address.trim().to_string());
     let tested = tauri::async_runtime::spawn_blocking(move || {
-        test_link(&k, &a, container)
+        test_link(&k, &a, key.as_ref(), container)
     })
     .await
     .map_err(|e| e.to_string())?;
     match tested {
         Ok(info) => {
             let conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
-            store::save_connection_after_test(&conn, pid, &kind, address.trim(), &info.base_url, &info.version, unix_now())
+            store::save_connection_after_test(&conn, pid, &kind, address.trim(), new_key.as_ref(), &info.base_url, &info.version, unix_now())
                 .map_err(|e| e.to_string())?;
             store::set_clock_offset(&conn, pid, info.clock_offset_s).map_err(|e| e.to_string())?;
             log::info!(target: "drucker", "Uhr des Druckers weicht {:.0} s ab", info.clock_offset_s);
@@ -290,15 +165,40 @@ pub async fn test_printer_connection(
     }
 }
 
+/// Removes the key of a connection; the connection itself stays.
+#[tauri::command]
+pub fn clear_printer_api_key(state: State<AppState>, printer_id: String) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    store::clear_api_key(&conn, id(&printer_id, "Drucker")?).map_err(|e| e.to_string().into())
+}
+
 #[tauri::command]
 pub fn remove_printer_connection(state: State<AppState>, printer_id: String) -> CmdResult<()> {
     let conn = lock_db(&state)?;
     store::delete_connection(&conn, id(&printer_id, "Drucker")?).map_err(|e| e.to_string().into())
 }
 
+/// "Include older history": prints from before the connection become history for the statistics.
+/// Nothing of it is offered for deduction. The printer is asked on a worker thread, the database
+/// is not locked meanwhile.
+#[tauri::command]
+pub async fn include_older_printer_history(app: tauri::AppHandle, printer_id: String) -> CmdResult<OlderHistoryResultDto> {
+    let pid = id(&printer_id, "Drucker")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let maker = |kind: &str, address: &str, key: Option<&ApiKey>| make_link(kind, address, key, AddressPolicy::HOME_NETWORK);
+        match crate::printer_link::sync::include_older_history(&state.db, &maker, pid).map_err(|e| e.to_string())? {
+            Ok(added) => Ok(OlderHistoryResultDto { added, error: None }),
+            Err(code) => Ok(OlderHistoryResultDto { added: 0, error: Some(code.to_string()) }),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn sync_printers_now(app: tauri::AppHandle) -> CmdResult<()> {
-    wake(&app);
+    wake_now(&app);
     Ok(())
 }
 
@@ -322,80 +222,28 @@ pub fn preview_printer_job(state: State<AppState>, job_id: String, spool_id: Str
     preview_printer_job_with_conn(&conn, &job_id, &spool_id)
 }
 
-/// Decides without network access whether a thumbnail may be fetched: `None` if
-/// the switch is off, the print/path/connection is missing or the connection is
-/// paused (only a new connection test lifts that).
 pub(crate) fn thumbnail_fetch_plan_with_conn(
     conn: &Connection,
     job_id: &str,
 ) -> CmdResult<Option<(store::PrinterConnectionRecord, String)>> {
-    let jid = id(job_id, "Druck")?;
-    if !store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
-        return Ok(None);
-    }
-    let Some(job) = store::get_job(conn, jid).map_err(|e| e.to_string())? else { return Ok(None) };
-    let Some(path) = job.thumbnail_path else { return Ok(None) };
-    let Some(c) = store::get_connection(conn, job.printer_id).map_err(|e| e.to_string())? else { return Ok(None) };
-    if c.paused {
-        return Ok(None);
-    }
-    Ok(Some((c, path)))
+    Ok(views::thumbnail_fetch_plan(conn, job_id)?)
 }
-
-/// Upper limit of thumbnail fetches running at once. Each one opens its own
-/// HTTP client (threads, sockets); hundreds in parallel exhaust the process's
-/// file handles.
-const MAX_CONCURRENT_THUMBNAIL_FETCHES: usize = 4;
-
-/// Counting semaphore on std primitives; the slot is returned on drop, so also
-/// when the fetch fails or panics.
-struct FetchLimiter {
-    running: std::sync::Mutex<usize>,
-    freed: std::sync::Condvar,
-    max: usize,
-}
-
-struct FetchSlot<'a>(&'a FetchLimiter);
-
-impl FetchLimiter {
-    const fn new(max: usize) -> Self {
-        FetchLimiter { running: std::sync::Mutex::new(0), freed: std::sync::Condvar::new(), max }
-    }
-
-    /// Blocks until a slot is free. Only call from a blocking thread.
-    fn acquire(&self) -> FetchSlot<'_> {
-        // A poisoned lock only means another holder panicked; the counter stays valid.
-        let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
-        while *running >= self.max {
-            running = self.freed.wait(running).unwrap_or_else(|e| e.into_inner());
-        }
-        *running += 1;
-        FetchSlot(self)
-    }
-}
-
-impl Drop for FetchSlot<'_> {
-    fn drop(&mut self) {
-        let mut running = self.0.running.lock().unwrap_or_else(|e| e.into_inner());
-        *running -= 1;
-        self.0.freed.notify_one();
-    }
-}
-
-static THUMBNAIL_FETCHES: FetchLimiter = FetchLimiter::new(MAX_CONCURRENT_THUMBNAIL_FETCHES);
 
 #[tauri::command]
 pub async fn get_printer_job_thumbnail(state: State<'_, AppState>, job_id: String) -> CmdResult<Option<String>> {
-    let (connection, path) = {
+    let (connection, path, api_key) = {
         let conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
         match thumbnail_fetch_plan_with_conn(&conn, &job_id)? {
-            Some(plan) => plan,
+            Some((connection, path)) => {
+                let key = store::get_api_key(&conn, connection.printer_id).map_err(|e| e.to_string())?;
+                (connection, path, key)
+            }
             None => return Ok(None),
         }
     };
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, LinkError> {
-        let _slot = THUMBNAIL_FETCHES.acquire();
-        let link = make_link(&connection.kind, &connection.address, AddressPolicy::HOME_NETWORK)?;
+        let _slot = views::THUMBNAIL_FETCHES.acquire();
+        let link = make_link(&connection.kind, &connection.address, api_key.as_ref(), AddressPolicy::HOME_NETWORK)?;
         let info = link.test()?;
         link.thumbnail(&info.base_url, &path)
     })
@@ -409,6 +257,13 @@ pub async fn get_printer_job_thumbnail(state: State<'_, AppState>, job_id: Strin
 pub fn ignore_printer_job(state: State<AppState>, job_id: String) -> CmdResult<()> {
     let conn = lock_db(&state)?;
     booking::ignore_job(&conn, id(&job_id, "Druck")?, &now_rfc3339()).map_err(|e| e.to_string().into())
+}
+
+/// Sets (or, with `reason = null`, clears) why a print ended early. Works in every state of the print.
+#[tauri::command]
+pub fn set_printer_job_failure(state: State<AppState>, job_id: String, reason: Option<String>, note: Option<String>) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    booking::set_job_failure(&conn, id(&job_id, "Druck")?, reason.as_deref(), note.as_deref()).map_err(Into::into)
 }
 
 // async for the same reason as `list_open_printer_jobs`.
@@ -430,47 +285,9 @@ mod tests {
     use crate::printer_link::{JobOutcome, RemoteJob};
 
     #[test]
-    fn fetch_limiter_never_exceeds_its_maximum_and_frees_slots_on_panic() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::Arc;
-        let limiter = Arc::new(FetchLimiter::new(3));
-        let current = Arc::new(AtomicUsize::new(0));
-        let peak = Arc::new(AtomicUsize::new(0));
-        let (tx, rx) = std::sync::mpsc::channel();
-        for i in 0..12 {
-            let (limiter, current, peak, tx) = (limiter.clone(), current.clone(), peak.clone(), tx.clone());
-            std::thread::spawn(move || {
-                let result = std::panic::catch_unwind(|| {
-                    let _slot = limiter.acquire();
-                    let now = current.fetch_add(1, Ordering::SeqCst) + 1;
-                    peak.fetch_max(now, Ordering::SeqCst);
-                    std::thread::sleep(std::time::Duration::from_millis(20));
-                    current.fetch_sub(1, Ordering::SeqCst);
-                    if i % 4 == 0 {
-                        panic!("fetch failed");
-                    }
-                });
-                let _ = tx.send(result.is_err());
-            });
-        }
-        drop(tx);
-        // Do not join blocked workers: a leaked slot must fail within a bounded time.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        let mut panics = 0;
-        for _ in 0..12 {
-            let result = rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()));
-            assert!(result.is_ok(), "slots were not released: workers did not finish within 5 seconds");
-            panics += usize::from(result.unwrap());
-        }
-        assert_eq!(panics, 3);
-        assert!(peak.load(Ordering::SeqCst) <= 3, "peak {}", peak.load(Ordering::SeqCst));
-        assert_eq!(*limiter.running.lock().unwrap_or_else(|e| e.into_inner()), 0);
-    }
-
-    #[test]
     fn container_local_names_are_rejected_before_connecting() {
         for address in ["printer.local", "PRINTER.LOCAL.:7125", " printer.local:80 "] {
-            assert_eq!(test_link("moonraker", address, true), Err(LinkError::ContainerLocalName));
+            assert_eq!(test_link("moonraker", address, None, true), Err(LinkError::ContainerLocalName));
             assert!(crate::printer_link::address::check_container_address(address, false).is_ok());
         }
     }
@@ -478,11 +295,54 @@ mod tests {
     #[test]
     fn loopback_hint_only_decorates_container_address_rejections() {
         for address in ["127.0.0.1", "localhost", "[::1]:7125", "::ffff:127.0.0.1"] {
-            assert_eq!(test_link("moonraker", address, true), Err(LinkError::ContainerLoopback));
-            assert_eq!(test_link("moonraker", address, false), Err(LinkError::AddressNotAllowed));
+            assert_eq!(test_link("moonraker", address, None, true), Err(LinkError::ContainerLoopback));
+            assert_eq!(test_link("moonraker", address, None, false), Err(LinkError::AddressNotAllowed));
         }
-        assert_eq!(test_link("moonraker", "8.8.8.8", true), Err(LinkError::AddressNotAllowed));
-        assert_eq!(test_link("moonraker", "http://localhost", true), Err(LinkError::AddressNotAllowed));
+        assert_eq!(test_link("moonraker", "8.8.8.8", None, true), Err(LinkError::AddressNotAllowed));
+        assert_eq!(test_link("moonraker", "http://localhost", None, true), Err(LinkError::AddressNotAllowed));
+    }
+
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    fn key(raw: &str) -> ApiKey {
+        ApiKey::parse(raw).unwrap()
+    }
+
+    #[test]
+    fn typed_keys_are_trimmed_and_a_bad_one_gives_a_code_without_the_value() {
+        assert!(parse_new_key(None).unwrap().is_none());
+        assert!(parse_new_key(Some("  \n")).unwrap().is_none(), "an empty field means nothing was typed");
+        assert!(parse_new_key(Some(&format!(" {KEY}\n"))).unwrap() == Some(key(KEY)));
+        for bad in ["has space inside", "line\nbreak", "umlaut\u{e4}"] {
+            assert_eq!(parse_new_key(Some(bad)).err(), Some("api_key_invalid"), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_stored_key_is_tested_only_against_the_address_it_belongs_to() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", Some(&ApiKey::parse(KEY).unwrap()), "", "", 1.0).unwrap();
+        let other = "ffffffffffffffffffffffffffffffff";
+        let used = |address: &str, typed: Option<&str>| key_for_test_with_conn(&conn, 1, address, typed.map(key)).unwrap();
+        assert!(used("192.168.1.60", None) == Some(key(KEY)));
+        assert!(used("192.168.1.99", None).is_none(), "the key went to another address");
+        assert!(used("192.168.1.99", Some(other)) == Some(key(other)));
+        assert!(used("192.168.1.60", Some(other)) == Some(key(other)), "a typed key wins");
+        // A printer without a connection has no key to use.
+        assert!(key_for_test_with_conn(&conn, 2, "192.168.1.60", None).unwrap().is_none());
+    }
+
+    #[test]
+    fn the_connection_dto_tells_that_a_key_exists_but_never_carries_it() {
+        let conn = setup();
+        let dto = |conn: &Connection| serde_json::to_string(&list_printer_connections_with_conn(conn).unwrap()).unwrap();
+        assert!(dto(&conn).contains("\"hasApiKey\":false"));
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", Some(&ApiKey::parse(KEY).unwrap()), "", "", 1.0).unwrap();
+        let json = dto(&conn);
+        assert!(json.contains("\"hasApiKey\":true"));
+        assert!(!json.contains(KEY), "the key is in the DTO");
+        let records = format!("{:?}", store::list_connections(&conn).unwrap());
+        assert!(!records.contains(KEY), "the key is in the Debug text of the records");
     }
 
     fn setup() -> Connection {
@@ -497,7 +357,7 @@ mod tests {
         )
         .unwrap();
         crate::db::test_insert_minimal_file(&conn, "Distanzhülse 13,40mm.3mf", None).unwrap();
-        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 1.0).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1.0).unwrap();
         insert_job_if_new(&conn, 1, &RemoteJob {
             remote_id: "00003F".into(),
             file_name: "Distanzhulse_13,40mm_PLA_0.2_6m29s.gcode".into(),
@@ -506,6 +366,7 @@ mod tests {
             ended_at: 1789042135.8,
             print_duration_s: 394.65,
             used_mm: 303.2658,
+            deductible: true,
             slicer_total_mm: Some(279.17),
             slicer_weight_g: Some(0.83),
             material: Some("PLA".into()),
@@ -529,6 +390,42 @@ mod tests {
         let m = j.model_match.as_ref().unwrap();
         assert!(m.sure);
         assert_eq!(m.file_name, "Distanzhülse 13,40mm.3mf");
+    }
+
+    #[test]
+    fn a_gcode_entry_of_the_catalog_never_takes_the_print_away_from_the_model() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
+             VALUES ('Distanzhulse_13,40mm.gcode', '/c/g.gcode', 'gcode', 1, '2099-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let m = list_open_printer_jobs_with_conn(&conn).unwrap().remove(0).model_match.unwrap();
+        assert_eq!(m.file_name, "Distanzhülse 13,40mm.3mf", "the newer G-code entry with the very same name is no candidate");
+    }
+
+    #[test]
+    fn a_confirmed_slicer_report_makes_the_match_sure_whatever_the_name_says() {
+        let conn = setup();
+        let other = crate::db::test_insert_minimal_file(&conn, "Völlig anderes Teil.3mf", None).unwrap();
+        let before = list_open_printer_jobs_with_conn(&conn).unwrap().remove(0).model_match.unwrap();
+        assert_eq!(before.file_name, "Distanzhülse 13,40mm.3mf");
+        let (report, _) = db::slicer_reports::insert_or_merge(&conn, &db::slicer_reports::NewReport {
+            reported_at: "2026-11-05T10:00:00Z".into(),
+            reported_path: "/o/DISTANZHULSE_13,40mm_PLA_0.2_6m29s.GCODE".into(),
+            file_name: "DISTANZHULSE_13,40mm_PLA_0.2_6m29s.GCODE".into(),
+            file_size_bytes: 1,
+            slicer: None,
+            summary_json: "{}".into(),
+        })
+        .unwrap();
+        let open = list_open_printer_jobs_with_conn(&conn).unwrap().remove(0).model_match.unwrap();
+        assert_eq!(open.file_name, "Distanzhülse 13,40mm.3mf", "an open report decides nothing");
+        db::slicer_reports::link(&conn, report, other, "2026-11-05T11:00:00Z").unwrap();
+        let m = list_open_printer_jobs_with_conn(&conn).unwrap().remove(0).model_match.unwrap();
+        assert!(m.sure);
+        assert_eq!((m.file_id, m.file_name.as_str()), (other.to_string(), "Völlig anderes Teil.3mf"));
     }
 
     #[test]
@@ -617,7 +514,7 @@ mod tests {
         crate::db::printers::insert_resin_vat(&conn, saturn, "Harzwanne").unwrap();
 
         assert!(test_printer_connection_gate_with_conn(&conn, saturn).is_err(), "kein Netzwerkzugriff");
-        assert!(save_connection_after_test(&conn, saturn, "moonraker", "192.168.1.70", "http://192.168.1.70", "v1", 1.0).is_err());
+        assert!(save_connection_after_test(&conn, saturn, "moonraker", "192.168.1.70", None, "http://192.168.1.70", "v1", 1.0).is_err());
         assert!(list_printer_connections_with_conn(&conn).unwrap().iter().all(|c| c.printer_id != saturn.to_string()));
         assert!(test_printer_connection_gate_with_conn(&conn, 999).is_err());
     }

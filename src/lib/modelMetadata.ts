@@ -1,5 +1,6 @@
 import type { ModelFile } from '../types';
 import type { Language, Translations } from '../i18n/types';
+import { isResin, isSlicedOutput } from './fileKind';
 import { formatBytes, formatDate, formatDimensions, formatVolumeCm3, formatWeightG } from '../i18n/format';
 
 export type TFunction = <K extends keyof Translations>(key: K) => Translations[K];
@@ -22,14 +23,23 @@ export function buildMetaRows(
         : `≈ ${formatWeightG(model.estimatedWeightG, language)}`;
   const weightLabel = model.weightSource === 'slicer' ? t('metaWeightFromSlicer') : t('metaWeight');
 
+  // Slicer output has no model shape: size, volume and object count would only ever be empty.
+  const sliced = isSlicedOutput(model);
+  // A resin file is only catalogued: its content is not read, so there is no weight to show either.
+  const resin = isResin(model);
+  const plates = model.plateDimensions;
+  const largest = plates && plates.length > 1
+    ? plates.reduce((a, b) => a.dimensionsMm.reduce((v, n) => v * n, 1) >= b.dimensionsMm.reduce((v, n) => v * n, 1) ? a : b) : null;
   const rows = [
-    { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
-    { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
-    { label: weightLabel, value: weightValue },
-    { label: t('metaObjectCount'), value: objectCountValue },
+    ...(sliced ? [] : [
+      { label: largest ? t('plateSizeLargest') : t('metaDimensions'), value: largest ? t('plateSizeHint').replace('{size}', formatDimensions(largest.dimensionsMm, language)) : formatDimensions(model.dimensionsMm, language) },
+      { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
+    ]),
+    ...(resin ? [] : [{ label: weightLabel, value: weightValue }]),
+    ...(sliced ? [] : [{ label: t('metaObjectCount'), value: objectCountValue }]),
   ];
 
-  if (model.plateCount != null) {
+  if (model.plateCount != null && !sliced) {
     rows.push({ label: t('metaPlateCount'), value: String(model.plateCount) });
   }
 

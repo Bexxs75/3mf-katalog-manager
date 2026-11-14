@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { checkFilament } from '../lib/api/filamentCheck';
 import type { FilamentCheck } from '../types';
+import { usePrintTechnology } from './PrintTechnologyContext';
+import { showsKind } from '../lib/printTechnology';
 
 interface FilamentCheckState {
   checks: Map<string, FilamentCheck> | null;
@@ -12,7 +14,9 @@ interface FilamentCheckState {
 // additionally triggers a reload (e.g. after "Re-read metadata") without
 // the ID list itself changing.
 export function useFilamentCheck(fileIds: string[], refreshKey = ''): FilamentCheckState {
-  const key = fileIds.join(',');
+  // Resin-only printing has no use for the spool check: nothing is asked of the backend.
+  const { technology } = usePrintTechnology();
+  const key = showsKind(technology, 'filament') ? fileIds.join(',') : '';
   const [state, setState] = useState<FilamentCheckState>({ checks: null, error: false });
 
   useEffect(() => {

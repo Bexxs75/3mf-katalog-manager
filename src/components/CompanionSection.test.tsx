@@ -169,20 +169,41 @@ describe('CompanionSection', () => {
     expect(alert).toHaveTextContent(de.companionOpenContainer);
   });
 
-  it('reveals only the path from the open info, and not inside a container', async () => {
-    handlers.companion_open_info = () => ({ id: 'c1', name: 'Anleitung.pdf', path: '/catalog/Test_extras/Anleitung.pdf', kind: 'pdf' });
+  it('reveals by id through the menu, and not inside a container', async () => {
     const { unmount } = renderSection();
     await screen.findByText('Anleitung.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Anleitung.pdf' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Im Dateimanager zeigen' }));
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('open_in_file_manager', { path: '/catalog/Test_extras/Anleitung.pdf' }));
-    expect(invokeMock).toHaveBeenCalledWith('companion_open_info', { companionId: 'c1' });
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('reveal_companion', { companionId: 'c1' }));
+    expect(calls('companion_open_info')).toHaveLength(0);
+    expect(calls('open_in_file_manager')).toHaveLength(0);
     unmount();
     renderSection({ container: true });
     await screen.findByText('Anleitung.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Anleitung.pdf' }));
     expect(screen.queryByRole('menuitem', { name: 'Im Dateimanager zeigen' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Entfernen' })).toBeVisible();
+  });
+
+  it('shows a file of another format with a folder button instead of an open button', async () => {
+    list = [companion({ id: 'cad', name: 'Modell.fcstd', kind: 'other', sizeBytes: 4096, path: '/c/Modell.fcstd' }), pdf];
+    const { unmount } = renderSection();
+    await screen.findByText('Modell.fcstd');
+    expect(screen.getByText(/Nur abgelegt, wird nicht geöffnet/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Modell.fcstd öffnen' }), 'never offered to open').toBeNull();
+    expect(screen.getByRole('button', { name: 'Anleitung.pdf öffnen' }), 'counter-check: a PDF still opens').toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Modell.fcstd im Dateimanager zeigen' }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('reveal_companion', { companionId: 'cad' }));
+    expect(calls('open_companion')).toHaveLength(0);
+    // The menu has no second reveal entry for it, only the removal.
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Modell.fcstd' }));
+    expect(screen.queryByRole('menuitem', { name: 'Im Dateimanager zeigen' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Entfernen' })).toBeVisible();
+    unmount();
+    renderSection({ container: true });
+    await screen.findByText('Modell.fcstd');
+    expect(screen.queryByRole('button', { name: 'Modell.fcstd im Dateimanager zeigen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Modell.fcstd öffnen' })).toBeNull();
   });
 
   it('closes the menu with Escape and returns focus to its button', async () => {
@@ -407,7 +428,7 @@ describe('DetailPanel', () => {
 
 describe('texts', () => {
   const keys = ['companionsHeading', 'companionsEmpty', 'companionsAdd', 'companionOpen', 'companionOpenNamed', 'companionMenu',
-    'companionReveal', 'companionRemove', 'companionMissing', 'companionViewImage', 'companionPreviewClose',
+    'companionReveal', 'companionRevealNamed', 'companionOtherNote', 'companionRemove', 'companionMissing', 'companionViewImage', 'companionPreviewClose',
     'companionPreviewUnavailable', 'companionRemoved', 'companionAddFailed', 'companionsLoadFailed',
     'companionRestoreFailed', 'companionsRemovedToggle', 'companionRemovedExpiresSoon', 'companionRestore', 'companionRestoreNamed',
     'companionsRemovedHint', 'companionRestored', 'undoButton'] as const;
@@ -417,7 +438,7 @@ describe('texts', () => {
       expect(table[key].one).toContain('{count}');
       expect(table[key].other).toContain('{count}');
     }
-    for (const key of ['companionOpenNamed', 'companionMenu', 'companionViewImage', 'companionRemoved', 'companionAddFailed', 'companionRestoreNamed', 'companionRestored'] as const) {
+    for (const key of ['companionOpenNamed', 'companionRevealNamed', 'companionMenu', 'companionViewImage', 'companionRemoved', 'companionAddFailed', 'companionRestoreNamed', 'companionRestored'] as const) {
       expect(table[key], key).toContain('{name}');
     }
   });

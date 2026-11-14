@@ -1,3 +1,6 @@
+import { WebFileActions } from './WebFileActions';
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
+import { isReadOnly } from '../lib/readOnly';
 import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -10,10 +13,31 @@ import { TagInput } from './TagInput';
 import { ViewportPopover } from './ViewportPopover';
 import { tagLabel } from '../lib/autoTags';
 import { Icon } from './Icon';
+import { usePrintDataReread } from '../hooks/usePrintDataReread';
+import { PrintDataRereadJob } from './PrintDataRereadJob';
 import { DateRenameDialog, type DateRenameOutcome } from './DateRenameDialog';
+
+/** Bundle entries of the "More" menu; each handler gets the element focus should return to. */
+export interface BulkBundleActions {
+  /** Two or more models selected. */
+  canCreate: boolean;
+  canAddTo: boolean;
+  canRemove: boolean;
+  /** The selection holds whole bundle cards. */
+  canDissolve: boolean;
+  /** The selection is exactly one bundle. */
+  canEdit: boolean;
+  onCreate: (returnTo: HTMLElement | null) => void;
+  onAddTo: (returnTo: HTMLElement | null) => void;
+  onRemove: () => void;
+  onDissolve: () => void;
+  onEdit: (returnTo: HTMLElement | null) => void;
+}
 
 interface BulkActionToolbarProps {
   selectedCount: number;
+  selectedNames?: string[];
+  hiddenSelectedCount?: number;
   confirmBulkDelete: boolean;
   onConfirmBulkDeleteChange: (value: boolean) => void;
   onSelectAllVisible: () => void;
@@ -49,6 +73,7 @@ interface BulkActionToolbarProps {
    * moves into the "More" menu, so the bar keeps one row and its height.
    */
   compact?: boolean;
+  bundleActions?: BulkBundleActions;
 }
 
 const BUTTON = 'h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)] ' +
@@ -64,6 +89,8 @@ interface MoreItem {
   onSelect: () => void;
   /** Blocked while an import runs, like the former buttons. */
   locked?: boolean;
+  /** Reason the entry cannot be used right now; it is disabled and names the reason as its tooltip. */
+  disabledReason?: string;
   /** Entries that open a popover or dialog leave focus handling to it. */
   opensOwnUi?: boolean;
   separatorBefore?: boolean;
@@ -95,6 +122,8 @@ function navigateActionMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
 
 export function BulkActionToolbar({
   selectedCount,
+  selectedNames,
+  hiddenSelectedCount = 0,
   confirmBulkDelete,
   onConfirmBulkDeleteChange,
   onSelectAllVisible,
@@ -125,8 +154,11 @@ export function BulkActionToolbar({
   selectedIds,
   onDateRenamed,
   compact = false,
+  bundleActions,
 }: BulkActionToolbarProps) {
+  const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
+  const { state: rereadState, start: startReread, dismiss: dismissReread } = usePrintDataReread();
   const t = useT();
   const formatCount = useFormatCount();
   const [licenseOpen, setLicenseOpen] = useState(false);
@@ -159,6 +191,12 @@ export function BulkActionToolbar({
     }
     previousConfirmation.current = current;
   }, [confirmRemove, confirmBulkDelete]);
+
+  // The result of a read of the chosen files belongs to that selection.
+  useEffect(() => {
+    if (selectedCount === 0) dismissReread('selection');
+  }, [selectedCount, dismissReread]);
+  useEffect(() => () => dismissReread('selection'), [dismissReread]);
 
   // The bar stays mounted without a selection, so whatever was open for the
   // old selection has to close when it is gone.
@@ -279,6 +317,14 @@ export function BulkActionToolbar({
       ...(onBulkSetLicense ? [{ key: 'license', label: t('licenseSet'), locked: true, opensOwnUi: true, onSelect: () => setLicenseOpen(true) }] : []),
     ] : []),
     ...(selectedIds && onDateRenamed ? [{ key: 'dateRename', label: t('dateRenameMenu'), locked: true, opensOwnUi: true, onSelect: () => setDateRenameIds([...selectedIds]) }] : []),
+    { key: 'rereadPrintData', label: t('printDataRereadSelected'), locked: true, disabledReason: rereadState.status === 'running' || rereadState.status === 'cancelling' ? t('printDataRereadBusy') : undefined, onSelect: () => { startReread('selection', selectedIds ?? []); } },
+    ...(bundleActions ? [
+      { key: 'bundleMake', label: t('bundleMake'), opensOwnUi: true, separatorBefore: true, disabledReason: bundleActions.canCreate ? undefined : t('bundleDlgNeedTwo'), onSelect: () => bundleActions.onCreate(moreRef.current) },
+      ...(bundleActions.canAddTo ? [{ key: 'bundleAddTo', label: t('bundleAddTo'), opensOwnUi: true, onSelect: () => bundleActions.onAddTo(moreRef.current) }] : []),
+      ...(bundleActions.canEdit ? [{ key: 'bundleEdit', label: t('bundleEdit'), opensOwnUi: true, onSelect: () => bundleActions.onEdit(moreRef.current) }] : []),
+      ...(bundleActions.canRemove ? [{ key: 'bundleRemove', label: t('bundleRemoveFrom'), onSelect: bundleActions.onRemove }] : []),
+      ...(bundleActions.canDissolve ? [{ key: 'bundleDissolve', label: t('bundleDissolve'), onSelect: bundleActions.onDissolve }] : []),
+    ] : []),
     ...(activeCollection ? [{ key: 'removeFromCollection', label: t('removeFromCollectionLabel'), onSelect: onBulkRemoveFromCollection }] : []),
     ...(onBulkRemove ? [{ key: 'removeCatalog', label: t('removeCatalogShort'), locked: true, opensOwnUi: true, separatorBefore: true, onSelect: () => { setError(null); setConfirmRemove(true); } }] : []),
   ];
@@ -302,23 +348,24 @@ export function BulkActionToolbar({
     </ViewportPopover>
   );
 
+  if (!canEdit) return null;
   return (
     <div role="toolbar" aria-label={t('bulkToolbarLabel')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 min-h-12 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
-      {confirmRemove ? (
+      {canEdit && confirmRemove ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-small font-medium text-[var(--ink)]">{formatCount(t('removeModelsQuestion'), selectedCount)}</span>
-          <span className="text-small text-[var(--ink-2)]">{t('removeModelHint')}</span>
+          <span className="text-small text-[var(--ink-2)]">{t(isReadOnly() ? 'webRemoveModelHint' : 'removeModelHint')}</span>
           {error && <span role="alert" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)]"><ErrorText error={error} /></span>}
           <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
           <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
-            if (!onBulkRemove) return;
+            if (!onBulkRemove || !canEditMetadata() || busy) return;
             setBusy(true); setError(null);
             try { await onBulkRemove(); setConfirmRemove(false); }
             catch (e) { setError(toAppError(e)); }
             finally { setBusy(false); }
           }}>{t('removeEntry')}</button>
         </div>
-      ) : confirmBulkDelete ? (
+      ) : !isReadOnly() && confirmBulkDelete ? (
         <>
           <span className="text-small font-medium text-[var(--ink)]">
             {formatCount(t('bulkDeleteConfirmQuestion'), selectedCount)}
@@ -460,7 +507,7 @@ export function BulkActionToolbar({
                   {moreItems.map(item => (
                     <div key={item.key}>
                       {item.separatorBefore && <div role="separator" className="my-1 border-t border-[var(--line)]" />}
-                      <button type="button" role="menuitem" tabIndex={-1} {...(item.locked ? lockProps : {})} onClick={closeMoreThen(item)} className={MENU_ITEM}>
+                      <button type="button" role="menuitem" tabIndex={-1} {...(item.locked ? lockProps : {})} {...(item.disabledReason ? { disabled: true, title: item.disabledReason } : {})} onClick={closeMoreThen(item)} className={MENU_ITEM}>
                         {item.label}
                       </button>
                     </div>
@@ -474,11 +521,13 @@ export function BulkActionToolbar({
             {compact && removeTagPopover}
           </div>
           <span aria-hidden="true" className="w-px h-6 mx-1 bg-[var(--line-strong)]" />
-          <button type="button" {...idle} {...lockProps} ref={deleteRef} onClick={act(() => onConfirmBulkDeleteChange(true))} className={`${BUTTON} !border-[var(--line-strong)] !text-red-400 hover:!border-red-400`}>
+          <WebFileActions fileIds={selectedIds ?? []} names={selectedNames} hiddenCount={hiddenSelectedCount} onDone={onClearSelection} requestTrashConfirm={confirmBulkDelete} onConfirmationClosed={() => onConfirmBulkDeleteChange(false)} onTrashRequest={() => onConfirmBulkDeleteChange(true)} />
+          {!isReadOnly() && <button type="button" {...idle} {...lockProps} ref={deleteRef} onClick={act(() => onConfirmBulkDeleteChange(true))} className={`${BUTTON} !border-[var(--line-strong)] !text-red-400 hover:!border-red-400`}>
             {t('delete')}
-          </button>
+          </button>}
         </>
       )}
+      <div className="basis-full empty:hidden"><PrintDataRereadJob origin="selection" returnFocus={moreRef} /></div>
       {dateRenameIds && onDateRenamed && (
         <DateRenameDialog fileIds={dateRenameIds} returnFocus={moreRef}
           onClose={() => setDateRenameIds(null)}

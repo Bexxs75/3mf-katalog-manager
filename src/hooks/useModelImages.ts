@@ -61,6 +61,7 @@ export function useModelImages(ids: string[]): ReadonlyMap<string, ModelImages> 
           for (const entry of images) {
             const index = batch.indexOf(entry.id);
             if (index < 0 || requestedGeneration !== generation || requestedEpochs[index] !== (epochs.get(entry.id) ?? 0)) continue;
+            if (entry.deferred) { remaining.push(entry.id); continue; }
             cache.set(entry.id, entry);
             while (cache.size > 600) cache.delete(cache.keys().next().value!);
           }

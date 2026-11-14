@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
-import type { MaterialUnit, PrinterDetails, PrinterHistoryJob, Printer, PrinterKind, UnitKind } from '../../types';
+import { invoke } from '../transport';
+import type { MaterialUnit, PrintStatistics, PrinterDetails, PrinterHistoryJob, Printer, PrinterKind, UnitKind } from '../../types';
 
 export function listPrinters() {
   return invoke<Printer[]>('list_printers');
@@ -22,8 +22,9 @@ export function deletePrinter(printerId: string) {
 export function addUnit(printerId: string, kind: UnitKind, name: string, slotCount: number | null) {
   return invoke<MaterialUnit>('add_unit', { printerId, kind, name, slotCount });
 }
-export function updateUnit(unitId: string, name: string, slotCount: number | null) {
-  return invoke<number>('update_unit', { unitId, name, slotCount });
+/** `kind` only changes the type inside the Bambu AMS family; left out, the type stays. */
+export function updateUnit(unitId: string, name: string, slotCount: number | null, kind?: UnitKind) {
+  return invoke<number>('update_unit', kind ? { unitId, name, slotCount, kind } : { unitId, name, slotCount });
 }
 export function deleteUnit(unitId: string) {
   return invoke<number>('delete_unit', { unitId });
@@ -47,4 +48,8 @@ export function reorderPrinters(ids: string[]) {
 }
 export function listPrinterHistory(printerId: string) {
   return invoke<PrinterHistoryJob[]>('list_printer_history', { printerId });
+}
+/** Print rows for the statistics (newest first, at most 5000); all printers when `printerId` is left out. */
+export function getPrintStatistics(printerId?: string) {
+  return invoke<PrintStatistics>('get_print_statistics', printerId ? { printerId } : {});
 }

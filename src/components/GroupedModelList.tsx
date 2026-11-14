@@ -15,7 +15,7 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
-  onContextMenu: (id: string, x: number, y: number) => void;
+  onContextMenu: (id: string, x: number, y: number, bundleId?: string) => void;
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
   onDragFileStart?: (id: string) => void;

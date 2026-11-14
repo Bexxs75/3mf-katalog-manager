@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '../lib/events';
 import * as api from '../lib/api/printerLink';
 import { toAppError, type AppError } from '../lib/errors';
 import type { JobDecision, PrinterConnection, PrinterJob } from '../types';
@@ -24,6 +24,7 @@ export function usePrinterLink() {
   }, []);
 
   const refresh = useCallback(async () => {
+    if (import.meta.env.VITE_TARGET === 'web') return;
     try {
       const [on, conns, open] = await Promise.all([
         api.getPrinterLinkEnabled(),
@@ -42,6 +43,7 @@ export function usePrinterLink() {
   }, []);
 
   useEffect(() => {
+    if (import.meta.env.VITE_TARGET === 'web') return;
     refresh();
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -74,9 +76,12 @@ export function usePrinterLink() {
     error,
     refresh,
     setEnabled: (on: boolean) => after(api.setPrinterLinkEnabled(on)),
-    testConnection: (printerId: string, address: string) => after(api.testPrinterConnection(printerId, address)),
+    testConnection: (printerId: string, address: string, apiKey: string | null = null) =>
+      after(api.testPrinterConnection(printerId, address, apiKey)),
+    clearApiKey: (printerId: string) => after(api.clearPrinterApiKey(printerId)),
     removeConnection: (printerId: string) => after(api.removePrinterConnection(printerId)),
     syncNow: () => api.syncPrintersNow(),
+    includeOlderHistory: (printerId: string) => after(api.includeOlderPrinterHistory(printerId)),
     ignoreJob: (jobId: string) => after(api.ignorePrinterJob(jobId)),
     confirmJobs: (decisions: JobDecision[]) => after(api.confirmPrinterJobs(decisions)),
     previewJob: (jobId: string, spoolId: string) => api.previewPrinterJob(jobId, spoolId),

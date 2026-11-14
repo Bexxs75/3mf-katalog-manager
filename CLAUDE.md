@@ -1,11 +1,13 @@
 # 3MF Katalog Manager: notes for Claude Code
 
-Tauri 2 desktop app: Rust backend in `src-tauri/`, React + TypeScript frontend in `src/`, end-to-end tests in `e2e/`. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; this file only adds what an agent tends to get wrong.
+Tauri 2 desktop app: Rust desktop backend in `src-tauri/`, shared domain logic in `crates/katalog-core/`, React + TypeScript frontend in `src/`, end-to-end tests in `e2e/`. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; this file only adds what an agent tends to get wrong.
 
 ## Checks to run before calling something done
 
+Run from the repository root:
+
 ```bash
-cd src-tauri && cargo test --no-default-features && cargo clippy --no-default-features --all-targets -- -D warnings
+cargo test --workspace --no-default-features && cargo clippy --workspace --no-default-features --all-targets -- -D warnings
 npx tsc --noEmit && npx vitest run
 ```
 
@@ -17,7 +19,7 @@ npx tsc --noEmit && npx vitest run
 
 - Code comments are English and explain **why**. No ticket numbers, finding IDs, version numbers or review rounds in comments.
 - Every user-visible string goes through `src/i18n/` and needs German, English, Spanish and French entries plus the type in `types.ts`. Do not hard-code text in components.
-- Expected backend errors of migrated actions are codes, not text: add a variant to `ErrorCode` (`src-tauri/src/commands/error_code.rs`), raise it with `CmdError::coded`/`coded_with` (`params` hold data only, never words), update `src/lib/errorCodes.json` (`cargo test regenerate_shared_list -- --ignored`) and add the `err<Code>` text in all four dictionaries. Many backend errors are still German strings (the remaining actions are planned); do not add new German error text to migrated modules.
+- Expected backend errors of migrated actions are codes, not text: add a variant to `ErrorCode` (`crates/katalog-core/src/error_code.rs`; `src-tauri` re-exports it), raise it with `CmdError::coded`/`coded_with` (desktop) or the `coded`/`coded_with` constructors of the core error types (`ReadError`, `ImportError`, `WriteError`, `DbError`) (`params` hold data only, never words), update `src/lib/errorCodes.json` (`cargo test regenerate_shared_list -- --ignored`) and add the `err<Code>` text in all four dictionaries. Many backend errors are still German strings (the remaining actions are planned); do not add new German error text to migrated modules.
 - README, CHANGELOG and the user guide are bilingual in one file, English first. Add changelog entries under `[Unreleased]`.
 - Keyboard use and screen readers are a requirement, not polish: real buttons, visible focus, ARIA names, and no focus loss after an action.
 - Touch only what the task needs. Do not redesign icons, branding or layout while fixing something else.

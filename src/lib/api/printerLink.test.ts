@@ -10,7 +10,13 @@ beforeEach(() => invoke.mockReset().mockResolvedValue(undefined));
 describe('printerLink api', () => {
   it('tests a moonraker connection with camelCase arguments', async () => {
     await api.testPrinterConnection('1', '192.168.1.60');
-    expect(invoke).toHaveBeenCalledWith('test_printer_connection', { printerId: '1', kind: 'moonraker', address: '192.168.1.60' });
+    expect(invoke).toHaveBeenCalledWith('test_printer_connection', { printerId: '1', kind: 'moonraker', address: '192.168.1.60', apiKey: null });
+  });
+  it('sends a typed key only as the argument of the test and clears a stored one by its own command', async () => {
+    await api.testPrinterConnection('1', '192.168.1.60', 'abc123');
+    expect(invoke).toHaveBeenCalledWith('test_printer_connection', { printerId: '1', kind: 'moonraker', address: '192.168.1.60', apiKey: 'abc123' });
+    await api.clearPrinterApiKey('1');
+    expect(invoke).toHaveBeenCalledWith('clear_printer_api_key', { printerId: '1' });
   });
   it('sends all decisions at once', async () => {
     await api.confirmPrinterJobs([{ jobId: '5', spoolId: '100', fileId: null }]);
@@ -38,6 +44,12 @@ describe('printerLink api', () => {
     await api.syncPrintersNow();
     expect(invoke).toHaveBeenCalledWith('sync_printers_now');
   });
+  it('includes the older history of one printer', async () => {
+    invoke.mockResolvedValue({ added: 3, error: null });
+    const result = await api.includeOlderPrinterHistory('7');
+    expect(invoke).toHaveBeenCalledWith('include_older_printer_history', { printerId: '7' });
+    expect(result).toEqual({ added: 3, error: null });
+  });
   it('lists open jobs', async () => {
     await api.listOpenPrinterJobs();
     expect(invoke).toHaveBeenCalledWith('list_open_printer_jobs');
@@ -53,6 +65,12 @@ describe('printerLink api', () => {
   it('ignores a job', async () => {
     await api.ignorePrinterJob('5');
     expect(invoke).toHaveBeenCalledWith('ignore_printer_job', { jobId: '5' });
+  });
+  it('sets and clears the reason a print ended early', async () => {
+    await api.setPrinterJobFailure('5', 'clog', null);
+    expect(invoke).toHaveBeenCalledWith('set_printer_job_failure', { jobId: '5', reason: 'clog', note: null });
+    await api.setPrinterJobFailure('5', null, null);
+    expect(invoke).toHaveBeenLastCalledWith('set_printer_job_failure', { jobId: '5', reason: null, note: null });
   });
   it('exposes the sync event name', () => {
     expect(api.PRINTER_JOBS_CHANGED_EVENT).toBe('printer-jobs-changed');

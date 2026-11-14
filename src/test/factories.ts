@@ -1,4 +1,27 @@
-import type { ModelFile, ModelFileSummary, Folder, Printer } from '../types';
+import type { ModelFile, ModelFileSummary, Folder, Printer, PrintInfo, PrintFacts } from '../types';
+
+export function makePrintInfo(overrides: Partial<PrintInfo> = {}): PrintInfo {
+  return {
+    sliceState: 'sliced',
+    settingsState: 'read',
+    readerCurrent: true,
+    readAt: '2026-11-01T00:00:00Z',
+    printerModel: null,
+    bedType: null,
+    layerHeightMm: null,
+    nozzleMm: { value: null, mixed: false },
+    bedTempC: { value: null, mixed: false },
+    nozzleTempC: { value: null, mixed: false },
+    plates: [],
+    filamentColors: [],
+    ...overrides,
+  };
+}
+
+/** Print facts of a list row; a bare `plateCount: 0` is what a file with nothing but the state yields. */
+export function makePrintFacts(overrides: Partial<PrintFacts> = {}): PrintFacts {
+  return { plateCount: 0, ...overrides };
+}
 
 export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
   return {
@@ -21,6 +44,7 @@ export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
     estimatedWeightG: null,
     weightSource: 'estimated',
     sliceInfo: null,
+    printInfo: null,
     costEstimate: null,
     lastViewedAt: null,
     contentHash: null,
@@ -70,6 +94,9 @@ export function makeModelFileSummary(
     creator: m.creator,
     lastViewedAt: m.lastViewedAt,
     contentHash: m.contentHash,
+    // An explicit state wins (a non-3MF has 'none'); else no row or an old row means "unread".
+    printDataState: overrides.printDataState ?? (m.printInfo?.readerCurrent ? m.printInfo.sliceState : 'unread'),
+    ...(m.printFacts ? { printFacts: m.printFacts } : {}),
     license: m.license,
     sourcePlatform: m.sourcePlatform,
     sourceModelId: m.sourceModelId,

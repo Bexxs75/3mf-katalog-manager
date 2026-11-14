@@ -24,7 +24,11 @@ const views: View[] = [
       const card = await cardByName('Dreiplatten.3mf');
       await browser.action('pointer', { parameters: { pointerType: 'mouse' } }).move({ origin: card }).down().up().pause(60).down().up().perform();
       await $('h1=Dreiplatten.3mf').waitForDisplayed({ timeout: 15000 });
-      await click((await byText('button', mode))!);
+      // The detail page re-renders while it loads; on a slow runner the toggle can be replaced between
+      // finding it and clicking it, so look it up again until a click goes through.
+      await browser.waitUntil(async () => {
+        try { const toggle = await byText('button', mode); if (!toggle) return false; await click(toggle); return true; } catch { return false; }
+      }, { timeout: 15000, timeoutMsg: `the "${mode}" toggle never became clickable` });
       if (mode === '3D-Ansicht') await waitForPlateViewer();
     },
     close: async () => { await click($('button[title="Zurück zum Katalog"]')); },

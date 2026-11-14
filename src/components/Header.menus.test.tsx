@@ -1,3 +1,4 @@
+import { de } from '../i18n/de';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -134,7 +135,7 @@ it('offers folder contents with explanation and keyboard activation', () => {
   fireEvent.keyDown(importButton(), { key: 'ArrowDown' });
   const item = screen.getByRole('menuitem', { name: 'Ordnerinhalt…' });
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'End' });
-  expect(screen.getByRole('menuitem', { name: 'Quellordner prüfen' })).toHaveFocus();
+  expect(screen.getByRole('menuitem', { name: de.sfMenuCheck })).toHaveFocus();
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' });
   expect(item).toHaveFocus();
   expect(item).not.toHaveAttribute('title');
@@ -148,11 +149,11 @@ it('offers the source folder check and locks it while an import runs', () => {
   const onCheck = vi.fn();
   const { unmount } = render(<LanguageProvider><Header {...props} onCheckSourceFolders={onCheck} /></LanguageProvider>);
   fireEvent.click(importButton());
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Quellordner prüfen' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: de.sfMenuCheck }));
   expect(onCheck).toHaveBeenCalledOnce();
   expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   unmount();
   render(<LanguageProvider><ImportLockContext.Provider value><Header {...props} onCheckSourceFolders={onCheck} /></ImportLockContext.Provider></LanguageProvider>);
   fireEvent.click(importButton());
-  expect(screen.getByRole('menuitem', { name: 'Quellordner prüfen' })).toBeDisabled();
+  expect(screen.getByRole('menuitem', { name: de.sfMenuCheck })).toBeDisabled();
 });

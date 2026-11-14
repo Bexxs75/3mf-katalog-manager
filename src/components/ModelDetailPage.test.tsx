@@ -6,6 +6,7 @@ import { ModelDetailPage } from './ModelDetailPage';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { makeModelFile, makePrinter } from '../test/factories';
 import { de } from '../i18n/de';
+import { setNativeDragEnabled } from '../lib/nativeDrag';
 import { filamentUsageHelpUrl } from '../lib/filamentUsageHelp';
 
 vi.mock('./ModelPreview', () => ({ ModelPreview: () => <>
@@ -216,6 +217,16 @@ it('does not block unchanged custom text or a saved license', async () => {
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
+it('offers original-file download only in the web build', () => {
+  const page = <LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>;
+  const { rerender } = render(page);
+  expect(screen.queryByRole('button', { name: 'Herunterladen' })).toBeNull();
+  vi.stubEnv('VITE_TARGET', 'web');
+  rerender(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>);
+  expect(screen.getByRole('button', { name: 'Herunterladen' })).toBeVisible();
+  vi.unstubAllEnvs();
+});
+
 it('asks before deleting and leaves the model alone when cancelled', () => {
   const onDelete = vi.fn();
   render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} /></LanguageProvider>);
@@ -325,7 +336,7 @@ it('explains a missing filament usage for a loaded 3MF and links to the manual',
 it('shows the usage and no hint when the 3MF has slicer data', () => {
   renderPage({ model: makeModelFile({ path: '/c/a.3mf', sliceInfo }) });
   expect(screen.queryByText(de.filamentUsageMissingTitle)).toBeNull();
-  expect(screen.getByText(de.sliceFilamentHeading)).toBeVisible();
+  expect(screen.getByRole('heading', { name: de.printDataHeading })).toBeVisible();
 });
 
 it.each(['stl', 'obj', 'step'])('shows no usage hint for a %s file', extension => {
@@ -349,11 +360,24 @@ it('lists the print bed verdict per printer on the detail page, without printers
   const rows = within(section).getAllByRole('listitem');
   expect(rows).toHaveLength(2);
   expect(rows[0]).toHaveTextContent(`${de.plateFitFits}X1C (256 × 256 × 256)`);
-  expect(rows[1]).toHaveTextContent(`${de.plateFitTooLarge}Mini (180 × 180 × 180): 220 mm zu breit`);
+  expect(rows[1]).toHaveTextContent(`${de.plateFitTooLarge}Mini (180 × 180 × 180): 40 mm zu breit`);
   expect(section).not.toHaveTextContent('NoBed');
 });
 
 it('shows no print bed section without printers that have a build volume', () => {
   renderPage({ model: makeModelFile({ dimensionsMm: [10, 10, 10] }), printers: [makePrinter({ bedZMm: 0 })] });
   expect(screen.queryByRole('region', { name: de.plateFitHeading })).toBeNull();
+});
+
+it('retains the native drag handle on the detail page when enabled', () => {
+  setNativeDragEnabled(true);
+  try {
+    renderPage({ model: makeModelFile({ path: '/model.stl' }) });
+    const handle = screen.getByTitle(de.dgHandle);
+    expect(handle).toHaveAttribute('tabindex', '-1');
+    expect(handle).toHaveAttribute('aria-hidden', 'true');
+    expect(handle).toHaveClass('min-w-6', 'min-h-6');
+  } finally {
+    act(() => setNativeDragEnabled(false));
+  }
 });

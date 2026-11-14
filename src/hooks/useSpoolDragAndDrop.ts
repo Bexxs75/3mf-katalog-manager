@@ -1,3 +1,4 @@
+import { canEditMetadata } from '../lib/webSession';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type SpoolDropTarget =
@@ -55,6 +56,7 @@ export function useSpoolDragAndDrop({ onLoad, onUnload, canDropOnSlot }: Handler
       fromSlot: DragSource['fromSlot'],
       event: { clientX: number; clientY: number; button?: number; preventDefault?: () => void },
     ) => {
+      if (!canEditMetadata()) return;
       if (event.button !== undefined && event.button !== 0) return;
       // Otherwise the mouse down starts a text selection that spreads across the
       // whole page while dragging (select-none only applies after the threshold).
@@ -80,7 +82,7 @@ export function useSpoolDragAndDrop({ onLoad, onUnload, canDropOnSlot }: Handler
       const wasActive = active;
       const dragged = source;
       reset();
-      if (!wasActive || !current) return;
+      if (!canEditMetadata() || !wasActive || !current) return;
       if (current.kind === 'slot') {
         const same =
           dragged.fromSlot?.unitId === current.unitId && dragged.fromSlot?.slotIndex === current.slotIndex;

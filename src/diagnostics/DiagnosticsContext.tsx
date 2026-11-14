@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { error as logError, info as logInfo } from '@tauri-apps/plugin-log';
+import { error as logError, info as logInfo } from '../lib/logger';
 import { useLanguage } from '../i18n/LanguageContext';
 import { toAppError } from '../lib/errors';
 import { BugReportDialog } from './BugReportDialog';

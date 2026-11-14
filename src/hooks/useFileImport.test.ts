@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { ImportSummaryBanner } from '../components/ImportSummaryBanner';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { importResult } from '../test/importFixtures';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, renderHook, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useFileImport } from './useFileImport';
@@ -19,9 +19,9 @@ beforeEach(() => {
   vi.mocked(invoke).mockImplementation(async cmd => cmd === 'start_import' ? { jobId: 'j1' } : null);
 });
 function setup(folder = 'first') {
-  const refreshTags = vi.fn(), refreshFiles = vi.fn(), refreshFolders = vi.fn(), onImported = vi.fn();
-  const hook = renderHook(({ folder }) => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: folder, onImported, refreshTags, refreshFiles, refreshFolders }), { initialProps: { folder } });
-  return { ...hook, refreshTags, refreshFiles, refreshFolders };
+  const refreshTags = vi.fn(), refreshFiles = vi.fn(), refreshFolders = vi.fn(), onImported = vi.fn(), onAdded = vi.fn();
+  const hook = renderHook(({ folder }) => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: folder, onImported, onAdded, refreshTags, refreshFiles, refreshFolders }), { initialProps: { folder } });
+  return { ...hook, refreshTags, refreshFiles, refreshFolders, onImported, onAdded };
 }
 it('starts a job with the captured target and updates from progress', async () => {
   const { result, rerender } = setup();
@@ -37,6 +37,19 @@ it.each((['files', 'folder', 'folderContents', 'dropped', 'setupAdopt', 'archive
   const { result, refreshFiles, refreshFolders, refreshTags } = setup();
   await act(async () => events.handlers['import://finished']({payload: {...finished(state), source}}));
   expect(result.current.result?.state).toBe(state); expect(refreshFiles).toHaveBeenCalledOnce(); expect(refreshFolders).toHaveBeenCalledOnce(); expect(refreshTags).toHaveBeenCalledOnce();
+});
+it('reports the files a finished job added, also those left unplaced', async () => {
+  const { onAdded } = setup();
+  const value = finished();
+  value.groups.imported = [{ path: '/a.3mf', fileId: 'a', folderId: 'f' }];
+  value.groups.importedNotPlaced = [{ path: '/b.3mf', fileId: 'b', reason: 'cancelled' }];
+  await act(async () => events.handlers['import://finished']({payload: value}));
+  expect(onAdded).toHaveBeenCalledWith(['a', 'b']);
+});
+it('reports the files of a legacy import result (setup adoption)', () => {
+  const { result, onAdded } = setup();
+  act(() => result.current.mergeImported({ imported: [{ id: 'x' }, { id: 'y' }] as never, duplicateCount: 0 }));
+  expect(onAdded).toHaveBeenCalledWith(['x', 'y']);
 });
 it('counts queued jobs independently and cancels the running job', async () => {
   const { result } = setup();
@@ -261,4 +274,46 @@ it('tracks a source folder import like any other job and hands start errors to t
   vi.mocked(invoke).mockRejectedValueOnce({ message: 'Importlauf aktiv', expected: true });
   await expect(act(async () => { await result.current.importSourceFiles(['/dl/b.3mf']); })).rejects.toMatchObject({ message: 'Importlauf aktiv' });
   expect(result.current.error).toBeNull();
+});
+
+describe('drop onto a folder', () => {
+  const folder = { id: 'f1', name: 'Halter', path: '/base/Halter', parentId: null, count: 0 };
+  const dropArgs = () => vi.mocked(invoke).mock.calls.find(c => c[0] === 'start_dropped_import')?.[1] as { paths: string[]; targetFolderId?: string } | undefined;
+  const hookWith = (resolveDropTarget: () => import('../lib/externalDrop').DropTarget, onDropRejected = vi.fn()) => {
+    vi.mocked(invoke).mockImplementation(async cmd => cmd === 'start_dropped_import' ? {jobId:'j2'} : cmd === 'get_import_state' ? progress('j2','queued') : null);
+    const hook = renderHook(() => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: 'all', resolveDropTarget, onDropRejected, onImported: vi.fn(), refreshFiles: vi.fn(), refreshFolders: vi.fn(), refreshTags: vi.fn() }));
+    return { ...hook, onDropRejected };
+  };
+  it('sends the folder as target and names it in the progress row', async () => {
+    const { result } = hookWith(() => ({ kind: 'folder', folder }));
+    await act(async () => events.handlers.drop({payload:{type:'drop',paths:['/a.stl'],position:{x:1,y:1}}}));
+    expect(dropArgs()).toMatchObject({ paths: ['/a.stl'], targetFolderId: 'f1' });
+    expect(result.current.meta?.targetName).toBe('Halter');
+  });
+  it('sends no target when the pointer is on no folder', async () => {
+    hookWith(() => ({ kind: 'none' }));
+    await act(async () => events.handlers.drop({payload:{type:'drop',paths:['/a.stl'],position:{x:1,y:1}}}));
+    expect(dropArgs()?.paths).toEqual(['/a.stl']);
+    expect(dropArgs()?.targetFolderId).toBeUndefined();
+  });
+  it('starts no import on a folder that is no target and reports it', async () => {
+    const { onDropRejected } = hookWith(() => ({ kind: 'invalid', folder, reason: 'catalogRoot' }));
+    await act(async () => events.handlers.drop({payload:{type:'drop',paths:['/a.stl'],position:{x:1,y:1}}}));
+    expect(dropArgs()).toBeUndefined();
+    expect(onDropRejected).toHaveBeenCalledWith(expect.objectContaining({ reason: 'catalogRoot' }));
+  });
+});
+
+it('ignores self drops until the native drag has ended', async () => {
+  const { startNativeDrag, NativeDragState } = await import('../lib/nativeDrag');
+  setup();
+  await act(async () => { await startNativeDrag(['1']); });
+  expect(NativeDragState.isActive()).toBe(true);
+  vi.mocked(invoke).mockClear();
+  act(() => events.handlers.drop({payload:{type:'drop', paths:['/tmp/copy.stl'],position:{x:0,y:0}}}));
+  expect(invoke).not.toHaveBeenCalledWith('start_dropped_import', expect.anything());
+  act(() => events.handlers['native-drag-ended']({payload:null}));
+  expect(NativeDragState.isActive()).toBe(false);
+  await act(async () => events.handlers.drop({payload:{type:'drop', paths:['/tmp/external.stl'],position:{x:0,y:0}}}));
+  expect(invoke).toHaveBeenCalledWith('start_dropped_import', expect.anything());
 });

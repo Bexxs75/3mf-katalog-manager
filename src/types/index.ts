@@ -20,6 +20,78 @@ export interface SliceInfo {
   plates: PlateFilamentUsage[];
 }
 
+/** A value reduced over several plates: one number, "several different ones" or unknown (`value` null, not mixed). */
+export interface MixedValue {
+  value: number | null;
+  mixed: boolean;
+}
+
+export interface PlatePrintInfo {
+  plateIndex: number;
+  name: string | null;
+  /** Estimated print time; null when the file does not give one. Never the first-layer time. */
+  printSeconds: number | null;
+  /** Time of the first layer only, never a print time. */
+  firstLayerSeconds: number | null;
+  plateBedType: string | null;
+}
+
+export type PrintSliceState = 'sliced' | 'no_slice_data' | 'not_recognized' | 'unreadable';
+
+/** What the slicer stored in a 3MF besides the filament usage (`PrintInfoDto`). */
+export interface PrintInfo {
+  sliceState: PrintSliceState;
+  settingsState: 'read' | 'missing' | 'unreadable' | 'not_attempted';
+  /** False when an older (or newer) reader wrote the row: treat it as not read yet and show no values. */
+  readerCurrent: boolean;
+  readAt: string;
+  printerModel: string | null;
+  bedType: string | null;
+  layerHeightMm: number | null;
+  nozzleMm: MixedValue;
+  bedTempC: MixedValue;
+  nozzleTempC: MixedValue;
+  plates: PlatePrintInfo[];
+  /** Distinct `#rrggbb` colors of the used filaments or extruders; empty = none known. */
+  filamentColors: string[];
+}
+
+/**
+ * The few print facts the filter and the card extra need (`printFacts` of `list_file_summaries`).
+ * Absent field = not known; never 0. Mirrors `PrintFactsDto`: false flags are left out.
+ */
+export interface PrintFacts {
+  printerModel?: string;
+  layerHeightMm?: number;
+  /** Absent for a mixed or unknown nozzle. */
+  nozzleMm?: number;
+  nozzleMixed?: true;
+  /** Rows of the plate table (0 = none stored). */
+  plateCount: number;
+  /** Sum of the known plate times. */
+  printSeconds?: number;
+  /** True when every plate has a time, so `printSeconds` is the whole print time. */
+  printSecondsComplete?: true;
+  /** `#rrggbb` */
+  colors?: string[];
+}
+
+/** One plate of `read_plate_overview`. A left-out field means "not given", never 0. */
+export interface PlateOverviewRow {
+  plateIndex: number;
+  /** Number of `<model_instance>` of the plate. */
+  objectCount?: number;
+  /** `data:image/png;base64,...`, only when previews were asked for and the picture passed the checks. */
+  preview?: string;
+}
+
+export interface PlateOverview {
+  plates: PlateOverviewRow[];
+}
+
+/** `none` = not a 3MF; `unread` = 3MF without a row or with a row of another reader version. */
+export type PrintDataState = 'none' | 'unread' | PrintSliceState;
+
 export interface CostEstimate {
   totalCost: number | null;
   hasUnpricedFilaments: boolean;
@@ -30,9 +102,23 @@ export interface ModelImages {
   thumbnailImage: string | null;
   renderSnapshotImage: string | null;
   customImage: string | null;
+  /** Web only: left out because the answer hit its size budget; request it again. */
+  deferred?: boolean;
+}
+
+export interface PlateDimensions {
+  number: number;
+  name: string | null;
+  dimensionsMm: [number, number, number];
 }
 
 export interface ModelFile {
+  /** Catalog file type ('3mf', 'stl', 'stp', 'obj', 'gcode', 'resin'); absent on models loaded in full. */
+  fileType?: string;
+  /** What the list knows about the print data; absent on models loaded in full (derive it with `printDataStateOf`). */
+  printDataState?: PrintDataState;
+  /** Print facts of the list; absent on models loaded in full (derive them with `printFactsOf`) and for files without usable print data. */
+  printFacts?: PrintFacts;
   license: string | null;
   hasThumbnail?: boolean;
   hasRenderSnapshot?: boolean;
@@ -44,6 +130,7 @@ export interface ModelFile {
   origin: Origin;
   sync: SyncStatus;
   dimensionsMm: [number, number, number] | null;
+  plateDimensions?: PlateDimensions[] | null;
   volumeCm3: number | null;
   objectCount: number | null;
   plateCount: number | null;
@@ -55,6 +142,8 @@ export interface ModelFile {
   estimatedWeightG: number | null;
   weightSource: 'slicer' | 'estimated';
   sliceInfo: SliceInfo | null;
+  /** Null for non-3MF files, for a 3MF without a stored row and while only the list summary is loaded (`summaryOnly`). */
+  printInfo: PrintInfo | null;
   costEstimate: CostEstimate | null;
   lastViewedAt: string | null;
   contentHash: string | null;
@@ -85,6 +174,7 @@ export interface ModelFile {
  * loads the full data on selection.
  */
 export interface ModelFileSummary {
+  plateCount?: number | null;
   license: string | null;
   /** Stable lowercase key such as 'makerworld'; null when the file does not prove its origin. */
   sourcePlatform: string | null;
@@ -100,6 +190,7 @@ export interface ModelFileSummary {
   weightSource: ModelFile['weightSource'];
   fileSizeBytes: number;
   dimensionsMm: [number, number, number] | null;
+  plateDimensions?: PlateDimensions[] | null;
   volumeCm3: number | null;
   objectCount: number | null;
   importedAt: string;
@@ -112,6 +203,8 @@ export interface ModelFileSummary {
   creator: string | null;
   lastViewedAt: string | null;
   contentHash: string | null;
+  printDataState: PrintDataState;
+  printFacts?: PrintFacts;
 }
 
 export interface Folder {
@@ -122,6 +215,8 @@ export interface Folder {
   count: number;
   /** The directory is gone from disk (false when unknown, e.g. root not readable). */
   missing?: boolean;
+  /** Web server: files may be moved into this folder (false for protected ones; absent = unknown, allowed). */
+  moveTarget?: boolean;
 }
 
 export interface FolderTrashSummary {
@@ -248,6 +343,8 @@ export interface FilamentSpool {
   remainingWeightG: number;
   price: number | null;
   imagePng: string | null;
+  /** Web lists omit image bytes and expose only this flag. */
+  hasImage?: boolean;
   /** Color value `#rrggbb`; `color` stays the color name. */
   colorHex: string | null;
   /** Up to four colors of a multi-color spool (`#rrggbb`); empty = single-color. `colorHex` is always the first entry. */
@@ -262,7 +359,9 @@ export interface FilamentSpool {
 export type UnitKind =
   | 'bambu_ams'
   | 'bambu_ams_lite'
+  | 'bambu_ams_2_pro'
   | 'bambu_ams_ht'
+  | 'bambu_ams_3h'
   | 'creality_cfs'
   | 'prusa_mmu3'
   | 'anycubic_ace'
@@ -292,7 +391,39 @@ export interface PrinterDetails {
   bedZMm: number | null;
 }
 
-export type MainView = 'catalog' | 'filament' | 'printers' | 'trash' | 'downloads';
+export type MainView = 'catalog' | 'filament' | 'printers' | 'trash' | 'downloads' | 'thingiverse';
+
+/** What the backend says about the Thingiverse area; never the key itself. */
+export interface ThingiverseSettings {
+  enabled: boolean;
+  hasToken: boolean;
+  /** Bullets plus the last four characters, or null without a key. */
+  tokenMask: string | null;
+  usageToday: number;
+  dailyLimit: number;
+}
+export interface ThingSummary {
+  id: number;
+  name: string;
+  /** Empty when Thingiverse named no author. */
+  authorName: string;
+  licenseName: string | null;
+  likeCount: number | null;
+  previewAvailable: boolean;
+  /** Address of the thing's page on Thingiverse. */
+  url: string;
+}
+export interface ThingDetail extends ThingSummary {
+  /** Plain text, never HTML. */
+  description: string;
+  createdAt: string | null;
+  tags: string[];
+}
+export interface ThingiverseSearch {
+  items: ThingSummary[];
+  hasMore: boolean;
+  page: number;
+}
 export interface PrinterNavigation { printerId?: string; reviewJobs?: boolean }
 
 export interface PrinterHistoryJob {
@@ -303,6 +434,38 @@ export interface PrinterHistoryJob {
   usedMm: number;
   grams: number | null;
   state: 'open' | 'confirmed' | 'ignored';
+  /** End of the print in local Unix seconds. */
+  endedAt: number;
+  /** The status as the printer reported it. */
+  rawStatus: string;
+  failureReason: string | null;
+  failureNote: string | null;
+  /** Closed by the program (no usage, or older history); never deducted. */
+  autoClosed: boolean;
+}
+
+export interface PrintStatRow {
+  printerId: string;
+  /** End of the print in local Unix seconds. */
+  endedAt: number;
+  outcome: 'completed' | 'partial';
+  rawStatus: string;
+  printDurationS: number;
+  /** Only confirmed prints carry grams. */
+  grams: number | null;
+  usedMm: number;
+  material: string | null;
+  state: 'open' | 'confirmed' | 'ignored';
+  autoClosed: boolean;
+  failureReason: string | null;
+}
+
+export interface PrintStatistics {
+  rows: PrintStatRow[];
+  /** More rows exist than were returned. */
+  truncated: boolean;
+  /** Earliest start of a printer connection (local Unix seconds). */
+  firstConnectedAt: number | null;
 }
 
 export interface Printer extends PrinterDetails {
@@ -321,6 +484,27 @@ export interface Collection {
   id: string;
   name: string;
   modelCount: number;
+}
+
+/** Variants of one model, or the parts of a multi-part model. */
+export type BundleKind = 'variants' | 'parts';
+
+/** One file of a bundle. A member in the trash stays a member until it is deleted for good. */
+export interface BundleMember {
+  fileId: string;
+  /** Order inside the bundle; the member with the smallest position is the title model. */
+  position: number;
+  label: string | null;
+  inTrash: boolean;
+}
+
+/** Mirrors `BundleDto`: members come ordered by position; the list holds bundles of two or more members only. */
+export interface Bundle {
+  id: string;
+  name: string;
+  kind: BundleKind;
+  createdAt: string;
+  members: BundleMember[];
 }
 
 export type FilamentCheckStatus = 'ok' | 'swap' | 'short' | 'unknown' | 'no_data';
@@ -366,12 +550,21 @@ export type PrinterConnectionError =
   | 'container_local_name'
   | 'container_loopback'
   | 'unreachable'
+  | 'timeout'
+  | 'connection_refused'
+  | 'connection_reset'
+  | 'server_busy'
   | 'auth_required'
+  | 'auth_rejected'
+  | 'api_key_invalid'
   | 'bad_response'
   | 'too_many_open_jobs'
   | 'history_missing'
   | 'address_not_allowed'
   | 'disabled';
+
+/** What the backend derives from the stored failures (`printer_link::status`). */
+export type PrinterConnectionStatus = 'ok' | 'reconnecting' | 'offline' | 'error' | 'paused';
 
 export interface PrinterConnection {
   printerId: string;
@@ -387,12 +580,25 @@ export interface PrinterConnection {
   paused: boolean;
   /** Printer clock minus local clock in seconds; 0 when within 5 minutes. */
   clockOffsetS: number;
+  /** Failed attempts in a row. */
+  failures?: number;
+  /** Whether a key is stored. The key itself never reaches the interface. */
+  hasApiKey?: boolean;
+  /** Absent only for data that predates the field; the views then derive it from `lastError` and `paused`. */
+  status?: PrinterConnectionStatus;
 }
 
 export interface PrinterTestResult {
   ok: boolean;
   error: PrinterConnectionError | null;
   connection: PrinterConnection | null;
+}
+
+export interface OlderHistoryResult {
+  /** New rows of history. */
+  added: number;
+  /** An error code of the connection, or `no_connection` when it was removed meanwhile. */
+  error: string | null;
 }
 
 export interface PrinterJob {
@@ -483,9 +689,10 @@ export interface StartedImport { jobId: string | null }
 
 export type SortDirection = 'asc' | 'desc';
 
-export type CompanionKind = 'image' | 'pdf' | 'text';
+/** `other` is a CAD source or document: stored and handed back, never opened or previewed. */
+export type CompanionKind = 'image' | 'pdf' | 'text' | 'other';
 
-/** An extra file of a model (picture, PDF, text). Trashed ones have `deletedAt` set. */
+/** An extra file of a model (picture, PDF, text, other format). Trashed ones have `deletedAt` set. */
 export interface Companion {
   id: string;
   fileId: string;
@@ -497,6 +704,24 @@ export interface Companion {
   deletedAt: string | null;
   /** The file is gone from disk. A state of this entry only, never a catalog change. */
   missing: boolean;
+}
+
+/** A companion as the web lists it: read only, no server path, trashed ones are never sent. */
+export interface WebCompanion {
+  id: string;
+  fileId: string;
+  name: string;
+  kind: CompanionKind;
+  sizeBytes: number | null;
+  addedAt: string;
+  /** Gone from disk or failing the server's safety checks: listed, not served. */
+  missing: boolean;
+  /** An image small enough for `companionImageData`. */
+  previewable: boolean;
+  /** Set for a file that was removed on its own and waits in the trash (web build only). */
+  deletedAt?: string;
+  /** Only with `deletedAt`: false when the file sits in the desktop's trash and can only be restored there. */
+  restorable?: boolean;
 }
 
 export interface CompanionOpenInfo {

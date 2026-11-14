@@ -1,8 +1,9 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 import type {
   ConfirmResult,
   JobDecision,
   JobPreview,
+  OlderHistoryResult,
   PrinterConnection,
   PrinterJob,
   PrinterTestResult,
@@ -21,14 +22,22 @@ export function listPrinterConnections() {
   return invoke<PrinterConnection[]>('list_printer_connections');
 }
 /** Klipper/Moonraker only for now. */
-export function testPrinterConnection(printerId: string, address: string) {
-  return invoke<PrinterTestResult>('test_printer_connection', { printerId, kind: 'moonraker', address });
+export function testPrinterConnection(printerId: string, address: string, apiKey: string | null = null) {
+  // `apiKey` is only what the user just typed; null keeps the stored key.
+  return invoke<PrinterTestResult>('test_printer_connection', { printerId, kind: 'moonraker', address, apiKey });
+}
+export function clearPrinterApiKey(printerId: string) {
+  return invoke<void>('clear_printer_api_key', { printerId });
 }
 export function removePrinterConnection(printerId: string) {
   return invoke<void>('remove_printer_connection', { printerId });
 }
 export function syncPrintersNow() {
   return invoke<void>('sync_printers_now');
+}
+/** Prints from before the connection become history for the statistics; none is offered for deduction. */
+export function includeOlderPrinterHistory(printerId: string) {
+  return invoke<OlderHistoryResult>('include_older_printer_history', { printerId });
 }
 export function listOpenPrinterJobs() {
   return invoke<PrinterJob[]>('list_open_printer_jobs');
@@ -67,6 +76,10 @@ export async function getPrinterJobThumbnail(jobId: string) {
 }
 export function ignorePrinterJob(jobId: string) {
   return invoke<void>('ignore_printer_job', { jobId });
+}
+/** Sets why a print ended early; `reason = null` clears reason and note. Desktop only. */
+export function setPrinterJobFailure(jobId: string, reason: string | null, note: string | null) {
+  return invoke<void>('set_printer_job_failure', { jobId, reason, note });
 }
 export function confirmPrinterJobs(decisions: JobDecision[]) {
   return invoke<ConfirmResult>('confirm_printer_jobs', { decisions });

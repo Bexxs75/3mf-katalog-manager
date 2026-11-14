@@ -13,10 +13,16 @@ on:
   push:
     branches: ["dev/0.16.0"]
     paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "e2e/**"
       - ".github/workflows/e2e.yml"
   pull_request:
     paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "src/**"
       - "src-tauri/**"
       - "e2e/**"

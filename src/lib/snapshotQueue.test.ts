@@ -120,3 +120,15 @@ describe('renderer generations', () => {
     expect(nextRendererGeneration(199, 3, event)).toEqual({ done: 0, generation: 4 });
   });
 });
+
+describe('snapshotQueue and G-code', () => {
+  const withGcode = [
+    { id: 'stl', path: '/cat/model.stl', thumbnailImage: null },
+    { id: 'gcode', path: '/cat/out.gcode', thumbnailImage: null },
+    { id: 'bgcode', path: '/cat/OUT.BGCODE', thumbnailImage: null },
+    { id: 'ctb', path: '/cat/layers.CTB', thumbnailImage: null },
+  ];
+  it.each(['render', 'thumbnail'] as const)('never queues G-code or resin files for a render (%s)', preference => {
+    expect(snapshotQueue(withGcode, ['stl', 'gcode', 'bgcode', 'ctb'], preference, true)).toEqual(['stl']);
+  });
+});

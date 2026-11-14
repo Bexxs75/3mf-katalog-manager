@@ -37,9 +37,9 @@ beforeEach(() => {
 it('opens first-run setup after reset and reloads catalog data', async () => {
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   fireEvent.click(screen.getByRole('button', { name: de.settingsTitle }));
-  fireEvent.click(screen.getByText(de.settingsTabCatalog, { selector: 'button' }));
+  fireEvent.click(screen.getByText(de.settingsTabMaintenance, { selector: 'button' }));
   fireEvent.click(screen.getByText('Katalog zurücksetzen …'));
-  fireEvent.click(screen.getByText('Zurücksetzen'));
+  fireEvent.click(screen.getByRole('button', { name: de.resetConfirm }));
   expect(await screen.findByText(de.catalogSetupAdoptTitle)).toBeTruthy();
   expect(localStorage.getItem('3mf-katalog-base-dir')).toBeNull();
   expect(localStorage.getItem('3mf-katalog-setup-seen')).toBeNull();

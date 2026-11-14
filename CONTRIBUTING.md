@@ -32,11 +32,10 @@ npm run tauri dev -- -- --no-default-features
 # or: npm run tauri build -- -- --no-default-features
 ```
 
-Backend tests:
+Backend tests (from the repository root; shared domain logic lives in `crates/katalog-core`):
 
 ```bash
-cd src-tauri
-cargo test
+cargo test --workspace
 ```
 
 Production build (type checking + Vite build):
@@ -50,7 +49,7 @@ On Windows, run `.\src-tauri\scripts\stage-vc-runtime.ps1` once before `npm run 
 ### Running tests
 
 - **Frontend tests:** `npx vitest run` (or `npm test`, which runs the same command). Type checking alone: `npx tsc --noEmit`.
-- **Rust tests:** `cd src-tauri && cargo test`. The default Cargo feature is `step-preview` (see `src-tauri/Cargo.toml`), which needs Open CASCADE and `cmake` to build. If you don't have OCCT set up, run `cargo test --no-default-features` instead — this is also what CI uses for Clippy and the Rust test job.
+- **Rust tests:** `cargo test --workspace` from the repository root. The default Cargo feature is `step-preview` (see `src-tauri/Cargo.toml`), which needs Open CASCADE and `cmake` to build. If you don't have OCCT set up, run `cargo test --workspace --no-default-features` instead — this is also what CI uses for Clippy and the Rust test job.
 
 ### Conventions used in this repo
 
@@ -115,11 +114,10 @@ npm run tauri dev -- -- --no-default-features
 # oder: npm run tauri build -- -- --no-default-features
 ```
 
-Backend-Tests:
+Backend-Tests (im Repo-Wurzelverzeichnis; die gemeinsame Fachlogik liegt in `crates/katalog-core`):
 
 ```bash
-cd src-tauri
-cargo test
+cargo test --workspace
 ```
 
 Produktions-Build (Typprüfung + Vite-Build):
@@ -133,7 +131,7 @@ Unter Windows vor `npm run tauri dev` oder `npm run tauri build` einmal `.\src-t
 #### Tests ausführen
 
 - **Frontend-Tests:** `npx vitest run` (oder `npm test`, ruft denselben Befehl auf). Nur Typprüfung: `npx tsc --noEmit`.
-- **Rust-Tests:** `cd src-tauri && cargo test`. Das einzige Standard-Cargo-Feature ist `step-preview` (siehe `src-tauri/Cargo.toml`), das Open CASCADE und `cmake` zum Bauen braucht. Ohne eingerichtetes OCCT stattdessen `cargo test --no-default-features` ausführen – das nutzt auch die CI für Clippy und den Rust-Testjob.
+- **Rust-Tests:** `cargo test --workspace` im Repo-Wurzelverzeichnis. Das einzige Standard-Cargo-Feature ist `step-preview` (siehe `src-tauri/Cargo.toml`), das Open CASCADE und `cmake` zum Bauen braucht. Ohne eingerichtetes OCCT stattdessen `cargo test --workspace --no-default-features` ausführen – das nutzt auch die CI für Clippy und den Rust-Testjob.
 
 #### Im Repo übliche Konventionen
 

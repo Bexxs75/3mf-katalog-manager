@@ -1,3 +1,7 @@
+import { isReadOnly } from '../lib/readOnly';
+import { metadataBatch } from '../lib/metadataBatch';
+import { reportMetadataError } from '../lib/metadataErrors';
+import { canEditMetadata } from '../lib/webSession';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
 import * as collectionsApi from '../lib/api/collections';
@@ -56,52 +60,66 @@ export function useCollections() {
 
   const reorderCollection = useCallback(
     (orderedIds: string[]) => {
+      if (!canEditMetadata()) return Promise.resolve();
       if (!activeCollection) return;
+      if (isReadOnly()) {
+        const collectionId = activeCollection;
+        return collectionsApi.reorderCollection(collectionId, orderedIds.map((fileId, position) => ({ fileId, position })))
+          .catch(reportMetadataError)
+          .then(() => refreshCollectionModels(collectionId)).catch(reportMetadataError);
+      }
       const updates = orderedIds.map((fileId, position) => ({ fileId, position }));
       setMembers((prev) => {
         const byId = new Map(prev.models.map((m) => [m.id, m]));
         return { ...prev, models: orderedIds.map((id) => byId.get(id)).filter((m): m is ModelFile => m !== undefined) };
       });
       collectionsApi.reorderCollection(activeCollection, updates).catch((e) => {
-        console.error('[collections] reordering failed:', e);
+        console.error('[collections] reordering failed:', e); reportMetadataError(e);
       });
     },
     [activeCollection],
   );
 
   const createCollection = useCallback(
-    (name: string) => collectionsApi.createCollection(name).then(() => refreshCollections()),
+    (name: string) => !canEditMetadata() ? Promise.resolve() : collectionsApi.createCollection(name).then(() => refreshCollections()).catch(error => { reportMetadataError(error); throw error; }),
     [refreshCollections],
   );
 
   const renameCollection = useCallback(
-    (id: string, name: string) => collectionsApi.renameCollection(id, name).then(() => refreshCollections()),
+    (id: string, name: string) => !canEditMetadata() ? Promise.resolve() : collectionsApi.renameCollection(id, name).then(() => refreshCollections()).catch(error => { reportMetadataError(error); throw error; }),
     [refreshCollections],
   );
 
   const deleteCollection = useCallback(
     (id: string) =>
-      collectionsApi.deleteCollection(id).then(() => {
+      !canEditMetadata() ? Promise.resolve() : collectionsApi.deleteCollection(id).then(() => {
+        if (isReadOnly()) {
+          if (activeCollection === id) setActiveCollection(null);
+          return refreshCollections();
+        }
         refreshCollections();
         if (activeCollection === id) setActiveCollection(null);
-      }),
+      }).catch(error => { reportMetadataError(error); throw error; }),
     [refreshCollections, activeCollection],
   );
 
   const addModelToCollection = useCallback(
     (fileId: string, collectionId: string) =>
-      collectionsApi.addFilesToCollection(collectionId, [fileId]).then(async () => {
+      !canEditMetadata() ? Promise.resolve() : collectionsApi.addFilesToCollection(collectionId, [fileId]).then(async () => {
         await Promise.all([
           refreshCollections(),
           ...(activeRef.current === collectionId ? [refreshCollectionModels(collectionId)] : []),
         ]);
-      }),
+      }).catch(error => { reportMetadataError(error); throw error; }),
     [refreshCollections, refreshCollectionModels],
   );
 
   const bulkAddToCollection = useCallback(
     (fileIds: string[], collectionId: string) =>
-      collectionsApi.addFilesToCollection(collectionId, fileIds).then(async () => {
+      !canEditMetadata() ? Promise.resolve() : isReadOnly() ? metadataBatch(fileIds, id => collectionsApi.addFilesToCollection(collectionId, [id]), async () => {
+        await refreshCollections();
+        if (activeRef.current === collectionId) await refreshCollectionModels(collectionId);
+      }) : collectionsApi.addFilesToCollection(collectionId, fileIds).then(async () => {
         await Promise.all([
           refreshCollections(),
           ...(activeRef.current === collectionId ? [refreshCollectionModels(collectionId)] : []),
@@ -112,7 +130,11 @@ export function useCollections() {
 
   const bulkRemoveFromCollection = useCallback(
     (fileIds: string[]) => {
+      if (!canEditMetadata()) return Promise.resolve();
       if (!activeCollection) return Promise.resolve();
+      if (isReadOnly()) return metadataBatch(fileIds, id => collectionsApi.removeFileFromCollection(activeCollection, id), async () => {
+        await refreshCollections(); await refreshCollectionModels(activeCollection);
+      });
       return Promise.all(
         fileIds.map((fileId) => collectionsApi.removeFileFromCollection(activeCollection, fileId)),
       ).then(() => {

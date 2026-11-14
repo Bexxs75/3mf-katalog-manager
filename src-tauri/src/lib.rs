@@ -1,25 +1,29 @@
-mod archive;
+mod drag_storage;
+use crate::commands::DesktopJobs;
+pub use katalog_core::archive;
 mod commands;
-mod db;
+mod printer_sync;
+pub use katalog_core::db;
 pub mod diagnostics;
-mod filament_check;
-mod geometry;
+pub use katalog_core::filament_check;
+pub use katalog_core::geometry;
 mod linux_menu;
 mod log_target;
-mod obj;
+pub use katalog_core::obj;
 // Printer connection: connection and sync logic.
-mod printer_link;
-mod safe_file;
+pub use katalog_core::printer_link;
+pub use katalog_core::safe_file;
 mod slicers;
 mod single_instance;
 #[cfg(feature = "step-preview")]
-pub mod step;
-mod stl;
-mod tagging;
-mod threemf;
+pub use katalog_core::step;
+pub use katalog_core::stl;
+pub use katalog_core::tagging;
+pub use katalog_core::threemf;
 mod updater;
 mod startup;
 mod startup_error;
+mod tray;
 
 use std::sync::Mutex;
 
@@ -30,7 +34,7 @@ use tauri::Manager;
 /// opening the catalog can migrate it before a later database operation fails.
 fn open_storage(
     app: &tauri::App,
-) -> Result<(rusqlite::Connection, bool, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
+) -> Result<(rusqlite::Connection, Option<db::MigrationReport>, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
     use startup_error::{StartupFailure, StartupStage};
     let app_data_dir = app.path().app_data_dir()
         .map_err(|e| StartupFailure::new(StartupStage::DataFolder, std::path::Path::new(""), e))?;
@@ -39,7 +43,7 @@ fn open_storage(
 
 fn open_storage_at(
     app_data_dir: &std::path::Path,
-) -> Result<(rusqlite::Connection, bool, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
+) -> Result<(rusqlite::Connection, Option<db::MigrationReport>, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
     use startup_error::{StartupFailure, StartupStage};
     std::fs::create_dir_all(app_data_dir)
         .map_err(|e| StartupFailure::new(StartupStage::DataFolder, app_data_dir, e))?;
@@ -48,24 +52,13 @@ fn open_storage_at(
     std::fs::create_dir_all(&trash_dir)
         .map_err(|e| StartupFailure::new(StartupStage::TrashFolder, &trash_dir, e))?;
     let db_path = app_data_dir.join("catalog.db");
-    let (conn, backup_failed) = db::connect_with_warning(&db_path)
+    let (conn, migration_report) = db::connect_with_report(&db_path)
         .map_err(|e| StartupFailure::new(StartupStage::Catalog, &db_path, e))?;
     harden_permissions(&db_path);
-    Ok((conn, backup_failed, db_path, trash_dir))
+    Ok((conn, migration_report, db_path, trash_dir))
 }
 
-// Data directory for the own user only (relevant on multi-user systems).
-#[cfg(unix)]
-pub(crate) fn harden_permissions(path: &std::path::Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let mode = if path.is_dir() { 0o700 } else { 0o600 };
-    if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
-        log::error!(target: "startup", "could not harden file permissions for {path:?}: {e}");
-    }
-}
-
-#[cfg(not(unix))]
-pub(crate) fn harden_permissions(_path: &std::path::Path) {}
+use katalog_core::safe_file::harden_permissions;
 
 /// Indents continuation lines of a multi-line log message (e.g. a stack
 /// trace) so they read as part of the same entry, not as separate log lines.
@@ -101,13 +94,43 @@ fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
     dirs
 }
 
+/// The report call of a slicer: 0 = ticket written. The inbox lies in the app data folder, which is found
+/// without the app (same rule as Tauri's `app_data_dir`). Nothing is printed on success.
+fn report_sliced_and_exit_code(request: Result<std::path::PathBuf, katalog_core::slicer_report::ReportError>, identifier: &str) -> i32 {
+    use katalog_core::slicer_report as report;
+    let Some(base) = dirs::data_dir() else {
+        eprintln!("3MF Katalog Manager: the data folder of the user is unknown");
+        return 2;
+    };
+    let inbox = base.join(identifier).join(report::INBOX_DIR);
+    let output_name = std::env::var(report::OUTPUT_NAME_ENV).ok();
+    match report::report_sliced(request, output_name.as_deref(), &inbox) {
+        Ok(_) => 0,
+        Err(error) => {
+            eprintln!("3MF Katalog Manager: {error}");
+            1
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    // A slicer reports a sliced file (`--report-sliced <file>`): leave a ticket in the inbox and end.
+    // Before the window and before any database access, so it works while the program is open, closed or busy.
+    let args: Vec<String> = std::env::args_os().map(|a| a.to_string_lossy().into_owned()).collect();
+    if let Some(request) = katalog_core::slicer_report::report_request(&args) {
+        std::process::exit(report_sliced_and_exit_code(request, &context.config().identifier));
+    }
     let mut builder = tauri::Builder::default();
     let allow_multiple = std::env::var(single_instance::ALLOW_MULTIPLE_ENV).ok();
     if single_instance::single_instance_enabled(cfg!(debug_assertions), allow_multiple.as_deref()) {
         // The singleton must claim its lock before any other plugin initializes.
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            // Files of the second start wait in the backend; the frontend collects them.
+            commands::queue_and_notify(app, commands::open_requests_from_args(&args, std::path::Path::new(&cwd)));
+            // A second start also wakes the intake of slicer reports (a start with `--report-sliced` ends before it gets here).
+            commands::ingest_and_notify(app);
             if let Some(window) = app.get_webview_window("main") {
                 single_instance::bring_to_front(&window);
             } else {
@@ -115,13 +138,21 @@ pub fn run() {
             }
         }));
     }
-    let context = tauri::generate_context!();
     let mut log_builder = tauri_plugin_log::Builder::new().clear_targets();
     for kind in log_target::resolve_log_targets(&context.config().identifier, &context.package_info().name) {
         log_builder = log_builder.target(tauri_plugin_log::Target::new(kind));
     }
+    // A path given at the first start is earlier than the window; it waits here.
+    let pending_open = commands::PendingOpenFiles::default();
+    if let Ok(cwd) = std::env::current_dir() {
+        pending_open.push(commands::open_requests_from_args(&args, &cwd));
+    }
     builder
+        .manage(pending_open)
+        .manage(commands::ExternalSources::default())
         .manage(commands::RuntimeEnvironment::current())
+        // Thingiverse search: cache and request limits live in memory only.
+        .manage(std::sync::Arc::new(katalog_core::thingiverse::Service::new()))
         .plugin(
             log_builder
                 // Debug passes the plugin; the effective level is set at runtime with
@@ -160,16 +191,23 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            app.manage(commands::NativeDragState::default());
             // The window is created last: if the data folder or catalog cannot be opened,
             // no webview exists whose commands would hit state that was never managed.
-            let (mut conn, backup_failed, db_path, trash_dir) = match open_storage(app) {
+            let (mut conn, migration_report, db_path, trash_dir) = match open_storage(app) {
                 Ok(storage) => storage,
                 Err(failure) => {
                     startup_error::report_and_exit(app.handle(), &failure);
                     return Ok(());
                 }
             };
-            app.manage(startup::MigrationBackupWarning(backup_failed));
+            let previous_version = commands::remember_app_version(&conn, env!("CARGO_PKG_VERSION"))
+                .unwrap_or_else(|error| {
+                    log::warn!("Could not remember app version: {error:?}");
+                    commands::PreviousAppVersion(None)
+                });
+            app.manage(previous_version);
+            app.manage(commands::UpgradeReport(migration_report));
             commands::apply_verbose_state(&conn);
             diagnostics::log_startup(&conn);
             match db::cleanup_tag_fragments(&mut conn) {
@@ -183,7 +221,19 @@ pub fn run() {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
             commands::purge_expired_trash_on_startup(&conn, &trash_dir);
+            match app.path().app_cache_dir().and_then(|cache| crate::drag_storage::DragStorage::new(&cache).map_err(Into::into)) {
+                Ok(storage) => {
+                    let storage = std::sync::Arc::new(storage);
+                    storage.start_timer();
+                    app.manage(storage);
+                }
+                Err(e) => log::warn!(target: "drag", "drag storage unavailable: {e}"),
+            }
             let sensitive_dirs = sensitive_dirs(app.handle());
+            // Mirrors the stored close wish so the window hook never touches the database lock.
+            let close_behavior = tray::CloseBehavior::from_db(&conn);
+            let wants_tray = close_behavior.action() == tray::CloseAction::Tray;
+            app.manage(close_behavior);
             app.manage(commands::AppState {
                 import_jobs: commands::ImportJobs::for_app(app.handle().clone()),
                 db: Mutex::new(conn),
@@ -216,13 +266,23 @@ pub fn run() {
             });
             app.manage(commands::ApprovedTargets::default());
             app.manage(commands::ApprovedCatalogParents::default());
-            let waker = printer_link::sync::spawn_background(app.handle().clone());
+            let waker = printer_sync::spawn_background(app.handle().clone());
             app.manage(waker);
             app.manage(commands::DroppedImages::default());
             app.manage(commands::DiagnosticsState::default());
             app.manage(commands::UpdaterState::default());
             commands::sync_linux_menu_path();
+            // Reports that slicers left while the program was closed.
+            commands::ingest_and_notify(app.handle());
             startup::create_window(app)?;
+            if wants_tray {
+                // A failed build (e.g. no appindicator library) leaves the behavior at "quit".
+                let container = commands::RuntimeEnvironment::current().container;
+                let behavior = app.state::<tray::CloseBehavior>();
+                if let Err(error) = behavior.apply(tray::CloseAction::Tray, container, &tray::AppTray(app.handle().clone())) {
+                    log::info!(target: "tray", "tray unavailable: {error:?}");
+                }
+            }
             // Product name from the active config (differs for the preview variant) plus
             // the version, taken straight from Cargo.toml.
             if let Some(window) = app.get_webview_window("main") {
@@ -236,7 +296,17 @@ pub fn run() {
         // event loop iteration in which Tauri forwards the drop event to the frontend -
         // the following IPC call `import_dropped` is therefore always processed after it.
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let container = window.state::<commands::RuntimeEnvironment>().container;
+                if let Some(behavior) = window.try_state::<tray::CloseBehavior>() {
+                    if behavior.decide(container, window.label()) == tray::CloseDecision::Hide {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                }
+            }
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if window.try_state::<commands::NativeDragState>().is_some_and(|state| state.is_active()) { return; }
                 window.state::<commands::AppState>().import_jobs.observe_drop(paths);
                 if let Some(images) = window.try_state::<commands::DroppedImages>() {
                     images.observe_drop(paths);
@@ -245,7 +315,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             startup::frontend_ready,
-            startup::get_migration_backup_warning,
             startup::save_window_theme,
             commands::discard_archive_imports,
             commands::start_import,
@@ -273,6 +342,7 @@ pub fn run() {
             commands::restore_companion,
             commands::companion_open_info,
             commands::open_companion,
+            commands::reveal_companion,
             commands::companion_image_data,
             commands::list_file_images,
             commands::list_all_file_tags,
@@ -312,6 +382,7 @@ pub fn run() {
             commands::update_printer_details,
             commands::reorder_printers,
             commands::list_printer_history,
+            commands::get_print_statistics,
             commands::delete_printer,
             commands::add_unit,
             commands::update_unit,
@@ -325,12 +396,15 @@ pub fn run() {
             commands::set_printer_link_enabled,
             commands::list_printer_connections,
             commands::test_printer_connection,
+            commands::clear_printer_api_key,
             commands::remove_printer_connection,
+            commands::include_older_printer_history,
             commands::sync_printers_now,
             commands::list_open_printer_jobs,
             commands::preview_printer_job,
             commands::get_printer_job_thumbnail,
             commands::ignore_printer_job,
+            commands::set_printer_job_failure,
             commands::confirm_printer_jobs,
             commands::pick_and_read_image,
             commands::read_dropped_image,
@@ -342,6 +416,13 @@ pub fn run() {
             commands::list_blocked_auto_tags,
             commands::get_auto_tagging,
             commands::set_auto_tagging,
+            commands::get_print_technology,
+            commands::set_print_technology,
+            commands::get_slicer_report_setup,
+            commands::set_slicer_report_enabled,
+            commands::send_slicer_test_report,
+            commands::list_slicer_reports,
+            commands::resolve_slicer_report,
             commands::delete_file,
             commands::set_print_status,
             commands::set_favorite,
@@ -366,6 +447,19 @@ pub fn run() {
             commands::archive_target_conflicts,
             commands::extract_archives,
             commands::get_model_geometry,
+            commands::export_model_as_stl,
+            commands::get_drag_out_enabled,
+            commands::set_drag_out_enabled,
+            commands::start_file_drag,
+            commands::get_thingiverse_settings,
+            commands::set_thingiverse_enabled,
+            commands::test_thingiverse_token,
+            commands::remove_thingiverse_token,
+            commands::thingiverse_search,
+            commands::thingiverse_thing,
+            commands::thingiverse_image,
+            commands::open_thingiverse_thing,
+            commands::read_plate_overview,
             commands::pick_and_register_slicer,
             commands::list_registered_slicers,
             commands::open_in_slicer,
@@ -376,6 +470,9 @@ pub fn run() {
             commands::scan_catalog_issues,
             commands::scan_catalog_disk,
             commands::apply_catalog_disk_sync,
+            commands::count_known_copies,
+            commands::list_known_copies,
+            commands::reset_known_copies,
             commands::run_start_sync,
             commands::get_sync_on_start,
             commands::set_sync_on_start,
@@ -400,8 +497,22 @@ pub fn run() {
             commands::remove_file_from_collection,
             commands::reorder_collection,
             commands::list_collection_files,
+            commands::list_bundles,
+            commands::create_bundle,
+            commands::update_bundle,
+            commands::add_files_to_bundle,
+            commands::remove_files_from_bundle,
+            commands::dissolve_bundle,
+            commands::update_bundle_member,
             commands::get_app_version,
             commands::is_preview_build,
+            commands::take_open_requests,
+            commands::get_external_geometry,
+            commands::release_external_source,
+            commands::add_external_to_catalog,
+            commands::get_close_behavior,
+            commands::set_close_behavior,
+            commands::set_tray_labels,
             commands::get_linux_menu_status,
             commands::set_linux_menu_enabled,
             commands::answer_linux_menu_prompt,
@@ -414,6 +525,9 @@ pub fn run() {
             commands::install_app_update,
             commands::open_release_url,
             commands::open_discord_invite,
+            commands::get_upgrade_notice,
+            commands::dismiss_upgrade_notice,
+            commands::open_update_backup_folder,
             commands::get_verbose_logging,
             commands::set_verbose_logging,
             commands::get_bug_report_info,
@@ -422,8 +536,27 @@ pub fn run() {
             commands::open_log_folder,
             commands::open_bug_report_form,
         ])
-        .run(context)
-        .expect("error while running tauri application");
+        .build(context)
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            if let (tauri::RunEvent::Exit, Some(storage)) = (&_event, _app.try_state::<std::sync::Arc<crate::drag_storage::DragStorage>>()) {
+                storage.cleanup();
+            }
+            // Dock click on macOS while the window is hidden in the tray.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { has_visible_windows, .. } = _event {
+                if tray::reopen_needs_window(has_visible_windows) {
+                    tray::show_main_window(_app);
+                }
+            }
+            // macOS hands "Open with" files over as an event, never as arguments (also at the first start).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &_event {
+                let args: Vec<String> = std::iter::once(String::new()).chain(urls.iter().map(|u| u.to_string())).collect();
+                commands::queue_and_notify(_app, commands::open_requests_from_args(&args, std::path::Path::new("/")));
+                tray::show_main_window(_app);
+            }
+        });
 }
 
 #[cfg(test)]

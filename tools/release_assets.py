@@ -21,12 +21,26 @@ ARTIFACTS = [
     ("3mf-katalog-manager-macos-updater-step", ".app.tar.gz", "macOS-universal"),
     ("3mf-katalog-manager-linux-appimage-step", ".AppImage", "Linux-x86_64"),
 ]
+# The NSIS installer comes in addition to the MSI (not part of ARTIFACTS: it is
+# built only for pre-releases and previews so far, see --require-nsis).
+NSIS_ARTIFACT = ("3mf-katalog-manager-windows-nsis-step", ".exe", "Windows-x64-Setup")
 # Updater platform key -> (platform part, extension). Apple Silicon and Intel share the universal bundle.
 UPDATE_TARGETS = {
     "windows-x86_64": ("Windows-x64", ".msi"),
     "darwin-x86_64": ("macOS-universal", ".app.tar.gz"),
     "darwin-aarch64": ("macOS-universal", ".app.tar.gz"),
     "linux-x86_64": ("Linux-x86_64", ".AppImage"),
+}
+
+# Extra updater keys written only when the NSIS installer is part of the release.
+# An app installed from the MSI asks for "windows-x86_64-msi", one installed from
+# the NSIS setup for "windows-x86_64-nsis" (the installer type is built into the
+# program); both fall back to "windows-x86_64", which stays the MSI. They are
+# deliberately not in UPDATE_TARGETS: rc_manifest requires that set, and already
+# published releases do not have these keys.
+OPTIONAL_TARGETS = {
+    "windows-x86_64-msi": ("Windows-x64", ".msi"),
+    "windows-x86_64-nsis": ("Windows-x64-Setup", ".exe"),
 }
 
 def fail(msg):
@@ -37,15 +51,20 @@ def asset_name(version, platform, ext, preview=False):
     product = PRODUCT_PREVIEW if preview else PRODUCT
     return f"{product}-{version}-{platform}{ext}"
 
-def rename(version, artifacts_dir, out_dir, preview=False):
+def rename(version, artifacts_dir, out_dir, preview=False, require_nsis=False):
     out = pathlib.Path(out_dir); out.mkdir(parents=True, exist_ok=True)
-    for art, ext, platform in ARTIFACTS:
+    artifacts = list(ARTIFACTS)
+    # Without the flag the NSIS installer is optional: taken along if the build
+    # delivered it, ignored otherwise (a stable release is still MSI only).
+    if require_nsis or pathlib.Path(artifacts_dir, NSIS_ARTIFACT[0]).is_dir():
+        artifacts.append(NSIS_ARTIFACT)
+    for art, ext, platform in artifacts:
         found = [p for p in pathlib.Path(artifacts_dir, art).glob(f"*{ext}")] if pathlib.Path(artifacts_dir, art).is_dir() else []
         if len(found) != 1:
             fail(f"expected exactly one *{ext} in {art}, found {len(found)}")
         shutil.copy2(found[0], out / asset_name(version, platform, ext, preview=preview))
 
-def latest_json(version, out_dir, now=None, preview=False):
+def latest_json(version, out_dir, now=None, preview=False, require_nsis=False):
     now = now or datetime.datetime.now(datetime.timezone.utc)
     out = pathlib.Path(out_dir)
     # Preview builds live on their own tag, separate from tagged releases, so
@@ -53,7 +72,11 @@ def latest_json(version, out_dir, now=None, preview=False):
     tag = PREVIEW_TAG if preview else f"v{version}"
     files = ("latest-preview.json", "latest-preview-step.json") if preview else ("latest.json", "latest-step.json")
     platforms = {}
-    for key, (platform, ext) in UPDATE_TARGETS.items():
+    targets = dict(UPDATE_TARGETS)
+    nsis_name = asset_name(version, NSIS_ARTIFACT[2], NSIS_ARTIFACT[1], preview=preview)
+    if require_nsis or (out / nsis_name).is_file():
+        targets.update(OPTIONAL_TARGETS)
+    for key, (platform, ext) in targets.items():
         name = asset_name(version, platform, ext, preview=preview)
         sig = out / f"{name}.sig"
         if not (out / name).is_file() or not sig.is_file():
@@ -211,23 +234,38 @@ def set_version(version, root="."):
 
     # Only the root package's version line is rewritten; dependency entries
     # that happen to share a version string (e.g. "1.0.0") must stay put.
-    lock_path = root / "src-tauri" / "Cargo.lock"
+    lock_path = root / "Cargo.lock"
     pattern = re.compile(r'(name = "' + re.escape(package_name) + r'"\nversion = ")[^"]+(")')
     lock_text, count = pattern.subn(lambda m: m.group(1) + version + m.group(2), lock_path.read_text(encoding="utf-8"), count=1)
     if count != 1:
         fail(f"could not find root package {package_name} in {lock_path}")
+
+    # The workspace crates (katalog-core, katalog-server) carry the same version as the app.
+    for crate_path in sorted((root / "crates").glob("*/Cargo.toml")):
+        prefix, _, rest = crate_path.read_text(encoding="utf-8").partition("[package]")
+        package, sep, suffix = rest.partition("\n[")
+        name_match = re.search(r'^name\s*=\s*"([^"]+)"', package, re.M)
+        if not name_match:
+            fail(f"{crate_path} has no [package] name")
+        package = re.sub(r'^version\s*=\s*"[^"]+"', f'version = "{version}"', package, count=1, flags=re.M)
+        crate_path.write_text(prefix + "[package]" + package + sep + suffix, encoding="utf-8", newline="\n")
+        crate_pattern = re.compile(r'(name = "' + re.escape(name_match.group(1)) + r'"\nversion = ")[^"]+(")')
+        lock_text, count = crate_pattern.subn(lambda m: m.group(1) + version + m.group(2), lock_text, count=1)
+        if count != 1:
+            fail(f"could not find workspace package {name_match.group(1)} in {lock_path}")
     lock_path.write_text(lock_text, encoding="utf-8", newline="\n")
 
 def main(argv):
     cmd, *args = argv
     preview = "--preview" in args
-    args = [a for a in args if a != "--preview"]
+    require_nsis = "--require-nsis" in args
+    args = [a for a in args if a not in ("--preview", "--require-nsis")]
     unknown = [a for a in args if a.startswith("--")]
     if unknown:
         fail(f"unknown option {' '.join(unknown)}")
     commands = {
-        "rename": lambda *a: rename(*a, preview=preview),
-        "latest-json": lambda *a: latest_json(*a, preview=preview),
+        "rename": lambda *a: rename(*a, preview=preview, require_nsis=require_nsis),
+        "latest-json": lambda *a: latest_json(*a, preview=preview, require_nsis=require_nsis),
         "check-version": check_version,
         "check-preview": check_preview,
         "rc-manifest": rc_manifest,

@@ -18,7 +18,13 @@ export type PrinterErrorKey =
   | 'printerErrorContainerLocalName'
   | 'printerErrorContainerLoopback'
   | 'printerErrorUnreachable'
+  | 'printerErrorTimeout'
+  | 'printerErrorConnectionRefused'
+  | 'printerErrorConnectionReset'
+  | 'printerErrorServerBusy'
   | 'printerErrorAuthRequired'
+  | 'printerErrorAuthRejected'
+  | 'printerErrorApiKeyInvalid'
   | 'printerErrorBadResponse'
   | 'printerErrorTooManyOpenJobs'
   | 'printerErrorHistoryMissing'
@@ -31,7 +37,13 @@ export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
   container_local_name: 'printerErrorContainerLocalName',
   container_loopback: 'printerErrorContainerLoopback',
   unreachable: 'printerErrorUnreachable',
+  timeout: 'printerErrorTimeout',
+  connection_refused: 'printerErrorConnectionRefused',
+  connection_reset: 'printerErrorConnectionReset',
+  server_busy: 'printerErrorServerBusy',
   auth_required: 'printerErrorAuthRequired',
+  auth_rejected: 'printerErrorAuthRejected',
+  api_key_invalid: 'printerErrorApiKeyInvalid',
   bad_response: 'printerErrorBadResponse',
   too_many_open_jobs: 'printerErrorTooManyOpenJobs',
   history_missing: 'printerErrorHistoryMissing',
@@ -86,6 +98,14 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const [testedAddress, setTestedAddress] = useState('');
   const [testing, setTesting] = useState(false);
   const [removing, setRemoving] = useState(false);
+  // What the user types. Never filled from the backend: it only says that a key exists.
+  const [apiKey, setApiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [replacingKey, setReplacingKey] = useState(false);
+  const [clearingKey, setClearingKey] = useState(false);
+  const [readingOlder, setReadingOlder] = useState(false);
+  // What the last "include older history" found: a count, or the error code of the connection.
+  const [olderResult, setOlderResult] = useState<{ added: number } | { error: string } | null>(null);
   const [error, setError] = useState<PrinterConnectionError | null>(null);
   const [actionError, setActionError] = useState<AppError | null>(null);
   const [current, setCurrent] = useState<PrinterConnection | null>(connection);
@@ -108,10 +128,14 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
     setError(null);
     setActionError(null);
     try {
-      const r = await link.testConnection(printerId, address.trim());
+      const r = await link.testConnection(printerId, address.trim(), apiKey.trim() === '' ? null : apiKey.trim());
       if (r.ok && r.connection) {
         skipNextPropSync.current = true;
         setCurrent(r.connection);
+        // The key is saved; the field must not keep it.
+        setApiKey('');
+        setShowKey(false);
+        setReplacingKey(false);
       } else {
         setError(r.error ?? 'bad_response');
       }
@@ -122,12 +146,43 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
     }
   };
 
+  const runClearKey = async () => {
+    setClearingKey(true);
+    setActionError(null);
+    try {
+      await link.clearApiKey(printerId);
+      setCurrent((c) => (c ? { ...c, hasApiKey: false } : c));
+      setReplacingKey(false);
+      setApiKey('');
+    } catch (e) {
+      setActionError(toAppError(e));
+    } finally {
+      setClearingKey(false);
+    }
+  };
+
+  const runOlderHistory = async () => {
+    setReadingOlder(true);
+    setOlderResult(null);
+    setActionError(null);
+    try {
+      const r = await link.includeOlderHistory(printerId);
+      setOlderResult(r.error ? { error: r.error } : { added: r.added });
+    } catch (e) {
+      setActionError(toAppError(e));
+    } finally {
+      setReadingOlder(false);
+    }
+  };
+
   const runRemove = async () => {
     setRemoving(true);
     setActionError(null);
     try {
       await link.removeConnection(printerId);
       setCurrent(null);
+      setApiKey('');
+      setReplacingKey(false);
     } catch (e) {
       setActionError(toAppError(e));
     } finally {
@@ -149,7 +204,11 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
     .reduce((a, b) => t('printerClockAnd').replace('{a}', () => a).replace('{b}', () => b));
   const localNow = Date.now() / 1000;
   const effectiveError = error ?? current?.lastError;
+  // A printer that is only switched off or restarting is not an alarm: a failed test the user
+  // started is, and so is anything that needs them.
+  const soft = !error && (current?.status === 'reconnecting' || current?.status === 'offline') ? current.status : null;
 
+  if (import.meta.env.VITE_TARGET === 'web') return null;
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -168,21 +227,66 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
             autoComplete="off"
           />
         </label>
-        <label className="flex flex-col gap-1 min-w-0">
-          <span className="text-caption text-[var(--ink-2)]">{t('pmApiKey')}</span>
-          <input disabled className={`${fieldClass} disabled:bg-[var(--panel-2)]`} placeholder={t('pmApiPlaceholder')} />
-        </label>
+        {current?.hasApiKey && !replacingKey ? (
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-caption text-[var(--ink-2)]">{t('pmApiKey')}</span>
+            <div className="flex flex-wrap items-center gap-2 min-h-8">
+              <span className="text-small text-[var(--ink)]">{t('pmApiKeySaved')}</span>
+              <button type="button" className={smallButton} onClick={() => setReplacingKey(true)}>{t('pmApiKeyReplace')}</button>
+              <button type="button" className={smallButton} disabled={clearingKey} onClick={runClearKey}>{t('pmApiKeyRemove')}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1 min-w-0">
+            <label htmlFor={`printer-api-key-${printerId}`} className="text-caption text-[var(--ink-2)]">{t('pmApiKey')}</label>
+            <div className="flex items-center gap-2 min-w-0">
+              <input
+                id={`printer-api-key-${printerId}`}
+                className={`${fieldClass} font-code w-full min-w-0 placeholder:text-[var(--ink-3)] disabled:bg-[var(--panel-2)]`}
+                type={showKey ? 'text' : 'password'}
+                disabled={!link.enabled}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={t('pmApiPlaceholder')}
+                spellCheck={false}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+              />
+              <button type="button" className={smallButton} aria-pressed={showKey} onClick={() => setShowKey((v) => !v)}>
+                {t(showKey ? 'pmApiKeyHide' : 'pmApiKeyShow')}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+      <p className="text-caption text-[var(--ink-3)]">{t('pmApiKeyHint')}</p>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={smallButton} disabled={!link.enabled || testing || address.trim() === ''} onClick={runTest}>
           {testing ? t('printerConnectionTesting') : t(current ? 'printerConnectionTest' : 'pmSetupConnection')}
         </button>
+        {current && (
+          <button type="button" className={smallButton} disabled={!link.enabled || readingOlder || removing} onClick={runOlderHistory}>
+            {readingOlder ? t('printerOlderHistoryReading') : t('printerOlderHistory')}
+          </button>
+        )}
         {current && (
           <button type="button" className={smallButton} disabled={removing} onClick={runRemove}>
             {t('printerConnectionRemove')}
           </button>
         )}
       </div>
+      {current && <p className="text-caption text-[var(--ink-3)]">{t('printerOlderHistoryHint')}</p>}
+      {olderResult && 'error' in olderResult && (
+        <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-small text-[var(--crit)]">
+          <p>{t(errorKeyFor(olderResult.error)).replace('{host}', () => printerErrorHost(current?.address ?? ''))}</p>
+        </div>
+      )}
+      {olderResult && 'added' in olderResult && (
+        <div role="status" className="text-small text-[var(--ink-2)]">
+          {olderResult.added > 0 ? formatCount(t('printerOlderHistoryAdded'), olderResult.added) : t('printerOlderHistoryNone')}
+        </div>
+      )}
       {!link.enabled ? <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmSwitchedOff')}</b><p>{t('pmLinkOff')}</p></div> :
         !current && !error && <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmNotLinked')}</b></div>}
       {actionError && (
@@ -191,7 +295,18 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           <ErrorText error={actionError} />
         </div>
       )}
-      {link.enabled && (error || current?.lastError || current?.paused) && (
+      {link.enabled && soft && current && (
+        <div role="status" className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3 text-small text-[var(--ink-2)]">
+          <b>{t(soft === 'reconnecting' ? 'pmReconnecting' : 'pmOffline')}</b>
+          <p>
+            {soft === 'reconnecting'
+              ? t('printerReconnecting').replace('{n}', String((current.failures ?? 0) + 1))
+              : t('printerUnreachableSince').replace('{time}', () => formatDateTime(current.errorSince ?? 0, language))}
+          </p>
+          {effectiveError && <p>{t(errorKeyFor(effectiveError)).replace('{host}', () => printerErrorHost(current.address))}</p>}
+        </div>
+      )}
+      {link.enabled && !soft && (error || current?.lastError || current?.paused) && (
         <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-small text-[var(--crit)]">
           <b>{t('pmConnectionError')}</b><p>{effectiveError ? t(errorKeyFor(effectiveError)).replace('{host}', () => printerErrorHost(error ? testedAddress : current?.address ?? '')) : t('printerPausedRetest')}</p>
         </div>

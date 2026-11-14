@@ -15,14 +15,6 @@ fn show_once(window: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-// Retained until the frontend queries it; an early event could be missed.
-pub struct MigrationBackupWarning(pub bool);
-
-#[tauri::command]
-pub fn get_migration_backup_warning(state: tauri::State<MigrationBackupWarning>) -> bool {
-    state.0
-}
-
 const MARKER: &str = "window-theme";
 
 /// Explicit choices override the OS; system keeps following the platform theme.
@@ -70,7 +62,7 @@ pub fn save_window_theme(window: WebviewWindow, setting: String, resolved: Strin
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(MARKER);
     std::fs::write(&path, &marker).map_err(|e| e.to_string())?;
-    crate::harden_permissions(&path);
+    crate::safe_file::harden_permissions(&path);
     // The frontend's media query is authoritative if the platform cannot report it.
     window.set_background_color(Some(background(&marker, Some(if resolved == "dark" { Theme::Dark } else { Theme::Light }))))
         .map_err(|e| e.to_string())

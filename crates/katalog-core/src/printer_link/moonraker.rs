@@ -1,0 +1,1277 @@
+//! Klipper/Moonraker: reads `/server/info` and `/server/history/list`. Read-only GET requests.
+
+use std::io::Read;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+use serde_json::Value;
+
+use super::address::{base_url, resolve, AddressPolicy};
+use super::api_key::ApiKey;
+use super::sync::unix_now;
+use super::{ConnectionInfo, JobOutcome, LinkError, PrinterLink, RemoteJob};
+
+fn bad(msg: &str) -> LinkError {
+    LinkError::BadResponse(msg.to_string())
+}
+
+/// Returns the Moonraker version. Requires the `history` component.
+pub fn parse_server_info(v: &Value) -> Result<String, LinkError> {
+    let result = v.get("result").ok_or_else(|| bad("result fehlt"))?;
+    let version = result
+        .get("moonraker_version")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("moonraker_version fehlt"))?;
+    let has_history = result
+        .get("components")
+        .and_then(Value::as_array)
+        .is_some_and(|c| c.iter().any(|x| x.as_str() == Some("history")));
+    if !has_history {
+        return Err(LinkError::HistoryMissing);
+    }
+    Ok(version.to_string())
+}
+
+pub struct HistoryPage {
+    /// Total count according to the printer (for paging).
+    pub count: u64,
+    /// Number of entries on this page, including skipped ones.
+    pub raw_len: usize,
+    /// Finished, readable prints on this page.
+    pub jobs: Vec<RemoteJob>,
+}
+
+pub fn parse_history_page(v: &Value) -> Result<HistoryPage, LinkError> {
+    let result = v.get("result").ok_or_else(|| bad("result fehlt"))?;
+    let count = result.get("count").and_then(Value::as_u64).ok_or_else(|| bad("count fehlt"))?;
+    let raw = result.get("jobs").and_then(Value::as_array).ok_or_else(|| bad("jobs fehlt"))?;
+    let jobs = raw
+        .iter()
+        .filter_map(|j| {
+            let parsed = parse_job(j);
+            if parsed.is_none() && j.get("status").and_then(Value::as_str) != Some("in_progress") {
+                log::warn!(target: "drucker", "skipped incomplete Moonraker job");
+            }
+            parsed
+        })
+        .collect();
+    Ok(HistoryPage { count, raw_len: raw.len(), jobs })
+}
+
+fn bounded_text(value: &str, max_bytes: usize) -> String {
+    let mut end = value.len().min(max_bytes);
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_string()
+}
+
+fn positive(v: Option<&Value>) -> Option<f64> {
+    v.and_then(Value::as_f64).filter(|x| *x > 0.0)
+}
+
+/// Material of a print. Multi-material units (AMS, ACE, MMU) list every loaded slot
+/// in `filament_type` ("PLA;PETG"); when `filament_weights` has one weight per slot,
+/// the slot that used the most filament wins, so the suggested spool fits.
+fn main_material(meta: &Value) -> Option<String> {
+    let types: Vec<&str> = meta.get("filament_type")?.as_str()?.split(';').map(str::trim).collect();
+    let weights: Vec<f64> = meta
+        .get("filament_weights")
+        .and_then(Value::as_array)
+        .map(|w| w.iter().map(|x| x.as_f64().unwrap_or(0.0)).collect())
+        .unwrap_or_default();
+    let mut index = 0;
+    if weights.len() == types.len() {
+        for (i, w) in weights.iter().enumerate() {
+            if *w > weights[index] {
+                index = i;
+            }
+        }
+    }
+    Some(types[index].to_string()).filter(|s| !s.is_empty())
+}
+
+/// `None` = don't take over (still running or a required field is missing). A print without
+/// usage (e.g. cancelled right at the start) is taken over with `deductible = false`.
+fn parse_job(j: &Value) -> Option<RemoteJob> {
+    let status = j.get("status")?.as_str()?;
+    if status == "in_progress" {
+        return None;
+    }
+    let ended_at = j.get("end_time")?.as_f64()?;
+    let job_id = j.get("job_id")?.as_str()?;
+    // Printer time keeps the key stable when the measured clock offset changes.
+    let remote_id = match j.get("start_time").and_then(Value::as_f64) {
+        Some(start) => format!("{job_id}@{:.0}", start.floor()),
+        None => job_id.to_string(),
+    };
+    // Truncating identifiers could merge unrelated prints under the same key.
+    if remote_id.len() > 512 {
+        return None;
+    }
+    // A missing, zero or nonsensical value all mean "nothing to deduct".
+    let used_mm = positive(j.get("filament_used"));
+    let filename = j.get("filename").and_then(Value::as_str).unwrap_or("");
+    let (dir, file_name) = match filename.rsplit_once('/') {
+        Some((d, f)) => (Some(d), f),
+        None => (None, filename),
+    };
+    let meta = j.get("metadata");
+    let material = meta.and_then(main_material).map(|m| bounded_text(&m, 512));
+    let thumbnail_path = meta
+        .and_then(|m| m.get("thumbnails"))
+        .and_then(Value::as_array)
+        .and_then(|thumbs| {
+            thumbs
+                .iter()
+                .filter_map(|t| {
+                    let w = t.get("width")?.as_u64()?;
+                    let h = t.get("height")?.as_u64()?;
+                    let p = t.get("relative_path")?.as_str()?;
+                    Some((w.saturating_mul(h), p))
+                })
+                .max_by_key(|(area, _)| *area)
+                .map(|(_, p)| match dir {
+                    Some(d) => format!("{d}/{p}"),
+                    None => p.to_string(),
+                })
+        });
+    Some(RemoteJob {
+        remote_id,
+        file_name: bounded_text(file_name, 512),
+        outcome: if status == "completed" { JobOutcome::Completed } else { JobOutcome::Partial },
+        raw_status: bounded_text(status, 512),
+        ended_at,
+        print_duration_s: j.get("print_duration").and_then(Value::as_f64).unwrap_or(0.0),
+        used_mm: used_mm.unwrap_or(0.0),
+        deductible: used_mm.is_some(),
+        slicer_total_mm: positive(meta.and_then(|m| m.get("filament_total"))),
+        slicer_weight_g: positive(meta.and_then(|m| m.get("filament_weight_total"))),
+        material,
+        thumbnail_path: thumbnail_path.filter(|p| p.len() <= 1024),
+    })
+}
+
+/// Time limit of `/server/info` and thumbnails.
+const TIMEOUT: Duration = Duration::from_secs(5);
+/// Time limit of one history page; the answer carries up to 50 jobs with their metadata.
+const PAGE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Everything one printer may take in one pass, retries included.
+pub const PRINTER_BUDGET: Duration = Duration::from_secs(45);
+pub const MAX_JSON_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_THUMB_BYTES: u64 = 512 * 1024;
+const PAGE: usize = 50;
+const MAX_PAGES: usize = 40;
+/// Moonraker filters `since` by the job start; a print that started before
+/// `since` and ended after it would otherwise be missing.
+pub const LOOKBACK_S: f64 = 2.0 * 24.0 * 3600.0;
+/// Smaller clock differences are ignored: the HTTP `Date` header only has whole
+/// seconds, and a few minutes of drift don't matter for finished prints.
+pub const CLOCK_TOLERANCE_S: f64 = 300.0;
+
+/// `Date` header ("Mon, 11 Dec 2023 17:00:00 GMT") as Unix seconds.
+fn parse_http_date(value: &str) -> Option<f64> {
+    chrono::DateTime::parse_from_rfc2822(value.trim()).ok().map(|d| d.timestamp() as f64)
+}
+
+/// Printer clock minus local clock. `local_mid` is the local time halfway through
+/// the request; the header is truncated to whole seconds, hence the half second.
+fn clock_offset(printer_now: Option<f64>, local_mid: f64) -> f64 {
+    match printer_now {
+        Some(p) if (p + 0.5 - local_mid).abs() > CLOCK_TOLERANCE_S => p + 0.5 - local_mid,
+        _ => 0.0,
+    }
+}
+
+/// A response body plus the printer clock from its `Date` header (if any) and
+/// the local time halfway through the request.
+struct Fetched {
+    body: Vec<u8>,
+    printer_now: Option<f64>,
+    local_mid: f64,
+}
+
+pub struct MoonrakerLink {
+    address: String,
+    policy: AddressPolicy,
+    client: reqwest::blocking::Client,
+    /// Total time limit of a request including the body; `TIMEOUT` (5 s) in
+    /// production, tests set a shorter one via `new_with_timeout`.
+    timeout: Duration,
+    /// Same for one history page (`PAGE_TIMEOUT`).
+    page_timeout: Duration,
+    /// Hard end of the whole pass for this printer; no request outlives it.
+    deadline: Instant,
+    /// Sent as `X-Api-Key` with every request to the checked address. Redirects are off, so it
+    /// never goes anywhere else.
+    api_key: Option<ApiKey>,
+}
+
+impl MoonrakerLink {
+    /// Fails instead of panicking when the client cannot be built (e.g. no free file handles).
+    pub fn try_new(address: &str, api_key: Option<ApiKey>, policy: AddressPolicy) -> Result<Self, LinkError> {
+        Self::with_timeouts(address, api_key, policy, TIMEOUT, PAGE_TIMEOUT)
+    }
+
+    /// Tests only: the production path uses `try_new`.
+    #[cfg(test)]
+    pub fn new(address: &str, policy: AddressPolicy) -> Self {
+        Self::try_new(address, None, policy).expect("HTTP-Client")
+    }
+
+    /// Tests only: a link that sends a key.
+    #[cfg(test)]
+    pub(crate) fn new_with_key(address: &str, key: &str, policy: AddressPolicy) -> Self {
+        Self::try_new(address, Some(ApiKey::parse(key).unwrap()), policy).expect("HTTP-Client")
+    }
+
+    /// Tests only: own time limit instead of production's fixed 5 s.
+    #[cfg(test)]
+    pub(crate) fn new_with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Self {
+        Self::with_timeouts(address, None, policy, timeout, timeout).expect("HTTP-Client")
+    }
+
+    fn with_timeouts(
+        address: &str,
+        api_key: Option<ApiKey>,
+        policy: AddressPolicy,
+        timeout: Duration,
+        page_timeout: Duration,
+    ) -> Result<Self, LinkError> {
+        Self::with_client_factory(address, api_key, policy, timeout, page_timeout, || {
+            reqwest::blocking::Client::builder()
+                // The limit of each request is set on the request itself (info, page, rest of the budget).
+                .connect_timeout(page_timeout.max(timeout))
+                // Never use the system proxy: requests must go to the checked Target.ip.
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(|_| ())
+        })
+    }
+
+    fn with_client_factory(
+        address: &str,
+        api_key: Option<ApiKey>,
+        policy: AddressPolicy,
+        timeout: Duration,
+        page_timeout: Duration,
+        factory: impl FnOnce() -> Result<reqwest::blocking::Client, ()>,
+    ) -> Result<Self, LinkError> {
+        let client = factory().map_err(|_| LinkError::Unreachable)?;
+        Ok(MoonrakerLink {
+            address: address.to_string(),
+            policy,
+            client,
+            timeout,
+            page_timeout,
+            deadline: Instant::now() + PRINTER_BUDGET,
+            api_key,
+        })
+    }
+
+    /// The limit for one request: its own, but never beyond the end of the printer's budget.
+    fn request_limit(&self, own: Duration) -> Result<Duration, LinkError> {
+        let left = self.deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(LinkError::Timeout);
+        }
+        Ok(own.min(left))
+    }
+
+    /// First port 80 (Mainsail/nginx), then 7125 (Moonraker directly), unless the address names a port itself.
+    fn candidate_bases(&self) -> Result<Vec<String>, LinkError> {
+        let target = resolve(&self.address, self.policy)?;
+        Ok(match target.port {
+            Some(p) => vec![base_url(target.ip, p)],
+            None => vec![base_url(target.ip, 80), base_url(target.ip, 7125)],
+        })
+    }
+
+    fn check_base(&self, base: &str) -> Result<(), LinkError> {
+        if self.candidate_bases()?.iter().any(|b| b == base) {
+            Ok(())
+        } else {
+            Err(LinkError::AddressNotAllowed)
+        }
+    }
+
+    /// Fetches headers and body with a hard total limit of `self.timeout`.
+    ///
+    /// reqwest gives every single `read()` a fresh time limit; a trickling printer
+    /// could reach a multiple of it. So the request runs on a helper thread, and here
+    /// we only wait with `recv_timeout`. A still hanging helper thread finishes later
+    /// and sends into the void, which is harmless.
+    fn get_bytes(&self, url: reqwest::Url, limit: u64) -> Result<Vec<u8>, LinkError> {
+        self.fetch(url, limit, self.timeout).map(|f| f.body)
+    }
+
+    fn fetch(&self, url: reqwest::Url, limit: u64, own_timeout: Duration) -> Result<Fetched, LinkError> {
+        let client = self.client.clone();
+        let api_key = self.api_key.clone();
+        let timeout = self.request_limit(own_timeout)?;
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(Self::fetch_bytes(&client, url, limit, timeout, api_key.as_ref()));
+        });
+        rx.recv_timeout(timeout).unwrap_or(Err(LinkError::Timeout))
+    }
+
+    /// Network part of `get_bytes` on the helper thread: reads in chunks with its own time limit check.
+    fn fetch_bytes(
+        client: &reqwest::blocking::Client,
+        url: reqwest::Url,
+        limit: u64,
+        timeout: Duration,
+        api_key: Option<&ApiKey>,
+    ) -> Result<Fetched, LinkError> {
+        let deadline = Instant::now() + timeout;
+        let sent_at = unix_now();
+        // Path only, never the host (a printer's LAN address) or the query string
+        // (can carry the `since` timestamp, not secret but still noise).
+        let path = url.path().to_string();
+        let mut request = client.get(url).timeout(timeout);
+        if let Some(key) = api_key {
+            // The value is plain visible ASCII (see `ApiKey::parse`), so building it can't fail;
+            // marking it sensitive keeps it out of any debug output of the request.
+            let mut value = reqwest::header::HeaderValue::from_str(key.expose()).map_err(|_| LinkError::AuthRejected)?;
+            value.set_sensitive(true);
+            request = request.header("X-Api-Key", value);
+        }
+        let mut resp = request.send().map_err(|e| classify_send_error(&e))?;
+        let local_mid = (sent_at + unix_now()) / 2.0;
+        let printer_now = resp
+            .headers()
+            .get(reqwest::header::DATE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_http_date);
+        let status = resp.status().as_u16();
+        log::debug!(target: "drucker", "GET {path} -> {status}");
+        match status {
+            // With a key the printer has looked at it and said no; without one it asks for one.
+            401 | 403 if api_key.is_some() => return Err(LinkError::AuthRejected),
+            401 | 403 => return Err(LinkError::AuthRequired),
+            // A web server in front of Moonraker answers while Moonraker restarts.
+            502..=504 => return Err(LinkError::ServerBusy),
+            s if !(200..300).contains(&s) => return Err(LinkError::BadResponse(format!("HTTP {s}"))),
+            _ => {}
+        }
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            if Instant::now() >= deadline {
+                return Err(LinkError::Timeout);
+            }
+            let n = resp.read(&mut chunk).map_err(|e| classify_io_error(&e))?;
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if buf.len() as u64 > limit {
+                return Err(LinkError::BadResponse("Antwort zu gross".into()));
+            }
+        }
+        Ok(Fetched { body: buf, printer_now, local_mid })
+    }
+}
+
+/// The class of an I/O failure. Windows and macOS name the same situations with other kinds
+/// than Linux; what no kind covers stays `Unreachable`.
+fn classify_kind(kind: std::io::ErrorKind) -> Option<LinkError> {
+    use std::io::ErrorKind::*;
+    match kind {
+        ConnectionRefused => Some(LinkError::ConnectionRefused),
+        TimedOut | WouldBlock => Some(LinkError::Timeout),
+        ConnectionReset | ConnectionAborted | BrokenPipe | UnexpectedEof | NotConnected => Some(LinkError::ConnectionReset),
+        _ => None,
+    }
+}
+
+/// The class named by the first I/O error in the chain of causes that has one. Wrapped errors
+/// (`reqwest` around `hyper` around the socket error) are walked down to the socket.
+fn class_in_chain(error: &(dyn std::error::Error + 'static)) -> Option<LinkError> {
+    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(e) = current {
+        if let Some(io) = e.downcast_ref::<std::io::Error>() {
+            if let Some(class) = classify_kind(io.kind()) {
+                return Some(class);
+            }
+            // `source()` of an I/O error skips the error it wraps, so look at that one itself.
+            if let Some(class) = io.get_ref().and_then(|inner| class_in_chain(inner)) {
+                return Some(class);
+            }
+        }
+        current = e.source();
+    }
+    None
+}
+
+fn classify_io_error(e: &std::io::Error) -> LinkError {
+    class_in_chain(e).unwrap_or(LinkError::Unreachable)
+}
+
+/// The class of a failed `send()`. A connection that was made and then ended without an answer
+/// (the printer closed it, Moonraker crashed) is a reset, not "unreachable".
+fn classify_send_error(e: &reqwest::Error) -> LinkError {
+    if e.is_timeout() {
+        return LinkError::Timeout;
+    }
+    if let Some(class) = class_in_chain(e) {
+        return class;
+    }
+    if e.is_connect() {
+        LinkError::Unreachable
+    } else {
+        LinkError::ConnectionReset
+    }
+}
+
+/// Which of two failures says more about the printer: an answer of a web server in front of
+/// Moonraker beats silence, silence beats a refusal.
+fn error_rank(e: &LinkError) -> u8 {
+    match e {
+        LinkError::ServerBusy => 6,
+        LinkError::BadResponse(_) => 5,
+        LinkError::Timeout => 4,
+        LinkError::ConnectionReset => 3,
+        LinkError::ConnectionRefused => 2,
+        _ => 1,
+    }
+}
+
+fn url(base: &str, path: &str) -> Result<reqwest::Url, LinkError> {
+    reqwest::Url::parse(&format!("{base}{path}")).map_err(|e| LinkError::BadResponse(e.to_string()))
+}
+
+fn valid_thumbnail_path(path: &str) -> bool {
+    let in_thumbs = path.starts_with(".thumbs/") || path.contains("/.thumbs/");
+    in_thumbs
+        && path.ends_with(".png")
+        && !path.starts_with('/')
+        && !path.split('/').any(|seg| seg == ".." || seg.is_empty())
+        && !path.contains(['?', '#', '%', '\\'])
+}
+
+impl MoonrakerLink {
+    /// Reads history pages in the printer's own time until the end or the page limit. `filter` is
+    /// the query part that picks the jobs and their order. The pages read so far are kept when a
+    /// later page stalls: the next pass continues after the newest stored print (the cursor is the
+    /// newest stored end time). Only a first page that fails is an error.
+    fn read_pages(&self, base: &str, filter: &str) -> Result<Vec<RemoteJob>, LinkError> {
+        let mut jobs = Vec::new();
+        let mut start = 0usize;
+        for _ in 0..MAX_PAGES {
+            let answer = self
+                .fetch(
+                    url(base, &format!("/server/history/list?{filter}&limit={PAGE}&start={start}"))?,
+                    MAX_JSON_BYTES,
+                    self.page_timeout,
+                )
+                .and_then(|f| serde_json::from_slice::<Value>(&f.body).map_err(|e| bad(&e.to_string())))
+                .and_then(|v| parse_history_page(&v));
+            let page = match answer {
+                Ok(page) => page,
+                Err(e) if e.is_transient() && start > 0 => {
+                    log::warn!(target: "drucker", "history only partly read ({})", e.code());
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
+            jobs.extend(page.jobs);
+            start += PAGE;
+            if page.raw_len < PAGE || start as u64 >= page.count {
+                break;
+            }
+        }
+        Ok(jobs)
+    }
+}
+
+impl PrinterLink for MoonrakerLink {
+    fn test(&self) -> Result<ConnectionInfo, LinkError> {
+        let mut last = LinkError::Unreachable;
+        for base in self.candidate_bases()? {
+            if self.deadline <= Instant::now() {
+                return Err(LinkError::Timeout);
+            }
+            let answer = self.fetch(url(&base, "/server/info")?, MAX_JSON_BYTES, self.timeout).and_then(|f| {
+                let v: Value = serde_json::from_slice(&f.body).map_err(|e| LinkError::BadResponse(e.to_string()))?;
+                Ok((parse_server_info(&v)?, clock_offset(f.printer_now, f.local_mid)))
+            });
+            match answer {
+                Ok((version, clock_offset_s)) => return Ok(ConnectionInfo { version, base_url: base, clock_offset_s }),
+                Err(e @ (LinkError::AuthRequired | LinkError::AuthRejected | LinkError::HistoryMissing)) => return Err(e),
+                Err(e) if error_rank(&e) >= error_rank(&last) => last = e,
+                Err(_) => {}
+            }
+        }
+        Err(last)
+    }
+
+    fn jobs_ended_since(&self, info: &ConnectionInfo, since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+        let base = info.base_url.as_str();
+        self.check_base(base)?;
+        // Moonraker's times come from the printer clock: shift `since` into it for
+        // the query and shift the answers back into local time.
+        let offset = info.clock_offset_s;
+        let query_since = (since + offset - LOOKBACK_S).max(0.0);
+        let jobs = self.read_pages(base, &format!("since={query_since}&order=asc"))?;
+        Ok(jobs
+            .into_iter()
+            .filter_map(|mut j| {
+                j.ended_at -= offset;
+                (j.ended_at > since).then_some(j)
+            })
+            .collect())
+    }
+
+    fn jobs_ended_before(&self, info: &ConnectionInfo, before: f64) -> Result<Vec<RemoteJob>, LinkError> {
+        let base = info.base_url.as_str();
+        self.check_base(base)?;
+        let offset = info.clock_offset_s;
+        // Moonraker filters `before` by the job start, which is never later than the end.
+        let query_before = (before + offset).max(0.0);
+        let jobs = self.read_pages(base, &format!("before={query_before}&order=desc"))?;
+        Ok(jobs
+            .into_iter()
+            .filter_map(|mut j| {
+                j.ended_at -= offset;
+                (j.ended_at <= before).then_some(j)
+            })
+            .collect())
+    }
+
+    fn thumbnail(&self, base: &str, path: &str) -> Result<Vec<u8>, LinkError> {
+        self.check_base(base)?;
+        if !valid_thumbnail_path(path) {
+            return Err(LinkError::BadResponse("ungueltiger Bildpfad".into()));
+        }
+        let mut u = url(base, "/")?;
+        {
+            let mut segs = u.path_segments_mut().map_err(|_| LinkError::BadResponse("URL".into()))?;
+            segs.clear().extend(["server", "files", "gcodes"]).extend(path.split('/'));
+        }
+        self.get_bytes(u, MAX_THUMB_BYTES)
+    }
+
+    fn set_deadline(&mut self, deadline: Instant) {
+        self.deadline = deadline.min(Instant::now() + PRINTER_BUDGET);
+    }
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    #[test]
+    fn printer_text_is_bounded_at_utf8_boundaries() {
+        let mut value = serde_json::json!({
+            "job_id": "id", "end_time": 1.0, "filament_used": 1.0,
+            "filename": "界".repeat(300), "status": "界".repeat(300),
+            "metadata": {"filament_type": "界".repeat(300),
+                "thumbnails": [{"width": 1, "height": 1, "relative_path": "x".repeat(1024)}]}
+        });
+        let job = parse_job(&value).unwrap();
+        assert_eq!(job.file_name.len(), 510);
+        assert_eq!(job.raw_status.len(), 510);
+        assert_eq!(job.material.unwrap().len(), 510);
+        assert_eq!(job.thumbnail_path.unwrap().len(), 1024);
+        value["metadata"]["thumbnails"][0]["relative_path"] = serde_json::json!("x".repeat(1025));
+        assert!(parse_job(&value).unwrap().thumbnail_path.is_none());
+        value["job_id"] = serde_json::json!("x".repeat(512));
+        assert_eq!(parse_job(&value).unwrap().remote_id.len(), 512);
+        value["start_time"] = serde_json::json!(1.0);
+        assert!(parse_job(&value).is_none());
+    }
+
+    fn fixture(name: &str) -> serde_json::Value {
+        let path = format!("{}/tests/fixtures/moonraker/{name}", env!("CARGO_MANIFEST_DIR"));
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn server_info_of_the_sv08_is_accepted() {
+        assert_eq!(parse_server_info(&fixture("server_info_v0_8_0_209.json")).unwrap(), "v0.8.0-209-g4235789-dirty");
+    }
+
+    #[test]
+    fn server_info_without_history_is_rejected() {
+        assert_eq!(parse_server_info(&fixture("server_info_without_history.json")), Err(LinkError::HistoryMissing));
+    }
+
+    #[test]
+    fn old_access_info_is_not_mistaken_for_server_info() {
+        assert!(matches!(parse_server_info(&fixture("access_info_old.json")), Err(LinkError::BadResponse(_))));
+    }
+
+    #[test]
+    fn remote_id_uses_start_time_rounded_down_in_printer_time() {
+        for (start, expected) in [(1000.0, "00003F@1000"), (1000.9, "00003F@1000"), (-0.5, "00003F@-1")] {
+            let mut entry = fixture("history_completed.json")["result"]["jobs"][0].clone();
+            entry["start_time"] = serde_json::json!(start);
+            assert_eq!(parse_job(&entry).unwrap().remote_id, expected);
+        }
+    }
+
+    #[test]
+    fn missing_or_invalid_start_time_keeps_bare_job_id() {
+        let mut entry = fixture("history_completed.json")["result"]["jobs"][0].clone();
+        entry.as_object_mut().unwrap().remove("start_time");
+        assert_eq!(parse_job(&entry).unwrap().remote_id, "00003F");
+        for invalid in [serde_json::json!(null), serde_json::json!("1000"), serde_json::json!(true), serde_json::json!({})] {
+            entry["start_time"] = invalid;
+            assert_eq!(parse_job(&entry).unwrap().remote_id, "00003F");
+        }
+    }
+
+    #[test]
+    fn completed_jobs_are_parsed() {
+        let page = parse_history_page(&fixture("history_completed.json")).unwrap();
+        assert_eq!(page.count, 64);
+        assert_eq!(page.raw_len, 3);
+        let j = &page.jobs[0];
+        assert_eq!(j.remote_id, "00003F@1789041482");
+        assert_eq!(j.file_name, "Distanzhulse_13,40mm_PLA_0.2_6m29s.gcode");
+        assert_eq!(j.outcome, JobOutcome::Completed);
+        assert_eq!(j.used_mm, 303.265800000015);
+        assert_eq!(j.slicer_total_mm, Some(279.17));
+        assert_eq!(j.slicer_weight_g, Some(0.83));
+        assert_eq!(j.material.as_deref(), Some("PLA"));
+        assert_eq!(j.thumbnail_path.as_deref(), Some(".thumbs/Distanzhulse_13,40mm_PLA_0.2_6m29s-400x300.png"));
+    }
+
+    #[test]
+    fn klippy_shutdown_is_partial_and_broken_or_running_jobs_are_skipped() {
+        let page = parse_history_page(&fixture("history_klippy_shutdown.json")).unwrap();
+        assert_eq!(page.raw_len, 3);
+        assert_eq!(page.jobs.len(), 1);
+        let j = &page.jobs[0];
+        assert_eq!(j.outcome, JobOutcome::Partial);
+        assert_eq!(j.raw_status, "klippy_shutdown");
+        assert_eq!(j.used_mm, 1331.9600600000035);
+        assert_eq!(j.thumbnail_path.as_deref(), Some(".thumbs/USB-3DBenchy_Fast_12m-300x300.png"));
+    }
+
+    #[test]
+    fn thumbnails_of_files_in_subfolders_keep_the_folder() {
+        let v = serde_json::json!({"result": {"count": 1, "jobs": [{"end_time": 2.0, "filament_used": 1.0, "filename": "ordner/x.gcode",
+            "metadata": {"thumbnails": [{"width": 32, "height": 32, "relative_path": ".thumbs/x-32x32.png"}]},
+            "print_duration": 1.0, "status": "cancelled", "job_id": "1"}]}});
+        let page = parse_history_page(&v).unwrap();
+        assert_eq!(page.jobs[0].file_name, "x.gcode");
+        assert_eq!(page.jobs[0].thumbnail_path.as_deref(), Some("ordner/.thumbs/x-32x32.png"));
+        assert_eq!(page.jobs[0].outcome, JobOutcome::Partial);
+    }
+
+    #[test]
+    fn rinkhals_on_anycubic_kobra_s1_is_accepted() {
+        // Real anonymous test report (Anycubic Kobra S1, Rinkhals, ACE Pro): Moonraker
+        // version only "?", files in the .3mf_temp/ folder, material list of all ACE
+        // slots in filament_type.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_s1.json")).unwrap();
+        assert_eq!(page.jobs.len(), 2);
+        let j = page.jobs.iter().find(|j| j.remote_id == "000158@1789300032").unwrap();
+        assert_eq!(j.file_name, "S1_OrcaToleranceTest_PLA_12m28s.gcode");
+        assert_eq!(j.outcome, JobOutcome::Completed);
+        assert_eq!(j.material.as_deref(), Some("PLA"));
+        assert_eq!(j.slicer_weight_g, Some(3.65));
+    }
+
+    #[test]
+    fn creality_k2_plus_is_accepted() {
+        // Real test report (Creality K2 Plus, firmware 1.1.6.1 rooted, CFS): Moonraker
+        // version only "?", API 1.4.0, no slicer metadata (no weight, no material), one
+        // cancelled print and one entry whose file no longer exists.
+        assert_eq!(parse_server_info(&fixture("server_info_creality_k2_plus.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_creality_k2_plus.json")).unwrap();
+        assert_eq!(page.count, 5);
+        assert_eq!(page.jobs.len(), 5);
+        let first = &page.jobs[0];
+        assert_eq!(first.remote_id, "0001D9@1790523154");
+        assert_eq!(first.file_name, "Datei 1.gcode");
+        assert_eq!(first.outcome, JobOutcome::Completed);
+        assert_eq!(first.material, None);
+        assert_eq!(first.slicer_weight_g, None);
+        assert!((first.used_mm - 1447.8456).abs() < 0.01);
+        let cancelled = page.jobs.iter().find(|j| j.file_name == "Datei 4.gcode").unwrap();
+        assert_ne!(cancelled.outcome, JobOutcome::Completed);
+        assert!(cancelled.used_mm > 300.0);
+    }
+
+    #[test]
+    fn rinkhals_on_anycubic_kobra_3_v2_is_accepted() {
+        // Real test report (Anycubic Kobra 3 V2, Rinkhals): Moonraker version only "?",
+        // API 1.5.0, components kobra and mmu_ace. One completed print whose file in
+        // .3mf_temp/ is already gone ("exists": false), yet the slicer metadata with
+        // weight, material and a single colour entry is still there.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_3_v2.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_3_v2.json")).unwrap();
+        assert_eq!(page.count, 1);
+        assert_eq!(page.jobs.len(), 1);
+        let j = &page.jobs[0];
+        assert_eq!(j.remote_id, "000001@1792044571");
+        assert_eq!(j.file_name, "Datei 1.gcode");
+        assert_eq!(j.outcome, JobOutcome::Completed);
+        assert_eq!(j.material.as_deref(), Some("PETG"));
+        assert_eq!(j.slicer_weight_g, Some(45.53));
+        assert_eq!(j.used_mm, 15643.0);
+        assert_eq!(j.thumbnail_path.as_deref(), Some(".3mf_temp/.thumbs/Datei 1-512x512.png"));
+    }
+
+    #[test]
+    fn second_kobra_s1_report_takes_a_print_without_usage_as_not_deductible() {
+        // Real test report (Anycubic Kobra S1, Rinkhals, ACE Pro): a print cancelled right
+        // at the start reports 0 mm; there is nothing to deduct, but the print happened, so it
+        // is taken over as history.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1_ace.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_s1_ace.json")).unwrap();
+        assert_eq!(page.count, 5);
+        let ids: Vec<&str> = page.jobs.iter().map(|j| j.remote_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["00001C@1790439674", "00001B@1790428000", "00001A@1790311232", "000019@1790184112", "000018@1790095590"]
+        );
+        let aborted = &page.jobs[0];
+        assert_eq!((aborted.outcome, aborted.used_mm, aborted.deductible), (JobOutcome::Partial, 0.0, false));
+        assert_eq!(aborted.raw_status, "cancelled");
+        let slide = &page.jobs[1];
+        assert_eq!(slide.file_name, "0926-1506-slide(01)_PETG_0.12_2h56m50s.gcode");
+        assert_eq!(slide.outcome, JobOutcome::Completed);
+        assert!(slide.deductible);
+        assert_eq!(slide.slicer_weight_g, Some(66.69));
+        assert_eq!(page.jobs[2].file_name, "Axle Cleaning Tool_plate_1(1).gcode");
+        // "PLA;PETG" with weights [0.35, 66.34]: almost everything was PETG.
+        assert_eq!(slide.material.as_deref(), Some("PETG"));
+    }
+
+    #[test]
+    fn third_kobra_s1_report_offers_prints_whose_file_was_deleted() {
+        // Real test report (Anycubic Kobra S1, current Rinkhals, ACE Pro 2): the printer
+        // deletes finished files from .3mf_temp ("exists": false), so Moonraker keeps only
+        // size and mtime - no material, no slicer weight. Such prints are still offered;
+        // the grams then come from the length and the chosen spool.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1_ace2.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_s1_ace2.json")).unwrap();
+        assert_eq!(page.count, 5);
+        let ids: Vec<&str> = page.jobs.iter().map(|j| j.remote_id.as_str()).collect();
+        assert_eq!(ids, ["00025B@1790513400", "00025A@1790494584", "000259@1790492413", "000258@1790458853"], "the running print is not offered");
+
+        let blade = &page.jobs[0];
+        assert_eq!(blade.file_name, "0927-1447-Crysknife Blade_120pc_plate(01)_PLA_0.12_3h25m13s.gcode");
+        assert_eq!(blade.outcome, JobOutcome::Completed);
+        assert_eq!(blade.used_mm, 11023.0);
+        assert_eq!((blade.material.as_deref(), blade.slicer_weight_g, blade.thumbnail_path.as_deref()), (None, None, None));
+        let g = crate::printer_link::booking::grams(blade.used_mm, blade.slicer_total_mm, blade.slicer_weight_g, 1.75, "PLA");
+        assert!((32.0..34.0).contains(&g), "PLA 1.75 mm, 11 m: {g}");
+
+        // Cancelled prints still have their file and therefore the full metadata.
+        let cancelled = &page.jobs[2];
+        assert_eq!(cancelled.outcome, JobOutcome::Partial);
+        assert_eq!(cancelled.material.as_deref(), Some("PLA"));
+        assert_eq!(cancelled.slicer_weight_g, Some(88.02));
+    }
+
+    #[test]
+    fn material_follows_the_heaviest_slot() {
+        let job = |types: &str, weights: serde_json::Value| {
+            parse_job(&serde_json::json!({"end_time": 2.0, "filament_used": 10.0, "filename": "x.gcode",
+                "metadata": {"filament_type": types, "filament_weights": weights},
+                "print_duration": 1.0, "status": "completed", "job_id": "1"}))
+            .unwrap()
+            .material
+        };
+        assert_eq!(job("PLA;PLA;ABS", serde_json::json!([0.0, 0.0, 5.0])).as_deref(), Some("ABS"));
+        // Without usable weights (missing, wrong length, all zero) the first entry stays.
+        assert_eq!(job("PLA;PETG", serde_json::Value::Null).as_deref(), Some("PLA"));
+        assert_eq!(job("PLA;PETG", serde_json::json!([1.0])).as_deref(), Some("PLA"));
+        assert_eq!(job("PLA;PETG", serde_json::json!([0.0, 0.0])).as_deref(), Some("PLA"));
+        // Equal weights keep the earlier slot.
+        assert_eq!(job("PLA;PETG", serde_json::json!([2.0, 2.0])).as_deref(), Some("PLA"));
+    }
+
+    #[test]
+    fn a_print_without_usage_is_taken_over_as_not_deductible() {
+        let job = |usage: serde_json::Value, status: &str| {
+            let mut v = serde_json::json!({"end_time": 2.0, "filename": "x.gcode",
+                "metadata": {}, "print_duration": 1.0, "status": status, "job_id": "1"});
+            if !usage.is_null() {
+                v["filament_used"] = usage;
+            }
+            parse_job(&v)
+        };
+        for (usage, status) in [
+            (serde_json::json!(0.0), "completed"),
+            (serde_json::json!(0.0), "cancelled"),
+            (serde_json::json!(-4.0), "error"),
+            (serde_json::json!("12"), "klippy_shutdown"),
+            (serde_json::Value::Null, "cancelled"),
+        ] {
+            let j = job(usage.clone(), status).unwrap_or_else(|| panic!("{usage} / {status} must be taken over"));
+            assert_eq!((j.used_mm, j.deductible), (0.0, false), "{usage} / {status}");
+            assert_eq!(j.raw_status, status);
+        }
+        let used = job(serde_json::json!(12.5), "cancelled").unwrap();
+        assert_eq!((used.used_mm, used.deductible, used.outcome), (12.5, true, JobOutcome::Partial));
+    }
+
+    #[test]
+    fn a_running_print_and_a_print_without_identity_are_still_not_taken_over() {
+        let running = serde_json::json!({"end_time": 2.0, "filament_used": 0.0, "status": "in_progress", "job_id": "1"});
+        assert!(parse_job(&running).is_none());
+        let no_end = serde_json::json!({"filament_used": 0.0, "status": "cancelled", "job_id": "1"});
+        assert!(parse_job(&no_end).is_none());
+        let no_id = serde_json::json!({"end_time": 2.0, "filament_used": 0.0, "status": "cancelled"});
+        assert!(parse_job(&no_id).is_none());
+    }
+
+    #[test]
+    fn old_moonraker_on_qidi_smart_3_is_accepted() {
+        // Real anonymous test report (Qidi Smart 3, MKS-Pi image, Moonraker v0.7.1,
+        // API 1.0.5). The printer clock is wrong: prints sliced with OrcaSlicer 2.4.2
+        // (released July 2026) end in December 2023.
+        assert_eq!(parse_server_info(&fixture("server_info_qidi_smart3.json")).unwrap(), "v0.7.1-609-gbdd0222-dirty");
+        let page = parse_history_page(&fixture("history_qidi_smart3.json")).unwrap();
+        assert_eq!(page.count, 442);
+        assert_eq!(page.jobs.len(), 5);
+        let j = page.jobs.iter().find(|j| j.remote_id == "0001B9@1702307676").unwrap();
+        assert_eq!(j.outcome, JobOutcome::Completed);
+        assert_eq!(j.material.as_deref(), Some("PLA"));
+        assert_eq!(j.slicer_weight_g, Some(39.13));
+        assert!((j.used_mm - 13118.148).abs() < 0.01);
+        assert!(j.ended_at < 1_704_067_200.0, "printer clock reports 2023");
+    }
+
+    #[test]
+    fn qidi_q1_pro_report_is_readable() {
+        // Real anonymous test report (Qidi Q1 Pro, same MKS-Pi image and Moonraker
+        // v0.7.1 as the Smart 3). Prints sit in `.cache/`, QIDISlicer delivers
+        // material and weight; the running print is skipped, the cancelled one counts.
+        assert_eq!(parse_server_info(&fixture("server_info_qidi_q1_pro.json")).unwrap(), "v0.7.1-609-gbdd0222-dirty");
+        let page = parse_history_page(&fixture("history_qidi_q1_pro.json")).unwrap();
+        assert_eq!(page.count, 31);
+        assert_eq!(page.raw_len, 5);
+        assert_eq!(page.jobs.len(), 4);
+        assert!(page.jobs.iter().all(|j| j.remote_id != "000160@1745828727"), "in_progress is not taken over");
+        let done = page.jobs.iter().find(|j| j.remote_id == "000163@1745847294").unwrap();
+        assert_eq!(done.outcome, JobOutcome::Completed);
+        assert_eq!(done.file_name, "Datei 1.gcode");
+        assert_eq!(done.material.as_deref(), Some("PETG"));
+        assert_eq!(done.slicer_weight_g, Some(129.87));
+        assert!((done.used_mm - 42591.82).abs() < 0.01);
+        assert_eq!(done.thumbnail_path.as_deref(), Some(".cache/.thumbs/Datei 1-160x160.png"));
+        let cancelled = page.jobs.iter().find(|j| j.remote_id == "00015F@1745827577").unwrap();
+        assert_eq!(cancelled.outcome, JobOutcome::Partial);
+        assert!((cancelled.used_mm - 80.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn missing_result_is_a_bad_response() {
+        assert!(matches!(parse_history_page(&serde_json::json!({"error": "x"})), Err(LinkError::BadResponse(_))));
+    }
+}
+
+#[cfg(test)]
+mod client_tests {
+    use super::*;
+    use crate::printer_link::address::AddressPolicy;
+    use crate::printer_link::fake_moonraker::qidi_smart3;
+    use crate::printer_link::fake_moonraker::{fixture_bytes, sv08, FakeServer, Reply};
+    use crate::printer_link::PrinterLink;
+
+    #[test]
+    fn client_factory_failure_is_unreachable() {
+        let result = MoonrakerLink::with_client_factory("printer.local", None, AddressPolicy::TEST, TIMEOUT, PAGE_TIMEOUT, || Err(()));
+        assert!(matches!(result, Err(LinkError::Unreachable)));
+    }
+
+    #[test]
+    fn client_factory_builds_the_normal_client() {
+        assert!(MoonrakerLink::try_new("printer.local", None, AddressPolicy::TEST).is_ok());
+    }
+
+    #[test]
+    fn test_connects_to_the_fake_sv08() {
+        let server = sv08();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert_eq!(info.version, "v0.8.0-209-g4235789-dirty");
+        assert_eq!(info.base_url, format!("http://{}", server.address()));
+    }
+
+    #[test]
+    fn public_or_loopback_addresses_never_send_a_request() {
+        let server = sv08();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::HOME_NETWORK);
+        assert_eq!(link.test(), Err(LinkError::AddressNotAllowed));
+        assert!(server.requests().is_empty());
+    }
+
+    #[test]
+    fn http_401_means_auth_required() {
+        let server = FakeServer::start(|_| Some((401, b"{}".to_vec())));
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::AuthRequired));
+    }
+
+    /// A printer with the login switched on: everything needs the right key, the thumbnail too.
+    fn locked_printer(expected: &'static str) -> FakeServer {
+        FakeServer::start_replying(move |request| {
+            if request.header("x-api-key") != Some(expected) {
+                return Reply::Answer(401, b"{}".to_vec());
+            }
+            let path = request.target.split('?').next().unwrap_or("");
+            match path {
+                "/server/info" => Reply::Answer(200, fixture_bytes("server_info_v0_8_0_209.json")),
+                "/server/history/list" => Reply::Answer(200, fixture_bytes("history_completed.json")),
+                p if p.starts_with("/server/files/gcodes/") => Reply::Answer(200, b"\x89PNG\r\n\x1a\nfake".to_vec()),
+                _ => Reply::Answer(404, b"{}".to_vec()),
+            }
+        })
+    }
+
+    #[test]
+    fn the_key_is_sent_as_a_header_on_every_request() {
+        const KEY: &str = "0123456789abcdef0123456789abcdef";
+        let server = locked_printer(KEY);
+        let link = MoonrakerLink::new_with_key(&server.address(), KEY, AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert!(!link.jobs_ended_since(&info, 0.0).unwrap().is_empty());
+        link.thumbnail(&info.base_url, ".thumbs/a-300x300.png").unwrap();
+        let log = server.request_log();
+        assert!(log.len() >= 3);
+        assert!(log.iter().all(|r| r.header("x-api-key") == Some(KEY)), "a request went out without the key");
+    }
+
+    #[test]
+    fn without_a_key_no_header_is_sent_and_a_locked_printer_asks_for_one() {
+        let server = locked_printer("0123456789abcdef0123456789abcdef");
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::AuthRequired));
+        assert!(server.request_log().iter().all(|r| r.header("x-api-key").is_none()));
+    }
+
+    #[test]
+    fn a_wrong_key_is_rejected_not_asked_for() {
+        let server = locked_printer("0123456789abcdef0123456789abcdef");
+        let link = MoonrakerLink::new_with_key(&server.address(), "ffffffffffffffffffffffffffffffff", AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::AuthRejected));
+        // The same for 403, which some front ends send instead of 401.
+        let forbidden = FakeServer::start(|_| Some((403, b"{}".to_vec())));
+        let link = MoonrakerLink::new_with_key(&forbidden.address(), "ffffffffffffffffffffffffffffffff", AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::AuthRejected));
+    }
+
+    #[test]
+    fn a_closed_port_is_a_refused_connection() {
+        let link = MoonrakerLink::new(&FakeServer::closed_address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::ConnectionRefused));
+    }
+
+    #[test]
+    fn a_silent_printer_times_out() {
+        let server = FakeServer::start(|_| None);
+        let link = MoonrakerLink::new_with_timeout(&server.address(), AddressPolicy::TEST, Duration::from_millis(300));
+        let started = std::time::Instant::now();
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        assert!(started.elapsed() < std::time::Duration::from_secs(8));
+    }
+
+    #[test]
+    fn a_late_answer_is_too_late_and_the_test_server_sees_the_headers() {
+        let late = Reply::After(Duration::from_millis(400), Box::new(Reply::Answer(200, fixture_bytes("server_info_v0_8_0_209.json"))));
+        let server = FakeServer::start_replying(move |_| late.clone());
+        let link = MoonrakerLink::new_with_timeout(&server.address(), AddressPolicy::TEST, Duration::from_millis(100));
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        let seen = server.request_log();
+        assert_eq!(seen[0].target, "/server/info");
+        assert!(seen[0].header("host").is_some_and(|h| h == server.address()), "{:?}", seen[0].headers);
+        assert_eq!(seen[0].header("x-api-key"), None, "no key is sent in this build");
+    }
+
+    #[test]
+    fn a_connection_closed_without_an_answer_is_a_reset() {
+        let server = FakeServer::start_replying(|_| Reply::Close);
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::ConnectionReset));
+    }
+
+    #[test]
+    fn a_proxy_error_while_moonraker_restarts_is_server_busy() {
+        for status in [502, 503, 504] {
+            let server = FakeServer::start(move |_| Some((status, b"{}".to_vec())));
+            let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+            assert_eq!(link.test(), Err(LinkError::ServerBusy), "HTTP {status}");
+        }
+        // Other server errors stay "unexpected answer".
+        let server = FakeServer::start(|_| Some((500, b"{}".to_vec())));
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        assert_eq!(link.test(), Err(LinkError::BadResponse("HTTP 500".into())));
+    }
+
+    /// Port 80 answers 502 (web server up, Moonraker down) while port 7125 refuses: the 502 says more.
+    #[test]
+    fn the_more_telling_failure_of_the_two_ports_wins() {
+        assert!(error_rank(&LinkError::ServerBusy) > error_rank(&LinkError::ConnectionRefused));
+        assert!(error_rank(&LinkError::Timeout) > error_rank(&LinkError::ConnectionRefused));
+        assert!(error_rank(&LinkError::ConnectionRefused) > error_rank(&LinkError::Unreachable));
+    }
+
+    #[test]
+    fn io_kinds_map_to_classes() {
+        use std::io::ErrorKind::*;
+        assert_eq!(classify_kind(ConnectionRefused), Some(LinkError::ConnectionRefused));
+        for kind in [TimedOut, WouldBlock] {
+            assert_eq!(classify_kind(kind), Some(LinkError::Timeout));
+        }
+        for kind in [ConnectionReset, ConnectionAborted, BrokenPipe, UnexpectedEof, NotConnected] {
+            assert_eq!(classify_kind(kind), Some(LinkError::ConnectionReset));
+        }
+        assert_eq!(classify_kind(PermissionDenied), None);
+        // A wrapped socket error is found at the bottom of the chain.
+        let wrapped = std::io::Error::new(Other, std::io::Error::new(ConnectionReset, "inner"));
+        assert_eq!(classify_io_error(&wrapped), LinkError::ConnectionReset);
+        assert_eq!(classify_io_error(&std::io::Error::other("x")), LinkError::Unreachable);
+    }
+
+    #[test]
+    fn a_history_that_stalls_after_two_pages_keeps_the_pages_read() {
+        let page_of = |start: usize| -> Reply {
+            let jobs: Vec<String> = (start..start + 50)
+                .map(|i| format!(r#"{{"end_time": {}.0, "filament_used": 1.0, "filename": "a.gcode", "metadata": {{}}, "print_duration": 1.0, "status": "completed", "job_id": "{i}"}}"#, 1000 + i))
+                .collect();
+            Reply::Answer(200, format!(r#"{{"result": {{"count": 500, "jobs": [{}]}}}}"#, jobs.join(",")).into_bytes())
+        };
+        let server = FakeServer::start_replying(move |request| {
+            if request.target.starts_with("/server/info") {
+                return Reply::Answer(200, fixture_bytes("server_info_v0_8_0_209.json"));
+            }
+            let start: usize = request.target.split("start=").nth(1).unwrap_or("0").split('&').next().unwrap().parse().unwrap();
+            if start >= 100 { Reply::Silent } else { page_of(start) }
+        });
+        let link = MoonrakerLink::new_with_timeout(&server.address(), AddressPolicy::TEST, Duration::from_millis(400));
+        let info = link.test().unwrap();
+        let jobs = link.jobs_ended_since(&info, 0.0).unwrap();
+        assert_eq!(jobs.len(), 100, "pages 1 and 2 are kept, the stalled third one only ends the read");
+    }
+
+    #[test]
+    fn a_stalled_first_page_is_an_error() {
+        let server = FakeServer::start_replying(|request| {
+            if request.target.starts_with("/server/info") {
+                Reply::Answer(200, fixture_bytes("server_info_v0_8_0_209.json"))
+            } else {
+                Reply::Silent
+            }
+        });
+        let link = MoonrakerLink::new_with_timeout(&server.address(), AddressPolicy::TEST, Duration::from_millis(300));
+        let info = link.test().unwrap();
+        assert_eq!(link.jobs_ended_since(&info, 0.0), Err(LinkError::Timeout));
+    }
+
+    #[test]
+    fn nothing_is_sent_after_the_budget_of_the_printer_is_used_up() {
+        let server = sv08();
+        let mut link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        link.set_deadline(Instant::now());
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        assert!(server.requests().is_empty());
+    }
+
+    #[test]
+    fn the_budget_cuts_a_request_short() {
+        let server = FakeServer::start(|_| None);
+        let mut link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        link.set_deadline(Instant::now() + Duration::from_millis(300));
+        let started = Instant::now();
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+    }
+
+    #[test]
+    fn jobs_are_filtered_by_end_time_and_query_uses_lookback() {
+        let server = sv08();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert_eq!(info.clock_offset_s, 0.0, "no Date header -> no correction");
+        let jobs = link.jobs_ended_since(&info, 1_788_970_000.0).unwrap();
+        assert_eq!(jobs.iter().map(|j| j.remote_id.as_str()).collect::<Vec<_>>(), vec!["00003F@1789041482", "00003E@1788968798"]);
+        let query = server.requests().into_iter().find(|r| r.starts_with("/server/history/list")).unwrap();
+        let expected_since = 1_788_970_000.0 - LOOKBACK_S;
+        assert!(query.contains(&format!("since={expected_since}")), "{query}");
+        assert!(query.contains("order=asc") && query.contains("limit=50") && query.contains("start=0"));
+    }
+
+    #[test]
+    fn clock_offset_changes_do_not_change_remote_ids() {
+        let server = sv08();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let mut info = link.test().unwrap();
+        let before = link.jobs_ended_since(&info, 0.0).unwrap();
+        info.clock_offset_s = 3600.0;
+        let after = link.jobs_ended_since(&info, 0.0).unwrap();
+        assert!(!before.is_empty());
+        assert_eq!(before.len(), after.len());
+        for (before, after) in before.iter().zip(&after) {
+            assert_eq!(before.remote_id, after.remote_id);
+            assert_eq!(before.ended_at - after.ended_at, 3600.0);
+        }
+    }
+
+    #[test]
+    fn history_is_paged() {
+        let server = FakeServer::start(|target| {
+            if target.starts_with("/server/history/list") {
+                let start: usize = target.split("start=").nth(1).unwrap_or("0").split('&').next().unwrap().parse().unwrap();
+                let jobs: Vec<String> = (start..(start + 50).min(120))
+                    .map(|i| format!(r#"{{"end_time": {}.0, "filament_used": 1.0, "filename": "a.gcode", "metadata": {{}}, "print_duration": 1.0, "status": "completed", "job_id": "{i}"}}"#, 1000 + i))
+                    .collect();
+                Some((200, format!(r#"{{"result": {{"count": 120, "jobs": [{}]}}}}"#, jobs.join(",")).into_bytes()))
+            } else {
+                Some((200, fixture_bytes("server_info_v0_8_0_209.json")))
+            }
+        });
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert_eq!(link.jobs_ended_since(&info, 0.0).unwrap().len(), 120);
+    }
+
+    #[test]
+    fn http_dates_are_parsed() {
+        assert_eq!(parse_http_date("Mon, 11 Dec 2023 17:00:00 GMT"), Some(1_702_314_000.0));
+        assert_eq!(parse_http_date("kaputt"), None);
+    }
+
+    #[test]
+    fn small_clock_differences_are_ignored() {
+        assert_eq!(clock_offset(None, 1000.0), 0.0);
+        assert_eq!(clock_offset(Some(1000.0 + CLOCK_TOLERANCE_S - 1.0), 1000.0), 0.0);
+        assert_eq!(clock_offset(Some(1000.0 - 1_000_000.0), 1000.0), -999_999.5);
+    }
+
+    /// Qidi Smart 3 from a real test report: its clock is in December 2023 while
+    /// the prints happened in 2026. Without the correction no print was ever found.
+    #[test]
+    fn a_printer_with_a_wrong_clock_still_delivers_its_prints() {
+        let printer_now = 1_702_314_000.0; // 2023-12-11 17:00 UTC, printer time
+        let offset = printer_now - unix_now();
+        let server = qidi_smart3(offset);
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert!((info.clock_offset_s - offset).abs() < 3.0, "{} vs {offset}", info.clock_offset_s);
+
+        // "Connected" at 12:50 printer time = that moment in local time.
+        let since_local = 1_702_299_000.0 - info.clock_offset_s;
+        let jobs = link.jobs_ended_since(&info, since_local).unwrap();
+        let mut ids: Vec<_> = jobs.iter().map(|j| j.remote_id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["0001B6@1702298552", "0001B7@1702301318", "0001B8@1702304612", "0001B9@1702307676"]);
+        let b9 = jobs.iter().find(|j| j.remote_id == "0001B9@1702307676").unwrap();
+        assert!((b9.ended_at - (1_702_311_947.72 - info.clock_offset_s)).abs() < 0.01, "ended_at in local time");
+        assert!(b9.ended_at > unix_now() - 3.0 * 3600.0, "local time is recent, not 2023");
+
+        let query = server.requests().into_iter().find(|r| r.starts_with("/server/history/list")).unwrap();
+        let queried: f64 = query.split("since=").nth(1).unwrap().split('&').next().unwrap().parse().unwrap();
+        assert!((queried - (1_702_299_000.0 - LOOKBACK_S)).abs() < 1e-3, "query uses printer time: {query}");
+    }
+
+    #[test]
+    fn a_foreign_base_url_is_refused() {
+        let server = sv08();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let foreign = ConnectionInfo { version: "v0".into(), base_url: "http://8.8.8.8".into(), clock_offset_s: 0.0 };
+        assert_eq!(link.jobs_ended_since(&foreign, 0.0), Err(LinkError::AddressNotAllowed));
+    }
+
+    #[test]
+    fn thumbnails_are_fetched_only_from_thumbs_folders() {
+        let server = sv08();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let base = link.test().unwrap().base_url;
+        assert!(link.thumbnail(&base, ".thumbs/Distanzhulse_13,40mm_PLA_0.2_6m29s-300x300.png").unwrap().starts_with(b"\x89PNG"));
+        assert!(server.requests().iter().any(|r| r.starts_with("/server/files/gcodes/.thumbs/Distanzhulse_13,40mm")));
+        for bad in ["../x.png", ".thumbs/../../x.png", "x.png", ".thumbs/x.gcode", "/etc/.thumbs/x.png", ".thumbs/x.png?a=b"] {
+            assert!(link.thumbnail(&base, bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn oversized_answers_are_rejected() {
+        let big = vec![b' '; (MAX_JSON_BYTES + 10) as usize];
+        let server = FakeServer::start(move |_| Some((200, big.clone())));
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        assert!(matches!(link.test(), Err(LinkError::BadResponse(_))));
+    }
+
+    /// A trickling printer must not block `get_bytes` indefinitely.
+    #[test]
+    fn a_dripping_body_times_out_within_the_overall_deadline() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            loop {
+                let mut h = String::new();
+                if reader.read_line(&mut h).is_err() || h == "\r\n" || h.is_empty() {
+                    break;
+                }
+            }
+            // Announce a large Content-Length, then one byte every 30 ms.
+            let head = "HTTP/1.1 200 X\r\nContent-Length: 1000000\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n";
+            if stream.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            for _ in 0..50 {
+                if stream.write_all(b" ").is_err() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(30));
+            }
+        });
+        let link = MoonrakerLink::new_with_timeout(&format!("127.0.0.1:{port}"), AddressPolicy::TEST, Duration::from_millis(120));
+        let started = std::time::Instant::now();
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+    }
+
+    /// A single hanging `read()` shortly before the deadline must not extend the time
+    /// limit: first byte after ~100 ms, then a 140 ms pause with a 150 ms limit.
+    #[test]
+    fn a_single_stalled_read_still_times_out_within_the_overall_deadline() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            loop {
+                let mut h = String::new();
+                if reader.read_line(&mut h).is_err() || h == "\r\n" || h.is_empty() {
+                    break;
+                }
+            }
+            let head = "HTTP/1.1 200 X\r\nContent-Length: 1000000\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n";
+            if stream.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if stream.write_all(b" ").is_err() {
+                return;
+            }
+            // The next `read()` call now hangs for ~140 ms - longer than the remaining
+            // budget (150 ms total limit minus ~100 ms already elapsed).
+            std::thread::sleep(std::time::Duration::from_millis(140));
+            let _ = stream.write_all(b" ");
+        });
+        let link = MoonrakerLink::new_with_timeout(&format!("127.0.0.1:{port}"), AddressPolicy::TEST, Duration::from_millis(150));
+        let started = std::time::Instant::now();
+        assert_eq!(link.test(), Err(LinkError::Timeout));
+        assert!(started.elapsed() < Duration::from_millis(210), "{:?}", started.elapsed());
+    }
+}

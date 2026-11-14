@@ -1,3 +1,8 @@
+import { useDetailPanelWidth } from '../hooks/useDetailPanelWidth';
+import { useUiDensity } from '../hooks/UiDensityContext';
+import { clampDetailPanelWidth } from '../lib/detailPanelWidthPreference';
+import { DetailPanelResizer } from './DetailPanelResizer';
+import type { CSSProperties } from 'react';
 import { displayName } from '../lib/displayName';
 import { usageLabels, type LicenseUsage } from '../lib/licenses';
 import { printerBuildVolume } from '../lib/buildPlateFit';
@@ -19,10 +24,14 @@ import { SelectionAnnouncer } from './SelectionAnnouncer';
 import { GroupedModelGrid } from './GroupedModelGrid';
 import { GroupedModelList } from './GroupedModelList';
 import { DetailPanel } from './DetailPanel';
+import { BundlePanel, type BundleViewActions } from './BundlePanel';
+import { buildCards, indexBundles, type BundleCard } from '../lib/bundles';
+import { isCardOpen } from '../lib/bundleCards';
+import { panelMembers } from '../lib/bundlePanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
-import { BulkActionToolbar } from './BulkActionToolbar';
-import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig, FolderTrashResult, Printer } from '../types';
+import { BulkActionToolbar, type BulkBundleActions } from './BulkActionToolbar';
+import type { ModelFile, Folder, TagCount, ViewMode, SortKey, SortDirection, Collection, SlicerConfig, FolderTrashResult, Printer, Bundle } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
@@ -31,6 +40,17 @@ import { useFilamentCheck } from '../hooks/useFilamentCheck';
 import { selectFromQueue } from '../lib/queueSelect';
 import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } from '../lib/toolViews';
 import type { AppError } from '../lib/errors';
+import { PrintDataFilterBar } from './PrintDataFilterBar';
+import { PrintDataNotice } from './PrintDataNotice';
+import { DuplicatesView } from './DuplicatesView';
+import { PrintFilterContext } from '../hooks/PrintFilterContext';
+import { BundleCardsContext, type BundleCardsSettings } from '../hooks/BundleCardsContext';
+import { ToggleSwitch } from './ToggleSwitch';
+import { isActive as printFilterActive, printDataFacets, type FilterKey, type PrintDataFilter } from '../lib/printDataFilter';
+import { printFilterChips } from '../lib/printFilterLabels';
+import { countByKind, FILE_KIND_FILTERS, type FileKindFilter } from '../lib/fileKind';
+import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
+import { showsKind } from '../lib/printTechnology';
 
 interface CatalogWorkspaceProps {
   initialLoading?: boolean;
@@ -120,17 +140,29 @@ interface CatalogWorkspaceProps {
   togglePrintStatus: (id: string) => void;
   toggleFavorite: (id: string) => void;
   addToQueue: (id: string) => void;
-  uploadCustomImage: (id: string) => void | Promise<void>;
+  uploadCustomImage: (id: string, file?: File) => void | Promise<void>;
   captureRenderSnapshot: (id: string, base64: string) => void;
   setModelLicenses?: (ids: string[], license: string | null) => Promise<void>;
   printStatus?: ModelFile['printStatus'] | null;
   setPrintStatus?: (status: ModelFile['printStatus'] | null) => void;
+  /** File type filter (models, G-code); the group only appears once the catalog holds G-code. */
+  fileKind?: FileKindFilter;
+  setFileKind?: (kind: FileKindFilter) => void;
   usage?: LicenseUsage | null;
   setUsage?: (usage: LicenseUsage | null) => void;
   /** Printers of the Printer Manager; those with a build volume feed the "Fits on" filter and the print-bed section. */
   printers?: Printer[];
   fitPrinterId?: string | null;
   setFitPrinterId?: (printerId: string | null) => void;
+  /** Print data filter (target printer, nozzle, layer height, print time, color). */
+  printFilter?: PrintDataFilter;
+  setPrintFilter?: (filter: PrintDataFilter) => void;
+  /** Files the print data filter holds back or shows although a value is missing. */
+  printNotice?: { hidden: number; shownUnknown: number; unread: number };
+  /** Puts duplicate models in the trash; resolves with the ids still in the catalog afterwards. */
+  onRemoveDuplicates?: (ids: string[]) => Promise<string[]>;
+  /** Opens the settings at the block that reads the print data of unread files. */
+  onOpenPrintDataReread?: () => void;
   setModelSourceUrl: (id: string, url: string | null) => void;
   openInSlicer: (id: string) => void;
   rescanMetadata: (id: string) => void;
@@ -141,10 +173,21 @@ interface CatalogWorkspaceProps {
   displayPreference: DisplayPreference;
   view: ViewMode;
   sort: SortKey;
+  sortDirection?: SortDirection;
+  /** Bundles of the catalog; with "show as one card" on, the lists show each as a single card. */
+  bundles?: Bundle[];
+  collapseBundles?: boolean;
+  setCollapseBundles?: (collapse: boolean) => void;
+  /** Bundle entries of the selection bar; absent where the catalog has no bundles to offer. */
+  bundleActions?: BulkBundleActions;
+  /** Whole bundle cards in the selection, for the announcement. */
+  selectedBundleCount?: number;
+  /** What the bundle panel and the detail page of a member can do with their bundle. */
+  bundleView?: BundleViewActions;
   filtered: ModelFile[];
   collectionLoading?: boolean;
   selectedId: string | null;
-  setContextMenu: (value: { modelId: string; x: number; y: number } | null) => void;
+  setContextMenu: (value: { modelId: string; x: number; y: number; bundleId?: string } | null) => void;
   toggleBulkSelect: (id: string) => void;
   reorderCollection: (orderedIds: string[]) => void;
   onDragFileStart: (id: string) => void;
@@ -155,7 +198,11 @@ interface CatalogWorkspaceProps {
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
   cleanupError: AppError | null;
+  bundleSuggestionCount?: number;
+  onOpenBundleSuggestions?: (returnTo: HTMLElement | null) => void;
 }
+
+const NO_BUNDLES: Bundle[] = [];
 
 export function CatalogWorkspace({
   initialLoading = false, initialLoadFailed = false,
@@ -245,11 +292,18 @@ export function CatalogWorkspace({
   setModelLicenses,
   printStatus = null,
   setPrintStatus,
+  fileKind = 'all',
+  setFileKind,
   usage = null,
   setUsage,
   printers = [],
   fitPrinterId = null,
   setFitPrinterId,
+  printFilter,
+  setPrintFilter,
+  printNotice,
+  onRemoveDuplicates,
+  onOpenPrintDataReread,
   openInSlicer,
   rescanMetadata,
   addModelToCollection,
@@ -259,6 +313,13 @@ export function CatalogWorkspace({
   displayPreference,
   view,
   sort,
+  sortDirection,
+  bundles = NO_BUNDLES,
+  collapseBundles = false,
+  setCollapseBundles,
+  bundleActions,
+  selectedBundleCount,
+  bundleView,
   filtered,
   collectionLoading = false,
   selectedId,
@@ -273,6 +334,8 @@ export function CatalogWorkspace({
   onOpenCleanup,
   cleanupScanning,
   cleanupError,
+  bundleSuggestionCount,
+  onOpenBundleSuggestions,
 }: CatalogWorkspaceProps) {
   const [narrow, setNarrow] = useState(() => window.matchMedia?.('(max-width: 999px)').matches ?? false);
   useEffect(() => {
@@ -300,6 +363,28 @@ export function CatalogWorkspace({
   }, [panelVisible, narrow, selectedId, detailModel, layouts]);
   const rootRef = useRef<HTMLDivElement>(null);
   const barWrapRef = useRef<HTMLDivElement>(null);
+  const { density } = useUiDensity();
+  const { width: preferredWidth, setWidth: setDetailWidth, reset: resetDetailWidth } = useDetailPanelWidth();
+  const [workspaceWidth, setWorkspaceWidth] = useState(1200);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const main = root?.querySelector<HTMLElement>('[data-catalog-main]');
+    if (!root || !main) return;
+    const update = () => {
+      const bounds = root.getBoundingClientRect();
+      setWorkspaceWidth(Math.max(0, bounds.right - main.getBoundingClientRect().left));
+    };
+    update();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(root);
+    observer?.observe(main);
+    window.addEventListener('resize', update);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', update); };
+  }, []);
+  const defaultDetailWidth = density === 'comfort' ? 380 : 336;
+  const displayedDetailWidth = clampDetailPanelWidth(preferredWidth ?? defaultDetailWidth, workspaceWidth);
+  const resizedDetail = !narrow && (preferredWidth !== null || displayedDetailWidth !== defaultDetailWidth);
+
   // The narrow-window detail panel floats over the catalog. It starts below the
   // selection bar so the bar stays fully visible and usable at its full width.
   useLayoutEffect(() => {
@@ -327,7 +412,7 @@ export function CatalogWorkspace({
   }, [onCloseDetails, selectedId, layouts]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
+      if (event.key !== 'Escape' || event.defaultPrevented || settingsPanel || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
         shouldIgnoreCatalogShortcut(event, { preserveEscapeSelection: true })) return;
       event.preventDefault();
       closeDetails();
@@ -357,24 +442,68 @@ export function CatalogWorkspace({
   const t = useT();
   const formatCount = useFormatCount();
   const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
-    view, sort, language, query, usage, printStatus, fitPrinterId, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
+    view, sort, language, query, usage, printStatus, fileKind, fitPrinterId, printFilter, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
   const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
   const selectedFilament = useFilamentCheck(selected ? [selected.id] : [], refreshKey);
-  const lastPrinter = useLastPrinter(selected?.id ?? null, printerRefreshKey);
+  const lastPrinter = useLastPrinter(import.meta.env.VITE_TARGET === 'web' ? null : selected?.id ?? null, printerRefreshKey);
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
   const displayedModels = filtered;
+  // Tool views and open collections have an order of their own and list files, not bundles.
+  const bundleCards = useMemo<BundleCardsSettings>(() => {
+    const flat = toolView !== null || activeCollection !== null;
+    return { bundles, collapse: collapseBundles && !flat, sort: flat ? undefined : sort, sortDirection };
+  }, [bundles, collapseBundles, toolView, activeCollection, sort, sortDirection]);
+  // The card that is open in the detail panel; a bundle card then gets the bundle panel instead.
+  const openBundleCard = useMemo<BundleCard | null>(() => {
+    if (!bundleView || !bundleCards.collapse || selectedId === null) return null;
+    const card = buildCards(displayedModels, bundles, { collapse: true }).find(item => item.type === 'bundle' && isCardOpen(item, selectedId));
+    return card?.type === 'bundle' ? card : null;
+  }, [bundleView, bundleCards.collapse, selectedId, displayedModels, bundles]);
+  const bundleOfFile = useMemo(() => indexBundles(bundles), [bundles]);
+  const detailBundle = detailModel && bundleView ? bundleOfFile.get(detailModel.id) : undefined;
+  const detailBundleMembers = useMemo(() => detailBundle ? panelMembers(detailBundle, models) : [], [detailBundle, models]);
+  // The switch is the way back to single files, so it stays while it is on, and appears once bundles exist.
+  const showBundleSwitch = !!setCollapseBundles && (bundles.length > 0 || collapseBundles);
+  // The selection survives filter changes, so the confirmation must say how much of it is out of sight.
+  const visibleIds = useMemo(() => new Set(displayedModels.map(model => model.id)), [displayedModels]);
+  const selectedNames = useMemo(() => {
+    const byId = new Map(models.map(model => [model.id, model.name]));
+    return [...selectedForBulk].map(id => byId.get(id) ?? id);
+  }, [models, selectedForBulk]);
+  const hiddenSelectedCount = [...selectedForBulk].filter(id => !visibleIds.has(id)).length;
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
+  const kindCounts = useMemo(() => countByKind(models), [models]);
+  const kindLabel = (kind: FileKindFilter) => t(kind === 'all' ? 'fileKindAll' : kind === 'model' ? 'fileKindModels' : kind === 'resin' ? 'fileKindResin' : 'fileKindGcode');
+  // Only worth a control once there is slicer output to filter out; a chosen filter stays visible until removed.
+  const showKindFilter = !!setFileKind && (kindCounts.gcode + kindCounts.resin > 0 || fileKind !== 'all');
   const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');
-  const fitPrinters = printers.filter(printer => printerBuildVolume(printer));
+  const technology = usePrintTechnology().technology;
+  // Printers the printer list hides for the chosen technology are no choice here either.
+  const fitPrinters = printers.filter(printer => printerBuildVolume(printer) && showsKind(technology, printer.kind));
   const fitPrinter = fitPrinters.find(printer => printer.id === fitPrinterId) ?? null;
-  const chips = [
+  const [printFilterOpen, setPrintFilterOpen] = useState<FilterKey | null>(null);
+  const printFilterIsActive = !!printFilter && printFilterActive(printFilter);
+  // The values the popovers and chips name; counted over the whole catalog, and only when needed.
+  const printFacets = useMemo(
+    () => (printFilterOpen !== null || printFilterIsActive ? printDataFacets(models) : null),
+    [models, printFilterOpen, printFilterIsActive],
+  );
+  const barRef = useRef<HTMLElement>(null);
+  const filterHeadingRef = useRef<HTMLSpanElement>(null);
+  const focusFilterTarget = (target: FilterKey | 'heading') => {
+    const button = target === 'heading' ? null : barRef.current?.querySelector<HTMLElement>(`[data-pf-button="${target}"]`);
+    (button ?? filterHeadingRef.current)?.focus();
+  };
+  const baseChips = [
     ...(printStatus ? [{kind: 'printStatusFilter' as const, value: printStatusLabel,
       removeLabel: t('chipRemove').replace('{label}', printStatusLabel), remove: () => setPrintStatus?.(null)}] : []),
+    ...(fileKind !== 'all' ? [{kind: 'fileKindFilter' as const, value: kindLabel(fileKind),
+      removeLabel: t('chipRemove').replace('{label}', `${t('fileKindFilter')} ${kindLabel(fileKind)}`), remove: () => setFileKind?.('all')}] : []),
     ...(usage ? [{kind: 'licenseUsage' as const, value: t(usageLabels[usage]),
       removeLabel: t('chipRemove').replace('{label}', t(usageLabels[usage])), remove: () => setUsage?.(null)}] : []),
     ...(fitPrinter ? [{kind: 'fitPrinterFilter' as const, value: fitPrinter.name,
@@ -390,12 +519,27 @@ export function CatalogWorkspace({
     ...(query ? [{kind: 'filterBarSearch' as const, value: query,
       removeLabel: t('filterBarRemoveSearch').replace('{label}', query), remove: () => setQuery('')}] : []),
   ];
+  const printChips = printFilter && setPrintFilter ? printFilterChips(printFilter, printFacets, setPrintFilter, t, language) : [];
+  const chips = [
+    ...baseChips,
+    ...printChips.map(chip => ({
+      kind: chip.kind, value: chip.value,
+      removeLabel: t('chipRemove').replace('{label}', `${t(chip.kind)} ${chip.value}`),
+      // The last chip hands the focus to the heading; the others to their own filter button.
+      remove: () => { chip.remove(); focusFilterTarget(baseChips.length + printChips.length === 1 ? 'heading' : chip.focus); },
+    })),
+  ];
+  const clearAllFilters = () => { onClearFilters(); filterHeadingRef.current?.focus(); };
   const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
   // Always shown (also without a selection) so "select all" can be found and the
   // grid does not jump on the first checkbox; only views with nothing to select hide it.
-  const showBulkBar = !detailModel && (selectedForBulk.size > 0 || (!collectionsGalleryOpen && models.length > 0));
-  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && !fitPrinter;
+  // The duplicates view stands in for the catalog list: it has its own selection and ignores the filters.
+  const duplicatesMode = toolView === 'duplicates' && !detailModel && !collectionsGalleryOpen && !activeCollection;
+  const showBulkBar = !detailModel && !duplicatesMode && (selectedForBulk.size > 0 || (!collectionsGalleryOpen && models.length > 0));
+  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus && fileKind === 'all' && !fitPrinter && !printFilterIsActive;
   return (
+    <PrintFilterContext.Provider value={printFilterIsActive && printFilter ? printFilter : null}>
+    <BundleCardsContext.Provider value={bundleCards}>
     <div ref={rootRef} className="relative flex-1 flex min-h-0">
       <Sidebar
         catalogKey={catalogKey}
@@ -482,14 +626,16 @@ export function CatalogWorkspace({
         onOpenCleanup={onOpenCleanup}
         cleanupScanning={cleanupScanning}
         cleanupError={cleanupError}
+        bundleSuggestionCount={bundleSuggestionCount}
+        onOpenBundleSuggestions={onOpenBundleSuggestions}
       />
 
-      <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
-        <SelectionAnnouncer count={selectedForBulk.size} />
+      <main tabIndex={-1} data-catalog-main className="isolate overflow-hidden flex-1 min-w-0 flex flex-col min-h-0">
+        <SelectionAnnouncer count={selectedForBulk.size} bundleCount={selectedBundleCount} />
         {importRow}
-        {(setUsage || setPrintStatus || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
-          <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
-            <span className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
+        {!duplicatesMode && (setUsage || setPrintStatus || setPrintFilter || showBundleSwitch || (setFitPrinterId && fitPrinters.length > 0) || chips.length > 0) && (
+          <section ref={barRef} aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
+            <span ref={filterHeadingRef} tabIndex={-1} className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
             {setUsage && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
               {t('licenseUsage')}
               <select aria-label={t('licenseUsage')} value={usage ?? ''} onChange={event => setUsage((event.target.value || null) as LicenseUsage | null)}
@@ -507,6 +653,23 @@ export function CatalogWorkspace({
                 <option value="not_printed">{t('printStatusNotPrinted')}</option>
               </select>
             </label>}
+            {showBundleSwitch && (
+              <div className="flex items-center gap-2 text-small text-[var(--ink-2)]">
+                <span id="filter-bundle-collapse">{t('bundleCollapseToggle')}</span>
+                <ToggleSwitch checked={collapseBundles} label={t('bundleCollapseToggle')} onChange={setCollapseBundles} />
+              </div>
+            )}
+            {showKindFilter && setFileKind && (
+              <div role="group" aria-labelledby="filter-file-kind" className="flex flex-wrap items-center gap-1.5 text-small text-[var(--ink-2)]">
+                <span id="filter-file-kind">{t('fileKindFilter')}</span>
+                {FILE_KIND_FILTERS.map(kind => (
+                  <button key={kind} type="button" aria-pressed={fileKind === kind} data-file-kind={kind} onClick={() => setFileKind(kind)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 cursor-pointer text-[var(--ink)] hover:border-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${fileKind === kind ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--line-strong)]'}`}>
+                    {kindLabel(kind)} <span className="tabular-nums text-[var(--ink-3)]">{kindCounts[kind]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {setFitPrinterId && fitPrinters.length > 0 && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
               {t('fitPrinterFilter')}
               <select aria-label={t('fitPrinterFilter')} value={fitPrinter?.id ?? ''} onChange={event => setFitPrinterId(event.target.value || null)}
@@ -515,6 +678,10 @@ export function CatalogWorkspace({
                 {fitPrinters.map(printer => <option key={printer.id} value={printer.id}>{printer.name}</option>)}
               </select>
             </label>}
+            {printFilter && setPrintFilter && (
+              <PrintDataFilterBar filter={printFilter} onChange={setPrintFilter} facets={printFacets}
+                open={printFilterOpen} onOpenChange={setPrintFilterOpen} hits={displayedModels.length} />
+            )}
             {chips.map(chip => (
               <span key={chip.kind} className="inline-flex max-w-full items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full border border-[var(--line-strong)] bg-[var(--panel)] text-[length:var(--font-size-control)]">
                 <span data-filter-kind className="ui-label text-[var(--ink-3)]">{t(chip.kind)}</span>
@@ -527,9 +694,14 @@ export function CatalogWorkspace({
               <span aria-live="polite" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-2)] tabular-nums">
                 {collectionLoading ? t('catalogLoading') : t('filterBarCount').replace('{count}', String(displayedModels.length)).replace('{total}', String(models.length))}
               </span>
-              <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
+              <button type="button" onClick={clearAllFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
             </div>
           </section>
+        )}
+
+        {!duplicatesMode && printFilter && setPrintFilter && printFilterIsActive && printNotice && (
+          <PrintDataNotice hidden={printNotice.hidden} shownUnknown={printNotice.shownUnknown} unread={printNotice.unread} onReread={onOpenPrintDataReread} includeUnknown={printFilter.includeUnknown}
+            onIncludeUnknownChange={include => setPrintFilter({ ...printFilter, includeUnknown: include })} />
         )}
 
         {showBulkBar && (
@@ -537,6 +709,9 @@ export function CatalogWorkspace({
           <BulkActionToolbar
             compact={narrow}
             selectedCount={selectedForBulk.size}
+            selectedIds={[...selectedForBulk]}
+            selectedNames={selectedNames}
+            hiddenSelectedCount={hiddenSelectedCount}
             confirmBulkDelete={confirmBulkDelete}
             onConfirmBulkDeleteChange={setConfirmBulkDelete}
             onSelectAllVisible={selectAllVisible}
@@ -564,8 +739,8 @@ export function CatalogWorkspace({
             onRemoveTagMenuOpenChange={setRemoveTagMenuOpen}
             tagsInSelection={tagsInSelection}
             onBulkRemoveTag={bulkRemoveTag}
-            selectedIds={[...selectedForBulk]}
             onDateRenamed={onDateRenamed}
+            bundleActions={bundleActions}
           />
           </div>
         )}
@@ -607,7 +782,7 @@ export function CatalogWorkspace({
             onToggleQueue={() =>
               detailModel.queuePosition !== null ? removeFromQueue(detailModel.id) : addToQueue(detailModel.id)
             }
-            onUploadImage={() => uploadCustomImage(detailModel.id)}
+            onUploadImage={(file) => uploadCustomImage(detailModel.id, file)}
             onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
             onSetLicense={setModelLicenses}
             onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
@@ -625,6 +800,9 @@ export function CatalogWorkspace({
             }
             rescanSuccess={rescanFeedback?.fileId === detailModel.id && rescanFeedback.status === 'success'}
             displayPreference={displayPreference}
+            bundleView={detailBundle && bundleView && detailBundleMembers.length >= 2
+              ? { bundle: detailBundle, members: detailBundleMembers, onOpenMember: setDetailModelId, actions: bundleView }
+              : null}
           />
         ) : (
           <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onClick={event => {
@@ -637,7 +815,7 @@ export function CatalogWorkspace({
               <div aria-hidden="true" className="mt-4 grid grid-cols-3 gap-4">
                 {[0, 1, 2].map(key => <div key={key} className="h-40 rounded-lg bg-[var(--panel-2)]" />)}
               </div>
-            </div> : initialLoadFailed ? <div role="alert" className="p-6 text-body text-[var(--crit)]">{t('catalogLoadFailed')}</div> : models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : toolOnly && displayedModels.length === 0 ? (
+            </div> : initialLoadFailed ? <div role="alert" className="p-6 text-body text-[var(--crit)]">{t('catalogLoadFailed')}</div> : models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : duplicatesMode ? <DuplicatesView models={models} onRemove={onRemoveDuplicates} /> : toolOnly && displayedModels.length === 0 ? (
               <div className="font-medium tabular-nums text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}
               </div>
@@ -645,7 +823,7 @@ export function CatalogWorkspace({
               <div className="flex flex-col items-center gap-2.5 border border-dashed border-[var(--line-strong)] rounded-[10px] px-5 py-8 text-center">
                 <h3 className="font-semibold text-[length:var(--font-size-body)]">{t('filterBarEmptyTitle')}</h3>
                 <p className="max-w-[48ch] text-[length:var(--font-size-body)] text-[var(--ink-2)]">{formatCount(t('filterBarEmptyText'), models.length)}</p>
-                <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
+                <button type="button" onClick={clearAllFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
               </div>
             ) : view === 'grid' ? (
               <ModelGrid
@@ -654,7 +832,7 @@ export function CatalogWorkspace({
                 selectedId={selectedId}
                 onSelect={selectModel}
                 onOpenDetail={setDetailModelId}
-                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                onContextMenu={(id, x, y, bundleId) => setContextMenu({ modelId: id, x, y, bundleId })}
                 onToggleFavorite={toggleFavorite}
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
@@ -671,7 +849,7 @@ export function CatalogWorkspace({
                 selectedId={selectedId}
                 onSelect={selectModel}
                 onOpenDetail={setDetailModelId}
-                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                onContextMenu={(id, x, y, bundleId) => setContextMenu({ modelId: id, x, y, bundleId })}
                 onToggleFavorite={toggleFavorite}
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
@@ -695,7 +873,7 @@ export function CatalogWorkspace({
                 selectedId={selectedId}
                 onSelect={selectModel}
                 onOpenDetail={setDetailModelId}
-                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                onContextMenu={(id, x, y, bundleId) => setContextMenu({ modelId: id, x, y, bundleId })}
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
                 onDragFileStart={jobActive ? undefined : onDragFileStart}
@@ -715,9 +893,25 @@ export function CatalogWorkspace({
       </main>
 
       {settingsPanel ? settingsPanel(narrow || !!detailModel) : !detailModel && (detailPanel === 'pinned' || selectedId !== null) && (
-        <div role="complementary" aria-label={t('detailPanelTitle')} className={`detail-panel-shell ${narrow ? 'detail-panel-overlay' : ''}`}>
+        <div role="complementary" aria-label={t('detailPanelTitle')} className={`detail-panel-shell ${narrow ? 'detail-panel-overlay' : ''} ${resizedDetail ? 'detail-panel-resized' : ''}`}
+          style={resizedDetail ? { '--detail-panel-width': `${displayedDetailWidth}px` } as CSSProperties : undefined}>
+        {!narrow && <DetailPanelResizer width={displayedDetailWidth} workspaceWidth={workspaceWidth} setWidth={setDetailWidth} reset={resetDetailWidth} />}
         {detailPanel === 'auto' && <button type="button" className="detail-panel-close" aria-label={t('detailPanelClose')} title={`${t('detailPanelClose')} (Esc)`} onClick={closeDetails}><Icon name="close" size={16} /></button>}
-        <DetailPanel
+        {openBundleCard && bundleView ? (
+          <BundlePanel
+            card={openBundleCard}
+            members={panelMembers(openBundleCard.bundle, models)}
+            allTags={tags.map(tag => tag.label)}
+            displayPreference={displayPreference}
+            actions={bundleView}
+            onOpenMember={setDetailModelId}
+            onSetPrinted={(targets) => targets.forEach(model => togglePrintStatus(model.id))}
+            onSetFavorite={(targets) => targets.forEach(model => toggleFavorite(model.id))}
+            onAddTag={(targets, tag) => targets.forEach(model => addTag(model.id, tag))}
+            onSetLicense={setModelLicenses}
+            onQueue={(targets) => targets.forEach(model => addToQueue(model.id))}
+          />
+        ) : <DetailPanel
           filament={selectedFilament.error ? null : selectedFilament.checks?.get(selected?.id ?? '')}
           lastPrinter={lastPrinter}
           printers={printers}
@@ -732,7 +926,7 @@ export function CatalogWorkspace({
           onToggleQueue={() =>
             selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
           }
-          onUploadImage={() => selected ? uploadCustomImage(selected.id) : undefined}
+          onUploadImage={(file) => selected ? uploadCustomImage(selected.id, file) : undefined}
           onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
           onSetLicense={setModelLicenses}
           onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
@@ -740,9 +934,11 @@ export function CatalogWorkspace({
           hasSlicer={slicers.length > 0}
           onRemoveFromCatalog={selected && onRemoveModelFromCatalog ? () => onRemoveModelFromCatalog(selected.id) : undefined}
           slicerError={slicerError}
-        />
+        />}
         </div>
       )}
     </div>
+    </BundleCardsContext.Provider>
+    </PrintFilterContext.Provider>
   );
 }

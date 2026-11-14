@@ -1,0 +1,805 @@
+//! Database access of the printer connection: switch, connections, fetched prints.
+
+use rusqlite::{params, Connection, OptionalExtension, Row};
+
+use super::error::DbError;
+use crate::printer_link::api_key::ApiKey;
+use crate::printer_link::RemoteJob;
+
+pub const SETTING_PRINTER_LINK_ENABLED: &str = "printer_link_enabled";
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrinterConnectionRecord {
+    pub printer_id: i64,
+    pub kind: String,
+    pub address: String,
+    pub base_url: Option<String>,
+    pub remote_version: Option<String>,
+    pub connected_since: f64,
+    pub last_synced_at: Option<f64>,
+    pub last_error: Option<String>,
+    pub error_since: Option<f64>,
+    pub paused: bool,
+    /// Printer clock minus local clock from the last test or sync; 0 = within tolerance.
+    pub clock_offset_s: f64,
+    /// Failed attempts in a row since the last success or test; 0 = none.
+    pub failures: i64,
+    /// When the background pass last contacted the printer (success or failure); `None` = never.
+    pub last_attempt_at: Option<f64>,
+    /// Whether a key is stored. The key itself is only readable through [`get_api_key`], which
+    /// hands out a type that cannot be printed, so this record can be logged freely.
+    pub has_api_key: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrinterJobRecord {
+    pub id: i64,
+    pub printer_id: i64,
+    pub remote_id: String,
+    pub file_name: String,
+    pub outcome: String,
+    pub raw_status: String,
+    pub ended_at: f64,
+    pub print_duration_s: f64,
+    pub used_mm: f64,
+    pub slicer_total_mm: Option<f64>,
+    pub slicer_weight_g: Option<f64>,
+    pub material: Option<String>,
+    pub thumbnail_path: Option<String>,
+    pub state: String,
+    pub failure_reason: Option<String>,
+    pub failure_note: Option<String>,
+    /// Closed by the program (no usage, or from before the connection): never offered, never deducted.
+    pub auto_closed: bool,
+}
+
+pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, DbError> {
+    Ok(conn
+        .query_row("SELECT value FROM app_settings WHERE key = ?1", params![key], |r| r.get(0))
+        .optional()?)
+}
+
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+    Ok(())
+}
+
+pub fn printer_link_enabled(conn: &Connection) -> Result<bool, DbError> {
+    Ok(get_setting(conn, SETTING_PRINTER_LINK_ENABLED)?.as_deref() == Some("1"))
+}
+
+pub fn set_printer_link_enabled(conn: &Connection, enabled: bool) -> Result<(), DbError> {
+    set_setting(conn, SETTING_PRINTER_LINK_ENABLED, if enabled { "1" } else { "0" })
+}
+
+const CONNECTION_COLUMNS: &str = "printer_id, kind, address, base_url, remote_version, connected_since,
+    last_synced_at, last_error, error_since, paused, clock_offset_s, failures, last_attempt_at,
+    api_key IS NOT NULL";
+
+fn connection_from_row(r: &Row) -> rusqlite::Result<PrinterConnectionRecord> {
+    Ok(PrinterConnectionRecord {
+        printer_id: r.get(0)?,
+        kind: r.get(1)?,
+        address: r.get(2)?,
+        base_url: r.get(3)?,
+        remote_version: r.get(4)?,
+        connected_since: r.get(5)?,
+        last_synced_at: r.get(6)?,
+        last_error: r.get(7)?,
+        error_since: r.get(8)?,
+        paused: r.get::<_, i64>(9)? != 0,
+        clock_offset_s: r.get(10)?,
+        failures: r.get(11)?,
+        last_attempt_at: r.get(12)?,
+        has_api_key: r.get(13)?,
+    })
+}
+
+/// The stored key of a connection, if it is a valid one (a hand-edited value counts as no key).
+pub fn get_api_key(conn: &Connection, printer_id: i64) -> Result<Option<ApiKey>, DbError> {
+    let raw: Option<Option<String>> = conn
+        .query_row("SELECT api_key FROM printer_connections WHERE printer_id = ?1", params![printer_id], |r| r.get(0))
+        .optional()?;
+    Ok(raw.flatten().and_then(|k| ApiKey::parse(&k).ok()))
+}
+
+/// Removes the key of a connection; the freed bytes are overwritten, not left in a free page.
+pub fn clear_api_key(conn: &Connection, printer_id: i64) -> Result<(), DbError> {
+    super::thingiverse::with_secure_delete(conn, || {
+        conn.execute("UPDATE printer_connections SET api_key = NULL WHERE printer_id = ?1", params![printer_id])?;
+        Ok(())
+    })
+}
+
+/// Empties every key in a COPY of the database (backup, export, update copy, restore). Runs
+/// before the copy's `VACUUM`, so the old pages go with it. A copy of a database from before the
+/// column existed has nothing to empty.
+pub(super) fn scrub_api_keys(conn: &Connection) -> Result<(), DbError> {
+    let has_column: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('printer_connections') WHERE name = 'api_key')",
+        [],
+        |r| r.get(0),
+    )?;
+    if has_column {
+        conn.execute("UPDATE printer_connections SET api_key = NULL WHERE api_key IS NOT NULL", [])?;
+    }
+    Ok(())
+}
+
+/// Saves a successfully tested connection. `connected_since` is only set the
+/// first time ("from now on"); error and pause are cleared. `api_key`: `Some` replaces the
+/// stored key, `None` keeps it, unless the address changed: a key belongs to one printer.
+#[allow(clippy::too_many_arguments)]
+pub fn save_connection_after_test(
+    conn: &Connection,
+    printer_id: i64,
+    kind: &str,
+    address: &str,
+    api_key: Option<&ApiKey>,
+    base_url: &str,
+    version: &str,
+    now: f64,
+) -> Result<PrinterConnectionRecord, DbError> {
+    // Resin printers have no printer connection.
+    crate::db::printers::ensure_filament_printer(conn, printer_id)?;
+    super::thingiverse::with_secure_delete(conn, || {
+        save_connection_row(conn, printer_id, kind, address, api_key, base_url, version, now)
+    })?;
+    get_connection(conn, printer_id)?.ok_or_else(|| DbError::Other("Verbindung fehlt nach dem Speichern".into()))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn save_connection_row(
+    conn: &Connection,
+    printer_id: i64,
+    kind: &str,
+    address: &str,
+    api_key: Option<&ApiKey>,
+    base_url: &str,
+    version: &str,
+    now: f64,
+) -> Result<(), DbError> {
+    // The old key must not travel to another printer under the new address.
+    conn.execute(
+        "UPDATE printer_connections SET api_key = NULL WHERE printer_id = ?1 AND address <> ?2",
+        params![printer_id, address],
+    )?;
+    conn.execute(
+        "INSERT INTO printer_connections (printer_id, kind, address, base_url, remote_version, connected_since)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(printer_id) DO UPDATE SET
+             kind = excluded.kind, address = excluded.address, base_url = excluded.base_url,
+             remote_version = excluded.remote_version, last_error = NULL, error_since = NULL, paused = 0,
+             failures = 0, last_attempt_at = NULL",
+        params![printer_id, kind, address, base_url, version, now],
+    )?;
+    if let Some(key) = api_key {
+        conn.execute("UPDATE printer_connections SET api_key = ?2 WHERE printer_id = ?1", params![printer_id, key.expose()])?;
+    }
+    Ok(())
+}
+
+pub fn get_connection(conn: &Connection, printer_id: i64) -> Result<Option<PrinterConnectionRecord>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {CONNECTION_COLUMNS} FROM printer_connections WHERE printer_id = ?1"),
+            params![printer_id],
+            connection_from_row,
+        )
+        .optional()?)
+}
+
+pub fn list_connections(conn: &Connection) -> Result<Vec<PrinterConnectionRecord>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CONNECTION_COLUMNS} FROM printer_connections ORDER BY printer_id"
+    ))?;
+    let rows = stmt.query_map([], connection_from_row)?.collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Removes the connection and all still open prints of this printer.
+/// Confirmed and ignored prints stay as history.
+pub fn delete_connection(conn: &Connection, printer_id: i64) -> Result<(), DbError> {
+    conn.execute("DELETE FROM printer_jobs WHERE printer_id = ?1 AND state = 'open'", params![printer_id])?;
+    super::thingiverse::with_secure_delete(conn, || {
+        conn.execute("DELETE FROM printer_connections WHERE printer_id = ?1", params![printer_id])?;
+        Ok(())
+    })
+}
+
+/// Stores the clock offset measured by the last test or sync.
+pub fn set_clock_offset(conn: &Connection, printer_id: i64, offset_s: f64) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE printer_connections SET clock_offset_s = ?2 WHERE printer_id = ?1",
+        params![printer_id, offset_s],
+    )?;
+    Ok(())
+}
+
+pub fn record_sync_success(conn: &Connection, printer_id: i64, now: f64, base_url: &str, version: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE printer_connections SET last_synced_at = ?2, last_error = NULL, error_since = NULL,
+             base_url = ?3, remote_version = ?4, failures = 0, last_attempt_at = ?2
+         WHERE printer_id = ?1",
+        params![printer_id, now, base_url, version],
+    )?;
+    Ok(())
+}
+
+/// Remembers the error and counts it; `error_since` stays at the first error.
+/// `auth_required` and `auth_rejected` pause the connection until the next test.
+pub fn record_sync_error(conn: &Connection, printer_id: i64, code: &str, now: f64) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE printer_connections SET last_error = ?2, error_since = COALESCE(error_since, ?3),
+             failures = failures + 1, last_attempt_at = ?3,
+             paused = CASE WHEN ?2 IN ('auth_required', 'auth_rejected') THEN 1 ELSE paused END
+         WHERE printer_id = ?1",
+        params![printer_id, code, now],
+    )?;
+    Ok(())
+}
+
+/// From this point in time (Unix seconds) finished prints count as new: the
+/// later of "connected since" and the end of the newest fetched print.
+/// Jobs with the same end time remain eligible; INSERT OR IGNORE deduplicates them.
+/// End times beyond the allowed future window are excluded so a bad printer clock
+/// cannot move the cursor past jobs that have not been fetched yet.
+pub fn sync_from(conn: &Connection, printer_id: i64, now: f64) -> Result<f64, DbError> {
+    let since: f64 = conn.query_row(
+        "SELECT MAX(c.connected_since, COALESCE((SELECT MAX(j.ended_at) - 0.001 FROM printer_jobs j WHERE j.printer_id = c.printer_id AND j.ended_at <= ?2), 0))
+         FROM printer_connections c WHERE c.printer_id = ?1",
+        params![printer_id, now + 86400.0],
+        |r| r.get(0),
+    )?;
+    Ok(since)
+}
+
+/// Where the next "include older history" read goes on: before the oldest print already taken
+/// over, and never later than the connection. Without this every press would read the same newest
+/// page of a long history again.
+pub fn older_history_before(conn: &Connection, printer_id: i64, connected_since: f64) -> Result<f64, DbError> {
+    let oldest: Option<f64> =
+        conn.query_row("SELECT MIN(ended_at) FROM printer_jobs WHERE printer_id = ?1", params![printer_id], |r| r.get(0))?;
+    Ok(oldest.map_or(connected_since, |o| o.min(connected_since)))
+}
+
+pub const MAX_OPEN_JOBS: usize = 500;
+
+pub fn open_job_limit_reached(conn: &Connection, printer_id: i64) -> Result<bool, DbError> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) >= ?2 FROM printer_jobs WHERE printer_id = ?1 AND state = 'open'",
+        params![printer_id, MAX_OPEN_JOBS as i64],
+        |row| row.get(0),
+    )?)
+}
+
+/// Inserts a print if it doesn't exist yet for this printer. Returns `true` if it was new.
+/// A print with usage waits to be confirmed; one without is history from the start.
+pub fn insert_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) -> Result<bool, DbError> {
+    insert_job(conn, printer_id, job, !job.deductible)
+}
+
+/// Like [`insert_job_if_new`], but the print is history whatever it used: a print from before the
+/// connection counts for the statistics only and must never be deducted.
+pub fn insert_older_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) -> Result<bool, DbError> {
+    insert_job(conn, printer_id, job, true)
+}
+
+fn insert_job(conn: &Connection, printer_id: i64, job: &RemoteJob, auto_closed: bool) -> Result<bool, DbError> {
+    if let Some((legacy_id, _)) = job.remote_id.split_once('@') {
+        // Match the print as well as the ID, since Moonraker can reuse IDs.
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM printer_jobs
+             WHERE printer_id = ?1 AND remote_id = ?2 AND file_name = ?3
+             AND ABS(ended_at - ?4) <= 5.0)",
+            params![printer_id, legacy_id, job.file_name, job.ended_at],
+            |row| row.get(0),
+        )?;
+        if exists {
+            return Ok(false);
+        }
+    }
+    let changed = conn.execute(
+        "INSERT OR IGNORE INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at,
+             print_duration_s, used_mm, slicer_total_mm, slicer_weight_g, material, thumbnail_path, state, auto_closed)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, CASE WHEN ?14 THEN 'ignored' ELSE 'open' END, ?14
+         WHERE ?14 OR (SELECT COUNT(*) FROM printer_jobs WHERE printer_id = ?1 AND state = 'open') < ?13",
+        params![
+            printer_id,
+            job.remote_id,
+            job.file_name,
+            job.outcome.as_str(),
+            job.raw_status,
+            job.ended_at,
+            job.print_duration_s,
+            job.used_mm,
+            job.slicer_total_mm,
+            job.slicer_weight_g,
+            job.material,
+            job.thumbnail_path,
+            MAX_OPEN_JOBS as i64,
+            auto_closed,
+        ],
+    )?;
+    Ok(changed == 1)
+}
+
+const JOB_COLUMNS: &str = "id, printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s,
+    used_mm, slicer_total_mm, slicer_weight_g, material, thumbnail_path, state, failure_reason, failure_note,
+    auto_closed";
+
+fn job_from_row(r: &Row) -> rusqlite::Result<PrinterJobRecord> {
+    Ok(PrinterJobRecord {
+        id: r.get(0)?,
+        printer_id: r.get(1)?,
+        remote_id: r.get(2)?,
+        file_name: r.get(3)?,
+        outcome: r.get(4)?,
+        raw_status: r.get(5)?,
+        ended_at: r.get(6)?,
+        print_duration_s: r.get(7)?,
+        used_mm: r.get(8)?,
+        slicer_total_mm: r.get(9)?,
+        slicer_weight_g: r.get(10)?,
+        material: r.get(11)?,
+        thumbnail_path: r.get(12)?,
+        state: r.get(13)?,
+        failure_reason: r.get(14)?,
+        failure_note: r.get(15)?,
+        auto_closed: r.get::<_, i64>(16)? != 0,
+    })
+}
+
+pub fn list_open_jobs(conn: &Connection) -> Result<Vec<PrinterJobRecord>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {JOB_COLUMNS} FROM printer_jobs WHERE state = 'open' ORDER BY printer_id, ended_at"
+    ))?;
+    let rows = stmt.query_map([], job_from_row)?.collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn get_job(conn: &Connection, job_id: i64) -> Result<Option<PrinterJobRecord>, DbError> {
+    Ok(conn
+        .query_row(&format!("SELECT {JOB_COLUMNS} FROM printer_jobs WHERE id = ?1"), params![job_id], job_from_row)
+        .optional()?)
+}
+
+/// Open prints only. Returns the number of changed rows (0 = no longer open).
+pub fn mark_job_confirmed(
+    conn: &Connection,
+    job_id: i64,
+    spool_id: i64,
+    file_id: Option<i64>,
+    grams: f64,
+    decided_at: &str,
+) -> Result<usize, DbError> {
+    Ok(conn.execute(
+        "UPDATE printer_jobs SET state = 'confirmed', booked_spool_id = ?2, booked_file_id = ?3, booked_g = ?4, decided_at = ?5
+         WHERE id = ?1 AND state = 'open'",
+        params![job_id, spool_id, file_id, grams, decided_at],
+    )?)
+}
+
+pub fn mark_job_ignored(conn: &Connection, job_id: i64, decided_at: &str) -> Result<usize, DbError> {
+    Ok(conn.execute(
+        "UPDATE printer_jobs SET state = 'ignored', decided_at = ?2 WHERE id = ?1 AND state = 'open'",
+        params![job_id, decided_at],
+    )?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::printer_link::{JobOutcome, RemoteJob};
+
+    fn setup() -> Connection {
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'Sovol SV08', 0)", []).unwrap();
+        conn
+    }
+
+    fn job(remote_id: &str, ended_at: f64) -> RemoteJob {
+        RemoteJob {
+            remote_id: remote_id.into(),
+            file_name: "Distanzhulse_13,40mm_PLA_0.2_6m29s.gcode".into(),
+            outcome: JobOutcome::Completed,
+            raw_status: "completed".into(),
+            ended_at,
+            print_duration_s: 394.65,
+            used_mm: 303.2658,
+            slicer_total_mm: Some(279.17),
+            slicer_weight_g: Some(0.83),
+            material: Some("PLA".into()),
+            thumbnail_path: Some(".thumbs/a-300x300.png".into()),
+            deductible: true,
+        }
+    }
+
+    #[test]
+    fn insertion_caps_open_jobs_and_future_sync_time() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "printer", None, "", "", 1000.0).unwrap();
+        for i in 0..MAX_OPEN_JOBS {
+            assert!(insert_job_if_new(&conn, 1, &job(&i.to_string(), 1e12)).unwrap());
+        }
+        assert!(open_job_limit_reached(&conn, 1).unwrap());
+        assert!(!insert_job_if_new(&conn, 1, &job("extra", 1e12)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), MAX_OPEN_JOBS);
+        assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 1000.0);
+        let id = list_open_jobs(&conn).unwrap()[0].id;
+        mark_job_ignored(&conn, id, "now").unwrap();
+        assert!(insert_job_if_new(&conn, 1, &job("extra", 2000.0)).unwrap());
+        assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 1999.999);
+    }
+
+    fn row(conn: &Connection, remote_id: &str) -> PrinterJobRecord {
+        let id: i64 = conn.query_row("SELECT id FROM printer_jobs WHERE remote_id = ?1", [remote_id], |r| r.get(0)).unwrap();
+        get_job(conn, id).unwrap().unwrap()
+    }
+
+    fn without_usage(remote_id: &str, ended_at: f64) -> RemoteJob {
+        RemoteJob {
+            outcome: JobOutcome::Partial,
+            raw_status: "cancelled".into(),
+            used_mm: 0.0,
+            deductible: false,
+            slicer_total_mm: None,
+            slicer_weight_g: None,
+            ..job(remote_id, ended_at)
+        }
+    }
+
+    #[test]
+    fn a_print_without_usage_is_stored_closed_and_never_offered() {
+        let conn = setup();
+        assert!(insert_job_if_new(&conn, 1, &without_usage("A@1", 2000.0)).unwrap());
+        let stored = row(&conn, "A@1");
+        assert_eq!((stored.state.as_str(), stored.auto_closed, stored.used_mm), ("ignored", true, 0.0));
+        assert_eq!((stored.outcome.as_str(), stored.raw_status.as_str()), ("partial", "cancelled"));
+        let decided: Option<String> = conn.query_row("SELECT decided_at FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(decided, None, "nobody decided anything");
+        assert!(list_open_jobs(&conn).unwrap().is_empty());
+        // A print with usage stays what it was: offered, not closed.
+        assert!(insert_job_if_new(&conn, 1, &job("B@2", 2100.0)).unwrap());
+        let offered = row(&conn, "B@2");
+        assert_eq!((offered.state.as_str(), offered.auto_closed, offered.failure_reason, offered.failure_note), ("open", false, None, None));
+    }
+
+    #[test]
+    fn closed_prints_do_not_count_towards_the_open_limit() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "printer", None, "", "", 1000.0).unwrap();
+        for i in 0..MAX_OPEN_JOBS {
+            assert!(insert_job_if_new(&conn, 1, &job(&i.to_string(), 1e12)).unwrap());
+        }
+        assert!(open_job_limit_reached(&conn, 1).unwrap());
+        // The limit is full, yet a print that needs no decision is still recorded ...
+        assert!(insert_job_if_new(&conn, 1, &without_usage("none", 1e12)).unwrap());
+        assert!(insert_older_job_if_new(&conn, 1, &job("old", 5.0)).unwrap());
+        // ... and a print that would have to be decided is still refused.
+        assert!(!insert_job_if_new(&conn, 1, &job("extra", 1e12)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), MAX_OPEN_JOBS);
+        // Closed rows are not counted: with the limit full, one more open print is still refused,
+        // and with room left they do not take it away.
+        let id = list_open_jobs(&conn).unwrap()[0].id;
+        mark_job_ignored(&conn, id, "now").unwrap();
+        assert!(!open_job_limit_reached(&conn, 1).unwrap());
+        assert!(insert_job_if_new(&conn, 1, &job("extra", 1e12)).unwrap());
+    }
+
+    #[test]
+    fn a_print_without_usage_polled_twice_is_stored_once() {
+        let conn = setup();
+        let j = without_usage("A@1", 2000.0);
+        assert!(insert_job_if_new(&conn, 1, &j).unwrap());
+        assert!(!insert_job_if_new(&conn, 1, &j).unwrap());
+        assert!(!insert_older_job_if_new(&conn, 1, &j).unwrap(), "the older history finds it too");
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1);
+    }
+
+    #[test]
+    fn an_older_print_is_history_even_when_it_used_filament() {
+        let conn = setup();
+        assert!(insert_older_job_if_new(&conn, 1, &job("old@1", 50.0)).unwrap());
+        let stored = row(&conn, "old@1");
+        assert_eq!((stored.state.as_str(), stored.auto_closed), ("ignored", true));
+        assert_eq!(stored.used_mm, 303.2658, "what the printer reported stays");
+        let booked: Option<f64> = conn.query_row("SELECT booked_g FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(booked, None, "nothing is deducted");
+        assert!(list_open_jobs(&conn).unwrap().is_empty());
+        // The same print arriving later through the normal pass is not offered again.
+        assert!(!insert_job_if_new(&conn, 1, &job("old@1", 50.0)).unwrap());
+    }
+
+    #[test]
+    fn job_id_reuse_after_history_reset_is_offered_as_new_job() {
+        let conn = setup();
+        assert!(insert_job_if_new(&conn, 1, &job("00003F@1000", 2000.0)).unwrap());
+        assert!(insert_job_if_new(&conn, 1, &job("00003F@9000", 10000.0)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn same_job_polled_twice_is_inserted_once() {
+        let conn = setup();
+        let j = job("00003F@1000", 2000.0);
+        assert!(insert_job_if_new(&conn, 1, &j).unwrap());
+        assert!(!insert_job_if_new(&conn, 1, &j).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn legacy_row_blocks_same_job_in_new_format() {
+        for delta in [-5.0, 0.0, 5.0] {
+            let conn = setup();
+            assert!(insert_job_if_new(&conn, 1, &job("00003F", 2000.0)).unwrap());
+            assert!(!insert_job_if_new(&conn, 1, &job("00003F@1000", 2000.0 + delta)).unwrap());
+            let rows = list_open_jobs(&conn).unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].remote_id, "00003F");
+        }
+    }
+
+    #[test]
+    fn legacy_id_with_different_file_or_time_is_new_job() {
+        for (different_file, delta) in [(true, 0.0), (false, -5.01), (false, 5.01)] {
+            let conn = setup();
+            assert!(insert_job_if_new(&conn, 1, &job("00003F", 2000.0)).unwrap());
+            let mut new = job("00003F@1000", 2000.0 + delta);
+            if different_file {
+                new.file_name = "another.gcode".into();
+            }
+            assert!(insert_job_if_new(&conn, 1, &new).unwrap());
+            assert_eq!(list_open_jobs(&conn).unwrap().len(), 2);
+        }
+    }
+
+    #[test]
+    fn legacy_row_for_another_printer_does_not_block_job() {
+        let conn = setup();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (2, 'Other printer', 1)", []).unwrap();
+        assert!(insert_job_if_new(&conn, 1, &job("00003F", 2000.0)).unwrap());
+        assert!(insert_job_if_new(&conn, 2, &job("00003F@1000", 2000.0)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn printer_link_is_off_by_default_and_can_be_switched() {
+        let conn = setup();
+        assert!(!printer_link_enabled(&conn).unwrap());
+        set_printer_link_enabled(&conn, true).unwrap();
+        assert!(printer_link_enabled(&conn).unwrap());
+        set_printer_link_enabled(&conn, false).unwrap();
+        assert!(!printer_link_enabled(&conn).unwrap());
+    }
+
+    #[test]
+    fn connected_since_is_kept_when_testing_again() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        record_sync_error(&conn, 1, "auth_required", 1100.0).unwrap();
+        let c = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.61", None, "http://192.168.1.61", "v0.8.1", 2000.0).unwrap();
+        assert_eq!(c.connected_since, 1000.0);
+        assert_eq!(c.address, "192.168.1.61");
+        assert!(!c.paused);
+        assert_eq!(c.last_error, None);
+    }
+
+    #[test]
+    fn errors_are_counted_and_a_success_or_a_test_resets_the_count() {
+        let conn = setup();
+        let fresh = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        assert_eq!((fresh.failures, fresh.last_attempt_at), (0, None));
+        record_sync_error(&conn, 1, "timeout", 1100.0).unwrap();
+        record_sync_error(&conn, 1, "connection_refused", 1400.0).unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert_eq!((c.failures, c.last_attempt_at, c.error_since), (2, Some(1400.0), Some(1100.0)));
+        record_sync_success(&conn, 1, 1700.0, "http://192.168.1.60", "v0.8.0").unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert_eq!((c.failures, c.last_attempt_at, c.last_error), (0, Some(1700.0), None));
+        record_sync_error(&conn, 1, "timeout", 2000.0).unwrap();
+        let tested = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 3000.0).unwrap();
+        assert_eq!((tested.failures, tested.last_attempt_at), (0, None), "a successful test starts over");
+    }
+
+    #[test]
+    fn auth_errors_pause_the_connection_and_keep_error_since() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        record_sync_error(&conn, 1, "unreachable", 1100.0).unwrap();
+        record_sync_error(&conn, 1, "auth_required", 1400.0).unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert_eq!(c.error_since, Some(1100.0));
+        assert_eq!(c.last_error.as_deref(), Some("auth_required"));
+        assert!(c.paused);
+        record_sync_success(&conn, 1, 1500.0, "http://192.168.1.60", "v0.8.0").unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert_eq!(c.error_since, None);
+        assert_eq!(c.last_synced_at, Some(1500.0));
+    }
+
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    fn key(raw: &str) -> ApiKey {
+        ApiKey::parse(raw).unwrap()
+    }
+
+    fn save(conn: &Connection, address: &str, api_key: Option<&ApiKey>) -> PrinterConnectionRecord {
+        save_connection_after_test(conn, 1, "moonraker", address, api_key, &format!("http://{address}"), "v0.8.0", 1000.0).unwrap()
+    }
+
+    #[test]
+    fn the_key_is_stored_with_the_connection_and_never_shows_in_the_record() {
+        let conn = setup();
+        let without = save(&conn, "192.168.1.60", None);
+        assert!(!without.has_api_key);
+        assert!(get_api_key(&conn, 1).unwrap().is_none());
+        let with = save(&conn, "192.168.1.60", Some(&key(KEY)));
+        assert!(with.has_api_key);
+        assert_eq!(get_api_key(&conn, 1).unwrap().unwrap().expose(), KEY);
+        assert!(!format!("{with:?}").contains(KEY), "the record's Debug text carries the key");
+        assert!(get_api_key(&conn, 2).unwrap().is_none(), "no connection, no key");
+    }
+
+    #[test]
+    fn a_test_without_a_new_key_keeps_the_stored_one_and_a_new_key_replaces_it() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        assert!(save(&conn, "192.168.1.60", None).has_api_key);
+        assert_eq!(get_api_key(&conn, 1).unwrap().unwrap().expose(), KEY);
+        save(&conn, "192.168.1.60", Some(&key("ffffffffffffffffffffffffffffffff")));
+        assert_eq!(get_api_key(&conn, 1).unwrap().unwrap().expose(), "ffffffffffffffffffffffffffffffff");
+    }
+
+    #[test]
+    fn the_key_stays_with_its_address() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        let moved = save(&conn, "192.168.1.61", None);
+        assert!(!moved.has_api_key, "the key of one printer went along to another address");
+        // A new address with a new key keeps the new key.
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        let moved = save(&conn, "192.168.1.62", Some(&key("ffffffffffffffffffffffffffffffff")));
+        assert!(moved.has_api_key);
+        assert_eq!(get_api_key(&conn, 1).unwrap().unwrap().expose(), "ffffffffffffffffffffffffffffffff");
+    }
+
+    #[test]
+    fn clearing_the_key_keeps_the_connection() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        clear_api_key(&conn, 1).unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert!(!c.has_api_key);
+        assert_eq!(c.address, "192.168.1.60");
+        clear_api_key(&conn, 99).unwrap();
+    }
+
+    #[test]
+    fn a_stored_value_that_is_not_a_key_counts_as_no_key() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", None);
+        conn.execute("UPDATE printer_connections SET api_key = 'bad value with spaces'", []).unwrap();
+        assert!(get_api_key(&conn, 1).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_rejected_key_pauses_the_connection_like_a_missing_one() {
+        let conn = setup();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        record_sync_error(&conn, 1, "auth_rejected", 1100.0).unwrap();
+        let c = get_connection(&conn, 1).unwrap().unwrap();
+        assert!(c.paused);
+        assert_eq!(c.last_error.as_deref(), Some("auth_rejected"));
+        assert!(c.has_api_key, "the key stays, the user decides");
+        // A transient error does not pause.
+        let other = setup();
+        save(&other, "192.168.1.60", Some(&key(KEY)));
+        record_sync_error(&other, 1, "timeout", 1100.0).unwrap();
+        assert!(!get_connection(&other, 1).unwrap().unwrap().paused);
+    }
+
+    #[test]
+    fn scrubbing_a_copy_empties_every_key_and_leaves_the_connection() {
+        let conn = setup();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (2, 'Other', 1)", []).unwrap();
+        save(&conn, "192.168.1.60", Some(&key(KEY)));
+        save_connection_after_test(&conn, 2, "moonraker", "192.168.1.70", Some(&key("ffffffffffffffffffffffffffffffff")), "", "", 1.0).unwrap();
+        scrub_api_keys(&conn).unwrap();
+        assert!(list_connections(&conn).unwrap().iter().all(|c| !c.has_api_key));
+        assert_eq!(list_connections(&conn).unwrap().len(), 2);
+        // A database from before the column existed has nothing to scrub and must not fail.
+        let old = Connection::open_in_memory().unwrap();
+        old.execute_batch("CREATE TABLE printer_connections (printer_id INTEGER)").unwrap();
+        scrub_api_keys(&old).unwrap();
+    }
+
+    #[test]
+    fn a_removed_or_cleared_key_leaves_no_bytes_in_the_working_file() {
+        let dir = std::env::temp_dir().join(format!("mfk-printer-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("catalog.db");
+        let has_key = || {
+            let mut bytes = std::fs::read(&path).unwrap();
+            // The write-ahead log is part of the database too.
+            if let Ok(wal) = std::fs::read(dir.join("catalog.db-wal")) {
+                bytes.extend(wal);
+            }
+            bytes.windows(KEY.len()).any(|w| w == KEY.as_bytes())
+        };
+        {
+            let conn = crate::db::connect(&path).unwrap();
+            conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'A', 0), (2, 'B', 1)", []).unwrap();
+            save(&conn, "192.168.1.60", Some(&key(KEY)));
+            assert!(has_key(), "precondition: the file holds the key");
+            clear_api_key(&conn, 1).unwrap();
+            conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).unwrap();
+            assert!(!has_key(), "the cleared key is still in the file");
+            save(&conn, "192.168.1.60", Some(&key(KEY)));
+            delete_connection(&conn, 1).unwrap();
+            conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).unwrap();
+            assert!(!has_key(), "the key of a removed connection is still in the file");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn same_remote_job_is_stored_once() {
+        let conn = setup();
+        assert!(insert_job_if_new(&conn, 1, &job("00003F", 5000.0)).unwrap());
+        assert!(!insert_job_if_new(&conn, 1, &job("00003F", 5000.0)).unwrap());
+        assert!(insert_job_if_new(&conn, 1, &job("00003E", 5100.0)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn clock_offset_starts_at_zero_and_is_stored() {
+        let conn = setup();
+        let c = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.7.1", 1000.0).unwrap();
+        assert_eq!(c.clock_offset_s, 0.0);
+        set_clock_offset(&conn, 1, -87_000_000.0).unwrap();
+        assert_eq!(get_connection(&conn, 1).unwrap().unwrap().clock_offset_s, -87_000_000.0);
+        // A new test keeps the column until the command stores the new measurement.
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.7.1", 2000.0).unwrap();
+        assert_eq!(list_connections(&conn).unwrap()[0].clock_offset_s, -87_000_000.0);
+    }
+
+    #[test]
+    fn sync_from_is_connected_since_or_latest_job_end() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 1000.0);
+        insert_job_if_new(&conn, 1, &job("A", 4000.0)).unwrap();
+        assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 3999.999);
+    }
+
+    #[test]
+    fn removing_a_connection_deletes_only_open_jobs() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", None, "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
+        insert_job_if_new(&conn, 1, &job("A", 4000.0)).unwrap();
+        insert_job_if_new(&conn, 1, &job("B", 4100.0)).unwrap();
+        let b = list_open_jobs(&conn).unwrap().into_iter().find(|j| j.remote_id == "B").unwrap();
+        assert_eq!(mark_job_ignored(&conn, b.id, "2026-09-24T00:00:00Z").unwrap(), 1);
+        delete_connection(&conn, 1).unwrap();
+        assert!(get_connection(&conn, 1).unwrap().is_none());
+        let remaining: i64 = conn.query_row("SELECT COUNT(*) FROM printer_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(remaining, 1);
+    }
+
+    #[test]
+    fn deciding_a_job_only_works_once() {
+        let conn = setup();
+        insert_job_if_new(&conn, 1, &job("A", 4000.0)).unwrap();
+        let a = list_open_jobs(&conn).unwrap().remove(0);
+        assert_eq!(mark_job_ignored(&conn, a.id, "t").unwrap(), 1);
+        assert_eq!(mark_job_ignored(&conn, a.id, "t").unwrap(), 0);
+        assert_eq!(mark_job_confirmed(&conn, a.id, 1, None, 0.9, "t").unwrap(), 0);
+    }
+}

@@ -1,0 +1,339 @@
+-- parent_id/path were added to the already existing table later -
+-- CREATE TABLE IF NOT EXISTS doesn't alter an existing table. Both columns are
+-- added via the versioned migrations in db/migrations.rs (see
+-- MIGRATIONS/CURRENT_SCHEMA_VERSION there), same pattern as for
+-- filament_spools/files.
+CREATE TABLE IF NOT EXISTS folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    color_hue INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    file_type TEXT NOT NULL CHECK (file_type IN ('3mf', 'stl', 'stp', 'obj', 'gcode', 'resin')),
+    folder_id INTEGER REFERENCES folders (id) ON DELETE SET NULL,
+    origin TEXT NOT NULL DEFAULT 'local'
+        CHECK (origin IN ('local')),
+    -- sync_status/cloud_id are leftovers of the removed cloud integration (Google
+    -- Drive among others - too unstable, see CHANGELOG). Deliberately not removed
+    -- via a migration (no DROP COLUMN pattern in this project, risk for existing
+    -- DBs); they stay inert (always 'local-only'/NULL, no code reads or writes them).
+    sync_status TEXT NOT NULL DEFAULT 'local-only'
+        CHECK (sync_status IN ('synced', 'outdated', 'local-only', 'cloud-only')),
+    cloud_id TEXT,
+    file_size_bytes INTEGER NOT NULL,
+    dimension_x_mm REAL,
+    dimension_y_mm REAL,
+    dimension_z_mm REAL,
+    volume_cm3 REAL,
+    object_count INTEGER,
+    thumbnail_png BLOB,
+    imported_at TEXT NOT NULL,
+    file_modified_at TEXT,
+    print_status TEXT NOT NULL DEFAULT 'not_printed'
+        CHECK (print_status IN ('not_printed', 'printed')),
+    last_viewed_at TEXT,
+    creator TEXT,
+    content_hash TEXT,
+    render_snapshot_png BLOB,
+    custom_image_png BLOB,
+    source_url TEXT,
+    license TEXT,
+    queue_position INTEGER,
+    favorite INTEGER NOT NULL DEFAULT 0,
+    plate_count INTEGER,
+    slice_info_json TEXT,
+    plate_dimensions_json TEXT,
+    deleted_at TEXT,
+    trash_path TEXT,
+    source_platform TEXT,
+    source_model_id TEXT,
+    source_profile_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);
+CREATE INDEX IF NOT EXISTS idx_files_file_type ON files (file_type);
+
+CREATE TABLE IF NOT EXISTS file_tags (
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
+    PRIMARY KEY (file_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_tags_tag_id ON file_tags (tag_id);
+
+CREATE TABLE IF NOT EXISTS file_metadata (
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (file_id, label)
+);
+
+CREATE TABLE IF NOT EXISTS file_materials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    display_color TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_materials_file_id ON file_materials (file_id);
+
+CREATE TABLE IF NOT EXISTS filament_spools (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    material TEXT NOT NULL,
+    manufacturer TEXT,
+    color TEXT,
+    location TEXT,
+    diameter_mm REAL NOT NULL,
+    original_weight_g INTEGER NOT NULL,
+    remaining_weight_g INTEGER NOT NULL,
+    price REAL,
+    image_png BLOB,
+    created_at TEXT NOT NULL,
+    unit_id INTEGER REFERENCES material_units(id) ON DELETE SET NULL,
+    slot_index INTEGER,
+    home_location TEXT,
+    color_hex TEXT,
+    color_hexes TEXT,
+    kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))
+);
+
+CREATE TABLE IF NOT EXISTS printers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))
+);
+
+CREATE TABLE IF NOT EXISTS material_units (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro', 'bambu_ams_ht', 'bambu_ams_3h', 'creality_cfs',
+                                       'prusa_mmu3', 'anycubic_ace', 'external', 'custom', 'resin_vat')),
+    slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
+    bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
+    position INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collection_files (
+    collection_id INTEGER NOT NULL REFERENCES collections (id) ON DELETE CASCADE,
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    UNIQUE (collection_id, file_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_collection_files_collection_id
+    ON collection_files (collection_id);
+CREATE INDEX IF NOT EXISTS idx_collection_files_file_id
+    ON collection_files (file_id);
+
+CREATE TABLE IF NOT EXISTS print_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    printed_at TEXT NOT NULL,
+    note TEXT,
+    photo_png BLOB,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_print_log_file_id ON print_log (file_id);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS printer_connections (
+    printer_id INTEGER PRIMARY KEY REFERENCES printers(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('moonraker')),
+    address TEXT NOT NULL,
+    base_url TEXT,
+    remote_version TEXT,
+    connected_since REAL NOT NULL,
+    last_synced_at REAL,
+    last_error TEXT,
+    error_since REAL,
+    paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+    clock_offset_s REAL NOT NULL DEFAULT 0,
+    failures INTEGER NOT NULL DEFAULT 0 CHECK (failures >= 0),
+    last_attempt_at REAL,
+    -- The printer's API key; never sent to the interface and cleared in every copy that leaves the machine.
+    api_key TEXT
+);
+
+CREATE TABLE IF NOT EXISTS printer_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+    remote_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('completed', 'partial')),
+    raw_status TEXT NOT NULL,
+    ended_at REAL NOT NULL,
+    print_duration_s REAL NOT NULL,
+    used_mm REAL NOT NULL,
+    slicer_total_mm REAL,
+    slicer_weight_g REAL,
+    material TEXT,
+    thumbnail_path TEXT,
+    state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'confirmed', 'ignored')),
+    booked_spool_id INTEGER REFERENCES filament_spools(id) ON DELETE SET NULL,
+    booked_file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+    booked_g REAL,
+    decided_at TEXT,
+    -- Why a print ended early: a code from the fixed list in `printer_link::failure`, checked in code
+    -- (not here) so the list can grow without a migration. Only for outcome 'partial'.
+    failure_reason TEXT,
+    failure_note TEXT,
+    -- Closed by the program, never offered for confirmation, never deducted: prints without usage and
+    -- prints from the history before the connection. These rows are always state 'ignored'.
+    auto_closed INTEGER NOT NULL DEFAULT 0 CHECK (auto_closed IN (0, 1)),
+    UNIQUE (printer_id, remote_id)
+);
+
+-- Extra files that belong to one model (pictures, PDFs, text notes, CAD sources and documents). The files
+-- live in a `<model name>_extras` folder next to the model; this table only knows
+-- them. A row with `deleted_at` sits in the app trash at `trash_path`.
+CREATE TABLE IF NOT EXISTS companion_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'text', 'other')),
+    size_bytes INTEGER,
+    added_at TEXT NOT NULL,
+    deleted_at TEXT,
+    trash_path TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_companion_files_file_id ON companion_files (file_id);
+
+-- Folders the user wants checked for new model files. Machine-local paths; the
+-- files in them are only read, imports move them into the catalog folder.
+CREATE TABLE IF NOT EXISTS source_folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    added_at TEXT NOT NULL
+);
+
+-- Files from a source folder the user declined; identified by path and size, so a
+-- changed file is offered again.
+CREATE TABLE IF NOT EXISTS source_rejected (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    size_bytes INTEGER NOT NULL,
+    rejected_at TEXT NOT NULL
+);
+
+-- Automatic tags the user removed for good ("do not assign automatically").
+-- Only the automatic assignment is blocked; tags typed by hand are unaffected.
+-- A separate table so `tags` and `file_tags` stay exactly as other tools read them.
+CREATE TABLE IF NOT EXISTS blocked_auto_tags (
+    name TEXT PRIMARY KEY COLLATE NOCASE,
+    blocked_at TEXT NOT NULL
+);
+
+-- Models moved to the trash by "folder to trash". Restoring such a model may bring
+-- its catalog folder rows back even if the directory stayed on disk (foreign file);
+-- a model removed from a folder some other way never does. A separate table so
+-- `files` and `folders` stay exactly as other tools read them.
+CREATE TABLE IF NOT EXISTS folder_trash_origin (
+    file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE
+);
+
+-- Print data read from the slicer files of a 3MF. A separate table so `files` stays
+-- exactly as other tools read it. No row = never read (or read by an older reader).
+CREATE TABLE IF NOT EXISTS file_print_info (
+    file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE,
+    reader_version INTEGER NOT NULL CHECK (reader_version >= 1),
+    read_at TEXT NOT NULL,
+    slice_state TEXT NOT NULL
+        CHECK (slice_state IN ('sliced', 'no_slice_data', 'not_recognized', 'unreadable')),
+    settings_state TEXT NOT NULL
+        CHECK (settings_state IN ('read', 'missing', 'unreadable', 'not_attempted')),
+    printer_model TEXT,
+    bed_type TEXT,
+    layer_height_mm REAL CHECK (layer_height_mm IS NULL OR layer_height_mm > 0),
+    nozzle_mm REAL CHECK (nozzle_mm IS NULL OR nozzle_mm > 0),
+    nozzle_mixed INTEGER NOT NULL DEFAULT 0 CHECK (nozzle_mixed IN (0, 1)),
+    bed_temp_c REAL CHECK (bed_temp_c IS NULL OR bed_temp_c > 0),
+    bed_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (bed_temp_mixed IN (0, 1)),
+    nozzle_temp_c REAL CHECK (nozzle_temp_c IS NULL OR nozzle_temp_c > 0),
+    nozzle_temp_mixed INTEGER NOT NULL DEFAULT 0 CHECK (nozzle_temp_mixed IN (0, 1)),
+    -- Distinct filament colors, `#rrggbb` separated by single spaces (at most 32); NULL = none known.
+    filament_colors TEXT
+);
+
+-- One row per plate of such a file.
+CREATE TABLE IF NOT EXISTS file_print_plates (
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    plate_index INTEGER NOT NULL CHECK (plate_index >= 1),
+    plate_name TEXT,
+    print_seconds INTEGER CHECK (print_seconds IS NULL OR print_seconds > 0),
+    first_layer_seconds REAL CHECK (first_layer_seconds IS NULL OR first_layer_seconds > 0),
+    plate_bed_type TEXT,
+    PRIMARY KEY (file_id, plate_index)
+);
+
+-- Copies the disk sync offered and the user did not take over: the next sync neither hashes nor
+-- offers them again while the file is unchanged in size and its original is still cataloged.
+CREATE TABLE IF NOT EXISTS disk_sync_known_copies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    size_bytes INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    noted_at TEXT NOT NULL
+);
+
+-- Groups of files shown as one card (variants of one model, or the parts of a multi-part model).
+-- Nothing else hangs on a bundle: tags, license and notes stay with the files.
+CREATE TABLE IF NOT EXISTS bundles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+    kind TEXT NOT NULL CHECK (kind IN ('variants', 'parts')),
+    created_at TEXT NOT NULL
+);
+
+-- One row per member. `file_id` is the primary key: a file belongs to at most one bundle. The member
+-- with the smallest position is the title model.
+CREATE TABLE IF NOT EXISTS bundle_members (
+    file_id INTEGER PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE,
+    bundle_id INTEGER NOT NULL REFERENCES bundles (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    label TEXT CHECK (label IS NULL OR length(label) <= 60)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bundle_members_bundle_id ON bundle_members (bundle_id);
+
+-- Sliced files that a slicer reported through its post-processing script (`--report-sliced`). The program
+-- only remembers and suggests; nothing is assigned or moved without the user. Links to files are
+-- `SET NULL`: a deleted model leaves the report standing.
+CREATE TABLE IF NOT EXISTS slicer_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reported_at TEXT NOT NULL,
+    reported_path TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes >= 0),
+    slicer TEXT,
+    summary_json TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'linked', 'dismissed')),
+    suggested_file_id INTEGER REFERENCES files (id) ON DELETE SET NULL,
+    model_file_id INTEGER REFERENCES files (id) ON DELETE SET NULL,
+    decided_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_slicer_reports_name ON slicer_reports (file_name);

@@ -37,10 +37,11 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
   const focusedRef = useRef(false);
   // While mounted, the popup counts as open; it is closed via `onClose`.
   const { popupRef, style } = useAnchoredPopup<HTMLElement, HTMLDivElement>(anchorRef, true, onClose, POPUP_MIN_WIDTH);
-  const hits = useMemo(() => {
+  const matches = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return (needle ? models.filter((m) => m.name.toLowerCase().includes(needle)) : models).slice(0, 50);
+    return (needle ? models.filter((m) => m.name.toLowerCase().includes(needle)) : models);
   }, [models, q]);
+  const hits = matches.slice(0, 50);
   // Index 0 is always "No model", then the hits - one shared
   // list for arrow key navigation.
   const optionIds: OptionId[] = [NONE, ...hits.map((m) => m.id)];
@@ -67,7 +68,7 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
     <div
       ref={popupRef}
       style={style}
-      className="z-[60] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] p-1.5 flex flex-col gap-1"
+      className="z-[110] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] p-1.5 flex flex-col gap-1"
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           // Don't pass it on to the surrounding dialog - Escape should only
@@ -119,6 +120,9 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
             {displayName(m.name)}
           </li>
         ))}
+        {matches.length > 50 && <li role="presentation" className="px-2 py-1 text-small text-[var(--ink-3)]">
+          {t('modelPickerMoreHits').replace('{shown}', String(hits.length)).replace('{total}', String(matches.length))}
+        </li>}
       </ul>
     </div>,
     document.body,

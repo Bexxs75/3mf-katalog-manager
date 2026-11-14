@@ -12,7 +12,7 @@ import { es } from '../i18n/es';
 import { fr } from '../i18n/fr';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-const empty: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [], trashBlockedCount: 0 };
+const empty: DiskScan = { newFiles: [], newFolders: [], renamedFiles: [], duplicateFiles: [], missingFiles: [], missingFolders: [], unreachableRoots: [], skippedPaths: [], trashBlockedCount: 0, knownCopyCount: 0 };
 const changes: DiskScan = {
   ...empty,
   newFiles: [{ path: '/models/new.obj', relativePath: 'new.obj', root: '/models', id: null }],
@@ -64,6 +64,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     expect(screen.getByText('foto[U+202E]gpj.stl').closest('li')).toHaveAttribute('title', '/models/foto[U+202E]gpj.stl');
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', {
@@ -87,17 +88,29 @@ describe('catalog disk sync', () => {
     const reload = renderSync();
     fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     if (remove) fireEvent.click(removeBox());
     fireEvent.click(screen.getByRole('button', { name: 'Änderungen übernehmen' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', { selection: { newPaths: ['/models/new.obj'], missingIds: ['42'], removeMissing: remove, renames: [] } }));
     await waitFor(() => expect(reload).toHaveBeenCalledOnce());
     expect(await screen.findByRole('status')).toHaveTextContent('1 neue Datei');
   });
+  it('hands the applied result (with the new file ids) to the caller', async () => {
+    const applied = { fileIds: ['7'], folderIds: [], failedPaths: [], removedCount: 0 };
+    vi.mocked(invoke).mockResolvedValueOnce(changes).mockResolvedValueOnce(applied);
+    const onApplied = renderSync();
+    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    await screen.findByRole('dialog');
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Änderungen übernehmen' }));
+    await waitFor(() => expect(onApplied).toHaveBeenCalledWith(expect.objectContaining({ fileIds: ['7'] })));
+  });
   it('keeps the success toast when refreshing after apply fails', async () => {
     vi.mocked(invoke).mockResolvedValueOnce(changes).mockResolvedValueOnce({ fileIds: ['7'], folderIds: [], failedPaths: [], removedCount: 0 });
     renderSync(vi.fn().mockRejectedValue(new Error('refresh failed')));
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
     expect(await screen.findByRole('status')).toHaveTextContent('1 neue Datei');
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -134,6 +147,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
     const checked = () => ['a.obj', 'b.obj', 'c.obj', 'd.obj', 'o.obj → n.obj'].map(n => box(n).checked);
     expect(checked()).toEqual([true, true, false, false, true]);
@@ -167,6 +181,7 @@ describe('catalog disk sync', () => {
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncClose }));
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     expect(screen.getByRole('dialog')).not.toHaveTextContent('Papierkorb');
   });
   it('shows the missing-only action only while removal is checked', async () => {
@@ -174,6 +189,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     expect(screen.queryByRole('button', { name: de.diskSyncRemoveAction })).toBeNull();
     expect(screen.getByRole('button', { name: de.diskSyncClose })).toBeVisible();
     fireEvent.click(removeBox());
@@ -190,6 +206,7 @@ describe('catalog disk sync', () => {
     const reload = renderSync();
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     expect(screen.queryByRole('button', { name: dictionary.diskSyncRemoveAction })).toBeNull();
     expect(invoke).toHaveBeenCalledTimes(1);
     fireEvent.click(removeBox(dictionary));
@@ -213,9 +230,11 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncApply }));
     await waitFor(() => expect(screen.queryByRole('button', { name: dictionary.diskSyncApply })).toBeNull());
-    const result = screen.getByRole(allFailed ? 'dialog' : 'status');
+    // The toast is set a microtask after the dialog's apply button disappears, so wait for it.
+    const result = await screen.findByRole(allFailed ? 'dialog' : 'status');
     expect(result).toHaveTextContent(dictionary.diskSyncUnreadable.one.replace('{count}', '1'));
     expect(result).toHaveTextContent('/models/broken.3mf');
     if (allFailed) {
@@ -251,6 +270,7 @@ describe('catalog disk sync', () => {
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncRefresh }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncApply }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(dictionary[code]);
@@ -270,6 +290,7 @@ describe('catalog disk sync', () => {
     vi.mocked(invoke).mockResolvedValue(changes); renderSync();
     fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
     await screen.findByRole('dialog');
+    await act(async () => {}); // flush the dialog's mount effect before interacting
     const apply = screen.getByRole('button', { name: 'Änderungen übernehmen' }); apply.focus();
     fireEvent.keyDown(document, { key: 'Tab' }); expect(screen.getByRole('button', { name: de.diskSyncSelectAllIn.replace('{section}', de.diskSyncNewHeading) })).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true }); expect(apply).toHaveFocus();
@@ -348,6 +369,37 @@ describe('catalog disk sync', () => {
       await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', { selection: {
         newPaths: ['/models/Deko/Schale.3mf'], missingIds: [], removeMissing: false,
         renames: [{ id: '1', newPath: '/models/Druckerteile/Halter.3mf' }, { id: '2', newPath: '/models/Deko/Vase_v2.stl' }],
+        declinedCopies: ['/models/Deko/Vase - Kopie.3mf'],
+      } }));
+    });
+    it('says that copies left unticked are remembered', async () => {
+      const { dialog } = await open();
+      expect(dialog).toHaveTextContent(de.kcDialogHint);
+      expect(de.kcDialogHint).toBe('Nicht gewählte Kopien werden gemerkt und beim nächsten Abgleich nicht mehr angeboten.');
+    });
+    it('sends copies left unticked as declinedCopies and names how many were remembered', async () => {
+      await open();
+      vi.mocked(invoke).mockResolvedValueOnce({ ...applied, notedCopyCount: 1, knownCopyCount: 4 });
+      fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
+      await waitFor(() => expect(vi.mocked(invoke).mock.calls[vi.mocked(invoke).mock.calls.length - 1][1]).toMatchObject({ selection: { declinedCopies: ['/models/Deko/Vase - Kopie.3mf'] } }));
+      expect(await screen.findByRole('status')).toHaveTextContent('1 Kopie gemerkt');
+    });
+    it('does not send a ticked copy as declined and does not mention remembering when none was', async () => {
+      await open();
+      vi.mocked(invoke).mockResolvedValueOnce({ ...applied, notedCopyCount: 0, knownCopyCount: 0 });
+      fireEvent.click(box('Deko/Vase - Kopie.3mf'));
+      fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
+      await waitFor(() => expect(invoke).toHaveBeenLastCalledWith('apply_catalog_disk_sync', { selection: expect.not.objectContaining({ declinedCopies: expect.anything() }) }));
+      expect(await screen.findByRole('status')).not.toHaveTextContent('gemerkt');
+    });
+    it('can be applied with nothing ticked when only copies are listed, which remembers them', async () => {
+      await open({ ...empty, duplicateFiles: grouped.duplicateFiles });
+      vi.mocked(invoke).mockResolvedValueOnce({ ...applied, renamedIds: [], renamedCount: 0, notedCopyCount: 1, knownCopyCount: 1 });
+      const apply = screen.getByRole('button', { name: de.diskSyncApply });
+      expect(apply).toBeEnabled();
+      fireEvent.click(apply);
+      await waitFor(() => expect(invoke).toHaveBeenLastCalledWith('apply_catalog_disk_sync', { selection: {
+        newPaths: [], missingIds: [], removeMissing: false, renames: [], declinedCopies: ['/models/Deko/Vase - Kopie.3mf'],
       } }));
     });
     it('can be operated with the keyboard and keeps focus on the checkbox', async () => {
@@ -361,12 +413,16 @@ describe('catalog disk sync', () => {
       fireEvent.click(copy);
       expect(copy).not.toBeChecked(); expect(copy).toHaveFocus();
     });
-    it('disables the apply button when everything is unticked', async () => {
-      await open();
+    it('disables the apply button when everything is unticked and no copy is listed', async () => {
+      await open({ ...grouped, duplicateFiles: [] });
       for (const name of ['Drucker-Teile/Halter.3mf → Druckerteile/Halter.3mf', 'Deko/Vase.stl → Deko/Vase_v2.stl', 'Deko/Schale.3mf']) fireEvent.click(box(name));
       await waitFor(() => expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeDisabled());
-      fireEvent.click(box('Deko/Vase - Kopie.3mf'));
-      await waitFor(() => expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeEnabled());
+    });
+    it('keeps the apply button enabled while copies are listed, because applying remembers the unticked ones', async () => {
+      await open();
+      for (const name of ['Drucker-Teile/Halter.3mf → Druckerteile/Halter.3mf', 'Deko/Vase.stl → Deko/Vase_v2.stl', 'Deko/Schale.3mf']) fireEvent.click(box(name));
+      await waitFor(() => expect(box('Deko/Schale.3mf')).not.toBeChecked());
+      expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeEnabled();
     });
     it('offers a scan that only contains renames', async () => {
       await open({ ...empty, renamedFiles: grouped.renamedFiles });

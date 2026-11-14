@@ -1,0 +1,46 @@
+"": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"//": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"a": components Ok () | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"a/": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a/": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"a/b": components Ok () | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a/b": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/a//b": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a/./b": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a/../b": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a/.": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a/..": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+".": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"..": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"./a": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"../a": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/.": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/..": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a\\b": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"\\a": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"a\\": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a\0b": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"\0": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/\0": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/ a": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/a ": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/a/ ": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/a.": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/.a": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/a/b.": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/é": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/e\u{301}": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/a b/c": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/...": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/a/b/c/d/e/f": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"C:\\a": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/C:/a": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"\\\\?\\C:\\a": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"//server/share": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a/b/": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/ /": components Err path_unresolvable | lexical Err path_unresolvable | valid_path Err inconsistent
+"/a/ /b": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/%2e%2e/a": components Err path_unresolvable | lexical Ok () | valid_path Ok ()
+"/a%2fb": components Err path_unresolvable | lexical Ok () | valid_path Ok ()

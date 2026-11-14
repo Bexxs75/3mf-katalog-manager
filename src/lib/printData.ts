@@ -1,0 +1,234 @@
+import type { FilamentUsage, ModelFile, PrintDataState, PrintFacts, SliceInfo } from '../types';
+import { isGcodePath } from './fileKind';
+
+/**
+ * Display state of the print-data card. The first four are the stored slice
+ * states; `partial` is derived (sliced, but a shown value is missing) and
+ * `unread` covers a 3MF without a row or with a row of another reader version.
+ */
+export type PrintDataView = 'sliced' | 'no_slice_data' | 'not_recognized' | 'unreadable' | 'partial' | 'unread';
+
+/** One shown value: known, "several different ones", or not found in the file (never a 0). */
+export type SharedValue<T> = { kind: 'value'; value: T } | { kind: 'mixed' } | { kind: 'missing' };
+
+export interface PlateRow {
+  plateIndex: number;
+  name: string | null;
+  /** Estimated print time; the first-layer time is never used here. */
+  printSeconds: number | null;
+  /** Null when the file gives none (`weightUnknown` tells a length-only usage from a missing one). */
+  weightG: number | null;
+  /** The slicer reported lengths but no weight (CuraEngine): the stored 0 g are not a weight. */
+  weightUnknown: boolean;
+  filaments: FilamentUsage[];
+}
+
+export interface TimeSum {
+  /** Sum of the seconds of the known plates (not of rounded minutes); null when none is known. */
+  seconds: number | null;
+  known: number;
+  total: number;
+}
+
+export interface SharedRows {
+  printerModel: SharedValue<string>;
+  bedType: SharedValue<string>;
+  layerHeightMm: SharedValue<number>;
+  nozzleMm: SharedValue<number>;
+  bedTempC: SharedValue<number>;
+  nozzleTempC: SharedValue<number>;
+}
+
+export interface PrintDataSummary {
+  state: PrintDataView;
+  plates: PlateRow[];
+  sum: TimeSum;
+  shared: SharedRows;
+  /**
+   * `full`: the values of a sliced file; `project`: only printer, bed type, layer height and nozzle of a
+   * file without print data whose settings were read (the source gives no temperatures there); `none`.
+   */
+  sharedKind: 'full' | 'project' | 'none';
+  /** The project settings could not be read: a missing shared value says so instead of "not found". */
+  settingsUnreadable: boolean;
+}
+
+const missing = { kind: 'missing' } as const;
+
+const NO_SHARED: SharedRows = {
+  printerModel: missing, bedType: missing, layerHeightMm: missing,
+  nozzleMm: missing, bedTempC: missing, nozzleTempC: missing,
+};
+
+function text(value: string | null): SharedValue<string> {
+  return value === null || value === '' ? missing : { kind: 'value', value };
+}
+
+function mixedNumber(value: { value: number | null; mixed: boolean }): SharedValue<number> {
+  if (value.mixed) return { kind: 'mixed' };
+  return value.value === null ? missing : { kind: 'value', value: value.value };
+}
+
+/** A filament whose weight the file does not give: a length next to 0 g (a used filament never weighs 0 g). */
+export function isFilamentWeightUnknown(filament: FilamentUsage): boolean {
+  return filament.usedG <= 0 && filament.usedM > 0;
+}
+
+/**
+ * Same rule as the backend's `SliceInfo::weight_unknown`: every filament has a length and no weight, and
+ * the total is 0. Such a usage must never be shown, summed or checked as grams.
+ */
+export function isWeightUnknown(slice: Pick<SliceInfo, 'totalWeightG' | 'plates'> | null): boolean {
+  if (slice === null || slice.totalWeightG > 0) return false;
+  const filaments = slice.plates.flatMap(plate => plate.filaments);
+  return filaments.length > 0 && filaments.every(isFilamentWeightUnknown);
+}
+
+/** Time sum over plate rows: known plates only, in seconds. */
+export function sumPrintTime(rows: readonly PlateRow[]): TimeSum {
+  let seconds = 0;
+  let known = 0;
+  for (const row of rows) {
+    if (row.printSeconds === null) continue;
+    known += 1;
+    seconds += row.printSeconds;
+  }
+  return { seconds: known === 0 ? null : seconds, known, total: rows.length };
+}
+
+/** Plate rows: the plates of the slicer usage, enriched by the name and time of the print data. */
+function plateRows(model: Pick<ModelFile, 'sliceInfo' | 'printInfo'>, useInfo: boolean): PlateRow[] {
+  const infoByIndex = new Map((useInfo ? model.printInfo?.plates ?? [] : []).map(p => [p.plateIndex, p]));
+  if (model.sliceInfo) {
+    const weightUnknown = isWeightUnknown(model.sliceInfo);
+    return model.sliceInfo.plates.map(plate => {
+      const info = infoByIndex.get(plate.plateIndex);
+      return {
+        plateIndex: plate.plateIndex,
+        name: info?.name ?? null,
+        printSeconds: info?.printSeconds ?? null,
+        weightG: weightUnknown ? null : plate.weightG,
+        weightUnknown,
+        filaments: plate.filaments,
+      };
+    });
+  }
+  return [...infoByIndex.values()].map(info => ({
+    plateIndex: info.plateIndex, name: info.name, printSeconds: info.printSeconds, weightG: null, weightUnknown: false, filaments: [],
+  }));
+}
+
+/**
+ * Reduces a model to what the print-data card shows. A row of another reader
+ * version counts as not read: its values are never shown. Missing values stay
+ * `missing` (never 0), `firstLayerSeconds` is never added or shown as a time.
+ */
+export function summarizePrintData(model: Pick<ModelFile, 'sliceInfo' | 'printInfo'>): PrintDataSummary {
+  const info = model.printInfo;
+  if (info === null || !info.readerCurrent) {
+    const plates = plateRows(model, false);
+    return { state: 'unread', plates, sum: sumPrintTime(plates), shared: NO_SHARED, sharedKind: 'none', settingsUnreadable: false };
+  }
+  const sliced = info.sliceState === 'sliced';
+  const plates = plateRows(model, sliced);
+  // `total` counts the plates that have slicer data (the usage); without a usage the plates of the row.
+  const sum = sumPrintTime(plates);
+  const project = info.sliceState === 'no_slice_data' && info.settingsState === 'read';
+  const shared: SharedRows = sliced || project ? {
+    printerModel: text(info.printerModel),
+    bedType: text(info.bedType),
+    layerHeightMm: info.layerHeightMm === null ? missing : { kind: 'value', value: info.layerHeightMm },
+    nozzleMm: mixedNumber(info.nozzleMm),
+    bedTempC: sliced ? mixedNumber(info.bedTempC) : missing,
+    nozzleTempC: sliced ? mixedNumber(info.nozzleTempC) : missing,
+  } : NO_SHARED;
+  const sharedMissing = Object.values(shared).some(value => value.kind === 'missing');
+  const state: PrintDataView = sliced && (sum.known < sum.total || sharedMissing) ? 'partial' : info.sliceState;
+  return { state, plates, sum, shared, sharedKind: sliced ? 'full' : project ? 'project' : 'none', settingsUnreadable: sliced && info.settingsState === 'unreadable' };
+}
+
+/** Filaments of several plates merged by type and color. */
+export function mergeFilaments(rows: readonly PlateRow[]): FilamentUsage[] {
+  const merged = new Map<string, FilamentUsage>();
+  for (const row of rows) {
+    for (const filament of row.filaments) {
+      const key = `${filament.type}|${filament.color ?? ''}`;
+      const entry = merged.get(key);
+      if (entry) {
+        entry.usedG += filament.usedG;
+        entry.usedM += filament.usedM;
+      } else {
+        merged.set(key, { ...filament });
+      }
+    }
+  }
+  return [...merged.values()];
+}
+
+/** Total weight of the rows; null when none has a weight. */
+export function sumWeightG(rows: readonly PlateRow[]): number | null {
+  const known = rows.filter(row => row.weightG !== null);
+  return known.length === 0 ? null : known.reduce((total, row) => total + (row.weightG ?? 0), 0);
+}
+
+/** A file that carries slicer data: a 3MF, or the G-code a slicer wrote. Models without them (STL, OBJ, STEP) have none. */
+export function canHavePrintData(path: string): boolean {
+  return path.toLowerCase().endsWith('.3mf') || isGcodePath(path);
+}
+
+/** True for a 3MF or G-code file whose print data are loaded in full (not a list summary, not a trash record without them). */
+export function showsPrintData(model: Pick<ModelFile, 'path' | 'summaryOnly' | 'deletedAt'>): boolean {
+  return canHavePrintData(model.path) && !model.summaryOnly && model.deletedAt === null;
+}
+
+/**
+ * What the print data of a record are: the list's state when it has one, else derived
+ * (a record loaded in full has none). A row of another reader version counts as `unread`.
+ */
+export function printDataStateOf(model: Pick<ModelFile, 'path' | 'printDataState' | 'printInfo'>): PrintDataState {
+  if (model.printDataState) return model.printDataState;
+  if (!canHavePrintData(model.path)) return 'none';
+  return model.printInfo?.readerCurrent ? model.printInfo.sliceState : 'unread';
+}
+
+/**
+ * The print facts of a record: derived from the print info when it is loaded in full (same rule as
+ * the list's `printFacts`, see `print-facts-golden.json`), else the list's block. Null = not known,
+ * which the filter treats as "value missing"; a value is never replaced by 0.
+ */
+export function printFactsOf(model: Pick<ModelFile, 'printInfo' | 'printFacts'>): PrintFacts | null {
+  const info = model.printInfo;
+  if (!info) return model.printFacts ?? null;
+  if (!info.readerCurrent || (info.sliceState !== 'sliced' && info.sliceState !== 'no_slice_data')) return null;
+  const facts: PrintFacts = { plateCount: info.plates.length };
+  if (info.printerModel !== null) facts.printerModel = info.printerModel;
+  if (info.layerHeightMm !== null) facts.layerHeightMm = info.layerHeightMm;
+  if (info.nozzleMm.mixed) facts.nozzleMixed = true;
+  else if (info.nozzleMm.value !== null) facts.nozzleMm = info.nozzleMm.value;
+  const times = info.plates.map(plate => plate.printSeconds).filter((seconds): seconds is number => seconds !== null);
+  if (times.length > 0) facts.printSeconds = times.reduce((sum, seconds) => sum + seconds, 0);
+  if (info.plates.length > 0 && times.length === info.plates.length) facts.printSecondsComplete = true;
+  // An answer of an older server has no color list; that must not break a bulk read.
+  const colors = info.filamentColors ?? [];
+  if (colors.length > 0) facts.colors = [...colors];
+  return facts;
+}
+
+/**
+ * The files a bulk read visits. `all`: every 3MF or G-code file whose print data are not read yet or were read by
+ * another reader version (any slicer, with or without a slicer weight: a file without print data
+ * still gives its project settings). `selected`: the chosen files, whatever their state (a
+ * model without slicer data has nothing to read).
+ */
+export function rereadTargets(
+  models: readonly Pick<ModelFile, 'id' | 'path' | 'deletedAt' | 'printDataState' | 'printInfo'>[],
+  scope: 'all' | 'selected',
+  selectedIds: ReadonlySet<string> = new Set(),
+): string[] {
+  return models.filter(model => {
+    if (model.deletedAt !== null) return false;
+    const state = printDataStateOf(model);
+    if (scope === 'all') return state === 'unread';
+    return selectedIds.has(model.id) && state !== 'none';
+  }).map(model => model.id);
+}

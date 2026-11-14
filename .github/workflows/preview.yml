@@ -77,7 +77,7 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/build-windows-step.yml
-    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
+    with: { preview: true, nsis: true, version: "${{ needs.params.outputs.version }}" }
   macos-step:
     needs: params
     uses: ./.github/workflows/build-macos-step.yml
@@ -112,19 +112,19 @@ jobs:
           path: artifacts
       - name: Readable file names
         run: |
-          python3 tools/release_assets.py rename "$VERSION" artifacts dist --preview
+          python3 tools/release_assets.py rename "$VERSION" artifacts dist --preview --require-nsis
       # Pinned because this step receives the private key.
       - name: Sign the update packages
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          for f in dist/*.msi dist/*.app.tar.gz dist/*.AppImage; do
+          for f in dist/*.msi dist/*-Setup.exe dist/*.app.tar.gz dist/*.AppImage; do
             npx --yes @tauri-apps/cli@2.11.4 signer sign "$f"
           done
       - name: Updater manifests
         run: |
-          python3 tools/release_assets.py latest-json "$VERSION" dist --preview
+          python3 tools/release_assets.py latest-json "$VERSION" dist --preview --require-nsis
       # Testers get only the interactive test assistant (one HTML per system and language).
       - name: Test assistant
         run: |

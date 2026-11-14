@@ -1,7 +1,7 @@
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { Rail } from './Rail';
 import { icons } from './icons.generated';
@@ -80,8 +80,10 @@ describe('Rail settings gear', () => {
     const props = renderRail('catalog', 0, true);
     const gear = screen.getByRole('button', { name: 'Einstellungen' });
     expect(gear).toHaveAttribute('aria-expanded', 'false');
+    expect(gear).not.toHaveClass('bg-[var(--accent-soft)]');
     fireEvent.click(gear);
     expect(gear).toHaveAttribute('aria-expanded', 'true');
+    expect(gear).toHaveClass('bg-[var(--accent-soft)]');
     fireEvent.click(gear);
     expect(props.onSettingsOpenChange).toHaveBeenNthCalledWith(2, false);
   });
@@ -117,4 +119,34 @@ it('offers Download & Slicer only in the container and dispatches navigation', (
 it('does not offer Download & Slicer on desktop', () => {
   renderRail();
   expect(screen.queryByRole('button', { name: 'Download & Slicer' })).toBeNull();
+});
+
+describe('Rail Thingiverse entry', () => {
+  const renderWith = (thingiverseEnabled?: boolean) => {
+    const onMainViewChange = vi.fn();
+    render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: false }}>
+      <Rail mainView="thingiverse" trashCount={0} onMainViewChange={onMainViewChange} settingsOpen={false} onSettingsOpenChange={vi.fn()} thingiverseEnabled={thingiverseEnabled} />
+    </RuntimeEnvironmentProvider></LanguageProvider>);
+    return onMainViewChange;
+  };
+
+  it('appears between Printer Manager and Trash only when the switch is on', () => {
+    renderWith(false);
+    expect(screen.queryByRole('button', { name: 'Thingiverse' })).toBeNull();
+    cleanup();
+    renderWith(true);
+    const names = within(screen.getByRole('navigation')).getAllByRole('button').map(b => b.getAttribute('aria-label'));
+    expect(names).toEqual(['Katalog', 'Material Manager', 'Printer Manager', 'Thingiverse', 'Papierkorb', 'Einstellungen']);
+  });
+
+  it('is off by default and marks itself active in its own area', () => {
+    renderWith(undefined);
+    expect(screen.queryByRole('button', { name: 'Thingiverse' })).toBeNull();
+    cleanup();
+    const change = renderWith(true);
+    const button = screen.getByRole('button', { name: 'Thingiverse' });
+    expect(button).toHaveClass('text-[var(--accent)]');
+    fireEvent.click(button);
+    expect(change).toHaveBeenCalledWith('thingiverse');
+  });
 });

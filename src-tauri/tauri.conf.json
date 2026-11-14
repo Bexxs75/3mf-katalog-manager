@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "3MF Katalog Manager",
-  "version": "0.17.2",
+  "version": "0.18.0",
   "identifier": "com.thebexxs.mfkatalogmanager",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -15,6 +15,7 @@
         "title": "3MF Katalog Manager",
         "create": false,
         "visible": false,
+        "acceptFirstMouse": true,
         "width": 1000,
         "height": 600,
         "minWidth": 900,
@@ -31,6 +32,62 @@
     "macOS": {
       "signingIdentity": "-"
     },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "windows/installer-hooks.nsh",
+        "languages": [
+          "German",
+          "English",
+          "Spanish",
+          "French"
+        ],
+        "displayLanguageSelector": true
+      }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "3mf"
+        ],
+        "name": "3MF model",
+        "description": "3MF model",
+        "mimeType": "model/3mf",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [
+          "stl"
+        ],
+        "name": "STL model",
+        "description": "STL model",
+        "mimeType": "model/stl",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [
+          "obj"
+        ],
+        "name": "OBJ model",
+        "description": "OBJ model",
+        "mimeType": "model/obj",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [
+          "step",
+          "stp"
+        ],
+        "name": "STEP model",
+        "description": "STEP model",
+        "mimeType": "model/step",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ],
     "license": "MIT",
     "licenseFile": "../LICENSE",
     "resources": {

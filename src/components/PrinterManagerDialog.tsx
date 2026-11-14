@@ -1,3 +1,4 @@
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { useState, type ReactNode } from 'react';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useT } from '../i18n/LanguageContext';
@@ -13,6 +14,7 @@ export function PrinterManagerDialog({ title, children, onClose, onSubmit, submi
   onSubmit: () => Promise<unknown>; submitLabel: string;
 }) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const ref = useModalDialog({ open: true, onClose, busy });
@@ -21,16 +23,16 @@ export function PrinterManagerDialog({ title, children, onClose, onSubmit, submi
       className="w-full max-w-xl max-h-[90vh] scrollbar-stable overflow-y-scroll p-5 rounded-lg bg-[var(--panel)] border border-[var(--line)] shadow-[var(--shadow)]">
       <form onSubmit={async e => {
         e.preventDefault();
-        if (busy) return;
+        if (busy || !canEditMetadata()) return;
         setBusy(true); setError(null);
         try { await onSubmit(); onClose(); } catch (e) { setError(toAppError(e)); } finally { setBusy(false); }
       }}>
         <h2 className="font-bold mb-4">{title}</h2>
-        <fieldset disabled={busy} className="flex flex-col gap-3">{children}</fieldset>
+        <fieldset disabled={busy || !canEdit} className="flex flex-col gap-3">{children}</fieldset>
         {error && <div role="alert" className="text-[var(--crit)] mt-3"><ErrorText error={error} /></div>}
         <div className="flex gap-2 justify-end mt-4">
           <button type="button" className={pmButton} disabled={busy} onClick={onClose}>{t('printersCancel')}</button>
-          <button className={pmButton} disabled={busy}>{submitLabel}</button>
+          <button className={pmButton} disabled={busy || !canEdit}>{submitLabel}</button>
         </div>
       </form>
     </div>

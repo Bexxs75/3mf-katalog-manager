@@ -28,6 +28,29 @@ beforeEach(() => {
   vi.mocked(api.answerLinuxMenuPrompt).mockReset();
 });
 
+describe('LinuxMenuSettings load states', () => {
+  it('shows nothing when not supported, but an error with "Reload" when the read fails', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValueOnce(null);
+    const first = wrap(<LinuxMenuSettings />);
+    await waitFor(() => expect(first.container).toBeEmptyDOMElement());
+    first.unmount();
+    vi.mocked(api.getLinuxMenuStatus).mockRejectedValueOnce(new Error('boom')).mockResolvedValue(base);
+    wrap(<LinuxMenuSettings />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingLoadFailed);
+    fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+    expect(await screen.findByRole('switch', { name: de.linuxMenuTitle })).toBeInTheDocument();
+  });
+
+  it('asks to reload after a failed write, because files may have changed', async () => {
+    vi.mocked(api.getLinuxMenuStatus).mockResolvedValue(base);
+    vi.mocked(api.setLinuxMenuEnabled).mockRejectedValue(new Error('boom'));
+    wrap(<LinuxMenuSettings />);
+    fireEvent.click(await screen.findByRole('switch', { name: de.linuxMenuTitle }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(de.settingSaveFailedReload);
+    expect(screen.getByRole('button', { name: de.settingReload })).toBeInTheDocument();
+  });
+});
+
 describe('normalizeLinuxMenuStatus', () => {
   it('treats anything but an available status as not available', async () => {
     const { normalizeLinuxMenuStatus } = await vi.importActual<typeof import('../lib/api/linuxMenu')>('../lib/api/linuxMenu');
@@ -133,7 +156,7 @@ describe('LinuxMenuPrompt', () => {
     expect(screen.getByRole('dialog', { name: de.linuxMenuAddedTitle })).toBeVisible();
     expect(api.answerLinuxMenuPrompt).toHaveBeenCalledWith('yes');
     // The answer button is gone; focus must land on the new close button, not on the page.
-    expect(screen.getByRole('button', { name: de.impClose })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('button', { name: de.impClose })).toHaveFocus());
   });
 
   it('does not ask while another first-run dialog is open, and asks once it is done', async () => {
@@ -163,4 +186,27 @@ describe('LinuxMenuPrompt', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('read-only file system');
     expect(screen.getByRole('dialog')).toBeVisible();
   });
+});
+
+it('keeps the confirmed value labelled and disabled through a failed reload, with another retry', async () => {
+  vi.mocked(api.getLinuxMenuStatus).mockResolvedValueOnce(base);
+  vi.mocked(api.setLinuxMenuEnabled).mockRejectedValue(new Error('write failed'));
+  wrap(<LinuxMenuSettings />);
+  fireEvent.click(await screen.findByRole('switch', { name: de.linuxMenuTitle }));
+  await screen.findByText(/write failed/);
+  let rejectRead!: (error: Error) => void;
+  vi.mocked(api.getLinuxMenuStatus).mockImplementationOnce(() => new Promise((_, reject) => { rejectRead = reject; }));
+  fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+  expect(screen.getByRole('status')).toHaveTextContent(de.settingLoading);
+  expect(screen.getByRole('switch')).toBeDisabled();
+  expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
+  expect(screen.getByText('Angezeigt wird der zuletzt bestätigte Wert.')).toBeVisible();
+  rejectRead(new Error('read failed'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('read failed');
+  expect(screen.getByRole('switch')).toBeDisabled();
+  vi.mocked(api.getLinuxMenuStatus).mockResolvedValueOnce({ ...base, installed: true });
+  fireEvent.click(screen.getByRole('button', { name: de.settingReload }));
+  await waitFor(() => expect(screen.getByRole('switch')).toBeEnabled());
+  expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+  expect(screen.queryByRole('alert')).toBeNull();
 });

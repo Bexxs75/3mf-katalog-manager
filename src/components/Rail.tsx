@@ -1,3 +1,4 @@
+import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
 import { useEffect, useRef } from 'react';
 import type { MainView } from '../types';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
@@ -10,6 +11,8 @@ interface Props {
   trashCount: number;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
+  /** Shows the Thingiverse entry; the switch lives in the settings and is off by default. */
+  thingiverseEnabled?: boolean;
 }
 
 const railBtnBase =
@@ -17,7 +20,7 @@ const railBtnBase =
 const railBtnActive =
   'text-[var(--accent)] bg-[var(--accent-soft)] border-[color-mix(in_oklch,var(--accent)_30%,transparent)]';
 
-export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onSettingsOpenChange }: Props) {
+export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onSettingsOpenChange, thingiverseEnabled = false }: Props) {
   const t = useT();
   const { container } = useRuntimeEnvironment();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -30,6 +33,9 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
     wasOpen.current = settingsOpen;
   }, [settingsOpen]);
 
+  // With one material only, the label says which printers the manager lists.
+  const technology = usePrintTechnology().technology;
+  const printersLabel = technology === 'resin' ? t('ptRailPrintersResin') : technology === 'filament' ? t('ptRailPrintersFilament') : t('railPrinters');
   return (
     <nav className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
       <div className="flex flex-col gap-1.5">
@@ -41,6 +47,7 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
         >
           <Icon name="catalog" />
         </button>
+        {<>
         <button
           onClick={() => onMainViewChange('filament')}
           title={t('railFilament')}
@@ -49,10 +56,16 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
         >
           <Icon name="spool" />
         </button>
-        <button onClick={() => onMainViewChange('printers')} title={t('railPrinters')} aria-label={t('railPrinters')}
+        <button onClick={() => onMainViewChange('printers')} title={printersLabel} aria-label={printersLabel}
           className={`${railBtnBase} ${mainView === 'printers' ? railBtnActive : ''}`}>
           <Icon name="printer" />
         </button>
+        </>}
+        {thingiverseEnabled && <button type="button" onClick={() => onMainViewChange('thingiverse')}
+          title={t('tvRail')} aria-label={t('tvRail')}
+          className={`${railBtnBase} ${mainView === 'thingiverse' ? railBtnActive : ''}`}>
+          <Icon name="search" />
+        </button>}
         {container && <button type="button" onClick={() => onMainViewChange('downloads')}
           title={t('railDownloads')} aria-label={t('railDownloads')}
           className={`${railBtnBase} ${mainView === 'downloads' ? railBtnActive : ''}`}>
@@ -81,7 +94,7 @@ export function Rail({ mainView, onMainViewChange, trashCount, settingsOpen, onS
         aria-expanded={settingsOpen}
         title={t('settingsTitle')}
         aria-label={t('settingsTitle')}
-        className={`${railBtnBase} ${railBtnActive}`}
+        className={`${railBtnBase} ${settingsOpen ? railBtnActive : ''}`}
       >
         <Icon name="settings" />
       </button>

@@ -174,14 +174,14 @@ fn walk_source_folder(root: &Path, max_depth: usize, max_entries: usize) -> Walk
             };
             if kind.is_symlink() {
                 // Only links that would have mattered are worth a note.
-                if files::is_supported_extension(&path) {
+                if files::is_model_extension(&path) {
                     walked.skipped += 1;
                 }
             } else if kind.is_dir() {
                 if depth < max_depth {
                     pending.push((path, depth + 1));
                 }
-            } else if kind.is_file() && files::is_supported_extension(&path) && !files::is_ignored_import_path(&path) {
+            } else if kind.is_file() && files::is_model_extension(&path) && !files::is_ignored_import_path(&path) {
                 match entry.metadata() {
                     Ok(meta) => walked.files.push((path, meta.len())),
                     Err(_) => walked.skipped += 1,

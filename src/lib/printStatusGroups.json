@@ -1,0 +1,31 @@
+{
+  "_comment": "How the status a printer reported (printer_jobs.raw_status) is grouped for the print history, and how a reason set by the user overrides it. Read by a Rust test (katalog-core printer_link/failure.rs) and by printStatusGroups.test.ts; both run every entry of `cases` through their own function, so the two cannot drift apart. Any other status is group `other`; a reason other than `intentional` makes the print `failed`, `intentional` makes it `cancelled`.",
+  "statusGroups": {
+    "completed": "succeeded",
+    "cancelled": "cancelled",
+    "klippy_shutdown": "printer_error",
+    "klippy_disconnect": "printer_error",
+    "error": "printer_error",
+    "interrupted": "interrupted"
+  },
+  "otherGroup": "other",
+  "reasonGroup": "failed",
+  "intentionalGroup": "cancelled",
+  "groups": ["succeeded", "cancelled", "failed", "printer_error", "interrupted", "other"],
+  "cases": [
+    { "rawStatus": "completed", "reason": null, "group": "succeeded" },
+    { "rawStatus": "cancelled", "reason": null, "group": "cancelled" },
+    { "rawStatus": "klippy_shutdown", "reason": null, "group": "printer_error" },
+    { "rawStatus": "klippy_disconnect", "reason": null, "group": "printer_error" },
+    { "rawStatus": "error", "reason": null, "group": "printer_error" },
+    { "rawStatus": "interrupted", "reason": null, "group": "interrupted" },
+    { "rawStatus": "in_progress", "reason": null, "group": "other" },
+    { "rawStatus": "", "reason": null, "group": "other" },
+    { "rawStatus": "Cancelled", "reason": null, "group": "cancelled" },
+    { "rawStatus": "cancelled", "reason": "intentional", "group": "cancelled" },
+    { "rawStatus": "cancelled", "reason": "clog", "group": "failed" },
+    { "rawStatus": "klippy_shutdown", "reason": "power_network", "group": "failed" },
+    { "rawStatus": "klippy_shutdown", "reason": "intentional", "group": "cancelled" },
+    { "rawStatus": "something_new", "reason": "other", "group": "failed" }
+  ]
+}

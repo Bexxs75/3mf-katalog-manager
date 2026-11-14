@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Already in the repo (53 KB, three plates), so it is not duplicated here.
-const THREE_PLATES = join(here, '..', '..', 'src-tauri', 'tests', 'fixtures', 'creality-3plates.3mf');
+const THREE_PLATES = join(here, '..', '..', 'crates', 'katalog-core', 'tests', 'fixtures', 'creality-3plates.3mf');
 
 // ---- ASCII STL ------------------------------------------------------------
 function facet([a, b, c]) {

@@ -22,9 +22,7 @@ pub struct CmdError {
     pub params: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum GeometryErrorCode { NotFound, Unreadable, TooLarge, Unsupported }
+pub use katalog_core::read::GeometryErrorCode;
 
 impl CmdError {
     fn input_log_level(import: bool) -> log::Level {
@@ -117,6 +115,7 @@ impl From<DbError> for CmdError {
     fn from(e: DbError) -> Self {
         match e {
             DbError::Invalid(msg) => Self::expected(msg),
+            DbError::Coded { code, params } => Self::coded_with(code, params),
             other => Self::from(other.to_string()),
         }
     }
@@ -186,6 +185,23 @@ mod tests {
     }
 
     #[test]
+    fn core_errors_keep_their_code_and_params_through_the_adapters() {
+        use katalog_core::{db::error::DbError as CoreDbError, import::ImportError, read::ReadError, write::WriteError};
+        let read = CmdError::from(ReadError::coded_with(ErrorCode::MoveTooManyFiles, [501, 500]));
+        assert!(read.is(ErrorCode::MoveTooManyFiles, &["501", "500"]));
+        let import = CmdError::from(ImportError::coded_with(ErrorCode::FileNameForbiddenChar, [":"]));
+        assert!(import.is(ErrorCode::FileNameForbiddenChar, &[":"]));
+        assert!(ImportError::from(import).expected);
+        let write = CmdError::from(WriteError::coded_with(ErrorCode::InvalidCatalogId, ["x"]));
+        assert!(write.is(ErrorCode::InvalidCatalogId, &["x"]));
+        let db = CmdError::from(CoreDbError::coded_with(ErrorCode::FolderNotFound, ["y"]));
+        assert!(db.is(ErrorCode::FolderNotFound, &["y"]));
+        // Free text keeps its old shape.
+        assert_eq!(serde_json::to_value(CmdError::from(ReadError::expected("x"))).unwrap(),
+            serde_json::json!({"message": "x", "expected": true}));
+    }
+
+    #[test]
     fn coded_log_text_keeps_paths_recognizable_for_the_anonymizer() {
         use crate::diagnostics::anonymize::{anonymize, to_text, Context};
         let params = vec![
@@ -249,4 +265,71 @@ fn import_parser_details_replace_filenames_only_in_normal_logs() {
     let message = "3MF parse error: missing secret.model.3mf";
     assert_eq!(CmdError::import_log_message(message, true), message);
     assert!(!CmdError::import_log_message(message, false).contains("secret.model.3mf"));
+}
+
+impl From<katalog_core::read::ReadError> for CmdError {
+    #[track_caller]
+    fn from(error: katalog_core::read::ReadError) -> Self {
+        let mut mapped = if error.expected { Self::expected(error.message) }
+            else { Self::from(error.message) };
+        mapped.code = error.code;
+        mapped.params = error.params;
+        mapped
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn read_error_adapter_preserves_all_wire_fields() {
+    use katalog_core::read::ReadError;
+    for expected in [false, true] {
+        for code in [None, Some(GeometryErrorCode::NotFound), Some(GeometryErrorCode::Unreadable), Some(GeometryErrorCode::TooLarge), Some(GeometryErrorCode::Unsupported)] {
+            let error = ReadError { message: "unverändert".into(), expected, code, busy: true, params: Vec::new() };
+            let original = serde_json::to_value(&error).unwrap();
+            assert_eq!(serde_json::to_value(CmdError::from(error)).unwrap(), original);
+        }
+    }
+}
+
+impl From<katalog_core::write::WriteError> for CmdError {
+    fn from(error: katalog_core::write::WriteError) -> Self {
+        match error {
+            katalog_core::write::WriteError::Invalid { message } => Self::expected(message),
+            katalog_core::write::WriteError::Coded { code, params, .. } => Self::coded_with(code, params),
+            other => other.to_string().into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod write_adapter_tests {
+    use super::*;
+    use katalog_core::{db, write};
+    #[test]
+    fn write_adapters_preserve_expected_flags_messages_and_partial_desktop_effects() {
+        let mut c = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&c,"/one",None).unwrap();
+        let e = CmdError::from(write::add_tag_with_conn(&c,id,&"😀".repeat(51)).unwrap_err());
+        assert!(e.expected); assert_eq!(e.message,"tagNameTooLong"); assert_eq!(e.params,vec!["100".to_string()]);
+        let e = CmdError::from(write::set_source_url(&c,id.to_string(),Some("file:///x".into())).unwrap_err());
+        assert!(e.expected); assert_eq!(e.message,"invalidSourceUrl");
+        let e = CmdError::from(write::set_license(&mut c,vec![id.to_string()],Some("x".repeat(201))).unwrap_err());
+        assert!(!e.expected); assert_eq!(e.message,"Lizenz darf höchstens 200 Zeichen und keine Steuerzeichen enthalten");
+        let collection = write::create_collection(&c,"x".into()).unwrap();
+        let e = CmdError::from(write::add_files_to_collection(&c,collection.id.clone(),vec![id.to_string(),"bad".into()]).unwrap_err());
+        assert!(!e.expected); assert_eq!(e.message,"invalid file id");
+        assert_eq!(db::list_collection_file_ids(&c,collection.id.parse().unwrap()).unwrap(),vec![id]);
+    }
+}
+
+impl From<katalog_core::import::ImportError> for CmdError {
+    fn from(error: katalog_core::import::ImportError) -> Self {
+        let mut mapped = if error.expected { Self::expected(error.message) } else { Self::from(error.message) };
+        mapped.code = error.code;
+        mapped.params = error.params;
+        mapped
+    }
+}
+impl From<CmdError> for katalog_core::import::ImportError {
+    fn from(error: CmdError) -> Self { Self { message: error.message, expected: error.expected, code: error.code, params: error.params } }
 }

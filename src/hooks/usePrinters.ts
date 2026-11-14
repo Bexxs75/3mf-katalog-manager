@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as printersApi from '../lib/api/printers';
 import { toAppError, type AppError } from '../lib/errors';
+import { reportMetadataError } from '../lib/metadataErrors';
 import type { PrinterDetails, Printer, PrinterKind, UnitKind } from '../types';
 
 /**
@@ -20,7 +21,7 @@ export function usePrinters() {
           setPrinters(result);
           setError(null);
         })
-        .catch((e) => setError(toAppError(e))),
+        .catch((e) => { setError(toAppError(e)); reportMetadataError(e); }),
     [],
   );
 
@@ -32,6 +33,7 @@ export function usePrinters() {
     <T,>(operation: Promise<T>): Promise<T> =>
       operation
         .then((result) => {
+          if (import.meta.env.VITE_TARGET === 'web') return refresh().then(() => result);
           refresh();
           return result;
         })
@@ -54,8 +56,8 @@ export function usePrinters() {
     deletePrinter: (printerId: string) => run(printersApi.deletePrinter(printerId)),
     addUnit: (printerId: string, kind: UnitKind, name: string, slotCount: number | null) =>
       run(printersApi.addUnit(printerId, kind, name, slotCount)),
-    updateUnit: (unitId: string, name: string, slotCount: number | null) =>
-      run(printersApi.updateUnit(unitId, name, slotCount)),
+    updateUnit: (unitId: string, name: string, slotCount: number | null, kind?: UnitKind) =>
+      run(printersApi.updateUnit(unitId, name, slotCount, kind)),
     deleteUnit: (unitId: string) => run(printersApi.deleteUnit(unitId)),
     reorderUnits: (printerId: string, unitIds: string[]) => run(printersApi.reorderUnits(printerId, unitIds)),
   };

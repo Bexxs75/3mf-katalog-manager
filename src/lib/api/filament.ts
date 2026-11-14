@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 import type { FilamentSpool } from '../../types';
 
 /** Creates `count` new, full entries modeled on `templateId` (one transaction). `weight`: g or ml. */

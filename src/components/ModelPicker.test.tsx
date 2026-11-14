@@ -110,3 +110,31 @@ describe('ModelPicker', () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe('ModelPicker stacking', () => {
+  // Dialogs (CatalogActionDialog) use z-[100]; the popup has to sit above them.
+  it('sits above dialogs', () => {
+    renderPicker();
+    const popup = document.body.querySelector('[class*="z-["]') as HTMLElement;
+    const z = Number(/z-\[(\d+)\]/.exec(popup.className)?.[1]);
+    expect(z).toBeGreaterThan(100);
+  });
+});
+
+it('explains the cap without adding a keyboard option and updates the filtered total', () => {
+  const models = Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Model ${i}` }));
+  const { onChange } = renderPicker({ models });
+  expect(screen.getByRole('presentation')).toHaveTextContent('ersten 50 von 60 Treffern');
+  expect(screen.getAllByRole('option')).toHaveLength(51);
+  const input = screen.getByRole('combobox');
+  for (let i = 0; i < 55; i++) fireEvent.keyDown(input, { key: 'ArrowDown' });
+  expect(input).toHaveAttribute('aria-activedescendant', screen.getByText('Model 49').id);
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(onChange).toHaveBeenCalledWith('49');
+  fireEvent.change(input, { target: { value: 'Model 5' } });
+  expect(screen.queryByRole('presentation')).toBeNull();
+});
+it.each([0, 50])('shows no cap notice for %s models', (count) => {
+  renderPicker({ models: Array.from({ length: count }, (_, i) => ({ id: String(i), name: `Model ${i}` })) });
+  expect(screen.queryByRole('presentation')).toBeNull();
+});

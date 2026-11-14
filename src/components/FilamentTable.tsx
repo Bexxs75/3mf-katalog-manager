@@ -1,3 +1,5 @@
+import { useCanEditMetadata } from '../lib/webSession';
+import { SpoolImage } from './SpoolImage';
 import { Icon } from './Icon';
 import { useState } from 'react';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
@@ -159,8 +161,10 @@ function Amount({ remaining, kind, pct, status }: { remaining: number; kind: Spo
 
 function DeleteConfirm({ id, onCancelDelete, onConfirmDelete }: { id: string } & Pick<RowActions, 'onCancelDelete' | 'onConfirmDelete'>) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex items-center gap-1.5 whitespace-normal">
+      {import.meta.env.VITE_TARGET === 'web' && <span>{t('webManagerDeleteSpool')}</span>}
       <button
         onClick={onCancelDelete}
         className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption cursor-pointer"
@@ -168,7 +172,7 @@ function DeleteConfirm({ id, onCancelDelete, onConfirmDelete }: { id: string } &
         {t('cancel')}
       </button>
       <button
-        onClick={() => onConfirmDelete(id)}
+        disabled={!canEdit} onClick={() => onConfirmDelete(id)}
         className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption cursor-pointer"
       >
         {t('delete')}
@@ -182,6 +186,7 @@ function SpoolRow({
   spool, group, kind, showCount, nested = false, ...a
 }: { spool: FilamentSpool; group?: SpoolGroup; kind: SpoolKind; showCount: boolean; nested?: boolean } & RowActions) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const statusLabel = useGroupStatusLabel();
   const status = filamentStockStatus(spool);
@@ -197,9 +202,9 @@ function SpoolRow({
   return (
     <tr
       data-testid={`spool-row-${spool.id}`}
-      onMouseDown={(e) => draggable && !startsOnButton(e) && a.onSpoolMouseDown?.(spool.id, e)}
+      onMouseDown={(e) => canEdit && draggable && !startsOnButton(e) && a.onSpoolMouseDown?.(spool.id, e)}
       onDoubleClick={(e) => {
-        if (a.confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) a.onEdit(spool);
+        if (canEdit && a.confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) a.onEdit(spool);
       }}
       className={`hover:bg-[var(--panel-2)] ${draggable ? 'cursor-grab' : ''} ${
         a.highlightIds?.has(spool.id) ? 'spool-new-row' : ''
@@ -207,13 +212,11 @@ function SpoolRow({
     >
       <td className={`${cell} font-semibold ${nested ? 'pl-9' : ''}`}>
         <div className="flex items-center gap-2">
-          {spool.imagePng ? (
-            <img draggable={false} src={`data:image/png;base64,${spool.imagePng}`} className="w-6 h-6 rounded object-cover border border-[var(--line)]" />
-          ) : spool.kind === 'resin' ? (
+          <SpoolImage spool={spool} className="w-6 h-6 rounded object-cover border border-[var(--line)]" fallback={spool.kind === 'resin' ? (
             <ResinBottleIcon colorHex={spool.colorHex} size={20} />
           ) : (
             <FilamentSpoolIcon colorHex={spool.colorHex} size={20} />
-          )}
+          )} />
           {spool.material}
         </div>
       </td>
@@ -252,6 +255,7 @@ function SpoolRow({
             {a.onConsume && spool.kind === 'resin' && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onConsume?.(spool, e.currentTarget)}
                 aria-label={`${t('resinConsumeButton')}${rowLabel}`}
                 title={t('resinConsumeButton')}
@@ -265,6 +269,7 @@ function SpoolRow({
             {a.onRestock && !nested && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onRestock?.(spool, e.currentTarget)}
                 aria-label={t('filamentRestockButton')}
                 title={t('filamentRestockButton')}
@@ -276,14 +281,14 @@ function SpoolRow({
               </button>
             )}
             <button
-              onClick={() => a.onEdit(spool)}
+              disabled={!canEdit} onClick={() => a.onEdit(spool)}
               aria-label={`${t('filamentEditAria')}${rowLabel}`}
               className={`${iconButton} hover:bg-[var(--panel)]`}
             >
               <Icon name="edit" size={14} />
             </button>
             <button
-              onClick={() => a.onRequestDelete(spool.id)}
+              disabled={!canEdit} onClick={() => a.onRequestDelete(spool.id)}
               aria-label={`${t('deleteAriaLabel')}${rowLabel}`}
               className={`${iconButton} hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]`}
             >
@@ -299,6 +304,7 @@ function SpoolRow({
 /** A group as one row with a toggle; its spools follow as rows while expanded. */
 function GroupRows({ group, kind, ...a }: { group: SpoolGroup; kind: SpoolKind } & RowActions) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const formatCount = useFormatCount();
   const [expanded, setExpanded] = useState(false);
@@ -314,7 +320,7 @@ function GroupRows({ group, kind, ...a }: { group: SpoolGroup; kind: SpoolKind }
     <>
       <tr
         data-testid={`group-row-${first.id}`}
-        onMouseDown={(e) => dragSpool && a.onSpoolMouseDown && !startsOnButton(e) && a.onSpoolMouseDown(dragSpool.id, e)}
+        onMouseDown={(e) => canEdit && dragSpool && a.onSpoolMouseDown && !startsOnButton(e) && a.onSpoolMouseDown(dragSpool.id, e)}
         className={`hover:bg-[var(--panel-2)] ${dragSpool && a.onSpoolMouseDown ? 'cursor-grab' : ''}`}
       >
         <td className={`${cell} font-semibold`}>
@@ -329,13 +335,11 @@ function GroupRows({ group, kind, ...a }: { group: SpoolGroup; kind: SpoolKind }
             >
               <Icon name="chevron" size={14} className={expanded ? '' : '-rotate-90'} />
             </button>
-            {first.imagePng ? (
-              <img draggable={false} src={`data:image/png;base64,${first.imagePng}`} className="w-6 h-6 rounded object-cover border border-[var(--line)]" />
-            ) : first.kind === 'resin' ? (
+            <SpoolImage spool={first} className="w-6 h-6 rounded object-cover border border-[var(--line)]" fallback={first.kind === 'resin' ? (
               <ResinBottleIcon colorHex={first.colorHex} size={20} />
             ) : (
               <FilamentSpoolIcon colorHex={first.colorHex} size={20} />
-            )}
+            )} />
             {first.material}
           </div>
         </td>
@@ -371,6 +375,7 @@ function GroupRows({ group, kind, ...a }: { group: SpoolGroup; kind: SpoolKind }
             {a.onConsume && first.kind === 'resin' && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onConsume?.(suggestSpool(group.spools) ?? first, e.currentTarget, group.spools)}
                 aria-label={`${t('resinConsumeButton')}: ${groupName}`}
                 title={t('resinConsumeButton')}
@@ -384,6 +389,7 @@ function GroupRows({ group, kind, ...a }: { group: SpoolGroup; kind: SpoolKind }
             {a.onRestock && (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={(e) => a.onRestock?.(first, e.currentTarget)}
                 aria-label={`${t('filamentRestockButton')}: ${groupName}`}
                 title={t('filamentRestockButton')}

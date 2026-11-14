@@ -8,6 +8,7 @@ const GIF: &[u8] = b"GIF89a\x01\0\x01\0";
 const WEBP: &[u8] = b"RIFF\x10\0\0\0WEBPVP8 ";
 const PDF: &[u8] = b"%PDF-1.7\n1 0 obj\n";
 const TEXT: &[u8] = "Lizenz: CC-BY, ünï\n".as_bytes();
+const ZIP: &[u8] = b"PK\x03\x04\x14\0\0\0";
 const EXE: &[u8] = b"MZ\x90\0\x03\0\0\0";
 
 struct Fixture {
@@ -98,6 +99,12 @@ fn every_allowed_type_is_accepted_with_matching_content() {
         ("a.txt", TEXT, CompanionKind::Text),
         ("a.md", TEXT, CompanionKind::Text),
         ("empty.txt", b"", CompanionKind::Text),
+        ("a.FCStd", ZIP, CompanionKind::Other),
+        ("a.docx", ZIP, CompanionKind::Other),
+        ("a.odt", ZIP, CompanionKind::Other),
+        ("a.scad", TEXT, CompanionKind::Other),
+        ("a.dxf", TEXT, CompanionKind::Other),
+        ("a.csv", TEXT, CompanionKind::Other),
     ] {
         assert_eq!(classify(name, bytes), Ok(kind), "{name}");
     }
@@ -120,7 +127,7 @@ fn a_png_with_the_wrong_extension_is_refused() {
 
 #[test]
 fn scripts_archives_and_unknown_types_are_never_allowed() {
-    for name in ["run.sh", "tool.exe", "setup.msi", "x.bat", "x.ps1", "x.zip", "x.7z", "x.docx", "x.svg", "x.html", "x.FCStd", "x.png.exe", "png", ".png"] {
+    for name in ["run.sh", "tool.exe", "setup.msi", "x.bat", "x.ps1", "x.zip", "x.7z", "x.docm", "x.svg", "x.html", "x.step", "x.stp", "x.png.exe", "png", ".png"] {
         assert_eq!(classify(name, PNG), Err(Refusal::Type), "{name}");
         assert_eq!(classify(name, TEXT), Err(Refusal::Type), "{name}");
     }
@@ -131,6 +138,25 @@ fn text_with_a_nul_byte_or_invalid_utf8_is_refused() {
     assert_eq!(classify("a.txt", b"hello\0world"), Err(Refusal::Content));
     assert_eq!(classify("a.md", b"\xff\xfe broken"), Err(Refusal::Content));
     assert_eq!(classify("a.txt", b"fine"), Ok(CompanionKind::Text), "counter-check: plain text passes");
+}
+
+#[test]
+fn a_text_file_is_checked_beyond_the_inspected_head_when_it_is_copied() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let mut late_nul = vec![b'a'; CONTENT_CHECK_BYTES + 500];
+    late_nul[CONTENT_CHECK_BYTES + 100] = 0;
+    let mut late_bad = vec![b'a'; CONTENT_CHECK_BYTES + 500];
+    late_bad[CONTENT_CHECK_BYTES + 100] = 0xff;
+    for (name, bytes) in [("nul.txt", late_nul), ("bad.md", late_bad)] {
+        let source = f.source(name, &bytes);
+        assert!(add_companion_with_conn(&f.conn, id, &source, &[]).is_err(), "{name}");
+    }
+    assert!(!f.root.join("Foo_extras").exists(), "nothing was made for a refused file");
+    let mut fine = vec![b'a'; CONTENT_CHECK_BYTES - 1];
+    fine.extend("\u{20ac}\u{20ac}".as_bytes());
+    let row = f.add(id, "fine.txt", &fine);
+    assert_eq!(std::fs::read(&row.path).unwrap(), fine, "a long text with a character across the head boundary is copied whole");
 }
 
 #[test]
@@ -437,8 +463,8 @@ fn a_companion_row_pointing_outside_the_trash_never_causes_a_delete() {
     let f = Fixture::new();
     let (id, _) = f.model("Foo.3mf");
     let precious = f.source("precious.png", PNG);
-    let planted = |f: &Fixture| {
-        let row = db::companions::insert_companion(&f.conn, id, "x.png", &f.root.join("Foo_extras").join("x.png").to_string_lossy(), "image", None, "now").unwrap();
+    let planted = |f: &Fixture, name: &str| {
+        let row = db::companions::insert_companion(&f.conn, id, name, &f.root.join("Foo_extras").join(name).to_string_lossy(), "image", None, "now").unwrap();
         f.conn
             .execute(
                 "UPDATE companion_files SET deleted_at = '2000-01-01T00:00:00+00:00', trash_path = ?1 WHERE id = ?2",
@@ -446,12 +472,59 @@ fn a_companion_row_pointing_outside_the_trash_never_causes_a_delete() {
             )
             .unwrap();
     };
-    planted(&f);
+    planted(&f, "x.png");
     trash::empty_trash_with_conn(&f.conn, &f.trash).unwrap();
     assert!(precious.exists(), "emptying the trash");
-    planted(&f);
+    // The refused row stays (fail-closed), so the second plant needs its own name.
+    planted(&f, "y.png");
     trash::purge_expired_trash_on_startup(&f.conn, &f.trash);
     assert!(precious.exists(), "the startup cleanup");
+}
+
+/// A companion the web version moved into `<root>/.katalog-papierkorb` for a model.
+fn web_trashed_companion(f: &Fixture, model: i64, name: &str) -> (i64, PathBuf) {
+    let dir = f.root.join(".katalog-papierkorb");
+    std::fs::create_dir_all(&dir).unwrap();
+    let row = db::companions::insert_companion(&f.conn, model, name, &f.root.join("Foo_extras").join(name).to_string_lossy(), "image", None, "now").unwrap();
+    let file = dir.join(format!("companion-{row}-abcd1234-{name}"));
+    std::fs::write(&file, PNG).unwrap();
+    f.conn
+        .execute(
+            "UPDATE companion_files SET deleted_at = '2026-01-01T00:00:00+00:00', trash_path = ?1 WHERE id = ?2",
+            rusqlite::params![file.to_string_lossy(), row],
+        )
+        .unwrap();
+    (row, file)
+}
+
+#[test]
+fn a_companion_in_the_web_trash_goes_with_its_model_when_it_is_deleted_for_good() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    f.trash_model(id);
+    let (_, file) = web_trashed_companion(&f, id, "pic.png");
+    trash::delete_file_permanently_with_conn(&f.conn, id, &f.trash).unwrap();
+    assert!(!file.exists(), "no orphan is left in the web trash");
+    assert!(db::get_file(&f.conn, id).unwrap().is_none());
+}
+
+#[test]
+fn a_file_outside_every_trash_keeps_the_model_entry_instead_of_being_ignored() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    f.trash_model(id);
+    let precious = f.source("precious.png", PNG);
+    let (row, web) = web_trashed_companion(&f, id, "pic.png");
+    // Planted: the right folder name does not help a file that is not in it, nor a wrong row id.
+    f.conn.execute("UPDATE companion_files SET trash_path = ?1 WHERE id = ?2", rusqlite::params![precious.to_string_lossy(), row]).unwrap();
+    assert!(trash::delete_file_permanently_with_conn(&f.conn, id, &f.trash).is_err());
+    assert!(precious.exists() && web.exists());
+    assert!(db::get_file(&f.conn, id).unwrap().is_some(), "the entry stays, nothing is orphaned silently");
+    let foreign = f.root.join(".katalog-papierkorb").join("companion-9999-x-pic.png");
+    std::fs::write(&foreign, PNG).unwrap();
+    f.conn.execute("UPDATE companion_files SET trash_path = ?1 WHERE id = ?2", rusqlite::params![foreign.to_string_lossy(), row]).unwrap();
+    assert!(trash::delete_file_permanently_with_conn(&f.conn, id, &f.trash).is_err());
+    assert!(foreign.exists());
 }
 
 #[test]
@@ -594,6 +667,39 @@ fn open_info_and_image_data_work_only_for_allowed_content() {
 }
 
 #[test]
+fn an_other_file_is_stored_and_listed_but_never_opened_or_previewed() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let cad = f.add(id, "Foo.FCStd", ZIP);
+    assert_eq!((cad.kind.as_str(), cad.name.as_str()), ("other", "Foo.fcstd"));
+    assert_eq!(to_dto(cad.clone()).kind, "other");
+    let info = open_info_with_conn(&f.conn, cad.id, &[]).unwrap();
+    assert_eq!(info.kind, "other", "the checks still pass, so the folder can be shown");
+    assert!(refuse_unopenable(&info).is_err(), "the default program is never started on it");
+    assert!(image_data_with_conn(&f.conn, cad.id, &[]).is_err(), "no data address for it");
+    // Counter-check: the other kinds are still handed over.
+    let pdf = f.add(id, "doc.pdf", PDF);
+    assert!(refuse_unopenable(&open_info_with_conn(&f.conn, pdf.id, &[]).unwrap()).is_ok());
+}
+
+#[test]
+fn a_text_like_other_file_is_checked_beyond_the_inspected_head_when_it_is_copied() {
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let mut late_nul = vec![b'a'; CONTENT_CHECK_BYTES + 500];
+    late_nul[CONTENT_CHECK_BYTES + 100] = 0;
+    for name in ["part.scad", "plan.dxf", "table.csv"] {
+        assert!(add_companion_with_conn(&f.conn, id, &f.source(name, &late_nul), &[]).is_err(), "{name}");
+    }
+    assert!(!f.root.join("Foo_extras").exists(), "nothing was made for a refused file");
+    let mut zip_with_nul = ZIP.to_vec();
+    zip_with_nul.extend(vec![0u8; CONTENT_CHECK_BYTES + 100]);
+    assert_eq!(f.add(id, "m.fcstd", &zip_with_nul).kind, "other", "a ZIP is binary and may hold NUL bytes");
+    assert!(add_companion_with_conn(&f.conn, id, &f.source("run.exe", ZIP), &[]).is_err());
+    assert!(add_companion_with_conn(&f.conn, id, &f.source("fake.docx", b"hello"), &[]).is_err());
+}
+
+#[test]
 fn a_swapped_file_is_refused_when_it_is_opened_or_previewed() {
     let f = Fixture::new();
     let (id, _) = f.model("Foo.3mf");
@@ -635,6 +741,20 @@ fn a_symlinked_companion_is_neither_opened_nor_previewed() {
     assert!(image_data_with_conn(&f.conn, pic.id, &[]).is_err());
     assert!(remove_companion_with_conn(&f.conn, pic.id, &f.trash).is_err());
     assert!(real.exists());
+}
+
+#[test]
+fn a_file_bigger_than_the_adding_limit_can_still_be_opened_but_not_added() {
+    // The web interface accepts much bigger files than the desktop adds; such a row opens fine here.
+    let f = Fixture::new();
+    let (id, _) = f.model("Foo.3mf");
+    let doc = f.add(id, "doc.pdf", PDF);
+    sparse_file(Path::new(&doc.path), PDF, MAX_COMPANION_BYTES + 1);
+    assert_eq!(open_info_with_conn(&f.conn, doc.id, &[]).unwrap().kind, "pdf");
+    sparse_file(Path::new(&doc.path), PDF, MAX_OPEN_BYTES + 1);
+    assert!(open_info_with_conn(&f.conn, doc.id, &[]).is_err(), "above even the web limit");
+    sparse_file(&f.outside.join("huge.pdf"), PDF, MAX_COMPANION_BYTES + 1);
+    assert!(add_companion_with_conn(&f.conn, id, &f.outside.join("huge.pdf"), &[]).is_err(), "adding keeps 50 MiB");
 }
 
 #[test]

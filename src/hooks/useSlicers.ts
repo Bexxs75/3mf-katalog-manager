@@ -45,7 +45,7 @@ export function useSlicers() {
   }, []);
 
   useEffect(() => {
-    if (container) return;
+    if (import.meta.env.VITE_TARGET === 'web' || container) return;
     catalogMetaApi.scanInstalledSlicers()
       .then(applyRegistry)
       .catch((e) => {
@@ -56,7 +56,7 @@ export function useSlicers() {
   }, [container]);
 
   const addSlicer = useCallback(async () => {
-    if (container) return null;
+    if (import.meta.env.VITE_TARGET === 'web' || container) return null;
     // The file dialog runs in the backend, the frontend passes no path through.
     // Failure is realistic (validate_slicer_path rejects; an already registered
     // program is not a failure but returns the existing entry), hence the display via addSlicerError.

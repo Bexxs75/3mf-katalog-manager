@@ -126,6 +126,21 @@ class Preview(unittest.TestCase):
     def test_unknown_option_fails(self):
         with self.assertRaises(SystemExit): ra.main(["rename", "--foo", "0.15.0", "a", "b"])
 
+    def test_set_version_updates_workspace_crates(self):
+        with tempfile.TemporaryDirectory() as t:
+            r = pathlib.Path(t); (r / "src-tauri").mkdir(); (r / "crates/katalog-core").mkdir(parents=True)
+            (r / "src-tauri/Cargo.toml").write_text('[package]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
+            (r / "src-tauri/tauri.conf.json").write_text(json.dumps({"version": "0.14.0"}), encoding="utf-8")
+            (r / "package.json").write_text(json.dumps({"version": "0.14.0"}), encoding="utf-8")
+            (r / "crates/katalog-core/Cargo.toml").write_text('[package]\nname = "katalog-core"\nversion = "0.14.0"\n\n[dependencies]\nserde = { version = "1" }\n', encoding="utf-8")
+            (r / "Cargo.lock").write_text('[[package]]\nname = "katalog-core"\nversion = "0.14.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
+            ra.set_version("0.15.0-2", r)
+            self.assertIn('version = "0.15.0-2"', (r / "crates/katalog-core/Cargo.toml").read_text(encoding="utf-8"))
+            self.assertIn('serde = { version = "1" }', (r / "crates/katalog-core/Cargo.toml").read_text(encoding="utf-8"))
+            lock = (r / "Cargo.lock").read_text(encoding="utf-8")
+            self.assertIn('name = "katalog-core"\nversion = "0.15.0-2"', lock)
+            self.assertIn('name = "mf-katalog-manager"\nversion = "0.15.0-2"', lock)
+
     def test_set_version(self):
         with tempfile.TemporaryDirectory() as t:
             r = pathlib.Path(t); (r / "src-tauri").mkdir()
@@ -135,11 +150,11 @@ class Preview(unittest.TestCase):
                 encoding="utf-8",
             )
             (r / "package.json").write_text(json.dumps({"name": "mf-katalog-manager", "version": "0.14.0"}, indent=2), encoding="utf-8")
-            (r / "src-tauri/Cargo.lock").write_text('[[package]]\nname = "serde"\nversion = "1.0.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
+            (r / "Cargo.lock").write_text('[[package]]\nname = "serde"\nversion = "1.0.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
             ra.set_version("0.15.0-2", r)
             ra.check_version("0.15.0-2", r)
             self.assertEqual(json.loads((r / "package.json").read_text(encoding="utf-8"))["version"], "0.15.0-2")
-            lock = (r / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
+            lock = (r / "Cargo.lock").read_text(encoding="utf-8")
             self.assertIn('name = "mf-katalog-manager"\nversion = "0.15.0-2"', lock)
             self.assertIn('name = "serde"\nversion = "1.0.0"', lock)
             self.assertIn('serde = { version = "1" }', (r / "src-tauri/Cargo.toml").read_text(encoding="utf-8"))
@@ -256,6 +271,112 @@ class RcManifest(unittest.TestCase):
         self.current.unlink()
         with self.assertRaises(SystemExit):
             ra.rc_manifest('v0.16.0-2', self.source, self.release, self.output, self.current)
+
+class Nsis(unittest.TestCase):
+    """The NSIS installer is an addition: without it everything behaves as before."""
+    NSIS_KEYS = {"windows-x86_64-msi", "windows-x86_64-nsis"}
+
+    def packages(self, out, version, nsis, preview=False, sig=True):
+        names = [ra.asset_name(version, p, e, preview=preview) for p, e in set(ra.UPDATE_TARGETS.values())]
+        if nsis:
+            names.append(ra.asset_name(version, ra.NSIS_ARTIFACT[2], ra.NSIS_ARTIFACT[1], preview=preview))
+        for n in names:
+            pathlib.Path(out, n).write_bytes(b"x")
+            if sig:
+                pathlib.Path(out, n + ".sig").write_text(f"SIG-{n}")
+
+    def test_name_of_the_setup_file(self):
+        self.assertEqual(ra.asset_name("0.18.0-1", "Windows-x64-Setup", ".exe"), "3MF-Katalog-Manager-0.18.0-1-Windows-x64-Setup.exe")
+        self.assertEqual(ra.asset_name("0.18.0-1", "Windows-x64-Setup", ".exe", preview=True), "3MF-Katalog-Manager-Preview-0.18.0-1-Windows-x64-Setup.exe")
+
+    def test_rename_takes_the_installer_along_when_present(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as o:
+            for art, ext, _ in ra.ARTIFACTS + [ra.NSIS_ARTIFACT]:
+                d = pathlib.Path(a, art); d.mkdir()
+                (d / f"x{ext}").write_bytes(b"x")
+            ra.rename("0.18.0-1", a, o, require_nsis=True)
+            names = {p.name for p in pathlib.Path(o).iterdir()}
+            self.assertIn("3MF-Katalog-Manager-0.18.0-1-Windows-x64-Setup.exe", names)
+            self.assertIn("3MF-Katalog-Manager-0.18.0-1-Windows-x64.msi", names)
+            self.assertEqual(len(names), len(ra.ARTIFACTS) + 1)
+
+    def test_rename_without_installer_is_unchanged_unless_required(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as o:
+            for art, ext, _ in ra.ARTIFACTS:
+                d = pathlib.Path(a, art); d.mkdir()
+                (d / f"x{ext}").write_bytes(b"x")
+            ra.rename("0.18.0", a, o)
+            self.assertEqual(len(list(pathlib.Path(o).iterdir())), len(ra.ARTIFACTS))
+            with self.assertRaises(SystemExit):
+                ra.rename("0.18.0", a, o, require_nsis=True)
+
+    def test_rename_two_exe_files_fail(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as o:
+            for art, ext, _ in ra.ARTIFACTS + [ra.NSIS_ARTIFACT]:
+                d = pathlib.Path(a, art); d.mkdir()
+                (d / f"x{ext}").write_bytes(b"x")
+            (pathlib.Path(a, ra.NSIS_ARTIFACT[0]) / "y.exe").write_bytes(b"x")
+            with self.assertRaises(SystemExit):
+                ra.rename("0.18.0-1", a, o)
+
+    def test_manifest_without_installer_has_the_four_old_keys(self):
+        with tempfile.TemporaryDirectory() as o:
+            self.packages(o, "0.18.0", nsis=False)
+            ra.latest_json("0.18.0", o)
+            platforms = json.loads(pathlib.Path(o, "latest.json").read_text())["platforms"]
+            self.assertEqual(set(platforms), set(ra.UPDATE_TARGETS))
+
+    def test_manifest_with_installer_adds_msi_and_nsis_keys(self):
+        for preview in (False, True):
+            with tempfile.TemporaryDirectory() as o:
+                self.packages(o, "0.18.0-1", nsis=True, preview=preview)
+                ra.latest_json("0.18.0-1", o, preview=preview, require_nsis=True)
+                f = "latest-preview.json" if preview else "latest.json"
+                platforms = json.loads(pathlib.Path(o, f).read_text())["platforms"]
+                self.assertEqual(set(platforms), set(ra.UPDATE_TARGETS) | self.NSIS_KEYS)
+                # The MSI keys keep pointing at the one MSI, the NSIS key at the setup file.
+                self.assertEqual(platforms["windows-x86_64-msi"], platforms["windows-x86_64"])
+                self.assertTrue(platforms["windows-x86_64-nsis"]["url"].endswith("-Windows-x64-Setup.exe"))
+                self.assertEqual(platforms["windows-x86_64-nsis"]["signature"], "SIG-" + platforms["windows-x86_64-nsis"]["url"].rsplit("/", 1)[1])
+
+    def test_required_installer_missing_or_unsigned_fails(self):
+        with tempfile.TemporaryDirectory() as o:
+            self.packages(o, "0.18.0-1", nsis=False)
+            with self.assertRaises(SystemExit):
+                ra.latest_json("0.18.0-1", o, require_nsis=True)
+            self.assertFalse(pathlib.Path(o, "latest.json").exists())
+        with tempfile.TemporaryDirectory() as o:
+            self.packages(o, "0.18.0-1", nsis=True)
+            pathlib.Path(o, "3MF-Katalog-Manager-0.18.0-1-Windows-x64-Setup.exe.sig").unlink()
+            with self.assertRaises(SystemExit):
+                ra.latest_json("0.18.0-1", o)
+
+    def test_cli_flag(self):
+        with tempfile.TemporaryDirectory() as o:
+            self.packages(o, "0.18.0-1", nsis=True)
+            ra.main(["latest-json", "0.18.0-1", o, "--require-nsis"])
+            self.assertIn("windows-x86_64-nsis", json.loads(pathlib.Path(o, "latest.json").read_text())["platforms"])
+
+    def test_rc_manifest_accepts_old_and_new_manifests(self):
+        for with_nsis in (False, True):
+            with tempfile.TemporaryDirectory() as r:
+                root = pathlib.Path(r)
+                version = "0.18.0-1"
+                prefix = f"https://github.com/{ra.REPO}/releases/download/v{version}/"
+                targets = dict(ra.UPDATE_TARGETS)
+                if with_nsis:
+                    targets.update(ra.OPTIONAL_TARGETS)
+                platforms = {k: {"url": prefix + ra.asset_name(version, p, e), "signature": "s"} for k, (p, e) in targets.items()}
+                (root / "m.json").write_text(json.dumps({"version": version, "platforms": platforms}))
+                (root / "r.json").write_text(json.dumps({"tag_name": "v" + version, "draft": False, "assets": [
+                    {"browser_download_url": p["url"], "state": "uploaded"} for p in platforms.values()]}))
+                ra.rc_manifest("v" + version, root / "m.json", root / "r.json", root / "out.json")
+                self.assertEqual((root / "m.json").read_bytes(), (root / "out.json").read_bytes())
+                if with_nsis:  # an extra key is held to the same URL rule
+                    platforms["windows-x86_64-nsis"]["url"] = prefix + "missing.exe"
+                    (root / "m.json").write_text(json.dumps({"version": version, "platforms": platforms}))
+                    with self.assertRaises(SystemExit):
+                        ra.rc_manifest("v" + version, root / "m.json", root / "r.json", root / "out2.json")
 
 if __name__ == "__main__":
     unittest.main()

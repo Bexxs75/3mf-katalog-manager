@@ -1,13 +1,17 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { PrinterJobsDialog } from './PrinterJobsDialog';
+import { setPrinterJobFailure } from '../lib/api/printerLink';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { FilamentSpool, PrinterJob } from '../types';
 
-vi.mock('../lib/api/printerLink', () => ({ getPrinterJobThumbnail: vi.fn().mockResolvedValue(null) }));
+vi.mock('../lib/api/printerLink', () => ({ getPrinterJobThumbnail: vi.fn().mockResolvedValue(null), setPrinterJobFailure: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
-beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
+beforeEach(() => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  vi.mocked(setPrinterJobFailure).mockReset().mockResolvedValue(undefined);
+});
 
 const spools = [
   { id: '100', material: 'PLA', color: 'Grau', remainingWeightG: 612.4, originalWeightG: 1000, diameterMm: 1.75, colorHex: '#8a8f94' },
@@ -24,7 +28,7 @@ const job = (over: Partial<PrinterJob>): PrinterJob => ({
 function link(jobs: PrinterJob[]): PrinterLinkState {
   return {
     refreshKey: 0, enabled: true, connections: [], jobs, error: null, refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
-    removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn().mockResolvedValue(undefined),
+    removeConnection: vi.fn(), clearApiKey: vi.fn(), includeOlderHistory: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn().mockResolvedValue(undefined),
     confirmJobs: vi.fn().mockResolvedValue({ confirmed: 1, failed: 0 }),
     previewJob: vi.fn().mockResolvedValue({ grams: 0.9, materialMismatch: true }),
   } as PrinterLinkState;
@@ -107,6 +111,81 @@ describe('PrinterJobsDialog', () => {
     renderDialog(l);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Ignorieren' })));
     expect(l.ignoreJob).toHaveBeenCalledWith('1');
+  });
+
+  describe('reason a print ended early', () => {
+    const partial = (over: Partial<PrinterJob> = {}) => job({ outcome: 'partial', rawStatus: 'cancelled', partialPercent: 39, grams: 4, ...over });
+
+    it('offers an optional reason only for prints that ended early and preselects nothing', () => {
+      renderDialog(link([job({ id: '1' }), partial({ id: '2' })]));
+      const selects = screen.getAllByRole('combobox', { name: 'Grund (optional)' });
+      expect(selects).toHaveLength(1);
+      expect(selects[0]).toHaveValue('');
+      const options = within(selects[0]).getAllByRole('option');
+      expect(options.map(o => o.textContent)).toEqual([
+        'Kein Grund angegeben', 'Haftung / Warping', 'Düse verstopft / Unterextrusion', 'Filament leer, gerissen oder verheddert',
+        'Strom- oder Netzausfall', 'Slicer- oder Einstellungsfehler', 'Mechanik, Elektronik oder Kollision', 'Druck vom Bett gelöst',
+        'Bewusst abgebrochen (z. B. Testdruck)', 'Sonstiges',
+      ]);
+      expect(screen.queryByLabelText(/Kurztext/)).toBeNull();
+    });
+
+    it('confirms without a reason and never calls the command when none was chosen', async () => {
+      const l = link([partial()]);
+      renderDialog(l);
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' })));
+      expect(l.confirmJobs).toHaveBeenCalled();
+      expect(setPrinterJobFailure).not.toHaveBeenCalled();
+    });
+
+    it('saves the chosen reason before the print is confirmed', async () => {
+      const l = link([partial()]);
+      const order: string[] = [];
+      vi.mocked(setPrinterJobFailure).mockImplementation(async () => { order.push('reason'); });
+      l.confirmJobs = vi.fn().mockImplementation(async () => { order.push('confirm'); return { confirmed: 1, failed: 0 }; });
+      renderDialog(l);
+      fireEvent.change(screen.getByRole('combobox', { name: 'Grund (optional)' }), { target: { value: 'clog' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' })));
+      expect(setPrinterJobFailure).toHaveBeenCalledWith('1', 'clog', null);
+      expect(order).toEqual(['reason', 'confirm']);
+    });
+
+    it('asks for a short note only under "Other" and sends it', async () => {
+      const l = link([partial()]);
+      renderDialog(l);
+      const select = screen.getByRole('combobox', { name: 'Grund (optional)' });
+      fireEvent.change(select, { target: { value: 'other' } });
+      const note = screen.getByLabelText('Kurztext (höchstens 200 Zeichen)');
+      expect(note).toHaveAttribute('maxlength', '200');
+      fireEvent.change(note, { target: { value: 'Kabel hat sich gelöst' } });
+      expect(screen.getByText('21 / 200')).toBeInTheDocument();
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Ignorieren' })));
+      expect(setPrinterJobFailure).toHaveBeenCalledWith('1', 'other', 'Kabel hat sich gelöst');
+      expect(l.ignoreJob).toHaveBeenCalledWith('1');
+      // Back to a listed reason: the note goes away and is not sent.
+      fireEvent.change(select, { target: { value: 'adhesion' } });
+      expect(screen.queryByLabelText(/Kurztext/)).toBeNull();
+    });
+
+    it('does not decide the print when the reason could not be saved', async () => {
+      const l = link([partial()]);
+      vi.mocked(setPrinterJobFailure).mockRejectedValue(new Error('boom'));
+      renderDialog(l);
+      fireEvent.change(screen.getByRole('combobox', { name: 'Grund (optional)' }), { target: { value: 'clog' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' })));
+      expect(l.confirmJobs).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('saves the reasons of all prints that were chosen when confirming all', async () => {
+      const l = link([partial({ id: '1' }), partial({ id: '2' }), job({ id: '3' })]);
+      renderDialog(l);
+      fireEvent.change(screen.getAllByRole('combobox', { name: 'Grund (optional)' })[1], { target: { value: 'spaghetti' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Alle 3 bestätigen' })));
+      expect(setPrinterJobFailure).toHaveBeenCalledTimes(1);
+      expect(setPrinterJobFailure).toHaveBeenCalledWith('2', 'spaghetti', null);
+      expect(l.confirmJobs).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('closes with Escape', () => {

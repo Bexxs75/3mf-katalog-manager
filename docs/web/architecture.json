@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "3MF Katalog Web: Aufbau mit Docker",
+    "output": ".archify/architecture-web-docker-20261016-070136/web-docker.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Browser",
+      "sublabel": "Oberfläche + 3D auf eigener GPU",
+      "pos": [
+        40,
+        180
+      ],
+      "size": [
+        150,
+        62
+      ]
+    },
+    {
+      "id": "proxy",
+      "type": "security",
+      "label": "Reverse Proxy",
+      "sublabel": "optional, HTTPS",
+      "pos": [
+        280,
+        180
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "katalog-server",
+      "sublabel": "HTTP-API + Ereignisse",
+      "pos": [
+        510,
+        180
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "tag": "Docker web"
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "katalog-core",
+      "sublabel": "Datenbank, Parser, Import",
+      "pos": [
+        750,
+        180
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "tag": "gemeinsam"
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "catalog.db",
+      "sublabel": "SQLite in /config",
+      "pos": [
+        990,
+        180
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "models",
+      "type": "database",
+      "label": "Modelldateien",
+      "sublabel": "3MF, STL, OBJ, STEP in /models",
+      "pos": [
+        740,
+        330
+      ],
+      "size": [
+        170,
+        62
+      ]
+    },
+    {
+      "id": "printers",
+      "type": "external",
+      "label": "Drucker",
+      "sublabel": "Klipper / Moonraker im LAN",
+      "pos": [
+        510,
+        30
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "tag": "später"
+    },
+    {
+      "id": "desktop",
+      "type": "external",
+      "label": "Desktop-App",
+      "sublabel": "Tauri, nutzt denselben Core",
+      "pos": [
+        750,
+        30
+      ],
+      "size": [
+        150,
+        62
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Docker-Host (Heimnetz, NAS oder eigener Server)",
+      "wraps": [
+        "server",
+        "core",
+        "db",
+        "models"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "security-group",
+      "label": "Container 3mfKatalog-Web",
+      "wraps": [
+        "server",
+        "core"
+      ],
+      "pad": 12
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-proxy",
+      "from": "browser",
+      "to": "proxy",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "proxy-server",
+      "from": "proxy",
+      "to": "server",
+      "label": "Anmeldung",
+      "variant": "security"
+    },
+    {
+      "id": "server-core",
+      "from": "server",
+      "to": "core",
+      "label": "Aufruf"
+    },
+    {
+      "id": "core-db",
+      "from": "core",
+      "to": "db",
+      "label": "SQL"
+    },
+    {
+      "id": "core-models",
+      "from": "core",
+      "to": "models",
+      "label": "Dateien",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "server-printers",
+      "from": "server",
+      "to": "printers",
+      "label": "Abgleich",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "desktop-core",
+      "from": "desktop",
+      "to": "core",
+      "label": "gleicher Code",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Betrieb",
+      "items": [
+        "Ein Docker-Image, Daten bleiben in /config und /models",
+        "Läuft zu Hause, auf dem NAS oder auf einem eigenen Server",
+        "Standard: nur im Heimnetz erreichbar"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Sicherheit",
+      "items": [
+        "Anmeldung für alle Seiten, auch Lesen und Ereignisse",
+        "HTTPS über einen Reverse Proxy (zum Beispiel Caddy)",
+        "Fernzugriff besser per VPN als offen im Internet"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Wichtig",
+      "items": [
+        "Desktop-App und Server nie gleichzeitig auf derselben Datenbank schreiben",
+        "Die 3D-Ansicht rechnet der Browser, nicht der Server",
+        "Das bisherige Desktop-Image mit Selkies bleibt optional"
+      ]
+    }
+  ]
+}

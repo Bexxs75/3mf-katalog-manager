@@ -1,3 +1,8 @@
+import { DETAIL_PANEL_COMPACT_WIDTH_CLASS, DETAIL_PANEL_COMFORT_WIDTH } from './detailPanelWidth';
+import { WebFileActions } from './WebFileActions';
+import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
+import { useCanEditMetadata } from '../lib/webSession';
+import { isReadOnly } from '../lib/readOnly';
 import { TRASH_RETENTION_DAYS } from '../lib/trashRetention';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
@@ -5,15 +10,19 @@ import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
+import { SaveAsStlButton } from './SaveAsStlButton';
+import { WebSlicerMenu } from './WebSlicerMenu';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
+import { ImageUploadButton } from './ImageUploadButton';
 import { Icon } from './Icon';
 import { CompanionSection } from './CompanionSection';
+import { CompanionWebSection } from './CompanionWebSection';
 import { BuildPlateFit } from './BuildPlateFit';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
 import { StatusBadges } from './StatusBadges';
-import type { FilamentCheck, Printer } from '../types';
+import type { BundleKind, FilamentCheck, Printer } from '../types';
 import type { LastPrinter } from '../lib/api/lastPrinter';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
@@ -23,9 +32,13 @@ import { useAutoTagBlock } from '../hooks/useAutoTagBlock';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelPreview } from './ModelPreview';
+import { SlicedPreview } from './SlicedPreview';
+import { isSlicedOutput } from '../lib/fileKind';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { SourcePlatformRows } from './SourcePlatformRows';
+import { PrintDataCard } from './PrintDataCard';
+import { showsPrintData } from '../lib/printData';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
@@ -41,6 +54,8 @@ interface Props {
   tagHues?: Record<string, number>;
   model: ModelFile | null;
   trashMode?: boolean;
+  /** Trash only: the bundle the file belongs to and comes back to when restored. */
+  trashBundle?: { name: string; kind: BundleKind; label: string | null } | null;
   /** Printers of the Printer Manager, for the "print bed" section (those with a build volume). */
   printers?: Printer[];
   onRestore?: () => void;
@@ -51,7 +66,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void | Promise<void>;
+  onUploadImage: (file?: File) => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
@@ -67,6 +82,7 @@ export function DetailPanel({
   allTags,
   tagHues,
   trashMode,
+  trashBundle,
   printers = [],
   onRestore,
   onDeletePermanently,
@@ -85,14 +101,16 @@ export function DetailPanel({
   hasSlicer,
   slicerError,
 }: Props) {
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const imageUpload = useImageUpload(model?.id, onUploadImage);
+  const sliced = model ? isSlicedOutput(model) : false;
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const autoTagBlock = useAutoTagBlock(trashMode ? null : model, onRemoveTag, onAddTag);
+  const autoTagBlock = useAutoTagBlock(trashMode || !canEdit ? null : model, onRemoveTag, onAddTag);
   const {
     editing: editingSourceUrl,
     draft: sourceUrlDraft,
@@ -108,7 +126,7 @@ export function DetailPanel({
 
   if (!model) {
     return (
-      <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-body px-6 text-center">
+      <aside role={trashMode ? undefined : "presentation"} className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-body px-6 text-center`}>
         {t('emptyStateText')}
       </aside>
     );
@@ -120,14 +138,22 @@ export function DetailPanel({
       ? new Date(new Date(model.deletedAt).getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000)
       : null;
     return (
-      <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
+      <aside className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex flex-col min-h-0 min-w-0 overflow-x-hidden bg-[var(--panel)] border-l border-[var(--line)]`}>
         <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
           <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
-          <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{displayName(model.path)}</div>
+          <div className="font-code text-caption text-[var(--ink-3)] pt-1.5 min-w-0 [overflow-wrap:anywhere]">{displayName(model.path)}</div>
+          {trashBundle && (
+            <div data-was-part-of className="flex flex-wrap items-baseline gap-x-2 pt-1.5 text-caption text-[var(--ink-2)]">
+              <span className="font-semibold">{t('bundleWasPartOf').replace('{name}', displayName(trashBundle.name))}</span>
+              <span className="text-[var(--ink-3)]">{[t(trashBundle.kind === 'parts' ? 'bundleKindParts' : 'bundleKindVariants'), trashBundle.label].filter(Boolean).join(' · ')}</span>
+            </div>
+          )}
         </div>
 
         <div className="relative h-[248px] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-          <ModelPreview model={model} needsSnapshot={false} onSnapshotCaptured={() => {}} />
+          {isSlicedOutput(model)
+            ? <SlicedPreview model={model} surfaceClassName="h-full" />
+            : <ModelPreview model={model} needsSnapshot={false} onSnapshotCaptured={() => {}} />}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pt-3.5 pb-1">
@@ -137,30 +163,31 @@ export function DetailPanel({
           {rows.map((row) => (
             <div key={row.label} className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]">
               <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">{row.label}</span>
-              <span className="flex-1 font-medium tabular-nums text-small text-right">{row.value}</span>
+              <span className="flex-1 min-w-0 break-words font-medium tabular-nums text-small text-right">{row.value}</span>
             </div>
           ))}
         </div>
 
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
-          {expiryDate && (
+          {expiryDate && import.meta.env.VITE_TARGET !== 'web' && (
             <p className="font-medium tabular-nums text-caption text-[var(--ink-3)]">
               {t('trashExpiryHint').replace('{date}', formatDate(expiryDate.toISOString(), language))}
             </p>
           )}
           <div className="flex gap-2">
-            <button {...lockProps}
+            <WebFileActions key={model.id} fileIds={[model.id]} name={model.name} trash />
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={onRestore}
               className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('restoreLabel')}
-            </button>
-            <button {...lockProps}
+            </button>}</>
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={onDeletePermanently}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
             >
               {t('deletePermanentlyLabel')}
-            </button>
+            </button>}</>
           </div>
         </div>
       </aside>
@@ -169,14 +196,14 @@ export function DetailPanel({
 
   if (density === 'compact') {
     return (
-    <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
+    <aside role={trashMode ? undefined : "presentation"} className={`flex-none ${DETAIL_PANEL_COMPACT_WIDTH_CLASS} flex flex-col min-h-0 min-w-0 overflow-x-hidden bg-[var(--panel)] border-l border-[var(--line)]`}>
       <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
         <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
         <StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} />
-        <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{displayName(model.path)}</div>
+        <div className="font-code text-caption text-[var(--ink-3)] pt-1.5 min-w-0 [overflow-wrap:anywhere]">{displayName(model.path)}</div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="model-panel-content flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="relative bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           <div
             className="absolute inset-0"
@@ -185,22 +212,17 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 11px)',
             }}
           />
-          <ModelPreview surfaceClassName="h-[248px]"
+          {sliced ? <SlicedPreview model={model} surfaceClassName="h-[248px]" /> : <ModelPreview surfaceClassName="h-[248px]"
             model={model}
-            needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+            needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
-          />
-          <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
+          />}
+          {!sliced && <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
-          </div>
-          <button
-            onClick={imageUpload.uploadImage}
-            className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('uploadModelImageLabel')}
-          </button>
+          </div>}
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]" />
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
@@ -211,7 +233,7 @@ export function DetailPanel({
           <button
             onClick={onTogglePrintStatus}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             {model.printStatus === 'printed' ? t('markAsNotPrinted') : t('markAsPrinted')}
           </button>
         </div>
@@ -224,7 +246,7 @@ export function DetailPanel({
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
@@ -233,12 +255,12 @@ export function DetailPanel({
           <span className="flex-1 text-small font-medium">
             {model.queuePosition !== null ? t('inQueueLabel') : t('notInQueueLabel')}
           </span>
-          <button
+          <>{canEdit && <button
             onClick={onToggleQueue}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
-          </button>
+          </button>}</>
         </div>
 
         <div className="px-4 pt-3.5 pb-1">
@@ -254,7 +276,7 @@ export function DetailPanel({
               <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">
                 {row.label}
               </span>
-              <span className="flex-1 font-medium tabular-nums text-small text-right">{row.value}</span>
+              <span className="flex-1 min-w-0 break-words font-medium tabular-nums text-small text-right">{row.value}</span>
             </div>
           ))}
           <SourcePlatformRows model={model} variant="compact" />
@@ -287,12 +309,12 @@ export function DetailPanel({
               ) : (
                 <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
               )}
-              <span
+              <>{canEdit && <span
                 onClick={startEditingSourceUrl}
                 className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
               >
                 <Icon name="edit" size={14} />
-              </span>
+              </span>}</>
             </span>
           </div>
         </div>
@@ -310,13 +332,13 @@ export function DetailPanel({
               >
                 <TagDot hue={tagHues?.[tag]} />
                 <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
-                <TagRemoveButton
+                {canEdit && <TagRemoveButton
                   tag={tag}
                   autoTag={autoTagBlock.suggested.has(tag)}
                   onRemove={() => onRemoveTag(tag)}
                   onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)}
                   className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
-                />
+                />}
               </span>
             ))}
             <TagInput
@@ -331,8 +353,11 @@ export function DetailPanel({
           <AutoTagBlockStatus notice={autoTagBlock.notice} error={autoTagBlock.error} onUndo={() => void autoTagBlock.undo()} />
         </div>
 
-        <BuildPlateFit model={model} printers={printers} variant="compact" />
-        <CompanionSection key={model.id} fileId={model.id} variant="compact" />
+        {showsPrintData(model) && <PrintDataCard key={`print-data-${model.id}`} model={model} variant="compact" />}
+        {!sliced && <BuildPlateFit model={model} printers={printers} variant="compact" />}
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="compact" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="compact" />}
       </div>
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
@@ -341,19 +366,20 @@ export function DetailPanel({
             {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
-        <div className="flex gap-2">
+        {/* Web adds several action buttons that must wrap instead of squeezing each other; the desktop row keeps its fixed layout. */}
+        <div className={`flex gap-2${import.meta.env.VITE_TARGET === 'web' ? ' flex-wrap' : ''}`}>
           {confirmDelete ? (
             <>
               <span className="flex-1 flex items-center text-small font-medium text-[var(--ink)]">
                 {t('deleteConfirmQuestion')}
               </span>
-              <button
+              <>{!isReadOnly() && <button
                 onClick={() => setConfirmDelete(false)}
                 className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('cancel')}
-              </button>
-              <button {...lockProps}
+              </button>}</>
+              <>{!isReadOnly() && <button {...lockProps}
                 onClick={() => {
                   setConfirmDelete(false);
                   onDelete();
@@ -361,28 +387,33 @@ export function DetailPanel({
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
               >
                 {t('delete')}
-              </button>
+              </button>}</>
             </>
           ) : (
             <>
               <RevealFileButton fileId={model.id} compact />
-              {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-            {!container && (<button
+              <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} />
+              <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
+              <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
+          {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
+            {!container && !sliced && (<>{!isReadOnly() && <button
                 onClick={() => onOpenInSlicer()}
                 className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('openInSlicer')}
-              </button>)}
-              <button {...lockProps}
+              </button>}</>)}
+              <>{!isReadOnly() && <button {...lockProps}
                 onClick={() => setConfirmDelete(true)}
                 aria-label={t('deleteAriaLabel')}
                 className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-medium tabular-nums cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 <Icon name="close" size={14} />
-              </button>
+              </button>}</>
             </>
           )}
         </div>
+        {!confirmDelete && <SaveAsStlButton model={model}
+          className="mt-2 w-full h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" />}
       </div>
     </aside>
     );
@@ -390,10 +421,10 @@ export function DetailPanel({
 
   return (
     <aside role={trashMode ? undefined : "presentation"}
-      className="flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]"
-      style={{ width: '380px' }}
+      className="model-panel-comfort flex-none flex flex-col min-h-0 min-w-0 overflow-x-hidden bg-[var(--panel)] border-l border-[var(--line)]"
+      style={{ width: DETAIL_PANEL_COMFORT_WIDTH }}
     >
-      <div className="flex-1 overflow-y-auto">
+      <div className="model-panel-content flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="relative bg-[var(--plate)] overflow-hidden">
           <div
             className="absolute inset-0"
@@ -402,32 +433,26 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 12px)',
             }}
           />
-          <ModelPreview surfaceClassName="h-[284px]"
+          {sliced ? <SlicedPreview model={model} surfaceClassName="h-[284px]" /> : <ModelPreview surfaceClassName="h-[284px]"
             model={model}
-            needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+            needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
-          />
-          <button
-            onClick={imageUpload.uploadImage}
-            className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
-            style={{ fontSize: 'var(--font-size-meta)' }}
-          >
-            {t('uploadModelImageLabel')}
-          </button>
+          />}
+          <ImageUploadButton onUpload={imageUpload.uploadImage} className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]" style={{ fontSize: 'var(--font-size-meta)' }} />
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
         <div className="px-[18px] pt-4 pb-1 flex items-start justify-between gap-3">
-          <div className="font-semibold leading-tight break-words" style={{ fontSize: 'var(--font-size-title)' }}>
+          <div className="min-w-0 font-semibold leading-tight [overflow-wrap:anywhere]" style={{ fontSize: 'var(--font-size-title)' }}>
             {displayName(model.name)}
           </div>
           <button
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none text-heading ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
-          >
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
@@ -442,14 +467,14 @@ export function DetailPanel({
             >
               <TagDot hue={tagHues?.[tag]} />
               <span className="whitespace-nowrap">{shortTagLabel(`#${tagLabel(tag, language)}`)}</span>
-              <TagRemoveButton
+              {canEdit && <TagRemoveButton
                 tag={tag}
                 autoTag={autoTagBlock.suggested.has(tag)}
                 onRemove={() => onRemoveTag(tag)}
                 onRemoveAndBlock={() => void autoTagBlock.removeAndBlock(tag)}
                 className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 style={{ fontSize: 'var(--font-size-label)' }}
-              />
+              />}
             </span>
           ))}
           <TagInput
@@ -513,20 +538,23 @@ export function DetailPanel({
                 ) : (
                   <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
                 )}
-                <span
+                <>{canEdit && <span
                   onClick={startEditingSourceUrl}
                   className="flex-none w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
                   style={{ fontSize: 'var(--font-size-label)' }}
                 >
                   <Icon name="edit" size={14} />
-                </span>
+                </span>}</>
               </span>
             )}
           </div>
         </div>
 
-        <BuildPlateFit model={model} printers={printers} variant="comfort" />
-        <CompanionSection key={model.id} fileId={model.id} variant="comfort" />
+        {showsPrintData(model) && <PrintDataCard key={`print-data-${model.id}`} model={model} variant="comfort" />}
+        {!sliced && <BuildPlateFit model={model} printers={printers} variant="comfort" />}
+        {import.meta.env.VITE_TARGET === 'web'
+          ? <CompanionWebSection key={model.id} fileId={model.id} variant="comfort" />
+          : <CompanionSection key={model.id} fileId={model.id} variant="comfort" />}
       </div>
 
       <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
@@ -540,14 +568,14 @@ export function DetailPanel({
             <span className="flex-1 font-medium" style={{ fontSize: 'var(--font-size-body)' }}>
               {t('deleteConfirmQuestion')}
             </span>
-            <button
+            <>{!isReadOnly() && <button
               onClick={() => setConfirmDelete(false)}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-10 px-4 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] font-semibold cursor-pointer"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               {t('cancel')}
-            </button>
-            <button {...lockProps}
+            </button>}</>
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={() => {
                 setConfirmDelete(false);
                 onDelete();
@@ -556,41 +584,46 @@ export function DetailPanel({
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               {t('delete')}
-            </button>
+            </button>}</>
           </div>
         ) : (
           <>
             <RevealFileButton fileId={model.id} compact />
-            {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-            {!container && (<button
+              <WebSlicerMenu key={`slicer-${model.id}`} fileId={model.id} fileName={model.name} fileType={model.fileType} />
+            <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
+              <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
+          {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
+            {!container && !sliced && (<>{!isReadOnly() && <button
               onClick={() => onOpenInSlicer()}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               🖨 {t('openInSlicer')}
-            </button>)}
-            <button
+            </button>}</>)}
+            <SaveAsStlButton model={model}
+              className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:text-[var(--accent)] disabled:opacity-50" />
+            <>{canEdit && <button
               onClick={onToggleQueue}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               🎞 {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
-            </button>
+            </button>}</>
             <button
               onClick={onTogglePrintStatus}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
-            >
+             {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
               {model.printStatus === 'printed' && <Icon name="check" size={14} />}{t(model.printStatus === 'printed' ? 'markAsNotPrinted' : 'markAsPrinted')}
             </button>
-            <button {...lockProps}
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={() => setConfirmDelete(true)}
               aria-label={t('deleteAriaLabel')}
               className="h-9 rounded-lg text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
               {t('deleteAriaLabel')}
-            </button>
+            </button>}</>
           </>
         )}
       </div>

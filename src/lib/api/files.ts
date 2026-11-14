@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
-import type { ModelFile, ModelFileSummary, ModelImages } from '../../types';
+import { invoke } from '../transport';
+import type { ModelFile, ModelFileSummary, ModelImages, PlateOverview } from '../../types';
 
 // Slim catalog overview, see ModelFileSummary.
 export function listFileSummaries() {
@@ -15,6 +15,10 @@ export function listAllFileTags() {
 // Load full model data; the detail page calls this with [id].
 export function listFilesByIds(ids: string[]) {
   return invoke<ModelFile[]>('list_files_by_ids', { ids });
+}
+// Objects and preview pictures per plate, read from the file on demand (the plate overview dialog).
+export function readPlateOverview(fileId: string, withPreviews: boolean) {
+  return invoke<PlateOverview>('read_plate_overview', { fileId, withPreviews });
 }
 export function listTrash() {
   return invoke<ModelFile[]>('list_trash');
@@ -78,14 +82,20 @@ export function reorderQueue(updates: { fileId: string; position: number }[]) {
 export function uploadCustomImage(fileId: string) {
   return invoke<string | null>('upload_custom_image', { fileId });
 }
+export function setCustomImage(fileId: string, imageBase64: string) {
+  return invoke('set_custom_image', { fileId, imageBase64 });
+}
 export function setRenderSnapshot(fileId: string, imageBase64: string) {
   return invoke('set_render_snapshot', { fileId, imageBase64 });
 }
 export function setSourceUrl(fileId: string, url: string | null) {
   return invoke('set_source_url', { fileId, url });
 }
-export function rescanFileMetadata(fileId: string) {
-  return invoke<ModelFile>('rescan_file_metadata', { fileId });
+// `lean` (desktop only) asks for an answer without the three image fields, for bulk reads that
+// patch the list. The web server rejects unknown arguments, so the web build never sends it.
+export function rescanFileMetadata(fileId: string, lean?: boolean) {
+  const sendLean = lean !== undefined && import.meta.env.VITE_TARGET !== 'web';
+  return invoke<ModelFile>('rescan_file_metadata', sendLean ? { fileId, lean } : { fileId });
 }
 
 export function setLicense(fileIds: string[], license: string | null): Promise<void> {

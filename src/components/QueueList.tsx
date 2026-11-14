@@ -1,3 +1,4 @@
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useEffect, useState } from 'react';
@@ -14,6 +15,7 @@ interface QueueListProps {
 }
 
 export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect, queueFilament }: QueueListProps) {
+  const canEdit = useCanEditMetadata();
   const t = useT();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -32,6 +34,7 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
         onQueueSelect(queue[from].id);
         return;
       }
+      if (!canEditMetadata()) return;
       const ids = queue.map((m) => m.id);
       const [moved] = ids.splice(from, 1);
       ids.splice(to, 0, moved);
@@ -52,6 +55,7 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
         <div
           key={model.id}
           onMouseDown={() => {
+            if (!canEditMetadata()) { onQueueSelect(model.id); return; }
             setDragIndex(index);
             setOverIndex(index);
           }}
@@ -71,7 +75,7 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
           <span className="flex-1 text-[length:var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
             {displayName(model.name)}
           </span>
-          <button type="button" aria-label={t('removeFromQueue')}
+          {canEdit && <button type="button" aria-label={t('removeFromQueue')}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -80,7 +84,7 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
             className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
           >
             <Icon name="close" size={14} />
-          </button>
+          </button>}
         </div>
       ))}
     </>

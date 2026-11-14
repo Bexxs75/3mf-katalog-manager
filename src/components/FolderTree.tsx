@@ -1,6 +1,9 @@
+import { isReadOnly } from '../lib/readOnly';
+import { canManageFiles, useCanManageFiles } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
+import { useExternalDrag } from '../hooks/useExternalDropTarget';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { FolderCatalogMenu } from './FolderCatalogMenu';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -66,9 +69,11 @@ export function FolderTree({
   onFolderMouseLeave,
   onDragFolderStart,
 }: Props) {
+  const canManage = useCanManageFiles();
   const { jobActive } = useImportLock();
   const t = useT();
   const formatCount = useFormatCount();
+  const externalDrag = useExternalDrag();
   const [menu, setMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const allModelsRef = useRef<HTMLDivElement>(null);
@@ -81,7 +86,7 @@ export function FolderTree({
 
   // Folder rows are only 28px high: an immediate drag start would let even a
   // slight slip during a click trigger a real move_folder.
-  const folderDrag = useDragThreshold(jobActive ? undefined : onDragFolderStart);
+  const folderDrag = useDragThreshold(jobActive || !canManage ? undefined : onDragFolderStart);
 
   // The folder row disappears: if the active folder lay inside it, fall back to "All models" and park the focus there.
   function leaveFolder(folderId: string) {
@@ -96,7 +101,7 @@ export function FolderTree({
   }
 
   function startRename(node: Folder) {
-    if (jobActive) return;
+    if (jobActive || !canManageFiles()) return;
     setRenaming({ id: node.id, draft: node.name, error: null, busy: false });
   }
   function cancelRename(restoreFocus: boolean) {
@@ -154,8 +159,11 @@ export function FolderTree({
 
   function renderNode(node: TreeNode, depth: number) {
     const isOpen = expansion.isExpanded(node.id);
-    const validFileTarget = !!draggedFileId && node.id !== draggedFileFolderId;
-    const isDraggedOver = dragOverFolderId === node.id && (!draggedFileId || validFileTarget);
+    const validFileTarget = canManage && !!draggedFileId && node.id !== draggedFileFolderId;
+    // Files dragged in from the file manager: the row under the pointer, shown as a target
+    // (frame and text) or as "no target" (missing folder, catalog folder).
+    const external = externalDrag.target.kind !== 'none' && externalDrag.target.folder.id === node.id ? externalDrag.target.kind : null;
+    const isDraggedOver = (canManage && dragOverFolderId === node.id && (!draggedFileId || validFileTarget)) || external === 'folder';
     if (renaming?.id === node.id) {
       const errorId = `rename-error-${node.id}`;
       const hintId = `rename-hint-${node.id}`;
@@ -193,12 +201,14 @@ export function FolderTree({
     }
     return (
       <div key={node.id}>
-        <div data-sync-folder-id={node.id}
+        <div data-sync-folder-id={node.id} data-folder-id={node.id}
+          aria-current={external ? true : undefined}
+          aria-label={external ? t(external === 'folder' ? 'dzRowTarget' : 'dzRowNoTarget').replace('{name}', displayName(node.name)) : undefined}
           tabIndex={0}
           role="button"
-          onContextMenu={(e) => { e.preventDefault(); returnFocus.current = e.currentTarget; setMenu({ id: node.id, name: node.name, x: e.clientX, y: e.clientY }); }}
+          onContextMenu={(e) => { e.preventDefault(); if (!canManageFiles()) return; returnFocus.current = e.currentTarget; setMenu({ id: node.id, name: node.name, x: e.clientX, y: e.clientY }); }}
           onKeyDown={(e) => {
-            if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+            if (canManageFiles() && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
               e.preventDefault(); e.stopPropagation(); returnFocus.current = e.currentTarget;
               const rect = e.currentTarget.getBoundingClientRect();
               setMenu({ id: node.id, name: node.name, x: rect.left, y: rect.bottom });
@@ -217,7 +227,7 @@ export function FolderTree({
               ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold hover:text-[var(--ink)]'
               : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]'
           } ${
-            isDraggedOver ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_0_2px_var(--accent-soft)]' : validFileTarget ? 'border-dashed border-[var(--line-strong)]' : 'border-transparent'
+            isDraggedOver ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_0_2px_var(--accent-soft)]' : external === 'invalid' ? 'border-dashed border-[var(--warn)]' : validFileTarget ? 'border-dashed border-[var(--line-strong)]' : 'border-transparent'
           } ${
             draggedFolderId === node.id ? 'opacity-40' : ''
           }`}
@@ -236,7 +246,8 @@ export function FolderTree({
           <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{displayName(node.name)}</span>
           {node.missing && <span className="shrink-0 rounded-full px-1.5 text-compact-meta bg-[var(--warn-soft)] text-[var(--warn)]">{t('folderMissingOnDisk')}</span>}
           <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{node.count}</span>
-          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{draggedFileId && draggedFileCount > 1 ? formatCount(t('dropHereMany'), draggedFileCount) : t('dropHereLabel')}</span>}
+          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{external === 'folder' ? (externalDrag.count > 1 ? formatCount(t('dzDropMany'), externalDrag.count) : t('dropHereLabel')) : draggedFileId && draggedFileCount > 1 ? formatCount(t('dropHereMany'), draggedFileCount) : t('dropHereLabel')}</span>}
+          {external === 'invalid' && <span className="font-medium text-compact-meta text-[var(--ink-2)]">{t('dzNoTarget')}</span>}
         </div>
         {isOpen && node.children.map((c) => renderNode(c, depth + 1))}
       </div>
@@ -261,10 +272,10 @@ export function FolderTree({
         <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{totalModelCount}</span>
       </div>
       {tree.map((n) => renderNode(n, 0))}
-      {menu && <FolderCatalogMenu folderId={menu.id} name={menu.name} x={menu.x} y={menu.y}
+      {menu && canManage && <FolderCatalogMenu folders={folders} folderId={menu.id} name={menu.name} x={menu.x} y={menu.y}
         returnFocus={returnFocus} onClose={() => setMenu(null)}
         onRename={() => { const node = folders.find((f) => f.id === menu.id); setMenu(null); if (node) startRename(node); }}
-        onRemoved={() => { leaveFolder(menu.id); onRemoved?.(); }}
+        onRemoved={() => { leaveFolder(menu.id); if (!isReadOnly()) onRemoved?.(); }}
         onTrashed={(result) => { leaveFolder(menu.id); onTrashed?.(result); }} /> }
     </div>
   );

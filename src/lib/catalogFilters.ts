@@ -3,12 +3,15 @@ import { isFileInFolderOrDescendant } from './folderTree';
 import { tagMatches } from './autoTags';
 import { applyToolView, type RecentSnapshot, type ToolView } from './toolViews';
 import { modelMayFitBed, type Dimensions3 } from './buildPlateFit';
+import { fileKindOf, type FileKindFilter } from './fileKind';
 import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, SortKey, SortDirection } from '../types';
 
 export interface CatalogFilterCriteria {
   printStatus?: ModelFile['printStatus'] | null;
   usage?: LicenseUsage | null;
+  // Models only, slicer output only, or both (default): keeps G-code from flooding the model list.
+  fileKind?: FileKindFilter;
   // Build volume of the chosen printer; hides models that certainly do not fit.
   // Models without known size stay visible.
   fitBed?: Dimensions3 | null;
@@ -21,6 +24,8 @@ export interface CatalogFilterCriteria {
   language?: Language;
   // Tool view of the sidebar; determines selection AND order.
   toolView?: ToolView | null;
+  // Files whose bundle name matches the search; they pass the search like a name match.
+  bundleMatchIds?: ReadonlySet<string>;
   // Reference time for "Recently added" (tests pin it).
   now?: Date;
   // Frozen lastViewedAt state for the "recent" view (see
@@ -62,7 +67,8 @@ export function filterAndSortModels(
   const matched = base
     .filter(m => !criteria.printStatus || (m.printStatus === 'printed') === (criteria.printStatus === 'printed'))
     .filter(m => !criteria.usage || licenseUsage(m.license) === criteria.usage)
-    .filter(m => !criteria.fitBed || modelMayFitBed(m.dimensionsMm, criteria.fitBed))
+    .filter(m => !criteria.fileKind || criteria.fileKind === 'all' || fileKindOf(m) === criteria.fileKind)
+    .filter(m => !criteria.fitBed || modelMayFitBed(m.dimensionsMm, criteria.fitBed, m.plateDimensions, m.plateCount))
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))
     .filter((m) => {
@@ -72,7 +78,8 @@ export function filterAndSortModels(
         m.name.toLowerCase().includes(q) ||
         m.path.toLowerCase().includes(q) ||
         (m.creator?.toLowerCase().includes(q) ?? false) ||
-        m.tags.some((tag) => tagMatches(tag, q, language))
+        m.tags.some((tag) => tagMatches(tag, q, language)) ||
+        (criteria.bundleMatchIds?.has(m.id) ?? false)
       );
     });
   if (toolView) return matched;

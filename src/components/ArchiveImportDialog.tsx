@@ -1,7 +1,7 @@
 import { displayName } from '../lib/displayName';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useMemo, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '../lib/events';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import * as importExportApi from '../lib/api/importExport';
@@ -219,7 +219,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
             );
           })}
           {error && (
-            <div className="text-[length:var(--font-size-meta)] text-[var(--danger,#d33)]">
+            <div className="text-[length:var(--font-size-meta)] text-[var(--crit)]">
               <ErrorText error={{ ...error, message: displayName(error.message) }} />
             </div>
           )}

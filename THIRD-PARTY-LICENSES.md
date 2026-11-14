@@ -102,3 +102,20 @@ Die vollständigen Lizenztexte werden im Programmpaket mitgeliefert:
 
 `zip`, `tar`, `flate2`, `bzip2`, `lzma-rust2`, `ruzstd` und `sevenz-rust2` stehen
 unter MIT- bzw. Apache-2.0-Lizenzen.
+
+## drag (Rust-Crate, CrabNebula)
+
+Verwendet für das Herausziehen von Dateien aus dem Programmfenster in andere
+Programme (Prototyp, standardmäßig ausgeschaltet): Crate `drag` 2.1.1,
+veröffentlicht auf crates.io. Vendored mit Linux-Änderungen unter
+`src-tauri/vendor/drag` (URI-Kodierung, Datenbereitstellung bis Zugende, nur COPY).
+Windows-/macOS-Quellen unverändert; Herkunft und Rückweg siehe `VENDORING.md`.
+
+- **Lizenz:** MIT oder Apache-2.0 (nach Wahl), wie die Projektlizenz (MIT)
+  kompatibel.
+- **Neu dazugekommene Unterpakete** (alle MIT oder Apache-2.0, nur
+  `objc2-core-video` zusätzlich Zlib): `core-graphics` 0.24.0,
+  `objc2-core-video` 0.3.2, `windows` 0.52.0, `windows-core` 0.52.0 und
+  0.58.0, `windows-implement` 0.52.0 und 0.58.0, `windows-interface` 0.52.0 und
+  0.58.0, `windows-result` 0.2.0, `windows-strings` 0.1.0. Die Windows- und
+  macOS-Pakete werden nur für diese Systeme gebaut.

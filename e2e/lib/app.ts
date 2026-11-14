@@ -76,7 +76,7 @@ async function settingsTabAppears(name: string, timeout = 10000) {
   return el;
 }
 
-export async function openSettings(tab?: 'Allgemein' | 'Slicer' | 'Katalog' | 'Info') {
+export async function openSettings(tab?: 'Allgemein' | 'Katalog' | 'Slicer & Dienste' | 'Wartung' | 'Info') {
   // A click right after startup is sometimes swallowed while the app still settles (slow CI runners):
   // open again when the view did not appear, never click while it is already open (that would close it).
   const probe = tab ?? 'Allgemein';

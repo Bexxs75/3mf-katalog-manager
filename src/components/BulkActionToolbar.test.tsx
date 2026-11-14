@@ -453,7 +453,7 @@ describe('BulkActionToolbar groups and More menu', () => {
     fireEvent.click(trigger);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     const menu = screen.getByRole('menu', { name: 'Mehr Aktionen' });
-    expect(names(menu, 'menuitem')).toEqual(['Lizenz setzen', 'Nicht gedruckt', 'Mit Datum umbenennen …', 'Aus Sammlung entfernen', 'Aus Katalog entfernen']);
+    expect(names(menu, 'menuitem')).toEqual(['Lizenz setzen', 'Nicht gedruckt', 'Mit Datum umbenennen …', 'Druckdaten nachlesen', 'Aus Sammlung entfernen', 'Aus Katalog entfernen']);
   });
 
   it('lists "Aus Sammlung entfernen" only inside a collection', () => {

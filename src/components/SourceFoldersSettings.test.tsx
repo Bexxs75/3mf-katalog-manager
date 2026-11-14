@@ -1,3 +1,6 @@
+import { en } from '../i18n/en';
+import { es } from '../i18n/es';
+import { fr } from '../i18n/fr';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
@@ -5,6 +8,7 @@ import { ImportLockContext } from '../hooks/ImportLockContext';
 import { SourceFoldersSettings } from './SourceFoldersSettings';
 import * as api from '../lib/api/sourceFolders';
 import { pickFolderPath } from '../lib/api/importExport';
+import { de } from '../i18n/de';
 
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn().mockResolvedValue(undefined), warn: vi.fn().mockResolvedValue(undefined), info: vi.fn().mockResolvedValue(undefined), debug: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../lib/api/sourceFolders');
@@ -30,7 +34,15 @@ describe('SourceFoldersSettings', () => {
     expect(screen.getByText(/\/home\/a\/Weg/)).toHaveTextContent('nicht erreichbar');
     expect(screen.getByText(/\/home\/a\/Downloads/)).not.toHaveTextContent('nicht erreichbar');
     expect(screen.getByText('Abgelehnte Dateien: 12')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: /Beim Start der App prüfen/ })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: de.sfCheckOnStart })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('explains the start check and the re-offer of declined files at the controls', async () => {
+    setup();
+    const box = await screen.findByRole('switch', { name: de.sfCheckOnStart });
+    expect(box).toHaveAccessibleDescription(de.sfCheckOnStartHint);
+    expect(screen.getByRole('button', { name: de.sfResetRejected })).toHaveAccessibleDescription(`Abgelehnte Dateien: 12 ${de.sfResetRejectedNote}`);
+    expect(screen.getByText(de.sfResetRejectedNote)).toBeVisible();
   });
 
   it('adds the folder chosen in the dialog and reloads the list', async () => {
@@ -74,42 +86,84 @@ describe('SourceFoldersSettings', () => {
   it('saves the start check setting in both directions', async () => {
     vi.mocked(api.setSourceCheckOnStart).mockResolvedValue();
     setup();
-    const box = await screen.findByRole('checkbox', { name: /Beim Start der App prüfen/ });
+    const box = await screen.findByRole('switch', { name: de.sfCheckOnStart });
     fireEvent.click(box);
-    await waitFor(() => expect(box).toBeChecked());
+    await waitFor(() => expect(box).toHaveAttribute('aria-checked', 'true'));
     expect(api.setSourceCheckOnStart).toHaveBeenLastCalledWith(true);
     fireEvent.click(box);
-    await waitFor(() => expect(box).not.toBeChecked());
+    await waitFor(() => expect(box).toHaveAttribute('aria-checked', 'false'));
     expect(api.setSourceCheckOnStart).toHaveBeenLastCalledWith(false);
   });
 
   it('keeps the setting unchanged and says why when saving fails', async () => {
     vi.mocked(api.setSourceCheckOnStart).mockRejectedValue({ message: 'Datenbank gesperrt', expected: true });
     setup();
-    const box = await screen.findByRole('checkbox', { name: /Beim Start der App prüfen/ });
+    const box = await screen.findByRole('switch', { name: de.sfCheckOnStart });
     fireEvent.click(box);
     expect(await screen.findByRole('alert')).toHaveTextContent('Datenbank gesperrt');
-    expect(box).not.toBeChecked();
+    expect(box).toHaveAttribute('aria-checked', 'false');
   });
 
   it('resets the declined list and disables the button at zero', async () => {
     vi.mocked(api.resetRejectedSourceFiles).mockResolvedValue(12);
     vi.mocked(api.listRejectedCount).mockResolvedValueOnce(12).mockResolvedValue(0);
     setup();
-    fireEvent.click(await screen.findByRole('button', { name: 'Liste zurücksetzen' }));
+    fireEvent.click(await screen.findByRole('button', { name: de.sfResetRejected }));
     await waitFor(() => expect(screen.getByText('Abgelehnte Dateien: 0')).toBeInTheDocument());
     expect(api.resetRejectedSourceFiles).toHaveBeenCalledOnce();
-    expect(screen.getByRole('button', { name: 'Liste zurücksetzen' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: de.sfResetRejected })).toBeDisabled();
   });
 
   it('locks add, remove and reset during an import and explains it', async () => {
     setup(true);
     await screen.findByText(/\/home\/a\/Downloads/);
-    for (const name of ['Ordner hinzufügen …', 'Liste zurücksetzen', 'Quellordner /home/a/Downloads entfernen']) {
+    for (const name of ['Ordner hinzufügen …', de.sfResetRejected, 'Quellordner /home/a/Downloads entfernen']) {
       const button = screen.getByRole('button', { name });
       expect(button).toBeDisabled();
       expect(button).toHaveAttribute('title', 'Während eines Imports gesperrt');
     }
     expect(screen.getByText(/Während eines Imports lässt sich die Liste/)).toBeInTheDocument();
   });
+});
+
+
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('keeps the full declined-file action operable in %s', async (language, texts) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  setup();
+  const reset = await screen.findByRole('button', { name: texts.sfResetRejected });
+  await waitFor(() => expect(reset).toBeEnabled());
+  expect(reset.parentElement).toHaveClass('flex-wrap', 'min-w-0');
+  expect(reset).not.toHaveClass('shrink-0');
+  vi.mocked(api.listRejectedCount).mockResolvedValue(0);
+  fireEvent.click(reset);
+  await waitFor(() => expect(api.resetRejectedSourceFiles).toHaveBeenCalledOnce());
+  await waitFor(() => expect(reset).toBeDisabled());
+  expect(document.getElementById('source-rejected-count')).toHaveTextContent(texts.sfRejected.replace('{count}', '0'));
+});
+
+it('keeps the rejected-file count together when the actions wrap', async () => {
+  setup();
+  await screen.findByText(/12/);
+  expect(document.getElementById('source-rejected-count')).toHaveClass('whitespace-nowrap', 'flex-auto');
+});
+
+it('keeps switch focus during and after a pending save', async () => {
+  let finish!: (value: void) => void;
+  vi.mocked(api.setSourceCheckOnStart).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  setup();
+  const toggle = await screen.findByRole('switch');
+  await waitFor(() => expect(toggle).toBeEnabled());
+  toggle.focus();
+  fireEvent.keyDown(toggle, { key: ' ' });
+  await waitFor(() => expect(toggle).toHaveAttribute('aria-busy', 'true'));
+  expect(toggle).toHaveAttribute('aria-disabled', 'true');
+  expect(toggle).toBeEnabled();
+  expect(document.activeElement).toBe(toggle);
+  fireEvent.click(toggle);
+  fireEvent.keyDown(toggle, { key: 'Enter' });
+  expect(api.setSourceCheckOnStart).toHaveBeenCalledTimes(1);
+  finish(undefined);
+  await waitFor(() => expect(toggle).not.toHaveAttribute('aria-busy'));
+  expect(toggle).toHaveAttribute('aria-checked', 'true');
+  expect(document.activeElement).toBe(toggle);
 });

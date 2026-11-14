@@ -82,7 +82,7 @@ export function useUpdater(): UpdaterView {
   const installBusyRef = useRef(false);
 
   const checkNow = useCallback(() => {
-    if (container) return;
+    if (import.meta.env.VITE_TARGET === 'web' || container) return;
     if (BUSY_PHASES.includes(phaseRef.current)) return;
     setDismissed(false);
     setPhase('checking');
@@ -109,7 +109,7 @@ export function useUpdater(): UpdaterView {
   }, [checkNow]);
 
   const startUpdate = useCallback(() => {
-    if (container) return;
+    if (import.meta.env.VITE_TARGET === 'web' || container) return;
     if (downloadBusyRef.current) return;
     downloadBusyRef.current = true;
     setError(null);
@@ -139,7 +139,7 @@ export function useUpdater(): UpdaterView {
   }, [container]);
 
   const install = useCallback(() => {
-    if (container) return;
+    if (import.meta.env.VITE_TARGET === 'web' || container) return;
     if (installBusyRef.current) return;
     installBusyRef.current = true;
     setError(null);
@@ -169,7 +169,7 @@ export function useUpdater(): UpdaterView {
   }, [failedStep, install, startUpdate]);
 
   const later = useCallback(() => {
-    if (container) return;
+    if (import.meta.env.VITE_TARGET === 'web' || container) return;
     api.discardAppUpdate().catch((e) => console.warn('[updater] could not discard the pending update:', e));
     setPhase('idle');
     setDismissed(true);

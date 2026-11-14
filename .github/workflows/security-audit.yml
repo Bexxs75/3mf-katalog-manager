@@ -11,16 +11,20 @@ on:
     paths:
       - "package.json"
       - "package-lock.json"
+      - "Cargo.toml"
+      - "crates/katalog-core/Cargo.toml"
       - "src-tauri/Cargo.toml"
-      - "src-tauri/Cargo.lock"
+      - "Cargo.lock"
       - "src-tauri/deny.toml"
       - ".github/workflows/**"
   pull_request:
     paths:
       - "package.json"
       - "package-lock.json"
+      - "Cargo.toml"
+      - "crates/katalog-core/Cargo.toml"
       - "src-tauri/Cargo.toml"
-      - "src-tauri/Cargo.lock"
+      - "Cargo.lock"
       - "src-tauri/deny.toml"
       - ".github/workflows/**"
 

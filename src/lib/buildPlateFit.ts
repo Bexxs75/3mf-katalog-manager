@@ -1,4 +1,4 @@
-import type { PrinterDetails } from '../types';
+import type { PlateDimensions, PrinterDetails } from '../types';
 
 /** Width (X), depth (Y), height (Z) in millimetres. */
 export type Dimensions3 = [number, number, number];
@@ -8,7 +8,7 @@ export type PlateFitAxis = 'width' | 'depth' | 'height';
 export type PlateFit =
   | { status: 'unknown' }
   | { status: 'fits' }
-  /** `excess` lists every axis that is too large, with the model's extent on it (rounded up). */
+  /** `excess` lists every axis that is too large, with the model's unrounded extent on it. */
   | { status: 'tooLarge'; excess: { axis: PlateFitAxis; modelMm: number }[] };
 
 const AXES: PlateFitAxis[] = ['width', 'depth', 'height'];
@@ -60,8 +60,7 @@ export function checkPlateFit(dimensionsMm: readonly number[] | null | undefined
   const chosen = best!;
   return {
     status: 'tooLarge',
-    // Rounded up so the shown number is visibly above the bed size it is compared with.
-    excess: chosen.excess.map(axis => ({ axis, modelMm: Math.ceil(chosen.model[AXES.indexOf(axis)] - EPSILON) })),
+    excess: chosen.excess.map(axis => ({ axis, modelMm: chosen.model[AXES.indexOf(axis)] })),
   };
 }
 
@@ -69,20 +68,36 @@ export interface PrinterPlateFit<P> {
   printer: P;
   bed: Dimensions3;
   fit: PlateFit;
+  plates: (PlateDimensions & { fit: PlateFit })[];
 }
 
 /** One entry per printer that has a build volume; printers without one are left out. */
 export function plateFitForPrinters<P extends PrinterDetails>(
   dimensionsMm: readonly number[] | null | undefined,
   printers: readonly P[],
+  plateDimensions?: readonly PlateDimensions[] | null,
+  plateCount?: number | null,
 ): PrinterPlateFit<P>[] {
   return printers.flatMap(printer => {
     const bed = printerBuildVolume(printer);
-    return bed ? [{ printer, bed, fit: checkPlateFit(dimensionsMm, bed) }] : [];
+    return bed ? [{ printer, bed, ...checkPlatesFit(dimensionsMm, bed, plateDimensions, plateCount) }] : [];
   });
 }
 
 /** Catalog filter predicate: models without known size stay visible. */
-export function modelMayFitBed(dimensionsMm: readonly number[] | null | undefined, bed: Dimensions3): boolean {
-  return checkPlateFit(dimensionsMm, bed).status !== 'tooLarge';
+export function modelMayFitBed(dimensionsMm: readonly number[] | null | undefined, bed: Dimensions3, plateDimensions?: readonly PlateDimensions[] | null, plateCount?: number | null): boolean {
+  return checkPlatesFit(dimensionsMm, bed, plateDimensions, plateCount).fit.status !== 'tooLarge';
+}
+
+/** Only complete assignments are stored. Legacy multi-plate workspace extents cannot disprove fit. */
+export function checkPlatesFit(dimensionsMm: readonly number[] | null | undefined, bed: Dimensions3,
+  plateDimensions?: readonly PlateDimensions[] | null, plateCount?: number | null,
+): { fit: PlateFit; plates: (PlateDimensions & { fit: PlateFit })[] } {
+  if (!plateDimensions?.length) {
+    const fit = checkPlateFit(dimensionsMm, bed);
+    return { fit: (plateCount ?? 0) > 1 && fit.status === 'tooLarge' ? { status: 'unknown' } : fit, plates: [] };
+  }
+  const plates = plateDimensions.map(plate => ({ ...plate, fit: checkPlateFit(plate.dimensionsMm, bed) }));
+  const failed = plates.find(plate => plate.fit.status === 'tooLarge');
+  return { fit: failed?.fit ?? (plates.some(plate => plate.fit.status === 'unknown') ? { status: 'unknown' } : { status: 'fits' }), plates };
 }

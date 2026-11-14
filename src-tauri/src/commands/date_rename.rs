@@ -169,9 +169,10 @@ fn preview_with_conn(
     sensitive: &[PathBuf],
 ) -> CmdResult<Vec<DateRenamePreview>> {
     if file_ids.len() > MAX_ITEMS {
-        return Err(CmdError::expected(format!(
-            "Zu viele Dateien auf einmal (höchstens {MAX_ITEMS})"
-        )));
+        return Err(CmdError::coded_with(
+            ErrorCode::MoveTooManyFiles,
+            [file_ids.len().to_string(), MAX_ITEMS.to_string()],
+        ));
     }
     let base = import_rename::catalog_base(conn)?;
     let mut claimed = HashSet::new();
@@ -260,9 +261,10 @@ fn apply_with_conn(
     sensitive: &[PathBuf],
 ) -> CmdResult<Vec<DateRenameResult>> {
     if items.len() > MAX_ITEMS {
-        return Err(CmdError::expected(format!(
-            "Zu viele Dateien auf einmal (höchstens {MAX_ITEMS})"
-        )));
+        return Err(CmdError::coded_with(
+            ErrorCode::MoveTooManyFiles,
+            [items.len().to_string(), MAX_ITEMS.to_string()],
+        ));
     }
     let base = import_rename::catalog_base(conn)?;
     Ok(items

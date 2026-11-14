@@ -4,9 +4,13 @@ import { beginPreviewAttempt } from '../lib/snapshotQueue';
 import { isWebGLUnavailable, markWebGLUnavailable } from '../lib/webglAvailability';
 import { Icon } from './Icon';
 import { PlateSelector } from './PlateSelector';
+import { StepPartsPanel } from './StepPartsPanel';
+import { StlExportDialog } from './StlExportDialog';
+import { stepPartsOf, type StepPart } from '../lib/stepParts';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
+import { isStepFilePath } from '../lib/stepFile';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { decodeModelGeometry } from '../lib/parseModelGeometry';
@@ -18,6 +22,8 @@ import { createViewerFloor, gridColor } from '../lib/viewerFloor';
 interface Props extends ViewerActions {
   surfaceClassName?: string;
   fileId: string;
+  /** A file opened from outside the catalog: the geometry comes from this source id and `fileId` is only the key. */
+  externalSourceId?: string;
   needsSnapshot: boolean;
   onSnapshotCaptured: (base64: string) => void;
   onError?: () => void;
@@ -67,7 +73,7 @@ function disposeObject(object: THREE.Object3D) {
 // already transformed into world space.
 function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial, colors: THREE.MeshStandardMaterial[] = []): THREE.Group {
   const group = new THREE.Group();
-  for (const mesh of meshes) {
+  for (const [partIndex, mesh] of meshes.entries()) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(mesh.position, 3));
     if (mesh.normal) {
@@ -81,6 +87,7 @@ function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial, 
     const child = new THREE.Mesh(geometry, fileMaterials);
     child.userData.fileMaterials = fileMaterials;
     child.userData.plate = mesh.plate;
+    child.userData.part = partIndex;
     group.add(child);
   }
   return group;
@@ -145,7 +152,7 @@ function fitViewer(ctx: ViewerContext) {
   ctx.floor.visible = true;
 }
 
-export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot, onSnapshotCaptured, onError, onContextLost, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
+export function ModelViewer({ surfaceClassName = 'h-full', fileId, externalSourceId, needsSnapshot, onSnapshotCaptured, onError, onContextLost, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
@@ -160,6 +167,14 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
   const [paintSimplified, setPaintSimplified] = useState(false);
   const [plates, setPlates] = useState<GeometryPlate[]>([]);
   const [selectedPlate, setSelectedPlate] = useState<number | null>(null);
+  const [parts, setParts] = useState<StepPart[]>([]);
+  const [hiddenParts, setHiddenParts] = useState<ReadonlySet<number>>(new Set());
+  const [selectedPart, setSelectedPart] = useState<number | null>(null);
+  const [highlightPart, setHighlightPart] = useState<number | null>(null);
+  const [partsExport, setPartsExport] = useState<{ indices: number[]; initial: 'parts' | 'eachPart' } | null>(null);
+  const highlightMaterial = useRef<THREE.MeshStandardMaterial | null>(null);
+  const hiddenPartsRef = useRef(hiddenParts);
+  hiddenPartsRef.current = hiddenParts;
   const [legend, setLegend] = useState<{ colorIndex: number; objectName?: string; plate?: number | null }[]>([]);
   const [error, setError] = useState<AppError | null>(null);
   const [noWebGL, setNoWebGL] = useState(false);
@@ -324,6 +339,11 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     setLegend([]);
     setPlates([]);
     setSelectedPlate(null);
+    setParts([]);
+    setHiddenParts(new Set());
+    setSelectedPart(null);
+    setHighlightPart(null);
+    setPartsExport(null);
     setLegendOpen(false);
     ctx.floor.visible = false;
     ctx.invalidate();
@@ -336,12 +356,23 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     ctx.colorMaterials.forEach(m => m.dispose());
     ctx.colorMaterials = [];
 
-    const finishAttempt = beginPreviewAttempt(fileId);
-    invoke<ArrayBuffer>('get_model_geometry', { fileId })
+    // The web server never renders STEP (its `has_step_preview` is constant false), so the
+    // request could only end in a 422 and a console error; show the explanation directly.
+    if (import.meta.env.VITE_TARGET === 'web' && model && isStepFilePath(model.path)) {
+      setStatus('error');
+      setError({ message: 'unsupported', code: 'unsupported', unexpected: false });
+      reportError();
+      return () => { cancelled = true; clearTimeout(errorTimer); ctx.renderer.domElement.removeEventListener('webglcontextlost', handleContextLost); };
+    }
+    // The attempt marker belongs to cataloged files (it tells the snapshot queue which previews crashed).
+    const finishAttempt = externalSourceId ? () => {} : beginPreviewAttempt(fileId);
+    (externalSourceId ? invoke<ArrayBuffer>('get_external_geometry', { sourceId: externalSourceId }) : invoke<ArrayBuffer>('get_model_geometry', { fileId }))
       .then((buffer) => {
         if (cancelled || contextLost) { finishAttempt(); return; }
         const { meshes, palette, plates, colorsUnresolved, paintSimplified } = decodeModelGeometry(buffer);
         setPlates(plates);
+        // Only a cataloged STEP file with several bodies gets the parts list (stage A of the STEP parts).
+        if (!externalSourceId && model && isStepFilePath(model.path) && meshes.length > 1) setParts(stepPartsOf(meshes));
         setColorsUnresolved(colorsUnresolved);
         setPaintSimplified(paintSimplified);
         ctx.colorMaterials = palette.map(color => new THREE.MeshStandardMaterial({
@@ -418,7 +449,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
       ctx.renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       clearTimeout(errorTimer);
     };
-  }, [fileId]);
+  }, [fileId, externalSourceId]);
 
   useEffect(() => {
     const ctx = ctxRef.current;
@@ -445,10 +476,42 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     const ctx = ctxRef.current;
     if (!ctx?.currentObject || status !== 'ready') return;
     ctx.currentObject.traverse(child => {
-      if (child instanceof THREE.Mesh) child.visible = selectedPlate === null || child.userData.plate === selectedPlate;
+      if (child instanceof THREE.Mesh) child.visible = (selectedPlate === null || child.userData.plate === selectedPlate) && !hiddenPartsRef.current.has(child.userData.part);
     });
     fitViewer(ctx);
   }, [selectedPlate, status]);
+
+  // Hiding a part keeps the camera where it is; only the picture changes.
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    if (!ctx?.currentObject || status !== 'ready') return;
+    ctx.currentObject.traverse(child => {
+      if (child instanceof THREE.Mesh) child.visible = (selectedPlate === null || child.userData.plate === selectedPlate) && !hiddenParts.has(child.userData.part);
+    });
+    ctx.invalidate();
+  }, [hiddenParts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Hover or focus in the parts list tints that part; every other mesh keeps its own material.
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    if (!ctx?.currentObject || status !== 'ready') return;
+    if (highlightPart !== null && !highlightMaterial.current) {
+      highlightMaterial.current = new THREE.MeshStandardMaterial({ color: '#e8590c', roughness: 0.55, metalness: 0.05, flatShading: true });
+    }
+    ctx.currentObject.traverse(child => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.material = child.userData.part === highlightPart && highlightMaterial.current ? highlightMaterial.current
+        : fileColors ? child.userData.fileMaterials : ctx.material;
+    });
+    ctx.invalidate();
+  }, [highlightPart, status, fileColors]);
+  useEffect(() => () => { highlightMaterial.current?.dispose(); highlightMaterial.current = null; }, []);
+
+  const savePartsAs = (what: 'selected' | 'visible' | 'each') => {
+    const visible = parts.map(part => part.index).filter(index => !hiddenParts.has(index));
+    if (what === 'each') setPartsExport({ indices: visible, initial: 'eachPart' });
+    else setPartsExport({ indices: what === 'selected' ? (selectedPart === null ? [] : [selectedPart]) : visible, initial: 'parts' });
+  };
 
   // Slicer filaments are named by slot so equal materials stay apart in text.
   const colorName = (color: GeometryColor) => color.filament === undefined ? color.name
@@ -519,6 +582,11 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
         </>}
         {colorsUnresolved && !legendVisible && <div className={`viewer-legend absolute left-3 ${compact ? 'bottom-20' : 'bottom-14'}`}>{unresolvedNote}</div>}
       </>}
+      {showRotationControls && status === 'ready' && parts.length > 1 && <StepPartsPanel parts={parts} hidden={hiddenParts} selected={selectedPart}
+        onToggle={index => setHiddenParts(current => { const next = new Set(current); if (!next.delete(index)) next.add(index); return next; })}
+        onSelect={index => setSelectedPart(current => current === index ? null : index)}
+        onShowAll={() => setHiddenParts(new Set())} onHighlight={setHighlightPart}
+        onSave={savePartsAs} />}
       {showRotationControls && status === 'ready' && (
         <div ref={controlsBarRef} className={`absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--panel-2)] border border-[var(--line)] rounded-full p-1 shadow-[var(--shadow)] ${compact ? 'viewer-controls-compact' : ''}`}>
           <button className="viewer-pill" onClick={fit}>{t('viewerFit')}</button>
@@ -565,6 +633,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
         </div>
       )}
     </div>
+    {partsExport && model && <StlExportDialog key={`parts-${fileId}`} model={{ id: fileId, name: model.name, fileType: 'step' }} parts={partsExport} onClose={() => setPartsExport(null)} />}
     {status === 'ready' && <PlateSelector plates={plates} selected={selectedPlate} onSelect={setSelectedPlate} />}
     </div>
   );

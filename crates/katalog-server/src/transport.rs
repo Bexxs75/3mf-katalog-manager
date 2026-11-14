@@ -1,0 +1,608 @@
+//! HTTP/1 admission and deadlines, shared by TCP and socket-free duplex tests.
+use axum::{extract::ConnectInfo, Router};
+use hyper::{server::conn::http1, service::service_fn};
+use hyper_util::rt::{TokioIo, TokioTimer};
+use std::{
+    collections::HashMap,
+    future::Future,
+    net::IpAddr,
+    pin::Pin,
+    sync::{Arc, Mutex},
+    task::{Context, Poll},
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, ReadBuf},
+    sync::{watch, Semaphore},
+    task::JoinSet,
+    time::Instant,
+};
+use tower::ServiceExt;
+
+/// Simultaneous connections allowed per client address (IPv6: per /64).
+pub const MAX_CONNECTIONS_PER_PEER: usize = 32;
+
+/// Counts open connections per client network so one host cannot use up all
+/// global slots. IPv6 clients are grouped by /64 because a single subscriber
+/// usually controls a whole /64.
+#[derive(Clone)]
+pub struct PeerLimiter {
+    max: Option<usize>,
+    open: Arc<Mutex<HashMap<IpAddr, usize>>>,
+}
+pub struct PeerGuard {
+    key: Option<IpAddr>,
+    open: Arc<Mutex<HashMap<IpAddr, usize>>>,
+}
+impl Drop for PeerGuard {
+    fn drop(&mut self) {
+        if let Some(key) = self.key {
+            let mut open = self.open.lock().unwrap();
+            if let Some(count) = open.get_mut(&key) {
+                *count -= 1;
+                if *count == 0 {
+                    open.remove(&key);
+                }
+            }
+        }
+    }
+}
+impl PeerLimiter {
+    /// `max = None` disables the limit (behind a trusted proxy every client
+    /// shares the proxy's address).
+    pub fn new(max: Option<usize>) -> Self {
+        Self { max, open: Arc::default() }
+    }
+    fn key(address: IpAddr) -> IpAddr {
+        match address {
+            IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+                Some(v4) => IpAddr::V4(v4),
+                None => IpAddr::V6((u128::from(v6) & (!0u128 << 64)).into()),
+            },
+            v4 => v4,
+        }
+    }
+    fn acquire(&self, address: IpAddr) -> Option<PeerGuard> {
+        let Some(max) = self.max else {
+            return Some(PeerGuard { key: None, open: self.open.clone() });
+        };
+        let key = Self::key(address);
+        let mut open = self.open.lock().unwrap();
+        let count = open.entry(key).or_insert(0);
+        if *count >= max {
+            return None;
+        }
+        *count += 1;
+        Some(PeerGuard { key: Some(key), open: self.open.clone() })
+    }
+}
+
+pub async fn serve(
+    listener: tokio::net::TcpListener,
+    app: Router,
+    per_peer_limit: Option<usize>,
+    shutdown: impl Future<Output = ()>,
+) -> std::io::Result<()> {
+    let slots = Arc::new(Semaphore::new(256));
+    let peers = PeerLimiter::new(per_peer_limit);
+    let (stop, stopped) = watch::channel(false);
+    let mut tasks = JoinSet::new();
+    tokio::pin!(shutdown);
+    let result = loop {
+        tokio::select! {
+            biased;
+            _ = &mut shutdown => break Ok(()),
+            Some(_) = tasks.join_next(), if !tasks.is_empty() => {},
+            accepted = listener.accept() => match accepted {
+                Ok((stream, address)) => {
+                    admit(&mut tasks, &slots, &peers, address.ip(), stream, app.clone().layer(axum::Extension(ConnectInfo(address))), stopped.clone());
+                }
+                Err(e) => break Err(e),
+            }
+        }
+    };
+    let _ = stop.send(true);
+    while tasks.join_next().await.is_some() {}
+    result
+}
+
+fn admit<I>(
+    tasks: &mut JoinSet<()>,
+    slots: &Arc<Semaphore>,
+    peers: &PeerLimiter,
+    peer: IpAddr,
+    io: I,
+    app: Router,
+    stop: watch::Receiver<bool>,
+) -> bool
+where
+    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let Some(peer_guard) = peers.acquire(peer) else {
+        return false;
+    };
+    let Ok(permit) = slots.clone().try_acquire_owned() else {
+        return false;
+    };
+    tasks.spawn(async move {
+        let _permit = permit;
+        let _peer_guard = peer_guard;
+        connection(io, app, stop).await;
+    });
+    true
+}
+
+// Response headers finish the service future before the body is sent. Keep
+// streaming writes visible to the idle timeout, including slow large downloads.
+// Require 64 KiB per idle window (~1 KiB/s) so trickle reads cannot
+// retain a connection/download slot indefinitely.
+const MIN_WRITE_PROGRESS: usize = 64 * 1024;
+
+struct ActiveIo<I> {
+    io: I,
+    activity: Arc<Mutex<(bool, Instant, usize, usize)>>,
+}
+impl<I: AsyncRead + Unpin> AsyncRead for ActiveIo<I> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.io).poll_read(cx, buf)
+    }
+}
+impl<I: AsyncWrite + Unpin> AsyncWrite for ActiveIo<I> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let result = Pin::new(&mut self.io).poll_write(cx, buf);
+        if let Poll::Ready(Ok(n)) = result {
+            let mut activity = self.activity.lock().unwrap();
+            activity.2 = activity.2.saturating_add(n);
+            if activity.2 >= activity.3 {
+                activity.1 = Instant::now();
+                activity.2 = 0;
+            }
+        }
+        result
+    }
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> Poll<std::io::Result<usize>> {
+        let result = Pin::new(&mut self.io).poll_write_vectored(cx, bufs);
+        if let Poll::Ready(Ok(n)) = result {
+            let mut activity = self.activity.lock().unwrap();
+            activity.2 = activity.2.saturating_add(n);
+            if activity.2 >= activity.3 {
+                activity.1 = Instant::now();
+                activity.2 = 0;
+            }
+        }
+        result
+    }
+    fn is_write_vectored(&self) -> bool {
+        self.io.is_write_vectored()
+    }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.io).poll_flush(cx)
+    }
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.io).poll_shutdown(cx)
+    }
+}
+
+async fn connection<I>(io: I, app: Router, mut stop: watch::Receiver<bool>)
+where
+    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let activity = Arc::new(Mutex::new((false, Instant::now(), 0, MIN_WRITE_PROGRESS)));
+    let state = activity.clone();
+    let service = service_fn(move |request| {
+        let app = app.clone();
+        let state = state.clone();
+        async move {
+            state.lock().unwrap().0 = true;
+            let response = app.oneshot(request).await;
+            // EventSource sends tiny pings. Renew only on actual socket writes,
+            // and reset the normal download threshold for every next response.
+            let event_stream = response.as_ref().ok().and_then(|response| response.headers()
+                .get(axum::http::header::CONTENT_TYPE)).and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("text/event-stream"));
+            *state.lock().unwrap() = (false, Instant::now(), 0, if event_stream { 1 } else { MIN_WRITE_PROGRESS });
+            response
+        }
+    });
+    let mut builder = http1::Builder::new();
+    builder
+        .timer(TokioTimer::new())
+        .keep_alive(true)
+        .header_read_timeout(Duration::from_secs(5));
+    let conn = builder.serve_connection(
+        TokioIo::new(ActiveIo {
+            io,
+            activity: activity.clone(),
+        }),
+        service,
+    );
+    tokio::pin!(conn);
+    let idle = async {
+        loop {
+            let (active, last, _, _) = *activity.lock().unwrap();
+            let deadline = if active {
+                Instant::now() + Duration::from_secs(60)
+            } else {
+                last + Duration::from_secs(60)
+            };
+            tokio::time::sleep_until(deadline).await;
+            let (active, last, _, _) = *activity.lock().unwrap();
+            if !active && last.elapsed() >= Duration::from_secs(60) {
+                break;
+            }
+        }
+    };
+    tokio::select! {
+        _ = &mut conn => {},
+        _ = idle => {},
+        _ = async { if !*stop.borrow() { let _ = stop.changed().await; } } => {
+            conn.as_mut().graceful_shutdown();
+            let _ = tokio::time::timeout(Duration::from_secs(60), &mut conn).await;
+        }
+    }
+}
+
+/// SIGINT and (on Unix) SIGTERM both stop admission and drain active requests.
+pub async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut term) => {
+                tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = term.recv() => {} }
+            }
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    fn app() -> Router {
+        Router::new().route("/", axum::routing::get(|| async { "ok" }))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn progressing_response_is_not_cut_off_after_sixty_seconds() {
+        let app = Router::new().route(
+            "/",
+            axum::routing::get(|| async { vec![42u8; 1024 * 1024] }),
+        );
+        let (mut client, server) = tokio::io::duplex(64 * 1024);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: local\r\n\r\n")
+            .await
+            .unwrap();
+        let mut buf = [0; 64 * 1024];
+        client.read_exact(&mut buf).await.unwrap();
+        for _ in 0..10 {
+            tokio::time::advance(Duration::from_secs(50)).await;
+            client.read_exact(&mut buf).await.unwrap();
+            tokio::task::yield_now().await;
+            assert!(
+                !task.is_finished(),
+                "active streaming response was timed out"
+            );
+        }
+        drop(client);
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn trickling_response_is_closed_at_idle_deadline() {
+        let app = Router::new().route(
+            "/",
+            axum::routing::get(|| async { vec![42u8; 1024 * 1024] }),
+        );
+        let (mut client, server) = tokio::io::duplex(64);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: local\r\n\r\n")
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(55)).await;
+        client.read_exact(&mut [0; 8]).await.unwrap();
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        tokio::time::advance(Duration::from_secs(5)).await;
+        tokio::task::yield_now().await;
+        assert!(
+            task.is_finished(),
+            "trickling writer renewed the idle window"
+        );
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn slow_headers_are_disconnected_after_five_seconds() {
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app(), rx));
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: local")
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(4)).await;
+        assert!(!task.is_finished());
+        client.write_all(b"h").await.unwrap();
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert!(task.is_finished());
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).await.unwrap();
+        assert!(!String::from_utf8_lossy(&response).contains("200 OK"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn connection_257_is_closed_and_capacity_returns_on_disconnect() {
+        let slots = Arc::new(Semaphore::new(256));
+        let mut tasks = JoinSet::new();
+        let (_stop, rx) = watch::channel(false);
+        let peers = PeerLimiter::new(Some(MAX_CONNECTIONS_PER_PEER));
+        let mut clients = Vec::new();
+        for i in 0..256u32 {
+            let (client, server) = tokio::io::duplex(4096);
+            let ip = IpAddr::from([10, 0, (i / 32) as u8, 1]);
+            assert!(admit(&mut tasks, &slots, &peers, ip, server, app(), rx.clone()));
+            clients.push(client);
+        }
+        let (mut client, server) = tokio::io::duplex(4096);
+        assert!(!admit(&mut tasks, &slots, &peers, IpAddr::from([10, 1, 0, 1]), server, app(), rx.clone()));
+        assert_eq!(client.read(&mut [0; 1]).await.unwrap(), 0);
+        drop(clients);
+        while tasks.join_next().await.is_some() {}
+        let (_client, server) = tokio::io::duplex(4096);
+        assert!(admit(&mut tasks, &slots, &peers, IpAddr::from([10, 1, 0, 1]), server, app(), rx));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn per_peer_limit_applies_per_address_and_ipv6_prefix() {
+        let slots = Arc::new(Semaphore::new(256));
+        let mut tasks = JoinSet::new();
+        let (_stop, rx) = watch::channel(false);
+        let peers = PeerLimiter::new(Some(MAX_CONNECTIONS_PER_PEER));
+        let a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        let same_64: IpAddr = "2001:db8:1:2:ffff::9".parse().unwrap();
+        let other_64: IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        let mut clients = Vec::new();
+        for _ in 0..MAX_CONNECTIONS_PER_PEER {
+            let (client, server) = tokio::io::duplex(4096);
+            assert!(admit(&mut tasks, &slots, &peers, a, server, app(), rx.clone()));
+            clients.push(client);
+        }
+        let (_c, server) = tokio::io::duplex(4096);
+        assert!(!admit(&mut tasks, &slots, &peers, same_64, server, app(), rx.clone()));
+        let (_c, server) = tokio::io::duplex(4096);
+        assert!(admit(&mut tasks, &slots, &peers, other_64, server, app(), rx.clone()));
+        drop(clients);
+        while tasks.join_next().await.is_some() {}
+        let (_c, server) = tokio::io::duplex(4096);
+        assert!(admit(&mut tasks, &slots, &peers, same_64, server, app(), rx.clone()));
+        // Without a per-peer limit (trusted proxy) only the global limit remains.
+        let unlimited = PeerLimiter::new(None);
+        for _ in 0..(MAX_CONNECTIONS_PER_PEER + 1) {
+            let (c, server) = tokio::io::duplex(4096);
+            assert!(admit(&mut tasks, &slots, &unlimited, a, server, app(), rx.clone()));
+            std::mem::forget(c);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn keep_alive_idle_connection_closes_within_sixty_seconds() {
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app(), rx));
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
+        let mut buffer = [0; 4096];
+        let n = client.read(&mut buffer).await.unwrap();
+        assert!(String::from_utf8_lossy(&buffer[..n]).contains("200 OK"));
+        tokio::time::advance(Duration::from_secs(4)).await;
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        tokio::time::advance(Duration::from_secs(56)).await;
+        tokio::task::yield_now().await;
+        assert!(task.is_finished());
+    }
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test(start_paused = true)]
+    async fn active_processing_survives_idle_deadline_and_shutdown_drains_response() {
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (stop, rx) = watch::channel(false);
+        let started = Arc::new(tokio::sync::Notify::new());
+        let signal = started.clone();
+        let app = Router::new().route(
+            "/",
+            axum::routing::get(move || {
+                let signal = signal.clone();
+                async move {
+                    signal.notify_one();
+                    tokio::time::sleep(Duration::from_secs(100)).await;
+                    "completed"
+                }
+            }),
+        );
+        let task = tokio::spawn(connection(server, app, rx));
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
+        started.notified().await;
+        tokio::time::advance(Duration::from_secs(70)).await;
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        stop.send(true).unwrap();
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).await.unwrap();
+        task.await.unwrap();
+        assert!(String::from_utf8_lossy(&response).ends_with("completed"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_closes_idle_connections() {
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, Router::new(), rx));
+        tokio::task::yield_now().await;
+        stop.send(true).unwrap();
+        task.await.unwrap();
+        assert_eq!(client.read(&mut [0; 1]).await.unwrap(), 0);
+    }
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::*;
+    use tokio::io::AsyncWriteExt;
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_response_writer_is_closed_at_idle_deadline() {
+        let (mut client, server) = tokio::io::duplex(64);
+        let (_stop, rx) = watch::channel(false);
+        let app = Router::new().route("/", axum::routing::get(|| async { "x".repeat(1_000_000) }));
+        let task = tokio::spawn(connection(server, app, rx));
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: local\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(59)).await;
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::time::timeout(Duration::from_millis(1), task)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod sse_output_tests {
+    use super::*;
+    use axum::{body::{Body, Bytes}, http::{header, Response}};
+    use tokio::{io::{AsyncReadExt, AsyncWriteExt}, sync::mpsc};
+
+    struct Events(mpsc::Receiver<Bytes>);
+    impl hyper::body::Body for Events {
+        type Data = Bytes;
+        type Error = std::convert::Infallible;
+        fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<hyper::body::Frame<Bytes>, Self::Error>>> {
+            self.0.poll_recv(cx).map(|value| value.map(|bytes| Ok(hyper::body::Frame::data(bytes))))
+        }
+    }
+    fn app() -> (Router, mpsc::Sender<Bytes>) {
+        let (tx, rx) = mpsc::channel(4);
+        let rx = Arc::new(Mutex::new(Some(rx)));
+        let app = Router::new()
+            .route("/events", axum::routing::get(move || {
+                let rx = rx.clone();
+                async move {
+                    Response::builder().header(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")
+                        .body(Body::new(Events(rx.lock().unwrap().take().unwrap()))).unwrap()
+                }
+            }))
+            .route("/download", axum::routing::get(|| async { vec![42u8; 1024 * 1024] }));
+        (app, tx)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn periodic_sse_writes_survive_multiple_idle_windows() {
+        let (app, tx) = app();
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client.write_all(b"GET /events HTTP/1.1\r\nHost: local\r\n\r\n").await.unwrap();
+        let mut bytes = [0u8; 4096];
+        assert!(client.read(&mut bytes).await.unwrap() > 0);
+        for _ in 0..8 {
+            tokio::time::advance(Duration::from_secs(15)).await;
+            tx.send(Bytes::from_static(b"event: ping\ndata: {}\n\n")).await.unwrap();
+            let n = client.read(&mut bytes).await.unwrap();
+            assert!(n > 0, "SSE was closed despite periodic ping writes");
+            tokio::task::yield_now().await;
+            assert!(!task.is_finished());
+        }
+        drop(client);
+        drop(tx);
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_sse_writes_still_expire() {
+        let (app, tx) = app();
+        let (mut client, server) = tokio::io::duplex(64);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client.write_all(b"GET /events HTTP/1.1\r\nHost: local\r\n\r\n").await.unwrap();
+        tokio::task::yield_now().await;
+        tx.send(Bytes::from_static(b"event: ping\ndata: {}\n\n")).await.unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(59)).await;
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::time::timeout(Duration::from_millis(1), task).await.unwrap().unwrap();
+    }
+    #[tokio::test(start_paused = true)]
+    async fn download_after_sse_restores_trickle_protection() {
+        let (app, tx) = app();
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client.write_all(b"GET /events HTTP/1.1\r\nHost: local\r\n\r\n").await.unwrap();
+        let mut bytes = [0u8; 4096];
+        let first = client.read(&mut bytes).await.unwrap();
+        let mut response = bytes[..first].to_vec();
+        drop(tx);
+        while !response.ends_with(b"0\r\n\r\n") {
+            let n = client.read(&mut bytes).await.unwrap();
+            assert!(n > 0);
+            response.extend_from_slice(&bytes[..n]);
+        }
+        client.write_all(b"GET /download HTTP/1.1\r\nHost: local\r\n\r\n").await.unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(55)).await;
+        client.read_exact(&mut [0u8; 8]).await.unwrap();
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        tokio::time::advance(Duration::from_secs(5)).await;
+        tokio::task::yield_now().await;
+        assert!(task.is_finished(), "download retained the SSE write threshold");
+        task.await.unwrap();
+    }
+
+}

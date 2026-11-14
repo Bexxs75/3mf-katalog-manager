@@ -4,7 +4,7 @@
 //! happen. The folder import deliberately extracts nothing.
 
 use super::*;
-use super::files::{is_supported_extension, SkippedFileDto};
+use super::files::{is_model_extension, SkippedFileDto};
 #[cfg(test)]
 use super::files::import_many_with_conn_atomic;
 
@@ -31,7 +31,7 @@ impl From<InspectStatus> for ArchiveStatusDto {
             InspectStatus::TooLarge => ArchiveStatusDto::TooLarge,
             InspectStatus::Encrypted => ArchiveStatusDto::Encrypted,
             InspectStatus::Unreadable => ArchiveStatusDto::Unreadable,
-            InspectStatus::Unsupported => ArchiveStatusDto::Unsupported,
+            InspectStatus::Unsupported | InspectStatus::MemoryLimit => ArchiveStatusDto::Unsupported,
         }
     }
 }
@@ -163,7 +163,7 @@ fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) 
 /// All target folder checks that consume or write NOTHING.
 pub(super) fn check_target_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
     if !target_dir.is_dir() {
-        return Err(CmdError::expected(format!("Zielordner existiert nicht: {}", target_dir.display())));
+        return Err(CmdError::coded_with(ErrorCode::ArchiveTargetMissing, [target_dir.display().to_string()]));
     }
     check_managed_location(target_dir, expanded_sensitive)
 }
@@ -190,7 +190,7 @@ fn path_exists(path: &Path) -> bool {
 }
 
 pub(crate) fn inspect_one(path: &Path) -> ArchiveInfoDto {
-    let summary = archive::inspect(path, is_supported_extension);
+    let summary = archive::inspect(path, is_model_extension);
     let (file_size, modified_unix_ms, status) = match file_fingerprint(path) {
         Some((size, modified)) => (size, modified, summary.status.into()),
         None => (0, 0, ArchiveStatusDto::Unreadable),
@@ -339,7 +339,7 @@ fn extract_one(
     let (assigned, ignored) = assign_companions(&dest, &extraction.written_files(&dest), &outcome.models.imported);
     outcome.companions_assigned = assigned;
     outcome.companions_ignored = ignored;
-    outcome.other_files_extracted = extraction.count_written_files_not_matching(&dest, is_supported_extension);
+    outcome.other_files_extracted = extraction.count_written_files_not_matching(&dest, is_model_extension);
     outcome.stripped_root = extraction.stripped_root.clone();
     outcome.extracted_to = Some(dest.to_string_lossy().to_string());
 
@@ -442,7 +442,7 @@ pub async fn inspect_archives(paths: Vec<String>) -> CmdResult<Vec<ArchiveInfoDt
 
 fn inspect_archive_paths(paths: &[String]) -> CmdResult<Vec<ArchiveInfoDto>> {
     if paths.iter().any(|path| !archive::is_archive_path(Path::new(path))) {
-        return Err(CmdError::expected("Unbekannter Archiv-Dateityp"));
+        return Err(CmdError::coded(ErrorCode::ArchiveTypeUnknown));
     }
     Ok(paths.iter().map(|p| inspect_one(Path::new(p))).collect())
 }
@@ -951,10 +951,10 @@ mod tests {
 
         let mut conn = crate::db::connect_in_memory().unwrap();
         let first = service.authorize_archives(&[], &target, false, &[plain_request(&archive)], Some(&parent));
-        assert!(first.unwrap_err().contains("nicht ueber die App ausgewaehlt"));
+        assert!(first.unwrap_err().is(ErrorCode::ArchiveTargetNotApproved, &[]));
         assert!(!target.join("Drache").exists());
         let missing = service.authorize_archives(&[], &dir.join("gibt-es-nicht"), true, &[plain_request(&archive)], Some(&parent));
-        assert!(missing.is_err());
+        assert!(missing.unwrap_err().is(ErrorCode::ArchiveTargetMissing, &[dir.join("gibt-es-nicht").display().to_string().as_str()]));
         assert_eq!(service.authorize_archives(&[], &target, true, &[plain_request(&archive)], Some(&parent)).unwrap(), Some(parent));
         let retry = run_core(&mut conn, &target, vec![plain_request(&archive)]).expect("zweiter Versuch mit gueltigem Ziel");
         assert_eq!(retry.archives.len(), 1);

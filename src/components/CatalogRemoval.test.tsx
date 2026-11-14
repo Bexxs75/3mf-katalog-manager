@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { de } from '../i18n/de';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProviderWithDiagnostics as Provider } from '../test/renderWithDiagnostics';
@@ -68,7 +69,7 @@ describe('reset catalog', () => {
     expect(invoke).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Erst sichern …'));
     expect(await screen.findByText('Gesichert')).toBeDisabled();
-    fireEvent.click(screen.getByText('Zurücksetzen'));
+    fireEvent.click(screen.getByRole('button', { name: de.resetConfirm }));
     await waitFor(() => expect(onReset).toHaveBeenCalledOnce());
     expect(invoke).toHaveBeenCalledWith('reset_catalog');
   });

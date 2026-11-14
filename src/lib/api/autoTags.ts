@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 
 /** Tags the app would assign to this model automatically today (names as stored). */
 export function listSuggestedAutoTags(fileId: string) {

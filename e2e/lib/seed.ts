@@ -144,6 +144,9 @@ export function seedScratch(label: string): Scratch {
     // An embedded thumbnail makes the detail page offer the "Bild"/"3D-Ansicht" toggle for this model.
     db.prepare("UPDATE files SET thumbnail_png = ? WHERE name = 'Dreiplatten.3mf'").run(stripedPng());
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('catalog_base_dir', ?)").run(catalogDir);
+    // The "What do you print with?" notice would pop up over the test window and swallow clicks; the
+    // test installation counts as one that has already answered it.
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('print_technology_asked', '1')").run();
     db.prepare("INSERT INTO collections (name, created_at) VALUES ('Testsammlung', '2026-09-01T10:00:00Z')").run();
     db.prepare("INSERT INTO printers (name, kind, position) VALUES ('Testdrucker Alpha', 'filament', 0)").run();
     const spool = db.prepare(`INSERT INTO filament_spools

@@ -168,7 +168,7 @@ describe('useUpdater', () => {
     // this, so the hook must fall back to downloading instead of looping.
     vi.mocked(api.installAppUpdate)
       .mockRejectedValueOnce({ message: 'Sicherung fehlgeschlagen', expected: false })
-      .mockRejectedValueOnce({ message: 'Es liegt kein heruntergeladenes Update vor', expected: true });
+      .mockRejectedValueOnce({ message: 'updateNotDownloaded', expected: true });
     vi.mocked(api.downloadAppUpdate).mockResolvedValue('0.15.1');
     const { result } = renderHook(() => useUpdater());
     await waitFor(() => expect(result.current.phase).toBe('idle'));

@@ -4,11 +4,16 @@ import { tagLabel, otherTagNames } from '../lib/autoTags';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import * as api from '../lib/api/autoTags';
+import { useCanEditMetadata } from '../lib/webSession';
+
+/** Id of the visible note (rendered by the tagging switch above) that says why the controls are locked. */
+export const READ_ONLY_NOTE_ID = 'auto-tags-read-only-note';
 
 /** Settings section: automatic tags the app no longer assigns, each with a way to lift the block. */
 export function BlockedAutoTagsSettings() {
   const t = useT();
   const { language } = useLanguage();
+  const canEdit = useCanEditMetadata();
   const [tags, setTags] = useState<string[] | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -54,7 +59,13 @@ export function BlockedAutoTagsSettings() {
       <div className="text-[length:var(--font-size-body)] font-semibold mb-1">{t('blockedAutoTagsTitle')}</div>
       <p className="text-caption text-[var(--ink-3)] mb-2">{t('blockedAutoTagsHint')}</p>
       {loadFailed && (
-        <div role="alert" className="mb-1.5 text-caption text-[var(--accent)]">{t('blockedAutoTagsLoadError')}</div>
+        <div className="mb-1.5 text-caption">
+          <p role="alert" className="text-[var(--crit)]">{t('blockedAutoTagsLoadError')}</p>
+          <button type="button" onClick={() => void load()}
+            className="mt-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] font-semibold cursor-pointer hover:border-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+            {t('settingReload')}
+          </button>
+        </div>
       )}
       {tags !== null && tags.length === 0 && !loadFailed && (
         <p ref={emptyRef} tabIndex={-1} className="text-caption text-[var(--ink-3)] outline-none">{t('blockedAutoTagsEmpty')}</p>
@@ -75,10 +86,11 @@ export function BlockedAutoTagsSettings() {
                   )}
                 </span>
                 <button
-                  type="button" data-unblock
+                  type="button" data-unblock disabled={!canEdit} title={canEdit ? undefined : t('settingsReadOnlyNotice')}
+                  aria-describedby={canEdit ? undefined : READ_ONLY_NOTE_ID}
                   aria-label={t('blockedAutoTagUnblockAria').replace('{label}', label)}
                   onClick={() => void unblock(tag, index)}
-                  className="flex-none px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                  className="flex-none px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
                 >
                   {t('blockedAutoTagUnblock')}
                 </button>

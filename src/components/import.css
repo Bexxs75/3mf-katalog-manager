@@ -24,6 +24,8 @@
 .import-result{width:min(760px,100%);max-height:90vh;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:auto}
 .import-result h2{margin:0;font-size:var(--fs-title);padding:14px 16px 10px}
 .import-result>.import-counts{padding:0 16px 10px}
+/* The web upload dialogs put plain blocks (hints, lists, headings) straight into the dialog; give them the same side gutter as the title. */
+.web-import>:not(h2):not(footer):not(.import-counts):not(.import-table-scroll){margin-inline:16px}
 .import-tabs{display:flex;gap:2px;padding:0 16px 8px;flex-wrap:wrap}
 .import-tabs button[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .import-table-scroll{overflow:auto;min-height:0;max-height:300px;border-block:1px solid var(--line);font-size:var(--fs-small)}

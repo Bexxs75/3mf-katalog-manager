@@ -25,7 +25,7 @@ let list: Printer[];
 let history: PrinterHistoryJob[];
 const link = (): PrinterLinkState => ({ refreshKey: 0, enabled: false, connections: [], jobs: [], error: null,
   refresh: vi.fn().mockResolvedValue(undefined), setEnabled: vi.fn().mockResolvedValue(undefined),
-  testConnection: vi.fn(), removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn() });
+  testConnection: vi.fn(), removeConnection: vi.fn(), clearApiKey: vi.fn(), includeOlderHistory: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn() });
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -154,13 +154,137 @@ it('deletes only after confirmation with return-home count and supports Escape, 
 });
 
 it('renders history states and routes open jobs to the review dialog', async () => {
-  history = ['open', 'confirmed', 'ignored'].map((state, i) => ({ id: String(i), fileName: `job${i}.gcode`, outcome: 'completed', printDurationS: 120, usedMm: 100, grams: state === 'confirmed' ? 18.4 : null, state } as PrinterHistoryJob));
+  history = ['open', 'confirmed', 'ignored'].map((state, i) => ({ id: String(i), fileName: `job${i}.gcode`, outcome: 'completed', printDurationS: 120, usedMm: 100, grams: state === 'confirmed' ? 18.4 : null, state, endedAt: 1000 + i, rawStatus: 'completed', failureReason: null, failureNote: null, autoClosed: false } as PrinterHistoryJob));
   const { onMaterial } = setup();
   expect(await screen.findByText('job2.gcode')).toBeInTheDocument();
   expect(screen.getByText('gebucht')).toBeInTheDocument(); expect(screen.getByText('ignoriert')).toBeInTheDocument();
   expect(screen.getByText('18,4 g')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Im Material Manager bestätigen' }));
   expect(onMaterial).toHaveBeenCalledWith({ printerId: '1', reviewJobs: true });
+});
+
+it('marks prints the program closed itself and shows no usage as a dash', async () => {
+  const base = { outcome: 'partial', printDurationS: 60, grams: null, state: 'ignored', endedAt: 1000, rawStatus: 'klippy_shutdown', failureReason: null, failureNote: null } as const;
+  history = [
+    { ...base, id: '1', fileName: 'unused.gcode', usedMm: 0, autoClosed: true },
+    { ...base, id: '2', fileName: 'older.gcode', outcome: 'completed', rawStatus: 'completed', usedMm: 250, autoClosed: true },
+    { ...base, id: '3', fileName: 'decided.gcode', usedMm: 40, autoClosed: false },
+  ] as PrinterHistoryJob[];
+  setup();
+  expect(await screen.findByText('unused.gcode')).toBeInTheDocument();
+  expect(screen.getByText('ohne Verbrauch')).toHaveAttribute('title', 'Drucker meldet: klippy_shutdown');
+  expect(screen.getByText('älterer Verlauf')).toBeInTheDocument();
+  expect(screen.getAllByText('ignoriert')).toHaveLength(1);
+  // One dash for the missing usage; the reason column has its own (three rows, no reason).
+  expect(screen.getAllByText('–')).toHaveLength(4);
+  expect(within(screen.getByText('unused.gcode').closest('tr')!).getAllByText('–')).toHaveLength(2);
+  expect(screen.getByText('40 mm')).toBeInTheDocument();
+  expect(screen.getByText('250 mm')).toBeInTheDocument();
+});
+
+describe('print history: result and reason', () => {
+  const base = { outcome: 'partial', printDurationS: 60, usedMm: 40, grams: null, state: 'confirmed', endedAt: 1000, failureReason: null, failureNote: null, autoClosed: false } as const;
+  const rowOf = (file: string) => screen.getByText(file).closest('tr')!;
+
+  it('groups the status the printer reported and lets a reason set by the user override it', async () => {
+    history = [
+      { ...base, id: '1', fileName: 'ok.gcode', outcome: 'completed', rawStatus: 'completed' },
+      { ...base, id: '2', fileName: 'cancelled.gcode', rawStatus: 'cancelled' },
+      { ...base, id: '3', fileName: 'shutdown.gcode', rawStatus: 'klippy_shutdown' },
+      { ...base, id: '4', fileName: 'interrupted.gcode', rawStatus: 'interrupted' },
+      { ...base, id: '5', fileName: 'odd.gcode', rawStatus: 'in_progress' },
+      { ...base, id: '6', fileName: 'test.gcode', rawStatus: 'cancelled', failureReason: 'intentional' },
+      { ...base, id: '7', fileName: 'clog.gcode', rawStatus: 'cancelled', failureReason: 'clog' },
+      { ...base, id: '8', fileName: 'note.gcode', rawStatus: 'klippy_shutdown', failureReason: 'other', failureNote: 'Kabel gelöst' },
+    ] as PrinterHistoryJob[];
+    setup();
+    await screen.findByText('ok.gcode');
+    const result = (file: string) => within(rowOf(file)).getAllByRole('cell')[3];
+    expect(result('ok.gcode')).toHaveTextContent('Gelungen');
+    expect(result('cancelled.gcode')).toHaveTextContent('Abgebrochen');
+    expect(result('shutdown.gcode')).toHaveTextContent('Fehlgeschlagen · Druckerfehler');
+    expect(result('interrupted.gcode')).toHaveTextContent('Fehlgeschlagen · unterbrochen');
+    expect(result('odd.gcode')).toHaveTextContent('Fehlgeschlagen · sonstiger Status: in_progress');
+    expect(result('test.gcode')).toHaveTextContent('Abgebrochen');
+    expect(result('clog.gcode')).toHaveTextContent('Fehlgeschlagen');
+    expect(result('clog.gcode')).not.toHaveTextContent('Druckerfehler');
+    // The raw status is in the tooltip and for screen readers.
+    expect(result('shutdown.gcode')).toHaveAttribute('title', 'Drucker meldet: klippy_shutdown');
+    expect(within(result('shutdown.gcode')).getByText('Drucker meldet: klippy_shutdown')).toHaveClass('sr-only');
+    // Reason column: label, and the note under "Other".
+    expect(within(rowOf('clog.gcode')).getByText('Düse verstopft / Unterextrusion')).toBeInTheDocument();
+    expect(within(rowOf('note.gcode')).getByText('Sonstiges')).toBeInTheDocument();
+    expect(within(rowOf('note.gcode')).getByText('Kabel gelöst')).toBeInTheDocument();
+  });
+
+  it('offers the pencil only for prints that ended early and saves the reason through the command', async () => {
+    history = [
+      { ...base, id: '1', fileName: 'ok.gcode', outcome: 'completed', rawStatus: 'completed' },
+      { ...base, id: '2', fileName: 'cancelled.gcode', rawStatus: 'cancelled' },
+    ] as PrinterHistoryJob[];
+    setup();
+    await screen.findByText('ok.gcode');
+    expect(screen.getAllByRole('button', { name: /^Grund bearbeiten/ })).toHaveLength(1);
+    const pencil = screen.getByRole('button', { name: 'Grund bearbeiten: cancelled.gcode' });
+    pencil.focus(); // a real click focuses the button; fireEvent does not
+    fireEvent.click(pencil);
+    const dialog = screen.getByRole('dialog', { name: 'Grund bearbeiten: cancelled.gcode' });
+    const select = within(dialog).getByRole('combobox', { name: 'Grund (optional)' });
+    expect(select).toHaveValue('');
+    fireEvent.change(select, { target: { value: 'other' } });
+    fireEvent.change(within(dialog).getByLabelText('Kurztext (höchstens 200 Zeichen)'), { target: { value: 'Stromausfall im Haus' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_printer_job_failure', { jobId: '2', reason: 'other', note: 'Stromausfall im Haus' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(pencil).toHaveFocus();
+    // The history is read again afterwards.
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'list_printer_history').length).toBeGreaterThan(1);
+  });
+
+  it('starts the dialog with the saved reason and clears it with "no reason"', async () => {
+    history = [{ ...base, id: '2', fileName: 'clog.gcode', rawStatus: 'cancelled', failureReason: 'clog', failureNote: 'alt' }] as PrinterHistoryJob[];
+    setup();
+    await screen.findByText('clog.gcode');
+    fireEvent.click(screen.getByRole('button', { name: 'Grund bearbeiten: clog.gcode' }));
+    const dialog = screen.getByRole('dialog');
+    const select = within(dialog).getByRole('combobox', { name: 'Grund (optional)' });
+    expect(select).toHaveValue('clog');
+    fireEvent.change(select, { target: { value: '' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_printer_job_failure', { jobId: '2', reason: null, note: null }));
+  });
+
+  it('marks prints the program closed and says they do not count towards the limit of 500', async () => {
+    history = [
+      { ...base, id: '1', fileName: 'unused.gcode', usedMm: 0, rawStatus: 'cancelled', state: 'ignored', autoClosed: true },
+      { ...base, id: '2', fileName: 'decided.gcode', rawStatus: 'cancelled' },
+    ] as PrinterHistoryJob[];
+    setup();
+    await screen.findByText('unused.gcode');
+    expect(within(rowOf('unused.gcode')).getByText('ohne Verbrauch')).toBeInTheDocument();
+    expect(within(rowOf('decided.gcode')).queryByText('ohne Verbrauch')).toBeNull();
+    expect(screen.getByText(/zählen nicht zur Grenze von 500 offenen Drucken/)).toBeInTheDocument();
+  });
+
+  it('leaves out the note about closed prints when there are none', async () => {
+    history = [{ ...base, id: '1', fileName: 'decided.gcode', rawStatus: 'cancelled' }] as PrinterHistoryJob[];
+    setup();
+    await screen.findByText('decided.gcode');
+    expect(screen.queryByText(/Grenze von 500/)).toBeNull();
+  });
+
+  it('draws a long history in pages inside a scrolling region', async () => {
+    history = Array.from({ length: 250 }, (_, i) => ({ ...base, id: String(i + 1), fileName: `job${i + 1}.gcode`, endedAt: 5000 - i, rawStatus: 'cancelled' })) as PrinterHistoryJob[];
+    setup();
+    const region = await screen.findByRole('region', { name: 'Letzte Drucke' });
+    expect(region).toHaveClass('overflow-auto');
+    expect(region.querySelectorAll('tbody tr')).toHaveLength(100);
+    fireEvent.click(screen.getByRole('button', { name: 'Mehr anzeigen (150 weitere)' }));
+    expect(region.querySelectorAll('tbody tr')).toHaveLength(200);
+    fireEvent.click(screen.getByRole('button', { name: 'Mehr anzeigen (50 weitere)' }));
+    expect(region.querySelectorAll('tbody tr')).toHaveLength(250);
+    expect(screen.queryByRole('button', { name: /Mehr anzeigen/ })).toBeNull();
+  });
 });
 
 it('shows connection controls only when enabled and clears them on resin selection', async () => {
@@ -228,6 +352,7 @@ describe('unit management replacing PrinterManagePanel', () => {
 
 it.each([
   ['Bambu AMS', 'bambu_ams', 'AMS B'],
+  ['Bambu AMS 2 Pro', 'bambu_ams_2_pro', 'AMS 2 Pro 1'],
   ['Spulenhalter', 'external', 'Spulenhalter 2'],
 ])('adds the %s template with its suggested name', async (label, kind, name) => {
   setup(); await screen.findByTitle('1 · PLA · Rot');
@@ -269,13 +394,13 @@ it('keeps material and color names in slot titles and deletion in the detail hea
   expect(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Drucker löschen' })).toBeInTheDocument();
 });
 
-it('puts the switch in the master footer and keeps the API key disabled', async () => {
+it('puts the switch in the master footer and keeps the API key field disabled', async () => {
   setup();
   await screen.findByTitle('1 · PLA · Rot');
   const master = screen.getByRole('complementary', { name: 'Drucker' });
   expect(within(master.querySelector('footer')!).getByRole('switch', { name: 'Anbindung' })).toHaveAttribute('aria-checked', 'false');
   expect(screen.getByLabelText('API-Schlüssel')).toBeDisabled();
-  expect(screen.getByPlaceholderText('Bei Klipper nicht nötig')).toBeDisabled();
+  expect(screen.getByPlaceholderText('Nur nötig, wenn dein Drucker eine Anmeldung verlangt')).toBeDisabled();
   expect(screen.getByText(/Schalte unten in der Druckerliste/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Verbindung einrichten' })).toBeDisabled();
   expect(screen.queryByRole('heading', { name: 'Printer Manager' })).toBeNull();
@@ -443,4 +568,30 @@ it('limits manufacturer and model input lengths', async () => {
   setup('1');
   expect(await screen.findByLabelText('Hersteller')).toHaveAttribute('maxlength', '120');
   expect(screen.getByLabelText('Modell')).toHaveAttribute('maxlength', '120');
+});
+
+it('changes the type of a Bambu unit inside the family and sends nothing when it is left alone', async () => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(units()).getAllByRole('button', { name: 'Bearbeiten' })[0]);
+  let dialog = screen.getByRole('dialog');
+  const select = within(dialog).getByLabelText(/^Art/);
+  expect(within(select).getAllByRole('option').map(o => o.getAttribute('value'))).toEqual(['bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro']);
+  expect(dialog).toHaveTextContent('Fächer und eingelegte Spulen bleiben unverändert.');
+  fireEvent.change(select, { target: { value: 'bambu_ams_2_pro' } });
+  fireEvent.submit(dialog.querySelector('form')!);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_unit', { unitId: 'u1', name: 'AMS A', slotCount: null, kind: 'bambu_ams_2_pro' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  vi.mocked(invoke).mockClear();
+  fireEvent.click(within(units()).getAllByRole('button', { name: 'Bearbeiten' })[0]);
+  dialog = screen.getByRole('dialog');
+  fireEvent.submit(dialog.querySelector('form')!);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_unit', { unitId: 'u1', name: 'AMS A', slotCount: null }));
+  expect(invoke).not.toHaveBeenCalledWith('update_unit', expect.objectContaining({ kind: expect.anything() }));
+});
+
+it('offers no type choice for units outside the Bambu family', async () => {
+  list[0].units[0] = { ...list[0].units[0], kind: 'custom', name: 'Box' };
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(units()).getAllByRole('button', { name: 'Bearbeiten' })[0]);
+  expect(within(screen.getByRole('dialog')).queryByLabelText(/^Art/)).toBeNull();
 });

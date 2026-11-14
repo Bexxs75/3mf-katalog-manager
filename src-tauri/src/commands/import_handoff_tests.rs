@@ -77,7 +77,7 @@ struct DatabaseLostAfterBatchOne {
     injected: bool,
 }
 impl files::ImportDb for DatabaseLostAfterBatchOne {
-    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
+    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> core::ImportResult<R>) -> core::ImportResult<R> {
         let result = f(&mut self.conn);
         if !self.injected
             && self.conn.is_autocommit()
@@ -141,10 +141,7 @@ fn contract_16_mixed_drop_grant_survives_forty_minute_queue_and_is_parent_bound(
         .chain(std::iter::once(archive.clone()))
         .collect();
     let clock = Arc::new(FakeClock::default());
-    let service = ImportJobs {
-        clock: clock.clone(),
-        ..ImportJobs::default()
-    };
+    let service = ImportJobs::default().with_clock(clock.clone());
     let blocker = service
         .enqueue(ImportSource::Files, None, false, None)
         .unwrap();
@@ -158,14 +155,7 @@ fn contract_16_mixed_drop_grant_survives_forty_minute_queue_and_is_parent_bound(
             JobInput::Models(roots.clone()),
         )
         .unwrap();
-    assert!(service
-        .archives
-        .lock()
-        .unwrap()
-        .get(&(job.id.clone(), archive.clone()))
-        .unwrap()
-        .expires
-        .is_none());
+    assert!(service.archive_grant_expiry(&job.id, &archive) == Some(None));
     assert!(
         service
             .claim_archives(&[request(&archive)], Some(&job.id))
@@ -186,12 +176,7 @@ fn contract_16_mixed_drop_grant_survives_forty_minute_queue_and_is_parent_bound(
     assert_eq!(result.counts.known, 4);
     assert_eq!(result.counts.imported + result.counts.archive, 4);
     assert_eq!(
-        job.legacy
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .pending_archives,
+        job.take_legacy().unwrap().pending_archives,
         vec![archive.to_string_lossy().into_owned()]
     );
     assert!(service
@@ -228,10 +213,7 @@ fn contract_16_archive_grant_expires_thirty_one_minutes_after_pending_publicatio
     let fixture = Fixture::new();
     let archive = fixture.zip();
     let clock = Arc::new(FakeClock::default());
-    let service = ImportJobs {
-        clock: clock.clone(),
-        ..ImportJobs::default()
-    };
+    let service = ImportJobs::default().with_clock(clock.clone());
     let roots = vec![archive.clone()];
     let job = service
         .enqueue_work(
@@ -248,13 +230,7 @@ fn contract_16_archive_grant_expires_thirty_one_minutes_after_pending_publicatio
     run_models(&service, &job, &mut &mut conn, &roots, &[]).unwrap();
     service.finish(&job, None);
     assert_eq!(
-        service
-            .archives
-            .lock()
-            .unwrap()
-            .get(&(job.id.clone(), archive.clone()))
-            .unwrap()
-            .expires,
+        service.archive_grant_expiry(&job.id, &archive).unwrap(),
         Some(70 * 60_000)
     );
     clock.0.store(71 * 60_000, Ordering::Relaxed);
@@ -296,19 +272,16 @@ fn queued_archive_cancellation_discards_unpublished_grants() {
             JobInput::Models(vec![archive]),
         )
         .unwrap();
-    assert_eq!(service.archives.lock().unwrap().len(), 1);
+    assert_eq!(service.archive_grant_count(), 1);
     assert_eq!(service.cancel(&job.id), Some(ImportState::Cancelled));
-    assert!(service.archives.lock().unwrap().is_empty());
+    assert!(service.archive_grant_count() == 0);
     assert_eq!(job.result().unwrap().counts.known, 0);
 }
 
 #[test]
 fn terminal_results_expire_after_ten_minutes() {
     let clock = Arc::new(FakeClock::default());
-    let service = ImportJobs {
-        clock: clock.clone(),
-        ..ImportJobs::default()
-    };
+    let service = ImportJobs::default().with_clock(clock.clone());
     let job = service
         .enqueue(ImportSource::Dropped, None, false, None)
         .unwrap();

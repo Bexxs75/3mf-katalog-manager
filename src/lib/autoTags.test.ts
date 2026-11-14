@@ -1,3 +1,4 @@
+import dictionary from './autoTags.json';
 import { describe, expect, it } from 'vitest';
 import { canonicalTag, otherTagNames, shortTagLabel, sortTagsForDisplay, tagLabel, tagMatches } from './autoTags';
 
@@ -144,4 +145,16 @@ describe('otherTagNames', () => {
     expect(otherTagNames('kabelhalter', 'de')).toEqual([]);
     expect(otherTagNames('constructor', 'de')).toEqual([]);
   });
+});
+
+it('every dictionary entry has four names and no alias belongs to different entries', () => {
+  const owner = new Map<string, string>();
+  for (const [key, names] of Object.entries(dictionary)) {
+    for (const language of ['de','en','es','fr'] as const) {
+      const alias = names[language].trim().toLowerCase();
+      expect(alias.length).toBeGreaterThan(0);
+      expect(owner.get(alias) ?? key, alias).toBe(key);
+      owner.set(alias, key);
+    }
+  }
 });

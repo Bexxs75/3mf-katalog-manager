@@ -32,7 +32,6 @@ function renderFolders() {
 describe('InfoFolders', () => {
   it('shows both buttons with their hints', () => {
     renderFolders();
-    expect(screen.getByText('ORDNER')).toBeInTheDocument();
     expect(screen.getByText('Katalog, Sicherungen vor Updates')).toBeInTheDocument();
     expect(screen.getByText('Logdateien')).toBeInTheDocument();
   });

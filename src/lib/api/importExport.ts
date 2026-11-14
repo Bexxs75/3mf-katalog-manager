@@ -1,6 +1,6 @@
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '../events';
 import type { ImportJobResult, ImportProgress, ImportState, StartedImport } from '../../types';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 import type { ArchiveImportResult, ArchiveInfo, ArchiveRequest, ImportResultDto } from '../../types';
 
 export function importFiles(targetFolderId?: string) {
@@ -35,8 +35,9 @@ export function pickFolderPath() {
 export function startImport(source: 'files' | 'folder' | 'folderContents', targetFolderId?: string) {
   return invoke<StartedImport>('start_import', { source, targetFolderId });
 }
-export function startDroppedImport(paths: string[]) {
-  return invoke<StartedImport>('start_dropped_import', { paths });
+/** `targetFolderId`: catalog folder the dropped files are moved into; without it they stay where they are. */
+export function startDroppedImport(paths: string[], targetFolderId?: string) {
+  return invoke<StartedImport>('start_dropped_import', { paths, targetFolderId });
 }
 export function startAdoptImport(path: string) {
   return invoke<StartedImport>('start_adopt_import', { path });

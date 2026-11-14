@@ -1,3 +1,4 @@
+import { useCanEditMetadata } from '../lib/webSession';
 import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
@@ -5,17 +6,24 @@ import { licenseUsage, modelLicenseAriaLabel } from '../lib/licenses';
 import { Icon } from './Icon';
 import { useModelImages } from '../hooks/useModelImages';
 import { useModelWindow } from '../hooks/useModelWindow';
-import { DragGrip } from './DragGrip';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ModelFile } from '../types';
+import type { BundleCard } from '../lib/bundles';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
-import { formatWeightG } from '../i18n/format';
+import { formatPrintDuration, formatWeightG } from '../i18n/format';
+import { fileKindOf, isSlicedOutput, kindBadge } from '../lib/fileKind';
+import { printFactsOf } from '../lib/printData';
 import { tagLabel } from '../lib/autoTags';
 import { BulkCheckbox } from './BulkCheckbox';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { DRAG_THRESHOLD_PX, useDragThreshold } from '../hooks/useDragThreshold';
+import { useActivePrintFilter } from '../hooks/PrintFilterContext';
+import { PrintFactsExtra, printFactsExtraHeight } from './PrintFactsExtra';
+import { useBundleCardsSettings, useCardItems } from '../hooks/BundleCardsContext';
+import { BundleGridCard, PartOfChip, usePartOfText } from './BundleCardParts';
+import { cardNavId, cardSelectionState, cardToggleIds, isCardOpen } from '../lib/bundleCards';
 
 interface Props {
   models: ModelFile[];
@@ -24,7 +32,8 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
-  onContextMenu: (id: string, x: number, y: number) => void;
+  /** `bundleId` is set when the menu is for a bundle card (the id is then its title model). */
+  onContextMenu: (id: string, x: number, y: number, bundleId?: string) => void;
   onToggleFavorite: (id: string) => void;
   readOnly?: boolean;
   selectedForBulk: Set<string>;
@@ -83,10 +92,41 @@ function CardTags({ tags, comfort }: { tags: string[]; comfort: boolean }) {
   </div>;
 }
 
+/** Print time of a slicer output, taken from the list's facts; only a time the slicer gave (never a partial sum). */
+function gcodePrintSeconds(model: ModelFile): number | null {
+  const facts = printFactsOf(model);
+  return facts?.printSecondsComplete && facts.printSeconds !== undefined ? facts.printSeconds : null;
+}
+
+/** Accessible name of a card: the name and license, plus the file type for slicer output (the badge is only a picture to the eye). */
+function cardAriaLabel(model: ModelFile, t: ReturnType<typeof useT>, partOf: string | null): string {
+  const label = modelLicenseAriaLabel(displayName(model.name), model.license, t);
+  const named = isSlicedOutput(model) ? `${label}, ${kindBadge(model)}` : label;
+  return partOf ? `${named}, ${partOf}` : named;
+}
+
+/** Type badge on the picture of slicer output; a model needs none. */
+function KindBadge({ model, comfort }: { model: ModelFile; comfort: boolean }) {
+  if (!isSlicedOutput(model)) return null;
+  return <span data-kind-badge aria-hidden="true"
+    className={`absolute z-[1] font-bold tracking-[0.05em] text-caption border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] ${comfort ? 'left-2.5 top-2.5 px-2 py-0.5 rounded-lg' : 'left-[7px] top-[7px] px-1.5 py-px rounded'}`}>
+    {kindBadge(model)}
+  </span>;
+}
+
+/** Where the "new" badge sits: below the type badge when there is one. */
+function newBadgePosition(model: ModelFile, comfort: boolean): string {
+  if (isSlicedOutput(model)) return comfort ? 'left-2.5 top-11' : 'left-[7px] top-[30px]';
+  return comfort ? 'left-2.5 top-2.5' : 'left-[7px] top-[7px]';
+}
+
 function CardMeta({ model, comfort }: { model: ModelFile; comfort: boolean }) {
   const { language } = useLanguage();
+  const t = useT();
+  const seconds = fileKindOf(model) === 'gcode' ? gcodePrintSeconds(model) : null;
   return <div className="flex items-center gap-3 text-[var(--ink-3)] font-medium overflow-hidden whitespace-nowrap shrink-0"
     style={{ height: comfort ? 20 : 15, lineHeight: comfort ? '20px' : '15px', fontSize: 'var(--font-size-meta)' }}>
+    {seconds !== null && <span data-card-print-time className="shrink-0">{formatPrintDuration(seconds, language, t)}</span>}
     {model.materials[0] && <span className="truncate"><Icon name="box" size={14} /> {model.materials[0].name}</span>}
     {model.estimatedWeightG !== null && <span className="shrink-0"><Icon name="weight" size={14} /> {model.weightSource === 'slicer'
       ? formatWeightG(model.estimatedWeightG, language)
@@ -95,15 +135,23 @@ function CardMeta({ model, comfort }: { model: ModelFile; comfort: boolean }) {
 }
 
 export function ModelGrid({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder, onDragFileStart, label }: Props) {
+  const canEdit = useCanEditMetadata();
   const t = useT();
   const { density } = useUiDensity();
-  const ids = useMemo(() => models.map(model => model.id), [models]);
+  // Only while a print data filter is active; then every card gets the same extra height.
+  const printFilter = useActivePrintFilter();
+  const extra = (comfort: boolean) => printFilter ? printFactsExtraHeight(comfort) : 0;
+  // A bundle shown as one card stands for its title model in the navigation order and the picture list.
+  const items = useCardItems(models);
+  const trash = useBundleCardsSettings()?.trash ?? false;
+  const partOfText = usePartOfText(trash);
+  const ids = useMemo(() => items.map(cardNavId), [items]);
   // Tiles keep one fixed width. A stretching row (1fr) hands the leftover width to the tiles,
   // so they grow and shrink every time the detail panel opens or the window changes.
   const fixedTileWidth = density === 'comfort' ? 232 : 190;
   const window = useModelWindow({ ids, containerRef, minWidth: fixedTileWidth, gap: 14,
-    fallbackHeight: density === 'comfort' ? 350 : 265, disabled: reorderable || !windowed });
-  const visible = models.slice(window.startIndex, window.endIndex);
+    fallbackHeight: (density === 'comfort' ? 350 : 265) + extra(density === 'comfort'), disabled: reorderable || !windowed });
+  const visible = items.slice(window.startIndex, window.endIndex);
   const images = useModelImages(ids.slice(window.imageStartIndex, window.imageEndIndex));
   const imageFor = (model: ModelFile) => resolveDisplayImage(model, displayPreference, images.get(model.id));
 
@@ -116,7 +164,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   // Only movement beyond DRAG_THRESHOLD_PX counts as dragging, otherwise a
   // slipped click on the checkbox or star would already reorder.
   useEffect(() => {
-    if (!reorderable || dragIndex === null) return;
+    if (!canEdit || !reorderable || dragIndex === null) return;
     const handleMouseMove = (e: MouseEvent) => {
       if (dragArmed || !dragStartPos.current) return;
       const dx = e.clientX - dragStartPos.current.x;
@@ -151,6 +199,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   const fileDrag = useDragThreshold(onDragFileStart);
 
   const handleCardMouseDown = (e: { clientX: number; clientY: number }, id: string) => {
+    if (!canEdit) return;
     if (reorderable) {
       dragStartPos.current = { x: e.clientX, y: e.clientY };
       setDragIndex(models.findIndex((x) => x.id === id));
@@ -168,13 +217,44 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
     ...selectionAria(m.id),
   });
 
-  function renderCompactCard(m: ModelFile, index: number) {
+  function renderBundleCard(card: BundleCard, index: number) {
+    const comfort = density === 'comfort';
+    const state = cardSelectionState(card, selectedForBulk);
+    const open = isCardOpen(card, selectedId);
+    // Selected means every member is in the batch selection; with no batch selection the open card counts.
+    const base = selectionAria(open && selectedId !== null ? selectedId : card.title.id);
+    const rowProps = {
+      role: 'row' as const,
+      'aria-rowindex': window.startIndex + index + 1,
+      'aria-selected': selectedForBulk.size > 0 ? state === 'all' : base['aria-selected'],
+      'aria-current': open ? ('true' as const) : undefined,
+    };
+    return (
+      <BundleGridCard
+        key={card.key}
+        card={card}
+        comfort={comfort}
+        rowProps={rowProps}
+        open={open}
+        image={imageFor(card.title)}
+        checked={state === 'all'}
+        readOnly={readOnly}
+        metadataHeight={comfort ? 124 + extra(true) : 88 + extra(false)}
+        onSelect={() => onSelect(card.title.id)}
+        onOpenDetail={() => onOpenDetail(card.title.id)}
+        onContextMenu={(x, y) => onContextMenu(card.title.id, x, y, card.bundle.id)}
+        onToggleChecked={() => cardToggleIds(card, selectedForBulk).forEach(onToggleBulkSelect)}
+      />
+    );
+  }
+
+  function renderCompactCard(m: ModelFile, index: number, partOf: string | null) {
     return (
       <div
         key={m.id}
         data-model-id={m.id}
         {...rowAria(m, index)}
-        aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
+        aria-label={cardAriaLabel(m, t, partOf)}
         tabIndex={-1}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -190,8 +270,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
       >
         <div role="gridcell" className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-          {onDragFileStart && !readOnly && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-          {!readOnly && (
+          {!readOnly && canEdit && (
             <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
               onToggle={() => onToggleBulkSelect(m.id)}
@@ -217,18 +296,19 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 <div className="flex flex-col items-center gap-1.5">
                   <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
                   <div className="text-compact-label ui-label text-[var(--ink-3)]">
-                    {t('previewLabel3d')}
+                    {t(isSlicedOutput(m) ? 'previewLabelNone' : 'previewLabel3d')}
                   </div>
                 </div>
               </div>
             </>
           )}
+          <KindBadge model={m} comfort={false} />
           {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
-            <div className="absolute left-[7px] top-[7px] font-semibold text-caption px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
+            <div className={`absolute ${newBadgePosition(m, false)} font-semibold text-caption px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]`}>
               {t('newBadge')}
             </div>
           )}
-          {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-2 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
+          {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-10 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
             <LicenseBadge license={m.license} />
           </div>}
           {m.printStatus === 'printed' && (
@@ -243,22 +323,24 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 onToggleFavorite(m.id);
               }}
               aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute left-[7px] bottom-[7px] font-semibold text-caption px-1 py-0.5 rounded border cursor-pointer ${
+              {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}
+              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute min-w-6 min-h-6 left-[7px] bottom-[7px] font-semibold text-caption px-1 py-0.5 rounded border cursor-pointer ${
                 m.favorite
                   ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
                   : 'border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]'
               }`}
             >
-              <Icon name="heart" size={14} fill={m.favorite  ? 'currentColor' : 'none'} />
+              <Icon name="heart" size={18} fill={m.favorite  ? 'currentColor' : 'none'} />
             </button>
           )}
         </div>
-        <div data-card-metadata role="gridcell" className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 }}>
+        <div data-card-metadata role="gridcell" className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 + extra(false) }}>
           <div className="select-none text-small font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
             {displayName(m.name)}
           </div>
           <CardMeta model={m} comfort={false} />
-          <CardTags tags={m.tags} comfort={false} />
+          {partOf ? <PartOfChip text={partOf} comfort={false} /> : <CardTags tags={m.tags} comfort={false} />}
+          {printFilter && <PrintFactsExtra model={m} filter={printFilter} comfort={false} />}
         </div>
       </div>
     );
@@ -266,7 +348,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
 
   return (
     <div ref={window.rootRef} role="grid" data-catalog-grid aria-label={label ?? t('modelListLabel')} aria-multiselectable="true"
-      aria-rowcount={models.length} aria-colcount={2} style={{ visibility: window.measured ? 'visible' : 'hidden' }}>
+      aria-rowcount={items.length} aria-colcount={2} style={{ visibility: window.measured ? 'visible' : 'hidden' }}>
       {window.emptyHeight !== null ? <div data-window-spacer="empty" style={{ height: window.emptyHeight }} /> : <>
       <div data-window-spacer="top" aria-hidden="true" style={{ height: window.topSpacer }} />
     <div
@@ -276,13 +358,16 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         ? { gridTemplateColumns: `repeat(${window.columns}, minmax(0, ${fixedTileWidth}px))`, justifyContent: 'start' }
         : { gridTemplateColumns: `repeat(${window.columns}, minmax(0, 1fr))` }}
     >
-      {visible.map((m, index) =>
-        density === 'comfort' ? (
+      {visible.map((item, index) => {
+        if (item.type === 'bundle') return renderBundleCard(item, index);
+        const m = item.model;
+        const partOf = item.partOf ? partOfText(item.partOf.name) : null;
+        return density === 'comfort' ? (
           <div
             key={m.id}
             data-model-id={m.id}
             {...rowAria(m, index)}
-            aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
+            aria-label={cardAriaLabel(m, t, partOf)}
             tabIndex={-1}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -299,8 +384,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
           >
             <div aria-hidden="true" className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div role="gridcell" className="relative aspect-square bg-[var(--plate)] overflow-hidden">
-              {onDragFileStart && !readOnly && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-              {!readOnly && (
+              {!readOnly && canEdit && (
                 <BulkCheckbox
                   checked={selectedForBulk.has(m.id)}
                   onToggle={() => onToggleBulkSelect(m.id)}
@@ -323,12 +407,13 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                   </div>
                 </>
               )}
+              <KindBadge model={m} comfort />
               {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
-                <div className="absolute left-2.5 top-2.5 font-semibold text-caption px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]">
+                <div className={`absolute ${newBadgePosition(m, true)} font-semibold text-caption px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]`}>
                   {t('newBadge')}
                 </div>
               )}
-              {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-2 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
+              {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-10 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
                 <LicenseBadge license={m.license} />
               </div>}
               {m.printStatus === 'printed' && (
@@ -343,16 +428,17 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                     onToggleFavorite(m.id);
                   }}
                   aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
+                  {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}
                   style={{ width: 'var(--icon-badge-size)', height: 'var(--icon-badge-size)' }}
-                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-title ${
+                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute min-w-6 min-h-6 right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-title ${
                     m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'
                   }`}
                 >
-                  <Icon name="heart" size={14} fill={m.favorite  ? 'currentColor' : 'none'} />
+                  <Icon name="heart" size={18} fill={m.favorite  ? 'currentColor' : 'none'} />
                 </button>
               )}
             </div>
-            <div data-card-metadata role="gridcell" className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)', height: 124 }}>
+            <div data-card-metadata role="gridcell" className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)', height: 124 + extra(true) }}>
               <div
                 className="select-none font-bold overflow-hidden text-ellipsis whitespace-nowrap shrink-0"
                 style={{ fontSize: 'var(--font-size-title)', height: 26, lineHeight: '26px' }}
@@ -360,13 +446,14 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 {displayName(m.name)}
               </div>
               <CardMeta model={m} comfort />
-              <CardTags tags={m.tags} comfort />
+              {partOf ? <PartOfChip text={partOf} comfort /> : <CardTags tags={m.tags} comfort />}
+              {printFilter && <PrintFactsExtra model={m} filter={printFilter} comfort />}
             </div>
           </div>
         ) : (
-          renderCompactCard(m, index)
-        ),
-      )}
+          renderCompactCard(m, index, partOf)
+        );
+      })}
     </div>
       <div data-window-spacer="bottom" aria-hidden="true" style={{ height: window.bottomSpacer }} />
       </>}

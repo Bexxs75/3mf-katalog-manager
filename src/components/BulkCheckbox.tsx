@@ -11,7 +11,7 @@ export function BulkCheckbox({ checked, onToggle, className = '', role }: Props)
     <label
       role={role}
       onClick={(e) => e.stopPropagation()}
-      className={`cursor-pointer ${className}`}
+      className={`flex items-center justify-center w-7 h-7 -m-1.5 shrink-0 cursor-pointer ${className}`}
     >
       <span
         className={`relative flex items-center justify-center w-4 h-4 rounded-[3px] border shadow-[0_1px_2px_rgba(0,0,0,0.4)] ${

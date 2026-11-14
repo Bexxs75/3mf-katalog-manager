@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 import type { FilamentCheck } from '../../types';
 
 /** Checks the models in the given order (queue: shared deduction state). */

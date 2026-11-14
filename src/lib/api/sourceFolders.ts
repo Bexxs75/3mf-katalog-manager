@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 import type { SourceFolder, SourceScan, StartedImport } from '../../types';
 
 export function listSourceFolders() {

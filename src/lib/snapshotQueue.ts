@@ -1,4 +1,5 @@
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
+import { isGcodePath, isResinPath } from './fileKind';
 import { isStepFilePath } from './stepFile';
 
 export const MAX_BACKGROUND_MESH_BYTES = 200 * 1024 * 1024;
@@ -43,6 +44,7 @@ export function hasInterruptedPreviewAttempt(id: string): boolean {
  * every missing snapshot is rendered. With "image" only files without an
  * image of their own (STL, OBJ, ...) are rendered - otherwise they would show
  * the placeholder until opened once, while 3MF files already bring a picture.
+ * G-code is never rendered: it holds no model shape, so the geometry read would only fail.
  * STEP files are skipped entirely when this build has no STEP preview -
  * queuing them would only produce a guaranteed failure.
  */
@@ -55,6 +57,7 @@ export function snapshotQueue(
   const byId = new Map(models.map((m) => [m.id, m]));
   const renderable = pendingIds.filter((id) => {
     const model = byId.get(id);
+    if (model && (isGcodePath(model.path) || isResinPath(model.path))) return false;
     // Uncompressed meshes can block the UI while decoding and uploading geometry.
     if (model && /\.(stl|obj|ply)$/i.test(model.path) &&
       (model.fileSizeBytes ?? 0) > MAX_BACKGROUND_MESH_BYTES) return false;

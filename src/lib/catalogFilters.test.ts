@@ -261,3 +261,64 @@ describe('print bed filtering', () => {
     expect(filterAndSortModels(models, [], criteria)).toHaveLength(4);
   });
 });
+
+describe('file type filtering', () => {
+  const models = [
+    makeModelFile({ id: 'm', name: 'Model', path: '/c/m.3mf' }),
+    makeModelFile({ id: 'g', name: 'Output', path: '/c/o.gcode' }),
+    makeModelFile({ id: 'b', name: 'Binary', path: '/c/b.bgcode', fileType: 'gcode' }),
+    makeModelFile({ id: 's', name: 'Solid', path: '/c/s.stl' }),
+    makeModelFile({ id: 'r', name: 'Layers', path: '/c/l.ctb', fileType: 'resin' }),
+  ];
+  const criteria = { activeFolderId: 'all', activeTag: null, query: '', sort: 'name' as const };
+  const ids = (fileKind?: 'all' | 'model' | 'gcode' | 'resin') => filterAndSortModels(models, [], { ...criteria, fileKind }).map(m => m.id);
+
+  it('shows everything by default and for "all"', () => {
+    expect(ids()).toEqual(['b', 'r', 'm', 'g', 's']);
+    expect(ids('all')).toEqual(['b', 'r', 'm', 'g', 's']);
+  });
+  it('keeps only models, or only G-code of both formats', () => {
+    expect(ids('model')).toEqual(['m', 's']);
+    expect(ids('gcode')).toEqual(['b', 'g']);
+    expect(ids('resin')).toEqual(['r']);
+  });
+  it('combines with the search', () => {
+    expect(filterAndSortModels(models, [], { ...criteria, fileKind: 'gcode', query: 'bin' }).map(m => m.id)).toEqual(['b']);
+  });
+});
+
+describe('filterAndSortModels with bundle names', () => {
+  const models = [
+    makeModelFile({ id: '1', name: 'Left half.stl' }),
+    makeModelFile({ id: '2', name: 'Right half.stl' }),
+    makeModelFile({ id: '3', name: 'Other.stl' }),
+  ];
+  const criteria = { activeFolderId: 'all', activeTag: null, sort: 'name' as const };
+
+  it('lets the files of a bundle whose name matches pass the search', () => {
+    const result = filterAndSortModels(models, [], { ...criteria, query: 'vase', bundleMatchIds: new Set(['1', '2']) });
+    expect(result.map(m => m.id)).toEqual(['1', '2']);
+  });
+
+  it('finds nothing by a bundle name when no bundle matches', () => {
+    expect(filterAndSortModels(models, [], { ...criteria, query: 'vase' })).toEqual([]);
+  });
+
+  it('keeps matching by the file name next to the bundle name', () => {
+    const result = filterAndSortModels(models, [], { ...criteria, query: 'other', bundleMatchIds: new Set(['1']) });
+    expect(result.map(m => m.id)).toEqual(['1', '3']);
+  });
+});
+
+it('keeps fitting and legacy multi-plate entries but excludes a known oversized plate', () => {
+  const multi = makeModelFile({ id: 'multi', name: 'Multi', plateCount: 3, dimensionsMm: [384.5, 445.2, 162], plateDimensions: [
+    { number: 1, name: 'lithophane', dimensionsMm: [144, 108, 2.5] },
+    { number: 2, name: 'photo frame', dimensionsMm: [28.5, 126, 162] },
+    { number: 3, name: 'light guide plate', dimensionsMm: [108, 150, 1.4] },
+  ] });
+  const old = { ...multi, id: 'old', name: 'Old', plateDimensions: null };
+  const large = { ...multi, id: 'large', plateDimensions: [{ number: 1, name: null, dimensionsMm: [300, 300, 20] as [number, number, number] }] };
+  expect(filterAndSortModels([multi, old, large], [], {
+    activeFolderId: 'all', activeTag: null, query: '', sort: 'name', fitBed: [256, 256, 256],
+  }).map(m => m.id)).toEqual(['multi', 'old']);
+});

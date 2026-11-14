@@ -30,7 +30,7 @@ it.each(['compact', 'comfort'])('lists the print bed verdict per printer with a 
   const rows = within(section).getAllByRole('listitem');
   expect(rows.map(row => row.textContent)).toEqual([
     `${de.plateFitFits}X1C (256 × 256 × 256)`,
-    `${de.plateFitTooLarge}Mini (180 × 180 × 180): 220 mm zu breit`,
+    `${de.plateFitTooLarge}Mini (180 × 180 × 180): 40 mm zu breit`,
   ]);
   expect(section).toHaveTextContent(de.plateFitHint);
 });
@@ -49,4 +49,15 @@ it.each(['compact', 'comfort'])('shows no print bed section in the trash panel o
   unmount();
   panel(density, { printers: [] });
   expect(screen.queryByRole('region', { name: de.plateFitHeading })).toBeNull();
+});
+
+it.each(['compact', 'comfort'])('shows the largest plate and the workspace caveat in %s', density => {
+  panel(density, {}, makeModelFile({ dimensionsMm: [384.5, 445.2, 162], plateCount: 3, plateDimensions: [
+    { number: 1, name: 'lithophane', dimensionsMm: [144, 108, 2.5] },
+    { number: 2, name: 'photo frame', dimensionsMm: [28.5, 126, 162] },
+    { number: 3, name: 'light guide plate', dimensionsMm: [108, 150, 1.4] },
+  ] }));
+  expect(screen.getByText(de.plateSizeLargest)).toBeInTheDocument();
+  expect(screen.getByText(de.plateSizeHint.replace('{size}', '28,5 × 126 × 162 mm'))).toBeInTheDocument();
+  expect(screen.queryByText('384 × 445 × 162 mm')).toBeNull();
 });

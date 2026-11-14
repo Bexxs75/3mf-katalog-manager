@@ -33,7 +33,8 @@ async function setup() {
   return await act(async () => render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>));
 }
 const gear = () => screen.getByRole('button', { name: de.settingsTitle });
-const settings = () => screen.queryByRole('complementary', { name: de.settingsTitle });
+// Docked it is a region next to the catalog; laid over a view it is a modal window.
+const settings = () => screen.queryByRole('complementary', { name: de.settingsTitle }) ?? screen.queryByRole('dialog', { name: de.settingsTitle });
 const details = () => screen.queryByRole('complementary', { name: de.detailPanelTitle });
 const tile = (id: string) => document.querySelector<HTMLElement>(`[data-model-id="${id}"]`)!;
 
@@ -46,7 +47,8 @@ describe('settings in the right-hand panel', () => {
     expect(settings()).toBeVisible();
     expect(details()).toBeNull();
     // Models, folders and the rail stay uncovered: the panel is a layout sibling, not an overlay.
-    expect(settings()).not.toHaveClass('detail-panel-overlay');
+    expect(settings()).not.toHaveClass('settings-panel-overlay');
+    expect(document.querySelector('[data-catalog-main]')).toHaveClass('isolate', 'overflow-hidden', 'min-w-0');
     expect(tile('a')).toBeInTheDocument();
     fireEvent.click(gear());
     expect(settings()).toBeNull();
@@ -116,17 +118,17 @@ describe('settings in the right-hand panel', () => {
   it('switches tabs inside the panel and keeps every General section', async () => {
     await setup();
     fireEvent.click(gear());
-    expect(screen.getByText(de.sfTitle)).toBeVisible();
-    expect(screen.getByText(de.diskSyncTitle)).toBeVisible();
+    expect(screen.getByRole('heading', { name: de.settingsSecAppearance })).toBeVisible();
+    expect(screen.getByRole('heading', { name: de.settingsSecControls })).toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: de.settingsTabCatalog }));
     expect(screen.getByRole('tab', { name: de.settingsTabCatalog })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText(de.catalogBackupTitle)).toBeVisible();
+    expect(screen.getByRole('heading', { name: de.settingsSecSources })).toBeVisible();
+    expect(screen.getByRole('heading', { name: de.settingsSecSync })).toBeVisible();
   });
 
   it('Escape in an open dialog closes only the dialog', async () => {
     await setup();
     fireEvent.click(gear());
-    fireEvent.click(screen.getByRole('tab', { name: de.settingsTabInfo }));
     const tips = within(settings()!).getByRole('button', { name: de.keyboardTipsTitle });
     tips.focus(); fireEvent.click(tips);
     const dialog = screen.getByRole('dialog', { name: de.keyboardTipsTitle });
@@ -140,7 +142,8 @@ describe('settings in the right-hand panel', () => {
     fireEvent.click(screen.getByRole('button', { name: de.railPrinters }));
     fireEvent.click(gear());
     expect(settings()).toBeVisible();
-    expect(settings()).toHaveClass('detail-panel-overlay');
+    expect(settings()).toHaveClass('settings-panel-overlay');
+    expect(screen.getByRole('dialog', { name: de.settingsTitle })).toHaveAttribute('aria-modal', 'true');
     fireEvent.click(screen.getByRole('button', { name: de.settingsClose }));
     expect(settings()).toBeNull();
     expect(gear()).toHaveFocus();
@@ -150,9 +153,15 @@ describe('settings in the right-hand panel', () => {
     await setup();
     fireEvent.click(gear());
     fireEvent.click(screen.getByRole('button', { name: de.railPrinters }));
-    expect(settings()).toHaveClass('detail-panel-overlay');
+    expect(settings()).toHaveClass('settings-panel-overlay');
+    // As a modal window the overlay keeps the rail out of reach.
     fireEvent.click(screen.getByRole('button', { name: de.railCatalog }));
-    expect(settings()).not.toHaveClass('detail-panel-overlay');
+    expect(settings()).toHaveClass('settings-panel-overlay');
+    fireEvent.click(screen.getByRole('button', { name: de.settingsClose }));
+    fireEvent.click(screen.getByRole('button', { name: de.railCatalog }));
+    fireEvent.click(gear());
+    expect(settings()).not.toHaveClass('settings-panel-overlay');
+    fireEvent.click(screen.getByRole('tab', { name: de.settingsTabServices }));
     fireEvent.click(screen.getByRole('button', { name: de.pmOpen }));
     expect(settings()).toBeNull();
   });
@@ -170,5 +179,70 @@ describe('settings in the right-hand panel', () => {
     // With the settings gone, Escape closes the detail view as before.
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(previous()).toBeNull();
+  });
+
+  it('opens on the tab used last in this session, and on General the first time', async () => {
+    await setup();
+    fireEvent.click(gear());
+    expect(screen.getByRole('tab', { name: de.settingsTabGeneral })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: de.settingsTabMaintenance }));
+    fireEvent.click(screen.getByRole('button', { name: de.settingsClose }));
+    fireEvent.click(gear());
+    expect(screen.getByRole('tab', { name: de.settingsTabMaintenance })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: de.settingsTabMaintenance })).toHaveFocus();
+  });
+
+  it('returns the focus to the gear that opened the docked panel', async () => {
+    await setup();
+    gear().focus();
+    fireEvent.click(gear());
+    fireEvent.click(screen.getByRole('button', { name: de.settingsClose }));
+    expect(gear()).toHaveFocus();
+  });
+});
+
+describe('direct entries into the settings', () => {
+  it('leads the source-folder check without folders to the source folders section', async () => {
+    await setup();
+    fireEvent.click(screen.getByRole('button', { name: de.import }));
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: de.sfMenuCheck })); });
+    expect(await screen.findByRole('tab', { name: de.settingsTabCatalog, selected: true })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: de.settingsSecSources })).toHaveFocus();
+  });
+
+  it('leads "open in slicer" without a configured slicer to the installed slicers', async () => {
+    await setup();
+    fireEvent.contextMenu(tile('a'));
+    fireEvent.click((await screen.findAllByRole('button', { name: de.openInSlicer })).slice(-1)[0]);
+    expect(await screen.findByRole('tab', { name: de.settingsTabServices, selected: true })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: de.settingsSecSlicers })).toHaveFocus();
+  });
+
+  it('does not move the panel again when it is opened later without a request', async () => {
+    await setup();
+    fireEvent.contextMenu(tile('a'));
+    fireEvent.click((await screen.findAllByRole('button', { name: de.openInSlicer })).slice(-1)[0]);
+    await screen.findByRole('heading', { level: 3, name: de.settingsSecSlicers });
+    fireEvent.click(screen.getByRole('tab', { name: de.settingsTabInfo }));
+    fireEvent.click(screen.getByRole('button', { name: de.settingsClose }));
+    fireEvent.click(gear());
+    expect(screen.getByRole('tab', { name: de.settingsTabInfo })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: de.settingsTabInfo })).toHaveFocus();
+  });
+
+  it('leads the Thingiverse area to the Thingiverse section', async () => {
+    localStorage.setItem('3mf-katalog-view', 'grid');
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+      if (cmd === 'get_thingiverse_settings') return { enabled: true, hasToken: false, tokenMask: null, usageToday: 0, dailyLimit: 1000 };
+      if (cmd === 'get_app_version') return '0.15.0';
+      if (cmd === 'has_step_preview' || cmd === 'is_preview_build' || cmd === 'get_printer_link_enabled') return false;
+      if (cmd === 'register_existing_catalog_base_dir' || cmd === 'check_app_update' || cmd === 'get_last_printer_for_file') return null;
+      return [];
+    });
+    await setup();
+    fireEvent.click(await screen.findByRole('button', { name: de.tvRail }));
+    fireEvent.click(await screen.findByRole('button', { name: de.tvOpenSettings }));
+    expect(await screen.findByRole('tab', { name: de.settingsTabServices, selected: true })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: new RegExp(de.settingsSecThingiverse) })).toHaveFocus();
   });
 });

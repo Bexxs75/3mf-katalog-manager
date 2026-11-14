@@ -16,7 +16,7 @@ const base: PrinterConnection = {
 function link(c: PrinterConnection | null, jobs = 0): PrinterLinkState {
   return {
     refreshKey: 0, enabled: true, connections: c ? [c] : [], error: null, refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
-    removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
+    removeConnection: vi.fn(), clearApiKey: vi.fn(), includeOlderHistory: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
     jobs: Array.from({ length: jobs }, (_, i) => ({ id: String(i), printerId: '1' })) as PrinterLinkState['jobs'],
   } as PrinterLinkState;
 }
@@ -35,6 +35,16 @@ describe('PrinterLinkStatus', () => {
     expect(screen.queryByText(/Unerwartete Antwort/)).not.toBeInTheDocument();
   });
 
+  it.each([
+    [{ lastError: 'timeout', failures: 1, status: 'reconnecting' }, /verbinde neu … \(Versuch 2\)/],
+    [{ lastError: 'connection_refused', failures: 3, errorSince: 1790271000, status: 'offline' }, /nicht erreichbar seit/],
+    [{ lastError: 'timeout', failures: 30, errorSince: 1790271000, status: 'error' }, /nicht erreichbar seit/],
+    [{ lastError: 'history_missing', failures: 1, errorSince: 1, status: 'error' }, /Druckhistorie ist am Drucker nicht eingeschaltet/],
+  ] as const)('shows the status of a failing connection: %j', (patch, text) => {
+    render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, ...patch } as PrinterConnection)} /></LanguageProvider>);
+    expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
   it('renders nothing for printers without connection', () => {
     const { container } = render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link(null)} /></LanguageProvider>);
     expect(container).toBeEmptyDOMElement();
@@ -45,7 +55,7 @@ describe('PrinterLinkStatus', () => {
     render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
     expect(screen.getByText(/abgeglichen/)).toBeInTheDocument();
     expect(screen.getByText('3 Drucke zu bestätigen')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Jetzt abgleichen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt verbinden' }));
     expect(l.syncNow).toHaveBeenCalled();
   });
 
@@ -55,7 +65,7 @@ describe('PrinterLinkStatus', () => {
     const l = link(base);
     l.syncNow = vi.fn().mockRejectedValue('offline');
     render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
-    fireEvent.click(screen.getByRole('button', { name: 'Jetzt abgleichen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt verbinden' }));
     const message = await screen.findByText('offline');
     expect(message.closest('div')).toHaveTextContent('Das hat nicht geklappt: offline');
   });
@@ -67,6 +77,8 @@ describe('PrinterLinkStatus', () => {
     expect(screen.getByText(/nicht erreichbar seit/)).toBeInTheDocument();
     rerender(<LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, lastError: 'auth_required', paused: true })} /></LanguageProvider>);
     expect(screen.getByText('Anmeldung nötig')).toBeInTheDocument();
+    rerender(<LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, lastError: 'auth_rejected', paused: true })} /></LanguageProvider>);
+    expect(screen.getByText('Schlüssel abgelehnt')).toBeInTheDocument();
   });
 
   it('shows a paused-retest hint instead of a healthy status when paused without an error', () => {

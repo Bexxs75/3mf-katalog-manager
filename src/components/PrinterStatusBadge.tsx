@@ -3,12 +3,22 @@ import type { Printer, PrinterConnection } from '../types';
 
 export function printerStatus(printer: Printer, enabled: boolean, connection?: PrinterConnection) {
   if (printer.kind === 'resin' || !enabled || !connection) return 'pmInactive';
-  return connection.lastError || connection.paused ? 'pmConnectionError' : 'pmConnected';
+  switch (connection.status) {
+    case 'ok': return 'pmConnected';
+    case 'reconnecting': return 'pmReconnecting';
+    case 'offline': return 'pmOffline';
+    case 'error':
+    case 'paused': return 'pmConnectionError';
+    // Data without a derived status: the old rule.
+    default: return connection.lastError || connection.paused ? 'pmConnectionError' : 'pmConnected';
+  }
 }
 
 export const printerStatusColors = {
   pmInactive: 'text-[var(--unk)] bg-[var(--unk-soft)]',
   pmConnectionError: 'text-[var(--crit)] bg-[var(--crit-soft)]',
+  pmReconnecting: 'text-[var(--ink-2)] bg-[var(--panel-2)]',
+  pmOffline: 'text-[var(--unk)] bg-[var(--unk-soft)]',
   pmConnected: 'text-[var(--good)] bg-[var(--good-soft)]',
 };
 
