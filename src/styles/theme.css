@@ -45,7 +45,7 @@ img[draggable="false"] { -webkit-user-drag: none; user-select: none; }
   --ink: oklch(0.235 0.01 45);
   --ink-2: oklch(0.40 0.01 50);
   --ink-3: oklch(0.40 0.009 50);
-  --accent: oklch(0.46 0.15 30);
+  --accent: oklch(0.43 0.15 30);
   --accent-ink: oklch(0.99 0.01 30);
   --accent-soft: oklch(0.80 0.06 30);
   --plate: oklch(0.80 0.008 70);
@@ -115,7 +115,7 @@ img[draggable="false"] { -webkit-user-drag: none; user-select: none; }
   --ink-3: oklch(0.865 0.008 60);
   --accent: oklch(0.85 0.13 34);
   --accent-ink: oklch(0.17 0.03 30);
-  --accent-soft: oklch(0.50 0.080 32);
+  --accent-soft: oklch(0.42 0.080 32);
   --plate: oklch(0.46 0.009 60);
   --plate-2: oklch(0.47 0.009 60);
   --grid: oklch(0.62 0.010 60);
