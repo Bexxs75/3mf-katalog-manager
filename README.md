@@ -32,15 +32,23 @@ From v0.16.0, there is one download per system: Windows `.msi`, macOS `.dmg` (In
 | ![Material Manager with grouped spools](docs/assets/readme/en/material-manager.webp) | ![Printers with AMS slots](docs/assets/readme/en/printers-ams.webp) |
 | **Source folders: check Downloads for new models** | **Sync with disk: renamed and moved files** |
 | ![Source folders dialog](docs/assets/readme/en/source-folders.webp) | ![Sync with disk dialog](docs/assets/readme/en/disk-sync.webp) |
+| **Bundles** | **Print data from the slicer** |
+| ![Bundle cards showing variants and parts as one card](docs/assets/readme/en/bundles.webp) | ![Print data card with time, weight and material per plate](docs/assets/readme/en/print-data.webp) |
+| **Filters by print data** | **Print statistics** |
+| ![Filter bar with target printer, nozzle, layer height, print time and color](docs/assets/readme/en/print-data-filters.webp) | ![Print statistics with prints per month, failure reasons and material](docs/assets/readme/en/print-statistics.webp) |
 
 ## What it does
 
 - **Find and organize models** — import files or whole folders, automatic tags, search, folders, collections, favorites, duplicates detection, trash.
 - **Remove from catalog / Reset catalog** — remove models or folders, or empty the catalog, without changing files on disk.
-- **Understand files and metadata** — 3D preview for 3MF, STL, OBJ (and STEP) with the real file colors of Bambu Studio, OrcaSlicer and MakerWorld projects, dimensions, volume, build plates, filament usage and weight from OrcaSlicer/Bambu Studio.
+- **Understand files and metadata** — 3D preview for 3MF, STL, OBJ (and STEP) with the real file colors of Bambu Studio, OrcaSlicer and MakerWorld projects, dimensions, volume, build plates, filament usage and weight from OrcaSlicer/Bambu Studio; G-code files are read for their print data as well.
+- **Bundles** — variants or parts of one model shown as a single catalog card with its own panel; bundle suggestions are only offered, never applied by themselves.
+- **Print data and filters** — print time, filament and weight per plate, target printer, layer height, nozzle and (where the file states them) temperatures from 3MF and G-code files; filter the catalog by them and compare plates in a plate overview. Values a file does not state are shown as missing, never estimated.
+- **G-code and resin files** — `.gcode`/`.bgcode` and resin slicer files can be added to the catalog as entries of their own; resin files are catalogued only (no preview).
+- **Open with** — view a model file in the app without importing it, and add it to the catalog if you like.
 - **Manage filament and resin** — spools and resin bottles with stock, location and price (equal spools grouped, up to four colors per spool), printers with AMS/MMU slots, "Is there enough filament?" per model.
 - **Plan and document prints** — print queue, print status, print log with photos, estimated material cost, open in your slicer with one click.
-- **Connect printers** — optional, read-only: Klipper/Moonraker printers report the filament used, you confirm and it is deducted. OctoPrint and Bambu Lab are planned.
+- **Connect printers** — optional, read-only: Klipper/Moonraker printers report the filament used, you confirm and it is deducted. Printers that ask for a login work with an API key. The printer's history shows result and optional failure reason per print, and a statistics card summarizes prints, success rate, filament and failure reasons. OctoPrint and Bambu Lab are planned.
 - **Keep the catalog in step with your files** — sync with disk recognises renamed and moved files and folders; rename and delete folders in the app, move several models at once, and undo with Ctrl/Cmd+Z.
 - **Collect new downloads** — set up source folders such as Downloads, check them for new models and move the chosen files into the catalog.
 - **Companion files and print bed check** — attach pictures, PDFs and text files to a model; the detail view shows whether a model fits each of your printers, and the "Fits on" filter narrows the catalog.
@@ -98,6 +106,8 @@ From v0.16.0, there is one download per system: Windows `.msi`, macOS `.dmg` (In
 | Linux (`.AppImage`) | available; `.deb`, `.rpm` and AUR planned |
 | 3MF, STL, OBJ | catalog and 3D preview |
 | STEP (`.stp`/`.step`) | catalog and 3D preview (included from v0.16.0) |
+| G-code (`.gcode`/`.bgcode`) | catalog and print data; embedded preview picture if the file has one |
+| Resin files (`.ctb`, `.goo`, `.sl1` and others) | catalog only, no preview |
 | OrcaSlicer / Bambu Studio 3MF | filament usage and weight per plate supported |
 | Open in slicer | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura detected automatically, others can be added |
 | Klipper / Moonraker | available; [more printer models wanted](https://3mfkatalog.de/en/printer-test.html) |

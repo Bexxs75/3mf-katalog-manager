@@ -32,15 +32,23 @@ Ab v0.16.0 gibt es einen Download pro System: Windows `.msi`, macOS `.dmg` (Inte
 | ![Material Manager mit gruppierten Spulen](docs/assets/readme/de/material-manager.webp) | ![Drucker mit AMS-Fächern](docs/assets/readme/de/printers-ams.webp) |
 | **Quellordner: Downloads auf neue Modelle prüfen** | **Abgleich mit der Festplatte: umbenannte und verschobene Dateien** |
 | ![Dialog „Quellordner“](docs/assets/readme/de/source-folders.webp) | ![Dialog „Abgleich mit der Festplatte“](docs/assets/readme/de/disk-sync.webp) |
+| **Bündel** | **Druckdaten aus dem Slicer** |
+| ![Bündel-Kacheln mit Varianten und Teilen als eine Kachel](docs/assets/readme/de/bundles.webp) | ![Karte „Druckdaten“ mit Zeit, Gewicht und Material je Platte](docs/assets/readme/de/print-data.webp) |
+| **Filter nach Druckdaten** | **Druckstatistik** |
+| ![Filterleiste mit Zieldrucker, Düse, Schichthöhe, Druckzeit und Farbe](docs/assets/readme/de/print-data-filters.webp) | ![Druckstatistik mit Drucken pro Monat, Fehlerursachen und Material](docs/assets/readme/de/print-statistics.webp) |
 
 ## Was die App kann
 
 - **Modelle finden und ordnen** — Dateien oder ganze Ordner importieren, automatische Tags, Suche, Ordner, Sammlungen, Favoriten, Duplikaterkennung, Papierkorb.
 - **Aus dem Katalog entfernen / Katalog zurücksetzen** — Modelle oder Ordner entfernen oder den Katalog leeren, ohne Dateien auf der Festplatte zu ändern.
-- **Dateien und Metadaten verstehen** — 3D-Vorschau für 3MF, STL, OBJ (und STEP) mit den echten Dateifarben aus Projekten von Bambu Studio, OrcaSlicer und MakerWorld, Maße, Volumen, Druckplatten, Filamentverbrauch und Gewicht aus OrcaSlicer/Bambu Studio.
+- **Dateien und Metadaten verstehen** — 3D-Vorschau für 3MF, STL, OBJ (und STEP) mit den echten Dateifarben aus Projekten von Bambu Studio, OrcaSlicer und MakerWorld, Maße, Volumen, Druckplatten, Filamentverbrauch und Gewicht aus OrcaSlicer/Bambu Studio; auch G-Code-Dateien werden auf ihre Druckdaten gelesen.
+- **Bündel** — Varianten oder Teile eines Modells als eine Karte im Katalog mit eigenem Bereich; Bündel-Vorschläge werden nur angeboten, nie von selbst angewendet.
+- **Druckdaten und Filter** — Druckzeit, Filament und Gewicht je Platte, Zieldrucker, Schichthöhe, Düse und (wo die Datei sie nennt) Temperaturen aus 3MF- und G-Code-Dateien; den Katalog danach filtern und Platten in einer Plattenübersicht vergleichen. Was eine Datei nicht nennt, wird als fehlend angezeigt, nie geschätzt.
+- **G-Code- und Resin-Dateien** — `.gcode`/`.bgcode` und Resin-Slicer-Dateien lassen sich als eigene Einträge in den Katalog aufnehmen; Resin-Dateien werden nur katalogisiert (keine Vorschau).
+- **Öffnen mit** — eine Modelldatei in der App ansehen, ohne sie zu importieren, und auf Wunsch in den Katalog aufnehmen.
 - **Filament und Resin verwalten** — Spulen und Resin-Flaschen mit Bestand, Lagerort und Preis (gleiche Spulen gruppiert, bis zu vier Farben pro Spule), Drucker mit AMS-/MMU-Fächern, „Reicht das Filament?“ je Modell.
 - **Drucke planen und dokumentieren** — Warteschlange, Druckstatus, Druckprotokoll mit Fotos, geschätzte Materialkosten, mit einem Klick im Slicer öffnen.
-- **Drucker anbinden** — optional und nur lesend: Klipper/Moonraker-Drucker melden den Filamentverbrauch, du bestätigst, dann wird abgebucht. OctoPrint und Bambu Lab sind geplant.
+- **Drucker anbinden** — optional und nur lesend: Klipper/Moonraker-Drucker melden den Filamentverbrauch, du bestätigst, dann wird abgebucht. Drucker mit Anmeldung funktionieren mit einem API-Schlüssel. Der Druckverlauf zeigt je Druck das Ergebnis und einen optionalen Fehlergrund, eine Statistik-Karte fasst Drucke, Erfolgsquote, Filament und Fehlerursachen zusammen. OctoPrint und Bambu Lab sind geplant.
 - **Den Katalog im Gleichschritt mit deinen Dateien halten** — der Abgleich mit der Festplatte erkennt umbenannte und verschobene Dateien und Ordner; Ordner in der App umbenennen und löschen, mehrere Modelle auf einmal verschieben und mit Strg/Cmd+Z zurücknehmen.
 - **Neue Downloads einsammeln** — Quellordner wie Downloads einrichten, auf neue Modelle prüfen und die gewählten Dateien in den Katalog verschieben.
 - **Begleitdateien und Druckbett-Prüfung** — Bilder, PDFs und Textdateien an ein Modell hängen; die Detailansicht zeigt, ob ein Modell auf jeden deiner Drucker passt, und der Filter „Passt auf“ grenzt den Katalog ein.
@@ -98,6 +106,8 @@ Ab v0.16.0 gibt es einen Download pro System: Windows `.msi`, macOS `.dmg` (Inte
 | Linux (`.AppImage`) | verfügbar; `.deb`, `.rpm` und AUR geplant |
 | 3MF, STL, OBJ | Katalog und 3D-Vorschau |
 | STEP (`.stp`/`.step`) | Katalog und 3D-Vorschau (ab v0.16.0 enthalten) |
+| G-Code (`.gcode`/`.bgcode`) | Katalog und Druckdaten; eingebettetes Vorschaubild, wenn die Datei eins hat |
+| Resin-Dateien (`.ctb`, `.goo`, `.sl1` u. a.) | nur Katalog, keine Vorschau |
 | OrcaSlicer / Bambu Studio 3MF | Filamentverbrauch und Gewicht je Platte unterstützt |
 | Im Slicer öffnen | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura werden erkannt, weitere lassen sich eintragen |
 | Klipper / Moonraker | verfügbar; [weitere Druckermodelle gesucht](https://3mfkatalog.de/druckertest.html) |
