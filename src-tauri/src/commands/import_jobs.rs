@@ -241,14 +241,14 @@ fn desktop_placement_diagnostics_keep_failed_rollback_recovery_details() {
     let target_id = db::insert_folder_with_parent(&conn,"target",None,target.to_str().unwrap()).unwrap();
     conn.execute_batch("CREATE TRIGGER fail_placement BEFORE UPDATE OF folder_id ON files BEGIN SELECT RAISE(ABORT, 'forced placement failure'); END;").unwrap();
     BLOCK_ROLLBACK.with(|path| *path.borrow_mut() = Some(source.clone()));
-    conn.trace_v2(rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT, Some(|event| {
+    conn.trace_v2(rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT, Some(|event: rusqlite::trace::TraceEvent<'_>| {
         let rusqlite::trace::TraceEvent::Stmt(_, sql) = event else { return; };
         if sql.starts_with("UPDATE files SET folder_id") {
             BLOCK_ROLLBACK.with(|path| {
                 if let Some(path) = path.borrow_mut().take() { std::fs::write(path,b"concurrent replacement").unwrap(); }
             });
         }
-    }));
+    })).unwrap();
     let diagnostics = Arc::new(Diagnostics(Mutex::new(Vec::new())));
     let service = ImportJobs::new(Arc::new(FileReader),Arc::new(DiskTarget),Arc::new(RealClock::default()),diagnostics.clone());
     let job = service.enqueue_work(ImportSource::Files,Some(target_id.to_string()),true,None,JobInput::Models(vec![source.clone()])).unwrap();

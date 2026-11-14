@@ -17,7 +17,7 @@ argon2 = "0.5"
 getrandom = "0.3"
 base64 = "0.22"
 log = "0.4"
-rusqlite = { version = "0.40.2", features = ["hooks"] }
+rusqlite = { version = "0.41.1", features = ["hooks"] }
 sha2 = "0.10"
 unicode-normalization = "0.1.25"
 chrono = { version = "0.4", default-features = false, features = ["std"] }

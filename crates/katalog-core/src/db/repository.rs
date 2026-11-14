@@ -1782,7 +1782,7 @@ mod tests {
 
     #[test]
     fn list_file_summaries_executes_a_constant_number_of_queries_regardless_of_row_count() {
-        let conn = connect_in_memory().unwrap();
+        let mut conn = connect_in_memory().unwrap();
         for i in 0..500 {
             test_insert_minimal_file(&conn, &format!("/tmp/model-{i}.3mf"), None).unwrap();
         }
@@ -1791,7 +1791,8 @@ mod tests {
         conn.trace_v2(
             rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT,
             Some(count_traced_query),
-        );
+        )
+        .unwrap();
 
         let summaries = list_file_summaries(&conn).unwrap();
 
@@ -1819,7 +1820,8 @@ mod tests {
         conn.trace_v2(
             rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT,
             Some(count_traced_query),
-        );
+        )
+        .unwrap();
 
         let summaries = list_file_summaries(&conn).unwrap();
 
@@ -1869,7 +1871,7 @@ mod tests {
 
     #[test]
     fn list_all_file_tags_executes_a_constant_number_of_queries_regardless_of_row_count() {
-        let conn = connect_in_memory().unwrap();
+        let mut conn = connect_in_memory().unwrap();
         for i in 0..500 {
             let file_id = test_insert_minimal_file(&conn, &format!("/tmp/tagged-{i}.3mf"), None).unwrap();
             add_tag_to_file(&conn, file_id, "bulk").unwrap();
@@ -1879,7 +1881,8 @@ mod tests {
         conn.trace_v2(
             rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT,
             Some(count_traced_query),
-        );
+        )
+        .unwrap();
 
         let pairs = list_all_file_tags(&conn).unwrap();
 
