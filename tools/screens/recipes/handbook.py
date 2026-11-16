@@ -10,20 +10,21 @@ from recipes.common import C, js, union_expr
 TX = {
     "de": dict(new_folder="Neuer Ordner", haushalt="Haushalt", collection="Weihnachtsmarkt-Projekt", rocket="Rakete.3mf", select=["Rakete.3mf", "Kreisel.3mf", "Spiralvase.3mf"],
                view3d="3D-Ansicht", cost="Geschätzte Materialkosten", printers="DRUCKER", add_spool="Spule anlegen", resin="Resin",
-               nav_filament="Material Manager", nav_settings="Einstellungen", nav_trash="Papierkorb", general="Allgemein", slicer="Slicer",
+               nav_filament="Material Manager", nav_settings="Einstellungen", nav_trash="Papierkorb", general="Allgemein", slicer="Slicer & Dienste",
                catalog="Katalog", info="Info", settings="EINSTELLUNGEN", import_="Importieren", files="Dateien...", archive="Archive entpacken", extract="Entpacken",
                list_btn="Liste", favorites="Favoriten", queue="Warteschlange", queue_last="Wabenregal.stl", review="Prüfen", new_prints="Neue Drucke", report="Fehler melden",
                log_yes="Ja, Logdatei anhängen", update_now="Jetzt aktualisieren", reset="Katalog zurücksetzen …", tags="TAGS",
                remove_folder_item="entfernen"),
     "en": dict(new_folder="New folder", haushalt="Household", collection="Christmas Market Project", rocket="Rocket.3mf", select=["Rocket.3mf", "Spinning Top.3mf", "Spiral Vase.3mf"],
                view3d="3D view", cost="Estimated material cost", printers="PRINTERS", add_spool="Add spool", resin="Resin",
-               nav_filament="Material Manager", nav_settings="Settings", nav_trash="Trash", general="General", slicer="Slicer",
+               nav_filament="Material Manager", nav_settings="Settings", nav_trash="Trash", general="General", slicer="Slicers & services",
                catalog="Catalog", info="Info", settings="SETTINGS", import_="Import", files="Files...", archive="Extract archives", extract="Extract", new_prints="New prints",
                list_btn="List", favorites="Favorites", queue="Print Queue", queue_last="Honeycomb Shelf.stl", review="Review", report="Report a bug",
                log_yes="Yes, attach the log file", update_now="Update now", reset="Reset catalog …", tags="TAGS",
                remove_folder_item="remove"),
 }
 VERSION, NEXT = "0.16.0", "0.16.1"
+INFO_VERSION = "0.18.1"
 DOCS = {"de": "/home/tester/Dokumente", "en": "/home/tester/Documents"}
 
 
@@ -206,6 +207,9 @@ async def settings(s):
     """args: tab general|slicer|catalog|info."""
     t = tx(s)
     fx, prefs = (v15_fixture(s, "info") if s.args.get("v15") else None), None
+    if fx and s.args["tab"] == "info":
+        # the Info tab shows the version of the manual it belongs to, not the 0.16 one of the shared fixture
+        fx["get_app_version"] = fx["check_app_update"]["currentVersion"] = fx["get_bug_report_info"]["version"] = INFO_VERSION
     if s.args["tab"] == "slicer":
         # a default slicer and a fourth entry, as the manual describes the tab
         fx = fx or s.fixture()
@@ -218,14 +222,19 @@ async def settings(s):
     await p.js("document.activeElement && document.activeElement.blur()")
     # Since 0.18 the settings are a docked side panel (.settings-panel) that scrolls inside: grow the window by what is
     # hidden, so the picture shows the whole content, and crop to the panel.
-    extra = await p.js(f"""(() => {{ let e = __tab({C(t['general'])}); while (e && e !== document.body) {{
-        const s = getComputedStyle(e); if (/(auto|scroll)/.test(s.overflowY) && e.scrollHeight > e.clientHeight) return e.scrollHeight - e.clientHeight;
-        e = e.parentElement; }} return 0; }})()""")
+    SCROLLER = ("[...document.querySelector('.settings-panel').querySelectorAll('*')]"
+                ".find(x => /(auto|scroll)/.test(getComputedStyle(x).overflowY) && x.clientHeight > 300)")
+    extra = await p.js(f"(() => {{ const e = {SCROLLER}; return e ? Math.max(0, e.scrollHeight - e.clientHeight) : 0; }})()")
     if extra:
         w, h = s.scene.viewport
         await p.viewport(w, h + int(extra) + 2, s.scene.dpr)
     await asyncio.sleep(0.8)
-    return await s.capture(p, {"panel": "document.querySelector('.settings-panel')"})
+    # the panel is as high as the window: crop below its last content, as the old pictures did
+    return await s.capture(p, {"panel": f"""(() => {{ const e = document.querySelector('.settings-panel'); if (!e) return null;
+        const r = e.getBoundingClientRect(); const sc = {SCROLLER};
+        const kids = sc ? [...sc.querySelectorAll('*')].filter(k => k.getBoundingClientRect().height > 0) : [];
+        const bottom = kids.length ? Math.max(...kids.map(k => k.getBoundingClientRect().bottom)) + 16 : r.bottom;
+        const b = Math.min(r.bottom, bottom); return {{ getBoundingClientRect: () => ({{ x: r.x, y: r.y, width: r.width, height: b - r.y, right: r.right, bottom: b }}) }}; }})()"""})
 
 
 @recipe("hb-link-material")
