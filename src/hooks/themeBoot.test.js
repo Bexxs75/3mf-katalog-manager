@@ -23,7 +23,7 @@ it('loads blocking external theme assets in head before the React module', () =>
 it.each([
   ['light', true, 'light'], ['dark', false, 'dark'], ['slate', true, 'slate'], ['slate', false, 'slate'],
   ['system', true, 'dark'], ['system', false, 'light'],
-  [null, true, 'dark'], [null, false, 'light'], ['', true, 'dark'],
+  [null, true, 'dark'], [null, false, 'light'], ['', true, 'dark'], ['bogus', true, 'dark'], ['bogus', false, 'light'],
 ])('resolves stored %s and system dark=%s to %s', (stored, dark, expected) => {
   const setAttribute = vi.fn();
   const getItem = vi.fn().mockReturnValue(stored);

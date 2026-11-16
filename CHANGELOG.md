@@ -7,6 +7,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [0.18.1] - 2026-11-16
+
+### Changed
+
+- **Color schemes: "Light" is now "Sand", and there is a new scheme "Slate":** the former light scheme is replaced by "Sand", a warmer, slightly darker tone with stronger contrast between text, panels and borders. The stored value stays `light`, so an existing "Light" setting simply shows Sand. "Slate" (German "Schiefer") is a new warm mid-dark grey scheme that you can only choose by hand: "System" still follows the operating system between Sand and Dark and never switches to Slate. The choice in Settings is now System, Sand, Slate, Dark. The window background at startup matches each scheme (Sand, Slate, Dark), so no wrong-colored flash appears before the interface loads. An unknown stored color-scheme value now falls back to "System". The new names are in all four languages (de/en/es/fr; Spanish and French were written by the model and not checked by native speakers).
+
+- **Color schemes, contrast:** text on the soft accent background (accent color on accent-soft) now reaches at least 4.5:1 (WCAG AA) in Sand and Slate; the automated contrast test checks this pair.
+
 ## [0.18.0] - 2026-11-14
 
 ### Added
@@ -834,6 +842,14 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [0.18.1] - 2026-11-16
+
+### Geändert
+
+- **Farbschemata: „Hell“ heißt jetzt „Sand“, dazu das neue Schema „Schiefer“:** Das bisherige helle Schema ist durch „Sand“ ersetzt, einen wärmeren, etwas dunkleren Ton mit stärkerem Kontrast zwischen Text, Flächen und Rahmen. Der gespeicherte Wert bleibt `light`, eine vorhandene Einstellung „Hell“ zeigt also einfach Sand. „Schiefer“ (englisch „Slate“) ist ein neues, warmes, mitteldunkles Grau, das sich nur von Hand wählen lässt: „System“ folgt weiter dem Betriebssystem zwischen Sand und Dunkel und wechselt nie auf Schiefer. Die Auswahl in den Einstellungen lautet jetzt System, Sand, Schiefer, Dunkel. Der Fensterhintergrund beim Start passt zu jedem Schema (Sand, Schiefer, Dunkel), sodass vor dem Laden der Oberfläche kein Aufblitzen in der falschen Farbe entsteht. Ein unbekannter gespeicherter Farbschema-Wert fällt jetzt auf „System“ zurück. Die neuen Namen gibt es in allen vier Sprachen (de/en/es/fr; Spanisch und Französisch wurden vom Modell geschrieben und nicht von Muttersprachlern geprüft).
+
+- **Farbschemata, Kontrast:** Text auf dem weichen Akzenthintergrund (Akzentfarbe auf Akzent-weich) erreicht in Sand und Schiefer jetzt mindestens 4,5:1 (WCAG AA); der automatische Kontrasttest prüft dieses Paar.
 
 ## [0.18.0] - 2026-11-14
 
