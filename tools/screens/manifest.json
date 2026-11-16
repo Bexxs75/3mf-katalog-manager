@@ -2348,17 +2348,17 @@
    "dpr": 1.5,
    "crop": {
     "rect": "panel",
-    "pad": 16
+    "pad": 0
    },
    "format": "png",
    "sizes": {
     "de": [
-     498,
-     536
+     720,
+     1342
     ],
     "en": [
-     498,
-     536
+     720,
+     1316
     ]
    }
   },
@@ -2556,17 +2556,17 @@
    "dpr": 1.5,
    "crop": {
     "rect": "panel",
-    "pad": 16
+    "pad": 0
    },
    "format": "png",
    "sizes": {
     "de": [
-     498,
-     1291
+     720,
+     1986
     ],
     "en": [
-     498,
-     1291
+     720,
+     1958
     ]
    }
   },
@@ -2589,17 +2589,17 @@
    "dpr": 1.5,
    "crop": {
     "rect": "panel",
-    "pad": 16
+    "pad": 0
    },
    "format": "png",
    "sizes": {
     "de": [
-     498,
-     744
+     720,
+     2371
     ],
     "en": [
-     498,
-     744
+     720,
+     2234
     ]
    }
   },
@@ -2623,17 +2623,17 @@
    "dpr": 1.5,
    "crop": {
     "rect": "panel",
-    "pad": 16
+    "pad": 0
    },
    "format": "png",
    "sizes": {
     "de": [
-     498,
-     1285
+     720,
+     1354
     ],
     "en": [
-     498,
-     1233
+     720,
+     1354
     ]
    }
   },
@@ -3062,18 +3062,108 @@
    "dpr": 1.5,
    "crop": {
     "rect": "panel",
-    "pad": 16
+    "pad": 0
    },
    "format": "webp",
    "quality": 80,
    "sizes": {
     "de": [
-     498,
-     1291
+     720,
+     1986
     ],
     "en": [
-     498,
-     1291
+     720,
+     1958
+    ]
+   }
+  },
+  {
+   "id": "wiki-farbschema-sand",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/farbschema-sand.webp",
+    "en": "src/assets/en/farbschema-sand.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-farbschema-schiefer",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/farbschema-schiefer.webp",
+    "en": "src/assets/en/farbschema-schiefer.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "slate",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-farbschema-dunkel",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/farbschema-dunkel.webp",
+    "en": "src/assets/en/farbschema-dunkel.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
     ]
    }
   },
@@ -3097,18 +3187,18 @@
    "dpr": 1.5,
    "crop": {
     "rect": "panel",
-    "pad": 16
+    "pad": 0
    },
    "format": "webp",
    "quality": 80,
    "sizes": {
     "de": [
-     498,
-     1285
+     720,
+     1354
     ],
     "en": [
-     498,
-     1233
+     720,
+     1354
     ]
    }
   },
@@ -3131,18 +3221,18 @@
    "dpr": 1.5,
    "crop": {
     "rect": "panel",
-    "pad": 16
+    "pad": 0
    },
    "format": "webp",
    "quality": 80,
    "sizes": {
     "de": [
-     498,
-     536
+     720,
+     1342
     ],
     "en": [
-     498,
-     536
+     720,
+     1316
     ]
    }
   },
