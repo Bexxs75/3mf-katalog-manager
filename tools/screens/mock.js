@@ -102,6 +102,8 @@
       }
       case 'get_last_printer_for_file':
         return ['1', '5'].includes(String(args.fileId)) ? { printerName: 'Sovol SV08', endedAt: Math.floor(Date.now() / 1000) - 3 * 86400 } : null;
+      case 'list_bundles':
+        return [];
       case 'has_step_preview':
         return false;
       case 'save_window_theme':

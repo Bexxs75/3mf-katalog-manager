@@ -215,9 +215,17 @@ async def settings(s):
     await js(p, f"__lbl({C(t['nav_settings'])}).click()", 1.0)
     await p.js(f"window.__GENERAL = {C(t['general'])}")
     await js(p, f"__tab({C(t[s.args['tab']])}).click()", 1.5)
-    await p.js("document.activeElement && document.activeElement.blur(); __unclamp(); __curtain()")
-    await asyncio.sleep(0.5)
-    return await s.capture(p, {"panel": f"__box(__tab({C(t['general'])}))"})
+    await p.js("document.activeElement && document.activeElement.blur()")
+    # Since 0.18 the settings are a docked side panel (.settings-panel) that scrolls inside: grow the window by what is
+    # hidden, so the picture shows the whole content, and crop to the panel.
+    extra = await p.js(f"""(() => {{ let e = __tab({C(t['general'])}); while (e && e !== document.body) {{
+        const s = getComputedStyle(e); if (/(auto|scroll)/.test(s.overflowY) && e.scrollHeight > e.clientHeight) return e.scrollHeight - e.clientHeight;
+        e = e.parentElement; }} return 0; }})()""")
+    if extra:
+        w, h = s.scene.viewport
+        await p.viewport(w, h + int(extra) + 2, s.scene.dpr)
+    await asyncio.sleep(0.8)
+    return await s.capture(p, {"panel": "document.querySelector('.settings-panel')"})
 
 
 @recipe("hb-link-material")

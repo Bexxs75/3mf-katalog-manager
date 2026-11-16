@@ -3062,18 +3062,108 @@
    "dpr": 1.5,
    "crop": {
     "rect": "panel",
-    "pad": 16
+    "pad": 0
    },
    "format": "webp",
    "quality": 80,
    "sizes": {
     "de": [
-     498,
-     1291
+     720,
+     2169
     ],
     "en": [
-     498,
-     1291
+     720,
+     2169
+    ]
+   }
+  },
+  {
+   "id": "wiki-farbschema-sand",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/farbschema-sand.webp",
+    "en": "src/assets/en/farbschema-sand.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-farbschema-schiefer",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/farbschema-schiefer.webp",
+    "en": "src/assets/en/farbschema-schiefer.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "slate",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-farbschema-dunkel",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/farbschema-dunkel.webp",
+    "en": "src/assets/en/farbschema-dunkel.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
     ]
    }
   },

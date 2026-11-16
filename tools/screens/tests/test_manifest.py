@@ -30,7 +30,7 @@ def test_required_keys_and_values():
     for e in ENTRIES:
         assert REQUIRED <= set(e), e["id"]
         assert e["root"] in ("app", "website", "wiki"), e["id"]
-        assert e["theme"] in ("dark", "light"), e["id"]
+        assert e["theme"] in ("dark", "light", "slate"), e["id"]
         assert set(e["paths"]) <= {"de", "en"} and e["paths"], e["id"]
         assert set(e["sizes"]) == set(e["paths"]), e["id"]
         assert len(e["viewport"]) == 2 and e["dpr"] > 0
