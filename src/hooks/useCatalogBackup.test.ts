@@ -50,6 +50,18 @@ describe('useCatalogBackup', () => {
     expect(localStorage.getItem('3mf-katalog-theme')).toBe('light');
   });
 
+  it('importCatalog restores the slate color scheme', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      imported: true,
+      settingsJson: JSON.stringify({ '3mf-katalog-theme': 'slate' }),
+    });
+    const { result } = renderHook(() => useCatalogBackup());
+    await act(async () => {
+      await result.current.importCatalog(vi.fn());
+    });
+    expect(localStorage.getItem('3mf-katalog-theme')).toBe('slate');
+  });
+
   it('Finding 7 (Abschluss-Review): exportCatalog no longer exports the dead slicer localStorage key', async () => {
     // The slicer registry lives in the backend; a legacy value in localStorage is a
     // machine-local path and must not go into the backup.

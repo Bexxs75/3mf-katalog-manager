@@ -58,7 +58,9 @@ pub fn frontend_ready(window: WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 pub fn save_window_theme(window: WebviewWindow, setting: String, resolved: String) -> Result<(), String> {
-    if !matches!(setting.as_str(), "light" | "slate" | "dark" | "system") || !matches!(resolved.as_str(), "light" | "slate" | "dark") {
+    if !matches!(setting.as_str(), "light" | "slate" | "dark" | "system") || !matches!(resolved.as_str(), "light" | "slate" | "dark")
+        || (setting == "system" && resolved == "slate")
+    {
         return Err("Ungültiges Design".into());
     }
     let marker = if setting == "system" { format!("system:{resolved}") } else { setting };

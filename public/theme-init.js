@@ -6,8 +6,9 @@
   } catch (_) {
     // Storage can be unavailable; the system preference still applies.
   }
-  var theme = setting === 'system'
-    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    : setting;
+  var fixed = setting === 'light' || setting === 'slate' || setting === 'dark';
+  var theme = fixed
+    ? setting
+    : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.setAttribute('data-app', theme);
 }());
