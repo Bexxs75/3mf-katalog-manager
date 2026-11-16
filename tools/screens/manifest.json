@@ -4029,36 +4029,6 @@
    }
   },
   {
-   "id": "web-katalog-hell",
-   "root": "website",
-   "paths": {
-    "de": "bilder/katalog-hell.webp",
-    "en": "bilder/en/katalog-hell.webp"
-   },
-   "recipe": "hb-catalog",
-   "args": {
-    "tags": "open"
-   },
-   "theme": "light",
-   "viewport": [
-    1920,
-    1080
-   ],
-   "dpr": 1.5,
-   "format": "webp",
-   "quality": 80,
-   "sizes": {
-    "de": [
-     1600,
-     900
-    ],
-    "en": [
-     1600,
-     900
-    ]
-   }
-  },
-  {
    "id": "web-komfort",
    "root": "website",
    "paths": {
@@ -4213,41 +4183,6 @@
     "en": [
      1600,
      900
-    ]
-   }
-  },
-  {
-   "id": "web-slicer",
-   "root": "website",
-   "paths": {
-    "de": "bilder/slicer.webp",
-    "en": "bilder/en/slicer.webp"
-   },
-   "recipe": "hb-settings",
-   "args": {
-    "tab": "slicer"
-   },
-   "theme": "dark",
-   "viewport": [
-    1920,
-    1500
-   ],
-   "dpr": 1.5,
-   "crop": {
-    "rect": "panel",
-    "pad": 0
-   },
-   "fit": "exact",
-   "format": "webp",
-   "quality": 80,
-   "sizes": {
-    "de": [
-     450,
-     450
-    ],
-    "en": [
-     450,
-     450
     ]
    }
   },
