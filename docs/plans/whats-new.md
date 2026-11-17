@@ -36,3 +36,8 @@ No version bump, no release, no wiki/website/screenshots (at release), no commit
 
 ## Proof
 `npx tsc --noEmit && npx vitest run`
+
+## Amendment after Codex review (2026-11-17, mandatory before building)
+- **WN-01 (web fresh install):** in the web build the setup dialog never runs, so `firstRunRef` stays true forever. Rule: desktop uses `firstRunRef`; web treats "marker missing" as fresh (no window, write marker); afterwards an older marker leads to normal update selection. Web test: first start (no window, marker written) → restart (nothing) → version change (window shows).
+- **WN-02 (web queue):** `upgradeNoticeSettled` only becomes true via `UpgradeNoticeDialog`, which is not mounted in web. Initialise/treat it as settled in web (e.g. `useState(web)`), so what's new is not blocked forever. Integration test: web with older marker shows the window automatically.
+- **WN-03 (strict start-up sequence):** one shared "what's new settled" flag does not serialise the later steps among each other. Make the modal start-up steps an explicit sequence, each released only after the previous one signalled settled, also when skipped, not needed or failed: setup → upgrade notice → what's new → print technology prompt → Linux menu prompt → open-files requests (`openRequestsReady`). Add settled callbacks to `PrintTechnologyPrompt` and `LinuxMenuPrompt` (fire when closed, when not needed, on error). Tests: fresh Linux AppImage start (setup, then print technology, then Linux menu, never two at once) and Linux menu prompt with a pending open-with request (request dialog only after the prompt is settled).
