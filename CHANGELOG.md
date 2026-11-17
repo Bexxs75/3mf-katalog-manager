@@ -12,7 +12,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Added
 
 - **White color scheme:** the original light palette is selectable again as “White”, alongside System, Sand, Slate and Dark. Existing Sand settings and the System behavior stay unchanged.
-- **What’s new:** after an update, a one-time window presents the bundled release notes in your UI language. Reopen it from Settings → About the app or beside Keyboard tips. Startup questions appear one at a time.
+- **What’s new:** after an update, a one-time window presents the bundled release notes in your UI language. Reopen it from Settings → Info → Version and updates or beside Keyboard tips. Startup questions appear one at a time.
 
 ## [0.18.2] - 2026-11-17
 
@@ -861,7 +861,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Hinzugefügt
 
 - **Farbschema Weiß:** Die ursprüngliche helle Farbpalette ist als „Weiß“ wieder wählbar, neben System, Sand, Schiefer und Dunkel. Bestehende Sand-Einstellungen und das Verhalten von System bleiben unverändert.
-- **Neuigkeiten:** Nach einem Update zeigt ein einmaliges Fenster die mitgelieferten Versionshinweise in deiner Oberflächensprache. Erneut öffnen lässt es sich unter Einstellungen → Über die App oder neben den Tastaturtipps. Die Fragen beim Start erscheinen nacheinander.
+- **Neuigkeiten:** Nach einem Update zeigt ein einmaliges Fenster die mitgelieferten Versionshinweise in deiner Oberflächensprache. Erneut öffnen lässt es sich unter Einstellungen → Info → Version und Updates oder neben den Tastaturtipps. Die Fragen beim Start erscheinen nacheinander.
 
 ## [0.18.2] - 2026-11-17
 
