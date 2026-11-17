@@ -31,6 +31,8 @@ export async function configureFrontend(catalogDir: string, pinnedDetails = fals
         localStorage.setItem('3mf-katalog-language', 'de');
         localStorage.setItem('3mf-katalog-theme', 'light');
         localStorage.setItem('3mf-katalog-dnd-tip-dismissed', 'true');
+        // Marker above every release, so the one-time "What's new" window does not cover the catalog.
+        localStorage.setItem('3mf-katalog-last-seen-version', '999.0.0');
         // The automatic detail panel appears only after a successful selection; a pinned one is always there.
         if (pinned) localStorage.setItem('3mf-katalog-detail-panel', 'pinned');
       }, catalogDir, pinnedDetails);
