@@ -4,9 +4,8 @@ import { version } from '../../package.json';
 export const currentVersion = version;
 export interface ReleaseGroups { new: string[]; improved: string[]; fixed: string[] }
 export interface ReleaseNote { date: string; notes: Partial<Record<Language, ReleaseGroups>> & { en: ReleaseGroups } }
-// 0.18.2 date is a placeholder to update at release.
 export const releaseNotes: Record<string, ReleaseNote> = {
-  "0.18.2": {
+  "0.18.3": {
     "date": "2026-11-17",
     "notes": {
       "de": {
@@ -41,6 +40,15 @@ export const releaseNotes: Record<string, ReleaseNote> = {
         "improved": [],
         "fixed": []
       }
+    }
+  },
+  "0.18.2": {
+    "date": "2026-11-17",
+    "notes": {
+      "de": { "new": ["Bei jeder Filamentspule lassen sich Düsentemperatur (von–bis) und optional die Druckbetttemperatur festhalten; die Lagertabelle zeigt die Düsentemperatur."], "improved": [], "fixed": [] },
+      "en": { "new": ["Each filament spool can store a nozzle temperature range and, optionally, a bed temperature range; the inventory table shows the nozzle temperature."], "improved": [], "fixed": [] },
+      "es": { "new": ["Cada bobina de filamento puede guardar un rango de temperatura de boquilla y, opcionalmente, de la cama; la tabla de inventario muestra la temperatura de boquilla."], "improved": [], "fixed": [] },
+      "fr": { "new": ["Chaque bobine de filament peut enregistrer une plage de température de buse et, en option, du plateau ; le tableau du stock affiche la température de buse."], "improved": [], "fixed": [] }
     }
   },
   "0.18.1": {

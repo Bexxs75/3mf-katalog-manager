@@ -7,8 +7,8 @@ import { UiDensityProvider } from './hooks/UiDensityContext';
 import { PrintTechnologyProvider } from './hooks/PrintTechnologyContext';
 import { de } from './i18n/de';
 import { makeFolder } from './test/factories';
-import { LAST_SEEN_VERSION_KEY as key } from './lib/releaseNotesSelection';
-import { currentVersion } from './lib/releaseNotes';
+import { compareVersions, LAST_SEEN_VERSION_KEY as key } from './lib/releaseNotesSelection';
+import { currentVersion, releaseNotes } from './lib/releaseNotes';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -134,7 +134,9 @@ it.each(['get_upgrade_notice', 'get_print_technology', 'get_linux_menu_status', 
 });
 it('web with an older marker shows news without waiting for the unmounted upgrade notice', async () => {
   vi.stubEnv('VITE_TARGET', 'web');
-  localStorage.setItem(key, '0.18.0');
+  // Marker = the release right before this one, so exactly one version (and its titled dialog) is shown.
+  const previous = Object.keys(releaseNotes).filter(v => v !== currentVersion).sort((a, b) => compareVersions(b, a))[0]!;
+  localStorage.setItem(key, previous);
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const cmd = url.split('/').slice(-1)[0];
     const value = cmd === 'get_app_version' ? currentVersion
@@ -146,7 +148,7 @@ it('web with an older marker shows news without waiting for the unmounted upgrad
     await mount();
     await onlyDialog(de.whatsNewTitle.replace('{version}', currentVersion));
     expect(calls('get_upgrade_notice')).toHaveLength(0);
-    expect(localStorage.getItem(key)).toBe('0.18.0');
+    expect(localStorage.getItem(key)).toBe(previous);
     fireEvent.click(screen.getByRole('button', { name: de.whatsNewClose }));
     expect(localStorage.getItem(key)).toBe(currentVersion);
   } finally { vi.unstubAllGlobals(); }
