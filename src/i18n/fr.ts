@@ -1,6 +1,14 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  whatsNew: "Nouveautés",
+  whatsNewTitle: "Nouveautés de 3MF Katalog Manager {version}",
+  whatsNewNew: "Nouveau",
+  whatsNewImproved: "Améliorations",
+  whatsNewFixed: "Corrections",
+  whatsNewChangelog: "Historique complet sur GitHub",
+  whatsNewClose: "Compris",
+
   webUploadTitle: "Téléverser des fichiers",
   webPhoneTitle: "Conçu pour les navigateurs de bureau",
   webPhoneBody: "Le Katalog Manager est conçu pour les navigateurs sur ordinateur ou tablette. L’interface n’est pas prévue pour les smartphones et l’aperçu 3D peut y être très lent ou échouer.",

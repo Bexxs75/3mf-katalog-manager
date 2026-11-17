@@ -8,13 +8,13 @@ const small = 'px-2.5 py-1 rounded-[4px] border border-[var(--line-strong)] bg-t
  * One-time notice for installations that existed before the question: nothing is
  * hidden until the user chooses. Closing remembers that it was seen, keeping "both".
  */
-export function PrintTechnologyNotice({ onChoose }: { onChoose: () => void }) {
+export function PrintTechnologyNotice({ onChoose, onDone }: { onChoose: () => void; onDone?: () => void }) {
   const t = useT();
   const { technology, save } = usePrintTechnology();
   const [failed, setFailed] = useState(false);
   const close = () => {
-    // The notice stays when saving fails, so the next start can offer it again.
-    save(technology).catch((e) => { console.error('[print-technology] could not remember the notice:', e); setFailed(true); });
+    // A failed save can be offered again on the next start.
+    save(technology).catch((e) => { console.error('[print-technology] could not remember the notice:', e); setFailed(true); }).finally(() => onDone?.());
     document.querySelector<HTMLElement>('[data-catalog-main]')?.focus();
   };
   return (

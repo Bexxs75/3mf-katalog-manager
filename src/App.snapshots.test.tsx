@@ -1,3 +1,4 @@
+import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -42,6 +43,7 @@ beforeEach(() => {
   frames = new Map();
   nextFrame = 0;
   localStorage.clear();
+  localStorage.setItem('3mf-katalog-last-seen-version', bundledVersion);
   localStorage.setItem('3mf-katalog-base-dir', '/test');
   localStorage.setItem('3mf-katalog-setup-seen', '1');
   localStorage.setItem('3mf-katalog-display-preference', 'render');

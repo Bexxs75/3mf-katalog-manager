@@ -3,7 +3,7 @@ import { useId, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 /** Shared keyboard boundary for catalog-only confirmations. */
-export function CatalogActionDialog({ title, children, onClose, returnFocus, busy, wide }: {
+export function CatalogActionDialog({ title, children, onClose, returnFocus, busy, wide, footer, closeLabel }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
@@ -12,15 +12,21 @@ export function CatalogActionDialog({ title, children, onClose, returnFocus, bus
   busy?: boolean;
   /** Wider panel for table content. */
   wide?: boolean;
+  /** Optional fixed footer below a scrollable body. */
+  footer?: ReactNode;
+  closeLabel?: string;
 }) {
   const ref = useModalDialog({ open: true, onClose, busy, returnFocus, initialFocus: '[data-initial-focus]' });
   const titleId = useId();
   return createPortal(
     <div className="fixed inset-0 z-[100] bg-black/45 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
-        className={`w-full ${wide ? 'max-w-[760px]' : 'max-w-[540px]'} max-h-[90vh] overflow-auto rounded-lg border border-[var(--line)] bg-[var(--panel)] text-[var(--ink)] p-5 shadow-[var(--shadow)] text-body space-y-4`}>
-        <h2 id={titleId} className="text-title font-semibold">{title}</h2>
-        {children}
+        className={`w-full ${wide ? 'max-w-[760px]' : 'max-w-[540px]'} max-h-[90vh] ${footer ? 'flex flex-col overflow-hidden' : 'overflow-auto'} rounded-lg border border-[var(--line)] bg-[var(--panel)] text-[var(--ink)] p-5 shadow-[var(--shadow)] text-body space-y-4`}>
+        <div className="flex items-start gap-3 shrink-0">
+          <h2 id={titleId} className="text-title font-semibold flex-1">{title}</h2>
+          {closeLabel && <button type="button" aria-label={closeLabel} disabled={busy} onClick={onClose} className="text-title text-[var(--ink-2)] hover:text-[var(--ink)]">×</button>}
+        </div>
+        {footer ? <><div className="min-h-0 overflow-y-auto space-y-4">{children}</div><div className="shrink-0">{footer}</div></> : children}
       </div>
     </div>, document.body,
   );

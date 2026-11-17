@@ -56,7 +56,8 @@ it('labels Printer Manager and hides all catalog controls', () => {
     view="grid" onViewChange={vi.fn()} sort="name" sortDirection="asc" onSortDirectionChange={vi.fn()} onSortChange={vi.fn()} count={0}
     onImportFiles={vi.fn()} onImportFolder={vi.fn()} onImportFolderContents={vi.fn()} onCheckSourceFolders={vi.fn()} /></LanguageProvider>);
   expect(screen.getByText('PRINTER MANAGER')).toBeInTheDocument();
-  expect(screen.getAllByRole('button')).toHaveLength(1);
+  expect(screen.getAllByRole('button')).toHaveLength(2);
+  expect(screen.getByRole('button', { name: 'Neuigkeiten' })).toBeVisible();
   expect(screen.getByRole('button', { name: 'Tastenkürzel und Tipps' })).toBeVisible();
 });
 
@@ -101,4 +102,14 @@ it('selects print status with unprinted first and exposes both accessible direct
   expect(screen.getByRole('menuitemradio', { name: 'Noch nicht gedruckte zuerst' })).toHaveAttribute('aria-checked', 'true');
   fireEvent.click(screen.getByRole('menuitemradio', { name: 'Gedruckte zuerst' }));
   expect(onSortDirectionChange).toHaveBeenCalledWith('desc');
+});
+
+it('offers news as a labelled fixed-width icon button without submitting a form', () => {
+  renderHeader('catalog');
+  const button = screen.getByRole('button', { name: 'Neuigkeiten' });
+  expect(button).toHaveAttribute('type', 'button');
+  expect(button).toHaveAttribute('title', 'Neuigkeiten');
+  expect(button).toHaveClass('shrink-0', 'whitespace-nowrap', 'w-8', 'h-8');
+  expect(button.textContent).toBe('');
+  expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
 });

@@ -6,20 +6,30 @@ import { ErrorText } from '../diagnostics/ErrorText';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 
 /** One-time question on the first start of a Linux AppImage; nothing is written before "Yes". */
-export function LinuxMenuPrompt({ wait = false }: { wait?: boolean } = {}) {
+export function LinuxMenuPrompt({ wait = false, onSettled }: { wait?: boolean; onSettled?: () => void } = {}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [added, setAdded] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const mountedRef = useRef(true);
+  const completedRef = useRef(false);
+  const settledRef = useRef(onSettled);
+  settledRef.current = onSettled;
+  const settle = () => { completedRef.current = true; settledRef.current?.(); };
+  const close = () => { setOpen(false); settle(); };
   // Set to true again on setup: StrictMode runs setup, cleanup, setup, and a
   // cleanup-only reset would leave the ref false for the real mount.
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   // `wait` holds the question back while another first-run dialog is up.
   useEffect(() => {
-    if (wait) return;
-    api.getLinuxMenuStatus().then(s => { if (mountedRef.current && s?.shouldPrompt) setOpen(true); }).catch(() => {});
+    if (wait || completedRef.current) return;
+    let active = true;
+    api.getLinuxMenuStatus().then(s => {
+      if (!active) return;
+      if (s?.shouldPrompt) setOpen(true); else settle();
+    }).catch(e => { console.warn('[linux-menu] reading status failed:', e); if (active) settle(); });
+    return () => { active = false; };
   }, [wait]);
   // The answer buttons are replaced once the entry is added; without this the
   // focused button disappears and keyboard focus falls back to the page.
@@ -33,18 +43,21 @@ export function LinuxMenuPrompt({ wait = false }: { wait?: boolean } = {}) {
       const next = await api.answerLinuxMenuPrompt(choice);
       if (!mountedRef.current) return;
       if (choice === 'yes' && next?.installed) setAdded(true);
-      else setOpen(false);
+      else close();
     } catch (e) {
-      if (mountedRef.current) setError(toAppError(e));
+      if (mountedRef.current) {
+        console.warn('[linux-menu] saving answer failed:', e);
+        setError(toAppError(e));
+      }
     } finally {
       if (mountedRef.current) setBusy(false);
     }
   }
-  return <CatalogActionDialog title={added ? t('linuxMenuAddedTitle') : t('linuxMenuPromptTitle')} onClose={() => { if (busy) return; if (added) setOpen(false); else void answer('not_now'); }}>
+  return <CatalogActionDialog title={added ? t('linuxMenuAddedTitle') : t('linuxMenuPromptTitle')} onClose={() => { if (busy) return; if (added || error) close(); else void answer('not_now'); }}>
     {added ? <>
       <p role="status">{t('linuxMenuAdded')}</p>
       <div className="flex flex-wrap gap-2">
-        <button ref={closeRef} className={catalogActionButton} data-initial-focus onClick={() => setOpen(false)}>{t('impClose')}</button>
+        <button ref={closeRef} className={catalogActionButton} data-initial-focus onClick={close}>{t('impClose')}</button>
       </div>
     </> : <>
       <p>{t('linuxMenuPromptText')}</p>
@@ -53,6 +66,7 @@ export function LinuxMenuPrompt({ wait = false }: { wait?: boolean } = {}) {
         <button className={catalogActionButton} data-initial-focus disabled={busy} onClick={() => void answer('yes')}>{t('linuxMenuYes')}</button>
         <button className={catalogActionButton} disabled={busy} onClick={() => void answer('not_now')}>{t('linuxMenuNotNow')}</button>
         <button className={catalogActionButton} disabled={busy} onClick={() => void answer('never')}>{t('linuxMenuNever')}</button>
+        {error && <button type="button" className={catalogActionButton} disabled={busy} onClick={close}>{t('impClose')}</button>}
       </div>
     </>}
   </CatalogActionDialog>;

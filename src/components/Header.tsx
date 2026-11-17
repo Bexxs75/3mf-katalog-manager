@@ -38,6 +38,7 @@ interface Props {
   onCheckSourceFolders: () => void;
   detailOpen?: boolean;
   onOpenTips?: () => void;
+  onOpenWhatsNew?: () => void;
   mainView: MainView;
 }
 
@@ -66,7 +67,7 @@ export function Header({
   onImportFolder,
   onImportFolderContents,
   onCheckSourceFolders,
-  mainView, onOpenTips,
+  mainView, onOpenTips, onOpenWhatsNew,
   detailOpen = false,
 }: Props) {
   const t = useT();
@@ -295,6 +296,8 @@ export function Header({
       {mainView === 'catalog' && onDetailPanelChange && <button type="button" aria-pressed={detailPanel === 'pinned'} aria-label={t('detailPanelPin')} title={t('detailPanelPin')}
         onClick={() => onDetailPanelChange(detailPanel === 'pinned' ? 'auto' : 'pinned')}
         className={`shrink-0 flex items-center gap-1.5 px-2 h-8 rounded border cursor-pointer ${detailPanel === 'pinned' ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--accent)]' : 'border-[var(--line)] text-[var(--ink-2)]'}`}><Icon name="panel" size={18} /><span className="hidden min-[1100px]:inline">{t('detailPanelTitle')}</span></button>}
+      <button type="button" onClick={onOpenWhatsNew} aria-label={t('whatsNew')} title={t('whatsNew')}
+        className="shrink-0 whitespace-nowrap w-8 h-8 grid place-items-center rounded-[6px] text-[var(--ink-2)] hover:text-[var(--accent)] hover:bg-[var(--panel-2)] cursor-pointer"><Icon name="info" size={22} /></button>
       <button onClick={onOpenTips} aria-label={t('keyboardTipsTitle')} title={t('keyboardTipsTitle')}
         className="shrink-0 w-8 h-8 grid place-items-center rounded-[6px] text-[var(--ink-2)] hover:text-[var(--accent)] hover:bg-[var(--panel-2)] cursor-pointer"><Icon name="help" size={22} /></button>
       {import.meta.env.VITE_TARGET === 'web' && <WebAccountMenu />}

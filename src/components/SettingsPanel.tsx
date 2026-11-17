@@ -59,6 +59,7 @@ export interface SettingsPanelProps {
   singleKeyShortcuts?: boolean;
   onSingleKeyShortcutsChange?: (enabled: boolean) => void;
   onOpenTips?: () => void;
+  onOpenWhatsNew?: () => void;
   /** A section the app wants shown (for example the source folders); a new request moves the panel again. */
   request?: SettingsRequest | null;
   /** Tab to open on without a request; the app keeps the last one used for the session. */
@@ -107,7 +108,7 @@ const LANGUAGE_LABELS: Record<Language, string> = {
 export function SettingsPanel({
   overlay: forceOverlay, onClose, onOpenPrinters, onThingiverseEnabledChange,
   detailPanel = 'auto', onDetailPanelChange,
-  singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips,
+  singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips, onOpenWhatsNew,
   request, initialTab, onTabChange,
   themeSetting, onThemeChange,
   uiDensity, onUiDensityChange,
@@ -549,6 +550,7 @@ export function SettingsPanel({
             <div hidden={activeSettingsTab !== 'info'}>
               <SettingsSection id="version" title={t(web ? 'settingsSecVersionWeb' : 'settingsSecVersion')}>
                 {web ? <WebVersionRow /> : <UpdatePanel view={update} />}
+                <button className="mt-2 w-full min-h-8 border border-[var(--line-strong)] rounded cursor-pointer" onClick={onOpenWhatsNew}>{t('whatsNew')}</button>
               </SettingsSection>
               {!web && !container && update.preview === false && (
                 <SettingsSection id="preRelease" title={t('settingsSecPreRelease')}>

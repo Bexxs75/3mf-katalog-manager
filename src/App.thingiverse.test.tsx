@@ -1,3 +1,4 @@
+import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -18,6 +19,7 @@ let tv: { enabled: boolean; hasToken: boolean; tokenMask: string | null; usageTo
 
 beforeEach(() => {
   localStorage.clear();
+  localStorage.setItem('3mf-katalog-last-seen-version', bundledVersion);
   localStorage.setItem('3mf-katalog-base-dir', '/old');
   localStorage.setItem('3mf-katalog-setup-seen', '1');
   localStorage.setItem('3mf-katalog-view', 'grid');

@@ -15,7 +15,7 @@ const CATALOG_SETTINGS_KEYS = [
  * as processes; a crafted backup could store `/bin/sh` or similar
  * there. The slicer registry now lives in the backend.
  */
-const IMPORT_SKIPPED_SETTINGS_KEYS: ReadonlySet<string> = new Set(['3mf-katalog-slicers']);
+const IMPORT_SKIPPED_SETTINGS_KEYS: ReadonlySet<string> = new Set(['3mf-katalog-slicers', '3mf-katalog-last-seen-version']);
 
 /**
  * Allowed values per setting (mirrored from useTheme, useDisplayPreference,

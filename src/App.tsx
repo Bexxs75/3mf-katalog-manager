@@ -1,3 +1,5 @@
+import { WhatsNewDialog } from './components/WhatsNewDialog';
+import { useWhatsNew } from './hooks/useWhatsNew';
 import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
 import { canEditMetadata, canManageFiles, useCanEditMetadata } from './lib/webSession';
 import { reportMetadataError } from './lib/metadataErrors';
@@ -251,7 +253,14 @@ export default function App() {
   const firstRunRef = useRef(!setupSeen);
   const [setupDialogOpen, setSetupDialogOpen] = useState(import.meta.env.VITE_TARGET !== 'web' && !setupSeen);
   // The update notice goes before other start-up questions, so they wait for it.
-  const [upgradeNoticeSettled, setUpgradeNoticeSettled] = useState(false);
+  const [upgradeNoticeSettled, setUpgradeNoticeSettled] = useState(web);
+  const [printTechnologySettled, setPrintTechnologySettled] = useState(web);
+  const [linuxMenuSettled, setLinuxMenuSettled] = useState(web);
+  const [openFiles, setOpenFiles] = useState<OpenRequest[] | null>(null);
+  const whatsNew = useWhatsNew({
+    wait: setupDialogOpen || !upgradeNoticeSettled, firstRun: firstRunRef.current, web,
+    reopenBlocked: !printTechnologySettled || !linuxMenuSettled || openFiles !== null,
+  });
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number; bundleId?: string } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
@@ -266,8 +275,7 @@ export default function App() {
     reloadAfterDiskSync,
   );
   // "Open with": one cataloged file opens its detail page; anything else asks first (view only / list).
-  const [openFiles, setOpenFiles] = useState<OpenRequest[] | null>(null);
-  const openRequestsReady = !web && !openFiles && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && upgradeNoticeSettled;
+  const openRequestsReady = !web && !openFiles && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && upgradeNoticeSettled && whatsNew.settled && printTechnologySettled && linuxMenuSettled && !whatsNew.versions.length;
   const pendingOpenCount = openRequests.requests.length;
   useEffect(() => {
     if (!openRequestsReady || pendingOpenCount === 0) return;
@@ -610,6 +618,7 @@ export default function App() {
   // elsewhere, so every view reaches them from the same gear in the rail.
   const renderSettingsPanel = (overlay: boolean) => (
     <SettingsPanel
+      onOpenWhatsNew={whatsNew.reopen}
       overlay={overlay}
       onClose={closeSettings}
       onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}
@@ -685,11 +694,13 @@ export default function App() {
           }}
         />
       )}
+      {whatsNew.versions.length > 0 && <WhatsNewDialog versions={whatsNew.versions} onClose={whatsNew.close} />}
       {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}
       <Header
         onDiskSyncScanned={store.refreshFolders}
         onDiskSyncApplied={result => { suggestions.notifyAdded(result.fileIds); return reloadAfterDiskSync(); }}
         detailPanel={detailPanel} onDetailPanelChange={setDetailPanel}
+        onOpenWhatsNew={whatsNew.reopen}
         onOpenTips={() => setTipsOpen(true)}
         allFoldersCollapsed={allFoldersCollapsed}
         onToggleAllFolders={toggleAllFolders}
@@ -1002,8 +1013,8 @@ export default function App() {
           {!web && slicerReports.inboxOpen && <SlicerReportInbox models={store.models} onImportPaths={async (paths) => { await fileImport.importPaths(paths); }} />}
 
           <NoticeStack>
-            {!web && <PrintTechnologyPrompt firstRun={firstRunRef.current} wait={setupDialogOpen || !upgradeNoticeSettled}
-              onChoose={() => openSettingsAt('printMethod')} />}
+            {!web && <PrintTechnologyPrompt firstRun={firstRunRef.current} wait={setupDialogOpen || !upgradeNoticeSettled || !whatsNew.settled || whatsNew.versions.length > 0}
+              onSettled={() => setPrintTechnologySettled(true)} onChoose={() => openSettingsAt('printMethod')} />}
             {!web && <SlicerReportNotice />}
             {sourceCheck.notice && <SourceFolderNotice notice={sourceCheck.notice} onView={sourceCheck.openDialog} onClose={sourceCheck.dismissNotice} />}
             {fileImport.importBanner && (
@@ -1033,7 +1044,7 @@ export default function App() {
 
           {!web && <UpgradeNoticeDialog wait={setupDialogOpen} onSettled={() => setUpgradeNoticeSettled(true)} />}
           {!web && <TrayLabelSync />}
-          {!web && <LinuxMenuPrompt wait={setupDialogOpen || !upgradeNoticeSettled} />}
+          {!web && <LinuxMenuPrompt wait={setupDialogOpen || !upgradeNoticeSettled || !whatsNew.settled || !printTechnologySettled || whatsNew.versions.length > 0} onSettled={() => setLinuxMenuSettled(true)} />}
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
             <CatalogCleanupDialog

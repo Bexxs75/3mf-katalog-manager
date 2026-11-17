@@ -25,17 +25,19 @@ export function PrintTechnologyDialog({ onDone }: { onDone: () => void }) {
       await save(choice);
       onDone();
     } catch (e) {
+      console.error('[print-technology] saving choice failed:', e);
       setError(toAppError(e));
       setBusy(false);
     }
   };
   return (
-    <CatalogActionDialog title={t('ptTitle')} busy={busy} wide onClose={() => void apply(technology)}>
+    <CatalogActionDialog title={t('ptTitle')} busy={busy} wide onClose={() => { if (error) onDone(); else void apply(technology); }}>
       <p className="text-[var(--ink-2)]">{t('ptIntro')}</p>
       <PrintTechnologyChoice value={value} onChange={setValue} variant="tiles" disabled={busy} describedBy="pt-dialog-effect" />
       <p id="pt-dialog-effect" className="text-small text-[var(--ink-2)]">{effect} {t('ptNothingDeleted')}</p>
       {error && <div role="alert" className="p-3 border border-[var(--crit)] rounded text-body">{t('ptSaveFailed')} <ErrorText error={error} /></div>}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {error && <button type="button" className={catalogActionButton} disabled={busy} onClick={onDone}>{t('impClose')}</button>}
         <button type="button" className={catalogActionButton} disabled={busy} onClick={() => void apply(value)}>{t('ptApply')}</button>
       </div>
     </CatalogActionDialog>

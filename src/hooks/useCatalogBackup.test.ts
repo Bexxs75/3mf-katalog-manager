@@ -157,3 +157,19 @@ it('clears the previous import error before confirmation and before choosing ano
   await act(() => result.current.importCatalog(vi.fn()));
   expect(result.current.catalogBackupError).toBeNull();
 });
+
+it('neither exports nor restores the local last-seen release marker', async () => {
+  const key = '3mf-katalog-last-seen-version';
+  localStorage.setItem(key, '0.18.3');
+  vi.mocked(invoke).mockReset().mockResolvedValue(undefined);
+  const { result } = renderHook(() => useCatalogBackup());
+  await act(async () => { await result.current.exportCatalog(); });
+  const args = vi.mocked(invoke).mock.calls.find(([cmd]) => cmd === 'export_catalog')![1] as { settingsJson: string };
+  expect(JSON.parse(args.settingsJson)).not.toHaveProperty(key);
+  vi.mocked(invoke).mockResolvedValue({ imported: true, settingsJson: JSON.stringify({ [key]: '0.18.0' }) });
+  await act(async () => { await result.current.importCatalog(vi.fn()); });
+  expect(localStorage.getItem(key)).toBe('0.18.3');
+  localStorage.removeItem(key);
+  await act(async () => { await result.current.importCatalog(vi.fn()); });
+  expect(localStorage.getItem(key)).toBeNull();
+});

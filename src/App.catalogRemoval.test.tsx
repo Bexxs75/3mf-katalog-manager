@@ -1,3 +1,4 @@
+import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -22,6 +23,7 @@ beforeEach(() => {
     width: 800, height: 400, top: 0, left: 0, right: 800, bottom: 400, x: 0, y: 0, toJSON: () => ({}),
   });
   localStorage.clear();
+  localStorage.setItem('3mf-katalog-last-seen-version', bundledVersion);
   localStorage.setItem('3mf-katalog-base-dir', '/old');
   localStorage.setItem('3mf-katalog-setup-seen', '1');
   vi.mocked(invoke).mockReset();

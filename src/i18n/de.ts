@@ -1,6 +1,14 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  whatsNew: "Neuigkeiten",
+  whatsNewTitle: "Neu in 3MF Katalog Manager {version}",
+  whatsNewNew: "Neu",
+  whatsNewImproved: "Verbessert",
+  whatsNewFixed: "Behoben",
+  whatsNewChangelog: "Vollständiges Änderungsprotokoll auf GitHub",
+  whatsNewClose: "Verstanden",
+
   webUploadTitle: "Dateien hochladen",
   webPhoneTitle: "Für Desktop-Browser gedacht",
   webPhoneBody: "Der Katalog Manager ist für Browser am Rechner oder Tablet entwickelt. Auf dem Smartphone ist die Oberfläche nicht ausgelegt, und die 3D-Vorschau kann dort sehr langsam sein oder scheitern.",

@@ -6,6 +6,14 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  whatsNew: string;
+  whatsNewTitle: string;
+  whatsNewNew: string;
+  whatsNewImproved: string;
+  whatsNewFixed: string;
+  whatsNewChangelog: string;
+  whatsNewClose: string;
+
   webUploadTitle: string;
   webPhoneTitle: string;
   webPhoneBody: string;
