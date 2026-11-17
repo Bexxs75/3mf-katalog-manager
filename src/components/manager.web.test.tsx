@@ -7,7 +7,8 @@ import { FilamentSpoolForm } from './FilamentSpoolForm';
 import { usePrinters } from '../hooks/usePrinters';
 import type { FilamentSpool } from '../types';
 
-const spool: FilamentSpool = { id: '1', kind: 'filament', material: 'PLA', manufacturer: null, color: null, colorHex: null, location: 'Shelf', homeLocation: null, unitId: null, slotIndex: null, diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 500, price: null, imagePng: null, colorHexes: [] };
+const spool: FilamentSpool = {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null, id: '1', kind: 'filament', material: 'PLA', manufacturer: null, color: null, colorHex: null, location: 'Shelf', homeLocation: null, unitId: null, slotIndex: null, diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 500, price: null, imagePng: null, colorHexes: [] };
 let calls: {command: string; args: any}[] = [];
 let writable = true;
 beforeEach(async () => {
@@ -171,10 +172,10 @@ it('keeps successful copies after a partial create and retries only missing copi
   mockManager(command=> command==='add_filament_spool' && ++adds === 2 ? Response.json({message:'quota',expected:true},{status:422}) : undefined);
   render(<LanguageProvider><FilamentSpoolForm open editing={null} knownLocations={[]} onSaved={()=>{}} onClose={()=>{}} /></LanguageProvider>);
   fireEvent.change(screen.getByPlaceholderText(de.filamentMaterialLabel), {target:{value:'PLA'}});
-  fireEvent.change(screen.getByRole('spinbutton'), {target:{value:'3'}});
+  fireEvent.change(screen.getByRole('spinbutton', { name: de.filamentQuantityLabel }), {target:{value:'3'}});
   fireEvent.click(screen.getByRole('button',{name:/Hinzufügen/}));
   await screen.findByText('1 angelegt. Noch 2 fehlen; erneut Hinzufügen legt nur diese an.');
-  expect(screen.getByRole('spinbutton')).toHaveValue(2);
+  expect(screen.getByRole('spinbutton', { name: de.filamentQuantityLabel })).toHaveValue(2);
   calls=[]; fireEvent.click(screen.getByRole('button',{name:/Hinzufügen/}));
   await waitFor(()=>expect(writes().map(c=>c.command)).toEqual(['add_filament_spool','add_filament_spool']));
 });

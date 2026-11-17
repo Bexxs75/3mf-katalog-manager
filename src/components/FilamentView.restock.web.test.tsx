@@ -8,7 +8,8 @@ import { usePrinters } from '../hooks/usePrinters';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { FilamentSpool } from '../types';
 
-const base: FilamentSpool = { id: '1', kind: 'filament', material: 'PLA', manufacturer: null, color: 'Rot', colorHex: null, location: 'Regal', homeLocation: null, unitId: null, slotIndex: null, diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 500, price: null, imagePng: null, colorHexes: [] };
+const base: FilamentSpool = {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null, id: '1', kind: 'filament', material: 'PLA', manufacturer: null, color: 'Rot', colorHex: null, location: 'Regal', homeLocation: null, unitId: null, slotIndex: null, diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 500, price: null, imagePng: null, colorHexes: [] };
 const resin: FilamentSpool = { ...base, id: '2', kind: 'resin', material: 'Standard', color: 'Grau', diameterMm: 0, remainingWeightG: 640 };
 let calls: { command: string; args: any }[] = [];
 let writable = true;

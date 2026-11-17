@@ -48,6 +48,10 @@ interface FormState {
   remainingWeightG: string;
   price: string;
   imagePng: string | null;
+  nozzleTempMin: string;
+  nozzleTempMax: string;
+  bedTempMin: string;
+  bedTempMax: string;
   quantity: string;
 }
 
@@ -64,6 +68,10 @@ const EMPTY_FORM: FormState = {
   remainingWeightG: '1000',
   price: '',
   imagePng: null,
+  nozzleTempMin: '',
+  nozzleTempMax: '',
+  bedTempMin: '',
+  bedTempMax: '',
   quantity: '1',
 };
 
@@ -77,13 +85,20 @@ function normalizeHex(text: string): string {
   return (trimmed.startsWith('#') ? trimmed : `#${trimmed}`).toLowerCase();
 }
 
-type NumericField = 'diameterMm' | 'price' | 'originalWeightG' | 'remainingWeightG';
+type TemperatureField = 'nozzleTempMin' | 'nozzleTempMax' | 'bedTempMin' | 'bedTempMax';
+const temperatureFields: TemperatureField[] = ['nozzleTempMin', 'nozzleTempMax', 'bedTempMin', 'bedTempMax'];
+
+type NumericField = TemperatureField | 'diameterMm' | 'price' | 'originalWeightG' | 'remainingWeightG';
 
 const fieldClass =
   'w-full h-9 px-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-none text-body focus:border-[var(--accent)]';
 
 function toForm(spool: FilamentSpool): FormState {
   return {
+    nozzleTempMin: spool.nozzleTempMin == null ? '' : String(spool.nozzleTempMin),
+    nozzleTempMax: spool.nozzleTempMax == null ? '' : String(spool.nozzleTempMax),
+    bedTempMin: spool.bedTempMin == null ? '' : String(spool.bedTempMin),
+    bedTempMax: spool.bedTempMax == null ? '' : String(spool.bedTempMax),
     kind: spool.kind,
     material: spool.material,
     manufacturer: spool.manufacturer ?? '',
@@ -117,6 +132,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
   const fieldId = useId();
   const numericRefs = useRef<Partial<Record<NumericField, HTMLInputElement | null>>>({});
   const [attempted, setAttempted] = useState(false);
+  const [temperatureBadInput, setTemperatureBadInput] = useState<Partial<Record<TemperatureField, boolean>>>({});
   // A weight the user typed is never replaced by the suggestion for the maker and material.
   const [weightTouched, setWeightTouched] = useState({ original: false, remaining: false });
   const [pendingFocus, setPendingFocus] = useState<string | null>(null);
@@ -126,7 +142,22 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
   const remaining = parseDecimalInput(form.remainingWeightG);
   // Validate the stored precision too, so a positive entry cannot become a zero amount.
   const roundedOriginal = Math.round(original * 10) / 10;
+  const temperatures = Object.fromEntries(temperatureFields.map(key => [key, form[key].trim() === '' ? null : Number(form[key])])) as Record<TemperatureField, number | null>;
+  const temperatureValueInvalid = (key: TemperatureField) => {
+    const value = temperatures[key];
+    return temperatureBadInput[key] || (value !== null && (!Number.isInteger(value) || value < 0 || value > 500));
+  };
+  const invalidTemperature = (key: TemperatureField, partner: TemperatureField) => {
+    const value = temperatures[key];
+    const other = temperatures[partner];
+    return form.kind === 'filament' && Boolean(temperatureValueInvalid(key)
+      || (key.endsWith('Max') && !temperatureValueInvalid(partner) && value !== null && other !== null && value < other));
+  };
   const invalid: Record<NumericField, boolean> = {
+    nozzleTempMin: invalidTemperature('nozzleTempMin', 'nozzleTempMax'),
+    nozzleTempMax: invalidTemperature('nozzleTempMax', 'nozzleTempMin'),
+    bedTempMin: invalidTemperature('bedTempMin', 'bedTempMax'),
+    bedTempMax: invalidTemperature('bedTempMax', 'bedTempMin'),
     diameterMm: form.kind !== 'resin' && (!Number.isFinite(diameter) || diameter <= 0 || diameter > 5),
     price: price !== null && (!Number.isFinite(price) || price < 0),
     originalWeightG: !Number.isFinite(original) || original <= 0 || !Number.isFinite(roundedOriginal) || roundedOriginal <= 0,
@@ -134,6 +165,10 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
   };
   const extraInvalid = form.extraColors.map((text) => text.trim() !== '' && !isValidColorHex(normalizeHex(text)));
   const messages = {
+    nozzleTempMin: t('errInvalidPrintTemperature'),
+    nozzleTempMax: t('errInvalidPrintTemperature'),
+    bedTempMin: t('errInvalidPrintTemperature'),
+    bedTempMax: t('errInvalidPrintTemperature'),
     diameterMm: t('filamentInvalidDiameter'), price: t('filamentInvalidPrice'),
     originalWeightG: t('filamentInvalidOriginal'), remainingWeightG: t('filamentInvalidRemaining'),
   };
@@ -164,6 +199,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       setImageChanged(false);
       setPartial('');
       setAttempted(false);
+      setTemperatureBadInput({});
       setImageError(null);
     }
   }, [open, editing, defaultKind]);
@@ -255,6 +291,10 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       .filter((hex): hex is string => hex !== null && isValidColorHex(hex));
     const colorHexes = listed.length > 1 ? listed : [];
     const payload: Omit<FilamentSpool, 'imagePng'> & { imagePng?: string | null } = {
+      nozzleTempMin: form.kind === 'resin' ? editing?.nozzleTempMin ?? null : temperatures.nozzleTempMin,
+      nozzleTempMax: form.kind === 'resin' ? editing?.nozzleTempMax ?? null : temperatures.nozzleTempMax,
+      bedTempMin: form.kind === 'resin' ? editing?.bedTempMin ?? null : temperatures.bedTempMin,
+      bedTempMax: form.kind === 'resin' ? editing?.bedTempMax ?? null : temperatures.bedTempMax,
       id: editing?.id ?? '',
       material: form.material.trim(),
       manufacturer: form.manufacturer.trim() || null,
@@ -535,6 +575,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
                     <input
                       type="number"
                       min="1"
+                      aria-label={t(resin ? 'resinQuantityLabel' : 'filamentQuantityLabel')}
                       value={form.quantity}
                       onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
                       className={`${fieldClass} text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
@@ -552,6 +593,38 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
               )}
             </div>
           </div>
+
+          {!resin && (
+            <div>
+              <p className="text-compact-meta ui-label text-[var(--ink-3)] mb-2">{t('filamentSectionPrintSettings')}</p>
+              <div className="flex flex-col gap-2.5">
+                {([
+                  ['filamentNozzleTemperature', 'nozzleTempMin', 'nozzleTempMax'],
+                  ['filamentBedTemperature', 'bedTempMin', 'bedTempMax'],
+                ] as const).map(([label, min, max]) => (
+                  <div key={label} role="group" aria-label={t(label)}>
+                    <p className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t(label)}</p>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {([min, max] as const).map((key, index) => (
+                        <div key={key}>
+                          <label htmlFor={`${fieldId}-${key}`} className="block text-caption text-[var(--ink-2)] mb-1">{t(index === 0 ? 'filamentTemperatureFrom' : 'filamentTemperatureTo')}</label>
+                          <input type="number" min={0} max={500} step={1} inputMode="numeric"
+                            aria-label={`${t(label)} ${t(index === 0 ? 'filamentTemperatureFrom' : 'filamentTemperatureTo')}`}
+                            value={form[key]} onChange={e => {
+                              const { value, validity: { badInput } } = e.currentTarget;
+                              setTemperatureBadInput(previous => ({ ...previous, [key]: badInput }));
+                              setForm(f => ({ ...f, [key]: value }));
+                            }}
+                            {...numericProps(key)} />
+                          {fieldError(key)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <p className="text-compact-meta ui-label text-[var(--ink-3)] mb-2">

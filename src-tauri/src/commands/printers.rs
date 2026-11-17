@@ -358,6 +358,10 @@ mod tests {
         db::insert_filament_spool(
             conn,
             &db::models::NewFilamentSpool {
+                nozzle_temp_min: None,
+                nozzle_temp_max: None,
+                bed_temp_min: None,
+                bed_temp_max: None,
                 material: "PLA".into(),
                 manufacturer: None,
                 color: None,
@@ -481,6 +485,10 @@ mod tests {
         let bottle = db::insert_filament_spool(
             &conn,
             &db::models::NewFilamentSpool {
+                nozzle_temp_min: None,
+                nozzle_temp_max: None,
+                bed_temp_min: None,
+                bed_temp_max: None,
                 material: "Standard".into(),
                 manufacturer: None,
                 color: None,

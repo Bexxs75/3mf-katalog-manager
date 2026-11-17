@@ -69,6 +69,10 @@ fn catalog() -> Catalog {
     db::insert_filament_spool(
         &conn,
         &db::models::NewFilamentSpool {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             color_hexes: Vec::new(),
             material: "PLA".into(),
             manufacturer: None,

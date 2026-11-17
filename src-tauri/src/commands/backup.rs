@@ -208,7 +208,24 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("tags", &["id", "name", "color_hue"]),
     ("file_tags", &["file_id", "tag_id"]),
     ("file_metadata", &["file_id", "label", "value"]),
-    ("filament_spools", &["id", "material", "remaining_weight_g", "unit_id", "slot_index", "home_location", "color_hex", "color_hexes", "kind"]),
+    (
+        "filament_spools",
+        &[
+            "id",
+            "material",
+            "remaining_weight_g",
+            "unit_id",
+            "slot_index",
+            "home_location",
+            "color_hex",
+            "color_hexes",
+            "kind",
+            "nozzle_temp_min",
+            "nozzle_temp_max",
+            "bed_temp_min",
+            "bed_temp_max",
+        ],
+    ),
     ("printers", &["id", "name", "position", "kind"]),
     ("material_units", &["id", "printer_id", "name", "kind", "slot_count", "bambu_ams_index", "position"]),
     ("collections", &["id", "name", "created_at"]),
@@ -359,6 +376,10 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("filament_spools", "unit_id", ColType::Integer, true),
     ("filament_spools", "slot_index", ColType::Integer, true),
     ("filament_spools", "kind", ColType::Text, false),
+    ("filament_spools", "nozzle_temp_min", ColType::Integer, true),
+    ("filament_spools", "nozzle_temp_max", ColType::Integer, true),
+    ("filament_spools", "bed_temp_min", ColType::Integer, true),
+    ("filament_spools", "bed_temp_max", ColType::Integer, true),
     // printers - see list_printers (printers.rs).
     ("printers", "id", ColType::Integer, false),
     ("printers", "name", ColType::Text, false),
@@ -591,6 +612,23 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     if duplicate_slots > 0 {
         return Err("Katalog-Datenbank enthaelt mehrere Spulen im selben Fach".to_string());
+    }
+
+    let bad_temperatures: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM filament_spools
+             WHERE nozzle_temp_min NOT BETWEEN 0 AND 500
+                OR nozzle_temp_max NOT BETWEEN 0 AND 500
+                OR bed_temp_min NOT BETWEEN 0 AND 500
+                OR bed_temp_max NOT BETWEEN 0 AND 500
+                OR nozzle_temp_min > nozzle_temp_max
+                OR bed_temp_min > bed_temp_max",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad_temperatures > 0 {
+        return Err("Katalog-Datenbank enthaelt ungueltige Drucktemperaturen".to_string());
     }
 
     let bad_colors: i64 = conn
@@ -1804,6 +1842,10 @@ mod tests {
 
     fn colour_spool(colors: &[&str]) -> db::models::NewFilamentSpool {
         db::models::NewFilamentSpool {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             material: "PLA".into(),
             manufacturer: None,
             color: None,
@@ -1826,6 +1868,7 @@ mod tests {
             let conn = source.db.lock().unwrap();
             db::insert_filament_spool(&conn, &colour_spool(&["#ff0000", "#00ff00", "#ff0000"])).unwrap();
             db::insert_filament_spool(&conn, &colour_spool(&[])).unwrap();
+            conn.execute("UPDATE filament_spools SET nozzle_temp_min = 200, nozzle_temp_max = 240, bed_temp_min = 50, bed_temp_max = 65", []).unwrap();
         }
         let zip_path = dir.join("backup.zip");
         write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
@@ -1837,6 +1880,16 @@ mod tests {
         assert!(spool_colors(&target).is_empty());
         replace_catalog_db(&target, &incoming).unwrap();
 
+        {
+            let conn = target.db.lock().unwrap();
+            let spools = db::list_filament_spools(&conn).unwrap();
+            assert!(spools.iter().all(|s| (
+                s.nozzle_temp_min,
+                s.nozzle_temp_max,
+                s.bed_temp_min,
+                s.bed_temp_max
+            ) == (Some(200), Some(240), Some(50), Some(65))));
+        }
         let mut restored = spool_colors(&target);
         restored.sort();
         assert_eq!(restored, vec![
@@ -1853,7 +1906,17 @@ mod tests {
             let mut spool = colour_spool(&[]);
             spool.color_hex = Some("#b03020".into());
             db::insert_filament_spool(&conn, &spool).unwrap();
-            conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN color_hexes").unwrap();
+            conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN color_hexes")
+                .unwrap();
+            conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN nozzle_temp_min")
+                .unwrap();
+            conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN nozzle_temp_max")
+                .unwrap();
+            conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN bed_temp_min")
+                .unwrap();
+            conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN bed_temp_max")
+                .unwrap();
+
             conn.pragma_update(None, "user_version", crate::db::SPOOL_COLOR_LIST_MIGRATION_VERSION - 1).unwrap();
         }
         let zip_path = dir.join("old-backup.zip");
@@ -1869,6 +1932,83 @@ mod tests {
         replace_catalog_db(&target, &incoming).unwrap();
 
         assert_eq!(spool_colors(&target), vec![(Some("#b03020".into()), vec![])]);
+        let conn = target.db.lock().unwrap();
+        let spools = db::list_filament_spools(&conn).unwrap();
+        assert_eq!(
+            (
+                spools[0].nozzle_temp_min,
+                spools[0].nozzle_temp_max,
+                spools[0].bed_temp_min,
+                spools[0].bed_temp_max
+            ),
+            (None, None, None, None)
+        );
+    }
+
+    #[test]
+    fn imported_spool_print_temperatures_are_checked() {
+        for (min, max) in [
+            (Some(9999), None),
+            (Some(-1), None),
+            (None, Some(501)),
+            (Some(240), Some(200)),
+        ] {
+            for (min_column, max_column) in [
+                ("nozzle_temp_min", "nozzle_temp_max"),
+                ("bed_temp_min", "bed_temp_max"),
+            ] {
+                let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                    db::insert_filament_spool(conn, &colour_spool(&[])).unwrap();
+                    conn.execute(
+                        &format!("UPDATE filament_spools SET {min_column} = ?1, {max_column} = ?2"),
+                        rusqlite::params![min, max],
+                    )
+                    .unwrap();
+                });
+                let error = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).unwrap_err();
+                assert!(error.is(ErrorCode::BackupInvalidDatabase, &[]), "{error:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn valid_and_null_spool_print_temperatures_restore() {
+        for values in [
+            (Some(200), Some(240), Some(50), Some(65)),
+            (None, None, None, None),
+            (Some(0), None, None, Some(500)),
+        ] {
+            let (source, dir) = state_with_catalog("backup_print_temperatures_a");
+            {
+                let conn = source.db.lock().unwrap();
+                db::insert_filament_spool(&conn, &colour_spool(&[])).unwrap();
+                conn.execute(
+                    "UPDATE filament_spools SET nozzle_temp_min = ?1, nozzle_temp_max = ?2, bed_temp_min = ?3, bed_temp_max = ?4",
+                    rusqlite::params![values.0, values.1, values.2, values.3],
+                ).unwrap();
+            }
+            let zip_path = dir.join("backup.zip");
+            write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
+            let (bytes, _) = read_catalog_archive(std::fs::File::open(&zip_path).unwrap()).unwrap();
+            validate_catalog_db_bytes(&bytes, &[], &dir, &[]).unwrap();
+            let incoming = dir.join("incoming.db");
+            std::fs::write(&incoming, &bytes).unwrap();
+            let (target, _target_dir) = state_with_catalog("backup_print_temperatures_b");
+            replace_catalog_db(&target, &incoming).unwrap();
+            let conn = target.db.lock().unwrap();
+            let spools = db::list_filament_spools(&conn).unwrap();
+            assert_eq!(spools.len(), 1);
+            let spool = &spools[0];
+            assert_eq!(
+                (
+                    spool.nozzle_temp_min,
+                    spool.nozzle_temp_max,
+                    spool.bed_temp_min,
+                    spool.bed_temp_max
+                ),
+                values
+            );
+        }
     }
 
     #[test]
@@ -2743,6 +2883,10 @@ mod tests {
             let spool_id = crate::db::insert_filament_spool(
                 &conn,
                 &crate::db::models::NewFilamentSpool {
+                    nozzle_temp_min: None,
+                    nozzle_temp_max: None,
+                    bed_temp_min: None,
+                    bed_temp_max: None,
                     material: "PLA".to_string(),
                     manufacturer: None,
                     color: None,
@@ -2938,6 +3082,10 @@ mod tests {
             let spool_id = crate::db::insert_filament_spool(
                 &conn,
                 &crate::db::models::NewFilamentSpool {
+                    nozzle_temp_min: None,
+                    nozzle_temp_max: None,
+                    bed_temp_min: None,
+                    bed_temp_max: None,
                     material: "PLA".to_string(),
                     manufacturer: Some("Bambu".to_string()),
                     color: Some("Schwarz".to_string()),
@@ -4451,6 +4599,10 @@ mod tests {
         crate::db::insert_filament_spool(
             conn,
             &crate::db::models::NewFilamentSpool {
+                nozzle_temp_min: None,
+                nozzle_temp_max: None,
+                bed_temp_min: None,
+                bed_temp_max: None,
                 material: "Standard".to_string(),
                 manufacturer: None,
                 color: Some("Grau".to_string()),
@@ -4595,6 +4747,10 @@ mod tests {
 
     fn resin_new() -> crate::db::models::NewFilamentSpool {
         crate::db::models::NewFilamentSpool {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             material: "Standard".to_string(),
             manufacturer: None,
             color: None,

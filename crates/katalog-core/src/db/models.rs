@@ -400,6 +400,10 @@ pub const SPOOL_KINDS: &[&str] = &[SPOOL_KIND_FILAMENT, SPOOL_KIND_RESIN];
 
 #[derive(Debug, Clone)]
 pub struct FilamentSpoolRecord {
+    pub nozzle_temp_min: Option<i64>,
+    pub nozzle_temp_max: Option<i64>,
+    pub bed_temp_min: Option<i64>,
+    pub bed_temp_max: Option<i64>,
     pub id: i64,
     pub material: String,
     pub manufacturer: Option<String>,
@@ -423,6 +427,10 @@ pub struct FilamentSpoolRecord {
 
 #[derive(Debug, Clone)]
 pub struct NewFilamentSpool {
+    pub nozzle_temp_min: Option<i64>,
+    pub nozzle_temp_max: Option<i64>,
+    pub bed_temp_min: Option<i64>,
+    pub bed_temp_max: Option<i64>,
     pub material: String,
     pub manufacturer: Option<String>,
     pub color: Option<String>,

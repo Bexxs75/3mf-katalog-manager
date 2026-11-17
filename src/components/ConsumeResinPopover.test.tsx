@@ -9,6 +9,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 
 const BOTTLE: FilamentSpool = {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null,
   id: 'r1', material: 'Standard', manufacturer: 'Elegoo', color: 'Grau', location: 'Resin-Schrank',
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 640, price: 27.99, imagePng: null,
   colorHex: '#8a8f98', colorHexes: [], homeLocation: null, unitId: null, slotIndex: null, kind: 'resin',

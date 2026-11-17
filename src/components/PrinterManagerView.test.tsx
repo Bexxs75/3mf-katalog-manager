@@ -18,7 +18,8 @@ const a: Printer = { ...details, id: '1', name: 'Qidi', kind: 'filament', units:
 const b: Printer = { ...details, id: '2', name: 'Saturn', kind: 'resin', units: [
   { id: 'vat', printerId: '2', name: 'Harzwanne', kind: 'resin_vat', slotCount: 1, bambuAmsIndex: null },
 ] };
-const spool: FilamentSpool = { id: 's1', material: 'PLA', manufacturer: null, color: 'Rot', location: null,
+const spool: FilamentSpool = {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null, id: 's1', material: 'PLA', manufacturer: null, color: 'Rot', location: null,
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 600, price: null, imagePng: null,
   colorHex: '#ff0000', colorHexes: [], homeLocation: 'Regal', unitId: 'u1', slotIndex: 0, kind: 'filament' };
 let list: Printer[];

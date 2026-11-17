@@ -501,6 +501,10 @@ mod tests {
 
     fn sample_filament_spool() -> NewFilamentSpool {
         NewFilamentSpool {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             material: "PLA".to_string(),
             manufacturer: Some("Bambu Lab".to_string()),
             color: Some("Schwarz".to_string()),

@@ -4,6 +4,7 @@ import type { FilamentSpool } from '../types';
 
 function spool(overrides: Partial<FilamentSpool>): FilamentSpool {
   return {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null,
     id: 's1', material: 'PLA', manufacturer: null, color: 'Schwarz', location: null,
     diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 500, price: null, imagePng: null,
     colorHex: null, colorHexes: [], homeLocation: null, unitId: null, slotIndex: null, kind: 'filament', ...overrides,

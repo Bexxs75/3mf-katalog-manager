@@ -103,6 +103,10 @@ CREATE TABLE IF NOT EXISTS filament_spools (
     home_location TEXT,
     color_hex TEXT,
     color_hexes TEXT,
+    nozzle_temp_min INTEGER,
+    nozzle_temp_max INTEGER,
+    bed_temp_min INTEGER,
+    bed_temp_max INTEGER,
     kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))
 );
 

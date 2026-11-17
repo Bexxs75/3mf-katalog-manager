@@ -6,6 +6,7 @@ import type { FilamentSpool } from '../types';
 import { groupFilaments } from '../lib/filamentGroups';
 
 const S: FilamentSpool = {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null,
   id: 'a', material: 'PETG', manufacturer: null, color: 'Rot', location: 'Regal 1',
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 800, price: null, imagePng: null,
   colorHex: null, colorHexes: [], homeLocation: null, unitId: null, slotIndex: null, kind: 'filament',

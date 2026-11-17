@@ -175,6 +175,25 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE files ADD COLUMN plate_dimensions_json TEXT")),
     // Only the unit kind CHECK changes; preserve units and loaded spools.
     MigrationStep::Rebuild(add_ams_3h_unit_kind),
+    MigrationStep::Simple(|c| {
+        exec(
+            c,
+            "ALTER TABLE filament_spools ADD COLUMN nozzle_temp_min INTEGER",
+        )?;
+        exec(
+            c,
+            "ALTER TABLE filament_spools ADD COLUMN nozzle_temp_max INTEGER",
+        )?;
+        exec(
+            c,
+            "ALTER TABLE filament_spools ADD COLUMN bed_temp_min INTEGER",
+        )?;
+        exec(
+            c,
+            "ALTER TABLE filament_spools ADD COLUMN bed_temp_max INTEGER",
+        )?;
+        Ok(())
+    }),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -2998,5 +3017,38 @@ mod tests {
         run_migrations(&mut conn).unwrap();
         let kind: String = conn.query_row("SELECT kind FROM material_units WHERE id = 5", [], |r| r.get(0)).unwrap();
         assert_eq!(kind, "bambu_ams_3h");
+    }
+}
+
+#[cfg(test)]
+mod print_temperature_tests {
+    use super::*;
+
+    #[test]
+    fn print_temperature_migration_keeps_existing_spools_with_null_temperatures() {
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        conn.execute_batch("ALTER TABLE filament_spools DROP COLUMN nozzle_temp_min;
+            ALTER TABLE filament_spools DROP COLUMN nozzle_temp_max;
+            ALTER TABLE filament_spools DROP COLUMN bed_temp_min;
+            ALTER TABLE filament_spools DROP COLUMN bed_temp_max;
+            INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+            VALUES ('PLA', 1.75, 1000, 800, '2026-01-01');").unwrap();
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 1)
+            .unwrap();
+        run_migrations(&mut conn).unwrap();
+        let spools = crate::db::list_filament_spools(&conn).unwrap();
+        assert_eq!(spools.len(), 1);
+        let spool = &spools[0];
+        assert_eq!(
+            (
+                spool.nozzle_temp_min,
+                spool.nozzle_temp_max,
+                spool.bed_temp_min,
+                spool.bed_temp_max
+            ),
+            (None, None, None, None)
+        );
+        assert_eq!(spool.remaining_weight_g, 800.0);
+        run_migrations(&mut conn).unwrap();
     }
 }

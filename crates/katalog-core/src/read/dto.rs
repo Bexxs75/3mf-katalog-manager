@@ -392,6 +392,10 @@ mod tests {
         price: Option<f64>,
     ) -> db::models::FilamentSpoolRecord {
         db::models::FilamentSpoolRecord {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             color_hexes: Vec::new(),
             id: 1,
             material: material.to_string(),

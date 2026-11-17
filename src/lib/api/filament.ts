@@ -21,3 +21,10 @@ export function consumeResin(spoolId: string, amountMl: number) {
 export function readDroppedImage(path: string) {
   return invoke<string>('read_dropped_image', { path });
 }
+
+/** Compact Celsius range; a lone endpoint denotes one fixed temperature. */
+export function formatTemperatureRange(min: number | null, max: number | null): string {
+  if (min == null && max == null) return '';
+  if (min == null || max == null || min === max) return `${min ?? max} °C`;
+  return `${min}–${max} °C`;
+}

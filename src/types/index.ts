@@ -333,6 +333,11 @@ export interface SlicerConfig {
 export type SpoolKind = 'filament' | 'resin';
 
 export interface FilamentSpool {
+  nozzleTempMin: number | null;
+  nozzleTempMax: number | null;
+  bedTempMin: number | null;
+  bedTempMax: number | null;
+
   id: string;
   material: string;
   manufacturer: string | null;

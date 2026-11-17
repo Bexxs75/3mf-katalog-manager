@@ -145,6 +145,10 @@ mod tests {
         let spool_id = crate::db::insert_filament_spool(
             &conn,
             &crate::db::models::NewFilamentSpool {
+                nozzle_temp_min: None,
+                nozzle_temp_max: None,
+                bed_temp_min: None,
+                bed_temp_max: None,
                 material: "PLA".to_string(),
                 manufacturer: Some("Bambu".to_string()),
                 color: Some("Rot".to_string()),
@@ -224,6 +228,10 @@ mod tests {
 
     fn new_spool(kind: &str) -> crate::db::models::NewFilamentSpool {
         crate::db::models::NewFilamentSpool {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             material: "PLA".into(),
             manufacturer: None,
             color: None,
@@ -242,6 +250,10 @@ mod tests {
     #[test]
     fn spool_image_is_validated_before_it_can_be_saved() {
         let mut spool = FilamentSpoolDto {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             id: "1".into(), material: "PLA".into(), manufacturer: None, color: None,
             location: None, diameter_mm: 1.75, original_weight_g: 1000.0,
             remaining_weight_g: 1000.0, price: None, image_png: None,
@@ -305,6 +317,10 @@ mod tests {
         crate::db::insert_filament_spool(
             conn,
             &crate::db::models::NewFilamentSpool {
+                nozzle_temp_min: None,
+                nozzle_temp_max: None,
+                bed_temp_min: None,
+                bed_temp_max: None,
                 material: "ABS-T".to_string(),
                 manufacturer: Some("Prusament".to_string()),
                 color: Some("Orange".to_string()),
@@ -502,6 +518,10 @@ mod tests {
         crate::db::insert_filament_spool(
             &conn,
             &crate::db::models::NewFilamentSpool {
+                nozzle_temp_min: None,
+                nozzle_temp_max: None,
+                bed_temp_min: None,
+                bed_temp_max: None,
                 material: "PLA".into(),
                 manufacturer: None,
                 color: Some("Rot".into()),
@@ -555,6 +575,10 @@ mod tests {
     }
     fn dto_with_colors(color_hex: Option<&str>, color_hexes: &[&str]) -> FilamentSpoolDto {
         FilamentSpoolDto {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             id: "".into(), material: "PLA".into(), manufacturer: None, color: None,
             location: None, diameter_mm: 1.75, original_weight_g: 1000.0,
             remaining_weight_g: 1000.0, price: None, image_png: None,

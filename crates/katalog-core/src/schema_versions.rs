@@ -17,6 +17,7 @@ pub const SCHEMA_APP_VERSIONS: &[(i64, &str)] = &[
     (52, "0.17.2"),
     (64, "0.18.0"),
     (65, "0.18.0"),
+    (66, "0.18.2"),
 ];
 
 /// The release to reinstall for a catalog that is at `schema`, if one is known.
@@ -70,6 +71,7 @@ mod tests {
         assert_eq!(app_version_for_schema(63), None);
         assert_eq!(app_version_for_schema(64), Some("0.18.0"));
         assert_eq!(app_version_for_schema(65), Some("0.18.0"));
+        assert_eq!(app_version_for_schema(66), Some("0.18.2"));
         assert_eq!(app_version_for_schema(0), None);
     }
 }

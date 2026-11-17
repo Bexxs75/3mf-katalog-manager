@@ -4,6 +4,7 @@ import { suggestSpoolWeight } from './spoolWeightSuggestion';
 
 function spool(id: string, manufacturer: string | null, material: string, originalWeightG: number, kind: 'filament' | 'resin' = 'filament'): FilamentSpool {
   return {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null,
     id, material, manufacturer, color: null, location: null, diameterMm: 1.75, originalWeightG, remainingWeightG: originalWeightG,
     price: null, imagePng: null, colorHex: null, colorHexes: [], homeLocation: null, unitId: null, slotIndex: null, kind,
   };

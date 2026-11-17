@@ -33,6 +33,7 @@ pub fn validate_spool_kind(kind: &str) -> WriteResult<()> {
 pub fn filament_dto_to_record(
     spool: &FilamentSpoolDto,
 ) -> WriteResult<db::models::NewFilamentSpool> {
+    validate_print_temperatures(spool)?;
     use base64::Engine;
     let image_png = spool
         .image_png
@@ -56,6 +57,10 @@ pub fn filament_dto_to_record(
     let color_hexes: Vec<String> = spool.color_hexes.iter().map(|c| c.to_lowercase()).collect();
     let single_hex = spool.color_hex.as_ref().map(|c| c.to_lowercase());
     Ok(db::models::NewFilamentSpool {
+        nozzle_temp_min: spool.nozzle_temp_min,
+        nozzle_temp_max: spool.nozzle_temp_max,
+        bed_temp_min: spool.bed_temp_min,
+        bed_temp_max: spool.bed_temp_max,
         material: spool.material.clone(),
         manufacturer: spool.manufacturer.clone(),
         color: spool.color.clone(),
@@ -122,7 +127,7 @@ fn missing_template() -> WriteError {
 
 /// Creates `count` new, full entries modeled on the template inside the caller's
 /// transaction (all or nothing). Copies kind, material, manufacturer, color name,
-/// color value(s), image and diameter; does NOT copy the slot (`unit_id`/`slot_index`)
+/// color value(s), image, diameter and print temperatures; does NOT copy the slot (`unit_id`/`slot_index`)
 /// or home location - new spools/bottles always go to storage. `weight` is grams
 /// (filament) or milliliters (resin), rounded to 0.1. Argument validation is the
 /// caller's job; only the template lookup is checked here.
@@ -146,6 +151,10 @@ pub fn restock_in(
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty());
     let new_spool = db::models::NewFilamentSpool {
+        nozzle_temp_min: template.nozzle_temp_min,
+        nozzle_temp_max: template.nozzle_temp_max,
+        bed_temp_min: template.bed_temp_min,
+        bed_temp_max: template.bed_temp_max,
         material: template.material,
         manufacturer: template.manufacturer,
         color: template.color,
@@ -239,4 +248,112 @@ pub fn consume_resin(
     let updated = consume_resin_in(&tx, id, amount)?;
     tx.commit()?;
     Ok(updated)
+}
+
+pub fn validate_print_temperatures(spool: &FilamentSpoolDto) -> WriteResult<()> {
+    for (min, max) in [
+        (spool.nozzle_temp_min, spool.nozzle_temp_max),
+        (spool.bed_temp_min, spool.bed_temp_max),
+    ] {
+        if min.is_some_and(|v| !(0..=500).contains(&v))
+            || max.is_some_and(|v| !(0..=500).contains(&v))
+            || matches!((min, max), (Some(a), Some(b)) if a > b)
+        {
+            return Err(WriteError::coded(ErrorCode::InvalidPrintTemperature));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod print_temperature_tests {
+    use super::*;
+
+    fn spool() -> FilamentSpoolDto {
+        serde_json::from_value(serde_json::json!({
+            "id": "", "material": "PLA", "diameterMm": 1.75,
+            "originalWeightG": 1000.0, "remainingWeightG": 800.0,
+            "nozzleTempMin": 200, "nozzleTempMax": 240,
+            "bedTempMin": 50, "bedTempMax": 65
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn print_temperatures_round_trip_update_and_restock() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let added = add_filament_spool(&conn, spool()).unwrap();
+        let read = db::get_filament_spool(&conn, added.id.parse().unwrap()).unwrap();
+        assert_eq!(
+            (
+                read.nozzle_temp_min,
+                read.nozzle_temp_max,
+                read.bed_temp_min,
+                read.bed_temp_max
+            ),
+            (Some(200), Some(240), Some(50), Some(65))
+        );
+        let mut updated = spool_record_to_dto(read);
+        updated.nozzle_temp_min = None;
+        updated.nozzle_temp_max = Some(215);
+        updated.bed_temp_min = Some(0);
+        updated.bed_temp_max = Some(500);
+        update_filament_spool(&conn, updated).unwrap();
+        let copies = restock_filament_spool(&mut conn, &added.id, 1, 1000.0, None, None).unwrap();
+        let copy = &copies[0];
+        assert_eq!(
+            (
+                copy.nozzle_temp_min,
+                copy.nozzle_temp_max,
+                copy.bed_temp_min,
+                copy.bed_temp_max
+            ),
+            (None, Some(215), Some(0), Some(500))
+        );
+        let listed = db::list_filament_spools(&conn).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert!(listed
+            .iter()
+            .all(|s| s.nozzle_temp_max == Some(215) && s.bed_temp_max == Some(500)));
+    }
+
+    #[test]
+    fn print_temperatures_reject_invalid_values_before_writing() {
+        let conn = db::connect_in_memory().unwrap();
+        let added = add_filament_spool(&conn, spool()).unwrap();
+        for (min, max) in [(Some(501), None), (Some(-1), None), (Some(240), Some(200))] {
+            for bed in [false, true] {
+                for update in [false, true] {
+                    let mut input = spool();
+                    input.id = added.id.clone();
+                    if bed {
+                        input.bed_temp_min = min;
+                        input.bed_temp_max = max;
+                    } else {
+                        input.nozzle_temp_min = min;
+                        input.nozzle_temp_max = max;
+                    }
+                    let result = if update {
+                        update_filament_spool(&conn, input)
+                    } else {
+                        add_filament_spool(&conn, input)
+                    };
+                    assert!(matches!(
+                        result,
+                        Err(WriteError::Coded {
+                            code: ErrorCode::InvalidPrintTemperature,
+                            ..
+                        })
+                    ));
+                }
+            }
+        }
+        assert_eq!(db::list_filament_spools(&conn).unwrap().len(), 1);
+        assert_eq!(
+            db::get_filament_spool(&conn, added.id.parse().unwrap())
+                .unwrap()
+                .nozzle_temp_min,
+            Some(200)
+        );
+    }
 }

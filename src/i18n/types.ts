@@ -2062,6 +2062,12 @@ export interface Translations {
   errInvalidAmount: string;
   errAmountNotPositive: string;
   errConsumeNotPositive: string;
+  filamentSectionPrintSettings: string;
+  filamentNozzleTemperature: string;
+  filamentBedTemperature: string;
+  filamentTemperatureFrom: string;
+  filamentTemperatureTo: string;
+  errInvalidPrintTemperature: string;
   errInvalidPrice: string;
   errSpoolColorsTooMany: string;
   errInvalidColor: string;

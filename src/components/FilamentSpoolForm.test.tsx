@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
@@ -21,6 +21,7 @@ vi.mock('@tauri-apps/api/webview', () => ({
 beforeEach(() => { vi.mocked(invoke).mockReset(); vi.mocked(invoke).mockResolvedValue(undefined); });
 
 const LOADED: FilamentSpool = {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null,
   id: 's1', material: 'PLA', manufacturer: 'Bambu Lab', color: 'Galaxy Black', location: null,
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 600, price: null, imagePng: null,
   colorHex: '#1a1a1a', colorHexes: [], homeLocation: 'Regal 2', unitId: 'u1', slotIndex: 0, kind: 'filament',
@@ -586,5 +587,92 @@ describe('start weight of a new spool', () => {
     expect(original().value).toBe('1000');
     expect(remaining().value).toBe('400');
     expect(screen.queryByText(/zuletzt für/)).toBeNull();
+  });
+});
+
+describe('spool print settings', () => {
+  it('shows filament fields and sends all four temperatures', async () => {
+    const saved = renderForm(LOADED);
+    expect(screen.getByText('Druckwerte')).toBeInTheDocument();
+    for (const [name, value] of [['Düse (°C) von', '200'], ['Düse (°C) bis', '240'], ['Druckbett (°C) von', '50'], ['Druckbett (°C) bis', '65']]) {
+      const input = screen.getByRole('spinbutton', { name });
+      expect(input).toHaveAttribute('step', '1');
+      fireEvent.change(input, { target: { value } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(saved).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('update_filament_spool', { spool: expect.objectContaining({ nozzleTempMin: 200, nozzleTempMax: 240, bedTempMin: 50, bedTempMax: 65 }) });
+  });
+
+  it('sends null for empty temperatures', async () => {
+    const saved = renderForm({ ...LOADED, nozzleTempMin: 215 });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Düse (°C) von' }), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(saved).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('update_filament_spool', { spool: expect.objectContaining({ nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null }) });
+  });
+
+  it('hides resin settings and preserves stored temperatures', async () => {
+    const saved = renderForm({ ...LOADED, kind: 'resin', nozzleTempMin: 215, bedTempMax: 60 });
+    expect(screen.queryByText('Druckwerte')).not.toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton', { name: 'Düse (°C) von' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(saved).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('update_filament_spool', { spool: expect.objectContaining({ nozzleTempMin: 215, nozzleTempMax: null, bedTempMin: null, bedTempMax: 60 }) });
+  });
+
+  it.each([['240', '200'], ['501', ''], ['-1', ''], ['200.5', '']])('rejects invalid temperatures %s / %s', (min, max) => {
+    const saved = renderForm(LOADED);
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Düse (°C) von' }), { target: { value: min } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Düse (°C) bis' }), { target: { value: max } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(screen.getAllByText(/Temperaturen müssen ganze Zahlen/).length).toBeGreaterThan(0);
+    expect(saved).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('print temperature input errors', () => {
+  it.each(['Düse (°C) von', 'Düse (°C) bis', 'Druckbett (°C) von', 'Druckbett (°C) bis'])('rejects badInput instead of saving null for %s', name => {
+    const saved = renderForm({ ...LOADED, nozzleTempMin: 215, nozzleTempMax: 215, bedTempMin: 60, bedTempMax: 60 });
+    const input = screen.getByRole('spinbutton', { name });
+    Object.defineProperty(input, 'validity', { configurable: true, value: { badInput: true } });
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent('Temperaturen müssen ganze Zahlen');
+    expect(saved).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it.each(['Düse (°C)', 'Druckbett (°C)'])('announces inverted %s only at the maximum field', name => {
+    const saved = renderForm(LOADED);
+    const group = within(screen.getByRole('group', { name }));
+    const min = group.getByRole('spinbutton', { name: `${name} von` });
+    const max = group.getByRole('spinbutton', { name: `${name} bis` });
+    fireEvent.change(min, { target: { value: '240' } });
+    fireEvent.change(max, { target: { value: '200' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(group.getAllByRole('alert')).toHaveLength(1);
+    expect(min).not.toHaveAttribute('aria-invalid');
+    expect(max).toHaveAttribute('aria-invalid', 'true');
+    expect(max).toHaveFocus();
+    expect(saved).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('keeps an out-of-range error on the offending minimum field', () => {
+    renderForm(LOADED);
+    const group = within(screen.getByRole('group', { name: 'Düse (°C)' }));
+    const min = group.getByRole('spinbutton', { name: 'Düse (°C) von' });
+    const max = group.getByRole('spinbutton', { name: 'Düse (°C) bis' });
+    fireEvent.change(min, { target: { value: '501' } });
+    fireEvent.change(max, { target: { value: '200' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(group.getAllByRole('alert')).toHaveLength(1);
+    expect(min).toHaveAttribute('aria-invalid', 'true');
+    expect(max).not.toHaveAttribute('aria-invalid');
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

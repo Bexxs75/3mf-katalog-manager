@@ -2322,3 +2322,44 @@ async fn create_bundle_restores_trashed_members_with_labels_over_http() {
         assert_eq!(r.status(), 400, "{args}");
     }
 }
+
+#[tokio::test]
+async fn manager_http_spool_print_temperatures_pass_the_field_list_and_are_checked() {
+    let f = Fixture::new(true);
+    let mut s = manager_spool();
+    s["nozzleTempMin"] = json!(200);
+    s["nozzleTempMax"] = json!(240);
+    s["bedTempMin"] = json!(55);
+    s["bedTempMax"] = json!(65);
+    let created = value(f.send("add_filament_spool", json!({"spool":s})).await).await;
+    assert_eq!(
+        (
+            &created["nozzleTempMin"],
+            &created["nozzleTempMax"],
+            &created["bedTempMin"],
+            &created["bedTempMax"]
+        ),
+        (&json!(200), &json!(240), &json!(55), &json!(65))
+    );
+    let mut changed = created.clone();
+    changed["nozzleTempMax"] = json!(230);
+    changed["bedTempMin"] = Value::Null;
+    let updated = value(
+        f.send("update_filament_spool", json!({"spool":changed}))
+            .await,
+    )
+    .await;
+    assert_eq!(
+        (&updated["nozzleTempMax"], &updated["bedTempMin"]),
+        (&json!(230), &Value::Null)
+    );
+    for cmd in ["add_filament_spool", "update_filament_spool"] {
+        let mut bad = updated.clone();
+        bad["nozzleTempMax"] = json!(501);
+        let r = f.send(cmd, json!({"spool":bad})).await;
+        let status = r.status();
+        let body = value(r).await;
+        assert!(status.is_client_error(), "{cmd}: {status}");
+        assert_eq!(body["message"], "invalidPrintTemperature", "{cmd}: {body}");
+    }
+}

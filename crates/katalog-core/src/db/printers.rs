@@ -631,6 +631,10 @@ mod tests {
         crate::db::insert_filament_spool(
             conn,
             &crate::db::models::NewFilamentSpool {
+                nozzle_temp_min: None,
+                nozzle_temp_max: None,
+                bed_temp_min: None,
+                bed_temp_max: None,
                 material: material.to_string(),
                 manufacturer: None,
                 color: None,
@@ -937,6 +941,10 @@ mod tests {
         let pla = spool(&conn, "PLA", Some("Regal 2"));
         load_spool(&conn, pla, ams_a, 0).unwrap();
         let edited = crate::db::models::NewFilamentSpool {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             material: "PLA+".into(),
             manufacturer: None,
             color: Some("Schwarz".into()),
@@ -958,6 +966,10 @@ mod tests {
         crate::db::insert_filament_spool(
             conn,
             &crate::db::models::NewFilamentSpool {
+                nozzle_temp_min: None,
+                nozzle_temp_max: None,
+                bed_temp_min: None,
+                bed_temp_max: None,
                 material: "Standard".into(),
                 manufacturer: None,
                 color: Some("Grau".into()),
@@ -1069,6 +1081,10 @@ mod tests {
         let grey = bottle(&conn, "Resin-Schrank");
         load_spool(&conn, grey, vat, 0).unwrap();
         let as_filament = crate::db::models::NewFilamentSpool {
+            nozzle_temp_min: None,
+            nozzle_temp_max: None,
+            bed_temp_min: None,
+            bed_temp_max: None,
             material: "PLA".into(),
             manufacturer: None,
             color: None,

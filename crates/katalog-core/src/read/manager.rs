@@ -8,6 +8,10 @@ use serde::Serialize;
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FilamentSpoolDto {
+    pub nozzle_temp_min: Option<i64>,
+    pub nozzle_temp_max: Option<i64>,
+    pub bed_temp_min: Option<i64>,
+    pub bed_temp_max: Option<i64>,
     pub id: String,
     pub material: String,
     pub manufacturer: Option<String>,
@@ -91,6 +95,10 @@ fn default_spool_kind() -> String {
 pub fn spool_record_to_dto(s: db::models::FilamentSpoolRecord) -> FilamentSpoolDto {
     use base64::Engine;
     FilamentSpoolDto {
+        nozzle_temp_min: s.nozzle_temp_min,
+        nozzle_temp_max: s.nozzle_temp_max,
+        bed_temp_min: s.bed_temp_min,
+        bed_temp_max: s.bed_temp_max,
         id: s.id.to_string(),
         material: s.material,
         manufacturer: s.manufacturer,

@@ -9,6 +9,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 
 const TEMPLATE: FilamentSpool = {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null,
   id: 's2', material: 'ABS-T', manufacturer: 'Prusament', color: 'Orange', location: null,
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 120, price: 29.95, imagePng: null,
   colorHex: '#f07f1e', colorHexes: [], homeLocation: 'Technik', unitId: 'u1', slotIndex: 0, kind: 'filament',

@@ -1438,8 +1438,8 @@ pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> 
 pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Result<i64, DbError> {
     conn.execute(
         "INSERT INTO filament_spools
-            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at, color_hex, kind, color_hexes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at, color_hex, kind, color_hexes, nozzle_temp_min, nozzle_temp_max, bed_temp_min, bed_temp_max)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             spool.material,
             spool.manufacturer,
@@ -1454,6 +1454,10 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
             crate::db::printers::primary_color_hex(&spool.color_hexes, spool.color_hex.as_deref()),
             spool.kind,
             crate::db::printers::color_list_to_json(&spool.color_hexes),
+            spool.nozzle_temp_min,
+            spool.nozzle_temp_max,
+            spool.bed_temp_min,
+            spool.bed_temp_max,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -1470,29 +1474,38 @@ pub fn list_filament_spools_with_images(conn: &Connection, include_images: bool)
 pub fn list_filament_spools_with_image_flags(conn: &Connection, include_images: bool) -> Result<Vec<(FilamentSpoolRecord, bool)>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, CASE WHEN ?1 THEN image_png ELSE NULL END,
-                color_hex, home_location, unit_id, slot_index, kind, image_png IS NOT NULL AS has_image, color_hexes
+                color_hex, home_location, unit_id, slot_index, kind, image_png IS NOT NULL AS has_image, color_hexes, nozzle_temp_min, nozzle_temp_max, bed_temp_min, bed_temp_max
          FROM filament_spools ORDER BY material, manufacturer",
     )?;
     let rows = stmt
         .query_map([include_images], |row| {
-            Ok((FilamentSpoolRecord {
-                id: row.get(0)?,
-                material: row.get(1)?,
-                manufacturer: row.get(2)?,
-                color: row.get(3)?,
-                location: row.get(4)?,
-                diameter_mm: row.get(5)?,
-                original_weight_g: row.get(6)?,
-                remaining_weight_g: row.get(7)?,
-                price: row.get(8)?,
-                image_png: row.get(9)?,
-                color_hex: row.get(10)?,
-                home_location: row.get(11)?,
-                unit_id: row.get(12)?,
-                slot_index: row.get(13)?,
-                kind: row.get(14)?,
-                color_hexes: crate::db::printers::color_list_from_json(row.get::<_, Option<String>>(16)?.as_deref()),
-            }, row.get(15)?))
+            Ok((
+                FilamentSpoolRecord {
+                    nozzle_temp_min: row.get(17)?,
+                    nozzle_temp_max: row.get(18)?,
+                    bed_temp_min: row.get(19)?,
+                    bed_temp_max: row.get(20)?,
+                    id: row.get(0)?,
+                    material: row.get(1)?,
+                    manufacturer: row.get(2)?,
+                    color: row.get(3)?,
+                    location: row.get(4)?,
+                    diameter_mm: row.get(5)?,
+                    original_weight_g: row.get(6)?,
+                    remaining_weight_g: row.get(7)?,
+                    price: row.get(8)?,
+                    image_png: row.get(9)?,
+                    color_hex: row.get(10)?,
+                    home_location: row.get(11)?,
+                    unit_id: row.get(12)?,
+                    slot_index: row.get(13)?,
+                    kind: row.get(14)?,
+                    color_hexes: crate::db::printers::color_list_from_json(
+                        row.get::<_, Option<String>>(16)?.as_deref(),
+                    ),
+                },
+                row.get(15)?,
+            ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
@@ -1502,11 +1515,15 @@ pub fn list_filament_spools_with_image_flags(conn: &Connection, include_images: 
 pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRecord, DbError> {
     conn.query_row(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
-                color_hex, home_location, unit_id, slot_index, kind, color_hexes
+                color_hex, home_location, unit_id, slot_index, kind, color_hexes, nozzle_temp_min, nozzle_temp_max, bed_temp_min, bed_temp_max
          FROM filament_spools WHERE id = ?1",
         params![id],
         |row| {
             Ok(FilamentSpoolRecord {
+                nozzle_temp_min: row.get(16)?,
+                nozzle_temp_max: row.get(17)?,
+                bed_temp_min: row.get(18)?,
+                bed_temp_max: row.get(19)?,
                 id: row.get(0)?,
                 material: row.get(1)?,
                 manufacturer: row.get(2)?,
@@ -1552,32 +1569,40 @@ pub fn update_filament_spool_image_policy(conn: &Connection, id: i64, spool: &Ne
             "Die Art eines Eintrags im Drucker kann nicht geaendert werden - erst herausnehmen".to_string(),
         ));
     }
-    let image_assignment = if replace_image { ", image_png = ?13" } else { "" };
+    let image_assignment = if replace_image {
+        ", image_png = ?17"
+    } else {
+        ""
+    };
     let sql = format!("UPDATE filament_spools
          SET material = ?1, manufacturer = ?2, color = ?3,
              location = CASE WHEN unit_id IS NULL THEN ?4 ELSE location END,
              home_location = CASE WHEN unit_id IS NULL THEN home_location ELSE ?4 END,
              diameter_mm = ?5, original_weight_g = ?6, remaining_weight_g = ?7, price = ?8,
-             color_hex = ?10, kind = ?11, color_hexes = ?12{image_assignment}
+             color_hex = ?10, kind = ?11, color_hexes = ?12, nozzle_temp_min = ?13, nozzle_temp_max = ?14, bed_temp_min = ?15, bed_temp_max = ?16{image_assignment}
          WHERE id = ?9");
     let original_weight = crate::db::printers::round_tenth(spool.original_weight_g);
     let remaining_weight = crate::db::printers::round_tenth(spool.remaining_weight_g);
     let primary_hex = crate::db::printers::primary_color_hex(&spool.color_hexes, spool.color_hex.as_deref());
     let color_list = crate::db::printers::color_list_to_json(&spool.color_hexes);
     let mut values: Vec<&dyn rusqlite::ToSql> = vec![
-            &spool.material,
-            &spool.manufacturer,
-            &spool.color,
-            &spool.location,
-            &spool.diameter_mm,
-            &original_weight,
-            &remaining_weight,
-            &spool.price,
-            &id,
-            &primary_hex,
-            &spool.kind,
-            &color_list,
-        ];
+        &spool.material,
+        &spool.manufacturer,
+        &spool.color,
+        &spool.location,
+        &spool.diameter_mm,
+        &original_weight,
+        &remaining_weight,
+        &spool.price,
+        &id,
+        &primary_hex,
+        &spool.kind,
+        &color_list,
+        &spool.nozzle_temp_min,
+        &spool.nozzle_temp_max,
+        &spool.bed_temp_min,
+        &spool.bed_temp_max,
+    ];
     if replace_image {
         values.push(&spool.image_png);
     }

@@ -212,6 +212,7 @@ error_codes! {
     InvalidAmount => "invalidAmount",
     AmountNotPositive => "amountNotPositive",
     ConsumeNotPositive => "consumeNotPositive",
+    InvalidPrintTemperature => "invalidPrintTemperature",
     InvalidPrice => "invalidPrice",
     /// params: the highest number of colors.
     SpoolColorsTooMany => "spoolColorsTooMany",

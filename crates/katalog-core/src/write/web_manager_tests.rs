@@ -709,3 +709,70 @@ fn measure_print_statistics_with_5000_rows() {
     times.sort_by(|a, b| a.partial_cmp(b).unwrap());
     println!("MEASURE rows=5000 bytes={size} query+serialize ms: min={:.2} median={:.2} max={:.2}", times[0], times[10], times[19]);
 }
+
+#[test]
+fn print_temperatures_web_round_trip_and_validation() {
+    let mut c = db::connect_in_memory().unwrap();
+    let mut input = spool();
+    input.nozzle_temp_min = Some(200);
+    input.nozzle_temp_max = Some(240);
+    input.bed_temp_min = Some(50);
+    input.bed_temp_max = Some(65);
+    let added = add_filament_spool(&mut c, input).unwrap().value;
+    assert_eq!(
+        (
+            added.nozzle_temp_min,
+            added.nozzle_temp_max,
+            added.bed_temp_min,
+            added.bed_temp_max
+        ),
+        (Some(200), Some(240), Some(50), Some(65))
+    );
+    let id = added.id.parse().unwrap();
+    let mut input = added;
+    input.nozzle_temp_min = None;
+    input.nozzle_temp_max = Some(215);
+    input.bed_temp_min = Some(0);
+    input.bed_temp_max = Some(500);
+    let updated = update_filament_spool(&mut c, id, input, false)
+        .unwrap()
+        .value;
+    assert_eq!(
+        (
+            updated.nozzle_temp_min,
+            updated.nozzle_temp_max,
+            updated.bed_temp_min,
+            updated.bed_temp_max
+        ),
+        (None, Some(215), Some(0), Some(500))
+    );
+    for (min, max) in [(Some(501), None), (Some(-1), None), (Some(240), Some(200))] {
+        for update in [false, true] {
+            let mut input = spool();
+            input.nozzle_temp_min = min;
+            input.nozzle_temp_max = max;
+            let result = if update {
+                update_filament_spool(&mut c, id, input, false)
+            } else {
+                add_filament_spool(&mut c, input)
+            };
+            assert!(matches!(
+                result,
+                Err(WriteError::Coded {
+                    code: crate::error_code::ErrorCode::InvalidPrintTemperature,
+                    ..
+                })
+            ));
+        }
+    }
+    let read = db::get_filament_spool(&c, id).unwrap();
+    assert_eq!(
+        (
+            read.nozzle_temp_min,
+            read.nozzle_temp_max,
+            read.bed_temp_min,
+            read.bed_temp_max
+        ),
+        (None, Some(215), Some(0), Some(500))
+    );
+}

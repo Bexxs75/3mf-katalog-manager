@@ -5,6 +5,7 @@ import { groupFilaments, sameSpoolColor, singleSpoolGroups, spoolColorList } fro
 let nextId = 1;
 function spool(over: Partial<FilamentSpool> = {}): FilamentSpool {
   return {
+    nozzleTempMin: null, nozzleTempMax: null, bedTempMin: null, bedTempMax: null,
     id: String(nextId++), material: 'PLA', manufacturer: 'Polymaker', color: 'Black', location: 'Shelf A', diameterMm: 1.75,
     originalWeightG: 1000, remainingWeightG: 1000, price: null, imagePng: null, colorHex: '#1a1a1a', colorHexes: [],
     homeLocation: null, unitId: null, slotIndex: null, kind: 'filament', ...over,

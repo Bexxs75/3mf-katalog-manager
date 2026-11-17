@@ -1,3 +1,4 @@
+import { formatTemperatureRange } from '../lib/api/filament';
 import { useCanEditMetadata } from '../lib/webSession';
 import { SpoolImage } from './SpoolImage';
 import { Icon } from './Icon';
@@ -218,6 +219,7 @@ function SpoolRow({
             <FilamentSpoolIcon colorHex={spool.colorHex} size={20} />
           )} />
           {spool.material}
+          {spool.kind === 'filament' && <span className="text-caption font-normal text-[var(--ink-2)] whitespace-nowrap">{formatTemperatureRange(spool.nozzleTempMin, spool.nozzleTempMax)}</span>}
         </div>
       </td>
       <td className={`${cell} text-[var(--ink-2)]`}>{spool.manufacturer || t('noValue')}</td>
