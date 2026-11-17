@@ -21,6 +21,7 @@ it('loads blocking external theme assets in head before the React module', () =>
 });
 
 it.each([
+  ['white', true, 'white'], ['white', false, 'white'],
   ['light', true, 'light'], ['dark', false, 'dark'], ['slate', true, 'slate'], ['slate', false, 'slate'],
   ['system', true, 'dark'], ['system', false, 'light'],
   [null, true, 'dark'], [null, false, 'light'], ['', true, 'dark'], ['bogus', true, 'dark'], ['bogus', false, 'light'],
@@ -42,7 +43,7 @@ it.each([true, false])('uses system preference if storage is unavailable (dark=%
 });
 
 it('keeps boot background and text colors in sync with theme.css', () => {
-  const blocks = ['[data-app]', '[data-app="dark"]', '[data-app="slate"]'].map(selector => themeCss.slice(themeCss.indexOf(`${selector} {`)).split('}')[0]);
+  const blocks = ['[data-app="white"]', '[data-app]', '[data-app="dark"]', '[data-app="slate"]'].map(selector => themeCss.slice(themeCss.indexOf(`${selector} {`)).split('}')[0]);
   for (const block of blocks) {
     for (const token of ['bg', 'ink']) {
       const color = block.match(new RegExp(`--${token}: (oklch\\([^;]+\\));`))[1];
@@ -52,7 +53,7 @@ it('keeps boot background and text colors in sync with theme.css', () => {
 });
 
 it('defines the themed card surface before the app stylesheet loads', () => {
-  const blocks = ['[data-app]', '[data-app="dark"]', '[data-app="slate"]'].map(selector => themeCss.slice(themeCss.indexOf(`${selector} {`)).split('}')[0]);
+  const blocks = ['[data-app="white"]', '[data-app]', '[data-app="dark"]', '[data-app="slate"]'].map(selector => themeCss.slice(themeCss.indexOf(`${selector} {`)).split('}')[0]);
   for (const block of blocks) {
     const color = block.match(/--plate: (oklch\([^;]+\));/)[1];
     expect(bootCss).toContain(`--plate: ${color}`);

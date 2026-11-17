@@ -765,6 +765,7 @@ export const en: Translations = {
   themeLegend: 'Color scheme',
   densityLegend: 'Display density',
   themeSystem: 'System',
+  themeWhite: 'White',
   themeSand: 'Sand',
   themeSlate: 'Slate',
   themeDark: 'Dark',

@@ -50,16 +50,16 @@ describe('useCatalogBackup', () => {
     expect(localStorage.getItem('3mf-katalog-theme')).toBe('light');
   });
 
-  it('importCatalog restores the slate color scheme', async () => {
+  it.each(['slate', 'white'])('importCatalog restores the %s color scheme', async theme => {
     vi.mocked(invoke).mockResolvedValue({
       imported: true,
-      settingsJson: JSON.stringify({ '3mf-katalog-theme': 'slate' }),
+      settingsJson: JSON.stringify({ '3mf-katalog-theme': theme }),
     });
     const { result } = renderHook(() => useCatalogBackup());
     await act(async () => {
       await result.current.importCatalog(vi.fn());
     });
-    expect(localStorage.getItem('3mf-katalog-theme')).toBe('slate');
+    expect(localStorage.getItem('3mf-katalog-theme')).toBe(theme);
   });
 
   it('Finding 7 (Abschluss-Review): exportCatalog no longer exports the dead slicer localStorage key', async () => {

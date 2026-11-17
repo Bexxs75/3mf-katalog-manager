@@ -14,3 +14,8 @@ html[data-app="slate"], html[data-app="slate"] body {
   background: oklch(0.35 0.008 60);
   color: oklch(0.975 0.004 60);
 }
+html[data-app="white"] { --plate: oklch(0.915 0.006 60); }
+html[data-app="white"], html[data-app="white"] body {
+  background: oklch(0.965 0.004 60);
+  color: oklch(0.245 0.01 45);
+}

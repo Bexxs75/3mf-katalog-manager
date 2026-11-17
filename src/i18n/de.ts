@@ -765,6 +765,7 @@ export const de: Translations = {
   themeLegend: 'Farbschema',
   densityLegend: 'Darstellungsdichte',
   themeSystem: 'System',
+  themeWhite: 'Weiß',
   themeSand: 'Sand',
   themeSlate: 'Schiefer',
   themeDark: 'Dunkel',

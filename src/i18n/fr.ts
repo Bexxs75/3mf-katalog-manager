@@ -765,6 +765,7 @@ export const fr: Translations = {
   themeLegend: 'Thème de couleur',
   densityLegend: 'Densité d\'affichage',
   themeSystem: 'Système',
+  themeWhite: 'Blanc',
   themeSand: 'Sable',
   themeSlate: 'Ardoise',
   themeDark: 'Sombre',

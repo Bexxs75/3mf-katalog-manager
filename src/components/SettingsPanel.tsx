@@ -125,7 +125,7 @@ export function SettingsPanel({
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const themeLabel = (opt: ThemeSetting) => ({
-    system: t('themeSystem'), light: t('themeSand'), slate: t('themeSlate'), dark: t('themeDark'),
+    system: t('themeSystem'), white: t('themeWhite'), light: t('themeSand'), slate: t('themeSlate'), dark: t('themeDark'),
   })[opt];
   const { language, setLanguage } = useLanguage();
   const web = import.meta.env.VITE_TARGET === 'web';
@@ -267,7 +267,7 @@ export function SettingsPanel({
               <SettingsSection id="appearance" title={t('settingsSecAppearance')}>
                 <RadioSegments
                   legend={t('themeLegend')}
-                  options={(['system', 'light', 'slate', 'dark'] as ThemeSetting[]).map(opt => ({
+                  options={(['system', 'white', 'light', 'slate', 'dark'] as ThemeSetting[]).map(opt => ({
                     value: opt,
                     label: themeLabel(opt),
                   }))}

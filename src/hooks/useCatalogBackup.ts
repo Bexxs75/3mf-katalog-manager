@@ -23,7 +23,7 @@ const IMPORT_SKIPPED_SETTINGS_KEYS: ReadonlySet<string> = new Set(['3mf-katalog-
  * are silently skipped; the import still counts as successful.
  */
 const IMPORT_ALLOWED_SETTINGS_VALUES: Record<string, readonly string[]> = {
-  '3mf-katalog-theme': ['system', 'light', 'slate', 'dark'],
+  '3mf-katalog-theme': ['system', 'white', 'light', 'slate', 'dark'],
   '3mf-katalog-display-preference': ['thumbnail', 'render'],
   '3mf-katalog-language': ['de', 'en', 'es', 'fr'],
   '3mf-katalog-density': ['compact', 'comfort'],

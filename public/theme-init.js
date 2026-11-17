@@ -6,7 +6,7 @@
   } catch (_) {
     // Storage can be unavailable; the system preference still applies.
   }
-  var fixed = setting === 'light' || setting === 'slate' || setting === 'dark';
+  var fixed = setting === 'white' || setting === 'light' || setting === 'slate' || setting === 'dark';
   var theme = fixed
     ? setting
     : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');

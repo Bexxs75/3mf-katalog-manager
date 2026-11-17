@@ -765,6 +765,7 @@ export const es: Translations = {
   themeLegend: 'Esquema de color',
   densityLegend: 'Densidad de visualización',
   themeSystem: 'Sistema',
+  themeWhite: 'Blanco',
   themeSand: 'Arena',
   themeSlate: 'Pizarra',
   themeDark: 'Oscuro',
