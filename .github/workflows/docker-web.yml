@@ -145,12 +145,21 @@ jobs:
           IMAGE: ${{ needs.web-image.outputs.image }}
           VERSION: ${{ needs.web-image.outputs.version }}
           RC: ${{ needs.web-image.outputs.rc }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           [[ "$VERSION" != dev ]] || { echo "publish needs a version" >&2; exit 1; }
           tags=("$IMAGE:$VERSION")
-          [[ "$RC" == true ]] && tags+=("$IMAGE:rc")
-          # No latest tag for final versions yet: that decision is still open.
+          if [[ "$RC" == true ]]; then
+            tags+=("$IMAGE:rc")
+          elif [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Same rule as docker-image.yml: latest follows only the highest published stable release,
+            # read from the release list now, so rebuilding an older version never moves it back.
+            HIGHEST=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+              | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' | sort -V | tail -1)
+            [[ "$VERSION" == "$HIGHEST" ]] && tags+=("$IMAGE:latest")
+          fi
           for t in "${tags[@]}"; do
             docker tag candidate:web-test "$t"
             docker push "$t"
