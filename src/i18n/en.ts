@@ -2035,6 +2035,8 @@ export const en: Translations = {
   filamentBedTemperature: "Bed (°C)",
   filamentTemperatureFrom: "from",
   filamentTemperatureTo: "to",
+  filamentApplyGroupTemperatures: "Apply print settings to all {n} spools in this group",
+  errSpoolGroupTemperaturesFailed: "The spool was saved. Print settings for the other spools could not be saved.",
   errInvalidPrintTemperature: "Temperatures must be whole numbers from 0 to 500 °C; from must not exceed to.",
   errInvalidPrice: "Invalid price",
   errSpoolColorsTooMany: "At most {0} colors per entry allowed",

@@ -49,6 +49,17 @@ pub fn update_filament_spool(
     katalog_core::write::manager::update_filament_spool(&conn, spool).map_err(Into::into)
 }
 #[tauri::command]
+pub fn set_spool_print_temperatures(
+    state: State<AppState>, ids: Vec<i64>, nozzle_temp_min: Option<i64>,
+    nozzle_temp_max: Option<i64>, bed_temp_min: Option<i64>, bed_temp_max: Option<i64>,
+) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    katalog_core::write::manager::set_spool_print_temperatures(&conn,
+        katalog_core::write::manager::SpoolPrintTemperatures {
+            ids, nozzle_temp_min, nozzle_temp_max, bed_temp_min, bed_temp_max,
+        }).map(|_| ()).map_err(Into::into)
+}
+#[tauri::command]
 pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdResult<()> {
     let conn = lock_db(&state)?;
     katalog_core::write::manager::delete_filament_spool(&conn, spool_id).map_err(Into::into)

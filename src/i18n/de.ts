@@ -2035,6 +2035,8 @@ export const de: Translations = {
   filamentBedTemperature: "Druckbett (°C)",
   filamentTemperatureFrom: "von",
   filamentTemperatureTo: "bis",
+  filamentApplyGroupTemperatures: "Druckwerte für alle {n} Spulen dieser Gruppe übernehmen",
+  errSpoolGroupTemperaturesFailed: "Die Spule wurde gespeichert. Die Druckwerte der anderen Spulen konnten nicht gespeichert werden.",
   errInvalidPrintTemperature: "Temperaturen müssen ganze Zahlen zwischen 0 und 500 °C sein; von darf nicht größer als bis sein.",
   errInvalidPrice: "Ungültiger Preis",
   errSpoolColorsTooMany: "Höchstens {0} Farben je Eintrag erlaubt",

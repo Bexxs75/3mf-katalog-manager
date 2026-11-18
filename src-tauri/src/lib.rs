@@ -372,6 +372,7 @@ pub fn run() {
             commands::check_filament,
             commands::add_filament_spool,
             commands::update_filament_spool,
+            commands::set_spool_print_temperatures,
             commands::delete_filament_spool,
             commands::restock_filament_spool,
             commands::consume_resin,

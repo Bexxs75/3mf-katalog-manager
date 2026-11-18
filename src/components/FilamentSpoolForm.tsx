@@ -1,10 +1,11 @@
+import { groupFilaments, placeKey, sameSpoolColor } from '../lib/filamentGroups';
 import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { readPrintLogPhoto } from '../lib/printLogPhoto';
 import { invalidateSpoolImage } from '../lib/spoolImages';
 import { SpoolImage } from './SpoolImage';
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { useCallback, useEffect, useState, useRef, useId } from 'react';
+import { useCallback, useEffect, useState, useRef, useId, useMemo } from 'react';
 import { invoke } from '../lib/transport';
 import { useT } from '../i18n/LanguageContext';
 import { parseDecimalInput } from '../lib/decimalInput';
@@ -126,6 +127,12 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
   const [readingImage, setReadingImage] = useState(false);
   const imageReadEpoch = useRef(0);
   const [partial, setPartial] = useState('');
+  const [groupSaveFailed, setGroupSaveFailed] = useState(false);
+  const [applyGroupTemperatures, setApplyGroupTemperatures] = useState(true);
+  const siblings = useMemo(() => editing?.kind === 'filament'
+    ? (groupFilaments(knownSpools).find(group => group.spools.some(spool => spool.id === editing.id))?.spools ?? [])
+      .filter(spool => spool.id !== editing.id)
+    : [], [editing, knownSpools]);
   const fileInput = useRef<HTMLInputElement>(null);
   const dialogRef = useModalDialog<HTMLElement>({ open, onClose });
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -198,6 +205,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       setReadingImage(false);
       setImageChanged(false);
       setPartial('');
+      setApplyGroupTemperatures(true);
+      setGroupSaveFailed(false);
       setAttempted(false);
       setTemperatureBadInput({});
       setImageError(null);
@@ -268,6 +277,28 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
     onReject: handleRejectedDrop,
   });
 
+  // One color stays single-colored (empty list); two or more become the list. The
+  // backend keeps `colorHex` equal to the first entry.
+  const listed = [form.colorHex, ...form.extraColors.map((text) => (text.trim() === '' ? null : normalizeHex(text)))]
+    .filter((hex): hex is string => hex !== null && isValidColorHex(hex));
+  const colorHexes = listed.length > 1 ? listed : [];
+  // The siblings belong to the saved spool's group: they only share its print values while the
+  // fields that define the group (the same ones `groupFilaments` compares) are unchanged.
+  const stillInGroup = editing !== null && placeKey({
+    ...editing,
+    kind: form.kind,
+    material: form.material.trim(),
+    manufacturer: form.manufacturer.trim() || null,
+    location: form.location.trim() || null,
+    diameterMm: form.kind === 'resin' && !Number.isFinite(diameter) ? 0 : diameter,
+  }) === placeKey(editing) && sameSpoolColor({
+    ...editing,
+    color: form.color.trim() || null,
+    colorHex: colorHexes[0] ?? listed[0] ?? form.colorHex,
+    colorHexes,
+  }, editing);
+  const applicableSiblings = stillInGroup ? siblings : [];
+
   const submit = async () => {
     if (!canEditMetadata() || busyRef.current || readingImage || !form.material.trim()) return;
     setAttempted(true);
@@ -285,11 +316,6 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       imageErrorRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
       return;
     }
-    // One color stays single-colored (empty list); two or more become the list. The
-    // backend keeps `colorHex` equal to the first entry.
-    const listed = [form.colorHex, ...form.extraColors.map((text) => (text.trim() === '' ? null : normalizeHex(text)))]
-      .filter((hex): hex is string => hex !== null && isValidColorHex(hex));
-    const colorHexes = listed.length > 1 ? listed : [];
     const payload: Omit<FilamentSpool, 'imagePng'> & { imagePng?: string | null } = {
       nozzleTempMin: form.kind === 'resin' ? editing?.nozzleTempMin ?? null : temperatures.nozzleTempMin,
       nozzleTempMax: form.kind === 'resin' ? editing?.nozzleTempMax ?? null : temperatures.nozzleTempMax,
@@ -314,13 +340,20 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       slotIndex: editing?.slotIndex ?? null,
       kind: form.kind,
     };
-    if (web) { busyRef.current = true; setBusy(true); }
+    busyRef.current = true; setBusy(true);
+    setGroupSaveFailed(false);
+    setError(null);
     let created = 0;
+    let savedEditing = false;
     const count = Math.max(1, parseInt(form.quantity, 10) || 1);
     try {
       if (editing) {
         await invoke('update_filament_spool', { spool: payload });
+        savedEditing = true;
         if (web && imageChanged) invalidateSpoolImage(editing.id);
+        if (form.kind === 'filament' && applyGroupTemperatures && applicableSiblings.length > 0) {
+          await invoke('set_spool_print_temperatures', { ids: applicableSiblings.map(spool => Number(spool.id)), ...temperatures });
+        }
       } else {
         // Every spool gets its own record, even with identical values: the
         // remaining weight is tracked per physical spool.
@@ -332,6 +365,10 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
       onSaved();
       onClose();
     } catch (e) {
+      if (savedEditing) {
+        setGroupSaveFailed(true);
+        onSaved();
+      }
       if (web && created) {
         setForm(f => ({ ...f, quantity: String(count - created) }));
         setPartial(t('webManagerPartial').replace('{done}', String(created)).replace('{remaining}', String(count - created)));
@@ -396,7 +433,12 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
 
         <div className="flex-1 scrollbar-stable overflow-y-scroll px-4 py-4 flex flex-col gap-5">
           {partial && <p role="status">{partial}</p>}
-          {error && (
+          {groupSaveFailed && (
+            <p role="alert" className="text-small text-[var(--accent)] break-words">
+              <ErrorText error={expectedError('spoolGroupTemperaturesFailed')} /> <ErrorText error={error} />
+            </p>
+          )}
+          {error && !groupSaveFailed && (
             <div role="alert" className="text-small text-[var(--accent)] break-words">
               {t('filamentError')} <ErrorText error={error} />
             </div>
@@ -622,6 +664,14 @@ export function FilamentSpoolForm({ open, editing, knownLocations, knownManufact
                     </div>
                   </div>
                 ))}
+                {applicableSiblings.length > 0 && (
+                  <label className="flex items-center gap-2 text-caption">
+                    <input type="checkbox" checked={applyGroupTemperatures}
+                      onChange={event => setApplyGroupTemperatures(event.target.checked)}
+                      className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]" />
+                    {t('filamentApplyGroupTemperatures').replace('{n}', String(applicableSiblings.length + 1))}
+                  </label>
+                )}
               </div>
             </div>
           )}

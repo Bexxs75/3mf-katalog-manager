@@ -49,7 +49,7 @@ export function sameSpoolColor(a: FilamentSpool, b: FilamentSpool): boolean {
 }
 
 /** Everything but the color: equal text, equal place, equal diameter. */
-function placeKey(spool: FilamentSpool): string {
+export function placeKey(spool: FilamentSpool): string {
   const where = spool.unitId !== null ? `unit:${spool.unitId}` : `shelf:${spool.location ?? ''}`;
   // JSON keeps the parts apart even when a text contains the separator.
   return JSON.stringify([spool.kind, spool.material, spool.manufacturer ?? '', where, spool.diameterMm]);

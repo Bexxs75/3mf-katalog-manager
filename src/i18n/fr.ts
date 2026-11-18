@@ -2035,6 +2035,8 @@ export const fr: Translations = {
   filamentBedTemperature: "Plateau (°C)",
   filamentTemperatureFrom: "de",
   filamentTemperatureTo: "à",
+  filamentApplyGroupTemperatures: "Appliquer les paramètres d’impression aux {n} bobines de ce groupe",
+  errSpoolGroupTemperaturesFailed: "La bobine a été enregistrée. Les paramètres d’impression des autres bobines n’ont pas pu être enregistrés.",
   errInvalidPrintTemperature: "Les températures doivent être des nombres entiers entre 0 et 500 °C ; le minimum ne doit pas dépasser le maximum.",
   errInvalidPrice: "Prix non valide",
   errSpoolColorsTooMany: "{0} couleurs au maximum par entrée sont autorisées",

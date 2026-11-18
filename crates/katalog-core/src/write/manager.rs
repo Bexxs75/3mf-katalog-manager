@@ -251,10 +251,11 @@ pub fn consume_resin(
 }
 
 pub fn validate_print_temperatures(spool: &FilamentSpoolDto) -> WriteResult<()> {
-    for (min, max) in [
-        (spool.nozzle_temp_min, spool.nozzle_temp_max),
-        (spool.bed_temp_min, spool.bed_temp_max),
-    ] {
+    validate_temperature_ranges(spool.nozzle_temp_min, spool.nozzle_temp_max, spool.bed_temp_min, spool.bed_temp_max)
+}
+
+fn validate_temperature_ranges(nozzle_min: Option<i64>, nozzle_max: Option<i64>, bed_min: Option<i64>, bed_max: Option<i64>) -> WriteResult<()> {
+    for (min, max) in [(nozzle_min, nozzle_max), (bed_min, bed_max)] {
         if min.is_some_and(|v| !(0..=500).contains(&v))
             || max.is_some_and(|v| !(0..=500).contains(&v))
             || matches!((min, max), (Some(a), Some(b)) if a > b)
@@ -263,6 +264,37 @@ pub fn validate_print_temperatures(spool: &FilamentSpoolDto) -> WriteResult<()> 
         }
     }
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SpoolPrintTemperatures {
+    pub ids: Vec<i64>,
+    pub nozzle_temp_min: Option<i64>,
+    pub nozzle_temp_max: Option<i64>,
+    pub bed_temp_min: Option<i64>,
+    pub bed_temp_max: Option<i64>,
+}
+
+pub fn set_spool_print_temperatures(conn: &Connection, input: SpoolPrintTemperatures) -> WriteResult<u64> {
+    use rusqlite::{params, OptionalExtension};
+    validate_temperature_ranges(input.nozzle_temp_min, input.nozzle_temp_max, input.bed_temp_min, input.bed_temp_max)?;
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
+    let mut changes = 0;
+    // A repeated id would be counted as a second change and update the row twice.
+    let mut seen = std::collections::HashSet::new();
+    for id in input.ids.into_iter().filter(|id| seen.insert(*id)) {
+        let kind: Option<String> = tx.query_row("SELECT kind FROM filament_spools WHERE id = ?1", [id], |r| r.get(0)).optional()?;
+        match kind.as_deref() {
+            None => return Err(WriteError::coded_not_found(ErrorCode::SpoolNotFound)),
+            Some("filament") => {},
+            Some(_) => return Err(WriteError::coded(ErrorCode::InvalidMaterialKind)),
+        }
+        changes += tx.execute("UPDATE filament_spools SET nozzle_temp_min = ?1, nozzle_temp_max = ?2, bed_temp_min = ?3, bed_temp_max = ?4 WHERE id = ?5",
+            params![input.nozzle_temp_min, input.nozzle_temp_max, input.bed_temp_min, input.bed_temp_max, id])? as u64;
+    }
+    tx.commit()?;
+    Ok(changes)
 }
 
 #[cfg(test)]
@@ -277,6 +309,37 @@ mod print_temperature_tests {
             "bedTempMin": 50, "bedTempMax": 65
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn group_temperatures_only_change_four_columns_and_roll_back_on_rejection() {
+        let conn = db::connect_in_memory().unwrap();
+        let first = add_filament_spool(&conn, spool()).unwrap();
+        let second = add_filament_spool(&conn, spool()).unwrap();
+        let mut resin = spool();
+        resin.kind = "resin".into();
+        let resin = add_filament_spool(&conn, resin).unwrap();
+        let a: i64 = first.id.parse().unwrap();
+        let b: i64 = second.id.parse().unwrap();
+        conn.execute("UPDATE filament_spools SET image_png = X'010203', location = 'Shelf', remaining_weight_g = 123 WHERE id = ?1", [b]).unwrap();
+        let before = db::get_filament_spool(&conn, b).unwrap();
+        let input = |ids| SpoolPrintTemperatures { ids, nozzle_temp_min: None, nozzle_temp_max: Some(230), bed_temp_min: None, bed_temp_max: Some(60) };
+        for (bad_id, expected) in [(999999, ErrorCode::SpoolNotFound), (resin.id.parse().unwrap(), ErrorCode::InvalidMaterialKind)] {
+            let error = set_spool_print_temperatures(&conn, input(vec![a, bad_id])).unwrap_err();
+            assert!(matches!(error, WriteError::Coded { code, .. } if code == expected));
+            assert_eq!(db::get_filament_spool(&conn, a).unwrap().nozzle_temp_min, Some(200));
+        }
+        let mut invalid = input(vec![a, b]);
+        invalid.nozzle_temp_min = Some(501);
+        assert!(matches!(set_spool_print_temperatures(&conn, invalid), Err(WriteError::Coded { code: ErrorCode::InvalidPrintTemperature, .. })));
+        assert_eq!(set_spool_print_temperatures(&conn, input(vec![a, b, a, b, a])).unwrap(), 2);
+        let after = db::get_filament_spool(&conn, b).unwrap();
+        assert_eq!(after.image_png, before.image_png);
+        // Compare the full detail DTO, including the image omitted from web list DTOs.
+        let mut expected = serde_json::to_value(spool_record_to_dto(before)).unwrap();
+        for (key, value) in [("nozzleTempMin", serde_json::Value::Null), ("nozzleTempMax", 230.into()), ("bedTempMin", serde_json::Value::Null), ("bedTempMax", 60.into())] { expected[key] = value; }
+        assert_eq!(serde_json::to_value(spool_record_to_dto(after)).unwrap(), expected);
+        assert_eq!(db::get_filament_spool(&conn, a).unwrap().nozzle_temp_min, None);
     }
 
     #[test]

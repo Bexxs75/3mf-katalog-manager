@@ -122,6 +122,7 @@
     "invalidAmount",
     "amountNotPositive",
     "consumeNotPositive",
+    "spoolGroupTemperaturesFailed",
     "invalidPrintTemperature",
     "invalidPrice",
     "spoolColorsTooMany",

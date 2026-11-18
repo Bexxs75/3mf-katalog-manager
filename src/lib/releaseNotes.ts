@@ -5,6 +5,47 @@ export const currentVersion = version;
 export interface ReleaseGroups { new: string[]; improved: string[]; fixed: string[] }
 export interface ReleaseNote { date: string; notes: Partial<Record<Language, ReleaseGroups>> & { en: ReleaseGroups } }
 export const releaseNotes: Record<string, ReleaseNote> = {
+  "0.18.4": {
+    "date": "2026-11-18",
+    "notes": {
+      "en": {
+        "new": [
+          "Apply nozzle and bed temperatures to all filament spools in a group when editing a spool."
+        ],
+        "improved": [],
+        "fixed": [
+          "Preview images rendered by older versions with flat lighting are rendered again once."
+        ]
+      },
+      "de": {
+        "new": [
+          "Düsen- und Betttemperaturen beim Bearbeiten auf alle Filamentspulen einer Gruppe übertragen."
+        ],
+        "improved": [],
+        "fixed": [
+          "Vorschaubilder aus älteren Versionen mit flacher Beleuchtung werden einmal neu gerendert."
+        ]
+      },
+      "es": {
+        "new": [
+          "Aplicar las temperaturas de boquilla y cama a todas las bobinas de filamento de un grupo al editar una bobina."
+        ],
+        "improved": [],
+        "fixed": [
+          "Las vistas previas generadas por versiones anteriores con iluminación plana se vuelven a generar una vez."
+        ]
+      },
+      "fr": {
+        "new": [
+          "Appliquer les températures de buse et de plateau à toutes les bobines de filament d’un groupe lors de la modification."
+        ],
+        "improved": [],
+        "fixed": [
+          "Les aperçus générés par d’anciennes versions avec un éclairage plat sont régénérés une fois."
+        ]
+      }
+    }
+  },
   "0.18.3": {
     "date": "2026-11-17",
     "notes": {

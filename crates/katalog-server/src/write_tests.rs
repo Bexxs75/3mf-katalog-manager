@@ -138,7 +138,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 63);
+    assert_eq!(WRITE_COMMANDS.len(), 64);
     assert_eq!(crate::write::ROUTE_WRITES, &["add_companion"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
     assert_eq!(crate::READ_COMMANDS.len(), 34);
@@ -2362,4 +2362,55 @@ async fn manager_http_spool_print_temperatures_pass_the_field_list_and_are_check
         assert!(status.is_client_error(), "{cmd}: {status}");
         assert_eq!(body["message"], "invalidPrintTemperature", "{cmd}: {body}");
     }
+}
+
+
+#[tokio::test]
+async fn group_temperatures_http_validation_permissions_and_update() {
+    let f = Fixture::new(true);
+    let created = value(f.send("add_filament_spool", json!({"spool":manager_spool()})).await).await;
+    let id: i64 = created["id"].as_str().unwrap().parse().unwrap();
+    let args = json!({"ids":[id], "nozzleTempMin":205, "nozzleTempMax":230, "bedTempMin":null, "bedTempMax":60});
+    assert_eq!(f.send("set_spool_print_temperatures", args.clone()).await.status(), 200);
+    let c = db::open_read_only(&f.app.config.db_path).unwrap();
+    assert_eq!(db::get_filament_spool(&c, id).unwrap().nozzle_temp_min, Some(205));
+    for (patch, status) in [(json!({"ids":[id,999999]}), 404), (json!({"nozzleTempMin":501}), 422), (json!({"nozzleTempMin":1.5}), 400)] {
+        let mut invalid = args.clone();
+        for (key, value) in patch.as_object().unwrap() { invalid[key] = value.clone(); }
+        assert_eq!(f.send("set_spool_print_temperatures", invalid).await.status(), status);
+    }
+    let mut too_many = args.clone();
+    too_many["ids"] = json!(vec![id; 501]);
+    let r = f.send("set_spool_print_temperatures", too_many).await;
+    assert_eq!(r.status(), 422);
+    assert_eq!(value(r).await["message"], "reqIdsTooMany");
+    // Repeated ids are harmless and count as one change.
+    let mut repeated = args.clone();
+    repeated["ids"] = json!([id, id, id]);
+    assert_eq!(f.send("set_spool_print_temperatures", repeated).await.status(), 200);
+    let request = f.request("set_spool_print_temperatures", Body::from(args.to_string()), Some(&f.session), Some("http://localhost:8080"), false);
+    assert_eq!(router(f.app.clone()).oneshot(request).await.unwrap().status(), 403);
+    let read_only = Fixture::new(false);
+    assert_eq!(read_only.send("set_spool_print_temperatures", args).await.status(), 404);
+}
+
+#[tokio::test]
+async fn catalog_start_refreshes_snapshots_only_in_write_mode_and_tolerates_failure() {
+    let f = Fixture::new(false);
+    let c = db::open_read_write(&f.app.config.db_path).unwrap();
+    c.execute("DELETE FROM app_settings WHERE key='render_lighting_version'", []).unwrap();
+    c.execute("UPDATE files SET render_snapshot_png=X'01', custom_image_png=X'02', thumbnail_png=X'03'", []).unwrap();
+    assert!(open_catalog(&f.app.config).await.unwrap().is_none());
+    assert_eq!(c.query_row("SELECT render_snapshot_png FROM files", [], |r| r.get::<_, Vec<u8>>(0)).unwrap(), vec![1]);
+    assert_eq!(c.query_row("SELECT count(*) FROM app_settings WHERE key='render_lighting_version'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    let mut config = f.app.config.clone();
+    config.write = true;
+    c.execute_batch("CREATE TRIGGER fail_marker BEFORE INSERT ON app_settings BEGIN SELECT RAISE(ABORT,'test'); END").unwrap();
+    assert!(open_catalog(&config).await.unwrap().is_some());
+    assert_eq!(c.query_row("SELECT render_snapshot_png FROM files", [], |r| r.get::<_, Vec<u8>>(0)).unwrap(), vec![1]);
+    c.execute_batch("DROP TRIGGER fail_marker").unwrap();
+    assert!(open_catalog(&config).await.unwrap().is_some());
+    let images = c.query_row("SELECT render_snapshot_png,custom_image_png,thumbnail_png FROM files", [], |r| Ok((r.get::<_, Option<Vec<u8>>>(0)?,r.get::<_, Vec<u8>>(1)?,r.get::<_, Vec<u8>>(2)?))).unwrap();
+    assert_eq!(images, (None,vec![2],vec![3]));
+    assert_eq!(c.query_row("SELECT value FROM app_settings WHERE key='render_lighting_version'", [], |r| r.get::<_, String>(0)).unwrap(), db::RENDER_LIGHTING_VERSION.to_string());
 }

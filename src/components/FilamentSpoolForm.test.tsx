@@ -676,3 +676,73 @@ describe('print temperature input errors', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 });
+
+
+describe('group print temperatures', () => {
+  const spool = { ...LOADED, id: '1' };
+  const sibling = { ...spool, id: '2', remainingWeightG: 100 };
+  const third = { ...spool, id: '3', slotIndex: 2 };
+  function groupForm(members = [spool, sibling, third], editing = spool) {
+    localStorage.setItem('3mf-katalog-language', 'de');
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    render(<LanguageProvider><FilamentSpoolForm open editing={editing} knownSpools={members}
+      knownLocations={[]} onSaved={onSaved} onClose={onClose} /></LanguageProvider>);
+    return { onSaved, onClose };
+  }
+  it('defaults to applying the four temperatures to all siblings, including clearing values', async () => {
+    const { onSaved } = groupForm();
+    expect(screen.getByRole('checkbox', { name: /alle 3 Spulen/ })).toBeChecked();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Düse (°C) von' }), { target: { value: '205' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('set_spool_print_temperatures', { ids: [2, 3], nozzleTempMin: 205, nozzleTempMax: null, bedTempMin: null, bedTempMax: null });
+    const commands = vi.mocked(invoke).mock.calls.map(([command]) => command);
+    expect(commands.indexOf('update_filament_spool')).toBeLessThan(commands.indexOf('set_spool_print_temperatures'));
+  });
+  it('does not update siblings when unchecked', async () => {
+    const { onSaved } = groupForm();
+    fireEvent.click(screen.getByRole('checkbox', { name: /alle 3 Spulen/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(invoke).not.toHaveBeenCalledWith('set_spool_print_temperatures', expect.anything());
+  });
+  it('hides the checkbox for a single spool', () => {
+    groupForm([spool, { ...sibling, material: 'PETG' }]);
+    expect(screen.queryByRole('checkbox', { name: /Spulen dieser Gruppe/ })).not.toBeInTheDocument();
+  });
+  it('hides the checkbox for resin groups', () => {
+    const resin = { ...spool, kind: 'resin' as const };
+    groupForm([resin, { ...resin, id: '2' }], resin);
+    expect(screen.queryByRole('checkbox', { name: /Spulen dieser Gruppe/ })).not.toBeInTheDocument();
+  });
+  it('keeps the form open and reloads the list after a group failure', async () => {
+    vi.mocked(invoke).mockImplementation(command => command === 'set_spool_print_temperatures'
+      ? Promise.reject({ message: 'spoolNotFound', expected: true }) : Promise.resolve(undefined));
+    const { onSaved, onClose } = groupForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(/Die Spule wurde gespeichert/)).toBeInTheDocument();
+    // One message: the saved-but-group-failed text plus the cause, without the generic prefix.
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('alert')).toHaveTextContent(/Die Spule wurde gespeichert.*nicht gespeichert werden\..*\S/);
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Fehler:');
+  });
+  it.each([
+    ['material', () => fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'PETG' } })],
+    ['color', () => {
+      fireEvent.click(screen.getByRole('button', { name: '+ Farbe' }));
+      fireEvent.change(screen.getByLabelText('Farbe 2'), { target: { value: '#ff0000' } });
+    }],
+  ])('hides the checkbox and skips siblings once the %s no longer matches the group', async (_name, edit) => {
+    const { onSaved } = groupForm();
+    expect(screen.getByRole('checkbox', { name: /alle 3 Spulen/ })).toBeInTheDocument();
+    edit();
+    expect(screen.queryByRole('checkbox', { name: /alle 3 Spulen/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('update_filament_spool', expect.anything());
+    expect(invoke).not.toHaveBeenCalledWith('set_spool_print_temperatures', expect.anything());
+  });
+});

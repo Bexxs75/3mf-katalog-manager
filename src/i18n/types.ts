@@ -2076,6 +2076,8 @@ export interface Translations {
   filamentBedTemperature: string;
   filamentTemperatureFrom: string;
   filamentTemperatureTo: string;
+  filamentApplyGroupTemperatures: string;
+  errSpoolGroupTemperaturesFailed: string;
   errInvalidPrintTemperature: string;
   errInvalidPrice: string;
   errSpoolColorsTooMany: string;

@@ -374,7 +374,10 @@ async fn open_catalog(config: &Config) -> Result<Option<WriteGate>, String> {
     let path = config.db_path.clone();
     let write = config.write;
     tokio::task::spawn_blocking(move || {
-        if write { katalog_core::db::open_read_write(&path).map(|c| Some(WriteGate::new(c))) }
+        if write { katalog_core::db::open_read_write(&path).map(|c| {
+            katalog_core::db::refresh_render_lighting(&c);
+            Some(WriteGate::new(c))
+        }) }
         else { katalog_core::db::open_read_only(&path).map(|_| None) }
     }).await.map_err(|_| "Katalogprüfung fehlgeschlagen".to_string())?
       .map_err(|e| if write { format!("Katalog kann nicht schreibend geöffnet werden: {e}") } else { format!("Katalog kann nicht nur lesend geöffnet werden: {e}") })

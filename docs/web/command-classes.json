@@ -203,6 +203,7 @@
     "set_slicer_report_enabled": "C",
     "set_source_check_on_start": "B",
     "set_source_url": "web",
+    "set_spool_print_temperatures": "web",
     "set_sync_auto_add": "B",
     "set_sync_on_start": "B",
     "set_thingiverse_enabled": "C",

@@ -135,7 +135,7 @@ it.each(['get_upgrade_notice', 'get_print_technology', 'get_linux_menu_status', 
 it('web with an older marker shows news without waiting for the unmounted upgrade notice', async () => {
   vi.stubEnv('VITE_TARGET', 'web');
   // Marker = the release right before this one, so exactly one version (and its titled dialog) is shown.
-  const previous = Object.keys(releaseNotes).filter(v => v !== currentVersion).sort((a, b) => compareVersions(b, a))[0]!;
+  const previous = Object.keys(releaseNotes).filter(v => compareVersions(v, currentVersion) < 0).sort((a, b) => compareVersions(b, a))[0]!;
   localStorage.setItem(key, previous);
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const cmd = url.split('/').slice(-1)[0];

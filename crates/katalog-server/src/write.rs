@@ -74,6 +74,7 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "update_bundle_member",
     "add_filament_spool",
     "update_filament_spool",
+    "set_spool_print_temperatures",
     "delete_filament_spool",
     "add_printer",
     "rename_printer",
@@ -613,6 +614,14 @@ pub(crate) fn execute(
             let s = spool(a)?;
             let id = id_value(&Value::String(s.id.clone()))?;
             encode(web::update_filament_spool(c, id, s, a["spool"].as_object().expect("validated spool").contains_key("imagePng")))
+        }
+        "set_spool_print_temperatures" => {
+            if a.get("ids").and_then(Value::as_array).is_some_and(|ids| ids.len() > 500) {
+                return Err(too_many_ids(500));
+            }
+            let input = serde_json::from_value(a.clone()).map_err(|_| bad())?;
+            encode(katalog_core::write::manager::set_spool_print_temperatures(c, input)
+                .map(|changes| web::Outcome { value: (), changes }))
         }
         "delete_filament_spool" => encode(web::delete_filament_spool(c, id(a, "spoolId")?)),
         "restock_filament_spool" => encode(web::restock_filament_spool(

@@ -51,6 +51,7 @@ export const WEB_WRITE_COMMANDS = [
   'create_bundle', 'update_bundle', 'add_files_to_bundle', 'remove_files_from_bundle', 'dissolve_bundle', 'update_bundle_member',
   'add_filament_spool',
   'update_filament_spool',
+  'set_spool_print_temperatures',
   'delete_filament_spool',
   'add_printer',
   'rename_printer',

@@ -53,6 +53,38 @@ pub fn open_read_write(path: &Path) -> Result<Connection, DbError> {
     Ok(conn)
 }
 
+/// Invalidate generated previews only, without changing the catalog schema.
+pub const RENDER_LIGHTING_VERSION: i64 = 1;
+/// Keep in step with MAX_BACKGROUND_MESH_BYTES in src/lib/snapshotQueue.ts.
+const MAX_BACKGROUND_MESH_BYTES: i64 = 200 * 1024 * 1024;
+
+pub fn invalidate_old_render_snapshots(conn: &Connection) -> Result<(), DbError> {
+    let tx = conn.unchecked_transaction()?;
+    let stored: Option<String> = tx.query_row(
+        "SELECT value FROM app_settings WHERE key = 'render_lighting_version'", [], |r| r.get(0),
+    ).optional()?;
+    if stored.and_then(|v| v.parse::<i64>().ok()).unwrap_or(0) < RENDER_LIGHTING_VERSION {
+        // Only what the background renderer regenerates (src/lib/snapshotQueue.ts): STEP, G-code and
+        // resin files, and meshes above the background size cap, would otherwise lose a preview
+        // that nothing recreates until the user opens the file.
+        tx.execute(
+            "UPDATE files SET render_snapshot_png = NULL WHERE render_snapshot_png IS NOT NULL
+               AND (file_type = '3mf' OR (file_type IN ('stl', 'obj', 'ply') AND file_size_bytes <= ?1))",
+            [MAX_BACKGROUND_MESH_BYTES],
+        )?;
+        tx.execute("INSERT INTO app_settings(key, value) VALUES ('render_lighting_version', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [RENDER_LIGHTING_VERSION.to_string()])?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Preview refresh failures must not prevent opening an otherwise usable catalog.
+pub fn refresh_render_lighting(conn: &Connection) {
+    if let Err(e) = invalidate_old_render_snapshots(conn) {
+        log::warn!("Refreshing render snapshots failed: {e}");
+    }
+}
+
 pub fn connect(path: &Path) -> Result<Connection, DbError> {
     connect_with_report(path).map(|(conn, _)| conn)
 }
@@ -90,6 +122,7 @@ pub fn connect_with_report(path: &Path) -> Result<(Connection, Option<MigrationR
         }
     };
     init(&mut conn)?;
+    refresh_render_lighting(&conn);
     Ok((conn, report))
 }
 
@@ -1656,6 +1689,40 @@ pub fn delete_print_log_entry(conn: &Connection, id: i64) -> Result<(), DbError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lighting_refresh_is_atomic_once_only_and_skipped_by_read_only_open() {
+        let dir = backup_test_dir("lighting-refresh");
+        let path = dir.join("catalog.db");
+        let conn = connect(&path).unwrap();
+        conn.execute("DELETE FROM app_settings WHERE key = 'render_lighting_version'", []).unwrap();
+        conn.execute("INSERT INTO files(name,path,file_type,file_size_bytes,imported_at,render_snapshot_png,custom_image_png,thumbnail_png) VALUES ('box','/box.stl','stl',1,'now',X'01',X'02',X'03')", []).unwrap();
+        for (name, kind, size) in [("part", "stp", 1_i64), ("huge", "stl", MAX_BACKGROUND_MESH_BYTES + 1), ("model", "3mf", 1)] {
+            conn.execute("INSERT INTO files(name,path,file_type,file_size_bytes,imported_at,render_snapshot_png) VALUES (?1,?2,?3,?4,'now',X'01')", rusqlite::params![name, format!("/{name}.{kind}"), kind, size]).unwrap();
+        }
+        drop(conn);
+        let conn = open_read_only(&path).unwrap();
+        assert_eq!(conn.query_row("SELECT render_snapshot_png FROM files WHERE name='box'", [], |r| r.get::<_, Vec<u8>>(0)).unwrap(), vec![1]);
+        assert_eq!(conn.query_row("SELECT count(*) FROM app_settings WHERE key='render_lighting_version'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        drop(conn);
+        let conn = open_read_write(&path).unwrap();
+        conn.execute_batch("CREATE TRIGGER fail_marker BEFORE INSERT ON app_settings BEGIN SELECT RAISE(ABORT, 'test'); END;").unwrap();
+        assert!(invalidate_old_render_snapshots(&conn).is_err());
+        assert_eq!(conn.query_row("SELECT render_snapshot_png FROM files WHERE name='box'", [], |r| r.get::<_, Vec<u8>>(0)).unwrap(), vec![1]);
+        conn.execute_batch("DROP TRIGGER fail_marker").unwrap();
+        drop(conn);
+        let (conn, _) = connect_with_report(&path).unwrap();
+        let kept = |name: &str| conn.query_row("SELECT render_snapshot_png FROM files WHERE name=?1", [name], |r| r.get::<_, Option<Vec<u8>>>(0)).unwrap();
+        assert_eq!((kept("part"), kept("huge"), kept("model")), (Some(vec![1]), Some(vec![1]), None));
+        let images = conn.query_row("SELECT render_snapshot_png, custom_image_png, thumbnail_png FROM files WHERE name='box'", [], |r| Ok((r.get::<_, Option<Vec<u8>>>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, Vec<u8>>(2)?))).unwrap();
+        assert_eq!(images, (None, vec![2], vec![3]));
+        assert_eq!(conn.query_row("SELECT value FROM app_settings WHERE key='render_lighting_version'", [], |r| r.get::<_, String>(0)).unwrap(), RENDER_LIGHTING_VERSION.to_string());
+        conn.execute("UPDATE files SET render_snapshot_png=X'04'", []).unwrap();
+        invalidate_old_render_snapshots(&conn).unwrap();
+        assert_eq!(conn.query_row("SELECT render_snapshot_png FROM files WHERE name='box'", [], |r| r.get::<_, Vec<u8>>(0)).unwrap(), vec![4]);
+        drop(conn);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn failed_migration_backup_is_reported_but_startup_continues() {
