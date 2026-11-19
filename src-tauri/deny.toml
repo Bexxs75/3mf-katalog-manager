@@ -48,6 +48,17 @@ ignore = [
     # above); only tauri-plugin-updater extracts, and only signature-verified update packages.
     "RUSTSEC-2026-0429",
     "RUSTSEC-2026-0369",
+    # Two more zip 4.6.1 advisories, again only via tauri-plugin-updater (no safe upgrade, the
+    # plugin pins zip 4). RUSTSEC-2026-0545 (AES entries returned without checking the
+    # authentication code) needs zip's "aes-crypto" feature, which this build does not enable.
+    # RUSTSEC-2026-0548 (ZipStreamReader trusts local-header names) affects ZipStreamReader
+    # only; the plugin uses ZipArchive::extract on signature-verified update packages, and our
+    # own code is on zip 9 and uses neither ZipStreamReader nor decryption.
+    "RUSTSEC-2026-0545",
+    "RUSTSEC-2026-0548",
+    # chrono is reported as unmaintained (no known vulnerability). It is a direct dependency
+    # for date formatting; moving to jiff or time is planned separately.
+    "RUSTSEC-2026-0543",
     # zvariant, zbus_names and zvariant_derive are unmaintained and have no safe upgrade;
     # they come in transitively via zbus -> ashpd -> rfd -> tauri-plugin-dialog (the
     # xdg-portal file dialog on Linux).
