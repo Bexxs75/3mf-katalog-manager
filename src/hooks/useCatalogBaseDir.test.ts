@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -46,12 +47,12 @@ describe('useRegisterCatalogBaseDirOnStartup', () => {
 });
 
 it('clears the stored location and first-run decision after resetting the catalog', async () => {
-  localStorage.setItem('3mf-katalog-base-dir', '/old');
-  localStorage.setItem('3mf-katalog-setup-seen', '1');
+  uiSettings.setItem('3mf-katalog-base-dir', '/old');
+  uiSettings.setItem('3mf-katalog-setup-seen', '1');
   const { result } = renderHook(() => useCatalogBaseDir());
   await act(async () => result.current.resetCatalogSetup());
   expect(result.current.catalogBaseDir).toBeNull();
   expect(result.current.setupSeen).toBe(false);
-  expect(localStorage.getItem('3mf-katalog-base-dir')).toBeNull();
-  expect(localStorage.getItem('3mf-katalog-setup-seen')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-base-dir')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-setup-seen')).toBeNull();
 });

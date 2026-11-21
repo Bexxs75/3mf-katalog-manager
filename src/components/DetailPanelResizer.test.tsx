@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { DetailPanelResizer } from './DetailPanelResizer';
@@ -28,15 +29,15 @@ it('handles arrows, shift, limits and both reset gestures', () => {
   const press = (key: string, expected: number, shiftKey = false) => {
     fireEvent.keyDown(separator, { key, shiftKey });
     expect(separator).toHaveAttribute('aria-valuenow', String(expected));
-    expect(localStorage.getItem('3mf-katalog-detail-width')).toBe(String(expected));
+    expect(uiSettings.getItem('3mf-katalog-detail-width')).toBe(String(expected));
   };
   press('ArrowLeft', 352); press('ArrowRight', 336);
   press('ArrowLeft', 400, true); press('ArrowRight', 336, true);
   press('Home', 300); press('ArrowRight', 300); press('End', 600); press('ArrowLeft', 600);
   fireEvent.keyDown(separator, { key: 'Enter' });
-  expect(localStorage.getItem(key)).toBeNull(); expect(separator).toHaveAttribute('aria-valuenow', '336');
+  expect(uiSettings.getItem(key)).toBeNull(); expect(separator).toHaveAttribute('aria-valuenow', '336');
   press('End', 600); fireEvent.doubleClick(separator);
-  expect(localStorage.getItem(key)).toBeNull(); expect(separator).toHaveAttribute('aria-valuenow', '336');
+  expect(uiSettings.getItem(key)).toBeNull(); expect(separator).toHaveAttribute('aria-valuenow', '336');
 });
 it('captures the pointer, previews without saving, and saves the bounded width on release', () => {
   vi.stubGlobal('PointerEvent', MouseEvent);
@@ -47,9 +48,9 @@ it('captures the pointer, previews without saving, and saves the bounded width o
   expect(capture).toHaveBeenCalled();
   fireEvent.pointerMove(separator, { clientX: 600 });
   expect(separator).toHaveAttribute('aria-valuenow', '436');
-  expect(localStorage.getItem(key)).toBeNull();
+  expect(uiSettings.getItem(key)).toBeNull();
   fireEvent.pointerMove(separator, { clientX: 0 });
   expect(separator).toHaveAttribute('aria-valuenow', '600');
   fireEvent.pointerUp(separator, { clientX: 0 });
-  expect(localStorage.getItem(key)).toBe('600'); expect(release).toHaveBeenCalled();
+  expect(uiSettings.getItem(key)).toBe('600'); expect(release).toHaveBeenCalled();
 });

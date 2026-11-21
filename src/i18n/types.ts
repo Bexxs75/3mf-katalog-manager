@@ -6,6 +6,8 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  errUiSettingsUnavailable: string;
+  errUiSettingsInvalid: string;
   whatsNew: string;
   whatsNewTitle: string;
   whatsNewNew: string;

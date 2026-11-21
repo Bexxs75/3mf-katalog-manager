@@ -7,6 +7,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [Unreleased]
+
+### Changed
+
+- Desktop interface preferences are stored in `ui-settings.json` in the app data folder, with automatic migration from the WebView and compatible catalog backups. Web preferences remain in each browser’s localStorage, independently of other users, devices and server write permissions; there is no settings migration or server settings file in the web version. Desktop theme, language and density retain a synchronous startup cache; preview crash guards remain local. Other desktop preferences are not mirrored back, so their browser fallback may be outdated.
+
+- Update installation first flushes queued preferences with a short deadline. Forced exit or a timed-out flush may still lose the last change. Startup uses local fallback values after a three-second settings deadline; incompatible schemas retain those local values without backend writes. Authoritative backend snapshots clear absent boot-cache keys. Newer settings schemas remain untouched and write-protected; oversized unknown fields in the current schema no longer block all writes.
+
 ## [0.18.4] - 2026-11-18
 
 ### Changed
@@ -862,6 +870,14 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [Unreleased]
+
+### Geändert
+
+- Oberflächen-Einstellungen der Desktop-App werden in `ui-settings.json` im App-Datenordner gespeichert, automatisch aus dem WebView übernommen und mit kompatiblen Katalogsicherungen gesichert. Im Web bleiben Einstellungen im localStorage jedes Browsers, unabhängig von anderen Benutzern, Geräten und Server-Schreibrechten; dort gibt es weder Einstellungsmigration noch eine serverseitige Einstellungsdatei. Desktop-Farbschema, Sprache und Dichte behalten einen synchronen Startcache; Vorschau-Absturzmarker bleiben lokal. Andere Desktop-Einstellungen werden nicht zurückgespiegelt; ihr Browser-Rückfallstand kann veraltet sein.
+
+- Vor der Updateinstallation werden ausstehende Einstellungen mit kurzer Frist geschrieben. Erzwungenes Beenden oder eine abgelaufene Schreibfrist kann die letzte Änderung weiterhin verlieren. Der Start verwendet nach drei Sekunden ohne Einstellungsantwort lokale Rückfallwerte; bei inkompatiblem Schema bleiben diese ohne Backend-Schreibzugriffe nutzbar. Maßgebliche Backendstände entfernen fehlende Bootcache-Schlüssel. Neuere Einstellungsschemata bleiben unverändert und schreibgeschützt; überzählige unbekannte Felder im aktuellen Schema blockieren nicht länger alle Schreibzugriffe.
 
 ## [0.18.4] - 2026-11-18
 

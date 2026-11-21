@@ -41,7 +41,6 @@ fn validate_imported_path_length(path: &str, known_folders: &[String]) -> Result
 pub async fn export_catalog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-    settings_json: String,
 ) -> CmdResult<bool> {
 
     let picked = app
@@ -58,6 +57,13 @@ pub async fn export_catalog(
         return Ok(false);
     };
     let dest_path = picked.into_path().map_err(|e| e.to_string())?;
+    let settings_json = katalog_core::ui_settings::backup(
+        state
+            .db_path
+            .parent()
+            .ok_or_else(|| CmdError::coded(ErrorCode::UiSettingsUnavailable))?,
+    )
+    .map_err(CmdError::coded)?;
     write_catalog_backup(&state.db, &dest_path, &settings_json)?;
     log::info!(target: "backup", "Sicherung erstellt");
     Ok(true)
@@ -1345,6 +1351,7 @@ fn validate_backup_for_import(bytes: &[u8], sensitive_dirs: &[PathBuf], trash_di
 pub struct ImportCatalogResultDto {
     pub imported: bool,
     pub settings_json: Option<String>,
+    pub settings_error: Option<CmdError>,
 }
 /// Imports an export created by `export_catalog`. Replaces the running
 /// `catalog.db` only after successful validation, see `replace_catalog_db`.
@@ -1358,7 +1365,7 @@ pub async fn import_catalog(
     let _catalog_share = state.import_jobs.gate.exclusive()?;
     let picked = app.dialog().file().add_filter("ZIP-Archiv", &["zip"]).blocking_pick_file();
     let Some(picked) = picked else {
-        return Ok(ImportCatalogResultDto { imported: false, settings_json: None });
+        return Ok(ImportCatalogResultDto { imported: false, settings_json: None, settings_error: None });
     };
     let archive_path = picked.into_path().map_err(|e| e.to_string())?;
 
@@ -1375,12 +1382,19 @@ pub async fn import_catalog(
         std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
     write_temp_file_exclusive(&tmp_db_path, &db_bytes).map_err(|e| e.to_string())?;
 
+    let settings_dir = state.db_path.parent().map(PathBuf::from);
     let replace_result = replace_catalog_db(&state, &tmp_db_path);
     let _ = std::fs::remove_file(&tmp_db_path);
     replace_result?;
 
+    let restore_json = settings_json.clone();
+    // The catalog has already been replaced; settings failure is a warning, never import failure.
+    let settings_error = tauri::async_runtime::spawn_blocking(move || {
+        settings_dir.ok_or(ErrorCode::UiSettingsUnavailable)
+            .and_then(|dir| katalog_core::ui_settings::restore(&dir, &restore_json))
+    }).await.unwrap_or(Err(ErrorCode::UiSettingsUnavailable)).err().map(CmdError::coded);
     log::info!(target: "backup", "Sicherung wiederhergestellt");
-    Ok(ImportCatalogResultDto { imported: true, settings_json: Some(settings_json) })
+    Ok(ImportCatalogResultDto { imported: true, settings_json: Some(settings_json), settings_error })
 }
 /// Replaces the running `catalog.db` with `new_db_path`.
 ///
@@ -1433,7 +1447,7 @@ fn replace_catalog_db_with_copy_fn(
         let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
         sanitize_printer_connections(&tx)?;
         sanitize_imported_file_identity(&tx)?;
-        // The frontend keeps its current localStorage location across restores.
+        // The base-dir preference is not portable, so settings restore leaves it untouched.
         // Allow startup to adopt that location instead of one from the backup.
         tx.execute(
             "DELETE FROM app_settings WHERE key = ?1",

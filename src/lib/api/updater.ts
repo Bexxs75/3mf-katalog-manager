@@ -1,3 +1,4 @@
+import { flushUiSettingsBeforeRestart } from '../uiSettings';
 import { Channel } from '@tauri-apps/api/core';
 import { invoke } from '../transport';
 
@@ -33,7 +34,10 @@ export function downloadAppUpdate(onProgress: (p: DownloadProgress) => void) {
 
 export const discardAppUpdate = () => invoke<void>('discard_app_update');
 
-export const installAppUpdate = () => invoke<void>('install_app_update');
+export async function installAppUpdate() {
+  await flushUiSettingsBeforeRestart();
+  return invoke<void>('install_app_update');
+}
 
 export type UpdateChannel = 'stable' | 'rc';
 export const getUpdateChannel = () => invoke<UpdateChannel>('get_update_channel');

@@ -12,11 +12,11 @@ export function importFolder() {
 export function importDropped(paths: string[]) {
   return invoke<ImportResultDto>('import_dropped', { paths });
 }
-export function exportCatalog(settingsJson: string) {
-  return invoke<boolean>('export_catalog', { settingsJson });
+export function exportCatalog() {
+  return invoke<boolean>('export_catalog');
 }
 export function importCatalog() {
-  return invoke<{ imported: boolean; settingsJson: string | null }>('import_catalog');
+  return invoke<{ imported: boolean; settingsJson: string | null; settingsError?: { message: string; expected: boolean } | null }>('import_catalog');
 }
 
 export function inspectArchives(paths: string[]) {

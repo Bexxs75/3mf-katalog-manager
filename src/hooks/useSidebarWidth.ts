@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { useCallback, useEffect, useState } from 'react';
 
 export const SIDEBAR_MIN = 180;
@@ -9,7 +10,7 @@ const clamp = (value: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, val
 
 function loadStored(): number {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+    const value: unknown = JSON.parse(uiSettings.getItem(STORAGE_KEY) ?? 'null');
     if (typeof value === 'number' && Number.isFinite(value)) return clamp(value);
   } catch { /* Invalid or unavailable storage uses the default. */ }
   return SIDEBAR_DEFAULT;
@@ -24,7 +25,7 @@ export function useSidebarWidth() {
     return () => window.removeEventListener('resize', resize);
   }, []);
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, String(requestedWidth)); } catch { /* Keep in-memory state when storage is unavailable. */ }
+    try { uiSettings.setItem(STORAGE_KEY, String(requestedWidth)); } catch { /* Keep in-memory state when storage is unavailable. */ }
   }, [requestedWidth]);
   const setWidth = useCallback((value: number) => {
     if (Number.isFinite(value)) setRequestedWidth(clamp(value));

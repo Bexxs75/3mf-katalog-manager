@@ -25,8 +25,8 @@ describe('importExport api', () => {
   });
   it('exportCatalog', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
-    await importExportApi.exportCatalog('{}');
-    expect(invoke).toHaveBeenCalledWith('export_catalog', { settingsJson: '{}' });
+    await importExportApi.exportCatalog();
+    expect(invoke).toHaveBeenCalledWith('export_catalog');
   });
   it('importCatalog', async () => {
     vi.mocked(invoke).mockResolvedValue({ imported: true, settingsJson: null });

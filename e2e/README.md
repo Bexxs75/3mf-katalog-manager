@@ -73,7 +73,8 @@ native file dialog that WebDriver cannot operate).
 The app cannot be launched twice (single instance via D-Bus), so spec files
 run one after the other and the harness waits until the previous instance is
 gone. **No change to the app was needed**: the catalog is prepared on disk and
-in `localStorage` (set through WebDriver, then reload).
+in `ui-settings.json` for the desktop (set through IPC from WebDriver, then reload).
+Web preferences remain in each browser’s localStorage; web tests must seed that browser storage, not call desktop settings commands.
 
 Windows caveat: Windows resolves `%APPDATA%` from the registry, not from
 environment variables, so the isolation by `HOME` does not work there. The
@@ -202,7 +203,8 @@ Import einen nativen Dateidialog braucht, den WebDriver nicht bedienen kann).
 Die App lässt sich nur einmal starten (Einzelinstanz per D-Bus): die Dateien
 laufen nacheinander, der Aufbau wartet, bis die vorige Instanz beendet ist.
 **An der App war keine Änderung nötig**: der Katalog wird auf der Platte und in
-`localStorage` vorbereitet (per WebDriver gesetzt, dann neu geladen).
+`ui-settings.json` für den Desktop vorbereitet (per IPC aus WebDriver gesetzt, dann neu geladen).
+Im Web bleiben Einstellungen im localStorage jedes Browsers; Webtests befüllen diesen Browserspeicher und verwenden keine Desktop-Einstellungsbefehle.
 
 Windows-Vorbehalt: Windows ermittelt `%APPDATA%` aus der Registry, nicht aus
 Umgebungsvariablen; die Isolierung über `HOME` greift dort nicht. Der Aufbau

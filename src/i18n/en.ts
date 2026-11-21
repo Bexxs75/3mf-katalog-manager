@@ -1,6 +1,8 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  errUiSettingsUnavailable: 'The interface settings could not be saved or loaded. Changes remain available in this session.',
+  errUiSettingsInvalid: 'The interface settings have an invalid format or exceed the size limit.',
   whatsNew: "What's new",
   whatsNewTitle: "New in 3MF Katalog Manager {version}",
   whatsNewNew: "New",

@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { containsCatalogRoot } from '../lib/folderTree';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor, fireEvent } from '@testing-library/react';
@@ -39,7 +40,7 @@ describe('useFolderDragAndDrop', () => {
     expect(invoke).toHaveBeenCalledWith('move_files_to_folder', { fileIds: ['m1'], folderId: 'f1' });
     await waitFor(() => expect(result.current.moveToast).toMatchObject({ from: 'Model', to: '/Target', canUndo: true }));
     expect(result.current.draggedFileId).toBeNull();
-    expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBe('true');
+    expect(uiSettings.getItem('3mf-katalog-dnd-tip-dismissed')).toBe('true');
   });
 
   it('handleFolderMouseEnter refuses a folder-drag onto its own descendant', () => {
@@ -82,7 +83,7 @@ it('rejects the source folder and leaves the tip enabled after an aborted drag',
   expect(result.current.dragOverFolderId).toBeNull();
   act(() => fireEvent.mouseUp(document));
   expect(invoke).not.toHaveBeenCalled();
-  expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
 });
 
 it('keeps the tip enabled after a failed move', async () => {
@@ -94,7 +95,7 @@ it('keeps the tip enabled after a failed move', async () => {
     act(() => result.current.handleFolderMouseEnter('target'));
     await act(async () => fireEvent.mouseUp(document));
     expect(result.current.moveToast?.error).toBe(true);
-    expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
+    expect(uiSettings.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
   } finally { errorLog.mockRestore(); }
 });
 
@@ -113,7 +114,7 @@ it.each([false, true])('drops into a collection without moving the file (already
   if (!present) expect(addModelToCollection).toHaveBeenCalledWith('m1', 'c1');
   expect(invoke).not.toHaveBeenCalledWith('move_file_to_folder', expect.anything());
   expect(result.current.moveToast).toMatchObject({ from: 'Model', to: 'Kitchen', collection: present ? 'already' : 'added' });
-  expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBe('true');
+  expect(uiSettings.getItem('3mf-katalog-dnd-tip-dismissed')).toBe('true');
 });
 
 it('aborts a collection drop outside and ignores stale leave events', async () => {
@@ -131,7 +132,7 @@ it('aborts a collection drop outside and ignores stale leave events', async () =
   expect(invoke).not.toHaveBeenCalled();
   expect(addModelToCollection).not.toHaveBeenCalled();
   expect(result.current.dragOverCollectionId).toBeNull();
-  expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
 });
 
 it('switches exclusively between folder and collection targets and ignores folder drags on collections', () => {
@@ -162,7 +163,7 @@ it('keeps the drag tip after a failed collection add and uses the error toast', 
   act(() => result.current.handleCollectionMouseEnter('c1'));
   await act(async () => fireEvent.mouseUp(document));
   expect(result.current.moveToast).toMatchObject({ error: true, failure: { message: 'add failed', unexpected: true } });
-  expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
 });
 
 it.each(['root', 'parent'])('never moves the configured catalog %s and explains why', id => {

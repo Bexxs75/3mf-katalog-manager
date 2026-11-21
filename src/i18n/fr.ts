@@ -1,6 +1,8 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  errUiSettingsUnavailable: 'Impossible d’enregistrer ou de charger les paramètres de l’interface. Les modifications restent disponibles pour cette session.',
+  errUiSettingsInvalid: 'Le format des paramètres de l’interface est incorrect ou leur taille dépasse la limite.',
   whatsNew: "Nouveautés",
   whatsNewTitle: "Nouveautés de 3MF Katalog Manager {version}",
   whatsNewNew: "Nouveau",

@@ -1,3 +1,4 @@
+import { uiSettings } from './lib/uiSettings';
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -27,9 +28,9 @@ const bundle = {
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem('3mf-katalog-last-seen-version', bundledVersion);
-  localStorage.setItem('3mf-katalog-base-dir', '/old');
-  localStorage.setItem('3mf-katalog-setup-seen', '1');
+  uiSettings.setItem('3mf-katalog-last-seen-version', bundledVersion);
+  uiSettings.setItem('3mf-katalog-base-dir', '/old');
+  uiSettings.setItem('3mf-katalog-setup-seen', '1');
   vi.mocked(invoke).mockReset();
   vi.mocked(invoke).mockImplementation(async (cmd, args) => {
     if (cmd === 'get_app_version') return '0.15.0';
@@ -65,11 +66,11 @@ it('keeps every file on its own card after the switch is turned off, marks the m
   fireEvent.click(await screen.findByRole('switch', { name: de.bundleCollapseToggle }));
   await waitFor(() => expect(cardIds(main)).toEqual(['2', '1', '3']));
   expect(main.querySelectorAll('[data-part-of]')).toHaveLength(2);
-  expect(localStorage.getItem('3mf-katalog-bundle-collapse')).toBe('off');
+  expect(uiSettings.getItem('3mf-katalog-bundle-collapse')).toBe('off');
 });
 
 it('keeps every file single at the start when "off" was saved', async () => {
-  localStorage.setItem('3mf-katalog-bundle-collapse', 'off');
+  uiSettings.setItem('3mf-katalog-bundle-collapse', 'off');
   const main = await open();
   await waitFor(() => expect(screen.getByRole('switch', { name: de.bundleCollapseToggle })).toHaveAttribute('aria-checked', 'false'));
   expect(cardIds(main)).toEqual(['2', '1', '3']);
@@ -83,7 +84,7 @@ it('finds the bundle by its name while it is shown as a card', async () => {
 });
 
 it('does not find the files by the bundle name while the bundle is not shown as a card', async () => {
-  localStorage.setItem('3mf-katalog-bundle-collapse', 'off');
+  uiSettings.setItem('3mf-katalog-bundle-collapse', 'off');
   const main = await open();
   await screen.findByRole('switch', { name: de.bundleCollapseToggle });
   fireEvent.change(screen.getByPlaceholderText(de.searchPlaceholder), { target: { value: 'harbour' } });

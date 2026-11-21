@@ -44,6 +44,8 @@ macro_rules! error_codes {
 }
 
 error_codes! {
+    UiSettingsInvalid => "uiSettingsInvalid",
+    UiSettingsUnavailable => "uiSettingsUnavailable",
     // Folder names. The wording differs per kind, so each kind has full codes of its
     // own; only the offending character is a parameter.
     FolderNameEmpty => "folderNameEmpty",

@@ -1,3 +1,4 @@
+import { uiSettings } from './uiSettings';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { clampDetailPanelWidth as clamp, loadDetailPanelWidth as load, saveDetailPanelWidth as save } from './detailPanelWidthPreference';
 const key = '3mf-katalog-detail-width';
@@ -6,10 +7,10 @@ afterEach(() => vi.restoreAllMocks());
 it('loads, saves and removes the preference', () => {
   expect(load()).toBeNull();
   save(456); expect(load()).toBe(456);
-  save(null); expect(localStorage.getItem(key)).toBeNull();
+  save(null); expect(uiSettings.getItem(key)).toBeNull();
 });
 it.each(['', 'text', '-1', 'NaN', 'Infinity', '299', '721'])('rejects invalid storage %s', value => {
-  localStorage.setItem(key, value); expect(load()).toBeNull();
+  uiSettings.setItem(key, value); expect(load()).toBeNull();
 });
 it.each([NaN, -1, 299, 721])('does not save invalid width %s', value => {
   save(value); expect(load()).toBeNull();

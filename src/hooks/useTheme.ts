@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { invoke } from '../lib/transport';
 import { useEffect, useState, useCallback } from 'react';
 
@@ -7,7 +8,7 @@ export type ResolvedTheme = 'white' | 'light' | 'slate' | 'dark';
 const STORAGE_KEY = '3mf-katalog-theme';
 
 function readStoredSetting(): ThemeSetting {
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = uiSettings.getItem(STORAGE_KEY);
   return stored === 'white' || stored === 'light' || stored === 'slate' || stored === 'dark' ? stored : 'system';
 }
 
@@ -27,7 +28,7 @@ export function resolveTheme(): ResolvedTheme {
 
 /**
  * App theme: "system" follows prefers-color-scheme live, "white"/"light" (Sand)/"slate"/"dark"
- * are fixed; "system" never resolves to white or slate. The choice is stored in localStorage.
+ * are fixed; "system" never resolves to white or slate. The choice is stored in uiSettings.
  */
 export function useTheme() {
   const [setting, setSetting] = useState<ThemeSetting>(readStoredSetting);
@@ -52,7 +53,7 @@ export function useTheme() {
 
   const setTheme = useCallback((next: ThemeSetting) => {
     setSetting(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    uiSettings.setItem(STORAGE_KEY, next);
   }, []);
 
   return { setting, resolved, setTheme };

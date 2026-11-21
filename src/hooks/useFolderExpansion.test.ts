@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { useFolderExpansion } from './useFolderExpansion';
@@ -18,11 +19,11 @@ it('toggles, expands idempotently, replaces all and persists across mounts', () 
   expect([...second.result.current.expanded]).toEqual(['a', 'b']);
   act(() => second.result.current.setAll([], false));
   expect(second.result.current.expanded.size).toBe(0);
-  expect(JSON.parse(localStorage.getItem('3mf-katalog-sidebar-expanded')!)).toEqual([]);
+  expect(JSON.parse(uiSettings.getItem('3mf-katalog-sidebar-expanded')!)).toEqual([]);
 });
 
 it.each(['bad json', '{}', '[1,"a",null]'])('tolerates invalid stored expansion: %s', (value) => {
-  localStorage.setItem('3mf-katalog-sidebar-expanded', value);
+  uiSettings.setItem('3mf-katalog-sidebar-expanded', value);
   const { result } = renderHook(useFolderExpansion);
   expect([...result.current.expanded]).toEqual(value.startsWith('[') ? ['a'] : []);
 });

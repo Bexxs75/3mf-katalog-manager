@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { type ComponentProps } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -16,7 +17,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
     width: 800, height: 400, top: 0, left: 0, right: 800, bottom: 400, x: 0, y: 0, toJSON: () => ({}),
   });
-  localStorage.clear(); localStorage.setItem('3mf-katalog-language', 'de');
+  localStorage.clear(); uiSettings.setItem('3mf-katalog-language', 'de');
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -156,7 +157,7 @@ it('shows no bundle elements on the detail page of a file outside any bundle', (
 });
 
 it('keeps a stored width through model and bundle switches and removes it on reset', () => {
-  localStorage.setItem('3mf-katalog-detail-width', '440');
+  uiSettings.setItem('3mf-katalog-detail-width', '440');
   const { update } = setup({ bundles: [bundle], collapseBundles: true, bundleView: view(), selectedId: 'c', selected: files[2] });
   const shellWidth = () => screen.getByRole('complementary', { name: 'Details' }).style.getPropertyValue('--detail-panel-width');
   expect(shellWidth()).toBe('440px');
@@ -168,6 +169,6 @@ it('keeps a stored width through model and bundle switches and removes it on res
   expect(screen.queryByRole('list', { name: 'Mitglieder' })).toBeNull();
   expect(shellWidth()).toBe('456px');
   fireEvent.doubleClick(screen.getByRole('separator'));
-  expect(localStorage.getItem('3mf-katalog-detail-width')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-detail-width')).toBeNull();
   expect(screen.getByRole('complementary', { name: 'Details' })).not.toHaveClass('detail-panel-resized');
 });

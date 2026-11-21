@@ -14,20 +14,15 @@ use rusqlite::Connection;
 pub const DB_ENTRY: &str = "catalog.db";
 pub const SETTINGS_ENTRY: &str = "settings.json";
 
-/// Browser-side view preferences the desktop backup stores in `settings.json`.
-const SETTINGS_KEYS: [&str; 4] = [
-    "3mf-katalog-theme",
-    "3mf-katalog-display-preference",
-    "3mf-katalog-language",
-    "3mf-katalog-density",
-];
-
-/// The server cannot see a browser's localStorage. Every key is written as
-/// `null`, which the desktop import treats as "use the default" - the same
-/// shape the desktop writes for settings that were never changed.
+/// Web exports cannot read browser preferences; null entries preserve the archive format.
 pub fn settings_json() -> String {
-    let entries: Vec<String> = SETTINGS_KEYS.iter().map(|key| format!("\"{key}\":null")).collect();
-    format!("{{{}}}", entries.join(","))
+    serde_json::to_string(
+        &crate::ui_settings::BACKUP_KEYS
+            .iter()
+            .map(|key| (*key, None::<String>))
+            .collect::<std::collections::BTreeMap<_, _>>(),
+    )
+    .unwrap()
 }
 
 /// Size of the database as SQLite reports it (pages * page size); the basis for
@@ -288,7 +283,7 @@ mod tests {
         let mut settings = String::new();
         archive.by_name(SETTINGS_ENTRY).unwrap().read_to_string(&mut settings).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&settings).unwrap();
-        for key in SETTINGS_KEYS {
+        for key in crate::ui_settings::BACKUP_KEYS {
             assert!(parsed[key].is_null(), "{key}");
         }
         std::fs::remove_dir_all(dir).unwrap();

@@ -1,6 +1,9 @@
 {
-  "_comment": "Classification of every desktop command (generate_handler! in src-tauri/src/lib.rs) for the web build. web = allowed in the web (READ_COMMANDS/WRITE_COMMANDS in katalog-server and readOnly.ts); web-only = exists only in the web server; B = a web variant is feasible but not built yet; C = not transferable (needs the user's own computer or makes no sense on a server). A new desktop command makes src/lib/commandParity.test.ts fail until it is classified here.",
+  "_comment": "Classification of every desktop command (generate_handler! in src-tauri/src/lib.rs) for the web build. web = allowed by READ_COMMANDS/WRITE_COMMANDS in katalog-server and WEB_READ_COMMANDS/WEB_WRITE_COMMANDS in readOnly.ts; web-only = server only; B = feasible web variant not built yet; C = not transferable. UI settings commands are C: they persist the desktop WebView preferences only; web preferences intentionally remain in each browser's localStorage. New commands must be classified for commandParity.test.ts.",
   "commands": {
+    "get_ui_settings": "C",
+    "set_ui_setting": "C",
+    "migrate_ui_settings": "C",
     "add_companion": "B",
     "add_external_to_catalog": "C",
     "add_filament_spool": "web",

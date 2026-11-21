@@ -1,5 +1,6 @@
+import { uiSettings, subscribeUiSettings } from '../lib/uiSettings';
 import { catalogPlatform } from '../lib/keyboardGuard';
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { formatCount, type PluralForms, type Language, type Translations } from './types';
 import { de } from './de';
 import { en } from './en';
@@ -18,8 +19,8 @@ interface LanguageContextValue {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+  const language: Language = useSyncExternalStore(subscribeUiSettings, () => {
+    const stored = uiSettings.getItem(STORAGE_KEY);
     return stored && stored in DICTIONARIES ? (stored as Language) : 'de';
   });
 
@@ -28,8 +29,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, [language]);
 
   const setLanguage = useCallback((next: Language) => {
-    setLanguageState(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    uiSettings.setItem(STORAGE_KEY, next);
   }, []);
 
   return (

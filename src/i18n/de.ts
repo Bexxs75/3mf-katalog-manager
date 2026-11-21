@@ -1,6 +1,8 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  errUiSettingsUnavailable: 'Die Oberflächen-Einstellungen konnten nicht gespeichert oder geladen werden. Änderungen bleiben in dieser Sitzung erhalten.',
+  errUiSettingsInvalid: 'Die Oberflächen-Einstellungen haben ein ungültiges Format oder überschreiten die Größenbegrenzung.',
   whatsNew: "Neuigkeiten",
   whatsNewTitle: "Neu in 3MF Katalog Manager {version}",
   whatsNewNew: "Neu",

@@ -16,7 +16,7 @@ export function nextRendererGeneration(
 const attemptPrefix = '3mf-katalog-preview-attempt:';
 const activeAttempts = new Map<string, number>();
 
-/** Persist before native parsing: an aborted process cannot run effect cleanup. */
+/** Persist synchronously and per browser before native parsing: an aborted process cannot run cleanup. */
 export function beginPreviewAttempt(id: string): () => void {
   activeAttempts.set(id, (activeAttempts.get(id) ?? 0) + 1);
   try { localStorage.setItem(attemptPrefix + id, '1'); } catch { /* Storage can be unavailable. */ }

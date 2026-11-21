@@ -1,3 +1,4 @@
+import { uiSettings } from './lib/uiSettings';
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -23,9 +24,9 @@ beforeEach(() => {
     width: 800, height: 400, top: 0, left: 0, right: 800, bottom: 400, x: 0, y: 0, toJSON: () => ({}),
   });
   localStorage.clear();
-  localStorage.setItem('3mf-katalog-last-seen-version', bundledVersion);
-  localStorage.setItem('3mf-katalog-base-dir', '/old');
-  localStorage.setItem('3mf-katalog-setup-seen', '1');
+  uiSettings.setItem('3mf-katalog-last-seen-version', bundledVersion);
+  uiSettings.setItem('3mf-katalog-base-dir', '/old');
+  uiSettings.setItem('3mf-katalog-setup-seen', '1');
   vi.mocked(invoke).mockReset();
   vi.mocked(invoke).mockImplementation(async (cmd) => {
     if (cmd === 'get_app_version') return '0.15.0';
@@ -43,8 +44,8 @@ it('opens first-run setup after reset and reloads catalog data', async () => {
   fireEvent.click(screen.getByText('Katalog zurücksetzen …'));
   fireEvent.click(screen.getByRole('button', { name: de.resetConfirm }));
   expect(await screen.findByText(de.catalogSetupAdoptTitle)).toBeTruthy();
-  expect(localStorage.getItem('3mf-katalog-base-dir')).toBeNull();
-  expect(localStorage.getItem('3mf-katalog-setup-seen')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-base-dir')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-setup-seen')).toBeNull();
   expect(invoke).toHaveBeenCalledWith('reset_catalog');
   await waitFor(() => expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'list_folders').length).toBeGreaterThan(1));
 });
