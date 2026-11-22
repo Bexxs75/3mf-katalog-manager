@@ -1,8 +1,13 @@
 name: Docker web image
 
 # Builds the slim web image (katalog-server + web UI, docker-web/Dockerfile) and smoke-tests it.
-# Default: build and test only, nothing is published. Publishing needs publish=true explicitly.
+# Manual and called runs build and test only; publishing needs publish=true explicitly.
+# A published stable release (tag vX.Y.Z, no pre-release) publishes its web image on its own,
+# like docker-image.yml does for the desktop image. release.yml calls this workflow with
+# publish: false for the draft build, which must stay that way: the draft is not public yet.
 on:
+  release:
+    types: [published]
   workflow_call:
     inputs:
       ref:
@@ -49,6 +54,10 @@ jobs:
   # Builds and tests with a read-only token. Third-party actions run only here, so a compromised
   # action cannot publish anything; the package-write token exists only in the publish job below.
   web-image:
+    # A release event only counts for a published stable release; its tag is checked strictly below.
+    if: >-
+      github.event_name != 'release' ||
+      (!github.event.release.draft && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v'))
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -56,20 +65,30 @@ jobs:
       image: ${{ steps.meta.outputs.image }}
       version: ${{ steps.meta.outputs.version }}
       rc: ${{ steps.meta.outputs.rc }}
+      publish: ${{ steps.meta.outputs.publish }}
     steps:
+      # The inputs are empty on a release event; the tag is both the ref to build and the version.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.event.release.tag_name }}
           persist-credentials: false
 
       - name: Resolve metadata
         id: meta
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version || github.event.release.tag_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
           version=${VERSION#v}
+          publish=$INPUT_PUBLISH
+          if [[ "$EVENT_NAME" == release ]]; then
+            # Only a stable vX.Y.Z is published automatically; the flag alone is not trusted.
+            [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Not a stable release tag: $VERSION" >&2; exit 1; }
+            publish=true
+          fi
           if [[ -n "$version" && ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]]; then
             echo "Invalid version: $version" >&2
             exit 1
@@ -79,6 +98,7 @@ jobs:
           [[ "$version" == *-* ]] && rc=true
           echo "version=${version:-dev}" >> "$GITHUB_OUTPUT"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "publish=${publish:-false}" >> "$GITHUB_OUTPUT"
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${WEB_IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
@@ -104,21 +124,21 @@ jobs:
 
       # Hand the tested image to the publish job unchanged.
       - name: Save the tested image
-        if: inputs.publish == true
+        if: steps.meta.outputs.publish == 'true'
         run: docker save candidate:web-test -o web-image.tar
 
       - name: Keep the tested image
-        if: inputs.publish == true
+        if: steps.meta.outputs.publish == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: web-image
           path: web-image.tar
           retention-days: 1
 
-  # Runs only for an explicit publish=true. The only job with a package-write token.
+  # Runs only for an explicit publish=true or a published stable release. The only job with a package-write token.
   publish:
     needs: web-image
-    if: inputs.publish == true
+    if: needs.web-image.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read

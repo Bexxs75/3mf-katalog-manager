@@ -20,6 +20,10 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    # actions: read lets "gh run list" see the CI run of this commit.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       # The NSIS installer is only built for pre-release versions (release
       # candidates, e.g. 0.18.0-1) until it has proven itself; a stable version
@@ -29,10 +33,43 @@ jobs:
       - uses: actions/checkout@v4
       # Passed through env instead of being pasted into the script, so the input
       # can never be interpreted as shell code.
-      - name: Version matches Cargo.toml and tauri.conf.json
+      # A red or missing CI run on exactly this commit must stop the build: an
+      # earlier green run says nothing about the commit that is released.
+      - name: CI checks passed on this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          runs=$(gh run list --repo "$GITHUB_REPOSITORY" --commit "$SHA" --limit 50 \
+            --json workflowName,status,conclusion \
+            --jq '[.[] | select(.workflowName == "CI checks (TypeScript, tests, Clippy)")]')
+          total=$(jq 'length' <<<"$runs")
+          if [ "$total" -eq 0 ]; then
+            echo "::error::No 'CI checks (TypeScript, tests, Clippy)' run exists for ${SHA:0:8}. Push the commit to the release branch and wait for the run before building."
+            exit 1
+          fi
+          if jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' <<<"$runs" >/dev/null; then
+            echo "CI checks are green for ${SHA:0:8}."
+            exit 0
+          fi
+          if jq -e 'any(.[]; .status != "completed")' <<<"$runs" >/dev/null; then
+            echo "::error::'CI checks' for ${SHA:0:8} are still running. Wait until they are green, then start the release again."
+          else
+            echo "::error::'CI checks' for ${SHA:0:8} did not succeed: $(jq -r 'map(.conclusion) | join(", ")' <<<"$runs")."
+          fi
+          exit 1
+      # Passed through env instead of being pasted into the script, so the input
+      # can never be interpreted as shell code.
+      - name: Version matches every file set-version writes
         env:
           VERSION: ${{ inputs.version }}
         run: python3 tools/release_assets.py check-version "$VERSION"
+      # Both texts are written by hand; forgetting one only showed up after the release.
+      - name: CHANGELOG section and release notes (de, en, es, fr) exist
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python3 tools/release_assets.py check-release-texts "$VERSION"
       - name: NSIS installer only for pre-release versions
         id: nsis
         env:
@@ -57,12 +94,14 @@ jobs:
     needs: verify
     uses: ./.github/workflows/build-linux.yml
   # The app is started and clicked through on Linux and Windows next to the package builds.
-  # "assemble" does not wait for it: the draft is created either way and a red test run is a warning.
+  # "assemble" waits for it: a red run means no draft. It runs in parallel with the package
+  # builds, so it only delays the draft when it is slower than they are. (The Windows part of
+  # e2e.yml is still continue-on-error, so only the Linux run can block for now.)
   e2e:
     needs: verify
     uses: ./.github/workflows/e2e.yml
   # The slim web image is built and smoke-tested (never published here) next to the package builds.
-  # Like e2e, "assemble" does not wait for it: a red run is a warning, not a blocker.
+  # "assemble" does not wait for it: a red run is a warning, not a blocker.
   web-image:
     needs: verify
     # The called workflow declares packages: write for its publish job only; with publish: false that job is skipped, and its build job has a read-only token.
@@ -75,7 +114,7 @@ jobs:
       publish: false
 
   assemble:
-    needs: [verify, windows-step, macos-step, linux-step]
+    needs: [verify, windows-step, macos-step, linux-step, e2e]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

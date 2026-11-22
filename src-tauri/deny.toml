@@ -14,57 +14,34 @@ no-default-features = false
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 # Real security advisories and yanked crates should break the build
-# (cargo deny check advisories). "unmaintained"/"unsound" reports are not
-# silenced globally but listed individually under "ignore" with a reason - they
-# all come from Tauri's GTK3 stack (Linux backend) or its dependencies and are
-# transitive, so a `cargo update` in this repo can't fix them.
+# (cargo deny check advisories). An ignore must stay rare and carry its reason:
+# a red audit has to mean "look at this", so an entry that cargo-deny reports
+# as "advisory-not-detected" (the crate left the tree or was fixed) is removed
+# instead of being kept as history.
 yanked = "deny"
 ignore = [
-    # proc-macro-error is unmaintained; comes in transitively via glib-macros ->
-    # glib -> atk -> gtk -> muda -> tauri (Linux window menu internals).
-    "RUSTSEC-2024-0370",
-    # unic-char-property is unmaintained; comes in transitively via
-    # unic-ucd-ident -> urlpattern -> tauri-utils -> tauri.
-    "RUSTSEC-2025-0081",
-    # unic-char-range is unmaintained; same dependency chain as above.
-    "RUSTSEC-2025-0075",
-    # unic-common is unmaintained; same dependency chain as above.
-    "RUSTSEC-2025-0080",
-    # unic-ucd-ident is unmaintained; comes in transitively via urlpattern -> tauri-utils -> tauri.
-    "RUSTSEC-2025-0100",
-    # unic-ucd-version is unmaintained; same dependency chain as above.
-    "RUSTSEC-2025-0098",
-    # zip: ZipArchive::extract / ZipStreamReader::extract keep SUID/SGID bits and follow
-    # symlinks (RUSTSEC-2026-0367, -0368, -0369; fixed in zip >= 9). Not reachable from
-    # our code: it never calls extract(), it only reads and writes archives with
+    # zip 4.6.1 (via tauri-plugin-updater): ZipArchive::extract / ZipStreamReader::extract
+    # keep SUID/SGID bits and follow symlinks (fixed in zip >= 9). Not reachable from our
+    # code: it never calls extract(), it only reads and writes archives with
     # ZipArchive::new / ZipWriter and unpacks user archives with its own code
-    # (archive/extract.rs). zip 4.6.1 comes in via tauri-plugin-updater, which extracts
-    # only update packages whose signature was verified first. Move to zip >= 9 (own
-    # crate) and a newer plugin when the dependencies allow it.
-    "RUSTSEC-2026-0367",
-    "RUSTSEC-2026-0368",
-    # Same zip 4.6.1 / ZipArchive::extract family: RUSTSEC-2026-0429 (symlink entry with a
-    # large declared size aborts extract(); fixed in zip >= 9). Not reachable from our code (see
-    # above); only tauri-plugin-updater extracts, and only signature-verified update packages.
-    "RUSTSEC-2026-0429",
-    "RUSTSEC-2026-0369",
+    # (archive/extract.rs). The plugin extracts only update packages whose signature was
+    # verified first. Remove these entries when the plugin moves to zip >= 9.
+    { id = "RUSTSEC-2026-0367", reason = "zip 4.6.1 extract(): SUID/SGID and symlinks; extract() is never called by us, updater verifies the signature first" },
+    { id = "RUSTSEC-2026-0368", reason = "zip 4.6.1 extract() family; same reasoning as RUSTSEC-2026-0367" },
+    { id = "RUSTSEC-2026-0369", reason = "zip 4.6.1 extract() family; same reasoning as RUSTSEC-2026-0367" },
+    # Symlink entry with a large declared size aborts extract().
+    { id = "RUSTSEC-2026-0429", reason = "zip 4.6.1 extract() aborts on a symlink entry with a large size; only signature-verified update packages are extracted" },
     # Two more zip 4.6.1 advisories, again only via tauri-plugin-updater (no safe upgrade, the
     # plugin pins zip 4). RUSTSEC-2026-0545 (AES entries returned without checking the
     # authentication code) needs zip's "aes-crypto" feature, which this build does not enable.
     # RUSTSEC-2026-0548 (ZipStreamReader trusts local-header names) affects ZipStreamReader
     # only; the plugin uses ZipArchive::extract on signature-verified update packages, and our
     # own code is on zip 9 and uses neither ZipStreamReader nor decryption.
-    "RUSTSEC-2026-0545",
-    "RUSTSEC-2026-0548",
+    { id = "RUSTSEC-2026-0545", reason = "zip 4.6.1 AES entries without authentication check; needs the aes-crypto feature, which this build does not enable" },
+    { id = "RUSTSEC-2026-0548", reason = "zip 4.6.1 ZipStreamReader trusts local-header names; only ZipArchive::extract on signature-verified update packages is used" },
     # chrono is reported as unmaintained (no known vulnerability). It is a direct dependency
     # for date formatting; moving to jiff or time is planned separately.
-    "RUSTSEC-2026-0543",
-    # zvariant, zbus_names and zvariant_derive are unmaintained and have no safe upgrade;
-    # they come in transitively via zbus -> ashpd -> rfd -> tauri-plugin-dialog (the
-    # xdg-portal file dialog on Linux).
-    "RUSTSEC-2026-0370",
-    "RUSTSEC-2026-0371",
-    "RUSTSEC-2026-0372",
+    { id = "RUSTSEC-2026-0543", reason = "chrono reported as unmaintained, no known vulnerability; direct dependency for date formatting, replacement planned separately" },
 ]
 
 [licenses]

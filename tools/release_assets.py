@@ -96,15 +96,58 @@ def latest_json(version, out_dir, now=None, preview=False, require_nsis=False):
     for file in files:
         (out / file).write_text(content)
 
+def _package_section(cargo_text, path):
+    """Returns (name, version) of the [package] table of a Cargo.toml."""
+    package = cargo_text.split("[package]", 1)[1].split("\n[", 1)[0] if "[package]" in cargo_text else ""
+    name = re.search(r'^name\s*=\s*"([^"]+)"', package, re.M)
+    ver = re.search(r'^version\s*=\s*"([^"]+)"', package, re.M)
+    if not name:
+        fail(f"{path} has no [package] name")
+    return name.group(1), ver.group(1) if ver else None
+
+def _read(root, *parts):
+    path = pathlib.Path(root, *parts)
+    if not path.is_file():
+        fail(f"{'/'.join(parts)} is missing")
+    return path.read_text(encoding="utf-8")
+
 def check_version(version, root="."):
-    cargo = pathlib.Path(root, "src-tauri", "Cargo.toml").read_text()
-    package = cargo.split("[package]", 1)[1].split("\n[", 1)[0]
-    m = re.search(r'^version\s*=\s*"([^"]+)"', package, re.M)
-    conf = json.loads(pathlib.Path(root, "src-tauri", "tauri.conf.json").read_text())
-    found = {"Cargo.toml": m.group(1) if m else None, "tauri.conf.json": conf.get("version")}
+    # Every place set_version writes must agree; a stale one (e.g. the lock
+    # files) otherwise only shows up after the packages are built.
+    found = {}
+    names = {}
+    for label, parts in [("src-tauri/Cargo.toml", ("src-tauri", "Cargo.toml"))] + [
+            (f"crates/{c.parent.name}/Cargo.toml", ("crates", c.parent.name, "Cargo.toml"))
+            for c in sorted(pathlib.Path(root, "crates").glob("*/Cargo.toml"))]:
+        name, ver = _package_section(_read(root, *parts), label)
+        found[label] = ver
+        names[label] = name
+    found["src-tauri/tauri.conf.json"] = json.loads(_read(root, "src-tauri", "tauri.conf.json")).get("version")
+    found["package.json"] = json.loads(_read(root, "package.json")).get("version")
+    lock = json.loads(_read(root, "package-lock.json"))
+    found["package-lock.json"] = lock.get("version")
+    found["package-lock.json packages[\"\"]"] = (lock.get("packages") or {}).get("", {}).get("version")
+    cargo_lock = _read(root, "Cargo.lock")
+    for label, name in names.items():
+        m = re.search(r'name = "' + re.escape(name) + r'"\nversion = "([^"]+)"', cargo_lock)
+        found[f"Cargo.lock ({name})"] = m.group(1) if m else None
     wrong = {k: v for k, v in found.items() if v != version}
     if wrong:
         fail(f"version {version} does not match {wrong}")
+
+def check_release_texts(version, root="."):
+    """The changelog section and the in-app release notes (all four languages) must exist."""
+    changelog = _read(root, "CHANGELOG.md")
+    if not re.search(r"^## \[" + re.escape(version) + r"\]", changelog, re.M):
+        fail(f"CHANGELOG.md has no section '## [{version}]'")
+    notes = _read(root, "src", "lib", "releaseNotes.ts")
+    # The entry runs from its key to the closing "  }," at two spaces of indent.
+    entry = re.search(r'^  "' + re.escape(version) + r'": \{(.*?)\n  \},?\n', notes, re.M | re.S)
+    if not entry:
+        fail(f"src/lib/releaseNotes.ts has no entry for {version}")
+    missing = [lang for lang in ("de", "en", "es", "fr") if f'"{lang}": {{' not in entry.group(1)]
+    if missing:
+        fail(f"src/lib/releaseNotes.ts entry {version} lacks {', '.join(missing)}")
 
 def version_key(version):
     # A build with no "-n" is a stable version, which always outranks any
@@ -232,6 +275,14 @@ def set_version(version, root="."):
     pkg["version"] = version
     pkg_path.write_text(json.dumps(pkg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
+    # The npm lock file repeats the version twice (top level and the root package entry).
+    npm_lock_path = root / "package-lock.json"
+    if npm_lock_path.is_file():
+        npm_lock = json.loads(npm_lock_path.read_text(encoding="utf-8"))
+        npm_lock["version"] = version
+        npm_lock.get("packages", {}).get("", {})["version"] = version
+        npm_lock_path.write_text(json.dumps(npm_lock, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+
     # Only the root package's version line is rewritten; dependency entries
     # that happen to share a version string (e.g. "1.0.0") must stay put.
     lock_path = root / "Cargo.lock"
@@ -267,6 +318,7 @@ def main(argv):
         "rename": lambda *a: rename(*a, preview=preview, require_nsis=require_nsis),
         "latest-json": lambda *a: latest_json(*a, preview=preview, require_nsis=require_nsis),
         "check-version": check_version,
+        "check-release-texts": check_release_texts,
         "check-preview": check_preview,
         "rc-manifest": rc_manifest,
         "set-version": set_version,

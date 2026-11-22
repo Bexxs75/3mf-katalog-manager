@@ -54,15 +54,102 @@ class LatestJson(unittest.TestCase):
                 ra.latest_json("0.16.0", o)
             self.assertFalse(pathlib.Path(o, "latest.json").exists())
 
+def write_tree(r, version="0.15.0", notes_langs=("de", "en", "es", "fr"), changelog=True, notes=True):
+    """A minimal checkout with every place that carries the version."""
+    r = pathlib.Path(r)
+    (r / "src-tauri").mkdir(); (r / "crates/katalog-core").mkdir(parents=True); (r / "src/lib").mkdir(parents=True)
+    (r / "src-tauri/Cargo.toml").write_text(f'[package]\nname = "x"\nversion = "{version}"\n\n[dependencies]\nfoo = {{ version = "1" }}\n')
+    (r / "crates/katalog-core/Cargo.toml").write_text(f'[package]\nname = "core"\nversion = "{version}"\n')
+    (r / "src-tauri/tauri.conf.json").write_text(json.dumps({"version": version}))
+    (r / "package.json").write_text(json.dumps({"version": version}))
+    (r / "package-lock.json").write_text(json.dumps({"version": version, "packages": {"": {"version": version}}}))
+    (r / "Cargo.lock").write_text(f'[[package]]\nname = "foo"\nversion = "1.0.0"\n\n[[package]]\nname = "x"\nversion = "{version}"\n\n[[package]]\nname = "core"\nversion = "{version}"\n')
+    if changelog:
+        (r / "CHANGELOG.md").write_text(f"# Changelog\n\n## [Unreleased]\n\n## [{version}] - 2026-01-01\n- x\n")
+    if notes:
+        langs = "".join(f'      "{l}": {{ "new": [] }},\n' for l in notes_langs)
+        (r / "src/lib/releaseNotes.ts").write_text(
+            f'export const releaseNotes = {{\n  "{version}": {{\n    "date": "2026-01-01",\n    "notes": {{\n{langs}    }}\n  }},\n  "0.14.0": {{\n    "notes": {{\n      "de": {{}}, "en": {{}}, "es": {{}}, "fr": {{}}\n    }}\n  }},\n}};\n')
+
 class Version(unittest.TestCase):
     def test_reads_versions(self):
         with tempfile.TemporaryDirectory() as r:
-            p = pathlib.Path(r, "src-tauri"); p.mkdir()
-            (p / "Cargo.toml").write_text('[package]\nname = "x"\nversion = "0.15.0"\n\n[dependencies]\nfoo = { version = "1" }\n')
-            (p / "tauri.conf.json").write_text('{"version": "0.15.0"}')
+            write_tree(r)
             ra.check_version("0.15.0", r)
             with self.assertRaises(SystemExit):
                 ra.check_version("0.15.1", r)
+
+    def test_every_version_place_is_checked(self):
+        # One stale file at a time must fail the check.
+        stale = {
+            "src-tauri/Cargo.toml": ('version = "0.15.0"', 'version = "0.14.0"'),
+            "crates/katalog-core/Cargo.toml": ('version = "0.15.0"', 'version = "0.14.0"'),
+            "src-tauri/tauri.conf.json": ('0.15.0', '0.14.0'),
+            "package.json": ('0.15.0', '0.14.0'),
+            "package-lock.json": ('"version": "0.15.0", "packages"', '"version": "0.14.0", "packages"'),
+            "Cargo.lock": ('name = "core"\nversion = "0.15.0"', 'name = "core"\nversion = "0.14.0"'),
+        }
+        for rel, (a, b) in stale.items():
+            with self.subTest(file=rel), tempfile.TemporaryDirectory() as t:
+                write_tree(t)
+                f = pathlib.Path(t, rel); f.write_text(f.read_text().replace(a, b, 1))
+                self.assertNotEqual(f.read_text(), "")
+                with self.assertRaises(SystemExit):
+                    ra.check_version("0.15.0", t)
+
+    def test_npm_lock_package_entry_is_checked(self):
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t)
+            pathlib.Path(t, "package-lock.json").write_text(json.dumps({"version": "0.15.0", "packages": {"": {"version": "0.14.0"}}}))
+            with self.assertRaises(SystemExit):
+                ra.check_version("0.15.0", t)
+
+    def test_missing_file_fails(self):
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t)
+            pathlib.Path(t, "package-lock.json").unlink()
+            with self.assertRaises(SystemExit):
+                ra.check_version("0.15.0", t)
+
+class ReleaseTexts(unittest.TestCase):
+    def test_complete_texts_pass(self):
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t)
+            ra.check_release_texts("0.15.0", t)
+
+    def test_changelog_section_missing_fails(self):
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t, changelog=False)
+            pathlib.Path(t, "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n\n## [0.14.0] - 2026-01-01\n")
+            with self.assertRaises(SystemExit):
+                ra.check_release_texts("0.15.0", t)
+
+    def test_release_notes_entry_missing_fails(self):
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t)
+            # 0.14.0 has an entry, 0.16.0 does not (the changelog alone is not enough).
+            pathlib.Path(t, "CHANGELOG.md").write_text("## [0.16.0] - 2026-01-01\n")
+            with self.assertRaises(SystemExit):
+                ra.check_release_texts("0.16.0", t)
+
+    def test_each_language_is_required(self):
+        for lang in ("de", "en", "es", "fr"):
+            with self.subTest(lang=lang), tempfile.TemporaryDirectory() as t:
+                write_tree(t, notes_langs=tuple(l for l in ("de", "en", "es", "fr") if l != lang))
+                with self.assertRaises(SystemExit):
+                    ra.check_release_texts("0.15.0", t)
+
+    def test_language_of_another_version_does_not_count(self):
+        # The older entry has all four languages; the new one only de: must still fail.
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t, notes_langs=("de",))
+            with self.assertRaises(SystemExit):
+                ra.check_release_texts("0.15.0", t)
+
+    def test_cli_command(self):
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t)
+            ra.main(["check-release-texts", "0.15.0", t])
 
 class Preview(unittest.TestCase):
     def test_preview_names(self):
@@ -151,8 +238,11 @@ class Preview(unittest.TestCase):
             )
             (r / "package.json").write_text(json.dumps({"name": "mf-katalog-manager", "version": "0.14.0"}, indent=2), encoding="utf-8")
             (r / "Cargo.lock").write_text('[[package]]\nname = "serde"\nversion = "1.0.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
+            (r / "package-lock.json").write_text(json.dumps({"version": "0.14.0", "packages": {"": {"version": "0.14.0"}, "node_modules/a": {"version": "0.14.0"}}}), encoding="utf-8")
             ra.set_version("0.15.0-2", r)
             ra.check_version("0.15.0-2", r)
+            npm_lock = json.loads((r / "package-lock.json").read_text(encoding="utf-8"))
+            self.assertEqual(npm_lock["packages"]["node_modules/a"]["version"], "0.14.0")
             self.assertEqual(json.loads((r / "package.json").read_text(encoding="utf-8"))["version"], "0.15.0-2")
             lock = (r / "Cargo.lock").read_text(encoding="utf-8")
             self.assertIn('name = "mf-katalog-manager"\nversion = "0.15.0-2"', lock)
