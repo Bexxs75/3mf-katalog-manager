@@ -885,6 +885,14 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.18.6] - 2026-11-22
+
+### Behoben
+
+- Das Neuigkeiten-Fenster erscheint nach einem Update wieder: Version 0.18.5 wurde ohne ihre mitgelieferten Versionshinweise ausgeliefert, deshalb blieb das Fenster leer und die Versionsmarkierung wurde nicht weitergesetzt.
+
+## [0.18.5] - 2026-11-22
+
 ### Geändert
 
 - Oberflächen-Einstellungen der Desktop-App werden in `ui-settings.json` im App-Datenordner gespeichert, automatisch aus dem WebView übernommen und mit kompatiblen Katalogsicherungen gesichert. Im Web bleiben Einstellungen im localStorage jedes Browsers, unabhängig von anderen Benutzern, Geräten und Server-Schreibrechten; dort gibt es weder Einstellungsmigration noch eine serverseitige Einstellungsdatei. Desktop-Farbschema, Sprache und Dichte behalten einen synchronen Startcache; Vorschau-Absturzmarker bleiben lokal. Andere Desktop-Einstellungen werden nicht zurückgespiegelt; ihr Browser-Rückfallstand kann veraltet sein.
