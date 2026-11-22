@@ -210,6 +210,7 @@ it.each([false, true])('never vetoes or destroys the window when close flush han
     backend.invoke.mockImplementation(async command => {
       if (command === 'get_ui_settings') return snapshot({});
       if (command === 'set_ui_setting') return hangs ? new Promise(() => {}) : undefined;
+      if (command === 'get_close_behavior') return { action: 'exit', trayAvailable: false, supported: true, platform: 'linux' };
       throw new Error(`Unexpected command: ${command}`);
     });
     await initializeUiSettings();
@@ -223,8 +224,26 @@ it.each([false, true])('never vetoes or destroys the window when close flush han
     await closing;
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(destroy).not.toHaveBeenCalled();
-    expect(backend.invoke.mock.calls.map(([command]) => command)).toEqual(['get_ui_settings', 'set_ui_setting']);
+    expect(backend.invoke.mock.calls.map(([command]) => command)).toEqual(['get_ui_settings', 'set_ui_setting', 'get_close_behavior']);
   } finally { vi.useRealTimers(); vi.doUnmock('@tauri-apps/api/window'); }
+});
+
+it.each([[true, 1], [false, 0]])('vetoes the JS destroy only while the tray hides the window (tray available: %s)', async (trayAvailable, vetoes) => {
+  let closeRequested!: (event: { preventDefault(): void }) => Promise<void>;
+  const onCloseRequested = vi.fn(async callback => { closeRequested = callback; return vi.fn(); });
+  vi.doMock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ onCloseRequested }) }));
+  try {
+    backend.invoke.mockImplementation(async command => {
+      if (command === 'get_ui_settings') return snapshot({});
+      if (command === 'get_close_behavior') return { action: 'tray', trayAvailable, supported: true, platform: 'linux' };
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    await initializeUiSettings();
+    await vi.waitFor(() => expect(onCloseRequested).toHaveBeenCalled());
+    const event = { preventDefault: vi.fn() };
+    await closeRequested(event);
+    expect(event.preventDefault).toHaveBeenCalledTimes(vetoes);
+  } finally { vi.doUnmock('@tauri-apps/api/window'); }
 });
 
 it.each(['get_ui_settings', 'migrate_ui_settings'])('falls back after a stalled %s and ignores its late snapshot', async stalled => {

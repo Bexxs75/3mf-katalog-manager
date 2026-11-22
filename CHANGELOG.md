@@ -17,6 +17,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- "Minimize to tray" works again: closing the window hid it, but the settings close handler then destroyed it and quit the app (version 0.18.5 and later).
 - The What’s new window appears again after an update: version 0.18.5 shipped without its bundled release notes, so the window stayed empty and the version marker was not advanced.
 
 ## [0.18.5] - 2026-11-22
@@ -897,6 +898,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- „In den Tray minimieren“ funktioniert wieder: Das Schließen versteckte das Fenster, aber der Schließen-Handler der Einstellungen zerstörte es danach und beendete die App (ab Version 0.18.5).
 - Das Neuigkeiten-Fenster erscheint nach einem Update wieder: Version 0.18.5 wurde ohne ihre mitgelieferten Versionshinweise ausgeliefert, deshalb blieb das Fenster leer und die Versionsmarkierung wurde nicht weitergesetzt.
 
 ## [0.18.5] - 2026-11-22
