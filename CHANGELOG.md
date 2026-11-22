@@ -15,6 +15,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - Update installation first flushes queued preferences with a short deadline. Forced exit or a timed-out flush may still lose the last change. Startup uses local fallback values after a three-second settings deadline; incompatible schemas retain those local values without backend writes. Authoritative backend snapshots clear absent boot-cache keys. Newer settings schemas remain untouched and write-protected; oversized unknown fields in the current schema no longer block all writes.
 
+- New app icon.
+
 ## [0.18.4] - 2026-11-18
 
 ### Changed
@@ -878,6 +880,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Oberflächen-Einstellungen der Desktop-App werden in `ui-settings.json` im App-Datenordner gespeichert, automatisch aus dem WebView übernommen und mit kompatiblen Katalogsicherungen gesichert. Im Web bleiben Einstellungen im localStorage jedes Browsers, unabhängig von anderen Benutzern, Geräten und Server-Schreibrechten; dort gibt es weder Einstellungsmigration noch eine serverseitige Einstellungsdatei. Desktop-Farbschema, Sprache und Dichte behalten einen synchronen Startcache; Vorschau-Absturzmarker bleiben lokal. Andere Desktop-Einstellungen werden nicht zurückgespiegelt; ihr Browser-Rückfallstand kann veraltet sein.
 
 - Vor der Updateinstallation werden ausstehende Einstellungen mit kurzer Frist geschrieben. Erzwungenes Beenden oder eine abgelaufene Schreibfrist kann die letzte Änderung weiterhin verlieren. Der Start verwendet nach drei Sekunden ohne Einstellungsantwort lokale Rückfallwerte; bei inkompatiblem Schema bleiben diese ohne Backend-Schreibzugriffe nutzbar. Maßgebliche Backendstände entfernen fehlende Bootcache-Schlüssel. Neuere Einstellungsschemata bleiben unverändert und schreibgeschützt; überzählige unbekannte Felder im aktuellen Schema blockieren nicht länger alle Schreibzugriffe.
+
+- Neues App-Icon.
 
 ## [0.18.4] - 2026-11-18
 
