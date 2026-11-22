@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareVersions, selectReleaseVersions, seenVersionOnClose, versionCore } from './releaseNotesSelection';
+import { compareVersions, selectReleaseVersions, seenVersionOnClose, versionCore, releaseNoteKey } from './releaseNotesSelection';
 import { releaseNotes } from './releaseNotes';
 import pkg from '../../package.json';
 import tauri from '../../src-tauri/tauri.conf.json';
@@ -30,7 +30,7 @@ describe('release selection', () => {
 it('ships non-empty release notes in all four languages for the matching package and Tauri version', () => {
   expect(pkg.version).toBe(tauri.version);
   for (const version of [pkg.version, '0.18.2']) {
-    const entry = releaseNotes[version];
+    const entry = releaseNotes[releaseNoteKey(version)];
     expect(entry).toBeDefined();
     for (const lang of ['de', 'en', 'es', 'fr'] as const) {
       const groups = entry.notes[lang];
@@ -40,4 +40,15 @@ it('ships non-empty release notes in all four languages for the matching package
       expect(texts.every(text => text.trim().length > 0)).toBe(true);
     }
   }
+});
+
+describe('releaseNoteKey', () => {
+  it('maps a pre-release to its base entry and leaves stable and unknown values alone', () => {
+    expect(releaseNoteKey('0.18.6-1')).toBe('0.18.6');
+    expect(releaseNoteKey('0.18.6')).toBe('0.18.6');
+    expect(releaseNoteKey('garbage')).toBe('garbage');
+  });
+  it('every RC version of the current release finds an entry', () => {
+    expect(releaseNotes[releaseNoteKey(`${releaseNoteKey(pkg.version)}-3`)]).toBeDefined();
+  });
 });

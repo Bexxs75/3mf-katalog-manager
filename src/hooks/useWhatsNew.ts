@@ -1,7 +1,7 @@
 import { uiSettings } from '../lib/uiSettings';
 import { useEffect, useRef, useState } from 'react';
 import { currentVersion, releaseNotes } from '../lib/releaseNotes';
-import { LAST_SEEN_VERSION_KEY, seenVersionOnClose, selectReleaseVersions } from '../lib/releaseNotesSelection';
+import { LAST_SEEN_VERSION_KEY, releaseNoteKey, seenVersionOnClose, selectReleaseVersions } from '../lib/releaseNotesSelection';
 
 function readMarker(): string | null {
   try { return uiSettings.getItem(LAST_SEEN_VERSION_KEY); }
@@ -32,7 +32,8 @@ export function useWhatsNew({ wait, firstRun, web, reopenBlocked = false }: { wa
     versions, settled,
     reopen: () => {
       if (!decided.current || wait || reopenBlocked) return;
-      setVersions(releaseNotes[currentVersion] ? [currentVersion] : []);
+      const key = releaseNoteKey(currentVersion);
+      setVersions(releaseNotes[key] ? [key] : []);
     },
     close: () => { remember(); setVersions([]); setSettled(true); },
   };

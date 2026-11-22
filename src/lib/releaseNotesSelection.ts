@@ -5,6 +5,11 @@ export function versionCore(value: string | null): bigint[] | null {
   const match = value?.match(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][\da-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][\da-zA-Z-]*))*)?(?:\+[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?$/);
   return match && match[0] === value ? match.slice(1, 4).map(BigInt) : null;
 }
+/** Notes are written for the final x.y.z, so a pre-release (0.18.6-1) looks up its base entry; the full version stays the release identity. */
+export function releaseNoteKey(value: string): string {
+  const core = versionCore(value);
+  return core ? core.join('.') : value;
+}
 export function compareVersions(a: string, b: string): number {
   const left = versionCore(a), right = versionCore(b);
   if (!left || !right) return 0;

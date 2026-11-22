@@ -8,9 +8,11 @@ import { WhatsNewDialog } from './WhatsNewDialog';
 import { useWhatsNew } from '../hooks/useWhatsNew';
 import { currentVersion, releaseNotes, type ReleaseGroups } from '../lib/releaseNotes';
 
+// A pre-release (0.18.6-1) uses the notes of its base version.
+const noteKey = releaseNoteKey(currentVersion);
 // A fix-only release has no "new" entries, so use the first entry of any group.
 const firstNote = (g: ReleaseGroups) => g.new[0] ?? g.improved[0] ?? g.fixed[0];
-import { LAST_SEEN_VERSION_KEY as key } from '../lib/releaseNotesSelection';
+import { LAST_SEEN_VERSION_KEY as key, releaseNoteKey } from '../lib/releaseNotesSelection';
 import { openReleaseUrl } from '../lib/api/update';
 vi.mock('../lib/api/update', () => ({ openReleaseUrl: vi.fn().mockResolvedValue(undefined) }));
 
@@ -25,7 +27,7 @@ it.each([['de', de], ['en', en]] as const)('renders %s, focuses Got it, marks on
   uiSettings.setItem('3mf-katalog-language', language);
   mount();
   expect(screen.getByRole('dialog')).toHaveAccessibleName(t.whatsNewTitle.replace('{version}', currentVersion));
-  expect(screen.getByText(firstNote(releaseNotes[currentVersion].notes[language]!))).toBeVisible();
+  expect(screen.getByText(firstNote(releaseNotes[noteKey].notes[language]!))).toBeVisible();
   expect(uiSettings.getItem(key)).toBeNull();
   const button = screen.getByRole('button', { name: t.whatsNewClose });
   await waitFor(() => expect(button).toHaveFocus());
@@ -67,20 +69,20 @@ it('uses the desktop release command and a normal web link', async () => {
   const view = mount();
   const link = screen.getByRole('link');
   await act(async () => { fireEvent.click(link); });
-  expect(openReleaseUrl).toHaveBeenCalledWith(`https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v${currentVersion}`);
+  expect(openReleaseUrl).toHaveBeenCalledWith(`https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v${noteKey}`);
   view.unmount(); vi.stubEnv('VITE_TARGET', 'web');
   mount();
-  expect(screen.getByRole('link')).toHaveAttribute('href', `https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v${currentVersion}`);
+  expect(screen.getByRole('link')).toHaveAttribute('href', `https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v${noteKey}`);
 });
 it('falls back to English and hides empty groups', () => {
   uiSettings.setItem('3mf-katalog-language', 'fr');
-  const original = releaseNotes[currentVersion].notes.fr;
-  delete releaseNotes[currentVersion].notes.fr;
+  const original = releaseNotes[noteKey].notes.fr;
+  delete releaseNotes[noteKey].notes.fr;
   try {
     mount();
-    expect(screen.getByText(firstNote(releaseNotes[currentVersion].notes.en))).toBeVisible();
-    expect(screen.getAllByRole('list')).toHaveLength(Object.values(releaseNotes[currentVersion].notes.en).filter(notes => notes.length > 0).length);
-  } finally { releaseNotes[currentVersion].notes.fr = original; }
+    expect(screen.getByText(firstNote(releaseNotes[noteKey].notes.en))).toBeVisible();
+    expect(screen.getAllByRole('list')).toHaveLength(Object.values(releaseNotes[noteKey].notes.en).filter(notes => notes.length > 0).length);
+  } finally { releaseNotes[noteKey].notes.fr = original; }
 });
 it('the X closes and remembers the version', () => {
   uiSettings.setItem('3mf-katalog-language', 'de'); mount();
@@ -116,15 +118,15 @@ it('ignores reopen until the startup decision and other startup dialogs are sett
 });
 it('renders repeated note text without duplicate React keys', () => {
   uiSettings.setItem('3mf-katalog-language', 'en');
-  const original = releaseNotes[currentVersion].notes.en.new;
+  const original = releaseNotes[noteKey].notes.en.new;
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-  releaseNotes[currentVersion].notes.en.new = ['Repeated note', 'Repeated note'];
+  releaseNotes[noteKey].notes.en.new = ['Repeated note', 'Repeated note'];
   try {
     mount();
     expect(screen.getAllByText('Repeated note')).toHaveLength(2);
     expect(errors).not.toHaveBeenCalled();
   } finally {
-    releaseNotes[currentVersion].notes.en.new = original;
+    releaseNotes[noteKey].notes.en.new = original;
     errors.mockRestore();
   }
 });
