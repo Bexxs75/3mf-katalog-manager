@@ -29,9 +29,11 @@ on:
       - ".github/workflows/e2e.yml"
 
 concurrency:
-  # The event name keeps a push-triggered run and the run of a release build on the same ref apart.
-  group: e2e-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only this workflow's own push/PR runs supersede each other. In a called run
+  # (release, preview) github.workflow is the caller's name, so the run id makes
+  # the group unique and nothing cancels or replaces a release E2E.
+  group: e2e-${{ github.workflow == 'E2E (real input, tauri-driver)' && format('{0}-{1}', github.event_name, github.ref) || github.run_id }}
+  cancel-in-progress: ${{ github.workflow == 'E2E (real input, tauri-driver)' }}
 
 jobs:
   e2e-linux:
