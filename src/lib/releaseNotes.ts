@@ -5,6 +5,39 @@ export const currentVersion = version;
 export interface ReleaseGroups { new: string[]; improved: string[]; fixed: string[] }
 export interface ReleaseNote { date: string; notes: Partial<Record<Language, ReleaseGroups>> & { en: ReleaseGroups } }
 export const releaseNotes: Record<string, ReleaseNote> = {
+  "0.18.6": {
+    "date": "2026-11-22",
+    "notes": {
+      "en": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "The What’s new window appears again after an update."
+        ]
+      },
+      "de": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "Das Fenster „Neuigkeiten“ erscheint nach einem Update wieder."
+        ]
+      },
+      "es": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "La ventana «Novedades» vuelve a aparecer después de una actualización."
+        ]
+      },
+      "fr": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "La fenêtre « Nouveautés » s’affiche de nouveau après une mise à jour."
+        ]
+      }
+    }
+  },
   "0.18.5": {
     "date": "2026-11-22",
     "notes": {

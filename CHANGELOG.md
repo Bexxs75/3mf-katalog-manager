@@ -9,6 +9,12 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.18.6] - 2026-11-22
+
+### Fixed
+
+- The What’s new window appears again after an update: version 0.18.5 shipped without its bundled release notes, so the window stayed empty and the version marker was not advanced.
+
 ## [0.18.5] - 2026-11-22
 
 ### Changed

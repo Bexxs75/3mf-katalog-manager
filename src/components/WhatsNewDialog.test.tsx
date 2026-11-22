@@ -6,7 +6,10 @@ import { de } from '../i18n/de';
 import { en } from '../i18n/en';
 import { WhatsNewDialog } from './WhatsNewDialog';
 import { useWhatsNew } from '../hooks/useWhatsNew';
-import { currentVersion, releaseNotes } from '../lib/releaseNotes';
+import { currentVersion, releaseNotes, type ReleaseGroups } from '../lib/releaseNotes';
+
+// A fix-only release has no "new" entries, so use the first entry of any group.
+const firstNote = (g: ReleaseGroups) => g.new[0] ?? g.improved[0] ?? g.fixed[0];
 import { LAST_SEEN_VERSION_KEY as key } from '../lib/releaseNotesSelection';
 import { openReleaseUrl } from '../lib/api/update';
 vi.mock('../lib/api/update', () => ({ openReleaseUrl: vi.fn().mockResolvedValue(undefined) }));
@@ -22,7 +25,7 @@ it.each([['de', de], ['en', en]] as const)('renders %s, focuses Got it, marks on
   uiSettings.setItem('3mf-katalog-language', language);
   mount();
   expect(screen.getByRole('dialog')).toHaveAccessibleName(t.whatsNewTitle.replace('{version}', currentVersion));
-  expect(screen.getByText(releaseNotes[currentVersion].notes[language]!.new[0])).toBeVisible();
+  expect(screen.getByText(firstNote(releaseNotes[currentVersion].notes[language]!))).toBeVisible();
   expect(uiSettings.getItem(key)).toBeNull();
   const button = screen.getByRole('button', { name: t.whatsNewClose });
   await waitFor(() => expect(button).toHaveFocus());
@@ -75,7 +78,7 @@ it('falls back to English and hides empty groups', () => {
   delete releaseNotes[currentVersion].notes.fr;
   try {
     mount();
-    expect(screen.getByText(releaseNotes[currentVersion].notes.en.new[0])).toBeVisible();
+    expect(screen.getByText(firstNote(releaseNotes[currentVersion].notes.en))).toBeVisible();
     expect(screen.getAllByRole('list')).toHaveLength(Object.values(releaseNotes[currentVersion].notes.en).filter(notes => notes.length > 0).length);
   } finally { releaseNotes[currentVersion].notes.fr = original; }
 });
