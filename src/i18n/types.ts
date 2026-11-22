@@ -49,6 +49,15 @@ export interface Translations {
   settingsHelpAbout: string;
 
   tagMenuFilter: string;
+  tagMenuRename: string;
+  tagMenuMerge: string;
+  tagRenameName: string;
+  tagMergeTarget: string;
+  tagMergeConfirm: string;
+  tagMergeSubmit: string;
+  tagRenameSubmit: string;
+  errTagNameUnchanged: string;
+  errTagNameExists: string;
   tagMenuDelete: string;
   tagDeleteQuestion: string;
   tagDeleteHint: string;

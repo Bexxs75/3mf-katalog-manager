@@ -60,6 +60,8 @@ import { showsKind } from '../lib/printTechnology';
 
 interface CatalogWorkspaceProps {
   surfaceActions?: EmptyCatalogActions;
+  onRenameTag?: (source: string, name: string) => Promise<number>;
+  onMergeTags?: (source: string, target: string) => Promise<number>;
   onDeleteTag?: (tag: string) => Promise<void>;
   initialLoading?: boolean;
   initialLoadFailed?: boolean;
@@ -213,7 +215,7 @@ interface CatalogWorkspaceProps {
 const NO_BUNDLES: Bundle[] = [];
 
 export function CatalogWorkspace({
-  surfaceActions, onDeleteTag,
+  surfaceActions, onDeleteTag, onRenameTag, onMergeTags,
   initialLoading = false, initialLoadFailed = false,
   detailPanel = 'auto', onCloseDetails, settingsPanel, printerRefreshKey = '',
   onOpenTips,
@@ -591,6 +593,8 @@ export function CatalogWorkspace({
         }}
         onCreateFolder={onCreateFolder}
         createFolderRequest={createFolderRequest}
+        onRenameTag={onRenameTag}
+        onMergeTags={onMergeTags}
         onDeleteTag={onDeleteTag}
         dragOverCollectionId={dragOverCollectionId}
         onCollectionMouseEnter={handleCollectionMouseEnter}

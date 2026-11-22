@@ -43,7 +43,7 @@ export const WEB_WRITE_COMMANDS = [
   'restore_companion',
   'remove_files_from_catalog',
   'start_upload_import', 'discard_upload', 'cancel_import',
-  'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'set_license',
+  'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'rename_tag', 'merge_tags', 'set_license',
   'set_source_url', 'add_print_log_entry', 'delete_print_log_entry', 'mark_file_viewed',
   'add_to_queue', 'remove_from_queue', 'reorder_queue', 'create_collection',
   'rename_collection', 'delete_collection', 'add_files_to_collection',

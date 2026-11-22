@@ -117,3 +117,11 @@ describe('files api', () => {
     expect(invoke).toHaveBeenLastCalledWith('rescan_file_metadata', { fileId: 'm1', lean: true });
   });
 });
+
+it('renames and merges tags through the shared transport', async () => {
+  vi.mocked(invoke).mockResolvedValue(3);
+  expect(await filesApi.renameTag('old', 'new')).toBe(3);
+  expect(invoke).toHaveBeenLastCalledWith('rename_tag', { source: 'old', name: 'new' });
+  expect(await filesApi.mergeTags('old', 'target')).toBe(3);
+  expect(invoke).toHaveBeenLastCalledWith('merge_tags', { source: 'old', target: 'target' });
+});

@@ -723,3 +723,43 @@ fn desktop_and_web_bundles_give_the_same_answer() {
         shape(&crate::read::list_bundles(&desktop).unwrap()[0])
     );
 }
+
+#[test]
+fn rename_tags_validate_and_preserve_assignments() {
+    let mut c = db::connect_in_memory().unwrap();
+    let id = db::test_insert_minimal_file(&c, "/tag.3mf", None).unwrap();
+    add_tag(&mut c, id, "custom").unwrap();
+    add_tag(&mut c, id, "existing").unwrap();
+    for (name, code) in [(" ", ErrorCode::TagNameEmpty), ("custom", ErrorCode::TagNameUnchanged), ("existing", ErrorCode::TagNameExists)] {
+        assert!(matches!(rename_tag(&mut c, "custom", name), Err(WriteError::Coded { code: actual, .. }) if actual == code));
+    }
+    assert!(rename_tag(&mut c, "missing", "new").is_err());
+    assert!(rename_tag(&mut c, "custom", &"😀".repeat(51)).is_err());
+    assert_eq!(rename_tag(&mut c, "custom", "Custom").unwrap().value, 1);
+    assert_eq!(rename_tag(&mut c, "Custom", " MULTIPART ").unwrap().value, 1);
+    assert!(rename_tag(&mut c, "mehrteilig", "Multipart").is_err());
+    let tags = db::get_file(&c, id).unwrap().unwrap().tags;
+    assert!(tags.contains(&"mehrteilig".to_string()));
+    assert!(!tags.contains(&"custom".to_string()));
+}
+
+#[test]
+fn merge_tags_is_atomic_and_deduplicates_including_trash() {
+    let mut c = db::connect_in_memory().unwrap();
+    let a = db::test_insert_minimal_file(&c, "/a.3mf", None).unwrap();
+    let b = db::test_insert_minimal_file(&c, "/b.3mf", None).unwrap();
+    for id in [a, b] { add_tag(&mut c, id, "source").unwrap(); }
+    add_tag(&mut c, a, "target").unwrap();
+    c.execute("UPDATE files SET deleted_at='2026-11-22' WHERE id=?1", [b]).unwrap();
+    for (source, target) in [("source", "source"), ("missing", "target"), ("source", "missing")] {
+        assert!(merge_tags(&mut c, source, target).is_err());
+    }
+    c.execute_batch("CREATE TRIGGER reject_tag_delete BEFORE DELETE ON tags BEGIN SELECT RAISE(ABORT, 'test failure'); END;").unwrap();
+    assert!(merge_tags(&mut c, "source", "target").is_err());
+    assert_eq!(tag_model_count(&c, tag_id(&c, "target").unwrap()).unwrap(), 1);
+    assert_eq!(tag_model_count(&c, tag_id(&c, "source").unwrap()).unwrap(), 2);
+    c.execute_batch("DROP TRIGGER reject_tag_delete;").unwrap();
+    assert_eq!(merge_tags(&mut c, "source", "target").unwrap().value, 2);
+    assert!(tag_id(&c, "source").is_err());
+    assert_eq!(tag_model_count(&c, tag_id(&c, "target").unwrap()).unwrap(), 2);
+}

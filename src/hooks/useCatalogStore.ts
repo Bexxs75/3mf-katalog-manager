@@ -507,6 +507,20 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     if (failure?.status === 'rejected') throw failure.reason;
   }, [refreshFiles, refreshTags, refreshTrash]);
 
+  const renameTag = useCallback(async (source: string, name: string) => {
+    if (!canEditMetadata()) throw new Error('readOnly');
+    const count = await filesApi.renameTag(source, name);
+    await Promise.all([refreshFiles(), refreshTags(), refreshTrash()]);
+    return count;
+  }, [refreshFiles, refreshTags, refreshTrash]);
+
+  const mergeTags = useCallback(async (source: string, target: string) => {
+    if (!canEditMetadata()) throw new Error('readOnly');
+    const count = await filesApi.mergeTags(source, target);
+    await Promise.all([refreshFiles(), refreshTags(), refreshTrash()]);
+    return count;
+  }, [refreshFiles, refreshTags, refreshTrash]);
+
   const deleteModel = useCallback(
     (id: string) => !canManageFiles() ? Promise.resolve() : isReadOnly() ? fileOpsBatch('delete_files', [id]).then(() => refetchAfterPartialDelete([id])) : filesApi.deleteFile(id).then(() => applyLocalDeletion([id])),
     [applyLocalDeletion, refetchAfterPartialDelete],
@@ -782,7 +796,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     refreshFolders, refreshFiles, refreshTags, refreshTrash,
     selectModel, mergeImported, ensureFullModel,
     restoreModel, deleteModelPermanently, emptyTrashAction,
-    addTag, removeTag, deleteTag, renameFile, deleteModel,
+    addTag, removeTag, deleteTag, renameTag, mergeTags, renameFile, deleteModel,
     togglePrintStatus, toggleFavorite,
     addToQueue, removeFromQueue, reorderQueue,
     uploadCustomImage, captureRenderSnapshot, setModelSourceUrl, setModelLicenses,

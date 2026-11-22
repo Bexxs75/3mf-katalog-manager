@@ -776,7 +776,7 @@ export default function App() {
               bundles={bundles}
             />
           ) : mainView === 'catalog' ? (
-            <CatalogWorkspace onDeleteTag={store.deleteTag} surfaceActions={{
+            <CatalogWorkspace onRenameTag={store.renameTag} onMergeTags={store.mergeTags} onDeleteTag={store.deleteTag} surfaceActions={{
               onImport: import.meta.env.VITE_TARGET === 'web' ? () => setWebImportOpen(true) : fileImport.importFiles,
               onViewChange: filters.setView, onSortChange: filters.setSort, onSortDirectionChange: filters.setSortDirection,
             }} detailPanel={detailPanel} settingsPanel={settingsOpen ? renderSettingsPanel : undefined} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}

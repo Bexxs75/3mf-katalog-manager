@@ -20,7 +20,7 @@ function setup() {
     activeCollection: null, activeTag: null, toolView: null, view: 'grid', sort: 'name', tags: [{label: 'custom', count: 2, colorHue: 0}], collections: [],
     sidebarWidth: {width: 242}, expansion: {expanded: new Set(), isExpanded: () => false},
     collapsedFolders: {isCollapsed: () => false}, displayPreference: 'thumbnail',
-    onCreateFolder, onDeleteTag: vi.fn(), selectAllVisible: vi.fn(), surfaceActions: {onImport, onViewChange: vi.fn(), onSortChange: vi.fn()},
+    onCreateFolder, onRenameTag: vi.fn(), onMergeTags: vi.fn(), onDeleteTag: vi.fn(), selectAllVisible: vi.fn(), surfaceActions: {onImport, onViewChange: vi.fn(), onSortChange: vi.fn()},
   } as unknown as ComponentProps<typeof CatalogWorkspace>;
   render(<LanguageProvider><UiDensityProvider><CatalogWorkspace {...props} /></UiDensityProvider></LanguageProvider>);
   return {onImport, onCreateFolder};
@@ -45,6 +45,8 @@ it('offers upload, folder creation and tag deletion only with the respective cap
   expect(onCreateFolder).toHaveBeenCalledWith('a', 'New');
   fireEvent.click(screen.getByRole('button', {name: de.tagsHeading}));
   fireEvent.contextMenu(screen.getByTitle('#custom')); expect(screen.getByRole('menuitem', {name: de.tagMenuDelete})).toBeVisible();
+  expect(screen.getByRole('menuitem', {name: de.tagMenuRename})).toBeVisible();
+  expect(screen.getByRole('menuitem', {name: de.tagMenuMerge})).toBeVisible();
   await act(async () => authenticationFailed(401));
   expect(screen.queryByRole('menuitem', {name: de.tagMenuDelete})).toBeNull();
 });

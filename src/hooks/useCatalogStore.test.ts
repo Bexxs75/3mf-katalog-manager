@@ -1039,3 +1039,16 @@ it('settles all tag removals and refreshes partial changes before reporting a fa
   expect(filesApi.removeTag).toHaveBeenCalledWith('second', 'target');
   expect(callCount('list_tag_counts')).toBe(before + 1);
 });
+
+it.each(['renameTag', 'mergeTags'] as const)('%s returns the affected count, refreshes all views and propagates errors', async action => {
+  mockInitialLoad();
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  vi.mocked(filesApi[action]).mockResolvedValueOnce(2);
+  const before = callCount('list_trash');
+  await act(async () => { expect(await result.current[action]('old', 'new')).toBe(2); });
+  expect(filesApi[action]).toHaveBeenCalledWith('old', 'new');
+  expect(callCount('list_trash')).toBe(before + 1);
+  vi.mocked(filesApi[action]).mockRejectedValueOnce(new Error('failed'));
+  await act(async () => { await expect(result.current[action]('old', 'new')).rejects.toThrow('failed'); });
+});

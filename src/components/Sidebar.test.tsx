@@ -1,3 +1,4 @@
+import * as tagApi from '../lib/api/files';
 import { ImportLockContext } from '../hooks/ImportLockContext';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -460,4 +461,33 @@ it.each([{ key: 'ContextMenu' }, { key: 'F10', shiftKey: true }])('uses native c
   fireEvent.keyDown(document.activeElement!, {key: 'Escape'});
   expect(collection).toHaveFocus();
   fireEvent.click(create); expect(screen.getByPlaceholderText('Name der Sammlung')).toHaveFocus();
+});
+
+it.each(['rename', 'merge'] as const)('offers %s and moves the active tag filter after success', async mode => {
+  vi.spyOn(tagApi, 'listAllFileTags').mockResolvedValueOnce({a: ['custom'], b: ['custom', 'target']});
+  const onRenameTag = vi.fn().mockResolvedValue(2), onMergeTags = vi.fn().mockResolvedValue(2), onTagSelect = vi.fn();
+  render(<LanguageProvider><Sidebar {...baseProps} onRenameTag={onRenameTag} onMergeTags={onMergeTags} onTagSelect={onTagSelect} activeTag="custom"
+    tags={[{label: 'custom', count: 2, colorHue: 0}, {label: 'target', count: 2, colorHue: 0}]}
+    expansion={{expanded: new Set<string>(), toggle: vi.fn(), isExpanded: () => false, setAll: vi.fn(), expand: vi.fn()}}
+    width={242} setWidth={vi.fn()} resetWidth={vi.fn()} allFoldersCollapsed onToggleAllFolders={vi.fn()} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Tags'}));
+  fireEvent.contextMenu(screen.getByTitle('#custom'));
+  expect(screen.getByRole('menuitem', {name: 'Umbenennen …'})).toBeVisible();
+  expect(screen.getByRole('menuitem', {name: 'Mit anderem Tag zusammenführen …'})).toBeVisible();
+  if (mode === 'rename') {
+    fireEvent.click(screen.getByRole('menuitem', {name: 'Umbenennen …'}));
+    fireEvent.change(screen.getByRole('textbox', {name: 'Neuer Tag-Name'}), {target: {value: 'new'}});
+    await act(async () => fireEvent.click(screen.getByRole('button', {name: 'Umbenennen'})));
+    expect(onTagSelect).toHaveBeenCalledWith('new');
+    expect(screen.getByRole('button', {name: 'Tags'})).toHaveFocus();
+  } else {
+    fireEvent.click(screen.getByRole('menuitem', {name: 'Mit anderem Tag zusammenführen …'}));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', {name: 'target'}));
+    await act(async () => fireEvent.click(screen.getByRole('button', {name: 'Zusammenführen'})));
+    expect(onTagSelect).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(screen.getByRole('button', {name: 'Zusammenführen'})));
+    expect(onTagSelect).toHaveBeenCalledWith('target');
+  }
 });

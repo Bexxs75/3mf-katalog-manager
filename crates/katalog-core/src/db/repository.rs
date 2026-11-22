@@ -584,6 +584,19 @@ pub fn remove_tag_from_file(conn: &Connection, file_id: i64, tag_name: &str) -> 
     Ok(())
 }
 
+/// Called inside the write transaction, preserving the tag's identity and colour.
+pub fn rename_tag(conn: &Connection, source: i64, name: &str) -> Result<(), DbError> {
+    conn.execute("UPDATE tags SET name=?1 WHERE id=?2", params![name, source])?;
+    Ok(())
+}
+
+/// Called inside the write transaction; overlapping assignments are retained once.
+pub fn merge_tags(conn: &Connection, source: i64, target: i64) -> Result<(), DbError> {
+    conn.execute("INSERT OR IGNORE INTO file_tags (file_id, tag_id) SELECT file_id, ?1 FROM file_tags WHERE tag_id=?2", params![target, source])?;
+    conn.execute("DELETE FROM tags WHERE id=?1", [source])?;
+    Ok(())
+}
+
 /// Deletes a tag once no file is assigned to it.
 fn delete_tag_if_unused(conn: &Connection, tag_id: i64) -> Result<(), DbError> {
     let count: i64 = conn.query_row(

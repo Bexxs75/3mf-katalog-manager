@@ -137,6 +137,44 @@ pub fn remove_tag(c: &mut Connection, id: i64, tag: &str) -> WriteResult<Outcome
         Ok(outcome((), changes))
     })
 }
+// Resolve stored names exactly, like remove_tag (including old ambiguous aliases).
+fn tag_id(c: &Connection, name: &str) -> WriteResult<i64> {
+    c.query_row("SELECT id FROM tags WHERE name=?1", [name], |r| r.get(0))
+        .optional()?.ok_or_else(missing)
+}
+fn tag_model_count(c: &Connection, id: i64) -> WriteResult<u64> {
+    Ok(c.query_row("SELECT COUNT(*) FROM file_tags WHERE tag_id=?1", [id], |r| r.get::<_, i64>(0))? as u64)
+}
+
+pub fn rename_tag(c: &mut Connection, source: &str, name: &str) -> WriteResult<Outcome<u64>> {
+    if name.trim().is_empty() { return Err(invalid(ErrorCode::TagNameEmpty)); }
+    db::error::validate_text_length(name, 100, ErrorCode::TagNameTooLong)?;
+    let name = crate::tagging::canonical_tag(name);
+    transaction(c, |c| {
+        let source_id = tag_id(c, source)?;
+        if source == name { return Err(invalid(ErrorCode::TagNameUnchanged)); }
+        if c.query_row("SELECT id FROM tags WHERE name=?1", [&name], |r| r.get::<_, i64>(0)).optional()?.is_some() {
+            return Err(invalid(ErrorCode::TagNameExists));
+        }
+        let count = tag_model_count(c, source_id)?;
+        db::rename_tag(c, source_id, &name)?;
+        Ok(outcome(count, count))
+    })
+}
+
+pub fn merge_tags(c: &mut Connection, source: &str, target: &str) -> WriteResult<Outcome<u64>> {
+    nonempty(source)?;
+    nonempty(target)?;
+    transaction(c, |c| {
+        let source_id = tag_id(c, source)?;
+        let target_id = tag_id(c, target)?;
+        if source_id == target_id { return Err(invalid(ErrorCode::TagNameUnchanged)); }
+        let count = tag_model_count(c, source_id)?;
+        db::merge_tags(c, source_id, target_id)?;
+        Ok(outcome(count, count))
+    })
+}
+
 /// The switch for automatic tags. Only the switch itself is written: existing tags,
 /// manual tags and the block list stay untouched, and no file is read or moved.
 pub fn set_auto_tagging(c: &mut Connection, enabled: bool) -> WriteResult<Outcome<()>> {

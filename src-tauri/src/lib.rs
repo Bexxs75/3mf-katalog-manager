@@ -414,6 +414,8 @@ pub fn run() {
             commands::read_dropped_image,
             commands::add_tag,
             commands::remove_tag,
+            commands::rename_tag,
+            commands::merge_tags,
             commands::list_suggested_auto_tags,
             commands::block_auto_tag,
             commands::unblock_auto_tag,

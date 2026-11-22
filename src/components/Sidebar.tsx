@@ -1,3 +1,4 @@
+import { TagEditDialog } from './TagEditDialog';
 import { CatalogSurfaceMenu, isContextMenuKey, navigateMenu } from './CatalogSurfaceMenu';
 import { isReadOnly } from '../lib/readOnly';
 import { canManageFiles, useCanManageFiles, useCanEditMetadata } from '../lib/webSession';
@@ -23,6 +24,8 @@ import type { AppError } from '../lib/errors';
 interface Props {
   catalogKey?: string | null;
   createFolderRequest?: number;
+  onRenameTag?: (source: string, name: string) => Promise<number>;
+  onMergeTags?: (source: string, target: string) => Promise<number>;
   onDeleteTag?: (tag: string) => Promise<void>;
   expansion: ReturnType<typeof useFolderExpansion>;
   allFoldersCollapsed: boolean;
@@ -78,7 +81,7 @@ interface Props {
 }
 
 export function Sidebar({
-  catalogKey, createFolderRequest = 0, onDeleteTag,
+  catalogKey, createFolderRequest = 0, onDeleteTag, onRenameTag, onMergeTags,
   expansion,
   allFoldersCollapsed,
   onToggleAllFolders,
@@ -142,6 +145,7 @@ export function Sidebar({
   const [collectionError, setCollectionError] = useState<string | null>(null);
   const [collectionBusy, setCollectionBusy] = useState(false);
   const [tagMenu, setTagMenu] = useState<{ label: string; x: number; y: number } | null>(null);
+  const [editingTag, setEditingTag] = useState<{ source: string; mode: 'rename' | 'merge' } | null>(null);
   const [deletingTag, setDeletingTag] = useState<string | null>(null);
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
@@ -531,9 +535,21 @@ export function Sidebar({
       {collectionError && !deletingCollection && <p role="alert" className="px-3 text-[var(--crit)]">{collectionError}</p>}
       {tagMenu && <CatalogSurfaceMenu x={tagMenu.x} y={tagMenu.y} label={tagLabel(tagMenu.label, language)} onClose={() => setTagMenu(null)} entries={[
         { label: t('tagMenuFilter'), action: () => onTagSelect(tagMenu.label) },
+        ...(canEdit && onRenameTag ? [{ label: t('tagMenuRename'), disabled: jobActive,
+          action: () => setEditingTag({ source: tagMenu.label, mode: 'rename' }) }] : []),
+        ...(canEdit && onMergeTags ? [{ label: t('tagMenuMerge'), disabled: jobActive,
+          action: () => setEditingTag({ source: tagMenu.label, mode: 'merge' }) }] : []),
         ...(canEdit && onDeleteTag ? [{ label: t('tagMenuDelete'), danger: true, disabled: jobActive,
           action: () => { setTagError(null); setDeletingTag(tagMenu.label); } }] : []),
       ]} />}
+      {editingTag && <TagEditDialog source={editingTag.source} mode={editingTag.mode} tags={tags}
+        returnFocus={tagTrigger} onClose={() => setEditingTag(null)}
+        onSubmit={editingTag.mode === 'rename' ? onRenameTag! : onMergeTags!}
+        onDone={target => {
+          if (activeTag === editingTag.source) onTagSelect(target);
+          tagTrigger.current = tagsHeading.current;
+          setEditingTag(null);
+        }} />}
       {deletingTag !== null && <CatalogActionDialog title={t('tagDeleteQuestion').replace('{tag}', tagLabel(deletingTag, language))}
         returnFocus={tagTrigger} busy={tagBusy} onClose={closeTagDialog}>
         <p>{t('tagDeleteHint')}</p>

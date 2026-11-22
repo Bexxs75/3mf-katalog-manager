@@ -175,6 +175,8 @@ error_codes! {
     DlTooManyDownloads => "dlTooManyDownloads",
     SlicerLinkExpired => "slicerLinkExpired",
     // Tags, printers and spools (database and write path).
+    TagNameUnchanged => "tagNameUnchanged",
+    TagNameExists => "tagNameExists",
     TagNameEmpty => "tagNameEmpty",
     TagNameInvalid => "tagNameInvalid",
     /// params: the highest number of characters.
