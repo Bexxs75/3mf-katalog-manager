@@ -7,11 +7,19 @@ export async function button(text: string) {
   await click(await waitForText('button', text));
 }
 
-/** Rarely used bulk actions live in the selection bar's "More" menu. */
-export async function moreAction(text: string) {
-  await click(await $('//*[@role="toolbar"]//button[@aria-haspopup="menu"]'));
+/** Bulk actions live in the selection bar's grouped menus; the group is named by its button label. */
+export async function moreAction(text: string, group: string) {
+  await click(await $(`//*[@role="toolbar"]//button[@aria-haspopup="menu"][normalize-space()="${group}"]`));
   await click(await $(`//*[@role="menu"]//button[@role="menuitem"][normalize-space()="${text}"]`));
 }
+
+/**
+ * An entry of the model context menu. Entries carry a shortcut hint in their
+ * visible text, so they are matched by their accessible name; the selection
+ * bar has look-alike buttons of its own.
+ */
+export const contextEntry = (label: string) =>
+  $(`//button[(@aria-label="${label}" or normalize-space()="${label}") and not(ancestor::*[@role="toolbar"])]`);
 
 export async function closeDetails() {
   const close = await $('button[aria-label="Details schließen"]');
@@ -37,17 +45,19 @@ export async function selectCards(names: string[]) {
   await waitForText('span', `${names.length} ausgewählt`);
 }
 
-/** Native selects need keyboard input: selecting options through script bypasses real input. */
+/**
+ * The custom Select renders a combobox button plus a portalled listbox. Open it
+ * with a real click and pick the option with a real click, then require the
+ * trigger to show the chosen text so a swallowed click cannot pass unnoticed.
+ */
 export async function chooseOption(select: El, label: string) {
-  const el = (await select) as WebdriverIO.Element;
-  const options = await browser.execute((node: HTMLSelectElement) => Array.from(node.options).map(o => ({ text: o.text, value: o.value })), el as unknown as HTMLSelectElement);
-  const index = options.findIndex(o => o.text === label);
-  if (index < 0) throw new Error(`Missing option ${label}`);
-  await click(el);
-  await browser.keys(['Home']);
-  for (let i = 0; i < index; i++) await browser.keys(['ArrowDown']);
-  await browser.keys(['Enter']);
-  await browser.waitUntil(async () => await el.getValue() === options[index].value);
+  const trigger = (await select) as WebdriverIO.Element;
+  await click(trigger);
+  const listId = await browser.waitUntil(async () => await trigger.getAttribute('aria-controls'), { timeoutMsg: 'select popup did not open' });
+  const option = await $(`//*[@id="${listId}"]//*[@role="option"][normalize-space()="${label}"]`);
+  if (!await option.isExisting()) throw new Error(`Missing option ${label}`);
+  await click(option);
+  await browser.waitUntil(async () => (await trigger.getText()).trim() === label, { timeoutMsg: `select trigger did not show ${label}` });
 }
 
 /** Explicit Shift preserves collection-name casing on WebKitWebDriver. */

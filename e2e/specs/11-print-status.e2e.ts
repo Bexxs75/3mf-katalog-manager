@@ -4,7 +4,7 @@ import { click, waitForText } from '../lib/ui.js';
 
 describe('11 Druckstatus', () => {
   const name = 'Würfel 20mm.stl';
-  const filter = () => $('select[aria-label="Druckstatus"]');
+  const filter = () => $('button[role="combobox"][aria-label="Druckstatus"]');
   before(async () => { await openCatalog(1280, 800, { pinnedDetails: true }); });
 
   it('marks one model printed, filters both states and clears chips individually and together', async () => {
@@ -17,7 +17,7 @@ describe('11 Druckstatus', () => {
     expect((await $$('[data-model-id]').length)).toBe(1);
     await click($('button[aria-label="Gedruckt entfernen"]'));
     await browser.waitUntil(async () => (await $$('[data-model-id]').length) === 8);
-    expect(await filter().getValue()).toBe('');
+    expect((await filter().getText()).trim()).toBe('Alle');
     await chooseOption(filter(), 'Noch nicht gedruckt');
     await waitForText('span', '7 von 8');
     expect((await $$('[data-model-id]').length)).toBe(7);
@@ -25,7 +25,7 @@ describe('11 Druckstatus', () => {
     expect(await $('button[aria-label="Noch nicht gedruckt entfernen"]').isDisplayed()).toBe(true);
     await button('Filter zurücksetzen');
     await browser.waitUntil(async () => (await $$('[data-model-id]').length) === 8);
-    expect(await filter().getValue()).toBe('');
+    expect((await filter().getText()).trim()).toBe('Alle');
     expect(await $('button[aria-label="Noch nicht gedruckt entfernen"]').isExisting()).toBe(false);
   });
 

@@ -107,7 +107,7 @@ export async function cardByName(name: string) {
 /** Sidebar row (folder, collection) by its visible name. */
 export async function sidebarRow(name: string) {
   const lit = xpathLiteral(name);
-  const row = await $(`//aside//div[@role="button"][.//span[normalize-space()=${lit}]] | //aside//*[self::div or self::button][normalize-space(text())=${lit}]`);
+  const row = await $(`//aside//*[self::button or (self::div and @role="button")][.//span[normalize-space()=${lit}]] | //aside//*[self::div or self::button][normalize-space(text())=${lit}]`);
   await row.waitForExist({ timeout: 10000, timeoutMsg: `no sidebar entry ${name}` });
   return row;
 }

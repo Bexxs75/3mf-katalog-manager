@@ -1,5 +1,5 @@
 import { cardByName, openCatalog } from '../lib/app.js';
-import { button, closeDetails, detailPanel, selectCards } from '../lib/catalog-ui.js';
+import { button, closeDetails, detailPanel, moreAction, selectCards } from '../lib/catalog-ui.js';
 import { click, typeKeys } from '../lib/ui.js';
 
 describe('13 Tags für Mehrfachauswahl', () => {
@@ -19,7 +19,7 @@ describe('13 Tags für Mehrfachauswahl', () => {
     await browser.waitUntil(async () => (await tags('Kegel.stl'))?.includes('#werkzeug') === true);
     await closeDetails();
     await selectCards(names);
-    await button('Tag hinzufügen');
+    await moreAction('Tag hinzufügen', 'Ablegen');
     await input().waitForDisplayed();
     await typeKeys('werk');
     const list = $('[data-navigation-menu] [role="listbox"][aria-label="Tag-Vorschläge"]');
@@ -32,7 +32,7 @@ describe('13 Tags für Mehrfachauswahl', () => {
     for (const name of names) await browser.waitUntil(async () => (await tags(name))?.includes('#werkzeug') === true);
 
     const before = await Promise.all(names.map(tags));
-    await button('Tag hinzufügen');
+    await moreAction('Tag hinzufügen', 'Ablegen');
     await input().waitForDisplayed();
     await typeKeys('verworfen');
     await browser.keys(['Escape']);

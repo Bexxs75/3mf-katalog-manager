@@ -4,14 +4,14 @@ import { click, waitForText } from '../lib/ui.js';
 
 describe('10 Lizenz und Nutzung', () => {
   const names = ['Würfel 20mm.stl', 'Zylinder.stl'];
-  const usage = () => $('select[aria-label="Nutzung"]');
+  const usage = () => $('button[role="combobox"][aria-label="Nutzung"]');
   before(async () => { await openCatalog(1280, 800, { pinnedDetails: true }); });
 
   it('saves a private license and filters private, commercial and all models', async () => {
     await selectModel(names[0]);
     const license = detailPanel().$('section[aria-label="Lizenz"]');
     await license.waitForDisplayed();
-    await chooseOption(license.$('select'), 'CC BY-NC – Namensnennung, nicht kommerziell');
+    await chooseOption(license.$('button[role="combobox"]'), 'CC BY-NC – Namensnennung, nicht kommerziell');
     await button('Lizenz speichern');
     await browser.waitUntil(async () => await (await cardByName(names[0])).getAttribute('aria-label') === `${names[0]}, Nur privat`);
     expect(await license.getText()).toContain('Nur privat');
@@ -32,11 +32,11 @@ describe('10 Lizenz und Nutzung', () => {
   it('sets CC BY for two selected cards and removes their badges with Nicht gesetzt', async () => {
     await selectCards(names);
     for (const label of ['CC BY – Namensnennung', 'Nicht gesetzt']) {
-      await moreAction('Lizenz setzen');
+      await moreAction('Lizenz setzen', 'Ablegen');
       const editor = $('[data-navigation-menu] section[aria-label="Lizenz"]');
       await editor.waitForDisplayed();
-      await chooseOption(editor.$('select'), label);
-      await click(editor.$('button'));
+      await chooseOption(editor.$('button[role="combobox"]'), label);
+      await click(editor.$('button:not([role="combobox"])'));
       await editor.waitForExist({ reverse: true });
       for (const name of names) {
         const card = await cardByName(name);
