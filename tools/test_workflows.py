@@ -19,5 +19,13 @@ class E2eConcurrency(unittest.TestCase):
         self.assertIn(name, cancel)
         self.assertIn("github.run_id", group)
 
+class DockerWebPublish(unittest.TestCase):
+    def test_publish_jobs_are_serialised_and_never_cancelled(self):
+        text = (ROOT / ".github/workflows/docker-web.yml").read_text(encoding="utf-8")
+        job = text[text.index("\n  publish:"):]
+        self.assertRegex(job, r"concurrency:\s*\n\s+group:\s*docker-web-publish\s*\n\s+cancel-in-progress:\s*false")
+        # The latest decision sits in the same job as the push, after the serialisation.
+        self.assertLess(job.index("HIGHEST="), job.index("docker push"))
+
 if __name__ == "__main__":
     unittest.main()

@@ -139,6 +139,13 @@ jobs:
   publish:
     needs: web-image
     if: needs.web-image.outputs.publish == 'true'
+    # One publish at a time for this image (automatic on release and manual runs share the group),
+    # queued instead of cancelled: the "latest" decision below reads the release list right before
+    # the push, so a slower older run can no longer move "latest" back after a newer one.
+    # (GitHub keeps one pending run per group; a newer pending run replaces an older pending one.)
+    concurrency:
+      group: docker-web-publish
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     permissions:
       contents: read
