@@ -24,7 +24,7 @@ export interface BundleMenuActions {
   onRemove?: () => void;
 }
 
-const MENU_BUTTON = 'w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]';
+const MENU_BUTTON = 'block w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]';
 
 interface Props {
   initialView?: 'move' | 'menu' | 'rename' | 'confirmRemove' | 'confirmDelete';
@@ -190,7 +190,7 @@ function ModelContextMenu({
     return <button key={entry.id} role={entry.group === 'organize' || entry.group === 'bundle' ? 'menuitem' : undefined} data-model-action={entry.id} aria-label={label} aria-keyshortcuts={entry.shortcut}
       aria-pressed={entry.checked} disabled={renaming || (importLocked && lockProps.disabled) || (entry.id === 'stl' && stlState === 'disabled')}
       title={(importLocked ? lockProps.title : undefined) ?? (entry.id === 'stl' && stlState === 'disabled' ? t('stStepNoPreview') : undefined)}
-      className={`${MENU_BUTTON} flex items-center gap-1 ${entry.group === 'quick' ? '!w-auto flex-1 !text-caption max-w-[150px]' : ''} disabled:opacity-50 ${entry.id === 'trash' ? '!text-[var(--crit)]' : ''} ${entry.checked === true ? 'bg-[var(--accent-soft)] border-b-2 border-[var(--accent)]' : entry.checked === 'mixed' ? 'bg-[var(--panel-2)] border-b-2 border-dashed border-[var(--accent)]' : ''}`}
+      className={`${MENU_BUTTON} flex items-center gap-1 ${entry.group === 'quick' ? '!w-auto flex-1 !px-2 !text-caption max-w-[110px]' : ''} disabled:opacity-50 ${entry.id === 'trash' ? '!text-[var(--crit)]' : ''} ${entry.checked === true ? 'bg-[var(--accent-soft)] border-b-2 border-[var(--accent)]' : entry.checked === 'mixed' ? 'bg-[var(--panel-2)] border-b-2 border-dashed border-[var(--accent)]' : ''}`}
       onClick={() => { if (localViews.has(entry.id)) { setSubmenu(null); action(); } else void run(action); }}>{content}</button>;
   };
   const renderSubmenu = (group: 'organize' | 'bundle', label: string) => {
@@ -370,6 +370,9 @@ function isWebConfirmationOpen() {
   return import.meta.env.VITE_TARGET === 'web' && document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
 }
 
+/** Keeps menus (and their expanded submenus) off the viewport edges. */
+const MENU_MARGIN = 8;
+
 export function ContextMenuFrame({ x, y, onClose, onEscape = onClose, children }: {
   x: number; y: number; onClose: () => void; onEscape?: () => void; children: ReactNode;
 }) {
@@ -379,8 +382,8 @@ export function ContextMenuFrame({ x, y, onClose, onEscape = onClose, children }
     const menu = ref.current;
     if (!menu) return;
     const bounds = menu.getBoundingClientRect();
-    setPosition({ left: Math.max(0, Math.min(x, window.innerWidth - bounds.width)),
-      top: Math.max(0, Math.min(y, window.innerHeight - bounds.height)) });
+    setPosition({ left: Math.max(MENU_MARGIN, Math.min(x, window.innerWidth - MENU_MARGIN - bounds.width)),
+      top: Math.max(MENU_MARGIN, Math.min(y, window.innerHeight - MENU_MARGIN - bounds.height)) });
   }, [x, y, children]);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -402,6 +405,6 @@ export function ContextMenuFrame({ x, y, onClose, onEscape = onClose, children }
     return () => { document.removeEventListener('mousedown', pointer); document.removeEventListener('keydown', key); };
   }, [onClose, onEscape]);
   return <div data-navigation-menu ref={ref}
-    className="fixed z-50 min-w-[172px] max-w-[100vw] max-h-[100vh] rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-lg overflow-auto"
+    className="fixed z-50 min-w-[172px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-lg overflow-auto"
     style={position}>{children}</div>;
 }

@@ -51,7 +51,7 @@ export const en: Translations = {
   tagMergeConfirm: "Transfer {count} models from “{source}” to “{target}” and delete the source tag?",
   tagMergeSubmit: "Merge",
   tagRenameSubmit: "Rename",
-  errTagNameUnchanged: "Source and target must differ.",
+  errTagNameUnchanged: "The new name must differ from the old one.",
   errTagNameExists: "Tag exists; use merge instead",
   tagMenuDelete: "Delete tag …",
   tagDeleteQuestion: "Remove tag “{tag}” from all models?",

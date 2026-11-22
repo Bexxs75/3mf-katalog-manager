@@ -59,3 +59,17 @@ it('disables tag changes during imports', () => {
   expect(screen.getByRole('button', {name: 'Umbenennen'})).toBeDisabled();
   expect(submit).not.toHaveBeenCalled();
 });
+
+it('shows no validation hint before the first change', () => {
+  setup('rename');
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByRole('button', {name: 'Umbenennen'})).toBeDisabled();
+  fireEvent.change(screen.getByRole('textbox'), {target: {value: 'source '}});
+  fireEvent.change(screen.getByRole('textbox'), {target: {value: 'source'}});
+  expect(screen.getByRole('alert')).toHaveTextContent('Der neue Name muss sich vom alten unterscheiden.');
+});
+it('merge dialog shows no hint on open and gives the target select a full-width field', () => {
+  setup('merge');
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByRole('combobox')).toHaveClass('w-full', 'border');
+});

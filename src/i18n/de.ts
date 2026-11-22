@@ -51,7 +51,7 @@ export const de: Translations = {
   tagMergeConfirm: "{count} Modelle von „{source}“ auf „{target}“ übertragen und den Quelltag löschen?",
   tagMergeSubmit: "Zusammenführen",
   tagRenameSubmit: "Umbenennen",
-  errTagNameUnchanged: "Quelle und Ziel müssen verschieden sein.",
+  errTagNameUnchanged: "Der neue Name muss sich vom alten unterscheiden.",
   errTagNameExists: "Tag existiert; zum Zusammenführen nutzen",
   tagMenuDelete: "Tag löschen …",
   tagDeleteQuestion: "Tag „{tag}“ von allen Modellen entfernen?",

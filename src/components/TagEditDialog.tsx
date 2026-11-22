@@ -24,6 +24,8 @@ export function TagEditDialog({ source, mode, tags, onSubmit, onDone, onClose, r
   const [count, setCount] = useState<number | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Validation hints only appear once the user has changed something.
+  const [touched, setTouched] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   useEffect(() => {
     if (mode !== 'merge') return;
@@ -51,17 +53,18 @@ export function TagEditDialog({ source, mode, tags, onSubmit, onDone, onClose, r
     <form className="space-y-4" onSubmit={event => { event.preventDefault(); void submit(); }}>
       {mode === 'rename' ? <label className="block">{t('tagRenameName')}
         <input data-initial-focus maxLength={100} value={draft} disabled={busy || jobActive || !canEdit}
-          onChange={event => { setDraft(event.target.value); setError(null); }}
+          onChange={event => { setDraft(event.target.value); setTouched(true); setError(null); }}
           className="block w-full border border-[var(--line)] bg-[var(--panel)] p-2" />
       </label> : <>
         <Select data-initial-focus aria-label={t('tagMergeTarget')} value={draft} disabled={busy || jobActive || !canEdit}
-          onValueChange={value => { setDraft(value); setConfirmed(false); setError(null); }}>
+          onValueChange={value => { setDraft(value); setTouched(true); setConfirmed(false); setError(null); }}
+          className="block w-full border border-[var(--line)] p-2">
           <option value="" disabled>{t('tagMergeTarget')}</option>
           {tags.filter(tag => tag.label !== source).map(tag => <option key={tag.label} value={tag.label}>{tagLabel(tag.label, language)}</option>)}
         </Select>
         {confirmed && <p>{t('tagMergeConfirm').replace('{count}', String(count)).replace('{source}', tagLabel(source, language)).replace('{target}', tagLabel(target, language))}</p>}
       </>}
-      {problem && <p role="alert">{problem}</p>}
+      {touched && problem && <p role="alert">{problem}</p>}
       {error && <p role="alert"><ErrorText error={error} /></p>}
       <div className="flex justify-end gap-2">
         <button type="button" className={catalogActionButton} disabled={busy} onClick={onClose}>{t('cancel')}</button>

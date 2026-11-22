@@ -174,7 +174,7 @@ function visibilityChanged() { if (document.visibilityState === 'hidden') leavin
 function attachLifecycle() {
   window.addEventListener('pagehide', leaving);
   document.addEventListener('visibilitychange', visibilityChanged);
-  if ('__TAURI_INTERNALS__' in window) {
+  if (import.meta.env.VITE_TARGET !== 'web' && '__TAURI_INTERNALS__' in window) {
     void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
       const win = getCurrentWindow();
       detachClose = await win.onCloseRequested(async () => {

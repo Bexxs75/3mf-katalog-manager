@@ -27,7 +27,7 @@ export interface SurfaceMenuEntry {
   shortcut?: string;
   children?: SurfaceMenuEntry[];
 }
-export const surfaceMenuButton = 'w-full text-left px-3 py-2 text-body text-[var(--ink)] hover:bg-[var(--panel-2)] disabled:opacity-50';
+export const surfaceMenuButton = 'block w-full text-left px-3 py-2 text-body text-[var(--ink)] hover:bg-[var(--panel-2)] disabled:opacity-50';
 
 export function CatalogSurfaceMenu({ x, y, label, entries, onClose }: {
   x: number; y: number; label: string; entries: SurfaceMenuEntry[]; onClose: () => void;

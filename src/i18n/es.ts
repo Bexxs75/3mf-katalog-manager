@@ -51,7 +51,7 @@ export const es: Translations = {
   tagMergeConfirm: "¿Transferir {count} modelos de «{source}» a «{target}» y eliminar la etiqueta de origen?",
   tagMergeSubmit: "Fusionar",
   tagRenameSubmit: "Renombrar",
-  errTagNameUnchanged: "El origen y el destino deben ser distintos.",
+  errTagNameUnchanged: "El nuevo nombre debe ser distinto del anterior.",
   errTagNameExists: "La etiqueta existe; utiliza la fusión",
   tagMenuDelete: "Eliminar etiqueta …",
   tagDeleteQuestion: "¿Quitar la etiqueta «{tag}» de todos los modelos?",

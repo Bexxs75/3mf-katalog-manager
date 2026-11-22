@@ -212,7 +212,7 @@ export function Header({
             onClick={() => { setImportMenuOpen(false); setSortMenuOpen((o) => !o); }}
             className="h-[30px] max-w-full px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
           >
-            <span className="truncate">{sortOptions.find((o) => o.value === sort)?.label}</span>
+            <span className="min-w-[6ch] truncate">{sortOptions.find((o) => o.value === sort)?.label}</span>
             <span className="font-medium tabular-nums text-[var(--accent)]"><Icon name={sortDirection === 'asc'  ? 'arrow-up' : 'arrow-down'} size={14} /></span>
             <span className="text-compact-label leading-none text-[var(--ink-3)]"><Icon name="chevron" size={14} /></span>
           </button>

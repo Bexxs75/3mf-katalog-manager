@@ -227,7 +227,7 @@ it('opens with the menu key and Shift+F10, closes with Escape and outside click,
     x: 0, y: 0, left: 0, top: 0, right: 172, bottom: 70, width: 172, height: 70, toJSON: () => ({}),
   });
   fireEvent.contextMenu(row, {clientX: 2000, clientY: 2000});
-  expect(screen.getByRole('menuitem', {name: 'Umbenennen'}).parentElement).toHaveStyle({left: `${window.innerWidth - 172}px`, top: `${window.innerHeight - 70}px`});
+  expect(screen.getByRole('menuitem', {name: 'Umbenennen'}).parentElement).toHaveStyle({left: `${window.innerWidth - 8 - 172}px`, top: `${window.innerHeight - 8 - 70}px`});
   geometry.mockRestore();
 });
 
