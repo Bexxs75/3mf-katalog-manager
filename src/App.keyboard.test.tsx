@@ -1,3 +1,4 @@
+import { chooseSelect } from './test/select';
 import { uiSettings } from './lib/uiSettings';
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -73,7 +74,7 @@ it.each(['grid', 'groupedGrid', 'groupedList'])('Ctrl+A selects the visible mode
   expect(screen.getByText(de.bulkSelectedCount.replace('{count}', '2'))).toBeVisible();
 });
 
-it('shares and persists detail mode between settings and the header', async () => {
+it('keeps the persisted detail default separate from the header pin for this session', async () => {
   await setup();
   const toggle = screen.getByRole('button', { name: de.detailPanelPin });
   expect(toggle).toHaveAttribute('aria-pressed', 'false');
@@ -82,10 +83,13 @@ it('shares and persists detail mode between settings and the header', async () =
   expect(screen.getByRole('radio', { name: de.detailPanelAuto })).toBeChecked();
   fireEvent.click(pinned);
   expect(uiSettings.getItem('3mf-katalog-detail-panel')).toBe('pinned');
+  expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(toggle);
   expect(toggle).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(toggle);
-  expect(uiSettings.getItem('3mf-katalog-detail-panel')).toBe('auto');
-  expect(screen.getByRole('radio', { name: de.detailPanelAuto })).toBeChecked();
+  expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  expect(uiSettings.getItem('3mf-katalog-detail-panel')).toBe('pinned');
+  expect(screen.getByRole('radio', { name: de.detailPanelPinned })).toBeChecked();
 });
 
 it('Escape leaves search without clearing the query; the next Escape clears selection', async () => {
@@ -120,10 +124,10 @@ it.each(['keyboard', 'toolbar'])('collection selection via %s sends only its vis
   if (mode === 'toolbar') fireEvent.click(screen.getByRole('button', { name: de.selectAllLabel }));
   expect(screen.getByText(de.bulkSelectedCount.replace('{count}', '1'))).toBeVisible();
   clickBulkMore(de.licenseSet);
-  fireEvent.change(screen.getByRole('combobox', { name: de.licenseHeading }), { target: { value: 'cc0' } });
+  chooseSelect(screen.getByRole('combobox', { name: de.licenseHeading }), 'cc0');
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.licenseSave })); });
   expect(invoke).toHaveBeenCalledWith('set_license', { fileIds: ['a'], license: 'cc0' });
-  fireEvent.click(screen.getByRole('button', { name: de.delete }));
+  fireEvent.click(screen.getByRole('button', { name: de.modelMenuTrash }));
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.delete })); });
   expect(invoke).toHaveBeenCalledWith('delete_files', { fileIds: ['a'] });
 });

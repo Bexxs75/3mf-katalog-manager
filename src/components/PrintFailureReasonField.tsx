@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useId } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import type { Translations } from '../i18n/types';
@@ -45,12 +46,12 @@ export function PrintFailureReasonField({ reason, note, onChange, hint, disabled
   const id = useId();
   return <div className={`flex flex-col gap-1.5 ${className}`}>
     <label htmlFor={`${id}-reason`} className="text-small text-[var(--ink-2)]">{t('pfFieldLabel')}</label>
-    <select id={`${id}-reason`} disabled={disabled} value={reason ?? ''} aria-describedby={hint ? `${id}-hint` : undefined}
-      onChange={e => onChange(e.target.value || null, e.target.value === 'other' ? note : '')}
+    <Select id={`${id}-reason`} disabled={disabled} value={reason ?? ''} aria-describedby={hint ? `${id}-hint` : undefined}
+      onValueChange={value => onChange(value || null, value === 'other' ? note : '')}
       className="w-full min-w-0 px-2 py-1.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small">
       <option value="">{t('pfNone')}</option>
       {PRINT_FAILURE_REASONS.map(code => <option key={code} value={code}>{reasonText(code)}</option>)}
-    </select>
+    </Select>
     {hint && <span id={`${id}-hint`} className="text-caption text-[var(--ink-3)]">{hint}</span>}
     {reason === 'other' && <>
       <label htmlFor={`${id}-note`} className="text-small text-[var(--ink-2)]">{t('pfNoteLabel').replace('{max}', String(MAX_FAILURE_NOTE_CHARS))}</label>

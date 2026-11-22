@@ -1,3 +1,4 @@
+import { chooseSelect } from './test/select';
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -51,7 +52,7 @@ it.each([
   ['license usage', de.licenseUsage, 'commercial'],
 ])('clears the bulk selection when the %s filter hides the selected model', async (_label, filterName, value) => {
   await selectHiddenModel();
-  fireEvent.change(screen.getByRole('combobox', { name: filterName }), { target: { value } });
+  chooseSelect(screen.getByRole('combobox', { name: filterName }), value);
   await waitFor(() => expect(screen.queryAllByText('Hidden.stl')).toHaveLength(0));
   expect(screen.getAllByText('Visible.stl').length).toBeGreaterThan(0);
   expect(screen.getByText('0 ausgewählt')).toBeTruthy();

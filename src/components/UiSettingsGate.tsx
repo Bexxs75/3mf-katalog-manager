@@ -1,12 +1,18 @@
+import { captureSettingsBaseline, captureUiSettingsBaseline } from '../lib/settingsSession';
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { clearUiSettingsError, getUiSettingsError, initializeUiSettings, isDesktopUiSettings, subscribeUiSettings } from '../lib/uiSettings';
 import { useT } from '../i18n/LanguageContext';
 
 export function UiSettingsGate({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(() => !isDesktopUiSettings());
+  const [ready, setReady] = useState(() => { if (isDesktopUiSettings() || import.meta.env.VITE_TARGET === 'web') return false; captureUiSettingsBaseline(); return true; });
   useEffect(() => {
     let active = true;
-    void initializeUiSettings().then(() => { if (active) setReady(true); });
+    void initializeUiSettings().then(() => {
+      captureUiSettingsBaseline();
+      if (active) setReady(true);
+      // Backend values load in the background; the dialog treats them as unknown until then.
+      if (isDesktopUiSettings() || import.meta.env.VITE_TARGET === 'web') void captureSettingsBaseline();
+    });
     return () => { active = false; };
   }, []);
   return ready ? children : null;

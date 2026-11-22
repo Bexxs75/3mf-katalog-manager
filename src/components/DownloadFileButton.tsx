@@ -4,17 +4,23 @@ import { getSession } from '../lib/webSession';
 import { toAppError, type AppError } from '../lib/errors';
 import { formatAppError } from '../lib/errorMessage';
 
-export function DownloadFileButton({ fileId, className, onSuccess }: {
-  fileId: string; className?: string; onSuccess?: () => void;
+/** Browsers drop or block downloads fired in the same tick, so they are started one after another. */
+export const DOWNLOAD_GAP_MS = 300;
+
+export function DownloadFileButton({ fileId, fileIds, label, className, onSuccess }: {
+  fileIds?: string[]; label?: string; fileId: string; className?: string; onSuccess?: () => void;
 }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   // Kept as the error itself, not as finished text, so it follows a language change.
   const [error, setError] = useState<AppError | null>(null);
   const request = useRef(0);
+  const unmounted = useRef(false);
+  useEffect(() => { unmounted.current = false; return () => { unmounted.current = true; }; }, []);
+  // Only a new request or another file overtakes a running download series; closing the menu that hosts
+  // the button must not cut it short.
   useEffect(() => {
     request.current++; setBusy(false); setError(null);
-    return () => { request.current++; };
   }, [fileId]);
   const isWeb = import.meta.env.VITE_TARGET === 'web';
   if (!isWeb) return null;
@@ -28,19 +34,26 @@ export function DownloadFileButton({ fileId, className, onSuccess }: {
           // Publishing the fresh session makes WebAuthGate show login/password
           // change before any navigation. Never buffer model bytes in JavaScript.
           const session = await getSession();
-          if (request.current !== current || !session.authenticated || session.mustChangePassword) return;
-          const link = document.createElement('a');
-          link.href = `/api/files/${encodeURIComponent(fileId)}/download`;
-          link.download = '';
-          document.body.append(link);
-          link.click(); link.remove();
+          if (unmounted.current || request.current !== current || !session.authenticated || session.mustChangePassword) return;
+          const ids = fileIds ?? [fileId];
+          for (let i = 0; i < ids.length; i++) {
+            if (i > 0) {
+              await new Promise(resolve => setTimeout(resolve, DOWNLOAD_GAP_MS));
+              if (request.current !== current) return;
+            }
+            const link = document.createElement('a');
+            link.href = `/api/files/${encodeURIComponent(ids[i])}/download`;
+            link.download = '';
+            document.body.append(link);
+            link.click(); link.remove();
+          }
           onSuccess?.();
         } catch (e) {
           if (request.current === current) setError(toAppError(e));
         } finally {
           if (request.current === current) setBusy(false);
         }
-      }}>{t('downloadModel')}</button>
+      }}>{label ?? t('downloadModel')}</button>
     {error && <p role="alert" className="text-small text-[var(--accent)]">{formatAppError(t, error)}</p>}
   </div>;
 }

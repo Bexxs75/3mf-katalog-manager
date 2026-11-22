@@ -1,5 +1,5 @@
 import { WebFileActions } from './WebFileActions';
-import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
+import { canEditMetadata, useCanEditMetadata, useCanManageFiles } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
@@ -12,12 +12,12 @@ import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { TagInput } from './TagInput';
 import { ViewportPopover } from './ViewportPopover';
 import { tagLabel } from '../lib/autoTags';
-import { Icon } from './Icon';
+import { modelMenuActions, type ModelMenuActionId } from '../lib/modelMenuActions';
 import { usePrintDataReread } from '../hooks/usePrintDataReread';
 import { PrintDataRereadJob } from './PrintDataRereadJob';
 import { DateRenameDialog, type DateRenameOutcome } from './DateRenameDialog';
 
-/** Bundle entries of the "More" menu; each handler gets the element focus should return to. */
+/** Bundle group entries; each handler gets the element focus should return to. */
 export interface BulkBundleActions {
   /** Two or more models selected. */
   canCreate: boolean;
@@ -36,6 +36,11 @@ export interface BulkBundleActions {
 
 interface BulkActionToolbarProps {
   selectedCount: number;
+  favorite?: boolean | 'mixed';
+  queue?: boolean | 'mixed';
+  printed?: boolean | 'mixed';
+  onBulkToggleFavorite?: () => void;
+  onBulkRemoveFromQueue?: () => void;
   selectedNames?: string[];
   hiddenSelectedCount?: number;
   confirmBulkDelete: boolean;
@@ -68,11 +73,6 @@ interface BulkActionToolbarProps {
   /** Ids of the selected models; together with `onDateRenamed` this enables the date rename entry. */
   selectedIds?: string[];
   onDateRenamed?: (outcome: DateRenameOutcome) => void;
-  /**
-   * Narrow window: only the most used actions stay in the bar and the rest
-   * moves into the "More" menu, so the bar keeps one row and its height.
-   */
-  compact?: boolean;
   bundleActions?: BulkBundleActions;
 }
 
@@ -93,7 +93,6 @@ interface MoreItem {
   disabledReason?: string;
   /** Entries that open a popover or dialog leave focus handling to it. */
   opensOwnUi?: boolean;
-  separatorBefore?: boolean;
 }
 
 function navigateListMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -122,6 +121,7 @@ function navigateActionMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
 
 export function BulkActionToolbar({
   selectedCount,
+  favorite = false, queue = false, printed = false, onBulkToggleFavorite, onBulkRemoveFromQueue,
   selectedNames,
   hiddenSelectedCount = 0,
   confirmBulkDelete,
@@ -153,16 +153,19 @@ export function BulkActionToolbar({
   onBulkRemoveTag,
   selectedIds,
   onDateRenamed,
-  compact = false,
   bundleActions,
 }: BulkActionToolbarProps) {
   const canEdit = useCanEditMetadata();
+  const canManage = useCanManageFiles();
   const { lockProps } = useImportLock();
   const { state: rereadState, start: startReread, dismiss: dismissReread } = usePrintDataReread();
   const t = useT();
   const formatCount = useFormatCount();
+  const [webMoveOpen, setWebMoveOpen] = useState(false);
   const [licenseOpen, setLicenseOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [group, setGroup] = useState<'quick' | 'organize' | 'bundle'>('organize');
+
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -172,16 +175,14 @@ export function BulkActionToolbar({
   const noSelection = selectedCount === 0;
 
   const cancelRef = useRef<HTMLButtonElement>(null);
-  // The "More" button is the anchor for everything that lives in its menu, so
-  // focus always has a place to return to, even after the entry itself is gone.
+  // Dialogs return focus to the group trigger after their menu entry disappears.
   const moreRef = useRef<HTMLButtonElement>(null);
   const moreWrapRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
-  const collectionRef = useRef<HTMLButtonElement>(null);
-  const addTagRef = useRef<HTMLButtonElement>(null);
-  const removeTagRef = useRef<HTMLButtonElement>(null);
-  const removeTagFocusRef = compact ? moreRef : removeTagRef;
+  const collectionRef = moreRef;
+  const addTagRef = moreRef;
+  const removeTagFocusRef = moreRef;
   const previousConfirmation = useRef<'remove' | 'delete' | null>(null);
   useEffect(() => {
     const current = confirmRemove ? 'remove' : confirmBulkDelete ? 'delete' : null;
@@ -266,22 +267,29 @@ export function BulkActionToolbar({
     };
     document.addEventListener('mousedown', onPointerDown);
     return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [moreOpen]);
+  }, [moreOpen, group]);
 
   // The entries that open these surfaces disappear with the menu, taking focus with them,
   // so the surface has to take it over. Without that, arrow keys would act on the page.
-  // The tag list is only reachable through the menu in the compact bar.
   useEffect(() => {
     if (!licenseOpen) return;
-    moreWrapRef.current?.querySelector<HTMLElement>('[data-license-popover] select')?.focus({ preventScroll: true });
+    moreWrapRef.current?.querySelector<HTMLElement>('[data-license-popover] [role="combobox"]')?.focus({ preventScroll: true });
   }, [licenseOpen]);
   useEffect(() => {
-    if (!removeTagMenuOpen || !compact) return;
+    if (!removeTagMenuOpen) return;
     const popover = moreWrapRef.current?.querySelector<HTMLElement>('[data-remove-tag-popover]');
     (popover?.querySelector<HTMLElement>('button') ?? popover)?.focus({ preventScroll: true });
-  }, [removeTagMenuOpen, compact]);
+  }, [removeTagMenuOpen]);
+  useEffect(() => {
+    if (addToCollectionMenuOpen) moreWrapRef.current?.querySelector<HTMLElement>('[data-collection-popover] button')?.focus();
+  }, [addToCollectionMenuOpen]);
   // Picking a tag closes the list and removes the focused entry; focus goes back to the trigger
   // instead of falling to the page. Escape already moves focus itself.
+  const wasCollectionOpen = useRef(false);
+  useEffect(() => {
+    if (wasCollectionOpen.current && !addToCollectionMenuOpen && document.activeElement === document.body) moreRef.current?.focus();
+    wasCollectionOpen.current = addToCollectionMenuOpen;
+  }, [addToCollectionMenuOpen]);
   const wasRemoveTagOpen = useRef(false);
   useEffect(() => {
     const closed = wasRemoveTagOpen.current && !removeTagMenuOpen;
@@ -298,39 +306,50 @@ export function BulkActionToolbar({
   const idle = noSelection ? { 'aria-disabled': true as const, 'aria-describedby': hintId } : {};
   const act = (fn: () => void) => () => { if (!noSelection) fn(); };
 
+  const openGroup = (id: typeof group, toggle = false) => {
+    setLicenseOpen(false);
+    if (addToCollectionMenuOpen) onAddToCollectionMenuOpenChange(false);
+    if (addTagMenuOpen) onAddTagMenuOpenChange(false);
+    if (removeTagMenuOpen) onRemoveTagMenuOpenChange(false);
+    setGroup(id);
+    setMoreOpen(!toggle || group !== id || !moreOpen);
+  };
+
   const closeMoreThen = (item: MoreItem) => () => {
     setMoreOpen(false);
     if (!item.opensOwnUi) moreRef.current?.focus();
     item.onSelect();
   };
 
-  const moreItems: MoreItem[] = [
-    ...(compact ? [
-      { key: 'removeTag', label: t('bulkRemoveTagLabel'), opensOwnUi: true, onSelect: () => onRemoveTagMenuOpenChange(true) },
-      { key: 'printed', label: t('printedBadge'), onSelect: () => onBulkSetPrintStatus('printed') },
-    ] : []),
-    ...(onBulkSetLicense && !compact ? [{ key: 'license', label: t('licenseSet'), locked: true, opensOwnUi: true, onSelect: () => setLicenseOpen(true) }] : []),
-    { key: 'notPrinted', label: t('notPrintedLabel'), onSelect: () => onBulkSetPrintStatus('not_printed') },
-    ...(compact ? [
-      ...(onBulkMove ? [{ key: 'move', label: t('moveBulkLabel'), locked: true, onSelect: onBulkMove }] : []),
-      { key: 'queue', label: t('addToQueue'), onSelect: onBulkAddToQueue },
-      ...(onBulkSetLicense ? [{ key: 'license', label: t('licenseSet'), locked: true, opensOwnUi: true, onSelect: () => setLicenseOpen(true) }] : []),
-    ] : []),
-    ...(selectedIds && onDateRenamed ? [{ key: 'dateRename', label: t('dateRenameMenu'), locked: true, opensOwnUi: true, onSelect: () => setDateRenameIds([...selectedIds]) }] : []),
-    { key: 'rereadPrintData', label: t('printDataRereadSelected'), locked: true, disabledReason: rereadState.status === 'running' || rereadState.status === 'cancelling' ? t('printDataRereadBusy') : undefined, onSelect: () => { startReread('selection', selectedIds ?? []); } },
-    ...(bundleActions ? [
-      { key: 'bundleMake', label: t('bundleMake'), opensOwnUi: true, separatorBefore: true, disabledReason: bundleActions.canCreate ? undefined : t('bundleDlgNeedTwo'), onSelect: () => bundleActions.onCreate(moreRef.current) },
-      ...(bundleActions.canAddTo ? [{ key: 'bundleAddTo', label: t('bundleAddTo'), opensOwnUi: true, onSelect: () => bundleActions.onAddTo(moreRef.current) }] : []),
-      ...(bundleActions.canEdit ? [{ key: 'bundleEdit', label: t('bundleEdit'), opensOwnUi: true, onSelect: () => bundleActions.onEdit(moreRef.current) }] : []),
-      ...(bundleActions.canRemove ? [{ key: 'bundleRemove', label: t('bundleRemoveFrom'), onSelect: bundleActions.onRemove }] : []),
-      ...(bundleActions.canDissolve ? [{ key: 'bundleDissolve', label: t('bundleDissolve'), onSelect: bundleActions.onDissolve }] : []),
-    ] : []),
-    ...(activeCollection ? [{ key: 'removeFromCollection', label: t('removeFromCollectionLabel'), onSelect: onBulkRemoveFromCollection }] : []),
-    ...(onBulkRemove ? [{ key: 'removeCatalog', label: t('removeCatalogShort'), locked: true, opensOwnUi: true, separatorBefore: true, onSelect: () => { setError(null); setConfirmRemove(true); } }] : []),
-  ];
+  const handlers: Partial<Record<ModelMenuActionId, Omit<MoreItem, 'key' | 'label'>>> = {
+    favorite: onBulkToggleFavorite ? { onSelect: onBulkToggleFavorite } : undefined,
+    queue: { onSelect: queue === true && onBulkRemoveFromQueue ? onBulkRemoveFromQueue : onBulkAddToQueue },
+    printed: { onSelect: () => onBulkSetPrintStatus(printed === true ? 'not_printed' : 'printed') },
+    addTag: { opensOwnUi: true, onSelect: () => onAddTagMenuOpenChange(true) },
+    removeTag: { opensOwnUi: true, onSelect: () => onRemoveTagMenuOpenChange(true) },
+    collection: { opensOwnUi: true, onSelect: () => onAddToCollectionMenuOpenChange(true) },
+    uncollect: activeCollection ? { onSelect: onBulkRemoveFromCollection } : undefined,
+    license: onBulkSetLicense ? { locked: true, opensOwnUi: true, onSelect: () => setLicenseOpen(true) } : undefined,
+    move: isReadOnly() && canManage ? { locked: true, opensOwnUi: true, onSelect: () => setWebMoveOpen(true) } : onBulkMove ? { locked: true, onSelect: onBulkMove } : undefined,
+    remove: onBulkRemove ? { locked: true, opensOwnUi: true, onSelect: () => { setError(null); setConfirmRemove(true); } } : undefined,
+    dateRename: selectedIds && onDateRenamed ? { locked: true, opensOwnUi: true, onSelect: () => setDateRenameIds([...selectedIds]) } : undefined,
+    rereadPrintData: { locked: true, disabledReason: rereadState.status === 'running' || rereadState.status === 'cancelling' ? t('printDataRereadBusy') : undefined, onSelect: () => { startReread('selection', selectedIds ?? []); } },
+    bundle: bundleActions ? { opensOwnUi: true, disabledReason: bundleActions.canCreate ? undefined : t('bundleDlgNeedTwo'), onSelect: () => bundleActions.onCreate(moreRef.current) } : undefined,
+    addBundle: bundleActions?.canAddTo ? { opensOwnUi: true, onSelect: () => bundleActions.onAddTo(moreRef.current) } : undefined,
+    unbundle: bundleActions?.canRemove ? { onSelect: bundleActions.onRemove } : undefined,
+    editBundle: bundleActions?.canEdit ? { opensOwnUi: true, onSelect: () => bundleActions.onEdit(moreRef.current) } : undefined,
+    dissolveBundle: bundleActions?.canDissolve ? { onSelect: bundleActions.onDissolve } : undefined,
+  };
+  const definitions = modelMenuActions({ toolbar: true, web: isReadOnly(), count: selectedCount, favorite, queue, printed });
+  const trashLabel = t(definitions.find(action => action.id === 'trash')!.label);
+  const itemsOf = (id: typeof group) => definitions.filter(action =>
+    action.group === id && handlers[action.id]
+  ).map(action => ({ ...handlers[action.id]!, key: action.id, label: t(action.label) }));
+  const moreItems = itemsOf(group);
+  const groups = [ ['quick', 'bulkGroupMark'], ['organize', 'bulkGroupFile'], ['bundle', 'modelMenuBundle'] ] as const;
 
   const removeTagPopover = removeTagMenuOpen && (
-    <ViewportPopover fitHeight data-navigation-menu data-remove-tag-popover tabIndex={-1} onKeyDown={navigateListMenu} className={`absolute top-9 ${compact ? 'right-0' : 'left-0'} min-w-[160px] max-w-[300px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40`}>
+    <ViewportPopover fitHeight data-navigation-menu data-remove-tag-popover tabIndex={-1} onKeyDown={navigateListMenu} className={`absolute top-9 left-0 min-w-[160px] max-w-[300px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40`}>
       {tagsInSelection.map((tag) => (
         <button
           key={tag}
@@ -388,7 +407,6 @@ export function BulkActionToolbar({
         <>
           {noSelection && <span id={hintId} className="sr-only">{t('bulkNeedsSelectionHint')}</span>}
           <div role="group" aria-label={t('bulkGroupSelection')} className={GROUP}>
-            {!compact && <span aria-hidden="true" className="ui-label text-[var(--ink-3)]">{t('bulkGroupSelection')}</span>}
             {/* Announced politely so the new count is read after each (de)selection. */}
             <span aria-live="polite" className="text-small font-medium text-[var(--ink)] tabular-nums">
               {t('bulkSelectedCount').replace('{count}', String(selectedCount))}
@@ -400,16 +418,35 @@ export function BulkActionToolbar({
               {t('clearSelectionLabel')}
             </button>
           </div>
-          <div role="group" aria-label={t('bulkGroupEdit')} className={GROUP}>
-            {!compact && <span aria-hidden="true" className="ui-label text-[var(--ink-3)]">{t('bulkGroupEdit')}</span>}
-            <div className="relative">
-              <button
-                type="button" ref={addTagRef} onClick={act(() => onAddTagMenuOpenChange(!addTagMenuOpen))} {...idle}
-                aria-haspopup="true" aria-expanded={addTagMenuOpen}
-                className={BUTTON}
-              >
-                {t('bulkAddTagLabel')}
-              </button>
+          <div ref={moreWrapRef} className="relative flex items-center gap-2">
+            {groups.map(([id, label]) => {
+              const empty = itemsOf(id).length === 0;
+              return (
+                <div key={id} className="relative">
+                  <button type="button" ref={element => {
+                    if (id === group) moreRef.current = element;
+                  }} {...idle} {...(empty ? { disabled: true, title: t('bulkGroupEmpty') } : {})} aria-haspopup="menu" aria-expanded={moreOpen && group === id}
+                    onClick={act(() => { openGroup(id, true); })}
+                    onKeyDown={event => { if (['ArrowDown', 'ArrowUp'].includes(event.key) && !noSelection) { event.preventDefault(); openGroup(id); } }} className={BUTTON}>{t(label)}</button>
+                  {moreOpen && group === id && moreItems.length > 0 && (
+                    <ViewportPopover
+                      data-navigation-menu role="menu" aria-label={t(label)}
+                      // The menu is a single tab stop like a native one: Tab leaves it and closes it.
+                      onKeyDown={event => { navigateActionMenu(event); if (event.key === 'Tab') setMoreOpen(false); }}
+                      className="absolute top-9 left-0 min-w-[230px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40"
+                    >
+                      <div ref={moreMenuRef}>
+                        {moreItems.map(item => (
+                          <div key={item.key}>
+                            <button type="button" role="menuitem" tabIndex={-1} {...(item.locked ? lockProps : {})} {...(item.disabledReason ? { disabled: true, title: item.disabledReason } : {})} onClick={closeMoreThen(item)} className={MENU_ITEM}>
+                              {item.label}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </ViewportPopover>
+                  )}
+                  {id === 'organize' && <>
               {addTagMenuOpen && (
                 <ViewportPopover data-navigation-menu className="absolute top-9 left-0 flex items-center gap-1.5 p-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                   <TagInput
@@ -430,27 +467,8 @@ export function BulkActionToolbar({
                   </button>
                 </ViewportPopover>
               )}
-            </div>
-            {!compact && <div className="relative">
-              <button
-                type="button" ref={removeTagRef} onClick={act(() => onRemoveTagMenuOpenChange(!removeTagMenuOpen))} {...idle}
-                aria-haspopup="true" aria-expanded={removeTagMenuOpen}
-                className={BUTTON}
-              >
-                {t('bulkRemoveTagLabel')}
-              </button>
-              {removeTagPopover}
-            </div>}
-            <div className="relative">
-              <button
-                type="button" ref={collectionRef} onClick={act(() => onAddToCollectionMenuOpenChange(!addToCollectionMenuOpen))} {...idle}
-                aria-haspopup="true" aria-expanded={addToCollectionMenuOpen}
-                className={BUTTON}
-              >
-                {t('addToCollectionLabel')}
-              </button>
               {addToCollectionMenuOpen && (
-                <ViewportPopover fitHeight data-navigation-menu onKeyDown={navigateListMenu} className="absolute top-9 left-0 min-w-[220px] max-w-[360px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+                <ViewportPopover fitHeight data-navigation-menu data-collection-popover onKeyDown={navigateListMenu} className="absolute top-9 left-0 min-w-[220px] max-w-[360px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                   {collections.map((c) => (
                     <button
                       key={c.id}
@@ -471,59 +489,20 @@ export function BulkActionToolbar({
                   )}
                 </ViewportPopover>
               )}
-            </div>
-            {!compact && <button type="button" onClick={act(() => onBulkSetPrintStatus('printed'))} {...idle} className={BUTTON}>
-              {t('printedBadge')}
-            </button>}
-          </div>
-          {!compact && <div role="group" aria-label={t('bulkGroupFile')} className={GROUP}>
-            <span aria-hidden="true" className="ui-label text-[var(--ink-3)]">{t('bulkGroupFile')}</span>
-            {onBulkMove && <button type="button" {...idle} {...lockProps} onClick={act(onBulkMove)} className={BUTTON}>{t('moveBulkLabel')}</button>}
-            <button type="button" onClick={act(onBulkAddToQueue)} {...idle} className={BUTTON}>
-              {t('addToQueue')}
-            </button>
-          </div>}
-          <span className="flex-1" />
-          <div ref={moreWrapRef} className="relative">
-            <button
-              type="button" ref={moreRef} {...idle}
-              aria-haspopup="menu" aria-expanded={moreOpen}
-              onClick={act(() => setMoreOpen(open => !open))}
-              onKeyDown={event => {
-                if (event.key === 'ArrowDown' && !noSelection) { event.preventDefault(); setMoreOpen(true); }
-              }}
-              className={`${BUTTON} inline-flex items-center gap-1.5`}
-            >
-              {t('bulkMoreLabel')} <Icon name="chevron" size={14} />
-            </button>
-            {moreOpen && (
-              <ViewportPopover
-                data-navigation-menu role="menu" aria-label={t('bulkMoreMenuLabel')}
-                // The menu is a single tab stop like a native one: Tab leaves it and closes it.
-                onKeyDown={event => { navigateActionMenu(event); if (event.key === 'Tab') setMoreOpen(false); }}
-                className="absolute top-9 right-0 min-w-[230px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40"
-              >
-                <div ref={moreMenuRef}>
-                  {moreItems.map(item => (
-                    <div key={item.key}>
-                      {item.separatorBefore && <div role="separator" className="my-1 border-t border-[var(--line)]" />}
-                      <button type="button" role="menuitem" tabIndex={-1} {...(item.locked ? lockProps : {})} {...(item.disabledReason ? { disabled: true, title: item.disabledReason } : {})} onClick={closeMoreThen(item)} className={MENU_ITEM}>
-                        {item.label}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </ViewportPopover>
-            )}
-            {licenseOpen && onBulkSetLicense && <ViewportPopover data-navigation-menu data-license-popover className="absolute top-9 right-0 w-80 max-w-[85vw] px-3 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+                    {licenseOpen && onBulkSetLicense && <ViewportPopover data-navigation-menu data-license-popover className="absolute top-9 right-0 w-80 max-w-[85vw] px-3 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
               <LicenseEditor value={null} bulk onSave={async value => { await onBulkSetLicense(value); setLicenseOpen(false); moreRef.current?.focus(); }} />
             </ViewportPopover>}
-            {compact && removeTagPopover}
+            {removeTagPopover}
+                  </>}
+                </div>
+              );
+            })}
           </div>
-          <span aria-hidden="true" className="w-px h-6 mx-1 bg-[var(--line-strong)]" />
-          <WebFileActions fileIds={selectedIds ?? []} names={selectedNames} hiddenCount={hiddenSelectedCount} onDone={onClearSelection} requestTrashConfirm={confirmBulkDelete} onConfirmationClosed={() => onConfirmBulkDeleteChange(false)} onTrashRequest={() => onConfirmBulkDeleteChange(true)} />
+          <span className="flex-1" />
+          <WebFileActions menuAction="move" hideTrigger requestMoveConfirm={webMoveOpen} returnFocus={moreRef} fileIds={selectedIds ?? []} names={selectedNames} hiddenCount={hiddenSelectedCount} onDone={onClearSelection} onConfirmationClosed={() => setWebMoveOpen(false)} />
+          <WebFileActions menuAction="trash" menuLabel={trashLabel} fileIds={selectedIds ?? []} names={selectedNames} hiddenCount={hiddenSelectedCount} onDone={onClearSelection} requestTrashConfirm={confirmBulkDelete} onConfirmationClosed={() => onConfirmBulkDeleteChange(false)} onTrashRequest={() => onConfirmBulkDeleteChange(true)} />
           {!isReadOnly() && <button type="button" {...idle} {...lockProps} ref={deleteRef} onClick={act(() => onConfirmBulkDeleteChange(true))} className={`${BUTTON} !border-[var(--line-strong)] !text-red-400 hover:!border-red-400`}>
-            {t('delete')}
+            {trashLabel}
           </button>}
         </>
       )}

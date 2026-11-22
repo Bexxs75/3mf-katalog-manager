@@ -34,12 +34,13 @@ interface Props {
   readOnly?: boolean;
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
+  onToggleFavorite?: (id: string) => void;
   onDragFileStart?: (id: string) => void;
   // Accessible name of the grid; grouped views pass the folder name.
   label?: string;
 }
 
-export function ModelList({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly, selectedForBulk, onToggleBulkSelect, onDragFileStart, label }: Props) {
+export function ModelList({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly, selectedForBulk, onToggleBulkSelect, onToggleFavorite, onDragFileStart, label }: Props) {
   const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const t = useT();
@@ -110,6 +111,13 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
             />
           )}
           <span role="gridcell" className="flex items-center gap-1.5 min-w-0">
+            {!readOnly && canEdit && onToggleFavorite && <button type="button"
+              aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')} aria-pressed={m.favorite}
+              onMouseDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}
+              onClick={event => { event.stopPropagation(); onToggleFavorite(m.id); }}
+              className={`shrink-0 p-1 rounded hover:bg-[var(--panel-2)] ${m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}>
+              <Icon name="heart" size={18} fill={m.favorite ? 'currentColor' : 'none'} />
+            </button>}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
             {isSlicedOutput(m) && <span data-kind-badge aria-hidden="true" className="flex-none font-bold tracking-[0.05em] text-caption px-1.5 py-px rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">{kindBadge(m)}</span>}
             <LicenseBadge license={m.license} />

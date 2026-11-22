@@ -1,3 +1,4 @@
+import { chooseSelect, selectOptions } from '../test/select';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
@@ -157,10 +158,10 @@ it('does not announce an empty collection while its first members are loading', 
   expect(screen.getByRole('status')).toHaveTextContent('Katalog wird geladen');
 });
 
-it('offers usage filtering and an individually removable usage chip', () => {
+it.each(['mouse', 'keyboard'] as const)('offers usage filtering and an individually removable usage chip (%s)', mode => {
   const setUsage = vi.fn();
   filterWorkspace({ usage: 'private', setUsage });
-  fireEvent.change(screen.getByRole('combobox', { name: de.licenseUsage }), { target: { value: 'commercial' } });
+  chooseSelect(screen.getByRole('combobox', { name: de.licenseUsage }), 'commercial', mode);
   expect(setUsage).toHaveBeenCalledWith('commercial');
   const chip = screen.getByRole('region', { name: de.filterBarAria }).querySelector('[data-filter-kind]')!.parentElement!;
   expect(chip).toHaveTextContent(de.licenseUsagePrivate);
@@ -175,13 +176,13 @@ it('renders centrally filtered licenses in a collection and includes usage in it
   expect(screen.getByText(de.filterBarCount.replace('{count}', '0').replace('{total}', '1'))).toBeVisible();
 });
 
-it('offers every print status option and an individually removable chip', () => {
+it.each(['mouse', 'keyboard'] as const)('offers every print status option and an individually removable chip (%s)', mode => {
   const setPrintStatus = vi.fn();
   filterWorkspace({ printStatus: 'not_printed', setPrintStatus });
   const select = screen.getByRole('combobox', { name: de.printStatusFilter });
-  expect(within(select).getAllByRole('option').map(option => option.textContent)).toEqual([de.printStatusAll, de.printStatusPrinted, de.printStatusNotPrinted]);
+  expect(selectOptions(select).map(option => option.textContent)).toEqual([de.printStatusAll, de.printStatusPrinted, de.printStatusNotPrinted]);
   for (const value of ['printed', 'not_printed', '']) {
-    fireEvent.change(select, { target: { value } });
+    chooseSelect(select, value, mode);
     expect(setPrintStatus).toHaveBeenLastCalledWith(value || null);
   }
   const region = screen.getByRole('region', { name: de.filterBarAria });
@@ -207,15 +208,15 @@ it('uses the filter empty state for a tool combined with print status', () => {
 const fitPrinters = [makePrinter({ id: 'a', name: 'X1C' }), makePrinter({ id: 'b', name: 'NoBed', bedXMm: null }),
   makePrinter({ id: 'c', name: 'Mini', bedXMm: 180, bedYMm: 180, bedZMm: 180 })];
 
-it('offers a "Fits on" filter with all printers that have a build volume and a removable chip', () => {
+it.each(['mouse', 'keyboard'] as const)('offers a "Fits on" filter with all printers that have a build volume and a removable chip (%s)', mode => {
   const setFitPrinterId = vi.fn();
   filterWorkspace({ printers: fitPrinters, fitPrinterId: 'c', setFitPrinterId });
   const select = screen.getByRole('combobox', { name: de.fitPrinterFilter });
-  expect(within(select).getAllByRole('option').map(option => option.textContent)).toEqual([de.fitPrinterAll, 'X1C', 'Mini']);
+  expect(selectOptions(select).map(option => option.textContent)).toEqual([de.fitPrinterAll, 'X1C', 'Mini']);
   expect(select).toHaveValue('c');
-  fireEvent.change(select, { target: { value: 'a' } });
+  chooseSelect(select, 'a', mode);
   expect(setFitPrinterId).toHaveBeenLastCalledWith('a');
-  fireEvent.change(select, { target: { value: '' } });
+  chooseSelect(select, '', mode);
   expect(setFitPrinterId).toHaveBeenLastCalledWith(null);
   const region = screen.getByRole('region', { name: de.filterBarAria });
   const chip = region.querySelector('[data-filter-kind]')!.parentElement!;
@@ -233,4 +234,18 @@ it('shows no "Fits on" chip for the default and no filter without printers that 
 it('hides the "Fits on" filter when no printer has a build volume', () => {
   filterWorkspace({ printers: [fitPrinters[1]], setFitPrinterId: vi.fn() });
   expect(screen.queryByRole('combobox', { name: de.fitPrinterFilter })).toBeNull();
+});
+
+it('routes empty-grid actions and leaves model context events alone', () => {
+  const onImport = vi.fn(), onViewChange = vi.fn(), onSortChange = vi.fn(), selectAllVisible = vi.fn(), setContextMenu = vi.fn();
+  filterWorkspace({surfaceActions: {onImport, onViewChange, onSortChange}, selectAllVisible, selectModel: vi.fn(), setContextMenu});
+  const scroller = document.querySelector<HTMLElement>('[data-catalog-scroller]')!;
+  fireEvent.contextMenu(scroller);
+  fireEvent.click(screen.getByRole('menuitem', {name: de.emptyMenuImport})); expect(onImport).toHaveBeenCalledOnce();
+  fireEvent.contextMenu(scroller); fireEvent.click(screen.getByRole('menuitem', {name: de.selectAllLabel})); expect(selectAllVisible).toHaveBeenCalledOnce();
+  fireEvent.contextMenu(scroller); fireEvent.click(screen.getByRole('menuitem', {name: de.emptyMenuView}));
+  fireEvent.click(screen.getByRole('menuitemradio', {name: de.viewFolder})); expect(onViewChange).toHaveBeenCalledWith('groupedGrid');
+  fireEvent.contextMenu(scroller); fireEvent.click(screen.getByRole('menuitem', {name: de.sortLabel}));
+  fireEvent.click(screen.getByRole('menuitemradio', {name: de.sortName})); expect(onSortChange).toHaveBeenCalledWith('name');
+  fireEvent.contextMenu(document.querySelector('[data-model-id]')!); expect(setContextMenu).toHaveBeenCalledOnce(); expect(screen.queryByRole('menu')).toBeNull();
 });

@@ -56,7 +56,7 @@ it('opens confirmed web file actions only with fileOps capability', async () => 
   render(<LanguageProviderWithDiagnostics><ContextMenu x={0} y={0} onClose={action} fileId="1" currentName="model.stl" inQueue={false} printed={false}
     onOpenInSlicer={action} onDelete={action} onToggleQueue={action} onTogglePrintStatus={action} onRename={action} /></LanguageProviderWithDiagnostics>);
   expect(screen.getByRole('button', { name: 'Umbenennen' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Verschieben' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Verschieben nach …' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'In den Papierkorb' }));
   expect(screen.getByRole('dialog')).toBeInTheDocument();
   expect(invoke).not.toHaveBeenCalled(); expect(action).not.toHaveBeenCalled();

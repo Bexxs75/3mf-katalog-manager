@@ -1,3 +1,4 @@
+import { clickBulkMore } from './test/bulkBar';
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -83,7 +84,7 @@ it('moves the selection with M and the keyboard, then takes it back with Ctrl+Z'
 it('offers the same dialog from the selection bar and cancelling calls nothing', async () => {
   await start();
   await key({ key: 'a', ctrlKey: true });
-  fireEvent.click(screen.getByRole('button', { name: de.moveBulkLabel }));
+  clickBulkMore(de.moveContextLabel);
   const dialog = await screen.findByRole('dialog');
   fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
   expect(screen.queryByRole('dialog')).toBeNull();

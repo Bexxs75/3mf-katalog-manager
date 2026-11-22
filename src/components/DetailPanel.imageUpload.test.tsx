@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -82,7 +83,7 @@ it.each(['compact', 'comfort'])('edits licenses in the %s panel', async density 
     onAddTag={noop} onRemoveTag={noop} onDelete={noop} onTogglePrintStatus={noop} onToggleFavorite={noop}
     onToggleQueue={noop} onUploadImage={noop} onSnapshotCaptured={noop} onSetSourceUrl={noop}
     onOpenInSlicer={noop} slicerError={null} onSetLicense={onSetLicense} /></UiDensityProvider></LanguageProvider>);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'personal' } });
+  chooseSelect(screen.getByRole('combobox', { name: 'Lizenz' }), 'personal');
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   expect(onSetLicense).toHaveBeenCalledWith(['model-1'], 'personal');
 });

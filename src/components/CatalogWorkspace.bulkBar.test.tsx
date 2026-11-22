@@ -38,6 +38,7 @@ function setup(extra: Partial<ComponentProps<typeof CatalogWorkspace>> = {}) {
       displayPreference: 'thumbnail', toggleFavorite: vi.fn(), setContextMenu: vi.fn(),
       selectAllVisible: () => { selectAllVisible(); setBulk(new Set(['one'])); },
       clearBulkSelection: () => setBulk(new Set()), toggleBulkSelect: () => setBulk(new Set(['one'])),
+      setAddToCollectionMenuOpen: vi.fn(), setAddTagMenuOpen: vi.fn(), setRemoveTagMenuOpen: vi.fn(),
       onAddTag: vi.fn(), onRemoveTag: vi.fn(), addTag: vi.fn(), removeTag: vi.fn(),
       ...extra } as unknown as ComponentProps<typeof CatalogWorkspace>;
     return <LanguageProvider><UiDensityProvider><CatalogWorkspace {...props} /></UiDensityProvider></LanguageProvider>;
@@ -71,13 +72,24 @@ it('starts the floating detail panel below the bar in a narrow window so the bar
   expect((container.firstElementChild as HTMLElement).style.getPropertyValue('--detail-overlay-top')).toBe('148px');
   // One row: the lesser used actions moved into the menu.
   const bar = screen.getByRole('toolbar');
-  expect(within(bar).queryByRole('button', { name: 'Gedruckt' })).toBeNull();
+  expect(within(bar).queryByRole('button', { name: 'Als gedruckt markieren' })).toBeNull();
   fireEvent.click(within(bar).getByRole('button', { name: 'Alle auswählen' }));
-  const menu = openBulkMore();
-  expect(within(menu).getByRole('menuitem', { name: 'Gedruckt' })).toBeVisible();
+  const menu = openBulkMore('Markieren');
+  expect(within(menu).getByRole('menuitem', { name: 'Als gedruckt markieren' })).toBeVisible();
 });
 
 it('hides the bar when there is nothing to select', () => {
   setup({ models: [], filtered: [] });
   expect(screen.queryByRole('toolbar')).toBeNull();
+});
+
+it('marks the entire selection, including a model outside the visible list', async () => {
+  const models = [makeModelFile({ id: 'a', favorite: true, queuePosition: 0 }), makeModelFile({ id: 'b', favorite: false, queuePosition: 1 })];
+  const toggleFavorite = vi.fn();
+  const removeFromQueue = vi.fn();
+  setup({ models, filtered: [models[0]], selectedForBulk: new Set(['a', 'b']), toggleFavorite, removeFromQueue });
+  fireEvent.click(within(openBulkMore('Markieren')).getByRole('menuitem', { name: 'Zu Favoriten hinzufügen' }));
+  expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('b');
+  fireEvent.click(within(openBulkMore('Markieren')).getByRole('menuitem', { name: 'Aus Warteschlange entfernen' }));
+  await vi.waitFor(() => expect(removeFromQueue.mock.calls).toEqual([['a'], ['b']]));
 });

@@ -57,3 +57,27 @@ it('does not navigate if unmounted during session check', async () => {
 it('has no desktop download control', () => {
   vi.stubEnv('VITE_TARGET', 'desktop'); show(); expect(screen.queryByRole('button')).toBeNull();
 });
+it('starts a multi-file download one file at a time with a gap', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
+    render(<LanguageProvider><DownloadFileButton fileId="1" fileIds={['1', '2', '3']} /></LanguageProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Herunterladen' })); });
+    expect(links).toEqual(['/api/files/1/download']);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(links).toEqual(['/api/files/1/download', '/api/files/2/download']);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(links).toHaveLength(3);
+  } finally { vi.useRealTimers(); }
+});
+it('keeps downloading the remaining files after the button unmounts between the gaps', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
+    const view = render(<LanguageProvider><DownloadFileButton fileId="1" fileIds={['1', '2', '3']} /></LanguageProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Herunterladen' })); });
+    view.unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(links).toHaveLength(3);
+  } finally { vi.useRealTimers(); }
+});

@@ -1,3 +1,4 @@
+import { isContextMenuKey } from './CatalogSurfaceMenu';
 import { useCallback } from 'react';
 import { useCanEditMetadata } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
@@ -87,8 +88,14 @@ export function BundleGridCard({ card, comfort, rowProps, open, image, checked, 
       tabIndex={-1}
       onClick={onSelect}
       onDoubleClick={readOnly ? undefined : onOpenDetail}
+      onKeyDown={event => {
+        if (event.target !== event.currentTarget || !isContextMenuKey(event)) return;
+        event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+        const bounds = event.currentTarget.getBoundingClientRect();
+        onSelect(); onContextMenu(bounds.left, bounds.bottom);
+      }}
       onContextMenu={(e) => {
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation(); e.currentTarget.focus();
         onSelect();
         onContextMenu(e.clientX, e.clientY);
       }}

@@ -29,6 +29,9 @@ interface UseKeyboardShortcutsArgs {
   toggleBulkSelect: (id: string) => void;
   // M: open the "Move to ..." dialog for the selection.
   onMoveSelection?: () => void;
+  onRemoveSelection?: () => void;
+  onRenameSelection?: () => void;
+  onTrashSelection?: () => void;
   // Ctrl/Cmd+Z: undo the last move or rename. Left out while an import runs.
   onUndo?: () => void;
 }
@@ -110,7 +113,7 @@ export function useKeyboardShortcuts({
   openBulkDeleteConfirm,
   navigationEnabled,
   toggleBulkSelect,
-  onMoveSelection,
+  onMoveSelection, onRemoveSelection, onRenameSelection, onTrashSelection,
   onUndo,
 }: UseKeyboardShortcutsArgs) {
   const registry = useContext(ModelLayoutContext);
@@ -128,8 +131,9 @@ export function useKeyboardShortcuts({
       const platformModifier = hasPlatformModifier(e);
       const search = platformModifier && e.key.toLowerCase() === 'f';
       const selectAll = platformModifier && e.key.toLowerCase() === 'a';
+      const shiftDelete = e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.key === 'Delete';
       const macDelete = isMacPlatform() && platformModifier && e.key === 'Backspace';
-      if (shouldIgnoreCatalogShortcut(e, { allowModifiers: search || selectAll || macDelete, allowInteractive: search })) return;
+      if (shouldIgnoreCatalogShortcut(e, { allowModifiers: search || selectAll || macDelete || shiftDelete, allowInteractive: search })) return;
       if (search || (singleKeyShortcuts && e.key === '/')) {
         const input = document.getElementById(SEARCH_INPUT_ID) as HTMLInputElement | null;
         if (input) { e.preventDefault(); input.focus(); input.select(); }
@@ -138,6 +142,10 @@ export function useKeyboardShortcuts({
       if (singleKeyShortcuts && e.key === '?') { e.preventDefault(); onOpenTips?.(); return; }
       if (!navigationEnabled) return;
       if (canEditMetadata() && selectAll) { e.preventDefault(); selectAllVisible?.(); return; }
+      if (!e.repeat && canEditMetadata() && onRemoveSelection && singleKeyShortcuts && e.key === 'Delete' && !e.shiftKey) { e.preventDefault(); onRemoveSelection(); return; }
+      if (!e.repeat && canManageFiles() && onTrashSelection && singleKeyShortcuts && shiftDelete) { e.preventDefault(); onTrashSelection(); return; }
+      if (canManageFiles() && e.key === 'F2' && onRenameSelection) { e.preventDefault(); onRenameSelection(); return; }
+      if (canManageFiles() && e.key === 'F6' && onMoveSelection) { e.preventDefault(); onMoveSelection(); return; }
       if (canManageFiles() && singleKeyShortcuts && onMoveSelection && (e.key === 'm' || e.key === 'M')) { e.preventDefault(); onMoveSelection(); return; }
       if (e.key === 'Enter' && selectedId) { e.preventDefault(); onOpenDetail?.(selectedId); return; }
       if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && canManageFiles() && hasBulkSelection && !e.repeat) {
@@ -189,5 +197,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onOpenDetail, selectAllVisible, onOpenTips, singleKeyShortcuts, registry, filteredIds, selectedId, selectModel, hasBulkSelection, openBulkDeleteConfirm, navigationEnabled, toggleBulkSelect, onMoveSelection, onUndo]);
+  }, [onOpenDetail, selectAllVisible, onOpenTips, singleKeyShortcuts, registry, filteredIds, selectedId, selectModel, hasBulkSelection, openBulkDeleteConfirm, navigationEnabled, toggleBulkSelect, onMoveSelection, onRemoveSelection, onRenameSelection, onTrashSelection, onUndo]);
 }

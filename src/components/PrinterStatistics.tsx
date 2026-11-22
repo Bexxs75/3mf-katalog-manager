@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useFormatCount, useLanguage, useT } from '../i18n/LanguageContext';
 import { formatPrintDuration } from '../i18n/format';
@@ -125,11 +126,11 @@ export function PrinterStatistics({ printers, printerId, refreshKey }: {
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div className="flex flex-col gap-1">
           <label htmlFor={selectId} className="text-small text-[var(--ink-2)]">{t('pstPrinter')}</label>
-          <select id={selectId} value={effective} onChange={e => setScope(e.target.value)}
+          <Select id={selectId} value={effective} onValueChange={value => setScope(value)}
             className="min-w-[14rem] max-w-full px-2 py-1.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small">
             <option value={ALL}>{t('pstAllPrinters')}</option>
             {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          </Select>
         </div>
         <div className="flex flex-col gap-1">
           <span aria-hidden="true" className="text-small text-[var(--ink-2)]">{t('pstRange')}</span>

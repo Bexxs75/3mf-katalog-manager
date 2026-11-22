@@ -1,6 +1,8 @@
+import { chooseSelect } from '../test/select';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
+import { ContextMenu } from './ContextMenu';
 import { WebFileActions, webFileNameParts } from './WebFileActions';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { subscribeFileOpsApplied } from '../lib/fileOps';
@@ -37,11 +39,11 @@ it('requires confirmation and sends only a base name, preserving compound extens
   expect(calls).toEqual([{ command: 'rename_file', args: { fileId: '7', name: 'New' } }]);
   expect(webFileNameParts('Test.GCODE.3MF')).toEqual({ base: 'Test', extension: '.GCODE.3MF' });
 });
-it('moves by folder ID with a required existing destination', async () => {
+it.each(['mouse', 'keyboard'] as const)('moves by folder ID with a required existing destination (%s)', async mode => {
   mount(); fireEvent.click(screen.getByRole('button', { name: 'Verschieben' }));
-  await screen.findByRole('option', { name: 'Target (#42)' });
+  await waitFor(() => expect(screen.getByRole('combobox')).toBeEnabled());
   expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Verschieben' })).toBeDisabled();
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '42' } }); await confirm('Verschieben');
+  chooseSelect(screen.getByRole('combobox'), '42', mode); await confirm('Verschieben');
   expect(calls[calls.length - 1]).toEqual({ command: 'move_files_to_folder', args: { fileIds: ['7'], folderId: '42' } });
   expect(JSON.stringify(calls)).not.toContain('/private');
 });
@@ -178,11 +180,13 @@ it('disables destinations the server marks as no move target and says why', asyn
     { id: '44', name: 'Old', path: '/o', parentId: null },
   ] : null;
   mount(); fireEvent.click(screen.getByRole('button', { name: 'Verschieben' }));
+  await waitFor(() => expect(screen.getByRole('combobox')).toBeEnabled());
+  fireEvent.click(screen.getByRole('combobox'));
   const blocked = await screen.findByRole('option', { name: /Uploads/ });
-  expect(blocked).toBeDisabled();
+  expect(blocked).toHaveAttribute('aria-disabled', 'true');
   expect(blocked).toHaveTextContent('geschützt');
-  expect(screen.getByRole('option', { name: 'Target (#42)' })).toBeEnabled();
-  expect(screen.getByRole('option', { name: 'Old (#44)' })).toBeEnabled();
+  expect(screen.getByRole('option', { name: 'Target (#42)' })).not.toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('option', { name: 'Old (#44)' })).not.toHaveAttribute('aria-disabled', 'true');
   expect(screen.getByText(/nicht als Ziel verfügbar|gelten nicht als Ziel/)).toBeInTheDocument();
 });
 
@@ -201,4 +205,22 @@ it('keeps the permanent-delete dialog open when the surrounding panel drops its 
   expect(await screen.findByRole('alert')).toHaveTextContent('Das Passwort ist falsch.');
   await new Promise(resolve => setTimeout(resolve, 300));
   expect(screen.getByRole('dialog')).toBeInTheDocument();
+});
+
+
+it('uses the shared model menu for multiple web files and confirms trash for all IDs', async () => {
+  response = command => command === 'delete_files' ? [{ id: '7', ok: true }, { id: '8', ok: true }] : null;
+  const toggleQueue = vi.fn();
+  render(<LanguageProvider><ContextMenu x={0} y={0} onClose={vi.fn()} fileId="7" fileIds={['7', '8']} currentName="model.3mf"
+    favorite={false} onToggleFavorite={vi.fn()} inQueue={false} printed={false} onToggleQueue={toggleQueue} onTogglePrintStatus={vi.fn()}
+    onOpenInSlicer={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByRole('button', { name: 'Herunterladen (2 Modelle)' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: /Umbenennen/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Slicer|Dateimanager|Als STL/ })).toBeNull();
+  const trashButton = screen.getByRole('button', { name: 'In den Papierkorb (2 Modelle)' });
+  expect(trashButton).toHaveAttribute('aria-keyshortcuts', 'Shift+Delete');
+  fireEvent.keyDown(trashButton, { key: 'Delete', shiftKey: true });
+  expect(calls).toEqual([]);
+  await confirm('In den Papierkorb');
+  expect(calls).toContainEqual({ command: 'delete_files', args: { fileIds: ['7', '8'] } });
 });

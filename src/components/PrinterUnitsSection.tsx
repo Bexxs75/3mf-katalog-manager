@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useCanEditMetadata } from '../lib/webSession';
 import { useState } from 'react';
 import { Icon } from './Icon';
@@ -132,9 +133,9 @@ function UnitDialog({ printer, unit, actions, onClose, onChanged }: {
         setSlots(template.slotCount ?? 4);
       }}>{t(KIND_LABEL[template.kind])} · {template.slotCount ?? '1–16'}</button>)}</div>}
     {unit && BAMBU_AMS_FAMILY.includes(unit.kind) && <label>{t('pmKind')}
-      <select className={pmField} value={kind} onChange={e => setKind(e.target.value as UnitKind)}>
+      <Select className={pmField} value={kind} onValueChange={value => setKind(value as UnitKind)}>
         {BAMBU_AMS_FAMILY.map(k => <option key={k} value={k}>{t(KIND_LABEL[k])}</option>)}
-      </select>
+      </Select>
       <small className="block text-[var(--ink-3)]">{t('printersUnitTypeKeepHint')}</small></label>}
     <label>{t('pmName')}<input required maxLength={60} className={pmField} value={name} onChange={e => setName(e.target.value)} /></label>
     {kind === 'custom' && <label>{t('printersSlotsLabel')}<input type="number" required min={1} max={16} step={1}

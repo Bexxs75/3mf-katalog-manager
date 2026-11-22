@@ -1,3 +1,5 @@
+import { SettingRow } from './SettingsTools';
+import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
@@ -33,16 +35,19 @@ export function AutoTaggingSetting() {
 
   return (
     <>
-      <div>
-        <div className="flex items-center justify-between gap-2 text-small">
-          <span className="font-semibold">{t('autoTaggingLabel')}</span>
-          <ToggleSwitch checked={enabled === true} label={t('autoTaggingLabel')} disabled={state !== 'ready' || !canEdit || enabled === null} busy={busy} aria-describedby={canEdit ? undefined : READ_ONLY_NOTE_ID} onChange={next => void change(next)} />
+      <SettingRow id="autoTags" value={value} label={t('autoTaggingLabel')} onReset={() => change(SETTING_DEFAULTS.autoTags)} disabled={state !== 'ready' || busy || !canEdit}>
+        <div>
+          <div className="flex items-center justify-between gap-2 text-small">
+            <span className="font-semibold">{t('autoTaggingLabel')}</span>
+            <ToggleSwitch checked={enabled === true} label={t('autoTaggingLabel')} disabled={state !== 'ready' || !canEdit || enabled === null} busy={busy} aria-describedby={canEdit ? undefined : READ_ONLY_NOTE_ID} onChange={next => void change(next)} />
+          </div>
+          <p className="mt-1 text-small text-[var(--ink-2)]">{t('autoTaggingHint')}</p>
+          {!canEdit && <p id={READ_ONLY_NOTE_ID} className="mt-1 text-small text-[var(--ink-2)]">{t('settingsReadOnlyNotice')}</p>}
+          <SettingLoadStatus keptValue={value !== undefined && value !== null} state={state} error={loadError} onReload={() => void reload()} className="mt-1.5" />
+          <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1.5" />
         </div>
-        <p className="mt-1 text-small text-[var(--ink-2)]">{t('autoTaggingHint')}</p>
-        {!canEdit && <p id={READ_ONLY_NOTE_ID} className="mt-1 text-small text-[var(--ink-2)]">{t('settingsReadOnlyNotice')}</p>}
-        <SettingLoadStatus keptValue={value !== undefined && value !== null} state={state} error={loadError} onReload={() => void reload()} className="mt-1.5" />
-        <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1.5" />
-      </div>
+
+      </SettingRow>
       {/* Stays fully readable when tagging is off: blocks can still be lifted, and they apply again once it is switched on. */}
       <div className="mt-4">
         <BlockedAutoTagsSettings />

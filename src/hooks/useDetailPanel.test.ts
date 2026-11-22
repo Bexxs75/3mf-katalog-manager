@@ -3,10 +3,12 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { useDetailPanel } from './useDetailPanel';
 beforeEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
-it('defaults to auto and persists and reads pinned', () => {
+it('persists the startup default independently of the live pin', () => {
   const { result, unmount } = renderHook(useDetailPanel);
   expect(result.current.detailPanel).toBe('auto');
-  act(() => result.current.setDetailPanel('pinned'));
+  act(() => result.current.setDefaultDetailPanel('pinned'));
+  expect(result.current.detailPanel).toBe('auto');
+  expect(result.current.defaultDetailPanel).toBe('pinned');
   expect(uiSettings.getItem('3mf-katalog-detail-panel')).toBe('pinned');
   unmount();
   expect(renderHook(useDetailPanel).result.current.detailPanel).toBe('pinned');
@@ -18,4 +20,10 @@ it('works when storage is unavailable', () => {
   expect(result.current.detailPanel).toBe('auto');
   act(() => result.current.setDetailPanel('pinned'));
   expect(result.current.detailPanel).toBe('pinned');
+});
+it('does not throw when persisting the default fails', () => {
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
+  const { result } = renderHook(useDetailPanel);
+  expect(() => act(() => result.current.setDefaultDetailPanel('pinned'))).not.toThrow();
+  expect(result.current.defaultDetailPanel).toBe('pinned');
 });

@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { canManageFiles, useCanManageFiles } from '../lib/webSession';
 import { fileOp } from '../lib/fileOps';
 import { fileOpsError } from '../lib/fileOpsErrors';
@@ -138,7 +139,7 @@ function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, return
   return <CatalogActionDialog title={titles[action]} returnFocus={returnFocus} onClose={() => { if (!busy) onClose(); }}>
     <p>{displayName(name)}</p>
     {(action === 'create' || action === 'rename') && <label>{labels.name}<input data-initial-focus value={draft} disabled={busy} onChange={event => setDraft(event.target.value)} className="block w-full border p-2 bg-[var(--panel)]" /></label>}
-    {action === 'move' && <label>{labels.target}<select data-initial-focus value={target} disabled={busy} onChange={event => setTarget(event.target.value)} className="block w-full border p-2 bg-[var(--panel)]"><option value="">—</option>{targets.map(folder => <option key={folder.id} value={folder.id}>{displayName(folder.name)}</option>)}</select></label>}
+    {action === 'move' && <label>{labels.target}<Select data-initial-focus value={target} disabled={busy} onValueChange={value => setTarget(value)} className="block w-full border p-2 bg-[var(--panel)]"><option value="">—</option>{targets.map(folder => <option key={folder.id} value={folder.id}>{displayName(folder.name)}</option>)}</Select></label>}
     {(action === 'move' || action === 'rename') && <p>{labels.contents}</p>}
     {action === 'remove' && <>
       {summary ? <ul><li>{formatCount(t('removeFolderList'), summary.subfolderCount).replace('{name}', displayName(summary.name))}</li><li>{formatCount(t('removeFolderModels'), summary.modelCount)}</li></ul> : <p>{labels.loading}</p>}

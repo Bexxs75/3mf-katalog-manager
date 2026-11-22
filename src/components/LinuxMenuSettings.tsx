@@ -1,3 +1,4 @@
+import { SettingRow } from './SettingsTools';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import * as api from '../lib/api/linuxMenu';
@@ -39,7 +40,7 @@ export function LinuxMenuSettings() {
       if (mountedRef.current) setBusy(false);
     }
   }
-  return <>
+  return <SettingRow id="linuxMenu" value={status.installed} label={t('linuxMenuTitle')}>
     <SettingLoadStatus keptValue state={loadState} error={loadError} onReload={() => void reload()} />
     <div className="flex items-center justify-between gap-2 mt-4 mb-2">
       <span className="text-[length:var(--font-size-body)] font-semibold">{t('linuxMenuTitle')}</span>
@@ -54,5 +55,5 @@ export function LinuxMenuSettings() {
     {justAdded && <p role="status" className="mt-1 text-caption leading-[1.4] text-[var(--ink-2)]">{t('linuxMenuAdded')}</p>}
     {/* Files are written here, so after a failure the real state is read again rather than promised. */}
     <SettingSaveStatus saving={busy} error={error} keptValue={false} onReload={() => { setError(null); void reload(); }} className="mt-1" />
-  </>;
+  </SettingRow>;
 }

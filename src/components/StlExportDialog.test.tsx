@@ -1,3 +1,4 @@
+import { chooseSelect, selectOptions } from '../test/select';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StlExportDialog } from './StlExportDialog';
@@ -50,7 +51,7 @@ describe('StlExportDialog', () => {
     expect(screen.queryByText(de.stDoneInCatalog)).not.toBeInTheDocument();
   });
 
-  it('asks for the range of a 3MF with several plates and sends the chosen plate', async () => {
+  it.each(['mouse', 'keyboard'] as const)('asks for the range of a 3MF with several plates and sends the chosen plate (%s)', async mode => {
     readPlateOverview.mockResolvedValue({ plates: [{ plateIndex: 2 }, { plateIndex: 1 }, { plateIndex: 3 }] });
     exportModelAsStl.mockResolvedValue(saved);
     open('3mf');
@@ -60,8 +61,8 @@ describe('StlExportDialog', () => {
     fireEvent.click(within(range).getByRole('radio', { name: new RegExp(de.stScopePlate) }));
     expect(screen.queryByText(de.stNotePlates)).not.toBeInTheDocument();
     const plate = within(range).getByRole('combobox', { name: de.stPlate });
-    expect(within(plate).getAllByRole('option').map(o => o.textContent)).toEqual(['Platte 1', 'Platte 2', 'Platte 3']);
-    fireEvent.change(plate, { target: { value: '3' } });
+    expect(selectOptions(plate).map(o => o.textContent)).toEqual(['Platte 1', 'Platte 2', 'Platte 3']);
+    chooseSelect(plate, '3', mode);
     fireEvent.click(next());
     await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'plate', number: 3 }));
   });

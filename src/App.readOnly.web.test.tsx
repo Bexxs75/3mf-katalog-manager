@@ -1,3 +1,4 @@
+import { chooseSelect } from './test/select';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
@@ -86,8 +87,8 @@ it('navigates all read views, search, filters, sorts, and previous/next details 
   expect(within(screen.getByRole('main')).queryByText('Alpha.stl')).toBeNull();
   fireEvent.change(search, { target: { value: '' } });
   for (const [label, value] of [[de.licenseUsage, 'unknown'], [de.printStatusFilter, 'not_printed']]) {
-    fireEvent.change(screen.getByRole('combobox', { name: label }), { target: { value } });
-    fireEvent.change(screen.getByRole('combobox', { name: label }), { target: { value: '' } });
+    chooseSelect(screen.getByRole('combobox', { name: label }), value);
+    chooseSelect(screen.getByRole('combobox', { name: label }), '');
   }
   await click(header.getByRole('button', { name: de.sortName }));
   await click(screen.getByRole('menuitemradio', { name: de.sortLastViewed }));

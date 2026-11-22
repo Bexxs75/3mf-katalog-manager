@@ -85,7 +85,7 @@ it('removes a bulk selection through the new command and clears the toolbar', as
   });
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   fireEvent.click(screen.getAllByRole('checkbox')[0]);
-  clickBulkMore('Aus Katalog entfernen');
+  clickBulkMore('Aus dem Katalog entfernen');
   expect(screen.getByText('1 Modell aus dem Katalog entfernen?')).toBeTruthy();
   fireEvent.click(screen.getByText('Entfernen'));
   await waitFor(() => expect(screen.queryAllByText('Cube.stl')).toHaveLength(0));
@@ -93,4 +93,52 @@ it('removes a bulk selection through the new command and clears the toolbar', as
   // Nothing is left to select, so the always-visible bar is gone as well.
   expect(screen.queryByRole('toolbar')).toBeNull();
   expect(invoke).toHaveBeenCalledWith('remove_files_from_catalog', { fileIds: ['1'] });
+});
+
+it.each([
+  ['Als gedruckt markieren', 'set_print_status'],
+  ['Zu Favoriten hinzufügen', 'set_favorite'],
+  ['Zur Warteschlange hinzufügen', 'add_to_queue'],
+  ['In den Papierkorb', 'delete_file'],
+  ['Aus dem Katalog entfernen', 'remove_files_from_catalog'],
+])('context action %s applies to every selected model, excluding other models', async (label, command) => {
+  const models = ['a', 'b', 'c'].map(id => makeModelFile({ id, name: `${id}.stl`, path: `/old/${id}.stl`, favorite: false, printStatus: 'not_printed', queuePosition: null }));
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'list_file_summaries') return models.map(makeModelFileSummary);
+    if (cmd === 'list_files_by_ids') return models.filter(model => (args as { fileIds: string[] }).fileIds.includes(model.id));
+    if (cmd === 'list_all_file_tags') return {};
+    if (cmd === 'add_to_queue') return 1;
+    if (cmd === 'remove_files_from_catalog') return 2;
+    return fallback(cmd, args);
+  });
+  await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
+  for (const id of ['a', 'b']) fireEvent.click(document.querySelector(`[data-model-id="${id}"] input[type="checkbox"]`)!);
+  fireEvent.contextMenu(document.querySelector('[data-model-id="b"]')!);
+  fireEvent.click(screen.getByRole('button', { name: `${label} (2 Modelle)` }));
+  if (command === 'delete_file') fireEvent.click(screen.getAllByRole('button', { name: 'Löschen' }).find(button => button.closest('[data-navigation-menu]'))!);
+  if (command === 'remove_files_from_catalog') fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }));
+  await waitFor(() => {
+    const calls = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === command).map(([, args]) => args);
+    if (command === 'remove_files_from_catalog') expect(calls).toEqual([{ fileIds: ['a', 'b'] }]);
+    else expect(calls.map(args => (args as { fileId: string }).fileId).sort()).toEqual(['a', 'b']);
+  });
+});
+
+it('toggles favorites directly in the list row without opening the model', async () => {
+  uiSettings.setItem('3mf-katalog-view', 'groupedList');
+  const model = makeModelFile({ id: 'a', name: 'list.stl', favorite: false });
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'set_favorite') { model.favorite = true; return; }
+    if (cmd === 'list_file_summaries') return [makeModelFileSummary(model)];
+    if (cmd === 'list_files_by_ids') return [model];
+    if (cmd === 'list_all_file_tags') return {};
+    return fallback(cmd, args);
+  });
+  await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
+  const row = document.querySelector('[data-model-id="a"]')!;
+  fireEvent.click(row.querySelector('button[aria-pressed="false"]')!);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_favorite', { fileId: 'a', favorite: true }));
+  expect(document.querySelector('[data-model-id="a"] button[aria-pressed="true"]')).toHaveAttribute('aria-label', de.favoriteRemove);
 });

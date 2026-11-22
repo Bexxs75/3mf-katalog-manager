@@ -53,3 +53,15 @@ it('renders the browser immediately without invoking or showing a settings banne
   expect(screen.queryByRole('alert')).toBeNull();
   expect(backend.invoke).not.toHaveBeenCalled();
 });
+
+it('mounts without waiting for slow backend baseline reads', async () => {
+  const { settingBaseline, resetSettingsBaseline } = await import('../lib/settingsSession');
+  resetSettingsBaseline();
+  backend.invoke.mockImplementation((command: string) => command === 'get_auto_tagging' ? new Promise(() => {})
+    : Promise.resolve({ schema_version: 1, migrated_from_webview: true, values: {} }));
+  render(<LanguageProvider><UiSettingsGate><div data-testid="catalog" /></UiSettingsGate></LanguageProvider>);
+  await act(async () => {});
+  expect(screen.getByTestId('catalog')).toBeInTheDocument();
+  expect(settingBaseline('theme')).toBeDefined();
+  expect(settingBaseline('autoTags')).toBeUndefined();
+});

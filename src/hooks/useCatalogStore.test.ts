@@ -1014,3 +1014,28 @@ it('ignores detail reads started during a pending summary refresh', async () => 
   await act(async () => { old.resolve([makeModelFile({id: 'm1', sourceUrl: 'stale-during-refresh'})]); });
   expect(result.current.models[0].sourceUrl).toBeNull();
 });
+
+it('deletes a tag from every assignment, including unloaded and trashed models, then refreshes', async () => {
+  mockInitialLoad();
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  vi.mocked(filesApi.listAllFileTags).mockResolvedValueOnce({ m1: ['other'], unloaded: ['target'], trash: ['target'] });
+  const before = callCount('list_trash');
+  await act(() => result.current.deleteTag('target'));
+  expect(filesApi.removeTag).toHaveBeenCalledTimes(2);
+  expect(filesApi.removeTag).toHaveBeenCalledWith('unloaded', 'target');
+  expect(filesApi.removeTag).toHaveBeenCalledWith('trash', 'target');
+  expect(callCount('list_trash')).toBe(before + 1);
+});
+
+it('settles all tag removals and refreshes partial changes before reporting a failure', async () => {
+  mockInitialLoad();
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  vi.mocked(filesApi.listAllFileTags).mockResolvedValueOnce({ first: ['target'], second: ['target'] });
+  vi.mocked(filesApi.removeTag).mockRejectedValueOnce(new Error('failed'));
+  const before = callCount('list_tag_counts');
+  await act(async () => { await expect(result.current.deleteTag('target')).rejects.toThrow('failed'); });
+  expect(filesApi.removeTag).toHaveBeenCalledWith('second', 'target');
+  expect(callCount('list_tag_counts')).toBe(before + 1);
+});

@@ -28,9 +28,10 @@ describe('file context menu, bundle entries', () => {
       <ContextMenu x={0} y={0} onClose={onClose} onOpenInSlicer={noop} onDelete={noop} inQueue={false} onToggleQueue={noop} printed={false}
         onTogglePrintStatus={noop} fileId="1" currentName="a.3mf" onRename={async () => {}} bundleActions={{ onCreate, onRemove: undefined, onAddTo: undefined }} />
     </LanguageProvider>);
-    expect(screen.queryByRole('button', { name: de.bundleAddTo })).toBeNull();
-    expect(screen.queryByRole('button', { name: de.bundleRemoveFrom })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: de.bundleMake }));
+    expect(screen.queryByRole('menuitem', { name: de.bundleAddTo })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: de.bundleRemoveFrom })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: de.modelMenuBundle }));
+    fireEvent.click(screen.getByRole('menuitem', { name: de.bundleMake }));
     expect(onCreate).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalled();
   });
@@ -97,15 +98,18 @@ describe('selection bar, bundle entries', () => {
 
   it('shows no bundle entry without bundle actions', () => {
     bar();
-    const menu = openBulkMore();
-    expect(within(menu).queryByRole('menuitem', { name: de.bundleMake })).toBeNull();
+    const trigger = screen.getByRole('button', { name: 'Bündel' });
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute('title', de.bulkGroupEmpty);
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('menu', { name: 'Bündel' })).toBeNull();
   });
 
   it('lists the entries that apply and passes the "More" button as the place focus returns to', () => {
     const a = actions();
     bar(a);
     clickBulkMore(de.bundleMake);
-    const more = screen.getByRole('button', { name: /^Mehr/ });
+    const more = screen.getByRole('button', { name: 'Bündel' });
     expect(a.onCreate).toHaveBeenCalledWith(more);
     clickBulkMore(de.bundleAddTo);
     expect(a.onAddTo).toHaveBeenCalledWith(more);
@@ -119,7 +123,7 @@ describe('selection bar, bundle entries', () => {
 
   it('hides what does not apply and disables "Bundle …" with the reason when fewer than two models are selected', () => {
     bar(actions({ canCreate: false, canAddTo: false, canRemove: false, canDissolve: false, canEdit: false }));
-    const menu = openBulkMore();
+    const menu = openBulkMore('Bündel');
     const make = within(menu).getByRole('menuitem', { name: de.bundleMake });
     expect(make).toBeDisabled();
     expect(make).toHaveAttribute('title', de.bundleDlgNeedTwo);

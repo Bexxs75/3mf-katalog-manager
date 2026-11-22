@@ -1,3 +1,5 @@
+import { SettingRow } from './SettingsTools';
+import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -15,6 +17,7 @@ const button = 'px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] 
 export function SourceFoldersSettings() {
   const t = useT();
   const { jobActive, lockProps } = useImportLock();
+  const [loaded, setLoaded] = useState(false);
   const [folders, setFolders] = useState<SourceFolder[]>([]);
   const [checkOnStart, setCheckOnStart] = useState(false);
   const [rejected, setRejected] = useState(0);
@@ -33,7 +36,7 @@ export function SourceFoldersSettings() {
   const load = useCallback(async () => {
     const [list, start, count] = await Promise.all([api.listSourceFolders(), api.getSourceCheckOnStart(), api.listRejectedCount()]);
     if (!mounted.current) return;
-    setFolders(list); setCheckOnStart(start === true); setRejected(count);
+    setLoaded(true); setFolders(Array.isArray(list) ? list : []); setCheckOnStart(start === true); setRejected(count);
   }, []);
   useEffect(() => { load().catch(e => { if (mounted.current) setError(toAppError(e)); }); }, [load]);
 
@@ -83,12 +86,15 @@ export function SourceFoldersSettings() {
           </li>))}</ul>}
       <button ref={addRef} type="button" className={button} disabled={busy || jobActive} {...lockProps} onClick={() => void add()}>{t('sfAdd')}</button>
       {jobActive && <p className="mt-1 text-small text-[var(--ink-2)]">{t('sfLockedNote')}</p>}
-      <div className="flex items-center justify-between gap-2 mt-3 text-small">
-        <span className="font-semibold">{t('sfCheckOnStart')}</span>
-        <ToggleSwitch checked={checkOnStart} label={t('sfCheckOnStart')} busy={busy} aria-describedby="source-check-start-hint"
-          onChange={enabled => void changeCheckOnStart(enabled)} />
-      </div>
-      <p id="source-check-start-hint" className="mt-1 text-small text-[var(--ink-2)]">{t('sfCheckOnStartHint')}</p>
+      <SettingRow id="sourceCheck" value={loaded ? checkOnStart : undefined} label={t('sfCheckOnStart')} onReset={() => changeCheckOnStart(SETTING_DEFAULTS.sourceCheck)} disabled={!loaded || busy || jobActive}>
+        <div className="flex items-center justify-between gap-2 mt-3 text-small">
+          <span className="font-semibold">{t('sfCheckOnStart')}</span>
+          <ToggleSwitch checked={checkOnStart} label={t('sfCheckOnStart')} busy={busy} aria-describedby="source-check-start-hint"
+            onChange={enabled => void changeCheckOnStart(enabled)} />
+        </div>
+        <p id="source-check-start-hint" className="mt-1 text-small text-[var(--ink-2)]">{t('sfCheckOnStartHint')}</p>
+
+      </SettingRow>
       <div className="flex flex-wrap min-w-0 items-center gap-2 mt-3 text-small">
         <span id="source-rejected-count" className="flex-auto min-w-0 whitespace-nowrap">{t('sfRejected').replace('{count}', String(rejected))}</span>
         <button type="button" className={`${button} min-w-0 [overflow-wrap:anywhere]`} disabled={busy || jobActive || rejected === 0} aria-describedby="source-rejected-count source-rejected-note" {...lockProps} onClick={() => void reset()}>{t('sfResetRejected')}</button>

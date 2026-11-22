@@ -1,3 +1,4 @@
+import { chooseSelect } from './test/select';
 import { uiSettings } from './lib/uiSettings';
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { RuntimeEnvironmentProvider } from './hooks/useRuntimeEnvironment';
@@ -110,8 +111,7 @@ it.each([false, true])('deletes through the sidebar hook, preserves models and r
   await act(async () => fireEvent.click(sidebar.getByRole('button', {name: 'Kitchen'})));
   if (galleryOpen) fireEvent.click(sidebar.getByText(de.viewAllCollectionsLabel));
   fireEvent.contextMenu(sidebar.getByRole('button', {name: 'Kitchen'}));
-  // The always-visible selection bar has its own (disabled) delete button.
-  fireEvent.click(screen.getAllByRole('button', {name: de.delete}).find(button => !button.closest('[role="toolbar"]'))!);
+  fireEvent.click(screen.getByRole('menuitem', {name: de.delete}));
   await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: de.delete})));
   expect(invoke).toHaveBeenCalledWith('delete_collection', {collectionId: 'c1'});
   expect(sidebar.queryByRole('button', {name: 'Kitchen'})).toBeNull();
@@ -146,8 +146,8 @@ it('clears print status, usage, folder, tag, search and tool filters through App
   fireEvent.change(sidebar.getByPlaceholderText(de.searchPlaceholder), {target: {value: 'Cube'}});
   fireEvent.click(sidebar.getByRole('button', {name: /Favoriten/}));
   expect(screen.getByRole('region', {name: de.filterBarAria}).querySelectorAll('[data-filter-kind]')).toHaveLength(4);
-  fireEvent.change(screen.getByRole('combobox', {name: de.licenseUsage}), {target: {value: 'unknown'}});
-  fireEvent.change(screen.getByRole('combobox', {name: de.printStatusFilter}), {target: {value: 'not_printed'}});
+  chooseSelect(screen.getByRole('combobox', {name: de.licenseUsage}), 'unknown');
+  chooseSelect(screen.getByRole('combobox', {name: de.printStatusFilter}), 'not_printed');
   fireEvent.click(screen.getByRole('button', {name: de.filterBarClearAll}));
   expect(screen.getByRole('region', {name: de.filterBarAria}).querySelectorAll('[data-filter-kind]')).toHaveLength(0);
   expect(screen.getByRole('combobox', {name: de.licenseUsage})).toHaveValue('');

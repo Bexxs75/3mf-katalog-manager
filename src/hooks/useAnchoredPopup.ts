@@ -36,6 +36,7 @@ export function useAnchoredPopup<Anchor extends HTMLElement, Popup extends HTMLE
   open: boolean,
   onClose: () => void,
   minWidth: number,
+  restoreFocus = true,
 ): { popupRef: RefObject<Popup | null>; style: AnchoredPopupStyle | null } {
   const popupRef = useRef<Popup>(null);
   const [style, setStyle] = useState<AnchoredPopupStyle | null>(null);
@@ -49,8 +50,8 @@ export function useAnchoredPopup<Anchor extends HTMLElement, Popup extends HTMLE
   useEffect(() => {
     if (!open) return;
     const anchor = anchorRef.current;
-    return () => { if (anchor?.isConnected) anchor.focus({ preventScroll: true }); };
-  }, [open, anchorRef]);
+    return () => { if (restoreFocus && anchor?.isConnected) anchor.focus({ preventScroll: true }); };
+  }, [open, anchorRef, restoreFocus]);
 
   // Keep the latest onClose reference so the listeners aren't re-registered on every render.
   const onCloseRef = useRef(onClose);

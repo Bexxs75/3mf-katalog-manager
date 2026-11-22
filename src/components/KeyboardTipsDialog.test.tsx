@@ -33,7 +33,8 @@ it('shows the empty catalog hint cards and opens help', () => {
 });
 it('lists the shortcuts for moving and undoing', () => {
   render(<LanguageProvider><KeyboardTipsDialog onClose={vi.fn()} /></LanguageProvider>);
-  expect(screen.getByText('M')).toBeInTheDocument();
+  expect(screen.getByText('F6 / M')).toBeInTheDocument();
   expect(screen.getByText('Ausgewählte Modelle in einen Ordner verschieben')).toBeInTheDocument();
   expect(screen.getByText('Strg+Z')).toBeInTheDocument();
+  for (const key of ['F2', 'Entf', 'Umschalt+Entf']) expect(screen.getByText(key)).toBeInTheDocument();
 });

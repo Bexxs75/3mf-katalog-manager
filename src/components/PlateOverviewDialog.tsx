@@ -13,7 +13,10 @@ type Source = Pick<ModelFile, 'id' | 'name' | 'path' | 'sliceInfo' | 'printInfo'
 
 interface Props {
   model: Source;
+  /** Escape: abandons the dialog (and any queue of further overviews). */
   onClose: () => void;
+  /** The close button: a queue continues with the next model. Defaults to `onClose`. */
+  onFinished?: () => void;
   /** Reads the print data of an unread file; omitted where the user may not change the catalog. */
   onReread?: (id: string) => void;
 }
@@ -37,7 +40,7 @@ const buttonClass = `h-8 px-3 rounded-[3px] border border-[var(--line-strong)] b
  * come from the catalog; objects and pictures are read from the file when the dialog opens. A value the
  * file does not give is a dash, never a 0, and a sum over incomplete plates says "at least".
  */
-export function PlateOverviewDialog({ model, onClose, onReread }: Props) {
+export function PlateOverviewDialog({ model, onClose, onFinished, onReread }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const canEdit = useCanEditMetadata();
@@ -141,7 +144,7 @@ export function PlateOverviewDialog({ model, onClose, onReread }: Props) {
             <h2 id={titleId} className="m-0 text-[length:var(--font-size-title)] font-bold break-words">{t('poTitle')}: {displayName(model.name)}</h2>
             <div className="font-code text-caption text-[var(--ink-3)] break-all">{displayName(model.path)}</div>
           </div>
-          <button type="button" data-initial-focus onClick={onClose} aria-label={t('poClose')}
+          <button type="button" data-initial-focus onClick={onFinished ?? onClose} aria-label={t('poClose')}
             className={`flex-none w-[30px] h-[30px] grid place-items-center rounded-md text-[var(--ink-2)] hover:bg-[var(--panel-2)] cursor-pointer ${focusClass}`}>
             <Icon name="close" size={16} />
           </button>

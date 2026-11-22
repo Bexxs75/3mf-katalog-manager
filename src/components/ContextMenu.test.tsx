@@ -100,11 +100,11 @@ function renderKeyboardMenu() {
 describe('ContextMenu keyboard cancellation', () => {
   it('focuses Cancel when entering the delete confirmation', () => {
     renderKeyboardMenu();
-    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'In den Papierkorb' }));
     expect(screen.getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
   });
 
-  it.each(['Löschen', 'Aus dem Katalog entfernen', 'Umbenennen'])('cancels %s with Escape and keeps focus in the menu', (label) => {
+  it.each(['In den Papierkorb', 'Aus dem Katalog entfernen', 'Umbenennen'])('cancels %s with Escape and keeps focus in the menu', (label) => {
     const { container, onDelete, onRemove, onRename } = renderKeyboardMenu();
     fireEvent.click(screen.getByRole('button', { name: label }));
     const cancel = screen.getByRole('button', { name: 'Abbrechen' });
@@ -121,9 +121,15 @@ describe('ContextMenu keyboard cancellation', () => {
 
 it('disables rename, removal and trash while import is active', () => {
   render(<LanguageProvider><ImportLockContext.Provider value={true}><ContextMenu x={0} y={0} onClose={vi.fn()} onDelete={vi.fn()} onRemove={vi.fn()} onOpenInSlicer={vi.fn()} inQueue={false} onToggleQueue={vi.fn()} printed={false} onTogglePrintStatus={vi.fn()} fileId="42" currentName="a.stl" onRename={vi.fn()} /></ImportLockContext.Provider></LanguageProvider>);
-  for (const name of [/Umbenennen/, /Katalog entfernen/, /^Löschen$/]) {
+  for (const name of [/Umbenennen/, /Katalog entfernen/, /^In den Papierkorb$/]) {
     const button = screen.getByRole('button',{name}); expect(button).toBeDisabled(); expect(button).toHaveAttribute('title','Während eines Imports gesperrt');
   }
+});
+
+it('keeps favorite, queue and printed enabled while import is active', () => {
+  render(<LanguageProvider><ImportLockContext.Provider value={true}><ContextMenu x={0} y={0} onClose={vi.fn()} onDelete={vi.fn()} onRemove={vi.fn()} onOpenInSlicer={vi.fn()} inQueue={false} onToggleQueue={vi.fn()} printed={false} onTogglePrintStatus={vi.fn()} onToggleFavorite={vi.fn()} fileId="42" currentName="a.stl" onRename={vi.fn()} onMove={vi.fn()} /></ImportLockContext.Provider></LanguageProvider>);
+  for (const action of ['favorite', 'queue', 'printed']) expect(document.querySelector(`[data-model-action="${action}"]`)).toBeEnabled();
+  for (const action of ['rename', 'move', 'remove', 'trash']) expect(document.querySelector(`[data-model-action="${action}"]`)).toBeDisabled();
 });
 
 it('reveals the card model and closes only after a successful launch', async () => {
@@ -210,5 +216,58 @@ describe('ContextMenu and G-code', () => {
   it('still offers it for a model', () => {
     menu({ name: 'a.3mf', path: '/c/a.3mf' });
     expect(screen.getByRole('button', { name: 'In Slicer öffnen' })).toBeVisible();
+  });
+});
+
+describe('model action menu', () => {
+  const base = { x: 0, y: 0, onClose: vi.fn(), onOpenInSlicer: vi.fn(), onDelete: vi.fn(), onRemove: vi.fn(),
+    favorite: false, onToggleFavorite: vi.fn(), inQueue: false, onToggleQueue: vi.fn(), printed: false,
+    onTogglePrintStatus: vi.fn(), fileId: 'a', currentName: 'a.3mf', onRename: vi.fn(), onMove: vi.fn(),
+    organize: { tags: ['tag'], collections: [{ id: 'c', name: 'Collection' }], onAddTag: vi.fn(), onRemoveTag: vi.fn(),
+      onCollection: vi.fn(), onUncollect: vi.fn(), onLicense: vi.fn() },
+    bundleActions: { onCreate: vi.fn(), onAddTo: vi.fn(), onRemove: vi.fn() } };
+
+  it.each([1, 3])('shows selection size %s and hides rename for multiple files', count => {
+    render(<LanguageProvider><ContextMenu {...base} fileIds={['a', 'b', 'c'].slice(0, count)} /></LanguageProvider>);
+    const suffix = count > 1 ? ' (3 Modelle)' : '';
+    expect(screen.getByRole('button', { name: `Als gedruckt markieren${suffix}` })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: `In den Papierkorb${suffix}` })).toHaveAttribute('aria-keyshortcuts', 'Shift+Delete');
+    expect(screen.queryByRole('button', { name: 'Umbenennen' }) !== null).toBe(count === 1);
+    expect(screen.queryByText('Tag hinzufügen')).toBeNull();
+  });
+
+  it('shows mixed and active toggle states with action wording', () => {
+    render(<LanguageProvider><ContextMenu {...base} favorite="mixed" inQueue printed /></LanguageProvider>);
+    expect(screen.getByRole('button', { name: 'Zu Favoriten hinzufügen' })).toHaveAttribute('aria-pressed', 'mixed');
+    expect(screen.getByRole('button', { name: 'Aus Warteschlange entfernen' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Als nicht gedruckt markieren' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('navigates both submenus and returns focus with Left and Escape before closing', () => {
+    const onClose = vi.fn();
+    render(<LanguageProvider><ContextMenu {...base} onClose={onClose} /></LanguageProvider>);
+    for (const label of ['Organisieren', 'Bündel']) {
+      const trigger = screen.getByRole('button', { name: label });
+      trigger.focus(); fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      const first = document.activeElement;
+      fireEvent.keyDown(first!, { key: 'ArrowDown' });
+      expect(document.activeElement).not.toBe(first);
+      fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+      expect(document.activeElement).toBe(first);
+      fireEvent.keyDown(first!, { key: 'ArrowLeft' });
+      expect(trigger).toHaveFocus(); expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      expect(trigger).toHaveFocus(); expect(onClose).not.toHaveBeenCalled();
+    }
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it.each([['F2', false, 'textbox'], ['Delete', false, 'Entfernen'], ['Delete', true, 'Löschen']])('handles %s with shift=%s', (key, shiftKey, target) => {
+    render(<LanguageProvider><ContextMenu {...base} /></LanguageProvider>);
+    fireEvent.keyDown(document.activeElement!, { key, shiftKey });
+    expect(target === 'textbox' ? screen.getByRole('textbox') : screen.getByRole('button', { name: target })).toBeVisible();
   });
 });

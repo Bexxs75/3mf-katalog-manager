@@ -1,3 +1,5 @@
+import { SettingRow } from './SettingsTools';
+import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { setNativeDragEnabled } from '../lib/nativeDrag';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
@@ -35,22 +37,25 @@ export function DragOutSetting() {
   const windows = useRef(isWindowsPlatform()).current;
   return (
     <div>
-      <div className="flex items-center justify-between gap-2 text-small">
-        <span>
-          <span className="font-semibold">{t('dgSwitchLabel')}</span>
-          <span id="drag-out-hint" className="block text-caption text-[var(--ink-3)]">{t('dgSwitchHint')}</span>
-        </span>
-        <ToggleSwitch
-          checked={enabled === true}
-          label={t('dgSwitchLabel')}
-          disabled={state !== 'ready' || enabled === null} busy={busy}
-          onChange={(v) => void change(v)}
-          aria-describedby={windows ? 'drag-out-hint drag-out-experimental drag-out-windows' : 'drag-out-hint drag-out-experimental'}
-        />
-      </div>
-      <SettingLoadStatus keptValue={value !== undefined && value !== null} state={state} error={loadError} onReload={() => void reload()} className="mt-1" />
-      <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1" />
-      <p id="drag-out-experimental" className="mt-2 text-caption text-[var(--ink-3)]">{t('dgExperimentalNote')}</p>
+      <SettingRow id="dragOut" value={value} label={t('dgSwitchLabel')} onReset={() => change(SETTING_DEFAULTS.dragOut)} disabled={state !== 'ready' || busy}>
+        <div className="flex items-center justify-between gap-2 text-small">
+          <span>
+            <span className="font-semibold">{t('dgSwitchLabel')}</span>
+            <span id="drag-out-hint" className="block text-caption text-[var(--ink-3)]">{t('dgSwitchHint')}</span>
+          </span>
+          <ToggleSwitch
+            checked={enabled === true}
+            label={t('dgSwitchLabel')}
+            disabled={state !== 'ready' || enabled === null} busy={busy}
+            onChange={(v) => void change(v)}
+            aria-describedby={windows ? 'drag-out-hint drag-out-experimental drag-out-windows' : 'drag-out-hint drag-out-experimental'}
+          />
+        </div>
+        <SettingLoadStatus keptValue={value !== undefined && value !== null} state={state} error={loadError} onReload={() => void reload()} className="mt-1" />
+        <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1" />
+        <p id="drag-out-experimental" className="mt-2 text-caption text-[var(--ink-3)]">{t('dgExperimentalNote')}</p>
+
+      </SettingRow>
       {windows && (
         <div id="drag-out-windows" className="mt-2 text-small">
           <p className="p-2 border border-[var(--warn)] rounded text-caption"><b>{t('dgWinLabel')}</b> {t('dgWinText')}</p>

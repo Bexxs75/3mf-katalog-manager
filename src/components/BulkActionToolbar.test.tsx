@@ -1,3 +1,7 @@
+import { chooseSelect } from '../test/select';
+import { modelMenuActions } from '../lib/modelMenuActions';
+import { de } from '../i18n/de';
+import { en } from '../i18n/en';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
@@ -17,6 +21,8 @@ function renderToolbar(overrides: Partial<Parameters<typeof BulkActionToolbar>[0
     onSelectAllVisible: vi.fn(),
     onClearSelection: vi.fn(),
     onBulkAddToQueue: vi.fn(),
+    onBulkToggleFavorite: vi.fn(),
+    onBulkRemoveFromQueue: vi.fn(),
     addToCollectionMenuOpen: false,
     onAddToCollectionMenuOpenChange: vi.fn(),
     collections: [],
@@ -86,9 +92,9 @@ describe('BulkActionToolbar', () => {
 
   it('cancels remove confirmation without clearing until the next Escape', () => {
     const { props } = renderToolbar();
-    clickBulkMore('Aus Katalog entfernen');
+    clickBulkMore('Aus dem Katalog entfernen');
     fireEvent.keyDown(screen.getByRole('button', { name: 'Abbrechen' }), { key: 'Escape' });
-    expect(screen.getByRole('button', { name: /^Mehr/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ablegen' })).toBeInTheDocument();
     expect(props.onClearSelection).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(props.onClearSelection).toHaveBeenCalledTimes(1);
@@ -99,7 +105,7 @@ describe('BulkActionToolbar', () => {
     ['an unexpected error shows its text with the report link', { message: 'database is locked', expected: false }, 'database is locked', true],
   ])('shows %s', async (_name, rejection, text, report) => {
     const { props } = renderToolbar({ onBulkRemove: vi.fn(() => Promise.reject(rejection)) });
-    clickBulkMore('Aus Katalog entfernen');
+    clickBulkMore('Aus dem Katalog entfernen');
     fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }));
     expect(await screen.findByText(text)).toBeInTheDocument();
     expect(props.onBulkRemove).toHaveBeenCalled();
@@ -108,14 +114,14 @@ describe('BulkActionToolbar', () => {
 
   it('cancels remove confirmation with focus outside the bar before clearing selection', () => {
     const { props } = renderToolbar();
-    clickBulkMore('Aus Katalog entfernen');
+    clickBulkMore('Aus dem Katalog entfernen');
     const outside = document.createElement('button');
     document.body.appendChild(outside);
     try {
       outside.focus();
       expect(outside).toHaveFocus();
       fireEvent.keyDown(outside, { key: 'Escape' });
-      expect(screen.getByRole('button', { name: /^Mehr/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Ablegen' })).toBeInTheDocument();
       expect(props.onClearSelection).not.toHaveBeenCalled();
       expect(props.onBulkRemove).not.toHaveBeenCalled();
       fireEvent.keyDown(outside, { key: 'Escape' });
@@ -131,7 +137,7 @@ describe('BulkActionToolbar', () => {
   ] as const)('closes open menus when the %s confirmation opens', (kind, overrides) => {
     const { props } = renderToolbar({ ...overrides, removeTagMenuOpen: kind === 'delete' });
     if (kind === 'remove') {
-      clickBulkMore('Aus Katalog entfernen');
+      clickBulkMore('Aus dem Katalog entfernen');
     }
     expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(false);
     expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
@@ -203,13 +209,13 @@ describe('BulkActionToolbar', () => {
   });
 });
 
-it('focuses Cancel in the inline remove confirmation and restores focus to the More button on Escape', () => {
+it('focuses Cancel in the inline remove confirmation and restores focus to the Ablegen button on Escape', () => {
   const { props } = renderToolbar();
-  clickBulkMore('Aus Katalog entfernen');
+  clickBulkMore('Aus dem Katalog entfernen');
   expect(screen.getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-  // The entry sits in the "More" menu, so focus goes back to the button that opens it.
-  expect(screen.getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+  // The entry sits in the "Ablegen" menu, so focus goes back to the button that opens it.
+  expect(screen.getByRole('button', { name: 'Ablegen' })).toHaveFocus();
   expect(props.onBulkRemove).not.toHaveBeenCalled();
 });
 
@@ -235,7 +241,7 @@ it('closes suggestions before the tag menu and restores trigger focus', () => {
   expect(props.onAddTagMenuOpenChange).not.toHaveBeenCalled();
   fireEvent.keyDown(input, { key: 'Escape' });
   expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
-  expect(screen.getByRole('button', { name: 'Tag hinzufügen' })).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Ablegen' })).toHaveFocus();
   expect(props.onClearSelection).not.toHaveBeenCalled();
 });
 
@@ -265,7 +271,7 @@ it('sets a bulk license, clears it, and closes its menu on Escape', async () => 
   const onBulkSetLicense = vi.fn().mockResolvedValue(undefined);
   const { props } = renderToolbar({ onBulkSetLicense });
   clickBulkMore('Lizenz setzen');
-  fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'personal' } });
+  chooseSelect(screen.getByRole('combobox', { name: 'Lizenz' }), 'personal');
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   await waitFor(() => expect(onBulkSetLicense).toHaveBeenCalledWith('personal'));
   await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
@@ -277,14 +283,14 @@ it('sets a bulk license, clears it, and closes its menu on Escape', async () => 
   fireEvent.keyDown(window, { key: 'Escape' });
   expect(screen.queryByRole('combobox')).toBeNull();
   expect(props.onClearSelection).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Ablegen' })).toHaveFocus();
 });
 
 it('applies a custom license to the selection and reports errors without closing', async () => {
   const onBulkSetLicense = vi.fn().mockRejectedValueOnce(new Error('Disk full')).mockResolvedValue(undefined);
   renderToolbar({ onBulkSetLicense });
   clickBulkMore('Lizenz setzen');
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '__other' } });
+  chooseSelect(screen.getByRole('combobox'), '__other');
   fireEvent.change(screen.getByRole('textbox', { name: 'Lizenztext' }), { target: { value: ' Agreement ' } });
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Disk full');
@@ -338,8 +344,31 @@ describe.each(['tags', 'collections'] as const)('%s list menu', kind => {
     expect(props[onChange]).toHaveBeenCalledWith(false);
     view.rerender(<LanguageProvider><BulkActionToolbar {...props} {...{ [menu]: false }} /></LanguageProvider>);
     expect(screen.queryByRole('button', { name: kind === 'tags' ? '#entry-0' : 'entry-0' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: kind === 'tags' ? 'Tag entfernen' : 'Zu Sammlung hinzufügen' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Ablegen' })).toHaveFocus();
     expect(props.onClearSelection).not.toHaveBeenCalled();
+  });
+});
+
+describe('popover anchoring', () => {
+  it.each([
+    ['addTagMenuOpen', '.absolute:not([role="menu"])'],
+    ['addToCollectionMenuOpen', '[data-collection-popover]'],
+    ['removeTagMenuOpen', '[data-remove-tag-popover]'],
+  ] as const)('anchors the %s popover to the organize group button', (menu, selector) => {
+    renderToolbar({ [menu]: true });
+    const organize = screen.getByRole('button', { name: de.bulkGroupFile });
+    const wrapper = organize.parentElement!;
+    const popover = wrapper.querySelector(selector);
+    expect(popover).not.toBeNull();
+    expect(screen.getByRole('button', { name: de.bulkGroupMark }).parentElement).not.toBe(wrapper);
+    expect(screen.getByRole('button', { name: de.bulkGroupMark }).parentElement!.querySelector('[data-navigation-menu]')).toBeNull();
+  });
+
+  it('anchors the license popover to the organize group button', () => {
+    renderToolbar({ onBulkSetLicense: vi.fn(async () => {}) });
+    openBulkMore();
+    fireEvent.click(screen.getByRole('menuitem', { name: de.licenseSet }));
+    expect(screen.getByRole('button', { name: de.bulkGroupFile }).parentElement!.querySelector('[data-license-popover]')).not.toBeNull();
   });
 });
 
@@ -347,7 +376,7 @@ describe('BulkActionToolbar move', () => {
   it('has a "Verschieben …" button that opens the move dialog', () => {
     const onBulkMove = vi.fn();
     renderToolbar({ onBulkMove });
-    fireEvent.click(screen.getByRole('button', { name: 'Verschieben …' }));
+    clickBulkMore('Verschieben nach …');
     expect(onBulkMove).toHaveBeenCalledTimes(1);
   });
 
@@ -367,7 +396,7 @@ it('disables the move button while an import runs', () => {
       removeTagMenuOpen: false, onRemoveTagMenuOpenChange: vi.fn(), tagsInSelection: [], onBulkRemoveTag: vi.fn(),
     }} />
   </ImportLockContext.Provider></LanguageProvider>);
-  expect(screen.getByRole('button', { name: 'Verschieben …' })).toBeDisabled();
+  expect(within(openBulkMore()).getByRole('menuitem', { name: 'Verschieben nach …' })).toBeDisabled();
 });
 
 describe('BulkActionToolbar without a selection', () => {
@@ -382,7 +411,7 @@ describe('BulkActionToolbar without a selection', () => {
     fireEvent.click(selectAll);
     expect(props.onSelectAllVisible).toHaveBeenCalledTimes(1);
 
-    const unavailable = ['Auswahl aufheben', 'Tag hinzufügen', 'Tag entfernen', 'Zu Sammlung hinzufügen', 'Gedruckt', 'Verschieben …', 'Zur Warteschlange hinzufügen', /^Mehr/, 'Löschen'];
+    const unavailable = ['Auswahl aufheben', 'Markieren', 'Ablegen', 'Bündel', 'In den Papierkorb'];
     for (const name of unavailable) {
       const button = within(bar).getByRole('button', { name });
       // aria-disabled instead of disabled keeps the button focusable, so its reason can be read.
@@ -430,30 +459,25 @@ describe('BulkActionToolbar without a selection', () => {
   });
 });
 
-describe('BulkActionToolbar groups and More menu', () => {
+describe('BulkActionToolbar action groups', () => {
   const extra = { onBulkMove: vi.fn(), onBulkSetLicense: vi.fn(async () => {}), selectedIds: ['1'], onDateRenamed: vi.fn(), activeCollection: 'c1' };
   const names = (scope: HTMLElement, role: 'button' | 'menuitem') => within(scope).getAllByRole(role).map(el => el.textContent?.trim());
 
-  it('groups the actions by purpose and keeps "Löschen" apart', () => {
+  it('keeps selection, three group menus and trash in a stable order', () => {
     renderToolbar(extra);
     const bar = screen.getByRole('toolbar');
-    expect(names(within(bar).getByRole('group', { name: 'Auswahl' }), 'button')).toEqual(['Alle auswählen', 'Auswahl aufheben']);
-    expect(names(within(bar).getByRole('group', { name: 'Bearbeiten' }), 'button')).toEqual(['Tag hinzufügen', 'Tag entfernen', 'Zu Sammlung hinzufügen', 'Gedruckt']);
-    expect(names(within(bar).getByRole('group', { name: 'Ablegen' }), 'button')).toEqual(['Verschieben …', 'Zur Warteschlange hinzufügen']);
-    const del = within(bar).getByRole('button', { name: 'Löschen' });
-    expect(del.closest('[role="group"]')).toBeNull();
+    expect(names(bar, 'button')).toEqual(['Alle auswählen', 'Auswahl aufheben', 'Markieren', 'Ablegen', 'Bündel', 'In den Papierkorb']);
     expect(screen.getByText('2 ausgewählt')).toHaveAttribute('aria-live', 'polite');
   });
 
-  it('puts the rarely used actions into the More menu', () => {
+  it('uses the common organize labels and ordering, then preserves auxiliary actions', () => {
     renderToolbar(extra);
-    const trigger = screen.getByRole('button', { name: /^Mehr/ });
+    const trigger = screen.getByRole('button', { name: 'Ablegen' });
     expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(trigger);
+    const menu = openBulkMore();
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    const menu = screen.getByRole('menu', { name: 'Mehr Aktionen' });
-    expect(names(menu, 'menuitem')).toEqual(['Lizenz setzen', 'Nicht gedruckt', 'Mit Datum umbenennen …', 'Druckdaten nachlesen', 'Aus Sammlung entfernen', 'Aus Katalog entfernen']);
+    expect(names(menu, 'menuitem')).toEqual(['Tag hinzufügen', 'Tag entfernen', 'Zu Sammlung hinzufügen', 'Aus Sammlung entfernen', 'Lizenz setzen', 'Verschieben nach …', 'Aus dem Katalog entfernen', 'Mit Datum umbenennen …', 'Druckdaten nachlesen']);
   });
 
   it('lists "Aus Sammlung entfernen" only inside a collection', () => {
@@ -463,7 +487,7 @@ describe('BulkActionToolbar groups and More menu', () => {
 
   it('opens with ArrowDown, moves with the arrow keys, closes with Escape and returns focus to the trigger', () => {
     const { props } = renderToolbar(extra);
-    const trigger = screen.getByRole('button', { name: /^Mehr/ });
+    const trigger = screen.getByRole('button', { name: 'Ablegen' });
     trigger.focus();
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     const items = within(screen.getByRole('menu')).getAllByRole('menuitem');
@@ -484,7 +508,7 @@ describe('BulkActionToolbar groups and More menu', () => {
 
   it('closes on Tab and on a click outside', () => {
     renderToolbar(extra);
-    const trigger = screen.getByRole('button', { name: /^Mehr/ });
+    const trigger = screen.getByRole('button', { name: 'Ablegen' });
     openBulkMore();
     fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
     expect(screen.queryByRole('menu')).toBeNull();
@@ -496,88 +520,142 @@ describe('BulkActionToolbar groups and More menu', () => {
 
   it('runs a menu action, closes the menu and keeps focus in the bar', () => {
     const { props } = renderToolbar(extra);
-    fireEvent.click(within(openBulkMore()).getByRole('menuitem', { name: 'Nicht gedruckt' }));
-    expect(props.onBulkSetPrintStatus).toHaveBeenCalledWith('not_printed');
+    clickBulkMore('Als gedruckt markieren');
+    expect(props.onBulkSetPrintStatus).toHaveBeenCalledWith('printed');
     expect(screen.queryByRole('menu')).toBeNull();
-    expect(screen.getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Markieren' })).toHaveFocus();
     fireEvent.click(within(openBulkMore()).getByRole('menuitem', { name: 'Aus Sammlung entfernen' }));
     expect(props.onBulkRemoveFromCollection).toHaveBeenCalledTimes(1);
   });
 
-  // Every action of the former flat bar has to stay reachable, in both layouts.
   const formerActions = ['Alle auswählen', 'Auswahl aufheben', 'Lizenz setzen', 'Zur Warteschlange hinzufügen', 'Zu Sammlung hinzufügen',
-    'Aus Sammlung entfernen', 'Tag hinzufügen', 'Tag entfernen', 'Gedruckt', 'Nicht gedruckt', 'Mit Datum umbenennen …', 'Verschieben …',
-    'Aus Katalog entfernen', 'Löschen'];
-  it.each([false, true])('keeps every former action reachable (compact=%s)', compact => {
-    renderToolbar({ ...extra, compact });
-    const inBar = within(screen.getByRole('toolbar')).getAllByRole('button').map(el => el.textContent?.trim());
-    const inMenu = names(openBulkMore(), 'menuitem');
+    'Aus Sammlung entfernen', 'Tag hinzufügen', 'Tag entfernen', 'Als gedruckt markieren', 'Mit Datum umbenennen …', 'Verschieben nach …',
+    'Aus dem Katalog entfernen', 'In den Papierkorb'];
+  it.each([500, 1400])('keeps actions in the same groups at width %s', width => {
+    window.innerWidth = width;
+    renderToolbar(extra);
+    const inBar = names(screen.getByRole('toolbar'), 'button');
+    const inMenu = ['Markieren', 'Ablegen'].flatMap(group => within(openBulkMore(group)).queryAllByRole('menuitem').map(el => el.textContent?.trim()));
     for (const action of formerActions) expect([...inBar, ...inMenu], action).toContain(action);
   });
 
-  it('moves "Tag entfernen" and "Gedruckt" into the menu in a narrow window and opens the tag list from there', () => {
-    const { props } = renderToolbar({ ...extra, compact: true });
+  it('keeps tags and move inside Ablegen and printed inside Markieren', () => {
+    const { props } = renderToolbar(extra);
     const bar = screen.getByRole('toolbar');
-    expect(within(bar).queryByRole('button', { name: 'Gedruckt' })).toBeNull();
-    expect(within(bar).queryByRole('button', { name: 'Verschieben …' })).toBeNull();
-    fireEvent.click(within(openBulkMore()).getByRole('menuitem', { name: 'Tag entfernen' }));
+    expect(within(bar).queryByRole('button', { name: 'Als gedruckt markieren' })).toBeNull();
+    expect(within(bar).queryByRole('button', { name: 'Verschieben nach …' })).toBeNull();
+    clickBulkMore('Tag entfernen');
     expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(true);
   });
 });
 
-describe('BulkActionToolbar focus handover from the More menu', () => {
-  it('moves focus into the license editor and back to "Mehr" on Escape', () => {
+describe('BulkActionToolbar focus handover from a group menu', () => {
+  it('moves focus into the license editor and back to "Ablegen" on Escape', () => {
     renderToolbar({ onBulkSetLicense: vi.fn().mockResolvedValue(undefined) });
     clickBulkMore('Lizenz setzen');
-    expect(screen.getByRole('combobox', { name: 'Lizenz' })).toHaveFocus();
+    const select = screen.getByRole('combobox', { name: 'Lizenz' });
+    expect(select).toHaveFocus();
+    fireEvent.keyDown(select, { key: 'ArrowDown' });
+    expect(screen.getByRole('listbox')).toBeVisible();
+    fireEvent.keyDown(select, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(select).toHaveFocus();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('combobox', { name: 'Lizenz' })).toBeNull();
-    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ablegen' })).toHaveFocus();
   });
 
-  it('moves focus into the tag list in the compact bar and back to "Mehr" on Escape', () => {
-    const view = renderToolbar({ compact: true });
+  it('moves focus into the tag list in the group menu and back to "Ablegen" on Escape', () => {
+    const view = renderToolbar({});
     clickBulkMore('Tag entfernen');
     expect(view.props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(true);
-    view.view.rerender(<LanguageProvider><BulkActionToolbar {...view.props} compact removeTagMenuOpen /></LanguageProvider>);
+    view.view.rerender(<LanguageProvider><BulkActionToolbar {...view.props} removeTagMenuOpen /></LanguageProvider>);
     expect(screen.getByRole('button', { name: '#miniatur' })).toHaveFocus();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ablegen' })).toHaveFocus();
   });
 
   it('focuses the empty tag list itself so Escape still works from there', () => {
-    renderToolbar({ compact: true, removeTagMenuOpen: true, tagsInSelection: [] });
+    renderToolbar({ removeTagMenuOpen: true, tagsInSelection: [] });
     expect(document.querySelector('[data-remove-tag-popover]')).toHaveFocus();
   });
 
-  it('returns focus to "Mehr" after a tag was picked and the list closed', () => {
-    const view = renderToolbar({ compact: true, removeTagMenuOpen: true });
+  it('returns focus to "Ablegen" after a tag was picked and the list closed', () => {
+    const view = renderToolbar({ removeTagMenuOpen: true });
     const tag = screen.getByRole('button', { name: '#miniatur' });
     expect(tag).toHaveFocus();
-    view.view.rerender(<LanguageProvider><BulkActionToolbar {...view.props} compact removeTagMenuOpen={false} /></LanguageProvider>);
-    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+    view.view.rerender(<LanguageProvider><BulkActionToolbar {...view.props} removeTagMenuOpen={false} /></LanguageProvider>);
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ablegen' })).toHaveFocus();
   });
 
-  it('keeps the focus return to "Mehr" after the date rename dialog is cancelled', () => {
+  it('keeps the focus return to "Ablegen" after the date rename dialog is cancelled', () => {
     renderToolbar({ selectedIds: ['a', 'b'], onDateRenamed: vi.fn() });
     clickBulkMore('Mit Datum umbenennen …');
     expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
     fireEvent.keyDown(document.activeElement ?? window, { key: 'Escape' });
-    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ablegen' })).toHaveFocus();
   });
 
-  it('moves focus to the confirmation Cancel button and back to "Mehr" for "Aus Katalog entfernen"', () => {
+  it('moves focus to the confirmation Cancel button and back to "Ablegen" for "Aus Katalog entfernen"', () => {
     renderToolbar();
-    clickBulkMore('Aus Katalog entfernen');
+    clickBulkMore('Aus dem Katalog entfernen');
     const cancel = screen.getByRole('button', { name: 'Abbrechen' });
     expect(cancel).toHaveFocus();
     fireEvent.click(cancel);
-    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ablegen' })).toHaveFocus();
   });
 
-  it('returns focus to "Mehr" after "Aus Sammlung entfernen"', () => {
+  it('returns focus to "Ablegen" after "Aus Sammlung entfernen"', () => {
     renderToolbar({ activeCollection: 'c1' });
     clickBulkMore('Aus Sammlung entfernen');
-    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ })).toHaveFocus();
+    expect(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ablegen' })).toHaveFocus();
   });
+});
+
+it.each(['de', 'en'] as const)('renders shared action labels in shared order (%s)', language => {
+  localStorage.setItem('3mf-katalog-language', language);
+  renderToolbar({ onBulkMove: vi.fn(), onBulkSetLicense: vi.fn(), activeCollection: 'c',
+    bundleActions: { canCreate: true, canAddTo: true, canRemove: true, canEdit: false, canDissolve: false,
+      onCreate: vi.fn(), onAddTo: vi.fn(), onRemove: vi.fn(), onEdit: vi.fn(), onDissolve: vi.fn() } });
+  const translations = language === 'de' ? de : en;
+  const actions = modelMenuActions({ web: false, count: 2, favorite: false, queue: false, printed: false });
+  for (const [group, label] of [['quick', translations.bulkGroupMark], ['organize', translations.bulkGroupFile], ['bundle', translations.modelMenuBundle]] as const) {
+    const menu = openBulkMore(label);
+    const rendered = within(menu).getAllByRole('menuitem').map(item => item.textContent);
+    const expected = actions.filter(action => action.group === group).map(action => translations[action.label]);
+    expect(rendered.slice(0, expected.length)).toEqual(expected);
+  }
+});
+
+it('locks file changes, license and re-reading during import, keeping tags and collections available', () => {
+  const { props, view } = renderToolbar({ onBulkMove: vi.fn(), onBulkSetLicense: vi.fn(), selectedIds: ['a', 'b'], onDateRenamed: vi.fn() });
+  view.rerender(<LanguageProvider><ImportLockContext.Provider value={true}><BulkActionToolbar {...props} /></ImportLockContext.Provider></LanguageProvider>);
+  for (const name of ['Verschieben nach …', 'Aus dem Katalog entfernen', 'Mit Datum umbenennen …', 'Lizenz setzen', 'Druckdaten nachlesen']) {
+    expect(within(openBulkMore()).getByRole('menuitem', { name })).toBeDisabled();
+  }
+  for (const name of ['Tag hinzufügen', 'Zu Sammlung hinzufügen']) {
+    expect(within(openBulkMore()).getByRole('menuitem', { name })).not.toBeDisabled();
+  }
+  expect(screen.getByRole('button', { name: 'In den Papierkorb' })).toBeDisabled();
+  for (const item of within(openBulkMore('Markieren')).getAllByRole('menuitem')) expect(item).not.toBeDisabled();
+});
+
+it('anchors each group menu at its own trigger', () => {
+  renderToolbar();
+  for (const name of ['Markieren', 'Ablegen']) {
+    const menu = openBulkMore(name);
+    expect(menu.parentElement).toBe(screen.getByRole('button', { name }).parentElement);
+    expect(menu.className).toContain('left-0');
+    expect(menu.className).not.toContain('right-0');
+  }
+});
+
+it('toggles all-marked states back through the bulk handlers', () => {
+  const { props } = renderToolbar({ favorite: true, queue: true, printed: true });
+  clickBulkMore(de.favoriteRemove);
+  clickBulkMore(de.removeFromQueue);
+  clickBulkMore(de.markAsNotPrinted);
+  expect(props.onBulkToggleFavorite).toHaveBeenCalledOnce();
+  expect(props.onBulkRemoveFromQueue).toHaveBeenCalledOnce();
+  expect(props.onBulkSetPrintStatus).toHaveBeenCalledExactlyOnceWith('not_printed');
 });

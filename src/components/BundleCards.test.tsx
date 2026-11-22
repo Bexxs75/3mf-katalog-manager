@@ -103,6 +103,12 @@ describe.each(['compact', 'comfort'])('bundle card in the grid (%s)', density =>
     render(grid(h));
     fireEvent.contextMenu(screen.getByRole('row', { name: /^Bündel Holder/ }), { clientX: 5, clientY: 6 });
     expect(h.onContextMenu).toHaveBeenLastCalledWith('v1', 5, 6, 'b1');
+    const card = screen.getByRole('row', { name: /^Bündel Holder/ });
+    for (const key of [{key: 'ContextMenu'}, {key: 'F10', shiftKey: true}]) {
+      card.focus(); fireEvent.keyDown(card, key);
+      expect(h.onContextMenu).toHaveBeenLastCalledWith('v1', 0, 100, 'b1');
+      expect(card).toHaveFocus();
+    }
     fireEvent.contextMenu(screen.getByRole('row', { name: 'Solo.stl' }), { clientX: 7, clientY: 8 });
     expect(h.onContextMenu).toHaveBeenLastCalledWith('solo', 7, 8);
   });

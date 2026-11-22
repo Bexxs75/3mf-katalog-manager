@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useCanEditMetadata } from '../lib/webSession';
 import { useEffect, useId, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
@@ -36,15 +37,15 @@ export function LicenseEditor({ value, onSave, onDirtyChange, bulk = false }: {
       <LicenseBadge license={draft || null} showUnknown />
     </div>
     {onSave && !readOnly ? <>
-      <select title={licenseLabel(draft, t)} id={id} className={controlClass} value={other ? '__other' : draft} disabled={busy} {...lockProps}
-        onChange={event => {
-          const next = event.target.value;
+      <Select title={licenseLabel(draft, t)} id={id} className={controlClass} value={other ? '__other' : draft} disabled={busy} {...lockProps}
+        onValueChange={value => {
+          const next = value;
           setOther(next === '__other'); setDraft(next === '__other' ? '' : next); setError(null);
         }}>
         <option value="">{t('licenseUnset')}</option>
         {licensePresets.map(preset => <option key={preset.code} value={preset.code}>{t(preset.label)}</option>)}
         <option value="__other">{t('licenseOther')}</option>
-      </select>
+      </Select>
       {other && <input data-license-draft aria-label={t('licenseCustom')} className={controlClass} value={draft} maxLength={200}
         disabled={busy} {...lockProps} onChange={event => setDraft(event.target.value)} />}
       <button type="button" className="rounded border border-[var(--line-strong)] px-3 py-1.5 text-small text-[var(--ink)] hover:bg-[var(--panel-2)] disabled:opacity-50"

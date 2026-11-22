@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { useT } from '../i18n/LanguageContext';
 import { displayName } from '../lib/displayName';
@@ -7,8 +7,8 @@ import { reportMetadataError } from '../lib/metadataErrors';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 
 /** A catalog-only action; file deletion is available solely through upload discard. */
-export function WebRemoveFromCatalogButton({ name, onRemove, onRemoved, className = catalogActionButton }: {
-  name: string; onRemove?: () => Promise<void>; onRemoved?: () => void; className?: string;
+export function WebRemoveFromCatalogButton({ count = 1, menuLabel, menuShortcut, name, onRemove, onRemoved, className = catalogActionButton }: {
+  count?: number; menuLabel?: ReactNode; menuShortcut?: string; name: string; onRemove?: () => Promise<void>; onRemoved?: () => void; className?: string;
 }) {
   const allowed = useCanEditMetadata();
   const t = useT();
@@ -19,8 +19,8 @@ export function WebRemoveFromCatalogButton({ name, onRemove, onRemoved, classNam
   if (import.meta.env.VITE_TARGET !== 'web' || !allowed || !onRemove) return null;
   const close = () => { if (!busy) setConfirmRemove(false); };
   return <>
-    <button type="button" ref={button} className={`${className} whitespace-nowrap`} aria-haspopup="dialog" onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalog')}</button>
-    {confirmRemove && <CatalogActionDialog title={t('removeModelQuestion').replace('{name}', displayName(name))} onClose={close} returnFocus={button}>
+    <button type="button" ref={button} className={`${className} whitespace-nowrap`} aria-haspopup="dialog" aria-keyshortcuts={menuShortcut} onClick={() => { setError(null); setConfirmRemove(true); }}>{menuLabel ?? t('removeCatalog')}</button>
+    {confirmRemove && <CatalogActionDialog title={count > 1 ? t('modelMenuRemoveQuestion').replace('{count}', String(count)) : t('removeModelQuestion').replace('{name}', displayName(name))} onClose={close} returnFocus={button}>
       <p>{t('webRemoveModelHint')}</p>
       {error && <p role="alert">{error}</p>}
       <div className="flex gap-2 justify-end">

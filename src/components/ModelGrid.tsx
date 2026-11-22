@@ -1,3 +1,4 @@
+import { isContextMenuKey } from './CatalogSurfaceMenu';
 import { useCanEditMetadata } from '../lib/webSession';
 import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
@@ -258,8 +259,14 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         tabIndex={-1}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
+        onKeyDown={event => {
+          if (event.target !== event.currentTarget || !isContextMenuKey(event)) return;
+          event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+          const bounds = event.currentTarget.getBoundingClientRect();
+          onSelect(m.id); onContextMenu(m.id, bounds.left, bounds.bottom);
+        }}
         onContextMenu={(e) => {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation(); e.currentTarget.focus();
           onSelect(m.id);
           onContextMenu(m.id, e.clientX, e.clientY);
         }}
@@ -371,8 +378,14 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             tabIndex={-1}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
+            onKeyDown={event => {
+              if (event.target !== event.currentTarget || !isContextMenuKey(event)) return;
+              event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+              const bounds = event.currentTarget.getBoundingClientRect();
+              onSelect(m.id); onContextMenu(m.id, bounds.left, bounds.bottom);
+            }}
             onContextMenu={(e) => {
-              e.preventDefault();
+              e.preventDefault(); e.stopPropagation(); e.currentTarget.focus();
               onSelect(m.id);
               onContextMenu(m.id, e.clientX, e.clientY);
             }}

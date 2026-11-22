@@ -87,6 +87,7 @@ it.each(['compact', 'comfort'])('exposes metadata but keeps filesystem controls 
   expect(screen.queryByRole('button', { name: de.delete })).toBeNull();
   for (const key of ['Delete', 'Backspace']) fireEvent.keyDown(window, { key });
   fireEvent.keyDown(window, { key: 'Escape' });
+  fireEvent.keyDown(document, { key: 'Escape' });
   await openDetail();
   expect(screen.getByRole('button', { name: de.printLogAddButton })).toBeVisible();
   await click(screen.getByRole('button', { name: de.printLogAddButton }));

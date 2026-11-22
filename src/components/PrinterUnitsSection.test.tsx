@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -15,14 +16,14 @@ const printer: Printer = {
   units: [{ id: 'u1', printerId: 'p1', name: 'AMS 3H', kind: 'bambu_ams_3h', slotCount: 9, bambuAmsIndex: null }],
 };
 
-function setup(language: string) {
+function setup(language: string, device = printer) {
   localStorage.setItem('3mf-katalog-language', language);
   const actions: PrintersState = {
     printers: [printer], error: null, refresh: vi.fn(), addPrinter: vi.fn(),
     renamePrinter: vi.fn(), updateDetails: vi.fn(), reorderPrinters: vi.fn(), deletePrinter: vi.fn(),
     addUnit: vi.fn().mockResolvedValue(undefined), updateUnit: vi.fn(), deleteUnit: vi.fn(), reorderUnits: vi.fn(),
   };
-  render(<LanguageProvider><PrinterUnitsSection printer={printer} spools={[]} actions={actions}
+  render(<LanguageProvider><PrinterUnitsSection printer={device} spools={[]} actions={actions}
     onChanged={vi.fn()} onMaterial={vi.fn()} /></LanguageProvider>);
   return actions;
 }
@@ -50,4 +51,13 @@ it('adds the nine-slot template with the default name and no custom slot count',
   expect(within(dialog).getByLabelText(de.pmName)).toHaveValue('AMS 3H 2');
   fireEvent.submit(dialog.querySelector('form')!);
   await waitFor(() => expect(actions.addUnit).toHaveBeenCalledWith('p1', 'bambu_ams_3h', 'AMS 3H 2', null));
+});
+
+it.each(['mouse', 'keyboard'] as const)('saves a changed AMS family type (%s)', async mode => {
+  const device: Printer = { ...printer, units: [{ ...printer.units[0], name: 'AMS', kind: 'bambu_ams' }] };
+  const actions = setup('de', device);
+  fireEvent.click(screen.getByRole('button', { name: de.pmEdit }));
+  chooseSelect(screen.getByRole('combobox'), 'bambu_ams_2_pro', mode);
+  fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
+  await waitFor(() => expect(actions.updateUnit).toHaveBeenCalledWith('u1', 'AMS', null, 'bambu_ams_2_pro'));
 });

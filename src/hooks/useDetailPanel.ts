@@ -7,9 +7,14 @@ export function useDetailPanel() {
     try { return uiSettings.getItem(key) === 'pinned' ? 'pinned' : 'auto'; }
     catch { return 'auto'; }
   });
+  const [defaultDetailPanel, setDefaultState] = useState(detailPanel);
   const setDetailPanel = useCallback((mode: DetailPanelMode) => {
     setState(mode);
-    try { uiSettings.setItem(key, mode); } catch { /* The setting still works without storage. */ }
   }, []);
-  return { detailPanel, setDetailPanel };
+  const setDefaultDetailPanel = useCallback((mode: DetailPanelMode) => {
+    setDefaultState(mode);
+    try { uiSettings.setItem(key, mode); }
+    catch { /* storage unavailable: the default then only holds for this session */ }
+  }, []);
+  return { detailPanel, setDetailPanel, defaultDetailPanel, setDefaultDetailPanel };
 }

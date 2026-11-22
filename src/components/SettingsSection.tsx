@@ -1,3 +1,5 @@
+import { SettingsToolsContext, SettingsTabContext, SettingsSectionSearch } from './SettingsTools';
+import { matchesSettingsSearch } from '../lib/settingsSession';
 import { createContext, useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { settingsHeadingId, type SettingsSectionId } from '../lib/settingsNav';
@@ -24,18 +26,24 @@ export function useSectionContent(hasContent: boolean) {
  * from elsewhere in the app can land on it. Content that may render nothing (platform dependent switches)
  * hides the whole block with `hideWhenEmpty` (its children report through `useSectionContent`) rather than leaving a title with nothing below it.
  */
-export function SettingsSection({ id, title, experimental, help, danger, hideWhenEmpty, children }: {
+export function SettingsSection({ id, title, experimental, help, advanced, danger, hideWhenEmpty, children }: {
   id: SettingsSectionId;
   title: string;
   /** Adds the "Experimental" badge next to the title. */
   experimental?: boolean;
   help?: string;
+  advanced?: boolean;
   /** Sets the block apart for actions that cannot be undone. */
   danger?: boolean;
   hideWhenEmpty?: boolean;
   children?: ReactNode;
 }) {
   const t = useT();
+  const tools = useContext(SettingsToolsContext);
+  const { tab, label: tabLabel } = useContext(SettingsTabContext);
+  const node = useRef<HTMLElement>(null);
+  const [matches, setMatches] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const headingId = settingsHeadingId(id);
   // Until its children have reported, a section that may hide counts as filled, so nothing flickers away at mount.
   const [empty, setEmpty] = useState(false);
@@ -47,8 +55,24 @@ export function SettingsSection({ id, title, experimental, help, danger, hideWhe
   // The children's effects have run before this one: a section nobody reported into has nothing to show.
   useLayoutEffect(() => { if (hideWhenEmpty) setEmpty(reporters.current.size === 0); }, [hideWhenEmpty]);
   const reportContent = useMemo(() => (hideWhenEmpty ? report : null), [hideWhenEmpty, report]);
+  useLayoutEffect(() => {
+    const section = node.current;
+    if (!section) return;
+    const update = () => {
+      const content = section.cloneNode(true) as HTMLElement;
+      content.querySelectorAll('[data-setting-actions]').forEach(element => element.remove());
+      const visible = !(hideWhenEmpty && empty) && matchesSettingsSearch(tools?.query ?? '', tabLabel, title, help ?? '', content.textContent ?? '');
+      setMatches(visible);
+      tools?.reportSection(id, tab, visible);
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(section, { childList: true, subtree: true, characterData: true });
+    return () => { observer.disconnect(); tools?.reportSection(id, tab, null); };
+  }, [tools?.query, tools?.reportSection, id, tab, tabLabel, title, help, hideWhenEmpty, empty]);
+  const content = <SettingsSectionSearch.Provider value={`${title} ${help ?? ''} ${advanced ? t('settingsAdvanced') : ''}`}><SectionContent.Provider value={reportContent}>{children}</SectionContent.Provider></SettingsSectionSearch.Provider>;
   return (
-    <section aria-labelledby={headingId} hidden={hideWhenEmpty && empty ? true : undefined}
+    <section ref={node} aria-labelledby={headingId} hidden={!matches || (hideWhenEmpty && empty) ? true : undefined}
       className={danger ? 'mt-3 rounded-[6px] bg-[var(--panel-2)] px-3 py-4' : 'py-4 border-b border-[var(--line)] first:pt-1 last:border-b-0'}>
       <h3 id={headingId} tabIndex={-1}
         className={`mb-2 text-[length:var(--font-size-body)] font-semibold outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${danger ? 'text-[var(--crit)]' : 'text-[var(--ink)]'}`}>
@@ -56,7 +80,16 @@ export function SettingsSection({ id, title, experimental, help, danger, hideWhe
         {experimental && <>{' '}<span className="align-middle px-1.5 rounded-full border border-[var(--line-strong)] text-caption font-normal text-[var(--ink-2)]">{t('tvExperimental')}</span></>}
       </h3>
       {help && <p className="-mt-1 mb-2 text-small text-[var(--ink-2)]">{help}</p>}
-      <SectionContent.Provider value={reportContent}>{children}</SectionContent.Provider>
+      {advanced ? <details open={!!tools?.query.trim() || expanded}>
+        <summary onClick={event => {
+          event.preventDefault();
+          if (tools?.query.trim()) return;
+          const details = event.currentTarget.parentElement as HTMLDetailsElement;
+          details.open = !details.open;
+          setExpanded(details.open);
+        }} className="cursor-pointer text-small text-[var(--ink-2)] focus-visible:outline-2">{t('settingsAdvanced')}</summary>
+        <div className="mt-2">{content}</div>
+      </details> : content}
     </section>
   );
 }

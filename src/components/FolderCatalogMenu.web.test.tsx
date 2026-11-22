@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
@@ -36,11 +37,11 @@ it.each([['Create subfolder', 'create_folder', { parentId: '2', name: 'new' }], 
   expect(calls).toEqual([]); fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(calls).toEqual([{ command, args }]));
 });
-it('moves only into a selected folder with a clear contents hint', async () => {
+it.each(['mouse', 'keyboard'] as const)('moves only into a selected folder with a clear contents hint (%s)', async mode => {
   setup(); fireEvent.click(screen.getByRole('menuitem', { name: 'Move folder' }));
   expect(screen.getByText(/uncatalogued files/)).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
-  fireEvent.change(screen.getByLabelText('Destination folder'), { target: { value: '3' } });
+  chooseSelect(screen.getByLabelText('Destination folder'), '3', mode);
   expect(calls).toEqual([]); fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(calls).toEqual([{ command: 'move_folder', args: { folderId: '2', newParentId: '3' } }]));
 });

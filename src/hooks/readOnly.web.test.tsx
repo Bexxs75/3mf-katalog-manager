@@ -28,7 +28,7 @@ it('blocks every catalog mutation before IPC and before optimistic state changes
     const s = result.current;
     s.selectModel('1');
     await s.restoreModel('1'); await s.deleteModelPermanently('1'); await s.emptyTrashAction();
-    await s.addTag('1', 'new'); await s.removeTag('1', 'old'); await s.renameFile('1', 'changed.stl'); await s.deleteModel('1');
+    await s.addTag('1', 'new'); await s.removeTag('1', 'old'); await s.deleteTag('old'); await s.renameFile('1', 'changed.stl'); await s.deleteModel('1');
     await s.togglePrintStatus('1'); await s.toggleFavorite('1'); await s.addToQueue('1'); await s.removeFromQueue('1'); await s.reorderQueue(['1']);
     await s.uploadCustomImage('1'); await s.captureRenderSnapshot('1', 'data'); await s.setModelLicenses(['1'], 'CC0-1.0'); await s.setModelSourceUrl('1', 'https://example.org'); await s.rescanMetadata('1');
   });

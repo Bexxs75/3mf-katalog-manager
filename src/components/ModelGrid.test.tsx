@@ -276,3 +276,20 @@ it.each(['compact', 'comfort', 'list'])('moves a card onto a folder inside the w
   expect(getByText('/target undo:1')).toBeInTheDocument();
   expect(beginDragOut).not.toHaveBeenCalled();
 });
+
+it.each(['compact', 'comfort'])('opens context menus at the focused card for both keyboard gestures (%s)', density => {
+  localStorage.setItem('3mf-katalog-density', density);
+  const onContextMenu = vi.fn(); const onSelect = vi.fn();
+  const { container } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} onContextMenu={onContextMenu} onSelect={onSelect} /></UiDensityProvider></LanguageProvider>);
+  const card = container.querySelector<HTMLElement>('[data-model-id]')!;
+  vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({left: 25, bottom: 80} as DOMRect);
+  for (const key of [{key: 'ContextMenu'}, {key: 'F10', shiftKey: true}]) {
+    card.focus(); fireEvent.keyDown(card, key);
+    expect(onContextMenu).toHaveBeenLastCalledWith(card.dataset.modelId, 25, 80);
+    expect(onSelect).toHaveBeenLastCalledWith(card.dataset.modelId);
+    expect(card).toHaveFocus();
+  }
+  onContextMenu.mockClear();
+  fireEvent.keyDown(card.querySelector('button')!, {key: 'ContextMenu'});
+  expect(onContextMenu).not.toHaveBeenCalled();
+});

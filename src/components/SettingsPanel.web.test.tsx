@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
@@ -77,7 +77,7 @@ it('keeps the same focused link while paused, blocks further clicks and re-enabl
   expect(paused).toHaveAttribute('aria-disabled', 'true');
   expect(paused).toHaveAttribute('href', '/api/backup/export');
   // The pause is written out and tied to the link, and the click claims no finished backup.
-  expect(screen.getByRole('status')).toHaveTextContent(de.catalogBackupWebPause);
+  expect(within(screen.getByRole('tabpanel')).getByRole('status')).toHaveTextContent(de.catalogBackupWebPause);
   expect(paused).toHaveAccessibleDescription(de.catalogBackupWebPause);
   expect(screen.queryByText(/Sicherung erstellt/)).toBeNull();
   const second = new MouseEvent('click', { bubbles: true, cancelable: true });

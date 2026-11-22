@@ -170,7 +170,7 @@ describe('date rename entry in the selection bar', () => {
   it('opens the dialog, returns focus to the trigger on Escape and keeps the selection', async () => {
     const { noop } = renderBar();
     // The entry lives in the "More" menu; focus returns to the button that opened it.
-    const trigger = screen.getByRole('button', { name: /^Mehr/ });
+    const trigger = screen.getByRole('button', { name: 'Ablegen' });
     clickBulkMore('Mit Datum umbenennen …');
     await screen.findByText('2026-09-12_14-03_Halter.3mf');
     fireEvent.keyDown(document, { key: 'Escape' });

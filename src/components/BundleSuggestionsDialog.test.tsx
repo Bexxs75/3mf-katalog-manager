@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -59,7 +60,7 @@ describe('BundleSuggestionsDialog', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(de.bundleSuggestKindMissing);
     expect(submitButton()).toBeDisabled();
     const kinds = screen.getAllByRole('combobox', { name: 'Art' });
-    fireEvent.change(kinds[1], { target: { value: 'parts' } });
+    chooseSelect(kinds[1], 'parts');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(submitButton()).toBeEnabled();
     expect(submitButton()).toHaveTextContent('(2)');
@@ -71,12 +72,12 @@ describe('BundleSuggestionsDialog', () => {
     expect(submitButton()).toBeDisabled();
   });
 
-  it('bundles the ticked suggestions with the edited name and the chosen kind, in file order', async () => {
+  it.each(['mouse', 'keyboard'] as const)('bundles the ticked suggestions with the edited name and the chosen kind, in file order (%s)', async mode => {
     const onBundle = vi.fn().mockResolvedValue(2);
     show({ handlers: { onBundle } });
     fireEvent.change(screen.getAllByRole('textbox', { name: 'Name' })[0], { target: { value: ' Meine Lampe ' } });
     fireEvent.click(screen.getByRole('checkbox', { name: 'Vorschlag „Schiff“ bündeln' }));
-    fireEvent.change(screen.getAllByRole('combobox', { name: 'Art' })[1], { target: { value: 'parts' } });
+    chooseSelect(screen.getAllByRole('combobox', { name: 'Art' })[1], 'parts', mode);
     fireEvent.click(submitButton());
     await waitFor(() => expect(onBundle).toHaveBeenCalledOnce());
     expect(onBundle).toHaveBeenCalledWith([

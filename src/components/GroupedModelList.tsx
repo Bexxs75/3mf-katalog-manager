@@ -18,6 +18,7 @@ interface Props {
   onContextMenu: (id: string, x: number, y: number, bundleId?: string) => void;
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
+  onToggleFavorite?: (id: string) => void;
   onDragFileStart?: (id: string) => void;
   draggedFileId?: string | null;
   draggedFileCount?: number;

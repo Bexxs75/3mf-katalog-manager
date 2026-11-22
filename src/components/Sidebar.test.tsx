@@ -183,13 +183,13 @@ it('opens the collection menu on right-click and deletes only after confirmation
   const onDelete = vi.fn(); collectionSidebar(false, onDelete);
   const row = screen.getByRole('button', {name: 'Kitchen'});
   fireEvent.contextMenu(row, {clientX: 80, clientY: 90});
-  expect(screen.getByRole('button', {name: 'Löschen'}).parentElement).toHaveStyle({left: '80px', top: '90px'});
-  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  expect(screen.getByRole('menuitem', {name: 'Löschen'}).parentElement).toHaveStyle({left: '80px', top: '90px'});
+  fireEvent.click(screen.getByRole('menuitem', {name: 'Löschen'}));
   expect(screen.getByRole('dialog')).toBeVisible();
   fireEvent.click(screen.getByRole('button', {name: 'Abbrechen'}));
   expect(onDelete).not.toHaveBeenCalled(); expect(row).toHaveFocus();
   fireEvent.contextMenu(row);
-  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.click(screen.getByRole('menuitem', {name: 'Löschen'}));
   await act(async () => fireEvent.click(screen.getByRole('button', {name: 'Löschen'})));
   expect(onDelete).toHaveBeenCalledExactlyOnceWith('c1');
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -199,7 +199,7 @@ it('opens the collection menu on right-click and deletes only after confirmation
 it('renames with Enter, ignores empty and unchanged names, and discards with Escape', async () => {
   const onRename = vi.fn(); collectionSidebar(false, vi.fn(), onRename);
   const row = screen.getByRole('button', {name: 'Kitchen'});
-  const open = () => { fireEvent.contextMenu(row); fireEvent.click(screen.getByRole('button', {name: 'Umbenennen'})); return screen.getByLabelText('Sammlung umbenennen'); };
+  const open = () => { fireEvent.contextMenu(row); fireEvent.click(screen.getByRole('menuitem', {name: 'Umbenennen'})); return screen.getByLabelText('Sammlung umbenennen'); };
   let input = open(); expect(input).toHaveFocus();
   fireEvent.change(input, {target: {value: '  New  '}});
   await act(async () => fireEvent.keyDown(input, {key: 'Enter'}));
@@ -217,31 +217,31 @@ it('renames with Enter, ignores empty and unchanged names, and discards with Esc
 it('opens with the menu key and Shift+F10, closes with Escape and outside click, and clamps to the window', () => {
   collectionSidebar(); const row = screen.getByRole('button', {name: 'Kitchen'});
   row.focus(); fireEvent.keyDown(row, {key: 'ContextMenu'});
-  expect(screen.getByRole('button', {name: 'Umbenennen'})).toHaveFocus();
+  expect(screen.getByRole('menuitem', {name: 'Umbenennen'})).toHaveFocus();
   fireEvent.keyDown(document, {key: 'Escape'}); expect(row).toHaveFocus();
   fireEvent.keyDown(row, {key: 'F10', shiftKey: true});
-  expect(screen.getByRole('button', {name: 'Umbenennen'})).toBeVisible();
+  expect(screen.getByRole('menuitem', {name: 'Umbenennen'})).toBeVisible();
   fireEvent.mouseDown(document.body); expect(row).toHaveFocus();
   const geometry = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
     x: 0, y: 0, left: 0, top: 0, right: 172, bottom: 70, width: 172, height: 70, toJSON: () => ({}),
   });
   fireEvent.contextMenu(row, {clientX: 2000, clientY: 2000});
-  expect(screen.getByRole('button', {name: 'Umbenennen'}).parentElement).toHaveStyle({left: `${window.innerWidth - 172}px`, top: `${window.innerHeight - 70}px`});
+  expect(screen.getByRole('menuitem', {name: 'Umbenennen'}).parentElement).toHaveStyle({left: `${window.innerWidth - 172}px`, top: `${window.innerHeight - 70}px`});
   geometry.mockRestore();
 });
 
 it('disables both collection actions during import', () => {
   collectionSidebar(true); fireEvent.contextMenu(screen.getByRole('button', {name: 'Kitchen'}));
   for (const name of ['Umbenennen', 'Löschen']) {
-    expect(screen.getByRole('button', {name})).toBeDisabled();
-    expect(screen.getByRole('button', {name})).toHaveAttribute('title', 'Während eines Imports gesperrt');
+    expect(screen.getByRole('menuitem', {name})).toBeDisabled();
+    expect(screen.getByRole('menuitem', {name})).toHaveAttribute('title', 'Während eines Imports gesperrt');
   }
 });
 
 it('keeps a failed deletion open and permits a retry', async () => {
   const onDelete = vi.fn().mockRejectedValueOnce(new Error('Failure')).mockResolvedValue(undefined);
   collectionSidebar(false, onDelete); fireEvent.contextMenu(screen.getByRole('button', {name: 'Kitchen'}));
-  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.click(screen.getByRole('menuitem', {name: 'Löschen'}));
   await act(async () => fireEvent.click(screen.getByRole('button', {name: 'Löschen'})));
   expect(screen.getByRole('alert')).toHaveTextContent('Failure'); expect(screen.getByRole('dialog')).toBeVisible();
   await act(async () => fireEvent.click(screen.getByRole('button', {name: 'Löschen'})));
@@ -253,7 +253,7 @@ it('prevents duplicate deletion and dismissal while the handler is pending', asy
   const onDelete = vi.fn(() => new Promise<void>(resolve => { complete = resolve; }));
   collectionSidebar(false, onDelete);
   fireEvent.contextMenu(screen.getByRole('button', {name: 'Kitchen'}));
-  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.click(screen.getByRole('menuitem', {name: 'Löschen'}));
   fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
   expect(screen.getByRole('button', {name: 'Löschen'})).toBeDisabled();
   expect(screen.getByRole('button', {name: 'Abbrechen'})).toBeDisabled();
@@ -268,7 +268,7 @@ it('shows rename errors and retains the draft for correction', async () => {
   const onRename = vi.fn().mockRejectedValue(new Error('Invalid name'));
   collectionSidebar(false, vi.fn(), onRename);
   fireEvent.contextMenu(screen.getByRole('button', {name: 'Kitchen'}));
-  fireEvent.click(screen.getByRole('button', {name: 'Umbenennen'}));
+  fireEvent.click(screen.getByRole('menuitem', {name: 'Umbenennen'}));
   const input = screen.getByLabelText('Sammlung umbenennen');
   fireEvent.change(input, {target: {value: 'New'}});
   await act(async () => fireEvent.keyDown(input, {key: 'Enter'}));
@@ -400,4 +400,64 @@ it('shortens long tag chips while preserving the count and full filter value', (
   expect(within(chip).getByText('42')).toHaveClass('flex-none');
   fireEvent.click(chip);
   expect(onTagSelect).toHaveBeenCalledWith(tag);
+});
+
+function menuSidebar(onDeleteTag = vi.fn().mockResolvedValue(undefined)) {
+  render(<LanguageProvider><Sidebar {...baseProps} onDeleteTag={onDeleteTag}
+    tags={[{ label: 'custom', count: 2, colorHue: 20 }]}
+    collections={[{ id: 'c', name: 'Collection', modelCount: 2 }]}
+    expansion={{expanded: new Set<string>(), toggle: vi.fn(), isExpanded: () => false, setAll: vi.fn(), expand: vi.fn()}}
+    width={242} setWidth={vi.fn()} resetWidth={vi.fn()} allFoldersCollapsed onToggleAllFolders={vi.fn()} /></LanguageProvider>);
+  return onDeleteTag;
+}
+
+it.each([{ key: 'ContextMenu' }, { key: 'F10', shiftKey: true }])('opens the tag menu by keyboard, filters and restores focus (%j)', key => {
+  menuSidebar();
+  fireEvent.click(screen.getByRole('button', {name: 'Tags'}));
+  const chip = screen.getByRole('button', {name: '#custom2'});
+  chip.focus(); fireEvent.keyDown(chip, key);
+  expect(screen.getAllByRole('menuitem').map(el => el.textContent)).toEqual(['Tag filtern', 'Tag löschen …']);
+  expect(screen.getByRole('menuitem', {name: 'Tag filtern'})).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, {key: 'ArrowDown'});
+  expect(screen.getByRole('menuitem', {name: 'Tag löschen …'})).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, {key: 'Escape'});
+  expect(chip).toHaveFocus(); expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.contextMenu(chip);
+  fireEvent.click(screen.getByRole('menuitem', {name: 'Tag filtern'}));
+  expect(baseProps.onTagSelect).toHaveBeenLastCalledWith('custom');
+});
+
+it('confirms tag deletion, keeps failures visible and allows retry', async () => {
+  const remove = menuSidebar(vi.fn().mockRejectedValueOnce(new Error('failed')).mockResolvedValueOnce(undefined));
+  fireEvent.click(screen.getByRole('button', {name: 'Tags'}));
+  fireEvent.contextMenu(screen.getByRole('button', {name: '#custom2'}));
+  fireEvent.click(screen.getByRole('menuitem', {name: 'Tag löschen …'}));
+  const dialog = screen.getByRole('dialog');
+  expect(remove).not.toHaveBeenCalled();
+  expect(within(dialog).getByRole('button', {name: 'Abbrechen'})).toHaveFocus();
+  await act(async () => fireEvent.click(within(dialog).getByRole('button', {name: 'Löschen'})));
+  expect(screen.getByRole('alert')).toHaveTextContent('failed');
+  await act(async () => fireEvent.click(within(dialog).getByRole('button', {name: 'Löschen'})));
+  expect(remove).toHaveBeenLastCalledWith('custom');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', {name: 'Tags'})).toHaveFocus();
+});
+
+it.each([{ key: 'ContextMenu' }, { key: 'F10', shiftKey: true }])('uses native collection buttons in document order and opens their existing menu (%j)', key => {
+  menuSidebar();
+  const all = screen.getByRole('button', {name: 'alle anzeigen'});
+  const collection = screen.getByRole('button', {name: 'Collection'});
+  const create = screen.getByRole('button', {name: '+ Neue Sammlung'});
+  for (const button of [all, collection, create]) { expect(button.tagName).toBe('BUTTON'); expect(button.tabIndex).toBe(0); }
+  expect(all.compareDocumentPosition(collection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(collection.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(all); expect(baseProps.onOpenCollectionsGallery).toHaveBeenCalled();
+  fireEvent.click(collection); expect(baseProps.onSelectCollection).toHaveBeenCalledWith('c');
+  collection.focus(); fireEvent.keyDown(collection, key);
+  expect(screen.getByRole('menuitem', {name: 'Umbenennen'})).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, {key: 'ArrowDown'});
+  expect(screen.getByRole('menuitem', {name: 'Löschen'})).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, {key: 'Escape'});
+  expect(collection).toHaveFocus();
+  fireEvent.click(create); expect(screen.getByPlaceholderText('Name der Sammlung')).toHaveFocus();
 });

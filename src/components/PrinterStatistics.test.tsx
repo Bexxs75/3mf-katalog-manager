@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProviderWithDiagnostics } from '../test/renderWithDiagnostics';
@@ -67,12 +68,12 @@ describe('PrinterStatistics', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Statistics for All printers, 30 days: 0 prints');
   });
 
-  it('asks for one printer when chosen and follows the printer picked in the list', async () => {
+  it.each(['mouse', 'keyboard'] as const)('asks for one printer when chosen and follows the printer picked in the list (%s)', async mode => {
     vi.mocked(getPrintStatistics).mockResolvedValue(result([row(), row({ printerId: 'b' })]));
     const { rerender } = show();
     await screen.findByText('Per printer');
     expect(getPrintStatistics).toHaveBeenLastCalledWith(undefined);
-    fireEvent.change(screen.getByLabelText('Printer'), { target: { value: 'b' } });
+    chooseSelect(screen.getByLabelText('Printer'), 'b', mode);
     expect(getPrintStatistics).toHaveBeenLastCalledWith('b');
     rerender(<LanguageProviderWithDiagnostics><PrinterStatistics printers={printers} printerId="a" /></LanguageProviderWithDiagnostics>);
     rerender(<LanguageProviderWithDiagnostics><PrinterStatistics printers={printers} printerId="b" /></LanguageProviderWithDiagnostics>);

@@ -495,6 +495,18 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     [models, refreshTags],
   );
 
+  // Fetch all assignments, including models outside the current view and the trash.
+  const deleteTag = useCallback(async (tag: string) => {
+    if (!canEditMetadata()) return;
+    const assignments = await filesApi.listAllFileTags();
+    const results = await Promise.allSettled(Object.entries(assignments)
+      .filter(([, labels]) => labels.includes(tag))
+      .map(([id]) => filesApi.removeTag(id, tag)));
+    await Promise.all([refreshFiles(), refreshTags(), refreshTrash()]);
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+  }, [refreshFiles, refreshTags, refreshTrash]);
+
   const deleteModel = useCallback(
     (id: string) => !canManageFiles() ? Promise.resolve() : isReadOnly() ? fileOpsBatch('delete_files', [id]).then(() => refetchAfterPartialDelete([id])) : filesApi.deleteFile(id).then(() => applyLocalDeletion([id])),
     [applyLocalDeletion, refetchAfterPartialDelete],
@@ -770,7 +782,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     refreshFolders, refreshFiles, refreshTags, refreshTrash,
     selectModel, mergeImported, ensureFullModel,
     restoreModel, deleteModelPermanently, emptyTrashAction,
-    addTag, removeTag, renameFile, deleteModel,
+    addTag, removeTag, deleteTag, renameFile, deleteModel,
     togglePrintStatus, toggleFavorite,
     addToQueue, removeFromQueue, reorderQueue,
     uploadCustomImage, captureRenderSnapshot, setModelSourceUrl, setModelLicenses,
