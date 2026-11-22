@@ -5,6 +5,55 @@ export const currentVersion = version;
 export interface ReleaseGroups { new: string[]; improved: string[]; fixed: string[] }
 export interface ReleaseNote { date: string; notes: Partial<Record<Language, ReleaseGroups>> & { en: ReleaseGroups } }
 export const releaseNotes: Record<string, ReleaseNote> = {
+  "0.18.5": {
+    "date": "2026-11-22",
+    "notes": {
+      "en": {
+        "new": [
+          "New app icon."
+        ],
+        "improved": [
+          "Consistent wording: “Remove from catalog” keeps the file, “Move to trash” removes it.",
+          "The help dialog lists F5, F2 and the sidebar keys; Enter confirms the restock popover; view buttons report their state to screen readers.",
+          "Interface settings are saved in a file in the app data folder."
+        ],
+        "fixed": []
+      },
+      "de": {
+        "new": [
+          "Neues App-Icon."
+        ],
+        "improved": [
+          "Einheitliche Begriffe: „Aus Katalog entfernen“ lässt die Datei liegen, „In den Papierkorb“ entfernt sie.",
+          "Der Hilfedialog nennt F5, F2 und die Tasten der Seitenleiste; Enter bestätigt das Nachbestell-Fenster; Ansichtsknöpfe melden Screenreadern ihren Zustand.",
+          "Die Oberflächen-Einstellungen werden in einer Datei im Datenordner der App gespeichert."
+        ],
+        "fixed": []
+      },
+      "es": {
+        "new": [
+          "Nuevo icono de la aplicación."
+        ],
+        "improved": [
+          "Textos coherentes: «Quitar del catálogo» conserva el archivo, «Mover a la papelera» lo elimina.",
+          "El diálogo de ayuda incluye F5, F2 y las teclas de la barra lateral; Intro confirma la ventana de reposición; los botones de vista indican su estado a los lectores de pantalla.",
+          "Los ajustes de la interfaz se guardan en un archivo en la carpeta de datos de la aplicación."
+        ],
+        "fixed": []
+      },
+      "fr": {
+        "new": [
+          "Nouvelle icône de l’application."
+        ],
+        "improved": [
+          "Libellés cohérents : « Retirer du catalogue » conserve le fichier, « Mettre à la corbeille » le supprime.",
+          "La fenêtre d’aide mentionne F5, F2 et les touches de la barre latérale ; Entrée valide la fenêtre de réassort ; les boutons d’affichage indiquent leur état aux lecteurs d’écran.",
+          "Les réglages de l’interface sont enregistrés dans un fichier du dossier de données de l’application."
+        ],
+        "fixed": []
+      }
+    }
+  },
   "0.18.4": {
     "date": "2026-11-18",
     "notes": {
