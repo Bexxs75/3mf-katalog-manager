@@ -5,6 +5,43 @@ export const currentVersion = version;
 export interface ReleaseGroups { new: string[]; improved: string[]; fixed: string[] }
 export interface ReleaseNote { date: string; notes: Partial<Record<Language, ReleaseGroups>> & { en: ReleaseGroups } }
 export const releaseNotes: Record<string, ReleaseNote> = {
+  "0.18.7": {
+    "date": "2026-11-22",
+    "notes": {
+      "en": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "Minimize to tray works again: the window stays hidden instead of the app quitting.",
+          "Ctrl+A in the log preview of the problem report selects only the log text."
+        ]
+      },
+      "de": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "„In den Tray minimieren“ funktioniert wieder: Das Fenster bleibt versteckt, statt dass die App beendet wird.",
+          "Strg+A in der Protokoll-Vorschau des Problemberichts markiert nur den Protokolltext."
+        ]
+      },
+      "es": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "Minimizar a la bandeja funciona de nuevo: la ventana permanece oculta en lugar de cerrar la aplicación.",
+          "Ctrl+A en la vista previa del registro del informe de problemas selecciona solo el texto del registro."
+        ]
+      },
+      "fr": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "La réduction dans la zone de notification fonctionne de nouveau : la fenêtre reste masquée au lieu de quitter l'application.",
+          "Ctrl+A dans l'aperçu du journal du rapport de problème ne sélectionne que le texte du journal."
+        ]
+      }
+    }
+  },
   "0.18.6": {
     "date": "2026-11-22",
     "notes": {
