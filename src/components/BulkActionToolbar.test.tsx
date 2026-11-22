@@ -92,7 +92,7 @@ describe('BulkActionToolbar', () => {
 
   it('cancels remove confirmation without clearing until the next Escape', () => {
     const { props } = renderToolbar();
-    clickBulkMore('Aus dem Katalog entfernen');
+    clickBulkMore('Aus Katalog entfernen');
     fireEvent.keyDown(screen.getByRole('button', { name: 'Abbrechen' }), { key: 'Escape' });
     expect(screen.getByRole('button', { name: 'Ablegen' })).toBeInTheDocument();
     expect(props.onClearSelection).not.toHaveBeenCalled();
@@ -105,7 +105,7 @@ describe('BulkActionToolbar', () => {
     ['an unexpected error shows its text with the report link', { message: 'database is locked', expected: false }, 'database is locked', true],
   ])('shows %s', async (_name, rejection, text, report) => {
     const { props } = renderToolbar({ onBulkRemove: vi.fn(() => Promise.reject(rejection)) });
-    clickBulkMore('Aus dem Katalog entfernen');
+    clickBulkMore('Aus Katalog entfernen');
     fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }));
     expect(await screen.findByText(text)).toBeInTheDocument();
     expect(props.onBulkRemove).toHaveBeenCalled();
@@ -114,7 +114,7 @@ describe('BulkActionToolbar', () => {
 
   it('cancels remove confirmation with focus outside the bar before clearing selection', () => {
     const { props } = renderToolbar();
-    clickBulkMore('Aus dem Katalog entfernen');
+    clickBulkMore('Aus Katalog entfernen');
     const outside = document.createElement('button');
     document.body.appendChild(outside);
     try {
@@ -137,7 +137,7 @@ describe('BulkActionToolbar', () => {
   ] as const)('closes open menus when the %s confirmation opens', (kind, overrides) => {
     const { props } = renderToolbar({ ...overrides, removeTagMenuOpen: kind === 'delete' });
     if (kind === 'remove') {
-      clickBulkMore('Aus dem Katalog entfernen');
+      clickBulkMore('Aus Katalog entfernen');
     }
     expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(false);
     expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
@@ -211,7 +211,7 @@ describe('BulkActionToolbar', () => {
 
 it('focuses Cancel in the inline remove confirmation and restores focus to the Ablegen button on Escape', () => {
   const { props } = renderToolbar();
-  clickBulkMore('Aus dem Katalog entfernen');
+  clickBulkMore('Aus Katalog entfernen');
   expect(screen.getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
   // The entry sits in the "Ablegen" menu, so focus goes back to the button that opens it.
@@ -477,7 +477,7 @@ describe('BulkActionToolbar action groups', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     const menu = openBulkMore();
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    expect(names(menu, 'menuitem')).toEqual(['Tag hinzufügen', 'Tag entfernen', 'Zu Sammlung hinzufügen', 'Aus Sammlung entfernen', 'Lizenz setzen', 'Verschieben nach …', 'Aus dem Katalog entfernen', 'Mit Datum umbenennen …', 'Druckdaten nachlesen']);
+    expect(names(menu, 'menuitem')).toEqual(['Tag hinzufügen', 'Tag entfernen', 'Zu Sammlung hinzufügen', 'Aus Sammlung entfernen', 'Lizenz setzen', 'Verschieben nach …', 'Aus Katalog entfernen', 'Mit Datum umbenennen …', 'Druckdaten nachlesen']);
   });
 
   it('lists "Aus Sammlung entfernen" only inside a collection', () => {
@@ -530,7 +530,7 @@ describe('BulkActionToolbar action groups', () => {
 
   const formerActions = ['Alle auswählen', 'Auswahl aufheben', 'Lizenz setzen', 'Zur Warteschlange hinzufügen', 'Zu Sammlung hinzufügen',
     'Aus Sammlung entfernen', 'Tag hinzufügen', 'Tag entfernen', 'Als gedruckt markieren', 'Mit Datum umbenennen …', 'Verschieben nach …',
-    'Aus dem Katalog entfernen', 'In den Papierkorb'];
+    'Aus Katalog entfernen', 'In den Papierkorb'];
   it.each([500, 1400])('keeps actions in the same groups at width %s', width => {
     window.innerWidth = width;
     renderToolbar(extra);
@@ -598,7 +598,7 @@ describe('BulkActionToolbar focus handover from a group menu', () => {
 
   it('moves focus to the confirmation Cancel button and back to "Ablegen" for "Aus Katalog entfernen"', () => {
     renderToolbar();
-    clickBulkMore('Aus dem Katalog entfernen');
+    clickBulkMore('Aus Katalog entfernen');
     const cancel = screen.getByRole('button', { name: 'Abbrechen' });
     expect(cancel).toHaveFocus();
     fireEvent.click(cancel);
@@ -630,7 +630,7 @@ it.each(['de', 'en'] as const)('renders shared action labels in shared order (%s
 it('locks file changes, license and re-reading during import, keeping tags and collections available', () => {
   const { props, view } = renderToolbar({ onBulkMove: vi.fn(), onBulkSetLicense: vi.fn(), selectedIds: ['a', 'b'], onDateRenamed: vi.fn() });
   view.rerender(<LanguageProvider><ImportLockContext.Provider value={true}><BulkActionToolbar {...props} /></ImportLockContext.Provider></LanguageProvider>);
-  for (const name of ['Verschieben nach …', 'Aus dem Katalog entfernen', 'Mit Datum umbenennen …', 'Lizenz setzen', 'Druckdaten nachlesen']) {
+  for (const name of ['Verschieben nach …', 'Aus Katalog entfernen', 'Mit Datum umbenennen …', 'Lizenz setzen', 'Druckdaten nachlesen']) {
     expect(within(openBulkMore()).getByRole('menuitem', { name })).toBeDisabled();
   }
   for (const name of ['Tag hinzufügen', 'Zu Sammlung hinzufügen']) {

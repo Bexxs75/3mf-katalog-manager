@@ -1,5 +1,5 @@
 import { Icon } from './Icon';
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatDecimalInput } from '../i18n/format';
 import type { FilamentSpool } from '../types';
@@ -68,6 +68,16 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
       });
   };
 
+  // Enter in a field submits; an open location suggestion list handles its own Enter first.
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    // Enter that confirms an IME composition must not submit (keyCode 229 covers WebViews that omit isComposing).
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter' && !e.defaultPrevented && (e.target as HTMLElement).tagName === 'INPUT') {
+      e.preventDefault();
+      submit();
+    }
+  };
+
   return (
     <SpoolPopoverShell
       anchor={anchor}
@@ -79,6 +89,7 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
       busy={busy}
       submitLabel={formatCount(resin ? t('resinRestockSubmit') : t('filamentRestockSubmit'), count)}
       onSubmit={submit}
+      onKeyDown={onKeyDown}
     >
       <div className="grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-2 items-center">
         <span className={labelClass}>{t('filamentRestockCountLabel')}</span>

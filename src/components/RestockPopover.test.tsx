@@ -53,6 +53,23 @@ describe('RestockPopover', () => {
     expect(screen.getByRole('button', { name: '1 Flasche anlegen' })).toBeInTheDocument();
   });
 
+  it('submits with Enter from a field', async () => {
+    vi.mocked(invoke).mockResolvedValue([]);
+    const { onCreated } = renderPopover();
+    fireEvent.keyDown(screen.getByLabelText('Gewicht (g)'), { key: 'Enter' });
+    await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
+    expect(invoke).toHaveBeenCalledWith('restock_filament_spool', expect.objectContaining({ templateId: 's2' }));
+  });
+
+  it('ignores Enter that confirms an IME composition', () => {
+    const { onCreated } = renderPopover();
+    const field = screen.getByLabelText('Gewicht (g)');
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 229 });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
   it('counts between 1 and 20 with its own buttons', () => {
     renderPopover();
     expect(screen.getByRole('button', { name: 'weniger' })).toBeDisabled();

@@ -310,7 +310,8 @@ function SlotMenu({ spool, storage, vat, onClose, onLoad, onUnload, onEdit, onCo
   return (
     <div
       ref={ref}
-      role="menu"
+      role="group"
+      aria-label={vat ? t('printersVatMenuLoad') : t('printersSlotMenuLoad')}
       className="absolute left-0 right-0 top-full mt-1 z-30 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] py-1"
     >
       {spool && (

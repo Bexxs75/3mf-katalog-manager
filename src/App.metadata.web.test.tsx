@@ -74,7 +74,7 @@ it.each(['compact', 'comfort'])('exposes metadata but keeps filesystem controls 
   expect(screen.getByText(de.createCollectionLabel)).toBeVisible();
   expect(screen.queryByRole('button', { name: de.createFolderLabel })).toBeNull();
   expect(screen.getByRole('button', { name: new RegExp('^' + de.queueHeading) })).toBeVisible();
-  for (const label of [de.delete, de.showInFileManager, de.openInSlicer, de.restoreLabel, de.emptyTrashButton]) {
+  for (const label of [de.modelMenuTrash, de.showInFileManager, de.openInSlicer, de.restoreLabel, de.emptyTrashButton]) {
     expect(screen.queryByRole('button', { name: label })).toBeNull();
   }
   expect(screen.getAllByRole('button', { name: de.favoriteRemove }).every(button => !(button as HTMLButtonElement).disabled)).toBe(true);
@@ -84,7 +84,7 @@ it.each(['compact', 'comfort'])('exposes metadata but keeps filesystem controls 
   fireEvent.contextMenu(folder); fireEvent.keyDown(folder, { key: 'F10', shiftKey: true });
   expect(document.querySelector('[data-navigation-menu]')).toBeNull();
   fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
-  expect(screen.queryByRole('button', { name: de.delete })).toBeNull();
+  expect(screen.queryByRole('button', { name: de.modelMenuTrash })).toBeNull();
   for (const key of ['Delete', 'Backspace']) fireEvent.keyDown(window, { key });
   fireEvent.keyDown(window, { key: 'Escape' });
   fireEvent.keyDown(document, { key: 'Escape' });
@@ -94,7 +94,7 @@ it.each(['compact', 'comfort'])('exposes metadata but keeps filesystem controls 
   expect(screen.getByLabelText(de.printLogPhotoButton)).toHaveAttribute('type', 'file');
   expect(screen.getByRole('button', { name: de.rescanMetadataButton })).toBeEnabled();
   expect(screen.getByRole('button', { name: de.uploadModelImageLabel })).toBeEnabled();
-  for (const label of [de.delete, de.showInFileManager, de.openInSlicer]) {
+  for (const label of [de.modelMenuTrash, de.showInFileManager, de.openInSlicer]) {
     expect(screen.queryByRole('button', { name: label })).toBeNull();
   }
   const writes = attempted.mock.calls.map(([command]) => command).filter(command => !(WEB_READ_COMMANDS as readonly string[]).includes(command));

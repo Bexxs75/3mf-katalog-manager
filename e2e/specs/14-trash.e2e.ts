@@ -15,8 +15,8 @@ describe('14 Papierkorb', () => {
     // Removing only the catalog entry keeps the file; Delete exercises the physical trash.
     await click(await contextEntry('In den Papierkorb'));
     await waitForText('button', 'Abbrechen');
-    // The confirmation reuses the word "Löschen"; the selection bar has a look-alike button.
-    await click(await contextEntry('Löschen'));
+    // The confirmation button repeats the menu label; contextEntry skips the selection bar's look-alike button.
+    await click(await contextEntry('In den Papierkorb'));
     await catalogCount(7);
     await browser.waitUntil(async () => !existsSync(path));
     await browser.waitUntil(async () => (await $('[aria-label="Papierkorb"]').getText()).trim() === '1');

@@ -88,7 +88,7 @@ describe('PrinterColumn', () => {
     fireEvent.click(screen.getByTestId('slot-u1-2'));
     fireEvent.click(screen.getByRole('button', { name: /PETG · Rot/ }));
     expect(onLoad).toHaveBeenCalledWith('store', 'u1', 2);
-    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Spule einlegen' })).toBeNull();
   });
 
   it('unloads and edits a loaded spool through the slot menu', () => {
@@ -162,7 +162,7 @@ describe('PrinterColumn', () => {
       spools: [BOTTLE, spool({ id: 'store', material: 'PETG', color: 'Rot', location: 'Regal 1' })],
     });
     fireEvent.click(screen.getByTestId('slot-vat-0'));
-    const menu = screen.getByRole('menu');
+    const menu = screen.getByRole('group', { name: 'Flasche einsetzen' });
     expect(menu).toHaveTextContent('Flasche einsetzen');
     expect(menu).not.toHaveTextContent('PETG');
     fireEvent.click(screen.getByRole('button', { name: /Standard · Grau/ }));
@@ -174,7 +174,7 @@ describe('PrinterColumn', () => {
       spools: [BOTTLE, spool({ id: 'store', material: 'PETG', color: 'Rot', location: 'Regal 1' })],
     });
     fireEvent.click(screen.getByTestId('slot-u1-1'));
-    const menu = screen.getByRole('menu');
+    const menu = screen.getByRole('group', { name: 'Spule einlegen' });
     expect(menu).toHaveTextContent('PETG · Rot');
     expect(menu).not.toHaveTextContent('Standard');
   });

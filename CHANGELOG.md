@@ -17,6 +17,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - New app icon.
 
+- Consistent wording and accessibility cleanup: "Remove from catalog" keeps the file, "Move to trash" removes it, and "Delete" is left to collections and tags. The slicer action reads "Open in slicer" in German as well ("Im Slicer öffnen"), the disk comparison is called "Sync with disk" everywhere, the header title and the Printer Manager and Material Manager labels are translated, and the help dialog lists F5, F2 and the sidebar keys with a corrected sorting tip. Enter now submits the restock popover, the printer slot popup is a labelled group instead of a menu, the three view buttons report their pressed state, the two copy buttons on a Thingiverse page are told apart for screen readers, and the emojis in the detail panel are gone. The web folder dialogs take their texts from the regular language files.
+
 ## [0.18.4] - 2026-11-18
 
 ### Changed
@@ -882,6 +884,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Vor der Updateinstallation werden ausstehende Einstellungen mit kurzer Frist geschrieben. Erzwungenes Beenden oder eine abgelaufene Schreibfrist kann die letzte Änderung weiterhin verlieren. Der Start verwendet nach drei Sekunden ohne Einstellungsantwort lokale Rückfallwerte; bei inkompatiblem Schema bleiben diese ohne Backend-Schreibzugriffe nutzbar. Maßgebliche Backendstände entfernen fehlende Bootcache-Schlüssel. Neuere Einstellungsschemata bleiben unverändert und schreibgeschützt; überzählige unbekannte Felder im aktuellen Schema blockieren nicht länger alle Schreibzugriffe.
 
 - Neues App-Icon.
+
+- Einheitliche Begriffe und Barrierefreiheit: „Aus Katalog entfernen“ lässt die Datei liegen, „In den Papierkorb“ entfernt sie, und „Löschen“ bleibt Sammlungen und Tags vorbehalten. Die Slicer-Aktion heißt überall „Im Slicer öffnen“, der Festplattenabgleich überall „Mit Festplatte abgleichen“, der Titel in der Kopfzeile sowie die Beschriftungen von Printer Manager und Material Manager sind übersetzbar, und der Hilfedialog nennt F5, F2 und die Seitenleisten-Tasten; der Sortier-Tipp stimmt wieder mit dem Menü überein. Enter sendet das Nachkaufen-Fenster ab, das Slot-Fenster am Drucker ist eine beschriftete Gruppe statt eines Menüs, die drei Ansichts-Knöpfe melden ihren gedrückten Zustand, die zwei Kopieren-Knöpfe einer Thingiverse-Seite sind für Screenreader unterscheidbar, und die Emojis im Detailbereich sind entfernt. Die Web-Ordnerdialoge beziehen ihre Texte aus den normalen Sprachdateien.
 
 ## [0.18.4] - 2026-11-18
 

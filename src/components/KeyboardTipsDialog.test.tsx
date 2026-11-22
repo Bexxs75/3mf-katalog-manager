@@ -38,3 +38,9 @@ it('lists the shortcuts for moving and undoing', () => {
   expect(screen.getByText('Strg+Z')).toBeInTheDocument();
   for (const key of ['F2', 'Entf', 'Umschalt+Entf']) expect(screen.getByText(key)).toBeInTheDocument();
 });
+it('lists F5 and the sidebar keys', () => {
+  render(<LanguageProvider><KeyboardTipsDialog onClose={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText('F5')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Seitenleiste' })).toBeInTheDocument();
+  expect(screen.getByText('← → / Pos1 / Ende')).toBeInTheDocument();
+});

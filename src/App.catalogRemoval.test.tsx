@@ -64,7 +64,7 @@ it('removes a model through the actual context menu and reloads the catalog', as
   });
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   fireEvent.contextMenu((await screen.findAllByText('Cube.stl'))[0]);
-  fireEvent.click(screen.getByText('Aus dem Katalog entfernen'));
+  fireEvent.click(screen.getByText('Aus Katalog entfernen'));
   fireEvent.click(screen.getByText('Entfernen'));
   await waitFor(() => expect(screen.queryAllByText('Cube.stl')).toHaveLength(0));
   expect(invoke).toHaveBeenCalledWith('remove_files_from_catalog', { fileIds: ['1'] });
@@ -85,7 +85,7 @@ it('removes a bulk selection through the new command and clears the toolbar', as
   });
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   fireEvent.click(screen.getAllByRole('checkbox')[0]);
-  clickBulkMore('Aus dem Katalog entfernen');
+  clickBulkMore('Aus Katalog entfernen');
   expect(screen.getByText('1 Modell aus dem Katalog entfernen?')).toBeTruthy();
   fireEvent.click(screen.getByText('Entfernen'));
   await waitFor(() => expect(screen.queryAllByText('Cube.stl')).toHaveLength(0));
@@ -100,7 +100,7 @@ it.each([
   ['Zu Favoriten hinzufügen', 'set_favorite'],
   ['Zur Warteschlange hinzufügen', 'add_to_queue'],
   ['In den Papierkorb', 'delete_file'],
-  ['Aus dem Katalog entfernen', 'remove_files_from_catalog'],
+  ['Aus Katalog entfernen', 'remove_files_from_catalog'],
 ])('context action %s applies to every selected model, excluding other models', async (label, command) => {
   const models = ['a', 'b', 'c'].map(id => makeModelFile({ id, name: `${id}.stl`, path: `/old/${id}.stl`, favorite: false, printStatus: 'not_printed', queuePosition: null }));
   const fallback = vi.mocked(invoke).getMockImplementation()!;
@@ -116,7 +116,7 @@ it.each([
   for (const id of ['a', 'b']) fireEvent.click(document.querySelector(`[data-model-id="${id}"] input[type="checkbox"]`)!);
   fireEvent.contextMenu(document.querySelector('[data-model-id="b"]')!);
   fireEvent.click(screen.getByRole('button', { name: `${label} (2 Modelle)` }));
-  if (command === 'delete_file') fireEvent.click(screen.getAllByRole('button', { name: 'Löschen' }).find(button => button.closest('[data-navigation-menu]'))!);
+  if (command === 'delete_file') fireEvent.click(screen.getAllByRole('button', { name: 'In den Papierkorb' }).find(button => button.closest('[data-navigation-menu]'))!);
   if (command === 'remove_files_from_catalog') fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }));
   await waitFor(() => {
     const calls = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === command).map(([, args]) => args);

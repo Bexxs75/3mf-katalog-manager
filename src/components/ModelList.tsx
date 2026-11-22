@@ -30,7 +30,8 @@ interface Props {
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
   /** `bundleId` is set when the menu is for a bundle row (the id is then its title model). */
-  onContextMenu: (id: string, x: number, y: number, bundleId?: string) => void;
+  /** Omitted where a view has no context menu (e.g. the trash). */
+  onContextMenu?: (id: string, x: number, y: number, bundleId?: string) => void;
   readOnly?: boolean;
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
@@ -89,7 +90,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           onContextMenu={(e) => {
             e.preventDefault();
             onSelect(m.id);
-            onContextMenu(m.id, e.clientX, e.clientY);
+            onContextMenu?.(m.id, e.clientX, e.clientY);
           }}
           onMouseDown={(e) => {
             if (!canEdit || !onDragFileStart || readOnly) return;
@@ -185,7 +186,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
         onContextMenu={(e) => {
           e.preventDefault();
           onSelect(card.title.id);
-          onContextMenu(card.title.id, e.clientX, e.clientY, card.bundle.id);
+          onContextMenu?.(card.title.id, e.clientX, e.clientY, card.bundle.id);
         }}
         className={`group min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
           open ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--panel-2)]'
@@ -253,7 +254,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
         onContextMenu={(e) => {
           e.preventDefault();
           onSelect(m.id);
-          onContextMenu(m.id, e.clientX, e.clientY);
+          onContextMenu?.(m.id, e.clientX, e.clientY);
         }}
         className={`group min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)] ${
           m.id === selectedId ? 'bg-[var(--accent-soft)]' : 'bg-[var(--panel-2)] hover:bg-[var(--plate)]'

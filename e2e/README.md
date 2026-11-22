@@ -158,12 +158,12 @@ installierten WebView2-Laufzeit.
 | `06-plates` | Nummernknöpfe, Links/Rechts, Auswahlzustand und Grenzen | enthalten; ohne WebGL übersprungen | nicht enthalten |
 | `07-layout-audit` | Layout bei 900/1000/1280 px, Selbsttests einschließlich Screenreader-Text | enthalten | enthalten |
 | `08-typography` | Schriftarten und unerlaubte Textsymbole | enthalten | nicht enthalten |
-| `09-disk-sync` | Aktualisieren/F5, Vorschau/Später/Übernehmen, fehlende Einträge und Papierkorb | enthalten; Lauf offen (Schreibweise-Test übersprungen) | noch nicht geprüft |
+| `09-disk-sync` | Abgleichen/F5, Vorschau/Später/Übernehmen, fehlende Einträge und Papierkorb | enthalten; Lauf offen (Schreibweise-Test übersprungen) | noch nicht geprüft |
 | `10-license-usage` | private Lizenz, Badges/Filter, Mehrfachauswahl und Zurücksetzen | enthalten; Lauf offen | noch nicht geprüft |
 | `11-print-status` | Druckstatus, Filter/Chips zurücksetzen, Standardsortierung | enthalten; Lauf offen | noch nicht geprüft |
 | `12-collections-sort` | Groß-/Kleinschreibung und natürliche Zahlenfolge in Seitenleiste/Galerie | enthalten; Lauf offen | noch nicht geprüft |
 | `13-bulk-tags` | vorhandene Tag-Vorschläge, Pfeil runter/Enter, Escape ohne Änderung | enthalten; Lauf offen | noch nicht geprüft |
-| `14-trash` | Löschen, Papierkorb-Zähler, Wiederherstellen einschließlich Dateiinhalt | enthalten; Lauf offen | noch nicht geprüft |
+| `14-trash` | In den Papierkorb, Papierkorb-Zähler, Wiederherstellen einschließlich Dateiinhalt | enthalten; Lauf offen | noch nicht geprüft |
 | `15-bug-report` | lokaler Log-Auswahldialog, Abbrechen/Escape; kein Öffnen oder Versand | enthalten; Lauf offen | noch nicht geprüft |
 
 Windows-Auswahl bleibt `01`, `04`, `07`; `09`–`15` bleiben aus `test:windows`
@@ -181,7 +181,7 @@ ignorieren Screenreader-Text (`sr-only` bzw. absolut positionierte, geclippte
 und weiterhin echte sichtbare Textbeschneidung.
 
 Bedienung laut App: `13` legt den vorhandenen Tag zuerst über den Detailbereich
-an, da der Seed keine Tags hat. `14` nutzt **Löschen** für den physischen
+an, da der Seed keine Tags hat. `14` nutzt **In den Papierkorb** für den physischen
 Papierkorb; **Aus dem Katalog entfernen** behält die Datei. `15` prüft den
 lokalen Log-Auswahldialog. Die eigentlichen Pflichtfelder gehören zum externen
 Browserformular und sind unter der Vorgabe ohne Netzwerk/Öffnen nicht prüfbar;

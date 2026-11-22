@@ -594,12 +594,12 @@ export function ModelDetailPage({
                 {t('cancel')}
               </button>
               <button {...lockProps} onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-4 py-2 rounded-md border border-red-400 text-body font-semibold text-red-400 hover:bg-[var(--panel-2)]">
-                {t('delete')}
+                {t('modelMenuTrash')}
               </button>
             </div>
           ) : (
             <button ref={deleteTriggerRef} {...lockProps} onClick={() => setConfirmDelete(true)} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
-              {t('delete')}
+              {t('modelMenuTrash')}
             </button>
           ))}
           <button

@@ -260,7 +260,7 @@ describe('FilamentView with printers', () => {
     renderView();
     const slot = await screen.findByTestId('slot-u1-2');
     fireEvent.click(slot);
-    const menu = await screen.findByRole('menu');
+    const menu = await screen.findByRole('group', { name: 'Spule einlegen' });
     expect(within(menu).getByText('PETG · Rot')).toBeInTheDocument();
     expect(within(menu).queryByText(/Standard/)).toBeNull();
   });

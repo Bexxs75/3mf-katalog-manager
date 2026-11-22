@@ -11,6 +11,12 @@ const STORAGE_KEY = '3mf-katalog-language';
 
 const DICTIONARIES: Record<Language, Translations> = { de, en, es, fr };
 
+/** Dictionary of the stored language for code that runs outside React (e.g. `window.confirm` texts in hooks). */
+export function currentDictionary(): Translations {
+  const stored = uiSettings.getItem(STORAGE_KEY);
+  return DICTIONARIES[stored && stored in DICTIONARIES ? (stored as Language) : 'de'];
+}
+
 interface LanguageContextValue {
   language: Language;
   setLanguage: (next: Language) => void;

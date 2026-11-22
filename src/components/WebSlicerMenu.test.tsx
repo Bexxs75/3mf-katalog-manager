@@ -25,7 +25,7 @@ async function show(name = 'Würfel.stl', fileType?: string) {
   await act(async () => { await getSession(); });
   return render(<LanguageProvider><WebSlicerMenu fileId="42" fileName={name} fileType={fileType} /></LanguageProvider>);
 }
-const openMenu = () => fireEvent.click(screen.getByRole('button', { name: /In Slicer öffnen/ }));
+const openMenu = () => fireEvent.click(screen.getByRole('button', { name: /Im Slicer öffnen/ }));
 const names = () => screen.getAllByRole('menuitem').map(item => item.textContent);
 
 beforeEach(() => {
@@ -108,7 +108,7 @@ it('shows the server message when the link cannot be created and starts nothing'
   await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'OrcaSlicer' })));
   expect(launched).toEqual([]);
   expect(screen.getByRole('alert')).toHaveTextContent(`${de.webSlicerError} ${de.errFileNotFound}`);
-  expect(screen.getByRole('button', { name: /In Slicer öffnen/ })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /Im Slicer öffnen/ })).toBeEnabled();
 });
 
 it.each([['en', en], ['es', es], ['fr', fr]] as const)('shows the server code in %s', async (language, dictionary) => {
@@ -164,7 +164,7 @@ it('moves through the entries with the arrow keys, Home and End', async () => {
 
 it('closes with Escape, returns focus to the button and exposes its state', async () => {
   server({ slicerLinks: true }); await show();
-  const button = screen.getByRole('button', { name: /In Slicer öffnen/ });
+  const button = screen.getByRole('button', { name: /Im Slicer öffnen/ });
   expect(button).toHaveAttribute('aria-haspopup', 'menu');
   expect(button).toHaveAttribute('aria-expanded', 'false');
   fireEvent.click(button);
@@ -191,7 +191,7 @@ it('handles Escape itself: the key stays unhandled for window shortcuts and the 
   window.removeEventListener('keydown', probe);
   expect(screen.queryByRole('menu')).toBeNull();
   expect(reached).toEqual([true]);
-  expect(screen.getByRole('button', { name: /In Slicer öffnen/ })).toHaveFocus();
+  expect(screen.getByRole('button', { name: /Im Slicer öffnen/ })).toHaveFocus();
 });
 
 it('launches Bambu Studio with its macOS handler', async () => {

@@ -62,6 +62,16 @@ export interface Translations {
   tagDeleteQuestion: string;
   tagDeleteHint: string;
   emptyMenuSync: string;
+  folderOpCreate: string;
+  folderOpRename: string;
+  folderOpMove: string;
+  folderOpConfirm: string;
+  folderOpName: string;
+  folderOpContents: string;
+  folderOpMoveFile: string;
+  folderOpMoveFolder: string;
+  folderOpFailed: string;
+  folderOpLoading: string;
   emptyMenuImport: string;
   emptyMenuNewFolder: string;
   emptyMenuView: string;
@@ -771,7 +781,6 @@ export interface Translations {
   settingsClose: string;
 
   removeCatalog: string;
-  removeCatalogShort: string;
   removeEntry: string;
   removeModelQuestion: string;
   removeModelsQuestion: PluralForms;
@@ -835,6 +844,11 @@ export interface Translations {
   moveBulkLabel: string;
   moveContextLabel: string;
   keyboardMove: string;
+  keyboardSync: string;
+  keyboardRename: string;
+  keyboardSidebar: string;
+  keyboardSidebarSelect: string;
+  keyboardSidebarResize: string;
   keyboardUndo: string;
   resetCatalog: string;
   resetCatalogHint: string;
@@ -927,6 +941,7 @@ export interface Translations {
   renameError: string;
   renameEmptyNameError: string;
   renameExtensionLockedHint: string;
+  deleteEntryConfirmQuestion: string;
   deleteConfirmQuestion: string;
   deleteAriaLabel: string;
   noSlicersConfigured: string;
@@ -1153,6 +1168,7 @@ export interface Translations {
   filamentError: string;
   railCatalog: string;
   railFilament: string;
+  headerTitle: string;
   filamentLocationLabel: string;
   filamentViewDashboard: string;
   filamentViewList: string;

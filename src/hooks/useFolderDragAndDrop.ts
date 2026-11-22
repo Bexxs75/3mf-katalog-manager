@@ -1,4 +1,4 @@
-import { folderOpsMessages } from '../lib/folderOpsMessages';
+import { currentDictionary } from '../i18n/LanguageContext';
 import { canManageFiles, useCanManageFiles, canEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { dismissDragDropTip } from '../lib/dragDropTip';
@@ -135,7 +135,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
 
   const onCreateFolder = useCallback(
     (parentId: string | null, name: string) =>
-      (!canManageFiles() || (isReadOnly() && (!parentId || !window.confirm(`${folderOpsMessages().create}: ${name}?`) || !canManageFiles()))) ? Promise.resolve() : foldersApi
+      (!canManageFiles() || (isReadOnly() && (!parentId || !window.confirm(`${currentDictionary().folderOpCreate}: ${name}?`) || !canManageFiles()))) ? Promise.resolve() : foldersApi
         .createFolder(parentId, name)
         .then((created) => { if (!isReadOnly() && created !== null) refreshFolders(); })
         .catch((e) => {
@@ -155,7 +155,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     if (isReadOnly()) {
       // The web server reports plain per-file results and has no move history, so the toast stays simple.
       const label = ids.length > 1 ? `${nameOf(ids[0])} (+${ids.length - 1})` : nameOf(ids[0]);
-      if (!window.confirm(`${folderOpsMessages().moveFile}\n${label} → ${target.name}`) || !canManageFiles()) return;
+      if (!window.confirm(`${currentDictionary().folderOpMoveFile}\n${label} → ${target.name}`) || !canManageFiles()) return;
       try {
         await foldersApi.moveFilesToFolderWeb(ids, folderId);
         dismissDragDropTip();
@@ -259,7 +259,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
           dismissDragDropTip();
           setMoveToast({ from: file.name, to: target.name, collection: already ? 'already' : 'added' });
         }).catch(e => {
-          if (isReadOnly()) { setMoveToast({ from: file.name, to: folderOpsMessages().failed, error: true }); return; }
+          if (isReadOnly()) { setMoveToast({ from: file.name, to: currentDictionary().folderOpFailed, error: true }); return; }
           setMoveToast(failureToast(file.name, e));
         });
         return;
@@ -290,7 +290,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         setMoveToast({ from: folder.name, to: '', error: true, blocked });
         return;
       }
-      if (isReadOnly() && (!window.confirm(`${folderOpsMessages().moveFolder}\n${folder.name} → ${targetFolder.name}\n${folderOpsMessages().contents}`) || !canManageFiles())) return;
+      if (isReadOnly() && (!window.confirm(`${currentDictionary().folderOpMoveFolder}\n${folder.name} → ${targetFolder.name}\n${currentDictionary().folderOpContents}`) || !canManageFiles())) return;
       const fromParentId = folder.parentId;
       foldersApi
         .moveFolder(folderId, targetId)

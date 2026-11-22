@@ -191,7 +191,10 @@ describe('FilamentDashboard grouped cards', () => {
     const onConfirmDelete = vi.fn();
     renderGroups({ confirmDeleteId: 'a2', onConfirmDelete });
     fireEvent.click(screen.getByRole('button', { name: 'PLA Schwarz: Spulen anzeigen' }));
-    fireEvent.click(within(screen.getByTestId('spool-row-a2')).getByRole('button', { name: 'Löschen' }));
+    const row = screen.getByTestId('spool-row-a2');
+    expect(within(row).getByText('Eintrag löschen?')).toBeInTheDocument();
+    expect(within(row).queryByText(/Papierkorb/)).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: 'Löschen' }));
     expect(onConfirmDelete).toHaveBeenCalledWith('a2');
   });
 

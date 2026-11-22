@@ -30,7 +30,7 @@ it('hides reveal and context menu host actions', () => {
   render(<><RevealFileButton fileId="42" /><ContextMenu x={0} y={0} fileId="42" currentName="cube.stl"
     onClose={vi.fn()} onOpenInSlicer={vi.fn()} onDelete={vi.fn()} inQueue={false} onToggleQueue={vi.fn()}
     printed={false} onTogglePrintStatus={vi.fn()} onRename={vi.fn()} /></>, { wrapper });
-  expect(screen.queryByRole('button', { name: 'In Slicer öffnen' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Im Slicer öffnen' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Im Dateimanager anzeigen' })).not.toBeInTheDocument();
 });
 

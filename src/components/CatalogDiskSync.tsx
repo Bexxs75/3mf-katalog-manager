@@ -204,7 +204,7 @@ export function CatalogDiskSync({ onApplied, onScanned, active = true }: { onApp
   const selectors = fresh ? [...[...fresh.fileIds, ...(fresh.renamedIds ?? [])].map(id => `[data-model-id="${CSS.escape(id)}"]`), ...fresh.folderIds.map(id => `[data-sync-folder-id="${CSS.escape(id)}"]`)] : [];
   return <>
     {active && <button type="button" className={`${button} shrink-0 flex gap-2 items-center !py-1.5`} disabled={busy || jobActive} onClick={() => void run()} title={`${t('diskSyncLast')}: ${lastScan ? lastScan.toLocaleString(language) : t('diskSyncNever')} (F5)`}>
-      <Icon name="restore" size={16} className={busy ? 'motion-safe:animate-spin' : undefined} />{t(busy ? 'diskSyncRunning' : 'diskSyncRefresh')}
+      <Icon name="restore" size={16} className={busy ? 'motion-safe:animate-spin' : undefined} /><span className="max-[1279px]:sr-only">{t(busy ? 'diskSyncRunning' : 'diskSyncRefresh')}</span>
     </button>}
     {(scan || error || failedPaths.length > 0) && <SyncDialog scan={scan} error={error} failedPaths={failedPaths} busy={busy} onClose={() => { setScan(null); setError(null); setFailedPaths([]); }} onRetry={() => void run()} onApply={(remove, picked) => void apply(remove, picked)} />}
     {toast && createPortal(<div role="status" className="whitespace-pre-wrap break-all max-w-[90vw] max-h-[50vh] overflow-auto fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-[var(--ink)] text-[var(--bg)] px-4 py-3 shadow-lg">{toast}</div>, document.body)}

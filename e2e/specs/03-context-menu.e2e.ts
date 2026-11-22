@@ -9,7 +9,7 @@ describe('3 Rechtsklick-Menue und Umbenennen', () => {
 
   it('opens the model menu on a real right click', async () => {
     await rightClick(await cardByName('Würfel 20mm.stl'));
-    for (const entry of ['In Slicer öffnen', 'Im Dateimanager anzeigen', 'Umbenennen', 'Aus dem Katalog entfernen', 'In den Papierkorb']) {
+    for (const entry of ['Im Slicer öffnen', 'Im Dateimanager anzeigen', 'Umbenennen', 'Aus Katalog entfernen', 'In den Papierkorb']) {
       await contextEntry(entry).waitForExist({ timeout: 5000, timeoutMsg: `no menu entry "${entry}"` });
     }
   });

@@ -22,7 +22,7 @@ describe('9 Festplatten-Abgleich', () => {
     renameSync(original, temporary);
     renameSync(temporary, renamed);
     try {
-      await button('Aktualisieren');
+      await button('Mit Festplatte abgleichen');
       await waitForText('div', 'Alles aktuell');
       expect(await dialog().isExisting()).toBe(false);
       await catalogCount(8);
@@ -33,7 +33,7 @@ describe('9 Festplatten-Abgleich', () => {
   });
 
   it('previews, defers and applies additions while retaining missing entries by default', async () => {
-    await button('Aktualisieren');
+    await button('Mit Festplatte abgleichen');
     await waitForText('div', 'Alles aktuell');
     const addedDir = join(catalogDir, 'sync-neu');
     mkdirSync(addedDir);
@@ -43,7 +43,7 @@ describe('9 Festplatten-Abgleich', () => {
       'facet normal 0 -1 0', ' outer loop', '  vertex 0 0 0', '  vertex 0 13 9', '  vertex 0 0 11', ' endloop', 'endfacet', 'endsolid neu', '',
     ].join('\n'));
     unlinkSync(join(catalogDir, 'Deko', 'Würfel 20mm.stl'));
-    await button('Aktualisieren');
+    await button('Mit Festplatte abgleichen');
     await dialog().waitForDisplayed();
     for (const summary of ['1 neue Datei', '1 neuer Ordner', '1 Datei fehlt']) await waitForText('span', summary);
     await waitForText('label', 'Fehlende Dateien aus dem Katalog entfernen');
@@ -71,7 +71,7 @@ describe('9 Festplatten-Abgleich', () => {
   });
 
   it('removes the missing entry only after opting in and increments the trash counter', async () => {
-    await button('Aktualisieren');
+    await button('Mit Festplatte abgleichen');
     await dialog().waitForDisplayed();
     for (const summary of ['0 neue Dateien', '0 neue Ordner', '1 Datei fehlt']) await waitForText('span', summary);
     expect(await removal().isSelected()).toBe(false);
@@ -91,7 +91,7 @@ describe('9 Festplatten-Abgleich', () => {
     const copy = join(catalogDir, 'Haushalt', 'Kegel-Kopie.stl');
     copyFileSync(join(catalogDir, 'Haushalt', 'Kegel.stl'), copy);
     try {
-      await button('Aktualisieren');
+      await button('Mit Festplatte abgleichen');
       await dialog().waitForDisplayed();
       await waitForText('span', '1 mit gleichem Inhalt');
       const box = dialog().$('input[type="checkbox"][aria-label="Haushalt/Kegel-Kopie.stl"]');

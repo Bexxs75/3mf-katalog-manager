@@ -54,7 +54,7 @@ describe('folder trash menu entry', () => {
     mockBackend();
     const { row } = setup();
     fireEvent.contextMenu(row);
-    expect(screen.getAllByRole('menuitem').map((i) => i.textContent?.replace('F2', ''))).toEqual(['Umbenennen', 'Aus dem Katalog entfernen', 'In den Papierkorb legen …']);
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent?.replace('F2', ''))).toEqual(['Umbenennen', 'Aus Katalog entfernen', 'In den Papierkorb legen …']);
   });
   it('is disabled during an import run', () => {
     mockBackend();

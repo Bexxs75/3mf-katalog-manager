@@ -128,7 +128,7 @@ it.each(['keyboard', 'toolbar'])('collection selection via %s sends only its vis
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.licenseSave })); });
   expect(invoke).toHaveBeenCalledWith('set_license', { fileIds: ['a'], license: 'cc0' });
   fireEvent.click(screen.getByRole('button', { name: de.modelMenuTrash }));
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.delete })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.modelMenuTrash })); });
   expect(invoke).toHaveBeenCalledWith('delete_files', { fileIds: ['a'] });
 });
 

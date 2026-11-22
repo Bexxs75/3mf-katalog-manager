@@ -144,7 +144,7 @@ it('keeps the plain delete confirmation for files that are not whole bundle card
   await open();
   fireEvent.click(tick('3'));
   fireEvent.keyDown(document.body, { key: 'Delete', shiftKey: true });
-  expect(await screen.findByText(/löschen\?/)).toBeInTheDocument();
+  expect(await screen.findByText(/in den Papierkorb legen\?/)).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 

@@ -98,7 +98,6 @@ export function TrashView({
               selectedId={selectedId}
               onSelect={onSelect}
               onOpenDetail={() => {}}
-              onContextMenu={() => {}}
               onToggleFavorite={() => {}}
               selectedForBulk={new Set()}
               onToggleBulkSelect={() => {}}
@@ -111,7 +110,6 @@ export function TrashView({
               selectedId={selectedId}
               onSelect={onSelect}
               onOpenDetail={() => {}}
-              onContextMenu={() => {}}
               selectedForBulk={new Set()}
               onToggleBulkSelect={() => {}}
               readOnly

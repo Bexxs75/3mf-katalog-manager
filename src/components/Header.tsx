@@ -112,11 +112,11 @@ export function Header({
     <header className="flex-none h-[54px] flex items-center gap-2 min-[1100px]:gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
       <div className="flex shrink-0 items-baseline gap-2 pr-1.5 whitespace-nowrap">
         <span className="text-title font-semibold uppercase">
-          3MF Katalog
+          {t('headerTitle')}
         </span>
         {(mainView === 'filament' || mainView === 'printers') && (
           <span className="ui-label text-[var(--accent)]">
-            {mainView === 'printers' ? 'PRINTER MANAGER' : 'MATERIAL MANAGER'}
+            {t(mainView === 'printers' ? 'railPrinters' : 'railFilament')}
           </span>
         )}
       </div>
@@ -256,18 +256,24 @@ export function Header({
 
       <div className="flex shrink-0 p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
         <button
+          type="button"
+          aria-pressed={view === 'grid'}
           onClick={() => onViewChange('grid')}
           className={`${segBase} ${view === 'grid' ? segActive : segInactive}`}
         >
           {t('viewGrid')}
         </button>
         <button
+          type="button"
+          aria-pressed={view === 'groupedGrid'}
           onClick={() => onViewChange('groupedGrid')}
           className={`${segBase} ${view === 'groupedGrid' ? segActive : segInactive}`}
         >
           {t('viewFolder')}
         </button>
         <button
+          type="button"
+          aria-pressed={view === 'groupedList'}
           onClick={() => onViewChange('groupedList')}
           className={`${segBase} ${view === 'groupedList' ? segActive : segInactive}`}
         >

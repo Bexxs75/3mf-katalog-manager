@@ -90,7 +90,7 @@ export function ThingiverseDetail({ thingId, summary, onBack, onOpenSettings, co
               className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer inline-flex items-center">
               {t('tvOpen')}
             </ExternalLink>
-            <button type="button" className={`${thingButton} !h-8 !px-3 !text-small`} onClick={() => void copy(thing.url)}>{t('tvCopyLink')}</button>
+            <button type="button" className={`${thingButton} !h-8 !px-3 !text-small`} onClick={() => void copy(thing.url)} aria-label={t('tvCopyLinkLabel').replace('{0}', thing.name)}>{t('tvCopyLink')}</button>
           </div>
           {copyResult && <p role="status" className="text-caption text-[var(--ink-2)]">{copyResult === 'copied' ? t('tvLinkCopied') : t('externalLinkCopyFailed')}</p>}
           <p className="p-2 rounded border border-[var(--line)] bg-[var(--panel-2)] text-small">{t('tvNoDownload')}</p>

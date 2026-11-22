@@ -260,7 +260,7 @@ function ModelContextMenu({
               }}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold cursor-pointer"
             >
-              {t('delete')}
+              {t('modelMenuTrash')}
             </button>
           </div>
         </div>

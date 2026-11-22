@@ -400,7 +400,7 @@ export function BulkActionToolbar({
             onClick={onBulkDelete}
             className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
           >
-            {t('delete')}
+            {t('modelMenuTrash')}
           </button>
         </>
       ) : (

@@ -16,10 +16,10 @@ export async function moreAction(text: string, group: string) {
 /**
  * An entry of the model context menu. Entries carry a shortcut hint in their
  * visible text, so they are matched by their accessible name; the selection
- * bar has look-alike buttons of its own.
+ * bar and the details panel have look-alike buttons of their own.
  */
 export const contextEntry = (label: string) =>
-  $(`//button[(@aria-label="${label}" or normalize-space()="${label}") and not(ancestor::*[@role="toolbar"])]`);
+  $(`//button[(@aria-label="${label}" or normalize-space()="${label}") and not(ancestor::*[@role="toolbar"]) and not(ancestor::aside)]`);
 
 export async function closeDetails() {
   const close = await $('button[aria-label="Details schließen"]');

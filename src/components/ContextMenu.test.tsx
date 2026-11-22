@@ -77,7 +77,7 @@ it('confirms catalog removal separately from deletion and focuses Cancel', async
   render(<LanguageProvider><ContextMenu x={0} y={0} onClose={() => {}} onOpenInSlicer={() => {}}
     onDelete={() => {}} onRemove={onRemove} inQueue={false} onToggleQueue={() => {}}
     printed={false} onTogglePrintStatus={() => {}} fileId="42" currentName="Cube.stl" onRename={async () => {}} /></LanguageProvider>);
-  fireEvent.click(screen.getByText('Aus dem Katalog entfernen'));
+  fireEvent.click(screen.getByText('Aus Katalog entfernen'));
   expect(screen.getByText('„Cube.stl“ aus dem Katalog entfernen?')).toBeTruthy();
   expect(screen.getByText(/Die Datei bleibt unverändert auf der Festplatte/)).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByText('Abbrechen'));
@@ -104,7 +104,7 @@ describe('ContextMenu keyboard cancellation', () => {
     expect(screen.getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
   });
 
-  it.each(['In den Papierkorb', 'Aus dem Katalog entfernen', 'Umbenennen'])('cancels %s with Escape and keeps focus in the menu', (label) => {
+  it.each(['In den Papierkorb', 'Aus Katalog entfernen', 'Umbenennen'])('cancels %s with Escape and keeps focus in the menu', (label) => {
     const { container, onDelete, onRemove, onRename } = renderKeyboardMenu();
     fireEvent.click(screen.getByRole('button', { name: label }));
     const cancel = screen.getByRole('button', { name: 'Abbrechen' });
@@ -210,12 +210,12 @@ describe('ContextMenu and G-code', () => {
 
   it.each(['a.gcode', 'a.bgcode', 'a.ctb', 'a.GOO'])('does not offer "Open in slicer" for slicer output (%s)', name => {
     menu({ name, path: `/c/${name}` });
-    expect(screen.queryByRole('button', { name: 'In Slicer öffnen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Im Slicer öffnen' })).toBeNull();
   });
 
   it('still offers it for a model', () => {
     menu({ name: 'a.3mf', path: '/c/a.3mf' });
-    expect(screen.getByRole('button', { name: 'In Slicer öffnen' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Im Slicer öffnen' })).toBeVisible();
   });
 });
 
@@ -265,7 +265,7 @@ describe('model action menu', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it.each([['F2', false, 'textbox'], ['Delete', false, 'Entfernen'], ['Delete', true, 'Löschen']])('handles %s with shift=%s', (key, shiftKey, target) => {
+  it.each([['F2', false, 'textbox'], ['Delete', false, 'Entfernen'], ['Delete', true, 'In den Papierkorb']])('handles %s with shift=%s', (key, shiftKey, target) => {
     render(<LanguageProvider><ContextMenu {...base} /></LanguageProvider>);
     fireEvent.keyDown(document.activeElement!, { key, shiftKey });
     expect(target === 'textbox' ? screen.getByRole('textbox') : screen.getByRole('button', { name: target })).toBeVisible();
