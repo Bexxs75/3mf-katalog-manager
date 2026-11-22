@@ -125,7 +125,7 @@ export function Header({
       {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} onScanned={onDiskSyncScanned} />}
       {mainView === 'catalog' && (
       <>
-      {uploadable && <button className="h-8 px-3 shrink-0 whitespace-nowrap flex items-center gap-2 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" title={t('webUploadTitle')} onClick={onImportFiles}><span className="min-[1100px]:hidden" aria-hidden="true"><Icon name="plus" size={14} /></span><span className="max-[1099px]:sr-only">{t('webUploadTitle')}</span></button>}
+      {uploadable && <button className="h-8 px-3 shrink-0 whitespace-nowrap flex items-center gap-2 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" title={t('webUploadTitle')} onClick={onImportFiles}><span className="min-[1280px]:hidden" aria-hidden="true"><Icon name="plus" size={14} /></span><span className="max-[1279px]:sr-only">{t('webUploadTitle')}</span></button>}
       {import.meta.env.VITE_TARGET !== 'web' && <div ref={importRef} className="relative flex shrink-0">
         <button
           ref={importTriggerRef}
@@ -199,18 +199,18 @@ export function Header({
         )}
       </div>}
 
-      <div className="flex min-w-0 items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
-        <span className="hidden min-[1100px]:inline ui-label text-[var(--ink-3)]">
+      <div className="flex shrink-0 items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
+        <span className="hidden min-[1400px]:inline ui-label text-[var(--ink-3)]">
           {t('sortLabel')}
         </span>
-        <div ref={sortRef} className="relative min-w-0">
+        <div ref={sortRef} className="relative">
           <button
             ref={sortTriggerRef}
             onKeyDown={event => { if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) setImportMenuOpen(false); sortKeyboard.onTriggerKeyDown(event); }}
             aria-haspopup="menu"
             aria-expanded={sortMenuOpen}
             onClick={() => { setImportMenuOpen(false); setSortMenuOpen((o) => !o); }}
-            className="h-[30px] max-w-full px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
+            className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
           >
             <span className="min-w-[6ch] truncate">{sortOptions.find((o) => o.value === sort)?.label}</span>
             <span className="font-medium tabular-nums text-[var(--accent)]"><Icon name={sortDirection === 'asc'  ? 'arrow-up' : 'arrow-down'} size={14} /></span>
