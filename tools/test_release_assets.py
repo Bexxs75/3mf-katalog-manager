@@ -1,6 +1,23 @@
 import json, tempfile, unittest, pathlib, datetime
 import release_assets as ra   # run with -s tools, so tools/ is on sys.path
 
+class CiGate(unittest.TestCase):
+    def gate(self, runs):
+        import io
+        ra.check_ci_run("0123456789abcdef", io.StringIO(json.dumps(runs)))
+    def run_(self, i, status, conclusion, at):
+        return {"databaseId": i, "status": status, "conclusion": conclusion, "createdAt": at}
+    def test_newest_green_passes(self):
+        self.gate([self.run_(1, "completed", "failure", "2026-11-22T10:00:00Z"), self.run_(2, "completed", "success", "2026-11-22T11:00:00Z")])
+    def test_empty_fails(self):
+        with self.assertRaises(SystemExit): self.gate([])
+    def test_old_green_does_not_outweigh_newer_running(self):
+        with self.assertRaises(SystemExit): self.gate([self.run_(1, "completed", "success", "2026-11-22T10:00:00Z"), self.run_(2, "in_progress", "", "2026-11-22T11:00:00Z")])
+    def test_old_green_does_not_outweigh_newer_red(self):
+        with self.assertRaises(SystemExit): self.gate([self.run_(2, "completed", "failure", "2026-11-22T11:00:00Z"), self.run_(1, "completed", "success", "2026-11-22T10:00:00Z")])
+    def test_cancelled_fails(self):
+        with self.assertRaises(SystemExit): self.gate([self.run_(1, "completed", "cancelled", "2026-11-22T10:00:00Z")])
+
 class Names(unittest.TestCase):
     def test_asset_names(self):
         self.assertEqual(ra.asset_name("0.15.0", "Windows-x64", ".msi"), "3MF-Katalog-Manager-0.15.0-Windows-x64.msi")

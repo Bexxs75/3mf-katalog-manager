@@ -41,24 +41,10 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          runs=$(gh run list --repo "$GITHUB_REPOSITORY" --commit "$SHA" --limit 50 \
-            --json workflowName,status,conclusion \
-            --jq '[.[] | select(.workflowName == "CI checks (TypeScript, tests, Clippy)")]')
-          total=$(jq 'length' <<<"$runs")
-          if [ "$total" -eq 0 ]; then
-            echo "::error::No 'CI checks (TypeScript, tests, Clippy)' run exists for ${SHA:0:8}. Push the commit to the release branch and wait for the run before building."
-            exit 1
-          fi
-          if jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' <<<"$runs" >/dev/null; then
-            echo "CI checks are green for ${SHA:0:8}."
-            exit 0
-          fi
-          if jq -e 'any(.[]; .status != "completed")' <<<"$runs" >/dev/null; then
-            echo "::error::'CI checks' for ${SHA:0:8} are still running. Wait until they are green, then start the release again."
-          else
-            echo "::error::'CI checks' for ${SHA:0:8} did not succeed: $(jq -r 'map(.conclusion) | join(", ")' <<<"$runs")."
-          fi
-          exit 1
+          # Selected by workflow file (not by display name) and decided by the newest run.
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci-checks.yml --commit "$SHA" --limit 20 \
+            --json databaseId,status,conclusion,createdAt \
+            | python3 tools/release_assets.py check-ci-run "$SHA"
       # Passed through env instead of being pasted into the script, so the input
       # can never be interpreted as shell code.
       - name: Version matches every file set-version writes

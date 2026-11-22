@@ -312,6 +312,24 @@ def set_version(version, root="."):
             fail(f"could not find workspace package {name_match.group(1)} in {lock_path}")
     lock_path.write_text(lock_text, encoding="utf-8", newline="\n")
 
+def check_ci_run(sha, stream=None):
+    """The newest CI-checks run for the commit decides: it must be completed and successful.
+
+    Reads the JSON list of "gh run list --workflow ci-checks.yml --commit SHA" from stdin
+    (fields databaseId, status, conclusion, createdAt). An older green run never outweighs
+    a newer one that is still running or red.
+    """
+    runs = json.load(stream or sys.stdin)
+    short = sha[:8]
+    if not runs:
+        fail(f"No ci-checks.yml run exists for {short}. Push the commit to the release branch and wait for the run before building.")
+    latest = max(runs, key=lambda r: (r.get("createdAt") or "", r.get("databaseId") or 0))
+    if latest.get("status") != "completed":
+        fail(f"The newest CI checks run ({latest.get('databaseId')}) for {short} is still {latest.get('status')}. Wait until it is green, then start the release again.")
+    if latest.get("conclusion") != "success":
+        fail(f"The newest CI checks run ({latest.get('databaseId')}) for {short} did not succeed: {latest.get('conclusion')}.")
+    print(f"CI checks are green for {short} (run {latest.get('databaseId')}).")
+
 def main(argv):
     cmd, *args = argv
     preview = "--preview" in args
@@ -325,6 +343,7 @@ def main(argv):
         "latest-json": lambda *a: latest_json(*a, preview=preview, require_nsis=require_nsis),
         "check-version": check_version,
         "check-release-texts": check_release_texts,
+        "check-ci-run": check_ci_run,
         "check-preview": check_preview,
         "rc-manifest": rc_manifest,
         "set-version": set_version,
