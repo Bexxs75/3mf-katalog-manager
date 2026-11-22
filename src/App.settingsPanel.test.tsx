@@ -1,6 +1,6 @@
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import App from './App';
 import { LanguageProviderWithDiagnostics } from './test/renderWithDiagnostics';
@@ -217,7 +217,7 @@ describe('direct entries into the settings', () => {
     fireEvent.contextMenu(tile('a'));
     fireEvent.click((await screen.findAllByRole('button', { name: de.openInSlicer })).slice(-1)[0]);
     expect(await screen.findByRole('tab', { name: de.settingsTabServices, selected: true })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 3, name: de.settingsSecSlicers })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('heading', { level: 3, name: de.settingsSecSlicers })).toHaveFocus());
   });
 
   it('does not move the panel again when it is opened later without a request', async () => {

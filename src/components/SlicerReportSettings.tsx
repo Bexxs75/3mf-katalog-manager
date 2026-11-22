@@ -1,3 +1,5 @@
+import { SettingRow } from './SettingsTools';
+import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFormatCount, useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
@@ -95,13 +97,16 @@ export function SlicerReportSettings({ active = true }: { active?: boolean }) {
   const enabled = setup?.enabled === true;
   return (
     <div>
-      <div className="flex items-center justify-between gap-3 mb-1">
-        <span id="sr-settings-title" className="text-[length:var(--font-size-body)] font-semibold">{t('srTitle')}</span>
-        <ToggleSwitch checked={enabled} label={t('srTitle')} disabled={setup === null} busy={busy} onChange={(next) => void setEnabled(next)} />
-      </div>
-      <p className="text-caption leading-relaxed text-[var(--ink-3)] mb-2">{t('srHelp')}</p>
-      <SettingLoadStatus state={loadState} error={loadError} onReload={reloadSetup} className="mb-2" />
+      <SettingRow id="reports" value={setup?.enabled} label={t('srTitle')} onReset={() => setEnabled(SETTING_DEFAULTS.reports)} disabled={busy || setup === null}>
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <span id="sr-settings-title" className="text-[length:var(--font-size-body)] font-semibold">{t('srTitle')}</span>
+          <ToggleSwitch checked={enabled} label={t('srTitle')} disabled={setup === null} busy={busy} onChange={(next) => void setEnabled(next)} />
+        </div>
+        <p className="text-caption leading-relaxed text-[var(--ink-3)] mb-2">{t('srHelp')}</p>
+        <SettingLoadStatus state={loadState} error={loadError} onReload={reloadSetup} className="mb-2" />
 
+
+      </SettingRow>
       {enabled && setup?.pathChanged && (
         <div role="alert" className="mb-2 p-2 border border-[var(--crit)] rounded text-caption">
           <b>{t('srPathChangedTitle')}</b> {t('srPathChangedText')}

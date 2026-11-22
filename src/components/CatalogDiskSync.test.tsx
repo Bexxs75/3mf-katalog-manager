@@ -53,8 +53,8 @@ describe('catalog disk sync', () => {
     await act(async () => resolve(empty));
     expect(screen.getByRole('status')).toHaveTextContent('Alles aktuell');
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Aktualisieren' })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Aktualisieren' }).title).not.toContain('Noch nie');
+    expect(screen.getByRole('button', { name: 'Mit Festplatte abgleichen' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Mit Festplatte abgleichen' }).title).not.toContain('Noch nie');
   });
   it('exposes bidi controls in disk names while submitting their original paths', async () => {
     const path = '/models/foto\u202Egpj.stl';
@@ -75,7 +75,7 @@ describe('catalog disk sync', () => {
   it('defaults removal to OFF and Later never writes', async () => {
     vi.mocked(invoke).mockResolvedValue(changes);
     const reload = renderSync();
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mit Festplatte abgleichen' }));
     expect(await screen.findByRole('dialog')).toHaveAccessibleName('Abgleich mit der Festplatte');
     expect(removeBox()).not.toBeChecked();
     expect(screen.getByText('gone.stl')).toBeVisible();
@@ -86,7 +86,7 @@ describe('catalog disk sync', () => {
   it.each([false, true])('only applies after confirmation with removeMissing=%s', async remove => {
     vi.mocked(invoke).mockResolvedValueOnce(changes).mockResolvedValueOnce({ fileIds: ['7'], folderIds: ['8'], failedPaths: [], removedCount: remove ? 1 : 0 });
     const reload = renderSync();
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mit Festplatte abgleichen' }));
     await screen.findByRole('dialog');
     await act(async () => {}); // flush the dialog's mount effect before interacting
     if (remove) fireEvent.click(removeBox());
@@ -99,7 +99,7 @@ describe('catalog disk sync', () => {
     const applied = { fileIds: ['7'], folderIds: [], failedPaths: [], removedCount: 0 };
     vi.mocked(invoke).mockResolvedValueOnce(changes).mockResolvedValueOnce(applied);
     const onApplied = renderSync();
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mit Festplatte abgleichen' }));
     await screen.findByRole('dialog');
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', { name: 'Änderungen übernehmen' }));
@@ -246,7 +246,7 @@ describe('catalog disk sync', () => {
   it('shows unreachable roots and retries without applying', async () => {
     vi.mocked(invoke).mockResolvedValueOnce({ ...empty, unreachableRoots: ['/models/Eingang'] }).mockResolvedValueOnce(empty);
     renderSync();
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mit Festplatte abgleichen' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('/models/Eingang');
     expect(screen.queryByRole('checkbox')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
@@ -256,7 +256,7 @@ describe('catalog disk sync', () => {
   it('shows backend errors and Escape restores focus without applying', async () => {
     vi.mocked(invoke).mockRejectedValue({ code: 'diskSyncFailed', paths: [] });
     renderSync();
-    const button = screen.getByRole('button', { name: 'Aktualisieren' }); button.focus();
+    const button = screen.getByRole('button', { name: 'Mit Festplatte abgleichen' }); button.focus();
     fireEvent.click(button);
     expect(await screen.findByRole('alert')).toHaveTextContent('Der Abgleich ist fehlgeschlagen.');
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -288,7 +288,7 @@ describe('catalog disk sync', () => {
   });
   it('traps keyboard focus in the result dialog', async () => {
     vi.mocked(invoke).mockResolvedValue(changes); renderSync();
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mit Festplatte abgleichen' }));
     await screen.findByRole('dialog');
     await act(async () => {}); // flush the dialog's mount effect before interacting
     const apply = screen.getByRole('button', { name: 'Änderungen übernehmen' }); apply.focus();
@@ -297,11 +297,11 @@ describe('catalog disk sync', () => {
   });
   it('does not scan during an import or outside the catalog area', () => {
     const { rerender } = render(<LanguageProvider><ImportLockContext.Provider value={true}><CatalogDiskSync /></ImportLockContext.Provider></LanguageProvider>);
-    expect(screen.getByRole('button', { name: 'Aktualisieren' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Mit Festplatte abgleichen' })).toBeDisabled();
     fireEvent.keyDown(document, { key: 'F5' });
     expect(invoke).not.toHaveBeenCalled();
     rerender(<LanguageProvider><CatalogDiskSync active={false} /></LanguageProvider>);
-    expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mit Festplatte abgleichen' })).toBeNull();
     fireEvent.keyDown(document, { key: 'F5' });
     expect(invoke).not.toHaveBeenCalled();
   });

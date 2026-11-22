@@ -118,10 +118,10 @@ it('undoes a dissolve with Ctrl+Z as well', async () => {
   await waitFor(() => expect(calls('create_bundle')).toEqual([{ name: 'Harbour', kind: 'variants', fileIds: ['1', '2'], labels: ['big', ''], restore: true }]));
 });
 
-it('asks before the Delete key does anything on a bundle card, and dissolves by default', async () => {
+it('asks before Shift+Delete does anything on a bundle card, and dissolves by default', async () => {
   await open();
   fireEvent.click(tick('1'));
-  fireEvent.keyDown(document.body, { key: 'Delete' });
+  fireEvent.keyDown(document.body, { key: 'Delete', shiftKey: true });
   const dialog = await screen.findByRole('dialog', { name: 'Bündel „Harbour“ löschen?' });
   expect(within(dialog).getByRole('radio', { name: /Nur Bündel auflösen/ })).toBeChecked();
   fireEvent.click(within(dialog).getByRole('button', { name: de.bundleDissolve }));
@@ -132,7 +132,7 @@ it('asks before the Delete key does anything on a bundle card, and dissolves by 
 it('moves all members to the trash only after the second choice', async () => {
   await open();
   fireEvent.click(tick('1'));
-  fireEvent.keyDown(document.body, { key: 'Delete' });
+  fireEvent.keyDown(document.body, { key: 'Delete', shiftKey: true });
   const dialog = await screen.findByRole('dialog', { name: 'Bündel „Harbour“ löschen?' });
   fireEvent.click(within(dialog).getByRole('radio', { name: /Alle 2 Modelle in den Papierkorb/ }));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Alle 2 Modelle in den Papierkorb' }));
@@ -143,8 +143,8 @@ it('moves all members to the trash only after the second choice', async () => {
 it('keeps the plain delete confirmation for files that are not whole bundle cards', async () => {
   await open();
   fireEvent.click(tick('3'));
-  fireEvent.keyDown(document.body, { key: 'Delete' });
-  expect(await screen.findByText(/löschen\?/)).toBeInTheDocument();
+  fireEvent.keyDown(document.body, { key: 'Delete', shiftKey: true });
+  expect(await screen.findByText(/in den Papierkorb legen\?/)).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
@@ -153,7 +153,7 @@ it('does not ask when the bundles are not shown as cards', async () => {
   await open();
   fireEvent.click(tick('1'));
   fireEvent.click(tick('2'));
-  fireEvent.keyDown(document.body, { key: 'Delete' });
+  fireEvent.keyDown(document.body, { key: 'Delete', shiftKey: true });
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 });
 
@@ -204,9 +204,10 @@ it('offers the file menu entries "Bundle …" and "Add to bundle …" on a singl
   fireEvent.click(tick('3'));
   fireEvent.click(tick('4'));
   fireEvent.contextMenu(document.querySelector('[data-model-id="3"]') as HTMLElement);
-  expect(await screen.findByRole('button', { name: de.bundleMake })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: de.bundleAddTo })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: de.bundleRemoveFrom })).toBeNull();
+  fireEvent.click(await screen.findByRole('button', { name: 'Bündel (2 Modelle)' }));
+  expect(screen.getByRole('menuitem', { name: `${de.bundleMake} (2 Modelle)` })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: `${de.bundleAddTo} (2 Modelle)` })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: de.bundleRemoveFrom })).toBeNull();
 });
 
 const cardOf = (id: string) => document.querySelector(`[data-bundle-id="${id}"]`) as HTMLElement;

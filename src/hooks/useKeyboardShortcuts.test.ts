@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { fireEvent, renderHook } from '@testing-library/react';
 import { useKeyboardShortcuts, findSpatialNeighbor, MODEL_TILE_ATTR } from './useKeyboardShortcuts';
 
 const SEARCH_INPUT_ID = 'catalog-search-input';
@@ -321,4 +321,15 @@ describe('P16 shortcuts', () => {
     key('?', { shiftKey: true }); expect(onOpenTips).toHaveBeenCalledOnce(); key('Enter'); key('a', { ctrlKey: true });
     expect(onOpenDetail).not.toHaveBeenCalled(); expect(selectAllVisible).not.toHaveBeenCalled();
   });
+});
+
+it('separates catalog removal, trash, rename and move shortcuts', () => {
+  const onRemoveSelection = vi.fn(), onTrashSelection = vi.fn(), onRenameSelection = vi.fn(), onMoveSelection = vi.fn();
+  setup({ hasBulkSelection: true, onRemoveSelection, onTrashSelection, onRenameSelection, onMoveSelection });
+  fireEvent.keyDown(window, { key: 'Delete' });
+  expect(onRemoveSelection).toHaveBeenCalledOnce(); expect(onTrashSelection).not.toHaveBeenCalled();
+  fireEvent.keyDown(window, { key: 'Delete', shiftKey: true });
+  expect(onTrashSelection).toHaveBeenCalledOnce(); expect(onRemoveSelection).toHaveBeenCalledOnce();
+  fireEvent.keyDown(window, { key: 'F2' }); fireEvent.keyDown(window, { key: 'F6' });
+  expect(onRenameSelection).toHaveBeenCalledOnce(); expect(onMoveSelection).toHaveBeenCalledOnce();
 });

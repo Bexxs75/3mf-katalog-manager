@@ -1,3 +1,4 @@
+import { UiSettingsGate, UiSettingsError } from './components/UiSettingsGate';
 import { WebAuthGate } from './components/WebAuthGate';
 import { PhoneNotice } from './components/PhoneNotice';
 import { RuntimeEnvironmentProvider } from './hooks/useRuntimeEnvironment';
@@ -27,14 +28,14 @@ function StartupReady() {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <RuntimeEnvironmentProvider>
-      <StartupReady />
       <LanguageProvider>
         <UiDensityProvider>
+          <UiSettingsError />
           <DiagnosticsProvider>
             <ErrorBoundary fallback={(reload) => <CrashFallback onReload={reload} />}>
               {import.meta.env.VITE_TARGET === 'web'
-                ? <PhoneNotice><WebAuthGate><PrintTechnologyProvider><ModelLayoutProvider><App /></ModelLayoutProvider></PrintTechnologyProvider></WebAuthGate></PhoneNotice>
-                : <PrintTechnologyProvider><SlicerReportsProvider><ModelLayoutProvider><App /></ModelLayoutProvider></SlicerReportsProvider></PrintTechnologyProvider>}
+                ? <PhoneNotice><WebAuthGate><UiSettingsGate><StartupReady /><PrintTechnologyProvider><ModelLayoutProvider><App /></ModelLayoutProvider></PrintTechnologyProvider></UiSettingsGate></WebAuthGate></PhoneNotice>
+                : <UiSettingsGate><StartupReady /><PrintTechnologyProvider><SlicerReportsProvider><ModelLayoutProvider><App /></ModelLayoutProvider></SlicerReportsProvider></PrintTechnologyProvider></UiSettingsGate>}
             </ErrorBoundary>
           </DiagnosticsProvider>
         </UiDensityProvider>

@@ -125,7 +125,7 @@ function ConfirmDelete({ id, onCancelDelete, onConfirmDelete }: { id: string } &
   const canEdit = useCanEditMetadata();
   return (
     <div className="flex items-center gap-1.5">
-      <span className="flex-1 text-caption text-[var(--ink)]">{t(import.meta.env.VITE_TARGET === 'web' ? 'webManagerDeleteSpool' : 'deleteConfirmQuestion')}</span>
+      <span className="flex-1 text-caption text-[var(--ink)]">{t(import.meta.env.VITE_TARGET === 'web' ? 'webManagerDeleteSpool' : 'deleteEntryConfirmQuestion')}</span>
       <button
         onClick={onCancelDelete}
         className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption cursor-pointer"

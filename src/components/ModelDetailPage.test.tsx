@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -155,7 +156,7 @@ it('hides host actions on the container detail page even with a configured slice
   render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}>
     <ModelDetailPage {...props} hasPrevious={false} hasNext={false} slicers={[{ id: 's1', name: 'Slicer', path: '/slicer' }]} />
   </RuntimeEnvironmentProvider></LanguageProvider>);
-  expect(screen.queryByRole('button', { name: /In Slicer öffnen/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Im Slicer öffnen/ })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Im Browser öffnen' })).toBeVisible();
   expect(screen.queryByRole('button', { name: /Im Dateimanager anzeigen/ })).not.toBeInTheDocument();
 });
@@ -177,14 +178,14 @@ it('keeps the desktop slicer action', () => {
     <ModelDetailPage {...props} hasPrevious={false} hasNext={false} slicers={[{ id: 's1', name: 'Slicer', path: '/slicer' }]} />
   </RuntimeEnvironmentProvider></LanguageProvider>);
   expect(screen.queryByRole('button', { name: 'Im Browser öffnen' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /In Slicer öffnen/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Im Slicer öffnen/ }));
   expect(props.onOpenInSlicer).toHaveBeenCalled();
 });
 
 it('edits the license on the detail page', async () => {
   const onSetLicense = vi.fn().mockResolvedValue(undefined);
   render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onSetLicense={onSetLicense} /></LanguageProvider>);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'own' } });
+  chooseSelect(screen.getByRole('combobox', { name: 'Lizenz' }), 'own');
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   expect(onSetLicense).toHaveBeenCalledWith([props.model.id], 'own');
 });
@@ -193,7 +194,7 @@ it.each(['cc0', '', '__other'])('protects a changed license (%s) until discarded
   const onNavigate = vi.fn();
   render(<LanguageProvider><ModelDetailPage {...props} model={makeModelFile({license: 'cc-by'})}
     onSetLicense={vi.fn()} onNavigate={onNavigate} hasPrevious={false} hasNext /></LanguageProvider>);
-  fireEvent.change(screen.getByRole('combobox', {name: 'Lizenz'}), {target: {value: next}});
+  chooseSelect(screen.getByRole('combobox', {name: 'Lizenz'}), next);
   if (next === '__other') fireEvent.change(screen.getByRole('textbox', {name: 'Lizenztext'}), {target: {value: 'My terms'}});
   fireEvent.keyDown(window, {key: 'ArrowRight'});
   expect(onNavigate).not.toHaveBeenCalled();
@@ -210,7 +211,7 @@ it('does not block unchanged custom text or a saved license', async () => {
     onSetLicense={onSetLicense} onNavigate={onNavigate} hasPrevious={false} hasNext /></LanguageProvider>);
   fireEvent.click(screen.getByLabelText('Nächstes Modell'));
   expect(onNavigate).toHaveBeenCalledTimes(1);
-  fireEvent.change(screen.getByRole('combobox', {name: 'Lizenz'}), {target: {value: 'cc0'}});
+  chooseSelect(screen.getByRole('combobox', {name: 'Lizenz'}), 'cc0');
   await act(async () => { fireEvent.click(screen.getByRole('button', {name: 'Lizenz speichern'})); });
   fireEvent.click(screen.getByLabelText('Nächstes Modell'));
   expect(onNavigate).toHaveBeenCalledTimes(2);
@@ -230,25 +231,25 @@ it('offers original-file download only in the web build', () => {
 it('asks before deleting and leaves the model alone when cancelled', () => {
   const onDelete = vi.fn();
   render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} /></LanguageProvider>);
-  const trigger = screen.getByRole('button', {name: 'Löschen'});
+  const trigger = screen.getByRole('button', {name: 'In den Papierkorb'});
   fireEvent.click(trigger);
   expect(onDelete).not.toHaveBeenCalled();
-  expect(screen.getByText('Eintrag löschen?')).toBeVisible();
+  expect(screen.getByText('Modell in den Papierkorb legen?')).toBeVisible();
   expect(screen.getByRole('button', {name: 'Abbrechen'})).toHaveFocus();
   fireEvent.click(screen.getByRole('button', {name: 'Abbrechen'}));
   expect(onDelete).not.toHaveBeenCalled();
-  expect(screen.queryByText('Eintrag löschen?')).toBeNull();
-  expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+  expect(screen.queryByText('Modell in den Papierkorb legen?')).toBeNull();
+  expect(screen.getByRole('button', {name: 'In den Papierkorb'})).toHaveFocus();
 });
 
 it('cancels the delete question with Escape without closing the page', () => {
   const onDelete = vi.fn();
   const onClose = vi.fn();
   render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} onClose={onClose} /></LanguageProvider>);
-  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.click(screen.getByRole('button', {name: 'In den Papierkorb'}));
   fireEvent.keyDown(screen.getByRole('button', {name: 'Abbrechen'}), {key: 'Escape'});
-  expect(screen.queryByText('Eintrag löschen?')).toBeNull();
-  expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+  expect(screen.queryByText('Modell in den Papierkorb legen?')).toBeNull();
+  expect(screen.getByRole('button', {name: 'In den Papierkorb'})).toHaveFocus();
   expect(onDelete).not.toHaveBeenCalled();
   expect(onClose).not.toHaveBeenCalled();
 });
@@ -259,14 +260,14 @@ it('cancels the delete question with Escape from outside the question without cl
   window.addEventListener('keydown', bubbled);
   try {
     render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onClose={onClose} /></LanguageProvider>);
-    fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+    fireEvent.click(screen.getByRole('button', {name: 'In den Papierkorb'}));
     const rescan = screen.getByRole('button', {name: 'Metadaten neu einlesen'});
     rescan.focus();
     fireEvent.keyDown(rescan, {key: 'Escape'});
-    expect(screen.queryByText('Eintrag löschen?')).toBeNull();
+    expect(screen.queryByText('Modell in den Papierkorb legen?')).toBeNull();
     expect(bubbled).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', {name: 'Löschen'})).toHaveFocus();
+    expect(screen.getByRole('button', {name: 'In den Papierkorb'})).toHaveFocus();
   } finally {
     window.removeEventListener('keydown', bubbled);
   }
@@ -275,8 +276,8 @@ it('cancels the delete question with Escape from outside the question without cl
 it('deletes only after the question is confirmed', () => {
   const onDelete = vi.fn();
   render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onDelete={onDelete} /></LanguageProvider>);
-  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
-  fireEvent.click(screen.getByRole('button', {name: 'Löschen'}));
+  fireEvent.click(screen.getByRole('button', {name: 'In den Papierkorb'}));
+  fireEvent.click(screen.getByRole('button', {name: 'In den Papierkorb'}));
   expect(onDelete).toHaveBeenCalledTimes(1);
 });
 

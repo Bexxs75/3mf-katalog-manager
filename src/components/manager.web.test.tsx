@@ -109,13 +109,13 @@ it.each([false,true])('material controls, slot actions and restock respect writa
   expect(screen.getByRole('button', {name: de.filamentOpenAddPanelButton})).toHaveProperty('disabled', !enabled);
   calls = []; fireEvent.click(slot);
   if (!enabled) {
-    expect(slot).toBeDisabled(); expect(screen.queryByRole('menu')).toBeNull();
+    expect(slot).toBeDisabled(); expect(screen.queryByRole('group', { name: 'Spule einlegen' })).toBeNull();
     fireEvent.doubleClick(screen.getByTestId('spool-card-1'));
     fireEvent.mouseDown(screen.getByTestId('spool-card-1'), {button:0,clientX:0,clientY:0});
     fireEvent.mouseMove(document, {clientX:30,clientY:30}); fireEvent.mouseEnter(slot); fireEvent.mouseUp(document);
     expect(screen.queryByRole('dialog')).toBeNull(); expect(writes()).toEqual([]); return;
   }
-  fireEvent.click(within(screen.getByRole('menu')).getByRole('button', {name: /PLA/}));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Spule einlegen' })).getByRole('button', {name: /PLA/}));
   await waitFor(() => expect(writes().map(c=>c.command)).toEqual(['load_spool']));
   expect(writes()[0].args).toEqual({spoolId:'1',unitId:'u1',slotIndex:0});
   await screen.findByText('PETG wurde aus dem belegten Slot an den Stammplatz zurückgelegt.');

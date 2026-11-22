@@ -1,5 +1,7 @@
 {
   "registered": [
+    "uiSettingsInvalid",
+    "uiSettingsUnavailable",
     "folderNameEmpty",
     "folderNameForbiddenChar",
     "folderNameTooLong",
@@ -96,6 +98,8 @@
     "dlRangeInvalid",
     "dlTooManyDownloads",
     "slicerLinkExpired",
+    "tagNameUnchanged",
+    "tagNameExists",
     "tagNameEmpty",
     "tagNameInvalid",
     "tagNameTooLong",

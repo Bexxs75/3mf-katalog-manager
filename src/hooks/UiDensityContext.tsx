@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { uiSettings, subscribeUiSettings } from '../lib/uiSettings';
+import { createContext, useCallback, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 
 export type UiDensity = 'compact' | 'comfort';
 
@@ -13,12 +14,12 @@ const UiDensityContext = createContext<UiDensityContextValue | null>(null);
 
 /**
  * Manages the app's UI density ("compact" = existing, dense view;
- * "comfort" = larger text/graphics). Persisted in localStorage
+ * "comfort" = larger text/graphics). Persisted in uiSettings
  * following the same pattern as useTheme/LanguageContext.
  */
 export function UiDensityProvider({ children }: { children: ReactNode }) {
-  const [density, setDensityState] = useState<UiDensity>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+  const density: UiDensity = useSyncExternalStore(subscribeUiSettings, () => {
+    const stored = uiSettings.getItem(STORAGE_KEY);
     return stored === 'comfort' ? 'comfort' : 'compact';
   });
 
@@ -27,8 +28,7 @@ export function UiDensityProvider({ children }: { children: ReactNode }) {
   }, [density]);
 
   const setDensity = useCallback((next: UiDensity) => {
-    setDensityState(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    uiSettings.setItem(STORAGE_KEY, next);
   }, []);
 
   return (

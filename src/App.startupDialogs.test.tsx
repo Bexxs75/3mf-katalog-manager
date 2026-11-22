@@ -1,3 +1,4 @@
+import { uiSettings } from './lib/uiSettings';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -24,8 +25,8 @@ let printReply: Promise<unknown> | undefined;
 let fail: string;
 beforeEach(() => {
   vi.unstubAllEnvs(); localStorage.clear();
-  localStorage.setItem('3mf-katalog-language', 'de');
-  localStorage.setItem('3mf-katalog-base-dir', '/old');
+  uiSettings.setItem('3mf-katalog-language', 'de');
+  uiSettings.setItem('3mf-katalog-base-dir', '/old');
   asked = true; menu = true; upgrade = null; pending = []; printReply = undefined; fail = '';
   vi.mocked(invoke).mockReset().mockImplementation(async cmd => {
     if (cmd === fail) throw new Error('unavailable');
@@ -61,7 +62,7 @@ it('serializes fresh Linux setup, print technology, Linux menu, then pending ope
   await onlyDialog(de.ptTitle);
   fireEvent.click(document.querySelector<HTMLButtonElement>('header button[title="Neuigkeiten"]')!);
   await onlyDialog(de.ptTitle);
-  expect(localStorage.getItem(key)).toBe(currentVersion);
+  expect(uiSettings.getItem(key)).toBe(currentVersion);
   expect(calls('get_linux_menu_status')).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: de.ptApply }));
   await onlyDialog(de.linuxMenuPromptTitle);
@@ -74,7 +75,7 @@ it('serializes fresh Linux setup, print technology, Linux menu, then pending ope
   await onlyDialog(de.owViewTitle);
 });
 it('waits for print technology loading instead of releasing Linux early', async () => {
-  localStorage.setItem('3mf-katalog-setup-seen', '1'); localStorage.setItem(key, currentVersion);
+  uiSettings.setItem('3mf-katalog-setup-seen', '1'); uiSettings.setItem(key, currentVersion);
   let resolve!: (value: unknown) => void;
   printReply = new Promise(r => { resolve = r; });
   await mount();
@@ -83,11 +84,11 @@ it('waits for print technology loading instead of releasing Linux early', async 
   await onlyDialog(de.linuxMenuPromptTitle);
 });
 it('waits for the upgrade notice, then news, then Linux; settings reopens current notes', async () => {
-  localStorage.setItem('3mf-katalog-setup-seen', '1');
+  uiSettings.setItem('3mf-katalog-setup-seen', '1');
   upgrade = { fromVersion: '0.18.0', toVersion: currentVersion, fromSchema: 1, toSchema: 2, backup: null, backupFailed: true, folder: '/old', catalogFile: '/old/catalog.db', container: false };
   await mount();
   await onlyDialog(de.rwTitleFailed);
-  expect(localStorage.getItem(key)).toBeNull();
+  expect(uiSettings.getItem(key)).toBeNull();
   expect(calls('get_linux_menu_status')).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: de.rwUnderstood }));
   await onlyDialog(de.whatsNewTitle.replace('{version}', currentVersion));
@@ -104,9 +105,9 @@ it('waits for the upgrade notice, then news, then Linux; settings reopens curren
 });
 it.each(['get_upgrade_notice', 'get_print_technology', 'get_linux_menu_status', 'answer_linux_menu_prompt', 'set_print_technology'])('releases failed startup step %s', async command => {
   fail = command; pending = [external];
-  if (command !== 'set_print_technology') localStorage.setItem('3mf-katalog-setup-seen', '1');
+  if (command !== 'set_print_technology') uiSettings.setItem('3mf-katalog-setup-seen', '1');
   else asked = false;
-  localStorage.setItem(key, currentVersion);
+  uiSettings.setItem(key, currentVersion);
   await mount();
   if (command === 'set_print_technology') {
     fireEvent.click(screen.getByRole('button', { name: de.catalogSetupLater }));
@@ -136,7 +137,7 @@ it('web with an older marker shows news without waiting for the unmounted upgrad
   vi.stubEnv('VITE_TARGET', 'web');
   // Marker = the release right before this one, so exactly one version (and its titled dialog) is shown.
   const previous = Object.keys(releaseNotes).filter(v => compareVersions(v, currentVersion) < 0).sort((a, b) => compareVersions(b, a))[0]!;
-  localStorage.setItem(key, previous);
+  uiSettings.setItem(key, previous);
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const cmd = url.split('/').slice(-1)[0];
     const value = cmd === 'get_app_version' ? currentVersion
@@ -148,13 +149,13 @@ it('web with an older marker shows news without waiting for the unmounted upgrad
     await mount();
     await onlyDialog(de.whatsNewTitle.replace('{version}', currentVersion));
     expect(calls('get_upgrade_notice')).toHaveLength(0);
-    expect(localStorage.getItem(key)).toBe(previous);
+    expect(uiSettings.getItem(key)).toBe(previous);
     fireEvent.click(screen.getByRole('button', { name: de.whatsNewClose }));
-    expect(localStorage.getItem(key)).toBe(currentVersion);
+    expect(uiSettings.getItem(key)).toBe(currentVersion);
   } finally { vi.unstubAllGlobals(); }
 });
 it('skips unneeded prompts and releases a pending open-with request', async () => {
-  localStorage.setItem('3mf-katalog-setup-seen', '1'); localStorage.setItem(key, currentVersion);
+  uiSettings.setItem('3mf-katalog-setup-seen', '1'); uiSettings.setItem(key, currentVersion);
   menu = false; pending = [external];
   await mount();
   await onlyDialog(de.owViewTitle);

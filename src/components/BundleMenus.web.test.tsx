@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 vi.mock('../lib/transport', () => ({ invoke: vi.fn().mockResolvedValue([]) }));
@@ -22,14 +22,15 @@ const fileMenu = () => render(<LanguageProviderWithDiagnostics>
 
 it('offers no bundle entry in the read-only web version', () => {
   fileMenu();
-  for (const label of [de.bundleMake, de.bundleAddTo, de.bundleRemoveFrom]) expect(screen.queryByRole('button', { name: label })).toBeNull();
+  for (const label of [de.bundleMake, de.bundleAddTo, de.bundleRemoveFrom]) expect(screen.queryByRole('menuitem', { name: label })).toBeNull();
 });
 
 it('offers the file menu entries once the session may edit metadata', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: true, csrfToken: 'csrf' })));
   await login('test');
   fileMenu();
-  for (const label of [de.bundleMake, de.bundleAddTo, de.bundleRemoveFrom]) expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: de.modelMenuBundle }));
+  for (const label of [de.bundleMake, de.bundleAddTo, de.bundleRemoveFrom]) expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
 });
 
 it('mounts neither the bundle card menu nor the selection bar without the right to edit', () => {

@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import * as THREE from 'three';
@@ -48,7 +49,7 @@ beforeEach(() => {
   materialProperties.mockReset().mockReturnValue({ uniforms: { dfgLUT: { value: lut } } });
   vi.mocked(invoke).mockReset().mockResolvedValue(buffer());
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  localStorage.setItem('3mf-katalog-language', 'de');
+  uiSettings.setItem('3mf-katalog-language', 'de');
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());

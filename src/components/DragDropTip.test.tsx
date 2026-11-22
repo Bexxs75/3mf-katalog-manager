@@ -1,9 +1,10 @@
+import { uiSettings } from '../lib/uiSettings';
 import { beforeEach, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { DragDropTip } from './DragDropTip';
 const key = '3mf-katalog-dnd-tip-dismissed';
-beforeEach(() => { localStorage.clear(); localStorage.setItem('3mf-katalog-language', 'de'); });
+beforeEach(() => { localStorage.clear(); uiSettings.setItem('3mf-katalog-language', 'de'); });
 it.each([[0, 1], [1, 0], [0, 0]])('needs models and folders (%s, %s)', (modelCount, folderCount) => {
   render(<LanguageProvider><DragDropTip modelCount={modelCount} folderCount={folderCount} /></LanguageProvider>);
   expect(screen.queryByText('Verstanden')).toBeNull();
@@ -13,14 +14,14 @@ it('dismisses persistently without taking focus', () => {
   const { unmount } = render(<LanguageProvider><DragDropTip modelCount={1} folderCount={1} /></LanguageProvider>);
   expect(document.activeElement).toBe(focus);
   fireEvent.click(screen.getByText('Verstanden'));
-  expect(localStorage.getItem(key)).toBe('true');
+  expect(uiSettings.getItem(key)).toBe('true');
   expect(screen.queryByText('Verstanden')).toBeNull();
   unmount();
   render(<LanguageProvider><DragDropTip modelCount={1} folderCount={1} /></LanguageProvider>);
   expect(screen.queryByText('Verstanden')).toBeNull();
 });
 it('never appears with an existing key, including an empty value', () => {
-  localStorage.setItem(key, '');
+  uiSettings.setItem(key, '');
   render(<LanguageProvider><DragDropTip modelCount={1} folderCount={1} /></LanguageProvider>);
   expect(screen.queryByText('Verstanden')).toBeNull();
 });

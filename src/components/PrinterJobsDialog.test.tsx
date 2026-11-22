@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { chooseSelect, selectOptions } from '../test/select';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { PrinterJobsDialog } from './PrinterJobsDialog';
@@ -121,7 +122,7 @@ describe('PrinterJobsDialog', () => {
       const selects = screen.getAllByRole('combobox', { name: 'Grund (optional)' });
       expect(selects).toHaveLength(1);
       expect(selects[0]).toHaveValue('');
-      const options = within(selects[0]).getAllByRole('option');
+      const options = selectOptions(selects[0]);
       expect(options.map(o => o.textContent)).toEqual([
         'Kein Grund angegeben', 'Haftung / Warping', 'Düse verstopft / Unterextrusion', 'Filament leer, gerissen oder verheddert',
         'Strom- oder Netzausfall', 'Slicer- oder Einstellungsfehler', 'Mechanik, Elektronik oder Kollision', 'Druck vom Bett gelöst',
@@ -144,7 +145,7 @@ describe('PrinterJobsDialog', () => {
       vi.mocked(setPrinterJobFailure).mockImplementation(async () => { order.push('reason'); });
       l.confirmJobs = vi.fn().mockImplementation(async () => { order.push('confirm'); return { confirmed: 1, failed: 0 }; });
       renderDialog(l);
-      fireEvent.change(screen.getByRole('combobox', { name: 'Grund (optional)' }), { target: { value: 'clog' } });
+      chooseSelect(screen.getByRole('combobox', { name: 'Grund (optional)' }), 'clog');
       await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' })));
       expect(setPrinterJobFailure).toHaveBeenCalledWith('1', 'clog', null);
       expect(order).toEqual(['reason', 'confirm']);
@@ -154,7 +155,7 @@ describe('PrinterJobsDialog', () => {
       const l = link([partial()]);
       renderDialog(l);
       const select = screen.getByRole('combobox', { name: 'Grund (optional)' });
-      fireEvent.change(select, { target: { value: 'other' } });
+      chooseSelect(select, 'other');
       const note = screen.getByLabelText('Kurztext (höchstens 200 Zeichen)');
       expect(note).toHaveAttribute('maxlength', '200');
       fireEvent.change(note, { target: { value: 'Kabel hat sich gelöst' } });
@@ -163,7 +164,7 @@ describe('PrinterJobsDialog', () => {
       expect(setPrinterJobFailure).toHaveBeenCalledWith('1', 'other', 'Kabel hat sich gelöst');
       expect(l.ignoreJob).toHaveBeenCalledWith('1');
       // Back to a listed reason: the note goes away and is not sent.
-      fireEvent.change(select, { target: { value: 'adhesion' } });
+      chooseSelect(select, 'adhesion');
       expect(screen.queryByLabelText(/Kurztext/)).toBeNull();
     });
 
@@ -171,7 +172,7 @@ describe('PrinterJobsDialog', () => {
       const l = link([partial()]);
       vi.mocked(setPrinterJobFailure).mockRejectedValue(new Error('boom'));
       renderDialog(l);
-      fireEvent.change(screen.getByRole('combobox', { name: 'Grund (optional)' }), { target: { value: 'clog' } });
+      chooseSelect(screen.getByRole('combobox', { name: 'Grund (optional)' }), 'clog');
       await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' })));
       expect(l.confirmJobs).not.toHaveBeenCalled();
       expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -180,7 +181,7 @@ describe('PrinterJobsDialog', () => {
     it('saves the reasons of all prints that were chosen when confirming all', async () => {
       const l = link([partial({ id: '1' }), partial({ id: '2' }), job({ id: '3' })]);
       renderDialog(l);
-      fireEvent.change(screen.getAllByRole('combobox', { name: 'Grund (optional)' })[1], { target: { value: 'spaghetti' } });
+      chooseSelect(screen.getAllByRole('combobox', { name: 'Grund (optional)' })[1], 'spaghetti');
       await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Alle 3 bestätigen' })));
       expect(setPrinterJobFailure).toHaveBeenCalledTimes(1);
       expect(setPrinterJobFailure).toHaveBeenCalledWith('2', 'spaghetti', null);

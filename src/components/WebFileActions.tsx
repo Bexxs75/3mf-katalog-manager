@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { Select } from './Select';
+import { useEffect, useRef, useState, type RefObject, type ReactNode } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { canManageFiles, useCanManageFiles } from '../lib/webSession';
 import { emptyWebTrash, fileOp, fileOpsBatch, type FileLabels, type TrashSummary } from '../lib/fileOps';
@@ -9,17 +10,13 @@ import type { Folder } from '../types';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import { useImportLock } from '../hooks/ImportLockContext';
 
-const copy = {
-  de: { looseCompanions: 'und {n} einzeln entfernte Begleitdateien', move: 'Verschieben', trashLabel: 'In den Papierkorb', target: 'Zielordner', rename: 'Neuer Basisname', trash: 'Ausgewählte Dateien in den Papierkorb des Servers verschieben? Die Dateien werden an ihrem bisherigen Ort entfernt und können aus dem Papierkorb wiederhergestellt werden.', restore: 'Datei am ursprünglichen Ort wiederherstellen?', permanent: 'Datei unwiderruflich löschen?', empty: 'Papierkorb unwiderruflich leeren?', password: 'Passwort zur Bestätigung', summary: 'Dateien / Bytes', unavailable: 'Dateiverwaltung ist nicht mehr verfügbar.', kept: 'Der Katalogeintrag wurde entfernt. Die Datei bleibt auf dem Datenträger.', progress: 'Bearbeitet', loading: 'Wird geladen…', files: '{n} Dateien', file1: '1 Datei', hidden: ', davon {m} nicht sichtbar', more: '… und {n} weitere', cancelling: 'Wird abgebrochen…', companions: 'davon {n} Begleitdateien im Papierkorb', desktopEntries: '{n} Einträge aus dem Desktop-Papierkorb können hier nicht endgültig gelöscht werden; bitte am Desktop erledigen.', moveBlocked: 'geschützt', moveBlockedHint: 'Geschützte Ordner (Upload-Bereich, Papierkorb) gelten nicht als Ziel.', desktopEntry: '1 Eintrag aus dem Desktop-Papierkorb kann hier nicht endgültig gelöscht werden; bitte am Desktop erledigen.' },
-  en: { looseCompanions: 'and {n} companion files removed on their own', move: 'Move', trashLabel: 'Move to trash', target: 'Destination folder', rename: 'New base name', trash: 'Move selected files to the server trash? Files are removed from their current location and can be restored from trash.', restore: 'Restore file to its original location?', permanent: 'Permanently delete file?', empty: 'Permanently empty trash?', password: 'Password to confirm', summary: 'Files / bytes', unavailable: 'File management is no longer available.', kept: 'The catalog entry was removed. The file remains on disk.', progress: 'Processed', loading: 'Loading…', files: '{n} files', file1: '1 file', hidden: ', {m} of them not visible', more: '… and {n} more', cancelling: 'Cancelling…', companions: 'including {n} companion files in the trash', desktopEntries: '{n} entries from the desktop trash cannot be deleted permanently here; please do this on the desktop.', moveBlocked: 'protected', moveBlockedHint: 'Protected folders (upload area, trash) are not available as a destination.', desktopEntry: '1 entry from the desktop trash cannot be deleted permanently here; please do this on the desktop.' },
-  es: { looseCompanions: 'y {n} archivos complementarios quitados por separado', move: 'Mover', trashLabel: 'Mover a la papelera', target: 'Carpeta de destino', rename: 'Nuevo nombre base', trash: '¿Mover los archivos seleccionados a la papelera del servidor? Se quitarán de su ubicación actual y podrán restaurarse desde la papelera.', restore: '¿Restaurar el archivo en su ubicación original?', permanent: '¿Eliminar el archivo definitivamente?', empty: '¿Vaciar la papelera definitivamente?', password: 'Contraseña para confirmar', summary: 'Archivos / bytes', unavailable: 'La gestión de archivos ya no está disponible.', kept: 'Se eliminó la entrada del catálogo. El archivo permanece en el disco.', progress: 'Procesados', loading: 'Cargando…', files: '{n} archivos', file1: '1 archivo', hidden: ', {m} de ellos no visibles', more: '… y {n} más', cancelling: 'Cancelando…', companions: 'incluidos {n} archivos complementarios en la papelera', desktopEntries: '{n} entradas de la papelera del escritorio no se pueden eliminar definitivamente aquí; hágalo en el escritorio.', moveBlocked: 'protegida', moveBlockedHint: 'Las carpetas protegidas (zona de subida, papelera) no sirven como destino.', desktopEntry: '1 entrada de la papelera del escritorio no se puede eliminar definitivamente aquí; hágalo en el escritorio.' },
-  fr: { looseCompanions: 'et {n} fichiers associés retirés séparément', move: 'Déplacer', trashLabel: 'Mettre à la corbeille', target: 'Dossier de destination', rename: 'Nouveau nom de base', trash: 'Déplacer les fichiers sélectionnés dans la corbeille du serveur ? Ils seront retirés de leur emplacement actuel et pourront être restaurés depuis la corbeille.', restore: 'Restaurer le fichier à son emplacement initial ?', permanent: 'Supprimer définitivement le fichier ?', empty: 'Vider définitivement la corbeille ?', password: 'Mot de passe de confirmation', summary: 'Fichiers / octets', unavailable: 'La gestion des fichiers n’est plus disponible.', kept: 'L’entrée du catalogue a été supprimée. Le fichier reste sur le disque.', progress: 'Traités', loading: 'Chargement…', files: '{n} fichiers', file1: '1 fichier', hidden: ', dont {m} non visibles', more: '… et {n} autres', cancelling: 'Annulation…', companions: 'dont {n} fichiers associés dans la corbeille', desktopEntries: '{n} entrées de la corbeille du bureau ne peuvent pas être supprimées définitivement ici ; faites-le sur le bureau.', moveBlocked: 'protégé', moveBlockedHint: 'Les dossiers protégés (zone de dépôt, corbeille) ne sont pas disponibles comme destination.', desktopEntry: '1 entrée de la corbeille du bureau ne peut pas être supprimée définitivement ici ; faites-le sur le bureau.' },
-};
 type Action = 'rename' | 'move' | 'trash' | 'restore' | 'permanent' | 'empty';
 export { webFileNameParts };
 
 /** Web-only actions share one confirmation and never route through desktop handlers. */
-export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, trash = false, empty = false, onDone, requestTrashConfirm = false, onConfirmationClosed, onTrashRequest }: {
+export function WebFileActions({ hideTrigger = false, requestMoveConfirm = false, returnFocus, menuAction, menuLabel, menuClassName, menuShortcut, fileIds = [], names, hiddenCount = 0, name, trash = false, empty = false, onDone, requestTrashConfirm = false, onConfirmationClosed, onTrashRequest }: {
+  hideTrigger?: boolean; requestMoveConfirm?: boolean; returnFocus?: RefObject<HTMLButtonElement | null>;
+  menuAction?: 'rename' | 'move' | 'trash'; menuLabel?: ReactNode; menuClassName?: string; menuShortcut?: string;
   fileIds?: string[]; names?: string[]; hiddenCount?: number; name?: string; trash?: boolean; empty?: boolean; onDone?: () => void; requestTrashConfirm?: boolean; onConfirmationClosed?: () => void;
   /** The caller decides how a trash request goes on (it may ask something first); it answers through `requestTrashConfirm`. */
   onTrashRequest?: () => void;
@@ -28,7 +25,33 @@ export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, tra
   const { lockProps } = useImportLock();
   const { language } = useLanguage();
   const t = useT();
-  const c = copy[language];
+  const c = {
+    looseCompanions: t('webFileLooseCompanions'),
+    move: t('webFileMove'),
+    trashLabel: t('webFileTrashLabel'),
+    target: t('webFileTarget'),
+    rename: t('webFileRename'),
+    trash: t('webFileTrash'),
+    restore: t('webFileRestore'),
+    permanent: t('webFilePermanent'),
+    empty: t('webFileEmpty'),
+    password: t('webFilePassword'),
+    summary: t('webFileSummary'),
+    unavailable: t('webFileUnavailable'),
+    kept: t('webFileKept'),
+    progress: t('webFileProgress'),
+    loading: t('webFileLoading'),
+    files: t('webFileFiles'),
+    file1: t('webFileFile1'),
+    hidden: t('webFileHidden'),
+    more: t('webFileMore'),
+    cancelling: t('webFileCancelling'),
+    companions: t('webFileCompanions'),
+    desktopEntries: t('webFileDesktopEntries'),
+    moveBlocked: t('webFileMoveBlocked'),
+    moveBlockedHint: t('webFileMoveBlockedHint'),
+    desktopEntry: t('webFileDesktopEntry'),
+  };
   const [action, setAction] = useState<Action | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -54,6 +77,15 @@ export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, tra
     }
     previousRequest.current = requestTrashConfirm;
   }, [requestTrashConfirm, allowed, fileIds, names, hiddenCount]);
+  const previousMoveRequest = useRef(false);
+  useEffect(() => {
+    if (requestMoveConfirm && !previousMoveRequest.current && allowed) {
+      opener.current = returnFocus?.current ?? null;
+      ids.current = [...fileIds]; snapshotNames.current = { names: [...(names ?? [])], hidden: hiddenCount };
+      setAction('move'); setError(null); setNotice(null); setTarget(''); setSummary(null); setProgress(null);
+    }
+    previousMoveRequest.current = requestMoveConfirm;
+  }, [requestMoveConfirm, allowed, fileIds, names, hiddenCount, returnFocus]);
   useEffect(() => { if (!allowed) setPassword(''); }, [allowed]);
   // After a refused confirmation the emptied field is the next thing to type into; it is disabled while busy, so focus waits for that to end.
   useEffect(() => { if (error && !busy && !password) passwordField.current?.focus(); }, [error, busy, password]);
@@ -114,10 +146,10 @@ export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, tra
     }
     finally { submitting.current = false; cancelRequested.current = false; setCancelling(false); setBusy(false); }
   };
-  const actions: Action[] = empty ? ['empty'] : trash ? ['restore', 'permanent'] : [...(fileIds.length === 1 && name ? ['rename' as const] : []), 'move', 'trash'];
+  const actions: Action[] = menuAction ? [menuAction] : empty ? ['empty'] : trash ? ['restore', 'permanent'] : [...(fileIds.length === 1 && name ? ['rename' as const] : []), 'move', 'trash'];
   // `contents`: the buttons join the caller's (wrapping) action row; the dialog is portalled anyway.
   return <div className="contents">
-    {allowed && actions.map(value => <button key={value} type="button" className={`${catalogActionButton} whitespace-nowrap`} disabled={busy || lockProps.disabled || (!empty && !fileIds.length)} aria-haspopup="dialog" onClick={event => open(value, event.currentTarget)}>{labels[value]}</button>)}
+    {allowed && !hideTrigger && actions.map(value => <button key={value} type="button" className={menuClassName ?? `${catalogActionButton} whitespace-nowrap`} aria-keyshortcuts={menuShortcut} disabled={busy || lockProps.disabled || (!empty && !fileIds.length)} aria-haspopup="dialog" onClick={event => open(value, event.currentTarget)}>{menuLabel ?? labels[value]}</button>)}
     {action && <CatalogActionDialog title={labels[action]} onClose={close} returnFocus={opener}>
       <div aria-busy={busy || loading} className="space-y-3">
         {['trash', 'restore', 'permanent', 'empty'].includes(action) && <p>{c[action as 'trash' | 'restore' | 'permanent' | 'empty']}</p>}
@@ -128,9 +160,9 @@ export function WebFileActions({ fileIds = [], names, hiddenCount = 0, name, tra
           {ids.current.length > 5 && <p>{c.more.replace('{n}', String(ids.current.length - 5))}</p>}
         </div>}
         {action === 'rename' && <label className="block">{c.rename}<input className="block w-full border p-2" value={base} disabled={busy} onChange={e => setBase(e.target.value)} /><span>{webFileNameParts(name ?? '').extension}</span></label>}
-        {action === 'move' && <label className="block">{c.target}<select className="block w-full border p-2" value={target} disabled={busy || loading} onChange={e => setTarget(e.target.value)}><option value="">—</option>{folders.map(folder => folder.moveTarget === false
+        {action === 'move' && <label className="block">{c.target}<Select className="block w-full border p-2" value={target} disabled={busy || loading} onValueChange={value => setTarget(value)}><option value="">—</option>{folders.map(folder => folder.moveTarget === false
           ? <option key={folder.id} value={folder.id} disabled>{folder.name} (#{folder.id}) — {c.moveBlocked}</option>
-          : <option key={folder.id} value={folder.id}>{folder.name} (#{folder.id})</option>)}</select></label>}
+          : <option key={folder.id} value={folder.id}>{folder.name} (#{folder.id})</option>)}</Select></label>}
         {action === 'move' && folders.some(folder => folder.moveTarget === false) && <p>{c.moveBlockedHint}</p>}
         {summary && <p>{c.summary}: {summary.count.toLocaleString(language)} / {(summary.bytes + (summary.looseCompanionBytes ?? 0)).toLocaleString(language)}</p>}
         {summary && (summary.companionCount ?? 0) > 0 && <p>{c.companions.replace('{n}', (summary.companionCount ?? 0).toLocaleString(language))}</p>}

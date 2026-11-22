@@ -1,3 +1,4 @@
+import { uiSettings } from './lib/uiSettings';
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -23,9 +24,9 @@ beforeEach(() => {
     width: 800, height: 400, top: 0, left: 0, right: 800, bottom: 400, x: 0, y: 0, toJSON: () => ({}),
   });
   localStorage.clear();
-  localStorage.setItem('3mf-katalog-last-seen-version', bundledVersion);
-  localStorage.setItem('3mf-katalog-base-dir', '/old');
-  localStorage.setItem('3mf-katalog-setup-seen', '1');
+  uiSettings.setItem('3mf-katalog-last-seen-version', bundledVersion);
+  uiSettings.setItem('3mf-katalog-base-dir', '/old');
+  uiSettings.setItem('3mf-katalog-setup-seen', '1');
   vi.mocked(invoke).mockReset();
   vi.mocked(invoke).mockImplementation(async (cmd) => {
     if (cmd === 'get_app_version') return '0.15.0';
@@ -43,8 +44,8 @@ it('opens first-run setup after reset and reloads catalog data', async () => {
   fireEvent.click(screen.getByText('Katalog zurücksetzen …'));
   fireEvent.click(screen.getByRole('button', { name: de.resetConfirm }));
   expect(await screen.findByText(de.catalogSetupAdoptTitle)).toBeTruthy();
-  expect(localStorage.getItem('3mf-katalog-base-dir')).toBeNull();
-  expect(localStorage.getItem('3mf-katalog-setup-seen')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-base-dir')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-setup-seen')).toBeNull();
   expect(invoke).toHaveBeenCalledWith('reset_catalog');
   await waitFor(() => expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'list_folders').length).toBeGreaterThan(1));
 });
@@ -63,7 +64,7 @@ it('removes a model through the actual context menu and reloads the catalog', as
   });
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   fireEvent.contextMenu((await screen.findAllByText('Cube.stl'))[0]);
-  fireEvent.click(screen.getByText('Aus dem Katalog entfernen'));
+  fireEvent.click(screen.getByText('Aus Katalog entfernen'));
   fireEvent.click(screen.getByText('Entfernen'));
   await waitFor(() => expect(screen.queryAllByText('Cube.stl')).toHaveLength(0));
   expect(invoke).toHaveBeenCalledWith('remove_files_from_catalog', { fileIds: ['1'] });
@@ -92,4 +93,52 @@ it('removes a bulk selection through the new command and clears the toolbar', as
   // Nothing is left to select, so the always-visible bar is gone as well.
   expect(screen.queryByRole('toolbar')).toBeNull();
   expect(invoke).toHaveBeenCalledWith('remove_files_from_catalog', { fileIds: ['1'] });
+});
+
+it.each([
+  ['Als gedruckt markieren', 'set_print_status'],
+  ['Zu Favoriten hinzufügen', 'set_favorite'],
+  ['Zur Warteschlange hinzufügen', 'add_to_queue'],
+  ['In den Papierkorb', 'delete_file'],
+  ['Aus Katalog entfernen', 'remove_files_from_catalog'],
+])('context action %s applies to every selected model, excluding other models', async (label, command) => {
+  const models = ['a', 'b', 'c'].map(id => makeModelFile({ id, name: `${id}.stl`, path: `/old/${id}.stl`, favorite: false, printStatus: 'not_printed', queuePosition: null }));
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'list_file_summaries') return models.map(makeModelFileSummary);
+    if (cmd === 'list_files_by_ids') return models.filter(model => (args as { fileIds: string[] }).fileIds.includes(model.id));
+    if (cmd === 'list_all_file_tags') return {};
+    if (cmd === 'add_to_queue') return 1;
+    if (cmd === 'remove_files_from_catalog') return 2;
+    return fallback(cmd, args);
+  });
+  await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
+  for (const id of ['a', 'b']) fireEvent.click(document.querySelector(`[data-model-id="${id}"] input[type="checkbox"]`)!);
+  fireEvent.contextMenu(document.querySelector('[data-model-id="b"]')!);
+  fireEvent.click(screen.getByRole('button', { name: `${label} (2 Modelle)` }));
+  if (command === 'delete_file') fireEvent.click(screen.getAllByRole('button', { name: 'In den Papierkorb' }).find(button => button.closest('[data-navigation-menu]'))!);
+  if (command === 'remove_files_from_catalog') fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }));
+  await waitFor(() => {
+    const calls = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === command).map(([, args]) => args);
+    if (command === 'remove_files_from_catalog') expect(calls).toEqual([{ fileIds: ['a', 'b'] }]);
+    else expect(calls.map(args => (args as { fileId: string }).fileId).sort()).toEqual(['a', 'b']);
+  });
+});
+
+it('toggles favorites directly in the list row without opening the model', async () => {
+  uiSettings.setItem('3mf-katalog-view', 'groupedList');
+  const model = makeModelFile({ id: 'a', name: 'list.stl', favorite: false });
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'set_favorite') { model.favorite = true; return; }
+    if (cmd === 'list_file_summaries') return [makeModelFileSummary(model)];
+    if (cmd === 'list_files_by_ids') return [model];
+    if (cmd === 'list_all_file_tags') return {};
+    return fallback(cmd, args);
+  });
+  await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
+  const row = document.querySelector('[data-model-id="a"]')!;
+  fireEvent.click(row.querySelector('button[aria-pressed="false"]')!);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_favorite', { fileId: 'a', favorite: true }));
+  expect(document.querySelector('[data-model-id="a"] button[aria-pressed="true"]')).toHaveAttribute('aria-label', de.favoriteRemove);
 });

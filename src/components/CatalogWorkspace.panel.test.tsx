@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useState, type ComponentProps } from 'react';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -14,7 +15,7 @@ beforeEach(() => {
   // jsdom has no layout; visible catalog interactions need a measured grid.
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
     width: 800, height: 400, top: 0, left: 0, right: 800, bottom: 400, x: 0, y: 0, toJSON: () => ({}),
-  }); localStorage.clear(); localStorage.setItem('3mf-katalog-language', 'de'); });
+  }); localStorage.clear(); uiSettings.setItem('3mf-katalog-language', 'de'); });
 function setup(extra: Partial<ComponentProps<typeof CatalogWorkspace>> = {}) {
   const file = makeModelFile({ id: 'one', name: 'Cube', materials: [{ name: 'PLA', displayColor: null }] });
   function Fixture() {
@@ -99,7 +100,7 @@ it('arrow selection opens details and keeps focus on the model', () => {
   expect(container.querySelector('[data-model-id="one"]')).toHaveFocus();
 });
 it.each(['compact', 'comfort'])('shows material only in badges at density %s', density => {
-  localStorage.setItem('3mf-katalog-density', density);
+  uiSettings.setItem('3mf-katalog-density', density);
   setup(); fireEvent.click(screen.getByText('Cube'));
   expect(screen.queryByText('Material')).toBeNull();
   expect(within(screen.getByRole('complementary')).getByText('PLA')).toBeVisible();
@@ -134,19 +135,19 @@ it('does not render the resizer for settings', () => {
   expect(screen.queryByRole('separator')).toBeNull();
 });
 it.each(['compact', 'comfort'])('resets to the density default in %s', density => {
-  localStorage.setItem('3mf-katalog-density', density);
-  localStorage.setItem('3mf-katalog-detail-width', '450');
+  uiSettings.setItem('3mf-katalog-density', density);
+  uiSettings.setItem('3mf-katalog-detail-width', '450');
   setup({ detailPanel: 'pinned' });
   expect(screen.getByRole('complementary').style.getPropertyValue('--detail-panel-width')).toBe('450px');
   fireEvent.keyDown(screen.getByRole('separator'), { key: 'Enter' });
-  expect(localStorage.getItem('3mf-katalog-detail-width')).toBeNull();
+  expect(uiSettings.getItem('3mf-katalog-detail-width')).toBeNull();
   expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', density === 'comfort' ? '380' : '336');
 });
 it('only clamps the displayed width when the workspace shrinks', () => {
-  localStorage.setItem('3mf-katalog-detail-width', '700');
+  uiSettings.setItem('3mf-katalog-detail-width', '700');
   setup({ detailPanel: 'pinned' });
   expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', '480');
-  expect(localStorage.getItem('3mf-katalog-detail-width')).toBe('700');
+  expect(uiSettings.getItem('3mf-katalog-detail-width')).toBe('700');
   vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({ width: 1400, height: 400, top: 0, left: 0, right: 1400, bottom: 400, x: 0, y: 0, toJSON: () => ({}) });
   fireEvent.resize(window);
   expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', '700');

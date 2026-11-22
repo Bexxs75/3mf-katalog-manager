@@ -1,3 +1,5 @@
+import { TagEditDialog } from './TagEditDialog';
+import { CatalogSurfaceMenu, isContextMenuKey, navigateMenu } from './CatalogSurfaceMenu';
 import { isReadOnly } from '../lib/readOnly';
 import { canManageFiles, useCanManageFiles, useCanEditMetadata } from '../lib/webSession';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -21,6 +23,10 @@ import type { AppError } from '../lib/errors';
 
 interface Props {
   catalogKey?: string | null;
+  createFolderRequest?: number;
+  onRenameTag?: (source: string, name: string) => Promise<number>;
+  onMergeTags?: (source: string, target: string) => Promise<number>;
+  onDeleteTag?: (tag: string) => Promise<void>;
   expansion: ReturnType<typeof useFolderExpansion>;
   allFoldersCollapsed: boolean;
   onToggleAllFolders: () => void;
@@ -75,7 +81,7 @@ interface Props {
 }
 
 export function Sidebar({
-  catalogKey,
+  catalogKey, createFolderRequest = 0, onDeleteTag, onRenameTag, onMergeTags,
   expansion,
   allFoldersCollapsed,
   onToggleAllFolders,
@@ -138,6 +144,18 @@ export function Sidebar({
   const [renameDraft, setRenameDraft] = useState('');
   const [collectionError, setCollectionError] = useState<string | null>(null);
   const [collectionBusy, setCollectionBusy] = useState(false);
+  const [tagMenu, setTagMenu] = useState<{ label: string; x: number; y: number } | null>(null);
+  const [editingTag, setEditingTag] = useState<{ source: string; mode: 'rename' | 'merge' } | null>(null);
+  const [deletingTag, setDeletingTag] = useState<string | null>(null);
+  const [tagBusy, setTagBusy] = useState(false);
+  const [tagError, setTagError] = useState<string | null>(null);
+  const tagTrigger = useRef<HTMLElement | null>(null);
+  const tagsHeading = useRef<HTMLButtonElement>(null);
+  const closeTagDialog = () => {
+    if (tagBusy) return;
+    if (!tagTrigger.current?.isConnected) tagTrigger.current = tagsHeading.current;
+    setDeletingTag(null);
+  };
   const collectionTrigger = useRef<HTMLElement | null>(null);
   const collectionsHeading = useRef<HTMLSpanElement>(null);
   const renameInput = useRef<HTMLInputElement>(null);
@@ -172,6 +190,7 @@ export function Sidebar({
   const [tagsCollapsed, setTagsCollapsed] = useState(true);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderNameDraft, setFolderNameDraft] = useState('');
+  useEffect(() => { if (createFolderRequest) { setCreatingFolder(true); setFolderNameDraft(''); } }, [createFolderRequest]);
   const folderProblemId = useId();
   const folderInput = useRef<HTMLInputElement>(null);
   // The dialog opens when Enter is released: opened on key down, the same key press would reach its focused button and close it again.
@@ -350,18 +369,17 @@ export function Sidebar({
             <Icon name="layers" size={16} />
             {t('collectionsTab')}
           </span>
-          <span
+          <button type="button"
             onClick={onOpenCollectionsGallery}
             className="font-medium tabular-nums text-caption text-[var(--accent)] cursor-pointer hover:underline"
           >
             {t('viewAllCollectionsLabel')}
-          </span>
+          </button>
         </div>
         {collections.map((c) => (
-          <div
-            key={c.id}
-            role="button"
-            tabIndex={0}
+          <div key={c.id} className="relative">
+          <button type="button"
+            tabIndex={renamingCollection?.id === c.id ? -1 : 0}
             aria-label={c.name}
             onMouseEnter={() => onCollectionMouseEnter?.(c.id)}
             onMouseLeave={() => onCollectionMouseLeave?.(c.id)}
@@ -375,12 +393,12 @@ export function Sidebar({
             onKeyDown={(event) => {
               if (event.target !== event.currentTarget) return;
               if (canEdit && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
-                event.preventDefault(); event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
+                event.preventDefault(); event.stopPropagation(); event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
                 const bounds = event.currentTarget.getBoundingClientRect();
                 setCollectionMenu({ collection: c, x: bounds.left, y: bounds.bottom });
               } else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectCollection(c.id); }
             }}
-            className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[length:var(--font-size-item)] border ${
+            className={`w-full text-left flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[length:var(--font-size-item)] border ${
               draggedFileId && dragOverCollectionId === c.id
                 ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_0_2px_var(--accent-soft)]'
                 : draggedFileId ? 'border-dashed border-[var(--line-strong)]' : 'border-transparent'
@@ -390,15 +408,18 @@ export function Sidebar({
                 : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
             }`}
           >
-            {renamingCollection?.id === c.id ? <input ref={renameInput} aria-label={t('renameCollectionAria')}
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>
+            <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{c.modelCount}</span>
+          </button>
+          {renamingCollection?.id === c.id && <div className="absolute inset-0 flex items-center gap-2 px-1.5 bg-[var(--panel)]"><input ref={renameInput} aria-label={t('renameCollectionAria')}
               value={renameDraft} onChange={event => setRenameDraft(event.target.value)} disabled={collectionBusy || jobActive}
               onClick={event => event.stopPropagation()}
               onKeyDown={event => {
                 if (event.key === 'Enter') { event.preventDefault(); void submitCollectionRename(); }
                 if (event.key === 'Escape') { event.stopPropagation(); if (!collectionBusy) { setRenamingCollection(null); setCollectionError(null); collectionTrigger.current?.focus(); } }
               }} className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] text-caption" />
-              : <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>}
             <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{c.modelCount}</span>
+          </div>}
           </div>
         ))}
         {creatingCollection ? (
@@ -420,7 +441,7 @@ export function Sidebar({
             />
           </div>
         ) : (
-          <>{canEdit && <div
+          <>{canEdit && <button type="button"
             onClick={() => {
               setCreatingCollection(true);
               setCollectionNameDraft('');
@@ -428,12 +449,12 @@ export function Sidebar({
             className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-medium tabular-nums text-caption text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('createCollectionLabel')}
-          </div>}</>
+          </button>}</>
         )}
 
-        <div
+        <button type="button" ref={tagsHeading} aria-expanded={!tagsCollapsed}
           onClick={() => setTagsCollapsed((c) => !c)}
-          className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
+          className="w-full hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
         >
           <span className="inline-flex items-center gap-1.5 ui-label text-[var(--ink-3)]">
             <Icon name="tag" size={16} />
@@ -442,7 +463,7 @@ export function Sidebar({
           <span className="font-medium tabular-nums text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
             <Icon name="chevron" size={14} className={tagsCollapsed  ? '' : 'rotate-180'} />
           </span>
-        </div>
+        </button>
         {!tagsCollapsed && (
           <div className="px-1.5 pb-1">
             <div className="flex items-center h-[26px] mb-2 rounded border border-[var(--line)] bg-[var(--panel-2)] focus-within:border-[var(--accent)]">
@@ -461,6 +482,17 @@ export function Sidebar({
             {visibleTags.map((tag) => (
               <button
                 key={tag.label}
+                aria-haspopup="menu"
+                onContextMenu={event => {
+                  event.preventDefault(); event.stopPropagation(); event.currentTarget.focus(); tagTrigger.current = event.currentTarget;
+                  setTagMenu({ label: tag.label, x: event.clientX, y: event.clientY });
+                }}
+                onKeyDown={event => {
+                  if (!isContextMenuKey(event)) return;
+                  event.preventDefault(); event.stopPropagation(); event.currentTarget.focus(); tagTrigger.current = event.currentTarget;
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  setTagMenu({ label: tag.label, x: bounds.left, y: bounds.bottom });
+                }}
                 title={`#${tagLabel(tag.label, language)}`}
                 onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
                 className={`inline-flex max-w-full min-w-0 items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-medium tabular-nums text-caption ${
@@ -501,11 +533,45 @@ export function Sidebar({
         />
       </div>
       {collectionError && !deletingCollection && <p role="alert" className="px-3 text-[var(--crit)]">{collectionError}</p>}
-      {collectionMenu && <ContextMenu x={collectionMenu.x} y={collectionMenu.y} onClose={() => setCollectionMenu(null)}
+      {tagMenu && <CatalogSurfaceMenu x={tagMenu.x} y={tagMenu.y} label={tagLabel(tagMenu.label, language)} onClose={() => setTagMenu(null)} entries={[
+        { label: t('tagMenuFilter'), action: () => onTagSelect(tagMenu.label) },
+        ...(canEdit && onRenameTag ? [{ label: t('tagMenuRename'), disabled: jobActive,
+          action: () => setEditingTag({ source: tagMenu.label, mode: 'rename' }) }] : []),
+        ...(canEdit && onMergeTags ? [{ label: t('tagMenuMerge'), disabled: jobActive,
+          action: () => setEditingTag({ source: tagMenu.label, mode: 'merge' }) }] : []),
+        ...(canEdit && onDeleteTag ? [{ label: t('tagMenuDelete'), danger: true, disabled: jobActive,
+          action: () => { setTagError(null); setDeletingTag(tagMenu.label); } }] : []),
+      ]} />}
+      {editingTag && <TagEditDialog source={editingTag.source} mode={editingTag.mode} tags={tags}
+        returnFocus={tagTrigger} onClose={() => setEditingTag(null)}
+        onSubmit={editingTag.mode === 'rename' ? onRenameTag! : onMergeTags!}
+        onDone={target => {
+          if (activeTag === editingTag.source) onTagSelect(target);
+          tagTrigger.current = tagsHeading.current;
+          setEditingTag(null);
+        }} />}
+      {deletingTag !== null && <CatalogActionDialog title={t('tagDeleteQuestion').replace('{tag}', tagLabel(deletingTag, language))}
+        returnFocus={tagTrigger} busy={tagBusy} onClose={closeTagDialog}>
+        <p>{t('tagDeleteHint')}</p>
+        {tagError && <p role="alert">{tagError}</p>}
+        <div className="flex justify-end gap-2">
+          <button data-initial-focus className={catalogActionButton} disabled={tagBusy} onClick={closeTagDialog}>{t('cancel')}</button>
+          <button className={`${catalogActionButton} !text-[var(--crit)]`} disabled={tagBusy || jobActive || !canEdit} onClick={async () => {
+            if (!onDeleteTag || tagBusy || jobActive || !canEdit) return;
+            setTagBusy(true); setTagError(null);
+            try { await onDeleteTag(deletingTag); if (activeTag === deletingTag) onTagSelect(null); tagTrigger.current = tagsHeading.current; setDeletingTag(null); }
+            catch (error) { setTagError(messageOf(error)); }
+            finally { setTagBusy(false); }
+          }}>{t('delete')}</button>
+        </div>
+      </CatalogActionDialog>}
+      {collectionMenu && <div role="menu" aria-label={collectionMenu.collection.name} onKeyDown={event => {
+        navigateMenu(event); if (event.key === 'Tab') setCollectionMenu(null);
+      }}><ContextMenu x={collectionMenu.x} y={collectionMenu.y} onClose={() => setCollectionMenu(null)}
         collectionActions={{
           onRename: () => { if (jobActive) return; setCollectionError(null); setRenameDraft(collectionMenu.collection.name); setRenamingCollection(collectionMenu.collection); setCollectionMenu(null); },
           onDelete: () => { if (jobActive) return; setCollectionError(null); setDeletingCollection(collectionMenu.collection); setCollectionMenu(null); },
-        }} />}
+        }} /></div>}
       {folderErrorDialog && <CatalogActionDialog title={t('newFolderErrorTitle')} returnFocus={folderInput} onClose={() => setFolderErrorDialog(null)}>
         <p role="alert" className="text-body">{folderErrorDialog}</p>
         <div className="flex justify-end">

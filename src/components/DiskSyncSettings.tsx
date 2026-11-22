@@ -1,3 +1,5 @@
+import { SettingRow } from './SettingsTools';
+import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { useEffect, useRef, useState } from 'react';
 import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -19,6 +21,7 @@ export function DiskSyncSettings() {
   const [list, setList] = useState<KnownCopyList | null>(null);
   const [resetDone, setResetDone] = useState(false);
   const countRef = useRef<HTMLSpanElement>(null);
+  const [loaded, setLoaded] = useState(false);
   const [onStart, setOnStart] = useState(false);
   const [autoAdd, setAutoAdd] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -27,7 +30,7 @@ export function DiskSyncSettings() {
   useEffect(() => {
     let active = true;
     Promise.all([getSyncOnStart(), getSyncAutoAdd(), countKnownCopies()])
-      .then(([start, add, copies]) => { if (active) { setOnStart(start === true); setAutoAdd(add === true); setKnown(typeof copies === 'number' ? copies : 0); } })
+      .then(([start, add, copies]) => { if (active) { setLoaded(true); setOnStart(start === true); setAutoAdd(add === true); setKnown(typeof copies === 'number' ? copies : 0); } })
       .catch(e => { if (active) setError(toAppError(e)); })
       .finally(() => { if (active) { setLoading(false); setBusy(false); } });
     return () => { active = false; };
@@ -58,17 +61,23 @@ export function DiskSyncSettings() {
   return (
     <div>
       <p className="text-small text-[var(--ink-2)] mb-2">{t('syncSettingsIntro')}</p>
-      <div className="flex items-center justify-between gap-2 text-small">
-        <span className="font-semibold">{t('syncOnStartLabel')}</span>
-        <ToggleSwitch checked={onStart} label={t('syncOnStartLabel')} disabled={loading} busy={busy} aria-describedby="sync-on-start-desc" onChange={value => void changeOnStart(value)} />
-      </div>
-      <p id="sync-on-start-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncOnStartDescription')}</p>
-      <div className="flex items-center justify-between gap-2 text-small mt-3">
-        <span className="font-semibold">{t('syncAutoAddLabel')}</span>
-        <ToggleSwitch checked={onStart && autoAdd} label={t('syncAutoAddLabel')} disabled={loading || !onStart} busy={busy} aria-describedby="sync-auto-add-desc sync-auto-add-warning" onChange={value => void changeAutoAdd(value)} />
-      </div>
-      <p id="sync-auto-add-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddDescription')}</p>
-      <p id="sync-auto-add-warning" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddWarning')}</p>
+      <SettingRow id="syncStart" value={loaded ? onStart : undefined} label={t('syncOnStartLabel')} onReset={() => changeOnStart(SETTING_DEFAULTS.syncStart)} disabled={!loaded || loading || busy || jobActive}>
+        <div className="flex items-center justify-between gap-2 text-small">
+          <span className="font-semibold">{t('syncOnStartLabel')}</span>
+          <ToggleSwitch checked={onStart} label={t('syncOnStartLabel')} disabled={loading} busy={busy} aria-describedby="sync-on-start-desc" onChange={value => void changeOnStart(value)} />
+        </div>
+        <p id="sync-on-start-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncOnStartDescription')}</p>
+
+      </SettingRow>
+      <SettingRow id="syncAdd" value={loaded ? autoAdd : undefined} label={t('syncAutoAddLabel')} onReset={() => changeAutoAdd(SETTING_DEFAULTS.syncAdd)} disabled={!loaded || loading || busy || jobActive}>
+        <div className="flex items-center justify-between gap-2 text-small mt-3">
+          <span className="font-semibold">{t('syncAutoAddLabel')}</span>
+          <ToggleSwitch checked={onStart && autoAdd} label={t('syncAutoAddLabel')} disabled={loading || !onStart} busy={busy} aria-describedby="sync-auto-add-desc sync-auto-add-warning" onChange={value => void changeAutoAdd(value)} />
+        </div>
+        <p id="sync-auto-add-desc" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddDescription')}</p>
+        <p id="sync-auto-add-warning" className="mt-1 text-small text-[var(--ink-2)]">{t('syncAutoAddWarning')}</p>
+
+      </SettingRow>
       <div className="flex flex-wrap min-w-0 items-center gap-2 mt-4 text-small">
         <span id="known-copies-count" ref={countRef} tabIndex={-1} className="flex-auto min-w-0 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{count(t('kcCount'), known)}</span>
         <button type="button" className={`${smallButton} min-w-0 [overflow-wrap:anywhere]`} disabled={busy || known === 0} aria-expanded={list !== null} aria-controls="known-copies-list" aria-describedby="known-copies-count" onClick={() => void toggleList()}>{t(list ? 'kcHide' : 'kcShow')}</button>

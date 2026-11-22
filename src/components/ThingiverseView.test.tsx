@@ -275,7 +275,7 @@ describe('ThingiverseView detail', () => {
 
   it('copies the link from the detail page', async () => {
     await openDetail();
-    fireEvent.click(screen.getByRole('button', { name: de.tvCopyLink }));
+    fireEvent.click(screen.getByRole('button', { name: de.tvCopyLinkLabel.replace('{0}', 'Thing 1') }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://www.thingiverse.com/thing:1'));
   });
 });

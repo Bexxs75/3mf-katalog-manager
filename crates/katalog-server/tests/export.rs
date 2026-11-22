@@ -390,3 +390,34 @@ async fn export_of_a_large_catalog_does_not_make_concurrent_writes_fail() {
     assert_eq!(conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get::<_, i64>(0)).unwrap(), 17);
     assert_eq!(f.leftovers(), Vec::<String>::new());
 }
+
+#[tokio::test]
+async fn desktop_settings_commands_are_unavailable_and_export_ignores_the_file() {
+    for (auth, writable) in [(false, false), (true, false), (true, true)] {
+        let f = Fixture::with(auth, !auth, writable, |_| {}).await;
+        let cookie = if auth { f.login().await } else { String::new() };
+        let response = f.app.clone().oneshot(Request::builder().uri("/api/session")
+            .header("host", "localhost:8080").header("cookie", &cookie).body(Body::empty()).unwrap()).await.unwrap();
+        let session: serde_json::Value = serde_json::from_slice(&all_bytes(response).await).unwrap();
+        let csrf = session["csrfToken"].as_str().unwrap_or("");
+        let original = r#"{"schema_version":1,"values":{"3mf-katalog-theme":"dark"}}"#;
+        std::fs::write(f.dir.join("ui-settings.json"), original).unwrap();
+        for command in ["get_ui_settings", "set_ui_setting", "migrate_ui_settings"] {
+            let request = Request::builder().method("POST").uri(format!("/api/invoke/{command}"))
+                .header("host", "localhost:8080").header("cookie", &cookie)
+                .header("origin", "http://localhost:8080").header("x-csrf-token", csrf)
+                .header("content-type", "application/json").body(Body::from("{}")).unwrap();
+            assert_eq!(f.app.clone().oneshot(request).await.unwrap().status(), 404);
+        }
+        assert_eq!(std::fs::read_to_string(f.dir.join("ui-settings.json")).unwrap(), original);
+        assert!(!f.dir.join("ui-settings.json.broken").exists());
+        let response = f.get(if auth { Some(&cookie) } else { None }).await;
+        assert_eq!(response.status(), 200);
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(all_bytes(response).await)).unwrap();
+        let mut settings = String::new();
+        archive.by_name("settings.json").unwrap().read_to_string(&mut settings).unwrap();
+        let settings: serde_json::Value = serde_json::from_str(&settings).unwrap();
+        assert_eq!(settings.as_object().unwrap().len(), 4);
+        assert!(settings.as_object().unwrap().values().all(serde_json::Value::is_null));
+    }
+}

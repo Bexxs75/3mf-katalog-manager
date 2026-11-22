@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -67,10 +68,10 @@ it.each(['compact', 'comfort'])('switches only the container slicer action in th
   </UiDensityProvider></RuntimeEnvironmentProvider></LanguageProvider>;
   const { rerender } = render(panel(true));
   expect(screen.getByRole('button', { name: 'Im Browser öffnen' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: /In Slicer öffnen/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Im Slicer öffnen/ })).not.toBeInTheDocument();
   rerender(panel(false));
   expect(screen.queryByRole('button', { name: 'Im Browser öffnen' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /In Slicer öffnen/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Im Slicer öffnen/ }));
   expect(noop).toHaveBeenCalledTimes(1);
 });
 
@@ -82,7 +83,7 @@ it.each(['compact', 'comfort'])('edits licenses in the %s panel', async density 
     onAddTag={noop} onRemoveTag={noop} onDelete={noop} onTogglePrintStatus={noop} onToggleFavorite={noop}
     onToggleQueue={noop} onUploadImage={noop} onSnapshotCaptured={noop} onSetSourceUrl={noop}
     onOpenInSlicer={noop} slicerError={null} onSetLicense={onSetLicense} /></UiDensityProvider></LanguageProvider>);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'personal' } });
+  chooseSelect(screen.getByRole('combobox', { name: 'Lizenz' }), 'personal');
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   expect(onSetLicense).toHaveBeenCalledWith(['model-1'], 'personal');
 });
@@ -107,4 +108,17 @@ it.each(['compact', 'comfort'])('shortens long tag chips but removes the full ta
   expect(remove).toHaveClass('flex-none');
   fireEvent.click(remove);
   expect(onRemoveTag).toHaveBeenCalledWith(tag);
+});
+
+it.each(['compact', 'comfort'])('names the model delete trigger like the trash action in the %s panel', density => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  localStorage.setItem('3mf-katalog-density', density);
+  const noop = vi.fn();
+  render(<LanguageProvider><UiDensityProvider><DetailPanel model={makeModelFile()} allTags={[]}
+    onAddTag={noop} onRemoveTag={noop} onDelete={noop} onTogglePrintStatus={noop}
+    onToggleFavorite={noop} onToggleQueue={noop} onUploadImage={noop}
+    onSnapshotCaptured={noop} onSetSourceUrl={noop} onOpenInSlicer={noop} slicerError={null}
+  /></UiDensityProvider></LanguageProvider>);
+  expect(screen.getByRole('button', { name: 'In den Papierkorb' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Eintrag löschen' })).toBeNull();
 });

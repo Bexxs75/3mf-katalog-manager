@@ -1,3 +1,5 @@
+import { SettingRow } from './SettingsTools';
+import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
@@ -108,15 +110,18 @@ function ThingiverseSettingsBlock({ onEnabledChange }: { onEnabledChange: (enabl
     <div className="text-small">
       <SettingLoadStatus keptValue state={loadState} error={loadError} onReload={() => void reloadSettings()} />
       <p className="text-[var(--ink-2)]">{t('tvSettingsIntro')}</p>
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <span>
-          <span className="font-semibold">{t('tvSwitchLabel')}</span>
-          <span className="block text-caption text-[var(--ink-3)]">{t('tvSwitchHint')}</span>
-        </span>
-        <ToggleSwitch checked={enabled} label={t('tvSwitchLabel')} disabled={loadState !== 'ready'} busy={saving} onChange={next => { if (next) setDialog('on'); else void setEnabled(false); }} />
-      </div>
-      <SettingSaveStatus saving={saving} error={switchError} keptValue className="mt-1" />
+      <SettingRow id="thingiverse" value={enabled} label={t('tvSwitchLabel')} onReset={() => setEnabled(SETTING_DEFAULTS.thingiverse)} disabled={loadState !== 'ready' || saving}>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span>
+            <span className="font-semibold">{t('tvSwitchLabel')}</span>
+            <span className="block text-caption text-[var(--ink-3)]">{t('tvSwitchHint')}</span>
+          </span>
+          <ToggleSwitch checked={enabled} label={t('tvSwitchLabel')} disabled={loadState !== 'ready'} busy={saving} onChange={next => { if (next) setDialog('on'); else void setEnabled(false); }} />
+        </div>
+        <SettingSaveStatus saving={saving} error={switchError} keptValue className="mt-1" />
 
+
+      </SettingRow>
       {enabled && (
         <div className="mt-3 space-y-2">
           <label htmlFor={showField ? fieldId : undefined} className="block font-semibold">{t('tvTokenLabel')}</label>

@@ -51,3 +51,25 @@ describe('updater api', () => {
     expect(invoke).toHaveBeenCalledWith('install_app_update');
   });
 });
+
+it.each([false, true])('flushes pending preferences before install, bounding stalled storage (%s)', async stalled => {
+  const { initializeUiSettings, uiSettings } = await import('../uiSettings');
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
+  vi.doMock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ onCloseRequested: async () => () => {} }) }));
+  vi.useFakeTimers();
+  try {
+    let saved!: () => void;
+    vi.mocked(invoke).mockImplementation(command => command === 'get_ui_settings'
+      ? Promise.resolve({ schema_version: 1, migrated_from_webview: true, values: {} })
+      : command === 'set_ui_setting' ? new Promise<void>(resolve => { saved = resolve; }) : Promise.resolve());
+    await initializeUiSettings();
+    uiSettings.setItem('3mf-katalog-sidebar-width', '310');
+    const installing = api.installAppUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(invoke).toHaveBeenCalledWith('set_ui_setting', { key: '3mf-katalog-sidebar-width', value: '310' });
+    expect(invoke).not.toHaveBeenCalledWith('install_app_update');
+    if (stalled) await vi.advanceTimersByTimeAsync(1500); else saved();
+    await installing;
+    expect(invoke).toHaveBeenCalledWith('install_app_update');
+  } finally { vi.useRealTimers(); vi.unstubAllGlobals(); vi.doUnmock('@tauri-apps/api/window'); }
+});

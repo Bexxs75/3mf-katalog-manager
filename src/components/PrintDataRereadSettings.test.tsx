@@ -200,7 +200,7 @@ describe('selection bar', () => {
     await reads.finishNext(); await reads.finishNext();
     expect(await within(toolbar).findByText('2 Dateien gelesen.')).toBeInTheDocument();
     expect(rescan.mock.calls.map(call => call[0])).toEqual(['a', 'b']);
-    await waitFor(() => expect(within(toolbar).getByRole('button', { name: /^Mehr/ })).toHaveFocus());
+    await waitFor(() => expect(within(toolbar).getByRole('button', { name: 'Ablegen' })).toHaveFocus());
   });
 
   it('disables the entry while a run is going and shares the lock with the settings block', async () => {

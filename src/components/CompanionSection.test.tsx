@@ -173,7 +173,7 @@ describe('CompanionSection', () => {
     const { unmount } = renderSection();
     await screen.findByText('Anleitung.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Anleitung.pdf' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Im Dateimanager zeigen' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Im Dateimanager anzeigen' }));
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('reveal_companion', { companionId: 'c1' }));
     expect(calls('companion_open_info')).toHaveLength(0);
     expect(calls('open_in_file_manager')).toHaveLength(0);
@@ -181,7 +181,7 @@ describe('CompanionSection', () => {
     renderSection({ container: true });
     await screen.findByText('Anleitung.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Anleitung.pdf' }));
-    expect(screen.queryByRole('menuitem', { name: 'Im Dateimanager zeigen' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Im Dateimanager anzeigen' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Entfernen' })).toBeVisible();
   });
 
@@ -192,17 +192,17 @@ describe('CompanionSection', () => {
     expect(screen.getByText(/Nur abgelegt, wird nicht geöffnet/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Modell.fcstd öffnen' }), 'never offered to open').toBeNull();
     expect(screen.getByRole('button', { name: 'Anleitung.pdf öffnen' }), 'counter-check: a PDF still opens').toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Modell.fcstd im Dateimanager zeigen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Modell.fcstd im Dateimanager anzeigen' }));
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('reveal_companion', { companionId: 'cad' }));
     expect(calls('open_companion')).toHaveLength(0);
     // The menu has no second reveal entry for it, only the removal.
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen für Modell.fcstd' }));
-    expect(screen.queryByRole('menuitem', { name: 'Im Dateimanager zeigen' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Im Dateimanager anzeigen' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Entfernen' })).toBeVisible();
     unmount();
     renderSection({ container: true });
     await screen.findByText('Modell.fcstd');
-    expect(screen.queryByRole('button', { name: 'Modell.fcstd im Dateimanager zeigen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Modell.fcstd im Dateimanager anzeigen' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Modell.fcstd öffnen' })).toBeNull();
   });
 
@@ -212,7 +212,7 @@ describe('CompanionSection', () => {
     const trigger = screen.getByRole('button', { name: 'Weitere Aktionen für Anleitung.pdf' });
     fireEvent.click(trigger);
     expect(screen.getByRole('menu')).toBeVisible();
-    fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Im Dateimanager zeigen' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Im Dateimanager anzeigen' }), { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(trigger).toHaveFocus();
   });

@@ -32,24 +32,24 @@ describe('viewer recovery actions', () => {
   it('requires the existing catalog-only confirmation before removal', async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     render(card({ onRemoveFromCatalog: remove }));
-    fireEvent.click(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
     expect(remove).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('Die Datei bleibt unverändert auf der Festplatte.');
     fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
     expect(remove).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
     fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }));
     await waitFor(() => expect(remove).toHaveBeenCalledOnce());
   });
   it('retains the import lock on removal', () => {
     render(<ImportLockContext.Provider value={true}>{card({ onRemoveFromCatalog: vi.fn() })}</ImportLockContext.Provider>);
-    expect(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toBeDisabled();
   });
   it('retains the thumbnail alongside a compact error card', () => {
     render(card({ compact: true, model: makeModelFile({ name: 'Topf', thumbnailImage: 'data:image/png;base64,eA==' }), onRemoveFromCatalog: vi.fn() }));
     expect(screen.getByRole('img', { name: 'Topf' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Im Dateimanager öffnen' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toBeInTheDocument();
   });
   it('offers a configured slicer and reporting only for unexpected errors', () => {
     const slicer = vi.fn();

@@ -46,3 +46,5 @@ pub mod upload_fs;
 
 #[cfg(target_os = "linux")]
 pub mod fsops;
+
+pub mod ui_settings;

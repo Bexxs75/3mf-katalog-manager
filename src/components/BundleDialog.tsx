@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { displayName } from '../lib/displayName';
 import { splitFileName } from '../lib/fileName';
@@ -288,7 +289,7 @@ export function BundleDialog({ request, models, bundles, onClose, returnFocus, o
       {request.mode === 'add' && (bundles.length === 0 ? <p>{t('bundleDlgNoBundles')}</p> : <>
         <div className="space-y-1">
           <label htmlFor={nameId} className="block font-semibold">{t('bundleDlgTarget')}</label>
-          <select id={nameId} data-initial-focus value={targetId} disabled={busy} onChange={event => setTargetId(event.target.value)} className={`${FIELD} w-full`}>
+          <Select id={nameId} data-initial-focus value={targetId} disabled={busy} onValueChange={value => setTargetId(value)} className={`${FIELD} w-full`}>
             {bundles.map(bundle => (
               <option key={bundle.id} value={bundle.id}>
                 {t('bundleDlgTargetOption').replace('{name}', displayName(bundle.name))
@@ -296,7 +297,7 @@ export function BundleDialog({ request, models, bundles, onClose, returnFocus, o
                   .replace('{count}', String(bundle.members.length))}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <fieldset className="space-y-1">
           <legend className="font-semibold mb-1">{t('bundleDlgModels')}</legend>

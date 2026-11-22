@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -5,26 +6,36 @@ import { useCatalogBackup } from './useCatalogBackup';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
+function mockImported(result: { imported: boolean; settingsJson: string; values: Record<string, string>; settingsError?: { message: string; expected: boolean } }) {
+  const { values, ...dto } = result;
+  vi.mocked(invoke).mockImplementation(async command => {
+    if (command === 'import_catalog') return dto;
+    if (command === 'get_ui_settings') return { schema_version: 1, migrated_from_webview: true, values };
+    throw new Error(`Unexpected command: ${command}`);
+  });
+}
+
+
 beforeEach(() => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
   localStorage.clear();
+  vi.mocked(invoke).mockReset();
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   cleanup();
 });
 
 describe('useCatalogBackup', () => {
-  it('exportCatalog reads the known settings keys and calls export_catalog', async () => {
-    localStorage.setItem('3mf-katalog-theme', 'dark');
+  it('exportCatalog leaves settings collection to the backend', async () => {
+    uiSettings.setItem('3mf-katalog-theme', 'dark');
     vi.mocked(invoke).mockResolvedValue(undefined);
     const { result } = renderHook(() => useCatalogBackup());
     await act(async () => {
       await result.current.exportCatalog();
     });
-    expect(invoke).toHaveBeenCalledWith('export_catalog', expect.any(Object));
-    const call = vi.mocked(invoke).mock.calls[0];
-    const settings = JSON.parse((call[1] as { settingsJson: string }).settingsJson);
-    expect(settings['3mf-katalog-theme']).toBe('dark');
+    expect(invoke).toHaveBeenCalledWith('export_catalog');
   });
 
   it('exportCatalog sets catalogBackupError on failure', async () => {
@@ -37,9 +48,10 @@ describe('useCatalogBackup', () => {
   });
 
   it('importCatalog restores settings and calls onImported when imported=true', async () => {
-    vi.mocked(invoke).mockResolvedValue({
+    mockImported({
       imported: true,
       settingsJson: JSON.stringify({ '3mf-katalog-theme': 'light' }),
+      values: { '3mf-katalog-theme': 'light' },
     });
     const onImported = vi.fn();
     const { result } = renderHook(() => useCatalogBackup());
@@ -47,41 +59,42 @@ describe('useCatalogBackup', () => {
       await result.current.importCatalog(onImported);
     });
     expect(onImported).toHaveBeenCalled();
-    expect(localStorage.getItem('3mf-katalog-theme')).toBe('light');
+    expect(invoke).toHaveBeenCalledWith('get_ui_settings', undefined);
+    expect(uiSettings.getItem('3mf-katalog-theme')).toBe('light');
   });
 
   it.each(['slate', 'white'])('importCatalog restores the %s color scheme', async theme => {
-    vi.mocked(invoke).mockResolvedValue({
+    mockImported({
       imported: true,
       settingsJson: JSON.stringify({ '3mf-katalog-theme': theme }),
+      values: { '3mf-katalog-theme': theme },
     });
     const { result } = renderHook(() => useCatalogBackup());
     await act(async () => {
       await result.current.importCatalog(vi.fn());
     });
-    expect(localStorage.getItem('3mf-katalog-theme')).toBe(theme);
+    expect(uiSettings.getItem('3mf-katalog-theme')).toBe(theme);
   });
 
   it('Finding 7 (Abschluss-Review): exportCatalog no longer exports the dead slicer localStorage key', async () => {
     // The slicer registry lives in the backend; a legacy value in localStorage is a
     // machine-local path and must not go into the backup.
-    localStorage.setItem('3mf-katalog-slicers', JSON.stringify({ slicers: [{ id: 'x', path: '/opt/old-slicer' }] }));
+    uiSettings.setItem('3mf-katalog-slicers', JSON.stringify({ slicers: [{ id: 'x', path: '/opt/old-slicer' }] }));
     vi.mocked(invoke).mockResolvedValue(undefined);
     const { result } = renderHook(() => useCatalogBackup());
     await act(async () => {
       await result.current.exportCatalog();
     });
-    const call = vi.mocked(invoke).mock.calls[0];
-    const settings = JSON.parse((call[1] as { settingsJson: string }).settingsJson);
-    expect(settings).not.toHaveProperty('3mf-katalog-slicers');
+    expect(invoke).toHaveBeenCalledWith('export_catalog');
   });
 
   it('importCatalog never restores the slicer list from a backup (Finding Z-1)', async () => {
     // Slicer paths are launched as processes via open_in_slicer - a
     // foreign backup must not be able to store anything there.
-    localStorage.setItem('3mf-katalog-slicers', 'eigene-liste');
-    vi.mocked(invoke).mockResolvedValue({
+    uiSettings.setItem('3mf-katalog-slicers', 'eigene-liste');
+    mockImported({
       imported: true,
+      values: { '3mf-katalog-slicers': 'eigene-liste' },
       settingsJson: JSON.stringify({
         '3mf-katalog-slicers': JSON.stringify({ slicers: [{ id: 'x', name: 'shell', path: '/bin/sh' }] }),
       }),
@@ -90,14 +103,15 @@ describe('useCatalogBackup', () => {
     await act(async () => {
       await result.current.importCatalog(vi.fn());
     });
-    expect(localStorage.getItem('3mf-katalog-slicers')).toBe('eigene-liste');
+    expect(uiSettings.getItem('3mf-katalog-slicers')).toBe('eigene-liste');
   });
 
-  it('importCatalog skips settings values outside the allowed set', async () => {
-    localStorage.setItem('3mf-katalog-theme', 'dark');
-    localStorage.setItem('3mf-katalog-language', 'de');
-    vi.mocked(invoke).mockResolvedValue({
+  it('importCatalog uses the validated backend snapshot instead of the raw archive', async () => {
+    uiSettings.setItem('3mf-katalog-theme', 'dark');
+    uiSettings.setItem('3mf-katalog-language', 'de');
+    mockImported({
       imported: true,
+      values: { '3mf-katalog-theme': 'dark', '3mf-katalog-language': 'de', '3mf-katalog-density': 'comfort' },
       settingsJson: JSON.stringify({
         '3mf-katalog-theme': '<img src=x onerror=alert(1)>',
         '3mf-katalog-language': 'kl',
@@ -108,10 +122,10 @@ describe('useCatalogBackup', () => {
     await act(async () => {
       await result.current.importCatalog(vi.fn());
     });
-    expect(localStorage.getItem('3mf-katalog-theme')).toBe('dark');
-    expect(localStorage.getItem('3mf-katalog-language')).toBe('de');
+    expect(uiSettings.getItem('3mf-katalog-theme')).toBe('dark');
+    expect(uiSettings.getItem('3mf-katalog-language')).toBe('de');
     // Valid values are still taken over normally.
-    expect(localStorage.getItem('3mf-katalog-density')).toBe('comfort');
+    expect(uiSettings.getItem('3mf-katalog-density')).toBe('comfort');
   });
 
   it('importCatalog does not call onImported when imported=false', async () => {
@@ -160,16 +174,25 @@ it('clears the previous import error before confirmation and before choosing ano
 
 it('neither exports nor restores the local last-seen release marker', async () => {
   const key = '3mf-katalog-last-seen-version';
-  localStorage.setItem(key, '0.18.3');
+  uiSettings.setItem(key, '0.18.3');
   vi.mocked(invoke).mockReset().mockResolvedValue(undefined);
   const { result } = renderHook(() => useCatalogBackup());
   await act(async () => { await result.current.exportCatalog(); });
-  const args = vi.mocked(invoke).mock.calls.find(([cmd]) => cmd === 'export_catalog')![1] as { settingsJson: string };
-  expect(JSON.parse(args.settingsJson)).not.toHaveProperty(key);
-  vi.mocked(invoke).mockResolvedValue({ imported: true, settingsJson: JSON.stringify({ [key]: '0.18.0' }) });
+  expect(invoke).toHaveBeenCalledWith('export_catalog');
+  mockImported({ imported: true, settingsJson: JSON.stringify({ [key]: '0.18.0' }), values: { [key]: '0.18.3' } });
   await act(async () => { await result.current.importCatalog(vi.fn()); });
-  expect(localStorage.getItem(key)).toBe('0.18.3');
-  localStorage.removeItem(key);
+  expect(uiSettings.getItem(key)).toBe('0.18.3');
+  mockImported({ imported: true, settingsJson: JSON.stringify({ [key]: '0.18.0' }), values: {} });
   await act(async () => { await result.current.importCatalog(vi.fn()); });
-  expect(localStorage.getItem(key)).toBeNull();
+  expect(uiSettings.getItem(key)).toBeNull();
+});
+
+it('surfaces settings restore warnings while reloading the replaced catalog', async () => {
+  mockImported({ imported: true, settingsJson: '{}', values: {}, settingsError: { message: 'uiSettingsUnavailable', expected: true } });
+  const onImported = vi.fn();
+  const { result } = renderHook(() => useCatalogBackup());
+  await act(() => result.current.importCatalog(onImported));
+  expect(invoke).toHaveBeenCalledWith('get_ui_settings', undefined);
+  expect(result.current.catalogBackupError?.message).toBe('uiSettingsUnavailable');
+  expect(onImported).toHaveBeenCalledOnce();
 });

@@ -75,14 +75,14 @@ it.each(['grid', 'list'])('removes through %s context menu only after confirmati
 it('removes a bulk selection with one request after confirmation', async () => {
   await start();
   fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(de.bulkMoreLabel) }));
-  fireEvent.click(screen.getByRole('menuitem', { name: de.removeCatalogShort }));
+  fireEvent.click(screen.getByRole('button', { name: de.bulkGroupFile }));
+  fireEvent.click(screen.getByRole('menuitem', { name: de.removeCatalog }));
   expect(removals()).toHaveLength(0);
   fireEvent.mouseDown(screen.getByRole('button', { name: de.removeEntry }));
   fireEvent.click(screen.getByRole('button', { name: de.removeEntry }));
   await waitFor(() => expect(screen.queryAllByText('Cube.stl')).toHaveLength(0));
   expect(removals()).toEqual([{ command: 'remove_files_from_catalog', args: { fileIds: ['1', '2'] } }]);
-  expect(screen.queryByRole('button', { name: de.removeCatalogShort })).toBeNull();
+  expect(screen.queryByRole('button', { name: de.removeCatalog })).toBeNull();
 });
 it.each([404, 503, 429, 401])('shows %s and retains models on failure', async status => {
   await start(); failures = [{ status }];
@@ -112,7 +112,7 @@ it('does not offer removal or issue a request without write mode', async () => {
   expect(screen.queryByRole('button', { name: de.removeCatalog })).toBeNull();
   fireEvent.keyDown(window, { key: 'Escape' });
   fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
-  expect(screen.queryByRole('button', { name: de.removeCatalogShort })).toBeNull();
+  expect(screen.queryByRole('button', { name: de.removeCatalog })).toBeNull();
   expect(removals()).toHaveLength(0);
 });
 

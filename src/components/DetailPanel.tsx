@@ -386,7 +386,7 @@ export function DetailPanel({
                 }}
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
               >
-                {t('delete')}
+                {t('modelMenuTrash')}
               </button>}</>
             </>
           ) : (
@@ -404,7 +404,7 @@ export function DetailPanel({
               </button>}</>)}
               <>{!isReadOnly() && <button {...lockProps}
                 onClick={() => setConfirmDelete(true)}
-                aria-label={t('deleteAriaLabel')}
+                aria-label={t('modelMenuTrash')}
                 className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-medium tabular-nums cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 <Icon name="close" size={14} />
@@ -583,7 +583,7 @@ export function DetailPanel({
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-10 px-4 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] font-semibold cursor-pointer"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
-              {t('delete')}
+              {t('modelMenuTrash')}
             </button>}</>
           </div>
         ) : (
@@ -598,7 +598,7 @@ export function DetailPanel({
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
-              🖨 {t('openInSlicer')}
+              {t('openInSlicer')}
             </button>}</>)}
             <SaveAsStlButton model={model}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:text-[var(--accent)] disabled:opacity-50" />
@@ -607,7 +607,7 @@ export function DetailPanel({
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
-              🎞 {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
+              {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
             </button>}</>
             <button
               onClick={onTogglePrintStatus}
@@ -618,11 +618,11 @@ export function DetailPanel({
             </button>
             <>{!isReadOnly() && <button {...lockProps}
               onClick={() => setConfirmDelete(true)}
-              aria-label={t('deleteAriaLabel')}
+              aria-label={t('modelMenuTrash')}
               className="h-9 rounded-lg text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
-              {t('deleteAriaLabel')}
+              {t('modelMenuTrash')}
             </button>}</>
           </>
         )}

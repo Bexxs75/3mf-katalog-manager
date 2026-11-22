@@ -21,24 +21,26 @@ export async function setViewport(width: number, height = 800) {
 
 /** Finished first-run state, so tests do not have to go through the setup dialog. */
 export async function configureFrontend(catalogDir: string, pinnedDetails = false) {
-  // Right after the window appears the document can still be a blank page whose localStorage is
-  // "access denied" (seen on Windows runners); repeat until the app's page answers.
+  // Wait for IPC so the fixture is persisted before the reload mounts the catalog.
   await browser.waitUntil(async () => {
     try {
-      await browser.execute((dir: string, pinned: boolean) => {
-        localStorage.setItem('3mf-katalog-base-dir', dir);
-        localStorage.setItem('3mf-katalog-setup-seen', '1');
-        localStorage.setItem('3mf-katalog-language', 'de');
-        localStorage.setItem('3mf-katalog-theme', 'light');
-        localStorage.setItem('3mf-katalog-dnd-tip-dismissed', 'true');
-        // Marker above every release, so the one-time "What's new" window does not cover the catalog.
-        localStorage.setItem('3mf-katalog-last-seen-version', '999.0.0');
-        // The automatic detail panel appears only after a successful selection; a pinned one is always there.
-        if (pinned) localStorage.setItem('3mf-katalog-detail-panel', 'pinned');
+      await browser.execute(async (dir: string, pinned: boolean) => {
+        const ipc = (window as unknown as { __TAURI_INTERNALS__: { invoke: (command: string, args: Record<string, unknown>) => Promise<unknown> } }).__TAURI_INTERNALS__;
+        const values: Record<string, string> = {
+          '3mf-katalog-base-dir': dir,
+          '3mf-katalog-setup-seen': '1',
+          '3mf-katalog-language': 'de',
+          '3mf-katalog-theme': 'light',
+          '3mf-katalog-dnd-tip-dismissed': 'true',
+          // Keep the release notice out of catalog interaction tests.
+          '3mf-katalog-last-seen-version': '999.0.0',
+          '3mf-katalog-detail-panel': pinned ? 'pinned' : 'auto',
+        };
+        for (const [key, value] of Object.entries(values)) await ipc.invoke('set_ui_setting', { key, value });
       }, catalogDir, pinnedDetails);
       return true;
     } catch { return false; }
-  }, { timeout: 60000, interval: 500, timeoutMsg: 'the frontend did not allow access to localStorage within 60 s' });
+  }, { timeout: 60000, interval: 500, timeoutMsg: 'the frontend could not persist UI settings within 60 s' });
   await browser.refresh();
   await waitForWindow();
 }
@@ -105,7 +107,7 @@ export async function cardByName(name: string) {
 /** Sidebar row (folder, collection) by its visible name. */
 export async function sidebarRow(name: string) {
   const lit = xpathLiteral(name);
-  const row = await $(`//aside//div[@role="button"][.//span[normalize-space()=${lit}]] | //aside//*[self::div or self::button][normalize-space(text())=${lit}]`);
+  const row = await $(`//aside//*[self::button or (self::div and @role="button")][.//span[normalize-space()=${lit}]] | //aside//*[self::div or self::button][normalize-space(text())=${lit}]`);
   await row.waitForExist({ timeout: 10000, timeoutMsg: `no sidebar entry ${name}` });
   return row;
 }

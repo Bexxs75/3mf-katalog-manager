@@ -52,6 +52,8 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "set_print_status",
     "add_tag",
     "remove_tag",
+    "rename_tag",
+    "merge_tags",
     "set_license",
     "set_source_url",
     "add_print_log_entry",
@@ -704,6 +706,8 @@ pub(crate) fn execute(
         "unblock_auto_tag" => encode(web::unblock_auto_tag(c, text(a, "tag")?)),
         "mark_file_viewed" => encode(web::mark_file_viewed(c, id(a, "fileId")?)),
         "add_tag" => encode(web::add_tag(c, id(a, "fileId")?, text(a, "tag")?)),
+        "rename_tag" => encode(web::rename_tag(c, text(a, "source")?, text(a, "name")?)),
+        "merge_tags" => encode(web::merge_tags(c, text(a, "source")?, text(a, "target")?)),
         "remove_tag" => encode(web::remove_tag(c, id(a, "fileId")?, text(a, "tag")?)),
         "set_source_url" => encode(web::set_source_url(
             c,

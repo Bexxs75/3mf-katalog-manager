@@ -165,3 +165,14 @@ it('explains a lost, unreplayable answer in every language', async () => {
     expect(text).not.toContain('request_id');
   }
 });
+
+it.each([false, true])('rejects desktop settings commands even with web write permission %s', async writable => {
+  const fetch = vi.fn().mockResolvedValue(Response.json({ authenticated: true, csrfToken: 'csrf', mustChangePassword: false, writable }));
+  vi.stubGlobal('fetch', fetch);
+  await (await import('./webSession')).getSession();
+  const { invoke } = await import('./transport');
+  for (const command of ['get_ui_settings', 'set_ui_setting', 'migrate_ui_settings']) {
+    await expect(invoke(command)).rejects.toMatchObject({ expected: true });
+  }
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

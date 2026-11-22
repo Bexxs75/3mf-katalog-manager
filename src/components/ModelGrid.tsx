@@ -1,3 +1,4 @@
+import { isContextMenuKey } from './CatalogSurfaceMenu';
 import { useCanEditMetadata } from '../lib/webSession';
 import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
@@ -33,7 +34,8 @@ interface Props {
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
   /** `bundleId` is set when the menu is for a bundle card (the id is then its title model). */
-  onContextMenu: (id: string, x: number, y: number, bundleId?: string) => void;
+  /** Omitted where a view has no context menu (e.g. the trash). */
+  onContextMenu?: (id: string, x: number, y: number, bundleId?: string) => void;
   onToggleFavorite: (id: string) => void;
   readOnly?: boolean;
   selectedForBulk: Set<string>;
@@ -242,7 +244,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         metadataHeight={comfort ? 124 + extra(true) : 88 + extra(false)}
         onSelect={() => onSelect(card.title.id)}
         onOpenDetail={() => onOpenDetail(card.title.id)}
-        onContextMenu={(x, y) => onContextMenu(card.title.id, x, y, card.bundle.id)}
+        onContextMenu={(x, y) => onContextMenu?.(card.title.id, x, y, card.bundle.id)}
         onToggleChecked={() => cardToggleIds(card, selectedForBulk).forEach(onToggleBulkSelect)}
       />
     );
@@ -258,10 +260,16 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         tabIndex={-1}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
+        onKeyDown={event => {
+          if (event.target !== event.currentTarget || !isContextMenuKey(event)) return;
+          event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+          const bounds = event.currentTarget.getBoundingClientRect();
+          onSelect(m.id); onContextMenu?.(m.id, bounds.left, bounds.bottom);
+        }}
         onContextMenu={(e) => {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation(); e.currentTarget.focus();
           onSelect(m.id);
-          onContextMenu(m.id, e.clientX, e.clientY);
+          onContextMenu?.(m.id, e.clientX, e.clientY);
         }}
         onMouseDown={(e) => handleCardMouseDown(e, m.id)}
         onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
@@ -371,10 +379,16 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             tabIndex={-1}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
+            onKeyDown={event => {
+              if (event.target !== event.currentTarget || !isContextMenuKey(event)) return;
+              event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+              const bounds = event.currentTarget.getBoundingClientRect();
+              onSelect(m.id); onContextMenu?.(m.id, bounds.left, bounds.bottom);
+            }}
             onContextMenu={(e) => {
-              e.preventDefault();
+              e.preventDefault(); e.stopPropagation(); e.currentTarget.focus();
               onSelect(m.id);
-              onContextMenu(m.id, e.clientX, e.clientY);
+              onContextMenu?.(m.id, e.clientX, e.clientY);
             }}
             onMouseDown={(e) => handleCardMouseDown(e, m.id)}
             onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}

@@ -1,3 +1,5 @@
+import { SettingRow } from '../components/SettingsTools';
+import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { getVerboseLogging, setVerboseLogging } from '../lib/api/diagnostics';
@@ -52,22 +54,25 @@ export function DiagnosticsSettings() {
         {BUG_ICON}
         {t('infoReportBugButton')}
       </button>
-      <div className="mt-3 pt-3 border-t border-[var(--line)]">
-        <div className="flex items-center justify-between text-caption text-[var(--ink)]">
-          <span>{t('infoVerboseLoggingLabel')}</span>
-          <ToggleSwitch
-            checked={verbose?.enabled === true}
-            label={t('infoVerboseLoggingLabel')}
-            disabled={state !== 'ready' || !verbose} busy={busy}
-            onChange={(on) => void change(on)}
-          />
+      <SettingRow id="verbose" value={verbose?.enabled} label={t('infoVerboseLoggingLabel')} onReset={() => change(SETTING_DEFAULTS.verbose)} disabled={state !== 'ready' || busy || !verbose}>
+        <div className="mt-3 pt-3 border-t border-[var(--line)]">
+          <div className="flex items-center justify-between text-caption text-[var(--ink)]">
+            <span>{t('infoVerboseLoggingLabel')}</span>
+            <ToggleSwitch
+              checked={verbose?.enabled === true}
+              label={t('infoVerboseLoggingLabel')}
+              disabled={state !== 'ready' || !verbose} busy={busy}
+              onChange={(on) => void change(on)}
+            />
+          </div>
+          <p className={`mt-1 text-caption leading-[1.4] ${verbose?.enabled ? 'text-[var(--warn)]' : 'text-[var(--ink-3)]'}`}>
+            {verbose?.enabled ? t('infoVerboseLoggingOn').replace('{date}', until) : t('infoVerboseLoggingHint')}
+          </p>
+          <SettingLoadStatus keptValue={verbose !== undefined && verbose !== null} state={state} error={loadError} onReload={() => void reload()} className="mt-1" />
+          <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1" />
         </div>
-        <p className={`mt-1 text-caption leading-[1.4] ${verbose?.enabled ? 'text-[var(--warn)]' : 'text-[var(--ink-3)]'}`}>
-          {verbose?.enabled ? t('infoVerboseLoggingOn').replace('{date}', until) : t('infoVerboseLoggingHint')}
-        </p>
-        <SettingLoadStatus keptValue={verbose !== undefined && verbose !== null} state={state} error={loadError} onReload={() => void reload()} className="mt-1" />
-        <SettingSaveStatus saving={busy} error={error} keptValue className="mt-1" />
-      </div>
+
+      </SettingRow>
     </>
   );
 }

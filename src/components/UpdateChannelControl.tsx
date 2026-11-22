@@ -1,3 +1,5 @@
+import { SettingRow } from './SettingsTools';
+import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import * as api from '../lib/api/updater';
@@ -51,16 +53,19 @@ export function UpdateChannelControl({ disabled, onExport, onChanged, exportErro
     } finally { setBusy(false); }
   }
   return <div className="my-3 text-small space-y-2">
-    <div className="flex items-center justify-between gap-2">
-      <span className="font-semibold">{t('updateChannelLabel')}</span>
-      {/* The switch only moves once the dialog has been confirmed; until then it keeps showing the current channel. */}
-      <ToggleSwitch checked={channel === 'rc'} label={t('updateChannelLabel')} aria-describedby="update-channel-help" disabled={disabled || channel === null} busy={busy}
-        onChange={() => {
-          if (channel === 'rc') void change('stable');
-          else { setError(null); setExported(false); setExportIncomplete(false); setConfirm(true); }
-        }} />
-    </div>
-    <p id="update-channel-help" className="text-[var(--ink-3)]">{t('updateChannelHelp')}</p>
+    <SettingRow id="channel" value={channel ?? undefined} label={t('updateChannelLabel')} onReset={() => change(SETTING_DEFAULTS.channel)} disabled={disabled || busy || channel === null}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold">{t('updateChannelLabel')}</span>
+        {/* The switch only moves once the dialog has been confirmed; until then it keeps showing the current channel. */}
+        <ToggleSwitch checked={channel === 'rc'} label={t('updateChannelLabel')} aria-describedby="update-channel-help" disabled={disabled || channel === null} busy={busy}
+          onChange={() => {
+            if (channel === 'rc') void change('stable');
+            else { setError(null); setExported(false); setExportIncomplete(false); setConfirm(true); }
+          }} />
+      </div>
+      <p id="update-channel-help" className="text-[var(--ink-3)]">{t('updateChannelHelp')}</p>
+
+    </SettingRow>
     {disabledNotice && <p role="status">{t('updateChannelDisabled')}</p>}
     {error && !confirm && <ErrorText error={error} />}
     {confirm && <CatalogActionDialog title={t('updateChannelLabel')} onClose={() => { if (!busy) setConfirm(false); }}>

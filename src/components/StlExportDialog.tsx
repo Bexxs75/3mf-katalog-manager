@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useEffect, useId, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { displayName } from '../lib/displayName';
@@ -12,7 +13,10 @@ interface Props {
   model: { id: string; name: string; fileType: string };
   /** Opened from the parts list of a STEP file: the parts to save (mesh indices) replace the plate choice. */
   parts?: { indices: number[]; initial: 'parts' | 'eachPart' };
+  /** Cancel, Escape or the close button before the save finished. */
   onClose: () => void;
+  /** Closing after a finished save; a queue of models continues here, not on cancel. Defaults to `onClose`. */
+  onFinished?: () => void;
 }
 
 const focusClass = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]';
@@ -23,7 +27,7 @@ const primaryClass = `h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[v
  * "Save as STL": range (only where there is a choice), hints, then the system save dialog opens in the
  * backend. Nothing is added to the catalog; an existing file is never overwritten.
  */
-export function StlExportDialog({ model, parts, onClose }: Props) {
+export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
   const t = useT();
   const titleId = useId();
   const scopeName = useId();
@@ -35,7 +39,8 @@ export function StlExportDialog({ model, parts, onClose }: Props) {
   const [error, setError] = useState<AppError | null>(null);
   const [result, setResult] = useState<StlExportResult | null>(null);
   const [folderError, setFolderError] = useState<AppError | null>(null);
-  const dialogRef = useModalDialog({ open: true, onClose, busy: phase === 'saving', initialFocus: '[data-initial-focus]' });
+  const closeDone = onFinished ?? onClose;
+  const dialogRef = useModalDialog({ open: true, onClose: () => (phase === 'done' ? closeDone() : onClose()), busy: phase === 'saving', initialFocus: '[data-initial-focus]' });
   const type = model.fileType.toLowerCase();
 
   // Only a 3MF has plates; the list comes from the file when the dialog opens. A failed read just
@@ -77,7 +82,7 @@ export function StlExportDialog({ model, parts, onClose }: Props) {
         className="w-[440px] max-w-full max-h-full overflow-y-auto bg-[var(--panel)] text-[var(--ink)] border border-[var(--line-strong)] rounded-[10px] shadow-[var(--shadow)] px-4 pt-3.5 pb-4">
         <div className="flex items-start gap-2 mb-2">
           <h2 id={titleId} className="m-0 min-w-0 flex-1 text-[length:var(--font-size-title)] font-bold break-words">{t('stDialogTitle')}</h2>
-          <button type="button" onClick={onClose} disabled={phase === 'saving'} aria-label={t('stClose')}
+          <button type="button" onClick={() => (phase === 'done' ? closeDone() : onClose())} disabled={phase === 'saving'} aria-label={t('stClose')}
             className={`flex-none w-[30px] h-[30px] grid place-items-center rounded-md text-[var(--ink-2)] hover:bg-[var(--panel-2)] cursor-pointer disabled:opacity-50 ${focusClass}`}>
             <Icon name="close" size={16} />
           </button>
@@ -95,7 +100,7 @@ export function StlExportDialog({ model, parts, onClose }: Props) {
                 onClick={() => { setFolderError(null); showFolderInFileManager(result.folder).catch(e => setFolderError(toAppError(e))); }}>
                 {t('showInFileManager')}
               </button>
-              <button type="button" data-initial-focus onClick={onClose} className={primaryClass}>{t('stClose')}</button>
+              <button type="button" data-initial-focus onClick={closeDone} className={primaryClass}>{t('stClose')}</button>
             </div>
           </>
         ) : (
@@ -123,11 +128,11 @@ export function StlExportDialog({ model, parts, onClose }: Props) {
                 <label className="flex items-center gap-2 py-1 cursor-pointer">
                   <input type="radio" name={scopeName} checked={!wholeModel} disabled={phase === 'saving'} onChange={() => setWholeModel(false)} />
                   {t('stScopePlate')}
-                  <select value={chosenPlate ?? ''} disabled={wholeModel || phase === 'saving'} aria-label={t('stPlate')}
-                    onChange={event => setPlate(Number(event.target.value))}
+                  <Select value={chosenPlate ?? ''} disabled={wholeModel || phase === 'saving'} aria-label={t('stPlate')}
+                    onValueChange={value => setPlate(Number(value))}
                     className="h-7 px-1 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)]">
                     {plates.map(number => <option key={number} value={number}>{t('stPlate')} {number}</option>)}
-                  </select>
+                  </Select>
                 </label>
               </fieldset>
             )}

@@ -1,16 +1,17 @@
+import { uiSettings } from '../lib/uiSettings';
 import { useEffect, useRef, useState } from 'react';
 import { currentVersion, releaseNotes } from '../lib/releaseNotes';
 import { LAST_SEEN_VERSION_KEY, seenVersionOnClose, selectReleaseVersions } from '../lib/releaseNotesSelection';
 
 function readMarker(): string | null {
-  try { return localStorage.getItem(LAST_SEEN_VERSION_KEY); }
+  try { return uiSettings.getItem(LAST_SEEN_VERSION_KEY); }
   catch { return null; }
 }
 function remember() {
   try {
     const stored = readMarker();
     const next = seenVersionOnClose(currentVersion, stored);
-    if (next !== stored) localStorage.setItem(LAST_SEEN_VERSION_KEY, next);
+    if (next !== stored) uiSettings.setItem(LAST_SEEN_VERSION_KEY, next);
   } catch (error) { console.warn('[whats-new] remembering version failed:', error); }
 }
 export function useWhatsNew({ wait, firstRun, web, reopenBlocked = false }: { wait: boolean; firstRun: boolean; web: boolean; reopenBlocked?: boolean }) {

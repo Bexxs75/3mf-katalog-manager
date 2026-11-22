@@ -1369,6 +1369,12 @@ before updates (`update-backups`), and **Open log folder** opens the folder with
 There are two buttons because on Windows and macOS the log files are kept in a different system
 folder than the catalog.
 
+Desktop preferences are saved in the app data folder. Catalog backups include theme, preview preference, language and density; the catalog base directory stays local when restoring a backup. If settings cannot be loaded within three seconds, the app starts with the old WebView values and displays a notice. Files from a newer settings format remain untouched; local fallback preferences stay usable until a compatible app version is used.
+
+In the web version, preferences remain in each browser’s localStorage: language, theme, density, sidebar width, views and dismissed notices do not affect other browsers or devices. There is no server settings migration or settings file access. Web catalog backups do not contain browser preferences. Older backups remain readable.
+
+**Technical note (desktop):** The file is `ui-settings.json`. Theme, language and density also have a synchronous WebView boot cache. A confirmed backend snapshot removes missing boot-cache entries, including after restore; error and incompatible-schema fallback paths preserve them. Other desktop preferences are not normally mirrored back, so their old fallback values may be outdated. With an incompatible schema, edits stay in localStorage and do not modify the backend file. Preview crash guards stay local; obsolete slicer paths are not migrated. The file budget is 1 MiB, with 64 KiB per value or 256 KiB per folder list. Oversized unknown fields in the current schema are discarded from the in-memory snapshot first and from the file on the next successful write.
+
 The following screenshots compare the **light** and **dark** themes:
 
 ![Catalog in dark theme](bilder/en/14-dark-mode.png)
@@ -3011,6 +3017,12 @@ Unter **App-Daten und Protokolle** öffnet **Datenordner öffnen** den Ordner mi
 vor Updates (`update-backups`), **Log-Ordner öffnen** den Ordner mit den Logdateien. Es sind zwei
 Knöpfe, weil Windows und macOS die Logdateien in einem anderen Systemordner ablegen als den
 Katalog.
+
+Desktop-Einstellungen werden im App-Datenordner gespeichert. Katalogsicherungen enthalten Farbschema, Vorschaupräferenz, Sprache und Dichte; das Katalog-Basisverzeichnis bleibt beim Wiederherstellen lokal erhalten. Antworten die Einstellungen nicht innerhalb von drei Sekunden, startet die App mit den alten WebView-Werten und zeigt einen Hinweis. Dateien eines neueren Einstellungsformats bleiben unverändert; lokale Rückfallwerte bleiben bis zur Verwendung einer passenden App-Version nutzbar.
+
+Im Web bleiben Einstellungen im localStorage jedes Browsers: Sprache, Design, Dichte, Seitenleiste, Ansichten und weggeklickte Hinweise wirken sich nicht auf andere Browser oder Geräte aus. Es gibt weder eine Einstellungsmigration zum Server noch Zugriffe auf eine serverseitige Einstellungsdatei. Web-Katalogsicherungen enthalten keine Browser-Einstellungen. Ältere Sicherungen bleiben lesbar.
+
+**Technischer Hinweis (Desktop):** Die Datei heißt `ui-settings.json`. Farbschema, Sprache und Dichte besitzen zusätzlich einen synchronen WebView-Startcache. Ein bestätigter Backendstand entfernt dort fehlende Einträge, auch nach einer Wiederherstellung; bei Fehlern oder inkompatiblem Schema bleiben Rückfallwerte erhalten. Andere Desktop-Einstellungen werden normalerweise nicht zurückgespiegelt; ihre alten Rückfallwerte können veraltet sein. Bei inkompatiblem Schema bleiben Änderungen im localStorage und verändern die Backenddatei nicht. Vorschau-Absturzmarker bleiben lokal; veraltete Slicer-Pfade werden nicht migriert. Die Dateigrenze beträgt 1 MiB, mit 64 KiB pro Wert beziehungsweise 256 KiB pro Ordnerliste. Überzählige unbekannte Felder des aktuellen Schemas werden zuerst im Speicherstand und erst beim nächsten erfolgreichen Schreiben in der Datei verworfen.
 
 Die folgenden Screenshots zeigen das **Hell**- und **Dunkel**-Theme im Vergleich:
 

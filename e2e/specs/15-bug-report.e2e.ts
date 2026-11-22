@@ -6,9 +6,15 @@ describe('15 Fehler melden ohne Versand', () => {
   const dialog = () => $('[role="dialog"][aria-labelledby="bug-report-title"]');
   before(async () => { await openCatalog(); await openSettings('Info'); });
   after(async () => { await closeSettings(); });
+  // The report button sits in the collapsed "Erweitert" disclosure of the help section.
+  const reportButton = async () => {
+    const details = $('section[aria-labelledby="settings-sec-help"] details');
+    if (await details.getAttribute('open') === null) await click(details.$('summary'));
+    await button('Fehler melden');
+  };
 
   it('shows the required log choice and closes with Abbrechen', async () => {
-    await button('Fehler melden');
+    await reportButton();
     await dialog().waitForDisplayed();
     expect(await dialog().$('h2').getText()).toContain('Fehler melden');
     const labels = await dialog().$$('label');
@@ -28,7 +34,7 @@ describe('15 Fehler melden ohne Versand', () => {
   });
 
   it('reopens and closes with Escape without opening or submitting the external form', async () => {
-    await button('Fehler melden');
+    await reportButton();
     await dialog().waitForDisplayed();
     await browser.keys(['Escape']);
     await dialog().waitForExist({ reverse: true });

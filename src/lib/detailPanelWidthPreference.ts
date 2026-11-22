@@ -1,3 +1,4 @@
+import { uiSettings } from './uiSettings';
 const STORAGE_KEY = '3mf-katalog-detail-width';
 
 function validWidth(px: number): boolean {
@@ -6,7 +7,7 @@ function validWidth(px: number): boolean {
 
 export function loadDetailPanelWidth(): number | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = uiSettings.getItem(STORAGE_KEY);
     const px = raw === null || raw.trim() === '' ? NaN : Number(raw);
     return validWidth(px) ? px : null;
   } catch {
@@ -16,8 +17,8 @@ export function loadDetailPanelWidth(): number | null {
 
 export function saveDetailPanelWidth(px: number | null): void {
   try {
-    if (px === null || !validWidth(px)) localStorage.removeItem(STORAGE_KEY);
-    else localStorage.setItem(STORAGE_KEY, String(px));
+    if (px === null || !validWidth(px)) uiSettings.removeItem(STORAGE_KEY);
+    else uiSettings.setItem(STORAGE_KEY, String(px));
   } catch {
     // Storage blocked: the choice only applies to this session.
   }

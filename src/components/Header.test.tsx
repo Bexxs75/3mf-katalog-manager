@@ -22,14 +22,14 @@ describe('Header', () => {
   it.each(['catalog', 'trash'] as const)('omits the manager label in %s', (mainView) => {
     renderHeader(mainView);
     expect(screen.getByText('3MF Katalog')).toBeVisible();
-    expect(screen.queryByText(/MANAGER/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Manager/i)).not.toBeInTheDocument();
   });
 
   it('shows the material manager label in the filament view', () => {
     renderHeader('filament');
     expect(screen.getByText('3MF Katalog')).toBeVisible();
-    expect(screen.getByText('MATERIAL MANAGER')).toBeVisible();
-    expect(screen.getByText('MATERIAL MANAGER')).toHaveClass(
+    expect(screen.getByText('Material Manager')).toBeVisible();
+    expect(screen.getByText('Material Manager')).toHaveClass(
       'ui-label', 'text-[var(--accent)]',
     );
   });
@@ -55,7 +55,7 @@ it('labels Printer Manager and hides all catalog controls', () => {
   render(<LanguageProvider><Header mainView="printers" allFoldersCollapsed={false} onToggleAllFolders={vi.fn()}
     view="grid" onViewChange={vi.fn()} sort="name" sortDirection="asc" onSortDirectionChange={vi.fn()} onSortChange={vi.fn()} count={0}
     onImportFiles={vi.fn()} onImportFolder={vi.fn()} onImportFolderContents={vi.fn()} onCheckSourceFolders={vi.fn()} /></LanguageProvider>);
-  expect(screen.getByText('PRINTER MANAGER')).toBeInTheDocument();
+  expect(screen.getByText('Printer Manager')).toBeInTheDocument();
   expect(screen.getAllByRole('button')).toHaveLength(2);
   expect(screen.getByRole('button', { name: 'Neuigkeiten' })).toBeVisible();
   expect(screen.getByRole('button', { name: 'Tastenkürzel und Tipps' })).toBeVisible();

@@ -1,15 +1,16 @@
+import { uiSettings } from '../lib/uiSettings';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCatalogFilters } from './useCatalogFilters';
 import { makeModelFile, makePrintFacts, makePrinter } from '../test/factories';
 import { EMPTY_FILTER } from '../lib/printDataFilter';
 
-beforeEach(() => localStorage.removeItem('3mf-katalog-view'));
-afterEach(() => localStorage.removeItem('3mf-katalog-view'));
+beforeEach(() => uiSettings.removeItem('3mf-katalog-view'));
+afterEach(() => uiSettings.removeItem('3mf-katalog-view'));
 
 describe('useCatalogFilters', () => {
   it('starts with the saved view', () => {
-    localStorage.setItem('3mf-katalog-view', 'groupedList');
+    uiSettings.setItem('3mf-katalog-view', 'groupedList');
     const { result } = renderHook(() => useCatalogFilters([], []));
     expect(result.current.view).toBe('groupedList');
   });
@@ -21,7 +22,7 @@ describe('useCatalogFilters', () => {
       result.current.setSort('size');
     });
     expect(result.current.view).toBe('groupedGrid');
-    expect(localStorage.getItem('3mf-katalog-view')).toBe('groupedGrid');
+    expect(uiSettings.getItem('3mf-katalog-view')).toBe('groupedGrid');
     unmount();
     const remounted = renderHook(() => useCatalogFilters([], []));
     expect(remounted.result.current.view).toBe('groupedGrid');

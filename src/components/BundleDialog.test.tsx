@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -235,4 +236,13 @@ describe('BundleDialog, add', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Deckel.stl hinzufügen' }));
     expect(screen.getByRole('button', { name: '0 Modelle hinzufügen' })).toBeDisabled();
   });
+});
+
+it.each(['mouse', 'keyboard'] as const)('adds to the selected bundle (%s)', async mode => {
+  const onAdd = vi.fn().mockResolvedValue(undefined);
+  open({ mode: 'add', fileIds: ['4'], targetId: 'b1' }, [harbour, other], { onAdd });
+  chooseSelect(screen.getByRole('combobox', { name: de.bundleDlgTarget }), 'b2', mode);
+  fireEvent.click(screen.getByRole('checkbox', { name: de.bundleDlgSwitchConfirm }));
+  fireEvent.click(screen.getByRole('button', { name: '1 Modell hinzufügen' }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith('b2', ['4']));
 });

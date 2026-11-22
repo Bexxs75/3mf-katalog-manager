@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useSidebarWidth } from './useSidebarWidth';
@@ -15,7 +16,7 @@ it('defaults to 242, clamps requests and resets', () => {
   expect(result.current.width).toBe(180);
   act(() => result.current.reset());
   expect(result.current.width).toBe(242);
-  expect(localStorage.getItem(key)).toBe('242');
+  expect(uiSettings.getItem(key)).toBe('242');
 });
 
 it('keeps the requested width across window resizing and remounting', () => {
@@ -23,7 +24,7 @@ it('keeps the requested width across window resizing and remounting', () => {
   act(() => result.current.setWidth(420));
   act(() => { vi.stubGlobal('innerWidth', 800); window.dispatchEvent(new Event('resize')); });
   expect(result.current.width).toBe(260);
-  expect(localStorage.getItem(key)).toBe('420');
+  expect(uiSettings.getItem(key)).toBe('420');
   act(() => { vi.stubGlobal('innerWidth', 600); window.dispatchEvent(new Event('resize')); });
   expect(result.current.width).toBe(180);
   unmount();
@@ -32,7 +33,7 @@ it('keeps the requested width across window resizing and remounting', () => {
 });
 
 it.each(['NaN', 'Infinity', 'null', '{}', ''])('uses default for malformed storage: %s', (value) => {
-  localStorage.setItem(key, value);
+  uiSettings.setItem(key, value);
   expect(renderHook(useSidebarWidth).result.current.width).toBe(242);
 });
 

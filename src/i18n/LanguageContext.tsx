@@ -1,5 +1,6 @@
+import { uiSettings, subscribeUiSettings } from '../lib/uiSettings';
 import { catalogPlatform } from '../lib/keyboardGuard';
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { formatCount, type PluralForms, type Language, type Translations } from './types';
 import { de } from './de';
 import { en } from './en';
@@ -10,6 +11,12 @@ const STORAGE_KEY = '3mf-katalog-language';
 
 const DICTIONARIES: Record<Language, Translations> = { de, en, es, fr };
 
+/** Dictionary of the stored language for code that runs outside React (e.g. `window.confirm` texts in hooks). */
+export function currentDictionary(): Translations {
+  const stored = uiSettings.getItem(STORAGE_KEY);
+  return DICTIONARIES[stored && stored in DICTIONARIES ? (stored as Language) : 'de'];
+}
+
 interface LanguageContextValue {
   language: Language;
   setLanguage: (next: Language) => void;
@@ -18,8 +25,8 @@ interface LanguageContextValue {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+  const language: Language = useSyncExternalStore(subscribeUiSettings, () => {
+    const stored = uiSettings.getItem(STORAGE_KEY);
     return stored && stored in DICTIONARIES ? (stored as Language) : 'de';
   });
 
@@ -28,8 +35,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, [language]);
 
   const setLanguage = useCallback((next: Language) => {
-    setLanguageState(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    uiSettings.setItem(STORAGE_KEY, next);
   }, []);
 
   return (

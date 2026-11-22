@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { useCallback, useEffect, useState } from 'react';
 
 export const NO_FOLDER_COLLAPSE_KEY = 'no-folder';
@@ -6,7 +7,7 @@ const STORAGE_KEY = '3mf-katalog-collapsed-folders';
 
 function loadStored(): Set<string> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = uiSettings.getItem(STORAGE_KEY);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? new Set(parsed.filter((x) => typeof x === 'string')) : new Set();
@@ -17,13 +18,13 @@ function loadStored(): Set<string> {
 
 /**
  * Remembers the collapsed folder sections of the grouped view in
- * localStorage so they survive restarts.
+ * uiSettings so they survive restarts.
  */
 export function useCollapsedFolders() {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadStored);
 
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...collapsed])); } catch { /* Keep in-memory state when storage is unavailable. */ }
+    try { uiSettings.setItem(STORAGE_KEY, JSON.stringify([...collapsed])); } catch { /* Keep in-memory state when storage is unavailable. */ }
   }, [collapsed]);
 
   const collapseAll = useCallback((ids: string[]) => {

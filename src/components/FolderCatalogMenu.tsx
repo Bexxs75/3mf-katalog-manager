@@ -1,7 +1,7 @@
+import { Select } from './Select';
 import { canManageFiles, useCanManageFiles } from '../lib/webSession';
 import { fileOp } from '../lib/fileOps';
 import { fileOpsError } from '../lib/fileOpsErrors';
-import { folderOpsMessages } from '../lib/folderOpsMessages';
 import { isFolderSelfOrDescendant } from '../lib/folderTree';
 import * as foldersApi from '../lib/api/folders';
 import type { Folder } from '../types';
@@ -11,7 +11,7 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '../lib/transport';
-import { useT, useFormatCount, useLanguage } from '../i18n/LanguageContext';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { CatalogActionDialog, catalogActionBase, catalogActionButton } from './CatalogActionDialog';
@@ -87,8 +87,6 @@ function DesktopFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, on
 function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, returnFocus, folders = [] }: MenuProps) {
   const canManage = useCanManageFiles();
   const { jobActive } = useImportLock();
-  const { language } = useLanguage();
-  const labels = folderOpsMessages(language);
   const t = useT();
   const formatCount = useFormatCount();
   const [action, setAction] = useState<'create' | 'rename' | 'move' | 'remove' | null>(null);
@@ -115,7 +113,7 @@ function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, return
     return () => { cancelled = true; };
   }, [action, folderId]);
   if (!canManage) return null;
-  const titles = { create: labels.create, rename: labels.rename, move: labels.move, remove: t('removeCatalog') };
+  const titles = { create: t('folderOpCreate'), rename: t('folderOpRename'), move: t('folderOpMove'), remove: t('removeCatalog') };
   if (!action) return createPortal(<div ref={menu} role="menu" className="fixed z-50 rounded border bg-[var(--panel)] p-2 shadow-lg" style={{ left: Math.max(0, Math.min(x, window.innerWidth - 260)), top: Math.max(0, Math.min(y, window.innerHeight - 200)) }}>
     {(['create', 'rename', 'move', 'remove'] as const).map(item => <button key={item} role="menuitem" disabled={jobActive} className="block w-full p-2 text-left hover:bg-[var(--panel-2)]" onClick={() => { setDraft(item === 'create' ? '' : name); setAction(item); }}>{titles[item]}</button>)}
   </div>, document.body);
@@ -137,14 +135,14 @@ function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, return
   };
   return <CatalogActionDialog title={titles[action]} returnFocus={returnFocus} onClose={() => { if (!busy) onClose(); }}>
     <p>{displayName(name)}</p>
-    {(action === 'create' || action === 'rename') && <label>{labels.name}<input data-initial-focus value={draft} disabled={busy} onChange={event => setDraft(event.target.value)} className="block w-full border p-2 bg-[var(--panel)]" /></label>}
-    {action === 'move' && <label>{labels.target}<select data-initial-focus value={target} disabled={busy} onChange={event => setTarget(event.target.value)} className="block w-full border p-2 bg-[var(--panel)]"><option value="">—</option>{targets.map(folder => <option key={folder.id} value={folder.id}>{displayName(folder.name)}</option>)}</select></label>}
-    {(action === 'move' || action === 'rename') && <p>{labels.contents}</p>}
+    {(action === 'create' || action === 'rename') && <label>{t('folderOpName')}<input data-initial-focus value={draft} disabled={busy} onChange={event => setDraft(event.target.value)} className="block w-full border p-2 bg-[var(--panel)]" /></label>}
+    {action === 'move' && <label>{t('webFileTarget')}<Select data-initial-focus value={target} disabled={busy} onValueChange={value => setTarget(value)} className="block w-full border p-2 bg-[var(--panel)]"><option value="">—</option>{targets.map(folder => <option key={folder.id} value={folder.id}>{displayName(folder.name)}</option>)}</Select></label>}
+    {(action === 'move' || action === 'rename') && <p>{t('folderOpContents')}</p>}
     {action === 'remove' && <>
-      {summary ? <ul><li>{formatCount(t('removeFolderList'), summary.subfolderCount).replace('{name}', displayName(summary.name))}</li><li>{formatCount(t('removeFolderModels'), summary.modelCount)}</li></ul> : <p>{labels.loading}</p>}
+      {summary ? <ul><li>{formatCount(t('removeFolderList'), summary.subfolderCount).replace('{name}', displayName(summary.name))}</li><li>{formatCount(t('removeFolderModels'), summary.modelCount)}</li></ul> : <p>{t('folderOpLoading')}</p>}
       <p>{t('removeFolderSafe')}</p><p>{t('removeFolderReimport')}</p>
     </>}
     {error && <p role="alert">{error}</p>}
-    <div className="flex justify-end gap-2"><button className={catalogActionButton} disabled={busy} onClick={onClose}>{t('cancel')}</button><button className={catalogActionButton} disabled={busy || jobActive || (action === 'remove' && !summary) || (action === 'move' && !target) || ((action === 'create' || action === 'rename') && !draft.trim())} onClick={() => void submit()}>{labels.confirm}</button></div>
+    <div className="flex justify-end gap-2"><button className={catalogActionButton} disabled={busy} onClick={onClose}>{t('cancel')}</button><button className={catalogActionButton} disabled={busy || jobActive || (action === 'remove' && !summary) || (action === 'move' && !target) || ((action === 'create' || action === 'rename') && !draft.trim())} onClick={() => void submit()}>{t('folderOpConfirm')}</button></div>
   </CatalogActionDialog>;
 }

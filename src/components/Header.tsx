@@ -112,11 +112,11 @@ export function Header({
     <header className="flex-none h-[54px] flex items-center gap-2 min-[1100px]:gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
       <div className="flex shrink-0 items-baseline gap-2 pr-1.5 whitespace-nowrap">
         <span className="text-title font-semibold uppercase">
-          3MF Katalog
+          {t('headerTitle')}
         </span>
         {(mainView === 'filament' || mainView === 'printers') && (
           <span className="ui-label text-[var(--accent)]">
-            {mainView === 'printers' ? 'PRINTER MANAGER' : 'MATERIAL MANAGER'}
+            {t(mainView === 'printers' ? 'railPrinters' : 'railFilament')}
           </span>
         )}
       </div>
@@ -125,7 +125,7 @@ export function Header({
       {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} onScanned={onDiskSyncScanned} />}
       {mainView === 'catalog' && (
       <>
-      {uploadable && <button className="h-8 px-3 shrink-0 whitespace-nowrap flex items-center gap-2 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" title={t('webUploadTitle')} onClick={onImportFiles}><span className="min-[1100px]:hidden" aria-hidden="true"><Icon name="plus" size={14} /></span><span className="max-[1099px]:sr-only">{t('webUploadTitle')}</span></button>}
+      {uploadable && <button className="h-8 px-3 shrink-0 whitespace-nowrap flex items-center gap-2 rounded border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]" title={t('webUploadTitle')} onClick={onImportFiles}><span className="min-[1280px]:hidden" aria-hidden="true"><Icon name="plus" size={14} /></span><span className="max-[1279px]:sr-only">{t('webUploadTitle')}</span></button>}
       {import.meta.env.VITE_TARGET !== 'web' && <div ref={importRef} className="relative flex shrink-0">
         <button
           ref={importTriggerRef}
@@ -199,20 +199,20 @@ export function Header({
         )}
       </div>}
 
-      <div className="flex min-w-0 items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
-        <span className="hidden min-[1100px]:inline ui-label text-[var(--ink-3)]">
+      <div className="flex shrink-0 items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
+        <span className="hidden min-[1400px]:inline ui-label text-[var(--ink-3)]">
           {t('sortLabel')}
         </span>
-        <div ref={sortRef} className="relative min-w-0">
+        <div ref={sortRef} className="relative">
           <button
             ref={sortTriggerRef}
             onKeyDown={event => { if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) setImportMenuOpen(false); sortKeyboard.onTriggerKeyDown(event); }}
             aria-haspopup="menu"
             aria-expanded={sortMenuOpen}
             onClick={() => { setImportMenuOpen(false); setSortMenuOpen((o) => !o); }}
-            className="h-[30px] max-w-full px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
+            className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
           >
-            <span className="truncate">{sortOptions.find((o) => o.value === sort)?.label}</span>
+            <span className="min-w-[6ch] truncate">{sortOptions.find((o) => o.value === sort)?.label}</span>
             <span className="font-medium tabular-nums text-[var(--accent)]"><Icon name={sortDirection === 'asc'  ? 'arrow-up' : 'arrow-down'} size={14} /></span>
             <span className="text-compact-label leading-none text-[var(--ink-3)]"><Icon name="chevron" size={14} /></span>
           </button>
@@ -256,18 +256,24 @@ export function Header({
 
       <div className="flex shrink-0 p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
         <button
+          type="button"
+          aria-pressed={view === 'grid'}
           onClick={() => onViewChange('grid')}
           className={`${segBase} ${view === 'grid' ? segActive : segInactive}`}
         >
           {t('viewGrid')}
         </button>
         <button
+          type="button"
+          aria-pressed={view === 'groupedGrid'}
           onClick={() => onViewChange('groupedGrid')}
           className={`${segBase} ${view === 'groupedGrid' ? segActive : segInactive}`}
         >
           {t('viewFolder')}
         </button>
         <button
+          type="button"
+          aria-pressed={view === 'groupedList'}
           onClick={() => onViewChange('groupedList')}
           className={`${segBase} ${view === 'groupedList' ? segActive : segInactive}`}
         >

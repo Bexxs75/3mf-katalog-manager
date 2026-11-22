@@ -1,13 +1,13 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 
-/** Opens the "More" menu of the selection bar and returns it. */
-export function openBulkMore() {
-  fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /^Mehr/ }));
-  return screen.getByRole('menu', { name: 'Mehr Aktionen' });
+/** Opens a selection action group. */
+export function openBulkMore(group = 'Ablegen') {
+  const trigger = within(screen.getByRole('toolbar')).getByRole('button', { name: group });
+  if (trigger.getAttribute('aria-expanded') !== 'true') fireEvent.click(trigger);
+  return screen.getByRole('menu', { name: group });
 }
 
-/** Picks an entry from the selection bar's "More" menu, as a user would. */
 export function clickBulkMore(name: string) {
-  const menu = openBulkMore();
-  fireEvent.click(within(menu).getByRole('menuitem', { name }));
+  const group = /Bündel|Bündeln/.test(name) ? 'Bündel' : /Favorit|Warteschlange|gedruckt/i.test(name) ? 'Markieren' : 'Ablegen';
+  fireEvent.click(within(openBulkMore(group)).getByRole('menuitem', { name }));
 }

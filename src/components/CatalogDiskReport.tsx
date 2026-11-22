@@ -89,7 +89,7 @@ export function CatalogDiskReport({ active = true }: { active?: boolean }) {
   const close = () => { run.current++; setOpen(false); setBusy(false); setReport(null); setError(null); };
   return <>
     {active && <button type="button" className={`${button} shrink-0 flex gap-2 items-center !py-1.5`} disabled={busy} title={t('diskReportOpen')} onClick={() => void start()}>
-      <Icon name="restore" size={16} /><span className="max-[1099px]:sr-only">{t('diskReportOpen')}</span>
+      <Icon name="restore" size={16} /><span className="max-[1279px]:sr-only">{t('diskReportOpen')}</span>
     </button>}
     {open && <ReportDialog report={report} error={error} busy={busy} onClose={close} onRetry={() => void start()} />}
   </>;

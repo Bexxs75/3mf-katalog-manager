@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { displayName } from '../lib/displayName';
 import { splitFileName } from '../lib/fileName';
@@ -155,12 +156,12 @@ export function BundleSuggestionsDialog({ open, dismissed, models, folders, hint
               </div>
               <div className="space-y-0.5 flex-[1_1_9rem]">
                 <label htmlFor={`${fieldId}-kind`} className="block text-caption font-semibold">{t('bundleSuggestKind')}</label>
-                <select id={`${fieldId}-kind`} value={draft.kind} disabled={busy} aria-invalid={kindMissing}
-                  onChange={event => change(suggestion, { kind: event.target.value as BundleKind | '' })} className={`${FIELD} w-full`}>
+                <Select id={`${fieldId}-kind`} value={draft.kind} disabled={busy} aria-invalid={kindMissing}
+                  onValueChange={value => change(suggestion, { kind: value as BundleKind | '' })} className={`${FIELD} w-full`}>
                   <option value="">{t('bundleSuggestKindChoose')}</option>
                   <option value="variants">{t('bundleKindVariants')}</option>
                   <option value="parts">{t('bundleDlgKindParts')}</option>
-                </select>
+                </Select>
               </div>
               <button type="button" className={catalogActionButton} disabled={busy}
                 aria-label={t('bundleSuggestDismissAria').replace('{name}', displayName(draft.name))}

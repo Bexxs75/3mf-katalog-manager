@@ -1,6 +1,7 @@
+import { chooseSelect, selectOptions } from './test/select';
 import { currentVersion as bundledVersion } from './lib/releaseNotes';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import App from './App';
 import { LanguageProviderWithDiagnostics } from './test/renderWithDiagnostics';
@@ -43,11 +44,11 @@ it('filters by printer, keeps models without size visible, shows a chip, and res
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   await screen.findAllByText('Small.stl');
   const select = await screen.findByRole('combobox', { name: de.fitPrinterFilter });
-  await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(3));
+  expect(selectOptions(select)).toHaveLength(3);
   const main = screen.getByRole('main');
   expect(main).toHaveTextContent('Wide.stl');
 
-  fireEvent.change(select, { target: { value: 'mini' } });
+  chooseSelect(select, 'mini');
   await waitFor(() => expect(main).not.toHaveTextContent('Wide.stl'));
   expect(main).toHaveTextContent('Small.stl');
   expect(main).toHaveTextContent('Unknown.stl');

@@ -141,6 +141,16 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
     let conn = lock_db(&state)?;
     katalog_core::write::remove_tag(&conn, file_id, tag).map_err(Into::into)
 }
+#[tauri::command]
+pub fn rename_tag(state: State<AppState>, source: String, name: String) -> CmdResult<u64> {
+    let mut conn = lock_db(&state)?;
+    katalog_core::write::web::rename_tag(&mut conn, &source, &name).map(|r| r.value).map_err(Into::into)
+}
+#[tauri::command]
+pub fn merge_tags(state: State<AppState>, source: String, target: String) -> CmdResult<u64> {
+    let mut conn = lock_db(&state)?;
+    katalog_core::write::web::merge_tags(&mut conn, &source, &target).map(|r| r.value).map_err(Into::into)
+}
 fn blocked_tag_error(e: db::error::DbError) -> CmdError {
     match e {
         db::error::DbError::Invalid(message) => CmdError::expected(message),
@@ -3067,3 +3077,30 @@ mod large_catalog_tests;
 
 #[cfg(test)]
 mod import_speed_tests;
+
+#[cfg(test)]
+mod tag_command_tests {
+    use super::*;
+    use tauri::Manager;
+
+    #[test]
+    fn rename_and_merge_commands_share_validation_and_return_counts() {
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&conn, "/tag.3mf", None).unwrap();
+        db::add_tag_to_file(&conn, id, "source").unwrap();
+        db::add_tag_to_file(&conn, id, "target").unwrap();
+        let app = tauri::test::mock_builder()
+            .manage(AppState {
+                import_jobs: ImportJobs::default(),
+                db: std::sync::Mutex::new(conn),
+                trash_dir: Default::default(), db_path: Default::default(), sensitive_dirs: vec![],
+            })
+            .build(tauri::test::mock_context(tauri::test::noop_assets())).unwrap();
+        assert_eq!(rename_tag(app.state(), "source".into(), "new".into()).unwrap(), 1);
+        let error = rename_tag(app.state(), "new".into(), "target".into()).unwrap_err();
+        assert!(error.expected);
+        assert_eq!(error.message, "tagNameExists");
+        assert_eq!(merge_tags(app.state(), "new".into(), "target".into()).unwrap(), 1);
+        assert!(merge_tags(app.state(), "target".into(), "target".into()).unwrap_err().expected);
+    }
+}

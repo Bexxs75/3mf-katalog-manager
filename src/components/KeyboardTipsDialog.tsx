@@ -17,9 +17,14 @@ export function KeyboardTipsDialog({ onClose }: { onClose: () => void }) {
   const rows: [string, TextKey][] = [
     ['/', 'keyboardSearch'], [`${modifier}+F`, 'keyboardSearch'], ['← → ↑ ↓', 'keyboardNavigate'],
     ['Enter', 'keyboardEnter'], [t('keyboardHomeEnd'), 'keyboardBoundary'], [t('keyboardSpace'), 'keyboardToggle'],
-    [`${modifier}+A`, 'keyboardSelectAll'], [isMacPlatform() ? `${t('keyboardDeleteKey')} / Cmd+⌫` : t('keyboardDeleteKey'), 'keyboardDelete'],
-    ['M', 'keyboardMove'], [`${modifier}+Z`, 'keyboardUndo'],
+    [`${modifier}+A`, 'keyboardSelectAll'], [t('modelMenuDeleteKey'), 'removeCatalog'], [isMacPlatform() ? `${t('modelMenuTrashKey')} / Cmd+⌫` : t('modelMenuTrashKey'), 'keyboardDelete'],
+    ['F2', 'keyboardRename'], ['F6 / M', 'keyboardMove'], [`${modifier}+Z`, 'keyboardUndo'],
+    // Only the desktop catalog syncs with the disk on F5; the web catalog has no such shortcut.
+    ...(import.meta.env.VITE_TARGET === 'web' ? [] : [['F5', 'keyboardSync'] as [string, TextKey]]),
     ['Esc', 'keyboardEscape'], ['Esc', 'keyboardSearchEscape'], ['?', 'keyboardOpenTips'],
+  ];
+  const sidebarRows: [string, TextKey][] = [
+    [`Enter / ${t('keyboardSpace')}`, 'keyboardSidebarSelect'], ['← → / ' + t('keyboardHomeEnd'), 'keyboardSidebarResize'],
   ];
   const tips: [TextKey, TextKey][] = [
     ['tipDragTitle', 'tipDragText'], ['tipBulkTitle', 'tipBulkText'], ['tipContextTitle', 'tipContextText'],
@@ -40,6 +45,11 @@ export function KeyboardTipsDialog({ onClose }: { onClose: () => void }) {
     <div id={`${id}-panel-0`} role="tabpanel" aria-labelledby={`${id}-tab-0`} hidden={tab !== 0} tabIndex={0}>
       <h3 className="ui-label text-[var(--ink-3)]">{t('keyboardCatalog')}</h3>
       {rows.filter(([, label]) => !isReadOnly() || !['keyboardToggle', 'keyboardSelectAll', 'keyboardDelete'].includes(label)).map(([key, label]) => <div key={`${key}-${label}`} className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-2 py-2 border-b border-[var(--line)]">
+        <span><kbd className="font-medium tabular-nums text-caption rounded border border-[var(--line-strong)] bg-[var(--panel-2)] px-1.5 py-0.5">{key}</kbd></span>
+        <span className="text-[var(--ink-2)]">{t(label)}</span>
+      </div>)}
+      <h3 className="mt-3 ui-label text-[var(--ink-3)]">{t('keyboardSidebar')}</h3>
+      {sidebarRows.map(([key, label]) => <div key={`${key}-${label}`} className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-2 py-2 border-b border-[var(--line)]">
         <span><kbd className="font-medium tabular-nums text-caption rounded border border-[var(--line-strong)] bg-[var(--panel-2)] px-1.5 py-0.5">{key}</kbd></span>
         <span className="text-[var(--ink-2)]">{t(label)}</span>
       </div>)}

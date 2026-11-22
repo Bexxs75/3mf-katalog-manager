@@ -1,3 +1,9 @@
+import { Select } from './Select';
+import { EmptyCatalogMenu, type EmptyCatalogActions } from './EmptyCatalogMenu';
+import { requestDiskSync } from '../lib/api/diskSync';
+import { isReadOnly } from '../lib/readOnly';
+import { useCanManageFiles, useCanEditMetadata, useCanUpload } from '../lib/webSession';
+import { selectionState, runModelSelection } from '../lib/modelMenuActions';
 import { useDetailPanelWidth } from '../hooks/useDetailPanelWidth';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { clampDetailPanelWidth } from '../lib/detailPanelWidthPreference';
@@ -53,6 +59,10 @@ import { usePrintTechnology } from '../hooks/PrintTechnologyContext';
 import { showsKind } from '../lib/printTechnology';
 
 interface CatalogWorkspaceProps {
+  surfaceActions?: EmptyCatalogActions;
+  onRenameTag?: (source: string, name: string) => Promise<number>;
+  onMergeTags?: (source: string, target: string) => Promise<number>;
+  onDeleteTag?: (tag: string) => Promise<void>;
   initialLoading?: boolean;
   initialLoadFailed?: boolean;
   detailPanel?: 'auto' | 'pinned';
@@ -205,6 +215,7 @@ interface CatalogWorkspaceProps {
 const NO_BUNDLES: Bundle[] = [];
 
 export function CatalogWorkspace({
+  surfaceActions, onDeleteTag, onRenameTag, onMergeTags,
   initialLoading = false, initialLoadFailed = false,
   detailPanel = 'auto', onCloseDetails, settingsPanel, printerRefreshKey = '',
   onOpenTips,
@@ -337,6 +348,12 @@ export function CatalogWorkspace({
   bundleSuggestionCount,
   onOpenBundleSuggestions,
 }: CatalogWorkspaceProps) {
+  const [emptyMenu, setEmptyMenu] = useState<{ x: number; y: number } | null>(null);
+  const [createFolderRequest, setCreateFolderRequest] = useState(0);
+  const canManage = useCanManageFiles();
+  const canEdit = useCanEditMetadata();
+  const canUpload = useCanUpload();
+
   const [narrow, setNarrow] = useState(() => window.matchMedia?.('(max-width: 999px)').matches ?? false);
   useEffect(() => {
     const media = window.matchMedia?.('(max-width: 999px)');
@@ -470,6 +487,7 @@ export function CatalogWorkspace({
   const showBundleSwitch = !!setCollapseBundles && (bundles.length > 0 || collapseBundles);
   // The selection survives filter changes, so the confirmation must say how much of it is out of sight.
   const visibleIds = useMemo(() => new Set(displayedModels.map(model => model.id)), [displayedModels]);
+  const bulkModels = useMemo(() => models.filter(model => selectedForBulk.has(model.id)), [models, selectedForBulk]);
   const selectedNames = useMemo(() => {
     const byId = new Map(models.map(model => [model.id, model.name]));
     return [...selectedForBulk].map(id => byId.get(id) ?? id);
@@ -574,6 +592,10 @@ export function CatalogWorkspace({
           setCollectionsGalleryOpen(false);
         }}
         onCreateFolder={onCreateFolder}
+        createFolderRequest={createFolderRequest}
+        onRenameTag={onRenameTag}
+        onMergeTags={onMergeTags}
+        onDeleteTag={onDeleteTag}
         dragOverCollectionId={dragOverCollectionId}
         onCollectionMouseEnter={handleCollectionMouseEnter}
         onCollectionMouseLeave={handleCollectionMouseLeave}
@@ -638,20 +660,20 @@ export function CatalogWorkspace({
             <span ref={filterHeadingRef} tabIndex={-1} className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
             {setUsage && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
               {t('licenseUsage')}
-              <select aria-label={t('licenseUsage')} value={usage ?? ''} onChange={event => setUsage((event.target.value || null) as LicenseUsage | null)}
+              <Select aria-label={t('licenseUsage')} value={usage ?? ''} onValueChange={value => setUsage((value || null) as LicenseUsage | null)}
                 className="max-w-full rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] px-2 py-1">
                 <option value="">{t('licenseUsageAll')}</option>
                 {(['commercial', 'private', 'unknown'] as const).map(value => <option key={value} value={value}>{t(usageLabels[value])}</option>)}
-              </select>
+              </Select>
             </label>}
             {setPrintStatus && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
               {t('printStatusFilter')}
-              <select aria-label={t('printStatusFilter')} value={printStatus ?? ''} onChange={event => setPrintStatus((event.target.value || null) as ModelFile['printStatus'] | null)}
+              <Select aria-label={t('printStatusFilter')} value={printStatus ?? ''} onValueChange={value => setPrintStatus((value || null) as ModelFile['printStatus'] | null)}
                 className="max-w-full rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] px-2 py-1">
                 <option value="">{t('printStatusAll')}</option>
                 <option value="printed">{t('printStatusPrinted')}</option>
                 <option value="not_printed">{t('printStatusNotPrinted')}</option>
-              </select>
+              </Select>
             </label>}
             {showBundleSwitch && (
               <div className="flex items-center gap-2 text-small text-[var(--ink-2)]">
@@ -672,11 +694,11 @@ export function CatalogWorkspace({
             )}
             {setFitPrinterId && fitPrinters.length > 0 && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
               {t('fitPrinterFilter')}
-              <select aria-label={t('fitPrinterFilter')} value={fitPrinter?.id ?? ''} onChange={event => setFitPrinterId(event.target.value || null)}
+              <Select aria-label={t('fitPrinterFilter')} value={fitPrinter?.id ?? ''} onValueChange={value => setFitPrinterId(value || null)}
                 className="max-w-full rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] px-2 py-1">
                 <option value="">{t('fitPrinterAll')}</option>
                 {fitPrinters.map(printer => <option key={printer.id} value={printer.id}>{printer.name}</option>)}
-              </select>
+              </Select>
             </label>}
             {printFilter && setPrintFilter && (
               <PrintDataFilterBar filter={printFilter} onChange={setPrintFilter} facets={printFacets}
@@ -707,7 +729,6 @@ export function CatalogWorkspace({
         {showBulkBar && (
           <div ref={barWrapRef} className="flex-none relative z-30">
           <BulkActionToolbar
-            compact={narrow}
             selectedCount={selectedForBulk.size}
             selectedIds={[...selectedForBulk]}
             selectedNames={selectedNames}
@@ -716,6 +737,15 @@ export function CatalogWorkspace({
             onConfirmBulkDeleteChange={setConfirmBulkDelete}
             onSelectAllVisible={selectAllVisible}
             onClearSelection={clearBulkSelection}
+            favorite={selectionState(bulkModels.map(model => model.favorite))}
+            queue={selectionState(bulkModels.map(model => model.queuePosition !== null))}
+            printed={selectionState(bulkModels.map(model => model.printStatus === 'printed'))}
+            onBulkToggleFavorite={() => {
+              const targets = bulkModels;
+              const all = targets.every(model => model.favorite);
+              void runModelSelection(targets.filter(model => model.favorite === all), model => toggleFavorite(model.id));
+            }}
+            onBulkRemoveFromQueue={() => { void runModelSelection([...selectedForBulk], removeFromQueue); }}
             onBulkAddToQueue={bulkAddToQueue}
             addToCollectionMenuOpen={addToCollectionMenuOpen}
             onAddToCollectionMenuOpenChange={setAddToCollectionMenuOpen}
@@ -805,7 +835,12 @@ export function CatalogWorkspace({
               : null}
           />
         ) : (
-          <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onClick={event => {
+          <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller tabIndex={-1} onContextMenu={event => {
+            if (event.defaultPrevented || duplicatesMode || toolOnly || view === 'groupedList') return;
+            if ((event.target as Element).closest('[data-model-id], button, input, a, [role="button"], [role="row"], [data-folder-header], [data-navigation-menu]')) return;
+            event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+            setEmptyMenu({ x: event.clientX, y: event.clientY });
+          }} onClick={event => {
             const target = event.target;
             if (!settingsPanel && detailPanel === 'auto' && selectedId && target instanceof Element &&
               !target.closest('[data-model-id], button, input, a, [role="button"], [role="row"], [data-folder-header], [data-model-list-header], [data-navigation-menu]')) closeDetails();
@@ -867,6 +902,7 @@ export function CatalogWorkspace({
               />
             ) : (
               <GroupedModelList
+                onToggleFavorite={toggleFavorite}
                 containerRef={containerRef}
                 models={displayedModels}
                 folders={folders}
@@ -890,6 +926,15 @@ export function CatalogWorkspace({
             )}
           </div>
         )}
+        {emptyMenu && <EmptyCatalogMenu {...emptyMenu} view={view} sort={sort} sortDirection={sortDirection} busy={jobActive}
+          onClose={() => setEmptyMenu(null)}
+          onSync={isReadOnly() ? undefined : requestDiskSync}
+          onImport={!isReadOnly() || canUpload ? surfaceActions?.onImport : undefined}
+          onNewFolder={canManage && (!isReadOnly() || folders.some(folder => folder.id === activeFolderId)) ? () => setCreateFolderRequest(value => value + 1) : undefined}
+          onSelectAll={canEdit ? selectAllVisible : undefined}
+          onViewChange={surfaceActions?.onViewChange}
+          onSortChange={activeCollection || toolView ? undefined : surfaceActions?.onSortChange}
+          onSortDirectionChange={surfaceActions?.onSortDirectionChange} />}
       </main>
 
       {settingsPanel ? settingsPanel(narrow || !!detailModel) : !detailModel && (detailPanel === 'pinned' || selectedId !== null) && (

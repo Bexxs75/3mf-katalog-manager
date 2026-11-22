@@ -1,10 +1,11 @@
+import { uiSettings } from '../lib/uiSettings';
 import { useCallback, useEffect, useState } from 'react';
 
 const STORAGE_KEY = '3mf-katalog-sidebar-expanded';
 
 function loadStored(): Set<string> {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
+    const parsed: unknown = JSON.parse(uiSettings.getItem(STORAGE_KEY) ?? '[]');
     return Array.isArray(parsed) ? new Set(parsed.filter((id): id is string => typeof id === 'string')) : new Set();
   } catch {
     return new Set();
@@ -14,7 +15,7 @@ function loadStored(): Set<string> {
 export function useFolderExpansion() {
   const [expanded, setExpanded] = useState(loadStored);
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...expanded])); } catch { /* Keep in-memory state when storage is unavailable. */ }
+    try { uiSettings.setItem(STORAGE_KEY, JSON.stringify([...expanded])); } catch { /* Keep in-memory state when storage is unavailable. */ }
   }, [expanded]);
   const isExpanded = useCallback((id: string) => expanded.has(id), [expanded]);
   const toggle = useCallback((id: string) => setExpanded((previous) => {

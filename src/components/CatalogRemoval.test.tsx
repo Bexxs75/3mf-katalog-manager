@@ -25,10 +25,10 @@ describe('folder catalog removal', () => {
     const row = screen.getByText('Parts').closest('[tabindex]')!;
     (row as HTMLElement).focus();
     fireEvent.keyDown(row, { key: 'F10', shiftKey: true });
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus dem Katalog entfernen' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus Katalog entfernen' }));
     expect(await screen.findByText('der Ordner „Parts“ mit 2 Unterordnern')).toBeTruthy();
     expect(screen.getByText('4 Modelle samt Tags und Einträgen im Druckprotokoll')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('remove_folder_from_catalog', { folderId: '1' }));
     await waitFor(() => expect(onRemoved).toHaveBeenCalledOnce());
     expect(onSelect).toHaveBeenCalledWith('all');
@@ -38,10 +38,10 @@ describe('folder catalog removal', () => {
     vi.mocked(invoke).mockResolvedValueOnce({ name: 'Parts', subfolderCount: 0, modelCount: 4 }).mockRejectedValueOnce({ expected: true, message: 'catalogBaseDirProtected' });
     render(<Provider><FolderTree folders={folders} totalModelCount={4} activeFolderId="all" onSelect={() => {}} onRemoved={() => {}} /></Provider>);
     fireEvent.contextMenu(screen.getByText('Parts'));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus dem Katalog entfernen' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus Katalog entfernen' }));
     await screen.findByRole('dialog');
     await screen.findByText('4 Modelle samt Tags und Einträgen im Druckprotokoll');
-    fireEvent.click(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
     expect(await screen.findByText(/Das ist der Speicherort des Katalogs/)).toBeTruthy();
     expect(screen.queryByText('Problem melden')).toBeNull();
   });
@@ -50,7 +50,7 @@ describe('folder catalog removal', () => {
     render(<Provider><FolderTree folders={folders} totalModelCount={4} activeFolderId="all" onSelect={() => {}} /></Provider>);
     const row = screen.getByText('Parts').closest('[tabindex]')!;
     fireEvent.contextMenu(row);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus dem Katalog entfernen' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Aus Katalog entfernen' }));
     await screen.findByText('4 Modelle samt Tags und Einträgen im Druckprotokoll');
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();

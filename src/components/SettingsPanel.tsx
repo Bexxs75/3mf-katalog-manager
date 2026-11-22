@@ -1,3 +1,7 @@
+import { SettingsToolsContext, SettingsTabContext, SettingRow, SettingActions, type SettingEntry } from './SettingsTools';
+import { SETTING_DEFAULTS, type SettingId } from '../lib/settingsSession';
+import { Select } from './Select';
+import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import { PrintTechnologySettings } from './PrintTechnologySettings';
 import { SlicerReportSettings } from './SlicerReportSettings';
 import { isReadOnly } from '../lib/readOnly';
@@ -10,11 +14,10 @@ import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useSettingsLayout } from '../hooks/useSettingsLayout';
 import { useImportLock } from '../hooks/ImportLockContext';
-import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { invoke } from '../lib/transport';
-import type { SlicerConfig } from '../types';
+import type { SlicerConfig, ViewMode, SortKey, SortDirection } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 import type { UiDensity } from '../hooks/UiDensityContext';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
@@ -54,6 +57,14 @@ export interface SettingsPanelProps {
   onOpenPrinters: () => void;
   /** Told when the Thingiverse switch changes, so the rail entry follows at once. */
   onThingiverseEnabledChange?: (enabled: boolean) => void;
+  view?: ViewMode;
+  onViewChange?: (value: ViewMode) => void;
+  sort?: SortKey;
+  onSortChange?: (value: SortKey) => void;
+  sortDirection?: SortDirection;
+  onSortDirectionChange?: (value: SortDirection) => void;
+  collapseBundles?: boolean;
+  onCollapseBundlesChange?: (value: boolean) => void;
   detailPanel?: 'auto' | 'pinned';
   onDetailPanelChange?: (mode: 'auto' | 'pinned') => void;
   singleKeyShortcuts?: boolean;
@@ -107,6 +118,7 @@ const LANGUAGE_LABELS: Record<Language, string> = {
 
 export function SettingsPanel({
   overlay: forceOverlay, onClose, onOpenPrinters, onThingiverseEnabledChange,
+  view = 'grid', onViewChange, sort = 'name', onSortChange, sortDirection = 'asc', onSortDirectionChange, collapseBundles = true, onCollapseBundlesChange,
   detailPanel = 'auto', onDetailPanelChange,
   singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips, onOpenWhatsNew,
   request, initialTab, onTabChange,
@@ -130,6 +142,28 @@ export function SettingsPanel({
   })[opt];
   const { language, setLanguage } = useLanguage();
   const web = import.meta.env.VITE_TARGET === 'web';
+  const [query, setQuery] = useState('');
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [entries, setEntries] = useState<Record<string, SettingEntry & { tab: SettingsTab }>>({});
+  const [sections, setSections] = useState<Record<string, { tab: SettingsTab; visible: boolean }>>({});
+  const report = useCallback((id: SettingId, tab: SettingsTab, entry: SettingEntry | null) => {
+    setEntries(previous => { const next = { ...previous }; if (entry) next[id] = { ...entry, tab }; else delete next[id]; return next; });
+  }, []);
+  const reportSection = useCallback((id: string, tab: SettingsTab, visible: boolean | null) => {
+    setSections(previous => {
+      if (previous[id]?.visible === visible && previous[id]?.tab === tab) return previous;
+      const next = { ...previous }; if (visible === null) delete next[id]; else next[id] = { tab, visible }; return next;
+    });
+  }, []);
+  const tools = useMemo(() => ({ query, report, reportSection }), [query, report, reportSection]);
+  const count = Object.values(entries).filter(entry => entry.changed).length;
+  const resettable = Object.values(entries).filter(entry => entry.reset && !entry.disabled);
+  const resetAll = async () => {
+    setResetting(true);
+    try { for (const entry of resettable) await entry.reset?.(); }
+    finally { setResetting(false); setConfirmReset(false); }
+  };
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>(() => {
     const wanted = request ? SETTINGS_TARGETS[request.target].tab : initialTab;
@@ -145,7 +179,7 @@ export function SettingsPanel({
   useLayoutEffect(() => () => {
     if (trigger?.isConnected) trigger.focus({ preventScroll: true });
   }, [trigger]);
-  const [visitedTabs, setVisitedTabs] = useState(() => new Set<SettingsTab>([activeSettingsTab]));
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set<SettingsTab>(TABS));
 
   // After a slicer is removed the focus moves on to the next entry, or to the add button when the last one went.
   const slicerRadioRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -165,6 +199,7 @@ export function SettingsPanel({
   const [navTick, setNavTick] = useState(0);
   const goTo = (target: SettingsTarget) => {
     const { tab, section } = SETTINGS_TARGETS[target];
+    setQuery('');
     pendingSection.current = section;
     if (TABS.includes(tab)) selectTab(tab);
     setNavTick(n => n + 1);
@@ -186,12 +221,19 @@ export function SettingsPanel({
     pendingSection.current = null;
     const heading = document.getElementById(settingsHeadingId(section as Parameters<typeof settingsHeadingId>[0]));
     if (!heading) { tabRefs.current[activeSettingsTab]?.focus(); return; }
+    heading.closest('section')?.querySelectorAll('details').forEach(details => { details.open = true; });
     heading.focus({ preventScroll: true });
     heading.scrollIntoView?.({ block: 'start' });
+    // An opener's context menu may restore focus in its later cleanup. Reclaim
+    // only focus outside this panel; never override a user's next control here.
+    const focusAfterOpener = setTimeout(() => {
+      if (heading.isConnected && !panelRef.current?.contains(document.activeElement)) heading.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(focusAfterOpener);
   }, [activeSettingsTab, navTick]);
 
   // Move focus into the panel when it opens so keyboard and screen reader users land in it.
-  useEffect(() => { if (!pendingSection.current) tabRefs.current[activeSettingsTab]?.focus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!request && !pendingSection.current) tabRefs.current[activeSettingsTab]?.focus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Docked, Escape closes the panel from inside it, or when nothing else holds focus. A dialog or an
   // open menu handles Escape itself, so leave it alone then. As an overlay the modal behavior does it.
@@ -209,15 +251,19 @@ export function SettingsPanel({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose, overlay]);
 
+  const matchingTabs = TABS.filter(tab => !query.trim() || Object.values(sections).some(section => section.tab === tab && section.visible));
+  useEffect(() => {
+    if (matchingTabs.length && !matchingTabs.includes(activeSettingsTab)) selectTab(matchingTabs[0]);
+  }, [query, sections, activeSettingsTab]); // Search keeps keyboard navigation on a matching tab.
   const onTabKeyDown = (event: ReactKeyboardEvent, index: number) => {
-    const target = event.key === 'ArrowRight' ? (index + 1) % TABS.length
-      : event.key === 'ArrowLeft' ? (index + TABS.length - 1) % TABS.length
+    const target = event.key === 'ArrowRight' ? (index + 1) % matchingTabs.length
+      : event.key === 'ArrowLeft' ? (index + matchingTabs.length - 1) % matchingTabs.length
       : event.key === 'Home' ? 0
-      : event.key === 'End' ? TABS.length - 1 : null;
+      : event.key === 'End' ? matchingTabs.length - 1 : null;
     if (target === null) return;
     event.preventDefault();
-    selectTab(TABS[target]);
-    tabRefs.current[TABS[target]]?.focus();
+    selectTab(matchingTabs[target]);
+    tabRefs.current[matchingTabs[target]]?.focus();
   };
 
   const tabLabels: Record<SettingsTab, string> = {
@@ -226,13 +272,14 @@ export function SettingsPanel({
   };
 
   const printersSection = (
-    <SettingsSection id="printers" title={t('settingsSecPrinters')}>
+    <SettingsSection id="printers" help={t('settingsHelpPrinters')} title={t('settingsSecPrinters')}>
       <p className="text-small text-[var(--ink-2)]">{t('settingsPrintersMovedHint')}</p>
       <button className="mt-2 hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--accent)] focus-visible:outline-2" onClick={onOpenPrinters}>{t('pmOpen')}</button>
     </SettingsSection>
   );
 
   return (
+    <SettingsToolsContext.Provider value={tools}>
     <ModalDialogOwner.Provider value={dialogRef}>
     <div ref={dialogRef} role={overlay ? 'dialog' : 'complementary'} aria-modal={overlay ? true : undefined} aria-label={t('settingsTitle')}
       style={{ '--settings-panel-width': layout.width === null ? '100%' : `${layout.width}px`, '--settings-pad': `${layout.pad}px` } as CSSProperties}
@@ -242,30 +289,38 @@ export function SettingsPanel({
         <div className="flex-none flex items-center justify-between settings-panel-pad-x pt-3.5 pb-2.5">
           <h2 className="text-[length:var(--font-size-title)] font-semibold text-[var(--ink)]">{t('settingsTitle')}</h2>
           <button type="button" aria-label={t('settingsClose')} title={`${t('settingsClose')} (Esc)`} onClick={onClose}
-            className="w-[26px] h-[26px] grid place-items-center rounded-[3px] text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
-            <Icon name="close" size={16} />
+            className="min-h-[26px] px-2 grid place-items-center rounded-[3px] text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+            {t('settingsClose')}
           </button>
         </div>
+        <label className="settings-panel-margin-x mb-2 text-small">
+          <span className="sr-only">{t('settingsSearch')}</span>
+          <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settingsSearch')}
+            className="w-full rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] px-2 py-1 focus-visible:outline-2" />
+        </label>
+        {query.trim() && !matchingTabs.length && <p role="status" className="settings-panel-margin-x mb-2">{t('settingsNoResults')}</p>}
         <div role="tablist" aria-label={t('settingsTabsLabel')} className="flex-none flex flex-wrap p-0.5 gap-0.5 settings-panel-margin-x mb-3 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-          {TABS.map((key, index) => (
+          {matchingTabs.map((key, index) => (
             <button
               key={key}
               ref={node => { tabRefs.current[key] = node; }}
               type="button" role="tab" id={`settings-tab-${key}`} aria-controls="settings-tabpanel"
+              aria-label={`${tabLabels[key]}${Object.values(entries).some(entry => entry.tab === key && entry.changed) ? ` (${Object.values(entries).filter(entry => entry.tab === key && entry.changed).length})` : ''}`}
               aria-selected={activeSettingsTab === key} tabIndex={activeSettingsTab === key ? 0 : -1}
               onClick={() => selectTab(key)}
               onKeyDown={event => onTabKeyDown(event, index)}
               className={`${segBase} flex-auto whitespace-nowrap !h-auto min-h-[26px] [@media(pointer:coarse)]:min-h-[44px] !px-2 !py-1 text-caption focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${activeSettingsTab === key ? segActive : segInactive}`}
             >
-              {tabLabels[key]}
+              {tabLabels[key]}{Object.values(entries).some(entry => entry.tab === key && entry.changed) && <span>{` (${Object.values(entries).filter(entry => entry.tab === key && entry.changed).length})`}</span>}
             </button>
           ))}
         </div>
-        <div ref={bodyRef} role="tabpanel" id="settings-tabpanel" aria-labelledby={`settings-tab-${activeSettingsTab}`}
+        <div ref={bodyRef} hidden={!matchingTabs.length} role="tabpanel" id="settings-tabpanel" aria-labelledby={`settings-tab-${activeSettingsTab}`}
           className="flex-1 min-h-0 overflow-y-auto scrollbar-stable settings-panel-pad-x pb-4">
           {visitedTabs.has('general') && (
-            <div hidden={activeSettingsTab !== 'general'}>
-              <SettingsSection id="appearance" title={t('settingsSecAppearance')}>
+            <SettingsTabContext.Provider value={{ tab: 'general', label: tabLabels.general }}><div hidden={activeSettingsTab !== 'general'}>
+              <SettingsSection id="appearance" help={t('settingsHelpAppearance')} title={t('settingsSecAppearance')}>
+                <SettingRow id="theme" value={themeSetting} label={t('themeLegend')} onReset={() => onThemeChange(SETTING_DEFAULTS.theme)}>
                 <RadioSegments
                   legend={t('themeLegend')}
                   options={(['system', 'white', 'light', 'slate', 'dark'] as ThemeSetting[]).map(opt => ({
@@ -284,6 +339,8 @@ export function SettingsPanel({
                       )}
                 </div>
 
+                </SettingRow>
+                <SettingRow id="density" value={uiDensity} label={t('densityLegend')} onReset={() => onUiDensityChange(SETTING_DEFAULTS.density)}>
                 <RadioSegments
                   className="mt-4"
                   legend={t('densityLegend')}
@@ -297,6 +354,8 @@ export function SettingsPanel({
                   {uiDensity === 'compact' ? t('densityDescriptionCompact') : t('densityDescriptionComfort')}
                 </div>
 
+                </SettingRow>
+                <SettingRow id="display" value={displayPreference} label={t('displayPreferenceTitle')} onReset={() => onDisplayPreferenceChange(SETTING_DEFAULTS.display)}>
                 <RadioSegments
                   className="mt-4"
                   legend={t('displayPreferenceTitle')}
@@ -312,19 +371,44 @@ export function SettingsPanel({
                     : t('displayPreferenceDescriptionRender')}
                 </div>
 
-                {onDetailPanelChange && <RadioSegments
+                </SettingRow>
+                {onDetailPanelChange && <SettingRow id="detail" value={detailPanel} label={t('settingsDetailDefault')} onReset={() => onDetailPanelChange(SETTING_DEFAULTS.detail)}>
+                <RadioSegments
                   className="mt-4"
-                  legend={t('detailPanelLabel')}
+                  legend={t('settingsDetailDefault')}
                   options={(['auto', 'pinned'] as const).map(mode => ({
                     value: mode, label: t(mode === 'auto' ? 'detailPanelAuto' : 'detailPanelPinned'),
                   }))}
                   value={detailPanel}
                   onChange={onDetailPanelChange}
-                />}
-                {onDetailPanelChange && <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">{t('detailPanelHint')}</div>}
+                />
+                <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">{t('settingsDetailDefaultHelp')}</div>
+                </SettingRow>}
+                {onViewChange && <SettingRow id="view" value={view} label={t('settingsView')} onReset={() => onViewChange(SETTING_DEFAULTS.view)}>
+                  <label id="settings-view">{t('settingsView')}</label>
+                  <Select aria-labelledby="settings-view" value={view} onValueChange={value => onViewChange(value as ViewMode)}>
+                    <option value="grid">{t('viewGrid')}</option><option value="groupedGrid">{t('viewFolder')}</option><option value="groupedList">{t('viewList')}</option>
+                  </Select>
+                </SettingRow>}
+                {onSortChange && <SettingRow id="sort" value={sort} label={t('settingsSort')} onReset={() => onSortChange(SETTING_DEFAULTS.sort)}>
+                  <label id="settings-sort">{t('settingsSort')}</label>
+                  <Select aria-labelledby="settings-sort" value={sort} onValueChange={value => onSortChange(value as SortKey)}>
+                    <option value="name">{t('sortName')}</option><option value="imported">{t('sortImported')}</option><option value="modified">{t('sortModified')}</option><option value="viewed">{t('sortLastViewed')}</option><option value="printStatus">{t('sortPrintStatus')}</option><option value="size">{t('sortSize')}</option><option value="vol">{t('sortVolume')}</option>
+                  </Select>
+                </SettingRow>}
+                {onSortDirectionChange && <SettingRow id="direction" value={sortDirection} label={t('settingsDirection')} onReset={() => onSortDirectionChange(SETTING_DEFAULTS.direction)}>
+                  <label id="settings-direction">{t('settingsDirection')}</label>
+                  <Select aria-labelledby="settings-direction" value={sortDirection} onValueChange={value => onSortDirectionChange(value as SortDirection)}>
+                    <option value="asc">{t('settingsAscending')}</option><option value="desc">{t('settingsDescending')}</option>
+                  </Select>
+                </SettingRow>}
+                {onCollapseBundlesChange && <SettingRow id="bundles" value={collapseBundles} label={t('bundleCollapseToggle')} onReset={() => onCollapseBundlesChange(SETTING_DEFAULTS.bundles)}>
+                  <ToggleSwitch label={t('bundleCollapseToggle')} checked={collapseBundles} onChange={onCollapseBundlesChange} /> <span>{t('bundleCollapseToggle')}</span>
+                </SettingRow>}
               </SettingsSection>
 
-              <SettingsSection id="language" title={t('settingsSecLanguage')}>
+              <SettingsSection id="language" help={t('settingsHelpLanguage')} title={t('settingsSecLanguage')}>
+                <SettingRow id="language" value={language} label={t('languageTitle')} onReset={() => setLanguage(SETTING_DEFAULTS.language)}>
                 <RadioSegments
                   grid
                   hideLegend
@@ -333,40 +417,41 @@ export function SettingsPanel({
                   value={language}
                   onChange={setLanguage}
                 />
+                </SettingRow>
               </SettingsSection>
 
-              <SettingsSection id="controls" title={t('settingsSecControls')}>
-                {!web && <>
+              <SettingsSection id="controls" help={t('settingsHelpControls')} title={t('settingsSecControls')}>
+                {!web && <SettingRow id="shortcuts" value={singleKeyShortcuts} label={t('singleKeyShortcutsTitle')} onReset={onSingleKeyShortcutsChange ? () => onSingleKeyShortcutsChange(SETTING_DEFAULTS.shortcuts) : undefined}>
                   <div className="flex items-center justify-between gap-2 text-small">
                     <span className="font-semibold">{t('singleKeyShortcutsTitle')}</span>
                     <ToggleSwitch checked={singleKeyShortcuts} label={t('singleKeyShortcutsTitle')} aria-describedby="single-key-shortcuts-desc"
                       onChange={next => onSingleKeyShortcutsChange?.(next)} />
                   </div>
                   <p id="single-key-shortcuts-desc" className="mt-1 text-small text-[var(--ink-2)] mb-3">{t('singleKeyShortcutsDescription')}</p>
-                </>}
+                </SettingRow>}
                 <button onClick={onOpenTips} className="w-full min-h-8 py-1 border border-[var(--line-strong)] rounded cursor-pointer">{t('keyboardTipsTitle')}</button>
               </SettingsSection>
 
-              <SettingsSection id="printMethod" title={t('settingsSecPrintMethod')}>
+              <SettingsSection id="printMethod" help={t('settingsHelpPrintMethod')} title={t('settingsSecPrintMethod')}>
                 <PrintTechnologySettings />
               </SettingsSection>
 
               {web && printersSection}
 
               {!web && (
-                <SettingsSection id="program" title={t('settingsSecProgram')} hideWhenEmpty>
+                <SettingsSection id="program" help={t('settingsHelpProgram')} advanced title={t('settingsSecProgram')} hideWhenEmpty>
                   {!container && <CloseBehaviorSettings />}
                   <LinuxMenuSettings />
                 </SettingsSection>
               )}
-            </div>
+            </div></SettingsTabContext.Provider>
           )}
 
           {visitedTabs.has('catalog') && (
-            <div hidden={activeSettingsTab !== 'catalog'}>
+            <SettingsTabContext.Provider value={{ tab: 'catalog', label: tabLabels.catalog }}><div hidden={activeSettingsTab !== 'catalog'}>
               {!web && (
                 <>
-                  <SettingsSection id="storage" title={t('settingsSecStorage')}>
+                  <SettingsSection id="storage" help={t('settingsHelpStorage')} title={t('settingsSecStorage')}>
                     {catalogBaseDir && container
                       ? <div className="text-caption text-[var(--ink-3)] settings-path mb-1.5">{t('containerCatalogPath').replace('{path}', displayName(catalogBaseDir))}</div>
                       : <div className={`${catalogBaseDir ? 'font-code' : 'text-caption'} text-[var(--ink-3)] settings-path mb-1.5`}>
@@ -389,23 +474,23 @@ export function SettingsPanel({
                       </button>
                     )}
                   </SettingsSection>
-                  <SettingsSection id="sources" title={t('settingsSecSources')}><SourceFoldersSettings /></SettingsSection>
-                  <SettingsSection id="import" title={t('settingsSecImport')}><ImportRenameSetting /></SettingsSection>
-                  <SettingsSection id="sync" title={t('settingsSecSync')}><DiskSyncSettings /></SettingsSection>
+                  <SettingsSection id="sources" help={t('settingsHelpSources')} title={t('settingsSecSources')}><SourceFoldersSettings /></SettingsSection>
+                  <SettingsSection id="import" help={t('settingsHelpImport')} title={t('settingsSecImport')}><ImportRenameSetting /></SettingsSection>
+                  <SettingsSection id="sync" help={t('settingsHelpSync')} title={t('settingsSecSync')}><DiskSyncSettings /></SettingsSection>
                 </>
               )}
-              <SettingsSection id="autoTags" title={t('settingsSecAutoTags')}><AutoTaggingSetting /></SettingsSection>
-              <SettingsSection id="printData" title={t('settingsSecPrintData')}><PrintDataRereadSettings /></SettingsSection>
-            </div>
+              <SettingsSection id="autoTags" help={t('settingsHelpAutoTags')} title={t('settingsSecAutoTags')}><AutoTaggingSetting /></SettingsSection>
+              <SettingsSection id="printData" help={t('settingsHelpPrintData')} title={t('settingsSecPrintData')}><PrintDataRereadSettings /></SettingsSection>
+            </div></SettingsTabContext.Provider>
           )}
 
           {!web && visitedTabs.has('services') && (
-            <div hidden={activeSettingsTab !== 'services'}>
+            <SettingsTabContext.Provider value={{ tab: 'services', label: tabLabels.services }}><div hidden={activeSettingsTab !== 'services'}>
               {container && <p className="mb-2 p-2 rounded border border-[var(--line)] bg-[var(--panel-2)] text-small text-[var(--ink-2)]">{t('containerSlicerUnavailable')}</p>}
               {!container && (
                 <>
-                  <SettingsSection id="handover" title={t('settingsSecHandover')} experimental><DragOutSetting /></SettingsSection>
-                  <SettingsSection id="slicers" title={t('settingsSecSlicers')}>
+                  <SettingsSection id="handover" help={t('settingsHelpHandover')} advanced title={t('settingsSecHandover')} experimental><DragOutSetting /></SettingsSection>
+                  <SettingsSection id="slicers" help={t('settingsHelpSlicers')} title={t('settingsSecSlicers')}>
                     {slicers.length === 0 ? (
                       <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">
                         {t('noSlicersConfigured')}
@@ -446,9 +531,9 @@ export function SettingsPanel({
                                   onRemoveSlicer(s.id);
                                 }}
                                 aria-label={t('removeSlicerAria').replace('{name}', s.name)}
-                                className="flex-none w-8 h-8 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                                className="flex-none px-2 min-h-8 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
                               >
-                                <Icon name="close" size={14} />
+                                {t('sfRemove')}
                               </button>
                             </div>
                           );
@@ -456,6 +541,7 @@ export function SettingsPanel({
                         </div>
                       </fieldset>
                     )}
+                    <SettingActions id="primarySlicer" value={primarySlicerId} label={t('slicerDefaultLegend')} />
                     <button ref={addSlicerRef} onClick={onAddSlicer} className={`mt-2 ${dashedButton}`}>
                       {t('addSlicer')}
                     </button>
@@ -465,21 +551,21 @@ export function SettingsPanel({
                       </div>
                     )}
                   </SettingsSection>
-                  <SettingsSection id="slicerReports" title={t('settingsSecSlicerReports')}><SlicerReportSettings active={activeSettingsTab === 'services'} /></SettingsSection>
+                  <SettingsSection id="slicerReports" help={t('settingsHelpSlicerReports')} advanced title={t('settingsSecSlicerReports')}><SlicerReportSettings active={activeSettingsTab === 'services'} /></SettingsSection>
                 </>
               )}
               {printersSection}
-              <SettingsSection id="thingiverse" title={t('settingsSecThingiverse')} experimental>
+              <SettingsSection id="thingiverse" help={t('settingsHelpThingiverse')} advanced title={t('settingsSecThingiverse')} experimental>
                 <ThingiverseSettings onEnabledChange={enabled => onThingiverseEnabledChange?.(enabled)} />
               </SettingsSection>
-            </div>
+            </div></SettingsTabContext.Provider>
           )}
 
-          {visitedTabs.has('maintenance') && <div hidden={activeSettingsTab !== 'maintenance'}>{web ? (
-            <SettingsSection id="webBackup" title={t('settingsSecWebBackup')}><WebCatalogBackup /></SettingsSection>
+          {visitedTabs.has('maintenance') && <SettingsTabContext.Provider value={{ tab: 'maintenance', label: tabLabels.maintenance }}><div hidden={activeSettingsTab !== 'maintenance'}>{web ? (
+            <SettingsSection id="webBackup" help={t('settingsHelpWebBackup')} title={t('settingsSecWebBackup')}><WebCatalogBackup /></SettingsSection>
           ) : (
             <>
-              <SettingsSection id="check" title={t('settingsSecCheck')}>
+              <SettingsSection id="check" help={t('settingsHelpCheck')} title={t('settingsSecCheck')}>
                 <button
                   onClick={onScanCatalogIssues}
                   disabled={cleanupScanning} {...lockProps}
@@ -496,7 +582,7 @@ export function SettingsPanel({
                 )}
               </SettingsSection>
 
-              <SettingsSection id="backup" title={t('settingsSecBackup')}>
+              <SettingsSection id="backup" help={t('settingsHelpBackup')} title={t('settingsSecBackup')}>
                 <button onClick={onExportCatalog} className={dashedButton}>
                   {t('exportCatalogButton')}
                 </button>
@@ -539,27 +625,27 @@ export function SettingsPanel({
                 )}
               </SettingsSection>
 
-              <SettingsSection id="reset" title={t('settingsSecReset')} danger>
+              <SettingsSection id="reset" help={t('settingsHelpReset')} title={t('settingsSecReset')} danger>
                 <CatalogResetSection modelCount={catalogModelCount} folderCount={catalogFolderCount}
                   onExport={onExportCatalog} onReset={onCatalogReset} backupError={catalogBackupError} />
               </SettingsSection>
             </>
-          )}</div>}
+          )}</div></SettingsTabContext.Provider>}
 
           {visitedTabs.has('info') && (
-            <div hidden={activeSettingsTab !== 'info'}>
-              <SettingsSection id="version" title={t(web ? 'settingsSecVersionWeb' : 'settingsSecVersion')}>
+            <SettingsTabContext.Provider value={{ tab: 'info', label: tabLabels.info }}><div hidden={activeSettingsTab !== 'info'}>
+              <SettingsSection id="version" help={t('settingsHelpVersion')} title={t(web ? 'settingsSecVersionWeb' : 'settingsSecVersion')}>
                 {web ? <WebVersionRow /> : <UpdatePanel view={update} />}
                 <button className="mt-2 w-full min-h-8 border border-[var(--line-strong)] rounded cursor-pointer" onClick={onOpenWhatsNew}>{t('whatsNew')}</button>
               </SettingsSection>
               {!web && !container && update.preview === false && (
-                <SettingsSection id="preRelease" title={t('settingsSecPreRelease')}>
+                <SettingsSection id="preRelease" help={t('settingsHelpPreRelease')} advanced title={t('settingsSecPreRelease')}>
                   <UpdateChannelControl disabled={isUpdateCheckDisabled(update.phase)} onExport={onExportCatalog} exportError={catalogBackupError} onChanged={update.checkNow} />
                 </SettingsSection>
               )}
-              {!web && <SettingsSection id="help" title={t('settingsSecHelp')}><DiagnosticsSettings /></SettingsSection>}
-              {!web && <SettingsSection id="appData" title={t('settingsSecAppData')}><InfoFolders /></SettingsSection>}
-              <SettingsSection id="about" title={t('settingsSecAbout')}>
+              {!web && <SettingsSection id="help" help={t('settingsHelpHelp')} advanced title={t('settingsSecHelp')}><DiagnosticsSettings /></SettingsSection>}
+              {!web && <SettingsSection id="appData" help={t('settingsHelpAppData')} advanced title={t('settingsSecAppData')}><InfoFolders /></SettingsSection>}
+              <SettingsSection id="about" help={t('settingsHelpAbout')} title={t('settingsSecAbout')}>
                 <div className="flex justify-between text-caption pb-2 text-[var(--ink-2)]">
                   <span>{t('infoSourceCodeLabel')}</span>
                   <ExternalLink url="https://github.com/Bexxs75/3mf-katalog-manager/" label="GitHub"
@@ -576,9 +662,6 @@ export function SettingsPanel({
                     className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center gap-1 cursor-pointer font-semibold"
                     style={{ color: '#5865F2' }}
                   >
-                    <svg width="13" height="13" viewBox="0 0 127.14 96.36" fill="currentColor">
-                    <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z" />
-                    </svg>
                     Discord
                   </ExternalLink>
                 </div>
@@ -606,12 +689,23 @@ export function SettingsPanel({
                   </span>
                 </div>
               </SettingsSection>
-            </div>
+            </div></SettingsTabContext.Provider>
           )}
         </div>
+        <footer className="flex-none settings-panel-pad-x py-2 border-t border-[var(--line)] text-small">
+          <span role="status">{t('settingsChangedCount').replace('{n}', String(count))}</span>{' · '}
+          <button className="underline disabled:opacity-40" disabled={!resettable.length || resetting} onClick={() => setConfirmReset(true)}>{t('settingsResetAll')}</button>
+          {Object.values(entries).some(entry => !entry.baselineKnown) && <p className="mt-1 text-caption text-[var(--ink-2)]">{t('settingsBaselineUnknown')}</p>}
+        </footer>
+        {confirmReset && <CatalogActionDialog title={t('settingsResetAll')} onClose={() => { if (!resetting) setConfirmReset(false); }}>
+          <p>{t('settingsResetQuestion')}</p>
+          <button className={catalogActionButton} disabled={resetting} onClick={() => void resetAll()}>{t('settingsResetAll')}</button>
+          <button className={catalogActionButton} data-initial-focus disabled={resetting} onClick={() => setConfirmReset(false)}>{t('cancel')}</button>
+        </CatalogActionDialog>}
       </aside>
     </div>
     </ModalDialogOwner.Provider>
+    </SettingsToolsContext.Provider>
   );
 }
 

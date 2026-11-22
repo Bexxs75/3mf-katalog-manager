@@ -1,3 +1,4 @@
+import { chooseSelect, selectOptions } from '../test/select';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -232,7 +233,7 @@ describe('print history: result and reason', () => {
     const dialog = screen.getByRole('dialog', { name: 'Grund bearbeiten: cancelled.gcode' });
     const select = within(dialog).getByRole('combobox', { name: 'Grund (optional)' });
     expect(select).toHaveValue('');
-    fireEvent.change(select, { target: { value: 'other' } });
+    chooseSelect(select, 'other');
     fireEvent.change(within(dialog).getByLabelText('Kurztext (höchstens 200 Zeichen)'), { target: { value: 'Stromausfall im Haus' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_printer_job_failure', { jobId: '2', reason: 'other', note: 'Stromausfall im Haus' }));
@@ -250,7 +251,7 @@ describe('print history: result and reason', () => {
     const dialog = screen.getByRole('dialog');
     const select = within(dialog).getByRole('combobox', { name: 'Grund (optional)' });
     expect(select).toHaveValue('clog');
-    fireEvent.change(select, { target: { value: '' } });
+    chooseSelect(select, '');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_printer_job_failure', { jobId: '2', reason: null, note: null }));
   });
@@ -576,9 +577,9 @@ it('changes the type of a Bambu unit inside the family and sends nothing when it
   fireEvent.click(within(units()).getAllByRole('button', { name: 'Bearbeiten' })[0]);
   let dialog = screen.getByRole('dialog');
   const select = within(dialog).getByLabelText(/^Art/);
-  expect(within(select).getAllByRole('option').map(o => o.getAttribute('value'))).toEqual(['bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro']);
+  expect(selectOptions(select).map(o => o.getAttribute('data-value'))).toEqual(['bambu_ams', 'bambu_ams_lite', 'bambu_ams_2_pro']);
   expect(dialog).toHaveTextContent('Fächer und eingelegte Spulen bleiben unverändert.');
-  fireEvent.change(select, { target: { value: 'bambu_ams_2_pro' } });
+  chooseSelect(select, 'bambu_ams_2_pro');
   fireEvent.submit(dialog.querySelector('form')!);
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_unit', { unitId: 'u1', name: 'AMS A', slotCount: null, kind: 'bambu_ams_2_pro' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

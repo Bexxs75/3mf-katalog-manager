@@ -7,6 +7,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
+## [Unreleased]
+
+## [0.18.6] - 2026-11-22
+
+### Fixed
+
+- The What’s new window appears again after an update: version 0.18.5 shipped without its bundled release notes, so the window stayed empty and the version marker was not advanced.
+
+## [0.18.5] - 2026-11-22
+
+### Changed
+
+- Desktop interface preferences are stored in `ui-settings.json` in the app data folder, with automatic migration from the WebView and compatible catalog backups. Web preferences remain in each browser’s localStorage, independently of other users, devices and server write permissions; there is no settings migration or server settings file in the web version. Desktop theme, language and density retain a synchronous startup cache; preview crash guards remain local. Other desktop preferences are not mirrored back, so their browser fallback may be outdated.
+
+- Update installation first flushes queued preferences with a short deadline. Forced exit or a timed-out flush may still lose the last change. Startup uses local fallback values after a three-second settings deadline; incompatible schemas retain those local values without backend writes. Authoritative backend snapshots clear absent boot-cache keys. Newer settings schemas remain untouched and write-protected; oversized unknown fields in the current schema no longer block all writes.
+
+- New app icon.
+
+- Consistent wording and accessibility cleanup: "Remove from catalog" keeps the file, "Move to trash" removes it, and "Delete" is left to collections and tags. The slicer action reads "Open in slicer" in German as well ("Im Slicer öffnen"), the disk comparison is called "Sync with disk" everywhere, the header title and the Printer Manager and Material Manager labels are translated, and the help dialog lists F5, F2 and the sidebar keys with a corrected sorting tip. Enter now submits the restock popover, the printer slot popup is a labelled group instead of a menu, the three view buttons report their pressed state, the two copy buttons on a Thingiverse page are told apart for screen readers, and the emojis in the detail panel are gone. The web folder dialogs take their texts from the regular language files.
+
 ## [0.18.4] - 2026-11-18
 
 ### Changed
@@ -862,6 +882,18 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [Unreleased]
+
+### Geändert
+
+- Oberflächen-Einstellungen der Desktop-App werden in `ui-settings.json` im App-Datenordner gespeichert, automatisch aus dem WebView übernommen und mit kompatiblen Katalogsicherungen gesichert. Im Web bleiben Einstellungen im localStorage jedes Browsers, unabhängig von anderen Benutzern, Geräten und Server-Schreibrechten; dort gibt es weder Einstellungsmigration noch eine serverseitige Einstellungsdatei. Desktop-Farbschema, Sprache und Dichte behalten einen synchronen Startcache; Vorschau-Absturzmarker bleiben lokal. Andere Desktop-Einstellungen werden nicht zurückgespiegelt; ihr Browser-Rückfallstand kann veraltet sein.
+
+- Vor der Updateinstallation werden ausstehende Einstellungen mit kurzer Frist geschrieben. Erzwungenes Beenden oder eine abgelaufene Schreibfrist kann die letzte Änderung weiterhin verlieren. Der Start verwendet nach drei Sekunden ohne Einstellungsantwort lokale Rückfallwerte; bei inkompatiblem Schema bleiben diese ohne Backend-Schreibzugriffe nutzbar. Maßgebliche Backendstände entfernen fehlende Bootcache-Schlüssel. Neuere Einstellungsschemata bleiben unverändert und schreibgeschützt; überzählige unbekannte Felder im aktuellen Schema blockieren nicht länger alle Schreibzugriffe.
+
+- Neues App-Icon.
+
+- Einheitliche Begriffe und Barrierefreiheit: „Aus Katalog entfernen“ lässt die Datei liegen, „In den Papierkorb“ entfernt sie, und „Löschen“ bleibt Sammlungen und Tags vorbehalten. Die Slicer-Aktion heißt überall „Im Slicer öffnen“, der Festplattenabgleich überall „Mit Festplatte abgleichen“, der Titel in der Kopfzeile sowie die Beschriftungen von Printer Manager und Material Manager sind übersetzbar, und der Hilfedialog nennt F5, F2 und die Seitenleisten-Tasten; der Sortier-Tipp stimmt wieder mit dem Menü überein. Enter sendet das Nachkaufen-Fenster ab, das Slot-Fenster am Drucker ist eine beschriftete Gruppe statt eines Menüs, die drei Ansichts-Knöpfe melden ihren gedrückten Zustand, die zwei Kopieren-Knöpfe einer Thingiverse-Seite sind für Screenreader unterscheidbar, und die Emojis im Detailbereich sind entfernt. Die Web-Ordnerdialoge beziehen ihre Texte aus den normalen Sprachdateien.
 
 ## [0.18.4] - 2026-11-18
 

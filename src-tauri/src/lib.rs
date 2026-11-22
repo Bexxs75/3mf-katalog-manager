@@ -314,6 +314,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_ui_settings,
+            commands::set_ui_setting,
+            commands::migrate_ui_settings,
             startup::frontend_ready,
             startup::save_window_theme,
             commands::discard_archive_imports,
@@ -411,6 +414,8 @@ pub fn run() {
             commands::read_dropped_image,
             commands::add_tag,
             commands::remove_tag,
+            commands::rename_tag,
+            commands::merge_tags,
             commands::list_suggested_auto_tags,
             commands::block_auto_tag,
             commands::unblock_auto_tag,

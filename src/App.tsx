@@ -1,3 +1,5 @@
+import { isSlicedOutput } from './lib/fileKind';
+import { contextSelection, selectionState, runModelSelection } from './lib/modelMenuActions';
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
@@ -122,7 +124,7 @@ export default function App() {
   const layouts = useContext(ModelLayoutContext);
   const { setting, setTheme } = useTheme();
   const { density, setDensity } = useUiDensity();
-  const { detailPanel, setDetailPanel } = useDetailPanel();
+  const { detailPanel, setDetailPanel, defaultDetailPanel, setDefaultDetailPanel } = useDetailPanel();
   const { slicers, primaryId, addSlicer, addSlicerError, removeSlicer, setPrimary } = useSlicers();
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
   const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen, resetCatalogSetup } = useCatalogBaseDir();
@@ -261,7 +263,7 @@ export default function App() {
     wait: setupDialogOpen || !upgradeNoticeSettled, firstRun: firstRunRef.current, web,
     reopenBlocked: !printTechnologySettled || !linuxMenuSettled || openFiles !== null,
   });
-  const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number; bundleId?: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number; bundleId?: string; initialView?: 'move' | 'rename' | 'confirmRemove' | 'confirmDelete' } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
   const reloadAfterDiskSync = () => Promise.all([
@@ -482,12 +484,19 @@ export default function App() {
   const contextBundleModels = contextBundle
     ? contextBundle.members.flatMap(member => member.inTrash ? [] : store.models.find(model => model.id === member.fileId) ?? [])
     : [];
-  const contextFileIds = contextModel ? (bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id]) : [];
+  const contextModels = contextModel ? contextSelection(store.models, contextModel.id, bulk.selectedForBulk) : [];
+  const contextFileIds = contextModels.map(model => model.id);
+  const contextStlModels = contextModels.filter(model => ['3mf', 'obj', 'stp', 'step'].includes(modelFileType(model)));
+  const contextPlateModels = contextModels.filter(model => model.path.toLowerCase().endsWith('.3mf'));
   const contextBundledIds = selectionBundleState(contextFileIds, bundles).bundledIds;
 
   // The plate overview needs the full record (plate names, weights); it is loaded when the dialog opens.
+  const [pendingPlateIds, setPendingPlateIds] = useState<string[]>([]);
+  const [pendingStlModels, setPendingStlModels] = useState<{ id: string; name: string; fileType: string }[]>([]);
   const [plateOverviewId, setPlateOverviewId] = useState<string | null>(null);
   const [stlExportModel, setStlExportModel] = useState<{ id: string; name: string; fileType: string } | null>(null);
+  // A queue belongs to the catalog it was started in.
+  useEffect(() => { if (mainView !== 'catalog') { setPendingPlateIds([]); setPendingStlModels([]); } }, [mainView]);
   const ensureFullModelRef = useRef(store.ensureFullModel);
   ensureFullModelRef.current = store.ensureFullModel;
   const openPlateOverview = useCallback((id: string) => { ensureFullModelRef.current(id); setPlateOverviewId(id); }, []);
@@ -519,7 +528,18 @@ export default function App() {
     setDetailModelId(id);
   };
 
+  const openSelectionMenu = (initialView: 'move' | 'rename' | 'confirmRemove' | 'confirmDelete') => {
+    if (fileImport.jobActive) return;
+    const ids = bulk.selectedForBulk.size ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
+    if (!ids.length || (initialView === 'rename' && ids.length !== 1)) return;
+    const bounds = tileOf(ids[0])?.getBoundingClientRect();
+    setContextMenu({ modelId: ids[0], x: bounds?.left ?? 0, y: bounds?.top ?? 0, initialView });
+  };
+
   useKeyboardShortcuts({
+    onRemoveSelection: () => openSelectionMenu('confirmRemove'),
+    onRenameSelection: () => openSelectionMenu('rename'),
+    onTrashSelection: () => { if (!fileImport.jobActive) { if (bulk.selectedForBulk.size) setConfirmBulkDelete(true); else openSelectionMenu('confirmDelete'); } },
     singleKeyShortcuts,
     onOpenTips: () => setTipsOpen(true),
     onOpenDetail: setDetailModelId,
@@ -531,7 +551,7 @@ export default function App() {
     openBulkDeleteConfirm: () => { if (!fileImport.jobActive) setConfirmBulkDelete(true); },
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
     toggleBulkSelect: bulk.toggleBulkSelect,
-    onMoveSelection: web ? undefined : () => {
+    onMoveSelection: web ? () => openSelectionMenu('move') : () => {
       const ids = bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
       openMoveDialog(ids, ids.length === 1 ? tileOf(ids[0]) : (document.activeElement as HTMLElement | null));
     },
@@ -631,8 +651,12 @@ export default function App() {
       onOpenTips={() => setTipsOpen(true)}
       themeSetting={setting}
       onThemeChange={setTheme}
-      detailPanel={detailPanel}
-      onDetailPanelChange={setDetailPanel}
+      detailPanel={defaultDetailPanel}
+      onDetailPanelChange={setDefaultDetailPanel}
+      view={filters.view} onViewChange={filters.setView}
+      sort={filters.sort} onSortChange={filters.setSort}
+      sortDirection={filters.sortDirection} onSortDirectionChange={filters.setSortDirection}
+      collapseBundles={collapseBundles} onCollapseBundlesChange={setCollapseBundles}
       uiDensity={density}
       onUiDensityChange={setDensity}
       displayPreference={displayPreference}
@@ -752,7 +776,10 @@ export default function App() {
               bundles={bundles}
             />
           ) : mainView === 'catalog' ? (
-            <CatalogWorkspace detailPanel={detailPanel} settingsPanel={settingsOpen ? renderSettingsPanel : undefined} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}
+            <CatalogWorkspace onRenameTag={store.renameTag} onMergeTags={store.mergeTags} onDeleteTag={store.deleteTag} surfaceActions={{
+              onImport: import.meta.env.VITE_TARGET === 'web' ? () => setWebImportOpen(true) : fileImport.importFiles,
+              onViewChange: filters.setView, onSortChange: filters.setSort, onSortDirectionChange: filters.setSortDirection,
+            }} detailPanel={detailPanel} settingsPanel={settingsOpen ? renderSettingsPanel : undefined} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}
               onOpenTips={() => setTipsOpen(true)}
               catalogKey={catalogBaseDir}
               onNavigateDetail={navigateDetail}
@@ -944,23 +971,41 @@ export default function App() {
           )}
           {contextMenu && contextModel && !contextBundle && (
             <ContextMenu
+              key={`${contextMenu.modelId}:${contextMenu.initialView ?? 'menu'}`}
+              initialView={contextMenu.initialView}
               x={contextMenu.x}
               y={contextMenu.y}
               onClose={() => setContextMenu(null)}
-              onOpenInSlicer={() => slicerLauncher.openInSlicer(contextMenu.modelId)}
-              onOpenPlateOverview={contextModel.path.toLowerCase().endsWith('.3mf') ? () => openPlateOverview(contextModel.id) : undefined}
-              onSaveAsStl={() => setStlExportModel({ id: contextModel.id, name: contextModel.name, fileType: modelFileType(contextModel) })}
-              stlModel={contextModel}
-              onDelete={() => store.deleteModel(contextMenu.modelId)}
-              onRemove={() => removeCatalogModels([contextMenu.modelId])}
-              inQueue={contextModel.queuePosition !== null}
-              onToggleQueue={() =>
-                contextModel.queuePosition !== null
-                  ? store.removeFromQueue(contextModel.id)
-                  : store.addToQueue(contextModel.id)
-              }
-              printed={contextModel.printStatus === 'printed'}
-              onTogglePrintStatus={() => store.togglePrintStatus(contextModel.id)}
+              fileIds={contextFileIds}
+              favorite={selectionState(contextModels.map(model => model.favorite))}
+              onToggleFavorite={() => runModelSelection(contextModels.filter(model => model.favorite === contextModels.every(model => model.favorite)), model => store.toggleFavorite(model.id))}
+              onOpenInSlicer={() => runModelSelection(contextModels.filter(model => !isSlicedOutput(model)), model => slicerLauncher.openInSlicer(model.id))}
+              onOpenPlateOverview={contextPlateModels.length ? () => {
+                setPendingPlateIds(contextPlateModels.slice(1).map(model => model.id)); openPlateOverview(contextPlateModels[0].id);
+              } : undefined}
+              onSaveAsStl={contextStlModels.length ? () => {
+                const models = contextStlModels.map(model => ({ id: model.id, name: model.name, fileType: modelFileType(model) }));
+                setPendingStlModels(models.slice(1)); setStlExportModel(models[0]);
+              } : undefined}
+              stlModel={contextStlModels.find(model => ['step', 'stp'].includes(modelFileType(model))) ?? contextStlModels[0] ?? contextModel}
+              onDelete={() => runModelSelection(contextFileIds, id => store.deleteModel(id))}
+              onRemove={() => removeCatalogModels(contextFileIds)}
+              inQueue={selectionState(contextModels.map(model => model.queuePosition !== null))}
+              onToggleQueue={() => {
+                const queued = contextModels.every(model => model.queuePosition !== null);
+                return runModelSelection(contextModels.filter(model => (model.queuePosition !== null) === queued), model => queued ? store.removeFromQueue(model.id) : store.addToQueue(model.id));
+              }}
+              printed={selectionState(contextModels.map(model => model.printStatus === 'printed'))}
+              onTogglePrintStatus={() => runModelSelection(contextModels.filter(model => (model.printStatus === 'printed') === contextModels.every(model => model.printStatus === 'printed')), model => store.togglePrintStatus(model.id))}
+              organize={{
+                tags: [...new Set(contextModels.flatMap(model => model.tags))].sort(),
+                collections: collections.collections,
+                onAddTag: tag => runModelSelection(contextFileIds, id => store.addTag(id, tag)),
+                onRemoveTag: tag => runModelSelection(contextFileIds, id => store.removeTag(id, tag)),
+                onCollection: id => collections.bulkAddToCollection(contextFileIds, id),
+                onUncollect: collections.activeCollection ? () => collections.bulkRemoveFromCollection(contextFileIds) : undefined,
+                onLicense: license => store.setModelLicenses(contextFileIds, license),
+              }}
               fileId={contextModel.id}
               currentName={contextModel.name}
               onRename={(name) => store.renameFile(contextModel.id, name)}
@@ -984,11 +1029,11 @@ export default function App() {
             }}
             onClose={() => closeOpenFiles(openFiles.filter((r): r is ExternalRequest => r.kind === 'external'), true)} />}
 
-          {stlExportModel && <StlExportDialog key={stlExportModel.id} model={stlExportModel} onClose={() => setStlExportModel(null)} />}
+          {stlExportModel && <StlExportDialog key={stlExportModel.id} model={stlExportModel} onClose={() => { setStlExportModel(null); setPendingStlModels([]); }} onFinished={() => { setStlExportModel(pendingStlModels[0] ?? null); setPendingStlModels(pendingStlModels.slice(1)); }} />}
 
           {plateOverviewModel && (
             <PlateOverviewDialog key={plateOverviewModel.id} model={plateOverviewModel}
-              onClose={() => setPlateOverviewId(null)} onReread={(id) => void store.rescanMetadata(id)} />
+              onClose={() => { setPlateOverviewId(null); setPendingPlateIds([]); }} onFinished={() => { setPlateOverviewId(pendingPlateIds[0] ?? null); setPendingPlateIds(pendingPlateIds.slice(1)); }} onReread={(id) => void store.rescanMetadata(id)} />
           )}
 
           {fileImport.pendingArchives && (

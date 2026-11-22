@@ -1,3 +1,4 @@
+import { uiSettings } from './uiSettings';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   loadSuggestionPreferences, nameStem, saveSuggestionPreferences, suggestBundles,
@@ -144,9 +145,9 @@ describe('suggestion preferences', () => {
   it('round-trip, and survive damaged data', () => {
     saveSuggestionPreferences({ hint: false, dismissed: ['a', 'b'] });
     expect(loadSuggestionPreferences()).toEqual({ hint: false, dismissed: ['a', 'b'] });
-    localStorage.setItem('3mf-katalog-bundle-suggestions', '{"hint":"x","dismissed":[1,"k"]}');
+    uiSettings.setItem('3mf-katalog-bundle-suggestions', '{"hint":"x","dismissed":[1,"k"]}');
     expect(loadSuggestionPreferences()).toEqual({ hint: true, dismissed: ['k'] });
-    localStorage.setItem('3mf-katalog-bundle-suggestions', 'not json');
+    uiSettings.setItem('3mf-katalog-bundle-suggestions', 'not json');
     expect(loadSuggestionPreferences()).toEqual({ hint: true, dismissed: [] });
   });
 

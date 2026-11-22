@@ -10,7 +10,7 @@ const renderBanner = (names: string[], onClose = vi.fn()) =>
 
 it('names a single file that could not be deleted', () => {
   renderBanner(['gesperrt']);
-  expect(screen.getByRole('alert')).toHaveTextContent('1 Datei konnte nicht gelöscht werden');
+  expect(screen.getByRole('alert')).toHaveTextContent('1 Datei konnte nicht in den Papierkorb gelegt werden');
   expect(screen.getByRole('alert')).toHaveTextContent('gesperrt');
 });
 
@@ -18,7 +18,7 @@ it('shortens a long list of names and dismisses with a real button', () => {
   const onClose = vi.fn();
   renderBanner(['a', 'b', 'c', 'd', 'e'], onClose);
   const alert = screen.getByRole('alert');
-  expect(alert).toHaveTextContent('5 Dateien konnten nicht gelöscht werden');
+  expect(alert).toHaveTextContent('5 Dateien konnten nicht in den Papierkorb gelegt werden');
   expect(alert).toHaveTextContent('a, b, c +2 weitere');
   expect(alert).not.toHaveTextContent('d,');
   fireEvent.click(screen.getByRole('button', { name: 'Meldung schließen' }));

@@ -1,3 +1,4 @@
+import { chooseSelect } from '../test/select';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -12,15 +13,15 @@ beforeEach(() => localStorage.clear());
 it.each(licensePresets)('saves $code and displays its usage', async preset => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<LanguageProvider><LicenseEditor value={null} onSave={save} /></LanguageProvider>);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: preset.code } });
+  chooseSelect(screen.getByRole('combobox', { name: 'Lizenz' }), preset.code);
   expect(screen.getByText(preset.usage === 'private' ? 'Nur privat' : 'Kommerziell erlaubt')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(preset.code));
 });
-it('preserves free text, limits input and can clear a saved license', async () => {
+it.each(['mouse', 'keyboard'] as const)('preserves free text, limits input and can clear a saved license (%s)', async mode => {
   const save = vi.fn().mockResolvedValue(undefined);
   const { rerender } = render(<LanguageProvider><LicenseEditor value="cc-by" onSave={save} /></LanguageProvider>);
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '__other' } });
+  chooseSelect(screen.getByRole('combobox'), '__other', mode);
   const input = screen.getByRole('textbox', { name: 'Lizenztext' });
   expect(input).toHaveAttribute('maxlength', '200');
   fireEvent.change(input, { target: { value: '  Contract license  ' } });
@@ -30,14 +31,14 @@ it('preserves free text, limits input and can clear a saved license', async () =
   await waitFor(() => expect(screen.getByRole('textbox')).not.toBeDisabled());
   rerender(<LanguageProvider><LicenseEditor value="  Contract license  " onSave={save} /></LanguageProvider>);
   expect(screen.getByRole('textbox')).toHaveValue('  Contract license  ');
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } });
+  chooseSelect(screen.getByRole('combobox'), '', mode);
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   await waitFor(() => expect(save).toHaveBeenLastCalledWith(null));
 });
 it('shows save failures and permits retry', async () => {
   const save = vi.fn().mockRejectedValue(new Error('Disk full'));
   render(<LanguageProvider><LicenseEditor value={null} onSave={save} /></LanguageProvider>);
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'own' } });
+  chooseSelect(screen.getByRole('combobox'), 'own');
   fireEvent.click(screen.getByRole('button'));
   expect(await screen.findByRole('alert')).toHaveTextContent('Disk full');
   expect(screen.getByRole('button')).not.toBeDisabled();

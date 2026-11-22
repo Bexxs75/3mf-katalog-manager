@@ -1,3 +1,6 @@
+import { chooseSelect } from '../test/select';
+import { captureSettingsBaseline, captureUiSettingsBaseline, resetSettingsBaseline } from '../lib/settingsSession';
+import { en } from '../i18n/en';
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -6,7 +9,7 @@ import { SettingsPanel, type SettingsPanelProps } from './SettingsPanel';
 import { invoke } from '@tauri-apps/api/core';
 import { de } from '../i18n/de';
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async (command: string) => command === 'get_data_paths' ? { data: '/config/data', logs: '/config/logs' } : { enabled: false, untilMs: null }) }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async (command: string) => command === 'list_source_folders' || command === 'list_blocked_auto_tags' ? [] : command === 'get_data_paths' ? { data: '/config/data', logs: '/config/logs' } : { enabled: false, untilMs: null }) }));
 vi.mock('../diagnostics/DiagnosticsContext', () => ({ useDiagnostics: () => ({ openBugReport: vi.fn() }) }));
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
@@ -35,6 +38,8 @@ function renderPanel(overrides: Partial<SettingsPanelProps> = {}, container = fa
   const result = render(ui(props));
   return { props, unmountAll: () => result.unmount(), rerender: (next: Partial<SettingsPanelProps>) => result.rerender(ui({ ...props, ...next })) };
 }
+
+function openAdvanced(id: string) { const details = document.getElementById(`settings-sec-${id}`)!.closest('section')!.querySelector('details')!; if (!details.open) fireEvent.click(details.querySelector('summary')!); }
 
 const tab = (name: string) => screen.getByRole('tab', { name });
 
@@ -120,6 +125,7 @@ describe('SettingsPanel structure and keyboard', () => {
     renderPanel();
     fireEvent.click(tab('Info'));
     const section = screen.getByRole('heading', { level: 3, name: 'Vorab-Versionen' }).closest('section')!;
+    openAdvanced('preRelease');
     expect(within(section).getByRole('switch', { name: de.updateChannelLabel })).toBeVisible();
   });
 
@@ -287,6 +293,7 @@ describe('SettingsPanel content', () => {
     fireEvent.click(screen.getByRole('button', { name: de.settingsGoToHandover }));
     expect(tab('Slicer & Dienste')).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: /Dateien weitergeben/ })).toHaveFocus();
+    openAdvanced('handover');
     expect(screen.getAllByRole('switch', { name: de.dgSwitchLabel })).toHaveLength(1);
   });
 
@@ -371,6 +378,7 @@ describe('SettingsPanel content', () => {
         else expect(invoke).toHaveBeenCalledWith('open_release_url', { url });
       }
     }
+    if (container) openAdvanced('appData');
     if (container) expect(await screen.findByText(/Daten unter \/config\/data/)).toBeVisible();
   });
 });
@@ -379,7 +387,7 @@ describe('SettingsPanel blocked automatic tags', () => {
   it('shows the blocked-tags list in the catalog tab', async () => {
     vi.mocked(invoke).mockImplementation((async (command: string) => command === 'list_blocked_auto_tags' ? ['miniatur'] : command === 'list_source_folders' ? [] : { enabled: false, untilMs: null }) as typeof invoke);
     renderPanel();
-    expect(screen.queryByText('Gesperrte automatische Tags')).toBeNull();
+    expect(screen.getByText('Gesperrte automatische Tags')).not.toBeVisible();
     fireEvent.click(tab('Katalog'));
     expect(screen.getByText('Gesperrte automatische Tags')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Sperre für #miniatur aufheben' })).toBeInTheDocument();
@@ -404,7 +412,7 @@ describe('SettingsPanel selection groups', () => {
       ['Farbschema', ['System', 'Weiß', 'Sand', 'Schiefer', 'Dunkel']],
       ['Darstellungsdichte', ['Kompakt', 'Komfort']],
       ['Modellvorschau', [de.displayPreferenceThumbnail, de.displayPreferenceRender]],
-      ['Detailbereich', [de.detailPanelAuto, de.detailPanelPinned]],
+      [de.settingsDetailDefault, [de.detailPanelAuto, de.detailPanelPinned]],
       ['Sprache', ['Deutsch', 'English', 'Español', 'Français']],
     ] as const) {
       const group = screen.getByRole('group', { name: legend });
@@ -436,6 +444,7 @@ describe('SettingsPanel slicer list', () => {
     renderPanel({ slicers, primarySlicerId: 'a' });
     fireEvent.click(tab('Slicer & Dienste'));
     const heading = await screen.findByRole('heading', { level: 3, name: new RegExp(de.settingsSecHandover) });
+    openAdvanced('handover');
     expect(screen.getAllByRole('switch', { name: de.dgSwitchLabel })).toHaveLength(1);
     const firstRemove = screen.getAllByRole('button', { name: /aus der Slicer-Liste entfernen/ })[0];
     expect(heading.compareDocumentPosition(firstRemove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -566,6 +575,7 @@ describe('SettingsPanel program behavior section', () => {
   it('shows the section while a control has something to offer', async () => {
     answer({ action: 'exit', trayAvailable: true, supported: true, platform: 'windows' });
     renderPanel();
+    openAdvanced('program');
     expect(await screen.findByRole('radio', { name: de.closeActionExit })).toBeVisible();
     expect(screen.getByRole('heading', { level: 3, name: de.settingsSecProgram })).toBeVisible();
   });
@@ -632,6 +642,7 @@ it('preserves token drafts only for the open panel and never duplicates section 
     ? { enabled: true, hasToken: false, tokenMask: null, usageToday: 0, dailyLimit: 1000 } : previous(command, args));
   try {
     const { unmountAll } = renderPanel({ initialTab: 'services', overlay: true });
+    openAdvanced('thingiverse');
     const field = await screen.findByLabelText(de.tvTokenLabel);
     fireEvent.change(field, { target: { value: 'unsaved-secret' } });
     fireEvent.click(tab('Allgemein'));
@@ -649,6 +660,7 @@ it('preserves token drafts only for the open panel and never duplicates section 
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'test_thingiverse_token')).toHaveLength(0);
     unmountAll();
     renderPanel({ initialTab: 'services' });
+    openAdvanced('thingiverse');
     expect(await screen.findByLabelText(de.tvTokenLabel)).toHaveValue('');
   } finally { vi.mocked(invoke).mockImplementation(previous); }
 });
@@ -657,6 +669,7 @@ it('does not skip the Windows disclosure while tabbing through Services', async 
   const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
   try {
     renderPanel({ initialTab: 'services', overlay: true });
+    openAdvanced('handover');
     const summary = await screen.findByText(de.dgWinSummary);
     summary.focus();
     expect(fireEvent.keyDown(summary, { key: 'Tab' })).toBe(true);
@@ -720,4 +733,136 @@ it('ignores the scrim while a reset confirmation is above the settings', () => {
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
   mouseClick(document.querySelector('.settings-panel-scrim')!);
   expect(props.onClose).toHaveBeenCalledTimes(1);
+});
+
+
+describe('settings search, session changes and defaults', () => {
+  beforeEach(() => { resetSettingsBaseline(); captureUiSettingsBaseline(); });
+  it('filters across tabs by help, section and tab names and reports no results', async () => {
+    renderPanel();
+    const search = screen.getByRole('searchbox', { name: de.settingsSearch });
+    fireEvent.change(search, { target: { value: 'neu importierter' } });
+    expect(tab('Katalog')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: de.settingsSecImport })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: de.settingsSecAppearance })).toBeNull();
+    fireEvent.change(search, { target: { value: 'Darstellung' } });
+    expect(screen.getByRole('group', { name: de.themeLegend })).toBeVisible();
+    fireEvent.change(search, { target: { value: 'Allgemein' } });
+    expect(screen.getByRole('group', { name: de.languageTitle })).toBeVisible();
+    fireEvent.change(search, { target: { value: 'zzzzzzzz' } });
+    expect(screen.getByText(de.settingsNoResults)).toBeVisible();
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    fireEvent.change(search, { target: { value: '' } });
+    expect(screen.getAllByRole('tab')).toHaveLength(5);
+    await act(async () => {});
+  });
+  it('opens advanced search results and keeps the matching control keyboard reachable', async () => {
+    renderPanel();
+    const section = document.getElementById('settings-sec-handover')!.closest('section')!;
+    expect(section.querySelector('details')).not.toHaveAttribute('open');
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Dateien in andere Programme' } });
+    expect(section.querySelector('details')).toHaveAttribute('open');
+    fireEvent.click(tab('Slicer & Dienste'));
+    await act(async () => {});
+    expect(screen.getByRole('switch', { name: de.dgSwitchLabel })).toBeVisible();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: de.settingsAdvanced } });
+    expect(screen.getByRole('switch', { name: de.dgSwitchLabel })).toBeVisible();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } });
+    expect(section.querySelector('details')).not.toHaveAttribute('open');
+  });
+  it('uses startup values across dialog lifetimes, labels the dot and counts changes', async () => {
+    const panel = renderPanel({ onSingleKeyShortcutsChange: vi.fn() });
+    panel.rerender({ themeSetting: 'dark', singleKeyShortcuts: false });
+    expect(screen.getByRole('img', { name: `${de.themeLegend}: ${de.settingsChanged}` })).toBeVisible();
+    expect(tab('Allgemein (2)')).toBeVisible();
+    expect(screen.getByText('2 geändert')).toBeVisible();
+    panel.unmountAll();
+    const reopened = renderPanel({ themeSetting: 'dark' });
+    expect(screen.getByText('1 geändert')).toBeVisible();
+    reopened.rerender({ themeSetting: 'system' });
+    expect(screen.getByText('0 geändert')).toBeVisible();
+    await act(async () => {});
+  });
+  it('resets a row to its default even when the startup value differs', async () => {
+    resetSettingsBaseline();
+    localStorage.setItem('3mf-katalog-theme', 'dark');
+    captureUiSettingsBaseline();
+    const panel = renderPanel({ themeSetting: 'dark' });
+    expect(screen.getByText('0 geändert')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: `${de.settingsReset}: ${de.themeLegend}` }));
+    expect(panel.props.onThemeChange).toHaveBeenCalledWith('system');
+    panel.rerender({ themeSetting: 'system' });
+    expect(screen.getByText('1 geändert')).toBeVisible();
+    await act(async () => {});
+  });
+  it('resets all tabs only after confirmation, even while searching', async () => {
+    const panel = renderPanel({ themeSetting: 'dark', uiDensity: 'comfort' });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Farbschema' } });
+    expect(screen.queryByRole('group', { name: de.densityLegend })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: de.settingsResetAll }));
+    const dialog = screen.getByRole('dialog', { name: de.settingsResetAll });
+    expect(panel.props.onThemeChange).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: de.cancel }));
+    expect(panel.props.onThemeChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: de.settingsResetAll }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: de.settingsResetAll })).getByRole('button', { name: de.settingsResetAll }));
+    await waitFor(() => expect(panel.props.onUiDensityChange).toHaveBeenCalledWith('compact'));
+    expect(panel.props.onThemeChange).toHaveBeenCalledWith('system');
+  });
+  it('counts and resets a change in a tab that was never opened', async () => {
+    resetSettingsBaseline();
+    localStorage.removeItem('3mf-katalog-theme');
+    captureUiSettingsBaseline();
+    const panel = renderPanel({ initialTab: 'info' });
+    await act(async () => {});
+    panel.rerender({ themeSetting: 'dark' });
+    expect(await screen.findByText('1 geändert')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: de.settingsResetAll }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: de.settingsResetAll })).getByRole('button', { name: de.settingsResetAll }));
+    await waitFor(() => expect(panel.props.onThemeChange).toHaveBeenCalledWith('system'));
+    await act(async () => {});
+  });
+  it('does not count guessed values or offer reset after a preference read fails', async () => {
+    const previous = vi.mocked(invoke).getMockImplementation()!;
+    const commands = ['get_import_rename_enabled', 'get_sync_on_start', 'get_sync_auto_add'];
+    vi.mocked(invoke).mockImplementation(async (command, args) => commands.includes(command) ? true : previous(command, args));
+    await captureSettingsBaseline();
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      if (commands.includes(command)) throw new Error('read failed');
+      return previous(command, args);
+    });
+    try {
+      renderPanel({ initialTab: 'catalog' });
+      await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
+      for (const label of [de.importRenameTitle, de.syncOnStartLabel, de.syncAutoAddLabel]) {
+        expect(screen.queryByRole('img', { name: `${label}: ${de.settingsChanged}` })).toBeNull();
+        expect(screen.getByRole('button', { name: `${de.settingsReset}: ${label}` })).toBeDisabled();
+      }
+    } finally { vi.mocked(invoke).mockImplementation(previous); }
+  });
+  it('provides the search and reset labels in German and English', async () => {
+    renderPanel();
+    expect(screen.getByRole('searchbox', { name: de.settingsSearch })).toBeVisible();
+    fireEvent.click(screen.getByRole('radio', { name: 'English' }));
+    expect(screen.getByRole('searchbox', { name: en.settingsSearch })).toBeVisible();
+    expect(screen.getByRole('button', { name: en.settingsResetAll })).toBeVisible();
+    await act(async () => {});
+  });
+});
+
+
+it('wires catalog view, all sort keys, direction and bundles through existing handlers', async () => {
+  const onViewChange = vi.fn(), onSortChange = vi.fn(), onSortDirectionChange = vi.fn(), onCollapseBundlesChange = vi.fn();
+  renderPanel({ onViewChange, onSortChange, onSortDirectionChange, onCollapseBundlesChange });
+  chooseSelect(screen.getByRole('combobox', { name: de.settingsView }), 'groupedList', 'keyboard');
+  expect(onViewChange).toHaveBeenCalledWith('groupedList');
+  for (const key of ['name', 'imported', 'modified', 'size', 'vol', 'printStatus', 'viewed']) {
+    chooseSelect(screen.getByRole('combobox', { name: de.settingsSort }), key);
+    expect(onSortChange).toHaveBeenLastCalledWith(key);
+  }
+  chooseSelect(screen.getByRole('combobox', { name: de.settingsDirection }), 'desc');
+  expect(onSortDirectionChange).toHaveBeenCalledWith('desc');
+  fireEvent.click(screen.getByRole('switch', { name: de.bundleCollapseToggle }));
+  expect(onCollapseBundlesChange).toHaveBeenCalledWith(false);
+  await act(async () => {});
 });

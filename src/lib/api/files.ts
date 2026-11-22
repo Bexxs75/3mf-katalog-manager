@@ -61,6 +61,12 @@ export function emptyTrash() {
 export function addTag(fileId: string, tag: string) {
   return invoke('add_tag', { fileId, tag });
 }
+export function renameTag(source: string, name: string) {
+  return invoke<number>('rename_tag', { source, name });
+}
+export function mergeTags(source: string, target: string) {
+  return invoke<number>('merge_tags', { source, target });
+}
 export function removeTag(fileId: string, tag: string) {
   return invoke('remove_tag', { fileId, tag });
 }

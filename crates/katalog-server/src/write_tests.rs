@@ -138,7 +138,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 64);
+    assert_eq!(WRITE_COMMANDS.len(), 66);
     assert_eq!(crate::write::ROUTE_WRITES, &["add_companion"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
     assert_eq!(crate::READ_COMMANDS.len(), 34);
@@ -2413,4 +2413,20 @@ async fn catalog_start_refreshes_snapshots_only_in_write_mode_and_tolerates_fail
     let images = c.query_row("SELECT render_snapshot_png,custom_image_png,thumbnail_png FROM files", [], |r| Ok((r.get::<_, Option<Vec<u8>>>(0)?,r.get::<_, Vec<u8>>(1)?,r.get::<_, Vec<u8>>(2)?))).unwrap();
     assert_eq!(images, (None,vec![2],vec![3]));
     assert_eq!(c.query_row("SELECT value FROM app_settings WHERE key='render_lighting_version'", [], |r| r.get::<_, String>(0)).unwrap(), db::RENDER_LIGHTING_VERSION.to_string());
+}
+
+#[tokio::test]
+async fn tag_rename_and_merge_routes_return_affected_models() {
+    let f = Fixture::new(true);
+    for tag in ["source", "target"] {
+        assert_eq!(f.send("add_tag", json!({"fileId": f.id, "tag": tag})).await.status(), StatusCode::OK);
+    }
+    let renamed = f.send("rename_tag", json!({"source":"source", "name":"renamed"})).await;
+    assert_eq!(renamed.status(), StatusCode::OK);
+    assert_eq!(value(renamed).await, json!(1));
+    let collision = f.send("rename_tag", json!({"source":"renamed", "name":"target"})).await;
+    assert_eq!(collision.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let merged = f.send("merge_tags", json!({"source":"renamed", "target":"target"})).await;
+    assert_eq!(merged.status(), StatusCode::OK);
+    assert_eq!(value(merged).await, json!(1));
 }

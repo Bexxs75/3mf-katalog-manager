@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { useRuntimeEnvironment } from './useRuntimeEnvironment';
 import { useCallback, useEffect, useState } from 'react';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
@@ -15,7 +16,7 @@ function toSlicerConfig(dto: SlicerDto): SlicerConfig {
 
 function loadHiddenIds(): Set<string> {
   try {
-    const raw = localStorage.getItem(HIDDEN_IDS_STORAGE_KEY);
+    const raw = uiSettings.getItem(HIDDEN_IDS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     return new Set(Array.isArray(parsed) ? parsed : []);
   } catch {
@@ -32,7 +33,7 @@ export function useSlicers() {
   const { container } = useRuntimeEnvironment();
   const [slicers, setSlicers] = useState<SlicerConfig[]>([]);
   const [primaryId, setPrimaryIdState] = useState<string | null>(
-    () => localStorage.getItem(PRIMARY_ID_STORAGE_KEY),
+    () => uiSettings.getItem(PRIMARY_ID_STORAGE_KEY),
   );
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(loadHiddenIds);
   const [addSlicerError, setAddSlicerError] = useState<AppError | null>(null);
@@ -72,12 +73,12 @@ export function useSlicers() {
         if (!prev.has(picked.id)) return prev;
         const next = new Set(prev);
         next.delete(picked.id);
-        localStorage.setItem(HIDDEN_IDS_STORAGE_KEY, JSON.stringify([...next]));
+        uiSettings.setItem(HIDDEN_IDS_STORAGE_KEY, JSON.stringify([...next]));
         return next;
       });
       setPrimaryIdState((prev) => {
         if (prev) return prev;
-        localStorage.setItem(PRIMARY_ID_STORAGE_KEY, picked.id);
+        uiSettings.setItem(PRIMARY_ID_STORAGE_KEY, picked.id);
         return picked.id;
       });
       return picked;
@@ -92,18 +93,18 @@ export function useSlicers() {
     setHiddenIds((prev) => {
       const next = new Set(prev);
       next.add(id);
-      localStorage.setItem(HIDDEN_IDS_STORAGE_KEY, JSON.stringify([...next]));
+      uiSettings.setItem(HIDDEN_IDS_STORAGE_KEY, JSON.stringify([...next]));
       return next;
     });
     setPrimaryIdState((prev) => {
       if (prev !== id) return prev;
-      localStorage.removeItem(PRIMARY_ID_STORAGE_KEY);
+      uiSettings.removeItem(PRIMARY_ID_STORAGE_KEY);
       return null;
     });
   }, []);
 
   const setPrimary = useCallback((id: string) => {
-    localStorage.setItem(PRIMARY_ID_STORAGE_KEY, id);
+    uiSettings.setItem(PRIMARY_ID_STORAGE_KEY, id);
     setPrimaryIdState(id);
   }, []);
 

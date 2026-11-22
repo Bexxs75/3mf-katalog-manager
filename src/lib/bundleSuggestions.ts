@@ -1,3 +1,4 @@
+import { uiSettings } from './uiSettings';
 import type { Bundle, BundleKind, ModelFile } from '../types';
 import { splitFileName } from './fileName';
 import { MAX_BUNDLE_MEMBERS, MIN_BUNDLE_MEMBERS, indexBundles } from './bundles';
@@ -142,7 +143,7 @@ export interface SuggestionPreferences {
 
 export function loadSuggestionPreferences(): SuggestionPreferences {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+    const parsed: unknown = JSON.parse(uiSettings.getItem(STORAGE_KEY) ?? 'null');
     if (parsed && typeof parsed === 'object') {
       const { hint, dismissed } = parsed as Record<string, unknown>;
       return {
@@ -156,10 +157,10 @@ export function loadSuggestionPreferences(): SuggestionPreferences {
   return { hint: true, dismissed: [] };
 }
 
-/** Comfort only: this is not catalog state, so a failure to store it is silent. */
+/** Keep suggestion preferences separate from catalog data. */
 export function saveSuggestionPreferences(preferences: SuggestionPreferences): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ hint: preferences.hint, dismissed: preferences.dismissed.slice(-MAX_REMEMBERED) }));
+    uiSettings.setItem(STORAGE_KEY, JSON.stringify({ hint: preferences.hint, dismissed: preferences.dismissed.slice(-MAX_REMEMBERED) }));
   } catch {
     // Storage blocked: the choice only applies to this session.
   }

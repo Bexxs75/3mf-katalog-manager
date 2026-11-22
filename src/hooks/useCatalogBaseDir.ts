@@ -1,3 +1,4 @@
+import { uiSettings } from '../lib/uiSettings';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '../lib/transport';
 
@@ -7,32 +8,32 @@ const SETUP_SEEN_KEY = '3mf-katalog-setup-seen';
 /**
  * Manages the optional catalog location (target folder for newly
  * imported single files) and whether the first-run dialog has already
- * been seen/decided. Persisted in localStorage following the same
+ * been seen/decided. Persisted in uiSettings following the same
  * pattern as theme/density/display preference (see useDisplayPreference.ts).
  */
 export function useCatalogBaseDir() {
   const [catalogBaseDir, setCatalogBaseDirState] = useState<string | null>(() =>
-    localStorage.getItem(BASE_DIR_KEY),
+    uiSettings.getItem(BASE_DIR_KEY),
   );
   const [setupSeen, setSetupSeenState] = useState<boolean>(
-    () => localStorage.getItem(SETUP_SEEN_KEY) === '1',
+    () => uiSettings.getItem(SETUP_SEEN_KEY) === '1',
   );
 
   const setCatalogBaseDir = useCallback((path: string | null) => {
     setCatalogBaseDirState(path);
-    if (path) localStorage.setItem(BASE_DIR_KEY, path);
-    else localStorage.removeItem(BASE_DIR_KEY);
+    if (path) uiSettings.setItem(BASE_DIR_KEY, path);
+    else uiSettings.removeItem(BASE_DIR_KEY);
   }, []);
 
   const markSetupSeen = useCallback(() => {
     setSetupSeenState(true);
-    localStorage.setItem(SETUP_SEEN_KEY, '1');
+    uiSettings.setItem(SETUP_SEEN_KEY, '1');
   }, []);
 
   const resetCatalogSetup = useCallback(() => {
     setCatalogBaseDir(null);
     setSetupSeenState(false);
-    localStorage.removeItem(SETUP_SEEN_KEY);
+    uiSettings.removeItem(SETUP_SEEN_KEY);
   }, [setCatalogBaseDir]);
 
   return { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen, resetCatalogSetup };
