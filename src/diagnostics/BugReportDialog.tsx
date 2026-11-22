@@ -2,7 +2,7 @@ import { displayName } from '../lib/displayName';
 import { ExternalLink } from '../components/ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import {
   getBugReportInfo,
@@ -17,6 +17,18 @@ import { messageOf } from '../lib/errors';
 import { BUG_ICON } from './icons';
 
 const OS_LABEL: Record<BugReportInfo['os'], string> = { linux: 'Linux', windows: 'Windows', macos: 'macOS' };
+
+// Without this, Ctrl/Cmd+A inside the modal selects the whole page instead of just the log text.
+function selectLogOnly(e: KeyboardEvent<HTMLPreElement>) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'a') return;
+  const selection = window.getSelection();
+  if (!selection) return;
+  e.preventDefault();
+  const range = document.createRange();
+  range.selectNodeContents(e.currentTarget);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
 
 export function BugReportDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
@@ -170,7 +182,12 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
             {preview?.empty && <div className="text-small text-[var(--ink-3)]">{t('bugReportEmptyLog')}</div>}
             {preview && !preview.empty && (
               <>
-                <pre className="h-[200px] overflow-auto p-2.5 rounded-[5px] border border-[var(--line)] bg-[var(--bg)] font-code text-caption leading-[1.55] text-[var(--ink-2)] whitespace-pre">
+                <pre
+                  tabIndex={0}
+                  role="region"
+                  aria-label={t('bugReportLogPreviewLabel')}
+                  onKeyDown={selectLogOnly}
+                  className="h-[200px] overflow-auto p-2.5 rounded-[5px] border border-[var(--line)] bg-[var(--bg)] font-code text-caption leading-[1.55] text-[var(--ink-2)] whitespace-pre">
                   {preview.segments.map((s, i) =>
                     s.replaced ? (
                       <mark key={i} className="bg-[var(--accent-soft)] text-[var(--accent)] rounded-[2px] px-[1px]">{s.text}</mark>

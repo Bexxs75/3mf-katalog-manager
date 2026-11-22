@@ -1960,6 +1960,7 @@ export const de: Translations = {
   bugReportClose: 'Schließen',
   bugReportLoading: 'Logdatei wird vorbereitet …',
   bugReportEmptyLog: 'Das Protokoll ist noch leer.',
+  bugReportLogPreviewLabel: 'Vorschau des Protokolls',
   unexpectedErrorTitle: 'Etwas ist schiefgelaufen',
   unexpectedErrorText: 'Der Fehler steht im Protokoll.',
   reportProblemLink: 'Problem melden',

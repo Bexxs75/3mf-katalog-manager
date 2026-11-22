@@ -1960,6 +1960,7 @@ export const fr: Translations = {
   bugReportClose: 'Fermer',
   bugReportLoading: 'Préparation du fichier journal…',
   bugReportEmptyLog: 'Le journal est encore vide.',
+  bugReportLogPreviewLabel: 'Aperçu du journal',
   unexpectedErrorTitle: 'Un problème est survenu',
   unexpectedErrorText: "L'erreur a été écrite dans le journal.",
   reportProblemLink: 'Signaler le problème',

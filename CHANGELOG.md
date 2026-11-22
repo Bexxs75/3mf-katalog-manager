@@ -9,6 +9,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+### Fixed
+
+- Ctrl+A in the log preview of the problem report now selects only the log text instead of the whole window.
+
 ## [0.18.6] - 2026-11-22
 
 ### Fixed
@@ -884,6 +888,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+### Behoben
+
+- Strg+A in der Protokoll-Vorschau des Problemberichts markiert jetzt nur den Protokolltext statt des ganzen Fensters.
 
 ## [0.18.6] - 2026-11-22
 

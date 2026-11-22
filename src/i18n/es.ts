@@ -1960,6 +1960,7 @@ export const es: Translations = {
   bugReportClose: 'Cerrar',
   bugReportLoading: 'Preparando el archivo de registro…',
   bugReportEmptyLog: 'El registro aún está vacío.',
+  bugReportLogPreviewLabel: 'Vista previa del registro',
   unexpectedErrorTitle: 'Algo ha salido mal',
   unexpectedErrorText: 'El error se ha guardado en el registro.',
   reportProblemLink: 'Informar del problema',

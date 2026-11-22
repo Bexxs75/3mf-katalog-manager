@@ -1960,6 +1960,7 @@ export const en: Translations = {
   bugReportClose: 'Close',
   bugReportLoading: 'Preparing log file …',
   bugReportEmptyLog: 'The log is still empty.',
+  bugReportLogPreviewLabel: 'Log preview',
   unexpectedErrorTitle: 'Something went wrong',
   unexpectedErrorText: 'The error was written to the log.',
   reportProblemLink: 'Report problem',

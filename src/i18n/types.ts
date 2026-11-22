@@ -2002,6 +2002,7 @@ export interface Translations {
   bugReportClose: string;
   bugReportLoading: string;
   bugReportEmptyLog: string;
+  bugReportLogPreviewLabel: string;
   unexpectedErrorTitle: string;
   unexpectedErrorText: string;
   reportProblemLink: string;
