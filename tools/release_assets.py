@@ -136,7 +136,13 @@ def check_version(version, root="."):
         fail(f"version {version} does not match {wrong}")
 
 def check_release_texts(version, root="."):
-    """The changelog section and the in-app release notes (all four languages) must exist."""
+    """The changelog section and the in-app release notes (all four languages) must exist.
+
+    A pre-release x.y.z-n has no texts of its own: they are written for the final
+    x.y.z, so that base version is checked (skipping the check would let a RC pass
+    even when the texts for the coming release are missing).
+    """
+    version = re.sub(r"-\d+$", "", version)
     changelog = _read(root, "CHANGELOG.md")
     if not re.search(r"^## \[" + re.escape(version) + r"\]", changelog, re.M):
         fail(f"CHANGELOG.md has no section '## [{version}]'")

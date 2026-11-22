@@ -146,6 +146,17 @@ class ReleaseTexts(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 ra.check_release_texts("0.15.0", t)
 
+    def test_pre_release_checks_the_base_version(self):
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t)
+            ra.check_release_texts("0.15.0-6", t)
+
+    def test_pre_release_still_fails_without_base_texts(self):
+        with tempfile.TemporaryDirectory() as t:
+            write_tree(t)
+            with self.assertRaises(SystemExit):
+                ra.check_release_texts("0.16.0-2", t)
+
     def test_cli_command(self):
         with tempfile.TemporaryDirectory() as t:
             write_tree(t)
