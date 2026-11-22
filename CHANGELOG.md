@@ -9,6 +9,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.18.5] - 2026-11-22
+
 ### Changed
 
 - Desktop interface preferences are stored in `ui-settings.json` in the app data folder, with automatic migration from the WebView and compatible catalog backups. Web preferences remain in each browser’s localStorage, independently of other users, devices and server write permissions; there is no settings migration or server settings file in the web version. Desktop theme, language and density retain a synchronous startup cache; preview crash guards remain local. Other desktop preferences are not mirrored back, so their browser fallback may be outdated.
