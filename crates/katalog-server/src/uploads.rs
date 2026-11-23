@@ -36,7 +36,7 @@ pub(super) fn command(name: &str) -> bool {
 }
 fn fail(e: StoreError) -> Response {
     let message = match e.kind {
-        "archive_format_unsupported" => "Archivformat nicht unterstützt (nur ZIP und 7z)",
+        "archive_format_unsupported" => "Archivformat nicht unterstützt (ZIP, 7z und tar; RAR nur in der Desktop-App)",
         "archive_too_many_models" => "Archiv enthält zu viele Modelle",
         "archive_memory_limit" => "Archiv braucht zu viel Arbeitsspeicher beim Entpacken",
         "archive_timeout" => "Entpacken dauert zu lange",

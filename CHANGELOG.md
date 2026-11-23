@@ -17,6 +17,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - The web image now has a health check: `katalog-server health` asks the server's own `/api/health` (exit code 0 or 1), and the Dockerfile `HEALTHCHECK` and the Compose example use it, so `docker ps` shows whether the server is healthy.
 - In the web interface a file or folder move can be undone again (toast button and Ctrl+Z), like on the desktop.
 - In the web interface the folder list now marks folders that no longer exist on disk (as the desktop app does). The check is bounded, never follows links and skips roots that look unmounted.
+- Uploads in the web interface can now be tar archives (tar, tar.gz, tar.bz2, tar.xz, tar.zst) with the same limits as ZIP and 7z; unsafe entries such as links and paths leaving the folder are skipped. RAR stays a desktop feature.
 
 ### Changed
 
@@ -926,6 +927,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Das Web-Image hat jetzt einen Healthcheck: `katalog-server health` fragt das eigene `/api/health` ab (Exit-Code 0 oder 1); Dockerfile-`HEALTHCHECK` und Compose-Beispiel nutzen ihn, sodass `docker ps` anzeigt, ob der Server gesund ist.
 - In der Web-Oberfläche lässt sich das Verschieben von Dateien und Ordnern wieder rückgängig machen (Schaltfläche in der Meldung und Strg+Z), wie am Desktop.
 - In der Web-Oberfläche markiert die Ordnerliste jetzt Ordner, die auf der Festplatte nicht mehr existieren (wie in der Desktop-App). Die Prüfung ist begrenzt, folgt keinen Verknüpfungen und überspringt Wurzeln, die nicht eingehängt wirken.
+- Uploads in der Web-Oberfläche können jetzt tar-Archive sein (tar, tar.gz, tar.bz2, tar.xz, tar.zst) mit denselben Grenzen wie ZIP und 7z; unsichere Einträge wie Verknüpfungen und Pfade aus dem Ordner heraus werden übersprungen. RAR bleibt eine Desktop-Funktion.
 
 ### Geändert
 

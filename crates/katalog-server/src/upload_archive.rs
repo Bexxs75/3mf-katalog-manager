@@ -1,4 +1,4 @@
-//! Unpacks an uploaded zip/7z archive into ordinary, separate model uploads.
+//! Unpacks an uploaded zip, 7z or tar archive into ordinary, separate model uploads.
 //!
 //! Why separate uploads and not a sub-folder of the upload folder: everything that
 //! protects the upload folder (journal entries addressed by a single file name,
@@ -190,7 +190,7 @@ pub(crate) fn expand(
     drop(ctx.store.checked_file(entry)?);
     let path = ctx.store.path(entry);
     let format = archive::detect_format(&path)
-        .filter(|f| matches!(f, ArchiveFormat::Zip | ArchiveFormat::SevenZ))
+        .filter(|f| *f != ArchiveFormat::Rar)
         .ok_or(Failure::Invalid("archive_format_unsupported"))?;
 
     let inspected = archive::inspect_with(&path, is_model, Some(SEVENZ_MEMORY_LIMIT));

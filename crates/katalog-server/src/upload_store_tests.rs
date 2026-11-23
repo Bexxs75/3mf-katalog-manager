@@ -62,7 +62,10 @@ fn name_boundary() {
     assert_eq!(sanitize_name("x.3mf.exe").unwrap_err().status, 415);
     assert_eq!(sanitize_name("x.zip").unwrap(), "x.zip");
     assert_eq!(sanitize_name("X.7Z").unwrap(), "X.7Z");
-    for unsupported in ["x.rar", "x.tar", "x.tar.gz", "x.tgz", "x.tar.xz"] {
+    for name in ["x.tar", "x.tar.gz", "x.tgz", "X.TAR.XZ", "x.tar.bz2", "x.tzst"] {
+        assert_eq!(sanitize_name(name).unwrap(), name);
+    }
+    for unsupported in ["x.rar", "X.RAR"] {
         let e = sanitize_name(unsupported).unwrap_err();
         assert_eq!((e.status, e.kind), (415, "archive_format_unsupported"), "{unsupported}");
     }
