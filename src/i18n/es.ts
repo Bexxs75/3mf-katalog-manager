@@ -2117,6 +2117,7 @@ export const es: Translations = {
   errWebBodyTooLarge: "El cuerpo JSON es demasiado grande",
   errWebCommandUnavailable: "Comando no disponible en la versión web",
   errWebWriteBusy: "El acceso de escritura está ocupado en este momento",
+  errMaintenance: "El catálogo está en mantenimiento. Inténtalo de nuevo más tarde.",
   errWebServerInternal: "Error interno",
   errReqInvalidArguments: "Argumentos no válidos",
   errReqInvalidIds: "El ID debe ser una cadena numérica",

@@ -89,6 +89,7 @@
     "webBodyTooLarge",
     "webCommandUnavailable",
     "webWriteBusy",
+    "maintenance",
     "webServerInternal",
     "reqInvalidArguments",
     "reqInvalidIds",

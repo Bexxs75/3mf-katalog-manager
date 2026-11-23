@@ -243,7 +243,9 @@ pub(crate) fn audit_line(time: u64, session: u64, status: u16, size: u64) -> Str
     format!("export time={time} session={session:016x} status={status} size={size}")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn export(
+    barrier: &crate::barrier::CatalogBarrier,
     runtime: &Runtime,
     db_path: PathBuf,
     writer: Writer,
@@ -252,6 +254,7 @@ pub(crate) async fn export(
     monotonic: u64,
     now: u64,
 ) -> Response {
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let admitted = (|| {
         if let Some(wait) = runtime.wait_for(key, monotonic) {
             return Err(Failure::Rate(wait));
@@ -264,7 +267,10 @@ pub(crate) async fn export(
     let result = match admitted {
         // The permit travels through the blocking task: a cancelled request must
         // not free the slot while the snapshot is still being written.
-        Ok(permit) => match tokio::task::spawn_blocking(move || prepare(&db_path, &writer, reserve).map(|ready| (ready, permit))).await {
+        Ok(permit) => match tokio::task::spawn_blocking(move || {
+            let _catalog_guard = catalog_guard;
+            prepare(&db_path, &writer, reserve).map(|ready| (ready, permit))
+        }).await {
             Ok(result) => result,
             Err(_) => Err(Failure::Unavailable),
         },
@@ -386,14 +392,14 @@ mod tests {
     async fn too_little_free_space_answers_507_and_leaves_nothing() {
         let dir = catalog_dir("space");
         let runtime = Runtime::tuned(u64::MAX / 4, BODY_DEADLINE);
-        let response = export(&runtime, dir.join("catalog.db"), None, "k", 0, 0, 1_793_000_000).await;
+        let response = export(&crate::barrier::CatalogBarrier::default(), &runtime, dir.join("catalog.db"), None, "k", 0, 0, 1_793_000_000).await;
         let (status, text) = status_and_text(response).await;
         assert_eq!(status, 507);
         assert!(!text.contains(dir.to_str().unwrap()));
         assert_eq!(std::fs::read_dir(dir.join("backups")).unwrap().count(), 0);
         // The slot was returned: an export with a normal reserve now succeeds.
         let runtime2 = Runtime::new();
-        let ok = export(&runtime2, dir.join("catalog.db"), None, "k", 0, 0, 1_793_000_000).await;
+        let ok = export(&crate::barrier::CatalogBarrier::default(), &runtime2, dir.join("catalog.db"), None, "k", 0, 0, 1_793_000_000).await;
         assert_eq!(ok.status(), 200);
         drop(ok);
         std::fs::remove_dir_all(dir).unwrap();
@@ -406,7 +412,7 @@ mod tests {
         let backups = dir.join("backups");
         std::fs::create_dir(&backups).unwrap();
         std::fs::set_permissions(&backups, std::fs::Permissions::from_mode(0o777)).unwrap();
-        let (status, text) = status_and_text(export(&Runtime::new(), dir.join("catalog.db"), None, "a", 0, 0, 1).await).await;
+        let (status, text) = status_and_text(export(&crate::barrier::CatalogBarrier::default(), &Runtime::new(), dir.join("catalog.db"), None, "a", 0, 0, 1).await).await;
         assert_eq!(status, 500);
         assert!(!text.contains(dir.to_str().unwrap()) && text.contains("Die Sicherung konnte nicht erstellt werden"));
         std::fs::remove_dir(&backups).unwrap();
@@ -414,7 +420,7 @@ mod tests {
         std::fs::create_dir(&target).unwrap();
         std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o700)).unwrap();
         std::os::unix::fs::symlink(&target, &backups).unwrap();
-        let (status, _) = status_and_text(export(&Runtime::new(), dir.join("catalog.db"), None, "b", 0, 0, 1).await).await;
+        let (status, _) = status_and_text(export(&crate::barrier::CatalogBarrier::default(), &Runtime::new(), dir.join("catalog.db"), None, "b", 0, 0, 1).await).await;
         assert_eq!(status, 500);
         assert_eq!(std::fs::read_dir(&target).unwrap().count(), 0);
         std::fs::remove_dir_all(dir).unwrap();
@@ -425,7 +431,7 @@ mod tests {
         use http_body_util::BodyExt;
         let dir = catalog_dir("deadline");
         let runtime = Runtime::tuned(RESERVE, std::time::Duration::from_secs(5));
-        let response = export(&runtime, dir.join("catalog.db"), None, "k", 0, 0, 1).await;
+        let response = export(&crate::barrier::CatalogBarrier::default(), &runtime, dir.join("catalog.db"), None, "k", 0, 0, 1).await;
         assert_eq!(response.status(), 200);
         assert_eq!(runtime.slots.available_permits(), 0);
         let mut body = response.into_body();

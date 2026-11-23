@@ -56,7 +56,9 @@ pub async fn download(
     id: &str,
     headers: &HeaderMap,
     slots: Arc<Semaphore>,
+    barrier: &crate::barrier::CatalogBarrier,
 ) -> Response {
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let Ok(numeric_id) = id.parse::<i64>() else {
         return error_coded(400, ErrorCode::ReqInvalidIds, &[]);
     };
@@ -126,19 +128,21 @@ pub async fn download(
             opened.modified().ok().and_then(http_date),
             name,
             permit,
+            catalog_guard,
         ))
     })
     .await;
-    let (file, len, modified, name, permit) = match opened {
+    let (file, len, modified, name, permit, catalog_guard) = match opened {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => return download_failure(e),
         Err(_) => return error_coded(500, ErrorCode::WebServerInternal, &[]),
     };
-    serve(file, len, modified, &name, "application/octet-stream", permit, headers)
+    serve(file, len, modified, &name, "application/octet-stream", permit, catalog_guard, headers)
 }
 
 /// Streams an opened regular file with range support. The type is chosen by the caller,
 /// never sniffed; the file always goes out as an attachment.
+#[allow(clippy::too_many_arguments)]
 fn serve(
     mut file: std::fs::File,
     len: u64,
@@ -146,6 +150,7 @@ fn serve(
     name: &str,
     content_type: &str,
     permit: OwnedSemaphorePermit,
+    catalog_guard: crate::barrier::Guard,
     headers: &HeaderMap,
 ) -> Response {
     // No entity tag is emitted. Only our exact Last-Modified date can match;
@@ -179,11 +184,7 @@ fn serve(
     if start != 0 && file.seek(SeekFrom::Start(start)).is_err() {
         return error_coded(500, ErrorCode::WebServerInternal, &[]);
     }
-    let body = DownloadBody {
-        file: tokio::fs::File::from_std(file),
-        remaining: count,
-        permit: Some(permit),
-    };
+    let body = DownloadBody::new(tokio::fs::File::from_std(file), count, permit).with_guard(catalog_guard);
     let mut response = Body::new(body).into_response();
     if range.is_some() {
         *response.status_mut() = StatusCode::PARTIAL_CONTENT;
@@ -219,7 +220,9 @@ pub async fn companion(
     id: &str,
     headers: &HeaderMap,
     slots: Arc<Semaphore>,
+    barrier: &crate::barrier::CatalogBarrier,
 ) -> Response {
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let Ok(numeric_id) = id.parse::<i64>() else {
         return error_coded(400, ErrorCode::ReqInvalidIds, &[]);
     };
@@ -247,15 +250,15 @@ pub async fn companion(
         file.seek(SeekFrom::Start(0)).map_err(io_failure)?;
         let meta = file.metadata().map_err(io_failure)?;
         let content_type = katalog_core::companion_read::download_content_type(kind, &row.name);
-        Ok::<_, ReadError>((file, meta.len(), meta.modified().ok().and_then(http_date), row.name, content_type, permit))
+        Ok::<_, ReadError>((file, meta.len(), meta.modified().ok().and_then(http_date), row.name, content_type, permit, catalog_guard))
     })
     .await;
-    let (file, len, modified, name, content_type, permit) = match opened {
+    let (file, len, modified, name, content_type, permit, catalog_guard) = match opened {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => return download_failure(e),
         Err(_) => return error_coded(500, ErrorCode::WebServerInternal, &[]),
     };
-    serve(file, len, modified, &name, content_type, permit, headers)
+    serve(file, len, modified, &name, content_type, permit, catalog_guard, headers)
 }
 
 pub(crate) fn byte_range(value: &str, len: u64) -> Result<Option<(u64, u64)>, ()> {
@@ -409,14 +412,21 @@ pub(crate) fn disposition(name: &str) -> String {
 }
 
 pub(crate) struct DownloadBody {
-    file: tokio::fs::File,
+    file: Option<tokio::fs::File>,
     remaining: u64,
     permit: Option<OwnedSemaphorePermit>,
+    catalog_guard: Option<crate::barrier::Guard>,
+    cancellation: Option<Pin<Box<dyn std::future::Future<Output = ()> + Send>>>,
 }
 impl DownloadBody {
+    pub(crate) fn with_guard(mut self, guard: crate::barrier::Guard) -> Self {
+        self.cancellation = Some(guard.stream_cancelled());
+        self.catalog_guard = Some(guard);
+        self
+    }
     /// Streams exactly `remaining` bytes and keeps `permit` until the stream ends or is dropped.
     pub(crate) fn new(file: tokio::fs::File, remaining: u64, permit: OwnedSemaphorePermit) -> Self {
-        Self { file, remaining, permit: Some(permit) }
+        Self { file: Some(file), remaining, permit: Some(permit), catalog_guard: None, cancellation: None }
     }
 }
 impl hyper::body::Body for DownloadBody {
@@ -426,14 +436,25 @@ impl hyper::body::Body for DownloadBody {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<hyper::body::Frame<Bytes>, io::Error>>> {
-        if self.remaining == 0 {
+        if self.cancellation.as_mut().is_some_and(|cancel| cancel.as_mut().poll(cx).is_ready()) {
+            self.remaining = 0;
+            self.file.take();
+            self.cancellation = None;
             self.permit.take();
+            self.catalog_guard.take();
+            return Poll::Ready(Some(Err(io::Error::new(io::ErrorKind::TimedOut, "Catalog maintenance stream deadline"))));
+        }
+        if self.remaining == 0 {
+            self.file.take();
+            self.cancellation = None;
+            self.permit.take();
+            self.catalog_guard.take();
             return Poll::Ready(None);
         }
         let mut buffer = [0; 64 * 1024];
         let limit = self.remaining.min(buffer.len() as u64) as usize;
         let mut read = ReadBuf::new(&mut buffer[..limit]);
-        match Pin::new(&mut self.file).poll_read(cx, &mut read) {
+        match Pin::new(self.file.as_mut().expect("active stream has a file")).poll_read(cx, &mut read) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(result) => {
                 let result = result.and_then(|()| {
@@ -452,7 +473,10 @@ impl hyper::body::Body for DownloadBody {
                     self.remaining = 0;
                 }
                 if self.remaining == 0 {
+                    self.file.take();
+                    self.cancellation = None;
                     self.permit.take();
+                    self.catalog_guard.take();
                 }
                 Poll::Ready(Some(result))
             }

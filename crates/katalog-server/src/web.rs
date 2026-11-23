@@ -769,7 +769,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             Ok(peer) => peer,
             Err(e) => return *e,
         };
-        return crate::slicer::download(slicer, crate::slicer::Catalog { db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &path, &method, req.headers(), &peer, now).await;
+        return crate::slicer::download(slicer, crate::slicer::Catalog { barrier: app.geometry.barrier.clone(), db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &path, &method, req.headers(), &peer, now).await;
     }
     let audit = req.extensions().get::<Arc<WriteProgress>>().cloned();
     let download_id = path
@@ -813,7 +813,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         if path=="/api/events" || path=="/api/uploads" {
             if method!=Method::GET{return error(405,"method")}
             if path=="/api/events"{return uploads::events(app,s.clone(),&headers).await}
-            return uploads::list(app.uploads.as_ref().unwrap().clone()).await
+            return uploads::list(app.uploads.as_ref().unwrap().clone(), &app.geometry.barrier).await
         }
         if method!=Method::POST{return error(405,"method")}
     }
@@ -841,7 +841,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         if path == "/api/backup/export" {
             let key = current.as_ref().map_or(peer.clone(), |s| s.token.clone());
             let session = current.as_ref().map_or(0, |s| crate::write::session_fingerprint(&s.token));
-            return crate::export::export(&app.export, app.config.db_path.clone(), app.writer.as_ref().map(|w| w.conn.clone()), &key, session, app.clock.monotonic(), now).await;
+            return crate::export::export(&app.geometry.barrier, &app.export, app.config.db_path.clone(), app.writer.as_ref().map(|w| w.conn.clone()), &key, session, app.clock.monotonic(), now).await;
         }
         if let Some(id) = companion_id {
             return crate::download::companion(
@@ -851,6 +851,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 id,
                 &headers,
                 app.downloads.clone(),
+                &app.geometry.barrier,
             )
             .await;
         }
@@ -861,6 +862,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             id,
             &headers,
             app.downloads.clone(),
+            &app.geometry.barrier,
         )
         .await;
     }
@@ -1007,7 +1009,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             if command == crate::slicer::COMMAND {
                 // Hashed so the raw session token never sits in another table.
                 let key = current.as_ref().map_or_else(|| format!("p{peer}"), |s| format!("s{}", crate::idempotency::session_key(&s.token)));
-                return crate::slicer::mint(app.slicer.as_ref().expect("checked above"), crate::slicer::Catalog { db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &key, now, &args).await;
+                return crate::slicer::mint(app.slicer.as_ref().expect("checked above"), crate::slicer::Catalog { barrier: app.geometry.barrier.clone(), db_path: app.config.db_path.clone(), roots: app.config.roots.clone() }, &key, now, &args).await;
             }
             // The removed-files part of the companion list belongs to file management only.
             let mut args = args;
@@ -1415,6 +1417,7 @@ async fn record_outcome(guard: crate::idempotency::Guard, work: tokio::task::Joi
     delivered.await.unwrap_or_else(|_| error_coded(500, ErrorCode::WebServerInternal, &[]))
 }
 async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit, replay: Option<crate::idempotency::Guard>) -> Response {
+    let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let gate = app.writer.as_ref().expect("write connection initialized");
     let started=std::time::Instant::now();
     let clock = app.clock.clone();
@@ -1435,12 +1438,16 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         limits: app.config.upload.as_ref().map(|u| u.limits).unwrap_or_default(),
     };
     let work=tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let (_admission, _scan) = (admission, scan_permit);
         let mut worker = worker;
         let prepared = if rescan {
             let prepared = match crate::write::prepare_rescan(&args, &exec_ctx) { Ok(p) => p, Err(response) => return *response };
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             loop {
+                if app.geometry.barrier.snapshot().state != crate::barrier::State::Open {
+                    return crate::barrier::maintenance();
+                }
                 match app.writer.as_ref().unwrap().worker.clone().try_acquire_owned() {
                     Ok(permit) => { worker = Some(permit); break; }
                     Err(_) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(5)),

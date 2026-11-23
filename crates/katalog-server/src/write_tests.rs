@@ -2452,3 +2452,114 @@ async fn startup_lock_precedes_auth_and_lives_with_router_clones() {
     drop(clone);
     drop(InstanceLock::acquire(&config.db_path, "desktop").unwrap());
 }
+
+async fn wait_for_barrier_writer(app: &App) {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while app.geometry.barrier.snapshot().writers != 1 {
+            tokio::task::yield_now().await;
+        }
+    }).await.unwrap();
+}
+
+#[tokio::test]
+async fn maintenance_http_write_is_503_and_readers_obey_both_phases() {
+    let f = Fixture::new(true);
+    let barrier = &f.app.geometry.barrier;
+    let before = std::fs::read(&f.app.config.db_path).unwrap();
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    let response = f.send("set_favorite", json!({"fileId":f.id,"favorite":true})).await;
+    assert_eq!(response.status(), 503);
+    let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap()["message"], "maintenance");
+    let (a, b) = tokio::join!(f.send("list_folders", json!({})), f.send("list_folders", json!({})));
+    assert_eq!((a.status().as_u16(), b.status().as_u16()), (200, 200));
+    let window = window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(f.send("list_folders", json!({})).await.status(), 503);
+    assert_eq!(std::fs::read(&f.app.config.db_path).unwrap(), before);
+    window.release();
+    assert_eq!(f.send("set_favorite", json!({"fileId":f.id,"favorite":true})).await.status(), 200);
+}
+
+#[tokio::test]
+async fn maintenance_waits_for_write_queued_on_worker() {
+    let f = Fixture::new(true);
+    let gate = f.app.writer.as_ref().unwrap();
+    let worker = gate.worker.clone().acquire_owned().await.unwrap();
+    let request = f.request("set_favorite", Body::from(json!({"fileId":f.id,"favorite":true}).to_string()), Some(&f.session), Some("http://localhost:8080"), true);
+    let app = f.app.clone();
+    let request = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
+    wait_for_barrier_writer(&f.app).await;
+    let barrier = f.app.geometry.barrier.clone();
+    let drain = tokio::spawn(async move { barrier.enter_draining(std::time::Duration::from_secs(2)).await });
+    tokio::task::yield_now().await;
+    assert_eq!(f.app.geometry.barrier.snapshot().state, crate::barrier::State::Draining);
+    assert!(!drain.is_finished());
+    drop(worker);
+    assert_eq!(request.await.unwrap().status(), 200);
+    let window = drain.await.unwrap().unwrap();
+    assert!(f.favorite());
+    assert_eq!(f.app.geometry.barrier.snapshot().writers, 0);
+    window.release();
+}
+
+#[tokio::test]
+async fn maintenance_http_abort_keeps_blocking_writer_counted() {
+    let f = Fixture::new(true);
+    let conn = f.app.writer.as_ref().unwrap().conn.clone();
+    let (locked, ready) = tokio::sync::oneshot::channel();
+    let (unlock, released) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _conn = conn.lock().unwrap();
+        locked.send(()).unwrap();
+        released.recv().unwrap();
+    });
+    ready.await.unwrap();
+    let request = f.request("set_favorite", Body::from(json!({"fileId":f.id,"favorite":true}).to_string()), Some(&f.session), Some("http://localhost:8080"), true);
+    let app = f.app.clone();
+    let request = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
+    wait_for_barrier_writer(&f.app).await;
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+    let barrier = &f.app.geometry.barrier;
+    assert_eq!(barrier.snapshot().writers, 1);
+    let before = std::fs::read(&f.app.config.db_path).unwrap();
+    assert_eq!(barrier.enter_draining(std::time::Duration::from_millis(10)).await.unwrap_err(), crate::barrier::BarrierError::Timeout);
+    assert_eq!(barrier.snapshot().state, crate::barrier::State::Open);
+    assert_eq!(std::fs::read(&f.app.config.db_path).unwrap(), before);
+    unlock.send(()).unwrap();
+    holder.join().unwrap();
+    let window = barrier.enter_draining(std::time::Duration::from_secs(2)).await.unwrap();
+    assert_eq!(barrier.snapshot().writers, 0);
+    assert!(f.favorite());
+    drop(window);
+}
+
+#[tokio::test]
+async fn maintenance_download_holds_reader_until_body_end_and_timeout_aborts_stream() {
+    let f = Fixture::new(true);
+    let path = f.dir.join("download.stl");
+    let content = vec![42u8; 128 * 1024];
+    std::fs::write(&path, &content).unwrap();
+    f.app.writer.as_ref().unwrap().conn.lock().unwrap().execute(
+        "UPDATE files SET path=?1 WHERE id=?2", rusqlite::params![path.to_str().unwrap(), f.id],
+    ).unwrap();
+    // Construct headers outside the future so their borrow lives through the await.
+    let headers = HeaderMap::new();
+    let response = crate::download::download(f.app.config.db_path.clone(), vec![f.dir.clone()], &f.id, &headers, f.app.downloads.clone(), &f.app.geometry.barrier).await;
+    assert_eq!(response.status(), 200);
+    let barrier = &f.app.geometry.barrier;
+    assert_eq!(barrier.snapshot().readers, 1);
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), content.len()).await.unwrap();
+    assert_eq!(Sha256::digest(&bytes), Sha256::digest(&content));
+    window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap().release();
+    assert_eq!(barrier.snapshot().readers, 0);
+    let response = crate::download::download(f.app.config.db_path.clone(), vec![f.dir.clone()], &f.id, &headers, f.app.downloads.clone(), barrier).await;
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(window.enter_exclusive(std::time::Duration::from_millis(1)).await.unwrap_err(), crate::barrier::BarrierError::Timeout);
+    // An unpolled body still owns its guard; a timeout must not fake a drained catalog.
+    assert_eq!(barrier.snapshot().readers, 1);
+    assert!(axum::body::to_bytes(response.into_body(), content.len()).await.is_err());
+    assert_eq!(barrier.snapshot().readers, 0);
+    assert_eq!(std::fs::read(path).unwrap(), content);
+}

@@ -19,6 +19,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 const DISK_REPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub struct GeometryGate {
+    /// The application shares this admission barrier with every catalog route and job.
+    pub barrier: crate::barrier::CatalogBarrier,
     workers: Arc<Semaphore>,
     manager_reads: Arc<Semaphore>,
     /// One disk comparison at a time: each walks the roots.
@@ -30,6 +32,7 @@ pub struct GeometryGate {
 impl Default for GeometryGate {
     fn default() -> Self {
         Self {
+            barrier: crate::barrier::CatalogBarrier::default(),
             workers: Arc::new(Semaphore::new(2)),
             manager_reads: Arc::new(Semaphore::new(4)),
             disk_reports: Arc::new(Semaphore::new(1)),
@@ -362,6 +365,7 @@ pub async fn invoke(
     } else {
         None
     };
+    let catalog_guard = match gate.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     if command == "disk_sync_report" {
         let (limits, wait) = (gate.report_limits, gate.report_timeout);
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -369,7 +373,7 @@ pub async fn invoke(
         // move into it on purpose and are released only when it ends, so a stuck scan keeps
         // blocking further ones (single flight, manager gate) instead of piling up new threads.
         let started = std::thread::Builder::new().name("disk-report".into()).spawn(move || {
-            let _held = (manager_permit, report_permit);
+            let _held = (catalog_guard, manager_permit, report_permit);
             let outcome = (|| -> Result<Value, ReadError> {
                 let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
                 // The database is only read for the copy; the disk scan runs without it.
@@ -401,6 +405,7 @@ pub async fn invoke(
     };
     let result = tokio::task::spawn_blocking(move || -> Result<Response, ReadError> {
         // The permits belong to this closure: cancelling HTTP does not release a running parser.
+        let _catalog_guard = catalog_guard;
         let _permits = permits;
         let _manager_permit = manager_permit;
         let _report_permit = report_permit;
@@ -644,10 +649,11 @@ mod tests {
         // The scan thread still owns the single-flight permit and one manager permit.
         assert_eq!(gate.disk_reports.available_permits(), 0);
         assert_eq!(gate.manager_reads.available_permits(), 3);
+        assert_eq!(gate.barrier.snapshot().readers, 1);
         let again = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate.clone()).await;
         assert_eq!(again.status(), StatusCode::SERVICE_UNAVAILABLE);
         for _ in 0..100 {
-            if gate.disk_reports.available_permits() == 1 && gate.manager_reads.available_permits() == 4 {
+            if gate.disk_reports.available_permits() == 1 && gate.manager_reads.available_permits() == 4 && gate.barrier.snapshot().readers == 0 {
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;

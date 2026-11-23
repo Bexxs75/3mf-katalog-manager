@@ -1681,3 +1681,47 @@ async fn a_handled_archive_stays_listed_and_can_be_discarded_without_touching_it
     let file_id = result["files"].as_array().unwrap().iter().find(|x| x["name"] == "a.obj").unwrap()["fileId"].clone();
     assert!(file_id.is_string());
 }
+
+#[tokio::test]
+async fn maintenance_upload_import_and_upload_readers_use_shared_barrier() {
+    let f = Fixture::new(true);
+    let barrier = &f.app.geometry.barrier;
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    let response = f.invoke("start_upload_import", json!({"uploadIds":["unused"]})).await;
+    assert_eq!(response.status(), 503);
+    let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap()["message"], "maintenance");
+    assert_eq!(f.send(f.request("GET", "/api/uploads", Body::empty())).await.status(), 200);
+    let window = window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(f.send(f.request("GET", "/api/uploads", Body::empty())).await.status(), 503);
+    window.release();
+}
+
+#[tokio::test]
+async fn maintenance_drains_import_worker_through_cancellation_and_reconciliation() {
+    let f = Fixture::new(true);
+    let upload = f.upload("pending.obj", MODEL).await;
+    let conn = f.app.writer.as_ref().unwrap().conn.clone();
+    let (locked, ready) = tokio::sync::oneshot::channel();
+    let (unlock, released) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _conn = conn.lock().unwrap();
+        locked.send(()).unwrap();
+        released.recv().unwrap();
+    });
+    ready.await.unwrap();
+    let response = f.invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]})).await;
+    assert_eq!(response.status(), 200);
+    let job = value(response).await;
+    let barrier = &f.app.geometry.barrier;
+    assert_eq!(barrier.snapshot().writers, 1);
+    let window = barrier.enter_draining(std::time::Duration::from_secs(2)).await.unwrap();
+    assert_eq!(barrier.snapshot().writers, 0);
+    unlock.send(()).unwrap();
+    holder.join().unwrap();
+    let result = value(f.invoke("get_import_state", json!({"jobId":job["jobId"]})).await).await;
+    assert_eq!(result["state"], "cancelled");
+    let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+    assert_eq!(conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    window.release();
+}

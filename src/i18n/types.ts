@@ -2159,6 +2159,7 @@ export interface Translations {
   errWebBodyTooLarge: string;
   errWebCommandUnavailable: string;
   errWebWriteBusy: string;
+  errMaintenance: string;
   errWebServerInternal: string;
   errReqInvalidArguments: string;
   errReqInvalidIds: string;

@@ -2117,6 +2117,7 @@ export const de: Translations = {
   errWebBodyTooLarge: "JSON-Körper ist zu groß",
   errWebCommandUnavailable: "Befehl im Web nicht verfügbar",
   errWebWriteBusy: "Schreibzugriff derzeit ausgelastet",
+  errMaintenance: "Der Katalog wird gewartet. Bitte später erneut versuchen.",
   errWebServerInternal: "Interner Fehler",
   errReqInvalidArguments: "Ungültige Argumente",
   errReqInvalidIds: "ID muss eine numerische Zeichenfolge sein",

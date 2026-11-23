@@ -237,6 +237,9 @@ fn rate(app: &App, s: &Session) -> Result<(), Response> {
     Ok(())
 }
 pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Response {
+    let catalog_guard = match app.geometry.barrier.writer() {
+        Ok(g) => Arc::new(g), Err(_) => return crate::barrier::maintenance(),
+    };
     if let Err(r) = rate(&app, &session) {
         return r;
     }
@@ -289,8 +292,12 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
         .unwrap()
         .limits
         .max_mesh_file_bytes;
+    let held = catalog_guard.clone();
     let mut pending =
-        match tokio::task::spawn_blocking(move || store.begin_limited(length, &name, mesh_limit))
+        match tokio::task::spawn_blocking(move || {
+            let _held = held;
+            store.begin_limited(length, &name, mesh_limit)
+        })
             .await
         {
             Ok(Ok(p)) => p,
@@ -321,7 +328,9 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
             progress = 0;
             idle = tokio::time::Instant::now() + Duration::from_secs(60)
         }
+        let held = catalog_guard.clone();
         pending = match tokio::task::spawn_blocking(move || {
+            let _held = held;
             let result = pending.write(&chunk);
             (pending, result)
         })
@@ -332,7 +341,11 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
             Err(_) => return error(500, "upload_internal"),
         };
     }
-    pending = match tokio::task::spawn_blocking(move || pending.prepare().map(|()| pending)).await {
+    let held = catalog_guard.clone();
+    pending = match tokio::task::spawn_blocking(move || {
+        let _held = held;
+        pending.prepare().map(|()| pending)
+    }).await {
         Ok(Ok(p)) => p,
         Ok(Err(e)) => return fail(e),
         Err(_) => return error(500, "upload_internal"),
@@ -342,6 +355,7 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
     let change = app.changes.clone().lock_owned().await;
     let finish_app = app.clone();
     let response = tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         // Keep logout serialized even if the HTTP future is cancelled.
         let _change = change;
         let mut data = finish_app.data.lock().unwrap();
@@ -418,9 +432,12 @@ pub(super) async fn invoke(
             let Ok(arg) = serde_json::from_value::<UploadId>(args) else {
                 return error(400, "arguments");
             };
+            let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
             let copy = rt.clone();
-            let result =
-                tokio::task::spawn_blocking(move || copy.store.discard(&arg.upload_id)).await;
+            let result = tokio::task::spawn_blocking(move || {
+                let _catalog_guard = catalog_guard;
+                copy.store.discard(&arg.upload_id)
+            }).await;
             rt.changed().await;
             match result {
                 Ok(Ok(())) => Json(json!({"ok":true})).into_response(),
@@ -429,6 +446,7 @@ pub(super) async fn invoke(
             }
         }
         "start_upload_import" => {
+            let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
             let _change = app.changes.lock().await;
             if !authenticated(&app, &session) {
                 return error(401, "session_expired");
@@ -503,10 +521,14 @@ pub(super) async fn invoke(
             rt.jobs.lock().unwrap().insert(id.clone(), job.clone());
             rt.publish(&job, false);
             let worker_app = app.clone();
-            tokio::task::spawn_blocking(move || run_job(worker_app, rt, job, entries, permit));
+            tokio::task::spawn_blocking(move || {
+                let _catalog_guard = catalog_guard;
+                run_job(worker_app, rt, job, entries, permit)
+            });
             Json(json!({"jobId":id})).into_response()
         }
         "get_import_state" | "get_import_result" | "cancel_import" => {
+            let catalog_guard = match app.geometry.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
             let Ok(arg) = serde_json::from_value::<JobId>(args) else {
                 return error(400, "arguments");
             };
@@ -524,7 +546,10 @@ pub(super) async fn invoke(
                 return Json(serde_json::to_value(&*job.view.lock().unwrap()).unwrap())
                     .into_response();
             }
-            match tokio::task::spawn_blocking(move || rt.store.job_result(&arg.job_id)).await {
+            match tokio::task::spawn_blocking(move || {
+                let _catalog_guard = catalog_guard;
+                rt.store.job_result(&arg.job_id)
+            }).await {
                 Ok(Ok(Some(v))) => Json(v).into_response(),
                 Ok(Ok(None)) => error(404, "job_not_found"),
                 Ok(Err(e)) => fail(e),
@@ -565,6 +590,9 @@ impl ImportDb for Database<'_> {
     ) -> ImportResult<R> {
         // Never keep a DB mutex while parsing, journalling, or waiting for clients.
         loop {
+            if self.app.geometry.barrier.snapshot().state != crate::barrier::State::Open {
+                self.cancel.store(true, Ordering::Release);
+            }
             if self.cancel.load(Ordering::Acquire) {
                 return Err("cancelled".into());
             }
@@ -720,6 +748,9 @@ fn expand_archives(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &mut Vec<En
     let upload = app.config.upload.as_ref().unwrap();
     let job_id = job.view.lock().unwrap().job_id.clone();
     for archive in archives {
+        if app.geometry.barrier.snapshot().state != crate::barrier::State::Open {
+            job.cancel.store(true, Ordering::Release);
+        }
         if job.cancel.load(Ordering::Acquire) {
             break;
         }
@@ -803,6 +834,9 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &mut Vec<Entry>) 
         .filter(|e| !crate::upload_store::is_archive_name(&e.name))
         .enumerate()
     {
+        if app.geometry.barrier.snapshot().state != crate::barrier::State::Open {
+            job.cancel.store(true, Ordering::Release);
+        }
         if job.cancel.load(Ordering::Acquire) {
             break;
         }
@@ -995,7 +1029,9 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
     let copy = rt.clone();
     let token = session.token.clone();
     let snapshot_tx = tx.clone();
+    let catalog_guard = match app.geometry.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let guard = match tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let rt = copy;
         let tx = snapshot_tx;
         // Never hold the hub while waiting on journal fsync. Retry if a
@@ -1076,8 +1112,12 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         .insert("x-accel-buffering", "no".parse().unwrap());
     response
 }
-pub(super) async fn list(rt: Arc<Runtime>) -> Response {
-    tokio::task::spawn_blocking(move || Json(public_entries(&rt.store)).into_response())
+pub(super) async fn list(rt: Arc<Runtime>, barrier: &crate::barrier::CatalogBarrier) -> Response {
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
+    tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
+        Json(public_entries(&rt.store)).into_response()
+    })
         .await
         .unwrap_or_else(|_| error(500, "journal"))
 }

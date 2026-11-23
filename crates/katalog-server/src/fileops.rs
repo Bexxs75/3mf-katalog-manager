@@ -73,8 +73,10 @@ pub(super) fn failure(status: u16, kind: &str) -> Response {
 /// offered and the operation itself refuses a protected one.
 pub(super) async fn list_folders(app: &App) -> Option<Response> {
     let rt = app.fileops.clone().filter(|_| app.config.file_ops)?;
+    let catalog_guard = match app.geometry.barrier.reader() { Ok(g) => g, Err(_) => return Some(crate::barrier::maintenance()) };
     let db_path = app.config.db_path.clone();
     let result = tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let conn = katalog_core::db::open_read_only(&db_path).map_err(|e| e.to_string())?;
         let mut folders = katalog_core::read::list_folders(&conn).map_err(|e| e.to_string())?;
         if let Ok(state) = rt.state.try_lock() {
@@ -269,7 +271,10 @@ pub(super) fn valid_session(app: &App, current: &Session) -> bool {
 pub(super) fn operation_cancellation(app: &App, current: &Session) -> crate::fileops_cancel::Cancellation {
     let validity = current.validity.clone();
     let clock = app.clock.clone();
-    deadline_cancellation(Duration::from_secs(20), move || validity.valid(clock.now()))
+    let barrier = app.geometry.barrier.clone();
+    deadline_cancellation(Duration::from_secs(20), move || {
+        barrier.snapshot().state == crate::barrier::State::Open && validity.valid(clock.now())
+    })
 }
 fn deadline_cancellation(
     limit: Duration,
@@ -346,8 +351,10 @@ pub(super) async fn invoke(
             Err(r) => return *r,
         }
     }
+    let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let worker_rt = rt.clone();
     tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let rt = worker_rt;
         let _admission = admission;
         // Acquire import gate BEFORE runtime/fileops mutex. Never app.changes.
@@ -813,10 +820,12 @@ pub(super) async fn add_companion(
     };
     progress.set_file_ids(&[file_id]);
     let (sender, chunks) = tokio::sync::mpsc::channel(4);
+    let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let pumping = tokio::spawn(pump(body, sender, idle));
     let max = app.config.companion_max_bytes;
     let worker_rt = rt.clone();
     let result = tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let rt = worker_rt;
         let (_admission, _slot) = (admission, slot);
         let mut reader = BodyReader { chunks, current: Default::default() };

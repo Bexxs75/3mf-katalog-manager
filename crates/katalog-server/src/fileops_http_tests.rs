@@ -1795,3 +1795,23 @@ async fn a_path_in_the_upload_name_never_leaves_the_extras_folder() {
     assert!(added.iter().all(|p| p.starts_with("Foo_extras/")), "{added:?}");
     assert_eq!(added.len(), 4, "{added:?}");
 }
+
+#[tokio::test]
+async fn maintenance_fileops_and_empty_trash_block_are_rejected() {
+    let f = Fixture::new(true).await;
+    let barrier = &f.app.geometry.barrier;
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    for (command, args) in [
+        ("empty_trash_block", json!({"token":"unused"})),
+        ("rename_file", json!({"fileId":"1","name":"new.stl"})),
+    ] {
+        let response = f.invoke(command, args).await;
+        assert_eq!(response.status(), 503);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap()["message"], "maintenance");
+    }
+    assert_eq!(f.invoke("list_folders", json!({})).await.status(), 200);
+    let window = window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(f.invoke("list_folders", json!({})).await.status(), 503);
+    window.release();
+}
