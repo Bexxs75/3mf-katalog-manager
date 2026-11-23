@@ -155,12 +155,21 @@ fn run_sync(app: &App, force: bool, cancel: Arc<AtomicBool>) -> Result<Value, ()
 }
 
 pub(super) async fn read(app: Arc<App>, command: String, args: Value) -> Response {
+    // Admission comes before any work: each read opens a connection and may match
+    // every open job against the model candidates, so concurrent callers must not
+    // multiply that load beyond the limit shared with the other manager reads.
+    let permit = match app.geometry.manager_read() {
+        Ok(p) => p,
+        Err(r) => return *r,
+    };
     let guard = match app.geometry.barrier.reader() {
         Ok(g) => g,
         Err(_) => return crate::barrier::maintenance(),
     };
     tokio::task::spawn_blocking(move || {
-        let _guard = guard;
+        // Both belong to the closure: a request that times out or is dropped does not
+        // stop this work, so neither may be released before it finishes.
+        let _held = (guard, permit);
         execute(&app, &command, &args)
     })
     .await

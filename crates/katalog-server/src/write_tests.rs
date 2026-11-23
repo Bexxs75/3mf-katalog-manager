@@ -2626,6 +2626,67 @@ async fn printer_service_commands_use_core_and_hide_stored_keys() {
     assert_eq!(f.send("remove_printer_connection", json!({"printerId":"1"})).await.status(), 200);
 }
 
+/// Printer reads share the manager-read limit: callers over it are turned away with a
+/// repeatable answer instead of each starting database work of its own.
+#[tokio::test]
+async fn printer_reads_over_the_manager_limit_are_rejected() {
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    let held: Vec<_> = (0..4).map(|_| f.app.geometry.manager_read().unwrap()).collect();
+    for command in ["list_open_printer_jobs", "list_printer_connections", "get_printer_link_enabled"] {
+        let response = f.send(command, json!({})).await;
+        assert_eq!(response.status(), 503, "{command}");
+        assert_eq!(response.headers()["retry-after"], "1", "{command}");
+    }
+    drop(held);
+    assert_eq!(f.send("list_open_printer_jobs", json!({})).await.status(), 200);
+    assert!(f.app.geometry.manager_read().is_ok());
+}
+
+/// A request that disappears does not stop the blocking work it started, so the
+/// admission permit must stay held until that work has really run.
+#[test]
+fn printer_read_permit_outlives_a_dropped_request() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .max_blocking_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let mut f = Fixture::new(true);
+        Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+            crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+        let gate = f.app.geometry.clone();
+        // Occupy the only blocking thread so the printer read queues behind it.
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let blocker = tokio::task::spawn_blocking(move || {
+            let _ = wait.recv();
+        });
+        let app = f.app.clone();
+        let request = tokio::spawn(async move {
+            printer_service::read(app, "list_open_printer_jobs".into(), json!({})).await
+        });
+        while gate.manager_reads_available() == 4 {
+            tokio::task::yield_now().await;
+        }
+        request.abort();
+        let _ = request.await;
+        // The HTTP side is gone, the queued work is not.
+        assert_eq!(gate.manager_reads_available(), 3);
+        release.send(()).unwrap();
+        blocker.await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while gate.manager_reads_available() != 4 {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    });
+}
+
 #[tokio::test]
 async fn printer_service_events_work_without_uploads_and_barrier_blocks_writes() {
     use http_body_util::BodyExt;
