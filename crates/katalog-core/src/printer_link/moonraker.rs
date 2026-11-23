@@ -281,7 +281,7 @@ impl MoonrakerLink {
 
     /// First port 80 (Mainsail/nginx), then 7125 (Moonraker directly), unless the address names a port itself.
     fn candidate_bases(&self) -> Result<Vec<String>, LinkError> {
-        let target = resolve(&self.address, self.policy)?;
+        let target = resolve(&self.address, self.policy.clone())?;
         Ok(match target.port {
             Some(p) => vec![base_url(target.ip, p)],
             None => vec![base_url(target.ip, 80), base_url(target.ip, 7125)],
@@ -905,6 +905,25 @@ mod client_tests {
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::HOME_NETWORK);
         assert_eq!(link.test(), Err(LinkError::AddressNotAllowed));
         assert!(server.requests().is_empty());
+    }
+
+    #[test]
+    fn allowlist_denied_address_never_sends_http_request() {
+        let server = sv08();
+        let allowlist = super::super::address::AddressAllowlist::from_strings(["127.0.0.2"]).unwrap();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST.with_allowlist(allowlist));
+        assert_eq!(link.test(), Err(LinkError::AddressNotAllowed));
+        assert!(server.requests().is_empty());
+    }
+
+    #[test]
+    fn allowlist_permitted_address_connects_to_fake_printer() {
+        let server = sv08();
+        let allowlist = super::super::address::AddressAllowlist::from_strings(["127.0.0.1"]).unwrap();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST.with_allowlist(allowlist));
+        let info = link.test().unwrap();
+        assert_eq!(info.base_url, format!("http://{}", server.address()));
+        assert!(!server.requests().is_empty());
     }
 
     #[test]

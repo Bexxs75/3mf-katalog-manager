@@ -2,18 +2,161 @@
 //! the connection goes to the checked IP (no second DNS lookup).
 
 use std::net::{IpAddr, ToSocketAddrs};
+use std::sync::Arc;
 
 use super::LinkError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An optional allowlist narrows the home-network policy; it never replaces it.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddressPolicy {
     pub allow_loopback: bool,
+    allowlist: Option<Arc<AddressAllowlist>>,
 }
 
 impl AddressPolicy {
-    pub const HOME_NETWORK: Self = Self { allow_loopback: false };
+    pub const HOME_NETWORK: Self = Self {
+        allow_loopback: false,
+        allowlist: None,
+    };
     #[cfg(test)]
-    pub const TEST: Self = Self { allow_loopback: true };
+    pub const TEST: Self = Self {
+        allow_loopback: true,
+        allowlist: None,
+    };
+
+    pub fn with_allowlist(mut self, allowlist: AddressAllowlist) -> Self {
+        self.allowlist = Some(Arc::new(allowlist));
+        self
+    }
+}
+
+/// IP networks and pinned host addresses. An empty list permits no addresses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressAllowlist {
+    networks: Vec<IpNetwork>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct IpNetwork {
+    address: IpAddr,
+    prefix: u8,
+}
+
+fn canonical_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(ip),
+        _ => ip,
+    }
+}
+
+impl IpNetwork {
+    fn new(address: IpAddr, prefix: u8) -> Result<Self, LinkError> {
+        let max = if address.is_ipv4() { 32 } else { 128 };
+        if prefix > max {
+            return Err(LinkError::AddressNotAllowed);
+        }
+        Ok(Self { address, prefix })
+    }
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        match self.address {
+            IpAddr::V4(network) => {
+                let IpAddr::V4(ip) = canonical_ip(ip) else { return false };
+                let mask = u32::MAX.checked_shl(u32::from(32 - self.prefix)).unwrap_or(0);
+                u32::from(network) & mask == u32::from(ip) & mask
+            }
+            IpAddr::V6(network) => {
+                // IPv4 addresses use their mapped representation in IPv6 networks.
+                let ip = match ip {
+                    IpAddr::V4(ip) => ip.to_ipv6_mapped(),
+                    IpAddr::V6(ip) => ip,
+                };
+                let mask = u128::MAX.checked_shl(u32::from(128 - self.prefix)).unwrap_or(0);
+                u128::from(network) & mask == u128::from(ip) & mask
+            }
+        }
+    }
+}
+
+impl AddressAllowlist {
+    /// Parses individual host, IP or CIDR strings (no URLs, ports or wildcards).
+    ///
+    /// Hosts are resolved once here and pinned to their current IPs. Rebuild the
+    /// list explicitly to accept changed host addresses. Resolution is blocking.
+    /// Invalid entries reject the entire list with AddressNotAllowed; unresolved
+    /// or empty host answers return NameResolutionFailed. Public and metadata
+    /// addresses can be parsed but are never enabled by the resulting policy.
+    /// IPv4 addresses match IPv6 networks via their IPv4-mapped representation.
+    pub fn from_strings<I, S>(entries: I) -> Result<Self, LinkError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        Self::from_strings_with_resolver(entries, lookup_ips)
+    }
+
+    fn from_strings_with_resolver<I, S>(entries: I, mut resolver: impl FnMut(&str) -> Result<Vec<IpAddr>, LinkError>) -> Result<Self, LinkError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut networks = Vec::new();
+        for entry in entries {
+            let entry = entry.as_ref().trim();
+            if let Some((address, prefix)) = entry.split_once('/') {
+                let address = address.parse::<IpAddr>().map_err(|_| LinkError::AddressNotAllowed)?;
+                if prefix.is_empty() || !prefix.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(LinkError::AddressNotAllowed);
+                }
+                let prefix = prefix.parse::<u8>().map_err(|_| LinkError::AddressNotAllowed)?;
+                networks.push(IpNetwork::new(address, prefix)?);
+            } else {
+                let (host, port) = split_host_port(entry)?;
+                if port.is_some() {
+                    return Err(LinkError::AddressNotAllowed);
+                }
+                let ips = if let Ok(ip) = host.parse::<IpAddr>() {
+                    vec![ip]
+                } else {
+                    let host = host.strip_suffix('.').unwrap_or(&host).to_ascii_lowercase();
+                    if !valid_allowlist_host(&host) || entry.starts_with('[') {
+                        return Err(LinkError::AddressNotAllowed);
+                    }
+                    resolver(&host)?
+                };
+                if ips.is_empty() {
+                    return Err(LinkError::NameResolutionFailed);
+                }
+                for ip in ips {
+                    networks.push(IpNetwork::new(ip, if ip.is_ipv4() { 32 } else { 128 })?);
+                }
+            }
+        }
+        Ok(Self { networks })
+    }
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        self.networks.iter().any(|network| network.contains(ip))
+    }
+}
+
+fn valid_allowlist_host(host: &str) -> bool {
+    host.len() <= 253
+        && !host.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
+}
+
+fn lookup_ips(host: &str) -> Result<Vec<IpAddr>, LinkError> {
+    (host, 0)
+        .to_socket_addrs()
+        .map(|addresses| addresses.map(|sa| sa.ip()).collect())
+        .map_err(|_| LinkError::NameResolutionFailed)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,41 +232,56 @@ pub fn explain_address_error(input: &str, container: bool, error: LinkError) -> 
 }
 
 pub fn is_allowed_ip(ip: IpAddr, policy: AddressPolicy) -> bool {
-    match ip {
+    policy_allows_ip(ip, &policy)
+}
+
+fn policy_allows_ip(ip: IpAddr, policy: &AddressPolicy) -> bool {
+    let ip = canonical_ip(ip);
+    let home_network = match ip {
         IpAddr::V4(v4) => {
-            if v4.is_loopback() {
-                return policy.allow_loopback;
+            if v4.octets() == [169, 254, 169, 254] {
+                return false;
             }
-            v4.is_private() || v4.is_link_local()
+            if v4.is_loopback() {
+                policy.allow_loopback
+            } else {
+                v4.is_private() || v4.is_link_local()
+            }
         }
         IpAddr::V6(v6) => {
-            if let Some(v4) = v6.to_ipv4_mapped() {
-                return is_allowed_ip(IpAddr::V4(v4), policy);
+            if v6.segments() == [0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254] {
+                return false;
             }
             if v6.is_loopback() {
-                return policy.allow_loopback;
+                policy.allow_loopback
+            } else {
+                let first = v6.segments()[0];
+                (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80
             }
-            let first = v6.segments()[0];
-            (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80
         }
-    }
+    };
+    home_network && policy.allowlist.as_ref().is_none_or(|list| list.contains(ip))
 }
 
 /// Resolves the address and checks EVERY resolved IP. Prefers IPv4.
 pub fn resolve(input: &str, policy: AddressPolicy) -> Result<Target, LinkError> {
+    resolve_with_resolver(input, policy, lookup_ips)
+}
+
+fn resolve_with_resolver(input: &str, policy: AddressPolicy, resolver: impl FnOnce(&str) -> Result<Vec<IpAddr>, LinkError>) -> Result<Target, LinkError> {
     let (host, port) = split_host_port(input)?;
     if let Ok(ip) = host.parse::<IpAddr>() {
-        return if is_allowed_ip(ip, policy) { Ok(Target { ip, port }) } else { Err(LinkError::AddressNotAllowed) };
+        return if policy_allows_ip(ip, &policy) {
+            Ok(Target { ip, port })
+        } else {
+            Err(LinkError::AddressNotAllowed)
+        };
     }
-    let ips: Vec<IpAddr> = (host.as_str(), 0)
-        .to_socket_addrs()
-        .map_err(|_| LinkError::NameResolutionFailed)?
-        .map(|sa| sa.ip())
-        .collect();
+    let ips = resolver(&host)?;
     if ips.is_empty() {
         return Err(LinkError::NameResolutionFailed);
     }
-    if !ips.iter().all(|ip| is_allowed_ip(*ip, policy)) {
+    if !ips.iter().all(|ip| policy_allows_ip(*ip, &policy)) {
         return Err(LinkError::AddressNotAllowed);
     }
     let ip = ips.iter().copied().find(IpAddr::is_ipv4).unwrap_or(ips[0]);
@@ -158,6 +316,182 @@ mod tests {
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
+    }
+
+    fn policy(entries: &[&str]) -> AddressPolicy {
+        AddressPolicy::HOME_NETWORK.with_allowlist(AddressAllowlist::from_strings(entries).unwrap())
+    }
+
+    #[test]
+    fn allowlist_requires_both_membership_and_home_network() {
+        let p = policy(&["192.168.1.0/24", "8.8.8.8"]);
+        assert!(is_allowed_ip(ip("192.168.1.60"), p.clone()));
+        for address in ["192.168.2.60", "8.8.8.8", "127.0.0.1"] {
+            assert!(!is_allowed_ip(ip(address), p.clone()), "{address}");
+        }
+        assert!(!is_allowed_ip(ip("192.168.1.60"), policy(&[])));
+    }
+
+    #[test]
+    fn allowlist_loopback_requires_test_policy_and_membership() {
+        let list = AddressAllowlist::from_strings(["127.0.0.1", "::1"]).unwrap();
+        for address in ["127.0.0.1", "::1", "::ffff:127.0.0.1"] {
+            assert!(!is_allowed_ip(ip(address), AddressPolicy::HOME_NETWORK.with_allowlist(list.clone())));
+            assert!(is_allowed_ip(ip(address), AddressPolicy::TEST.with_allowlist(list.clone())));
+        }
+        assert!(!is_allowed_ip(ip("127.0.0.2"), AddressPolicy::TEST.with_allowlist(list)));
+    }
+
+    #[test]
+    fn metadata_is_denied_even_with_covering_cidr_or_test_policy() {
+        for address in ["169.254.169.254", "::ffff:169.254.169.254", "fd00:ec2::254"] {
+            for p in [
+                AddressPolicy::HOME_NETWORK,
+                AddressPolicy::TEST,
+                policy(&["169.254.0.0/16", "fd00::/8"]),
+                AddressPolicy::TEST.with_allowlist(AddressAllowlist::from_strings(["0.0.0.0/0", "::/0"]).unwrap()),
+            ] {
+                assert!(!is_allowed_ip(ip(address), p), "{address}");
+            }
+        }
+    }
+
+    #[test]
+    fn allowlist_ipv6_and_mapped_ipv4_match_network_boundaries() {
+        let p = policy(&["fd12:3456::1234/64", "192.168.1.60/32"]);
+        for address in ["fd12:3456::1", "fd12:3456::ffff", "::ffff:192.168.1.60"] {
+            assert!(is_allowed_ip(ip(address), p.clone()), "{address}");
+        }
+        for address in ["fd12:3456:0:1::1", "fd13::1", "2001:db8::1", "192.168.1.61"] {
+            assert!(!is_allowed_ip(ip(address), p.clone()), "{address}");
+        }
+        let mapped = policy(&["::ffff:192.168.1.0/120"]);
+        assert!(is_allowed_ip(ip("192.168.1.60"), mapped.clone()));
+        assert!(!is_allowed_ip(ip("192.168.2.60"), mapped));
+        let exact = policy(&["fd12::1/128"]);
+        assert!(is_allowed_ip(ip("fd12::1"), exact.clone()));
+        assert!(!is_allowed_ip(ip("fd12::2"), exact));
+    }
+
+    #[test]
+    fn allowlist_cidr_zero_and_non_octet_prefixes() {
+        let all = policy(&["0.0.0.0/0", "::/0"]);
+        for address in ["10.0.0.1", "192.168.1.1", "fd12::1", "fe80::1"] {
+            assert!(is_allowed_ip(ip(address), all.clone()), "{address}");
+        }
+        for address in ["8.8.8.8", "2001:db8::1"] {
+            assert!(!is_allowed_ip(ip(address), all.clone()), "{address}");
+        }
+        let mapped = policy(&["::ffff:192.168.1.1/80"]);
+        assert!(is_allowed_ip(ip("10.0.0.1"), mapped.clone()));
+        assert!(!is_allowed_ip(ip("fd12::1"), mapped));
+        let p = policy(&["192.168.1.129/25", "fd12:3456:789a:8000::1/49"]);
+        for address in ["192.168.1.128", "192.168.1.255", "fd12:3456:789a:8000::", "fd12:3456:789a:ffff::1"] {
+            assert!(is_allowed_ip(ip(address), p.clone()), "{address}");
+        }
+        for address in ["192.168.1.127", "192.168.2.0", "fd12:3456:789a:7fff::1", "fd12:3456:789b:8000::1"] {
+            assert!(!is_allowed_ip(ip(address), p.clone()), "{address}");
+        }
+    }
+
+    #[test]
+    fn allowlist_parser_rejects_invalid_entries() {
+        for entry in [
+            "",
+            " ",
+            "host:7125",
+            "http://host",
+            "user@host",
+            "*.local",
+            "host/24",
+            "192.168.1.1/33",
+            "::1/129",
+            "10.0.0.1/-1",
+            "10.0.0.1/1/2",
+            "bad..host",
+            "-host",
+            "host-",
+            "999.999.1.1",
+            "[fd00::1]:80",
+        ] {
+            assert_eq!(AddressAllowlist::from_strings([entry]), Err(LinkError::AddressNotAllowed), "{entry}");
+        }
+    }
+
+    #[test]
+    fn allowlist_hosts_are_pinned_at_construction() {
+        let list = AddressAllowlist::from_strings_with_resolver(["Printer.LOCAL."], |host| {
+            assert_eq!(host, "printer.local");
+            Ok(vec![ip("192.168.1.60"), ip("fd12::1")])
+        })
+        .unwrap();
+        let p = AddressPolicy::HOME_NETWORK.with_allowlist(list);
+        assert!(is_allowed_ip(ip("192.168.1.60"), p.clone()));
+        assert!(is_allowed_ip(ip("fd12::1"), p.clone()));
+        assert!(!is_allowed_ip(ip("192.168.1.61"), p));
+    }
+
+    #[test]
+    fn allowlist_host_resolution_fails_closed() {
+        assert_eq!(
+            AddressAllowlist::from_strings_with_resolver(["printer.local"], |_| Ok(vec![])),
+            Err(LinkError::NameResolutionFailed)
+        );
+        assert_eq!(
+            AddressAllowlist::from_strings_with_resolver(["printer.local"], |_| Err(LinkError::NameResolutionFailed)),
+            Err(LinkError::NameResolutionFailed)
+        );
+    }
+
+    #[test]
+    fn resolver_rechecks_rebinding_and_returns_checked_ip() {
+        let mut calls = 0;
+        let mut resolver = |_: &str| {
+            calls += 1;
+            Ok(vec![if calls == 1 { ip("192.168.1.60") } else { ip("127.0.0.1") }])
+        };
+        let p = policy(&["192.168.1.0/24", "127.0.0.0/8"]);
+        let target = resolve_with_resolver("printer.local:7125", p.clone(), &mut resolver).unwrap();
+        assert_eq!(
+            target,
+            Target {
+                ip: ip("192.168.1.60"),
+                port: Some(7125)
+            }
+        );
+        assert_eq!(base_url(target.ip, target.port.unwrap()), "http://192.168.1.60:7125");
+        assert_eq!(resolve_with_resolver("printer.local:7125", p, &mut resolver), Err(LinkError::AddressNotAllowed));
+        assert_eq!(calls, 2);
+    }
+
+    #[test]
+    fn resolver_rejects_any_forbidden_answer_and_prefers_ipv4() {
+        let p = policy(&["192.168.1.60", "fd12::1"]);
+        for forbidden in ["192.168.1.61", "8.8.8.8", "127.0.0.1", "169.254.169.254", "fd00:ec2::254"] {
+            for answers in [vec![ip("192.168.1.60"), ip(forbidden)], vec![ip(forbidden), ip("192.168.1.60")]] {
+                assert_eq!(
+                    resolve_with_resolver("printer.local", p.clone(), |_| Ok(answers)),
+                    Err(LinkError::AddressNotAllowed)
+                );
+            }
+        }
+        assert_eq!(
+            resolve_with_resolver("printer.local", p, |_| Ok(vec![ip("fd12::1"), ip("192.168.1.60")]))
+                .unwrap()
+                .ip,
+            ip("192.168.1.60")
+        );
+    }
+
+    #[test]
+    fn allowlist_literal_resolution_does_not_use_dns() {
+        assert_eq!(
+            resolve_with_resolver("192.168.1.60", policy(&["192.168.1.60"]), |_| panic!("literal must not resolve"))
+                .unwrap()
+                .ip,
+            ip("192.168.1.60")
+        );
+        assert_eq!(resolve("192.168.1.61", policy(&["192.168.1.60"])), Err(LinkError::AddressNotAllowed));
     }
 
     #[test]
