@@ -1023,6 +1023,10 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                     return response;
                 }
             }
+            if crate::source_dirs::READ.contains(&command) {
+                return crate::source_dirs::invoke(app.config.db_path.clone(), app.config.source_roots.clone(),
+                    command.to_owned(), args, app.geometry.clone()).await;
+            }
             invoke(
                 app.config.db_path.clone(),
                 app.config.roots.clone(),
@@ -1433,6 +1437,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
     };
     // Permits live with blocking work, including after HTTP timeout/disconnect.
     let exec_ctx = crate::write::ExecContext {
+        source_roots: app.config.source_roots.clone(),
         db_path: app.config.db_path.clone(),
         roots: app.config.roots.clone(),
         limits: app.config.upload.as_ref().map(|u| u.limits).unwrap_or_default(),

@@ -50,6 +50,7 @@
     "sourceNotAFolder",
     "sourceFolderUnreadable",
     "sourceFolderMoved",
+    "sourceRootNotAllowed",
     "sourcePathInvalid",
     "sourceFolderProtected",
     "sourceFolderInCatalog",

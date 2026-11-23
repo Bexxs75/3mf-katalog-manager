@@ -28,3 +28,5 @@ pub(crate) mod fileops_config;
 pub(crate) mod fileops_safety;
 
 pub(crate) mod fileops_cancel;
+
+mod source_dirs;

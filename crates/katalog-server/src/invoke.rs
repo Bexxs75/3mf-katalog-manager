@@ -43,7 +43,7 @@ impl Default for GeometryGate {
     }
 }
 impl GeometryGate {
-    async fn acquire(&self) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), Box<Response>> {
+    pub(crate) async fn acquire(&self) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), Box<Response>> {
         let admission = self.admission.clone().try_acquire_owned().map_err(|_| {
             error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[])
         })?;
@@ -134,6 +134,11 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
 /// Encoded picture bytes after which `list_file_images` defers the remaining entries.
 const IMAGE_RESPONSE_BUDGET: usize = 24 * 1024 * 1024;
 pub const READ_COMMANDS: &[&str] = &[
+    "list_source_dirs",
+    "list_source_folders",
+    "scan_source_folders",
+    "get_source_check_on_start",
+
     "folder_removal_summary",
     "empty_trash_summary",
     "get_import_state",

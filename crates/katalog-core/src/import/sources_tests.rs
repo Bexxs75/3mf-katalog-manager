@@ -699,3 +699,35 @@ fn invalid_selections_and_duplicate_folders_keep_existing_error_codes() {
         ErrorCode::SourceFileNotNew.as_str()
     );
 }
+
+struct ChangedEntries { errors: bool }
+impl SourceFs for ChangedEntries {
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> { Ok(path.into()) }
+    fn stat(&self, _: &Path, _: bool) -> io::Result<SourceMetadata> {
+        Ok(SourceMetadata { kind: SourceKind::Other, len: 0 })
+    }
+    fn list(&self, root: &Path) -> io::Result<SourceEntries<'_>> {
+        if self.errors {
+            Ok(Box::new(std::iter::repeat_with(|| Err(io::ErrorKind::InvalidData.into()))))
+        } else {
+            Ok(Box::new(std::iter::once(Ok(SourceEntry {
+                path: root.join("changed.stl"), kind: Ok(SourceKind::File),
+            }))))
+        }
+    }
+    fn content_hash(&self, _: &Path) -> CmdResult<String> { panic!("must not hash") }
+}
+
+#[test]
+fn unreadable_entries_consume_the_scan_budget() {
+    let walked = walk_source_folder(&ChangedEntries { errors: true }, Path::new("/virtual"), 3, 4);
+    assert_eq!(walked.skipped, 4);
+    assert!(walked.truncated);
+}
+
+#[test]
+fn a_file_replaced_by_a_special_entry_is_not_offered() {
+    let walked = walk_source_folder(&ChangedEntries { errors: false }, Path::new("/virtual"), 3, 4);
+    assert!(walked.files.is_empty());
+    assert_eq!(walked.skipped, 1);
+}

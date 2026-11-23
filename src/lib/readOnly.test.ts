@@ -35,7 +35,7 @@ it.each([
 });
 
 it('keeps manager scope explicit and printer networking unavailable', () => {
-  expect(WEB_WRITE_COMMANDS).toHaveLength(66);
+  expect(WEB_WRITE_COMMANDS).toHaveLength(71);
   expect(WEB_WRITE_COMMANDS).toContain('set_spool_print_temperatures');
   expect(WEB_WRITE_COMMANDS).toContain('rename_tag');
   expect(WEB_WRITE_COMMANDS).toContain('merge_tags');

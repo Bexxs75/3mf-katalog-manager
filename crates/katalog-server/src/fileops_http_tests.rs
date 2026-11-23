@@ -1815,3 +1815,7 @@ async fn maintenance_fileops_and_empty_trash_block_are_rejected() {
     assert_eq!(f.invoke("list_folders", json!({})).await.status(), 503);
     window.release();
 }
+
+mod source_dirs_http_tests {
+    include!("source_dirs_http_tests.rs");
+}

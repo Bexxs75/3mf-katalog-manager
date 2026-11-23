@@ -3,6 +3,11 @@ export const isReadOnly = () => import.meta.env.VITE_TARGET === 'web';
 
 /** Keep in sync with katalog-server's is_allowed (verified against Rust source). */
 export const WEB_READ_COMMANDS = [
+  'list_source_dirs',
+  'list_source_folders',
+  'scan_source_folders',
+  'get_source_check_on_start',
+
   'folder_removal_summary', 'empty_trash_summary',
   'get_import_state', 'get_import_result',
   'list_file_summaries', 'list_all_file_tags', 'list_files_by_ids', 'list_tag_counts',
@@ -28,6 +33,12 @@ export const WEB_READ_COMMANDS = [
 
 /** Web write commands: the server remains the authority for each request. */
 export const WEB_WRITE_COMMANDS = [
+  'add_source_folder',
+  'remove_source_folder',
+  'reject_source_files',
+  'reset_rejected_source_files',
+  'set_source_check_on_start',
+
   'rename_file',
   'move_files_to_folder',
   'delete_files',

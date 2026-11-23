@@ -115,6 +115,7 @@ error_codes! {
     SourceNotAFolder => "sourceNotAFolder",
     SourceFolderUnreadable => "sourceFolderUnreadable",
     SourceFolderMoved => "sourceFolderMoved",
+    SourceRootNotAllowed => "sourceRootNotAllowed",
     SourcePathInvalid => "sourcePathInvalid",
     SourceFolderProtected => "sourceFolderProtected",
     SourceFolderInCatalog => "sourceFolderInCatalog",

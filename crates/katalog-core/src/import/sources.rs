@@ -290,15 +290,15 @@ pub fn walk_source_folder(
             }
         };
         for entry in entries {
-            let Ok(entry) = entry else {
-                walked.skipped += 1;
-                continue;
-            };
             if visited >= max_entries {
                 walked.truncated = true;
                 return walked;
             }
             visited += 1;
+            let Ok(entry) = entry else {
+                walked.skipped += 1;
+                continue;
+            };
             let path = entry.path;
             let Ok(kind) = entry.kind else {
                 walked.skipped += 1;
@@ -312,14 +312,16 @@ pub fn walk_source_folder(
             } else if kind == SourceKind::Directory {
                 if depth < max_depth {
                     pending.push((path, depth + 1));
+                } else {
+                    walked.truncated = true;
                 }
             } else if kind == SourceKind::File
                 && files::is_model_extension(&path)
                 && !files::is_ignored_import_path(&path)
             {
                 match fs.stat(&path, false) {
-                    Ok(meta) => walked.files.push((path, meta.len)),
-                    Err(_) => walked.skipped += 1,
+                    Ok(meta) if meta.kind == SourceKind::File => walked.files.push((path, meta.len)),
+                    _ => walked.skipped += 1,
                 }
             }
         }
@@ -457,6 +459,30 @@ pub fn scan_with_state(
         .collect())
 }
 
+/// Hosts that already serialize the connection can use the same scan logic.
+pub fn scan_with_conn(
+    fs: &dyn SourceFs,
+    conn: &Connection,
+    sensitive_dirs: &[PathBuf],
+    max_entries: usize,
+) -> CmdResult<Vec<SourceScanDto>> {
+    let folders = store::list_source_folders(conn)?;
+    let view = load_catalog_view(conn)?;
+    let expanded = expand_sensitive_dirs(fs, sensitive_dirs);
+    Ok(folders.iter().map(|folder| scan_one(fs, folder, &view, &expanded, max_entries)).collect())
+}
+
+pub fn reject_with_conn(
+    fs: &dyn SourceFs,
+    conn: &Connection,
+    sensitive_dirs: &[PathBuf],
+    requested: &[String],
+    max_entries: usize,
+) -> CmdResult<usize> {
+    let scans = scan_with_conn(fs, conn, sensitive_dirs, max_entries)?;
+    persist_rejected(conn, validate_requested(&scans, requested)?)
+}
+
 /// Every path of the request must be a file the scan just listed, which also means it
 /// lies below a registered source folder. Returns the paths with their scanned sizes.
 fn validate_requested(
@@ -489,6 +515,10 @@ pub fn reject_with_state(
     let scans = scan_with_state(state, max_entries)?;
     let accepted = validate_requested(&scans, requested)?;
     let conn = lock(state.db)?;
+    persist_rejected(&conn, accepted)
+}
+
+fn persist_rejected(conn: &Connection, accepted: Vec<(PathBuf, i64)>) -> CmdResult<usize> {
     let rejected_at = chrono::Utc::now().to_rfc3339();
     let tx = conn.unchecked_transaction().map_err(DbError::from)?;
     for (path, size) in &accepted {

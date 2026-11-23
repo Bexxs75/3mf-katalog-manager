@@ -398,6 +398,55 @@ impl Directory {
     }
 }
 
+/// Lazy, descriptor-owned enumeration; dropping it closes the directory stream.
+#[cfg(target_os = "linux")]
+pub struct Names {
+    dir: *mut libc::DIR,
+    done: bool,
+}
+#[cfg(target_os = "linux")]
+impl Iterator for Names {
+    type Item = io::Result<String>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done { return None; }
+        loop {
+            // SAFETY: this iterator exclusively owns the live stream; errno is thread-local.
+            unsafe { *libc::__errno_location() = 0; }
+            let entry = unsafe { libc::readdir(self.dir) };
+            if entry.is_null() {
+                self.done = true;
+                let errno = unsafe { *libc::__errno_location() };
+                return (errno != 0).then(|| Err(io::Error::from_raw_os_error(errno)));
+            }
+            let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+            if name == c"." || name == c".." { continue; }
+            return Some(name.to_str().map(str::to_owned)
+                .map_err(|_| io::Error::from(io::ErrorKind::InvalidData)));
+        }
+    }
+}
+#[cfg(target_os = "linux")]
+impl Drop for Names {
+    fn drop(&mut self) {
+        // SAFETY: ownership came from fdopendir and is released exactly once.
+        unsafe { libc::closedir(self.dir); }
+    }
+}
+#[cfg(target_os = "linux")]
+impl Directory {
+    pub fn iter_names(&self) -> io::Result<Names> {
+        let fd = cvt(unsafe { libc::openat(self.0.as_raw_fd(), c".".as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) })?;
+        let dir = unsafe { libc::fdopendir(fd) };
+        if dir.is_null() {
+            let error = io::Error::last_os_error();
+            unsafe { libc::close(fd); }
+            return Err(error);
+        }
+        Ok(Names { dir, done: false })
+    }
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod read_tests {
     use super::*;

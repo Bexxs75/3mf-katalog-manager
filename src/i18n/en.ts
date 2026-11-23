@@ -2080,6 +2080,7 @@ export const en: Translations = {
   errSourceNotAFolder: "This is not a folder.",
   errSourceFolderUnreadable: "The folder cannot be read.",
   errSourceFolderMoved: "The folder is now in a different location.",
+  errSourceRootNotAllowed: 'This source folder is not allowed.',
   errSourcePathInvalid: "The path is not valid.",
   errSourceFolderProtected: "This folder is in a protected system area or contains one and cannot be used.",
   errSourceFolderInCatalog: "This folder belongs to the catalog (catalog folder, a folder inside it or above it) and cannot be a source folder.",

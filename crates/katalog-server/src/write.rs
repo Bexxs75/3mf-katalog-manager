@@ -29,6 +29,12 @@ pub const FILE_OPS_COMMANDS: &[&str] = &[
     "restore_companion",
 ];
 pub const WRITE_COMMANDS: &[&str] = &[
+    "add_source_folder",
+    "remove_source_folder",
+    "reject_source_files",
+    "reset_rejected_source_files",
+    "set_source_check_on_start",
+
     "rename_file",
     "move_files_to_folder",
     "delete_files",
@@ -514,6 +520,7 @@ pub(crate) fn removal_ids(args: &Value) -> Result<Vec<i64>, Box<Response>> {
 }
 /// What a write needs besides the database. Only the rescan reads from disk.
 pub(crate) struct ExecContext {
+    pub source_roots: Vec<std::path::PathBuf>,
     pub db_path: std::path::PathBuf,
     pub roots: Vec<std::path::PathBuf>,
     pub limits: katalog_core::import::files::WebImportLimits,
@@ -589,6 +596,12 @@ pub(crate) fn execute(
     _ctx: &ExecContext,
 ) -> Result<(Response, u64), Box<Response>> {
     match cmd {
+        "add_source_folder" | "remove_source_folder" | "reject_source_files"
+        | "reset_rejected_source_files" | "set_source_check_on_start" => {
+            crate::source_dirs::write(c, &_ctx.source_roots, cmd, a)
+                .map(|(value, changes)| (Json(value).into_response(), changes))
+                .map_err(|e| Box::new(crate::source_dirs::response_error(e)))
+        }
         "set_custom_image" => {
             #[derive(serde::Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]

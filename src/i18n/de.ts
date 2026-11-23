@@ -2080,6 +2080,7 @@ export const de: Translations = {
   errSourceNotAFolder: "Das ist kein Ordner.",
   errSourceFolderUnreadable: "Der Ordner kann nicht gelesen werden.",
   errSourceFolderMoved: "Der Ordner liegt jetzt an einem anderen Ort.",
+  errSourceRootNotAllowed: 'Dieser Quellordner ist nicht freigegeben.',
   errSourcePathInvalid: "Der Pfad ist nicht gültig.",
   errSourceFolderProtected: "Dieser Ordner liegt in einem geschützten Systembereich oder enthält einen und kann nicht verwendet werden.",
   errSourceFolderInCatalog: "Dieser Ordner gehört zum Katalog (Katalogordner, Ordner darin oder darüber) und kann kein Quellordner sein.",

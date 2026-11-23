@@ -2122,6 +2122,7 @@ export interface Translations {
   errSourceNotAFolder: string;
   errSourceFolderUnreadable: string;
   errSourceFolderMoved: string;
+  errSourceRootNotAllowed: string;
   errSourcePathInvalid: string;
   errSourceFolderProtected: string;
   errSourceFolderInCatalog: string;

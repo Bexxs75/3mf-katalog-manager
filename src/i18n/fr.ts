@@ -2080,6 +2080,7 @@ export const fr: Translations = {
   errSourceNotAFolder: "Ce n’est pas un dossier.",
   errSourceFolderUnreadable: "Le dossier ne peut pas être lu.",
   errSourceFolderMoved: "Le dossier se trouve maintenant à un autre emplacement.",
+  errSourceRootNotAllowed: 'Ce dossier source n’est pas autorisé.',
   errSourcePathInvalid: "Le chemin n’est pas valide.",
   errSourceFolderProtected: "Ce dossier se trouve dans une zone système protégée ou en contient une et ne peut pas être utilisé.",
   errSourceFolderInCatalog: "Ce dossier fait partie du catalogue (dossier du catalogue, dossier qu’il contient ou dossier au-dessus) et ne peut pas être un dossier source.",

@@ -2080,6 +2080,7 @@ export const es: Translations = {
   errSourceNotAFolder: "Esto no es una carpeta.",
   errSourceFolderUnreadable: "No se puede leer la carpeta.",
   errSourceFolderMoved: "La carpeta está ahora en otra ubicación.",
+  errSourceRootNotAllowed: 'Esta carpeta de origen no está permitida.',
   errSourcePathInvalid: "La ruta no es válida.",
   errSourceFolderProtected: "Esta carpeta está en una zona protegida del sistema o contiene una, y no se puede usar.",
   errSourceFolderInCatalog: "Esta carpeta pertenece al catálogo (carpeta del catálogo, una carpeta dentro o por encima de ella) y no puede ser una carpeta de origen.",
