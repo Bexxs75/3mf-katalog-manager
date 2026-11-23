@@ -1,12 +1,8 @@
-use super::catalog_removal::parse_id;
-use crate::db::FOLDER_SUBTREE_CTE;
 use super::*;
+use katalog_core::folder_trash::{self as core, ModelTrash, StdFolderTrashFs};
 use tauri::Manager;
 
-/// Upper bound for the directory entries inspected to count non-catalog files; a
-/// huge tree (e.g. a whole drive) must not block the dialog.
-const OTHER_FILES_SCAN_LIMIT: usize = 10_000;
-
+#[cfg(test)]
 const ROOT_ERROR: ErrorCode = ErrorCode::CatalogRootNotDeletable;
 
 #[derive(Debug, Serialize)]
@@ -44,269 +40,65 @@ pub struct FolderTrashResult {
     kept_on_disk: Vec<String>,
 }
 
-/// The folder and all its descendants, parents before children.
-fn subtree_folders(all: &[db::models::FolderRecord], root_id: i64) -> Vec<db::models::FolderRecord> {
-    let mut result = Vec::new();
-    let mut seen = HashSet::new();
-    let mut queue = std::collections::VecDeque::from([root_id]);
-    while let Some(id) = queue.pop_front() {
-        if !seen.insert(id) {
-            continue;
-        }
-        if let Some(folder) = all.iter().find(|f| f.id == id) {
-            result.push(folder.clone());
-            queue.extend(all.iter().filter(|f| f.parent_id == Some(id)).map(|f| f.id));
-        }
+// Single-model moves stay shared with the desktop delete command, including
+// companion handling and move-back compensation.
+struct DesktopModelTrash<'a>(&'a Path);
+
+impl ModelTrash for DesktopModelTrash<'_> {
+    fn trash_model(
+        &self,
+        conn: &Connection,
+        file: &db::models::FileRecord,
+    ) -> katalog_core::write::WriteResult<()> {
+        trash::delete_file_with_conn(conn, file, file.id, self.0)
+            .map_err(|error| error.to_string().into())
     }
-    result
 }
 
-fn is_catalog_root_or_ancestor(conn: &Connection, folders: &[db::models::FolderRecord]) -> bool {
-    // A path that cannot be resolved counts as protected: refusing is the safe answer.
-    folders.iter().any(|f| folders::reject_catalog_root_relocation(conn, Path::new(&f.path)).is_err())
-}
-
-/// Active catalog files below the given folders as `(id, path)`.
-fn active_files_in_subtree(conn: &Connection, root_id: i64) -> CmdResult<Vec<(i64, String)>> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "{FOLDER_SUBTREE_CTE} SELECT id, path FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL ORDER BY id"
-        ))
-        .map_err(DbError::from)?;
-    let rows = stmt
-        .query_map([root_id], |r| Ok((r.get(0)?, r.get(1)?)))
-        .map_err(DbError::from)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(DbError::from)?;
-    Ok(rows)
-}
-
-/// Counts entries below `root` that are not in `known`. Symlinks are never entered
-/// (a linked folder could lead anywhere) and count as one file each.
-fn count_other_files(root: &Path, known: &HashSet<PathBuf>) -> (i64, bool) {
-    if std::fs::symlink_metadata(root).map_or(true, |m| !m.is_dir()) {
-        return (0, false);
-    }
-    let mut stack = vec![root.to_path_buf()];
-    let mut visited = 0usize;
-    let mut count = 0i64;
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            if visited >= OTHER_FILES_SCAN_LIMIT {
-                return (count, true);
-            }
-            visited += 1;
-            // DirEntry::file_type does not follow symlinks.
-            let Ok(kind) = entry.file_type() else { continue };
-            if kind.is_dir() {
-                stack.push(entry.path());
-            } else if !known.contains(&folders::comparison_path(&entry.path())) {
-                count += 1;
-            }
-        }
-    }
-    (count, false)
-}
-
-/// Why a catalog row must not be moved when its folder tree is deleted, or `None`.
-/// A row only has to agree with the folder by id, and a restored backup can set any
-/// path, so before anything is touched the file itself must prove that it is a model
-/// inside the folder being deleted. `root` is the resolved path of that folder.
-fn refusal_reason(file_path: &str, root: &Path, expanded_sensitive: &[PathBuf]) -> Option<&'static str> {
-    let path = Path::new(file_path);
-    // `..` can keep the textual folder prefix and still leave the folder.
-    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-        return Some("outside_folder");
-    }
-    // Nothing on disk to move: the delete only soft-deletes the row.
-    let Ok(meta) = std::fs::symlink_metadata(path) else { return None };
-    // The folder itself must be a reachable real directory, and the file's parent
-    // (symlinked directories resolved) must lie inside it, compared per component so
-    // `A2` is not inside `A`.
-    let Some(parent) = path.parent() else { return Some("outside_folder") };
-    let (Ok(resolved_parent), true) = (parent.canonicalize(), root.is_dir()) else { return Some("outside_folder") };
-    if !folders::comparison_path(&resolved_parent).starts_with(folders::comparison_path(root)) {
-        return Some("outside_folder");
-    }
-    if archives::check_managed_location(&resolved_parent, expanded_sensitive).is_err() {
-        return Some("outside_folder");
-    }
-    // Entries of the catalog, so sliced files the user added one by one go to the trash as well.
-    if !katalog_core::import::files::is_catalog_extension(path) {
-        return Some("not_a_model");
-    }
-    if meta.file_type().is_symlink() {
-        return Some("symlink");
-    }
-    None
-}
-
-/// Resolved path of the folder row. An unresolvable folder yields a path that is not a
-/// directory, which makes `refusal_reason` refuse every file that exists on disk.
-fn resolved_root(folder: &db::models::FolderRecord) -> PathBuf {
-    Path::new(&folder.path).canonicalize().unwrap_or_else(|_| PathBuf::from("/nonexistent-unresolvable-folder"))
-}
-
-fn folder_trash_summary_with_conn(conn: &Connection, folder_id: &str, sensitive_dirs: &[PathBuf]) -> CmdResult<FolderTrashSummary> {
-    let id = parse_id(folder_id)?;
-    let all = db::list_folders(conn)?;
-    let subtree = subtree_folders(&all, id);
-    let root = subtree.first().ok_or_else(|| CmdError::coded(ErrorCode::FolderNotFound))?;
-    // Same rule as the delete: rows it would refuse are not models of this folder.
-    let expanded = expand_sensitive_dirs(sensitive_dirs);
-    let resolved = resolved_root(root);
-    let files: Vec<(i64, String)> = active_files_in_subtree(conn, id)?
-        .into_iter()
-        .filter(|(_, p)| refusal_reason(p, &resolved, &expanded).is_none())
-        .collect();
-    // Companion files go to the trash with their model, so they are not "other" files.
-    let companion_paths = db::companions::list_active_companion_paths(conn)?;
-    let known: HashSet<PathBuf> = files
-        .iter()
-        .map(|(_, p)| p)
-        .chain(companion_paths.iter())
-        .map(|p| folders::comparison_path(Path::new(p)))
-        .collect();
-    let (other_file_count, other_file_count_truncated) = count_other_files(Path::new(&root.path), &known);
+fn folder_trash_summary_with_conn(
+    conn: &Connection,
+    folder_id: &str,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<FolderTrashSummary> {
+    let summary =
+        core::folder_trash_summary_with_conn(&StdFolderTrashFs, conn, folder_id, sensitive_dirs)?;
     Ok(FolderTrashSummary {
-        name: root.name.clone(),
-        subfolder_count: subtree.len() as i64 - 1,
-        model_count: files.len() as i64,
-        other_file_count,
-        other_file_count_truncated,
-        is_catalog_root_or_ancestor: is_catalog_root_or_ancestor(conn, &subtree),
+        name: summary.name,
+        subfolder_count: summary.subfolder_count,
+        model_count: summary.model_count,
+        other_file_count: summary.other_file_count,
+        other_file_count_truncated: summary.other_file_count_truncated,
+        is_catalog_root_or_ancestor: summary.is_catalog_root_or_ancestor,
     })
 }
 
-/// Moves every model of the folder tree into the app trash, drops the catalog rows of
-/// folders that no longer hold models, and removes only EMPTY directories from disk.
-/// Files the catalog does not know are never touched: a directory holding one simply
-/// cannot be removed by `remove_dir` and stays.
 fn trash_folder_with_conn(
     conn: &Connection,
     folder_id: &str,
     trash_dir: &Path,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<FolderTrashResult> {
-    let id = parse_id(folder_id)?;
-    let all = db::list_folders(conn)?;
-    let subtree = subtree_folders(&all, id);
-    if subtree.is_empty() {
-        return Err(CmdError::coded(ErrorCode::FolderNotFound));
-    }
-    if is_catalog_root_or_ancestor(conn, &subtree) {
-        return Err(CmdError::coded(ROOT_ERROR));
-    }
-    // A crafted backup can point any folder row anywhere, so every row is checked.
-    let expanded = expand_sensitive_dirs(sensitive_dirs);
-    for folder in &subtree {
-        archives::check_managed_location(Path::new(&folder.path), &expanded)?;
-    }
-
-    // One file at a time through the same code as `delete_file`, so its move-back
-    // compensation applies; a failure must not stop the others.
-    let mut trashed = 0i64;
-    let mut failed = Vec::new();
-    let resolved = resolved_root(&subtree[0]);
-    for (file_id, path) in active_files_in_subtree(conn, id)? {
-        if let Some(code) = refusal_reason(&path, &resolved, &expanded) {
-            log::warn!(target: "cleanup", "Ordner löschen, abgelehnt ({code}): {path}");
-            failed.push(FolderTrashFailure { file_id: file_id.to_string(), path, reason: code.to_string() });
-            continue;
-        }
-        let outcome = match db::get_file(conn, file_id) {
-            Ok(Some(file)) => trash::delete_file_with_conn(conn, &file, file_id, trash_dir),
-            Ok(None) => continue,
-            Err(e) => Err(CmdError::from(e.to_string())),
-        };
-        match outcome {
-            Ok(()) => {
-                trashed += 1;
-                // Remember that the folder went with it, so a restore may recreate its rows.
-                if let Err(e) = conn.execute("INSERT OR IGNORE INTO folder_trash_origin (file_id) VALUES (?1)", [file_id]) {
-                    log::warn!(target: "cleanup", "Ordner löschen, Herkunft nicht gemerkt: {path} ({e})");
-                }
-            }
-            Err(e) => {
-                log::warn!(target: "cleanup", "Ordner löschen, übersprungen: {path} ({e})");
-                failed.push(FolderTrashFailure { file_id: file_id.to_string(), path, reason: e.to_string() });
-            }
-        }
-    }
-
-    // A folder row may only go when nothing active is left below it. Folders with a
-    // leftover model, and their ancestors up to the root, stay in the catalog.
-    let remaining: Vec<(i64, String)> = active_files_in_subtree(conn, id)?;
-    let remaining_ids: HashSet<i64> = remaining.iter().map(|(fid, _)| *fid).collect();
-    let mut blocked: HashSet<i64> = HashSet::new();
-    if !remaining_ids.is_empty() {
-        let mut stmt = conn
-            .prepare(&format!(
-                "{FOLDER_SUBTREE_CTE} SELECT DISTINCT folder_id FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"
-            ))
-            .map_err(DbError::from)?;
-        let holders = stmt
-            .query_map([id], |r| r.get::<_, i64>(0))
-            .map_err(DbError::from)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(DbError::from)?;
-        for holder in holders {
-            let mut current = Some(holder);
-            while let Some(cur) = current {
-                if !blocked.insert(cur) {
-                    break;
-                }
-                current = subtree.iter().find(|f| f.id == cur).and_then(|f| f.parent_id).filter(|p| subtree.iter().any(|f| f.id == *p));
-            }
-        }
-    }
-    let removable: Vec<&db::models::FolderRecord> = subtree.iter().filter(|f| !blocked.contains(&f.id)).collect();
-    let tx = conn.unchecked_transaction().map_err(DbError::from)?;
-    for folder in &removable {
-        tx.execute("DELETE FROM folders WHERE id = ?1", [folder.id]).map_err(DbError::from)?;
-    }
-    tx.commit().map_err(DbError::from)?;
-
-    // Deepest first, so a parent becomes empty once its child directories are gone.
-    let mut by_depth: Vec<&db::models::FolderRecord> = subtree.iter().collect();
-    by_depth.sort_by_key(|f| std::cmp::Reverse(Path::new(&f.path).components().count()));
-    let mut kept_on_disk = Vec::new();
-    for folder in by_depth {
-        let path = Path::new(&folder.path);
-        if folder.path.is_empty() {
-            continue;
-        }
-        match std::fs::symlink_metadata(path) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(_) => kept_on_disk.push(folder.path.clone()),
-            // A symlink is never removed as a folder (on Windows `remove_dir` would
-            // drop a directory link), and never followed.
-            Ok(meta) if !meta.is_dir() => kept_on_disk.push(folder.path.clone()),
-            Ok(_) if blocked.contains(&folder.id) => kept_on_disk.push(folder.path.clone()),
-            // A folder row can name any path; only a directory that really lies inside
-            // the chosen folder (links resolved) may be removed.
-            Ok(_) if !path.canonicalize().is_ok_and(|real| folders::comparison_path(&real).starts_with(folders::comparison_path(&resolved))) => {
-                kept_on_disk.push(folder.path.clone())
-            }
-            // Never `remove_dir_all`: a non-empty directory must fail here.
-            Ok(_) => {
-                if std::fs::remove_dir(path).is_err() {
-                    kept_on_disk.push(folder.path.clone());
-                }
-            }
-        }
-    }
-    kept_on_disk.sort();
-
-    log::info!(
-        target: "catalog",
-        "Ordner in den Papierkorb: {trashed} Modelle, {} Fehler, {} Ordnereinträge entfernt, {} Ordner auf der Festplatte behalten",
-        failed.len(),
-        removable.len(),
-        kept_on_disk.len()
-    );
-    Ok(FolderTrashResult { trashed_model_count: trashed, failed, removed_folder_count: removable.len() as i64, kept_on_disk })
+    let result = core::trash_folder_with_conn(
+        &StdFolderTrashFs,
+        &DesktopModelTrash(trash_dir),
+        conn,
+        folder_id,
+        sensitive_dirs,
+    )?;
+    Ok(FolderTrashResult {
+        trashed_model_count: result.trashed_model_count,
+        failed: result
+            .failed
+            .into_iter()
+            .map(|failure| FolderTrashFailure {
+                file_id: failure.file_id,
+                path: failure.path,
+                reason: failure.reason,
+            })
+            .collect(),
+        removed_folder_count: result.removed_folder_count,
+        kept_on_disk: result.kept_on_disk,
+    })
 }
 
 /// Test helper for the restore tests: trashes a folder tree and returns how many models moved.
@@ -600,17 +392,5 @@ mod tests {
         assert_eq!(summary.other_file_count, 3);
         assert!(!summary.other_file_count_truncated);
         assert!(!summary.is_catalog_root_or_ancestor);
-    }
-
-    #[test]
-    fn summary_scan_is_capped() {
-        let tmp = unique_test_dir("folder_trash_cap");
-        for i in 0..OTHER_FILES_SCAN_LIMIT + 5 {
-            std::fs::write(tmp.join(format!("f{i}")), b"").unwrap();
-        }
-        let (count, truncated) = count_other_files(&tmp, &HashSet::new());
-        assert_eq!(count, OTHER_FILES_SCAN_LIMIT as i64);
-        assert!(truncated);
-        let _ = std::fs::remove_dir_all(tmp);
     }
 }
