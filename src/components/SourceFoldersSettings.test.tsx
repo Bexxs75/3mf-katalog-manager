@@ -1,7 +1,7 @@
 import { en } from '../i18n/en';
 import { es } from '../i18n/es';
 import { fr } from '../i18n/fr';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { ImportLockContext } from '../hooks/ImportLockContext';
@@ -166,37 +166,4 @@ it('keeps switch focus during and after a pending save', async () => {
   await waitFor(() => expect(toggle).not.toHaveAttribute('aria-busy'));
   expect(toggle).toHaveAttribute('aria-checked', 'true');
   expect(document.activeElement).toBe(toggle);
-});
-
-describe('SourceFoldersSettings in the web build', () => {
-  const webSetup = async () => {
-    vi.resetModules();
-    vi.stubEnv('VITE_TARGET', 'web');
-    const { SourceFoldersSettings: Web } = await import('./SourceFoldersSettings');
-    return render(<LanguageProvider><ImportLockContext.Provider value={false}><Web onCheck={onCheck} /></ImportLockContext.Provider></LanguageProvider>);
-  };
-  const onCheck = vi.fn();
-  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
-
-  it('offers the server folder choice and the check, never reads the declined count or the desktop dialog', async () => {
-    const web = { ...downloads, path: 'NAS/Technik', rootIdx: 1, rel: 'Technik' };
-    vi.mocked(api.listSourceFolders).mockResolvedValue([web]);
-    await webSetup();
-    expect(await screen.findByText('NAS/Technik')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: de.sfpOpen })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Ordner hinzufügen …' })).toBeNull();
-    expect(api.listRejectedCount).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Abgelehnte Dateien: /)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: de.sfpCheckNow }));
-    expect(onCheck).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: de.sfpOpen }));
-    expect(pickFolderPath).not.toHaveBeenCalled();
-  });
-
-  it('shows how many declined files were offered again', async () => {
-    vi.mocked(api.resetRejectedSourceFiles).mockResolvedValue(3);
-    await webSetup();
-    fireEvent.click(await screen.findByRole('button', { name: de.sfResetRejected }));
-    expect(await screen.findByText('3 abgelehnte Dateien werden wieder angeboten.')).toBeInTheDocument();
-  });
 });

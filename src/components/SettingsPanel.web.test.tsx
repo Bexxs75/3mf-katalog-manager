@@ -151,7 +151,7 @@ it('has four tabs without Slicer & Dienste and only the sections the browser can
   expect(headings()).toEqual([de.settingsSecAppearance, de.settingsSecLanguage, de.settingsSecControls, de.settingsSecPrintMethod, de.settingsSecPrinters]);
   expect(screen.queryByRole('switch', { name: de.singleKeyShortcutsTitle })).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: 'Katalog' }));
-  expect(headings()).toEqual([de.settingsSecAutoTags, de.settingsSecPrintData]);
+  expect(headings()).toEqual([de.settingsSecSources, de.settingsSecAutoTags, de.settingsSecPrintData]);
   fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
   expect(headings()).toEqual([de.settingsSecVersionWeb, de.settingsSecAbout]);
 });

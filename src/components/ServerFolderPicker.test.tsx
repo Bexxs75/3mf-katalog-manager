@@ -30,7 +30,6 @@ function setup(props: Partial<ServerFolderPickerProps> = {}) {
   return { onClose, onRemember, opener, ...result };
 }
 const tree = () => screen.findByRole('tree', { name: de.sfpTreeLabel });
-const item = (name: RegExp | string) => screen.getByRole('treeitem', { name });
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -115,15 +114,10 @@ describe('ServerFolderPicker', () => {
     mockTree();
     setup();
     const t = await tree();
+    fireEvent.keyDown(t, { key: 'Enter' });
     vi.mocked(api.listSourceDirs).mockRejectedValueOnce({ message: 'sourceRootNotAllowed', expected: true });
     fireEvent.keyDown(t, { key: 'ArrowRight' });
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('Dieser Quellordner ist nicht freigegeben.');
-    fireEvent.click(within(t).getAllByRole('treeitem')[0]);
-    // choosing something else clears the error, so select first and fail again for the blocked state
-    vi.mocked(api.listSourceDirs).mockRejectedValueOnce({ message: 'sourceRootNotAllowed', expected: true });
-    fireEvent.keyDown(t, { key: 'ArrowRight' });
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(await screen.findByRole('alert')).toHaveTextContent('Dieser Quellordner ist nicht freigegeben.');
     expect(screen.getByRole('button', { name: de.sfpRemember })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: de.sfpReload }));
     await waitFor(() => expect(within(t).getAllByRole('treeitem').length).toBeGreaterThan(2));
@@ -142,7 +136,6 @@ describe('ServerFolderPicker', () => {
   });
 
   it('shows a failure to list the roots with a reload button', async () => {
-    vi.mocked(api.listSourceDirs).mockRejectedValueOnce({ message: 'sourceRootNotAllowed', expected: true });
     mockTree();
     vi.mocked(api.listSourceDirs).mockRejectedValueOnce({ message: 'sourceRootNotAllowed', expected: true });
     setup();
