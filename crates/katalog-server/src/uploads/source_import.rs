@@ -57,6 +57,7 @@ pub(super) async fn start(app: Arc<App>, session: Session, args: Value) -> Respo
             done: 0,
             files: Vec::new(),
             kind: None,
+            source: true,
         }),
         cancel: AtomicBool::new(false),
     });

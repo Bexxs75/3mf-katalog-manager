@@ -83,6 +83,9 @@ struct JobView {
     done: usize,
     files: Vec<FileResult>,
     kind: Option<String>,
+    // Lets the browser tell a folder copy from an upload import: both share this job record and event stream.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    source: bool,
 }
 struct Job {
     view: Mutex<JobView>,
@@ -520,6 +523,7 @@ pub(super) async fn invoke(
                     done: 0,
                     files: Vec::new(),
                     kind: None,
+                    source: false,
                 }),
                 cancel: AtomicBool::new(false),
             });

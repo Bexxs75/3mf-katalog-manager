@@ -20,6 +20,8 @@ services:
       # Optional upload storage: create ./uploads with owner PUID:PGID and mode 0755.
       # Uploads remain on the server; home network/VPN only.
       # - ./uploads:/models/uploads
+      # Optional source folders (browse + import in the UI), mounted read-only; see KATALOG_SOURCE_ROOTS below.
+      # - /path/to/sources:/sources:ro
     environment:
       # Pflicht, wenn der Zugriff über andere Namen/IPs als localhost erfolgt.
       # Required whenever browsers use other names/IPs than localhost: list every host name or
@@ -57,6 +59,12 @@ services:
     #   - KATALOG_SLICER_LINKS=1
     #   # Link lifetime in seconds (60-86400):
     #   - KATALOG_SLICER_LINK_TTL_SECONDS=3600
+    #   # Source folders the UI may browse/import (existing directories, ':'-separated, empty = off).
+    #   # Files are copied into the catalog, never changed:
+    #   - KATALOG_SOURCE_ROOTS=/sources
+    #   # Extra printer addresses: hosts/IPs/CIDRs, comma-separated, no ports, empty = off.
+    #   # Adds to the home-network check; metadata and loopback addresses are always refused:
+    #   - KATALOG_PRINTER_ALLOW=192.168.1.0/24
     #   # First-time password only (otherwise a random one is printed once in the log):
     #   - KATALOG_PASSWORD_FILE=/config/.kasmvnc-password   # reuse the desktop image's password
     read_only: true

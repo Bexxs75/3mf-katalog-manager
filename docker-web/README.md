@@ -31,6 +31,12 @@ docker compose logs katalog-web # beim ersten Start steht dort einmal das Zufall
 
 **Smoke test (English).** `bash docker-web/scripts/ci-smoke.sh IMAGE` starts the image read-only with a freshly created empty catalog and checks the web UI, rejection without login, login, one catalog read and a clean stop. The catalog is created with `cargo run -p katalog-core --no-default-features --example make_smoke_catalog -- <path>`; without a local Rust toolchain `SMOKE_CATALOG_CMD` can replace that (see the script header). The workflow `.github/workflows/docker-web.yml` builds the image and runs this test.
 
+### Quellordner und Druckeradressen (Deutsch)
+
+`KATALOG_SOURCE_ROOTS` nennt die Ordner auf dem Server, aus denen die Oberfläche Quellordner durchsuchen und importieren darf (Unix `:`, Windows `;`; leer = aus). Es müssen bestehende Verzeichnisse sein, getrennt von Papierkorb, Upload und Anmeldedatei. Im Compose-Beispiel am besten schreibgeschützt einbinden (`- /pfad/zu/quellen:/sources:ro`) und `KATALOG_SOURCE_ROOTS=/sources` setzen; die Quelldateien bleiben unverändert, es wird nur in den Katalog kopiert. Siehe `docs/web/source-dirs.md`.
+
+`KATALOG_PRINTER_ALLOW` erlaubt zusätzlich Druckeradressen: kommagetrennte Hosts, IPs oder CIDR-Netze ohne Port; leer = aus. Die Liste ergänzt die Heimnetz-Prüfung und ersetzt sie nicht. Metadaten-Adressen werden immer abgelehnt, ebenso Loopback-Adressen. Ohne diese Einstellung meldet die Druckerverwaltung im Browser, dass der Betreiber zuerst Adressen freigeben muss.
+
 ### Browser-Upload und Import (Backend Stufe 5, Deutsch)
 
 Uploads sind standardmäßig aus. `KATALOG_UPLOAD_DIR=/models/uploads` aktiviert das
@@ -125,6 +131,12 @@ IP-Adresse (z. B. `http://192.168.1.50:8080` oder Tailscale). Browser senden
 `Sec-Fetch-Site` nur an HTTPS bzw. localhost; fehlt der Header, entscheidet die
 Origin-Prüfung (kein Origin oder passender Origin: erlaubt, fremder Origin: 403).
 Ist `Sec-Fetch-Site` vorhanden, gilt nur `same-origin`/`none`.
+
+### Source folders and printer addresses (English)
+
+`KATALOG_SOURCE_ROOTS` lists the server folders from which the UI may browse and import source folders (Unix `:`, Windows `;`; empty = off). They must be existing directories, separate from trash, upload and the auth file. In the Compose example, mount them read-only (`- /path/to/sources:/sources:ro`) and set `KATALOG_SOURCE_ROOTS=/sources`; source files stay untouched, they are only copied into the catalog. See `docs/web/source-dirs.md`.
+
+`KATALOG_PRINTER_ALLOW` additionally permits printer addresses: comma-separated hosts, IPs or CIDR networks without ports; empty = off. The list adds to the home-network check and does not replace it. Metadata addresses are always refused, as are loopback addresses. Without this setting the printer management in the browser reports that the operator has to release addresses first.
 
 ### Browser upload and import (stage 5 backend, English)
 

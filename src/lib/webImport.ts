@@ -18,7 +18,7 @@ const REASON_KEYS: Record<string, UploadTextKey> = {
 export const reasonKey = (kind: string | null | undefined): UploadTextKey | null => (kind && REASON_KEYS[kind]) || null;
 export interface WebUpload { uploadId: string; name: string; size: number; time: number; state: 'uploaded' | 'duplicate' | 'invalid' | 'imported'; result: unknown; archive?: boolean }
 export interface WebImportFile { uploadId: string; name: string; state: string; fileId: string | null; existingFileId: string | null; existingFileName?: string | null; kind: string | null; models?: number; skipped?: number }
-export interface WebImportJob { jobId: string; state: string; current: string | null; total: number; done: number; files: WebImportFile[]; kind: string | null }
+export interface WebImportJob { jobId: string; state: string; current: string | null; total: number; done: number; files: WebImportFile[]; kind: string | null; source?: boolean }
 export interface UploadRow { id: number; name: string; percent: number; state: 'queued' | 'uploading' | 'retrying' | 'uploaded' | 'cancelled' | 'error'; error?: UploadTextKey }
 interface View { queue: UploadRow[]; uploads: WebUpload[]; jobs: WebImportJob[]; connection: 'connecting' | 'connected' | 'disconnected'; error: UploadTextKey | null; busy: boolean; result: WebImportJob | null }
 interface Failure { status?: number; kind?: string; code?: string; retryAfter?: string | null }
@@ -164,7 +164,8 @@ export class WebImportController {
     if (importFinished(job)) {
       this.completed.add(job.jobId);
       if (notify) {
-        this.patch({ result: job });
+        // A folder copy shows its result in its own dialog; only upload imports belong to this surface.
+        if (!job.source) this.patch({ result: job });
         void Promise.resolve().then(() => this.onImported?.()).catch(e => this.report(e));
         void this.refreshUploads();
       }

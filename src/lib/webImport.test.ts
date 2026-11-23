@@ -129,6 +129,12 @@ it('discards open uploads and submits an import without any target folder', asyn
   expect(calls.find(c => c.url.endsWith('discard_upload'))?.args).toEqual({ uploadId: 'u1' });
   expect(calls.find(c => c.url.endsWith('start_upload_import'))?.args).toEqual({ uploadIds: ['u2'] });
 });
+it('shows the result of an upload import but not of a server folder copy sharing the event stream', async () => {
+  Events.instances[0].emit({ ...job('completed'), jobId: 'folder', source: true }, 'import-finished');
+  expect(controller.getSnapshot().result).toBeNull();
+  Events.instances[0].emit(job('completed'), 'import-finished');
+  expect(controller.getSnapshot().result?.jobId).toBe('j1');
+});
 it.each([[400,'webUploadInvalid'],[409,'webUploadConflict'],[413,'webUploadTooLarge'],[415,'webUploadType'],[507,'webUploadNoSpace'],[0,'webUploadOffline'],[503,'webUploadRestart']] as const)('maps HTTP %s to a user-facing error', (status, key) => {
   expect(uploadErrorKey({ status })).toBe(key);
 });
