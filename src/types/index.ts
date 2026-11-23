@@ -793,3 +793,29 @@ export interface SourceScan {
   /** The folder could not be checked (missing, moved, or no longer allowed). */
   unreachable: boolean;
 }
+
+/** A catalog row whose path lies outside the folders the web server serves. Never a usable path. */
+export interface BackupPathWarning {
+  table: string;
+  column: string;
+  row_id: number;
+  /** Shortened file name for display only. */
+  display_path: string;
+}
+
+/** What the server found in an uploaded catalog backup (field names as the server sends them). */
+export interface BackupRestoreReport {
+  schema_version: number;
+  migration_needed: boolean;
+  model_count: number;
+  folder_count: number;
+  path_warnings: BackupPathWarning[];
+  unreachable_source_folders: string[];
+}
+
+/** A checked backup waiting on the server. The token is the only handle to it. */
+export interface BackupPreview {
+  token: string;
+  report: BackupRestoreReport;
+  settingsIgnored: boolean;
+}
