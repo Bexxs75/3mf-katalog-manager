@@ -37,8 +37,10 @@ pub struct RestoreReport {
 /// `source_directory_reachable` is a read-only host probe: it must enforce the
 /// host's source-root policy, return false on denied/inaccessible/non-directory
 /// paths, and never create anything. It receives only lexically valid paths
-/// without parent traversal or sensitive destinations. Unknown network paths
-/// are reported unavailable without probing them. Reachability is a snapshot,
+/// without parent traversal. It runs before the sensitive-destination check so
+/// that paths outside the host boundary are never resolved on the filesystem;
+/// a path it accepts is then still rejected if it resolves to a sensitive
+/// destination. Unknown network paths are reported unavailable without probing them. Reachability is a snapshot,
 /// not a guarantee for a later import.
 pub fn inspect_backup(
     bytes: &[u8],
@@ -145,8 +147,12 @@ pub fn inspect_backup(
             && !local
                 .components()
                 .any(|c| matches!(c, std::path::Component::ParentDir))
+            // The host boundary comes first: resolving an imported path touches the
+            // filesystem, and a path outside the host's source roots (for example a
+            // dead network mount) must never be probed, not even to classify it.
+            && source_directory_reachable(local)
             && reject_sensitive(fs, local, &sensitive).is_ok();
-        if !safe || !source_directory_reachable(local) {
+        if !safe {
             report.unreachable_source_folders.push(path);
         }
     }
@@ -275,6 +281,56 @@ mod tests {
                 dir.join("missing").to_string_lossy().into_owned(),
                 dir.join("regular-file").to_string_lossy().into_owned(),
             ]
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Records every path handed to `resolve` so a test can prove which locations
+    /// were (not) looked at on the filesystem.
+    struct RecordingFs {
+        inner: StdRestoreFs,
+        resolved: std::sync::Mutex<Vec<PathBuf>>,
+    }
+    impl RestoreFs for RecordingFs {
+        fn resolve(&self, path: &Path) -> CmdResult<PathBuf> {
+            self.resolved.lock().unwrap().push(path.to_path_buf());
+            self.inner.resolve(path)
+        }
+        fn temporary_catalog(&self, bytes: &[u8]) -> CmdResult<Box<dyn TemporaryCatalog>> {
+            self.inner.temporary_catalog(bytes)
+        }
+    }
+
+    #[test]
+    fn source_folder_outside_host_boundary_is_never_resolved() {
+        let (bytes, dir) = fixture("boundary", |conn, _| {
+            db::sources::insert_source_folder(conn, "/net/untrusted/models", "now").unwrap();
+        });
+        let fs = RecordingFs {
+            inner: StdRestoreFs::new(dir.clone()),
+            resolved: Default::default(),
+        };
+        let report = inspect_backup(
+            &bytes,
+            &[dir.join("config")],
+            &TrashPolicy {
+                desktop_trash: None,
+                catalog_roots: &[],
+            },
+            &[],
+            &fs,
+            // Host boundary: nothing is inside the allowed source roots.
+            &|_| false,
+        )
+        .unwrap();
+        assert_eq!(report.unreachable_source_folders, vec!["/net/untrusted/models"]);
+        assert!(
+            fs.resolved
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|p| !p.starts_with("/net")),
+            "an imported path outside the boundary was resolved on the filesystem"
         );
         std::fs::remove_dir_all(dir).unwrap();
     }

@@ -172,7 +172,10 @@ fn db_directory(db: &Path) -> &Path {
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."))
 }
-fn staging_root(db: &Path) -> std::io::Result<(Directory, PathBuf)> {
+/// Opens the shared staging folder next to the database. It holds one private
+/// subfolder per catalog file (see `namespace`) plus, from older installations,
+/// token folders directly inside it.
+fn staging_base(db: &Path) -> std::io::Result<(Directory, PathBuf)> {
     let parent = db_directory(db);
     let parent = std::fs::canonicalize(parent)?;
     let handle = Directory::open(&parent)?;
@@ -186,6 +189,37 @@ fn staging_root(db: &Path) -> std::io::Result<(Directory, PathBuf)> {
         return Err(std::io::ErrorKind::PermissionDenied.into());
     }
     Ok((root, parent.join(ROOT)))
+}
+/// Catalogs that share a folder (`a.db`, `b.db`) also share the staging folder, but
+/// each runs under its own instance lock. Startup cleanup must therefore stay inside
+/// the folder of the catalog whose lock this process holds, or it would delete the
+/// previews another running catalog still leases. The name derives from the same
+/// canonical identity the instance lock uses; it is a fixed-width hash so any file
+/// name fits and it can never look like a preview token.
+fn namespace(db: &Path) -> std::io::Result<String> {
+    let lock = katalog_core::db::instance_lock::InstanceLock::path_for(db)?;
+    let name = lock.file_name().unwrap_or_default();
+    // FNV-1a: stable across Rust versions, unlike the std hasher.
+    let hash = std::os::unix::ffi::OsStrExt::as_bytes(name)
+        .iter()
+        .fold(0xcbf29ce484222325_u64, |h, b| {
+            (h ^ u64::from(*b)).wrapping_mul(0x100000001b3)
+        });
+    Ok(format!("catalog-{hash:016x}"))
+}
+fn staging_root(db: &Path) -> std::io::Result<(Directory, PathBuf)> {
+    let (base, base_path) = staging_base(db)?;
+    let name = namespace(db)?;
+    match base.mkdir(&name, 0o700) {
+        Ok(()) => (),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
+        Err(e) => return Err(e),
+    }
+    let root = base.open_dir(&name)?;
+    if root.metadata()?.mode() & 0o777 != 0o700 {
+        return Err(std::io::ErrorKind::PermissionDenied.into());
+    }
+    Ok((root, base_path.join(name)))
 }
 pub(super) fn initialize(config: &Config) -> std::io::Result<()> {
     let path = db_directory(&config.db_path).join(ROOT);
@@ -205,6 +239,27 @@ pub(super) fn startup(db: &Path) -> std::io::Result<()> {
             let dir = root.open_dir(&name)?;
             clear_directory(&dir);
             root.rmdir(&name)?;
+        }
+    }
+    // Token folders directly in the shared folder come from installations that did not
+    // separate catalogs, so their owner is unknown and another catalog may still be
+    // running one. A preview never lives longer than its lifetime, so only folders well
+    // past it are provably abandoned; younger ones are left for a later start.
+    let (base, _) = staging_base(db)?;
+    for name in base.names_checked()? {
+        if !valid_token(&name) {
+            continue;
+        }
+        let dir = base.open_dir(&name)?;
+        let age = dir
+            .metadata()?
+            .modified()
+            .ok()
+            .and_then(|m| m.elapsed().ok())
+            .unwrap_or_default();
+        if age > TTL * 2 {
+            clear_directory(&dir);
+            base.rmdir(&name)?;
         }
     }
     Ok(())

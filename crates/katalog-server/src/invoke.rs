@@ -52,6 +52,21 @@ impl GeometryGate {
         })?;
         Ok((admission, worker))
     }
+    #[cfg(test)]
+    pub(crate) fn manager_reads_available(&self) -> usize {
+        self.manager_reads.available_permits()
+    }
+    /// Admission for catalog reads that load and match many rows: at most four run at
+    /// once, the rest get a repeatable answer. The caller moves the permit into the
+    /// blocking work so it is held until that work really ends, not until the HTTP
+    /// request goes away.
+    pub(crate) fn manager_read(&self) -> Result<OwnedSemaphorePermit, Box<Response>> {
+        self.manager_reads.clone().try_acquire_owned().map_err(|_| {
+            let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[]);
+            r.headers_mut().insert("retry-after", "1".parse().unwrap());
+            Box::new(r)
+        })
+    }
 }
 /// An answer whose `message` is a registered code; the interface owns the wording.
 fn error(status: StatusCode, code: ErrorCode, params: &[String]) -> Box<Response> {
@@ -352,13 +367,9 @@ pub async fn invoke(
             | "list_companions"
             | "disk_sync_report"
     ) {
-        match gate.manager_reads.clone().try_acquire_owned() {
+        match gate.manager_read() {
             Ok(p) => Some(p),
-            Err(_) => {
-                let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[]);
-                r.headers_mut().insert("retry-after", "1".parse().unwrap());
-                return r;
-            }
+            Err(r) => return *r,
         }
     } else {
         None
