@@ -14,6 +14,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - The web trash recognizes desktop trash entries and can permanently remove their files and companions. Restoring them remains a desktop action.
 
 - Desktop and web refuse concurrent operation on the same catalog. `KATALOG_LOCK=off` disables the instance lock for SMB/NFS setups managed by the operator.
+- On Linux the startup error message (for example "catalog already in use") now also appears when `zenity` is missing: the app falls back to `kdialog` or `xmessage` and always prints the message to stderr.
 
 - The update component was brought up to date, so the update packages are handled by a current archive library. The dependency audit no longer needs exceptions for it.
 
@@ -911,6 +912,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Der Web-Papierkorb erkennt Desktop-Papierkorbeinträge und kann ihre Dateien samt Begleitdateien endgültig löschen. Wiederherstellen bleibt eine Desktop-Aktion.
 
 - Desktop und Web verweigern den gleichzeitigen Betrieb auf demselben Katalog. `KATALOG_LOCK=off` schaltet die Instanzsperre für selbst koordinierte SMB/NFS-Umgebungen ab.
+- Unter Linux erscheint die Startfehler-Meldung (z. B. „Katalog wird bereits verwendet“) jetzt auch ohne `zenity`: Die App weicht auf `kdialog` oder `xmessage` aus und schreibt die Meldung immer auch auf stderr.
 
 - Die Update-Komponente wurde aktualisiert, damit Update-Pakete von einer aktuellen Archiv-Bibliothek verarbeitet werden. Die Abhängigkeitsprüfung braucht dafür keine Ausnahmen mehr.
 

@@ -149,6 +149,12 @@ pub fn startup_error_message(stage: StartupStage, path: &Path, error: &(dyn std:
 pub fn report_and_exit(app: &tauri::AppHandle, failure: &StartupFailure) {
     log::error!(target: "startup", "startup failed at {:?} ({}): {}", failure.stage, failure.path.display(), failure.error);
     let message = startup_error_message(failure.stage, &failure.path, failure.error.as_ref());
+    eprintln!("{message}");
+    #[cfg(target_os = "linux")]
+    if show_with_linux_helper("3MF Katalog Manager", &message) {
+        app.exit(1);
+        return;
+    }
     let handle = app.clone();
     app.dialog()
         .message(message)
@@ -157,10 +163,39 @@ pub fn report_and_exit(app: &tauri::AppHandle, failure: &StartupFailure) {
         .show(move |_| handle.exit(1));
 }
 
+/// Command lines of the dialog tools tried in order. The dialog plugin needs `zenity`, which
+/// KDE installs often lack, so the message would otherwise only reach the log.
+#[cfg(target_os = "linux")]
+fn linux_dialog_helpers(title: &str, message: &str) -> Vec<(&'static str, Vec<String>)> {
+    let s = |v: &str| v.to_string();
+    vec![
+        ("zenity", vec![s("--error"), s("--no-markup"), s("--title"), s(title), s("--text"), s(message)]),
+        ("kdialog", vec![s("--title"), s(title), s("--error"), s(message)]),
+        ("xmessage", vec![s("-center"), s(message)]),
+    ]
+}
+
+/// True once one tool showed the message and was closed by the user.
+#[cfg(target_os = "linux")]
+fn show_with_linux_helper(title: &str, message: &str) -> bool {
+    linux_dialog_helpers(title, message).into_iter().any(|(program, args)| {
+        std::process::Command::new(program).args(args).status().is_ok_and(|status| status.success())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{Error, ErrorKind};
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_helpers_cover_gnome_and_kde_and_pass_the_whole_message() {
+        let helpers = linux_dialog_helpers("T", "a <b> & c\nzweite Zeile");
+        let programs: Vec<_> = helpers.iter().map(|(p, _)| *p).collect();
+        assert_eq!(programs, ["zenity", "kdialog", "xmessage"]);
+        assert!(helpers.iter().all(|(_, args)| args.iter().any(|a| a == "a <b> & c\nzweite Zeile")));
+    }
     use std::path::PathBuf;
 
     fn assert_bilingual_with_path(text: &str, path: &Path) {
