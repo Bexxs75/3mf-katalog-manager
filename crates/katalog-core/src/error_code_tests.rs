@@ -309,8 +309,13 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         whole("security.rs", include_str!("../../../src-tauri/src/commands/security.rs")),
         whole("import_jobs.rs", include_str!("../../../src-tauri/src/commands/import_jobs.rs")),
         functions("backup.rs", include_str!("../../../src-tauri/src/commands/backup.rs"), &[
-            "validate_file_name", "reject_oversized_zip_entry", "read_catalog_archive", "validate_catalog_db_bytes", "validate_backup_for_import",
+            "read_catalog_archive", "validate_catalog_db_bytes", "validate_backup_for_import",
         ]),
+        whole("catalog_restore/mod.rs", include_str!("catalog_restore/mod.rs")),
+        whole("catalog_restore/imported_paths.rs", include_str!("catalog_restore/imported_paths.rs")),
+        whole("folder_trash.rs (core)", include_str!("folder_trash.rs")),
+        whole("date_rename.rs (core)", include_str!("date_rename.rs")),
+        whole("import/sources.rs", include_str!("import/sources.rs")),
     ]
 }
 
