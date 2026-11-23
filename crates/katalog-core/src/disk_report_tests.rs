@@ -315,3 +315,63 @@ fn a_writer_can_commit_while_the_disk_is_scanned() {
     assert!(committed.load(std::sync::atomic::Ordering::SeqCst), "the walk never ran the hook");
     assert!(!r.truncated);
 }
+
+fn folder_rows(root: &Path, names: &[&str]) -> Vec<(i64, String)> {
+    names.iter().enumerate().map(|(i, n)| (i as i64 + 1, root.join(n).to_str().unwrap().to_string())).collect()
+}
+
+#[test]
+fn folder_check_reports_only_directories_that_are_gone() {
+    let root = dir("dr-folders");
+    fs::create_dir_all(root.join("here/sub")).unwrap();
+    fs::write(root.join("keep.txt"), b"x").unwrap();
+    let rows = folder_rows(&root, &["here", "here/sub", "gone", "here/gone/deeper"]);
+    let (missing, truncated) = missing_folder_ids(&rows, std::slice::from_ref(&root), Limits::default());
+    assert_eq!(missing, HashSet::from([3, 4]));
+    assert!(!truncated);
+}
+
+#[test]
+fn folder_check_skips_the_root_itself_and_paths_outside_every_root() {
+    let root = dir("dr-folders-out");
+    let other = dir("dr-folders-other");
+    fs::write(root.join("keep.txt"), b"x").unwrap();
+    let rows = vec![(1, root.to_str().unwrap().to_string()), (2, other.join("nowhere").to_str().unwrap().to_string())];
+    let (missing, _) = missing_folder_ids(&rows, std::slice::from_ref(&root), Limits::default());
+    assert!(missing.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn folder_check_does_not_follow_links_and_calls_them_unknown() {
+    let root = dir("dr-folders-link");
+    let outside = dir("dr-folders-link-target");
+    fs::create_dir_all(outside.join("inside")).unwrap();
+    std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+    fs::write(root.join("keep.txt"), b"x").unwrap();
+    // The first folder exists behind the link, the second does not; neither may be judged.
+    let rows = folder_rows(&root, &["link/inside", "link/absent"]);
+    let (missing, _) = missing_folder_ids(&rows, std::slice::from_ref(&root), Limits::default());
+    assert!(missing.is_empty());
+}
+
+#[test]
+fn folder_check_trusts_neither_an_empty_nor_an_unreachable_root() {
+    let empty = dir("dr-folders-empty");
+    let rows = folder_rows(&empty, &["a"]);
+    assert!(missing_folder_ids(&rows, std::slice::from_ref(&empty), Limits::default()).0.is_empty());
+    let absent = empty.join("not-mounted");
+    let rows = folder_rows(&absent, &["a"]);
+    assert!(missing_folder_ids(&rows, std::slice::from_ref(&absent), Limits::default()).0.is_empty());
+}
+
+#[test]
+fn folder_check_stops_at_its_entry_limit_and_says_so() {
+    let root = dir("dr-folders-limit");
+    fs::write(root.join("keep.txt"), b"x").unwrap();
+    let rows = folder_rows(&root, &["a", "b", "c"]);
+    let limits = Limits { max_entries: 2, ..Limits::default() };
+    let (missing, truncated) = missing_folder_ids(&rows, std::slice::from_ref(&root), limits);
+    assert_eq!(missing, HashSet::from([1, 2]));
+    assert!(truncated);
+}

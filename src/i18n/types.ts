@@ -2398,6 +2398,8 @@ export interface Translations {
   stNoteColors: string;
   stNotePlates: string;
   stNext: string;
+  stDownload: string;
+  stDownloaded: string;
   stSaving: string;
   stDone: string;
   stDoneInCatalog: string;

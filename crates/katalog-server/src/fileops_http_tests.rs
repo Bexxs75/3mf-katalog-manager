@@ -1060,6 +1060,92 @@ async fn folder_list_keeps_every_target_without_file_management() {
     assert_eq!(list[0]["moveTarget"], true, "{list}");
 }
 
+async fn folder_list_flags_a_folder_deleted_from_disk(file_ops: bool) {
+    let f = Fixture::new(file_ops).await;
+    f.file("m.3mf");
+    std::fs::create_dir_all(f.dir.join("models/here")).unwrap();
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        for p in ["models/here", "models/gone"] {
+            c.execute("INSERT INTO folders(name,path) VALUES(?1,?2)", [p, f.dir.join(p).to_str().unwrap()]).unwrap();
+        }
+    }
+    let list = value(f.invoke("list_folders", json!({})).await).await;
+    let missing = |name: &str| list.as_array().unwrap().iter().find(|x| x["name"] == name).unwrap()["missing"].clone();
+    assert_eq!(missing("models/here"), false, "{list}");
+    assert_eq!(missing("models/gone"), true, "{list}");
+}
+
+#[tokio::test]
+async fn folder_list_flags_missing_folders_with_file_management() {
+    folder_list_flags_a_folder_deleted_from_disk(true).await;
+}
+
+#[tokio::test]
+async fn folder_list_flags_missing_folders_in_the_plain_read_path() {
+    folder_list_flags_a_folder_deleted_from_disk(false).await;
+}
+
+// ---- "Als STL speichern" als Download ----
+
+impl Fixture {
+    fn typed_file(&self, name: &str, file_type: &str, content: &[u8]) -> String {
+        let id = self.file(name);
+        std::fs::write(self.dir.join("models").join(name), content).unwrap();
+        self.app.writer.as_ref().unwrap().conn.lock().unwrap().execute("UPDATE files SET file_type=?1 WHERE id=?2", [file_type, &id]).unwrap();
+        id
+    }
+    async fn stl(&self, id: &str, query: &str) -> Response {
+        router(self.app.clone()).oneshot(self.request("GET", &format!("/api/files/{id}/stl{query}"), Body::empty())).await.unwrap()
+    }
+}
+
+#[tokio::test]
+async fn an_obj_is_downloaded_as_a_binary_stl_through_the_core_writer() {
+    let f = Fixture::new(true).await;
+    let id = f.typed_file("Wuerfel.obj", "obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    let r = f.stl(&id, "").await;
+    assert_eq!(r.status(), 200);
+    let disposition = r.headers()["content-disposition"].to_str().unwrap().to_owned();
+    assert!(disposition.starts_with("attachment;") && disposition.contains("Wuerfel.stl"), "{disposition}");
+    let bytes = to_bytes(r.into_body(), 1024 * 1024).await.unwrap();
+    assert_eq!(bytes.len(), 84 + 50);
+    assert!(bytes.starts_with(b"Binary STL export"));
+    assert_eq!(u32::from_le_bytes(bytes[80..84].try_into().unwrap()), 1);
+}
+
+#[tokio::test]
+async fn stl_download_refuses_what_it_cannot_convert_with_codes() {
+    let f = Fixture::new(true).await;
+    let stl = f.typed_file("a.stl", "stl", b"solid x\nendsolid x\n");
+    let step = f.typed_file("a.stp", "stp", b"ISO-10303-21;");
+    let obj = f.typed_file("b.obj", "obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    for (id, query, status, code) in [
+        (stl.as_str(), "", 422, "stlSourceIsStl"),
+        (step.as_str(), "", 422, "stlStepUnavailable"),
+        ("999999", "", 404, "fileNotFound"),
+        ("x1", "", 400, "reqInvalidIds"),
+        (obj.as_str(), "?plate=0", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?plate=x", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?other=1", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?plate=7", 422, "stlNothingToExport"),
+    ] {
+        let r = f.stl(id, query).await;
+        assert_eq!(r.status(), status, "{id}{query}");
+        assert_eq!(value(r).await["message"], code, "{id}{query}");
+    }
+}
+
+#[tokio::test]
+async fn stl_download_needs_a_session_and_a_get() {
+    let f = Fixture::new(true).await;
+    let id = f.typed_file("c.obj", "obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    let anonymous = Request::builder().method("GET").uri(format!("/api/files/{id}/stl")).header("host", "localhost:8080").body(Body::empty()).unwrap();
+    assert_eq!(router(f.app.clone()).oneshot(anonymous).await.unwrap().status(), 401);
+    let post = f.request("POST", &format!("/api/files/{id}/stl"), Body::empty());
+    assert_eq!(router(f.app.clone()).oneshot(post).await.unwrap().status(), 405);
+}
+
 // ---- Einzelne Begleitdateien: entfernen, wiederherstellen, Papierkorb leeren ----
 
 const PNG: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52];

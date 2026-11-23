@@ -508,7 +508,12 @@ pub async fn invoke(
             "list_print_log_entries" => {
                 encode(read::list_print_log_entries(&conn, file_id.unwrap())?)
             }
-            "list_folders" => encode(read::list_folders(&conn)?),
+            "list_folders" => {
+                let mut folders = read::list_folders(&conn)?;
+                drop(conn);
+                crate::folder_missing::annotate(&mut folders, &roots);
+                encode(folders)
+            }
             "list_collections" => encode(read::list_collections(&conn)?),
             "list_bundles" => encode(read::list_bundles(&conn)?),
             "list_collection_files" => {

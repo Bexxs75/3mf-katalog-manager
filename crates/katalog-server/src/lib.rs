@@ -1,5 +1,6 @@
 pub mod barrier;
 pub mod config;
+pub mod health;
 pub mod invoke;
 pub mod password;
 mod web;
@@ -30,5 +31,7 @@ pub(crate) mod fileops_safety;
 pub(crate) mod fileops_cancel;
 
 mod source_dirs;
+
+mod folder_missing;
 
 mod restore_journal;

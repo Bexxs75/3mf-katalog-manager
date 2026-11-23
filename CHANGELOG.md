@@ -15,6 +15,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - In the web interface, source folders can be chosen from the folders the server shares (read-only browsing, relative paths only), listed, removed and checked at start. A chosen folder can now be imported: its files are copied into the catalog with a progress view and a cancel button, files already in the catalog are skipped and the source stays unchanged.
 - The web API can upload, inspect and discard catalog backups in private temporary storage. Preview reports include migration needs and path warnings. Checked backups can be applied with a confirmed password, an automatic recovery backup, crash recovery and a controlled server restart. In the browser, Settings → Maintenance → Back up the catalog has "Restore a backup …": choose the ZIP, enter the password, read the check report (migration, path warnings, ignored settings), confirm with the password again and wait for the server to restart; then sign in again. Needs write access. The Spanish and French texts have not been checked by native speakers.
 - In the web interface a folder can be moved to the trash: its right-click menu has "Move to trash …" with the same confirmation as the desktop app. The models go to the trash one by one (large folders in blocks of 200 with a progress line) and can be restored individually; missing folders are created again. Unlike the desktop app, the web interface leaves the folders on the server's disk and only removes their catalog entries.
+- The web image now has a health check: `katalog-server health` asks the server's own `/api/health` (exit code 0 or 1), and the Dockerfile `HEALTHCHECK` and the Compose example use it, so `docker ps` shows whether the server is healthy.
+- In the web interface a file or folder move can be undone again (toast button and Ctrl+Z), like on the desktop.
+- In the web interface the folder list now marks folders that no longer exist on disk (as the desktop app does). The check is bounded, never follows links and skips roots that look unmounted.
+- Uploads in the web interface can now be tar archives (tar, tar.gz, tar.bz2, tar.xz, tar.zst) with the same limits as ZIP and 7z; unsafe entries such as links and paths leaving the folder are skipped. RAR stays a desktop feature.
+- In the web interface "Save as STL" downloads a binary STL of a 3MF or OBJ model (whole model or one plate), made by the same writer as the desktop app.
 
 ### Changed
 
@@ -24,6 +29,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - On Linux the startup error message (for example "catalog already in use") now also appears when `zenity` is missing: the app falls back to `kdialog` or `xmessage` and always prints the message to stderr.
 
 - The update component was brought up to date, so the update packages are handled by a current archive library. The dependency audit no longer needs exceptions for it.
+- Tests now cover the web "What's new" window: no window on the first start, the window after a version change, and a marker that never moves backwards.
 
 ### Fixed
 
@@ -921,6 +927,11 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - In der Web-Oberfläche lassen sich Quellordner aus den vom Server freigegebenen Ordnern wählen (nur lesendes Durchsuchen, nur relative Pfade), auflisten, entfernen und beim Start prüfen. Ein gewählter Ordner lässt sich jetzt importieren: Die Dateien werden mit Fortschrittsanzeige und Abbruchknopf in den Katalog kopiert, schon vorhandene werden übersprungen und die Quelle bleibt unverändert.
 - Die Web-API kann Katalogsicherungen in einem privaten Zwischenverzeichnis hochladen, prüfen und verwerfen. Die Vorschau meldet nötige Migrationen und Pfadwarnungen. Geprüfte Sicherungen lassen sich mit erneuter Passwortbestätigung, automatischer Rückfallsicherung, Recovery nach Unterbrechungen und kontrolliertem Serverneustart einspielen. Im Browser gibt es unter Einstellungen → Wartung → Katalog sichern jetzt „Sicherung einspielen …“: ZIP wählen, Passwort eingeben, Prüfbericht lesen (Migration, Pfadwarnungen, nicht übernommene Einstellungen), mit erneutem Passwort bestätigen und auf den Neustart des Servers warten; danach neu anmelden. Braucht Schreibrechte. Die spanischen und französischen Texte wurden nicht von Muttersprachlern geprüft.
 - In der Web-Oberfläche lässt sich ein Ordner in den Papierkorb legen: Im Kontextmenü des Ordners steht „In den Papierkorb legen …“ mit derselben Bestätigung wie in der Desktop-App. Die Modelle wandern einzeln in den Papierkorb (große Ordner in Blöcken zu 200 mit Fortschrittszeile) und lassen sich einzeln wiederherstellen; fehlende Ordner werden dabei neu angelegt. Anders als die Desktop-App lässt die Web-Oberfläche die Ordner auf der Festplatte des Servers liegen und entfernt nur ihre Katalogeinträge.
+- Das Web-Image hat jetzt einen Healthcheck: `katalog-server health` fragt das eigene `/api/health` ab (Exit-Code 0 oder 1); Dockerfile-`HEALTHCHECK` und Compose-Beispiel nutzen ihn, sodass `docker ps` anzeigt, ob der Server gesund ist.
+- In der Web-Oberfläche lässt sich das Verschieben von Dateien und Ordnern wieder rückgängig machen (Schaltfläche in der Meldung und Strg+Z), wie am Desktop.
+- In der Web-Oberfläche markiert die Ordnerliste jetzt Ordner, die auf der Festplatte nicht mehr existieren (wie in der Desktop-App). Die Prüfung ist begrenzt, folgt keinen Verknüpfungen und überspringt Wurzeln, die nicht eingehängt wirken.
+- Uploads in der Web-Oberfläche können jetzt tar-Archive sein (tar, tar.gz, tar.bz2, tar.xz, tar.zst) mit denselben Grenzen wie ZIP und 7z; unsichere Einträge wie Verknüpfungen und Pfade aus dem Ordner heraus werden übersprungen. RAR bleibt eine Desktop-Funktion.
+- In der Web-Oberfläche lädt „Als STL speichern“ eine binäre STL-Datei eines 3MF- oder OBJ-Modells herunter (ganzes Modell oder eine Platte), erzeugt mit demselben Schreiber wie in der Desktop-App.
 
 ### Geändert
 
@@ -930,6 +941,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Unter Linux erscheint die Startfehler-Meldung (z. B. „Katalog wird bereits verwendet“) jetzt auch ohne `zenity`: Die App weicht auf `kdialog` oder `xmessage` aus und schreibt die Meldung immer auch auf stderr.
 
 - Die Update-Komponente wurde aktualisiert, damit Update-Pakete von einer aktuellen Archiv-Bibliothek verarbeitet werden. Die Abhängigkeitsprüfung braucht dafür keine Ausnahmen mehr.
+- Tests decken jetzt das „Neu“-Fenster im Web ab: kein Fenster beim ersten Start, das Fenster nach einem Versionswechsel und eine Marke, die nie rückwärts wandert.
 
 ### Behoben
 

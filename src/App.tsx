@@ -486,7 +486,7 @@ export default function App() {
     : [];
   const contextModels = contextModel ? contextSelection(store.models, contextModel.id, bulk.selectedForBulk) : [];
   const contextFileIds = contextModels.map(model => model.id);
-  const contextStlModels = contextModels.filter(model => ['3mf', 'obj', 'stp', 'step'].includes(modelFileType(model)));
+  const contextStlModels = contextModels.filter(model => (isReadOnly() ? ['3mf', 'obj'] : ['3mf', 'obj', 'stp', 'step']).includes(modelFileType(model)));
   const contextPlateModels = contextModels.filter(model => model.path.toLowerCase().endsWith('.3mf'));
   const contextBundledIds = selectionBundleState(contextFileIds, bundles).bundledIds;
 
@@ -555,7 +555,7 @@ export default function App() {
       const ids = bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
       openMoveDialog(ids, ids.length === 1 ? tileOf(ids[0]) : (document.activeElement as HTMLElement | null));
     },
-    onUndo: bundleActions.undoable ? bundleActions.runUndo : web || fileImport.jobActive ? undefined : () => void dragDrop.undo(),
+    onUndo: bundleActions.undoable ? bundleActions.runUndo : fileImport.jobActive ? undefined : () => void dragDrop.undo(),
   });
 
   useEffect(() => {

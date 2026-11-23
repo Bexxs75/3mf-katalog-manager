@@ -280,6 +280,45 @@ fn locate(roots: &[Root], path: &str) -> Option<(usize, PathBuf)> {
     find(true).or_else(|| find(false))
 }
 
+/// Which catalog folders are gone from disk, for the folder list. `folders` are `(id, path)`.
+/// Only `NotFound` counts as gone: a link on the way, an I/O error, a root that cannot be read
+/// or one that is empty although folders are cataloged below it (an unmounted volume) leave
+/// the folder out. The second value tells that a limit ended the check early; folders not
+/// reached are not reported.
+pub fn missing_folder_ids(folders: &[(i64, String)], configured: &[PathBuf], limits: Limits) -> (HashSet<i64>, bool) {
+    let mut budget = Budget { started: Instant::now(), limits, truncated: Vec::new() };
+    let mut roots = open_roots(configured);
+    for root in roots.iter_mut().filter(|r| r.status == RootStatus::Ok) {
+        let holds_folders = folders.iter().any(|(_, p)| root.relative(Path::new(p)).is_some());
+        match std::fs::read_dir(&root.canonical) {
+            Err(_) => root.status = RootStatus::Unreachable,
+            Ok(mut entries) => {
+                if holds_folders && entries.next().is_none() {
+                    root.status = RootStatus::Empty;
+                }
+            }
+        }
+    }
+    let mut missing = HashSet::new();
+    for (checked, (id, path)) in folders.iter().enumerate() {
+        if checked >= limits.max_entries {
+            budget.mark(TruncatedBy::Entries);
+            break;
+        }
+        if budget.out_of_time() {
+            break;
+        }
+        let Some((index, relative)) = locate(&roots, path) else { continue };
+        if roots[index].status != RootStatus::Ok {
+            continue;
+        }
+        if presence(&roots[index].canonical, &relative) == Presence::Missing {
+            missing.insert(*id);
+        }
+    }
+    (missing, !budget.truncated.is_empty())
+}
+
 /// Compares the snapshot with the disk below `configured`. Never fails: whatever cannot
 /// be judged is left out and, where a limit caused it, `truncated` says so.
 pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits) -> DiskReport {

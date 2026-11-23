@@ -3,7 +3,8 @@ import { useEffect, useId, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { displayName } from '../lib/displayName';
 import { readPlateOverview } from '../lib/api/files';
-import { exportModelAsStl, showFolderInFileManager, type StlExportResult, type StlScope } from '../lib/api/stl';
+import { isReadOnly } from '../lib/readOnly';
+import { downloadModelAsStl, exportModelAsStl, showFolderInFileManager, type StlExportResult, type StlScope } from '../lib/api/stl';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { useModalDialog } from '../hooks/useModalDialog';
@@ -42,6 +43,7 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
   const closeDone = onFinished ?? onClose;
   const dialogRef = useModalDialog({ open: true, onClose: () => (phase === 'done' ? closeDone() : onClose()), busy: phase === 'saving', initialFocus: '[data-initial-focus]' });
   const type = model.fileType.toLowerCase();
+  const web = isReadOnly();
 
   // Only a 3MF has plates; the list comes from the file when the dialog opens. A failed read just
   // leaves out the choice, the whole model can still be saved.
@@ -64,7 +66,7 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
     setError(null);
     setPhase('saving');
     try {
-      const saved = await exportModelAsStl(model.id, scope);
+      const saved = web ? await downloadModelAsStl(model.id, model.name, scope) : await exportModelAsStl(model.id, scope);
       if (saved === null) { setPhase('set'); return; }
       setResult(saved);
       setPhase('done');
@@ -91,15 +93,15 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
 
         {phase === 'done' && result ? (
           <>
-            <p role="status" className="m-0 mb-1 font-semibold">{t('stDone')}</p>
+            <p role="status" className="m-0 mb-1 font-semibold">{t(web ? 'stDownloaded' : 'stDone')}</p>
             <p className="m-0 mb-2 font-code text-small break-all text-[var(--ink-2)]">{result.fileCount > 1 ? t('stDoneMany').replace('{n}', String(result.fileCount)) : displayName(result.name)}</p>
             {result.inCatalogFolder && <p className="m-0 mb-2 text-small text-[var(--ink-2)]">{t('stDoneInCatalog')}</p>}
             {folderError && <p role="alert" className="m-0 mb-2 text-small text-[var(--accent)]"><ErrorText error={folderError} /></p>}
             <div className="flex gap-2 justify-end mt-3">
-              <button type="button" className={buttonClass}
+              {!web && <button type="button" className={buttonClass}
                 onClick={() => { setFolderError(null); showFolderInFileManager(result.folder).catch(e => setFolderError(toAppError(e))); }}>
                 {t('showInFileManager')}
-              </button>
+              </button>}
               <button type="button" data-initial-focus onClick={closeDone} className={primaryClass}>{t('stClose')}</button>
             </div>
           </>
@@ -142,7 +144,7 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
             {error && <p role="alert" className="m-0 mt-2 text-small text-[var(--accent)]"><ErrorText error={error} /></p>}
             <div className="flex gap-2 justify-end mt-3">
               <button type="button" onClick={onClose} disabled={phase === 'saving'} className={buttonClass}>{t('cancel')}</button>
-              <button type="button" data-initial-focus onClick={() => void save()} disabled={phase === 'saving'} className={primaryClass}>{t('stNext')}</button>
+              <button type="button" data-initial-focus onClick={() => void save()} disabled={phase === 'saving'} className={primaryClass}>{t(web ? 'stDownload' : 'stNext')}</button>
             </div>
           </>
         )}

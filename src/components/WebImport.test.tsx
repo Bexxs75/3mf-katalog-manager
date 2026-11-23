@@ -28,8 +28,8 @@ it('hides the entire upload surface without uploadable even when writable', asyn
 it('uses the browser file chooser and rejects unsupported archives and dropped directories visibly', async () => {
   await start(true);
   const input = await screen.findByLabelText(de.webUploadChoose);
-  expect(input).toHaveAttribute('multiple'); expect(input).toHaveAttribute('accept', '.3mf,.stl,.obj,.stp,.step,.gcode,.bgcode,.ctb,.cbddlp,.goo,.pwmx,.pwms,.sl1,.zip,.7z');
-  expect(screen.getByText(/ZIP.*7z/)).toBeVisible();
+  expect(input).toHaveAttribute('multiple'); expect(input).toHaveAttribute('accept', '.3mf,.stl,.obj,.stp,.step,.gcode,.bgcode,.ctb,.cbddlp,.goo,.pwmx,.pwms,.sl1,.zip,.7z,.tar,.tgz,.tbz2,.txz,.tzst,.gz,.bz2,.xz,.zst');
+  expect(screen.getByText(/ZIP.*7z.*tar/)).toBeVisible();
   fireEvent.change(input, { target: { files: [new File(['a'], 'archive.rar')] } });
   expect(screen.getByText(de.webUploadArchives)).toBeVisible();
   fireEvent.drop(screen.getByTestId('web-upload-drop'), { dataTransfer: { items: [{ kind: 'file', webkitGetAsEntry: () => ({ isDirectory: true }) }], files: [] } });

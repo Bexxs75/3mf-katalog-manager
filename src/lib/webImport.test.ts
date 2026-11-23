@@ -58,17 +58,17 @@ it('sends files sequentially as File bodies, encodes the name and starts only su
 });
 it('rejects unsupported archive formats, wrong extensions and directory selections before sending', async () => {
   const folderFile = new File(['a'], 'nested.stl'); Object.defineProperty(folderFile, 'webkitRelativePath', { value: 'folder/nested.stl' });
-  controller.addFiles([new File(['a'], 'file.rar'), new File(['a'], 'x.tar.gz'), new File(['a'], 'x.3mf.exe'), folderFile]); await flush();
+  controller.addFiles([new File(['a'], 'file.rar'), new File(['a'], 'FILE.RAR'), new File(['a'], 'x.3mf.exe'), new File(['a'], 'x.gz'), folderFile]); await flush();
   expect(Xhr.requests).toHaveLength(0);
-  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual(['webUploadArchives', 'webUploadArchives', 'webUploadType', 'webUploadFolders']);
+  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual(['webUploadArchives', 'webUploadArchives', 'webUploadType', 'webUploadType', 'webUploadFolders']);
 });
-it('uploads zip and 7z archives like any other file, whatever the letter case', async () => {
-  controller.addFiles([new File(['a'], 'Paket.ZIP'), new File(['b'], 'paket.7z')]);
+it('uploads zip, 7z and tar archives like any other file, whatever the letter case', async () => {
+  controller.addFiles([new File(['a'], 'Paket.ZIP'), new File(['b'], 'paket.7z'), new File(['c'], 'p.TAR.GZ'), new File(['d'], 'p.tgz')]);
   expect(Xhr.requests).toHaveLength(1);
   expect(Xhr.requests[0].headers['X-Upload-Name']).toBe('Paket.ZIP');
-  Xhr.requests[0].respond(); await flush();
-  expect(Xhr.requests).toHaveLength(2);
-  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual([undefined, undefined]);
+  for (let i = 0; i < 3; i++) { Xhr.requests[i].respond(); await flush(); }
+  expect(Xhr.requests.map(r => r.headers['X-Upload-Name'])).toEqual(['Paket.ZIP', 'paket.7z', 'p.TAR.GZ', 'p.tgz']);
+  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual([undefined, undefined, undefined, undefined]);
 });
 it('maps the archive failure codes of the server to their own texts', () => {
   expect(uploadErrorKey({ status: 415, kind: 'archive_format_unsupported' })).toBe('webUploadArchives');

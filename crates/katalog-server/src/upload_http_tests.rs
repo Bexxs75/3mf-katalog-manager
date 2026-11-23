@@ -1223,6 +1223,53 @@ fn sevenz_bytes(entries: &[(&str, Vec<u8>)]) -> Vec<u8> {
     writer.push_archive_entries(headers, readers).unwrap();
     writer.finish().unwrap().into_inner()
 }
+/// Hand-written ustar archive, so the tests need no tar library. `kind` is the type flag
+/// (`b'0'` file, `b'2'` symlink, `b'5'` directory); `size` is what the header declares.
+fn tar_bytes(entries: &[(&str, u8, &[u8], &str)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (name, kind, data, link) in entries {
+        let mut h = [0u8; 512];
+        h[..name.len()].copy_from_slice(name.as_bytes());
+        h[100..108].copy_from_slice(b"0000644\0");
+        h[108..116].copy_from_slice(b"0000000\0");
+        h[116..124].copy_from_slice(b"0000000\0");
+        h[124..136].copy_from_slice(format!("{:011o}\0", data.len()).as_bytes());
+        h[136..148].copy_from_slice(b"00000000000\0");
+        h[148..156].copy_from_slice(b"        ");
+        h[156] = *kind;
+        h[157..157 + link.len()].copy_from_slice(link.as_bytes());
+        h[257..263].copy_from_slice(b"ustar\0");
+        h[263..265].copy_from_slice(b"00");
+        let sum: u32 = h.iter().map(|b| u32::from(*b)).sum();
+        h[148..156].copy_from_slice(format!("{sum:06o}\0 ").as_bytes());
+        out.extend_from_slice(&h);
+        out.extend_from_slice(data);
+        out.resize(out.len().div_ceil(512) * 512, 0);
+    }
+    out.extend_from_slice(&[0u8; 1024]);
+    out
+}
+/// A gzip file made of stored (uncompressed) blocks.
+fn gzip_stored(data: &[u8]) -> Vec<u8> {
+    let mut crc = 0xffff_ffffu32;
+    for b in data {
+        crc ^= u32::from(*b);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
+        }
+    }
+    let mut out = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 255];
+    let mut chunks = data.chunks(65535).peekable();
+    while let Some(chunk) = chunks.next() {
+        out.push(u8::from(chunks.peek().is_none()));
+        out.extend_from_slice(&(chunk.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(!(chunk.len() as u16)).to_le_bytes());
+        out.extend_from_slice(chunk);
+    }
+    out.extend_from_slice(&(!crc).to_le_bytes());
+    out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    out
+}
 fn upload_names(f: &Fixture) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(f.dir.join("models/uploads"))
         .unwrap()
@@ -1282,9 +1329,70 @@ async fn solid_7z_with_two_models_and_a_picture_imports_two_and_reports_one_skip
 }
 
 #[tokio::test]
-async fn archive_names_other_than_zip_and_7z_are_refused_with_their_own_code() {
+async fn tar_with_two_models_and_a_picture_imports_two_and_reports_one_skipped() {
     let f = Fixture::new(true);
-    for name in ["x.rar", "x.tar", "x.tar.gz", "x.tgz"] {
+    let bytes = tar_bytes(&[("Modell/", b'5', b"", ""), ("Modell/a.obj", b'0', &obj(1), ""), ("Modell/b.obj", b'0', &obj(2), ""), ("Modell/vorschau.png", b'0', b"\x89PNG....", "")]);
+    let (_, result) = run_archive(&f, "paket.tar", &bytes).await;
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(archive_row(&result)["models"], 2, "{result}");
+    assert_eq!(archive_row(&result)["skipped"], 1, "{result}");
+    assert_eq!(states(&result, "imported"), 2, "{result}");
+    assert_eq!(std::fs::read(f.dir.join("models/uploads/b.obj")).unwrap(), obj(2));
+}
+
+#[tokio::test]
+async fn a_gzipped_tar_is_unpacked_and_its_signature_is_checked() {
+    let f = Fixture::new(true);
+    let tar = tar_bytes(&[("a.obj", b'0', &obj(1), "")]);
+    let (_, result) = run_archive(&f, "paket.tar.gz", &gzip_stored(&tar)).await;
+    assert_eq!(states(&result, "imported"), 1, "{result}");
+    // A renamed text file or a plain tar under a gzip name never reaches the unpacker.
+    for (name, body) in [("falsch.tar.gz", tar.clone()), ("falsch.tar", b"just text".to_vec()), ("falsch.tgz", b"just text".to_vec())] {
+        let r = f.send(f.upload_request(name, &body)).await;
+        assert_eq!(r.status(), 400, "{name}");
+        assert_eq!(value(r).await["kind"], "invalid_signature", "{name}");
+    }
+}
+
+#[tokio::test]
+async fn tar_paths_that_leave_the_target_and_links_never_end_up_on_disk() {
+    let f = Fixture::new(true);
+    let bytes = tar_bytes(&[
+        ("../entkommen.obj", b'0', &obj(7), ""),
+        ("/abs/absolut.obj", b'0', &obj(8), ""),
+        ("a/../../tief.obj", b'0', &obj(9), ""),
+        ("link.obj", b'2', b"", "/etc/passwd"),
+        ("hart.obj", b'1', b"", "echt.obj"),
+        ("echt.obj", b'0', &obj(1), ""),
+    ]);
+    let (_, result) = run_archive(&f, "falle.tar", &bytes).await;
+    // The extractor skips every unsafe entry (traversal, absolute path, link) and keeps the archive;
+    // only the harmless model becomes an upload.
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(states(&result, "imported"), 1, "{result}");
+    assert_eq!(upload_names(&f), ["echt.obj", "falle.tar"]);
+    for outside in ["entkommen.obj", "absolut.obj", "tief.obj"] {
+        for base in [f.dir.join("models"), f.dir.clone()] {
+            assert!(!base.join(outside).exists(), "{outside} written to {}", base.display());
+        }
+    }
+    assert!(!std::path::Path::new("/abs/absolut.obj").exists());
+}
+
+#[tokio::test]
+async fn a_tar_that_unpacks_beyond_the_limit_is_refused() {
+    // The tar itself is not compressed, so the upload limit has to admit it.
+    let f = Fixture::with_env(true, &[("KATALOG_ARCHIVE_MAX_MB", "1"), ("KATALOG_UPLOAD_MAX_MB", "8")]);
+    let bomb = tar_bytes(&[("a.obj", b'0', &obj(1), ""), ("nullen.bin", b'0', &vec![0u8; 3 * 1024 * 1024], "")]);
+    let (_, result) = run_archive(&f, "bombe.tar", &bomb).await;
+    assert_eq!(result["files"][0]["kind"], "archive_too_large", "{result}");
+    assert_eq!(upload_names(&f), ["bombe.tar"]);
+}
+
+#[tokio::test]
+async fn rar_names_are_refused_with_their_own_code() {
+    let f = Fixture::new(true);
+    for name in ["x.rar", "X.RAR"] {
         let r = f.send(f.upload_request(name, b"Rar!\x1a\x07\x00")).await;
         assert_eq!(r.status(), 415, "{name}");
         assert_eq!(value(r).await["kind"], "archive_format_unsupported", "{name}");
