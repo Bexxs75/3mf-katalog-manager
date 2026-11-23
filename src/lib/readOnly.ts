@@ -13,7 +13,7 @@ export const WEB_READ_COMMANDS = [
   'preview_printer_job',
   'get_printer_job_thumbnail',
 
-  'folder_removal_summary', 'empty_trash_summary',
+  'folder_removal_summary', 'folder_trash_summary', 'empty_trash_summary',
   'get_import_state', 'get_import_result',
   'list_file_summaries', 'list_all_file_tags', 'list_files_by_ids', 'list_tag_counts',
   'list_print_log_entries', 'list_folders', 'list_collections', 'list_collection_files', 'list_bundles',

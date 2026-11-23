@@ -160,6 +160,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "get_printer_job_thumbnail",
 
     "folder_removal_summary",
+    "folder_trash_summary",
     "empty_trash_summary",
     "get_import_state",
     "get_import_result",
@@ -223,6 +224,26 @@ fn trash_summary(conn: &katalog_core::write::Connection, roots: &[PathBuf]) -> R
         "maxDeletedAt": summary.max_deleted_at,
     }))
 }
+/// Same counts and rules as the desktop dialog. A folder outside the configured roots is not
+/// something the web manages, so it is answered like an unknown one and its disk is not scanned.
+fn folder_trash_summary(
+    conn: &katalog_core::write::Connection,
+    id: &str,
+    roots: &[PathBuf],
+) -> Result<Option<Value>, ReadError> {
+    use katalog_core::folder_trash::{folder_trash_summary_with_conn, StdFolderTrashFs};
+    let path: Option<String> = conn
+        .query_row("SELECT path FROM folders WHERE id=?1", [id], |r| r.get(0))
+        .ok();
+    let Some(path) = path else { return Ok(None) };
+    if !roots.iter().any(|root| std::path::Path::new(&path).starts_with(root)) {
+        return Ok(None);
+    }
+    match folder_trash_summary_with_conn(&StdFolderTrashFs, conn, id, &[]) {
+        Ok(summary) => Ok(Some(json!(summary))),
+        Err(_) => Err(ReadError::coded(ErrorCode::WebServerInternal)),
+    }
+}
 fn folder_summary(
     conn: &katalog_core::write::Connection,
     id: i64,
@@ -260,9 +281,9 @@ pub async fn invoke(
     }
     if matches!(
         command.as_str(),
-        "folder_removal_summary" | "empty_trash_summary" | "disk_sync_report"
+        "folder_removal_summary" | "folder_trash_summary" | "empty_trash_summary" | "disk_sync_report"
     ) {
-        let allowed: &[&str] = if command == "folder_removal_summary" {
+        let allowed: &[&str] = if command == "folder_removal_summary" || command == "folder_trash_summary" {
             &["folderId"]
         } else {
             &[]
@@ -277,7 +298,7 @@ pub async fn invoke(
         }
     }
     let file_id = match command.as_str() {
-        "folder_removal_summary" => match id(&args, "folderId") {
+        "folder_removal_summary" | "folder_trash_summary" => match id(&args, "folderId") {
             Ok(value) => Some(value),
             Err(error) => return *error,
         },
@@ -509,6 +530,13 @@ pub async fn invoke(
                 encode(value)
             },
             "empty_trash_summary" => encode(trash_summary(&conn, &roots)?),
+            "folder_trash_summary" => {
+                match folder_trash_summary(&conn, &file_id.unwrap(), &roots) {
+                    Ok(Some(summary)) => encode(summary),
+                    Ok(None) => Ok(*error(StatusCode::NOT_FOUND, ErrorCode::FolderNotFound, &[])),
+                    Err(e) => Err(e),
+                }
+            }
             "folder_removal_summary" => {
                 match folder_summary(&conn, file_id.unwrap().parse().unwrap())? {
                     Some(summary) => encode(summary),

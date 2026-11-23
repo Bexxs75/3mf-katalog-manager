@@ -61,7 +61,7 @@
     "start_file_drag": "C",
     "extract_archives": "B",
     "folder_removal_summary": "web",
-    "folder_trash_summary": "B",
+    "folder_trash_summary": "web",
     "frontend_ready": "C",
     "get_app_version": "web",
     "get_auto_tagging": "web",
