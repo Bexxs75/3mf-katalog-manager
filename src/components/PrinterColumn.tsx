@@ -223,7 +223,7 @@ export function PrinterColumn({
             <div className="text-small font-bold">{printer.name}</div>
             <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-left text-caption text-[var(--accent)] focus-visible:outline-2" onClick={() => onManage(printer.id)}>{t('pmEditLink')}</button>
             {/* Resin printers have no printer connection. */}
-            {import.meta.env.VITE_TARGET !== 'web' && printerLink && printer.kind !== 'resin' && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
+            {printerLink && printer.kind !== 'resin' && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
             {printer.units.map(renderUnit)}
             {printer.units.length === 0 && (
               <button

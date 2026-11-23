@@ -14,6 +14,9 @@ export function usePrinterLink() {
   const [connections, setConnections] = useState<PrinterConnection[]>([]);
   const [jobs, setJobs] = useState<PrinterJob[]>([]);
   const [error, setError] = useState<AppError | null>(null);
+  // A web server without a printer allowlist refuses every printer command with this code. That is a
+  // deployment choice, not a failure, so the UI explains it instead of showing an error.
+  const [unavailable, setUnavailable] = useState(false);
   // Prevents setState after unmount; set in effects so StrictMode works.
   const mounted = useRef(false);
   useEffect(() => {
@@ -24,7 +27,6 @@ export function usePrinterLink() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (import.meta.env.VITE_TARGET === 'web') return;
     try {
       const [on, conns, open] = await Promise.all([
         api.getPrinterLinkEnabled(),
@@ -37,13 +39,18 @@ export function usePrinterLink() {
       setJobs(open);
       setRefreshKey(key => key + 1);
       setError(null);
+      setUnavailable(false);
     } catch (e) {
-      if (mounted.current) setError(toAppError(e));
+      if (!mounted.current) return;
+      const failure = toAppError(e);
+      if (import.meta.env.VITE_TARGET === 'web' && failure.message === 'printerAddressNotAllowed') {
+        setUnavailable(true);
+        setError(null);
+      } else setError(failure);
     }
   }, []);
 
   useEffect(() => {
-    if (import.meta.env.VITE_TARGET === 'web') return;
     refresh();
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -74,6 +81,7 @@ export function usePrinterLink() {
     connections,
     jobs,
     error,
+    unavailable,
     refresh,
     setEnabled: (on: boolean) => after(api.setPrinterLinkEnabled(on)),
     testConnection: (printerId: string, address: string, apiKey: string | null = null) =>

@@ -208,7 +208,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   // started is, and so is anything that needs them.
   const soft = !error && (current?.status === 'reconnecting' || current?.status === 'offline') ? current.status : null;
 
-  if (import.meta.env.VITE_TARGET === 'web') return null;
+  const web = import.meta.env.VITE_TARGET === 'web';
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -253,14 +253,16 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
                 autoCapitalize="off"
                 autoCorrect="off"
               />
-              <button type="button" className={smallButton} aria-pressed={showKey} onClick={() => setShowKey((v) => !v)}>
+              {/* The server never returns a stored key; the toggle would only reveal what was just typed, so the web build omits it. */}
+              {!web && <button type="button" className={smallButton} aria-pressed={showKey} onClick={() => setShowKey((v) => !v)}>
                 {t(showKey ? 'pmApiKeyHide' : 'pmApiKeyShow')}
-              </button>
+              </button>}
             </div>
           </div>
         )}
       </div>
-      <p className="text-caption text-[var(--ink-3)]">{t('pmApiKeyHint')}</p>
+      {web && <p className="text-caption text-[var(--ink-3)]">{t('pmWebAddressHint')}</p>}
+      <p className="text-caption text-[var(--ink-3)]">{t(web ? 'pmWebApiKeyHint' : 'pmApiKeyHint')}</p>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={smallButton} disabled={!link.enabled || testing || address.trim() === ''} onClick={runTest}>
           {testing ? t('printerConnectionTesting') : t(current ? 'printerConnectionTest' : 'pmSetupConnection')}
@@ -308,7 +310,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
       )}
       {link.enabled && !soft && (error || current?.lastError || current?.paused) && (
         <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-small text-[var(--crit)]">
-          <b>{t('pmConnectionError')}</b><p>{effectiveError ? t(errorKeyFor(effectiveError)).replace('{host}', () => printerErrorHost(error ? testedAddress : current?.address ?? '')) : t('printerPausedRetest')}</p>
+          <b>{t('pmConnectionError')}</b>{web && effectiveError === 'address_not_allowed' && <p>{t('pmWebAddressDenied')}</p>}<p>{effectiveError ? t(errorKeyFor(effectiveError)).replace('{host}', () => printerErrorHost(error ? testedAddress : current?.address ?? '')) : t('printerPausedRetest')}</p>
         </div>
       )}
       {link.enabled && !error && current && !current.paused && !current.lastError && (
