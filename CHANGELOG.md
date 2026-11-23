@@ -19,6 +19,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Restoring from the web trash recreates missing parent folders and reconnects their catalog entries, including after an interrupted restore. Name conflicts remain errors.
 - A file without any displayable geometry (for example a sliced package that only contains G-code) is no longer logged as an error when its preview is requested; it is logged as information.
 - The settings search finds the close-to-tray option under the term "Tray" as well.
 
@@ -915,6 +916,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- Beim Wiederherstellen aus dem Web-Papierkorb werden fehlende Elternordner neu angelegt und ihre Katalogeinträge verknüpft, auch nach einer unterbrochenen Wiederherstellung. Namenskonflikte bleiben Fehler.
 - Eine Datei ohne darstellbare Geometrie (zum Beispiel ein gesliceltes Paket, das nur G-Code enthält) wird bei der Vorschau nicht mehr als Fehler protokolliert, sondern als Information.
 - Die Einstellungssuche findet die Option zum Minimieren in den Infobereich jetzt auch unter dem Begriff „Tray“.
 

@@ -281,7 +281,9 @@ fn missing_sources_db_only_and_restore_missing_parent() {
     f.add(2, "sub/b.stl");
     f.ops.delete_file(2).unwrap();
     fs::remove_dir(f.dir.join("root/sub")).unwrap();
-    assert_eq!(f.ops.restore_file(2), Err(Error::PathUnresolvable));
+    f.ops.restore_file(2).unwrap();
+    assert!(f.dir.join("root/sub/b.stl").is_file());
+    f.ops.delete_file(2).unwrap();
     let t = f.ops.state(2).unwrap().trash_path.unwrap();
     fs::remove_file(t).unwrap();
     assert_eq!(f.ops.restore_file(2), Err(Error::TrashMissing));

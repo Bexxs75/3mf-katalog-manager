@@ -92,6 +92,12 @@ pub struct ExtrasDir {
     pub relative: String,
     pub identity: Option<Identity>,
 }
+/// Restore-only metadata. Unknown fields make older readers refuse this subtype.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestoreParents {
+    pub directories: Vec<ExtrasDir>,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileState {
     pub id: i64,
@@ -154,6 +160,8 @@ pub struct Intent {
     /// Only for `CompanionAdd`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub companion_add: Option<CompanionAdd>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore: Option<RestoreParents>,
 }
 impl Intent {
     pub(crate) fn has_companion_data(&self) -> bool {
@@ -162,10 +170,10 @@ impl Intent {
 }
 /// Format 1 predates companion data. Entries with companion data are written as
 /// version 2 so an older binary refuses the file instead of ignoring the new fields.
-/// Single-companion edits and desktop purges use the extensible third format.
+/// Single-companion edits, desktop purges and restore parents use the third format.
 /// Unknown operation variants fail closed when an older binary reads the document.
 fn document_version(intents: &[Intent], folders: &[FolderIntent]) -> u32 {
-    if intents.iter().any(|i| i.operation.is_companion_edit() || i.operation == Operation::PurgeDesktopTrash) {
+    if intents.iter().any(|i| i.operation.is_companion_edit() || i.operation == Operation::PurgeDesktopTrash || i.restore.is_some()) {
         3
     } else if intents.iter().any(Intent::has_companion_data) || folders.iter().any(FolderIntent::has_companion_data) {
         2
@@ -234,6 +242,10 @@ impl Journal {
                 }
                 // The add-specific record belongs to exactly the add operation.
                 if doc.intents.iter().any(|i| (i.operation == Operation::CompanionAdd) != i.companion_add.is_some()) {
+                    return Err(Error::RestartRequired);
+                }
+                if doc.intents.iter().any(|i| i.restore.is_some()
+                    && !matches!(i.operation, Operation::Restore | Operation::DbOnly)) {
                     return Err(Error::RestartRequired);
                 }
                 let mut ids = std::collections::HashSet::new();

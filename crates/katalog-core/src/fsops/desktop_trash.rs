@@ -191,6 +191,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: steps,
             companion_rows: rows,
             extras_dir: None,
+            restore: None,
             companion_add: None,
         };
         self.journal.add(intent.clone())?;

@@ -173,6 +173,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: vec![step],
             extras_dir,
             companion_rows: s.rows.clone(),
+            restore: None,
             companion_add: None,
         }
     }

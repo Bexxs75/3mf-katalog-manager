@@ -272,6 +272,7 @@ mod tests {
             companions: Vec::new(),
             extras_dir: None,
             companion_rows: Vec::new(),
+            restore: None,
             companion_add: None,
         };
         let journal = f.path.join("auth/web-fsops.json");

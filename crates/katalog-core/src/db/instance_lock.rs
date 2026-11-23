@@ -126,6 +126,18 @@ mod tests {
         dir
     }
 
+    /// Another test may be forking a child at this moment; the child briefly holds a copy of
+    /// the descriptor, so a freshly released lock can still look busy for a few milliseconds.
+    fn acquire_released(db: &Path, owner: &str) -> InstanceLock {
+        for _ in 0..200 {
+            match InstanceLock::acquire(db, owner) {
+                Ok(lock) => return lock,
+                Err(LockError::InUse) => std::thread::sleep(std::time::Duration::from_millis(10)),
+                Err(e) => panic!("{e}"),
+            }
+        }
+        panic!("lock stayed busy after release");
+    }
     #[test]
     fn exclusive_until_drop_and_metadata_survives_contention() {
         let dir = fixture();
@@ -142,7 +154,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), text);
         drop(lock);
         assert!(sidecar.exists());
-        drop(InstanceLock::acquire(&db, "server").unwrap());
+        drop(acquire_released(&db, "server"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

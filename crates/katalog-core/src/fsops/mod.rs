@@ -40,6 +40,9 @@ mod companion_edit_tests;
 #[cfg(test)]
 mod companion_add_tests;
 pub use journal::*;
+mod restore;
+#[cfg(test)]
+mod restore_tests;
 mod operations;
 pub use operations::*;
 pub use companion_block::*;
