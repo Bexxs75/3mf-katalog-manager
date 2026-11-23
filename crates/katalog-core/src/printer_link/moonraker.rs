@@ -1293,4 +1293,22 @@ mod client_tests {
         assert_eq!(link.test(), Err(LinkError::Timeout));
         assert!(started.elapsed() < Duration::from_millis(210), "{:?}", started.elapsed());
     }
+    #[test]
+    fn printer_service_redirect_is_not_followed() {
+        let destination = FakeServer::start(|_| Some((200, b"{}".to_vec())));
+        let location = format!("http://{}/server/info", destination.address());
+        let origin = FakeServer::start_replying(move |_| super::super::fake_moonraker::Reply::Redirect(location.clone()));
+        let link = MoonrakerLink::new(&origin.address(), AddressPolicy::TEST);
+        assert!(link.test().is_err());
+        assert!(destination.requests().is_empty());
+    }
+
+    #[test]
+    fn printer_service_oversized_thumbnail_is_rejected() {
+        let server = FakeServer::start(|_| Some((200, vec![b'x'; (MAX_THUMB_BYTES + 1) as usize])));
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let base = format!("http://{}", server.address());
+        assert!(matches!(link.thumbnail(&base, ".thumbs/test.png"), Err(LinkError::BadResponse(_))));
+    }
+
 }

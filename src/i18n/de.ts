@@ -51,6 +51,7 @@ export const de: Translations = {
   tagMergeConfirm: "{count} Modelle von „{source}“ auf „{target}“ übertragen und den Quelltag löschen?",
   tagMergeSubmit: "Zusammenführen",
   tagRenameSubmit: "Umbenennen",
+  errPrinterAddressNotAllowed: "Die Druckeradresse ist auf diesem Server nicht freigegeben.",
   errTagNameUnchanged: "Der neue Name muss sich vom alten unterscheiden.",
   errTagNameExists: "Tag existiert; zum Zusammenführen nutzen",
   tagMenuDelete: "Tag löschen …",

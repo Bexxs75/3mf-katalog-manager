@@ -56,6 +56,7 @@ export interface Translations {
   tagMergeConfirm: string;
   tagMergeSubmit: string;
   tagRenameSubmit: string;
+  errPrinterAddressNotAllowed: string;
   errTagNameUnchanged: string;
   errTagNameExists: string;
   tagMenuDelete: string;

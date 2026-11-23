@@ -98,7 +98,7 @@ impl Event {
     }
 }
 #[derive(Default)]
-struct Hub {
+pub(super) struct Hub {
     sequence: u64,
     clients: HashMap<u64, mpsc::Sender<Bytes>>,
     session_counts: HashMap<String, usize>,
@@ -113,7 +113,7 @@ impl Hub {
         }
         .bytes()
     }
-    fn publish(&mut self, name: &'static str, value: Value) {
+    pub(super) fn publish(&mut self, name: &'static str, value: Value) {
         let bytes = self.event(name, value);
         self.clients
             .retain(|_, tx| tx.try_send(bytes.clone()).is_ok());
@@ -123,7 +123,7 @@ pub(super) struct Runtime {
     pub store: Arc<UploadStore>,
     pub(super) active: Arc<Semaphore>,
     jobs: Mutex<HashMap<String, Arc<Job>>>,
-    hub: Mutex<Hub>,
+    pub(super) hub: Arc<Mutex<Hub>>,
 }
 impl Runtime {
     async fn changed(self: &Arc<Self>) {
@@ -205,7 +205,7 @@ pub(super) fn initialize(config: &Config) -> Result<Option<Arc<Runtime>>, String
         store,
         active: Arc::new(Semaphore::new(1)),
         jobs: Mutex::new(HashMap::new()),
-        hub: Mutex::new(Hub::default()),
+        hub: Arc::default(),
     })))
 }
 /// Runs only after fsops recovery and upload detachment have completed.
@@ -974,13 +974,13 @@ fn flush(
     outcome.map_err(|_| ())
 }
 struct StreamGuard {
-    rt: Arc<Runtime>,
+    hub: Arc<Mutex<Hub>>,
     id: u64,
     session: String,
 }
 impl Drop for StreamGuard {
     fn drop(&mut self) {
-        let mut hub = self.rt.hub.lock().unwrap();
+        let mut hub = self.hub.lock().unwrap();
         hub.clients.remove(&self.id);
         if let Some(n) = hub.session_counts.get_mut(&self.session) {
             *n -= 1;
@@ -1024,9 +1024,11 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
     if !events_origin_ok(&app, headers) {
         return error(403, "origin");
     }
-    let rt = app.uploads.as_ref().unwrap().clone();
+    let rt = app.uploads.clone();
+    let hub = app.events.clone();
     let (tx, rx) = mpsc::channel(32);
     let copy = rt.clone();
+    let shared_hub = hub.clone();
     let token = session.token.clone();
     let snapshot_tx = tx.clone();
     let catalog_guard = match app.geometry.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
@@ -1037,10 +1039,10 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         // Never hold the hub while waiting on journal fsync. Retry if a
         // publication raced the snapshot; subscribe under the same hub lock.
         let (mut jobs, uploads, mut hub) = loop {
-            let sequence = rt.hub.lock().unwrap().sequence;
-            let jobs = rt.store.recent_job_results().unwrap_or_default();
-            let uploads = pending_entries(&rt.store);
-            let hub = rt.hub.lock().unwrap();
+            let sequence = shared_hub.lock().unwrap().sequence;
+            let jobs = rt.as_ref().map(|r| r.store.recent_job_results().unwrap_or_default()).unwrap_or_default();
+            let uploads = rt.as_ref().map(|r| pending_entries(&r.store)).unwrap_or_default();
+            let hub = shared_hub.lock().unwrap();
             if hub.sequence == sequence {
                 break (jobs, uploads, hub);
             }
@@ -1053,20 +1055,22 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         }
         // Publish and snapshot use this lock: updates that race the snapshot are
         // repeated after it, never lost between observation and subscription.
-        let active_ids: std::collections::HashSet<_> =
-            rt.jobs.lock().unwrap().keys().cloned().collect();
-        jobs.retain(|v| {
-            v["jobId"]
-                .as_str()
-                .is_none_or(|id| !active_ids.contains(id))
-        });
-        jobs.extend(
-            rt.jobs
-                .lock()
-                .unwrap()
-                .values()
-                .map(|j| serde_json::to_value(&*j.view.lock().unwrap()).unwrap()),
-        );
+        if let Some(rt) = &rt {
+            let active_ids: std::collections::HashSet<_> =
+                rt.jobs.lock().unwrap().keys().cloned().collect();
+            jobs.retain(|v| {
+                v["jobId"]
+                    .as_str()
+                    .is_none_or(|id| !active_ids.contains(id))
+            });
+            jobs.extend(
+                rt.jobs
+                    .lock()
+                    .unwrap()
+                    .values()
+                    .map(|j| serde_json::to_value(&*j.view.lock().unwrap()).unwrap()),
+            );
+        }
         let snapshot = hub.event(
             "import-progress",
             json!({"snapshot":true,"jobs":jobs,"uploads":uploads}),
@@ -1076,7 +1080,7 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         hub.clients.insert(id, tx.clone());
         *hub.session_counts.entry(token.clone()).or_default() += 1;
         Ok(StreamGuard {
-            rt: rt.clone(),
+            hub: shared_hub.clone(),
             id,
             session: token,
         })
@@ -1096,12 +1100,12 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         loop {
             tokio::select! {_ = tx.closed()=>break,_=interval.tick()=>{
                 if !authenticated(&app,&session){break}
-                let mut hub=rt.hub.lock().unwrap();
+                let mut hub=hub.lock().unwrap();
                 if !hub.clients.contains_key(&id){break}
                 let ping=hub.event("ping",json!({}));if tx.try_send(ping).is_err(){break}
             }}
         }
-        rt.hub.lock().unwrap().clients.remove(&id);
+        hub.lock().unwrap().clients.remove(&id);
     });
     let mut response = Response::new(Body::new(EventBody { rx, _guard: guard }));
     response

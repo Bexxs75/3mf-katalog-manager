@@ -64,6 +64,8 @@ impl Fixture {
         .map(|o| Arc::new(fileops::Runtime::new(o)));
         let app = Arc::new(App {
             restore: restore_upload::Runtime::default(),
+            events: uploads.as_ref().map(|r| r.hub.clone()).unwrap_or_default(),
+            printers: printer_service::Runtime::default(),
             _instance_lock: None,
             fileops,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),

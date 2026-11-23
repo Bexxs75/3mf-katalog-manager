@@ -138,6 +138,11 @@ pub const READ_COMMANDS: &[&str] = &[
     "list_source_folders",
     "scan_source_folders",
     "get_source_check_on_start",
+    "get_printer_link_enabled",
+    "list_printer_connections",
+    "list_open_printer_jobs",
+    "preview_printer_job",
+    "get_printer_job_thumbnail",
 
     "folder_removal_summary",
     "empty_trash_summary",

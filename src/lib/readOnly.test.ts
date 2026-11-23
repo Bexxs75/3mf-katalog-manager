@@ -34,13 +34,15 @@ it.each([
   document.documentElement.lang = 'de';
 });
 
-it('keeps manager scope explicit and printer networking unavailable', () => {
-  expect(WEB_WRITE_COMMANDS).toHaveLength(71);
+it('keeps manager and printer command scope explicit', () => {
+  expect(WEB_WRITE_COMMANDS).toHaveLength(80);
   expect(WEB_WRITE_COMMANDS).toContain('set_spool_print_temperatures');
   expect(WEB_WRITE_COMMANDS).toContain('rename_tag');
   expect(WEB_WRITE_COMMANDS).toContain('merge_tags');
   expect(WEB_READ_COMMANDS).toContain('get_filament_spool_image');
-  for (const command of ['set_printer_link_enabled', 'test_printer_connection', 'remove_printer_connection', 'clear_printer_api_key', 'include_older_printer_history', 'set_printer_job_failure', 'sync_printers_now', 'pick_and_read_image']) {
+  expect(WEB_WRITE_COMMANDS).toContain('test_printer_connection');
+  expect(WEB_READ_COMMANDS).toContain('get_printer_job_thumbnail');
+  for (const command of ['pick_and_read_image']) {
     expect([...WEB_READ_COMMANDS, ...WEB_WRITE_COMMANDS]).not.toContain(command);
   }
 });

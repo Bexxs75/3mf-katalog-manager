@@ -50,6 +50,8 @@ impl Fixture {
         let session = new_session(&mut data, "test", 100).unwrap();
         let app = Arc::new(App {
             restore: restore_upload::Runtime::default(),
+            events: Arc::default(),
+            printers: printer_service::Runtime::default(),
             _instance_lock: None,
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
@@ -140,10 +142,10 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 66);
+    assert_eq!(WRITE_COMMANDS.len(), 80);
     assert_eq!(crate::write::ROUTE_WRITES, &["add_companion", "backup_upload", "backup_discard"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
-    assert_eq!(crate::READ_COMMANDS.len(), 34);
+    assert_eq!(crate::READ_COMMANDS.len(), 43);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
     }
@@ -1061,7 +1063,7 @@ async fn manager_http_all_writes_round_trip_and_rejected_commands_stay_closed() 
         "set_printer_job_failure",
         "pick_and_read_image",
     ] {
-        assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
+        assert_eq!(f.send(cmd, json!({})).await.status(), if printer_service::command(cmd) { 403 } else { 404 }, "{cmd}");
     }
 }
 #[tokio::test]
@@ -2569,4 +2571,139 @@ async fn maintenance_download_holds_reader_until_body_end_and_timeout_aborts_str
     assert!(axum::body::to_bytes(response.into_body(), content.len()).await.is_err());
     assert_eq!(barrier.snapshot().readers, 0);
     assert_eq!(std::fs::read(path).unwrap(), content);
+}
+
+#[tokio::test]
+async fn printer_service_empty_allowlist_and_readonly_fail_closed() {
+    let f = Fixture::new(true);
+    for command in ["get_printer_link_enabled", "sync_printers_now", "test_printer_connection"] {
+        let response = f.send(command, json!({})).await;
+        assert_eq!(response.status(), 403);
+        let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        assert!(std::str::from_utf8(&body).unwrap().contains("printerAddressNotAllowed"));
+    }
+    let f = Fixture::new(false);
+    assert_eq!(f.send("sync_printers_now", json!({})).await.status(), 404);
+}
+
+#[tokio::test]
+async fn printer_service_rejects_non_allowlisted_public_loopback_and_metadata_addresses() {
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60,8.8.8.8,127.0.0.1,169.254.169.254,fd00:ec2::254").unwrap();
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+    }
+    for address in ["192.168.1.61", "8.8.8.8", "127.0.0.1", "169.254.169.254", "fd00:ec2::254"] {
+        let response = f.send("test_printer_connection", json!({"printerId":"1","kind":"moonraker","address":address,"apiKey":"secret-do-not-return"})).await;
+        assert_eq!(response.status(), 200);
+        let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        assert!(body.contains("address_not_allowed"), "{body}");
+        assert!(!body.contains("secret-do-not-return"));
+    }
+}
+
+#[tokio::test]
+async fn printer_service_commands_use_core_and_hide_stored_keys() {
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60",
+            Some(&katalog_core::printer_link::api_key::ApiKey::parse("secret-do-not-return").unwrap()), "", "v1", 1.0).unwrap();
+    }
+    let response = f.send("list_printer_connections", json!({})).await;
+    let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    let body = std::str::from_utf8(&body).unwrap();
+    assert!(body.contains("\"hasApiKey\":true"));
+    assert!(!body.contains("secret-do-not-return"));
+    assert_eq!(f.send("clear_printer_api_key", json!({"printerId":"1"})).await.status(), 200);
+    assert_eq!(f.send("remove_printer_connection", json!({"printerId":"1"})).await.status(), 200);
+}
+
+#[tokio::test]
+async fn printer_service_events_work_without_uploads_and_barrier_blocks_writes() {
+    use http_body_util::BodyExt;
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    let request = Request::builder().uri("/api/events")
+        .header("host", "localhost:8080")
+        .header("cookie", format!("katalog_session={}", f.session.token))
+        .body(Body::empty()).unwrap();
+    let response = router(f.app.clone()).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), 200);
+    let mut body = response.into_body();
+    let initial = body.frame().await.unwrap().unwrap().into_data().unwrap();
+    assert!(std::str::from_utf8(&initial).unwrap().contains("import-progress"));
+    assert_eq!(f.send("sync_printers_now", json!({})).await.status(), 200);
+    let frame = body.frame().await.unwrap().unwrap().into_data().unwrap();
+    assert!(std::str::from_utf8(&frame).unwrap().contains("printer-jobs-changed"));
+    let window = f.app.geometry.barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(f.send("sync_printers_now", json!({})).await.status(), 503);
+    drop(window);
+}
+
+struct PrinterLogCapture(Mutex<Vec<String>>);
+impl log::Log for PrinterLogCapture {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool { true }
+    fn log(&self, record: &log::Record<'_>) {
+        self.0.lock().unwrap().push(format!("{}", record.args()));
+    }
+    fn flush(&self) {}
+}
+static PRINTER_LOG: PrinterLogCapture = PrinterLogCapture(Mutex::new(Vec::new()));
+
+#[tokio::test]
+async fn printer_service_api_key_never_appears_in_sync_logs_or_response() {
+    log::set_logger(&PRINTER_LOG).unwrap();
+    log::set_max_level(log::LevelFilter::Debug);
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    let key = "printer-capture-secret-123";
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+        katalog_core::db::printer_link::save_connection_after_test(&conn, 1, "moonraker", "192.168.1.61",
+            Some(&katalog_core::printer_link::api_key::ApiKey::parse(key).unwrap()), "", "v1", 1.0).unwrap();
+    }
+    let response = f.send("sync_printers_now", json!({})).await;
+    assert_eq!(response.status(), 200);
+    let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    assert!(!std::str::from_utf8(&body).unwrap().contains(key));
+    let logs = PRINTER_LOG.0.lock().unwrap().join("\n");
+    assert!(logs.contains("address_not_allowed"), "the sync must actually produce captured diagnostics");
+    assert!(!logs.contains(key));
+}
+
+#[tokio::test]
+async fn printer_service_background_waits_then_publishes_and_respects_write_gate() {
+    use http_body_util::BodyExt;
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    let request = Request::builder().uri("/api/events")
+        .header("host", "localhost:8080")
+        .header("cookie", format!("katalog_session={}", f.session.token))
+        .body(Body::empty()).unwrap();
+    let mut body = router(f.app.clone()).oneshot(request).await.unwrap().into_body();
+    body.frame().await.unwrap().unwrap();
+    printer_service::start(&f.app);
+    assert!(tokio::time::timeout(std::time::Duration::from_millis(100), body.frame()).await.is_err());
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(12), body.frame()).await.unwrap().unwrap().unwrap().into_data().unwrap();
+    assert!(std::str::from_utf8(&frame).unwrap().contains("printer-jobs-changed"));
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while f.app.geometry.barrier.snapshot().writers != 0
+            || f.app.writer.as_ref().unwrap().worker.available_permits() != 1
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+    }).await.unwrap();
 }

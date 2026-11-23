@@ -44,6 +44,7 @@ macro_rules! error_codes {
 }
 
 error_codes! {
+    PrinterAddressNotAllowed => "printerAddressNotAllowed",
     UiSettingsInvalid => "uiSettingsInvalid",
     UiSettingsUnavailable => "uiSettingsUnavailable",
     // Folder names. The wording differs per kind, so each kind has full codes of its

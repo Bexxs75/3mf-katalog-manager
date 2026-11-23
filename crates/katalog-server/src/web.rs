@@ -4,6 +4,8 @@ mod fileops;
 pub mod restore_upload;
 #[path = "uploads.rs"]
 mod uploads;
+#[path = "printer_service.rs"]
+mod printer_service;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,6 +295,8 @@ struct App {
     fileops: Option<Arc<fileops::Runtime>>,
     fileops_safety: Mutex<crate::fileops_safety::FileOpsSafety>,
     uploads: Option<Arc<uploads::Runtime>>,
+    events: Arc<Mutex<uploads::Hub>>,
+    printers: printer_service::Runtime,
     writer: Option<WriteGate>,
     config: Config,
     clock: Arc<dyn Clock>,
@@ -417,6 +421,8 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_
     let slicer = config.config.slicer_links.map(|ttl| crate::slicer::Slicer::new(ttl).map(Arc::new)).transpose()?;
     let app = Arc::new(App {
         restore: restore_upload::Runtime::default(),
+        events: uploads.as_ref().map(|r| r.hub.clone()).unwrap_or_default(),
+        printers: printer_service::Runtime::default(),
         _instance_lock: instance_lock,
         slicer,
         fileops, fileops_safety,
@@ -436,6 +442,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_
         export: crate::export::Runtime::new(),
     });
     if app.config.write { restore_upload::start_cleanup(&app); }
+    printer_service::start(&app);
     Ok(router(app))
 }
 fn router(app: Arc<App>) -> Router {
@@ -767,7 +774,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     if path == COMPANION_UPLOAD && !app.config.write { return error_coded(404, ErrorCode::WebCommandUnavailable, &[]); }
     let is_write = WRITE_COMMANDS.contains(&command);
     let upload_route=matches!(path.as_str(),"/api/upload"|"/api/uploads"|"/api/events")||uploads::command(command);
-    if upload_route && app.uploads.is_none(){return error(404,"upload_disabled");}
+    if upload_route && path != "/api/events" && app.uploads.is_none(){return error(404,"upload_disabled");}
     if is_write && !app.config.write { return error_coded(404, ErrorCode::WebCommandUnavailable, &[]); }
     if command == crate::slicer::COMMAND && app.slicer.is_none() { return error_coded(404, ErrorCode::WebCommandUnavailable, &[]); }
     // Handled before the static fallback and before any session lookup: the
@@ -1003,6 +1010,9 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             }
         }
         p if p.starts_with("/api/invoke/") => {
+            if !is_write && printer_service::command(command) {
+                return printer_service::read(app, command.to_owned(), args).await;
+            }
             if uploads::command(command){let command=command.to_owned();return tokio::spawn(async move{uploads::invoke(app,current.unwrap(),&command,args).await}).await.unwrap_or_else(|_|error(500,"import_internal"));}
             if crate::write::FILE_OPS_COMMANDS.contains(&command) {
                 if let (true, Some(request_id)) = (crate::write::companion_edit_command(command), request_id.clone()) {
@@ -1498,6 +1508,10 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
                 match rt.state.try_lock() { Ok(g) => Some(g), Err(std::sync::TryLockError::WouldBlock) => return crate::write::retry(503), Err(std::sync::TryLockError::Poisoned(_)) => return fileops::failure(503,"restart_required") }
             } else { None }
         } else { None };
+        if printer_service::command(&command) {
+            if !uploads::authenticated(&app, &current) { return error_coded(401, ErrorCode::WebSessionExpired, &[]); }
+            return printer_service::execute(&app, &command, &args);
+        }
         let mutex = &app.writer.as_ref().unwrap().conn;
         let deadline=started+std::time::Duration::from_secs(5);
         let locked=loop {

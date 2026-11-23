@@ -51,6 +51,7 @@ export const fr: Translations = {
   tagMergeConfirm: "Transférer {count} modèles de « {source} » vers « {target} » et supprimer l’étiquette source ?",
   tagMergeSubmit: "Fusionner",
   tagRenameSubmit: "Renommer",
+  errPrinterAddressNotAllowed: "L’adresse de cette imprimante n’est pas autorisée sur ce serveur.",
   errTagNameUnchanged: "Le nouveau nom doit être différent de l'ancien.",
   errTagNameExists: "L’étiquette existe ; utilisez la fusion",
   tagMenuDelete: "Supprimer l’étiquette …",

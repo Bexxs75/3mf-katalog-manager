@@ -44,6 +44,8 @@ impl Fixture {
         let session = new_session(&mut data, "test", now).unwrap();
         let app = Arc::new(App {
             restore: Runtime::default(),
+            events: Arc::default(),
+            printers: crate::web::printer_service::Runtime::default(),
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads: None,

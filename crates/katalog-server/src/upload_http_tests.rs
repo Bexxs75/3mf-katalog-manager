@@ -65,12 +65,15 @@ impl Fixture {
             revision: 0,
         };
         let session = new_session(&mut data, "test", 100).unwrap();
+        let uploads = uploads::initialize(&config).unwrap();
         let app = Arc::new(App {
             restore: restore_upload::Runtime::default(),
+            events: uploads.as_ref().map(|r| r.hub.clone()).unwrap_or_default(),
+            printers: printer_service::Runtime::default(),
             _instance_lock: None,
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
-            uploads: uploads::initialize(&config).unwrap(),
+            uploads,
             writer: Some(WriteGate::new(db::open_read_write(&path).unwrap())),
             config,
             clock: time.clone(),
@@ -147,7 +150,7 @@ const MODEL: &[u8] = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
 #[tokio::test]
 async fn upload_disabled_security_headers_and_authentication() {
     let disabled = Fixture::new(false);
-    for path in ["/api/upload", "/api/uploads", "/api/events"] {
+    for path in ["/api/upload", "/api/uploads"] {
         assert_eq!(
             disabled
                 .send(disabled.request("GET", path, Body::empty()))
@@ -156,6 +159,14 @@ async fn upload_disabled_security_headers_and_authentication() {
             404
         );
     }
+    // The event stream also carries printer events, so it stays available without uploads.
+    assert_eq!(
+        disabled
+            .send(disabled.request("GET", "/api/events", Body::empty()))
+            .await
+            .status(),
+        200
+    );
     let f = Fixture::new(true);
     for (remove, status) in [("cookie", 401), ("x-csrf-token", 403), ("origin", 403)] {
         let mut r = f.upload_request("a.obj", MODEL);

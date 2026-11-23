@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone)]
 pub enum Reply {
     Answer(u16, Vec<u8>),
+    Redirect(String),
     /// Keeps the connection open without a response (a hanging printer).
     Silent,
     /// Closes the connection without a response (Moonraker crashed or restarts).
@@ -122,6 +123,10 @@ impl FakeServer {
                             );
                             let _ = stream.write_all(head.as_bytes());
                             let _ = stream.write_all(&body);
+                        }
+                        Reply::Redirect(location) => {
+                            let head = format!("HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            let _ = stream.write_all(head.as_bytes());
                         }
                         Reply::Close => {
                             let _ = stream.shutdown(std::net::Shutdown::Both);

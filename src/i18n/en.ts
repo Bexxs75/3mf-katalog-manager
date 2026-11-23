@@ -51,6 +51,7 @@ export const en: Translations = {
   tagMergeConfirm: "Transfer {count} models from “{source}” to “{target}” and delete the source tag?",
   tagMergeSubmit: "Merge",
   tagRenameSubmit: "Rename",
+  errPrinterAddressNotAllowed: "This printer address is not allowed on this server.",
   errTagNameUnchanged: "The new name must differ from the old one.",
   errTagNameExists: "Tag exists; use merge instead",
   tagMenuDelete: "Delete tag …",

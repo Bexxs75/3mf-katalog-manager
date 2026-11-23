@@ -1,5 +1,6 @@
 {
   "registered": [
+    "printerAddressNotAllowed",
     "uiSettingsInvalid",
     "uiSettingsUnavailable",
     "folderNameEmpty",
