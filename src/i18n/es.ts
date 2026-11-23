@@ -2176,6 +2176,7 @@ export const es: Translations = {
   errNotAListMember: "El archivo no pertenece a esta lista",
   errFileTooLarge: "El archivo supera los {0} bytes",
   errPreviewTooLarge: "El modelo es demasiado grande para la vista previa 3D",
+  errGeometryEmpty: "El archivo no contiene geometría que se pueda mostrar",
   errFileFormatUnsupported: "Formato de archivo no admitido: {0}",
   errSpoolNotFound: "Entrada no encontrada",
   errImportFixedFolderNeedsFiles: "Una carpeta fija requiere indicar los archivos de forma explícita, sin ubicación",

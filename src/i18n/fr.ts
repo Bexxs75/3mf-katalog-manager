@@ -2176,6 +2176,7 @@ export const fr: Translations = {
   errNotAListMember: "Le fichier ne fait pas partie de cette liste",
   errFileTooLarge: "Le fichier dépasse {0} octets",
   errPreviewTooLarge: "Le modèle est trop volumineux pour l’aperçu 3D",
+  errGeometryEmpty: "Le fichier ne contient aucune géométrie affichable",
   errFileFormatUnsupported: "Format de fichier non pris en charge : {0}",
   errSpoolNotFound: "Entrée introuvable",
   errImportFixedFolderNeedsFiles: "Un dossier fixe exige que les fichiers soient indiqués explicitement, sans emplacement",

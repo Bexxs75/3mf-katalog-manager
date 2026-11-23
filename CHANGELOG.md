@@ -13,6 +13,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - The update component was brought up to date, so the update packages are handled by a current archive library. The dependency audit no longer needs exceptions for it.
 
+### Fixed
+
+- A file without any displayable geometry (for example a sliced package that only contains G-code) is no longer logged as an error when its preview is requested; it is logged as information.
+
 ## [0.18.7] - 2026-11-22
 
 ### Fixed
@@ -899,6 +903,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Geändert
 
 - Die Update-Komponente wurde aktualisiert, damit Update-Pakete von einer aktuellen Archiv-Bibliothek verarbeitet werden. Die Abhängigkeitsprüfung braucht dafür keine Ausnahmen mehr.
+
+### Behoben
+
+- Eine Datei ohne darstellbare Geometrie (zum Beispiel ein gesliceltes Paket, das nur G-Code enthält) wird bei der Vorschau nicht mehr als Fehler protokolliert, sondern als Information.
 
 ## [0.18.7] - 2026-11-22
 

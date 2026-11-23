@@ -326,7 +326,9 @@ fn load_geometry_with_obj_limit(
         .iter()
         .all(|m| m.indices.is_empty() || m.positions.is_empty())
     {
-        return Err(unreadable("Keine darstellbare Geometrie".into()));
+        // A file without any mesh (for example a sliced package that only carries G-code)
+        // is a property of the content, not a fault: it is logged as information.
+        return Err(ReadError::coded(ErrorCode::GeometryEmpty).with_code(Code::Unreadable));
     }
     Ok(meshes)
 }
@@ -828,5 +830,28 @@ endsolid x
             let error = get_model_geometry_with_limits(&path, None, Some(limits)).unwrap_err();
             assert_eq!(error.code, Some(Code::TooLarge));
         }
+    }
+
+    /// A package that carries no mesh (such as a sliced file with G-code only) is a fact
+    /// about the content: the viewer gets its code, the log gets no fault.
+    #[test]
+    fn a_package_without_any_mesh_is_an_expected_unreadable_error() {
+        use crate::read::GeometryErrorCode as Code;
+        use std::io::Write;
+        let dir = crate::unique_test_dir("viewer_no_mesh");
+        let path = dir.join("sliced.gcode.3mf");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("_rels/.rels", options).unwrap();
+        zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+        zip.start_file("3D/3dmodel.model", options).unwrap();
+        zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources/><build/></model>"#).unwrap();
+        zip.start_file("Metadata/plate_1.gcode", options).unwrap();
+        zip.write_all(b"G1 X0 Y0\n").unwrap();
+        zip.finish().unwrap();
+        let error = load_geometry(&path).unwrap_err();
+        assert_eq!(error.code, Some(Code::Unreadable));
+        assert!(error.expected, "a file without geometry must not be logged as a fault");
+        assert_eq!(error.message, ErrorCode::GeometryEmpty.as_str());
     }
 }

@@ -246,6 +246,8 @@ error_codes! {
     /// params: the limit in bytes.
     FileTooLarge => "fileTooLarge",
     PreviewTooLarge => "previewTooLarge",
+    /// The file holds no mesh to show (for example a sliced package with G-code only).
+    GeometryEmpty => "geometryEmpty",
     /// params: the file extension.
     FileFormatUnsupported => "fileFormatUnsupported",
     SpoolNotFound => "spoolNotFound",

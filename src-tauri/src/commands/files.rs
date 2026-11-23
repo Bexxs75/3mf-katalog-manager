@@ -1083,7 +1083,7 @@ pub(crate) fn geometry_bytes_for_path(path: &Path) -> CmdResult<Vec<u8>> {
     if matches!(extension.as_str(), "stp" | "step") {
         let meshes = step_geometry(path)?;
         if meshes.iter().all(|m| m.indices.is_empty() || m.positions.is_empty()) {
-            return Err(CmdError::from("Keine darstellbare Geometrie").with_code(GeometryErrorCode::Unreadable));
+            return Err(CmdError::coded(ErrorCode::GeometryEmpty).with_code(GeometryErrorCode::Unreadable));
         }
         Ok(katalog_core::read::encode_render_meshes(&meshes))
     } else {

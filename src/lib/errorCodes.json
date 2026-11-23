@@ -149,6 +149,7 @@
     "notAListMember",
     "fileTooLarge",
     "previewTooLarge",
+    "geometryEmpty",
     "fileFormatUnsupported",
     "spoolNotFound",
     "importFixedFolderNeedsFiles",

@@ -2218,6 +2218,7 @@ export interface Translations {
   errNotAListMember: string;
   errFileTooLarge: string;
   errPreviewTooLarge: string;
+  errGeometryEmpty: string;
   errFileFormatUnsupported: string;
   errSpoolNotFound: string;
   errImportFixedFolderNeedsFiles: string;
