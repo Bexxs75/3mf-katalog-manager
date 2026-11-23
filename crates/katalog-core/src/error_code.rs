@@ -164,6 +164,12 @@ error_codes! {
     WebCommandUnavailable => "webCommandUnavailable",
     /// The write path is busy; the client retries once on its own.
     WebWriteBusy => "webWriteBusy",
+    RestoreBackupInvalid => "restoreBackupInvalid",
+    RestoreFailed => "restoreFailed",
+    RestoreDrainTimeout => "restoreDrainTimeout",
+    RestoreJournalPending => "restoreJournalPending",
+    RestoreUploadsPending => "restoreUploadsPending",
+    RestoreRecoveryFailed => "restoreRecoveryFailed",
     Maintenance => "maintenance",
     WebServerInternal => "webServerInternal",
     // Web server: arguments of a request.

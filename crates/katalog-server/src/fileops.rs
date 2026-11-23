@@ -36,6 +36,14 @@ impl Runtime {
             }),
         }
     }
+    pub(super) fn recover_for_restore(&self) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        let report = state.ops.recover().map_err(|_| ())?;
+        if !report.manual.is_empty() { return Err(()); }
+        state.ops.finish_recovery().map_err(|_| ())?;
+        if !state.ops.journal.is_empty() { return Err(()); }
+        Ok(())
+    }
     fn blocked_response(&self) -> Response {
         (StatusCode::SERVICE_UNAVAILABLE,Json(json!({"kind":"restart_required","message":"restart_required","expected":false,"opIds":*self.op_ids.lock().unwrap()}))).into_response()
     }

@@ -98,3 +98,6 @@ export const WEB_WRITE_COMMANDS = [
   'block_auto_tag',
   'unblock_auto_tag',
 ] as const;
+
+/** Dedicated write routes; these names are audit labels, not invoke commands. */
+export const WEB_ROUTE_WRITES = ['add_companion', 'backup_upload', 'backup_discard', 'backup_restore'] as const;

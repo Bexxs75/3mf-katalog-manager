@@ -30,3 +30,5 @@ pub(crate) mod fileops_safety;
 pub(crate) mod fileops_cancel;
 
 mod source_dirs;
+
+mod restore_journal;

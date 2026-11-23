@@ -237,5 +237,11 @@
     "update_printer_details": "web",
     "update_unit": "web",
     "upload_custom_image": "B"
+  },
+  "routes": {
+    "add_companion": "POST /api/companion-upload",
+    "backup_upload": "POST /api/backup/upload",
+    "backup_discard": "DELETE /api/backup/staging/{token}",
+    "backup_restore": "POST /api/backup/restore"
   }
 }

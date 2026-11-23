@@ -143,7 +143,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
     };
     let before = names();
     assert_eq!(WRITE_COMMANDS.len(), 80);
-    assert_eq!(crate::write::ROUTE_WRITES, &["add_companion", "backup_upload", "backup_discard"]);
+    assert_eq!(crate::write::ROUTE_WRITES, &["add_companion", "backup_upload", "backup_discard", "backup_restore"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
     assert_eq!(crate::READ_COMMANDS.len(), 43);
     for cmd in WRITE_COMMANDS {

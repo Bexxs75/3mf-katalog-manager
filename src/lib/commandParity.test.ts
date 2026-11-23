@@ -3,7 +3,7 @@ import tauriLib from '../../src-tauri/src/lib.rs?raw';
 import invokeSource from '../../crates/katalog-server/src/invoke.rs?raw';
 import writeSource from '../../crates/katalog-server/src/write.rs?raw';
 import classes from '../../docs/web/command-classes.json';
-import { WEB_READ_COMMANDS, WEB_WRITE_COMMANDS } from './readOnly';
+import { WEB_READ_COMMANDS, WEB_WRITE_COMMANDS, WEB_ROUTE_WRITES } from './readOnly';
 
 // A desktop command that is not classified for the web is a gap nobody decided on. This test makes the decision visible:
 // a new command in generate_handler! stays red until docs/web/command-classes.json says web, B (web variant feasible) or C (not transferable).
@@ -33,4 +33,9 @@ it('keeps the classification identical to what the web allows (TypeScript and Ru
   expect(webClass).toEqual([...allowed].sort());
   const webOnlyOnDesktop = Object.entries(classOf).filter(([command, kind]) => kind === 'web-only' && desktop.includes(command)).map(([command]) => command);
   expect(webOnlyOnDesktop, 'web-only commands must not exist on the desktop').toEqual([]);
+});
+
+it('keeps dedicated write routes classified separately from invoke commands', () => {
+  expect([...WEB_ROUTE_WRITES].sort()).toEqual(rustList(writeSource as string, 'ROUTE_WRITES').sort());
+  expect(Object.keys(classes.routes).sort()).toEqual([...WEB_ROUTE_WRITES].sort());
 });

@@ -49,7 +49,7 @@ impl Fixture {
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads: None,
-            writer: None,
+            writer: write.then(|| WriteGate::new(db::open_read_write(&path).unwrap())),
             config,
             clock: Arc::new(SystemClock),
             data: Mutex::new(data),
@@ -389,4 +389,341 @@ async fn restore_http_accepts_both_trash_locations_and_refuses_maintenance() {
         .unwrap();
     assert_eq!(f.upload(f.archive("")).await.status(), 503);
     window.release();
+}
+
+#[tokio::test]
+async fn restore_activation_success_revokes_sessions_and_keeps_restorable_backup() {
+    let _guard = crate::password::PASSWORD_TEST_LOCK.lock().await;
+    let f = Fixture::new(true);
+    let (catalog, _) = stage(&f.app.config, &f.archive("")).unwrap();
+    let token = catalog.token.clone();
+    f.app.restore.entries.lock().unwrap().insert(
+        token.clone(),
+        Entry {
+            owner: f.session.token.clone(),
+            created: std::time::Instant::now(),
+            catalog,
+        },
+    );
+    let response = router(f.app.clone())
+        .oneshot(f.request(
+            "POST",
+            super::super::restore::ROUTE,
+            serde_json::to_vec(&json!({"token":token,"password":"restore-test-password"})).unwrap(),
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200, "{}", value(response).await);
+    assert!(!uploads::authenticated(&f.app, &f.session));
+    assert_eq!(
+        f.app.geometry.barrier.snapshot().state,
+        crate::barrier::State::Exclusive
+    );
+    let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+    assert_eq!(
+        conn.query_row("SELECT count(*) FROM files", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert!(std::fs::read_dir(f.dir.join("config"))
+        .unwrap()
+        .flatten()
+        .any(|e| e.file_name().to_string_lossy().starts_with(".bak-")));
+    let backup = std::fs::read_dir(f.dir.join("config/backups"))
+        .unwrap()
+        .flatten()
+        .find(|e| e.path().extension().is_some_and(|x| x == "zip"))
+        .unwrap();
+    let (_, report) = stage(&f.app.config, &std::fs::read(backup.path()).unwrap()).unwrap();
+    assert_eq!(report.model_count, 0);
+    assert!(!f.dir.join("config/web-restore.json").exists());
+}
+
+#[tokio::test]
+async fn restore_activation_timeout_preserves_old_catalog_and_reopens() {
+    let f = Fixture::new(true);
+    let (catalog, _) = stage(&f.app.config, &f.archive("")).unwrap();
+    let before = std::fs::read(&f.app.config.db_path).unwrap();
+    let writer = f.app.geometry.barrier.writer().unwrap();
+    let response = super::super::restore::activate(
+        f.app.clone(),
+        f.session.clone(),
+        catalog,
+        Duration::from_millis(1),
+    )
+    .await;
+    assert_eq!(response.status(), 503);
+    assert_eq!(value(response).await["message"], "restoreDrainTimeout");
+    assert_eq!(
+        f.app.geometry.barrier.snapshot().state,
+        crate::barrier::State::Open
+    );
+    assert_eq!(std::fs::read(&f.app.config.db_path).unwrap(), before);
+    drop(writer);
+}
+
+#[tokio::test]
+async fn restore_activation_http_password_rights_and_token_ownership() {
+    let _guard = crate::password::PASSWORD_TEST_LOCK.lock().await;
+    for write in [false, true] {
+        let f = Fixture::new(write);
+        let route = super::super::restore::ROUTE;
+        let request = |token: &str, password: &str| {
+            f.request(
+                "POST",
+                route,
+                serde_json::to_vec(&json!({"token":token,"password":password})).unwrap(),
+                "",
+            )
+        };
+        let r = router(f.app.clone())
+            .oneshot(request("missing", "wrong"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), if write { 403 } else { 404 });
+        if !write {
+            continue;
+        }
+        let (catalog, _) = stage(&f.app.config, &f.archive("")).unwrap();
+        let token = catalog.token.clone();
+        f.app.restore.entries.lock().unwrap().insert(
+            token.clone(),
+            Entry {
+                owner: "another-session".into(),
+                created: std::time::Instant::now(),
+                catalog: catalog.clone(),
+            },
+        );
+        let r = router(f.app.clone())
+            .oneshot(request(&token, "restore-test-password"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 404);
+        {
+            let mut entries = f.app.restore.entries.lock().unwrap();
+            let e = entries.get_mut(&token).unwrap();
+            e.owner = f.session.token.clone();
+            e.created = std::time::Instant::now() - TTL;
+        }
+        let r = router(f.app.clone())
+            .oneshot(request(&token, "restore-test-password"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 404);
+        assert_eq!(
+            f.app.geometry.barrier.snapshot().state,
+            crate::barrier::State::Open
+        );
+    }
+}
+
+#[tokio::test]
+async fn restore_activation_rejects_unresolved_fsops() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new(true);
+    let (catalog, _) = stage(&f.app.config, &f.archive("")).unwrap();
+    let journal = f.dir.join("config/web-fsops.json");
+    std::fs::write(&journal, b"unresolved journal").unwrap();
+    std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let response = super::super::restore::activate(
+        f.app.clone(),
+        f.session.clone(),
+        catalog,
+        Duration::from_secs(1),
+    )
+    .await;
+    assert_eq!(value(response).await["message"], "restoreJournalPending");
+    assert_eq!(
+        f.app.geometry.barrier.snapshot().state,
+        crate::barrier::State::Open
+    );
+    assert_eq!(std::fs::read(journal).unwrap(), b"unresolved journal");
+}
+
+#[tokio::test]
+async fn restore_activation_rejects_manual_intent_and_pending_upload_without_deleting_files() {
+    let f = Fixture::new(true);
+    let (catalog, _) = stage(&f.app.config, &f.archive("")).unwrap();
+    let dir = Directory::open(&f.dir.join("config")).unwrap();
+    let root = std::fs::metadata(f.dir.join("models")).unwrap();
+    let journal = json!({"version":1,"intents":[{
+        "op_id":"0123456789abcdef0123456789abcdef", "operation":"rename", "phase":"manual",
+        "root_path":f.dir.join("models"),"root_identity":{"dev":root.dev(),"ino":root.ino()},
+        "source":"old.stl","target":"new.stl","temporary":null,"identity":null,
+        "before":{"id":1,"path":f.dir.join("models/old.stl"),"name":"old.stl","folder_id":null,"deleted_at":null,"trash_path":null},
+        "after":null
+    }],"folders":[]});
+    crate::restore_journal::atomic(
+        &dir,
+        "web-fsops.json",
+        &serde_json::to_vec(&journal).unwrap(),
+    )
+    .unwrap();
+    let response = super::super::restore::activate(
+        f.app.clone(),
+        f.session.clone(),
+        catalog.clone(),
+        Duration::from_secs(1),
+    )
+    .await;
+    assert_eq!(value(response).await["message"], "restoreJournalPending");
+    assert!(!katalog_core::fsops::Journal::open(&f.dir.join("config"))
+        .unwrap()
+        .is_empty());
+    dir.unlink("web-fsops.json").unwrap();
+    let pending = json!({"entries":{"pending":{
+        "uploadId":"pending","name":"pending.stl","size":3,"dev":root.dev(),"ino":root.ino(),
+        "time":0,"state":"uploaded","job_id":null,"result":null
+    }},"jobs":{}});
+    crate::restore_journal::atomic(
+        &dir,
+        "web-uploads.json",
+        &serde_json::to_vec(&pending).unwrap(),
+    )
+    .unwrap();
+    let response = super::super::restore::activate(
+        f.app.clone(),
+        f.session.clone(),
+        catalog,
+        Duration::from_secs(1),
+    )
+    .await;
+    assert_eq!(value(response).await["message"], "restoreUploadsPending");
+    assert_eq!(
+        serde_json::from_reader::<_, Value>(dir.read("web-uploads.json").unwrap()).unwrap(),
+        pending
+    );
+    assert_eq!(
+        f.app.geometry.barrier.snapshot().state,
+        crate::barrier::State::Open
+    );
+}
+
+#[tokio::test]
+async fn restore_startup_recovers_before_opening_missing_database_and_cleans_old_ledgers() {
+    use crate::restore_journal::{Files, Phase, Record};
+    for phase in [Phase::Prepared, Phase::OldMoved, Phase::Installed] {
+        let mut f = Fixture::new(true);
+        let config = f.app.config.clone();
+        let auth = f.app.data.lock().unwrap().auth.clone();
+        drop(Arc::get_mut(&mut f.app).unwrap().writer.take());
+        let files = Files::open(&config).unwrap();
+        let record = Record {
+            id: "0123456789abcdef0123456789abcdef".into(),
+            phase,
+        };
+        let new_path = f
+            .dir
+            .join("config/.restore-new-0123456789abcdef0123456789abcdef");
+        let conn = db::connect(&new_path).unwrap();
+        db::test_insert_minimal_file(&conn, f.dir.join("models/new.stl").to_str().unwrap(), None)
+            .unwrap();
+        drop(conn);
+        files.save(&record).unwrap();
+        files
+            .db
+            .rename(&files.db_name, ".bak-0123456789abcdef0123456789abcdef")
+            .unwrap();
+        if phase == Phase::Installed {
+            files
+                .db
+                .rename(
+                    ".restore-new-0123456789abcdef0123456789abcdef",
+                    &files.db_name,
+                )
+                .unwrap();
+            crate::restore_journal::atomic(
+                &files.auth,
+                "web-fsops.json",
+                b"old ledger must not run on new DB",
+            )
+            .unwrap();
+            crate::restore_journal::atomic(&files.auth, "web-uploads.json", b"old upload IDs")
+                .unwrap();
+        }
+        let router = try_build_app(AppConfig {
+            config: config.clone(),
+            auth,
+            clock: Arc::new(SystemClock),
+        })
+        .await
+        .unwrap();
+        let conn = db::open_read_only(&config.db_path).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM files", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            if phase == Phase::Installed { 1 } else { 0 }
+        );
+        assert!(!f.dir.join("config/web-restore.json").exists());
+        crate::restore_journal::recover(&config).unwrap();
+        drop((conn, router));
+    }
+}
+
+#[tokio::test]
+async fn restore_crash_injection_each_durable_phase_recovers_on_startup() {
+    use crate::restore_journal::Phase;
+    for crash in [Phase::Prepared, Phase::OldMoved, Phase::Installed] {
+        let mut f = Fixture::new(true);
+        let (catalog, _) = stage(&f.app.config, &f.archive("")).unwrap();
+        let (files, mut record) = super::super::restore::prepare(&f.app, &catalog).unwrap();
+        files.save(&record).unwrap();
+        let error = super::super::restore::exchange(&f.app, &files, &mut record, |phase| {
+            if phase == crash {
+                Err(ErrorCode::RestoreFailed)
+            } else {
+                Ok(())
+            }
+        })
+        .expect_err("injected interruption");
+        assert_eq!(error, ErrorCode::RestoreFailed);
+        assert!(f.dir.join("config/web-restore.json").exists());
+        drop(Arc::get_mut(&mut f.app).unwrap().writer.take());
+        let auth = f.app.data.lock().unwrap().auth.clone();
+        let router = try_build_app(AppConfig {
+            config: f.app.config.clone(),
+            auth,
+            clock: Arc::new(SystemClock),
+        })
+        .await
+        .unwrap();
+        let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM files", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            if crash == Phase::Installed { 1 } else { 0 }
+        );
+        assert!(!f.dir.join("config/web-restore.json").exists());
+        drop((conn, router));
+    }
+}
+
+#[tokio::test]
+async fn restore_refuses_unrestorable_automatic_backup_before_exchange() {
+    let f = Fixture::new(true);
+    let (catalog, _) = stage(&f.app.config, &f.archive("")).unwrap();
+    f.app
+        .writer
+        .as_ref()
+        .unwrap()
+        .conn
+        .lock()
+        .unwrap()
+        .execute_batch("CREATE VIEW unexpected_backup_view AS SELECT 1")
+        .unwrap();
+    let before = std::fs::read(&f.app.config.db_path).unwrap();
+    let response = super::super::restore::activate(
+        f.app.clone(),
+        f.session.clone(),
+        catalog,
+        Duration::from_secs(1),
+    )
+    .await;
+    assert_eq!(value(response).await["message"], "restoreBackupInvalid");
+    assert_eq!(std::fs::read(&f.app.config.db_path).unwrap(), before);
+    assert_eq!(
+        f.app.geometry.barrier.snapshot().state,
+        crate::barrier::State::Open
+    );
 }

@@ -1,4 +1,4 @@
-//! Private backup previews. No operation here activates or sanitizes a catalog.
+//! Private backup previews and preparation of copies. Activation belongs to restore.
 //! POST accepts a raw ZIP and an `x-restore-password` header (UTF-8 encoded as
 //! base64). DELETE uses `/api/backup/staging/{token}` and the creating session.
 use super::*;
@@ -22,7 +22,7 @@ const TTL: Duration = Duration::from_secs(30 * 60);
 const ROOT: &str = "restore-staging";
 const MAX_PENDING: usize = 4;
 
-/// Keep this lease alive throughout consumption by the future activation code.
+/// Keep this lease alive throughout preparation by the activation code.
 /// The catalog is the original inspected input, not a migrated/activated database.
 /// Activation must still prepare it under the catalog barrier and recheck authorization.
 pub struct CheckedCatalog {
@@ -42,6 +42,57 @@ impl CheckedCatalog {
             return Err(std::io::ErrorKind::InvalidData.into());
         }
         Ok(self.path.clone())
+    }
+    pub(super) fn prepare_to(
+        &self,
+        config: &Config,
+        local: &katalog_core::db::thingiverse::LocalSettings,
+        output: &mut File,
+    ) -> Result<(), ImportError> {
+        self.path()
+            .map_err(|_| ImportError::coded(ErrorCode::BackupInvalidDatabase))?;
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        self.directory
+            .checked("catalog.db", self.identity.0, self.identity.1)
+            .and_then(|mut f| f.read_to_end(&mut bytes))
+            .map_err(|_| ImportError::coded(ErrorCode::BackupInvalidDatabase))?;
+        let parent = db_directory(&config.db_path);
+        let trash = parent.join("trash");
+        let known: Vec<String> = config
+            .file_roots
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        let prepared = catalog_restore::prepare_catalog(
+            &bytes,
+            &[parent.to_path_buf(), config.auth_file.clone()],
+            &TrashPolicy {
+                desktop_trash: Some(&trash),
+                catalog_roots: &config.file_roots,
+            },
+            &known,
+            &InspectionFs(&self.directory),
+            &[],
+            local,
+        );
+        let result = prepared.and_then(|prepared| {
+            drop(prepared);
+            (|| -> std::io::Result<()> {
+                std::io::copy(&mut self.directory.read("inspection.db")?, output)?;
+                output.sync_all()
+            })()
+            .map_err(|_| ImportError::coded(ErrorCode::RestoreFailed))
+        });
+        for name in [
+            "inspection.db",
+            "inspection.db-journal",
+            "inspection.db-wal",
+            "inspection.db-shm",
+        ] {
+            let _ = self.directory.unlink(name);
+        }
+        result
     }
 }
 impl Drop for CheckedCatalog {
@@ -270,6 +321,21 @@ fn stage(config: &Config, zip: &[u8]) -> Result<StagedPreview, Box<Response>> {
         }
     }
     Ok((Arc::new(staged), report))
+}
+
+/// The automatic fallback must pass the same limits and policy as a user upload.
+pub(super) fn verify_automatic_backup(config: &Config, file: File) -> Result<(), ErrorCode> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    file.take(MAX_ZIP_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| ErrorCode::RestoreBackupInvalid)?;
+    if bytes.len() > MAX_ZIP_BYTES {
+        return Err(ErrorCode::RestoreBackupInvalid);
+    }
+    stage(config, &bytes)
+        .map(|_| ())
+        .map_err(|_| ErrorCode::RestoreBackupInvalid)
 }
 
 pub(super) async fn handle(

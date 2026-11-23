@@ -77,12 +77,20 @@ impl PeerLimiter {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct Restart(watch::Sender<bool>);
+impl Restart {
+    pub(crate) fn request(&self) { self.0.send_replace(true); }
+}
+
 pub async fn serve(
     listener: tokio::net::TcpListener,
     app: Router,
     per_peer_limit: Option<usize>,
     shutdown: impl Future<Output = ()>,
 ) -> std::io::Result<()> {
+    let (restart, mut restarting) = watch::channel(false);
+    let app = app.layer(axum::Extension(Restart(restart)));
     let slots = Arc::new(Semaphore::new(256));
     let peers = PeerLimiter::new(per_peer_limit);
     let (stop, stopped) = watch::channel(false);
@@ -92,6 +100,7 @@ pub async fn serve(
         tokio::select! {
             biased;
             _ = &mut shutdown => break Ok(()),
+            _ = restarting.changed() => break Ok(()),
             Some(_) = tasks.join_next(), if !tasks.is_empty() => {},
             accepted = listener.accept() => match accepted {
                 Ok((stream, address)) => {
@@ -280,6 +289,30 @@ mod tests {
 
     fn app() -> Router {
         Router::new().route("/", axum::routing::get(|| async { "ok" }))
+    }
+
+
+    #[tokio::test]
+    async fn restore_restart_drains_the_response_before_connection_finishes() {
+        let (restart, mut restarting) = watch::channel(false);
+        let app = Router::new().route("/", axum::routing::post(
+            |axum::Extension(restart): axum::Extension<Restart>| async move {
+                restart.request();
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                "restore-response-complete"
+            }
+        )).layer(axum::Extension(Restart(restart)));
+        let (mut client, server) = tokio::io::duplex(1024);
+        let (stop, stopped) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, stopped));
+        client.write_all(b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n").await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), restarting.changed()).await.unwrap().unwrap();
+        stop.send(true).unwrap();
+        let mut response = String::new();
+        tokio::time::timeout(Duration::from_secs(2), client.read_to_string(&mut response)).await.unwrap().unwrap();
+        task.await.unwrap();
+        assert!(response.contains("200 OK"));
+        assert!(response.contains("restore-response-complete"));
     }
 
     #[tokio::test(start_paused = true)]

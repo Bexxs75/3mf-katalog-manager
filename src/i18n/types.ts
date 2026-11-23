@@ -2193,6 +2193,12 @@ export interface Translations {
   errWebBodyTooLarge: string;
   errWebCommandUnavailable: string;
   errWebWriteBusy: string;
+  errRestoreBackupInvalid: string;
+  errRestoreFailed: string;
+  errRestoreDrainTimeout: string;
+  errRestoreJournalPending: string;
+  errRestoreUploadsPending: string;
+  errRestoreRecoveryFailed: string;
   errMaintenance: string;
   errWebServerInternal: string;
   errReqInvalidArguments: string;
