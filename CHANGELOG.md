@@ -32,7 +32,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
-- On the web, several catalogs in one folder no longer clear each other's backup previews at start, backup checks no longer look at source folders outside the shared folders, and the printer pages share the read limit of the other manager lists (busy answers ask to retry).
+- On the web, several catalogs in one folder no longer clear each other's backup previews at start, backup checks no longer look at source folders outside the shared folders (nor at any file, folder, trash or companion path outside them, except to refuse paths in the protected data folders), and the printer pages share the read limit of the other manager lists (busy answers ask to retry).
 - Restoring from the web trash recreates missing parent folders and reconnects their catalog entries, including after an interrupted restore. Name conflicts remain errors.
 - A file without any displayable geometry (for example a sliced package that only contains G-code) is no longer logged as an error when its preview is requested; it is logged as information.
 - The settings search finds the close-to-tray option under the term "Tray" as well.
@@ -943,7 +943,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
-- Im Web löschen mehrere Kataloge in einem Ordner beim Start nicht mehr gegenseitig ihre Sicherungsvorschauen, die Sicherungsprüfung sieht sich keine Quellordner außerhalb der freigegebenen Ordner mehr an, und die Druckerseiten teilen sich das Leselimit der übrigen Listen des Managers (bei Auslastung wird zum erneuten Versuch aufgefordert).
+- Im Web löschen mehrere Kataloge in einem Ordner beim Start nicht mehr gegenseitig ihre Sicherungsvorschauen, die Sicherungsprüfung sieht sich keine Quellordner außerhalb der freigegebenen Ordner mehr an (und auch keine Datei-, Ordner-, Papierkorb- oder Begleitdatei-Pfade außerhalb davon, außer um Pfade in den geschützten Datenordnern abzulehnen), und die Druckerseiten teilen sich das Leselimit der übrigen Listen des Managers (bei Auslastung wird zum erneuten Versuch aufgefordert).
 - Beim Wiederherstellen aus dem Web-Papierkorb werden fehlende Elternordner neu angelegt und ihre Katalogeinträge verknüpft, auch nach einer unterbrochenen Wiederherstellung. Namenskonflikte bleiben Fehler.
 - Eine Datei ohne darstellbare Geometrie (zum Beispiel ein gesliceltes Paket, das nur G-Code enthält) wird bei der Vorschau nicht mehr als Fehler protokolliert, sondern als Information.
 - Die Einstellungssuche findet die Option zum Minimieren in den Infobereich jetzt auch unter dem Begriff „Tray“.

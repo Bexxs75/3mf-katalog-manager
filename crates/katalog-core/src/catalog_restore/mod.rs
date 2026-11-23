@@ -1254,7 +1254,37 @@ pub fn validate_catalog_db_bytes(
         policy,
         known_folders,
         fs,
+        None,
     )
+}
+
+/// True when `path` lies lexically below one of the host-configured roots. Pure
+/// string work: used to decide whether an imported path may touch the filesystem.
+pub(super) fn import_path_in_boundary(path: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| path.starts_with(root))
+}
+
+/// `reject_sensitive` for an imported path, behind the optional host boundary.
+/// Outside the boundary the path is never resolved (a dead network mount must not
+/// stall the check); only a lexical match against the unresolved protected
+/// directories still rejects it. Without a boundary (desktop) nothing changes.
+fn reject_sensitive_bounded(
+    fs: &dyn RestoreFs,
+    path: &Path,
+    expanded: &[PathBuf],
+    lexical: &[PathBuf],
+    boundary: Option<&[PathBuf]>,
+) -> CmdResult<()> {
+    match boundary {
+        Some(roots) if !import_path_in_boundary(path, roots) => {
+            if lexical.iter().any(|dir| path.starts_with(dir)) {
+                Err(CmdError::coded(ErrorCode::BackupInvalidDatabase))
+            } else {
+                Ok(())
+            }
+        }
+        _ => reject_sensitive(fs, path, expanded),
+    }
 }
 
 fn validate_connection(
@@ -1263,6 +1293,7 @@ fn validate_connection(
     policy: &TrashPolicy<'_>,
     known_folders: &[String],
     fs: &dyn RestoreFs,
+    boundary: Option<&[PathBuf]>,
 ) -> CmdResult<()> {
     let result = (|| -> Result<(), String> {
         let mut expanded_dirs = sensitive_dirs.to_vec();
@@ -1402,7 +1433,7 @@ fn validate_connection(
         for (name, path) in paths {
             validate_file_name(&name).map_err(|e| e.message)?;
             validate_imported_path_length(&path, known_folders)?;
-            reject_sensitive(fs, Path::new(&path), &expanded_dirs)
+            reject_sensitive_bounded(fs, Path::new(&path), &expanded_dirs, sensitive_dirs, boundary)
                 .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {}", e.message))?;
         }
 
@@ -1456,7 +1487,7 @@ fn validate_connection(
             }
             validate_file_name(&name)
                 .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
-            reject_sensitive(fs, Path::new(&path), &expanded_dirs)
+            reject_sensitive_bounded(fs, Path::new(&path), &expanded_dirs, sensitive_dirs, boundary)
                 .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
             if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
                 validate_trash_path(
@@ -1466,6 +1497,7 @@ fn validate_connection(
                     false,
                     policy,
                     &expanded_dirs,
+                    boundary,
                 )
                 .map_err(|e| e.message)?;
             }
@@ -1496,10 +1528,18 @@ fn validate_connection(
             }
             companions::validate_stored_fields(&name, &path, &kind)
                 .map_err(|why| format!("Begleitdatei-Eintrag im Archiv abgelehnt ({why})"))?;
-            reject_sensitive(fs, Path::new(&path), &expanded_dirs)
+            reject_sensitive_bounded(fs, Path::new(&path), &expanded_dirs, sensitive_dirs, boundary)
                 .map_err(|e| format!("Begleitdatei-Eintrag im Archiv abgelehnt: {}", e.message))?;
             if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
-                validate_trash_path(fs, Path::new(&trash_path), id, true, policy, &expanded_dirs)
+                validate_trash_path(
+                    fs,
+                    Path::new(&trash_path),
+                    id,
+                    true,
+                    policy,
+                    &expanded_dirs,
+                    boundary,
+                )
                     .map_err(|e| e.message)?;
             }
         }
@@ -1532,7 +1572,7 @@ fn validate_connection(
             crate::db::known_copies::validate_stored_fields(&path, size_bytes, &content_hash)
                 .map_err(|why| format!("Eintrag gemerkter Kopien im Archiv abgelehnt ({why})"))?;
             validate_imported_path_length(&path, known_folders)?;
-            reject_sensitive(fs, Path::new(&path), &expanded_dirs).map_err(|e| {
+            reject_sensitive_bounded(fs, Path::new(&path), &expanded_dirs, sensitive_dirs, boundary).map_err(|e| {
                 format!(
                     "Eintrag gemerkter Kopien im Archiv abgelehnt: {}",
                     e.message
@@ -1588,12 +1628,18 @@ fn validate_trash_path(
     companion: bool,
     policy: &TrashPolicy<'_>,
     sensitive: &[PathBuf],
+    boundary: Option<&[PathBuf]>,
 ) -> CmdResult<()> {
     let invalid = || CmdError::coded(ErrorCode::BackupInvalidDatabase);
     if path
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))
     {
+        return Err(invalid());
+    }
+    // Only the explicit trash locations can pass below, and all of them lie inside
+    // the host boundary; anything else is refused without resolving it.
+    if boundary.is_some_and(|roots| !import_path_in_boundary(path, roots)) {
         return Err(invalid());
     }
     let name = path
@@ -1660,7 +1706,7 @@ pub fn prepare_catalog(
 ) -> CmdResult<Box<dyn TemporaryCatalog>> {
     let mut temporary = fs.temporary_catalog(bytes)?;
     let incoming = temporary.connection();
-    validate_connection(incoming, sensitive_dirs, policy, known_folders, fs)?;
+    validate_connection(incoming, sensitive_dirs, policy, known_folders, fs, None)?;
     // A key in a file somebody handed over must never take effect. Outside the
     // transaction because it vacuums the file; the on/off switch stays. Then the
     // key of this computer goes back in (it is the only one that takes effect).
