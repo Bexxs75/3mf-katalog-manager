@@ -7,6 +7,7 @@ import { SourceFoldersSettings } from './SourceFoldersSettings';
 import * as api from '../lib/api/sourceFolders';
 import { pickFolderPath } from '../lib/api/importExport';
 import { de } from '../i18n/de';
+import { getSession } from '../lib/webSession';
 
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn().mockResolvedValue(undefined), warn: vi.fn().mockResolvedValue(undefined), info: vi.fn().mockResolvedValue(undefined), debug: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../lib/api/sourceFolders');
@@ -15,14 +16,16 @@ vi.mock('../lib/api/importExport', () => ({ pickFolderPath: vi.fn() }));
 const onCheck = vi.fn();
 const setup = () => render(<LanguageProvider><ImportLockContext.Provider value={false}><SourceFoldersSettings onCheck={onCheck} /></ImportLockContext.Provider></LanguageProvider>);
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ authenticated: true, writable: true, csrfToken: 'token', mustChangePassword: false })));
+  await getSession();
   localStorage.setItem('3mf-katalog-language', 'de');
   vi.mocked(api.listSourceFolders).mockResolvedValue([{ id: '1', path: 'NAS/Technik', addedAt: '2026-10-01', reachable: true, rootIdx: 1, rel: 'Technik' }]);
   vi.mocked(api.getSourceCheckOnStart).mockResolvedValue(false);
   vi.mocked(api.listRejectedCount).mockReset();
   vi.mocked(api.listSourceDirs).mockResolvedValue({ roots: [{ rootIdx: 0, name: 'NAS' }], entries: [], truncated: false });
 });
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('SourceFoldersSettings in the web build', () => {
   it('offers the server folder choice and the check, never the declined count or the desktop dialog', async () => {

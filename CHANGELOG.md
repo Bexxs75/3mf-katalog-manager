@@ -11,6 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- In the web interface, source folders can be chosen from the folders the server shares (read-only browsing, relative paths only), listed, removed and checked at start. Importing from them follows separately.
 - The web API can upload, inspect and discard catalog backups in private temporary storage. Preview reports include migration needs and path warnings; applying a backup is not yet available.
 
 ### Changed
@@ -913,6 +914,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- In der Web-Oberfläche lassen sich Quellordner aus den vom Server freigegebenen Ordnern wählen (nur lesendes Durchsuchen, nur relative Pfade), auflisten, entfernen und beim Start prüfen. Der Import daraus folgt separat.
 - Die Web-API kann Katalogsicherungen in einem privaten Zwischenverzeichnis hochladen, prüfen und verwerfen. Die Vorschau meldet nötige Migrationen und Pfadwarnungen; das Einspielen ist noch nicht verfügbar.
 
 ### Geändert
