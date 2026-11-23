@@ -182,3 +182,10 @@ it('keeps the complete web-maintenance disclosure sequence in the modal Tab cycl
   fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
   expect(last).toHaveFocus();
 });
+
+it('shows the source folder settings in the web build', async () => {
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Katalog' }));
+  expect(await screen.findByRole('heading', { name: de.settingsSecSources })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: de.sfpOpen })).toBeInTheDocument();
+});

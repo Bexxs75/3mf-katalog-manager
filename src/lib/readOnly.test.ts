@@ -73,3 +73,13 @@ it('matches the separate file operation capability list to Rust', async () => {
   expect([...FILE_OPS_COMMANDS].sort()).toEqual([...constant.matchAll(/"([a-z_]+)"/g)].map(match => match[1]).sort());
   expect(FILE_OPS_COMMANDS.every(command => (WEB_WRITE_COMMANDS as readonly string[]).includes(command))).toBe(true);
 });
+
+it('classifies every source folder command for the web build', async () => {
+  const classes = (await import('../../docs/web/command-classes.json')).default.commands as Record<string, string>;
+  const reads = ['list_source_dirs', 'list_source_folders', 'scan_source_folders', 'get_source_check_on_start'];
+  const writes = ['add_source_folder', 'remove_source_folder', 'reject_source_files', 'reset_rejected_source_files', 'set_source_check_on_start'];
+  for (const command of reads) { expect(WEB_READ_COMMANDS).toContain(command); expect(['web', 'web-only']).toContain(classes[command]); }
+  for (const command of writes) { expect(WEB_WRITE_COMMANDS).toContain(command); expect(classes[command]).toBe('web'); }
+  // The copy import is not built yet and must stay unreachable from the browser until it is.
+  expect([...WEB_READ_COMMANDS, ...WEB_WRITE_COMMANDS]).not.toContain('import_source_files');
+});
