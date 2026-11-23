@@ -3333,7 +3333,7 @@ fn trash_policy_accepts_both_formats_and_rejects_escape_cases() {
             web.join(format!("{prefix}7-deadbeef-model.3mf")),
         ] {
             assert!(
-                validate_trash_path(&fs, &path, 7, companion, &policy, &[]).is_ok(),
+                validate_trash_path(&fs, &path, 7, companion, &policy, &[], None).is_ok(),
                 "{path:?}"
             );
         }
@@ -3350,7 +3350,7 @@ fn trash_policy_accepts_both_formats_and_rejects_escape_cases() {
             )),
         ] {
             assert!(
-                validate_trash_path(&fs, &path, 7, companion, &policy, &[]).is_err(),
+                validate_trash_path(&fs, &path, 7, companion, &policy, &[], None).is_err(),
                 "{path:?}"
             );
         }
@@ -3360,7 +3360,8 @@ fn trash_policy_accepts_both_formats_and_rejects_escape_cases() {
             7,
             companion,
             &policy,
-            std::slice::from_ref(&root)
+            std::slice::from_ref(&root),
+            None
         )
         .is_err());
     }
@@ -3575,7 +3576,8 @@ fn trash_policy_rejects_symlink_escapes() {
         1,
         false,
         &policy,
-        &[]
+        &[],
+        None
     )
     .is_err());
     let desktop = dir.join("trash");
@@ -3586,7 +3588,7 @@ fn trash_policy_rejects_symlink_escapes() {
         desktop_trash: Some(&desktop),
         catalog_roots: &[],
     };
-    assert!(validate_trash_path(&fs, &desktop.join("1-a.3mf"), 1, false, &policy, &[]).is_err());
+    assert!(validate_trash_path(&fs, &desktop.join("1-a.3mf"), 1, false, &policy, &[], None).is_err());
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -3612,7 +3614,7 @@ fn trash_policy_rejects_linked_subdirectories_and_redirected_row_ids() {
             1
         };
         assert!(
-            validate_trash_path(&fs, &path, id, false, &policy, &[]).is_err(),
+            validate_trash_path(&fs, &path, id, false, &policy, &[], None).is_err(),
             "{path:?}"
         );
     }

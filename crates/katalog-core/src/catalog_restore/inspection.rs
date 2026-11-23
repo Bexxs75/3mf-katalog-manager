@@ -61,7 +61,15 @@ pub fn inspect_backup(
         .iter()
         .map(|root| root.to_string_lossy().into_owned())
         .collect();
-    validate_connection(conn, sensitive_dirs, policy, &known, fs)?;
+    // Everything the host itself configured as a place for catalog files. An
+    // imported path outside of it is never resolved on the filesystem.
+    let boundary: Vec<PathBuf> = known_roots
+        .iter()
+        .chain(policy.catalog_roots)
+        .cloned()
+        .chain(policy.desktop_trash.map(Path::to_path_buf))
+        .collect();
+    validate_connection(conn, sensitive_dirs, policy, &known, fs, Some(&boundary))?;
     let resolved_roots: Vec<PathBuf> = known_roots
         .iter()
         .map(|root| fs.resolve(root))
@@ -109,8 +117,14 @@ pub fn inspect_backup(
             {
                 return Err(CmdError::coded(ErrorCode::BackupInvalidDatabase));
             }
-            let resolved = fs.resolve(local)?;
-            if !resolved_roots.iter().any(|root| resolved.starts_with(root)) {
+            // Outside the host boundary the path is only reported, never resolved.
+            let outside = if import_path_in_boundary(local, &boundary) {
+                let resolved = fs.resolve(local)?;
+                !resolved_roots.iter().any(|root| resolved.starts_with(root))
+            } else {
+                true
+            };
+            if outside {
                 let display_path = path
                     .rsplit(['/', '\\'])
                     .next()
@@ -196,6 +210,8 @@ mod tests {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../.target/inspection-tests")
             .join(name);
+        // A leftover from an aborted run would collide with the rows inserted below.
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let dir = dir.canonicalize().unwrap();
         let path = dir.join("source.db");
@@ -332,6 +348,199 @@ mod tests {
                 .all(|p| !p.starts_with("/net")),
             "an imported path outside the boundary was resolved on the filesystem"
         );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Runs the inspection with host roots `<dir>/models` and a protected `<dir>/config`.
+    fn inspect_recorded(bytes: &[u8], dir: &Path) -> (CmdResult<RestoreReport>, Vec<PathBuf>) {
+        let fs = RecordingFs {
+            inner: StdRestoreFs::new(dir.to_path_buf()),
+            resolved: Default::default(),
+        };
+        let result = inspect_backup(
+            bytes,
+            &[dir.join("config")],
+            &TrashPolicy {
+                desktop_trash: None,
+                catalog_roots: &[dir.join("models")],
+            },
+            &[dir.join("models")],
+            &fs,
+            &|_| false,
+        );
+        let resolved = fs.resolved.lock().unwrap().clone();
+        (result, resolved)
+    }
+
+    fn assert_never_resolved(resolved: &[PathBuf]) {
+        assert!(
+            resolved.iter().all(|p| !p.starts_with("/net")),
+            "an imported path outside the boundary was resolved on the filesystem: {resolved:?}"
+        );
+    }
+
+    fn add_extras_companion(conn: &Connection, file_id: i64, path: &str, trash: Option<&str>) {
+        conn.execute(
+            "INSERT INTO companion_files (file_id, name, path, kind, added_at, trash_path)
+             VALUES (?1, 'a.png', ?2, 'image', 'now', ?3)",
+            rusqlite::params![file_id, path, trash],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn file_path_outside_host_boundary_is_warned_and_never_resolved() {
+        let (bytes, dir) = fixture("boundary-file", |conn, _| {
+            db::test_insert_minimal_file(conn, "/net/untrusted/m.3mf", None).unwrap();
+        });
+        let (report, resolved) = inspect_recorded(&bytes, &dir);
+        let report = report.unwrap();
+        assert_eq!(report.path_warnings.len(), 1);
+        assert_eq!(report.path_warnings[0].display_path, "m.3mf");
+        assert_never_resolved(&resolved);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn folder_path_outside_host_boundary_is_warned_and_never_resolved() {
+        let (bytes, dir) = fixture("boundary-folder", |conn, _| {
+            conn.execute(
+                "INSERT INTO folders (name, path) VALUES ('f', '/net/untrusted/f')",
+                [],
+            )
+            .unwrap();
+        });
+        let (report, resolved) = inspect_recorded(&bytes, &dir);
+        let report = report.unwrap();
+        assert_eq!(report.path_warnings.len(), 1);
+        assert_eq!(report.path_warnings[0].table, "folders");
+        assert_never_resolved(&resolved);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn trash_path_outside_host_boundary_is_refused_and_never_resolved() {
+        let (bytes, dir) = fixture("boundary-trash", |conn, dir| {
+            let id = db::test_insert_minimal_file(
+                conn,
+                &dir.join("models/a.3mf").to_string_lossy(),
+                None,
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE files SET trash_path = ?1 WHERE id = ?2",
+                rusqlite::params![format!("/net/untrusted/{id}-aaaaaaaa-a.3mf"), id],
+            )
+            .unwrap();
+        });
+        let (report, resolved) = inspect_recorded(&bytes, &dir);
+        assert_eq!(
+            report.unwrap_err(),
+            CmdError::coded(ErrorCode::BackupInvalidDatabase)
+        );
+        assert_never_resolved(&resolved);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn companion_paths_outside_host_boundary_are_never_resolved() {
+        let (bytes, dir) = fixture("boundary-companion", |conn, dir| {
+            let id = db::test_insert_minimal_file(
+                conn,
+                &dir.join("models/a.3mf").to_string_lossy(),
+                None,
+            )
+            .unwrap();
+            add_extras_companion(conn, id, "/net/untrusted/a_extras/a.png", None);
+        });
+        let (report, resolved) = inspect_recorded(&bytes, &dir);
+        let report = report.unwrap();
+        assert_eq!(report.path_warnings.len(), 1);
+        assert_eq!(report.path_warnings[0].table, "companion_files");
+        assert_never_resolved(&resolved);
+        std::fs::remove_dir_all(dir).unwrap();
+
+        let (bytes, dir) = fixture("boundary-companion-trash", |conn, dir| {
+            let id = db::test_insert_minimal_file(
+                conn,
+                &dir.join("models/a.3mf").to_string_lossy(),
+                None,
+            )
+            .unwrap();
+            add_extras_companion(
+                conn,
+                id,
+                &dir.join("models/a_extras/a.png").to_string_lossy(),
+                Some("/net/untrusted/companion-1-aaaaaaaa-a.png"),
+            );
+        });
+        let (report, resolved) = inspect_recorded(&bytes, &dir);
+        assert!(report.is_err());
+        assert_never_resolved(&resolved);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn paths_inside_host_boundary_are_still_resolved_and_not_warned() {
+        let (bytes, dir) = fixture("boundary-inside", |conn, dir| {
+            std::fs::create_dir_all(dir.join("models")).unwrap();
+            db::test_insert_minimal_file(
+                conn,
+                &dir.join("models/a.3mf").to_string_lossy(),
+                None,
+            )
+            .unwrap();
+        });
+        let (report, resolved) = inspect_recorded(&bytes, &dir);
+        assert!(report.unwrap().path_warnings.is_empty());
+        assert!(resolved.iter().any(|p| p.ends_with("models/a.3mf")));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn path_directly_below_protected_directory_outside_boundary_is_still_rejected() {
+        let (bytes, dir) = fixture("boundary-sensitive", |conn, dir| {
+            db::test_insert_minimal_file(
+                conn,
+                &dir.join("config/secret.3mf").to_string_lossy(),
+                None,
+            )
+            .unwrap();
+        });
+        let (report, _) = inspect_recorded(&bytes, &dir);
+        assert_eq!(
+            report.unwrap_err(),
+            CmdError::coded(ErrorCode::BackupInvalidDatabase)
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn desktop_validation_without_boundary_still_resolves_every_path() {
+        let (bytes, dir) = fixture("boundary-desktop", |conn, _| {
+            db::test_insert_minimal_file(conn, "/net/untrusted/m.3mf", None).unwrap();
+        });
+        let fs = RecordingFs {
+            inner: StdRestoreFs::new(dir.clone()),
+            resolved: Default::default(),
+        };
+        validate_catalog_db_bytes(
+            &bytes,
+            &[dir.join("config")],
+            &TrashPolicy {
+                desktop_trash: None,
+                catalog_roots: &[],
+            },
+            &[],
+            &fs,
+        )
+        .unwrap();
+        assert!(fs
+            .resolved
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| p.starts_with("/net/untrusted")));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
