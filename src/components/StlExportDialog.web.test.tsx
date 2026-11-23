@@ -29,7 +29,7 @@ it('offers a download instead of the save dialog and confirms it without a folde
   expect(download).toHaveBeenCalledWith('7', 'Box.3mf', { kind: 'all' });
   expect(desktopSave).not.toHaveBeenCalled();
   expect(screen.queryByRole('button', { name: de.showInFileManager })).toBeNull();
-  expect(screen.getByRole('button', { name: de.stClose, hidden: false })).toBeVisible();
+  expect(screen.getAllByRole('button', { name: de.stClose })).toHaveLength(2);
 });
 
 it('sends the chosen plate', async () => {
