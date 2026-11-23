@@ -1,165 +1,65 @@
 use super::*;
 
+#[cfg(test)]
 use chrono::{DateTime, Local};
+use katalog_core::date_rename::{self as core, DateRenameEffect, StdDateRenameFs};
+#[cfg(test)]
+use katalog_core::date_rename::{ApplyStatus, PreviewStatus};
+pub use katalog_core::date_rename::{
+    DateRenameItem, DateRenamePreview, DateRenameResult, DateSource,
+};
 
-/// Upper bound per call so one request cannot hold the catalog gate and the
-/// database lock for an unbounded time.
+#[cfg(test)]
 const MAX_ITEMS: usize = 5000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DateSource {
-    /// Modification time of the file on disk.
-    Modified,
-    /// `imported_at` of the catalog entry.
-    Imported,
+/// Keeps desktop companion handling and reversible disk operations at the host
+/// boundary; the core supplies the model-row update through the commit callback.
+struct DesktopDateRenameEffect<'a> {
+    conn: &'a Connection,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PreviewStatus {
-    Rename,
-    SkipHasPrefix,
-    SkipConflict,
-    SkipMissing,
-    SkipTrash,
-    SkipTooLong,
-    /// File lies outside the catalog folders (adopted in place).
-    SkipExternal,
-    /// The chosen date source has no usable value for this file.
-    SkipNoDate,
-    /// New name or location is not allowed (forbidden characters, protected folder).
-    SkipInvalid,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DateRenamePreview {
-    pub id: String,
-    pub old_name: String,
-    pub new_name: String,
-    pub status: PreviewStatus,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DateRenameItem {
-    pub id: String,
-    pub new_name: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ApplyStatus {
-    Renamed,
-    Failed,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DateRenameResult {
-    pub id: String,
-    pub status: ApplyStatus,
-    /// Short code for the checks done here ("missing", "external", "trash",
-    /// "hasPrefix", "nameRule", "targetTaken"), otherwise the backend message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-}
-
-fn disk_name(file: &FileRecord) -> String {
-    Path::new(&file.path)
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| file.name.clone())
-}
-
-fn source_time(file: &FileRecord, source: DateSource) -> Option<DateTime<Local>> {
-    match source {
-        DateSource::Modified => std::fs::metadata(&file.path)
-            .and_then(|m| m.modified())
-            .ok()
-            .map(DateTime::<Local>::from),
-        // Stored as UTC RFC 3339; the prefix is shown in the local zone like at import.
-        DateSource::Imported => DateTime::parse_from_rfc3339(&file.imported_at)
-            .ok()
-            .map(|t| t.with_timezone(&Local)),
+impl DateRenameEffect for DesktopDateRenameEffect<'_> {
+    fn rename(
+        &self,
+        file: &FileRecord,
+        old: &Path,
+        new: &Path,
+        commit: &mut dyn FnMut() -> Result<(), String>,
+    ) -> Result<(), String> {
+        rename::rename_file_on_disk(old, new).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                CmdError::coded_with(ErrorCode::FileTargetExists, [new.display()]).message
+            } else {
+                error.to_string()
+            }
+        })?;
+        let carried = match companions::carry(self.conn, file.id, old, new) {
+            Ok(carried) => carried,
+            Err(error) => {
+                if let Err(rollback_err) = rename::rename_file_on_disk(new, old) {
+                    return Err(format!(
+                        "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}",
+                        new.display()
+                    ));
+                }
+                return Err(error.message);
+            }
+        };
+        if let Err(db_err) = commit() {
+            carried.undo(self.conn);
+            if let Err(rollback_err) = rename::rename_file_on_disk(new, old) {
+                return Err(format!(
+                    "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
+                    new.display(),
+                    old.display()
+                ));
+            }
+            return Err(db_err);
+        }
+        carried.finish();
+        log::debug!(target: "datei", "umbenannt: {} -> {}", old.display(), new.display());
+        Ok(())
     }
-}
-
-/// True when the target is taken on disk or by another catalog entry. Catalog
-/// entries whose file is missing still own their path.
-fn target_taken(conn: &Connection, id: i64, old: &Path, new: &Path) -> CmdResult<bool> {
-    if rename::target_collides(old, new).map_err(|e| e.to_string())? {
-        return Ok(true);
-    }
-    let in_catalog: bool = conn
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM files WHERE path = ?1 AND id != ?2)",
-            rusqlite::params![new.to_string_lossy(), id],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("database: {e}"))?;
-    Ok(in_catalog)
-}
-
-/// Checks that hold for preview and apply alike. `Err` carries the skip reason.
-fn eligibility(
-    file: &FileRecord,
-    base: Option<&Path>,
-) -> Result<(), PreviewStatus> {
-    if file.deleted_at.is_some() {
-        return Err(PreviewStatus::SkipTrash);
-    }
-    if std::fs::symlink_metadata(&file.path).is_err() {
-        return Err(PreviewStatus::SkipMissing);
-    }
-    if !import_rename::is_internal(Path::new(&file.path), base) {
-        return Err(PreviewStatus::SkipExternal);
-    }
-    if import_rename::has_date_prefix(&disk_name(file)) {
-        return Err(PreviewStatus::SkipHasPrefix);
-    }
-    Ok(())
-}
-
-fn plan_file(
-    conn: &Connection,
-    file: &FileRecord,
-    source: DateSource,
-    base: Option<&Path>,
-    sensitive: &[PathBuf],
-    claimed: &mut HashSet<String>,
-) -> CmdResult<(String, PreviewStatus)> {
-    let old_name = disk_name(file);
-    let skip = |status| Ok((old_name.clone(), status));
-    if let Err(status) = eligibility(file, base) {
-        return skip(status);
-    }
-    let Some(time) = source_time(file, source) else {
-        return skip(PreviewStatus::SkipNoDate);
-    };
-    let new_name = format!("{}{old_name}", import_rename::date_prefix(time));
-    // A forbidden character in the old name must not be silently rewritten here.
-    if new_name.len() > folders::MAX_DIR_NAME_BYTES {
-        return skip(PreviewStatus::SkipTooLong);
-    }
-    if folders::validate_name(&new_name, true, folders::NameKind::File).is_err() {
-        return skip(PreviewStatus::SkipInvalid);
-    }
-    let old_path = PathBuf::from(&file.path);
-    let new_path = old_path.with_file_name(&new_name);
-    if reject_if_sensitive_path(&old_path, sensitive).is_err()
-        || reject_if_sensitive_path(&new_path, sensitive).is_err()
-    {
-        return skip(PreviewStatus::SkipInvalid);
-    }
-    // Case-insensitive file systems treat these spellings as one entry; the first
-    // file of the selection keeps the name.
-    let key = rename::normalized_lowercase(&new_path.to_string_lossy());
-    if target_taken(conn, file.id, &old_path, &new_path)? || !claimed.insert(key) {
-        return skip(PreviewStatus::SkipConflict);
-    }
-    Ok((new_name, PreviewStatus::Rename))
 }
 
 fn preview_with_conn(
@@ -168,91 +68,7 @@ fn preview_with_conn(
     source: DateSource,
     sensitive: &[PathBuf],
 ) -> CmdResult<Vec<DateRenamePreview>> {
-    if file_ids.len() > MAX_ITEMS {
-        return Err(CmdError::coded_with(
-            ErrorCode::MoveTooManyFiles,
-            [file_ids.len().to_string(), MAX_ITEMS.to_string()],
-        ));
-    }
-    let base = import_rename::catalog_base(conn)?;
-    let mut claimed = HashSet::new();
-    let mut out = Vec::with_capacity(file_ids.len());
-    for raw in file_ids {
-        let file = raw
-            .parse::<i64>()
-            .ok()
-            .map(|id| db::get_file(conn, id).map_err(|e| format!("database: {e}")))
-            .transpose()?
-            .flatten();
-        let (old_name, new_name, status) = match file {
-            None => (String::new(), String::new(), PreviewStatus::SkipMissing),
-            Some(file) => {
-                let (new_name, status) =
-                    plan_file(conn, &file, source, base.as_deref(), sensitive, &mut claimed)?;
-                (disk_name(&file), new_name, status)
-            }
-        };
-        out.push(DateRenamePreview {
-            id: raw.clone(),
-            old_name,
-            new_name,
-            status,
-        });
-    }
-    Ok(out)
-}
-
-/// A name the preview could have produced: a real `JJJJ-MM-TT_HH-MM_` prefix
-/// followed by the current name, nothing else.
-fn follows_rule(new_name: &str, old_name: &str) -> bool {
-    let Some((prefix, rest)) = new_name
-        .get(..import_rename::PREFIX_LEN)
-        .zip(new_name.get(import_rename::PREFIX_LEN..))
-    else {
-        return false;
-    };
-    rest == old_name
-        && import_rename::has_date_prefix(prefix)
-        && chrono::NaiveDate::parse_from_str(&prefix[..10], "%Y-%m-%d").is_ok()
-        && chrono::NaiveTime::parse_from_str(&prefix[11..16], "%H-%M").is_ok()
-}
-
-fn apply_one(
-    conn: &Connection,
-    item: &DateRenameItem,
-    base: Option<&Path>,
-    sensitive: &[PathBuf],
-) -> Result<(), String> {
-    let id: i64 = item.id.parse().map_err(|_| "missing".to_string())?;
-    let file = db::get_file(conn, id)
-        .map_err(|e| format!("database: {e}"))?
-        .ok_or_else(|| "missing".to_string())?;
-    eligibility(&file, base).map_err(|status| {
-        match status {
-            PreviewStatus::SkipTrash => "trash",
-            PreviewStatus::SkipMissing => "missing",
-            PreviewStatus::SkipExternal => "external",
-            _ => "hasPrefix",
-        }
-        .to_string()
-    })?;
-    // The UI may only send names the preview produced, never free input.
-    if !follows_rule(&item.new_name, &disk_name(&file)) {
-        return Err("nameRule".into());
-    }
-    let old_path = PathBuf::from(&file.path);
-    let new_path = old_path.with_file_name(&item.new_name);
-    if target_taken(conn, id, &old_path, &new_path).map_err(|e| e.message)? {
-        return Err("targetTaken".into());
-    }
-    files::rename_file_with_conn(conn, id, item.new_name.clone(), sensitive).map_err(|e| {
-        // The target can appear between the check above and the rename.
-        if target_taken(conn, id, &old_path, &new_path).unwrap_or(false) {
-            "targetTaken".to_string()
-        } else {
-            e.message
-        }
-    })
+    core::preview(conn, file_ids, source, sensitive, &StdDateRenameFs).map_err(Into::into)
 }
 
 fn apply_with_conn(
@@ -260,29 +76,14 @@ fn apply_with_conn(
     items: Vec<DateRenameItem>,
     sensitive: &[PathBuf],
 ) -> CmdResult<Vec<DateRenameResult>> {
-    if items.len() > MAX_ITEMS {
-        return Err(CmdError::coded_with(
-            ErrorCode::MoveTooManyFiles,
-            [items.len().to_string(), MAX_ITEMS.to_string()],
-        ));
-    }
-    let base = import_rename::catalog_base(conn)?;
-    Ok(items
-        .into_iter()
-        .map(|item| {
-            // One failing file must not stop the others.
-            let outcome = apply_one(conn, &item, base.as_deref(), sensitive);
-            DateRenameResult {
-                id: item.id,
-                status: if outcome.is_ok() {
-                    ApplyStatus::Renamed
-                } else {
-                    ApplyStatus::Failed
-                },
-                reason: outcome.err(),
-            }
-        })
-        .collect())
+    core::apply(
+        conn,
+        items,
+        sensitive,
+        &StdDateRenameFs,
+        &DesktopDateRenameEffect { conn },
+    )
+    .map_err(Into::into)
 }
 
 /// Plans `<date>_<name>` renames without touching disk or database.
@@ -621,5 +422,75 @@ mod tests {
         .unwrap();
         assert_eq!(replay[0].reason.as_deref(), Some("hasPrefix"));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_carries_companions_and_restores_them_on_failure() {
+        for failure in [None, Some("catalog"), Some("companion")] {
+            let (conn, dir) = setup("date_rename_companions");
+            let id = add(&conn, &dir, "model.3mf");
+            let new_name = format!("{}model.3mf", modified_prefix());
+            let old_extras = companions::extras_dir_for(&dir.join("model.3mf")).unwrap();
+            let new_extras = companions::extras_dir_for(&dir.join(&new_name)).unwrap();
+            std::fs::create_dir(&old_extras).unwrap();
+            let old_note = old_extras.join("note.txt");
+            let new_note = new_extras.join("note.txt");
+            std::fs::write(&old_note, b"companion").unwrap();
+            let companion_id = db::companions::insert_companion(
+                &conn,
+                id.parse().unwrap(),
+                "note.txt",
+                &old_note.to_string_lossy(),
+                "text",
+                Some(9),
+                "2025-03-04T05:06:07Z",
+            )
+            .unwrap();
+            if failure == Some("catalog") {
+                conn.execute_batch(
+                    "CREATE TRIGGER block_rename BEFORE UPDATE ON files
+                     BEGIN SELECT RAISE(ABORT, 'simulated'); END;",
+                )
+                .unwrap();
+            } else if failure == Some("companion") {
+                std::fs::write(&new_extras, b"blocked").unwrap();
+            }
+
+            let results = apply_with_conn(
+                &conn,
+                vec![DateRenameItem {
+                    id: id.clone(),
+                    new_name: new_name.clone(),
+                }],
+                &[],
+            )
+            .unwrap();
+            let row = db::get_file(&conn, id.parse().unwrap()).unwrap().unwrap();
+            let companion = db::companions::get_companion(&conn, companion_id)
+                .unwrap()
+                .unwrap();
+            if failure.is_none() {
+                assert_eq!(results[0].status, ApplyStatus::Renamed);
+                assert_eq!(row.path, dir.join(&new_name).to_string_lossy());
+                assert_eq!(companion.path, new_note.to_string_lossy());
+                assert_eq!(std::fs::read(new_note).unwrap(), b"companion");
+                assert!(!old_extras.exists());
+                assert!(dir.join(&new_name).exists());
+                assert!(!dir.join("model.3mf").exists());
+            } else {
+                assert_eq!(results[0].status, ApplyStatus::Failed);
+                assert_eq!(row.path, dir.join("model.3mf").to_string_lossy());
+                assert_eq!(companion.path, old_note.to_string_lossy());
+                assert_eq!(std::fs::read(old_note).unwrap(), b"companion");
+                assert!(dir.join("model.3mf").exists());
+                assert!(!dir.join(&new_name).exists());
+                if failure == Some("companion") {
+                    assert_eq!(std::fs::read(new_extras).unwrap(), b"blocked");
+                } else {
+                    assert!(!new_extras.exists());
+                }
+            }
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 }
