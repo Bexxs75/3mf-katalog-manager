@@ -16,6 +16,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Fixed
 
 - A file without any displayable geometry (for example a sliced package that only contains G-code) is no longer logged as an error when its preview is requested; it is logged as information.
+- The settings search finds the close-to-tray option under the term "Tray" as well.
 
 ## [0.18.7] - 2026-11-22
 
@@ -907,6 +908,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Behoben
 
 - Eine Datei ohne darstellbare Geometrie (zum Beispiel ein gesliceltes Paket, das nur G-Code enthält) wird bei der Vorschau nicht mehr als Fehler protokolliert, sondern als Information.
+- Die Einstellungssuche findet die Option zum Minimieren in den Infobereich jetzt auch unter dem Begriff „Tray“.
 
 ## [0.18.7] - 2026-11-22
 
