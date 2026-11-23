@@ -596,8 +596,12 @@ fn ascii_roundtrip_gives_the_same_triangles_as_binary() {
 fn ascii_is_larger_than_binary_and_writes_zero_area_triangles_with_zero_normal() {
     let mut mesh = cube(None);
     mesh.indices.push([2, 2, 2]);
+    // Realistic coordinates have many digits; round numbers like 10.0 are short in text.
+    for (i, p) in mesh.positions.iter_mut().enumerate() {
+        *p = p.map(|c| c + 0.123_456_7 * (i as f32 + 1.0));
+    }
     let ascii = written_ascii(&[&mesh]);
-    assert!(ascii.len() > 3 * written(&[&mesh]).len());
+    assert!(ascii.len() > 3 * written(&[&mesh]).len(), "{} vs {}", ascii.len(), written(&[&mesh]).len());
     assert!(ascii.contains("facet normal 0e0 0e0 0e0"));
     assert_eq!(read_back(ascii.as_bytes()).indices.len(), 13);
 }
@@ -625,7 +629,7 @@ fn ascii_keeps_limits_and_error_cases_and_writes_nothing_on_error() {
 #[test]
 fn ascii_large_meshes_are_written_in_blocks() {
     let mut mesh = cube(None);
-    mesh.indices = CUBE_TRIANGLES.iter().cycle().take(BLOCK_TRIANGLES * 2 + 5).copied().collect();
+    mesh.indices = CUBE_TRIANGLES.iter().cycle().take(BLOCK_TRIANGLES * 4 + 5).copied().collect();
     let mut recorder = Recorder(Vec::new());
     write_stl_as(&mut recorder, &[&mesh], StlFormat::Ascii, MAX_STL_TRIANGLES).unwrap();
     assert!(recorder.0.len() >= 3, "{:?}", recorder.0.len());
