@@ -11,6 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- The printer connection works in the web interface too: the server asks the printers (only addresses on its printer allowlist), and the web app shows status, test, new prints and history like the desktop app.
 - In the web interface, source folders can be chosen from the folders the server shares (read-only browsing, relative paths only), listed, removed and checked at start. Importing from them follows separately.
 - The web API can upload, inspect and discard catalog backups in private temporary storage. Preview reports include migration needs and path warnings; applying a backup is not yet available.
 
@@ -914,6 +915,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- Die Druckeranbindung funktioniert jetzt auch in der Web-Oberfläche: Der Server fragt die Drucker ab (nur Adressen aus seiner Drucker-Freigabeliste), die Web-App zeigt Status, Test, neue Drucke und Verlauf wie die Desktop-App.
 - In der Web-Oberfläche lassen sich Quellordner aus den vom Server freigegebenen Ordnern wählen (nur lesendes Durchsuchen, nur relative Pfade), auflisten, entfernen und beim Start prüfen. Der Import daraus folgt separat.
 - Die Web-API kann Katalogsicherungen in einem privaten Zwischenverzeichnis hochladen, prüfen und verwerfen. Die Vorschau meldet nötige Migrationen und Pfadwarnungen; das Einspielen ist noch nicht verfügbar.
 

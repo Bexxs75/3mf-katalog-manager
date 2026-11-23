@@ -19,12 +19,19 @@ const show = () => render(<LanguageProviderWithDiagnostics>
   <PrinterHistoryTable printerId="1" jobs={jobs} link={{ jobs: [] } as unknown as PrinterLinkState} onMaterial={vi.fn()} onChanged={vi.fn()} />
 </LanguageProviderWithDiagnostics>);
 
-it('only shows the reason in the web version, even for a session that may edit', async () => {
+it('lets a session that may edit set the reason and review open jobs in the web version', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: true, csrfToken: 'csrf' })));
   await login('test');
   show();
   expect(screen.getByText('Düse verstopft / Unterextrusion')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Grund bearbeiten/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Im Material Manager bestätigen' })).toBeInTheDocument();
+  expect(screen.queryByText(/Dieser Server zeigt den Grund nur an/)).toBeNull();
+});
+
+it('keeps the reason read-only for a session that may not edit', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: false, csrfToken: 'csrf' })));
+  await login('test');
+  show();
   expect(screen.queryByRole('button', { name: /Grund bearbeiten/ })).toBeNull();
-  expect(screen.getByText('Offen')).toBeInTheDocument();
-  expect(screen.getByText(/Dieser Server zeigt den Grund nur an/)).toBeInTheDocument();
 });

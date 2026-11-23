@@ -178,7 +178,6 @@ export interface Translations {
   webUploadPartial: string;
   webUploadResults: string;
 
-  webManagerJobOpen: string;
   webManagerDeleteSpool: string;
   webManagerDeletePrinter: string;
   webManagerDeleteUnit: string;
@@ -643,6 +642,12 @@ export interface Translations {
   pmApiKeyRemove: string;
   pmApiKeyShow: string;
   pmApiKeyHide: string;
+  pmWebAddressHint: string;
+  pmWebAddressDenied: string;
+  pmWebApiKeyHint: string;
+  pmWebLinkDescription: string;
+  pmWebUnavailableTitle: string;
+  pmWebUnavailableBody: string;
   pmWhatHappens: string;
   pmSyncInterval: string;
   pmSwitchedOff: string;
@@ -705,11 +710,9 @@ export interface Translations {
   pstSince: string;
   pstTruncatedTitle: string;
   pstTruncatedBody: string;
-  pstWeb: string;
   pstLoading: string;
   pstEmptyTitle: string;
   pstEmptyBody: string;
-  pstEmptyBodyWeb: string;
   pstEmptyRange: string;
   pstKpiPrints: string;
   pstKpiBreakdown: string;
@@ -758,7 +761,6 @@ export interface Translations {
   pfEditReason: string;
   pfEditReasonFor: string;
   pfEditHint: string;
-  pfWebReadOnly: string;
   pmAutoClosedNote: string;
   pmShowMore: string;
   pmDeletePrinter: string;

@@ -25,7 +25,7 @@ const spool: FilamentSpool = {
   colorHex: '#ff0000', colorHexes: [], homeLocation: 'Regal', unitId: 'u1', slotIndex: 0, kind: 'filament' };
 let list: Printer[];
 let history: PrinterHistoryJob[];
-const link = (): PrinterLinkState => ({ refreshKey: 0, enabled: false, connections: [], jobs: [], error: null,
+const link = (): PrinterLinkState => ({ refreshKey: 0, enabled: false, connections: [], jobs: [], error: null, unavailable: false,
   refresh: vi.fn().mockResolvedValue(undefined), setEnabled: vi.fn().mockResolvedValue(undefined),
   testConnection: vi.fn(), removeConnection: vi.fn(), clearApiKey: vi.fn(), includeOlderHistory: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn() });
 
