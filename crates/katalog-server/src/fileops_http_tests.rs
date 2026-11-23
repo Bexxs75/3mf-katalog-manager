@@ -1822,3 +1822,100 @@ async fn maintenance_fileops_and_empty_trash_block_are_rejected() {
 mod source_dirs_http_tests {
     include!("source_dirs_http_tests.rs");
 }
+
+/// A folder `big` with a subfolder `sub`: `top` models in `big`, `deep` in `big/sub`, real files on disk.
+fn folder_with_models(f: &Fixture, top: usize, deep: usize) -> String {
+    std::fs::create_dir_all(f.dir.join("models/big/sub")).unwrap();
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    c.execute("INSERT INTO folders(name,path) VALUES('big',?1)", [f.dir.join("models/big").to_str().unwrap()]).unwrap();
+    let big = c.last_insert_rowid();
+    c.execute("INSERT INTO folders(name,path,parent_id) VALUES('sub',?1,?2)", rusqlite::params![f.dir.join("models/big/sub").to_str().unwrap(), big]).unwrap();
+    let sub = c.last_insert_rowid();
+    for (count, dir, folder) in [(top, "big", big), (deep, "big/sub", sub)] {
+        for n in 0..count {
+            let path = f.dir.join(format!("models/{dir}/{n}.3mf"));
+            std::fs::write(&path, format!("model {dir} {n}")).unwrap();
+            db::test_insert_minimal_file(&c, path.to_str().unwrap(), Some(folder)).unwrap();
+        }
+    }
+    big.to_string()
+}
+
+#[tokio::test]
+async fn a_folder_goes_to_the_trash_in_throttled_blocks_and_comes_back_model_by_model() {
+    let f = Fixture::new(true).await;
+    let folder = folder_with_models(&f, 300, 150);
+    let summary = value(f.invoke("folder_trash_summary", json!({"folderId":folder})).await).await;
+    assert_eq!((summary["modelCount"].clone(), summary["subfolderCount"].clone(), summary["isCatalogRootOrAncestor"].clone()), (json!(450), json!(1), json!(false)));
+    let start = value(f.invoke("trash_folder_start", json!({"folderId":folder})).await).await;
+    assert_eq!(start["remaining"], 450);
+    let token = start["token"].clone();
+    // The first block runs at once, the next one has to wait the short pause with a real Retry-After.
+    let first = value(f.invoke("trash_folder_block", json!({"token":token})).await).await;
+    assert_eq!((first["results"].as_array().unwrap().len(), first["remaining"].clone()), (200, json!(250)));
+    assert!(first.get("removedFolderCount").is_none());
+    let early = f.invoke("trash_folder_block", json!({"token":token})).await;
+    assert_eq!(early.status(), 429);
+    assert!(early.headers().contains_key("retry-after"));
+    f.time.0.store(103, Ordering::SeqCst);
+    let second = value(f.invoke("trash_folder_block", json!({"token":token})).await).await;
+    assert_eq!(second["remaining"], 50);
+    f.time.0.store(106, Ordering::SeqCst);
+    let last = value(f.invoke("trash_folder_block", json!({"token":token})).await).await;
+    assert_eq!((last["remaining"].clone(), last["removedFolderCount"].clone()), (json!(0), json!(2)));
+    // A finished token is gone.
+    f.time.0.store(109, Ordering::SeqCst);
+    assert_eq!(f.invoke("trash_folder_block", json!({"token":token})).await.status(), 404);
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        let n = |sql: &str| c.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(n("SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL"), 450);
+        assert_eq!(n("SELECT COUNT(*) FROM folder_trash_origin"), 450);
+        assert_eq!(n("SELECT COUNT(*) FROM folders"), 0);
+    }
+    assert!(f.dir.join("config/backups").exists());
+    // The branch is gone from the disk; restoring one model rebuilds its folders and clears its marker.
+    std::fs::remove_dir_all(f.dir.join("models/big")).unwrap();
+    let id: i64 = f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+        .query_row("SELECT id FROM files WHERE name='7.3mf' AND path LIKE '%/big/sub/%'", [], |r| r.get(0)).unwrap();
+    assert_eq!(f.invoke("restore_file", json!({"fileId":id.to_string()})).await.status(), 200);
+    assert!(f.dir.join("models/big/sub/7.3mf").exists());
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    assert_eq!(c.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+    assert_eq!(c.query_row("SELECT COUNT(*) FROM folder_trash_origin", [], |r| r.get::<_, i64>(0)).unwrap(), 449);
+}
+
+#[tokio::test]
+async fn folder_trash_tokens_are_session_bound_and_the_catalog_base_is_refused() {
+    let f = Fixture::new(true).await;
+    let folder = folder_with_models(&f, 2, 1);
+    let token = value(f.invoke("trash_folder_start", json!({"folderId":folder})).await).await["token"].clone();
+    let other = { let mut d = f.app.data.lock().unwrap(); new_session(&mut d, "test", 100).unwrap() };
+    let mut req = f.request("POST", "/api/invoke/trash_folder_block", Body::from(json!({"token":token}).to_string()));
+    req.headers_mut().insert("content-type", "application/json".parse().unwrap());
+    req.headers_mut().insert("cookie", format!("katalog_session={}", other.token).parse().unwrap());
+    req.headers_mut().insert("x-csrf-token", other.csrf.parse().unwrap());
+    assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), 404);
+    assert_eq!(f.invoke("trash_folder_block", json!({"token":"nope"})).await.status(), 404);
+    // Nothing moved so far; with the folder set as catalog base, the start is refused with a 409.
+    f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+        .execute("INSERT INTO app_settings(key,value) VALUES('catalog_base_dir',?1)", [f.dir.join("models/big").to_str().unwrap()]).unwrap();
+    let refused = f.invoke("trash_folder_start", json!({"folderId":folder})).await;
+    assert_eq!(refused.status(), 409);
+    let summary = value(f.invoke("folder_trash_summary", json!({"folderId":folder})).await).await;
+    assert_eq!(summary["isCatalogRootOrAncestor"], true);
+    assert_eq!(f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+        .query_row("SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+}
+
+#[tokio::test]
+async fn folder_trash_commands_have_strict_arguments_and_an_unknown_folder_is_a_404() {
+    let f = Fixture::new(true).await;
+    assert_eq!(f.invoke("trash_folder_start", json!({"folderId":"999"})).await.status(), 404);
+    assert_eq!(f.invoke("trash_folder_start", json!({"folderId":"1","extra":1})).await.status(), 422);
+    assert_eq!(f.invoke("trash_folder_start", json!({"folderId":"x"})).await.status(), 400);
+    assert_eq!(f.invoke("folder_trash_summary", json!({"folderId":"999"})).await.status(), 404);
+    assert_eq!(f.invoke("folder_trash_summary", json!({"folderId":"1","x":1})).await.status(), 422);
+    let off = Fixture::new(false).await;
+    assert_eq!(off.invoke("trash_folder_start", json!({"folderId":"1"})).await.status(), 404);
+}
