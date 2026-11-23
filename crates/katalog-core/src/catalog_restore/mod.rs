@@ -5,6 +5,8 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
 mod imported_paths;
+mod inspection;
+pub use inspection::{inspect_backup, PathWarning, RestoreReport};
 mod std_fs;
 pub use std_fs::StdRestoreFs;
 

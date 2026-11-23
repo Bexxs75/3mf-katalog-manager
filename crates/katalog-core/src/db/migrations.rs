@@ -978,6 +978,30 @@ mod tests {
     use rusqlite::Connection;
 
     #[test]
+    fn inspection_migrates_schema_40_only_in_the_temporary_copy() {
+        use crate::catalog_restore::{inspect_backup, StdRestoreFs, TrashPolicy};
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.target/inspection-schema-40");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("source.db");
+        let mut conn = Connection::open(&path).unwrap();
+        conn.execute_batch(crate::db::SCHEMA_SQL).unwrap();
+        run_migrations_with(&mut conn, MIGRATIONS, 40).unwrap();
+        drop(conn);
+        let bytes = std::fs::read(&path).unwrap();
+        let report = inspect_backup(
+            &bytes, &[],
+            &TrashPolicy { desktop_trash: None, catalog_roots: &[] },
+            &[], &StdRestoreFs::new(dir.clone()), &|_| false,
+        ).unwrap();
+        assert_eq!(report.schema_version, 40);
+        assert!(report.migration_needed);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn license_migrates_existing_rows_and_exists_in_fresh_schema() {
         let mut conn = crate::db::connect_in_memory().unwrap();
         let id = crate::db::test_insert_minimal_file(&conn, "/model.3mf", None).unwrap();
