@@ -130,7 +130,8 @@ pub struct SourceScanDto {
     pub unreachable: bool,
 }
 
-fn source_dto(fs: &dyn SourceFs, record: db::models::SourceFolderRecord) -> SourceFolderDto {
+/// Describes a stored source folder and checks its current reachability through the host.
+pub fn source_dto(fs: &dyn SourceFs, record: db::models::SourceFolderRecord) -> SourceFolderDto {
     let reachable = resolve_source(fs, &record.path, &[]).is_ok();
     SourceFolderDto {
         id: record.id.to_string(),
