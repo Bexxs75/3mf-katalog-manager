@@ -799,6 +799,8 @@ export const en: Translations = {
   trashFolderOthers: { one: "{count} other file (e.g. images, notes) stays on disk and is not touched", other: "{count} other files (e.g. images, notes) stay on disk and are not touched" },
   trashFolderOthersAtLeast: { one: "at least {count} other file (e.g. images, notes) stays on disk and is not touched", other: "at least {count} other files (e.g. images, notes) stay on disk and are not touched" },
   trashFolderEmptyNote: "The folder itself is only removed from disk once it is empty.",
+  trashFolderWebNote: "The folders themselves stay on the server; only their catalog entries are removed. The models can be restored from the trash one by one, and missing folders are created again.",
+  trashFolderProgress: "{done} of {total} models moved to the trash …",
   trashFolderConfirm: "Move to trash",
   trashFolderProtected: "This is the catalog's storage location or a folder above it. It cannot be moved to the trash.",
   trashFolderDone: { one: "{count} model moved to the trash", other: "{count} models moved to the trash" },

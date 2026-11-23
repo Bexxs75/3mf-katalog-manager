@@ -10,7 +10,9 @@ const lastSegment = (path: string) => path.split(/[/\\]/).filter(Boolean).pop() 
 
 /** "(a, b, …)" with at most two names, so a long list cannot blow up the toast. */
 function nameList(paths: string[]) {
-  const shown = paths.slice(0, NAMES_SHOWN).map(lastSegment).join(', ');
+  // The web reports failures by ID only, so there may be no name to show.
+  const shown = paths.filter(Boolean).slice(0, NAMES_SHOWN).map(lastSegment).join(', ');
+  if (!shown) return '';
   return ` (${shown}${paths.length > NAMES_SHOWN ? ', …' : ''})`;
 }
 

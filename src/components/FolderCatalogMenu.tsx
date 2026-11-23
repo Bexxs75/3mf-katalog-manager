@@ -84,12 +84,13 @@ function DesktopFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, on
   </CatalogActionDialog>;
 }
 
-function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, returnFocus, folders = [] }: MenuProps) {
+function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, onTrashed, returnFocus, folders = [] }: MenuProps) {
   const canManage = useCanManageFiles();
   const { jobActive } = useImportLock();
   const t = useT();
   const formatCount = useFormatCount();
   const [action, setAction] = useState<'create' | 'rename' | 'move' | 'remove' | null>(null);
+  const [trashDialog, setTrashDialog] = useState(false);
   const [draft, setDraft] = useState(name);
   const [target, setTarget] = useState('');
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -97,13 +98,13 @@ function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, return
   const [busy, setBusy] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (action || !canManage) return;
+    if (action || trashDialog || !canManage) return;
     menu.current?.querySelector('button')?.focus();
     const outside = (e: MouseEvent) => { if (!menu.current?.contains(e.target as Node)) onClose(); };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === 'Tab') { onClose(); returnFocus.current?.focus(); } };
     document.addEventListener('mousedown', outside); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', key); };
-  }, [action, canManage, onClose, returnFocus]);
+  }, [action, trashDialog, canManage, onClose, returnFocus]);
   useEffect(() => {
     if (action !== 'remove' || !canManageFiles()) return;
     let cancelled = false;
@@ -114,8 +115,10 @@ function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, return
   }, [action, folderId]);
   if (!canManage) return null;
   const titles = { create: t('folderOpCreate'), rename: t('folderOpRename'), move: t('folderOpMove'), remove: t('removeCatalog') };
+  if (trashDialog) return <FolderTrashDialog folderId={folderId} name={name} onClose={onClose} onTrashed={onTrashed ?? (() => {})} returnFocus={returnFocus} />;
   if (!action) return createPortal(<div ref={menu} role="menu" className="fixed z-50 rounded border bg-[var(--panel)] p-2 shadow-lg" style={{ left: Math.max(0, Math.min(x, window.innerWidth - 260)), top: Math.max(0, Math.min(y, window.innerHeight - 200)) }}>
     {(['create', 'rename', 'move', 'remove'] as const).map(item => <button key={item} role="menuitem" disabled={jobActive} className="block w-full p-2 text-left hover:bg-[var(--panel-2)]" onClick={() => { setDraft(item === 'create' ? '' : name); setAction(item); }}>{titles[item]}</button>)}
+    <button role="menuitem" disabled={jobActive} className="block w-full p-2 text-left font-semibold text-red-400 hover:bg-[var(--panel-2)]" onClick={() => setTrashDialog(true)}>{t('trashFolder')}</button>
   </div>, document.body);
   const parentId = folders.find(folder => folder.id === folderId)?.parentId;
   const targets = folders.filter(folder => folder.id !== parentId && !isFolderSelfOrDescendant(folder.id, folderId, folders));

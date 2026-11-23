@@ -2,7 +2,7 @@ import { toAppError } from '../errors';
 import { legacyCodeKey } from '../errorMessage';
 import errorCodes from '../errorCodes.json';
 import { isReadOnly } from '../readOnly';
-import { fileOp, fileOpsBatch } from '../fileOps';
+import { fileOp, fileOpsBatch, trashFolderWeb } from '../fileOps';
 import { invoke } from '../transport';
 import type { Folder, FolderTrashResult, FolderTrashSummary } from '../../types';
 
@@ -56,6 +56,7 @@ export function renameFolder(folderId: string, name: string) {
 export function folderTrashSummary(folderId: string) {
   return invoke<FolderTrashSummary>('folder_trash_summary', { folderId });
 }
-export function trashFolder(folderId: string) {
+export function trashFolder(folderId: string, onProgress?: (done: number, total: number) => void) {
+  if (isReadOnly()) return trashFolderWeb(folderId, onProgress);
   return invoke<FolderTrashResult>('trash_folder', { folderId });
 }

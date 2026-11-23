@@ -799,6 +799,8 @@ export const de: Translations = {
   trashFolderOthers: { one: "{count} andere Datei (z. B. Bilder, Notizen) bleibt auf der Festplatte liegen und wird nicht angefasst", other: "{count} andere Dateien (z. B. Bilder, Notizen) bleiben auf der Festplatte liegen und werden nicht angefasst" },
   trashFolderOthersAtLeast: { one: "mindestens {count} andere Datei (z. B. Bilder, Notizen) bleibt auf der Festplatte liegen und wird nicht angefasst", other: "mindestens {count} andere Dateien (z. B. Bilder, Notizen) bleiben auf der Festplatte liegen und werden nicht angefasst" },
   trashFolderEmptyNote: "Der Ordner selbst wird erst von der Festplatte entfernt, wenn er leer ist.",
+  trashFolderWebNote: "Die Ordner selbst bleiben auf dem Server bestehen; nur ihre Einträge im Katalog werden entfernt. Aus dem Papierkorb lassen sich die Modelle einzeln wiederherstellen, fehlende Ordner werden dabei neu angelegt.",
+  trashFolderProgress: "{done} von {total} Modellen in den Papierkorb gelegt …",
   trashFolderConfirm: "In den Papierkorb legen",
   trashFolderProtected: "Das ist der Speicherort des Katalogs oder ein Ordner darüber. Er kann nicht in den Papierkorb gelegt werden.",
   trashFolderDone: { one: "{count} Modell in den Papierkorb gelegt", other: "{count} Modelle in den Papierkorb gelegt" },

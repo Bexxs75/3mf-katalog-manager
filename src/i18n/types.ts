@@ -809,6 +809,8 @@ export interface Translations {
   trashFolderOthers: PluralForms;
   trashFolderOthersAtLeast: PluralForms;
   trashFolderEmptyNote: string;
+  trashFolderWebNote: string;
+  trashFolderProgress: string;
   trashFolderConfirm: string;
   trashFolderProtected: string;
   trashFolderDone: PluralForms;

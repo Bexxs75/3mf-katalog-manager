@@ -3,6 +3,7 @@ import { canManageFiles, getSnapshot, blockFileOperations } from './webSession';
 import { clearMetadataError, getMetadataError, reportMetadataError } from './metadataErrors';
 import { messageOf } from './errors';
 import { fileOpsError, fileOpsMessage, isDomainRejection } from './fileOpsErrors';
+import type { FolderTrashResult } from '../types';
 export interface ItemResult { id: string; ok: boolean; kind?: string; kept_on_disk?: boolean; companions_moved?: number; companions_kept_in_trash?: number }
 /** `companionCount` and `blockedByCompanions` are absent from servers that predate companion handling. */
 export interface TrashSummary { count: number; bytes: number; maxDeletedAt: string | null; companionCount?: number; blockedByCompanions?: number; looseCompanionCount?: number; looseCompanionBytes?: number }
@@ -26,7 +27,7 @@ export function subscribeFileOpsApplied(listener: AppliedListener) {
 function affectedIds(command: string, args: Record<string, unknown>, result: unknown): string[] {
   if (command === 'delete_files') return Array.isArray(args.fileIds) ? args.fileIds.map(String) : [];
   if (command === 'restore_file' || command === 'delete_file_permanently') return args.fileId === undefined ? [] : [String(args.fileId)];
-  if (command === 'empty_trash_block' && result && typeof result === 'object' && Array.isArray((result as {results?: unknown}).results)) {
+  if ((command === 'empty_trash_block' || command === 'trash_folder_block') && result && typeof result === 'object' && Array.isArray((result as {results?: unknown}).results)) {
     return ((result as {results: ItemResult[]}).results).filter(item => item.ok && /^\d+$/.test(item.id)).map(item => item.id);
   }
   return [];
@@ -34,7 +35,7 @@ function affectedIds(command: string, args: Record<string, unknown>, result: unk
 /** After a failure only what the server reported as done: the ok items of a partial batch or trash block. */
 function appliedDespiteFailure(command: string, outcome: unknown): string[] {
   if (Array.isArray(outcome)) return (outcome as ItemResult[]).filter(item => item.ok).map(item => String(item.id));
-  return command === 'empty_trash_block' ? affectedIds(command, {}, outcome) : [];
+  return command === 'empty_trash_block' || command === 'trash_folder_block' ? affectedIds(command, {}, outcome) : [];
 }
 // The error slot holds one message; repeating the same text from nested layers adds nothing.
 // Remembered so a later success can take down exactly this message and nobody else's.
@@ -150,5 +151,43 @@ export async function companionFileOp(command: 'remove_companion' | 'restore_com
   catch (reason) {
     if ((reason as { kind?: unknown } | null)?.kind === 'restart_required') blockFileOperations();
     throw fileOpsError(reason);
+  }
+}
+
+interface FolderTrashBlock { results: ItemResult[]; remaining: number; removedFolderCount?: number; keptFolderCount?: number; folderError?: string }
+/**
+ * Moves a folder's models to the server trash block by block (at most 200 per block) and reports
+ * the outcome in the desktop's shape. The token is memory-only; a failed block is never replayed.
+ * Directories stay on the server, so `keptOnDisk` is always empty here.
+ */
+export async function trashFolderWeb(folderId: string, onProgress: (done: number, total: number) => void = () => {}): Promise<FolderTrashResult> {
+  const initiatingToken = getSnapshot().csrfToken;
+  const start = await fileOp<{ token: string; remaining: number }>('trash_folder_start', { folderId });
+  if (!start || typeof start.token !== 'string' || !validRemaining(start.remaining)) { const error = fileOpsError({ kind: 'not_started' }); reportOnce(error); throw error; }
+  const total = start.remaining;
+  let remaining = total;
+  const result: FolderTrashResult = { trashedModelCount: 0, failed: [], removedFolderCount: 0, keptOnDisk: [] };
+  onProgress(0, total);
+  for (let first = true; ; first = false) {
+    if (!canManageFiles() || getSnapshot().csrfToken !== initiatingToken) throw fileOpsError({ kind: 'revoked' });
+    if (!first) await new Promise(resolve => setTimeout(resolve, 2000));
+    let block: FolderTrashBlock;
+    try { block = await fileOp<FolderTrashBlock>('trash_folder_block', { token: start.token }); }
+    // A refused block (limit, wait) ends the run; what is already in the trash stays there and the folder can be trashed again.
+    catch (reason) { throw fileOpsError(reason); }
+    if (!block || !Array.isArray(block.results) || !validRemaining(block.remaining)) { const error = fileOpsError({ kind: 'not_started' }); reportOnce(error); throw error; }
+    for (const item of block.results) {
+      if (item.ok) result.trashedModelCount += 1;
+      else if (item.kind !== 'not_started') result.failed.push({ fileId: item.id, path: '', reason: item.kind ?? 'generic' });
+    }
+    result.removedFolderCount += block.removedFolderCount ?? 0;
+    onProgress(total - block.remaining, total);
+    if (block.remaining === 0) {
+      if (block.folderError) { const error = fileOpsError({ kind: block.folderError }); reportOnce(error); throw error; }
+      return result;
+    }
+    // A block that moved nothing must not loop forever.
+    if (block.remaining >= remaining && !block.results.some(item => item.ok || item.kind !== 'not_started')) { const error = fileOpsError({ kind: 'not_started' }); reportOnce(error); throw error; }
+    remaining = block.remaining;
   }
 }

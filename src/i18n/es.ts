@@ -799,6 +799,8 @@ export const es: Translations = {
   trashFolderOthers: { one: "{count} otro archivo (p. ej. imágenes, notas) permanece en el disco y no se toca", other: "{count} otros archivos (p. ej. imágenes, notas) permanecen en el disco y no se tocan" },
   trashFolderOthersAtLeast: { one: "al menos {count} otro archivo (p. ej. imágenes, notas) permanece en el disco y no se toca", other: "al menos {count} otros archivos (p. ej. imágenes, notas) permanecen en el disco y no se tocan" },
   trashFolderEmptyNote: "La propia carpeta solo se elimina del disco cuando está vacía.",
+  trashFolderWebNote: "Las propias carpetas permanecen en el servidor; solo se eliminan sus entradas del catálogo. Los modelos se pueden restaurar uno a uno desde la papelera y las carpetas que falten se vuelven a crear.",
+  trashFolderProgress: "{done} de {total} modelos movidos a la papelera …",
   trashFolderConfirm: "Mover a la papelera",
   trashFolderProtected: "Esta es la ubicación de almacenamiento del catálogo o una carpeta superior. No se puede mover a la papelera.",
   trashFolderDone: { one: "{count} modelo movido a la papelera", other: "{count} modelos movidos a la papelera" },

@@ -799,6 +799,8 @@ export const fr: Translations = {
   trashFolderOthers: { one: "{count} autre fichier (p. ex. images, notes) reste sur le disque et n’est pas touché", other: "{count} autres fichiers (p. ex. images, notes) restent sur le disque et ne sont pas touchés" },
   trashFolderOthersAtLeast: { one: "au moins {count} autre fichier (p. ex. images, notes) reste sur le disque et n’est pas touché", other: "au moins {count} autres fichiers (p. ex. images, notes) restent sur le disque et ne sont pas touchés" },
   trashFolderEmptyNote: "Le dossier lui-même n’est supprimé du disque que lorsqu’il est vide.",
+  trashFolderWebNote: "Les dossiers eux-mêmes restent sur le serveur ; seules leurs entrées du catalogue sont supprimées. Les modèles peuvent être restaurés un par un depuis la corbeille, et les dossiers manquants sont recréés.",
+  trashFolderProgress: "{done} sur {total} modèles placés dans la corbeille …",
   trashFolderConfirm: "Mettre à la corbeille",
   trashFolderProtected: "Il s’agit de l’emplacement de stockage du catalogue ou d’un dossier au-dessus. Il ne peut pas être mis à la corbeille.",
   trashFolderDone: { one: "{count} modèle mis à la corbeille", other: "{count} modèles mis à la corbeille" },
