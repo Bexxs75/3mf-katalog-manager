@@ -62,6 +62,10 @@ impl Fixture {
         });
         Self { app, session, dir }
     }
+    /// This catalog's own staging folder (the one its previews live in).
+    fn staging(&self) -> PathBuf {
+        staging_root(&self.app.config.db_path).unwrap().1
+    }
     fn archive(&self, sql: &str) -> Vec<u8> {
         let path = self.dir.join("source.db");
         let _ = std::fs::remove_file(&path);
@@ -261,7 +265,7 @@ async fn restore_http_rejects_prepared_databases_and_preserves_active_catalog() 
         let response = f.upload(f.archive(sql)).await;
         assert_eq!(response.status(), 400, "{sql}: {}", value(response).await);
         assert!(f.app.restore.entries.lock().unwrap().is_empty());
-        assert_eq!(std::fs::read_dir(f.dir.join("config").join(ROOT)).unwrap().count(), 0);
+        assert_eq!(std::fs::read_dir(f.staging()).unwrap().count(), 0);
         assert_eq!(std::fs::read(&f.app.config.db_path).unwrap(), active);
     }
 }
@@ -316,7 +320,7 @@ async fn restore_http_rejects_zip_paths_duplicates_oversize_and_bomb() {
     for bytes in [traversal, duplicate, huge, bomb] {
         assert_eq!(f.upload(bytes).await.status(), 400);
         assert_eq!(
-            std::fs::read_dir(f.dir.join("config").join(ROOT))
+            std::fs::read_dir(f.staging())
                 .unwrap()
                 .count(),
             0
@@ -357,9 +361,46 @@ async fn restore_expiry_startup_cleanup_and_staging_symlink_rejected() {
     root.open_dir(&stale).unwrap().create("backup.zip").unwrap();
     startup(&f.app.config.db_path).unwrap();
     assert!(root.open_dir(&stale).is_err());
-    std::fs::remove_dir(f.dir.join("config").join(ROOT)).unwrap();
+    std::fs::remove_dir_all(f.dir.join("config").join(ROOT)).unwrap();
     std::os::unix::fs::symlink(f.dir.join("models"), f.dir.join("config").join(ROOT)).unwrap();
     assert!(staging_root(&f.app.config.db_path).is_err());
+}
+
+/// Two catalogs in one folder share the staging folder; starting the second must not
+/// delete the previews the first one still leases.
+#[tokio::test]
+async fn startup_of_a_second_catalog_keeps_the_first_catalogs_staging() {
+    let f = Fixture::new(true);
+    let a = f.app.config.db_path.clone();
+    let b = a.with_file_name("other.db");
+    let (root_a, _) = staging_root(&a).unwrap();
+    let token = "a".repeat(64);
+    root_a.mkdir(&token, 0o700).unwrap();
+    root_a.open_dir(&token).unwrap().create("catalog.db").unwrap();
+    // Startup of the other catalog: its own leftovers go, the neighbour's stay.
+    let (root_b, _) = staging_root(&b).unwrap();
+    let own = "b".repeat(64);
+    root_b.mkdir(&own, 0o700).unwrap();
+    startup(&b).unwrap();
+    assert!(root_b.open_dir(&own).is_err());
+    assert!(root_a.open_dir(&token).unwrap().read("catalog.db").is_ok());
+    // A folder of the old flat layout may belong to a running catalog: recent ones stay,
+    // clearly expired ones are collected.
+    let (base, base_path) = staging_base(&a).unwrap();
+    let (recent, expired) = ("c".repeat(64), "d".repeat(64));
+    for name in [&recent, &expired] {
+        base.mkdir(name, 0o700).unwrap();
+        base.open_dir(name).unwrap().create("backup.zip").unwrap();
+    }
+    let old = std::time::SystemTime::now() - TTL * 3;
+    std::fs::File::open(base_path.join(&expired))
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    startup(&b).unwrap();
+    assert!(base.open_dir(&recent).is_ok());
+    assert!(base.open_dir(&expired).is_err());
+    assert!(root_a.open_dir(&token).is_ok());
 }
 
 #[tokio::test]
