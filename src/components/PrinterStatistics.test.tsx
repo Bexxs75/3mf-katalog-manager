@@ -80,11 +80,12 @@ describe('PrinterStatistics', () => {
     expect(screen.queryByText('Per printer')).toBeNull();
   });
 
-  it('says in the web version that no printers are queried', async () => {
+  it('shows no "server does not query printers" note in the web version', async () => {
     vi.stubEnv('VITE_TARGET', 'web');
     vi.mocked(getPrintStatistics).mockResolvedValue(result([]));
     show();
-    expect(await screen.findByText('This server does not query printers; the data from the database is shown.')).toBeInTheDocument();
+    expect(await screen.findByText(/As soon as a printer is connected/)).toBeInTheDocument();
+    expect(screen.queryByText(/does not query printers/)).toBeNull();
   });
 
   it('reports a failed load', async () => {

@@ -558,7 +558,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
         defaultKind={kind}
       />
 
-      {<PrinterJobsDialog
+      <PrinterJobsDialog
         open={jobsOpen && printerLink.jobs.length > 0}
         jobs={printerLink.jobs}
         spools={filamentSpools}
@@ -569,7 +569,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           refresh();
           onCatalogChanged?.();
         }}
-      />}
+      />
     </div>
   );
 }

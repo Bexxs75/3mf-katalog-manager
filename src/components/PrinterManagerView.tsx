@@ -103,7 +103,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
                     <span className="break-words text-caption text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : conn?.address ? <span className="font-code">{conn.address}</span> : t('pmNoConnection')}</span>
                   </span>
                 </span>
-                {<span aria-hidden="true" className={`hidden max-[1023px]:group-data-[collapsed=true]:block absolute right-1 top-1 rounded-full w-2 h-2 ${printerStatusColors[status]}`}><span className="block w-full h-full rounded-full bg-current" /></span>}
+                <span aria-hidden="true" className={`hidden max-[1023px]:group-data-[collapsed=true]:block absolute right-1 top-1 rounded-full w-2 h-2 ${printerStatusColors[status]}`}><span className="block w-full h-full rounded-full bg-current" /></span>
               </button>
             </div>
           </li>;
@@ -175,15 +175,15 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
         <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[var(--ink-2)]">
           <span>{t(printer.kind === 'resin' ? 'spoolKindResin' : 'spoolKindFilament')}</span>
           {connection && printer.kind !== 'resin' && <><span>{t('printerConnectionTypeMoonraker')}</span><span className="font-code text-small">{connection.address}</span></>}
-          {<PrinterStatusBadge status={printerStatus(printer, link.enabled, connection)} />}
+          <PrinterStatusBadge status={printerStatus(printer, link.enabled, connection)} />
         </div>
       </div>
     </>} deleteAction={<button type="button" className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] text-[var(--crit)] max-[639px]:w-full`} disabled={!canEdit || !spoolsReady} onClick={() => setDeleting(true)}>{t('pmDeletePrinter')}</button>} />
-    {<Card title={t('pmConnection')}>
+    <Card title={t('pmConnection')}>
       {printer.kind === 'resin' ? <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmNotLinked')}</b><p>{t('pmResinNoConnection')}</p></div> :
         <PrinterConnectionSection printerId={printer.id} link={link} connection={connection ?? null} />}
       <p className="text-[var(--ink-3)]">{t('pmFutureConnections')}</p>
-    </Card>}
+    </Card>
     <Card title={t('pmUnits')} busy={!spoolsReady} aside={formatCount(t('printersUnitSlotCount'), printer.units.reduce((n, u) => n + u.slotCount, 0))}>
       {spoolsReady && <PrinterUnitsSection printer={printer} spools={spools} actions={state}
         onChanged={() => setRevision(n => n + 1)} onMaterial={() => onMaterial({ printerId: printer.id })} />}
