@@ -39,4 +39,7 @@ ENV KATALOG_BIND=0.0.0.0:8080 \
     KATALOG_AUTH_FILE=/config/web-auth.json
 EXPOSE 8080
 USER 65532:65532
+# No shell or curl in this image: the server binary asks its own /api/health (exit code 0/1).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["/usr/local/bin/katalog-server", "health"]
 ENTRYPOINT ["/usr/local/bin/katalog-server"]

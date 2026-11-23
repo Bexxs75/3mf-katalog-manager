@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Starts the slim web image the way a user would and checks what must hold for every build:
 # web UI served, API closed without login, login works, a catalog read answers with JSON,
-# read-only container filesystem, clean stop. Nothing is published.
+# the image's HEALTHCHECK turns healthy, read-only container filesystem, clean stop. Nothing is published.
 # Usage: docker-web/scripts/ci-smoke.sh IMAGE
 # The empty catalog is created with the cargo example make_smoke_catalog (Rust must be available).
 # Override for machines without a local Rust toolchain: SMOKE_CATALOG_CMD is a shell command
@@ -40,7 +40,7 @@ password=$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
 docker run -d --name "$name" --read-only --tmpfs /tmp --cap-drop ALL \
     --security-opt no-new-privileges:true -u "$(id -u):$(id -g)" \
-    -p "127.0.0.1:$port:8080" \
+    -p "127.0.0.1:$port:8080" --health-interval 2s --health-start-period 1s \
     -v "$work/config":/config -v "$work/models":/models:ro \
     -e KATALOG_PASSWORD="$password" \
     -e KATALOG_ALLOWED_HOSTS="127.0.0.1:$port,localhost:$port" \
@@ -79,6 +79,18 @@ code=$(curl -s -o "$work/tags.json" -w '%{http_code}' -b "$jar" \
 python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); assert isinstance(v,(list,dict)), v' "$work/tags.json" \
     || fail 'list_tag_counts returned no valid JSON'
 ok 'catalog read list_tag_counts answers with valid JSON (200)'
+
+# The HEALTHCHECK of the image (exec-form `katalog-server health`) must report healthy.
+healthy=
+for _ in $(seq 1 30); do
+    status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$name")
+    if [ "$status" = healthy ]; then healthy=1; break; fi
+    sleep 1
+done
+[ -n "$healthy" ] || fail "container health status is '$status' instead of healthy"
+ok 'container health status is healthy'
+docker exec "$name" /usr/local/bin/katalog-server health >/dev/null 2>&1 || fail 'katalog-server health failed inside the container'
+ok 'katalog-server health exits 0 inside the container'
 
 [ "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$name")" = true ] || fail 'container is not read-only'
 start=$(date +%s)

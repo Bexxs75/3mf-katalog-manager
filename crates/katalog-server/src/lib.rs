@@ -1,5 +1,6 @@
 pub mod barrier;
 pub mod config;
+pub mod health;
 pub mod invoke;
 pub mod password;
 mod web;
