@@ -37,6 +37,17 @@ pub fn load_render_meshes(path: &Path) -> ReadResult<Vec<RenderMesh>> {
     load_geometry_with_obj_limit(path, MAX_PREVIEW_TRIANGLES, None)
 }
 
+/// The mesh list like [`load_render_meshes`], for the web: the file must lie below `allowed_roots`
+/// (the resolved path is the one that is opened) and `web_limits` replace the desktop parser budgets.
+pub fn load_render_meshes_with_limits(
+    path: &Path,
+    allowed_roots: Option<&[PathBuf]>,
+    web_limits: Option<crate::import::files::WebImportLimits>,
+) -> ReadResult<Vec<RenderMesh>> {
+    let target = resolve_within_roots(path, allowed_roots)?;
+    load_geometry_with_obj_limit(&target, MAX_PREVIEW_TRIANGLES, web_limits)
+}
+
 /// `web_limits` replaces the desktop 3MF parser budgets (2/3 GiB) with the web ones.
 pub fn get_model_geometry_with_limits(
     path: &Path,

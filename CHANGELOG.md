@@ -18,6 +18,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - In the web interface a file or folder move can be undone again (toast button and Ctrl+Z), like on the desktop.
 - In the web interface the folder list now marks folders that no longer exist on disk (as the desktop app does). The check is bounded, never follows links and skips roots that look unmounted.
 - Uploads in the web interface can now be tar archives (tar, tar.gz, tar.bz2, tar.xz, tar.zst) with the same limits as ZIP and 7z; unsafe entries such as links and paths leaving the folder are skipped. RAR stays a desktop feature.
+- In the web interface "Save as STL" downloads a binary STL of a 3MF or OBJ model (whole model or one plate), made by the same writer as the desktop app.
 
 ### Changed
 
@@ -928,6 +929,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - In der Web-Oberfläche lässt sich das Verschieben von Dateien und Ordnern wieder rückgängig machen (Schaltfläche in der Meldung und Strg+Z), wie am Desktop.
 - In der Web-Oberfläche markiert die Ordnerliste jetzt Ordner, die auf der Festplatte nicht mehr existieren (wie in der Desktop-App). Die Prüfung ist begrenzt, folgt keinen Verknüpfungen und überspringt Wurzeln, die nicht eingehängt wirken.
 - Uploads in der Web-Oberfläche können jetzt tar-Archive sein (tar, tar.gz, tar.bz2, tar.xz, tar.zst) mit denselben Grenzen wie ZIP und 7z; unsichere Einträge wie Verknüpfungen und Pfade aus dem Ordner heraus werden übersprungen. RAR bleibt eine Desktop-Funktion.
+- In der Web-Oberfläche lädt „Als STL speichern“ eine binäre STL-Datei eines 3MF- oder OBJ-Modells herunter (ganzes Modell oder eine Platte), erzeugt mit demselben Schreiber wie in der Desktop-App.
 
 ### Geändert
 

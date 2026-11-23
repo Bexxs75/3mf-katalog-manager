@@ -770,9 +770,19 @@ fn string<'a>(v: &'a Value, key: &str) -> Result<&'a str, Box<Response>> {
         .and_then(Value::as_str)
         .ok_or_else(|| boxed_coded(400, ErrorCode::ReqInvalidArguments, &[]))
 }
+/// `plate=<positive number>` or nothing; any other query is an error.
+fn plate_query(query: Option<&str>) -> Result<Option<u32>, ()> {
+    let Some(query) = query.filter(|q| !q.is_empty()) else { return Ok(None) };
+    let value = query.strip_prefix("plate=").ok_or(())?;
+    if value.is_empty() || value.len() > 6 || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(());
+    }
+    value.parse::<u32>().ok().filter(|n| *n > 0).map(Some).ok_or(())
+}
 async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let now = app.clock.now();
     let path = req.uri().path().to_owned();
+    let uri_query = req.uri().query().map(str::to_owned);
     let method = req.method().clone();
     let command = path.strip_prefix("/api/invoke/").unwrap_or("");
     let restore = path == restore::ROUTE || path == restore_upload::UPLOAD || path.starts_with(restore_upload::DELETE_PREFIX);
@@ -804,6 +814,10 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         .strip_prefix("/api/companions/")
         .and_then(|p| p.strip_suffix("/download"))
         .filter(|id| !id.contains('/'));
+    let stl_id = path
+        .strip_prefix("/api/files/")
+        .and_then(|p| p.strip_suffix("/stl"))
+        .filter(|id| !id.contains('/'));
     // Reserve the complete API namespace, including unknown routes, before SPA fallback.
     if path == "/api" || path.starts_with("/api/") {
         if !matches!(
@@ -813,6 +827,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             && !restore
             && download_id.is_none()
             && companion_id.is_none()
+            && stl_id.is_none()
         {
             return error_coded(404, ErrorCode::WebNotFound, &[]);
         }
@@ -842,7 +857,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         }
         if method!=Method::POST{return error(405,"method")}
     }
-    if download_id.is_some() || companion_id.is_some() || path == "/api/backup/export" {
+    if download_id.is_some() || companion_id.is_some() || stl_id.is_some() || path == "/api/backup/export" {
         if method != Method::GET {
             return error_coded(405, ErrorCode::WebMethodNotAllowed, &[]);
         }
@@ -879,6 +894,14 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 &app.geometry.barrier,
             )
             .await;
+        }
+        if let Some(id) = stl_id {
+            // Only `plate=<number>` is understood; anything else is refused rather than ignored.
+            let plate = match plate_query(uri_query.as_deref()) {
+                Ok(plate) => plate,
+                Err(()) => return error_coded(400, ErrorCode::ReqInvalidArguments, &[]),
+            };
+            return crate::download::stl(&app.geometry, app.config.db_path.clone(), app.config.roots.clone(), id, plate).await;
         }
         let id = download_id.unwrap();
         return crate::download::download(

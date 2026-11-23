@@ -211,6 +211,87 @@ fn serve(
     response
 }
 
+/// Largest STL the web builds in memory: 1M triangles are 50 MB, and up to four converters can run.
+const WEB_STL_MAX_TRIANGLES: u64 = 1_000_000;
+
+fn stl_failure(error: katalog_core::stl::StlWriteError) -> Response {
+    use katalog_core::stl::StlWriteError as E;
+    match error {
+        E::NothingToExport => error_coded(422, ErrorCode::StlNothingToExport, &[]),
+        E::PartOutOfRange { .. } => error_coded(400, ErrorCode::ReqInvalidArguments, &[]),
+        E::TooManyTriangles { count, max } => error_coded(413, ErrorCode::StlTooLarge, &[count.to_string(), max.to_string()]),
+        E::SourceChanged => error_coded(409, ErrorCode::StlSourceChanged, &[]),
+        E::InvalidIndex | E::NonFinite => error_coded(422, ErrorCode::StlSourceUnreadable, &[]),
+        E::TargetIsSource | E::TargetExists | E::Io(_) => error_coded(500, ErrorCode::WebServerInternal, &[]),
+    }
+}
+
+/// "Save as STL" for a 3MF or OBJ of the catalog: the same core writer as the desktop app
+/// (binary STL), built in memory under the parser gate and sent as an attachment. `plate`
+/// limits the result to one plate of a 3MF. STEP is not offered (no CAD kernel in the web build).
+pub async fn stl(gate: &Arc<crate::invoke::GeometryGate>, db_path: PathBuf, roots: Vec<PathBuf>, id: &str, plate: Option<u32>) -> Response {
+    use katalog_core::{db::models::FileType, stl::{self, SourceStamp, StlScope}};
+    let catalog_guard = match gate.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
+    let Ok(numeric_id) = id.parse::<i64>() else {
+        return error_coded(400, ErrorCode::ReqInvalidIds, &[]);
+    };
+    let permits = match gate.acquire().await {
+        Ok(p) => p,
+        Err(e) => return *e,
+    };
+    let result = tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, String), Box<Response>> {
+        // The permits and the barrier guard belong to this closure: cancelling the request does not
+        // release them while the parser is still running.
+        let _held = (permits, catalog_guard);
+        let conn = db::open_read_only(&db_path).map_err(|e| Box::new(download_failure(ReadError::from(e))))?;
+        let file = db::get_file(&conn, numeric_id)
+            .map_err(|e| Box::new(download_failure(ReadError::from(e))))?
+            .ok_or_else(|| Box::new(error_coded(404, ErrorCode::FileNotFound, &[])))?;
+        drop(conn);
+        match file.file_type {
+            FileType::ThreeMf | FileType::Obj => {}
+            FileType::Stl => return Err(Box::new(error_coded(422, ErrorCode::StlSourceIsStl, &[]))),
+            FileType::Stp => return Err(Box::new(error_coded(422, ErrorCode::StlStepUnavailable, &[]))),
+            _ => return Err(Box::new(error_coded(422, ErrorCode::StlSourceUnreadable, &[]))),
+        }
+        let source = PathBuf::from(file.current_path());
+        let stamp = SourceStamp::of(&source).map_err(|e| match e.kind() {
+            io::ErrorKind::NotFound => Box::new(error_coded(404, ErrorCode::FileNotFound, &[])),
+            _ => Box::new(error_coded(422, ErrorCode::StlSourceUnreadable, &[])),
+        })?;
+        let meshes = read::load_render_meshes_with_limits(&source, Some(&roots), Some(katalog_core::import::files::WebImportLimits::default()))
+            .map_err(|e| Box::new(download_failure(e)))?;
+        stamp.ensure_unchanged(&source).map_err(|e| Box::new(stl_failure(e)))?;
+        let selected = stl::select_meshes(&meshes, plate.map_or(StlScope::All, StlScope::Plate)).map_err(|e| Box::new(stl_failure(e)))?;
+        let mut bytes = Vec::new();
+        stl::write_stl_with_limit(&mut bytes, &selected, WEB_STL_MAX_TRIANGLES).map_err(|e| Box::new(stl_failure(e)))?;
+        let stem = std::path::Path::new(&file.name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
+        let name = match plate {
+            Some(number) => format!("{stem}_Platte{number}.stl"),
+            None => format!("{stem}.stl"),
+        };
+        Ok((bytes, name))
+    })
+    .await;
+    match result {
+        Ok(Ok((bytes, name))) => {
+            let length = bytes.len().to_string();
+            let mut response = Body::from(bytes).into_response();
+            for (key, value) in [
+                ("content-type", "application/octet-stream".to_owned()),
+                ("content-length", length),
+                ("content-disposition", disposition(&name)),
+                ("cache-control", "no-store".to_owned()),
+            ] {
+                response.headers_mut().insert(key, value.parse().unwrap());
+            }
+            response
+        }
+        Ok(Err(response)) => *response,
+        Err(_) => error_coded(500, ErrorCode::WebServerInternal, &[]),
+    }
+}
+
 /// One companion file of a model, by its row id. The path comes from the catalog row
 /// only; the strict open (no links, one name, inside a root) is `open_for_web`.
 pub async fn companion(
