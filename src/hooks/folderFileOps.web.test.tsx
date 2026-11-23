@@ -103,7 +103,7 @@ it('offers undo after a web file move and puts the file back with another batch 
 });
 it('offers no undo for a file whose previous folder is unknown', async () => {
   const refresh = vi.fn();
-  const { result } = renderHook(() => useFolderDragAndDrop([makeModelFile({ id: '1', folderId: null })], folders, { refreshFolders: refresh, refreshFiles: refresh }));
+  const { result } = renderHook(() => useFolderDragAndDrop([makeModelFile({ id: '1', folderId: undefined })], folders, { refreshFolders: refresh, refreshFiles: refresh }));
   await dropFile(result, '3');
   expect(calls).toEqual([{ command: 'move_files_to_folder', args: { fileIds: ['1'], folderId: '3' } }]);
   expect(result.current.moveToast?.canUndo).toBe(false);
