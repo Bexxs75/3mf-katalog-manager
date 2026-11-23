@@ -32,4 +32,6 @@ pub(crate) mod fileops_cancel;
 
 mod source_dirs;
 
+mod folder_missing;
+
 mod restore_journal;

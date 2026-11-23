@@ -16,6 +16,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - The web API can upload, inspect and discard catalog backups in private temporary storage. Preview reports include migration needs and path warnings. Checked backups can be applied with a confirmed password, an automatic recovery backup, crash recovery and a controlled server restart. In the browser, Settings → Maintenance → Back up the catalog has "Restore a backup …": choose the ZIP, enter the password, read the check report (migration, path warnings, ignored settings), confirm with the password again and wait for the server to restart; then sign in again. Needs write access. The Spanish and French texts have not been checked by native speakers.
 - The web image now has a health check: `katalog-server health` asks the server's own `/api/health` (exit code 0 or 1), and the Dockerfile `HEALTHCHECK` and the Compose example use it, so `docker ps` shows whether the server is healthy.
 - In the web interface a file or folder move can be undone again (toast button and Ctrl+Z), like on the desktop.
+- In the web interface the folder list now marks folders that no longer exist on disk (as the desktop app does). The check is bounded, never follows links and skips roots that look unmounted.
 
 ### Changed
 
@@ -923,6 +924,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Die Web-API kann Katalogsicherungen in einem privaten Zwischenverzeichnis hochladen, prüfen und verwerfen. Die Vorschau meldet nötige Migrationen und Pfadwarnungen. Geprüfte Sicherungen lassen sich mit erneuter Passwortbestätigung, automatischer Rückfallsicherung, Recovery nach Unterbrechungen und kontrolliertem Serverneustart einspielen. Im Browser gibt es unter Einstellungen → Wartung → Katalog sichern jetzt „Sicherung einspielen …“: ZIP wählen, Passwort eingeben, Prüfbericht lesen (Migration, Pfadwarnungen, nicht übernommene Einstellungen), mit erneutem Passwort bestätigen und auf den Neustart des Servers warten; danach neu anmelden. Braucht Schreibrechte. Die spanischen und französischen Texte wurden nicht von Muttersprachlern geprüft.
 - Das Web-Image hat jetzt einen Healthcheck: `katalog-server health` fragt das eigene `/api/health` ab (Exit-Code 0 oder 1); Dockerfile-`HEALTHCHECK` und Compose-Beispiel nutzen ihn, sodass `docker ps` anzeigt, ob der Server gesund ist.
 - In der Web-Oberfläche lässt sich das Verschieben von Dateien und Ordnern wieder rückgängig machen (Schaltfläche in der Meldung und Strg+Z), wie am Desktop.
+- In der Web-Oberfläche markiert die Ordnerliste jetzt Ordner, die auf der Festplatte nicht mehr existieren (wie in der Desktop-App). Die Prüfung ist begrenzt, folgt keinen Verknüpfungen und überspringt Wurzeln, die nicht eingehängt wirken.
 
 ### Geändert
 

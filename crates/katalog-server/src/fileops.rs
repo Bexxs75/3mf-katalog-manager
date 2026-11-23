@@ -83,10 +83,12 @@ pub(super) async fn list_folders(app: &App) -> Option<Response> {
     let rt = app.fileops.clone().filter(|_| app.config.file_ops)?;
     let catalog_guard = match app.geometry.barrier.reader() { Ok(g) => g, Err(_) => return Some(crate::barrier::maintenance()) };
     let db_path = app.config.db_path.clone();
+    let roots = app.config.roots.clone();
     let result = tokio::task::spawn_blocking(move || {
         let _catalog_guard = catalog_guard;
         let conn = katalog_core::db::open_read_only(&db_path).map_err(|e| e.to_string())?;
         let mut folders = katalog_core::read::list_folders(&conn).map_err(|e| e.to_string())?;
+        crate::folder_missing::annotate(&mut folders, &roots);
         if let Ok(state) = rt.state.try_lock() {
             for folder in &mut folders {
                 folder.move_target = state.ops.context.accepts_moves_into(&folder.path);
