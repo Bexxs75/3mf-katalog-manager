@@ -14,10 +14,10 @@ type Action = 'rename' | 'move' | 'trash' | 'restore' | 'permanent' | 'empty';
 export { webFileNameParts };
 
 /** Web-only actions share one confirmation and never route through desktop handlers. */
-export function WebFileActions({ hideTrigger = false, requestMoveConfirm = false, returnFocus, menuAction, menuLabel, menuClassName, menuShortcut, fileIds = [], names, hiddenCount = 0, name, trash = false, empty = false, onDone, requestTrashConfirm = false, onConfirmationClosed, onTrashRequest }: {
+export function WebFileActions({ hideTrigger = false, requestMoveConfirm = false, returnFocus, menuAction, menuLabel, menuClassName, menuShortcut, fileIds = [], names, hiddenCount = 0, name, trash = false, desktopTrash = false, empty = false, onDone, requestTrashConfirm = false, onConfirmationClosed, onTrashRequest }: {
   hideTrigger?: boolean; requestMoveConfirm?: boolean; returnFocus?: RefObject<HTMLButtonElement | null>;
   menuAction?: 'rename' | 'move' | 'trash'; menuLabel?: ReactNode; menuClassName?: string; menuShortcut?: string;
-  fileIds?: string[]; names?: string[]; hiddenCount?: number; name?: string; trash?: boolean; empty?: boolean; onDone?: () => void; requestTrashConfirm?: boolean; onConfirmationClosed?: () => void;
+  fileIds?: string[]; names?: string[]; hiddenCount?: number; name?: string; trash?: boolean; desktopTrash?: boolean; empty?: boolean; onDone?: () => void; requestTrashConfirm?: boolean; onConfirmationClosed?: () => void;
   /** The caller decides how a trash request goes on (it may ask something first); it answers through `requestTrashConfirm`. */
   onTrashRequest?: () => void;
 }) {
@@ -146,7 +146,7 @@ export function WebFileActions({ hideTrigger = false, requestMoveConfirm = false
     }
     finally { submitting.current = false; cancelRequested.current = false; setCancelling(false); setBusy(false); }
   };
-  const actions: Action[] = menuAction ? [menuAction] : empty ? ['empty'] : trash ? ['restore', 'permanent'] : [...(fileIds.length === 1 && name ? ['rename' as const] : []), 'move', 'trash'];
+  const actions: Action[] = menuAction ? [menuAction] : empty ? ['empty'] : trash ? (desktopTrash ? ['permanent'] : ['restore', 'permanent']) : [...(fileIds.length === 1 && name ? ['rename' as const] : []), 'move', 'trash'];
   // `contents`: the buttons join the caller's (wrapping) action row; the dialog is portalled anyway.
   return <div className="contents">
     {allowed && !hideTrigger && actions.map(value => <button key={value} type="button" className={menuClassName ?? `${catalogActionButton} whitespace-nowrap`} aria-keyshortcuts={menuShortcut} disabled={busy || lockProps.disabled || (!empty && !fileIds.length)} aria-haspopup="dialog" onClick={event => open(value, event.currentTarget)}>{menuLabel ?? labels[value]}</button>)}

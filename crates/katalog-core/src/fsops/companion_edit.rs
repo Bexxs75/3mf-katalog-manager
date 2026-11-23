@@ -322,6 +322,16 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     /// Deletes a removed companion file for good (empty trash). `cutoff` is the
     /// emptying's own cut-off: a file removed later is left alone.
     pub(super) fn purge_loose_companion(&mut self, companion_id: i64, cutoff: Option<chrono::DateTime<chrono::FixedOffset>>) -> Result<()> {
+        self.ready()?;
+        if companion_id <= 0 { return Err(Error::InvalidArguments); }
+        let row = self.db.with_conn(|c| read_companion(c, companion_id))?.ok_or(Error::NotFound)?;
+        if self.desktop_matches(row.trash_path.as_deref(), row.id, true) {
+            let record = self.db.with_conn(|c| crate::db::companions::get_companion(c, companion_id).map_err(|_| Error::Internal))?
+                .ok_or(Error::NotFound)?;
+            validate_stored_fields(&record.name, &record.path, &record.kind).map_err(|_| Error::Inconsistent)?;
+            let model = self.state(row.file_id)?;
+            return self.purge_desktop(model, Some(row.id), cutoff).map(|_| ());
+        }
         let s = self.load_subject(companion_id)?;
         // A trashed model owns its companions; only a live model's removed files are loose.
         if s.row.deleted_at.is_none() || s.model.deleted_at.is_some() {

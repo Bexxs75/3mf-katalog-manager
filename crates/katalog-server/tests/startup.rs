@@ -35,10 +35,9 @@ fn snapshot(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
         .unwrap()
         .map(|e| {
             let path = e.unwrap().path();
-            (
-                path.file_name().unwrap().into(),
-                Sha256::digest(fs::read(path).unwrap()).to_vec(),
-            )
+            // The lock file text (owner, pid, start time) changes on every start by design.
+            let bytes = if path.file_name().is_some_and(|n| n == "catalog.db.lock") { Vec::new() } else { fs::read(&path).unwrap() };
+            (path.file_name().unwrap().into(), Sha256::digest(bytes).to_vec())
         })
         .collect();
     files.sort();
@@ -87,7 +86,7 @@ async fn startup_bootstrap_existing_auth_and_invalid_auth_preserve_catalog() {
     let auth = password::read_auth(&config.auth_file).unwrap();
     assert!(auth.must_change);
     let mut after = snapshot(&dir.0);
-    after.retain(|(name, _)| name != Path::new("web-auth.json"));
+    after.retain(|(name, _)| name != Path::new("web-auth.json") && name != Path::new("catalog.db.lock"));
     assert_eq!(after, before);
     let existing = snapshot(&dir.0);
     config.password = Some(UNUSED_BOOTSTRAP_PASSWORD.into());

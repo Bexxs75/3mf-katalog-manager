@@ -62,7 +62,7 @@ fn entries(dir: &std::path::Path) -> Vec<std::ffi::OsString> {
     let mut names: Vec<_> = std::fs::read_dir(dir)
         .unwrap()
         .map(|e| e.unwrap().file_name())
-        .filter(|n| n != "web-auth.json")
+        .filter(|n| n != "web-auth.json" && n != "catalog.db.lock")
         .collect();
     names.sort();
     names

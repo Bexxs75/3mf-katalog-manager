@@ -159,7 +159,7 @@ fn touches_companions(intent: &Intent) -> bool {
         _ => true,
     }
 }
-fn commit(c: &mut Connection, intent: &Intent) -> Result<()> {
+pub(super) fn commit(c: &mut Connection, intent: &Intent) -> Result<()> {
     if intent.operation.is_companion_edit() {
         return super::companion_edit::commit_companion_edit(c, intent);
     }
@@ -262,7 +262,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         Ok(identity)
     }
-    fn finish(&mut self, intent: &Intent) -> Result<()> {
+    pub(super) fn finish(&mut self, intent: &Intent) -> Result<()> {
         self.journal.phase(&intent.op_id, Phase::Committed)?;
         if self.ledger.detach(&[intent.before.id]).is_err() {
             return Err(self.journal.block(&intent.op_id));
@@ -555,6 +555,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     ) -> Result<DeleteOutcome> {
         let before = self.trashed(id)?;
         self.outcome = CarryOutcome::default();
+        if self.has_desktop_purge(&before)? {
+            return self.purge_desktop(before, None, cutoff);
+        }
         let carry = self.plan_purge(&before)?;
         if let Some(cutoff) = cutoff {
             let deleted = chrono::DateTime::parse_from_rfc3339(
@@ -941,6 +944,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.ready()
     }
     fn recover_one(&mut self, i: &Intent) -> Result<bool> {
+        if i.operation == Operation::PurgeDesktopTrash {
+            return self.recover_desktop_purge(i);
+        }
         if i.operation.is_companion_edit() {
             // The model stays as it is, so nothing is detached from the upload ledger.
             self.recover_companion_edit(i)?;

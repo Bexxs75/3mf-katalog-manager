@@ -94,6 +94,7 @@ export const es: Translations = {
   webFileMore: "… y {n} más",
   webFileCancelling: "Cancelando…",
   webFileCompanions: "incluidos {n} archivos complementarios en la papelera",
+  webDesktopTrashHint: "Esta entrada está en la papelera de escritorio. Restáurala en el escritorio; aquí puedes eliminarla definitivamente.",
   webFileDesktopEntries: "{n} entradas de la papelera del escritorio no se pueden eliminar definitivamente aquí; hágalo en el escritorio.",
   webFileMoveBlocked: "protegida",
   webFileMoveBlockedHint: "Las carpetas protegidas (zona de subida, papelera) no sirven como destino.",

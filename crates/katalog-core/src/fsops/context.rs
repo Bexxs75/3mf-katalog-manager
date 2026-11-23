@@ -53,6 +53,7 @@ struct Protected {
 /// Construct once at startup (B), before accepting requests. Handles remain pinned.
 /// Only canonical startup paths are accepted; database paths are never canonicalized.
 pub struct FsContext {
+    pub desktop_trash: Option<DesktopTrashPurge>,
     pub roots: Vec<Root>,
     protected: Vec<Protected>,
 }
@@ -157,6 +158,7 @@ impl FsContext {
             });
         }
         Ok(Self {
+            desktop_trash: None,
             roots: result,
             protected: protections,
         })

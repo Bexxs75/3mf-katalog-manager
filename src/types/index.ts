@@ -158,6 +158,7 @@ export interface ModelFile {
   sourceProfileId: string | null;
   queuePosition: number | null;
   favorite: boolean;
+  desktopTrash?: boolean;
   deletedAt: string | null;
   /**
    * Set while this record only carries the list summary (fields such as

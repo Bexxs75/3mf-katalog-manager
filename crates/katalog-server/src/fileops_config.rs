@@ -92,7 +92,21 @@ pub(crate) fn context(config: &Config) -> Result<FsContext, String> {
     if roots.is_empty() {
         return Err("Keine Dateiwurzeln konfiguriert".into());
     }
-    let context = FsContext::new(&roots, &protected)
+    let mut context = FsContext::new(&roots, &protected)
+        .map_err(|e| format!("Dateiverwaltung: Startprüfung {e}"))?;
+    let desktop_trash = parent(&config.db_path).canonicalize()
+        .map_err(|_| "Schutzverzeichnis nicht zugänglich")?.join("trash");
+    // An operator may place auth elsewhere; that location must never become trash authority.
+    for file in [&config.auth_file, &config.db_path] {
+        let configured_parent = parent(file).canonicalize()
+            .map_err(|_| "Schutzverzeichnis nicht zugänglich")?;
+        if configured_parent.starts_with(&desktop_trash)
+            || file.canonicalize().is_ok_and(|p| p.starts_with(&desktop_trash))
+        {
+            return Err(format!("Dateiverwaltung: Startprüfung {}", katalog_core::fsops::Error::Protected));
+        }
+    }
+    context.desktop_trash = katalog_core::fsops::DesktopTrashPurge::open(parent(&config.db_path))
         .map_err(|e| format!("Dateiverwaltung: Startprüfung {e}"))?;
     for root in &context.roots {
         let id = crate::upload_store::random_id().map_err(|_| "Schreibprobe fehlgeschlagen")?;
@@ -363,4 +377,15 @@ mod tests {
             b"model"
         );
     }
+    #[test]
+    fn auth_directory_cannot_be_desktop_trash() {
+        let mut f = Fixture::new();
+        let trash = f.path.join("data/trash");
+        std::fs::create_dir(&trash).unwrap();
+        f.config.auth_file = trash.join("1-auth.json");
+        std::fs::write(&f.config.auth_file, b"control").unwrap();
+        assert!(context(&f.config).is_err());
+        assert_eq!(std::fs::read(&f.config.auth_file).unwrap(), b"control");
+    }
+
 }

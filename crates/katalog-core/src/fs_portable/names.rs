@@ -77,6 +77,15 @@ fn trash_entry_name(label: &str, op: &str, disk: &str) -> Result<String> {
     Ok(name)
 }
 
+/// Desktop trash names contain a row id followed by one nonempty filename.
+pub fn desktop_trash_name_matches(name: &str, id: i64, companion: bool) -> bool {
+    let prefix = if companion { format!("companion-{id}-") } else { format!("{id}-") };
+    id > 0 && name.strip_prefix(&prefix).is_some_and(|tail| {
+        !tail.is_empty() && tail != "." && tail != ".."
+            && !tail.contains(['/', '\\', '\0'])
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

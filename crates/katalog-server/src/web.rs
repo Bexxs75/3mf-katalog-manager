@@ -343,8 +343,7 @@ fn event(kind: &str, client: &str, now: u64) {
 pub async fn initialize(mut config: Config) -> Result<Router, String> {
     crate::config::validate_upload_config(&mut config)?;
     validate_write_config(&config)?;
-    let instance_lock = katalog_core::db::instance_lock::InstanceLock::from_env(&config.db_path, "server").map_err(|e| e.to_string())?;
-    let writer = open_catalog(&config).await?;
+    let (instance_lock, writer) = open_locked(&config).await?;
     let auth = if config.allow_no_auth {
         eprintln!("WARNUNG: Anmeldung und CSRF sind ausgeschaltet (nur Loopback)!");
         None
@@ -385,12 +384,22 @@ async fn open_catalog(config: &Config) -> Result<Option<WriteGate>, String> {
     }).await.map_err(|_| "Katalogprüfung fehlgeschlagen".to_string())?
       .map_err(|e| if write { format!("Katalog kann nicht schreibend geöffnet werden: {e}") } else { format!("Katalog kann nicht nur lesend geöffnet werden: {e}") })
 }
+/// Takes the catalog lock before the catalog is opened for writing. A file that cannot even
+/// be opened read-only is rejected by `open_catalog` without leaving a lock file behind.
+async fn open_locked(config: &Config) -> Result<(Option<katalog_core::db::instance_lock::InstanceLock>, Option<WriteGate>), String> {
+    use katalog_core::db::instance_lock::InstanceLock;
+    let path = config.db_path.clone();
+    let openable = tokio::task::spawn_blocking(move || katalog_core::db::open_read_only(&path).is_ok()).await.unwrap_or(false);
+    let early = if openable { InstanceLock::from_env(&config.db_path, "server").map_err(|e| e.to_string())? } else { None };
+    let writer = open_catalog(config).await?;
+    let lock = if openable { early } else { InstanceLock::from_env(&config.db_path, "server").map_err(|e| e.to_string())? };
+    Ok((lock, writer))
+}
 pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
     crate::config::validate_upload_config(&mut config.config)?;
     validate_write_config(&config.config)?;
     if config.config.write && config.auth.is_none() { return Err("Anmeldung fehlt".into()); }
-    let instance_lock = katalog_core::db::instance_lock::InstanceLock::from_env(&config.config.db_path, "server").map_err(|e| e.to_string())?;
-    let writer = open_catalog(&config.config).await?;
+    let (instance_lock, writer) = open_locked(&config.config).await?;
     build_app_with_writer(config, writer, instance_lock)
 }
 fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_lock: Option<katalog_core::db::instance_lock::InstanceLock>) -> Result<Router,String> {

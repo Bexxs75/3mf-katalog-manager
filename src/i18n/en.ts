@@ -94,6 +94,7 @@ export const en: Translations = {
   webFileMore: "… and {n} more",
   webFileCancelling: "Cancelling…",
   webFileCompanions: "including {n} companion files in the trash",
+  webDesktopTrashHint: "This entry is in the desktop trash. Restore it on the desktop; you can delete it permanently here.",
   webFileDesktopEntries: "{n} entries from the desktop trash cannot be deleted permanently here; please do this on the desktop.",
   webFileMoveBlocked: "protected",
   webFileMoveBlockedHint: "Protected folders (upload area, trash) are not available as a destination.",

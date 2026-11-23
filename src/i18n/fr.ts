@@ -94,6 +94,7 @@ export const fr: Translations = {
   webFileMore: "… et {n} autres",
   webFileCancelling: "Annulation…",
   webFileCompanions: "dont {n} fichiers associés dans la corbeille",
+  webDesktopTrashHint: "Cette entrée se trouve dans la corbeille du bureau. Restaurez-la sur le bureau ; vous pouvez la supprimer définitivement ici.",
   webFileDesktopEntries: "{n} entrées de la corbeille du bureau ne peuvent pas être supprimées définitivement ici ; faites-le sur le bureau.",
   webFileMoveBlocked: "protégé",
   webFileMoveBlockedHint: "Les dossiers protégés (zone de dépôt, corbeille) ne sont pas disponibles comme destination.",

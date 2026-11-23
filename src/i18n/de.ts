@@ -94,6 +94,7 @@ export const de: Translations = {
   webFileMore: "… und {n} weitere",
   webFileCancelling: "Wird abgebrochen…",
   webFileCompanions: "davon {n} Begleitdateien im Papierkorb",
+  webDesktopTrashHint: "Dieser Eintrag liegt im Desktop-Papierkorb. Wiederherstellen ist nur am Desktop möglich; endgültig löschen kannst du ihn hier.",
   webFileDesktopEntries: "{n} Einträge aus dem Desktop-Papierkorb können hier nicht endgültig gelöscht werden; bitte am Desktop erledigen.",
   webFileMoveBlocked: "geschützt",
   webFileMoveBlockedHint: "Geschützte Ordner (Upload-Bereich, Papierkorb) gelten nicht als Ziel.",

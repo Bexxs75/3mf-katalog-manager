@@ -467,7 +467,21 @@ pub async fn invoke(
             "list_collection_files" => {
                 encode(read::list_collection_files(&conn, file_id.unwrap())?)
             }
-            "list_trash" => encode(read::list_trash(&conn)?),
+            "list_trash" => {
+                let mut value = serde_json::to_value(read::list_trash(&conn)?).map_err(|_| ReadError::coded(ErrorCode::WebServerInternal))?;
+                let desktop_ids = katalog_core::fsops::desktop_trash_ids(&conn)
+                    .map_err(|_| ReadError::coded(ErrorCode::WebServerInternal))?;
+                if let Some(items) = value.as_array_mut() {
+                    for item in items {
+                        if let Some(id) = item["id"].as_str().and_then(|id| id.parse::<i64>().ok()) {
+                            if desktop_ids.contains(&id) {
+                                item["desktopTrash"] = serde_json::Value::Bool(true);
+                            }
+                        }
+                    }
+                }
+                encode(value)
+            },
             "empty_trash_summary" => encode(trash_summary(&conn, &roots)?),
             "folder_removal_summary" => {
                 match folder_summary(&conn, file_id.unwrap().parse().unwrap())? {

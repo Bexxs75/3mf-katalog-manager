@@ -12,22 +12,56 @@ use std::path::{Path, PathBuf};
 pub struct TrashEntry {
     pub id: i64,
     pub deleted_at: String,
-    /// A companion row would be stranded by a permanent delete (it sits in the desktop's
-    /// trash or is still active), so the entry is left for the desktop.
+    /// A companion row would be stranded by a permanent delete, so the entry is blocked.
     pub blocked: bool,
-    /// Bytes of the model plus its companion files in the web trash.
+    /// Bytes of the model plus its companion files in supported trash locations.
     pub bytes: u64,
-    /// Companion files in the web trash that go with the model.
+    /// Companion files in supported trash locations that go with the model.
     pub companions: usize,
 }
 
 /// Where a companion's `trash_path` points, judged like the delete itself judges it
 /// (right root, right name, plain file on the root's device) but without file handles.
 enum Place {
+    DesktopTrash,
     Present,
     Gone,
     Unsafe,
     Outside,
+}
+
+/// The database location is authoritative, never a path supplied by a row.
+pub fn is_desktop_trash(c: &Connection, path: &str, id: i64, companion: bool) -> bool {
+    let Some(base) = c.path().filter(|p| !p.is_empty()).and_then(|p| Path::new(p).parent()) else { return false };
+    let Ok(base) = std::fs::canonicalize(base) else { return false };
+    if NativePath::parse(path, Style::Posix).is_err() { return false; }
+    let p = Path::new(path);
+    p.parent() == Some(base.join("trash").as_path())
+        && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| desktop_trash_name_matches(n, id, companion))
+        && std::fs::symlink_metadata(base.join("trash")).is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink())
+}
+
+/// Desktop entries remain visible even though their original root may be unavailable.
+pub fn desktop_trash_ids(c: &Connection) -> Result<std::collections::HashSet<i64>> {
+    let mut stmt = c.prepare("SELECT id,trash_path FROM files WHERE deleted_at IS NOT NULL AND trash_path IS NOT NULL")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+    let mut ids = std::collections::HashSet::new();
+    for row in rows {
+        let (id, path) = row?;
+        if is_desktop_trash(c, &path, id, false) { ids.insert(id); }
+    }
+    Ok(ids)
+}
+
+fn desktop_place(c: &Connection, path: &str, id: i64) -> Option<Place> {
+    use std::os::unix::fs::MetadataExt;
+    if !is_desktop_trash(c, path, id, true) { return None; }
+    let dev = Path::new(path).parent().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.dev());
+    Some(match std::fs::symlink_metadata(path) {
+        Ok(m) if m.is_file() && m.nlink() == 1 && Some(m.dev()) == dev => Place::DesktopTrash,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Place::Gone,
+        _ => Place::Unsafe,
+    })
 }
 
 fn place(root: &Path, path: &str, row_id: i64) -> Place {
@@ -74,12 +108,12 @@ pub fn web_restorable(roots: &[PathBuf], model_path: &str, row_id: i64, trash_pa
 pub struct LooseCompanion {
     pub id: i64,
     pub deleted_at: String,
-    /// Bytes of the file when it sits in this root's web trash, else 0.
+    /// Bytes of the file when it sits in a supported trash location, else 0.
     pub bytes: u64,
 }
 
 /// Removed companion files of live models whose trash file is ours (or already gone).
-/// A row in the desktop's trash or under a foreign name is left to the desktop.
+/// Foreign names and unsafe files are excluded.
 pub fn loose_companions(c: &Connection, roots: &[PathBuf]) -> Result<Vec<LooseCompanion>> {
     let mut stmt = c.prepare(
         "SELECT c.id,c.deleted_at,c.trash_path,c.size_bytes,f.path,c.name,c.path,c.kind FROM companion_files c
@@ -106,17 +140,17 @@ pub fn loose_companions(c: &Connection, roots: &[PathBuf]) -> Result<Vec<LooseCo
         {
             continue;
         }
-        let Some(root) = roots
+        let root = roots
             .iter()
             .filter(|r| Path::new(&model_path).starts_with(r))
-            .max_by_key(|r| r.components().count())
-        else {
+            .max_by_key(|r| r.components().count());
+        if root.is_none() && !trash_path.as_deref().is_some_and(|p| is_desktop_trash(c, p, id, true)) {
             continue;
-        };
+        }
         let bytes = match trash_path {
             None => 0,
-            Some(p) => match place(root, &p, id) {
-                Place::Present => size.unwrap_or(0).max(0) as u64,
+            Some(p) => match desktop_place(c, &p, id).unwrap_or_else(|| root.map_or(Place::Outside, |root| place(root, &p, id))) {
+                Place::Present | Place::DesktopTrash => size.unwrap_or(0).max(0) as u64,
                 Place::Gone => 0,
                 Place::Unsafe | Place::Outside => continue,
             },
@@ -156,11 +190,12 @@ pub fn trash_entries(c: &Connection, roots: &[PathBuf]) -> Result<Vec<TrashEntry
             .iter()
             .filter(|r| Path::new(&model_path).starts_with(r))
             .max_by_key(|r| r.components().count());
-        match root.map_or(Place::Outside, |root| place(root, &p, id)) {
-            Place::Present => {
+        match desktop_place(c, &p, id).unwrap_or_else(|| root.map_or(Place::Outside, |root| place(root, &p, id))) {
+            Place::Present | Place::DesktopTrash => {
                 entry.1 += 1;
                 entry.2 = entry.2.saturating_add(size.unwrap_or(0).max(0) as u64);
             }
+            Place::Unsafe if is_desktop_trash(c, &p, id, true) => entry.0 = true,
             Place::Gone | Place::Unsafe => (),
             Place::Outside => entry.0 = true,
         }

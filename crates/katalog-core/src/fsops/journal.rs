@@ -33,6 +33,8 @@ pub enum Operation {
     CompanionPurge,
     /// A new companion file is written next to a model; the model stays.
     CompanionAdd,
+    /// Unlink desktop trash entries using the separate, pinned capability.
+    PurgeDesktopTrash,
 }
 impl Operation {
     /// Operations of format version 3: they act on a single companion, not on a model.
@@ -160,10 +162,10 @@ impl Intent {
 }
 /// Format 1 predates companion data. Entries with companion data are written as
 /// version 2 so an older binary refuses the file instead of ignoring the new fields.
-/// Version 3 is only written while an entry acts on a single companion file; an older
-/// binary then stops with `RestartRequired` instead of meeting an unknown operation.
+/// Single-companion edits and desktop purges use the extensible third format.
+/// Unknown operation variants fail closed when an older binary reads the document.
 fn document_version(intents: &[Intent], folders: &[FolderIntent]) -> u32 {
-    if intents.iter().any(|i| i.operation.is_companion_edit()) {
+    if intents.iter().any(|i| i.operation.is_companion_edit() || i.operation == Operation::PurgeDesktopTrash) {
         3
     } else if intents.iter().any(Intent::has_companion_data) || folders.iter().any(FolderIntent::has_companion_data) {
         2
@@ -221,7 +223,7 @@ impl Journal {
                 let doc: Document =
                     serde_json::from_reader(file).map_err(|_| Error::RestartRequired)?;
                 // A file never carries data of a newer format than its version says, and a
-                // version-3 file exists only while it holds a single-companion entry.
+                // third-format file exists only while it holds an operation requiring it.
                 let needed = document_version(&doc.intents, &doc.folders);
                 if !matches!(doc.version, 1..=3)
                     || (doc.version == 1 && needed != 1)

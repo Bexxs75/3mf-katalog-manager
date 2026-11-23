@@ -99,6 +99,7 @@ export interface Translations {
   webFileMore: string;
   webFileCancelling: string;
   webFileCompanions: string;
+  webDesktopTrashHint: string;
   webFileDesktopEntries: string;
   webFileMoveBlocked: string;
   webFileMoveBlockedHint: string;

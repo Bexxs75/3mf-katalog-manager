@@ -174,8 +174,11 @@ export function DetailPanel({
               {t('trashExpiryHint').replace('{date}', formatDate(expiryDate.toISOString(), language))}
             </p>
           )}
+          {import.meta.env.VITE_TARGET === 'web' && model.desktopTrash && (
+            <p className="text-caption text-[var(--ink-3)]">{t('webDesktopTrashHint')}</p>
+          )}
           <div className="flex gap-2">
-            <WebFileActions key={model.id} fileIds={[model.id]} name={model.name} trash />
+            <WebFileActions key={model.id} fileIds={[model.id]} name={model.name} trash desktopTrash={model.desktopTrash} />
             <>{!isReadOnly() && <button {...lockProps}
               onClick={onRestore}
               className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
