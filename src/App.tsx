@@ -240,10 +240,10 @@ export default function App() {
   }, []);
   // A request that was served must not move the panel again when it is opened the next time.
   useEffect(() => { if (!settingsOpen) setSettingsRequest(null); }, [settingsOpen]);
-  // Source folders, start sync, companions, date rename, move history and the Linux menu have no web server command.
+  // Start sync, companions, date rename, move history and the Linux menu have no web server command.
   const web = import.meta.env.VITE_TARGET === 'web';
   const sourceCheck = useSourceFolderCheck({
-    ready: !web && !store.initialLoading,
+    ready: !store.initialLoading,
     jobActive: fileImport.jobActive,
     // Without a source folder the check has nothing to do; show where to add one.
     onNoFolders: () => openSettingsAt('sourceFolders'),
@@ -639,6 +639,7 @@ export default function App() {
   const renderSettingsPanel = (overlay: boolean) => (
     <SettingsPanel
       onOpenWhatsNew={whatsNew.reopen}
+      onCheckSourceFolders={() => void sourceCheck.check()}
       overlay={overlay}
       onClose={closeSettings}
       onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}

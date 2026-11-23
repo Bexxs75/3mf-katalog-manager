@@ -7,6 +7,7 @@ import { displayName } from '../lib/displayName';
 import { formatBytes } from '../i18n/format';
 import { CatalogActionDialog, catalogActionBase, catalogActionButton } from './CatalogActionDialog';
 import type { SourceScan } from '../types';
+import { WEB_SOURCE_IMPORT_ENABLED } from '../lib/api/sourceImport';
 
 const primary = `${catalogActionBase} border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]`;
 const focusRing = 'focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
@@ -24,6 +25,9 @@ interface Props {
   /** Looks at the folders again after files were declined. */
   onRescan: () => Promise<unknown>;
 }
+
+// In the web build the move into the catalog only exists once the server offers it; declining works already.
+const canImport = import.meta.env.VITE_TARGET !== 'web' || WEB_SOURCE_IMPORT_ENABLED;
 
 export function SourceFilesDialog({ scans, onClose, onImport, onReject, onRescan }: Props) {
   const t = useT();
@@ -118,11 +122,11 @@ export function SourceFilesDialog({ scans, onClose, onImport, onReject, onRescan
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" className={`${catalogActionButton} ${focusRing}`} disabled={busy || chosen.length === 0} onClick={() => void reject()}>{t('sfReject')}</button>
         <button type="button" className={`${catalogActionButton} ${focusRing}`} disabled={busy} onClick={onClose}>{t('sfLater')}</button>
-        <button type="button" className={`${primary} ${focusRing}`} disabled={busy || chosen.length === 0 || jobActive} title={jobActive ? t('importLockedHint') : undefined} onClick={() => void move()}>
+        {canImport && <button type="button" className={`${primary} ${focusRing}`} disabled={busy || chosen.length === 0 || jobActive} title={jobActive ? t('importLockedHint') : undefined} onClick={() => void move()}>
           {busy ? t('sfWorking') : count(t('sfMove'), chosen.length)}
-        </button>
+        </button>}
       </div>
-      <p className="rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{t('sfDialogHint')}</p>
+      {canImport && <p className="rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{t('sfDialogHint')}</p>}
     </CatalogActionDialog>
   );
 }

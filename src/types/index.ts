@@ -744,6 +744,32 @@ export interface SourceFolder {
   addedAt: string;
   /** The folder exists and still is the folder that was added. */
   reachable: boolean;
+  /** Web only: the configured server root and the path below it; null when the folder lies outside every root. */
+  rootIdx?: number | null;
+  rel?: string | null;
+}
+
+/** A source root the web server offers for browsing. */
+export interface SourceDirRoot { rootIdx: number; name: string }
+
+/** One child of a browsed server folder: a subfolder or a supported model file. */
+export interface SourceDirEntry {
+  /** Path below the root, `/`-separated. */
+  rel: string;
+  name: string;
+  directory: boolean;
+  /** Supported model files in the entry, subfolders included; a lower bound when `truncated`. */
+  fileCount: number;
+  truncated: boolean;
+}
+
+export interface SourceDirListing {
+  roots: SourceDirRoot[];
+  rootIdx?: number;
+  rel?: string;
+  entries: SourceDirEntry[];
+  /** The server stopped looking at its entry limit. */
+  truncated: boolean;
 }
 
 export interface SourceFile {

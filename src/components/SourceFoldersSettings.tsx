@@ -1,7 +1,7 @@
 import { SettingRow } from './SettingsTools';
 import { SETTING_DEFAULTS } from '../lib/settingsSession';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useT } from '../i18n/LanguageContext';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { toAppError, type AppError } from '../lib/errors';
@@ -10,12 +10,21 @@ import { pickFolderPath } from '../lib/api/importExport';
 import * as api from '../lib/api/sourceFolders';
 import type { SourceFolder } from '../types';
 import { ToggleSwitch } from './ToggleSwitch';
+import { ServerFolderPicker } from './ServerFolderPicker';
+import { useCanEditMetadata } from '../lib/webSession';
+import { WEB_SOURCE_IMPORT_ENABLED, importServerFolder } from '../lib/api/sourceImport';
 
 const button = 'px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer disabled:opacity-50 disabled:cursor-default hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
 /** Settings section: remembered folders that are checked for new model files. */
-export function SourceFoldersSettings() {
+export function SourceFoldersSettings({ onCheck }: { /** Web: starts the check for new files; the desktop has it in the import menu. */ onCheck?: () => void } = {}) {
   const t = useT();
+  const count = useFormatCount();
+  const web = import.meta.env.VITE_TARGET === 'web';
+  // A read-only web session may look at the list but every change would be refused by the server.
+  const canEdit = useCanEditMetadata();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [resetNote, setResetNote] = useState<number | null>(null);
   const { jobActive, lockProps } = useImportLock();
   const [loaded, setLoaded] = useState(false);
   const [folders, setFolders] = useState<SourceFolder[]>([]);
@@ -34,10 +43,11 @@ export function SourceFoldersSettings() {
   }, [busy]);
 
   const load = useCallback(async () => {
-    const [list, start, count] = await Promise.all([api.listSourceFolders(), api.getSourceCheckOnStart(), api.listRejectedCount()]);
+    // The server has no count of declined files; the web list simply omits it.
+    const [list, start, declined] = await Promise.all([api.listSourceFolders(), api.getSourceCheckOnStart(), web ? Promise.resolve(0) : api.listRejectedCount()]);
     if (!mounted.current) return;
-    setLoaded(true); setFolders(Array.isArray(list) ? list : []); setCheckOnStart(start === true); setRejected(count);
-  }, []);
+    setLoaded(true); setFolders(Array.isArray(list) ? list : []); setCheckOnStart(start === true); setRejected(declined);
+  }, [web]);
   useEffect(() => { load().catch(e => { if (mounted.current) setError(toAppError(e)); }); }, [load]);
 
   // One place for the busy flag and error handling; the backend text is shown as is.
@@ -64,13 +74,15 @@ export function SourceFoldersSettings() {
   });
   // The reset button turns disabled at zero; keep focus on a control that stays usable.
   const reset = () => run(async () => {
-    await api.resetRejectedSourceFiles();
+    const cleared = await api.resetRejectedSourceFiles();
+    if (web) setResetNote(cleared);
     await load();
   }, true);
 
   return (
     <div>
-      <p className="text-small text-[var(--ink-2)] mb-2">{t('sfDescription')}</p>
+      <p className="text-small text-[var(--ink-2)] mb-2">{t(web ? 'sfpDescription' : 'sfDescription')}</p>
+      {web && !canEdit && <p className="text-small text-[var(--ink-2)] mb-2">{t('webReadOnly')}</p>}
       {folders.length === 0
         ? <p className="text-small text-[var(--ink-2)] mb-2">{t('sfNone')}</p>
         : <ul className="mb-2">{folders.map(folder => (
@@ -79,27 +91,35 @@ export function SourceFoldersSettings() {
               {displayName(folder.path)}
               {!folder.reachable && <span className="ml-2 font-sans text-[var(--crit)]">({t('sfUnreachable')})</span>}
             </span>
-            <button type="button" className={`${button} shrink-0`} disabled={busy || jobActive} {...lockProps}
+            <button type="button" className={`${button} shrink-0`} disabled={busy || jobActive || (web && !canEdit)} {...lockProps}
               aria-label={t('sfRemoveLabel').replace('{path}', displayName(folder.path))} onClick={() => void remove(folder)}>
               {t('sfRemove')}
             </button>
           </li>))}</ul>}
-      <button ref={addRef} type="button" className={button} disabled={busy || jobActive} {...lockProps} onClick={() => void add()}>{t('sfAdd')}</button>
+      <div className="flex flex-wrap gap-2">
+        <button ref={addRef} type="button" className={button} disabled={busy || jobActive || (web && !canEdit)} {...lockProps}
+          {...(web && !canEdit ? { title: t('webReadOnly') } : {})} onClick={() => web ? setPickerOpen(true) : void add()}>{t(web ? 'sfpOpen' : 'sfAdd')}</button>
+        {web && onCheck && <button type="button" className={button} disabled={busy || jobActive} {...lockProps} onClick={onCheck}>{t('sfpCheckNow')}</button>}
+      </div>
+      {pickerOpen && <ServerFolderPicker returnFocus={addRef} onClose={() => setPickerOpen(false)}
+        onRemember={async (rootIdx, rel) => { await api.addServerSourceFolder(rootIdx, rel); await load(); }}
+        onImport={WEB_SOURCE_IMPORT_ENABLED ? async (rootIdx, rel) => { await importServerFolder(rootIdx, rel); } : undefined} />}
       {jobActive && <p className="mt-1 text-small text-[var(--ink-2)]">{t('sfLockedNote')}</p>}
-      <SettingRow id="sourceCheck" value={loaded ? checkOnStart : undefined} label={t('sfCheckOnStart')} onReset={() => changeCheckOnStart(SETTING_DEFAULTS.sourceCheck)} disabled={!loaded || busy || jobActive}>
+      <SettingRow id="sourceCheck" value={loaded ? checkOnStart : undefined} label={t('sfCheckOnStart')} onReset={() => changeCheckOnStart(SETTING_DEFAULTS.sourceCheck)} disabled={!loaded || busy || jobActive || (web && !canEdit)}>
         <div className="flex items-center justify-between gap-2 mt-3 text-small">
           <span className="font-semibold">{t('sfCheckOnStart')}</span>
-          <ToggleSwitch checked={checkOnStart} label={t('sfCheckOnStart')} busy={busy} aria-describedby="source-check-start-hint"
+          <ToggleSwitch checked={checkOnStart} label={t('sfCheckOnStart')} busy={busy || (web && !canEdit)} aria-describedby="source-check-start-hint"
             onChange={enabled => void changeCheckOnStart(enabled)} />
         </div>
         <p id="source-check-start-hint" className="mt-1 text-small text-[var(--ink-2)]">{t('sfCheckOnStartHint')}</p>
 
       </SettingRow>
       <div className="flex flex-wrap min-w-0 items-center gap-2 mt-3 text-small">
-        <span id="source-rejected-count" className="flex-auto min-w-0 whitespace-nowrap">{t('sfRejected').replace('{count}', String(rejected))}</span>
-        <button type="button" className={`${button} min-w-0 [overflow-wrap:anywhere]`} disabled={busy || jobActive || rejected === 0} aria-describedby="source-rejected-count source-rejected-note" {...lockProps} onClick={() => void reset()}>{t('sfResetRejected')}</button>
+        {!web && <span id="source-rejected-count" className="flex-auto min-w-0 whitespace-nowrap">{t('sfRejected').replace('{count}', String(rejected))}</span>}
+        <button type="button" className={`${button} min-w-0 [overflow-wrap:anywhere]`} disabled={busy || jobActive || (web ? !canEdit : rejected === 0)} aria-describedby="source-rejected-count source-rejected-note" {...lockProps} onClick={() => void reset()}>{t('sfResetRejected')}</button>
       </div>
       <p id="source-rejected-note" className="mt-1 text-small text-[var(--ink-2)]">{t('sfResetRejectedNote')}</p>
+      <p role="status" className="mt-1 text-small text-[var(--ink-2)] empty:hidden">{resetNote !== null && count(t('sfpResetDone'), resetNote)}</p>
       <p className="mt-2 rounded bg-[var(--panel-2)] px-2.5 py-1.5 text-small text-[var(--ink-2)]">{t('sfRules')}</p>
       {error && <p role="alert" className="mt-2 text-small text-[var(--crit)] whitespace-pre-wrap [overflow-wrap:anywhere]"><ErrorText error={error} /></p>}
     </div>
