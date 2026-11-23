@@ -49,6 +49,7 @@ impl Fixture {
         };
         let session = new_session(&mut data, "test", 100).unwrap();
         let app = Arc::new(App {
+            restore: restore_upload::Runtime::default(),
             _instance_lock: None,
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
@@ -140,11 +141,17 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
     };
     let before = names();
     assert_eq!(WRITE_COMMANDS.len(), 66);
-    assert_eq!(crate::write::ROUTE_WRITES, &["add_companion"]);
+    assert_eq!(crate::write::ROUTE_WRITES, &["add_companion", "backup_upload", "backup_discard"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
     assert_eq!(crate::READ_COMMANDS.len(), 34);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
+    }
+    for (method, path) in [(Method::POST, "/api/backup/upload"), (Method::DELETE, "/api/backup/staging/unknown")] {
+        let mut req = f.request("", Body::empty(), Some(&f.session), Some("http://localhost:8080"), true);
+        *req.method_mut() = method;
+        *req.uri_mut() = path.parse().unwrap();
+        assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), 404, "{path}");
     }
     assert_eq!(
         Sha256::digest(std::fs::read(&f.app.config.db_path).unwrap()),

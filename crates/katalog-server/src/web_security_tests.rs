@@ -23,6 +23,7 @@ async fn cancelled_login_counts_failure_change_admission_and_logout_recheck() {
         updated_at: 100,
     };
     let app = Arc::new(App {
+            restore: restore_upload::Runtime::default(),
             _instance_lock: None,
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
@@ -132,6 +133,7 @@ fn global_limit_reserves_inflight_attempts_but_existing_sessions_remain_availabl
 
 async fn test_app() -> Arc<App> {
     Arc::new(App {
+            restore: restore_upload::Runtime::default(),
             _instance_lock: None,
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),

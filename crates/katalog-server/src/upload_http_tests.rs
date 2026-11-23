@@ -66,6 +66,7 @@ impl Fixture {
         };
         let session = new_session(&mut data, "test", 100).unwrap();
         let app = Arc::new(App {
+            restore: restore_upload::Runtime::default(),
             _instance_lock: None,
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),

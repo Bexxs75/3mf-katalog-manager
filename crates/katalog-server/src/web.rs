@@ -1,5 +1,7 @@
 #[path = "fileops.rs"]
 mod fileops;
+#[path = "restore_upload.rs"]
+pub mod restore_upload;
 #[path = "uploads.rs"]
 mod uploads;
 #[cfg(test)]
@@ -287,6 +289,7 @@ struct Data {
     revision: u64,
 }
 struct App {
+    restore: restore_upload::Runtime,
     fileops: Option<Arc<fileops::Runtime>>,
     fileops_safety: Mutex<crate::fileops_safety::FileOpsSafety>,
     uploads: Option<Arc<uploads::Runtime>>,
@@ -404,6 +407,7 @@ pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
 }
 fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_lock: Option<katalog_core::db::instance_lock::InstanceLock>) -> Result<Router,String> {
     let uploads = uploads::initialize(&config.config)?;
+    restore_upload::initialize(&config.config).map_err(|e| format!("restore staging: {e}"))?;
     crate::export::sweep_stale(&config.config.db_path);
     let fileops = if let Some(writer) = &writer {
         crate::fileops_startup::prepare(&config.config, writer.conn.clone(), uploads.as_ref().map(|r| r.store.clone()))?.map(|ops| Arc::new(fileops::Runtime::new(ops)))
@@ -412,6 +416,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_
     let fileops_safety = Mutex::new(crate::fileops_safety::FileOpsSafety::new(config.config.file_ops_daily_limit as usize));
     let slicer = config.config.slicer_links.map(|ttl| crate::slicer::Slicer::new(ttl).map(Arc::new)).transpose()?;
     let app = Arc::new(App {
+        restore: restore_upload::Runtime::default(),
         _instance_lock: instance_lock,
         slicer,
         fileops, fileops_safety,
@@ -430,6 +435,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_
         downloads: Arc::new(tokio::sync::Semaphore::new(4)),
         export: crate::export::Runtime::new(),
     });
+    if app.config.write { restore_upload::start_cleanup(&app); }
     Ok(router(app))
 }
 fn router(app: Arc<App>) -> Router {
@@ -541,12 +547,13 @@ async fn limited(req: Request, next: Next, limit: usize) -> Response {
 async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> Response {
     let command = req.uri().path().strip_prefix("/api/invoke/").unwrap_or("").to_owned();
     let companion_upload = req.uri().path() == COMPANION_UPLOAD;
+    let restore = req.uri().path() == restore_upload::UPLOAD || req.uri().path().starts_with(restore_upload::DELETE_PREFIX);
     let fileops_disabled = (crate::write::FILE_OPS_COMMANDS.contains(&command.as_str()) || companion_upload) && !app.config.file_ops;
     let upload = req.uri().path() == "/api/upload" && app.uploads.is_some();
     let write_command = WRITE_COMMANDS.contains(&command.as_str());
-    let write = (write_command || upload || companion_upload) && app.config.write;
-    let limit = if upload { app.config.upload.as_ref().unwrap().max_bytes as usize } else if write { body_limit(&command) } else { 65536 };
-    let audit_name = if companion_upload { crate::write::ROUTE_WRITES[0] } else { command.as_str() };
+    let write = (write_command || upload || companion_upload || restore) && app.config.write;
+    let limit = if restore { restore_upload::MAX_ZIP_BYTES } else if upload { app.config.upload.as_ref().unwrap().max_bytes as usize } else if write { body_limit(&command) } else { 65536 };
+    let audit_name = if companion_upload { crate::write::ROUTE_WRITES[0] } else if restore { if req.method() == Method::DELETE { "backup_discard" } else { "backup_upload" } } else { command.as_str() };
     let mut audit = (write && !upload).then(|| AuditCompletion::new(audit_name, req.headers(), cookie_name(secure(&app, req.headers())), app.clock.now()));
     if let Some(audit) = &audit { req.extensions_mut().insert(audit.progress.clone()); }
 
@@ -571,9 +578,9 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
             });
             if !allowed {
                 error_coded(if write { 403 } else { 421 }, ErrorCode::WebHostNotAllowed, &[])
-            } else if req.method() != Method::GET && req.method() != Method::POST && !(req.method() == Method::HEAD && req.uri().path().starts_with(crate::slicer::PREFIX)) {
+            } else if req.method() != Method::GET && req.method() != Method::POST && !(restore && req.method() == Method::DELETE) && !(req.method() == Method::HEAD && req.uri().path().starts_with(crate::slicer::PREFIX)) {
                 error_coded(405, ErrorCode::WebMethodNotAllowed, &[])
-            } else if req.method() == Method::POST
+            } else if (req.method() == Method::POST || (restore && req.method() == Method::DELETE))
                 && !app.config.allow_no_auth
                 && (!origin_ok(&app, req.headers()) || (write && app.config.write && !req.headers().contains_key(header::ORIGIN)))
             {
@@ -583,7 +590,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
                 tokio::time::timeout(std::time::Duration::from_secs(6 * 3600 + 60), next.run(req)).await.unwrap_or_else(|_| error(408, "upload_timeout"))
             } else if upload {
                 tokio::time::timeout(std::time::Duration::from_secs(3600), next.run(req)).await.unwrap_or_else(|_| error(408,"upload_timeout"))
-            } else if req.uri().path() == "/api/backup/export" {
+            } else if restore || req.uri().path() == "/api/backup/export" {
                 // Preparing the archive scales with the catalog size; only the
                 // response head is bounded here, the body streams afterwards.
                 tokio::time::timeout(std::time::Duration::from_secs(600), limited(req, next, limit))
@@ -753,6 +760,8 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let path = req.uri().path().to_owned();
     let method = req.method().clone();
     let command = path.strip_prefix("/api/invoke/").unwrap_or("");
+    let restore = path == restore_upload::UPLOAD || path.starts_with(restore_upload::DELETE_PREFIX);
+    if restore && !matches!(method, Method::POST | Method::DELETE) { return error_coded(405, ErrorCode::WebMethodNotAllowed, &[]); }
     if crate::write::FILE_OPS_COMMANDS.contains(&command) && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
     if path == COMPANION_UPLOAD && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
     if path == COMPANION_UPLOAD && !app.config.write { return error_coded(404, ErrorCode::WebCommandUnavailable, &[]); }
@@ -786,6 +795,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             path.as_str(),
             "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events" | "/api/backup/export" | COMPANION_UPLOAD
         ) && !path.starts_with("/api/invoke/")
+            && !restore
             && download_id.is_none()
             && companion_id.is_none()
         {
@@ -896,6 +906,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             return error_coded(403, ErrorCode::WebCsrfInvalid, &[]);
         }
     }
+    if restore { return restore_upload::handle(app, current, peer, req).await; }
     if path == "/api/upload" { return uploads::upload(app,current.unwrap(),req).await; }
     if path == COMPANION_UPLOAD { return companion_upload(app, current.expect("authenticated fileops"), req).await; }
     if path == "/api/logout" {

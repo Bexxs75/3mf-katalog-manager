@@ -106,7 +106,7 @@ pub const WRITE_COMMANDS: &[&str] = &[
 ];
 /// Writes that have their own route instead of an invoke command (a streamed body); they
 /// are audited and replay-protected like a command but never reach `/api/invoke/`.
-pub const ROUTE_WRITES: &[&str] = &["add_companion"];
+pub const ROUTE_WRITES: &[&str] = &["add_companion", "backup_upload", "backup_discard"];
 /// File operations that act on one companion file and are safe to repeat: the second
 /// request of the same id gets the stored answer instead of "already in the trash".
 pub(crate) fn companion_edit_command(command: &str) -> bool {

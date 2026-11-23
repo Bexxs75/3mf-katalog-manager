@@ -9,6 +9,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+### Added
+
+- The web API can upload, inspect and discard catalog backups in private temporary storage. Preview reports include migration needs and path warnings; applying a backup is not yet available.
+
 ### Changed
 
 - The web trash recognizes desktop trash entries and can permanently remove their files and companions. Restoring them remains a desktop action.
@@ -906,6 +910,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+### Hinzugefügt
+
+- Die Web-API kann Katalogsicherungen in einem privaten Zwischenverzeichnis hochladen, prüfen und verwerfen. Die Vorschau meldet nötige Migrationen und Pfadwarnungen; das Einspielen ist noch nicht verfügbar.
 
 ### Geändert
 

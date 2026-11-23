@@ -81,6 +81,59 @@ fn validate_imported_path_length(path: &str, known_folders: &[String]) -> Result
 const MAX_IMPORT_DB_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_IMPORT_SETTINGS_BYTES: u64 = 1024 * 1024;
 
+/// Web uploads accept exactly the portable backup pair. Header consistency also
+/// rejects duplicate central-directory names before the ZIP reader deduplicates them.
+pub fn read_catalog_archive_strict<R: std::io::Read + std::io::Seek>(
+    reader: R,
+) -> CmdResult<(Vec<u8>, String)> {
+    use std::io::Read;
+    let invalid = || CmdError::coded(ErrorCode::BackupNotZip);
+    let mut archive = zip::ZipArchive::new(reader).map_err(|_| invalid())?;
+    if archive.len() != 2 {
+        return Err(invalid());
+    }
+    let mut database = None;
+    let mut settings = None;
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index_with_options(
+                index,
+                zip::read::ZipReadOptions::new().enforce_header_consistency(true),
+            )
+            .map_err(|_| invalid())?;
+        let name = entry.name().map_err(|_| invalid())?.into_owned();
+        let limit = match name.as_str() {
+            "catalog.db" => MAX_IMPORT_DB_BYTES,
+            "settings.json" => MAX_IMPORT_SETTINGS_BYTES,
+            _ => return Err(CmdError::coded(ErrorCode::BackupEntryNameInvalid)),
+        };
+        if entry.is_dir() || entry.unix_mode().is_some_and(|m| m & 0o170000 == 0o120000) {
+            return Err(invalid());
+        }
+        reject_oversized_zip_entry(&name, entry.size(), limit)?;
+        let mut bytes = Vec::new();
+        entry
+            .take(limit + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| invalid())?;
+        reject_oversized_zip_entry(&name, bytes.len() as u64, limit)?;
+        if name == "catalog.db" {
+            database = Some(bytes);
+        } else {
+            settings = Some(bytes);
+        }
+    }
+    let database = database
+        .ok_or_else(|| CmdError::coded_with(ErrorCode::BackupMissingEntry, ["catalog.db"]))?;
+    let settings = settings
+        .ok_or_else(|| CmdError::coded_with(ErrorCode::BackupMissingEntry, ["settings.json"]))?;
+    Ok((
+        database,
+        String::from_utf8(settings)
+            .map_err(|_| CmdError::coded(ErrorCode::BackupSettingsNotUtf8))?,
+    ))
+}
+
 /// The declared size can lie; the hard limit is `Read::take` while reading.
 /// This check only saves the read attempt for honestly oversized entries. An
 /// oversized entry is about the archive the user picked, not a fault here.

@@ -3618,3 +3618,62 @@ fn trash_policy_rejects_linked_subdirectories_and_redirected_row_ids() {
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn strict_backup_rejects_paths_unknown_entries_and_duplicate_names() {
+    for name in ["../catalog.db", "extra", "nested/catalog.db"] {
+        let bytes = zip_bytes_with(&[
+            ("catalog.db", b"db"),
+            ("settings.json", b"{}"),
+            (name, b"x"),
+        ]);
+        assert!(read_catalog_archive_strict(std::io::Cursor::new(bytes)).is_err());
+    }
+    let mut bytes = zip_bytes_with(&[
+        ("catalog.db", b"db"),
+        ("settings.json", b"{}"),
+        ("another.db", b"other"),
+    ]);
+    for i in 0..bytes.len() - 10 {
+        if &bytes[i..i + 10] == b"another.db" {
+            bytes[i..i + 10].copy_from_slice(b"catalog.db");
+        }
+    }
+    assert!(read_catalog_archive_strict(std::io::Cursor::new(bytes)).is_err());
+}
+
+#[test]
+fn strict_backup_reads_normal_archive_and_rejects_declared_oversize() {
+    let bytes = zip_bytes_with(&[("catalog.db", b"db"), ("settings.json", b"{}")]);
+    assert_eq!(
+        read_catalog_archive_strict(std::io::Cursor::new(&bytes)).unwrap(),
+        (b"db".to_vec(), "{}".into())
+    );
+    let mut oversized = bytes;
+    let central = oversized
+        .windows(4)
+        .position(|w| w == b"PK\x01\x02")
+        .unwrap();
+    oversized[central + 24..central + 28].copy_from_slice(&(257_u32 * 1024 * 1024).to_le_bytes());
+    oversized[22..26].copy_from_slice(&(257_u32 * 1024 * 1024).to_le_bytes());
+    assert!(read_catalog_archive_strict(std::io::Cursor::new(oversized)).is_err());
+}
+
+#[test]
+fn strict_backup_bounds_actual_expansion_with_forged_sizes() {
+    let mut bytes = zip_bytes_with(&[
+        ("catalog.db", b"db"),
+        ("settings.json", &vec![b' '; 1024 * 1024 + 1]),
+    ]);
+    for i in 0..bytes.len() - 46 {
+        if &bytes[i..i + 4] == b"PK\x03\x04" && bytes.get(i + 30..i + 43) == Some(b"settings.json")
+        {
+            bytes[i + 22..i + 26].copy_from_slice(&1_u32.to_le_bytes());
+        }
+        if &bytes[i..i + 4] == b"PK\x01\x02" && bytes.get(i + 46..i + 59) == Some(b"settings.json")
+        {
+            bytes[i + 24..i + 28].copy_from_slice(&1_u32.to_le_bytes());
+        }
+    }
+    assert!(read_catalog_archive_strict(std::io::Cursor::new(bytes)).is_err());
+}
