@@ -71,7 +71,7 @@ it('sends one request id per write action and none for reads', async () => {
   expect(first).not.toBe(second);
   expect((fetch.mock.calls[2][1].headers as Record<string, string>)['X-Request-Id']).toBeUndefined();
 });
-it.each(['start_upload_import', 'cancel_import'])('keeps %s free of a request id', async command => {
+it.each(['start_source_import', 'start_upload_import', 'cancel_import'])('keeps %s free of a request id', async command => {
   await writable();
   const fetch = vi.fn().mockImplementation(async () => Response.json({}));
   vi.stubGlobal('fetch', fetch);

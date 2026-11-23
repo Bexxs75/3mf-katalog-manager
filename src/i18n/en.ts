@@ -2323,6 +2323,8 @@ export const en: Translations = {
   errDragFailed: "Dragging the file out failed: {0}",
   errOpenSourceUnknown: "This file was not handed over by the system, or its view is already closed.",
   errSourceNoCatalogFolder: "No catalog folder has been set up yet. Without one, files cannot be taken from a source folder.",
+  errSourceImportSpace: "There is not enough space for the source files.",
+  errSourceImportLimit: "The source folder exceeds the scan limits.",
   errSourceNoFilesSelected: "No files were selected.",
   errSlicerExeNotFound: "The slicer program was not found.",
   errSlicerPathNotFile: "The slicer path does not point to a file.",

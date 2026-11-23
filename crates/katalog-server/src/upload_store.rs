@@ -119,6 +119,7 @@ impl Journal {
 struct Inner {
     journal: Journal,
     active: usize,
+    source_import: bool,
     reserved: u64,
     active_bytes: u64,
     /// Models an archive is being unpacked into: they are not uploads yet, but
@@ -234,6 +235,15 @@ pub(crate) fn extension(name: &str) -> String {
 }
 /// Same bound as the filesystem-operation journal.
 const MAX_JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
+
+pub struct SourceImportGuard(Arc<UploadStore>);
+impl Drop for SourceImportGuard {
+    fn drop(&mut self) {
+        if let Ok(mut inner) = self.0.inner.lock() {
+            inner.source_import = false;
+        }
+    }
+}
 
 impl UploadStore {
     pub fn load(
@@ -547,7 +557,7 @@ impl UploadStore {
             return Err(StoreError::new(413, "too_large"));
         }
         let mut inner = self.lock()?;
-        if inner.active >= self.max_active {
+        if inner.source_import || inner.active >= self.max_active {
             return Err(StoreError::new(503, "upload_busy"));
         }
         let pending: Vec<_> = inner
@@ -899,6 +909,15 @@ impl UploadStore {
             inner.journal = next;
         }
         Ok(())
+    }
+    /// Reserve copying against streaming uploads while the caller holds the import gate.
+    pub fn begin_source_import(self: &Arc<Self>) -> Result<SourceImportGuard, StoreError> {
+        let mut inner = self.lock()?;
+        if inner.active != 0 || inner.source_import {
+            return Err(StoreError::new(503, "upload_busy"));
+        }
+        inner.source_import = true;
+        Ok(SourceImportGuard(self.clone()))
     }
     pub fn ensure_importable(&self) -> Result<(), StoreError> {
         if self.restart_required.load(Ordering::Acquire) {

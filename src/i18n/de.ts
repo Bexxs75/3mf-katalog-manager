@@ -2323,6 +2323,8 @@ export const de: Translations = {
   errDragFailed: "Das Herausziehen der Datei ist fehlgeschlagen: {0}",
   errOpenSourceUnknown: "Diese Datei wurde nicht vom System übergeben oder die Ansicht ist schon geschlossen.",
   errSourceNoCatalogFolder: "Es ist noch kein Katalogordner eingerichtet. Ohne ihn können Dateien nicht aus einem Quellordner übernommen werden.",
+  errSourceImportSpace: "Für die Quelldateien ist nicht genug Platz vorhanden.",
+  errSourceImportLimit: "Der Quellordner überschreitet die Scan-Grenzen.",
   errSourceNoFilesSelected: "Es wurden keine Dateien ausgewählt.",
   errSlicerExeNotFound: "Das Slicer-Programm wurde nicht gefunden.",
   errSlicerPathNotFile: "Der Slicer-Pfad zeigt nicht auf eine Datei.",

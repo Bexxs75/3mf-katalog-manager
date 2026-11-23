@@ -330,6 +330,15 @@ pub fn walk_source_folder(
     walked
 }
 
+/// Check the complete copy budget before creating any destination files.
+pub fn check_copy_space(sizes: impl IntoIterator<Item = u64>, available: u64) -> CmdResult<()> {
+    let required = sizes.into_iter().try_fold(0u64, u64::checked_add);
+    if required.is_none_or(|required| required > available) {
+        return Err(CmdError::coded(ErrorCode::SourceImportSpace));
+    }
+    Ok(())
+}
+
 /// What the catalog knows, loaded once per scan so the disk walk runs without the lock.
 struct CatalogView {
     /// Paths of active models.

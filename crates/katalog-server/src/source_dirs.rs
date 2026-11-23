@@ -72,12 +72,12 @@ impl SourceAdapter<'_> {
             })
             .ok_or_else(io_denied)
     }
-    fn requested(&self, idx: usize, rel: &str) -> ImportResult<PathBuf> {
+    pub(super) fn requested(&self, idx: usize, rel: &str) -> ImportResult<PathBuf> {
         let root = self.roots.get(idx).ok_or_else(denied)?;
         let rel = relative(rel).map_err(|_| denied())?;
         Ok(root.join(rel))
     }
-    fn directory(&self, path: &Path) -> io::Result<Directory> {
+    pub(super) fn directory(&self, path: &Path) -> io::Result<Directory> {
         let (idx, rel) = self.locate(path)?;
         // Reopen every component without following links, including a replaced root.
         let mut dir = Directory::open(&self.roots[idx])?;
@@ -88,6 +88,20 @@ impl SourceAdapter<'_> {
             dir = dir.open_dir(name.to_str().ok_or_else(io_denied)?)?;
         }
         Ok(dir)
+    }
+    pub(super) fn import_selection(&self, idx: usize, rel: &str) -> ImportResult<sources::Walked> {
+        let path = self.requested(idx, rel)?;
+        self.directory(&path).map_err(|_| denied())?;
+        let walked = sources::walk_source_folder(self, &path, MAX_SCAN_DEPTH, MAX_SCAN_ENTRIES);
+        if walked.truncated {
+            return Err(ImportError::coded(ErrorCode::SourceImportLimit));
+        }
+        Ok(walked)
+    }
+    pub(super) fn open_file(&self, path: &Path) -> io::Result<std::fs::File> {
+        self.locate(path)?;
+        self.directory(path.parent().ok_or_else(io_denied)?)?
+            .read(path.file_name().and_then(|n| n.to_str()).ok_or_else(io_denied)?)
     }
     fn token(&self, path: &Path) -> ImportResult<String> {
         let (idx, rel) = self.locate(path).map_err(|_| denied())?;

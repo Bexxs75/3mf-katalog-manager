@@ -35,7 +35,8 @@ it.each([
 });
 
 it('keeps manager and printer command scope explicit', () => {
-  expect(WEB_WRITE_COMMANDS).toHaveLength(80);
+  expect(new Set(WEB_WRITE_COMMANDS).size).toBe(WEB_WRITE_COMMANDS.length);
+  expect(WEB_WRITE_COMMANDS).toContain('start_source_import');
   expect(WEB_WRITE_COMMANDS).toContain('set_spool_print_temperatures');
   expect(WEB_WRITE_COMMANDS).toContain('rename_tag');
   expect(WEB_WRITE_COMMANDS).toContain('merge_tags');

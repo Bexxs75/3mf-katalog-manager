@@ -1737,3 +1737,135 @@ async fn maintenance_drains_import_worker_through_cancellation_and_reconciliatio
     assert_eq!(conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
     window.release();
 }
+
+fn source_catalog_count(f: &Fixture) -> i64 {
+    let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+    conn.query_row("SELECT count(*) FROM files", [], |row| row.get(0)).unwrap()
+}
+
+fn source_fixture(in_place: bool) -> Fixture {
+    let mut f = Fixture::new(true);
+    let root = f.dir.join(if in_place { "models/source" } else { "source" });
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(root.join("source.obj"), MODEL).unwrap();
+    Arc::get_mut(&mut f.app).unwrap().config.source_roots = vec![root];
+    f
+}
+
+#[tokio::test]
+async fn source_import_http_copies_byte_equal_and_imports_in_place() {
+    for in_place in [false, true] {
+        let f = source_fixture(in_place);
+        let source = f.app.config.source_roots[0].join("source.obj");
+        let response = f.invoke("start_source_import", json!({"rootIdx":0,"rel":""})).await;
+        assert_eq!(response.status(), 200);
+        let id = value(response).await["jobId"].clone();
+        let result = wait_result(&f, &id).await;
+        assert_eq!(result["state"], "completed", "{result}");
+        assert_eq!(result["files"][0]["state"], "imported", "{result}");
+        assert_eq!(std::fs::read(&source).unwrap(), MODEL);
+        assert_eq!(source_catalog_count(&f), 1);
+        assert_eq!(f.dir.join("models/source.obj").exists(), !in_place);
+        assert!(!result.to_string().contains(&f.dir.to_string_lossy().to_string()));
+    }
+}
+
+#[tokio::test]
+async fn source_import_http_rejects_paths_links_and_replaced_root() {
+    let f = source_fixture(false);
+    let root = &f.app.config.source_roots[0];
+    std::os::unix::fs::symlink("/proc", root.join("proc")).unwrap();
+    std::os::unix::fs::symlink(f.dir.join("models"), root.join("outside")).unwrap();
+    for rel in ["..", "/etc", "proc", "outside"] {
+        let start = value(f.invoke("start_source_import", json!({"rootIdx":0,"rel":rel})).await).await;
+        let result = wait_result(&f, &start["jobId"]).await;
+        assert_eq!(result["state"], "failed");
+        assert_eq!(source_catalog_count(&f), 0);
+    }
+    std::fs::rename(root, f.dir.join("old-source")).unwrap();
+    std::os::unix::fs::symlink(f.dir.join("old-source"), root).unwrap();
+    let start = value(f.invoke("start_source_import", json!({"rootIdx":0})).await).await;
+    assert_eq!(wait_result(&f, &start["jobId"]).await["state"], "failed");
+    assert_eq!(std::fs::read(f.dir.join("old-source/source.obj")).unwrap(), MODEL);
+}
+
+#[tokio::test]
+async fn source_import_http_obeys_import_gate_and_authentication() {
+    let f = source_fixture(false);
+    let permit = f.app.uploads.as_ref().unwrap().active.clone().try_acquire_owned().unwrap();
+    assert_eq!(f.invoke("start_source_import", json!({"rootIdx":0})).await.status(), 503);
+    drop(permit);
+    let mut request = f.request("POST", "/api/invoke/start_source_import", Body::from(r#"{"rootIdx":0}"#));
+    request.headers_mut().remove("cookie");
+    assert_eq!(router(f.app.clone()).oneshot(request).await.unwrap().status(), 401);
+    assert_eq!(source_catalog_count(&f), 0);
+}
+
+#[tokio::test]
+async fn source_import_http_rejects_start_during_streaming_upload() {
+    let f = source_fixture(false);
+    let (tx, rx) = tokio::sync::mpsc::channel(2);
+    let waiting = Arc::new(AtomicU64::new(0));
+    let mut request = f.upload_request("stream.obj", MODEL);
+    *request.body_mut() = Body::new(ObservedBody { rx, waiting: waiting.clone() });
+    let app = f.app.clone();
+    let task = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
+    wait_for_body_poll(&waiting, 0).await;
+    assert_eq!(f.invoke("start_source_import", json!({"rootIdx":0})).await.status(), 503);
+    tx.send(Ok(axum::body::Bytes::from_static(MODEL))).await.unwrap();
+    drop(tx);
+    assert_eq!(task.await.unwrap().status(), 200);
+    let start = value(f.invoke("start_source_import", json!({"rootIdx":0})).await).await;
+    assert_eq!(wait_result(&f, &start["jobId"]).await["state"], "completed");
+}
+
+#[tokio::test]
+async fn source_import_http_cancel_keeps_source_and_releases_worker_guard() {
+    let f = source_fixture(false);
+    let conn = f.app.writer.as_ref().unwrap().conn.clone();
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _lock = conn.lock().unwrap();
+        locked_tx.send(()).unwrap();
+        release_rx.recv().unwrap();
+    });
+    locked_rx.recv().unwrap();
+    let start = value(f.invoke("start_source_import", json!({"rootIdx":0})).await).await;
+    let target = f.dir.join("models/source.obj");
+    for _ in 0..100 {
+        if target.exists() { break; }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(target.exists());
+    assert!(f.app.geometry.barrier.snapshot().writers > 0);
+    assert_eq!(f.send(f.upload_request("blocked.obj", MODEL)).await.status(), 503);
+    assert_eq!(f.invoke("cancel_import", json!({"jobId":start["jobId"]})).await.status(), 200);
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
+    assert_eq!(wait_result(&f, &start["jobId"]).await["state"], "cancelled");
+    assert!(!target.exists());
+    assert_eq!(std::fs::read(f.dir.join("source/source.obj")).unwrap(), MODEL);
+    assert_eq!(source_catalog_count(&f), 0);
+    assert_eq!(f.app.geometry.barrier.snapshot().writers, 0);
+}
+
+#[tokio::test]
+async fn source_import_http_target_folder_and_collision_preserve_existing_bytes() {
+    let f = source_fixture(false);
+    let target = f.dir.join("models/selected");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("source.obj"), b"existing").unwrap();
+    let folder_id = {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::ensure_folder_path(&conn, &f.dir.join("models"), &target).unwrap()
+    };
+    let start = value(f.invoke("start_source_import", json!({
+        "rootIdx":0,"targetFolderId":folder_id.to_string()
+    })).await).await;
+    let result = wait_result(&f, &start["jobId"]).await;
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(std::fs::read(target.join("source.obj")).unwrap(), b"existing");
+    assert_eq!(std::fs::read(target.join("source (1).obj")).unwrap(), MODEL);
+    assert_eq!(source_catalog_count(&f), 1);
+}

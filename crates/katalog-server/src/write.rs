@@ -59,6 +59,7 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "restore_companion",
 
     "remove_files_from_catalog",
+    "start_source_import",
     "start_upload_import",
     "discard_upload",
     "cancel_import",

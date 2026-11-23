@@ -2323,6 +2323,8 @@ export const es: Translations = {
   errDragFailed: "No se pudo arrastrar el archivo: {0}",
   errOpenSourceUnknown: "El sistema no entregó este archivo o su vista ya está cerrada.",
   errSourceNoCatalogFolder: "Todavía no se ha configurado ninguna carpeta del catálogo. Sin ella, no se pueden importar archivos desde una carpeta de origen.",
+  errSourceImportSpace: "No hay suficiente espacio para los archivos de origen.",
+  errSourceImportLimit: "La carpeta de origen supera los límites de exploración.",
   errSourceNoFilesSelected: "No se seleccionó ningún archivo.",
   errSlicerExeNotFound: "No se encontró el programa del slicer.",
   errSlicerPathNotFile: "La ruta del slicer no apunta a un archivo.",

@@ -731,3 +731,10 @@ fn a_file_replaced_by_a_special_entry_is_not_offered() {
     assert!(walked.files.is_empty());
     assert_eq!(walked.skipped, 1);
 }
+
+#[test]
+fn source_import_space_checks_whole_selection_and_overflow() {
+    assert!(super::check_copy_space([4, 6], 10).is_ok());
+    assert!(super::check_copy_space([4, 7], 10).is_err());
+    assert!(super::check_copy_space([u64::MAX, 1], u64::MAX).is_err());
+}

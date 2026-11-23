@@ -2323,6 +2323,8 @@ export const fr: Translations = {
   errDragFailed: "Le glissement du fichier a échoué : {0}",
   errOpenSourceUnknown: "Ce fichier n’a pas été transmis par le système ou sa vue est déjà fermée.",
   errSourceNoCatalogFolder: "Aucun dossier de catalogue n’a encore été configuré. Sans lui, les fichiers ne peuvent pas être repris depuis un dossier source.",
+  errSourceImportSpace: "L’espace disponible est insuffisant pour les fichiers sources.",
+  errSourceImportLimit: "Le dossier source dépasse les limites d’analyse.",
   errSourceNoFilesSelected: "Aucun fichier n’a été sélectionné.",
   errSlicerExeNotFound: "Le programme du slicer est introuvable.",
   errSlicerPathNotFile: "Le chemin du slicer ne désigne pas un fichier.",

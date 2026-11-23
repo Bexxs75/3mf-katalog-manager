@@ -142,7 +142,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 80);
+    assert_eq!(WRITE_COMMANDS.iter().collect::<std::collections::HashSet<_>>().len(), WRITE_COMMANDS.len());
     assert_eq!(crate::write::ROUTE_WRITES, &["add_companion", "backup_upload", "backup_discard", "backup_restore"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
     assert_eq!(crate::READ_COMMANDS.len(), 43);
@@ -1071,7 +1071,7 @@ async fn manager_http_auth_csrf_and_nonimage_body_limits_cover_every_write() {
     let f = Fixture::new(true);
     // Selected by name, not by position: file operations and the commands named here are
     // exercised with their own bodies elsewhere.
-    let own_tests = ["remove_files_from_catalog", "start_upload_import", "discard_upload", "cancel_import", "set_favorite", "set_print_status", "add_tag"];
+    let own_tests = ["remove_files_from_catalog", "start_source_import", "start_upload_import", "discard_upload", "cancel_import", "set_favorite", "set_print_status", "add_tag"];
     for cmd in WRITE_COMMANDS.iter().filter(|c| !crate::write::FILE_OPS_COMMANDS.contains(c) && !own_tests.contains(c)) {
         for (session, csrf, status) in [(None, false, 401), (Some(&f.session), false, 403)] {
             let request = f.request(

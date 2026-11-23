@@ -20,10 +20,14 @@ use std::{
 };
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 
+#[path = "uploads/source_import.rs"]
+mod source_import;
+
 pub(super) fn command(name: &str) -> bool {
     matches!(
         name,
         "start_upload_import"
+            | "start_source_import"
             | "discard_upload"
             | "cancel_import"
             | "get_import_state"
@@ -418,12 +422,13 @@ pub(super) async fn invoke(
     args: Value,
 ) -> Response {
     let rt = app.uploads.as_ref().unwrap().clone();
-    if matches!(command, "start_upload_import" | "discard_upload") {
+    if matches!(command, "start_upload_import" | "start_source_import" | "discard_upload") {
         if let Err(r) = rate(&app, &session) {
             return r;
         }
     }
     match command {
+        "start_source_import" => source_import::start(app, session, args).await,
         "discard_upload" => {
             let _change = app.changes.lock().await;
             if !authenticated(&app, &session) {

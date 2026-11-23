@@ -250,3 +250,36 @@ fn source_dirs_restored_desktop_sources_are_preserved_unreachable_and_redacted()
         .all(|s| s["unreachable"] == true));
     assert_eq!(store::list_source_folders(&f.conn).unwrap().len(), 2);
 }
+
+#[test]
+fn source_import_selection_rejects_invalid_paths_and_replaced_root() {
+    let f = Fixture::new();
+    for rel in ["..", "/etc", "x/../y"] {
+        assert!(f.fs().import_selection(0, rel).is_err());
+    }
+    std::fs::write(f.roots[0].join("a.stl"), b"unchanged").unwrap();
+    assert_eq!(f.fs().import_selection(0, "").unwrap().files.len(), 1);
+    std::fs::rename(&f.roots[0], f.dir.join("old")).unwrap();
+    symlink(f.dir.join("old"), &f.roots[0]).unwrap();
+    assert!(f.fs().import_selection(0, "").is_err());
+}
+
+#[test]
+fn source_import_selection_skips_links_special_files_and_enforces_limits() {
+    let f = Fixture::new();
+    let root = &f.roots[0];
+    std::fs::write(root.join("ok.stl"), b"model").unwrap();
+    symlink("/proc", root.join("proc")).unwrap();
+    symlink("/dev/null", root.join("device.stl")).unwrap();
+    symlink(f.dir.join("outside"), root.join("escape")).unwrap();
+    assert!(std::process::Command::new("mkfifo").arg(root.join("pipe.stl")).status().unwrap().success());
+    let selected = f.fs().import_selection(0, "").unwrap();
+    assert_eq!(selected.files, vec![(root.join("ok.stl"), 5)]);
+    std::fs::create_dir_all(root.join("a/b/c/d")).unwrap();
+    assert!(f.fs().import_selection(0, "").is_err());
+    std::fs::remove_dir_all(root.join("a")).unwrap();
+    for index in 0..MAX_SCAN_ENTRIES {
+        std::fs::write(root.join(format!("{index}.txt")), b"").unwrap();
+    }
+    assert!(f.fs().import_selection(0, "").is_err());
+}

@@ -126,6 +126,8 @@ error_codes! {
     SourceFileNotNew => "sourceFileNotNew",
     FolderNotPicked => "folderNotPicked",
     SourceNoCatalogFolder => "sourceNoCatalogFolder",
+    SourceImportSpace => "sourceImportSpace",
+    SourceImportLimit => "sourceImportLimit",
     SourceNoFilesSelected => "sourceNoFilesSelected",
     // Restoring a catalog backup.
     CatalogInUse => "catalogInUse",

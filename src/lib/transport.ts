@@ -12,7 +12,7 @@ export const FILE_OPS_COMMANDS = ['rename_file', 'move_files_to_folder', 'delete
 const FILE_OPS_MAX_AUTO_RETRY_SECONDS = 5;
 
 // Uploads and file operations track their own operation ids; only plain catalog writes are replay-protected by the server.
-const OWN_OPERATION_COMMANDS: readonly string[] = [...FILE_OPS_COMMANDS, 'start_upload_import', 'discard_upload', 'cancel_import'];
+const OWN_OPERATION_COMMANDS: readonly string[] = [...FILE_OPS_COMMANDS, 'start_source_import', 'start_upload_import', 'discard_upload', 'cancel_import'];
 // File operations on a single companion file are repeatable: the server answers the second request of the same id from the stored result.
 const REPEATABLE_FILE_OPS: readonly string[] = ['remove_companion', 'restore_companion'];
 // Waits before the automatic repeats after a lost or timed-out answer. The server may still be finishing the first attempt, which the shared request id makes safe.

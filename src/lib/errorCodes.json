@@ -61,6 +61,8 @@
     "sourceFileNotNew",
     "folderNotPicked",
     "sourceNoCatalogFolder",
+    "sourceImportSpace",
+    "sourceImportLimit",
     "sourceNoFilesSelected",
     "catalogInUse",
     "backupNotZip",

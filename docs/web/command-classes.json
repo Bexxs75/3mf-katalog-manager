@@ -220,6 +220,7 @@
     "start_archive_import": "B",
     "start_dropped_import": "C",
     "start_import": "B",
+    "start_source_import": "web-only",
     "start_upload_import": "web-only",
     "sync_printers_now": "web",
     "take_open_requests": "C",

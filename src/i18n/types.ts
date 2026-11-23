@@ -2365,6 +2365,8 @@ export interface Translations {
   errDragFailed: string;
   errOpenSourceUnknown: string;
   errSourceNoCatalogFolder: string;
+  errSourceImportSpace: string;
+  errSourceImportLimit: string;
   errSourceNoFilesSelected: string;
   errSlicerExeNotFound: string;
   errSlicerPathNotFile: string;
