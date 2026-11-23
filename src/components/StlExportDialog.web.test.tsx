@@ -26,7 +26,7 @@ it('offers a download instead of the save dialog and confirms it without a folde
   open();
   fireEvent.click(screen.getByRole('button', { name: de.stDownload }));
   expect(await screen.findByText(de.stDownloaded)).toBeVisible();
-  expect(download).toHaveBeenCalledWith('7', 'Box.3mf', { kind: 'all' });
+  expect(download).toHaveBeenCalledWith('7', 'Box.3mf', { kind: 'all' }, 'binary');
   expect(desktopSave).not.toHaveBeenCalled();
   expect(screen.queryByRole('button', { name: de.showInFileManager })).toBeNull();
   expect(screen.getAllByRole('button', { name: de.stClose })).toHaveLength(2);
@@ -48,4 +48,12 @@ it('shows a refusal in an alert and keeps the dialog open for another try', asyn
   fireEvent.click(screen.getByRole('button', { name: de.stDownload }));
   expect(await screen.findByRole('alert')).toBeVisible();
   expect(screen.getByRole('button', { name: de.stDownload })).toBeEnabled();
+});
+
+it('sends the ASCII choice to the download', async () => {
+  download.mockResolvedValue({ name: 'Box.stl', folder: '', triangles: 1, fileCount: 1, inCatalogFolder: false });
+  open();
+  fireEvent.click(screen.getByRole('radio', { name: de.stFormatAscii }));
+  fireEvent.click(screen.getByRole('button', { name: de.stDownload }));
+  await waitFor(() => expect(download).toHaveBeenCalledWith('7', 'Box.3mf', { kind: 'all' }, 'ascii'));
 });

@@ -8,6 +8,9 @@ export type StlScope =
   | { kind: 'parts'; indices: number[] }
   | { kind: 'eachPart' };
 
+/** Encoding of the written file; binary is the default and much smaller. */
+export type StlFormat = 'binary' | 'ascii';
+
 export interface StlExportResult {
   /** File name of the new STL. */
   name: string;
@@ -21,17 +24,19 @@ export interface StlExportResult {
 }
 
 // The save dialog runs in the backend and the file id replaces any path; null when the dialog was cancelled.
-export function exportModelAsStl(fileId: string, scope: StlScope) {
-  return invoke<StlExportResult | null>('export_model_as_stl', { fileId, scope });
+export function exportModelAsStl(fileId: string, scope: StlScope, format: StlFormat = 'binary') {
+  return invoke<StlExportResult | null>('export_model_as_stl', { fileId, scope, format });
 }
 
 /**
  * Web build: the server converts and sends the STL, the browser saves it. A fetch (not a plain link)
  * so an expired login shows the login page and a refusal arrives as the usual coded error.
  */
-export async function downloadModelAsStl(fileId: string, modelName: string, scope: StlScope): Promise<StlExportResult> {
+export async function downloadModelAsStl(fileId: string, modelName: string, scope: StlScope, format: StlFormat = 'binary'): Promise<StlExportResult> {
   const plate = scope.kind === 'plate' ? scope.number : null;
-  const response = await fetch(`/api/files/${encodeURIComponent(fileId)}/stl${plate === null ? '' : `?plate=${plate}`}`, { credentials: 'same-origin' });
+  // The default (binary) keeps the plain address.
+  const query = [plate === null ? '' : `plate=${plate}`, format === 'ascii' ? 'format=ascii' : ''].filter(Boolean).join('&');
+  const response = await fetch(`/api/files/${encodeURIComponent(fileId)}/stl${query ? `?${query}` : ''}`, { credentials: 'same-origin' });
   const data = await readResponse<ArrayBuffer>(response);
   const stem = modelName.replace(/\.[^./\\]+$/, '') || 'model';
   const name = plate === null ? `${stem}.stl` : `${stem}_Platte${plate}.stl`;
@@ -44,7 +49,8 @@ export async function downloadModelAsStl(fileId: string, modelName: string, scop
   link.remove();
   // The click starts the save asynchronously; the address may only be released afterwards.
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  return { name, folder: '', triangles: data.byteLength > 84 ? (data.byteLength - 84) / 50 : 0, fileCount: 1, inCatalogFolder: false };
+  const triangles = format === 'ascii' ? (new TextDecoder().decode(data).match(/^\s*facet normal /gm)?.length ?? 0) : data.byteLength > 84 ? (data.byteLength - 84) / 50 : 0;
+  return { name, folder: '', triangles, fileCount: 1, inCatalogFolder: false };
 }
 
 export function showFolderInFileManager(path: string) {

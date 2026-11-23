@@ -551,3 +551,114 @@ fn measure_one_million_triangles() {
     assert_eq!(size, 84 + count * 50);
     std::fs::remove_dir_all(d).ok();
 }
+
+fn written_ascii(meshes: &[&RenderMesh]) -> String {
+    let mut out = Vec::new();
+    write_stl_as(&mut out, meshes, StlFormat::Ascii, MAX_STL_TRIANGLES).unwrap();
+    String::from_utf8(out).expect("ASCII STL is text")
+}
+
+#[test]
+fn ascii_has_the_solid_facet_structure() {
+    let mesh = cube(None);
+    let text = written_ascii(&[&mesh]);
+    let lines: Vec<&str> = text.lines().map(str::trim).collect();
+    assert!(lines.first().unwrap().starts_with("solid "));
+    assert!(lines.last().unwrap().starts_with("endsolid "));
+    assert_eq!(lines.iter().filter(|l| l.starts_with("facet normal ")).count(), 12);
+    assert_eq!(lines.iter().filter(|l| **l == "outer loop").count(), 12);
+    assert_eq!(lines.iter().filter(|l| l.starts_with("vertex ")).count(), 36);
+    assert_eq!(lines.iter().filter(|l| **l == "endloop").count(), 12);
+    assert_eq!(lines.iter().filter(|l| **l == "endfacet").count(), 12);
+    assert!(!text.contains("NaN") && !text.contains("inf"));
+}
+
+#[test]
+fn ascii_roundtrip_gives_the_same_triangles_as_binary() {
+    let mut mesh = cube(None);
+    // Values that need many digits in text.
+    mesh.positions[6] = [10.123457, 0.1, 1.0e-7];
+    mesh.positions[7] = [-3.4e20, 7.0e-30, 123456.79];
+    let ascii = written_ascii(&[&mesh]);
+    let from_ascii = read_back(ascii.as_bytes());
+    let from_binary = read_back(&written(&[&mesh]));
+    assert_eq!(from_ascii.indices, from_binary.indices);
+    assert_eq!(from_ascii.positions, from_binary.positions, "f32 values survive the text unchanged");
+    assert_eq!(from_ascii.indices.len(), 12);
+    let own: Vec<[[f32; 3]; 3]> = from_ascii.indices.iter().map(|t| t.map(|i| from_ascii.positions[i as usize])).collect();
+    assert_eq!(own, triangles_of(&mesh));
+    // Also through the document parser (bounding box, volume).
+    let doc = parse_stl_bytes(ascii.as_bytes()).unwrap();
+    assert!(doc.dimensions_mm.is_some());
+}
+
+#[test]
+fn ascii_is_larger_than_binary_and_writes_zero_area_triangles_with_zero_normal() {
+    let mut mesh = cube(None);
+    mesh.indices.push([2, 2, 2]);
+    let ascii = written_ascii(&[&mesh]);
+    assert!(ascii.len() > 3 * written(&[&mesh]).len());
+    assert!(ascii.contains("facet normal 0e0 0e0 0e0"));
+    assert_eq!(read_back(ascii.as_bytes()).indices.len(), 13);
+}
+
+#[test]
+fn ascii_keeps_limits_and_error_cases_and_writes_nothing_on_error() {
+    let mesh = cube(None);
+    let mut out = Vec::new();
+    let result = write_stl_as(&mut out, &[&mesh], StlFormat::Ascii, 11);
+    assert!(matches!(result, Err(StlWriteError::TooManyTriangles { count: 12, max: 11 })), "{result:?}");
+    assert!(out.is_empty());
+    let mut bad = cube(None);
+    bad.positions[0][1] = f32::NAN;
+    assert!(matches!(write_stl_as(&mut out, &[&bad], StlFormat::Ascii, MAX_STL_TRIANGLES), Err(StlWriteError::NonFinite)));
+    let mut missing = cube(None);
+    missing.indices.push([0, 1, 99]);
+    assert!(matches!(write_stl_as(&mut out, &[&missing], StlFormat::Ascii, MAX_STL_TRIANGLES), Err(StlWriteError::InvalidIndex)));
+    assert!(matches!(
+        write_stl_as(&mut out, &[&RenderMesh::default()], StlFormat::Ascii, MAX_STL_TRIANGLES),
+        Err(StlWriteError::NothingToExport)
+    ));
+    assert!(out.is_empty());
+}
+
+#[test]
+fn ascii_large_meshes_are_written_in_blocks() {
+    let mut mesh = cube(None);
+    mesh.indices = CUBE_TRIANGLES.iter().cycle().take(BLOCK_TRIANGLES * 2 + 5).copied().collect();
+    let mut recorder = Recorder(Vec::new());
+    write_stl_as(&mut recorder, &[&mesh], StlFormat::Ascii, MAX_STL_TRIANGLES).unwrap();
+    assert!(recorder.0.len() >= 3, "{:?}", recorder.0.len());
+    assert!(recorder.0.iter().all(|&n| n < 8 * 1024 * 1024));
+}
+
+#[test]
+fn ascii_file_writers_create_a_new_complete_file_and_keep_the_protections() {
+    let d = dir("stl_ascii_files");
+    let mesh = cube(None);
+    let target = d.join("a.stl");
+    assert_eq!(write_stl_file_new_as(&target, None, &[&mesh], StlFormat::Ascii).unwrap(), 12);
+    let text = std::fs::read_to_string(&target).unwrap();
+    assert_eq!(text, written_ascii(&[&mesh]));
+    assert_eq!(leftovers(&d), vec!["a.stl".to_string()]);
+    // Never replaces, never writes onto the source.
+    assert!(matches!(write_stl_file_new_as(&target, None, &[&mesh], StlFormat::Ascii), Err(StlWriteError::TargetExists)));
+    let source = d.join("m.3mf");
+    std::fs::write(&source, b"original").unwrap();
+    assert!(matches!(write_stl_file_new_as(&source, Some(&source), &[&mesh], StlFormat::Ascii), Err(StlWriteError::TargetIsSource)));
+    assert_eq!(std::fs::read(&source).unwrap(), b"original");
+    // Replacing writer with limit: too many triangles creates no file.
+    let limited = d.join("limited.stl");
+    assert!(matches!(
+        write_stl_file_as(&limited, None, &[&mesh], StlFormat::Ascii, 5),
+        Err(StlWriteError::TooManyTriangles { .. })
+    ));
+    assert!(!limited.exists());
+    assert_eq!(write_stl_file_as(&limited, None, &[&mesh], StlFormat::Ascii, 12).unwrap(), 12);
+    assert!(std::fs::read_to_string(&limited).unwrap().starts_with("solid "));
+}
+
+#[test]
+fn the_default_format_is_binary() {
+    assert_eq!(StlFormat::default(), StlFormat::Binary);
+}

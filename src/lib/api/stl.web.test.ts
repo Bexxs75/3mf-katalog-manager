@@ -35,3 +35,14 @@ it('passes a coded refusal on and saves nothing', async () => {
   await expect(downloadModelAsStl('7', 'Box.3mf', { kind: 'all' })).rejects.toMatchObject({ message: 'stlTooLarge' });
   expect(clicked).toEqual([]);
 });
+
+it('asks for ASCII with the format parameter, combined with a plate, and counts its facets', async () => {
+  const text = 'solid x\n facet normal 0 0 1\n  outer loop\n   vertex 0 0 0\n   vertex 1 0 0\n   vertex 0 1 0\n  endloop\n endfacet\n'.repeat(1) + 'endsolid x\n';
+  const fetchMock = vi.fn(async () => new Response(new TextEncoder().encode(text), { headers: { 'Content-Type': 'application/octet-stream' } }));
+  vi.stubGlobal('fetch', fetchMock);
+  const result = await downloadModelAsStl('7', 'Box.3mf', { kind: 'plate', number: 2 }, 'ascii');
+  expect(fetchMock).toHaveBeenCalledWith('/api/files/7/stl?plate=2&format=ascii', { credentials: 'same-origin' });
+  expect(result).toMatchObject({ name: 'Box_Platte2.stl', triangles: 1 });
+  await downloadModelAsStl('7', 'Box.3mf', { kind: 'all' }, 'ascii');
+  expect(fetchMock).toHaveBeenLastCalledWith('/api/files/7/stl?format=ascii', { credentials: 'same-origin' });
+});

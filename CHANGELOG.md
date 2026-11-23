@@ -20,6 +20,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - In the web interface the folder list now marks folders that no longer exist on disk (as the desktop app does). The check is bounded, never follows links and skips roots that look unmounted.
 - Uploads in the web interface can now be tar archives (tar, tar.gz, tar.bz2, tar.xz, tar.zst) with the same limits as ZIP and 7z; unsafe entries such as links and paths leaving the folder are skipped. RAR stays a desktop feature.
 - In the web interface "Save as STL" downloads a binary STL of a 3MF or OBJ model (whole model or one plate), made by the same writer as the desktop app.
+- "Save as STL" can now write ASCII STL as well as binary. The dialog has a "Format" choice (binary stays the default; ASCII is about 4–5 times larger) that also applies to "each part as its own file" and to plate export; the web download takes `format=ascii` (limited to 250,000 triangles, a quarter of the binary limit, to keep the server's memory use the same).
 
 ### Changed
 
@@ -932,6 +933,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - In der Web-Oberfläche markiert die Ordnerliste jetzt Ordner, die auf der Festplatte nicht mehr existieren (wie in der Desktop-App). Die Prüfung ist begrenzt, folgt keinen Verknüpfungen und überspringt Wurzeln, die nicht eingehängt wirken.
 - Uploads in der Web-Oberfläche können jetzt tar-Archive sein (tar, tar.gz, tar.bz2, tar.xz, tar.zst) mit denselben Grenzen wie ZIP und 7z; unsichere Einträge wie Verknüpfungen und Pfade aus dem Ordner heraus werden übersprungen. RAR bleibt eine Desktop-Funktion.
 - In der Web-Oberfläche lädt „Als STL speichern“ eine binäre STL-Datei eines 3MF- oder OBJ-Modells herunter (ganzes Modell oder eine Platte), erzeugt mit demselben Schreiber wie in der Desktop-App.
+- „Als STL speichern“ kann jetzt auch ASCII-STL schreiben. Der Dialog hat die Auswahl „Format“ (Standard bleibt binär; ASCII ist etwa 4–5-mal größer), sie gilt auch für „Jedes Teil als eigene Datei“ und den Plattenexport; der Web-Download nimmt `format=ascii` (begrenzt auf 250.000 Dreiecke, ein Viertel der binären Grenze, damit der Speicherbedarf des Servers gleich bleibt). Spanische und französische Texte vom Modell geschrieben, nicht von Muttersprachlern geprüft.
 
 ### Geändert
 

@@ -1115,6 +1115,26 @@ async fn an_obj_is_downloaded_as_a_binary_stl_through_the_core_writer() {
 }
 
 #[tokio::test]
+async fn an_obj_is_downloaded_as_ascii_stl_on_request_and_binary_stays_the_default() {
+    let f = Fixture::new(true).await;
+    let id = f.typed_file("Wuerfel.obj", "obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    let r = f.stl(&id, "?format=ascii").await;
+    assert_eq!(r.status(), 200);
+    let disposition = r.headers()["content-disposition"].to_str().unwrap().to_owned();
+    assert!(disposition.contains("Wuerfel.stl"), "{disposition}");
+    let bytes = to_bytes(r.into_body(), 1024 * 1024).await.unwrap();
+    let text = std::str::from_utf8(&bytes).unwrap();
+    assert!(text.starts_with("solid ") && text.contains("facet normal") && text.trim_end().lines().last().unwrap().starts_with("endsolid"));
+    assert_eq!(text.matches("vertex ").count(), 3);
+    let explicit = to_bytes(f.stl(&id, "?format=binary").await.into_body(), 1024 * 1024).await.unwrap();
+    let default = to_bytes(f.stl(&id, "").await.into_body(), 1024 * 1024).await.unwrap();
+    assert_eq!(explicit, default);
+    assert_eq!(default.len(), 84 + 50);
+    let reversed = f.stl(&id, "?format=ascii&plate=1").await;
+    assert_eq!(reversed.status(), f.stl(&id, "?plate=1&format=ascii").await.status());
+}
+
+#[tokio::test]
 async fn stl_download_refuses_what_it_cannot_convert_with_codes() {
     let f = Fixture::new(true).await;
     let stl = f.typed_file("a.stl", "stl", b"solid x\nendsolid x\n");
@@ -1129,6 +1149,14 @@ async fn stl_download_refuses_what_it_cannot_convert_with_codes() {
         (obj.as_str(), "?plate=x", 400, "reqInvalidArguments"),
         (obj.as_str(), "?other=1", 400, "reqInvalidArguments"),
         (obj.as_str(), "?plate=7", 422, "stlNothingToExport"),
+        (obj.as_str(), "?format=text", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ASCII", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ascii&format=binary", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ascii&plate=0", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ascii&x=1", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ascii&", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?plate=7&format=ascii", 422, "stlNothingToExport"),
     ] {
         let r = f.stl(id, query).await;
         assert_eq!(r.status(), status, "{id}{query}");

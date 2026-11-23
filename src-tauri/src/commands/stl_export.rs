@@ -1,4 +1,4 @@
-//! "Save as STL": converts a catalog file (3MF, OBJ, STEP) into a binary STL.
+//! "Save as STL": converts a catalog file (3MF, OBJ, STEP) into a STL (binary by default, ASCII on request).
 //!
 //! The command takes the file id, never a path; the target comes from the save
 //! dialog of the backend. The writer itself lives in the core
@@ -11,7 +11,7 @@ use super::*;
 
 use katalog_core::error_code::ErrorCode;
 use katalog_core::read::GeometryErrorCode as Code;
-use katalog_core::stl::{self, SourceStamp, StlScope, StlWriteError};
+use katalog_core::stl::{self, SourceStamp, StlFormat, StlScope, StlWriteError};
 
 /// Which part of the model is converted. The interface offers "all" and one plate; the
 /// parts list of a STEP file chooses single parts (`Parts`) or one file per part (`EachPart`,
@@ -94,7 +94,7 @@ fn load_meshes(source: &Path) -> CmdResult<Vec<RenderMesh>> {
 /// Reads `source`, picks the scope and writes it to the not yet existing `target`.
 /// Fails when the source changed while it was read, so a half-replaced file is
 /// never converted.
-pub(crate) fn write_stl_export(source: &Path, scope: &StlExportScope, target: &Path) -> CmdResult<u64> {
+pub(crate) fn write_stl_export(source: &Path, scope: &StlExportScope, target: &Path, format: StlFormat) -> CmdResult<u64> {
     let stamp = SourceStamp::of(source).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => CmdError::coded_with(ErrorCode::FileMissingOnDisk, [source.to_string_lossy()]),
         _ => CmdError::coded(ErrorCode::StlSourceUnreadable),
@@ -109,7 +109,7 @@ pub(crate) fn write_stl_export(source: &Path, scope: &StlExportScope, target: &P
         StlExportScope::EachPart => return Err(CmdError::coded(ErrorCode::ReqInvalidArguments)),
     };
     let selected = stl::select_meshes(&meshes, scope).map_err(|e| stl_error(e, target))?;
-    stl::write_stl_file_new(target, Some(source), &selected).map_err(|e| stl_error(e, target))
+    stl::write_stl_file_new_as(target, Some(source), &selected, format).map_err(|e| stl_error(e, target))
 }
 
 /// `<stem>_Teil<N>.stl` for part `index` (0-based) of `count`; N is zero-padded to the width of
@@ -122,7 +122,7 @@ pub(crate) fn part_file_name(stem: &str, index: usize, count: usize) -> String {
 /// Writes every non-empty mesh as its own STL into `folder` (named by position in the
 /// list, so the number matches the parts list). Nothing is written if one of the files
 /// already exists. Returns the number of files and the triangles in total.
-pub(crate) fn write_each_part(meshes: &[RenderMesh], source: &Path, folder: &Path) -> CmdResult<(u32, u64)> {
+pub(crate) fn write_each_part(meshes: &[RenderMesh], source: &Path, folder: &Path, format: StlFormat) -> CmdResult<(u32, u64)> {
     let stem = source.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
     let parts: Vec<(usize, &RenderMesh)> = meshes.iter().enumerate().filter(|(_, m)| !m.indices.is_empty()).collect();
     if parts.is_empty() {
@@ -134,7 +134,7 @@ pub(crate) fn write_each_part(meshes: &[RenderMesh], source: &Path, folder: &Pat
     }
     let mut triangles = 0;
     for ((_, mesh), target) in parts.iter().zip(&targets) {
-        triangles += stl::write_stl_file_new(target, Some(source), &[*mesh]).map_err(|e| stl_error(e, target))?;
+        triangles += stl::write_stl_file_new_as(target, Some(source), &[*mesh], format).map_err(|e| stl_error(e, target))?;
     }
     Ok((parts.len() as u32, triangles))
 }
@@ -172,9 +172,11 @@ pub(crate) fn is_inside_catalog(base: &Path, folder: &Path) -> bool {
 #[tauri::command]
 pub async fn export_model_as_stl<R: tauri::Runtime>(
     app: tauri::AppHandle<R>, state: State<'_, AppState>, environment: State<'_, RuntimeEnvironment>,
-    file_id: String, scope: StlExportScope,
+    file_id: String, scope: StlExportScope, format: Option<StlFormat>,
 ) -> CmdResult<Option<StlExportResult>> {
     environment.require_desktop(DesktopFeature::ExternalAction)?;
+    // Missing means binary, so an older interface keeps working.
+    let format = format.unwrap_or_default();
     let (source, base_dir) = {
         let conn = lock_db(&state)?;
         let id: i64 = file_id.parse().map_err(|_| CmdError::coded(ErrorCode::InvalidCatalogId))?;
@@ -188,7 +190,7 @@ pub async fn export_model_as_stl<R: tauri::Runtime>(
     let folder = source.parent().filter(|p| p.is_dir()).map(Path::to_path_buf)
         .or_else(|| LAST_STL_FOLDER.lock().ok().and_then(|f| f.clone()).filter(|p| p.is_dir()));
     if scope == StlExportScope::EachPart {
-        return export_each_part(app, source, folder, base_dir).await;
+        return export_each_part(app, source, folder, base_dir, format).await;
     }
     let name = suggested_name(&source, &scope);
     let picked = tauri::async_runtime::spawn_blocking({
@@ -203,7 +205,7 @@ pub async fn export_model_as_stl<R: tauri::Runtime>(
     let target = with_stl_extension(picked.into_path().map_err(|e| e.to_string())?);
     let triangles = tauri::async_runtime::spawn_blocking({
         let (source, target) = (source.clone(), target.clone());
-        move || write_stl_export(&source, &scope, &target)
+        move || write_stl_export(&source, &scope, &target, format)
     }).await.map_err(|e| e.to_string())??;
     let folder = target.parent().map(Path::to_path_buf).unwrap_or_default();
     if let Ok(mut last) = LAST_STL_FOLDER.lock() { *last = Some(folder.clone()); }
@@ -219,7 +221,7 @@ pub async fn export_model_as_stl<R: tauri::Runtime>(
 
 /// "Each part as its own file": the user picks a folder instead of a file name.
 async fn export_each_part<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>, source: PathBuf, folder: Option<PathBuf>, base_dir: Option<String>,
+    app: tauri::AppHandle<R>, source: PathBuf, folder: Option<PathBuf>, base_dir: Option<String>, format: StlFormat,
 ) -> CmdResult<Option<StlExportResult>> {
     let picked = tauri::async_runtime::spawn_blocking({
         let app = app.clone();
@@ -240,7 +242,7 @@ async fn export_each_part<R: tauri::Runtime>(
             })?;
             let meshes = load_meshes(&source)?;
             stamp.ensure_unchanged(&source).map_err(|e| stl_error(e, &folder))?;
-            write_each_part(&meshes, &source, &folder)
+            write_each_part(&meshes, &source, &folder, format)
         }
     }).await.map_err(|e| e.to_string())??;
     if let Ok(mut last) = LAST_STL_FOLDER.lock() { *last = Some(folder.clone()); }

@@ -770,14 +770,25 @@ fn string<'a>(v: &'a Value, key: &str) -> Result<&'a str, Box<Response>> {
         .and_then(Value::as_str)
         .ok_or_else(|| boxed_coded(400, ErrorCode::ReqInvalidArguments, &[]))
 }
-/// `plate=<positive number>` or nothing; any other query is an error.
-fn plate_query(query: Option<&str>) -> Result<Option<u32>, ()> {
-    let Some(query) = query.filter(|q| !q.is_empty()) else { return Ok(None) };
-    let value = query.strip_prefix("plate=").ok_or(())?;
-    if value.is_empty() || value.len() > 6 || !value.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(());
+/// Query of the STL download: `plate=<positive number>` and `format=ascii|binary`, each at most
+/// once, in any order; anything else is an error.
+fn stl_query(query: Option<&str>) -> Result<(Option<u32>, katalog_core::stl::StlFormat), ()> {
+    let mut plate = None;
+    let mut format = None;
+    for pair in query.filter(|q| !q.is_empty()).into_iter().flat_map(|q| q.split('&')) {
+        match pair.split_once('=').ok_or(())? {
+            ("plate", value) if plate.is_none() => {
+                if value.is_empty() || value.len() > 6 || !value.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(());
+                }
+                plate = Some(value.parse::<u32>().ok().filter(|n| *n > 0).ok_or(())?);
+            }
+            ("format", "ascii") if format.is_none() => format = Some(katalog_core::stl::StlFormat::Ascii),
+            ("format", "binary") if format.is_none() => format = Some(katalog_core::stl::StlFormat::Binary),
+            _ => return Err(()),
+        }
     }
-    value.parse::<u32>().ok().filter(|n| *n > 0).map(Some).ok_or(())
+    Ok((plate, format.unwrap_or_default()))
 }
 async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let now = app.clock.now();
@@ -896,12 +907,12 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             .await;
         }
         if let Some(id) = stl_id {
-            // Only `plate=<number>` is understood; anything else is refused rather than ignored.
-            let plate = match plate_query(uri_query.as_deref()) {
-                Ok(plate) => plate,
+            // Only `plate=<number>` and `format=ascii|binary` are understood; anything else is refused rather than ignored.
+            let (plate, format) = match stl_query(uri_query.as_deref()) {
+                Ok(parsed) => parsed,
                 Err(()) => return error_coded(400, ErrorCode::ReqInvalidArguments, &[]),
             };
-            return crate::download::stl(&app.geometry, app.config.db_path.clone(), app.config.roots.clone(), id, plate).await;
+            return crate::download::stl(&app.geometry, app.config.db_path.clone(), app.config.roots.clone(), id, plate, format).await;
         }
         let id = download_id.unwrap();
         return crate::download::download(

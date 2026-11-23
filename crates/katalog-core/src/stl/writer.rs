@@ -1,10 +1,12 @@
-//! Binary STL writer for the render mesh list (`Vec<RenderMesh>`), the same
+//! STL writer (binary by default, ASCII on request) for the render mesh list (`Vec<RenderMesh>`), the same
 //! list the preview shows. Positions are written as they are in the list
 //! (3MF: already in world coordinates, build transforms applied; unit
 //! mm, no unit conversion). STL knows no colors, so they are dropped.
 //!
 //! Layout: 80 byte header, u32 triangle count, then 50 bytes per triangle
 //! (normal, 3 x vertex as f32 little endian, 2 attribute bytes = 0).
+//! The ASCII form is `solid … facet normal … vertex … endloop endfacet … endsolid`
+//! with the same normals and the shortest decimal text that reads back as the same f32.
 
 use std::fmt;
 use std::fs::File;
@@ -20,6 +22,18 @@ const FACET_LEN: usize = 50;
 pub(super) const BLOCK_TRIANGLES: usize = 8192;
 /// The facet count of binary STL is a `u32`.
 pub const MAX_STL_TRIANGLES: u64 = u32::MAX as u64;
+
+/// Encoding of the written STL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StlFormat {
+    #[default]
+    Binary,
+    /// Text form, roughly four to five times larger than binary.
+    Ascii,
+}
+
+const ASCII_SOLID_NAME: &str = "katalog_export";
 
 /// Which part of the mesh list is written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +78,7 @@ impl fmt::Display for StlWriteError {
             StlWriteError::InvalidIndex => write!(f, "a triangle references a missing vertex"),
             StlWriteError::NonFinite => write!(f, "a coordinate is not a finite number"),
             StlWriteError::TooManyTriangles { count, max } => {
-                write!(f, "too many triangles for binary STL: {count} (maximum {max})")
+                write!(f, "too many triangles for STL: {count} (maximum {max})")
             }
             StlWriteError::TargetIsSource => write!(f, "the target is the source file"),
             StlWriteError::SourceChanged => write!(f, "the source file changed"),
@@ -111,18 +125,30 @@ pub fn write_stl<W: Write>(out: &mut W, meshes: &[&RenderMesh]) -> Result<u64, S
 }
 
 /// Like [`write_stl`] with a configurable triangle limit (for tests of the limit).
+pub fn write_stl_with_limit<W: Write>(out: &mut W, meshes: &[&RenderMesh], max_triangles: u64) -> Result<u64, StlWriteError> {
+    write_stl_as(out, meshes, StlFormat::Binary, max_triangles)
+}
+
+/// Writes `meshes` in the chosen `format` with a triangle limit (the same limit for
+/// both formats, so the result never depends on the encoding).
 /// Everything is validated before the first byte is written, so an error never
 /// leaves a half-written stream behind.
-pub fn write_stl_with_limit<W: Write>(out: &mut W, meshes: &[&RenderMesh], max_triangles: u64) -> Result<u64, StlWriteError> {
+pub fn write_stl_as<W: Write>(out: &mut W, meshes: &[&RenderMesh], format: StlFormat, max_triangles: u64) -> Result<u64, StlWriteError> {
     let count = validate(meshes, max_triangles)?;
+    match format {
+        StlFormat::Binary => write_binary(out, meshes, count)?,
+        StlFormat::Ascii => write_ascii(out, meshes)?,
+    }
+    Ok(count)
+}
 
+fn write_binary<W: Write>(out: &mut W, meshes: &[&RenderMesh], count: u64) -> io::Result<()> {
     let mut header = [0u8; HEADER_LEN];
     // Must not start with "solid": some readers would take the file for ASCII STL.
     let label = b"Binary STL export";
     header[..label.len()].copy_from_slice(label);
     out.write_all(&header)?;
     out.write_all(&(count as u32).to_le_bytes())?;
-
     let mut block = Vec::with_capacity(BLOCK_TRIANGLES * FACET_LEN);
     for mesh in meshes {
         for triangle in &mesh.indices {
@@ -138,8 +164,32 @@ pub fn write_stl_with_limit<W: Write>(out: &mut W, meshes: &[&RenderMesh], max_t
             }
         }
     }
-    out.write_all(&block)?;
-    Ok(count)
+    out.write_all(&block)
+}
+
+/// Text STL, written in blocks like the binary form. `{:e}` prints the shortest
+/// text that parses back to the same f32 (and never `NaN`/`inf`, which `validate` rejected).
+fn write_ascii<W: Write>(out: &mut W, meshes: &[&RenderMesh]) -> io::Result<()> {
+    use std::fmt::Write as _;
+    let mut block = String::with_capacity(BLOCK_TRIANGLES * 250);
+    writeln!(block, "solid {ASCII_SOLID_NAME}").unwrap();
+    for mesh in meshes {
+        for triangle in &mesh.indices {
+            let [a, b, c] = corners(mesh, triangle);
+            let n = facet_normal(a, b, c);
+            writeln!(block, "  facet normal {:e} {:e} {:e}\n    outer loop", n[0], n[1], n[2]).unwrap();
+            for v in [a, b, c] {
+                writeln!(block, "      vertex {:e} {:e} {:e}", v[0], v[1], v[2]).unwrap();
+            }
+            block.push_str("    endloop\n  endfacet\n");
+            if block.len() >= BLOCK_TRIANGLES * 200 {
+                out.write_all(block.as_bytes())?;
+                block.clear();
+            }
+        }
+    }
+    writeln!(block, "endsolid {ASCII_SOLID_NAME}").unwrap();
+    out.write_all(block.as_bytes())
 }
 
 fn corners(mesh: &RenderMesh, triangle: &[u32; 3]) -> [[f32; 3]; 3] {
@@ -227,6 +277,17 @@ pub fn write_stl_file_with_limit(
     meshes: &[&RenderMesh],
     max_triangles: u64,
 ) -> Result<u64, StlWriteError> {
+    write_stl_file_as(target, source, meshes, StlFormat::Binary, max_triangles)
+}
+
+/// [`write_stl_file`] with a choice of format and triangle limit.
+pub fn write_stl_file_as(
+    target: &Path,
+    source: Option<&Path>,
+    meshes: &[&RenderMesh],
+    format: StlFormat,
+    max_triangles: u64,
+) -> Result<u64, StlWriteError> {
     if let Some(source) = source {
         if is_same_file(target, source) {
             return Err(StlWriteError::TargetIsSource);
@@ -237,7 +298,7 @@ pub fn write_stl_file_with_limit(
     let mut written = 0;
     replace_file_atomically(target, |file| {
         let mut buffered = io::BufWriter::new(file);
-        written = write_stl_with_limit(&mut buffered, meshes, max_triangles).map_err(|e| match e {
+        written = write_stl_as(&mut buffered, meshes, format, max_triangles).map_err(|e| match e {
             StlWriteError::Io(e) => e,
             other => io::Error::other(other.to_string()),
         })?;
@@ -251,6 +312,16 @@ pub fn write_stl_file_with_limit(
 /// fails atomically when the name is taken; where the file system has no hard
 /// links, an existence check and a rename follow (a small race remains there).
 pub fn write_stl_file_new(target: &Path, source: Option<&Path>, meshes: &[&RenderMesh]) -> Result<u64, StlWriteError> {
+    write_stl_file_new_as(target, source, meshes, StlFormat::Binary)
+}
+
+/// [`write_stl_file_new`] with a choice of format.
+pub fn write_stl_file_new_as(
+    target: &Path,
+    source: Option<&Path>,
+    meshes: &[&RenderMesh],
+    format: StlFormat,
+) -> Result<u64, StlWriteError> {
     if let Some(source) = source {
         if is_same_file(target, source) {
             return Err(StlWriteError::TargetIsSource);
@@ -263,7 +334,7 @@ pub fn write_stl_file_new(target: &Path, source: Option<&Path>, meshes: &[&Rende
     let mut written = 0;
     let result = create_file_without_replacing(target, |file| {
         let mut buffered = io::BufWriter::new(file);
-        written = write_stl_with_limit(&mut buffered, meshes, MAX_STL_TRIANGLES).map_err(|e| match e {
+        written = write_stl_as(&mut buffered, meshes, format, MAX_STL_TRIANGLES).map_err(|e| match e {
             StlWriteError::Io(e) => e,
             other => io::Error::other(other.to_string()),
         })?;

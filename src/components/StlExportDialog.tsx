@@ -4,7 +4,7 @@ import { useT } from '../i18n/LanguageContext';
 import { displayName } from '../lib/displayName';
 import { readPlateOverview } from '../lib/api/files';
 import { isReadOnly } from '../lib/readOnly';
-import { downloadModelAsStl, exportModelAsStl, showFolderInFileManager, type StlExportResult, type StlScope } from '../lib/api/stl';
+import { downloadModelAsStl, exportModelAsStl, showFolderInFileManager, type StlExportResult, type StlFormat, type StlScope } from '../lib/api/stl';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { useModalDialog } from '../hooks/useModalDialog';
@@ -32,10 +32,12 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
   const t = useT();
   const titleId = useId();
   const scopeName = useId();
+  const formatName = useId();
   const [phase, setPhase] = useState<'set' | 'saving' | 'done'>('set');
   const [plates, setPlates] = useState<number[]>([]);
   const [wholeModel, setWholeModel] = useState(true);
   const [plate, setPlate] = useState<number | null>(null);
+  const [format, setFormat] = useState<StlFormat>('binary');
   const [eachPart, setEachPart] = useState(parts?.initial === 'eachPart');
   const [error, setError] = useState<AppError | null>(null);
   const [result, setResult] = useState<StlExportResult | null>(null);
@@ -66,7 +68,7 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
     setError(null);
     setPhase('saving');
     try {
-      const saved = web ? await downloadModelAsStl(model.id, model.name, scope) : await exportModelAsStl(model.id, scope);
+      const saved = web ? await downloadModelAsStl(model.id, model.name, scope, format) : await exportModelAsStl(model.id, scope, format);
       if (saved === null) { setPhase('set'); return; }
       setResult(saved);
       setPhase('done');
@@ -138,6 +140,18 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
                 </label>
               </fieldset>
             )}
+            <fieldset className="m-0 mb-3 p-0 border-0">
+              <legend className="ui-label text-[var(--ink-3)] mb-1">{t('stFormat')}</legend>
+              <label className="flex items-center gap-2 py-1 cursor-pointer">
+                <input type="radio" name={formatName} checked={format === 'binary'} disabled={phase === 'saving'} onChange={() => setFormat('binary')} />
+                {t('stFormatBinary')}
+              </label>
+              <label className="flex items-center gap-2 py-1 cursor-pointer">
+                <input type="radio" name={formatName} checked={format === 'ascii'} disabled={phase === 'saving'} onChange={() => setFormat('ascii')} />
+                {t('stFormatAscii')}
+              </label>
+              {format === 'ascii' && <p className="m-0 mt-1 text-small text-[var(--ink-2)]">{t('stFormatAsciiNote')}</p>}
+            </fieldset>
             {noteColors && <p className="m-0 mb-1 text-small text-[var(--ink-2)]">{t('stNoteColors')}</p>}
             {!parts && manyPlates && wholeModel && <p className="m-0 mb-1 text-small text-[var(--ink-2)]">{t('stNotePlates')}</p>}
             {phase === 'saving' && <p role="status" className="m-0 mt-2 text-small">{t('stSaving')}</p>}

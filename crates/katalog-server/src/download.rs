@@ -211,8 +211,10 @@ fn serve(
     response
 }
 
-/// Largest STL the web builds in memory: 1M triangles are 50 MB, and up to four converters can run.
+/// Largest STL the web builds in memory: 1M triangles are 50 MB binary (ASCII about 4-5 times that), and up to four converters can run.
 const WEB_STL_MAX_TRIANGLES: u64 = 1_000_000;
+/// ASCII is about five times larger per triangle, so it gets a quarter of the limit (same memory ceiling).
+const WEB_STL_ASCII_MAX_TRIANGLES: u64 = 250_000;
 
 fn stl_failure(error: katalog_core::stl::StlWriteError) -> Response {
     use katalog_core::stl::StlWriteError as E;
@@ -227,9 +229,9 @@ fn stl_failure(error: katalog_core::stl::StlWriteError) -> Response {
 }
 
 /// "Save as STL" for a 3MF or OBJ of the catalog: the same core writer as the desktop app
-/// (binary STL), built in memory under the parser gate and sent as an attachment. `plate`
+/// (binary STL, or ASCII on request), built in memory under the parser gate and sent as an attachment. `plate`
 /// limits the result to one plate of a 3MF. STEP is not offered (no CAD kernel in the web build).
-pub async fn stl(gate: &Arc<crate::invoke::GeometryGate>, db_path: PathBuf, roots: Vec<PathBuf>, id: &str, plate: Option<u32>) -> Response {
+pub async fn stl(gate: &Arc<crate::invoke::GeometryGate>, db_path: PathBuf, roots: Vec<PathBuf>, id: &str, plate: Option<u32>, format: katalog_core::stl::StlFormat) -> Response {
     use katalog_core::{db::models::FileType, stl::{self, SourceStamp, StlScope}};
     let catalog_guard = match gate.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let Ok(numeric_id) = id.parse::<i64>() else {
@@ -264,7 +266,11 @@ pub async fn stl(gate: &Arc<crate::invoke::GeometryGate>, db_path: PathBuf, root
         stamp.ensure_unchanged(&source).map_err(|e| Box::new(stl_failure(e)))?;
         let selected = stl::select_meshes(&meshes, plate.map_or(StlScope::All, StlScope::Plate)).map_err(|e| Box::new(stl_failure(e)))?;
         let mut bytes = Vec::new();
-        stl::write_stl_with_limit(&mut bytes, &selected, WEB_STL_MAX_TRIANGLES).map_err(|e| Box::new(stl_failure(e)))?;
+        let limit = match format {
+            stl::StlFormat::Binary => WEB_STL_MAX_TRIANGLES,
+            stl::StlFormat::Ascii => WEB_STL_ASCII_MAX_TRIANGLES,
+        };
+        stl::write_stl_as(&mut bytes, &selected, format, limit).map_err(|e| Box::new(stl_failure(e)))?;
         let stem = std::path::Path::new(&file.name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
         let name = match plate {
             Some(number) => format!("{stem}_Platte{number}.stl"),
