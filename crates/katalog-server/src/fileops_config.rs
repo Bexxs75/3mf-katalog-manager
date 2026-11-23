@@ -26,15 +26,9 @@ pub(crate) fn context(config: &Config) -> Result<FsContext, String> {
                 .into(),
         );
     }
-    let journal = config.auth_file.with_file_name("web-fsops.json");
-    validate_auth_path(&config.db_path, &journal)?;
-    if journal == config.auth_file
-        || config
-            .auth_file
-            .file_name()
-            .is_some_and(|n| n == "web-uploads.json")
-    {
-        return Err("Journal kollidiert mit Auth-Datei".into());
+    crate::config::validate_password_path(Some(&config.db_path), &config.auth_file)?;
+    for name in crate::config::RESERVED_JOURNAL_NAMES {
+        validate_auth_path(&config.db_path, &config.auth_file.with_file_name(name))?;
     }
     let mut protected = Vec::new();
     for file in [&config.db_path, &config.auth_file] {

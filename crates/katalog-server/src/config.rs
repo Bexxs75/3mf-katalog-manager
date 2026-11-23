@@ -1,6 +1,6 @@
 use std::{
     net::{IpAddr, Ipv6Addr, SocketAddr},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 // Betrieb: Cookies (katalog_session) sind nicht nach Port getrennt. Andere
@@ -24,6 +24,8 @@ pub struct Config {
     pub db_path: PathBuf,
     pub static_dir: Option<PathBuf>,
     pub roots: Vec<PathBuf>,
+    pub source_roots: Vec<PathBuf>,
+    pub printer_allow: PrinterAllow,
     pub auth_file: PathBuf,
     pub bind: SocketAddr,
     pub allowed_hosts: Option<Vec<String>>,
@@ -203,7 +205,14 @@ impl Config {
             )?),
             Some(_) => return Err("KATALOG_SLICER_LINKS muss 0 oder 1 sein".into()),
         };
+        let source_roots = lookup("KATALOG_SOURCE_ROOTS")
+            .filter(|v| !v.is_empty())
+            .map(|value| std::env::split_paths(&value).collect())
+            .unwrap_or_default();
+        let printer_allow = PrinterAllow::parse(&lookup("KATALOG_PRINTER_ALLOW").unwrap_or_default())?;
         let mut config = Self {
+            source_roots,
+            printer_allow,
             slicer_links,
             file_ops, file_ops_daily_limit, companion_max_bytes: companion_mb * 1024 * 1024, file_ops_ack, file_roots,
             static_dir,
@@ -219,10 +228,160 @@ impl Config {
             password,
             password_file,
         };
+        validate_password_path(Some(&config.db_path), &config.auth_file)?;
+        validate_source_config(&mut config)?;
         validate_upload_config(&mut config)?;
         validate_fileops_config(&config)?;
         Ok(config)
     }
+}
+
+/// Parsed configuration only; callers must additionally enforce HOME_NETWORK
+/// on every resolved address and pin the checked address when connecting.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PrinterAllow {
+    entries: Vec<PrinterAllowEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PrinterAllowEntry {
+    Host(String),
+    Network(PrinterNetwork),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrinterNetwork {
+    address: IpAddr,
+    prefix: u8,
+}
+
+impl PrinterNetwork {
+    pub fn address(&self) -> IpAddr {
+        self.address
+    }
+
+    pub fn prefix(&self) -> u8 {
+        self.prefix
+    }
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        match (self.address, ip) {
+            (IpAddr::V4(net), IpAddr::V4(ip)) => {
+                let mask = u32::MAX
+                    .checked_shl(32 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u32::from(net) & mask == u32::from(ip) & mask
+            }
+            (IpAddr::V6(net), IpAddr::V6(ip)) => {
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u128::from(net) & mask == u128::from(ip) & mask
+            }
+            _ => false,
+        }
+    }
+}
+
+impl PrinterAllow {
+    pub fn entries(&self) -> &[PrinterAllowEntry] {
+        &self.entries
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let invalid = || {
+            "KATALOG_PRINTER_ALLOW expects comma-separated hosts, IPs or CIDRs without ports"
+                .to_owned()
+        };
+        let mut entries = Vec::new();
+        if value.trim().is_empty() {
+            return Ok(Self { entries });
+        }
+        for token in value.split(',').map(str::trim) {
+            let entry = if let Some((address, prefix)) = token.split_once('/') {
+                let address: IpAddr = address.parse().map_err(|_| invalid())?;
+                let max = if address.is_ipv4() { 32 } else { 128 };
+                let prefix = prefix
+                    .parse::<u8>()
+                    .ok()
+                    .filter(|n| {
+                        *n <= max
+                            && !prefix.is_empty()
+                            && prefix.bytes().all(|b| b.is_ascii_digit())
+                    })
+                    .ok_or_else(invalid)?;
+                PrinterAllowEntry::Network(PrinterNetwork { address, prefix })
+            } else if let Ok(address) = token.parse::<IpAddr>() {
+                let prefix = if address.is_ipv4() { 32 } else { 128 };
+                PrinterAllowEntry::Network(PrinterNetwork { address, prefix })
+            } else {
+                let (host, port) = parse_host(token).map_err(|_| invalid())?;
+                if port.is_some()
+                    || token.starts_with('[')
+                    || host.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+                {
+                    return Err(invalid());
+                }
+                PrinterAllowEntry::Host(host.trim_end_matches('.').to_owned())
+            };
+            entries.push(entry);
+        }
+        Ok(Self { entries })
+    }
+
+    /// This is only the allowlist half of the address policy. Metadata endpoints
+    /// remain excluded even under a matching host, broad CIDR or mapped IPv4.
+    pub fn matches(&self, host: &str, ip: IpAddr) -> bool {
+        let normalized = match ip {
+            IpAddr::V6(ip) => ip
+                .to_ipv4_mapped()
+                .map(IpAddr::V4)
+                .unwrap_or(IpAddr::V6(ip)),
+            ip => ip,
+        };
+        if normalized == IpAddr::from([169, 254, 169, 254])
+            || normalized == IpAddr::V6(Ipv6Addr::new(0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254))
+        {
+            return false;
+        }
+        self.entries.iter().any(|entry| match entry {
+            PrinterAllowEntry::Host(allowed) => {
+                allowed.eq_ignore_ascii_case(host.trim_end_matches('.'))
+            }
+            PrinterAllowEntry::Network(network) => network.contains(ip),
+        })
+    }
+}
+
+fn validate_source_config(config: &mut Config) -> Result<(), String> {
+    if config.source_roots.is_empty() {
+        return Ok(());
+    }
+    if config.source_roots.iter().any(|p| p.as_os_str().is_empty()) {
+        return Err("KATALOG_SOURCE_ROOTS contains an empty root".into());
+    }
+    let parent = |p: &Path| {
+        p.parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."))
+            .to_path_buf()
+    };
+    let mut forbidden = vec![
+        resolved(&parent(&config.auth_file))?,
+        parent(&resolved(&config.auth_file)?),
+        resolved(&parent(&config.db_path))?.join("trash"),
+        parent(&resolved(&config.db_path)?).join("trash"),
+    ];
+    if let Some(upload) = &config.upload {
+        forbidden.push(resolved(&upload.dir)?);
+    }
+    for root in &config.file_roots {
+        forbidden.push(resolved(root)?.join(katalog_core::fsops::TRASH));
+    }
+    config.source_roots =
+        katalog_core::fsops::validate_source_roots(&config.source_roots, &forbidden)
+            .map_err(|e| format!("KATALOG_SOURCE_ROOTS: {e}"))?;
+    Ok(())
 }
 
 /// Like `positive_limit` with a lower bound; the bounds are part of the message.
@@ -392,18 +551,72 @@ pub fn validate_upload_config(config: &mut Config) -> Result<(), String> {
         .map_err(|_| "KATALOG_UPLOAD_DIR ist nicht schreibbar".to_string())
 }
 
-/// Reject the catalog and its SQLite sidecars before any password-file write.
-/// Auth mutations must never replace either durable operation journal, even
-/// in the standalone set-password command without a database configuration.
-pub fn validate_auth_journal_name(path: &std::path::Path) -> Result<(), String> {
-    if path.file_name().is_some_and(|n| n == "web-fsops.json" || n == "web-uploads.json") {
-        return Err("Auth-Datei kollidiert mit einem Serverjournal".into());
+/// Names shared by all durable server journals.
+pub const RESERVED_JOURNAL_NAMES: [&str; 3] =
+    ["web-fsops.json", "web-uploads.json", "web-restore.json"];
+
+pub fn validate_auth_journal_name(path: &Path) -> Result<(), String> {
+    for path in [path.to_path_buf(), resolved(path)?] {
+        if path
+            .file_name()
+            .is_some_and(|n| RESERVED_JOURNAL_NAMES.iter().any(|r| n == *r))
+        {
+            return Err("Auth-Datei kollidiert mit einem Serverjournal".into());
+        }
+        if path
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with(".bak-"))
+        {
+            return Err("Auth-Datei kollidiert mit einer Rückfallsicherung".into());
+        }
     }
     Ok(())
 }
 
+/// Called before bootstrap or standalone password writes.
+pub fn validate_password_path(db: Option<&Path>, auth: &Path) -> Result<(), String> {
+    validate_auth_journal_name(auth)?;
+    if let Some(db) = db {
+        validate_auth_path(db, auth)?;
+    } else {
+        for path in [auth.to_path_buf(), resolved(auth)?] {
+            if path.file_name().is_some_and(|name| {
+                [
+                    "catalog.db",
+                    "catalog.db-wal",
+                    "catalog.db-shm",
+                    "catalog.db-journal",
+                    "catalog.db.lock",
+                ]
+                .iter()
+                .any(|reserved| name == *reserved)
+            }) {
+                return Err("KATALOG_AUTH_FILE kollidiert mit einer Katalogdatei".into());
+            }
+        }
+    }
+    checked_journal_path(db, auth, RESERVED_JOURNAL_NAMES[2])?;
+    Ok(())
+}
+
+/// Reserve the restore journal without creating or reading its contents.
+pub fn restore_journal_path(db: &Path, auth: &Path) -> Result<PathBuf, String> {
+    checked_journal_path(Some(db), auth, RESERVED_JOURNAL_NAMES[2])
+}
+
+fn checked_journal_path(db: Option<&Path>, auth: &Path, name: &str) -> Result<PathBuf, String> {
+    let journal = auth.with_file_name(name);
+    if let Some(db) = db {
+        validate_auth_path(db, &journal)?;
+    }
+    if resolved(&journal)? == resolved(auth)? {
+        return Err("Restore-Journal kollidiert mit Auth-Datei".into());
+    }
+    Ok(journal)
+}
+
 pub(crate) fn validate_fileops_config(config: &Config) -> Result<(), String> {
-    validate_auth_journal_name(&config.auth_file)?;
+    validate_password_path(Some(&config.db_path), &config.auth_file)?;
     if config.file_ops && (!config.write || config.allow_no_auth || config.file_ops_daily_limit == 0 || config.allowed_hosts.as_ref().is_none_or(|h|h.is_empty() || h.iter().any(|v|parse_host(v).is_err()))) {
         return Err("Dateiverwaltung erfordert Schreibmodus, Anmeldung, Hostliste und positive Tagesgrenze".into());
     }
@@ -413,50 +626,56 @@ pub(crate) fn validate_fileops_config(config: &Config) -> Result<(), String> {
     Ok(())
 }
 
-pub fn validate_auth_path(db: &std::path::Path, auth: &std::path::Path) -> Result<(), String> {
-    fn resolved(path: &std::path::Path) -> Result<PathBuf, String> {
-        if let Ok(path) = path.canonicalize() {
-            return Ok(path);
-        }
-        let absolute = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            std::env::current_dir()
-                .map_err(|_| "Arbeitsverzeichnis nicht lesbar".to_string())?
-                .join(path)
-        };
-        let mut normalized = PathBuf::new();
-        for part in absolute.components() {
-            match part {
-                std::path::Component::ParentDir => {
-                    normalized.pop();
-                }
-                std::path::Component::CurDir => {}
-                other => normalized.push(other.as_os_str()),
-            }
-        }
-        if let (Some(parent), Some(name)) = (normalized.parent(), normalized.file_name()) {
-            if let Ok(parent) = parent.canonicalize() {
-                return Ok(parent.join(name));
-            }
-        }
-        Ok(normalized)
+fn resolved(path: &std::path::Path) -> Result<PathBuf, String> {
+    if let Ok(path) = path.canonicalize() {
+        return Ok(path);
     }
+    if let (Some(parent), Some(name)) = (path.parent(), path.file_name()) {
+        if let Ok(parent) = parent.canonicalize() {
+            return Ok(parent.join(name));
+        }
+    }
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|_| "Arbeitsverzeichnis nicht lesbar".to_string())?
+            .join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for part in absolute.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    if let (Some(parent), Some(name)) = (normalized.parent(), normalized.file_name()) {
+        if let Ok(parent) = parent.canonicalize() {
+            return Ok(parent.join(name));
+        }
+    }
+    Ok(normalized)
+}
+pub fn validate_auth_path(db: &Path, auth: &Path) -> Result<(), String> {
     let auth = resolved(auth)?;
-    // A database symlink and its target must protect the same lock sidecar.
-    let mut lock_path = resolved(db)?.into_os_string();
-    lock_path.push(".lock");
-    if auth == resolved(std::path::Path::new(&lock_path))? {
-        return Err("KATALOG_AUTH_FILE must not replace the catalog lock file".into());
+    if let Ok(lock) = katalog_core::db::instance_lock::InstanceLock::path_for(db) {
+        if auth == resolved(&lock)? {
+            return Err("KATALOG_AUTH_FILE must not replace the catalog lock file".into());
+        }
     }
-    for suffix in ["", "-wal", "-shm", "-journal", ".lock"] {
-        let mut name = db.as_os_str().to_os_string();
-        name.push(suffix);
-        if auth == resolved(std::path::Path::new(&name))? {
-            return Err(
+    for db in [db.to_path_buf(), resolved(db)?] {
+        for suffix in ["", "-wal", "-shm", "-journal", ".lock"] {
+            let mut name = db.as_os_str().to_os_string();
+            name.push(suffix);
+            if auth == resolved(std::path::Path::new(&name))? {
+                return Err(
                 "KATALOG_AUTH_FILE darf weder der Katalog noch eine SQLite-Begleitdatei oder Katalog-Sperrdatei sein"
                     .into(),
             );
+            }
         }
     }
     Ok(())
@@ -787,7 +1006,7 @@ mod upload_journal_tests {
                 "KATALOG_ALLOWED_HOSTS"=>Some("localhost:8080".into()),
                 _=>None,
             });
-            assert!(matches!(result,Err(message) if message.contains("Upload-Journal kollidiert")));
+            assert!(matches!(result,Err(message) if message.contains("kollidiert")));
         }
     }
 }

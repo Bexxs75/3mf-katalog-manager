@@ -63,6 +63,64 @@ pub struct Resolved {
     pub parent: Directory,
     pub name: String,
 }
+/// Check read-only roots using handle ancestry and mount aliases, without creating trash.
+pub fn validate_source_roots(roots: &[PathBuf], forbidden: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let mounts = mount_locations()?;
+    let mut checked: Vec<(PathBuf, Directory)> = Vec::new();
+    for root in roots {
+        let path = root.canonicalize()?;
+        lexical(path.to_str().ok_or(Error::PathUnresolvable)?)?;
+        let handle = Directory::open(&path)?;
+        let identity = Identity::of(&handle)?;
+        let ancestors = ancestor_ids(&handle)?;
+        for blocked in forbidden.iter().chain(checked.iter().map(|(path, _)| path)) {
+            // Missing trash directories still reserve their future location. Resolve
+            // the existing ancestor first so aliases cannot bypass that reservation.
+            let mut existing = blocked.as_path();
+            let mut suffix = PathBuf::new();
+            while match std::fs::symlink_metadata(existing) {
+                Ok(_) => false,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+                Err(e) => return Err(e.into()),
+            } {
+                let name = existing.file_name().ok_or(Error::PathUnresolvable)?;
+                suffix = PathBuf::from(name).join(suffix);
+                existing = existing.parent().ok_or(Error::PathUnresolvable)?;
+            }
+            let existing = existing.canonicalize()?;
+            let other = Directory::open(&existing)?;
+            let target = existing.join(&suffix);
+            if path.starts_with(&target) || target.starts_with(&path) {
+                return Err(Error::Protected);
+            }
+            if suffix.as_os_str().is_empty() {
+                if ancestor_ids(&other)?.contains(&identity)
+                    || ancestors.contains(&Identity::of(&other)?)
+                    || mount_alias_overlap(
+                        &handle,
+                        &path,
+                        handle.mount_id()?,
+                        &other,
+                        &existing,
+                        other.mount_id()?,
+                        &mounts,
+                    )?
+                {
+                    return Err(Error::Protected);
+                }
+            } else if handle.device()? == other.device()? {
+                let source = mount_physical(&path, handle.mount_id()?, &mounts)?;
+                let target = mount_physical(&existing, other.mount_id()?, &mounts)?.join(suffix);
+                if source.starts_with(&target) || target.starts_with(&source) {
+                    return Err(Error::Protected);
+                }
+            }
+        }
+        checked.push((path, handle));
+    }
+    Ok(checked.into_iter().map(|(path, _)| path).collect())
+}
+
 impl FsContext {
     pub fn new(roots: &[PathBuf], protected: &[(PathBuf, Protection)]) -> Result<Self> {
         let mounts = mount_locations()?;
