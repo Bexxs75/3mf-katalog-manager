@@ -32,7 +32,7 @@ function attach(stream: EventSource) {
 }
 
 function open() {
-  if (source || handlers.size === 0 || !signedIn()) return;
+  if (source || handlers.size === 0 || !signedIn() || typeof EventSource === 'undefined') return;
   const stream = new EventSource('/api/events');
   source = stream;
   attached.clear();
