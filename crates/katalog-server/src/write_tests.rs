@@ -49,6 +49,7 @@ impl Fixture {
         };
         let session = new_session(&mut data, "test", 100).unwrap();
         let app = Arc::new(App {
+            _instance_lock: None,
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads:None,
@@ -2429,4 +2430,25 @@ async fn tag_rename_and_merge_routes_return_affected_models() {
     let merged = f.send("merge_tags", json!({"source":"renamed", "target":"target"})).await;
     assert_eq!(merged.status(), StatusCode::OK);
     assert_eq!(value(merged).await, json!(1));
+}
+
+#[tokio::test]
+async fn startup_lock_precedes_auth_and_lives_with_router_clones() {
+    use katalog_core::db::instance_lock::{InstanceLock, LockError};
+    let f = Fixture::new(false);
+    let config = f.app.config.clone();
+    let owner = InstanceLock::acquire(&config.db_path, "desktop").unwrap();
+    let failure = initialize(config.clone()).await.expect_err("busy catalog");
+    assert!(failure.contains("catalogInUse"));
+    assert!(!config.auth_file.exists());
+    drop(owner);
+
+    let mut config = config;
+    config.allow_no_auth = true;
+    let app = initialize(config.clone()).await.unwrap();
+    let clone = app.clone();
+    drop(app);
+    assert!(matches!(InstanceLock::acquire(&config.db_path, "desktop"), Err(LockError::InUse)));
+    drop(clone);
+    drop(InstanceLock::acquire(&config.db_path, "desktop").unwrap());
 }

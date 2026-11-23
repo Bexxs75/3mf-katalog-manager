@@ -2129,6 +2129,7 @@ export interface Translations {
   errSourceFolderNotFound: string;
   errSourceFileNotNew: string;
   errFolderNotPicked: string;
+  errCatalogInUse: string;
   errBackupNotZip: string;
   errBackupMissingEntry: string;
   errBackupEntryTooLarge: string;

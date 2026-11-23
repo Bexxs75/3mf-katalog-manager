@@ -63,6 +63,7 @@ impl Fixture {
         .unwrap()
         .map(|o| Arc::new(fileops::Runtime::new(o)));
         let app = Arc::new(App {
+            _instance_lock: None,
             fileops,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads,

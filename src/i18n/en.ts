@@ -2087,6 +2087,7 @@ export const en: Translations = {
   errSourceFolderNotFound: "Source folder not found.",
   errSourceFileNotNew: "The file is not (or no longer) one of the new files of a source folder.",
   errFolderNotPicked: "The folder was not selected in the app.",
+  errCatalogInUse: "Catalog is already in use. Close the other desktop app or web server and try again.",
   errBackupNotZip: "The file is not a valid catalog backup (not a ZIP file).",
   errBackupMissingEntry: "The archive does not contain {0}.",
   errBackupEntryTooLarge: "The entry “{0}” in the archive is too large ({1} MB). At most {2} MB are allowed.",

@@ -11,6 +11,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
+- Desktop and web refuse concurrent operation on the same catalog. `KATALOG_LOCK=off` disables the instance lock for SMB/NFS setups managed by the operator.
+
 - The update component was brought up to date, so the update packages are handled by a current archive library. The dependency audit no longer needs exceptions for it.
 
 ### Fixed
@@ -902,6 +904,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ## [Unreleased]
 
 ### Geändert
+
+- Desktop und Web verweigern den gleichzeitigen Betrieb auf demselben Katalog. `KATALOG_LOCK=off` schaltet die Instanzsperre für selbst koordinierte SMB/NFS-Umgebungen ab.
 
 - Die Update-Komponente wurde aktualisiert, damit Update-Pakete von einer aktuellen Archiv-Bibliothek verarbeitet werden. Die Abhängigkeitsprüfung braucht dafür keine Ausnahmen mehr.
 

@@ -126,6 +126,7 @@ error_codes! {
     SourceNoCatalogFolder => "sourceNoCatalogFolder",
     SourceNoFilesSelected => "sourceNoFilesSelected",
     // Restoring a catalog backup.
+    CatalogInUse => "catalogInUse",
     BackupNotZip => "backupNotZip",
     /// params: name of the missing entry.
     BackupMissingEntry => "backupMissingEntry",

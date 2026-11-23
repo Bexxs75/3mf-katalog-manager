@@ -1564,6 +1564,28 @@ the interface uses Barlow and SVG icons. Paths and addresses use IBM Plex Mono.
 
 ---
 
+### Catalog instance lock (English)
+
+Desktop and web now take an exclusive operating-system lock on `<catalog.db>.lock`
+before opening the catalog, including web read-only mode. A second start fails with
+`catalogInUse` (the server exits with a nonzero status). Close the other instance
+before switching between desktop and web. The catalog directory must be writable
+so the sidecar can be created and updated, even for a read-only web catalog.
+
+The sidecar contains the owner (`desktop` or `server`), PID, hostname and start time
+for display only. It remains on disk after exit or a crash; the operating system
+releases the lock automatically. Do not delete or replace it while an instance is
+running. Catalog backup export excludes it, and restoring a catalog leaves it intact.
+Older app versions without this lock cannot participate in the coordination.
+
+SMB/NFS mounts remain allowed, but operating-system file locks are not reliable on
+every network filesystem or mount configuration. If necessary, set `KATALOG_LOCK=off`
+in the environment of each affected desktop/server process (Docker Compose:
+`KATALOG_LOCK: "off"` under `environment`). This disables the lock and logs a warning;
+you must then ensure that only one instance uses the catalog. Unset the variable to
+restore the default locking behavior. No automatic fallback disables the lock.
+
+
 # Benutzerhandbuch — 3MF Katalog Manager
 
 Dieses Handbuch richtet sich an alle, die den 3MF Katalog Manager zum ersten Mal benutzen und
@@ -3228,3 +3250,26 @@ IBM Plex Mono verwendet.
 ### Webserver: Hinweise für Betreiber
 
 Den optionalen Webserver nur im Heimnetz oder VPN betreiben; keine Portweiterleitung und keinen öffentlichen Tunnel verwenden. Eigenen Hostnamen und für verschlüsselten Zugriff einen HTTPS-Proxy einsetzen. Hinter einem Proxy teilen sich Nutzer die Anmeldesperre, sofern Client-Adressen nicht korrekt weitergereicht werden. `KATALOG_TRUST_PROXY=1` nur hinter einem abschirmenden Proxy setzen, der `X-Forwarded-For` überschreibt oder ergänzt; direkter Zugriff auf den Server muss ausgeschlossen sein. Das erzeugte Erstpasswort bleibt im Protokoll: nach der ersten Anmeldung ändern und Protokollzugriff schützen. Modell-, Upload- und Konfigurationsordner dürfen nicht von nicht vertrauenswürdigen lokalen Benutzern beschrieben werden; Pfadprüfungen schützen nicht vor Hardlinks oder gleichzeitigem Austausch von Verzeichnissen. Siehe [SECURITY.md](../../SECURITY.md).
+
+### Katalog-Instanzsperre
+
+Desktop und Web nehmen vor dem Öffnen des Katalogs eine exklusive Betriebssystem-
+Sperre auf `<catalog.db>.lock`, auch im Web-Lesemodus. Ein zweiter Start scheitert mit
+`catalogInUse` (der Server endet mit einem Exit-Code ungleich null). Beende die andere
+Instanz vor dem Wechsel zwischen Desktop und Web. Das Katalogverzeichnis muss auch
+im Web-Lesemodus zum Anlegen und Aktualisieren der Sperrdatei beschreibbar sein.
+
+Die Datei enthält Eigentümer (`desktop` oder `server`), PID, Hostname und Startzeit
+nur zur Anzeige. Sie bleibt nach dem Beenden oder einem Absturz bestehen; das
+Betriebssystem gibt die Sperre automatisch frei. Lösche oder ersetze sie nicht bei
+laufender Instanz. Katalog-Sicherungen exportieren sie nicht, und beim Einspielen
+einer Sicherung bleibt sie erhalten. Ältere App-Versionen ohne diese Sperre können
+nicht an der Koordination teilnehmen.
+
+SMB/NFS bleiben erlaubt, aber Betriebssystem-Dateisperren funktionieren nicht bei
+jedem Netzwerkdateisystem und jeder Mount-Konfiguration zuverlässig. Falls nötig,
+setze `KATALOG_LOCK=off` in der Umgebung jedes betroffenen Desktop-/Serverprozesses
+(Docker Compose: `KATALOG_LOCK: "off"` unter `environment`). Das schaltet die Sperre
+ab und protokolliert eine Warnung. Du musst dann selbst sicherstellen, dass nur eine
+Instanz den Katalog nutzt. Entferne die Variable, um die Standardsperre wieder zu
+aktivieren. Fehler schalten die Sperre nicht automatisch ab.

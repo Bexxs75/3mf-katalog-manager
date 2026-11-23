@@ -5,6 +5,39 @@ export const currentVersion = version;
 export interface ReleaseGroups { new: string[]; improved: string[]; fixed: string[] }
 export interface ReleaseNote { date: string; notes: Partial<Record<Language, ReleaseGroups>> & { en: ReleaseGroups } }
 export const releaseNotes: Record<string, ReleaseNote> = {
+  "0.19.0": {
+    "date": "2026-11-23",
+    "notes": {
+      "en": {
+        "new": [],
+        "improved": [
+          "Desktop and web refuse concurrent operation on the same catalog."
+        ],
+        "fixed": []
+      },
+      "de": {
+        "new": [],
+        "improved": [
+          "Desktop und Web verweigern den gleichzeitigen Betrieb auf demselben Katalog."
+        ],
+        "fixed": []
+      },
+      "es": {
+        "new": [],
+        "improved": [
+          "La aplicación de escritorio y el servidor web impiden el uso simultáneo del mismo catálogo."
+        ],
+        "fixed": []
+      },
+      "fr": {
+        "new": [],
+        "improved": [
+          "L’application de bureau et le serveur web empêchent l’utilisation simultanée du même catalogue."
+        ],
+        "fixed": []
+      }
+    }
+  },
   "0.18.7": {
     "date": "2026-11-22",
     "notes": {

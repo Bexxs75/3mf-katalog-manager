@@ -2087,6 +2087,7 @@ export const fr: Translations = {
   errSourceFolderNotFound: "Dossier source introuvable.",
   errSourceFileNotNew: "Le fichier ne fait pas (ou plus) partie des nouveaux fichiers d’un dossier source.",
   errFolderNotPicked: "Le dossier n’a pas été sélectionné dans l’application.",
+  errCatalogInUse: "Le catalogue est déjà utilisé. Fermez l’autre application de bureau ou le serveur web, puis réessayez.",
   errBackupNotZip: "Le fichier n’est pas une sauvegarde de catalogue valide (ce n’est pas un fichier ZIP).",
   errBackupMissingEntry: "L’archive ne contient pas {0}.",
   errBackupEntryTooLarge: "L’entrée « {0} » de l’archive est trop volumineuse ({1} Mo). Le maximum autorisé est de {2} Mo.",

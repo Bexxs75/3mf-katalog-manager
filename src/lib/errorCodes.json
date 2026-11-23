@@ -60,6 +60,7 @@
     "folderNotPicked",
     "sourceNoCatalogFolder",
     "sourceNoFilesSelected",
+    "catalogInUse",
     "backupNotZip",
     "backupMissingEntry",
     "backupEntryTooLarge",

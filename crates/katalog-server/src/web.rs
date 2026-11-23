@@ -299,6 +299,7 @@ struct App {
     downloads: Arc<tokio::sync::Semaphore>,
     export: crate::export::Runtime,
     slicer: Option<Arc<crate::slicer::Slicer>>,
+    _instance_lock: Option<katalog_core::db::instance_lock::InstanceLock>,
 }
 pub(crate) fn error(status: u16, message: &str) -> Response {
     (
@@ -342,6 +343,7 @@ fn event(kind: &str, client: &str, now: u64) {
 pub async fn initialize(mut config: Config) -> Result<Router, String> {
     crate::config::validate_upload_config(&mut config)?;
     validate_write_config(&config)?;
+    let instance_lock = katalog_core::db::instance_lock::InstanceLock::from_env(&config.db_path, "server").map_err(|e| e.to_string())?;
     let writer = open_catalog(&config).await?;
     let auth = if config.allow_no_auth {
         eprintln!("WARNUNG: Anmeldung und CSRF sind ausgeschaltet (nur Loopback)!");
@@ -356,12 +358,13 @@ pub async fn initialize(mut config: Config) -> Result<Router, String> {
             .await?,
         )
     };
-    build_app_with_writer(AppConfig { config, auth, clock: Arc::new(SystemClock) }, writer)
+    build_app_with_writer(AppConfig { config, auth, clock: Arc::new(SystemClock) }, writer, instance_lock)
 }
 /// Read-only convenience builder. Fallible write startup uses `try_build_app`.
 pub fn build_app(config: AppConfig) -> Router {
     assert!(!config.config.write && config.config.upload.is_none(), "use try_build_app for write/upload mode");
-    build_app_with_writer(config, None).expect("read-only startup")
+    let instance_lock = katalog_core::db::instance_lock::InstanceLock::from_env(&config.config.db_path, "server").expect("catalog lock");
+    build_app_with_writer(config, None, instance_lock).expect("read-only startup")
 }
 fn validate_write_config(config: &Config) -> Result<(), String> {
     crate::config::validate_fileops_config(config)?;
@@ -386,10 +389,11 @@ pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
     crate::config::validate_upload_config(&mut config.config)?;
     validate_write_config(&config.config)?;
     if config.config.write && config.auth.is_none() { return Err("Anmeldung fehlt".into()); }
+    let instance_lock = katalog_core::db::instance_lock::InstanceLock::from_env(&config.config.db_path, "server").map_err(|e| e.to_string())?;
     let writer = open_catalog(&config.config).await?;
-    build_app_with_writer(config, writer)
+    build_app_with_writer(config, writer, instance_lock)
 }
-fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result<Router,String> {
+fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_lock: Option<katalog_core::db::instance_lock::InstanceLock>) -> Result<Router,String> {
     let uploads = uploads::initialize(&config.config)?;
     crate::export::sweep_stale(&config.config.db_path);
     let fileops = if let Some(writer) = &writer {
@@ -399,6 +403,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result
     let fileops_safety = Mutex::new(crate::fileops_safety::FileOpsSafety::new(config.config.file_ops_daily_limit as usize));
     let slicer = config.config.slicer_links.map(|ttl| crate::slicer::Slicer::new(ttl).map(Arc::new)).transpose()?;
     let app = Arc::new(App {
+        _instance_lock: instance_lock,
         slicer,
         fileops, fileops_safety,
         uploads,

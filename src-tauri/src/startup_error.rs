@@ -30,6 +30,7 @@ impl StartupFailure {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Cause {
+    CatalogInUse,
     NewerCatalog,
     NoAccess,
     DiskFull,
@@ -41,6 +42,9 @@ fn classify(error: &(dyn std::error::Error + 'static)) -> Cause {
     use rusqlite::ErrorCode;
     use std::io::ErrorKind;
 
+    if matches!(error.downcast_ref::<crate::db::instance_lock::LockError>(), Some(crate::db::instance_lock::LockError::InUse)) {
+        return Cause::CatalogInUse;
+    }
     if let Some(db_error) = error.downcast_ref::<DbError>() {
         return match db_error {
             DbError::NewerSchema { .. } => Cause::NewerCatalog,
@@ -82,6 +86,10 @@ pub fn startup_error_message(stage: StartupStage, path: &Path, error: &(dyn std:
     let backups = crate::db::BACKUP_DIR_NAME;
 
     let (what_en, what_de) = match (stage, cause) {
+        (StartupStage::Catalog, Cause::CatalogInUse) => (
+            "Catalog is already in use (catalogInUse).",
+            "Katalog wird bereits verwendet (catalogInUse).",
+        ),
         (StartupStage::Catalog, Cause::NewerCatalog) => (
             "This catalog was created by a newer version of the app, so this version cannot open it.",
             "Dieser Katalog stammt von einer neueren Version der App, deshalb kann diese Version ihn nicht öffnen.",
@@ -101,6 +109,10 @@ pub fn startup_error_message(stage: StartupStage, path: &Path, error: &(dyn std:
     };
 
     let (todo_en, todo_de) = match cause {
+        Cause::CatalogInUse => (
+            "Close the other desktop app or web server using this catalog, then try again.".into(),
+            "Beende die andere Desktop-App oder den Webserver mit diesem Katalog und versuche es erneut.".into(),
+        ),
         Cause::NewerCatalog => (
             format!("Your data was not changed. Install the newer app version again, or use a backup copy from the \"{backups}\" folder next to catalog.db."),
             format!("Deine Daten wurden nicht verändert. Installiere die neuere App-Version wieder, oder verwende eine Sicherungskopie aus dem Ordner \"{backups}\" neben catalog.db."),
@@ -225,6 +237,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn locked_catalog_is_not_migrated_and_reports_its_code() {
+        let dir = temp_dir("catalog-lock");
+        let path = dir.join("catalog.db");
+        std::fs::write(&path, b"untouched catalog").unwrap();
+        let lock = crate::db::instance_lock::InstanceLock::acquire(&path, "server").unwrap();
+        let failure = crate::open_storage_at(&dir).expect_err("locked catalog");
+        assert_eq!(std::fs::read(&path).unwrap(), b"untouched catalog");
+        let text = startup_error_message(failure.stage, &failure.path, failure.error.as_ref());
+        assert!(text.contains("catalogInUse"));
+        assert!(text.contains("Katalog wird bereits verwendet"));
+        drop(lock);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

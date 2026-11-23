@@ -2087,6 +2087,7 @@ export const de: Translations = {
   errSourceFolderNotFound: "Quellordner nicht gefunden.",
   errSourceFileNotNew: "Die Datei gehört nicht (mehr) zu den neuen Dateien eines Quellordners.",
   errFolderNotPicked: "Der Ordner wurde nicht in der App ausgewählt.",
+  errCatalogInUse: "Katalog wird bereits verwendet. Beende die andere Desktop-App oder den Webserver und versuche es erneut.",
   errBackupNotZip: "Die Datei ist kein gültiges Katalog-Backup (keine ZIP-Datei).",
   errBackupMissingEntry: "Das Archiv enthält keine {0}.",
   errBackupEntryTooLarge: "Der Eintrag „{0}“ im Archiv ist zu groß ({1} MB). Erlaubt sind höchstens {2} MB.",

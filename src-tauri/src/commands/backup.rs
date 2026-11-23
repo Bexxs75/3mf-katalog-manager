@@ -4881,6 +4881,26 @@ mod companion_tests {
     }
 
     #[test]
+    fn catalog_lock_survives_replace_catalog_db() {
+        use crate::db::instance_lock::{InstanceLock, LockError};
+        let (target, target_dir) = state_with_catalog("backup_lock_target");
+        let (source, source_dir) = state_with_catalog("backup_lock_source");
+        let lock = InstanceLock::acquire(&target.db_path, "desktop").unwrap();
+        let sidecar = InstanceLock::path_for(&target.db_path).unwrap();
+        let metadata = std::fs::read_to_string(&sidecar).unwrap();
+        let incoming = source.db_path.clone();
+        drop(source);
+        replace_catalog_db(&target, &incoming).unwrap();
+        assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), metadata);
+        assert!(matches!(InstanceLock::acquire(&target.db_path, "server"), Err(LockError::InUse)));
+        drop(lock);
+        drop(InstanceLock::acquire(&target.db_path, "server").unwrap());
+        drop(target);
+        std::fs::remove_dir_all(target_dir).unwrap();
+        std::fs::remove_dir_all(source_dir).unwrap();
+    }
+
+    #[test]
     fn companions_and_source_folders_survive_export_and_restore() {
         let (source, dir) = state_with_catalog("backup_companion_roundtrip_a");
         {

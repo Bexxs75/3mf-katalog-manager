@@ -1,3 +1,4 @@
+pub mod instance_lock;
 pub use repository::{refresh_render_lighting, invalidate_old_render_snapshots, RENDER_LIGHTING_VERSION};
 pub mod error;
 pub mod models;

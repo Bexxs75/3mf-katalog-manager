@@ -502,8 +502,11 @@ async fn download_skips_unresolvable_roots() {
         ),
         (f.dir.join("missing").display().to_string(), 422),
     ] {
+        // The fixture app owns the lock of catalog.db, so each app gets its own copy.
+        let db = f.dir.join(format!("catalog-{status}.db"));
+        std::fs::copy(f.dir.join("catalog.db"), &db).unwrap();
         let config = Config::from_lookup(|k| match k {
-            "KATALOG_DB" => Some(f.dir.join("catalog.db").display().to_string()),
+            "KATALOG_DB" => Some(db.display().to_string()),
             "KATALOG_ROOTS" => Some(roots.clone()),
             "KATALOG_ALLOW_NO_AUTH" => Some("1".into()),
             _ => None,

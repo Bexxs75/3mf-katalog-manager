@@ -443,12 +443,18 @@ pub fn validate_auth_path(db: &std::path::Path, auth: &std::path::Path) -> Resul
         Ok(normalized)
     }
     let auth = resolved(auth)?;
-    for suffix in ["", "-wal", "-shm", "-journal"] {
+    // A database symlink and its target must protect the same lock sidecar.
+    let mut lock_path = resolved(db)?.into_os_string();
+    lock_path.push(".lock");
+    if auth == resolved(std::path::Path::new(&lock_path))? {
+        return Err("KATALOG_AUTH_FILE must not replace the catalog lock file".into());
+    }
+    for suffix in ["", "-wal", "-shm", "-journal", ".lock"] {
         let mut name = db.as_os_str().to_os_string();
         name.push(suffix);
         if auth == resolved(std::path::Path::new(&name))? {
             return Err(
-                "KATALOG_AUTH_FILE darf weder der Katalog noch eine SQLite-Begleitdatei sein"
+                "KATALOG_AUTH_FILE darf weder der Katalog noch eine SQLite-Begleitdatei oder Katalog-Sperrdatei sein"
                     .into(),
             );
         }
@@ -749,7 +755,7 @@ mod tests {
     }
     #[test]
     fn password_file_cannot_replace_catalog_or_sidecars() {
-        for suffix in ["", "-wal", "-shm", "-journal"] {
+        for suffix in ["", "-wal", "-shm", "-journal", ".lock"] {
             let path = format!("/nonexistent/catalog.db{suffix}");
             assert!(config(&[("KATALOG_AUTH_FILE", &path)]).is_err());
         }

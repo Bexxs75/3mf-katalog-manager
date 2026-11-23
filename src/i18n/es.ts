@@ -2087,6 +2087,7 @@ export const es: Translations = {
   errSourceFolderNotFound: "No se encontró la carpeta de origen.",
   errSourceFileNotNew: "El archivo ya no pertenece a los archivos nuevos de una carpeta de origen.",
   errFolderNotPicked: "La carpeta no se seleccionó en la aplicación.",
+  errCatalogInUse: "El catálogo ya está en uso. Cierra la otra aplicación de escritorio o el servidor web e inténtalo de nuevo.",
   errBackupNotZip: "El archivo no es una copia de seguridad del catálogo válida (no es un archivo ZIP).",
   errBackupMissingEntry: "El archivo ZIP no contiene {0}.",
   errBackupEntryTooLarge: "La entrada «{0}» del archivo ZIP es demasiado grande ({1} MB). El máximo permitido es {2} MB.",

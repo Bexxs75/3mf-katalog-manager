@@ -437,3 +437,9 @@ Legacy upload journals may contain imported or importing entries without `fileId
 With uploads disabled, startup refuses these entries because their catalog identity
 cannot be reconstructed safely. Enable the original upload configuration, including
 `KATALOG_UPLOAD_DIR`, once to complete recovery.
+
+## Catalog instance lock / Katalog-Instanzsperre
+
+Desktop and web refuse concurrent operation on the same catalog using `<catalog.db>.lock`. SMB/NFS remain allowed, but file locks may be unreliable there. `KATALOG_LOCK=off` explicitly disables the lock and logs a warning; then ensure exclusive use yourself. See [operation and recovery details](docker-web/README.md#catalog-instance-lock-english).
+
+Desktop und Web verweigern den gleichzeitigen Betrieb auf demselben Katalog über `<catalog.db>.lock`. SMB/NFS bleiben erlaubt, Dateisperren können dort aber unzuverlässig sein. `KATALOG_LOCK=off` schaltet die Sperre ausdrücklich ab und protokolliert eine Warnung; koordiniere den exklusiven Zugriff dann selbst. Siehe [Betrieb und Wiederanlauf](docker-web/README.md#katalog-instanzsperre-deutsch).

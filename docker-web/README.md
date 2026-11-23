@@ -17,13 +17,13 @@ docker compose logs katalog-web # beim ersten Start steht dort einmal das Zufall
 
 **Open:** Healthcheck (the image has no shell or curl: a server subcommand is needed), material/printer manager views (stage 6, part B), and the import interface (stage 5, part C). Downloads and the optional metadata and material/printer management backend are implemented.
 
-**Optional write mode (English).** `KATALOG_WRITE=1` enables the 32 write commands for metadata and material/printer management (commented Compose option). Authentication and `KATALOG_ALLOWED_HOSTS` are mandatory; `/config` must be writable. **Choose web or local operation: do not run the desktop app and web server concurrently on the same database, even in read-only mode.** Started database work continues after the 30-second HTTP timeout. Reload before retrying: creating collections, print log entries, spools, printers or units again can produce duplicates. Metadata editing is available; manager views will be added in stage 6 part B.
+**Optional write mode (English).** `KATALOG_WRITE=1` enables the 32 write commands for metadata and material/printer management (commented Compose option). Authentication and `KATALOG_ALLOWED_HOSTS` are mandatory; `/config` must be writable. **Desktop and web now refuse concurrent operation on the same catalog, including read-only mode (see Catalog instance lock below).** Started database work continues after the 30-second HTTP timeout. Reload before retrying: creating collections, print log entries, spools, printers or units again can produce duplicates. Metadata editing is available; manager views will be added in stage 6 part B.
 
 **Network binding and proxies (English).** If `KATALOG_BIND` is not a loopback address, `KATALOG_ALLOWED_HOSTS` is required and the server refuses to start without it (DNS-rebinding protection); list every name and `host:port` browsers use. The server limits connections to 32 per client address (IPv6: per /64) in addition to 256 in total. `KATALOG_TRUST_PROXY=1` makes the server believe `X-Forwarded-For`/`Forwarded` headers: use it only behind a proxy that shields the server and sets these headers itself. Then every client appears with the proxy's address, so the per-address connection limit is not applied (only the global limit); with a non-loopback bind the server prints a warning at startup.
 
 **Offen:** Healthcheck (das Image enthält weder Shell noch curl; ein Server-Unterbefehl ist nötig), Material-/Druckerverwaltungsansichten (Stufe 6, Teil B) und die Import-Oberfläche (Stufe 5, Teil C). Downloads und das optionale Backend für Metadaten sowie Material- und Druckerverwaltung sind umgesetzt.
 
-**Optionaler Schreibmodus (Deutsch).** `KATALOG_WRITE=1` aktiviert die 32 Schreib-Commands für Metadaten sowie Material- und Druckerverwaltung (auskommentierte Compose-Option). Anmeldung und `KATALOG_ALLOWED_HOSTS` sind Pflicht; `/config` muss schreibbar sein. **Entweder Web oder lokal: Desktop-App und Web-Server dürfen nicht parallel auf derselben Datenbank laufen, auch nicht im Lesemodus.** Gestartete DB-Arbeit läuft nach einem 30-s-HTTP-Timeout weiter. Vor Wiederholung neu laden: neue Sammlungen, Druckprotokolle, Spulen, Drucker und Einheiten können doppelt entstehen. Metadaten sind im Browser bearbeitbar; die Manager-Ansichten folgen in Stufe 6 Teil B.
+**Optionaler Schreibmodus (Deutsch).** `KATALOG_WRITE=1` aktiviert die 32 Schreib-Commands für Metadaten sowie Material- und Druckerverwaltung (auskommentierte Compose-Option). Anmeldung und `KATALOG_ALLOWED_HOSTS` sind Pflicht; `/config` muss schreibbar sein. **Desktop und Web verweigern jetzt den gleichzeitigen Betrieb auf demselben Katalog, auch im Lesemodus (siehe Katalog-Instanzsperre unten).** Gestartete DB-Arbeit läuft nach einem 30-s-HTTP-Timeout weiter. Vor Wiederholung neu laden: neue Sammlungen, Druckprotokolle, Spulen, Drucker und Einheiten können doppelt entstehen. Metadaten sind im Browser bearbeitbar; die Manager-Ansichten folgen in Stufe 6 Teil B.
 
 **Netzbindung und Proxy (Deutsch).** Ist `KATALOG_BIND` keine Loopback-Adresse, ist `KATALOG_ALLOWED_HOSTS` Pflicht, und der Server startet sonst nicht (Schutz vor DNS-Rebinding); alle Namen und `Host:Port`, unter denen Browser den Server erreichen, eintragen. Der Server begrenzt Verbindungen auf 32 pro Client-Adresse (IPv6: pro /64) zusätzlich zu insgesamt 256. `KATALOG_TRUST_PROXY=1` lässt den Server den Headern `X-Forwarded-For`/`Forwarded` glauben: nur hinter einem Proxy verwenden, der den Server abschirmt und diese Header selbst setzt. Dann erscheinen alle Clients mit der Adresse des Proxys, daher greift die Pro-Adresse-Grenze nicht (nur das globale Limit); bei Nicht-Loopback-Bindung gibt der Server beim Start eine Warnung aus.
 
@@ -37,7 +37,7 @@ Uploads sind standardmäßig aus. `KATALOG_UPLOAD_DIR=/models/uploads` aktiviert
 Backend zusammen mit `KATALOG_WRITE=1`, Anmeldung und einer expliziten
 `KATALOG_ALLOWED_HOSTS`-Liste. Die Browser-Oberfläche folgt separat in Teil C.
 **Upload legt Dateien dauerhaft auf dem Server ab: nur im Heimnetz oder über VPN
-betreiben.** Desktop und Webserver dürfen niemals gleichzeitig dieselbe DB nutzen.
+betreiben.** Die Instanzsperre verhindert den gleichzeitigen Start auf derselben DB.
 Erlaubt sind `.3mf`, `.stl`, `.obj`, `.stp`, `.step` sowie die Archive `.zip` und
 `.7z`; RAR und tar bleiben der Desktop-App vorbehalten (Fehler
 `archive_format_unsupported`). Aus einem Archiv werden nur die darin enthaltenen
@@ -131,8 +131,8 @@ Ist `Sec-Fetch-Site` vorhanden, gilt nur `same-origin`/`none`.
 Uploads are disabled by default. Set `KATALOG_UPLOAD_DIR=/models/uploads` together
 with `KATALOG_WRITE=1`, authentication and an explicit `KATALOG_ALLOWED_HOSTS` list.
 The browser interface follows separately in part C. **Uploads store files permanently
-on the server: use a home network or VPN only.** Never run the desktop app and web
-server against the same database concurrently. Supported files are `.3mf`, `.stl`,
+on the server: use a home network or VPN only.** The instance lock prevents desktop and web
+from starting concurrently on the same database. Supported files are `.3mf`, `.stl`,
 `.obj`, `.stp`, `.step` plus `.zip` and `.7z` archives; RAR and tar require the
 desktop app (error `archive_format_unsupported`). Only the models inside an archive
 are taken over and imported like single uploads (parser limits, duplicate detection,
@@ -253,7 +253,7 @@ die Prüfung erfolgt vor dem Aufbau des ZIP-Index.
 **Warning:** `KATALOG_FILE_OPS=1` lets the web server rename, move and delete
 files. It defaults to off and requires `KATALOG_WRITE=1`, authentication and an
 explicit `KATALOG_ALLOWED_HOSTS`. Browser controls follow separately. Use a home
-network/VPN and maintain external backups. Never run desktop and web against the
+network/VPN and maintain external backups. The instance lock prevents desktop and web from starting against the
 same database concurrently. Opening that DB in desktop later also matters:
 **Desktop startup purges trash entries after 7 days**
 (`purge_expired_trash_on_startup`); do not mix desktop and web trash.
@@ -315,8 +315,8 @@ cannot be reconstructed safely. Enable the original upload configuration, includ
 zu verschieben und zu löschen. Standard ist aus. Erforderlich sind
 `KATALOG_WRITE=1`, Anmeldung und explizite `KATALOG_ALLOWED_HOSTS`. Die
 Browseroberfläche folgt separat. Nur im Heimnetz/VPN betreiben; regelmäßige
-externe Sicherungen anlegen. Desktop und Webserver niemals parallel auf derselben
-Datenbank betreiben. Auch späteres Öffnen derselben DB im Desktop ist relevant:
+externe Sicherungen anlegen. Die Instanzsperre verhindert den gleichzeitigen Start von Desktop und Webserver
+auf derselben Datenbank. Auch späteres Öffnen derselben DB im Desktop ist relevant:
 **Die Desktop-App entfernt Papierkorbeinträge beim Start nach 7 Tagen**
 (`purge_expired_trash_on_startup`); Web- und Desktop-Papierkorb nicht mischen.
 
@@ -405,3 +405,47 @@ die ursprüngliche Upload-Konfiguration einschließlich `KATALOG_UPLOAD_DIR` akt
   - Behind an HTTPS reverse proxy, set `KATALOG_TRUST_PROXY=1` and have the proxy send `X-Forwarded-For` and `X-Forwarded-Proto`; otherwise even signing in fails with “Origin not allowed”.
   - Bambu Studio rejects unknown (self-signed) certificates; OrcaSlicer does not. A certificate from a CA trusted by the system works.
 - **Tested with Bambu Studio 2.9.1.70 and OrcaSlicer 2.4.2/2.5.0 on Windows 11, macOS 15 and Ubuntu 24.04 (Firefox, Chrome/Chromium, Edge, Safari).**
+
+### Catalog instance lock (English)
+
+Desktop and web now take an exclusive operating-system lock on `<catalog.db>.lock`
+before opening the catalog, including web read-only mode. A second start fails with
+`catalogInUse` (the server exits with a nonzero status). Close the other instance
+before switching between desktop and web. The catalog directory must be writable
+so the sidecar can be created and updated, even for a read-only web catalog.
+
+The sidecar contains the owner (`desktop` or `server`), PID, hostname and start time
+for display only. It remains on disk after exit or a crash; the operating system
+releases the lock automatically. Do not delete or replace it while an instance is
+running. Catalog backup export excludes it, and restoring a catalog leaves it intact.
+Older app versions without this lock cannot participate in the coordination.
+
+SMB/NFS mounts remain allowed, but operating-system file locks are not reliable on
+every network filesystem or mount configuration. If necessary, set `KATALOG_LOCK=off`
+in the environment of each affected desktop/server process (Docker Compose:
+`KATALOG_LOCK: "off"` under `environment`). This disables the lock and logs a warning;
+you must then ensure that only one instance uses the catalog. Unset the variable to
+restore the default locking behavior. No automatic fallback disables the lock.
+
+### Katalog-Instanzsperre (Deutsch)
+
+Desktop und Web nehmen vor dem Öffnen des Katalogs eine exklusive Betriebssystem-
+Sperre auf `<catalog.db>.lock`, auch im Web-Lesemodus. Ein zweiter Start scheitert mit
+`catalogInUse` (der Server endet mit einem Exit-Code ungleich null). Beende die andere
+Instanz vor dem Wechsel zwischen Desktop und Web. Das Katalogverzeichnis muss auch
+im Web-Lesemodus zum Anlegen und Aktualisieren der Sperrdatei beschreibbar sein.
+
+Die Datei enthält Eigentümer (`desktop` oder `server`), PID, Hostname und Startzeit
+nur zur Anzeige. Sie bleibt nach dem Beenden oder einem Absturz bestehen; das
+Betriebssystem gibt die Sperre automatisch frei. Lösche oder ersetze sie nicht bei
+laufender Instanz. Katalog-Sicherungen exportieren sie nicht, und beim Einspielen
+einer Sicherung bleibt sie erhalten. Ältere App-Versionen ohne diese Sperre können
+nicht an der Koordination teilnehmen.
+
+SMB/NFS bleiben erlaubt, aber Betriebssystem-Dateisperren funktionieren nicht bei
+jedem Netzwerkdateisystem und jeder Mount-Konfiguration zuverlässig. Falls nötig,
+setze `KATALOG_LOCK=off` in der Umgebung jedes betroffenen Desktop-/Serverprozesses
+(Docker Compose: `KATALOG_LOCK: "off"` unter `environment`). Das schaltet die Sperre
+ab und protokolliert eine Warnung. Du musst dann selbst sicherstellen, dass nur eine
+Instanz den Katalog nutzt. Entferne die Variable, um die Standardsperre wieder zu
+aktivieren. Fehler schalten die Sperre nicht automatisch ab.
