@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { Disclosure } from './Disclosure';
+import { WebBackupRestore } from './WebBackupRestore';
 
 /** Matches the server's minimum gap between two exports of one session. */
 const COOLDOWN_MS = 30_000;
@@ -44,6 +45,7 @@ export function WebCatalogBackup() {
       </a>
       {paused && <p id="web-backup-pause" role="status" className="mt-1.5 text-small text-[var(--ink-2)]">{t('catalogBackupWebPause')}</p>}
       <p className="mt-1.5 text-small text-[var(--ink-2)]">{t('catalogBackupWebHint')}</p>
+      <div className="mt-3"><WebBackupRestore /></div>
       <Disclosure summary={t('catalogBackupWebRestoreTitle')} className="mt-1.5">{t('catalogBackupWebRestoreText')}</Disclosure>
       <Disclosure summary={t('catalogBackupWebFailureTitle')} className="mt-1.5">{t('catalogBackupWebFailureHint')}</Disclosure>
     </>

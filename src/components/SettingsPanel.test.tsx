@@ -303,6 +303,11 @@ describe('SettingsPanel content', () => {
     expect(screen.queryByRole('button', { name: de.settingsGoToHandover })).toBeNull();
   });
 
+  it('does not offer the web backup restore on the desktop, which has its own import', () => {
+    renderPanel({ initialTab: 'maintenance' });
+    expect(screen.queryByRole('button', { name: de.bkrOpen })).toBeNull();
+  });
+
   it('starts on the tab given by the app and reports every change of tab', () => {
     const onTabChange = vi.fn();
     renderPanel({ initialTab: 'maintenance', onTabChange });

@@ -58,6 +58,8 @@ it('offers the backup as a plain download link, even for a read-only session, an
   }
   expect(screen.queryByRole('button', { name: de.importCatalogButton })).toBeNull();
   expect(screen.queryByRole('button', { name: de.exportCatalogButton })).toBeNull();
+  // A login that may only look sees the restore in the same place, switched off with its reason.
+  expect(screen.getByRole('button', { name: de.bkrOpen })).toHaveAttribute('aria-disabled', 'true');
   link.addEventListener('click', event => event.preventDefault());
   fireEvent.click(link);
   expect(props.onExportCatalog).not.toHaveBeenCalled();
