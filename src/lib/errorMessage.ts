@@ -34,6 +34,14 @@ const LEGACY_KEYS = {
   rescan_file_changed: 'rescanFileChanged',
   // Server answer to a repeated write whose stored reply was too large to keep.
   request_id_result_unavailable: 'requestResultLost',
+  // Answers of the web backup routes that the server sends as bare words, and the
+  // client's own wording for a connection or size failure on those routes.
+  password_invalid: 'bkrErrPassword',
+  session_required: 'bkrErrSession',
+  session_expired: 'bkrErrSession',
+  backupUploadTooLarge: 'bkrErrTooLarge',
+  backupConnectionLost: 'bkrErrConnection',
+  backupTokenGone: 'bkrErrTokenGone',
 } as const satisfies Record<string, keyof Translations>;
 
 /** Dictionary key of a registered backend code: `folderNameEmpty` becomes `errFolderNameEmpty`. */
