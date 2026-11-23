@@ -12,12 +12,14 @@ import type { SourceFolder } from '../types';
 import { ToggleSwitch } from './ToggleSwitch';
 import { ServerFolderPicker } from './ServerFolderPicker';
 import { useCanEditMetadata } from '../lib/webSession';
-import { WEB_SOURCE_IMPORT_ENABLED, importServerFolder } from '../lib/api/sourceImport';
 
 const button = 'px-2 py-1 rounded border border-[var(--line)] bg-[var(--panel)] text-small cursor-pointer disabled:opacity-50 disabled:cursor-default hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
 /** Settings section: remembered folders that are checked for new model files. */
-export function SourceFoldersSettings({ onCheck }: { /** Web: starts the check for new files; the desktop has it in the import menu. */ onCheck?: () => void } = {}) {
+export function SourceFoldersSettings({ onCheck, onImported }: {
+  /** Web: starts the check for new files; the desktop has it in the import menu. */ onCheck?: () => void;
+  /** Web: reloads the catalog after a folder was copied into it. */ onImported?: () => void | Promise<unknown>;
+} = {}) {
   const t = useT();
   const count = useFormatCount();
   const web = import.meta.env.VITE_TARGET === 'web';
@@ -103,7 +105,7 @@ export function SourceFoldersSettings({ onCheck }: { /** Web: starts the check f
       </div>
       {pickerOpen && <ServerFolderPicker returnFocus={addRef} onClose={() => setPickerOpen(false)}
         onRemember={async (rootIdx, rel) => { await api.addServerSourceFolder(rootIdx, rel); await load(); }}
-        onImport={WEB_SOURCE_IMPORT_ENABLED ? async (rootIdx, rel) => { await importServerFolder(rootIdx, rel); } : undefined} />}
+        copyImport={{ allowed: canEdit, onFinished: onImported }} />}
       {jobActive && <p className="mt-1 text-small text-[var(--ink-2)]">{t('sfLockedNote')}</p>}
       <SettingRow id="sourceCheck" value={loaded ? checkOnStart : undefined} label={t('sfCheckOnStart')} onReset={() => changeCheckOnStart(SETTING_DEFAULTS.sourceCheck)} disabled={!loaded || busy || jobActive || (web && !canEdit)}>
         <div className="flex items-center justify-between gap-2 mt-3 text-small">

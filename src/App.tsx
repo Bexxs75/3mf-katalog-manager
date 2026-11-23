@@ -634,12 +634,16 @@ export default function App() {
     if (noWebGL && store.pendingSnapshotIds.length) store.skipSnapshots(store.pendingSnapshotIds);
   }, [noWebGL, store.pendingSnapshotIds, store.skipSnapshots]);
 
+  // A copy from a server folder adds files, folders and tags just like the upload import does.
+  const reloadAfterSourceImport = () => Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags()]);
+
   // The settings take the detail panel's place in the catalog and lie over the main area
   // elsewhere, so every view reaches them from the same gear in the rail.
   const renderSettingsPanel = (overlay: boolean) => (
     <SettingsPanel
       onOpenWhatsNew={whatsNew.reopen}
       onCheckSourceFolders={() => void sourceCheck.check()}
+      onSourceFoldersImported={reloadAfterSourceImport}
       overlay={overlay}
       onClose={closeSettings}
       onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}
@@ -1051,6 +1055,7 @@ export default function App() {
               scans={sourceCheck.scans}
               onClose={sourceCheck.closeDialog}
               onImport={fileImport.importSourceFiles}
+              onImported={reloadAfterSourceImport}
               onReject={rejectSourceFiles}
               onRescan={sourceCheck.rescan}
             />

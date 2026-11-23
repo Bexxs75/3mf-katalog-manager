@@ -53,6 +53,14 @@ describe('SourceFoldersSettings in the web build', () => {
     expect(api.listSourceFolders).toHaveBeenCalledTimes(2);
   });
 
+  it('offers the copy import in the folder dialog now that the server supports it', async () => {
+    setup();
+    fireEvent.click(await screen.findByRole('button', { name: de.sfpOpen }));
+    await screen.findByRole('tree');
+    expect(screen.getByRole('button', { name: de.sfpImport })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByText(de.sfpCopyNote)).toBeInTheDocument();
+  });
+
   it('shows how many declined files were offered again', async () => {
     vi.mocked(api.resetRejectedSourceFiles).mockResolvedValue(3);
     setup();

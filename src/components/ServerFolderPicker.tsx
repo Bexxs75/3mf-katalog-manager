@@ -5,6 +5,8 @@ import { toAppError, type AppError } from '../lib/errors';
 import { displayName } from '../lib/displayName';
 import { listSourceDirs } from '../lib/api/sourceFolders';
 import type { SourceDirRoot } from '../types';
+import { useSourceImport } from '../hooks/useSourceImport';
+import { SourceImportProgress } from './SourceImportProgress';
 import { CatalogActionDialog, catalogActionBase, catalogActionButton } from './CatalogActionDialog';
 
 const primary = `${catalogActionBase} border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]`;
@@ -38,13 +40,18 @@ export interface ServerFolderPickerProps {
   returnFocus?: RefObject<HTMLElement | null>;
   /** Stores the chosen folder as a source folder; rejects with the backend error. */
   onRemember?: (rootIdx: number, rel: string) => Promise<unknown>;
-  /** Copies the chosen folder into the catalog. Omitted while the server cannot do that. */
-  onImport?: (rootIdx: number, rel: string) => Promise<unknown>;
+  /**
+   * Offers copying the chosen folder into the catalog. Omitted: no import button at all.
+   * Without `allowed` (read-only access) the button stays visible but explains why it does nothing.
+   */
+  copyImport?: { allowed: boolean; /** Reloads the catalog once the copy ended. */ onFinished?: () => void | Promise<unknown> };
 }
 
 /** Read-only browser for the source roots the server shares; it only ever deals in root indexes and relative paths. */
-export function ServerFolderPicker({ onClose, returnFocus, onRemember, onImport }: ServerFolderPickerProps) {
+export function ServerFolderPicker({ onClose, returnFocus, onRemember, copyImport }: ServerFolderPickerProps) {
   const t = useT();
+  const onImport = copyImport;
+  const sourceImport = useSourceImport(copyImport?.onFinished);
   const count = useFormatCount();
   const [roots, setRoots] = useState<{ status: 'loading' | 'ready' | 'error'; error?: AppError }>({ status: 'loading' });
   const [nodes, setNodes] = useState<Record<string, TreeNode>>({});
@@ -211,7 +218,8 @@ export function ServerFolderPicker({ onClose, returnFocus, onRemember, onImport 
     finally { if (mounted.current) setBusy(false); }
   };
   const remember = () => act(onRemember!, key => { setRememberedKey(key); });
-  const doImport = () => act(onImport!, () => onClose());
+  // The folder stays chosen while its job runs; the progress view takes over from the tree.
+  const doImport = () => { if (onImport?.allowed) void act(sourceImport.start, () => undefined); };
   // The pressed button turns disabled; keep focus on the tree, which stays usable.
   useEffect(() => { if (!busy && rememberedKey) treeRef.current?.focus(); }, [busy, rememberedKey]);
 
@@ -224,13 +232,17 @@ export function ServerFolderPicker({ onClose, returnFocus, onRemember, onImport 
   const empty = roots.status === 'ready' && rootKeys.length === 0;
 
   return (
-    <CatalogActionDialog title={t('sfpTitle')} onClose={onClose} busy={busy} wide returnFocus={returnFocus} closeLabel={t('sfpClose')}>
-      {onImport && (
+    <CatalogActionDialog title={t('sfpTitle')} onClose={onClose} busy={busy || sourceImport.running} wide returnFocus={returnFocus} closeLabel={t('sfpClose')}>
+      {sourceImport.job && (
+        <SourceImportProgress job={sourceImport.job} error={sourceImport.error} sourceName={chosen?.name ?? ''}
+          onCancel={() => void sourceImport.cancel()} onClose={onClose} />
+      )}
+      {!sourceImport.job && onImport && (
         <div className="rounded border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-small">
           {t('sfpCopyNote')}
         </div>
       )}
-      {empty && (
+      {!sourceImport.job && empty && (
         <>
           <div role="status" className="rounded border border-[var(--line-strong)] bg-[var(--panel-2)] px-3 py-2 text-small">
             <b className="font-semibold">{t('sfpNoRoots')}</b> {t('sfpNoRootsHint')}
@@ -239,7 +251,7 @@ export function ServerFolderPicker({ onClose, returnFocus, onRemember, onImport 
           <div className="flex justify-end"><button ref={fallbackRef} type="button" className={`${catalogActionButton} ${focusRing}`} onClick={onClose}>{t('sfpClose')}</button></div>
         </>
       )}
-      {roots.status === 'error' && (
+      {!sourceImport.job && roots.status === 'error' && (
         <>
           <p role="alert" className="text-small text-[var(--crit)] whitespace-pre-wrap [overflow-wrap:anywhere]"><ErrorText error={roots.error ?? null} /></p>
           <div className="flex justify-end gap-2">
@@ -248,7 +260,7 @@ export function ServerFolderPicker({ onClose, returnFocus, onRemember, onImport 
           </div>
         </>
       )}
-      {(roots.status === 'loading' || (roots.status === 'ready' && !empty)) && (
+      {!sourceImport.job && (roots.status === 'loading' || (roots.status === 'ready' && !empty)) && (
         <>
           {crumbs.length > 0 && (
             <nav aria-label={t('sfpCrumbLabel')}>
@@ -324,6 +336,7 @@ export function ServerFolderPicker({ onClose, returnFocus, onRemember, onImport 
             {rememberedKey && nodes[rememberedKey] ? t('sfpRememberedNote').replace('{name}', displayName(nodes[rememberedKey].name)) : ''}
           </p>
           {actionError && <p role="alert" className="text-small text-[var(--crit)] whitespace-pre-wrap [overflow-wrap:anywhere]"><ErrorText error={actionError} /></p>}
+          {onImport && !onImport.allowed && <p id="sfp-readonly" className="text-small text-[var(--ink-2)]">{t('sfiReadOnly')}</p>}
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" className={`${catalogActionButton} ${focusRing}`} disabled={busy} onClick={onClose}>{t('cancel')}</button>
             {onRemember && (
@@ -332,7 +345,10 @@ export function ServerFolderPicker({ onClose, returnFocus, onRemember, onImport 
               </button>
             )}
             {onImport && (
-              <button type="button" className={`${primary} ${focusRing}`} disabled={blocked} onClick={() => void doImport()}>
+              // aria-disabled keeps the button focusable so a read-only user can reach the explanation.
+              <button type="button" className={`${primary} ${focusRing} ${onImport.allowed ? '' : 'opacity-50 cursor-default'}`}
+                disabled={onImport.allowed && blocked} aria-disabled={!onImport.allowed || undefined}
+                aria-describedby={onImport.allowed ? undefined : 'sfp-readonly'} onClick={doImport}>
                 {busy ? t('sfWorking') : t('sfpImport')}
               </button>
             )}

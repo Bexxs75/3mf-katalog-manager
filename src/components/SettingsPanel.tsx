@@ -72,6 +72,8 @@ export interface SettingsPanelProps {
   onOpenTips?: () => void;
   /** Web: checks the source folders for new files (the desktop reaches this from the import menu). */
   onCheckSourceFolders?: () => void;
+  /** Web: reloads the catalog after source folders were copied into it. */
+  onSourceFoldersImported?: () => void | Promise<unknown>;
   onOpenWhatsNew?: () => void;
   /** A section the app wants shown (for example the source folders); a new request moves the panel again. */
   request?: SettingsRequest | null;
@@ -122,7 +124,7 @@ export function SettingsPanel({
   overlay: forceOverlay, onClose, onOpenPrinters, onThingiverseEnabledChange,
   view = 'grid', onViewChange, sort = 'name', onSortChange, sortDirection = 'asc', onSortDirectionChange, collapseBundles = true, onCollapseBundlesChange,
   detailPanel = 'auto', onDetailPanelChange,
-  singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips, onOpenWhatsNew, onCheckSourceFolders,
+  singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips, onOpenWhatsNew, onCheckSourceFolders, onSourceFoldersImported,
   request, initialTab, onTabChange,
   themeSetting, onThemeChange,
   uiDensity, onUiDensityChange,
@@ -451,7 +453,7 @@ export function SettingsPanel({
 
           {visitedTabs.has('catalog') && (
             <SettingsTabContext.Provider value={{ tab: 'catalog', label: tabLabels.catalog }}><div hidden={activeSettingsTab !== 'catalog'}>
-              {web && <SettingsSection id="sources" help={t('settingsHelpSources')} title={t('settingsSecSources')}><SourceFoldersSettings onCheck={onCheckSourceFolders} /></SettingsSection>}
+              {web && <SettingsSection id="sources" help={t('settingsHelpSources')} title={t('settingsSecSources')}><SourceFoldersSettings onCheck={onCheckSourceFolders} onImported={onSourceFoldersImported} /></SettingsSection>}
               {!web && (
                 <>
                   <SettingsSection id="storage" help={t('settingsHelpStorage')} title={t('settingsSecStorage')}>
