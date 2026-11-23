@@ -26,6 +26,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - On Linux the startup error message (for example "catalog already in use") now also appears when `zenity` is missing: the app falls back to `kdialog` or `xmessage` and always prints the message to stderr.
 
 - The update component was brought up to date, so the update packages are handled by a current archive library. The dependency audit no longer needs exceptions for it.
+- Tests now cover the web "What's new" window: no window on the first start, the window after a version change, and a marker that never moves backwards.
 
 ### Fixed
 
@@ -934,6 +935,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Unter Linux erscheint die Startfehler-Meldung (z. B. „Katalog wird bereits verwendet“) jetzt auch ohne `zenity`: Die App weicht auf `kdialog` oder `xmessage` aus und schreibt die Meldung immer auch auf stderr.
 
 - Die Update-Komponente wurde aktualisiert, damit Update-Pakete von einer aktuellen Archiv-Bibliothek verarbeitet werden. Die Abhängigkeitsprüfung braucht dafür keine Ausnahmen mehr.
+- Tests decken jetzt das „Neu“-Fenster im Web ab: kein Fenster beim ersten Start, das Fenster nach einem Versionswechsel und eine Marke, die nie rückwärts wandert.
 
 ### Behoben
 
