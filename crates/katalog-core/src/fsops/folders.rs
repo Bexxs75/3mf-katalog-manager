@@ -1,6 +1,8 @@
 use super::*;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::HashSet;
+mod trash;
+pub use trash::*;
 
 /// Bound into the prefix queries: a path is below `p` when `p||SEP <= path < p||AFTER_SEP`
 /// (`'0'` is the character right after `'/'`). Parameters instead of literals so a path style with
@@ -803,10 +805,10 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             })
         })
     }
-    pub fn remove_folder_from_catalog(&mut self, id: i64) -> Result<FolderRemovalCount> {
-        let f = self.folder_state(id)?;
-        let before = self.db.with_conn(|c| removal_tree(c, id))?;
-        let (root, relative) = self.context.locate(&f.path)?;
+    /// Refuses a removal that would reach the catalog's own folder (by path or by identity) and
+    /// returns the identity of the chosen folder when it can be read. Stale disk paths do not
+    /// block a database-only removal.
+    pub(super) fn protect_folder_removal(&mut self, id: i64, before: &FolderTree) -> Result<Option<Identity>> {
         // DB-only removal must also work for stale disk paths. Check every registered
         // descendant independently, so inconsistent links cannot bypass protection.
         let mut identity = None;
@@ -840,6 +842,13 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if contains_base {
             return Err(Error::Protected);
         }
+        Ok(identity)
+    }
+    pub fn remove_folder_from_catalog(&mut self, id: i64) -> Result<FolderRemovalCount> {
+        let f = self.folder_state(id)?;
+        let before = self.db.with_conn(|c| removal_tree(c, id))?;
+        let (root, relative) = self.context.locate(&f.path)?;
+        let identity = self.protect_folder_removal(id, &before)?;
         let model_count = before
             .files
             .iter()

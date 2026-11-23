@@ -230,6 +230,8 @@
     "thingiverse_search": "C",
     "thingiverse_thing": "C",
     "trash_folder": "B",
+    "trash_folder_block": "web-only",
+    "trash_folder_start": "web-only",
     "unblock_auto_tag": "web",
     "unload_spool": "web",
     "update_bundle": "web",

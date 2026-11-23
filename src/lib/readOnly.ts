@@ -64,6 +64,8 @@ export const WEB_WRITE_COMMANDS = [
   'rename_folder',
   'move_folder',
   'remove_folder_from_catalog',
+  'trash_folder_start',
+  'trash_folder_block',
   'remove_companion',
   'restore_companion',
   'remove_files_from_catalog',

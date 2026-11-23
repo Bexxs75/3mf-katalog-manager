@@ -982,9 +982,9 @@ thread_local! {
 }
 /// Lifts the 20 s real-time limit of a batch for the current test, so that a slow or loaded disk
 /// cannot cut a block short. The limit itself is not what these tests check.
-struct GenerousBatchBudget;
+pub(super) struct GenerousBatchBudget;
 impl GenerousBatchBudget {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         BATCH_BUDGET.with(|b| b.set(Some(std::time::Duration::from_secs(3600))));
         Self
     }

@@ -43,6 +43,8 @@ pub use journal::*;
 mod restore;
 #[cfg(test)]
 mod restore_tests;
+#[cfg(test)]
+mod folder_trash_tests;
 mod operations;
 pub use operations::*;
 pub use companion_block::*;

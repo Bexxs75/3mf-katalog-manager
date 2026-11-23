@@ -25,6 +25,8 @@ pub const FILE_OPS_COMMANDS: &[&str] = &[
     "rename_folder",
     "move_folder",
     "remove_folder_from_catalog",
+    "trash_folder_start",
+    "trash_folder_block",
     "remove_companion",
     "restore_companion",
 ];
@@ -55,6 +57,8 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "rename_folder",
     "move_folder",
     "remove_folder_from_catalog",
+    "trash_folder_start",
+    "trash_folder_block",
     "remove_companion",
     "restore_companion",
 
@@ -273,7 +277,7 @@ impl WriteProgress {
             format!("completed_items={}",self.completed_items.load(Ordering::Relaxed))
         }else{format!("changes={}",self.changes.load(Ordering::Relaxed))};
         let ids = self.file_ids.lock().unwrap();
-        let detail = if audit.command == "empty_trash_start" {
+        let detail = if audit.command == "empty_trash_start" || audit.command == "trash_folder_start" {
             format!("count={} ids={:?}", ids.len(), &ids[..ids.len().min(10)])
         } else { format!("ids={:?}", *ids) };
         let companions = self.companion_ids.lock().unwrap();

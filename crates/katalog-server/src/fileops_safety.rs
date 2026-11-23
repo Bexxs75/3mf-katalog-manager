@@ -79,6 +79,7 @@ pub(crate) struct FileOpsSafety {
     permanent: Budget,
     empty_start: Option<u64>,
     empty_block: Option<u64>,
+    folder_block: Option<u64>,
 }
 impl FileOpsSafety {
     pub(crate) fn new(daily_limit: usize) -> Self {
@@ -88,6 +89,7 @@ impl FileOpsSafety {
             permanent: Budget::default(),
             empty_start: None,
             empty_block: None,
+            folder_block: None,
         }
     }
     pub(crate) fn reserve(
@@ -110,6 +112,11 @@ impl FileOpsSafety {
     }
     pub(crate) fn reserve_empty_start(&mut self, now: u64) -> Result<(), u64> {
         interval(&mut self.empty_start, now, 60)
+    }
+    /// Blocks of one folder trash: the models were charged to the folder budget at the start,
+    /// so only a short pause between blocks applies.
+    pub(crate) fn reserve_folder_trash_block(&mut self, now: u64) -> Result<(), u64> {
+        interval(&mut self.folder_block, now, 2)
     }
     pub(crate) fn reserve_empty_block(&mut self, now: u64) -> Result<(), u64> {
         interval(&mut self.empty_block, now, 2)

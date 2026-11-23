@@ -3,7 +3,7 @@
 use super::*;
 use crate::fileops_safety::DestructiveKind;
 use crate::fileops_startup::{DbAdapter, ServerLedger};
-use katalog_core::fsops::{self, FileOps, TrashSnapshot};
+use katalog_core::fsops::{self, FileOps, FolderTrashSnapshot, TrashSnapshot};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 type Ops = FileOps<DbAdapter, ServerLedger>;
@@ -17,12 +17,18 @@ pub(super) struct Runtime {
 pub(super) struct RuntimeState {
     ops: Ops,
     snapshots: HashMap<String, Snapshot>,
+    folder_snapshots: HashMap<String, FolderSnapshot>,
 }
 struct Snapshot {
     session: String,
     created: u64,
     snapshot: TrashSnapshot,
     cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
+}
+struct FolderSnapshot {
+    session: String,
+    created: u64,
+    snapshot: FolderTrashSnapshot,
 }
 impl Runtime {
     pub(super) fn new(ops: Ops) -> Self {
@@ -33,6 +39,7 @@ impl Runtime {
             state: Mutex::new(RuntimeState {
                 ops,
                 snapshots: HashMap::new(),
+                folder_snapshots: HashMap::new(),
             }),
         }
     }
@@ -153,6 +160,8 @@ enum Command {
     RenameFolder(i64, String),
     MoveFolder(i64, Option<i64>),
     RemoveFolder(i64),
+    TrashFolderStart(i64),
+    TrashFolderBlock(String),
     CompanionTrash(i64),
     CompanionRestore(i64),
 }
@@ -170,6 +179,8 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "rename_folder" => &["folderId", "name"],
         "move_folder" => &["folderId", "newParentId"],
         "remove_folder_from_catalog" => &["folderId"],
+        "trash_folder_start" => &["folderId"],
+        "trash_folder_block" => &["token"],
         "remove_companion" | "restore_companion" => &["companionId"],
         _ => return Err(err(404, "unknown_command")),
     };
@@ -263,6 +274,8 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "rename_folder" => Command::RenameFolder(id("folderId")?, text("name")?),
         "move_folder" => Command::MoveFolder(id("folderId")?, nullable("newParentId")?),
         "remove_folder_from_catalog" => Command::RemoveFolder(id("folderId")?),
+        "trash_folder_start" => Command::TrashFolderStart(id("folderId")?),
+        "trash_folder_block" => Command::TrashFolderBlock(text("token")?),
         "remove_companion" => Command::CompanionTrash(id("companionId")?),
         "restore_companion" => Command::CompanionRestore(id("companionId")?),
         _ => unreachable!(),
@@ -506,6 +519,46 @@ fn execute(
             }
             result.map(|v| json!(v)).map_err(core_error)
         }
+        Command::TrashFolderStart(id) => {
+            let snapshot = ops.folder_trash_snapshot(id).map_err(core_error)?;
+            let count = snapshot.remaining();
+            progress.set_file_ids(snapshot.ids());
+            reserve_folder_trash(app, count, now)?;
+            backup(app, count.max(1), true)?;
+            if !allowed() {
+                return Err(err(409, "not_started"));
+            }
+            state.folder_snapshots.retain(|_, s| now.saturating_sub(s.created) < 3600);
+            if state.folder_snapshots.len() >= 100 {
+                return Err(err(503, "snapshot_capacity"));
+            }
+            let token = random_token()?;
+            state.folder_snapshots.insert(
+                token.clone(),
+                FolderSnapshot { session: current.token.clone(), created: now, snapshot },
+            );
+            Ok(json!({"token":token,"remaining":count}))
+        }
+        Command::TrashFolderBlock(token) => {
+            let snap = state
+                .folder_snapshots
+                .get_mut(&token)
+                .filter(|s| s.session == current.token && now.saturating_sub(s.created) < 3600)
+                .ok_or_else(|| err(404, "snapshot_not_found"))?;
+            progress.set_file_ids(snap.snapshot.next_block_ids());
+            app.fileops_safety
+                .lock()
+                .map_err(|_| err(503, "restart_required"))?
+                .reserve_folder_trash_block(now)
+                .map_err(retry)?;
+            let count = eligible(ops, snap.snapshot.next_block_ids(), None, false)?;
+            backup(app, count, false)?;
+            let block = ops.folder_trash_block(&mut snap.snapshot, allowed).map_err(core_error)?;
+            if block.remaining == 0 {
+                state.folder_snapshots.remove(&token);
+            }
+            Ok(json!(block))
+        }
         Command::CompanionTrash(id) => {
             // Refusals (unknown, already removed, model in the trash) spend no budget or backup.
             let (row, model) = ops.companion_subject(id).map_err(core_error)?;
@@ -605,6 +658,15 @@ fn execute(
         }
     }
 }
+/// Charges the whole folder to the folder budget once, so the blocks that follow are not
+/// refused by the 200-per-window limit of single deletions.
+fn reserve_folder_trash(app: &App, count: usize, now: u64) -> Result<(), Box<Response>> {
+    app.fileops_safety
+        .lock()
+        .map_err(|_| err(503, "restart_required"))?
+        .reserve_folder(count, now)
+        .map_err(budget_error)
+}
 pub(super) fn folder_ids(app: &App, id: i64) -> Result<Vec<i64>, Box<Response>> {
     let conn = app
         .writer
@@ -654,7 +716,7 @@ fn eligible(
 }
 
 fn completed_items(command: &str, v: &Value) -> u64 {
-    if command == "empty_trash_start" {
+    if command == "empty_trash_start" || command == "trash_folder_start" {
         0
     } else if let Some(results) = v
         .as_array()
