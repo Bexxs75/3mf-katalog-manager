@@ -10,7 +10,7 @@ export const releaseNotes: Record<string, ReleaseNote> = {
     "notes": {
       "en": {
         "new": [
-          "In the web version you can now compare the catalog with the disk and clean it up: apply new files, remove missing entries (after confirmation) and rename with a date prefix. Needs write mode and file management on the server."
+          "In the web version you can now compare the catalog with the disk and clean it up: apply new files, remove missing entries (after confirmation) and rename with a date prefix. Needs write mode and file management on the server. Optionally the server adds new files at its start (at most 200, never removes entries)."
         ],
         "improved": [
           "Desktop and web refuse concurrent operation on the same catalog."
@@ -19,7 +19,7 @@ export const releaseNotes: Record<string, ReleaseNote> = {
       },
       "de": {
         "new": [
-          "In der Web-Version lässt sich der Katalog jetzt mit der Festplatte abgleichen und bereinigen: neue Dateien übernehmen, fehlende Einträge entfernen (nach Bestätigung) und mit Datumspräfix umbenennen. Braucht Schreibmodus und Dateiverwaltung auf dem Server."
+          "In der Web-Version lässt sich der Katalog jetzt mit der Festplatte abgleichen und bereinigen: neue Dateien übernehmen, fehlende Einträge entfernen (nach Bestätigung) und mit Datumspräfix umbenennen. Braucht Schreibmodus und Dateiverwaltung auf dem Server. Optional nimmt der Server beim Start neue Dateien auf (höchstens 200, entfernt nie Einträge)."
         ],
         "improved": [
           "Desktop und Web verweigern den gleichzeitigen Betrieb auf demselben Katalog."
@@ -28,7 +28,7 @@ export const releaseNotes: Record<string, ReleaseNote> = {
       },
       "es": {
         "new": [
-          "En la versión web ahora se puede comparar el catálogo con el disco y limpiarlo: aplicar archivos nuevos, quitar entradas que faltan (tras confirmar) y renombrar con prefijo de fecha. Requiere el modo de escritura y la gestión de archivos en el servidor."
+          "En la versión web ahora se puede comparar el catálogo con el disco y limpiarlo: aplicar archivos nuevos, quitar entradas que faltan (tras confirmar) y renombrar con prefijo de fecha. Requiere el modo de escritura y la gestión de archivos en el servidor. Opcionalmente, el servidor añade archivos nuevos al arrancar (máximo 200, nunca elimina entradas)."
         ],
         "improved": [
           "La aplicación de escritorio y el servidor web impiden el uso simultáneo del mismo catálogo."
@@ -37,7 +37,7 @@ export const releaseNotes: Record<string, ReleaseNote> = {
       },
       "fr": {
         "new": [
-          "Dans la version web, vous pouvez désormais comparer le catalogue avec le disque et le nettoyer : appliquer les nouveaux fichiers, retirer les entrées manquantes (après confirmation) et renommer avec un préfixe de date. Nécessite le mode écriture et la gestion de fichiers sur le serveur."
+          "Dans la version web, vous pouvez désormais comparer le catalogue avec le disque et le nettoyer : appliquer les nouveaux fichiers, retirer les entrées manquantes (après confirmation) et renommer avec un préfixe de date. Nécessite le mode écriture et la gestion de fichiers sur le serveur. En option, le serveur ajoute les nouveaux fichiers au démarrage (200 au maximum, ne retire jamais d’entrées)."
         ],
         "improved": [
           "L’application de bureau et le serveur web empêchent l’utilisation simultanée du même catalogue."
