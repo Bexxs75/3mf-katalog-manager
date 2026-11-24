@@ -641,6 +641,43 @@ mod step_metadata_tests {
         dir
     }
 
+    /// No free descriptor for the worker's copy of the input: that says nothing about the file,
+    /// so the rescan must fail (and leave the record alone) instead of reporting empty metadata.
+    /// Runs in a child copy of the test binary, because the descriptor limit is per process.
+    #[test]
+    fn running_out_of_descriptors_is_not_an_unreadable_file() {
+        const CHILD: &str = "KATALOG_STEP_EMFILE_TEST_CHILD";
+        if let Ok(dir) = std::env::var(CHILD) {
+            let dir = std::path::PathBuf::from(dir);
+            let worker = fake_worker(&dir, "never", "exit 0");
+            let file = std::fs::File::open(dir.join("teil.step")).unwrap();
+            let limit = libc::rlimit { rlim_cur: 64, rlim_max: 64 };
+            // SAFETY: plain syscall with a valid pointer to a local struct.
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) }, 0);
+            let mut hold = Vec::new();
+            while let Ok(f) = std::fs::File::open("/dev/null") {
+                hold.push(f);
+            }
+            assert_eq!(
+                worker.run(crate::step_worker::Mode::Metadata, &file, std::time::Duration::from_secs(5)),
+                Err(crate::step_worker::WorkerError::Protocol)
+            );
+            let result = step_metadata(&worker, &file);
+            drop(hold);
+            assert!(matches!(result, Err(katalog_core::rescan::RescanError::Failed(_))), "{result:?}");
+            return;
+        }
+        let dir = temp_dir();
+        std::fs::write(dir.join("teil.step"), b"ISO-10303-21;\n").unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "write::step_metadata_tests::running_out_of_descriptors_is_not_an_unreadable_file", "--nocapture"])
+            .env(CHILD, &dir)
+            .output()
+            .unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+    }
+
     #[test]
     fn a_crashed_worker_keeps_the_stored_dimensions() {
         let dir = temp_dir();

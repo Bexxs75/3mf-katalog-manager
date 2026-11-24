@@ -93,6 +93,29 @@ fn files_the_server_can_read_stay_closed_to_the_worker() {
 }
 
 #[test]
+fn other_processes_are_out_of_the_workers_reach() {
+    // A separate process of the same user stands for the server; its limits must stay as they are.
+    let mut target = std::process::Command::new("sleep").arg("60").spawn().unwrap();
+    let pid = target.id().to_string();
+    let report = worker(quick())
+        .run_raw("selftest-foreign", None, &[(SELFTEST_ENV, "1"), (SELFTEST_PATH_ENV, pid.as_str())])
+        .map(|r| String::from_utf8(r).unwrap());
+    let limits = std::fs::read_to_string(format!("/proc/{pid}/limits")).unwrap();
+    let alive = target.try_wait().unwrap().is_none();
+    let _ = target.kill();
+    let _ = target.wait();
+    let report = report.unwrap();
+    for line in report.lines() {
+        let (name, errno) = line.split_once('=').unwrap();
+        assert_eq!(errno, libc::EPERM.to_string(), "{name}: {report}");
+    }
+    assert!(report.lines().count() >= 15, "{report}");
+    assert!(alive);
+    let open_files = limits.lines().find(|l| l.starts_with("Max open files")).unwrap();
+    assert!(!open_files.split_whitespace().any(|w| w == "0"), "{open_files}");
+}
+
+#[test]
 fn the_worker_cannot_change_the_file_it_reads() {
     use std::os::unix::fs::PermissionsExt;
     let (dir, file) = temp_file("victim.step", b"ISO-10303-21;\n");
@@ -111,7 +134,10 @@ fn the_worker_cannot_change_the_file_it_reads() {
     let eperm = libc::EPERM.to_string();
     // Refused by the system-call filter (EPERM) and not merely by file permissions, so the
     // check holds even where Landlock has no truncate right.
-    for name in ["open_rdonly_trunc", "openat_rdonly_trunc", "fchmod", "fchmodat", "fchown", "futimens", "utimensat", "ftruncate"] {
+    for name in [
+        "open_rdonly_trunc", "openat_rdonly_trunc", "fchmod", "fchmodat", "fchown", "futimens", "utimensat", "ftruncate",
+        "ioctl_setflags", "ioctl_fssetxattr",
+    ] {
         assert_eq!(errno(name), eperm, "{name}: {report}");
     }
     let fchmodat2 = errno("fchmodat2");

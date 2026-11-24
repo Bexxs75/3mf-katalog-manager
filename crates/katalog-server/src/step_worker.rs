@@ -195,16 +195,19 @@ impl StepWorker {
         if self.exe.is_none() {
             return Err(WorkerError::Unavailable);
         }
-        let meta = input.metadata().map_err(|_| WorkerError::Unreadable)?;
+        // None of these failures is the parser's verdict on the file (the caller admitted a regular
+        // file; a failing fstat or dup means a bad handle or no free descriptors), so they must
+        // not be taken for "unreadable", which would clear stored metadata.
+        let meta = input.metadata().map_err(|_| WorkerError::Protocol)?;
         if !meta.is_file() {
-            return Err(WorkerError::Unreadable);
+            return Err(WorkerError::Protocol);
         }
         if meta.len() > MAX_INPUT_BYTES {
             return Err(WorkerError::TooLarge);
         }
         // A second handle on the same open file: the worker reopens it through /proc, so the
         // shared offset does not matter.
-        let stdin = input.try_clone().map_err(|_| WorkerError::Unreadable)?;
+        let stdin = input.try_clone().map_err(|_| WorkerError::Protocol)?;
         self.spawn_and_wait(mode, Some(stdin), wall)
     }
 
@@ -487,10 +490,21 @@ mod sandbox {
                     Err(_) => EXIT_UNREADABLE,
                 }
             }
+            "selftest-foreign" => {
+                // The process named in the path variable (the server in the test) must be out of
+                // reach for signals, limits and scheduling.
+                let Some(target) = std::env::var(SELFTEST_PATH_ENV).ok().and_then(|v| v.parse().ok()) else {
+                    return EXIT_USAGE;
+                };
+                match out.write_all(act_on(target).as_bytes()) {
+                    Ok(()) => 0,
+                    Err(_) => EXIT_OUTPUT,
+                }
+            }
             "selftest-mutate" => {
                 // Every way to change the input file the worker holds open, with the errno each
                 // attempt got ("ok" if it went through).
-                let report = mutate_input();
+                let report = mutate(0, c"/proc/self/fd/0");
                 match out.write_all(report.as_bytes()) {
                     Ok(()) => 0,
                     Err(_) => EXIT_OUTPUT,
@@ -527,45 +541,126 @@ mod sandbox {
         }
     }
 
-    fn mutate_input() -> String {
-        fn outcome(result: libc::c_long) -> String {
-            if result >= 0 {
-                "ok".into()
-            } else {
-                std::io::Error::last_os_error().raw_os_error().unwrap_or(0).to_string()
-            }
+    fn outcome(result: libc::c_long) -> String {
+        if result >= 0 {
+            "ok".into()
+        } else {
+            std::io::Error::last_os_error().raw_os_error().unwrap_or(0).to_string()
         }
-        let input = c"/proc/self/fd/0";
+    }
+
+    /// Every way to change the file behind `fd` (also reachable as `path`), with the errno each
+    /// attempt got ("ok" if it went through). Shared by the self-test and the filter test.
+    pub(super) fn mutate(fd: libc::c_int, path: &std::ffi::CStr) -> String {
+        const FS_IOC_SETFLAGS: u64 = 0x4008_6602;
+        const FS_IOC_FSSETXATTR: u64 = 0x401c_5820;
+        const FS_NODUMP_FL: libc::c_long = 0x40;
         let mut lines = Vec::new();
-        // SAFETY: every call gets constant arguments, a NUL-terminated path or null pointers
-        // (which mean "now" for the time calls); a returned descriptor is closed at once.
+        // SAFETY: every call gets constant arguments, a NUL-terminated path, pointers to live
+        // locals or null pointers (which mean "now" for the time calls); a returned descriptor is
+        // closed at once.
         unsafe {
-            let fd = libc::open(input.as_ptr(), libc::O_RDONLY | libc::O_TRUNC);
-            if fd >= 0 {
-                libc::close(fd);
+            let opened = libc::open(path.as_ptr(), libc::O_RDONLY | libc::O_TRUNC);
+            if opened >= 0 {
+                libc::close(opened);
             }
-            lines.push(format!("open_rdonly_trunc={}", outcome(fd as libc::c_long)));
-            let fd = libc::openat(libc::AT_FDCWD, input.as_ptr(), libc::O_RDONLY | libc::O_TRUNC);
-            if fd >= 0 {
-                libc::close(fd);
+            lines.push(format!("open_rdonly_trunc={}", outcome(opened as libc::c_long)));
+            let opened = libc::openat(libc::AT_FDCWD, path.as_ptr(), libc::O_RDONLY | libc::O_TRUNC);
+            if opened >= 0 {
+                libc::close(opened);
             }
-            lines.push(format!("openat_rdonly_trunc={}", outcome(fd as libc::c_long)));
-            lines.push(format!("fchmod={}", outcome(libc::fchmod(0, 0o666) as libc::c_long)));
+            lines.push(format!("openat_rdonly_trunc={}", outcome(opened as libc::c_long)));
+            lines.push(format!("fchmod={}", outcome(libc::fchmod(fd, 0o666) as libc::c_long)));
             lines.push(format!(
                 "fchmodat={}",
-                outcome(libc::fchmodat(libc::AT_FDCWD, input.as_ptr(), 0o666, 0) as libc::c_long)
+                outcome(libc::fchmodat(libc::AT_FDCWD, path.as_ptr(), 0o666, 0) as libc::c_long)
             ));
             lines.push(format!(
                 "fchmodat2={}",
-                outcome(libc::syscall(super::filter::SYS_FCHMODAT2, libc::AT_FDCWD, input.as_ptr(), 0o666, 0))
+                outcome(libc::syscall(super::filter::SYS_FCHMODAT2, libc::AT_FDCWD, path.as_ptr(), 0o666, 0))
             ));
-            lines.push(format!("fchown={}", outcome(libc::fchown(0, libc::getuid(), libc::getgid()) as libc::c_long)));
-            lines.push(format!("futimens={}", outcome(libc::futimens(0, std::ptr::null()) as libc::c_long)));
+            lines.push(format!("fchown={}", outcome(libc::fchown(fd, libc::getuid(), libc::getgid()) as libc::c_long)));
+            lines.push(format!("futimens={}", outcome(libc::futimens(fd, std::ptr::null()) as libc::c_long)));
             lines.push(format!(
                 "utimensat={}",
-                outcome(libc::utimensat(libc::AT_FDCWD, input.as_ptr(), std::ptr::null(), 0) as libc::c_long)
+                outcome(libc::utimensat(libc::AT_FDCWD, path.as_ptr(), std::ptr::null(), 0) as libc::c_long)
             ));
-            lines.push(format!("ftruncate={}", outcome(libc::ftruncate(0, 0) as libc::c_long)));
+            lines.push(format!("ftruncate={}", outcome(libc::ftruncate(fd, 0) as libc::c_long)));
+            let flags: libc::c_long = FS_NODUMP_FL;
+            lines.push(format!(
+                "ioctl_setflags={}",
+                outcome(libc::syscall(libc::SYS_ioctl, fd, FS_IOC_SETFLAGS, &flags as *const libc::c_long))
+            ));
+            let fsxattr = [0u8; 28];
+            lines.push(format!(
+                "ioctl_fssetxattr={}",
+                outcome(libc::syscall(libc::SYS_ioctl, fd, FS_IOC_FSSETXATTR, fsxattr.as_ptr()))
+            ));
+        }
+        lines.join("\n")
+    }
+
+    /// Every way to act on the process `target` (signals, limits, scheduling, handles), with the
+    /// errno each attempt got. Signal 0 only checks permission, so nothing reaches the target if
+    /// a call goes through; the limit attempt sets the open-file limit to zero on purpose, so a
+    /// test sees whether it landed.
+    pub(super) fn act_on(target: libc::pid_t) -> String {
+        let mut lines = Vec::new();
+        // SAFETY: plain system calls with integer arguments or pointers to live locals of the
+        // layout the kernel expects; a returned descriptor is closed at once.
+        unsafe {
+            lines.push(format!("kill={}", outcome(libc::kill(target, 0) as libc::c_long)));
+            lines.push(format!("kill_group={}", outcome(libc::kill(0, 0) as libc::c_long)));
+            lines.push(format!("kill_all={}", outcome(libc::kill(-1, 0) as libc::c_long)));
+            lines.push(format!("tkill={}", outcome(libc::syscall(libc::SYS_tkill, target, 0))));
+            lines.push(format!("tgkill={}", outcome(libc::syscall(libc::SYS_tgkill, target, target, 0))));
+            let mut info: libc::siginfo_t = std::mem::zeroed();
+            info.si_code = libc::SI_QUEUE;
+            lines.push(format!(
+                "rt_sigqueueinfo={}",
+                outcome(libc::syscall(libc::SYS_rt_sigqueueinfo, target, 0, &info as *const libc::siginfo_t))
+            ));
+            lines.push(format!(
+                "rt_tgsigqueueinfo={}",
+                outcome(libc::syscall(libc::SYS_rt_tgsigqueueinfo, target, target, 0, &info as *const libc::siginfo_t))
+            ));
+            let pidfd = libc::syscall(libc::SYS_pidfd_open, target, 0);
+            if pidfd >= 0 {
+                libc::close(pidfd as libc::c_int);
+            }
+            lines.push(format!("pidfd_open={}", outcome(pidfd)));
+            let zero = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+            lines.push(format!(
+                "prlimit64={}",
+                outcome(libc::syscall(
+                    libc::SYS_prlimit64,
+                    target,
+                    libc::RLIMIT_NOFILE,
+                    &zero as *const libc::rlimit,
+                    std::ptr::null_mut::<libc::rlimit>()
+                ))
+            ));
+            let mut set: libc::cpu_set_t = std::mem::zeroed();
+            libc::sched_getaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &mut set);
+            lines.push(format!(
+                "sched_setaffinity={}",
+                outcome(libc::sched_setaffinity(target, std::mem::size_of::<libc::cpu_set_t>(), &set) as libc::c_long)
+            ));
+            let param = libc::sched_param { sched_priority: 0 };
+            lines.push(format!(
+                "sched_setscheduler={}",
+                outcome(libc::sched_setscheduler(target, libc::SCHED_OTHER, &param) as libc::c_long)
+            ));
+            lines.push(format!(
+                "setpriority={}",
+                outcome(libc::setpriority(libc::PRIO_PROCESS, target as libc::id_t, 0) as libc::c_long)
+            ));
+            lines.push(format!("ioprio_set={}", outcome(libc::syscall(libc::SYS_ioprio_set, 1, target, 0))));
+            lines.push(format!("kcmp={}", outcome(libc::syscall(libc::SYS_kcmp, target, target, 0, 0, 0))));
+            lines.push(format!(
+                "process_vm_readv={}",
+                outcome(libc::syscall(libc::SYS_process_vm_readv, target, std::ptr::null::<libc::iovec>(), 0, std::ptr::null::<libc::iovec>(), 0, 0))
+            ));
         }
         lines.join("\n")
     }
@@ -747,6 +842,12 @@ mod filter {
     const SYS_REMOVEXATTRAT: i64 = 466;
     const SYS_FILE_SETATTR: i64 = 469;
 
+    /// Terminal queries (is it a terminal, window size) and "bytes waiting": read-only questions
+    /// the C and C++ runtimes may ask of a descriptor.
+    // The request type is c_ulong with glibc but c_int with musl, so the casts are not idle there.
+    #[allow(clippy::unnecessary_cast)]
+    const ALLOWED_IOCTLS: [u64; 3] = [libc::TCGETS as u64, libc::TIOCGWINSZ as u64, libc::FIONREAD as u64];
+
     fn rule(conditions: Vec<Cond>) -> Result<SeccompRule, seccompiler::BackendError> {
         SeccompRule::new(conditions)
     }
@@ -773,6 +874,21 @@ mod filter {
             libc::SYS_fallocate, libc::SYS_setxattr, libc::SYS_lsetxattr, libc::SYS_fsetxattr,
             libc::SYS_removexattr, libc::SYS_lremovexattr, libc::SYS_fremovexattr, SYS_SETXATTRAT,
             SYS_REMOVEXATTRAT, SYS_FILE_SETATTR, libc::SYS_fanotify_init, libc::SYS_quotactl,
+            // Acting on other processes of the same user: comparing their resources, changing
+            // their scheduling, priority, I/O class or memory placement, reading their robust
+            // futex list. The worker needs none of it for itself.
+            libc::SYS_kcmp, libc::SYS_sched_setscheduler, libc::SYS_sched_setparam, libc::SYS_sched_setattr,
+            libc::SYS_setpriority, libc::SYS_ioprio_set, libc::SYS_migrate_pages, libc::SYS_move_pages,
+            libc::SYS_get_robust_list, libc::SYS_process_mrelease,
+            // System V IPC and POSIX message queues are shared by every process of the user; the
+            // worker could remove or fill the server's or other programs' objects.
+            libc::SYS_shmget, libc::SYS_shmat, libc::SYS_shmctl, libc::SYS_shmdt, libc::SYS_semget,
+            libc::SYS_semop, libc::SYS_semctl, libc::SYS_semtimedop, libc::SYS_msgget, libc::SYS_msgsnd,
+            libc::SYS_msgrcv, libc::SYS_msgctl, libc::SYS_mq_open, libc::SYS_mq_unlink,
+            libc::SYS_mq_timedsend, libc::SYS_mq_timedreceive, libc::SYS_mq_notify, libc::SYS_mq_getsetattr,
+            // The newer mount interface, next to mount/umount2 above.
+            libc::SYS_open_tree, libc::SYS_move_mount, libc::SYS_fsopen, libc::SYS_fsconfig,
+            libc::SYS_fsmount, libc::SYS_fspick, libc::SYS_mount_setattr,
         ];
         for nr in always {
             rules.insert(nr, Vec::new());
@@ -807,8 +923,35 @@ mod filter {
         #[cfg(target_arch = "x86_64")]
         rules.insert(libc::SYS_open, writing_opens(1)?);
         // Signals only to itself: abort() and the runtime use them, the server must not get one.
-        rules.insert(libc::SYS_kill, vec![rule(vec![Cond::new(0, Len::Dword, Op::Ne, pid)?])?]);
-        rules.insert(libc::SYS_tgkill, vec![rule(vec![Cond::new(0, Len::Dword, Op::Ne, pid)?])?]);
+        // Every call that names a target process is covered here (tkill and pidfd_send_signal
+        // are refused above), because Landlock's signal scope exists only from its sixth ABI.
+        // Pid 0 and negative pids address process groups, which include the server.
+        let own = |arg: u8| -> Result<Vec<SeccompRule>, seccompiler::BackendError> {
+            Ok(vec![rule(vec![Cond::new(arg, Len::Dword, Op::Ne, pid)?])?])
+        };
+        rules.insert(libc::SYS_kill, own(0)?);
+        rules.insert(libc::SYS_tgkill, own(0)?);
+        rules.insert(libc::SYS_rt_sigqueueinfo, own(0)?);
+        rules.insert(libc::SYS_rt_tgsigqueueinfo, own(0)?);
+        // Resource limits and CPU affinity of itself only (pid 0 or its own pid): with the same
+        // user id it could otherwise set the server's open-file limit to zero.
+        let own_or_zero = |arg: u8| -> Result<Vec<SeccompRule>, seccompiler::BackendError> {
+            Ok(vec![rule(vec![Cond::new(arg, Len::Dword, Op::Ne, pid)?, Cond::new(arg, Len::Dword, Op::Ne, 0)?])?])
+        };
+        rules.insert(libc::SYS_prlimit64, own_or_zero(0)?);
+        rules.insert(libc::SYS_sched_setaffinity, own_or_zero(0)?);
+        // ioctl only for what the runtime asks of its standard streams; everything else, such as
+        // setting file flags (FS_IOC_SETFLAGS) or attributes (FS_IOC_FSSETXATTR) on the input,
+        // is refused. The kernel reads the request as 32 bits, so comparing 32 bits is exact.
+        rules.insert(
+            libc::SYS_ioctl,
+            vec![rule(
+                ALLOWED_IOCTLS
+                    .iter()
+                    .map(|&request| Cond::new(1, Len::Dword, Op::Ne, request))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )?],
+        );
         // Threads yes, new processes no: a clone without CLONE_THREAD is a fork.
         rules.insert(
             libc::SYS_clone,
@@ -964,6 +1107,67 @@ mod tests {
         assert_eq!(classify(signal(libc::SIGXCPU), true, Vec::new()), Err(WorkerError::TooComplex));
         assert_eq!(classify(signal(libc::SIGKILL), true, Vec::new()), Err(WorkerError::TooComplex));
         assert_eq!(classify(exit(EXIT_NO_LANDLOCK), true, Vec::new()), Err(WorkerError::NoIsolation));
+    }
+
+    /// The system-call filter on its own, without Landlock: in a child copy of this test binary
+    /// one thread enters only the filter and then attacks a separate process and a file. Landlock
+    /// would refuse some of this too (signals from its sixth ABI, truncation from its third), so
+    /// only the filter test shows that older kernels are covered.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_filter_alone_keeps_other_processes_and_files_safe() {
+        const CHILD: &str = "KATALOG_STEP_FILTER_TEST_CHILD";
+        if let Ok(spec) = std::env::var(CHILD) {
+            let (target, path) = spec.split_once(':').unwrap();
+            let path = std::ffi::CString::new(path).unwrap();
+            // SAFETY: NUL-terminated path; the descriptor stays open for the attempts below.
+            let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDONLY) };
+            assert!(fd >= 0);
+            // SAFETY: prctl with integer arguments only.
+            assert_eq!(unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) }, 0);
+            super::filter::apply().unwrap();
+            println!("{}", super::sandbox::act_on(target.parse().unwrap()));
+            println!("{}", super::sandbox::mutate(fd, &path));
+            return;
+        }
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("step-filter-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("victim.step");
+        std::fs::write(&file, b"ISO-10303-21;\n").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let mut target = Command::new("sleep").arg("60").spawn().unwrap();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "step_worker::tests::the_filter_alone_keeps_other_processes_and_files_safe", "--nocapture"])
+            .env(CHILD, format!("{}:{}", target.id(), file.display()))
+            .output()
+            .unwrap();
+        let limits = std::fs::read_to_string(format!("/proc/{}/limits", target.id())).unwrap();
+        let alive = target.try_wait().unwrap().is_none();
+        let _ = target.kill();
+        let _ = target.wait();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        assert!(output.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&output.stderr));
+        let eperm = libc::EPERM.to_string();
+        let expected = [
+            "kill", "kill_group", "kill_all", "tkill", "tgkill", "rt_sigqueueinfo", "rt_tgsigqueueinfo",
+            "pidfd_open", "prlimit64", "sched_setaffinity", "sched_setscheduler", "setpriority", "ioprio_set",
+            "kcmp", "process_vm_readv", "open_rdonly_trunc", "openat_rdonly_trunc", "fchmod", "fchmodat",
+            "fchown", "futimens", "utimensat", "ftruncate", "ioctl_setflags", "ioctl_fssetxattr",
+        ];
+        for name in expected {
+            let got = stdout
+                .lines()
+                .find_map(|l| l.strip_prefix(&format!("{name}=")))
+                .unwrap_or_else(|| panic!("{name} missing in {stdout}"));
+            assert_eq!(got, eperm, "{name}: {stdout}");
+        }
+        assert!(alive, "the target process died");
+        let open_files = limits.lines().find(|l| l.starts_with("Max open files")).unwrap();
+        assert!(!open_files.split_whitespace().any(|w| w == "0"), "{open_files}");
+        assert_eq!(std::fs::read(&file).unwrap(), b"ISO-10303-21;\n");
+        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o7777, 0o644);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
