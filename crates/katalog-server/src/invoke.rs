@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use katalog_core::{
-    companion_read, db, disk_report,
+    catalog_issues, companion_read, db, disk_report, disk_sync_settings,
     error_code::{ErrorCode, LEGACY_CODES},
     read::{self, GeometryErrorCode, ReadError},
 };
@@ -18,6 +18,57 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// for good, which no in-process limit can interrupt; the request is answered instead.
 const DISK_REPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Where the one start comparison of this server run stands (W2 5.4). The read command
+/// `run_start_sync` only reports it; it never starts anything.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartSyncPhase {
+    #[default]
+    Off,
+    Running,
+    Done,
+    Skipped,
+}
+/// What the start comparison took over (only when new files were added automatically).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartSyncApplied {
+    pub added: usize,
+    pub renamed: usize,
+    pub failed: usize,
+}
+/// Same shape as the desktop `StartSyncResult` plus `state`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartSyncState {
+    pub ran: bool,
+    pub busy: bool,
+    pub state: StartSyncPhase,
+    pub new_files: usize,
+    pub renamed: usize,
+    pub missing_files: usize,
+    pub missing_folders: usize,
+    pub duplicates: usize,
+    pub unreachable_roots: usize,
+    pub applied: Option<StartSyncApplied>,
+}
+/// In-memory result of the start comparison; gone with the process.
+#[derive(Debug, Default)]
+pub struct StartSyncStore(std::sync::Mutex<StartSyncState>);
+impl StartSyncStore {
+    pub fn get(&self) -> StartSyncState {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    pub fn set(&self, state: StartSyncState) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = state;
+    }
+}
+
+/// Limits of the web scan for missing models and duplicates (W2 2.11).
+const ISSUE_MAX_ORPHANED: usize = 500;
+const ISSUE_MAX_GROUPS: usize = 200;
+const ISSUE_MAX_DURATION: std::time::Duration = std::time::Duration::from_secs(20);
+
 pub struct GeometryGate {
     /// The application shares this admission barrier with every catalog route and job.
     pub barrier: crate::barrier::CatalogBarrier,
@@ -29,6 +80,9 @@ pub struct GeometryGate {
     /// Folders the comparison does not walk (the upload folder), like the preview.
     report_excluded: Vec<PathBuf>,
     report_timeout: std::time::Duration,
+    issue_limits: catalog_issues::IssueLimits,
+    /// Result of the start comparison, written by `disk_start_sync`, read by `run_start_sync`.
+    pub start_sync: Arc<StartSyncStore>,
     admission: Arc<Semaphore>,
     /// STEP parsing in a separate process; disabled unless the server found a working one.
     pub step: Arc<crate::step_worker::StepWorker>,
@@ -43,6 +97,12 @@ impl Default for GeometryGate {
             report_limits: disk_report::Limits::default(),
             report_excluded: Vec::new(),
             report_timeout: DISK_REPORT_TIMEOUT,
+            issue_limits: catalog_issues::IssueLimits {
+                max_orphaned: ISSUE_MAX_ORPHANED,
+                max_groups: ISSUE_MAX_GROUPS,
+                max_duration: ISSUE_MAX_DURATION,
+            },
+            start_sync: Arc::new(StartSyncStore::default()),
             admission: Arc::new(Semaphore::new(10)),
             step: Arc::new(crate::step_worker::StepWorker::disabled()),
         }
@@ -284,6 +344,31 @@ fn folder_summary(
     ))
 }
 
+/// Missing models and duplicates for the web: only rows the probe positively judged count, the
+/// answer carries full DTOs for the hits only (never the whole catalog with its pictures).
+fn scan_issues(conn: &rusqlite::Connection, roots: &[PathBuf], limits: catalog_issues::IssueLimits) -> Result<Value, ReadError> {
+    let probe = catalog_issues::RootsMissingProbe::new(roots);
+    let issues = catalog_issues::scan(conn, &probe, limits).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
+    let ids: Vec<i64> = issues.orphaned.iter().chain(issues.duplicate_groups.iter().flatten()).copied().collect();
+    // Chunked: a few huge duplicate groups must not exceed SQLite's variable limit.
+    let mut files = Vec::with_capacity(ids.len());
+    for chunk in ids.chunks(500) {
+        files.extend(db::list_files_by_ids(conn, chunk).map_err(ReadError::from)?);
+    }
+    let spools = db::list_filament_spools(conn).map_err(ReadError::from)?;
+    let mut by_id: std::collections::HashMap<i64, read::ModelFileDto> =
+        files.into_iter().map(|f| (f.id, read::to_dto(f, &spools))).collect();
+    // A row that vanished since the scan (deleted meanwhile) is left out, not an error.
+    let orphaned: Vec<_> = issues.orphaned.iter().filter_map(|id| by_id.remove(id)).collect();
+    let groups: Vec<Vec<_>> = issues
+        .duplicate_groups
+        .iter()
+        .map(|g| g.iter().filter_map(|id| by_id.remove(id)).collect::<Vec<_>>())
+        .filter(|g| g.len() >= 2)
+        .collect();
+    Ok(json!({"orphaned": orphaned, "duplicateGroups": groups, "truncated": issues.truncated}))
+}
+
 pub async fn invoke(
     db_path: PathBuf,
     roots: Vec<PathBuf>,
@@ -294,16 +379,19 @@ pub async fn invoke(
     if !READ_COMMANDS.contains(&command.as_str()) {
         return *error(StatusCode::NOT_FOUND, ErrorCode::WebCommandUnavailable, &[]);
     }
-    // Contract only (W2 P0): listed so the lists agree, handled in a later package.
-    if matches!(command.as_str(), "scan_catalog_issues" | "get_sync_on_start" | "get_sync_auto_add" | "run_start_sync") {
-        return *error(StatusCode::NOT_FOUND, ErrorCode::WebCommandUnavailable, &[]);
-    }
     if !args.is_object() {
         return *error(StatusCode::BAD_REQUEST, ErrorCode::ReqInvalidArguments, &[]);
     }
     if matches!(
         command.as_str(),
-        "folder_removal_summary" | "folder_trash_summary" | "empty_trash_summary" | "disk_sync_report"
+        "folder_removal_summary"
+            | "folder_trash_summary"
+            | "empty_trash_summary"
+            | "disk_sync_report"
+            | "scan_catalog_issues"
+            | "get_sync_on_start"
+            | "get_sync_auto_add"
+            | "run_start_sync"
     ) {
         let allowed: &[&str] = if command == "folder_removal_summary" || command == "folder_trash_summary" {
             &["folderId"]
@@ -410,6 +498,7 @@ pub async fn invoke(
             | "companion_image_data"
             | "list_companions"
             | "disk_sync_report"
+            | "scan_catalog_issues"
     ) {
         match gate.manager_read() {
             Ok(p) => Some(p),
@@ -418,7 +507,8 @@ pub async fn invoke(
     } else {
         None
     };
-    let report_permit = if command == "disk_sync_report" {
+    let is_scan = matches!(command.as_str(), "disk_sync_report" | "scan_catalog_issues");
+    let report_permit = if is_scan {
         match gate.disk_reports.clone().try_acquire_owned() {
             Ok(p) => Some(p),
             Err(_) => {
@@ -431,8 +521,14 @@ pub async fn invoke(
         None
     };
     let catalog_guard = match gate.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
-    if command == "disk_sync_report" {
+    // The start comparison's stored result: memory only, no catalog access.
+    if command == "run_start_sync" {
+        drop(catalog_guard);
+        return Json(gate.start_sync.get()).into_response();
+    }
+    if is_scan {
         let (limits, wait, excluded) = (gate.report_limits, gate.report_timeout, gate.report_excluded.clone());
+        let (issue_limits, issues) = (gate.issue_limits, command == "scan_catalog_issues");
         let (tx, rx) = tokio::sync::oneshot::channel();
         // A thread of its own, not the blocking pool: the scan may never return. The permits
         // move into it on purpose and are released only when it ends, so a stuck scan keeps
@@ -441,6 +537,9 @@ pub async fn invoke(
             let _held = (catalog_guard, manager_permit, report_permit);
             let outcome = (|| -> Result<Value, ReadError> {
                 let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
+                if issues {
+                    return scan_issues(&conn, &roots, issue_limits);
+                }
                 // The database is only read for the copy; the disk scan runs without it.
                 let snapshot = disk_report::snapshot(&conn).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
                 drop(conn);
@@ -552,6 +651,8 @@ pub async fn invoke(
             "list_all_file_tags" => encode(read::list_all_file_tags(&conn)?),
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
             "list_tag_counts" => encode(read::list_tag_counts(&conn)?),
+            "get_sync_on_start" => encode(disk_sync_settings::flag(&conn, disk_sync_settings::SETTING_ON_START).map_err(ReadError::from)?),
+            "get_sync_auto_add" => encode(disk_sync_settings::flag(&conn, disk_sync_settings::SETTING_AUTO_ADD).map_err(ReadError::from)?),
             "get_auto_tagging" => encode(read::get_auto_tagging(&conn)?),
             "get_print_technology" => encode(read::get_print_technology(&conn)?),
             "list_blocked_auto_tags" => encode(read::list_blocked_auto_tags(&conn)?),
@@ -823,6 +924,225 @@ mod tests {
         let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), Arc::new(gate)).await;
         assert_eq!(r.status(), StatusCode::OK);
         assert!(committed.load(std::sync::atomic::Ordering::SeqCst), "the walk never ran");
+    }
+
+    /// A catalog with: two live copies of one hash, a missing model, a model that is only
+    /// "unclear" (directory without permission is not available as root), and one outside the roots.
+    struct Issues {
+        dir: PathBuf,
+        db: PathBuf,
+    }
+    impl Drop for Issues {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(self.dir.parent().unwrap());
+        }
+    }
+    fn issues_catalog() -> Issues {
+        let mut random = [0u8; 16];
+        getrandom::fill(&mut random).unwrap();
+        let base = std::env::temp_dir().join(format!("server-issues-{:x}", u128::from_le_bytes(random)));
+        let (dir, outside) = (base.join("root"), base.join("outside"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let (dir, outside) = (dir.canonicalize().unwrap(), outside.canonicalize().unwrap());
+        let db = base.join("catalog.db");
+        let conn = db::connect(&db).unwrap();
+        for name in ["a.stl", "b.stl"] {
+            std::fs::write(dir.join(name), b"same").unwrap();
+            let id = db::test_insert_minimal_file(&conn, dir.join(name).to_str().unwrap(), None).unwrap();
+            conn.execute("UPDATE files SET content_hash='h1' WHERE id=?1", [id]).unwrap();
+        }
+        db::test_insert_minimal_file(&conn, dir.join("gone.stl").to_str().unwrap(), None).unwrap();
+        std::fs::write(outside.join("o.stl"), b"x").unwrap();
+        let o = db::test_insert_minimal_file(&conn, outside.join("o.stl").to_str().unwrap(), None).unwrap();
+        conn.execute("UPDATE files SET content_hash='h2' WHERE id=?1", [o]).unwrap();
+        let o2 = db::test_insert_minimal_file(&conn, outside.join("missing.stl").to_str().unwrap(), None).unwrap();
+        conn.execute("UPDATE files SET content_hash='h2' WHERE id=?1", [o2]).unwrap();
+        Issues { dir, db }
+    }
+    async fn scan(i: &Issues, gate: Arc<GeometryGate>) -> Response {
+        invoke(i.db.clone(), vec![i.dir.clone()], "scan_catalog_issues".into(), json!({}), gate).await
+    }
+    async fn json_body(r: Response) -> Value {
+        serde_json::from_slice(&body(r).await).unwrap()
+    }
+    fn names(files: &Value) -> Vec<String> {
+        let mut n: Vec<String> = files.as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap().to_owned()).collect();
+        n.sort();
+        n
+    }
+
+    #[tokio::test]
+    async fn issue_scan_has_the_desktop_shape_and_ignores_rows_it_cannot_judge() {
+        let i = issues_catalog();
+        let r = scan(&i, Arc::new(GeometryGate::default())).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        let mut keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["duplicateGroups", "orphaned", "truncated"]);
+        assert_eq!(v["truncated"], false);
+        // Only the model under the root that is really gone; rows outside the roots (even a
+        // missing one) are unclear and never listed or grouped.
+        assert_eq!(v["orphaned"].as_array().unwrap().len(), 1);
+        assert!(v["orphaned"][0]["path"].as_str().unwrap().ends_with("gone.stl"));
+        let groups = v["duplicateGroups"].as_array().unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(names(&groups[0]).len(), 2);
+        assert!(groups[0][0]["id"].is_string(), "full file DTO like the desktop");
+    }
+    #[tokio::test]
+    async fn issue_scan_is_read_only() {
+        let i = issues_catalog();
+        let before = Sha256::digest(std::fs::read(&i.db).unwrap());
+        assert_eq!(scan(&i, Arc::new(GeometryGate::default())).await.status(), StatusCode::OK);
+        assert_eq!(Sha256::digest(std::fs::read(&i.db).unwrap()), before);
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn issue_scan_does_not_call_an_unreadable_directory_missing() {
+        use std::os::unix::fs::PermissionsExt;
+        let i = issues_catalog();
+        std::fs::create_dir(i.dir.join("locked")).unwrap();
+        std::fs::write(i.dir.join("locked/x.stl"), b"x").unwrap();
+        let conn = db::connect(&i.db).unwrap();
+        db::test_insert_minimal_file(&conn, i.dir.join("locked/x.stl").to_str().unwrap(), None).unwrap();
+        drop(conn);
+        std::fs::set_permissions(i.dir.join("locked"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let v = json_body(scan(&i, Arc::new(GeometryGate::default())).await).await;
+        std::fs::set_permissions(i.dir.join("locked"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(v["orphaned"].as_array().unwrap().iter().all(|f| !f["path"].as_str().unwrap().contains("locked")), "{v}");
+    }
+    #[tokio::test]
+    async fn issue_scan_limits_report_truncated_and_form_no_group_from_unchecked_rows() {
+        let i = issues_catalog();
+        let conn = db::connect(&i.db).unwrap();
+        for n in 0..3 {
+            db::test_insert_minimal_file(&conn, i.dir.join(format!("gone{n}.stl")).to_str().unwrap(), None).unwrap();
+        }
+        drop(conn);
+        let limited = |limits| Arc::new(GeometryGate { issue_limits: limits, ..Default::default() });
+        let v = json_body(scan(&i, limited(catalog_issues::IssueLimits { max_orphaned: 2, ..GeometryGate::default().issue_limits })).await).await;
+        assert_eq!(v["truncated"], true);
+        assert_eq!(v["orphaned"].as_array().unwrap().len(), 2);
+        // A zero time budget checks no row at all: nothing may be listed or grouped.
+        let v = json_body(scan(&i, limited(catalog_issues::IssueLimits { max_duration: std::time::Duration::ZERO, ..GeometryGate::default().issue_limits })).await).await;
+        assert_eq!(v["truncated"], true);
+        assert_eq!((v["orphaned"].as_array().unwrap().len(), v["duplicateGroups"].as_array().unwrap().len()), (0, 0));
+        // Group limit.
+        let conn = db::connect(&i.db).unwrap();
+        for (n, hash) in [("c1", "h9"), ("c2", "h9"), ("d1", "h8"), ("d2", "h8")] {
+            std::fs::write(i.dir.join(format!("{n}.stl")), n).unwrap();
+            let id = db::test_insert_minimal_file(&conn, i.dir.join(format!("{n}.stl")).to_str().unwrap(), None).unwrap();
+            conn.execute("UPDATE files SET content_hash=?2 WHERE id=?1", rusqlite::params![id, hash]).unwrap();
+        }
+        drop(conn);
+        let v = json_body(scan(&i, limited(catalog_issues::IssueLimits { max_groups: 1, ..GeometryGate::default().issue_limits })).await).await;
+        assert_eq!((v["truncated"].clone(), v["duplicateGroups"].as_array().unwrap().len()), (json!(true), 1));
+    }
+    #[tokio::test]
+    async fn issue_scan_limits_default_to_the_specified_values() {
+        let l = GeometryGate::default().issue_limits;
+        assert_eq!((l.max_orphaned, l.max_groups, l.max_duration), (500, 200, std::time::Duration::from_secs(20)));
+    }
+    #[tokio::test]
+    async fn issue_scan_is_single_flight_and_shares_the_report_and_manager_gates() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let running = gate.disk_reports.clone().try_acquire_owned().unwrap();
+        let r = scan(&i, gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(r.headers().contains_key("retry-after"));
+        drop(running);
+        let held: Vec<_> = (0..4).map(|_| gate.manager_reads.clone().try_acquire_owned().unwrap()).collect();
+        assert_eq!(scan(&i, gate.clone()).await.status(), StatusCode::SERVICE_UNAVAILABLE);
+        drop(held);
+        assert_eq!(scan(&i, gate.clone()).await.status(), StatusCode::OK);
+        for _ in 0..100 {
+            if gate.disk_reports.available_permits() == 1 && gate.manager_reads.available_permits() == 4 && gate.barrier.snapshot().readers == 0 {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        panic!("permits were never released");
+    }
+    #[tokio::test]
+    async fn issue_scan_runs_on_its_own_thread_and_answers_a_timeout() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate { report_timeout: std::time::Duration::ZERO, ..Default::default() });
+        let r = scan(&i, gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert!(String::from_utf8(body(r).await).unwrap().contains("\"rescanTimeout\""));
+        // The permits stay with the thread until it ends, then come back.
+        for _ in 0..100 {
+            if gate.disk_reports.available_permits() == 1 && gate.barrier.snapshot().readers == 0 {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        panic!("permits were never released");
+    }
+    #[tokio::test]
+    async fn the_new_read_commands_respect_the_barrier() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let window = gate.barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+        // Draining lets readers in.
+        assert_eq!(scan(&i, gate.clone()).await.status(), StatusCode::OK);
+        let window = window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap();
+        for command in ["scan_catalog_issues", "get_sync_on_start", "get_sync_auto_add", "run_start_sync"] {
+            let r = invoke(i.db.clone(), vec![i.dir.clone()], command.into(), json!({}), gate.clone()).await;
+            assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE, "{command}");
+            assert_eq!(json_body(r).await["message"], "maintenance", "{command}");
+        }
+        window.release();
+        assert_eq!(scan(&i, gate).await.status(), StatusCode::OK);
+    }
+    #[tokio::test]
+    async fn the_new_read_commands_take_no_arguments() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate::default());
+        for command in ["scan_catalog_issues", "get_sync_on_start", "get_sync_auto_add", "run_start_sync"] {
+            let r = invoke(i.db.clone(), vec![i.dir.clone()], command.into(), json!({"path": "/etc"}), gate.clone()).await;
+            assert_eq!(r.status(), StatusCode::UNPROCESSABLE_ENTITY, "{command}");
+            let r = invoke(i.db.clone(), vec![i.dir.clone()], command.into(), json!([]), gate.clone()).await;
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{command}");
+        }
+    }
+    #[tokio::test]
+    async fn sync_settings_default_to_off_and_read_the_stored_keys() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let get = |command: &'static str| {
+            let (db_path, dir, gate) = (i.db.clone(), i.dir.clone(), gate.clone());
+            async move { json_body(invoke(db_path, vec![dir], command.into(), json!({}), gate).await).await }
+        };
+        assert_eq!((get("get_sync_on_start").await, get("get_sync_auto_add").await), (json!(false), json!(false)));
+        let conn = db::connect(&i.db).unwrap();
+        disk_sync_settings::set_flag(&conn, disk_sync_settings::SETTING_AUTO_ADD, true).unwrap();
+        drop(conn);
+        assert_eq!((get("get_sync_on_start").await, get("get_sync_auto_add").await), (json!(false), json!(true)));
+    }
+    #[tokio::test]
+    async fn run_start_sync_only_reports_the_stored_state_and_never_touches_the_catalog() {
+        let gate = Arc::new(GeometryGate::default());
+        // The catalog does not even exist: the answer comes from memory.
+        let missing = std::env::temp_dir().join("server-no-such-catalog.db");
+        let ask = |gate: Arc<GeometryGate>| invoke(missing.clone(), vec![], "run_start_sync".into(), json!({}), gate);
+        let v = json_body(ask(gate.clone()).await).await;
+        assert_eq!(v, json!({"ran":false,"busy":false,"state":"off","newFiles":0,"renamed":0,"missingFiles":0,"missingFolders":0,"duplicates":0,"unreachableRoots":0,"applied":null}));
+        gate.start_sync.set(StartSyncState { busy: true, state: StartSyncPhase::Running, ..Default::default() });
+        let v = json_body(ask(gate.clone()).await).await;
+        assert_eq!((v["busy"].clone(), v["state"].clone(), v["ran"].clone()), (json!(true), json!("running"), json!(false)));
+        gate.start_sync.set(StartSyncState {
+            ran: true,
+            state: StartSyncPhase::Done,
+            new_files: 3,
+            applied: Some(StartSyncApplied { added: 2, renamed: 0, failed: 1 }),
+            ..Default::default()
+        });
+        let v = json_body(ask(gate).await).await;
+        assert_eq!((v["state"].clone(), v["newFiles"].clone(), v["applied"].clone()), (json!("done"), json!(3), json!({"added":2,"renamed":0,"failed":1})));
     }
 
     async fn body(response: Response) -> Vec<u8> {

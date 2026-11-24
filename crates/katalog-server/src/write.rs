@@ -783,6 +783,21 @@ pub(crate) fn execute(
                 .map(|(value, changes)| (Json(value).into_response(), changes))
                 .map_err(|e| Box::new(crate::source_dirs::response_error(e)))
         }
+        "set_sync_on_start" | "set_sync_auto_add" => {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct SyncArgs { enabled: bool }
+            let args = SyncArgs::deserialize(a).map_err(|_| bad())?;
+            let key = if cmd == "set_sync_on_start" {
+                katalog_core::disk_sync_settings::SETTING_ON_START
+            } else {
+                katalog_core::disk_sync_settings::SETTING_AUTO_ADD
+            };
+            // Each key stands alone; the interface decides how the two relate (2.11).
+            katalog_core::disk_sync_settings::set_flag(c, key, args.enabled)
+                .map_err(|_| Box::new(super::web::error_coded(500, ErrorCode::WebServerInternal, &[])))?;
+            Ok((Json(Value::Null).into_response(), 1))
+        }
         "set_custom_image" => {
             #[derive(serde::Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -984,6 +999,13 @@ pub(crate) fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sync_settings_are_plain_writes_not_file_operations() {
+        // They only store a flag: no plan, budget or backup, and they work without KATALOG_FILE_OPS.
+        for command in ["set_sync_on_start", "set_sync_auto_add"] {
+            assert!(WRITE_COMMANDS.contains(&command) && !FILE_OPS_COMMANDS.contains(&command), "{command}");
+        }
+    }
     #[test]
     fn audit_hash_uses_only_the_authenticated_cookie_name() {
         let mut headers = HeaderMap::new();

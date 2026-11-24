@@ -1111,9 +1111,9 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 return crate::source_dirs::invoke(app.config.db_path.clone(), app.config.source_roots.clone(),
                     command.to_owned(), args, app.geometry.clone()).await;
             }
-            // The comparison numbers its roots like the preview does: the file roots only,
+            // The comparison and the issue scan number their roots like the preview does: the file roots only,
             // not the desktop trash folder `roots` carries for downloads.
-            let report_roots = if command == "disk_sync_report" { &app.config.file_roots } else { &app.config.roots };
+            let report_roots = if matches!(command, "disk_sync_report" | "scan_catalog_issues") { &app.config.file_roots } else { &app.config.roots };
             invoke(
                 app.config.db_path.clone(),
                 report_roots.clone(),
