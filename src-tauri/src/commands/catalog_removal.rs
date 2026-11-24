@@ -274,8 +274,12 @@ mod tests {
                     reset_with_conn(&conn).unwrap();
                 }
             }
-            let gone = db::bundles::get_bundle(&conn, pair).unwrap().is_none();
-            assert!(gone, "{mode}: a bundle left with one member is dissolved");
+            let left = db::bundles::get_bundle(&conn, pair).unwrap();
+            if mode == "reset" {
+                assert!(left.is_none(), "{mode}: a reset removes every bundle");
+            } else {
+                assert_eq!(left.map(|b| b.members.len()), Some(1), "{mode}: a bundle left with one member stays");
+            }
             let trash_bundle = db::bundles::get_bundle(&conn, pair_with_trash).unwrap();
             if mode == "reset" {
                 assert!(trash_bundle.is_none(), "{mode}: a reset removes every bundle");

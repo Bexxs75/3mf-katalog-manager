@@ -2,7 +2,7 @@ import type { Bundle, BundleKind, ModelFile, SortDirection, SortKey } from '../t
 import { defaultSortDirection } from './catalogFilters';
 
 /** Smallest and largest bundle the catalog accepts (the backend enforces the same numbers). */
-export const MIN_BUNDLE_MEMBERS = 2;
+export const MIN_BUNDLE_MEMBERS = 1;
 export const MAX_BUNDLE_MEMBERS = 200;
 
 const BUNDLE_KEY_PREFIX = 'bundle:';

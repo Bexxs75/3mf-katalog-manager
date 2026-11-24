@@ -8,6 +8,7 @@ import { canEditMetadata } from '../lib/webSession';
 import type { Bundle, BundleKind, ModelFile } from '../types';
 import type { BundleDialogRequest } from '../components/BundleDialog';
 import type { useBundles } from './useBundles';
+import { MIN_BUNDLE_MEMBERS } from '../lib/bundles';
 
 interface Args {
   bundleStore: ReturnType<typeof useBundles>;
@@ -161,10 +162,10 @@ export function useBundleActions({ bundleStore, models, selection, selectIds, co
   const remove = useCallback((fileIds: string[]) => guarded(async () => {
     if (fileIds.length === 0) return;
     const leaving = new Set(fileIds);
-    // A bundle is dissolved with its second to last member row, so count rows, not living files.
+    // A bundle is dissolved with its last member row, so count rows, not living files.
     const dissolved = bundles.some(bundle => {
       const hit = bundle.members.filter(member => leaving.has(member.fileId)).length;
-      return hit > 0 && bundle.members.length - hit < 2;
+      return hit > 0 && bundle.members.length - hit < MIN_BUNDLE_MEMBERS;
     });
     await bundleStore.removeFilesFromBundle(fileIds);
     const text = formatCount(t('bundleToastRemoved'), fileIds.length);

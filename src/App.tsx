@@ -3,6 +3,7 @@ import { contextSelection, selectionState, runModelSelection } from './lib/model
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
+import { MIN_BUNDLE_MEMBERS } from './lib/bundles';
 import { canEditMetadata, canManageFiles, useCanEditMetadata, useCanManageFiles } from './lib/webSession';
 import { reportMetadataError } from './lib/metadataErrors';
 import { WebImport } from './components/WebImport';
@@ -377,7 +378,7 @@ export default function App() {
     bulk.setConfirmBulkDelete(value);
   }, [bundleActions.interceptDelete, bulk.setConfirmBulkDelete]);
   const toolbarBundleActions: BulkBundleActions = {
-    canCreate: bulk.selectedForBulk.size >= 2,
+    canCreate: bulk.selectedForBulk.size >= MIN_BUNDLE_MEMBERS,
     canAddTo: bundles.length > 0,
     canRemove: bundleActions.state.bundledIds.length > 0,
     canDissolve: bundleActions.state.covered.length > 0,
@@ -1018,7 +1019,7 @@ export default function App() {
               onMove={web ? undefined : () => openMoveDialog(
                 bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
               bundleActions={{
-                onCreate: contextFileIds.length >= 2 ? () => bundleActions.openDialog({ mode: 'create', fileIds: contextFileIds }, tileOf(contextModel.id)) : undefined,
+                onCreate: contextFileIds.length >= MIN_BUNDLE_MEMBERS ? () => bundleActions.openDialog({ mode: 'create', fileIds: contextFileIds }, tileOf(contextModel.id)) : undefined,
                 onAddTo: bundles.length > 0 ? () => bundleActions.openDialog({ mode: 'add', fileIds: contextFileIds, targetId: null }, tileOf(contextModel.id)) : undefined,
                 onRemove: contextBundledIds.length > 0 ? () => void bundleActions.remove(contextBundledIds) : undefined,
               }}

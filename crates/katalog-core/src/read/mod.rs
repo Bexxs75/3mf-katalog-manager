@@ -423,7 +423,7 @@ pub fn list_collections(conn: &Connection) -> ReadResult<Vec<CollectionDto>> {
     Ok(collections.into_iter().map(to_collection_dto).collect())
 }
 
-/// Every bundle with at least two members (members in the trash included), oldest first.
+/// Every bundle with at least one member (members in the trash included), oldest first.
 pub fn list_bundles(conn: &Connection) -> ReadResult<Vec<BundleDto>> {
     let bundles = db::bundles::list_bundles(conn).map_err(ReadError::from)?;
     Ok(bundles.into_iter().map(to_bundle_dto).collect())

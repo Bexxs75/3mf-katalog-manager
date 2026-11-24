@@ -2294,7 +2294,7 @@ async fn bundle_commands_refuse_what_is_invalid_with_registered_codes() {
     let bundle = value(f.send("create_bundle", json!({"name":"Vase","kind":"parts","fileIds":[f.id, second]})).await).await;
     let cases = [
         ("create_bundle", json!({"name":"A","kind":"other","fileIds":[f.id, second]}), 422, json!({"message":"bundleKindInvalid","expected":true})),
-        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":[f.id]}), 422, json!({"message":"bundleTooFewFiles","expected":true,"params":["2"]})),
+        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":[]}), 422, json!({"message":"bundleTooFewFiles","expected":true,"params":["1"]})),
         ("create_bundle", json!({"name":"A","kind":"parts","fileIds":[f.id, f.id]}), 422, json!({"message":"bundleDuplicateFiles","expected":true})),
         ("create_bundle", json!({"name":" ","kind":"parts","fileIds":[f.id, second]}), 422, json!({"message":"bundleNameInvalid","expected":true,"params":["120"]})),
         ("create_bundle", json!({"name":"A","kind":"parts","fileIds":["999998","999999"]}), 422, json!({"message":"entryNotFound","expected":true})),

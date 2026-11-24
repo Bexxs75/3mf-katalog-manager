@@ -88,7 +88,7 @@ mod tests {
         };
         assert_eq!(code(katalog_core::write::create_bundle(&conn, "A".into(), "other".into(), f.clone()).unwrap_err()), ErrorCode::BundleKindInvalid);
         assert_eq!(code(katalog_core::write::create_bundle(&conn, "A".into(), "parts".into(), vec![f[0].clone(), "x".into()]).unwrap_err()), ErrorCode::InvalidCatalogId);
-        assert_eq!(code(katalog_core::write::create_bundle(&conn, "A".into(), "parts".into(), vec![f[0].clone()]).unwrap_err()), ErrorCode::BundleTooFewFiles);
+        assert_eq!(code(katalog_core::write::create_bundle(&conn, "A".into(), "parts".into(), Vec::new()).unwrap_err()), ErrorCode::BundleTooFewFiles);
         assert_eq!(code(katalog_core::write::create_bundle(&conn, " ".into(), "parts".into(), f.clone()).unwrap_err()), ErrorCode::BundleNameInvalid);
         assert_eq!(code(katalog_core::write::dissolve_bundle(&conn, "999".into()).unwrap_err()), ErrorCode::BundleNotFound);
         assert_eq!(code(katalog_core::write::update_bundle_member(&conn, f[0].clone(), None, None).unwrap_err()), ErrorCode::EntryNotFound);

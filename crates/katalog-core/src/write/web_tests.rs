@@ -595,13 +595,15 @@ fn rejections_carry_codes_and_numbers_not_sentences() {
 }
 
 #[test]
-fn web_removing_files_from_the_catalog_dissolves_a_bundle_left_with_one_member() {
+fn web_removing_files_from_the_catalog_dissolves_a_bundle_left_without_a_member() {
     let mut c = db::connect_in_memory().unwrap();
     let ids: Vec<i64> = (0..3).map(|i| db::test_insert_minimal_file(&c, &format!("/r{i}.3mf"), None).unwrap()).collect();
     let bundle = db::bundles::create_bundle(&c, "Trio", db::bundles::BundleKind::Parts, &ids, "t").unwrap();
     remove_files_from_catalog(&mut c, &[ids[0]]).unwrap();
     assert!(db::bundles::get_bundle(&c, bundle).unwrap().is_some(), "two members are still a bundle");
     remove_files_from_catalog(&mut c, &[ids[1]]).unwrap();
+    assert!(db::bundles::get_bundle(&c, bundle).unwrap().is_some(), "one member is still a bundle");
+    remove_files_from_catalog(&mut c, &[ids[2]]).unwrap();
     assert!(db::bundles::get_bundle(&c, bundle).unwrap().is_none());
     let rows: i64 = c.query_row("SELECT COUNT(*) FROM bundles", [], |r| r.get(0)).unwrap();
     let members: i64 = c.query_row("SELECT COUNT(*) FROM bundle_members", [], |r| r.get(0)).unwrap();
@@ -672,7 +674,7 @@ fn web_bundle_rejections_carry_codes_and_change_nothing() {
     assert_eq!((code, params), (ErrorCode::ReqIdsTooMany, vec!["500".to_string()]));
     let (_, code, params) = coded(create_bundle(&mut c, "A", "parts", &[f[0], f[1], 999]).unwrap_err());
     assert_eq!((code, params), (ErrorCode::EntryNotFound, vec![]));
-    let (_, code, _) = coded(create_bundle(&mut c, "A", "parts", &f[..1]).unwrap_err());
+    let (_, code, _) = coded(create_bundle(&mut c, "A", "parts", &[]).unwrap_err());
     assert_eq!(code, ErrorCode::BundleTooFewFiles);
     let (_, code, params) = coded(create_bundle(&mut c, &"n".repeat(121), "parts", &f).unwrap_err());
     assert_eq!((code, params), (ErrorCode::BundleNameInvalid, vec!["120".to_string()]));

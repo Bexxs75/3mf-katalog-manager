@@ -1117,7 +1117,7 @@ export interface Translations {
   bundleDlgGripTitle: string;
   bundleDlgTakeOut: string;
   bundleDlgRemove: string;
-  bundleDlgNeedTwo: string;
+  bundleDlgNeedOne: string;
   bundleDlgWillRemove: string;
   bundleDlgKeep: string;
   bundleDlgLiveMoved: string;
