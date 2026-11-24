@@ -671,6 +671,15 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
         ),
         ("x-content-type-options", "nosniff"),
         ("referrer-policy", "no-referrer"),
+        // Same-origin only: no other site may embed or load these answers or keep a window handle.
+        // Our own page (images, downloads, previews) is same-origin and unaffected.
+        ("cross-origin-resource-policy", "same-origin"),
+        ("cross-origin-opener-policy", "same-origin"),
+        // Nothing here needs a device or sensor; clipboard-write and fullscreen stay at their defaults.
+        (
+            "permissions-policy",
+            "camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), bluetooth=(), midi=(), payment=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=(), xr-spatial-tracking=()",
+        ),
     ] {
         response.headers_mut().insert(name, value.parse().unwrap());
     }

@@ -149,6 +149,14 @@ async fn raw(
     let headers = response.headers().clone();
     assert_eq!(headers["x-content-type-options"], "nosniff");
     assert_eq!(headers["referrer-policy"], "no-referrer");
+    assert_eq!(headers["cross-origin-resource-policy"], "same-origin");
+    assert_eq!(headers["cross-origin-opener-policy"], "same-origin");
+    let policy = headers["permissions-policy"].to_str().unwrap();
+    for feature in ["camera", "microphone", "geolocation", "usb"] {
+        assert!(policy.contains(&format!("{feature}=()")), "{feature}");
+    }
+    // Counter-check: features the page uses are not switched off.
+    assert!(!policy.contains("clipboard") && !policy.contains("fullscreen"));
     assert_eq!(headers["content-security-policy"], "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self'");
     if path.starts_with("/api/") {
         assert_eq!(headers["cache-control"], "no-store");

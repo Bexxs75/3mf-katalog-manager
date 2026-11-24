@@ -103,6 +103,9 @@ async fn serves_assets_spa_types_and_cache_without_authentication() {
             .to_str()
             .unwrap()
             .contains("img-src 'self' data: blob:; font-src 'self'"));
+        assert_eq!(r.headers()["cross-origin-resource-policy"], "same-origin");
+        assert_eq!(r.headers()["cross-origin-opener-policy"], "same-origin");
+        assert!(r.headers()["permissions-policy"].to_str().unwrap().contains("camera=()"));
     }
     assert_eq!(f.request("GET", "/missing.js").await.status(), 404);
 }
