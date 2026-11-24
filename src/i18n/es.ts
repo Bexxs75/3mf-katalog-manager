@@ -2515,6 +2515,7 @@ export const es: Translations = {
   errSourceImportSpace: "No hay suficiente espacio para los archivos de origen.",
   errSourceImportLimit: "La carpeta de origen supera los límites de exploración.",
   errSourceNoFilesSelected: "No se seleccionó ningún archivo.",
+  errCatalogHashCheckPending: "El catálogo aún se está comprobando tras la restauración. Espera un momento.",
   errSlicerExeNotFound: "No se encontró el programa del slicer.",
   errSlicerPathNotFile: "La ruta del slicer no apunta a un archivo.",
   errSlicerPathNotExecutable: "El archivo del slicer no es ejecutable.",

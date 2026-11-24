@@ -692,40 +692,37 @@ pub(crate) fn backfill_content_hashes(state: &AppState) {
 
 fn backfill_hashes_with_reader(
     state: &AppState,
-    mut hash_file: impl FnMut(&Path) -> CmdResult<String>,
+    hash_file: impl FnMut(&Path) -> CmdResult<String>,
 ) -> Result<(), DbError> {
-    let mut cursor = 0_i64;
-    loop {
-        let (batch, known_folders) = file_modified_backfill::with_catalog(state, |conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, path FROM files WHERE content_hash IS NULL AND id > ?1 ORDER BY id LIMIT 200",
-            )?;
-            let rows = stmt.query_map([cursor], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
-            Ok((rows.collect::<Result<Vec<_>, _>>()?, imported_paths::folder_paths(conn)?))
-        })?;
-        if batch.is_empty() {
-            return Ok(());
+    use katalog_core::import::hash_backfill::{self, CatalogWork, HashBackfill};
+    struct Desktop<'a, F> {
+        state: &'a AppState,
+        hash_file: F,
+        known_folders: Vec<String>,
+    }
+    impl<F: FnMut(&Path) -> CmdResult<String>> HashBackfill for Desktop<'_, F> {
+        fn read_batch(&mut self, work: CatalogWork<'_>) -> Result<(), DbError> {
+            let known_folders = &mut self.known_folders;
+            file_modified_backfill::with_catalog(self.state, |conn| {
+                work(conn)?;
+                *known_folders = imported_paths::folder_paths(conn)?;
+                Ok(())
+            })
         }
-        cursor = batch.last().unwrap().0;
-        for (id, path) in batch {
-            if backup::validate_imported_local_path(&path, &known_folders).is_err() {
-                continue;
+        fn store(&mut self, work: CatalogWork<'_>) -> Result<(), DbError> {
+            file_modified_backfill::with_catalog(self.state, work)
+        }
+        fn hash(&mut self, path: &str) -> Option<Result<String, String>> {
+            if backup::validate_imported_local_path(path, &self.known_folders).is_err() {
+                return None;
             }
-            match hash_file(Path::new(&path)) {
-                Ok(hash) => {
-                    file_modified_backfill::with_catalog(state, |conn| {
-                        // A rescan or rename during the read must keep its newer data.
-                        conn.execute(
-                            "UPDATE files SET content_hash = ?1 WHERE id = ?2 AND path = ?3 AND content_hash IS NULL",
-                            rusqlite::params![hash, id, path],
-                        )?;
-                        Ok(())
-                    })?;
-                }
-                Err(error) => log::warn!(target: "startup", "content_hash backfill übersprungen: {path}: {error}"),
-            }
+            Some((self.hash_file)(Path::new(path)).map_err(|error| error.to_string()))
+        }
+        fn failed(&mut self, path: &str, error: &str) {
+            log::warn!(target: "startup", "content_hash backfill übersprungen: {path}: {error}");
         }
     }
+    hash_backfill::backfill_content_hashes(&mut Desktop { state, hash_file, known_folders: Vec::new() }).map(|_| ())
 }
 /// Recursively collects all supported files under `path`; unreadable
 /// directories are skipped. Deliberately follows NO symlinks, neither to

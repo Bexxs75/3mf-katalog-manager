@@ -64,6 +64,20 @@ impl StartSyncStore {
     }
 }
 
+/// Set while catalog rows still wait for their content hash (`hash_backfill` in the web
+/// module). Imports and the "new files" scan are refused meanwhile: without hashes they
+/// would take every known file for a new one.
+#[derive(Default)]
+pub struct HashBackfillGate(std::sync::atomic::AtomicBool);
+impl HashBackfillGate {
+    pub fn pending(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    pub fn set(&self, pending: bool) {
+        self.0.store(pending, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// Limits of the web scan for missing models and duplicates (W2 2.11).
 const ISSUE_MAX_ORPHANED: usize = 500;
 const ISSUE_MAX_GROUPS: usize = 200;
@@ -83,6 +97,8 @@ pub struct GeometryGate {
     issue_limits: catalog_issues::IssueLimits,
     /// Result of the start comparison, written by `disk_start_sync`, read by `run_start_sync`.
     pub start_sync: Arc<StartSyncStore>,
+    /// Open hash run after a restore; see [`HashBackfillGate`].
+    pub hash_backfill: Arc<HashBackfillGate>,
     admission: Arc<Semaphore>,
     /// STEP parsing in a separate process; disabled unless the server found a working one.
     pub step: Arc<crate::step_worker::StepWorker>,
@@ -103,6 +119,7 @@ impl Default for GeometryGate {
                 max_duration: ISSUE_MAX_DURATION,
             },
             start_sync: Arc::new(StartSyncStore::default()),
+            hash_backfill: Arc::new(HashBackfillGate::default()),
             admission: Arc::new(Semaphore::new(10)),
             step: Arc::new(crate::step_worker::StepWorker::disabled()),
         }

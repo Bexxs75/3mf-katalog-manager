@@ -299,8 +299,8 @@ fn core_failure(e: ImportError) -> Response {
         error_coded(500, ErrorCode::WebServerInternal, &[])
     }
 }
-type StagedPreview = (Arc<CheckedCatalog>, catalog_restore::RestoreReport);
-fn stage(config: &Config, zip: &[u8]) -> Result<StagedPreview, Box<Response>> {
+pub(super) type StagedPreview = (Arc<CheckedCatalog>, catalog_restore::RestoreReport);
+pub(super) fn stage(config: &Config, zip: &[u8]) -> Result<StagedPreview, Box<Response>> {
     let io_error = |_| boxed_coded(500, ErrorCode::WebServerInternal, &[]);
     let (root, path) = staging_root(&config.db_path).map_err(io_error)?;
     let mut random = [0_u8; 32];

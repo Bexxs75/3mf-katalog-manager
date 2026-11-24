@@ -64,6 +64,7 @@
     "sourceImportSpace",
     "sourceImportLimit",
     "sourceNoFilesSelected",
+    "catalogHashCheckPending",
     "catalogInUse",
     "backupNotZip",
     "backupMissingEntry",

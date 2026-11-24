@@ -2557,6 +2557,7 @@ export interface Translations {
   errSourceImportSpace: string;
   errSourceImportLimit: string;
   errSourceNoFilesSelected: string;
+  errCatalogHashCheckPending: string;
   errSlicerExeNotFound: string;
   errSlicerPathNotFile: string;
   errSlicerPathNotExecutable: string;

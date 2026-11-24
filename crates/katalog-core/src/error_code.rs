@@ -129,6 +129,8 @@ error_codes! {
     SourceImportSpace => "sourceImportSpace",
     SourceImportLimit => "sourceImportLimit",
     SourceNoFilesSelected => "sourceNoFilesSelected",
+    // Restored rows still wait for their local content hash; imports would miss duplicates.
+    CatalogHashCheckPending => "catalogHashCheckPending",
     // Restoring a catalog backup.
     CatalogInUse => "catalogInUse",
     BackupNotZip => "backupNotZip",

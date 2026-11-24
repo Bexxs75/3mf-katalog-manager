@@ -4,6 +4,8 @@ mod restore;
 mod fileops;
 #[path = "restore_upload.rs"]
 pub mod restore_upload;
+#[path = "hash_backfill.rs"]
+mod hash_backfill;
 #[path = "uploads.rs"]
 mod uploads;
 #[path = "printer_service.rs"]
@@ -456,6 +458,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_
     if app.config.write { restore_upload::start_cleanup(&app); }
     printer_service::start(&app);
     fileops::disk_start_sync::start(&app);
+    hash_backfill::start(&app);
     Ok(router(app))
 }
 /// The STEP worker is this binary itself; the probe runs once at start, so a host where the

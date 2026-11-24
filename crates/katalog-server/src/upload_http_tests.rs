@@ -34,8 +34,12 @@ impl Fixture {
         for sub in ["config", "models/uploads", "static"] {
             std::fs::create_dir_all(dir.join(sub)).unwrap();
         }
+        drop(db::connect(&dir.join("config/catalog.db")).unwrap());
+        Self::open(dir, enabled, extra)
+    }
+    /// A server on a folder that exists already, like a start after a restore.
+    fn open(dir: std::path::PathBuf, enabled: bool, extra: &[(&str, &str)]) -> Self {
         let path = dir.join("config/catalog.db");
-        drop(db::connect(&path).unwrap());
         let config = Config::from_lookup(|key| match key {
             _ if extra.iter().any(|(k, _)| *k == key) => {
                 extra.iter().find(|(k, _)| *k == key).map(|(_, v)| (*v).to_owned())
@@ -1984,4 +1988,8 @@ async fn source_import_http_target_folder_and_collision_preserve_existing_bytes(
     assert_eq!(std::fs::read(target.join("source.obj")).unwrap(), b"existing");
     assert_eq!(std::fs::read(target.join("source (1).obj")).unwrap(), MODEL);
     assert_eq!(source_catalog_count(&f), 1);
+}
+
+mod hash_backfill_http_tests {
+    include!("hash_backfill_http_tests.rs");
 }

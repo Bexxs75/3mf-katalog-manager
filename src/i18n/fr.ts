@@ -2515,6 +2515,7 @@ export const fr: Translations = {
   errSourceImportSpace: "L’espace disponible est insuffisant pour les fichiers sources.",
   errSourceImportLimit: "Le dossier source dépasse les limites d’analyse.",
   errSourceNoFilesSelected: "Aucun fichier n’a été sélectionné.",
+  errCatalogHashCheckPending: "Le catalogue est encore en cours de vérification après la restauration. Veuillez patienter un instant.",
   errSlicerExeNotFound: "Le programme du slicer est introuvable.",
   errSlicerPathNotFile: "Le chemin du slicer ne désigne pas un fichier.",
   errSlicerPathNotExecutable: "Le fichier du slicer n’est pas exécutable.",

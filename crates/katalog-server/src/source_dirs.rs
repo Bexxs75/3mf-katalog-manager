@@ -483,6 +483,10 @@ pub async fn invoke(
     gate: std::sync::Arc<crate::invoke::GeometryGate>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    // Without hashes the scan would list every known file as new.
+    if command == "scan_source_folders" && gate.hash_backfill.pending() {
+        return crate::web::error_coded(409, ErrorCode::CatalogHashCheckPending, &[]);
+    }
     let guard = match gate.barrier.reader() {
         Ok(g) => g,
         Err(_) => return crate::barrier::maintenance(),

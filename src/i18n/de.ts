@@ -2515,6 +2515,7 @@ export const de: Translations = {
   errSourceImportSpace: "Für die Quelldateien ist nicht genug Platz vorhanden.",
   errSourceImportLimit: "Der Quellordner überschreitet die Scan-Grenzen.",
   errSourceNoFilesSelected: "Es wurden keine Dateien ausgewählt.",
+  errCatalogHashCheckPending: "Der Katalog wird nach dem Einspielen noch geprüft, bitte kurz warten.",
   errSlicerExeNotFound: "Das Slicer-Programm wurde nicht gefunden.",
   errSlicerPathNotFile: "Der Slicer-Pfad zeigt nicht auf eine Datei.",
   errSlicerPathNotExecutable: "Die Slicer-Datei ist nicht ausführbar.",

@@ -430,6 +430,10 @@ pub(super) async fn invoke(
             return r;
         }
     }
+    // Restored rows without a hash would let every known file pass as new.
+    if matches!(command, "start_upload_import" | "start_source_import") && app.geometry.hash_backfill.pending() {
+        return crate::web::error_coded(409, katalog_core::error_code::ErrorCode::CatalogHashCheckPending, &[]);
+    }
     match command {
         "start_source_import" => source_import::start(app, session, args).await,
         "discard_upload" => {

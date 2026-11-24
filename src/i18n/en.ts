@@ -2515,6 +2515,7 @@ export const en: Translations = {
   errSourceImportSpace: "There is not enough space for the source files.",
   errSourceImportLimit: "The source folder exceeds the scan limits.",
   errSourceNoFilesSelected: "No files were selected.",
+  errCatalogHashCheckPending: "The catalog is still being checked after the restore. Please wait a moment.",
   errSlicerExeNotFound: "The slicer program was not found.",
   errSlicerPathNotFile: "The slicer path does not point to a file.",
   errSlicerPathNotExecutable: "The slicer file is not executable.",
