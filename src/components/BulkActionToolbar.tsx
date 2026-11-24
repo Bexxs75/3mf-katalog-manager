@@ -334,7 +334,7 @@ export function BulkActionToolbar({
     remove: onBulkRemove ? { locked: true, opensOwnUi: true, onSelect: () => { setError(null); setConfirmRemove(true); } } : undefined,
     dateRename: selectedIds && onDateRenamed && (!isReadOnly() || canManage) ? { locked: true, opensOwnUi: true, onSelect: () => setDateRenameIds([...selectedIds]) } : undefined,
     rereadPrintData: { locked: true, disabledReason: rereadState.status === 'running' || rereadState.status === 'cancelling' ? t('printDataRereadBusy') : undefined, onSelect: () => { startReread('selection', selectedIds ?? []); } },
-    bundle: bundleActions ? { opensOwnUi: true, disabledReason: bundleActions.canCreate ? undefined : t('bundleDlgNeedTwo'), onSelect: () => bundleActions.onCreate(moreRef.current) } : undefined,
+    bundle: bundleActions ? { opensOwnUi: true, disabledReason: bundleActions.canCreate ? undefined : t('bundleDlgNeedOne'), onSelect: () => bundleActions.onCreate(moreRef.current) } : undefined,
     addBundle: bundleActions?.canAddTo ? { opensOwnUi: true, onSelect: () => bundleActions.onAddTo(moreRef.current) } : undefined,
     unbundle: bundleActions?.canRemove ? { onSelect: bundleActions.onRemove } : undefined,
     editBundle: bundleActions?.canEdit ? { opensOwnUi: true, onSelect: () => bundleActions.onEdit(moreRef.current) } : undefined,

@@ -122,9 +122,9 @@ it('keeps the detail panel for a single card, with the switch off, and in tool v
   expect(screen.queryByRole('list', { name: 'Mitglieder' })).toBeNull();
 });
 
-it('keeps the detail panel when the bundle shrinks to one visible member under a filter', () => {
+it('keeps the bundle panel when the bundle shrinks to one visible member under a filter', () => {
   setup({ bundles: [bundle], collapseBundles: true, setCollapseBundles: vi.fn(), bundleView: view(), models: files, filtered: [files[0], files[2]], selectedId: 'a', selected: files[0] });
-  expect(screen.queryByRole('list', { name: 'Mitglieder' })).toBeNull();
+  expect(screen.getByRole('list', { name: 'Mitglieder' })).toBeInTheDocument();
 });
 
 it('opens a member of the panel in the detail page', () => {

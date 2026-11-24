@@ -1190,7 +1190,7 @@ fn folder_removal_preserves_disk_trash_and_unused_tags() {
 }
 
 #[test]
-fn folder_removal_dissolves_a_bundle_that_is_left_with_one_member() {
+fn folder_removal_keeps_a_bundle_with_one_member_and_dissolves_an_emptied_one() {
     let mut f = Fixture::new();
     let a = f.folder("A", None);
     let c = f.folder("C", None);
@@ -1210,10 +1210,13 @@ fn folder_removal_dissolves_a_bundle_that_is_left_with_one_member() {
         )
         .unwrap();
     f.ops.remove_folder_from_catalog(a).unwrap();
-    let rows = |sql: &str| f.ops.db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
-    assert_eq!(rows("SELECT COUNT(*) FROM bundles"), 1, "the pair is gone, the other bundle stays");
-    assert_eq!(rows("SELECT COUNT(*) FROM bundle_members"), 2, "the survivor of the pair left with its bundle");
-    assert_eq!(rows("SELECT COUNT(*) FROM files"), 3);
+    let rows = |f: &Fixture, sql: &str| f.ops.db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+    assert_eq!(rows(&f, "SELECT COUNT(*) FROM bundles"), 2, "the pair keeps its survivor, the other bundle stays");
+    assert_eq!(rows(&f, "SELECT COUNT(*) FROM bundle_members"), 3);
+    assert_eq!(rows(&f, "SELECT COUNT(*) FROM files"), 3);
+    f.ops.remove_folder_from_catalog(c).unwrap();
+    assert_eq!(rows(&f, "SELECT COUNT(*) FROM bundles"), 0, "bundles without members are gone");
+    assert_eq!(rows(&f, "SELECT COUNT(*) FROM files"), 0);
 }
 
 #[test]

@@ -274,7 +274,7 @@ export function BundleDialog({ request, models, bundles, onClose, returnFocus, o
                   <button type="button" data-down={row.fileId} disabled={busy || index === total - 1} aria-label={t('bundleDlgMoveDown').replace('{name}', nameOf(row.fileId))}
                     onClick={() => move(index, index + 1, 'down')} className={ICON_BUTTON}><Icon name="arrow-down" size={14} /></button>
                   <button type="button" disabled={busy || (request.mode === 'create' && rows.length <= MIN_BUNDLE_MEMBERS)}
-                    title={request.mode === 'create' && rows.length <= MIN_BUNDLE_MEMBERS ? t('bundleDlgNeedTwo') : undefined}
+                    title={request.mode === 'create' && rows.length <= MIN_BUNDLE_MEMBERS ? t('bundleDlgNeedOne') : undefined}
                     onClick={() => takeOut(index)} className={catalogActionButton}>
                     {t(request.mode === 'edit' ? 'bundleDlgRemove' : 'bundleDlgTakeOut')}
                   </button>

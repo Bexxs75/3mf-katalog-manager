@@ -31,7 +31,7 @@ import { GroupedModelGrid } from './GroupedModelGrid';
 import { GroupedModelList } from './GroupedModelList';
 import { DetailPanel } from './DetailPanel';
 import { BundlePanel, type BundleViewActions } from './BundlePanel';
-import { buildCards, indexBundles, type BundleCard } from '../lib/bundles';
+import { MIN_BUNDLE_MEMBERS, buildCards, indexBundles, type BundleCard } from '../lib/bundles';
 import { isCardOpen } from '../lib/bundleCards';
 import { panelMembers } from '../lib/bundlePanel';
 import { ModelDetailPage } from './ModelDetailPage';
@@ -830,7 +830,7 @@ export function CatalogWorkspace({
             }
             rescanSuccess={rescanFeedback?.fileId === detailModel.id && rescanFeedback.status === 'success'}
             displayPreference={displayPreference}
-            bundleView={detailBundle && bundleView && detailBundleMembers.length >= 2
+            bundleView={detailBundle && bundleView && detailBundleMembers.length >= MIN_BUNDLE_MEMBERS
               ? { bundle: detailBundle, members: detailBundleMembers, onOpenMember: setDetailModelId, actions: bundleView }
               : null}
           />

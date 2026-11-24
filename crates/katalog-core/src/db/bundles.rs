@@ -10,7 +10,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::error::DbError;
 use crate::error_code::ErrorCode;
 
-pub const MIN_BUNDLE_MEMBERS: usize = 2;
+pub const MIN_BUNDLE_MEMBERS: usize = 1;
 pub const MAX_BUNDLE_MEMBERS: usize = 200;
 pub const MAX_BUNDLE_NAME_CHARS: usize = 120;
 pub const MAX_BUNDLE_LABEL_CHARS: usize = 60;
@@ -116,10 +116,10 @@ fn require_member_count(count: usize) -> Result<(), DbError> {
     Ok(())
 }
 
-/// Removes every bundle with fewer than two member rows (their last member goes with it).
+/// Removes every bundle without a member row (a bundle may hold a single file).
 /// Called wherever files are deleted for good, because the database has no trigger to do it:
-/// the backup check refuses triggers. A bundle that slips through is invisible to
-/// `list_bundles` and is removed here the next time.
+/// the backup check refuses triggers. A bundle that slips through is removed here
+/// the next time.
 pub fn prune_bundles(conn: &Connection) -> Result<usize, DbError> {
     Ok(conn.execute(
         "DELETE FROM bundles WHERE (SELECT COUNT(*) FROM bundle_members m WHERE m.bundle_id = bundles.id) < ?1",
@@ -127,9 +127,9 @@ pub fn prune_bundles(conn: &Connection) -> Result<usize, DbError> {
     )?)
 }
 
-/// Creates a bundle from 2 to 200 distinct files, in the order given (position 0 is the title
+/// Creates a bundle from 1 to 200 distinct files, in the order given (position 0 is the title
 /// model). A file that already belongs to another bundle moves over; a bundle that is left with
-/// fewer than two members is dissolved.
+/// no member is dissolved.
 pub fn create_bundle(
     conn: &Connection,
     name: &str,
@@ -164,7 +164,7 @@ pub fn create_bundle(
 /// Brings a dissolved bundle back from the members it had (position order, one label each, empty
 /// for none). Unlike `create_bundle` it takes members that sit in the trash, and it never takes a
 /// file away from another bundle: a member that was deleted for good, or that joined another
-/// bundle in the meantime, is left out. All or nothing: fewer than two members left is an error
+/// bundle in the meantime, is left out. All or nothing: no member left is an error
 /// and nothing is written. Returns the new bundle and how many members could not come back.
 pub fn restore_bundle(
     conn: &Connection,
@@ -256,8 +256,8 @@ pub fn add_files_to_bundle(conn: &Connection, bundle_id: i64, file_ids: &[i64]) 
     Ok(())
 }
 
-/// Takes files out of their bundles. Files that are in none are ignored. A bundle left with fewer
-/// than two members is dissolved. Returns how many memberships were removed.
+/// Takes files out of their bundles. Files that are in none are ignored. A bundle left with no
+/// member is dissolved. Returns how many memberships were removed.
 pub fn remove_files_from_bundle(conn: &Connection, file_ids: &[i64]) -> Result<usize, DbError> {
     let mut leave = conn.prepare("DELETE FROM bundle_members WHERE file_id = ?1")?;
     let mut removed = 0;
@@ -331,17 +331,16 @@ pub fn update_bundle_member(
 }
 
 fn load_bundles(conn: &Connection, only: Option<i64>) -> Result<Vec<BundleRecord>, DbError> {
-    // Bundles with fewer than two member rows are leftovers waiting to be pruned: not shown.
     let mut stmt = conn.prepare(
         "SELECT b.id, b.name, b.kind, b.created_at, m.file_id, m.position, m.label, f.deleted_at IS NOT NULL
          FROM bundles b
          JOIN bundle_members m ON m.bundle_id = b.id
          JOIN files f ON f.id = m.file_id
          WHERE (?1 IS NULL OR b.id = ?1)
-           AND (SELECT COUNT(*) FROM bundle_members c WHERE c.bundle_id = b.id) >= 2
+           AND (SELECT COUNT(*) FROM bundle_members c WHERE c.bundle_id = b.id) >= ?2
          ORDER BY b.id, m.position, m.file_id",
     )?;
-    let mut rows = stmt.query([only])?;
+    let mut rows = stmt.query(params![only, MIN_BUNDLE_MEMBERS as i64])?;
     let mut bundles: Vec<BundleRecord> = Vec::new();
     while let Some(row) = rows.next()? {
         let id: i64 = row.get(0)?;
