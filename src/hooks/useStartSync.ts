@@ -23,6 +23,9 @@ export function startSyncNotice(result: StartSyncResult): StartSyncNotice | null
   return anything > 0 ? notice : null;
 }
 
+/** Web: the server runs its start check in the background; ask again until it is done, but not forever. Mutable so tests need not wait. */
+export const startSyncPoll = { intervalMs: 5000, maxAttempts: 24 };
+
 // Once per app session, not per component instance: remounting must not scan again.
 let startSyncStarted = false;
 /** Test hook: starts a new "session". */
@@ -41,7 +44,15 @@ export function useStartSync(ready: boolean, onApplied: () => Promise<unknown>) 
     startSyncStarted = true;
     void (async () => {
       try {
-        const result = await runStartSync();
+        let result = await runStartSync();
+        if (import.meta.env.VITE_TARGET === 'web') {
+          for (let attempt = 0; result.busy && attempt < startSyncPoll.maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, startSyncPoll.intervalMs));
+            result = await runStartSync();
+          }
+          // Still running after the last try: say nothing rather than report a half result.
+          if (result.busy) return;
+        }
         if (result.applied && (result.applied.added > 0 || result.applied.renamed > 0)) {
           try { await appliedRef.current(); } catch (e) { console.error('Catalog refresh after start sync failed', e); }
         }

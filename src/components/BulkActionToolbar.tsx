@@ -332,7 +332,7 @@ export function BulkActionToolbar({
     license: onBulkSetLicense ? { locked: true, opensOwnUi: true, onSelect: () => setLicenseOpen(true) } : undefined,
     move: isReadOnly() && canManage ? { locked: true, opensOwnUi: true, onSelect: () => setWebMoveOpen(true) } : onBulkMove ? { locked: true, onSelect: onBulkMove } : undefined,
     remove: onBulkRemove ? { locked: true, opensOwnUi: true, onSelect: () => { setError(null); setConfirmRemove(true); } } : undefined,
-    dateRename: selectedIds && onDateRenamed ? { locked: true, opensOwnUi: true, onSelect: () => setDateRenameIds([...selectedIds]) } : undefined,
+    dateRename: selectedIds && onDateRenamed && (!isReadOnly() || canManage) ? { locked: true, opensOwnUi: true, onSelect: () => setDateRenameIds([...selectedIds]) } : undefined,
     rereadPrintData: { locked: true, disabledReason: rereadState.status === 'running' || rereadState.status === 'cancelling' ? t('printDataRereadBusy') : undefined, onSelect: () => { startReread('selection', selectedIds ?? []); } },
     bundle: bundleActions ? { opensOwnUi: true, disabledReason: bundleActions.canCreate ? undefined : t('bundleDlgNeedTwo'), onSelect: () => bundleActions.onCreate(moreRef.current) } : undefined,
     addBundle: bundleActions?.canAddTo ? { opensOwnUi: true, onSelect: () => bundleActions.onAddTo(moreRef.current) } : undefined,

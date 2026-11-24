@@ -74,6 +74,8 @@ export interface StartSyncResult {
   ran: boolean; busy: boolean;
   newFiles: number; renamed: number; missingFiles: number; missingFolders: number; duplicates: number; unreachableRoots: number;
   applied: { added: number; renamed: number; failed: number } | null;
+  /** Web only: the server runs the check once after its start in the background. */
+  state?: 'off' | 'running' | 'done' | 'skipped';
 }
 export const runStartSync = () => invoke<StartSyncResult>('run_start_sync');
 export const getSyncOnStart = () => invoke<boolean>('get_sync_on_start');
@@ -91,12 +93,16 @@ export const onDiskSyncRequest = (handler: () => void) => {
 };
 
 // Web: read-only comparison of the catalog with the disk. Paths are relative to a configured folder, `root` indexes `roots`.
+/** An entry the server could not check reliably (drive gone, link on the way, read error). Display only. */
+export interface DiskUnclearEntry { root?: number; relativePath: string; reason: 'unreachable' | 'link' | 'read' | string }
 export type DiskReportRootStatus = 'ok' | 'unreachable' | 'empty';
 export interface DiskReport {
   roots: { name: string; status: DiskReportRootStatus; mostlyMissing: boolean }[];
   missingModels: { id: string; root: number; relativePath: string }[];
   newFiles: { root: number; relativePath: string }[];
   danglingCompanions: { id: string; fileId: string; name: string; root: number; relativePath: string; reason: 'missing' | 'notFile' }[];
+  /** Not sent by every server version. */
+  unclear?: DiskUnclearEntry[];
   modelsOutsideRoots: number;
   companionsOutsideRoots: number;
   scannedEntries: number;
@@ -104,3 +110,37 @@ export interface DiskReport {
   truncatedBy: ('items' | 'entries' | 'time')[];
 }
 export const diskSyncReport = () => invoke<DiskReport>('disk_sync_report');
+
+// Web: applying the report in blocks. The server keeps a plan per session; the client only holds its token.
+export const diskSkipReasons = ['changed', 'exists_again', 'already_in_catalog', 'root_unavailable', 'outside', 'invalid', 'too_large', 'step_unavailable', 'has_companions', 'not_a_file', 'unclear', 'protected', 'failed'] as const;
+export type DiskSkipReason = typeof diskSkipReasons[number];
+export type DiskRowKind = 'import' | 'removeModel' | 'removeCompanion';
+/** What the user ticked: new files by folder index and relative path, models and companion entries by id. */
+export interface DiskSyncSelection {
+  newFiles: { root: number; relativePath: string }[];
+  missingModels: string[];
+  danglingCompanions: string[];
+}
+export interface DiskSyncCounts { import: number; removeModels: number; removeCompanions: number }
+/** A row the server left out of the plan or did not apply; `reason` is one of `diskSkipReasons` (an unknown code is shown as `failed`). */
+export interface DiskSyncSkip { kind: DiskRowKind; key: string; reason: string }
+export interface DiskSyncPreview {
+  /** Empty when nothing is left to apply. */
+  token: string;
+  expiresIn: number;
+  counts: DiskSyncCounts;
+  skipped: DiskSyncSkip[];
+  mostlyMissingRoots: string[];
+  removes: boolean;
+}
+export interface DiskBlockResult { kind: DiskRowKind; key: string; ok: boolean; fileId?: string; reason?: string }
+export interface DiskBlock {
+  seq: number;
+  results: DiskBlockResult[];
+  done: number; total: number; remaining: number;
+  counts: { imported: number; removedModels: number; removedCompanions: number; skipped: number };
+  stopped: 'maintenance' | 'session' | 'deadline' | null;
+}
+export const diskSyncPreview = (selection: DiskSyncSelection) => invoke<DiskSyncPreview>('disk_sync_preview', { ...selection });
+export const diskSyncApplyStart = (token: string, confirmRemoval: boolean) => invoke<{ total: number; remaining: number }>('disk_sync_apply_start', { token, confirmRemoval });
+export const diskSyncApplyBlock = (token: string, seq: number) => invoke<DiskBlock>('disk_sync_apply_block', { token, seq });

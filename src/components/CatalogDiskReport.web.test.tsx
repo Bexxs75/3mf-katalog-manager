@@ -8,7 +8,9 @@ import { fr } from '../i18n/fr';
 import type { DiskReport } from '../lib/api/diskSync';
 
 const api = vi.hoisted(() => ({ report: vi.fn() }));
-vi.mock('../lib/api/diskSync', () => ({ diskSyncReport: api.report }));
+vi.mock('../lib/api/diskSync', async importOriginal => ({ ...await importOriginal<typeof import('../lib/api/diskSync')>(), diskSyncReport: api.report }));
+// Without file actions on the server the dialog stays a display-only list.
+vi.mock('../lib/webSession', async importOriginal => ({ ...await importOriginal<typeof import('../lib/webSession')>(), useCanManageFiles: () => false }));
 
 import { CatalogDiskReport } from './CatalogDiskReport';
 

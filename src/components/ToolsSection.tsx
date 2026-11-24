@@ -1,4 +1,4 @@
-import { useCanEditMetadata } from '../lib/webSession';
+import { useCanEditMetadata, useCanManageFiles } from '../lib/webSession';
 import { Icon as SharedIcon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useState, type ReactNode } from 'react';
@@ -100,6 +100,7 @@ function Hint({ children }: { children: ReactNode }) {
 
 export function ToolsSection(props: ToolsSectionProps) {
   const canEdit = useCanEditMetadata();
+  const canManageFiles = useCanManageFiles();
   const { lockProps } = useImportLock();
   const t = useT();
   const [collapsed, setCollapsed] = useState(false);
@@ -177,7 +178,7 @@ export function ToolsSection(props: ToolsSectionProps) {
               <Count value={props.bundleSuggestionCount ?? 0} />
             </button>
           )}
-          {import.meta.env.VITE_TARGET !== 'web' && <button
+          {(import.meta.env.VITE_TARGET !== 'web' || canManageFiles) && <button
             type="button"
             disabled={props.cleanupScanning} {...lockProps}
             onClick={props.onOpenCleanup}
