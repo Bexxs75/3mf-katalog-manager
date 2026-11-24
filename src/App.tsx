@@ -3,7 +3,7 @@ import { contextSelection, selectionState, runModelSelection } from './lib/model
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
-import { canEditMetadata, canManageFiles, useCanEditMetadata } from './lib/webSession';
+import { canEditMetadata, canManageFiles, useCanEditMetadata, useCanManageFiles } from './lib/webSession';
 import { reportMetadataError } from './lib/metadataErrors';
 import { WebImport } from './components/WebImport';
 import { isReadOnly } from './lib/readOnly';
@@ -272,8 +272,9 @@ export default function App() {
     ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
   ]);
   // Not while the first-run dialog is open, in the trash or other views, or during an import.
+  const canManageFilesNow = useCanManageFiles();
   const startSync = useStartSync(
-    !web && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
+    (!web || canManageFilesNow) && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
     reloadAfterDiskSync,
   );
   // "Open with": one cataloged file opens its detail page; anything else asks first (view only / list).
@@ -854,7 +855,7 @@ export default function App() {
               onCatalogRemoved={refreshAfterRemoval}
               onFolderRenamed={onFolderRenamed}
               onFolderTrashed={onFolderTrashed}
-              onDateRenamed={web ? undefined : onDateRenamed}
+              onDateRenamed={onDateRenamed}
               onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
               selectAllVisible={() => bulk.selectAllVisible(filteredIds)}
               clearBulkSelection={bulk.clearBulkSelection}
@@ -1102,6 +1103,7 @@ export default function App() {
               issues={cleanup.cleanupIssues}
               onClose={cleanup.closeCleanupDialog}
               onDelete={(fileIds) => cleanup.deleteSelectedCleanupFiles(fileIds, store.refetchAfterPartialDelete)}
+              error={cleanup.cleanupError}
             />
           )}
 

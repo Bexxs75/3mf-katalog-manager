@@ -484,6 +484,10 @@ export interface Printer extends PrinterDetails {
 export interface CatalogIssues {
   orphaned: ModelFile[];
   duplicateGroups: ModelFile[][];
+  /** Web: the scan stopped at a limit, so the lists may be incomplete. */
+  truncated?: boolean;
+  /** Models the server could not check reliably; shown, never offered for removal. Not sent by every server version. */
+  unclear?: { path: string; reason: string }[];
 }
 
 export interface Collection {

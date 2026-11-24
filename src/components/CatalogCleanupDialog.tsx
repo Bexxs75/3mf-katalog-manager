@@ -4,26 +4,59 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useState } from 'react';
 import type { CatalogIssues } from '../types';
-import { useT } from '../i18n/LanguageContext';
+import { useFormatCount, useT } from '../i18n/LanguageContext';
+import { DiskReportUnclear } from './DiskReportUnclear';
+import { ErrorText } from '../diagnostics/ErrorText';
+import type { AppError } from '../lib/errors';
+import type { ModelFile } from '../types';
 
 interface Props {
   issues: CatalogIssues;
   onClose: () => void;
   onDelete: (fileIds: string[]) => void;
+  /** Why the last removal failed; shown inside the dialog because it stays open for what is left. */
+  error?: AppError | null;
+}
+
+const parentOf = (path: string) => {
+  const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  return cut > 0 ? path.slice(0, cut) : '';
+};
+
+/**
+ * Models that are missing together from one folder: when a folder is gone from the disk, all its models are listed.
+ * Only folders with at least two missing models are offered as a group; a single missing model stays a plain row.
+ */
+export function groupMissingByFolder(orphaned: ModelFile[]): { folders: { path: string; models: ModelFile[] }[]; single: ModelFile[] } {
+  const byParent = new Map<string, ModelFile[]>();
+  for (const model of orphaned) {
+    const parent = parentOf(model.path);
+    byParent.set(parent, [...(byParent.get(parent) ?? []), model]);
+  }
+  const folders: { path: string; models: ModelFile[] }[] = [];
+  const single: ModelFile[] = [];
+  for (const [path, models] of byParent) {
+    if (path && models.length > 1) folders.push({ path, models }); else single.push(...models);
+  }
+  return { folders, single };
 }
 
 function initialSelection(issues: CatalogIssues): Set<string> {
   const checked = new Set<string>();
-  issues.orphaned.forEach((m) => checked.add(m.id));
+  const folderIds = new Set(import.meta.env.VITE_TARGET === 'web' ? groupMissingByFolder(issues.orphaned).folders.flatMap(folder => folder.models.map(m => m.id)) : []);
+  // Whole folders are removed only by their own button, never as a side effect of the main one.
+  issues.orphaned.filter(m => !folderIds.has(m.id)).forEach((m) => checked.add(m.id));
   issues.duplicateGroups.forEach((group) => {
     group.slice(1).forEach((m) => checked.add(m.id));
   });
   return checked;
 }
 
-export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
+export function CatalogCleanupDialog({ issues, onClose, onDelete, error }: Props) {
   const { lockProps } = useImportLock();
   const t = useT();
+  const count = useFormatCount();
+  const grouped = import.meta.env.VITE_TARGET === 'web' ? groupMissingByFolder(issues.orphaned) : { folders: [], single: issues.orphaned };
   const [checked, setChecked] = useState<Set<string>>(() => initialSelection(issues));
 
   const toggle = (id: string) => {
@@ -52,12 +85,31 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {!hasIssues && <div className="text-[length:var(--font-size-title)] text-[var(--ink-3)]">{t('cleanupNoIssues')}</div>}
 
-          {issues.orphaned.length > 0 && (
+          {error && <div role="alert" className="pb-3 text-[length:var(--font-size-title)] text-[var(--crit)] whitespace-pre-wrap break-words"><ErrorText error={error} /></div>}
+          {issues.truncated && <p role="status" className="pb-3 text-small text-[var(--ink-2)]">{t('cleanupTruncated')}</p>}
+
+          {grouped.folders.map(folder => (
+            <section key={folder.path} aria-labelledby={`cleanup-folder-${folder.path}`} className="pb-4">
+              <h3 id={`cleanup-folder-${folder.path}`} className="ui-label text-[var(--ink-3)] pb-1">{count(t('cleanupFolderMissing'), folder.models.length)}</h3>
+              <p className="font-code text-small text-[var(--ink-2)] break-all">{displayName(folder.path)}</p>
+              <p className="text-small text-[var(--ink-2)] py-1">{t('cleanupFolderHint')}</p>
+              <details className="pb-2">
+                <summary className="cursor-pointer text-small text-[var(--accent)]">{folder.models.map(m => displayName(m.name)).slice(0, 1)[0]} …</summary>
+                <ul className="pt-1 text-small">{folder.models.map(m => <li key={m.id} className="truncate">{displayName(m.name)}</li>)}</ul>
+              </details>
+              <button type="button" {...lockProps} onClick={() => onDelete(folder.models.map(m => m.id))}
+                className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[length:var(--font-size-title)] cursor-pointer hover:border-[var(--accent)]">
+                {count(t('cleanupFolderRemove'), folder.models.length)}
+              </button>
+            </section>
+          ))}
+
+          {grouped.single.length > 0 && (
             <div className="pb-4">
               <div className="ui-label text-[var(--ink-3)] pb-2">
                 {t('cleanupOrphanedHeading')}
               </div>
-              {issues.orphaned.map((model) => (
+              {grouped.single.map((model) => (
                 <label key={model.id} className="flex items-center gap-2 py-1 text-[length:var(--font-size-title)] cursor-pointer">
                   <input type="checkbox" checked={checked.has(model.id)} onChange={() => toggle(model.id)} />
                   <span className="flex-1 truncate">{displayName(model.name)}</span>
@@ -96,6 +148,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
               ))}
             </div>
           ))}
+          <DiskReportUnclear rows={(issues.unclear ?? []).map((u, i) => ({ key: `${i}`, path: displayName(u.path), reason: u.reason }))} />
         </div>
 
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] flex justify-end gap-2">

@@ -4,6 +4,7 @@ import { clearMetadataError, getMetadataError, reportMetadataError } from './met
 import { messageOf } from './errors';
 import { fileOpsError, fileOpsMessage, isDomainRejection } from './fileOpsErrors';
 import type { FolderTrashResult } from '../types';
+import { diskSyncApplyBlock, diskSyncApplyStart, diskSyncPreview, type DiskBlock, type DiskSyncPreview, type DiskSyncSelection, type DiskSyncSkip } from './api/diskSync';
 export interface ItemResult { id: string; ok: boolean; kind?: string; kept_on_disk?: boolean; companions_moved?: number; companions_kept_in_trash?: number }
 /** `companionCount` and `blockedByCompanions` are absent from servers that predate companion handling. */
 export interface TrashSummary { count: number; bytes: number; maxDeletedAt: string | null; companionCount?: number; blockedByCompanions?: number; looseCompanionCount?: number; looseCompanionBytes?: number }
@@ -190,4 +191,94 @@ export async function trashFolderWeb(folderId: string, onProgress: (done: number
     if (block.remaining >= remaining && !block.results.some(item => item.ok || item.kind !== 'not_started')) { const error = fileOpsError({ kind: 'not_started' }); reportOnce(error); throw error; }
     remaining = block.remaining;
   }
+}
+
+export type DiskSyncAbort = 'user' | 'maintenance' | 'session';
+/** What a disk-sync run did. `done`/`total` count plan rows, applied or skipped. */
+export interface DiskSyncOutcome {
+  imported: number; removedModels: number; removedCompanions: number;
+  skipped: DiskSyncSkip[];
+  /** Catalog IDs of the models taken in, so the caller can announce them. */
+  fileIds: string[];
+  done: number; total: number;
+  aborted: DiskSyncAbort | null;
+}
+/** A refusal or failure of a disk-sync step; `outcome` is what was already applied (null before the first block). */
+export interface DiskSyncFailure { message: string; expected: true; kind?: string; retryAfter?: number; plain?: true; outcome: DiskSyncOutcome | null }
+/** Waits before repeating a block whose answer was lost; mutable so tests need not wait. */
+export const diskSyncRetry = { delaysMs: [1000, 3000] };
+const failure = (reason: unknown, outcome: DiskSyncOutcome | null): DiskSyncFailure => {
+  const kind = (reason as { kind?: unknown } | null)?.kind;
+  if (kind === 'restart_required') blockFileOperations();
+  return { ...fileOpsError(reason), outcome };
+};
+/** Checks the selection against the disk without changing anything; the plan lives on the server for 60 minutes. */
+export async function previewDiskSync(selection: DiskSyncSelection): Promise<DiskSyncPreview> {
+  if (!canManageFiles()) throw failure({ kind: 'revoked' }, null);
+  let preview: DiskSyncPreview;
+  try { preview = await diskSyncPreview(selection); } catch (reason) { throw failure(reason, null); }
+  if (!preview || typeof preview.token !== 'string' || !preview.counts || !Array.isArray(preview.skipped)) throw failure({ kind: 'not_started' }, null);
+  return preview;
+}
+const isLostAnswer = (reason: unknown) => reason instanceof Error;
+/**
+ * Starts a previewed plan and applies it block by block (the server takes at most 10 rows per block).
+ * A block whose answer was lost is asked for again with the same `seq`; the server then returns its stored answer instead of
+ * running the rows twice. Stopping happens between blocks only, so what ran stays and the rest is untouched.
+ */
+export async function applyDiskSync(token: string, confirmRemoval: boolean, onProgress: (done: number, total: number) => void, shouldStop: () => boolean = () => false): Promise<DiskSyncOutcome> {
+  const initiatingToken = getSnapshot().csrfToken;
+  if (!canManageFiles()) throw failure({ kind: 'revoked' }, null);
+  let start: { total: number; remaining: number };
+  try { start = await diskSyncApplyStart(token, confirmRemoval); } catch (reason) { throw failure(reason, null); }
+  if (!start || !validRemaining(start.total) || !validRemaining(start.remaining)) throw failure({ kind: 'not_started' }, null);
+  const outcome: DiskSyncOutcome = { imported: 0, removedModels: 0, removedCompanions: 0, skipped: [], fileIds: [], done: start.total - start.remaining, total: start.total, aborted: null };
+  const snapshot = (): DiskSyncOutcome => ({ ...outcome, skipped: [...outcome.skipped], fileIds: [...outcome.fileIds] });
+  let remaining = start.remaining;
+  let seq = 0;
+  let failed = false;
+  const removedIds: string[] = [];
+  onProgress(outcome.done, outcome.total);
+  try {
+    while (remaining > 0) {
+      if (!canManageFiles() || getSnapshot().csrfToken !== initiatingToken) { outcome.aborted = 'session'; break; }
+      if (shouldStop()) { outcome.aborted = 'user'; break; }
+      let block: DiskBlock | undefined;
+      for (let attempt = 0; block === undefined; attempt++) {
+        try { block = await diskSyncApplyBlock(token, seq); }
+        catch (reason) {
+          if ((reason as { kind?: unknown } | null)?.kind === 'maintenance' || (reason as { message?: unknown } | null)?.message === 'maintenance') { outcome.aborted = 'maintenance'; break; }
+          const waitable = fileOpsError(reason).retryAfter !== undefined && (reason as { kind?: unknown } | null)?.kind !== 'rate_limited';
+          if ((isLostAnswer(reason) || waitable) && attempt < diskSyncRetry.delaysMs.length) {
+            await new Promise(resolve => setTimeout(resolve, diskSyncRetry.delaysMs[attempt]));
+            if (!canManageFiles() || getSnapshot().csrfToken !== initiatingToken) { outcome.aborted = 'session'; break; }
+            continue;
+          }
+          throw failure(reason, snapshot());
+        }
+      }
+      if (outcome.aborted || block === undefined) break;
+      if (!Array.isArray(block.results) || !validRemaining(block.remaining) || block.remaining > remaining) throw failure({ kind: 'not_started' }, snapshot());
+      for (const result of block.results) {
+        if (!result.ok) { outcome.skipped.push({ kind: result.kind, key: result.key, reason: result.reason ?? 'failed' }); continue; }
+        if (result.kind === 'import') { outcome.imported += 1; if (result.fileId) outcome.fileIds.push(result.fileId); }
+        else if (result.kind === 'removeModel') { outcome.removedModels += 1; removedIds.push(result.key); }
+        else outcome.removedCompanions += 1;
+      }
+      outcome.done = outcome.total - block.remaining;
+      onProgress(outcome.done, outcome.total);
+      const progressed = block.remaining < remaining;
+      remaining = block.remaining;
+      seq += 1;
+      if (remaining > 0 && (block.stopped === 'maintenance' || block.stopped === 'session')) { outcome.aborted = block.stopped; break; }
+      // A block that did nothing must not loop forever.
+      if (remaining > 0 && !progressed) throw failure({ kind: 'not_started' }, snapshot());
+    }
+  } catch (reason) {
+    failed = true; throw reason;
+  } finally {
+    if (removedIds.length) appliedListeners.forEach(listener => listener(removedIds));
+    if (outcome.imported + outcome.removedModels + outcome.removedCompanions > 0) await refreshAfterFileOps(!failed);
+  }
+  return outcome;
 }
