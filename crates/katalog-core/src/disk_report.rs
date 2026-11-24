@@ -172,7 +172,8 @@ pub struct DiskReport {
     pub dangling_companions: Vec<DanglingCompanion>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unclear: Vec<UnclearEntry>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// Always serialized (also empty): the web client treats a present field as "the server verified
+    /// the folders" and must not fall back to its parent heuristic. Only the web server uses this struct.
     pub missing_folders: Vec<MissingFolder>,
     /// Active models and companions whose stored path is below no configured root; they
     /// are counted, never listed (no path leaves the server).

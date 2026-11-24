@@ -288,12 +288,12 @@ async fn report_and_issue_scan_carry_unclear_and_missing_folders_in_the_expected
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_new_fields_are_absent_when_there_is_nothing_unclear_and_limits_still_truncate() {
+async fn unclear_is_absent_but_missing_folders_is_always_present_even_empty_and_limits_still_truncate() {
     let f = Fx::new(false).await;
     let (_, report) = f.invoke(json!({}), None).await;
-    assert!(report.get("unclear").is_none() && report.get("missingFolders").is_none(), "{report}");
+    assert!(report.get("unclear").is_none() && report["missingFolders"] == json!([]), "{report}");
     let (_, issues) = f.call("scan_catalog_issues", json!({}), None, None).await;
-    assert!(issues.get("unclear").is_none() && issues.get("missingFolders").is_none(), "{issues}");
+    assert!(issues.get("unclear").is_none() && issues["missingFolders"] == json!([]), "{issues}");
 
     // More rows below gone folders than the list limit allows: the report says so.
     let many: Vec<String> = (0..520).map(|i| format!("Weg{}/m{i}.3mf", i % 3)).collect();

@@ -30,7 +30,7 @@ const parentOf = (path: string) => {
  */
 export function groupMissingByFolder(orphaned: ModelFile[], missingFolders?: CatalogIssues['missingFolders']): { folders: { path: string; models: ModelFile[] }[]; single: ModelFile[] } {
   const folders: { path: string; models: ModelFile[] }[] = [];
-  if (missingFolders) {
+  if (Array.isArray(missingFolders)) {
     const byId = new Map(orphaned.map(m => [m.id, m]));
     const grouped = new Set<string>();
     for (const entry of missingFolders) {
