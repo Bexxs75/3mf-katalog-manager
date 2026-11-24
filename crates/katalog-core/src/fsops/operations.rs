@@ -30,6 +30,14 @@ pub trait UploadLedger {
         Ok(None)
     }
 }
+/// What `remove_missing_entry` leaves of the row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MissingRemoval {
+    /// `deleted_at` set, `trash_path` NULL (the desktop's state for a vanished file).
+    Trash,
+    /// The row is deleted for good.
+    Delete,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct DeleteOutcome {
     pub kept_on_disk: bool,
@@ -506,6 +514,42 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         )?;
         self.outcome.moved = carry.steps.len();
         self.transfer(before, after, source, target, Operation::Trash, carry)
+    }
+    /// Fails with `Changed` unless nothing is at `path` any more. Only `NotFound` counts as
+    /// missing; a file, link, special file or any other resolution error stops the caller.
+    pub(super) fn ensure_source_missing(&self, path: &str) -> Result<()> {
+        match self.context.resolve(path, Access::Source) {
+            Err(Error::NotFound) => Ok(()),
+            Err(e) => Err(e),
+            Ok(r) => match FileIdentity::read(&r) {
+                Err(Error::NotFound) => Ok(()),
+                Ok(_) => Err(Error::Changed),
+                Err(e) => Err(e),
+            },
+        }
+    }
+
+    /// Removes the entry of a model whose file is gone from the disk. Changes the database
+    /// only and never moves or deletes a file: `transfer` and `Operation::Trash` cannot be
+    /// reached from here. A file that is there (again) ends in `Changed` (the removal callers report it as "file is back").
+    pub fn remove_missing_entry(&mut self, id: i64, mode: MissingRemoval) -> Result<()> {
+        let before = self.active(id)?;
+        self.outcome = CarryOutcome::default();
+        let (after, carry) = match mode {
+            MissingRemoval::Trash => {
+                let deleted_at = chrono::Utc::now().to_rfc3339();
+                let carry = self.plan_trash(&before, &deleted_at)?;
+                let mut after = before.clone();
+                after.deleted_at = Some(deleted_at);
+                after.trash_path = None;
+                (Some(after), carry)
+            }
+            MissingRemoval::Delete => (None, self.plan_purge(&before)?),
+        };
+        #[cfg(test)]
+        super::tests::at_point("remove_missing_before_db_only", 0);
+        self.ensure_source_missing(&before.path)?;
+        self.db_only(before, after, carry)
     }
     pub(super) fn trash_source(&self, s: &FileState) -> Result<Resolved> {
         let (root, _) = self

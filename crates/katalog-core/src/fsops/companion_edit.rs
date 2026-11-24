@@ -230,6 +230,39 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.run_edit(op_id, Operation::CompanionTrash, &s, step, None)
     }
 
+    /// Removes the row of an active companion file whose file is gone from the disk. Changes
+    /// the database only (journalled as `CompanionTrash` without a source) and never moves
+    /// a file; a file that is there (again) ends in `Changed` (the removal callers report it as "file is back").
+    pub fn remove_missing_companion(&mut self, companion_id: i64) -> Result<()> {
+        let s = self.load_subject(companion_id)?;
+        if s.row.deleted_at.is_some() || s.model.deleted_at.is_some() {
+            return Err(Error::Conflict);
+        }
+        #[cfg(test)]
+        super::tests::at_point("remove_missing_before_db_only", 0);
+        self.ensure_source_missing(&s.row.path)?;
+        let step = CompanionStep {
+            before: s.row.clone(),
+            after: Some(CompanionState {
+                deleted_at: Some(chrono::Utc::now().to_rfc3339()),
+                trash_path: None,
+                ..s.row.clone()
+            }),
+            source: None,
+            target: None,
+            identity: None,
+        };
+        let intent = self.companion_intent(journal::op_id()?, Operation::CompanionTrash, &s, step, None);
+        self.journal.add(intent.clone())?;
+        #[cfg(test)]
+        super::tests::before_mutation();
+        if let Err(e) = self.db.with_conn(|c| commit_companion_edit(c, &intent)) {
+            self.journal.remove(&intent.op_id)?;
+            return Err(e);
+        }
+        self.finish_companion_edit(&intent)
+    }
+
     /// Brings one removed companion file back next to its model, under a free name.
     pub fn restore_companion(&mut self, companion_id: i64) -> Result<()> {
         let s = self.load_subject(companion_id)?;

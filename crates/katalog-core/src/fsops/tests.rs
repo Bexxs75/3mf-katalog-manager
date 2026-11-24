@@ -1938,3 +1938,264 @@ fn stale_journal_temp_files_are_removed_but_fresh_and_foreign_names_stay() {
     assert!(fresh_part.exists() && foreign.exists() && journal_like.exists());
     assert!(link.symlink_metadata().is_ok());
 }
+
+// ---- remove_missing_entry / remove_missing_companion: database only, never a file transfer ----
+
+mod missing_removal {
+    use super::super::companion_carry_tests::{standard, Fx};
+    use super::*;
+    use std::{cell::RefCell, os::unix::fs::MetadataExt, rc::Rc};
+
+    type Calls = Rc<RefCell<(Vec<i64>, Vec<i64>)>>;
+    /// Remembers which ledger method was called, unlike `MemoryLedger`.
+    struct RecLedger(Calls);
+    impl UploadLedger for RecLedger {
+        fn reset_imported(&mut self, ids: &[i64]) -> Result<()> {
+            self.0.borrow_mut().1.extend_from_slice(ids);
+            Ok(())
+        }
+        fn detach(&mut self, ids: &[i64]) -> Result<()> {
+            self.0.borrow_mut().0.extend_from_slice(ids);
+            Ok(())
+        }
+    }
+    struct Rec {
+        dir: std::path::PathBuf,
+        calls: Calls,
+        ops: FileOps<rusqlite::Connection, RecLedger>,
+    }
+    impl Drop for Rec {
+        fn drop(&mut self) {
+            POINT.with(|p| *p.borrow_mut() = None);
+            BEFORE_MUTATION.with(|h| *h.borrow_mut() = None);
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+    impl Rec {
+        fn new() -> Self {
+            let dir = crate::unique_test_dir("fsops_missing");
+            fs::create_dir(dir.join("root")).unwrap();
+            fs::create_dir(dir.join("journal")).unwrap();
+            let calls = Calls::default();
+            let ops = FileOps::new(
+                FsContext::new(&[dir.join("root")], &[]).unwrap(),
+                Journal::open(&dir.join("journal")).unwrap(),
+                crate::db::connect_in_memory().unwrap(),
+                RecLedger(calls.clone()),
+            );
+            Self { dir, calls, ops }
+        }
+        fn add(&mut self, id: i64, name: &str) -> std::path::PathBuf {
+            let path = self.dir.join("root").join(name);
+            fs::write(&path, b"model").unwrap();
+            self.ops.db.execute("INSERT INTO files(id,name,path,file_type,file_size_bytes,imported_at) VALUES (?1,?2,?3,'stl',5,'2026-01-01T00:00:00Z')", rusqlite::params![id, name, path.to_str().unwrap()]).unwrap();
+            path
+        }
+        fn row(&self, id: i64) -> (Option<String>, Option<String>) {
+            self.ops.db.query_row("SELECT deleted_at,trash_path FROM files WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+        }
+        fn trash_entries(&self) -> usize {
+            fs::read_dir(self.dir.join("root").join(TRASH)).map(|d| d.count()).unwrap_or(0)
+        }
+    }
+    fn at(name: &'static str, action: PointAction) {
+        POINT.with(|c| *c.borrow_mut() = Some((name, 0, action)));
+    }
+
+    #[test]
+    fn missing_file_becomes_a_trash_state_row_and_touches_no_disk() {
+        let mut f = Rec::new();
+        let p = f.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        f.ops.remove_missing_entry(1, MissingRemoval::Trash).unwrap();
+        let (deleted, trash) = f.row(1);
+        assert!(deleted.is_some() && trash.is_none());
+        assert!(f.ops.journal.is_empty());
+        assert_eq!(f.trash_entries(), 0);
+        assert!(!p.exists());
+    }
+
+    #[test]
+    fn ledger_behaviour_matches_delete_file_on_a_missing_file() {
+        // Both go through `db_only` and `finish`: detach(id), never reset_imported.
+        let mut a = Rec::new();
+        let p = a.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        a.ops.remove_missing_entry(1, MissingRemoval::Trash).unwrap();
+        let mut b = Rec::new();
+        let p = b.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        b.ops.delete_file(1).unwrap();
+        assert_eq!(*a.calls.borrow(), (vec![1], vec![]));
+        assert_eq!(*a.calls.borrow(), *b.calls.borrow());
+    }
+
+    #[test]
+    fn delete_mode_removes_the_row() {
+        let mut f = Rec::new();
+        let p = f.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        f.ops.remove_missing_entry(1, MissingRemoval::Delete).unwrap();
+        assert_eq!(f.ops.state(1), Err(Error::NotFound));
+        assert!(f.ops.journal.is_empty());
+        assert_eq!(*f.calls.borrow(), (vec![1], vec![]));
+    }
+
+    #[test]
+    fn present_file_is_refused_and_everything_stays() {
+        for mode in [MissingRemoval::Trash, MissingRemoval::Delete] {
+            let mut f = Rec::new();
+            let p = f.add(1, "a.stl");
+            let ino = fs::metadata(&p).unwrap().ino();
+            assert_eq!(f.ops.remove_missing_entry(1, mode), Err(Error::Changed));
+            assert_eq!(f.row(1), (None, None));
+            assert!(f.ops.journal.is_empty());
+            assert_eq!(fs::metadata(&p).unwrap().ino(), ino);
+            assert_eq!(fs::read(&p).unwrap(), b"model");
+            assert_eq!(f.trash_entries(), 0);
+            assert!(f.calls.borrow().0.is_empty());
+        }
+    }
+
+    #[test]
+    fn link_directory_and_hardlink_at_the_path_are_never_removed_or_moved() {
+        let mut f = Rec::new();
+        let p = f.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        symlink(f.dir.join("journal"), &p).unwrap();
+        assert!(f.ops.remove_missing_entry(1, MissingRemoval::Trash).is_err());
+        assert!(fs::symlink_metadata(&p).unwrap().file_type().is_symlink());
+        fs::remove_file(&p).unwrap();
+        fs::create_dir(&p).unwrap();
+        assert!(f.ops.remove_missing_entry(1, MissingRemoval::Trash).is_err());
+        assert!(p.is_dir());
+        assert_eq!(f.row(1), (None, None));
+        assert_eq!(f.trash_entries(), 0);
+        assert!(f.ops.journal.is_empty());
+    }
+
+    #[test]
+    fn file_that_appears_between_recheck_and_operation_start_stays_put() {
+        let mut f = Rec::new();
+        let p = f.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        let q = p.clone();
+        at("remove_missing_before_db_only", PointAction::Run(Box::new(move || fs::write(&q, b"back").unwrap())));
+        assert_eq!(f.ops.remove_missing_entry(1, MissingRemoval::Trash), Err(Error::Changed));
+        assert_eq!(fs::read(&p).unwrap(), b"back");
+        assert_eq!(f.row(1), (None, None));
+        assert_eq!(f.trash_entries(), 0);
+        assert!(f.ops.journal.is_empty());
+    }
+
+    #[test]
+    fn file_that_appears_after_the_last_check_is_left_alone_and_only_the_row_changes() {
+        let mut f = Rec::new();
+        let p = f.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        let q = p.clone();
+        BEFORE_MUTATION.with(|h| *h.borrow_mut() = Some(Box::new(move || fs::write(&q, b"back").unwrap())));
+        f.ops.remove_missing_entry(1, MissingRemoval::Trash).unwrap();
+        assert_eq!(fs::read(&p).unwrap(), b"back");
+        assert_eq!(f.trash_entries(), 0, "nothing moved into the trash folder");
+        assert!(f.row(1).0.is_some());
+        assert!(f.ops.journal.is_empty());
+    }
+
+    #[test]
+    fn already_removed_or_unknown_rows_are_refused() {
+        let mut f = Rec::new();
+        let p = f.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        f.ops.remove_missing_entry(1, MissingRemoval::Trash).unwrap();
+        assert_eq!(f.ops.remove_missing_entry(1, MissingRemoval::Trash), Err(Error::Conflict));
+        assert_eq!(f.ops.remove_missing_entry(9, MissingRemoval::Trash), Err(Error::NotFound));
+    }
+
+    #[test]
+    fn crash_after_the_journal_entry_is_recoverable_without_touching_the_file() {
+        let mut f = Rec::new();
+        let p = f.add(1, "a.stl");
+        fs::remove_file(&p).unwrap();
+        f.ops.journal.crash_at = Some(Phase::Prepared);
+        assert_eq!(f.ops.remove_missing_entry(1, MissingRemoval::Trash), Err(Error::RestartRequired));
+        f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+        let report = f.ops.recover().unwrap();
+        assert!(report.manual.is_empty());
+        f.ops.finish_recovery().unwrap();
+        assert!(f.ops.journal.is_empty());
+        assert!(!p.exists());
+        assert_eq!(f.trash_entries(), 0);
+    }
+
+    // ---- companions ----
+
+    #[test]
+    fn missing_companion_becomes_a_trash_state_row_without_moving_anything() {
+        let mut f = standard();
+        fs::remove_file(f.p("Foo_extras/pic.png")).unwrap();
+        f.ops.remove_missing_companion(1).unwrap();
+        let (deleted, trash): (Option<String>, Option<String>) = f.ops.db.query_row("SELECT deleted_at,trash_path FROM companion_files WHERE id=1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert!(deleted.is_some() && trash.is_none());
+        assert!(f.p("Foo_extras/zzz.png").is_file() && f.p("Foo.3mf").is_file());
+        assert!(!f.p(TRASH).exists() || fs::read_dir(f.p(TRASH)).unwrap().count() == 0);
+        assert!(f.ops.journal.is_empty());
+    }
+
+    fn companion_untouched(f: &Fx) {
+        let deleted: Option<String> = f.ops.db.query_row("SELECT deleted_at FROM companion_files WHERE id=1", [], |r| r.get(0)).unwrap();
+        assert!(deleted.is_none());
+        assert!(f.ops.journal.is_empty());
+        assert!(!f.p(TRASH).exists() || fs::read_dir(f.p(TRASH)).unwrap().count() == 0);
+    }
+
+    #[test]
+    fn present_companion_is_refused_and_stays() {
+        let mut f = standard();
+        let ino = fs::metadata(f.p("Foo_extras/pic.png")).unwrap().ino();
+        assert_eq!(f.ops.remove_missing_companion(1), Err(Error::Changed));
+        assert_eq!(fs::metadata(f.p("Foo_extras/pic.png")).unwrap().ino(), ino);
+        companion_untouched(&f);
+    }
+
+    #[test]
+    fn companion_that_appears_between_recheck_and_operation_start_stays_put() {
+        let mut f = standard();
+        let p = f.p("Foo_extras/pic.png");
+        fs::remove_file(&p).unwrap();
+        let q = p.clone();
+        at("remove_missing_before_db_only", PointAction::Run(Box::new(move || fs::write(&q, b"back").unwrap())));
+        assert_eq!(f.ops.remove_missing_companion(1), Err(Error::Changed));
+        assert_eq!(fs::read(&p).unwrap(), b"back");
+        companion_untouched(&f);
+    }
+
+    #[test]
+    fn companion_that_appears_after_the_last_check_is_left_alone() {
+        let mut f = standard();
+        let p = f.p("Foo_extras/pic.png");
+        fs::remove_file(&p).unwrap();
+        let q = p.clone();
+        BEFORE_MUTATION.with(|h| *h.borrow_mut() = Some(Box::new(move || fs::write(&q, b"back").unwrap())));
+        f.ops.remove_missing_companion(1).unwrap();
+        assert_eq!(fs::read(&p).unwrap(), b"back");
+        assert!(!f.p(TRASH).exists() || fs::read_dir(f.p(TRASH)).unwrap().count() == 0);
+        assert!(f.ops.journal.is_empty());
+    }
+
+    #[test]
+    fn companion_checks_state_and_link() {
+        let mut f = standard();
+        assert_eq!(f.ops.remove_missing_companion(404), Err(Error::NotFound));
+        assert_eq!(f.ops.remove_missing_companion(0), Err(Error::InvalidArguments));
+        let p = f.p("Foo_extras/pic.png");
+        fs::remove_file(&p).unwrap();
+        symlink(f.p("Foo.3mf"), &p).unwrap();
+        assert!(f.ops.remove_missing_companion(1).is_err());
+        assert!(fs::symlink_metadata(&p).unwrap().file_type().is_symlink());
+        companion_untouched(&f);
+        fs::remove_file(&p).unwrap();
+        f.ops.remove_missing_companion(1).unwrap();
+        assert_eq!(f.ops.remove_missing_companion(1), Err(Error::Conflict));
+    }
+}
