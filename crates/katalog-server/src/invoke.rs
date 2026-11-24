@@ -347,7 +347,8 @@ fn folder_summary(
 /// Missing models and duplicates for the web: only rows the probe positively judged count, the
 /// answer carries full DTOs for the hits only (never the whole catalog with its pictures).
 fn scan_issues(conn: &rusqlite::Connection, roots: &[PathBuf], limits: catalog_issues::IssueLimits) -> Result<Value, ReadError> {
-    let probe = catalog_issues::RootsMissingProbe::new(roots);
+    // Same root numbering as `disk_sync_report`, so `root` means the same in both answers.
+    let probe = catalog_issues::RootsMissingProbe::new(&disk_report::ordered_roots(roots));
     let issues = catalog_issues::scan(conn, &probe, limits).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
     let ids: Vec<i64> = issues.orphaned.iter().chain(issues.duplicate_groups.iter().flatten()).copied().collect();
     // Chunked: a few huge duplicate groups must not exceed SQLite's variable limit.
@@ -360,13 +361,34 @@ fn scan_issues(conn: &rusqlite::Connection, roots: &[PathBuf], limits: catalog_i
         files.into_iter().map(|f| (f.id, read::to_dto(f, &spools))).collect();
     // A row that vanished since the scan (deleted meanwhile) is left out, not an error.
     let orphaned: Vec<_> = issues.orphaned.iter().filter_map(|id| by_id.remove(id)).collect();
+    let by_listed: std::collections::HashSet<i64> = orphaned.iter().filter_map(|m| m.id.parse().ok()).collect();
     let groups: Vec<Vec<_>> = issues
         .duplicate_groups
         .iter()
         .map(|g| g.iter().filter_map(|id| by_id.remove(id)).collect::<Vec<_>>())
         .filter(|g| g.len() >= 2)
         .collect();
-    Ok(json!({"orphaned": orphaned, "duplicateGroups": groups, "truncated": issues.truncated}))
+    let mut answer = json!({"orphaned": orphaned, "duplicateGroups": groups, "truncated": issues.truncated});
+    // Only present when there is something to say (older clients ignore both).
+    if !issues.unclear.is_empty() {
+        answer["unclear"] = issues
+            .unclear
+            .iter()
+            .map(|u| json!({"path": u.place.relative, "root": u.place.root, "reason": u.reason}))
+            .collect();
+    }
+    if !issues.missing_folders.is_empty() {
+        answer["missingFolders"] = issues
+            .missing_folders
+            .iter()
+            .map(|f| {
+                let models: Vec<String> =
+                    f.models.iter().filter(|id| by_listed.contains(id)).map(|id| id.to_string()).collect();
+                json!({"relativePath": f.place.relative, "root": f.place.root, "models": models})
+            })
+            .collect();
+    }
+    Ok(answer)
 }
 
 pub async fn invoke(

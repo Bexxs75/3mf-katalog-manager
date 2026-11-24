@@ -249,3 +249,55 @@ async fn run_start_sync_without_file_operations_says_it_did_not_run() {
     assert_eq!(state["applied"], Value::Null);
     assert_eq!(f.call("run_start_sync", json!({"x": 1}), None, None).await.0, 422);
 }
+
+/// Adds catalog rows (and optionally disk entries) after the fixture is built.
+fn add_rows(f: &Fx, paths: &[&str]) {
+    let conn = db::connect(&f.dir.join("catalog.db")).unwrap();
+    for p in paths {
+        db::test_insert_minimal_file(&conn, f.dir.join("models").join(p).to_str().unwrap(), None).unwrap();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn report_and_issue_scan_carry_unclear_and_missing_folders_in_the_expected_form() {
+    let f = Fx::new(false).await;
+    std::fs::write(f.dir.join("models/plain"), b"x").unwrap();
+    add_rows(&f, &["Alt/a.3mf", "Alt/tief/b.3mf", "plain/c.3mf"]);
+
+    let (status, report) = f.invoke(json!({}), None).await;
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(report["missingFolders"], json!([{"relativePath": "Alt", "root": 0, "models": report["missingFolders"][0]["models"].clone()}]));
+    assert_eq!(report["missingFolders"][0]["models"].as_array().unwrap().len(), 2);
+    assert_eq!(report["unclear"], json!([{"root": 0, "relativePath": "plain/c.3mf", "reason": "link"}]));
+    let listed: Vec<_> = report["missingModels"].as_array().unwrap().iter().map(|m| m["relativePath"].as_str().unwrap().to_owned()).collect();
+    assert!(!listed.contains(&"plain/c.3mf".to_owned()), "an unclear row is never missing: {listed:?}");
+    assert!(!report.to_string().contains(f.dir.to_str().unwrap()), "{report}");
+
+    let (status, issues) = f.call("scan_catalog_issues", json!({}), None, None).await;
+    assert_eq!(status, 200, "{issues}");
+    assert_eq!(issues["unclear"], json!([{"path": "plain/c.3mf", "root": 0, "reason": "link"}]));
+    assert_eq!(issues["missingFolders"][0]["relativePath"], "Alt");
+    assert_eq!(issues["missingFolders"][0]["root"], 0);
+    let ids: Vec<_> = issues["missingFolders"][0]["models"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_owned()).collect();
+    let orphaned: Vec<_> = issues["orphaned"].as_array().unwrap().iter().map(|m| m["id"].as_str().unwrap().to_owned()).collect();
+    assert_eq!(ids.len(), 2);
+    assert!(ids.iter().all(|id| orphaned.contains(id)), "folder models are listed orphans: {ids:?} / {orphaned:?}");
+    assert!(!issues.to_string().contains(f.dir.to_str().unwrap()), "{issues}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_new_fields_are_absent_when_there_is_nothing_unclear_and_limits_still_truncate() {
+    let f = Fx::new(false).await;
+    let (_, report) = f.invoke(json!({}), None).await;
+    assert!(report.get("unclear").is_none() && report.get("missingFolders").is_none(), "{report}");
+    let (_, issues) = f.call("scan_catalog_issues", json!({}), None, None).await;
+    assert!(issues.get("unclear").is_none() && issues.get("missingFolders").is_none(), "{issues}");
+
+    // More rows below gone folders than the list limit allows: the report says so.
+    let many: Vec<String> = (0..520).map(|i| format!("Weg{}/m{i}.3mf", i % 3)).collect();
+    add_rows(&f, &many.iter().map(String::as_str).collect::<Vec<_>>());
+    let (_, report) = f.invoke(json!({}), None).await;
+    assert_eq!(report["truncated"], true);
+    let in_folders: usize = report["missingFolders"].as_array().unwrap().iter().map(|g| g["models"].as_array().unwrap().len()).sum();
+    assert!(in_folders <= report["missingModels"].as_array().unwrap().len());
+}
