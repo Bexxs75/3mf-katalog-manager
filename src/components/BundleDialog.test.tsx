@@ -137,9 +137,9 @@ describe('BundleDialog, create', () => {
     open({ mode: 'create', fileIds: ['1', '3', '4'] }, [harbour, other, solo]);
     const note = document.querySelector('[data-switch-note]') as HTMLElement;
     expect(note).toHaveTextContent('„Halter gross.3mf“ wechselt von Bündel „Hafen“ zu „Halter gross“.');
-    expect(note).toHaveTextContent('Das Bündel „Hafen“ behält 1 Modelle.');
+    expect(note).toHaveTextContent('Das Bündel „Hafen“ behält 1 Modell.');
     expect(note).toHaveTextContent('„Halter klein (Kopie).3mf“ wechselt von Bündel „Paar“');
-    expect(note).toHaveTextContent('Das Bündel „Paar“ behält 1 Modelle.');
+    expect(note).toHaveTextContent('Das Bündel „Paar“ behält 1 Modell.');
     expect(note).toHaveTextContent('„Deckel.stl“ wechselt von Bündel „Solo“');
     expect(note).toHaveTextContent('Das Bündel „Solo“ hätte danach kein Modell mehr und wird aufgelöst.');
     const submit = screen.getByRole('button', { name: /Bündel anlegen/ });

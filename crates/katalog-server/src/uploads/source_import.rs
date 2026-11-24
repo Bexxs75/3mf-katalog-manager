@@ -29,6 +29,14 @@ pub(super) async fn start(app: Arc<App>, session: Session, args: Value) -> Respo
     if !authenticated(&app, &session) {
         return error(401, "session_expired");
     }
+    // A forbidden root index or relative path is rejected up front instead of
+    // failing later inside the job; link and file checks stay in the job.
+    let adapter = SourceAdapter {
+        roots: &app.config.source_roots,
+    };
+    if adapter.requested(args.root_idx, &args.rel).is_err() {
+        return crate::web::error_coded(400, ErrorCode::SourceRootNotAllowed, &[]);
+    }
     let rt = app.uploads.as_ref().unwrap().clone();
     if let Err(e) = rt.store.ensure_importable() {
         return fail(e);
