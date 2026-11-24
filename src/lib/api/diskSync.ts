@@ -144,5 +144,7 @@ export interface DiskBlock {
   stopped: 'maintenance' | 'session' | 'deadline' | null;
 }
 export const diskSyncPreview = (selection: DiskSyncSelection) => invoke<DiskSyncPreview>('disk_sync_preview', { ...selection });
-export const diskSyncApplyStart = (token: string, confirmRemoval: boolean) => invoke<{ total: number; remaining: number }>('disk_sync_apply_start', { token, confirmRemoval });
+export const diskSyncApplyStart = (token: string, confirmRemoval: boolean, password?: string) => invoke<{ total: number; remaining: number }>('disk_sync_apply_start', { token, confirmRemoval, ...(password === undefined ? {} : { password }) });
+/** From this many removed entries the web server asks for the password (mirror of `REMOVAL_PASSWORD_FROM` in fileops_disksync.rs). */
+export const DISK_SYNC_PASSWORD_FROM = 50;
 export const diskSyncApplyBlock = (token: string, seq: number) => invoke<DiskBlock>('disk_sync_apply_block', { token, seq });

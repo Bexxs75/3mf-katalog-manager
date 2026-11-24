@@ -264,6 +264,9 @@ fn mostly_missing(conn: &katalog_core::write::Connection, roots: &[PathBuf], mod
     names
 }
 
+/// A disk comparison that removes at least this many catalog entries needs the password.
+pub(super) const REMOVAL_PASSWORD_FROM: usize = 50;
+
 #[allow(clippy::too_many_arguments)]
 /// `disk_sync_apply_start`: confirmation, budget, backup, then the plan is switched on.
 pub(super) fn apply_start(
@@ -273,6 +276,7 @@ pub(super) fn apply_start(
     state: &mut RuntimeState,
     token: &str,
     confirm: bool,
+    verified: bool,
     now: u64,
     allowed: &mut dyn FnMut() -> bool,
 ) -> Result<Value, Box<Response>> {
@@ -287,6 +291,10 @@ pub(super) fn apply_start(
     let removes = plan.removes();
     if removes > 0 && !confirm {
         return Err(err(422, "confirmation_required"));
+    }
+    // A larger removal also needs the password, before any budget, backup or change.
+    if removes >= REMOVAL_PASSWORD_FROM && !verified {
+        return Err(err(403, "password_required"));
     }
     let models: Vec<i64> = plan.rows.iter().filter(|r| r.kind == RowKind::MissingModel).filter_map(PlanRow::id).collect();
     progress.set_file_ids(&models);

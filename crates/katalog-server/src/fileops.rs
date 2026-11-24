@@ -150,6 +150,9 @@ pub(super) fn retry(seconds: u64) -> Box<Response> {
         .insert(header::RETRY_AFTER, seconds.to_string().parse().unwrap());
     Box::new(r)
 }
+/// "Remove folder from catalog" needs the password as soon as the folder (with all subfolders)
+/// holds at least this many catalog entries, i.e. any entry at all.
+pub(super) const FOLDER_REMOVE_PASSWORD_FROM: usize = 1;
 pub(super) fn budget_error(error: crate::fileops_safety::BudgetError) -> Box<Response> {
     match error {
         crate::fileops_safety::BudgetError::LimitExceeded => err(422, "limit_exceeded"),
@@ -168,13 +171,13 @@ enum Command {
     Create(i64, String),
     RenameFolder(i64, String),
     MoveFolder(i64, Option<i64>),
-    RemoveFolder(i64),
+    RemoveFolder(i64, Option<String>),
     TrashFolderStart(i64),
     TrashFolderBlock(String),
     CompanionTrash(i64),
     CompanionRestore(i64),
     DiskPreview(disksync::Selection),
-    DiskApplyStart(String, bool),
+    DiskApplyStart(String, bool, Option<String>),
     DiskApplyBlock(String, u64),
     DatePreview(Vec<i64>, katalog_core::date_rename::DateSource),
     DateApply(Vec<katalog_core::date_rename::DateRenameItem>),
@@ -192,12 +195,12 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "create_folder" => &["parentId", "name"],
         "rename_folder" => &["folderId", "name"],
         "move_folder" => &["folderId", "newParentId"],
-        "remove_folder_from_catalog" => &["folderId"],
+        "remove_folder_from_catalog" => &["folderId", "password"],
         "trash_folder_start" => &["folderId"],
         "trash_folder_block" => &["token"],
         "remove_companion" | "restore_companion" => &["companionId"],
         "disk_sync_preview" => &["newFiles", "missingModels", "danglingCompanions"],
-        "disk_sync_apply_start" => &["token", "confirmRemoval"],
+        "disk_sync_apply_start" => &["token", "confirmRemoval", "password"],
         "disk_sync_apply_block" => &["token", "seq"],
         "preview_date_rename" => &["fileIds", "dateSource"],
         "apply_date_rename" => &["items"],
@@ -227,6 +230,14 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
             Ok(None)
         } else {
             id(key).map(Some)
+        }
+    };
+    // Optional password: absent is `None` (the server then decides whether one is required).
+    let optional_password = || -> Result<Option<String>, Box<Response>> {
+        match v.get("password") {
+            None => Ok(None),
+            Some(Value::String(s)) => Ok(Some(s.clone())),
+            Some(_) => Err(err(400, "invalid_arguments")),
         }
     };
     let ids = || -> Result<Vec<i64>, Box<Response>> {
@@ -292,7 +303,7 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "create_folder" => Command::Create(id("parentId")?, text("name")?),
         "rename_folder" => Command::RenameFolder(id("folderId")?, text("name")?),
         "move_folder" => Command::MoveFolder(id("folderId")?, nullable("newParentId")?),
-        "remove_folder_from_catalog" => Command::RemoveFolder(id("folderId")?),
+        "remove_folder_from_catalog" => Command::RemoveFolder(id("folderId")?, optional_password()?),
         "trash_folder_start" => Command::TrashFolderStart(id("folderId")?),
         "trash_folder_block" => Command::TrashFolderBlock(text("token")?),
         "remove_companion" => Command::CompanionTrash(id("companionId")?),
@@ -305,6 +316,7 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
                 Some(Value::Bool(b)) => *b,
                 Some(_) => return Err(err(400, "invalid_arguments")),
             },
+            optional_password()?,
         ),
         "disk_sync_apply_block" => Command::DiskApplyBlock(
             text("token")?,
@@ -390,7 +402,16 @@ pub(super) async fn invoke(
         Command::Move(ids, _) | Command::Trash(ids) => progress.set_file_ids(ids),
         _ => (),
     }
-    if let Command::Permanent(_, pw) | Command::Start(_, _, _, pw) = &parsed {
+    // `Permanent` and `Start` always need the password. `RemoveFolder` and `DiskApplyStart`
+    // only past their threshold (decided in `execute`), but a password that is sent is always
+    // checked, so a wrong one never passes for "no password".
+    let password = match &parsed {
+        Command::Permanent(_, pw) | Command::Start(_, _, _, pw) => Some(pw),
+        Command::RemoveFolder(_, pw) | Command::DiskApplyStart(_, _, pw) => pw.as_ref(),
+        _ => None,
+    };
+    let mut verified = false;
+    if let Some(pw) = password {
         let hash = app
             .data
             .lock()
@@ -401,7 +422,7 @@ pub(super) async fn invoke(
             .password_hash
             .clone();
         match verify_client(app.clone(), &peer, hash, pw.clone(), true).await {
-            Ok(true) => (),
+            Ok(true) => verified = true,
             Ok(false) => return failure(403, "password_invalid"),
             Err(r) => return *r,
         }
@@ -453,6 +474,7 @@ pub(super) async fn invoke(
             &mut state,
             allowed,
             cancellation,
+            verified,
         );
         if state.ops.journal.is_blocked() {
             *rt.op_ids.lock().unwrap() = state.ops.journal.pending_manual_op_ids();
@@ -476,6 +498,7 @@ pub(super) async fn invoke(
         failure(503, "restart_required")
     })
 }
+#[allow(clippy::too_many_arguments)]
 fn execute(
     app: &App,
     current: &Session,
@@ -484,6 +507,8 @@ fn execute(
     state: &mut RuntimeState,
     mut allowed: impl FnMut() -> bool,
     cancellation: crate::fileops_cancel::Cancellation,
+    // The request carried a password that was just checked and is correct.
+    verified: bool,
 ) -> Result<Value, Box<Response>> {
     let now = app.clock.now();
     let ops = &mut state.ops;
@@ -534,9 +559,14 @@ fn execute(
             .map_err(core_error),
         Command::RenameFolder(id, name) => unit(ops.rename_folder(id, &name)),
         Command::MoveFolder(id, parent) => unit(ops.move_folder(id, parent)),
-        Command::RemoveFolder(id) => {
+        Command::RemoveFolder(id, _) => {
             ops.folder_removal_summary(id).map_err(core_error)?;
             let ids = folder_ids(app, id)?;
+            // Before any budget, backup or change: a folder that holds catalog entries is only
+            // removed with the password (an empty folder, or one of empty subfolders, is not).
+            if ids.len() >= FOLDER_REMOVE_PASSWORD_FROM && !verified {
+                return Err(err(403, "password_required"));
+            }
             progress.set_file_ids(&ids);
             app.fileops_safety.lock().map_err(|_| err(503, "restart_required"))?
                 .reserve_folder(ids.len(), now).map_err(budget_error)?;
@@ -615,8 +645,8 @@ fn execute(
             unit(ops.restore_companion(id))
         }
         Command::DiskPreview(selection) => disksync::preview(app, current, state, selection, now),
-        Command::DiskApplyStart(token, confirm) => {
-            disksync::apply_start(app, current, progress, state, &token, confirm, now, &mut allowed)
+        Command::DiskApplyStart(token, confirm, _) => {
+            disksync::apply_start(app, current, progress, state, &token, confirm, verified, now, &mut allowed)
         }
         Command::DiskApplyBlock(token, seq) => {
             disksync::apply_block(app, current, progress, state, &token, seq, now, &mut allowed)
