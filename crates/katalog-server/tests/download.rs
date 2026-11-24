@@ -175,9 +175,12 @@ async fn download_headers_and_original_bytes() {
         ("x-content-type-options", "nosniff"),
         ("cache-control", "no-store"),
         ("accept-ranges", "bytes"),
+        ("cross-origin-resource-policy", "same-origin"),
+        ("cross-origin-opener-policy", "same-origin"),
     ] {
         assert_eq!(r.headers()[name], value);
     }
+    assert!(r.headers()["permissions-policy"].to_str().unwrap().contains("microphone=()"));
     assert_eq!(
         r.headers()["content-disposition"],
         "attachment; filename=\"M_del.step\"; filename*=UTF-8''M%C3%B6del.step"

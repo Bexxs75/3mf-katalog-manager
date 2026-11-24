@@ -9,6 +9,69 @@ use std::{
 // nach dem ersten Anmelden geändert werden. set-password liest sichtbar im
 // Terminal; ein laufender Server übernimmt die Datei erst nach einem Neustart.
 // Ein vertrauenswürdiger Proxy muss X-Forwarded-For anhängen oder überschreiben.
+// Forwarded-Header zählen nur, wenn der direkte Peer in KATALOG_TRUSTED_PROXIES steht.
+
+/// IP addresses and CIDR networks (IPv4 and IPv6) of the reverse proxies whose
+/// forwarded headers are believed. An IPv4-mapped IPv6 address counts as IPv4.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TrustedProxies(Vec<(IpAddr, u8)>);
+
+fn canonical_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(ip),
+        v4 => v4,
+    }
+}
+
+impl TrustedProxies {
+    /// Comma-separated `IP` or `IP/prefix`. Any invalid entry, an empty entry, an
+    /// empty list or a `/0` network (would trust the whole internet) is an error.
+    pub fn parse(list: &str) -> Result<Self, String> {
+        let mut nets = Vec::new();
+        for entry in list.split(',') {
+            let entry = entry.trim();
+            let bad = || format!("KATALOG_TRUSTED_PROXIES: ungültiger Eintrag \"{entry}\" (erwartet IP oder IP/Präfix, kommagetrennt)");
+            let (addr, prefix) = match entry.split_once('/') {
+                Some((a, p)) => (a, Some(p)),
+                None => (entry, None),
+            };
+            let ip = canonical_ip(addr.trim().parse::<IpAddr>().map_err(|_| bad())?);
+            let was_mapped = addr.trim().parse::<IpAddr>().is_ok_and(|a| a != ip);
+            let max: u8 = if ip.is_ipv4() { 32 } else { 128 };
+            let prefix = match prefix {
+                None => max,
+                Some(p) if !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()) => {
+                    let p: u8 = p.parse().map_err(|_| bad())?;
+                    // A mapped IPv6 prefix counts from the v6 start; shorten it to the v4 part.
+                    if was_mapped { p.checked_sub(96).ok_or_else(bad)? } else { p }
+                }
+                Some(_) => return Err(bad()),
+            };
+            if prefix == 0 || prefix > max {
+                return Err(format!("KATALOG_TRUSTED_PROXIES: Präfix von \"{entry}\" außerhalb 1..={max}"));
+            }
+            nets.push((ip, prefix));
+        }
+        Ok(Self(nets))
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        let ip = canonical_ip(ip);
+        self.0.iter().any(|(net, prefix)| match (net, ip) {
+            (IpAddr::V4(n), IpAddr::V4(i)) => {
+                let mask = u32::MAX << (32 - u32::from(*prefix));
+                u32::from(*n) & mask == u32::from(i) & mask
+            }
+            (IpAddr::V6(n), IpAddr::V6(i)) => {
+                let mask = u128::MAX << (128 - u32::from(*prefix));
+                u128::from(*n) & mask == u128::from(i) & mask
+            }
+            _ => false,
+        })
+    }
+}
 #[derive(Clone)]
 pub struct UploadConfig {
     pub dir: PathBuf,
@@ -30,6 +93,8 @@ pub struct Config {
     pub bind: SocketAddr,
     pub allowed_hosts: Option<Vec<String>>,
     pub trust_proxy: bool,
+    /// Direct peers whose forwarded headers are believed; non-empty whenever `trust_proxy` is set.
+    pub trusted_proxies: TrustedProxies,
     pub allow_no_auth: bool,
     pub write: bool,
     pub file_ops: bool,
@@ -131,6 +196,14 @@ impl Config {
                     .into(),
             );
         }
+        let trusted_proxies = if trust_proxy {
+            let list = lookup("KATALOG_TRUSTED_PROXIES").filter(|s| !s.trim().is_empty()).ok_or(
+                "KATALOG_TRUST_PROXY=1 erfordert KATALOG_TRUSTED_PROXIES (IP/CIDR der Proxys, kommagetrennt); ohne diese Liste startet der Server nicht",
+            )?;
+            TrustedProxies::parse(&list)?
+        } else {
+            TrustedProxies::default()
+        };
         let password = lookup("KATALOG_PASSWORD");
         let password_file = lookup("KATALOG_PASSWORD_FILE").map(PathBuf::from);
         if password.is_some() && password_file.is_some() {
@@ -222,6 +295,7 @@ impl Config {
             bind,
             allowed_hosts,
             trust_proxy,
+            trusted_proxies,
             allow_no_auth,
             write,
             upload,
@@ -851,6 +925,29 @@ mod tests {
         assert!(config(&[("KATALOG_ALLOW_NO_AUTH", "1"), ("KATALOG_TRUST_PROXY", "1")]).is_err());
     }
     #[test]
+    fn trust_proxy_requires_a_valid_trusted_proxy_list() {
+        let base = [("KATALOG_TRUST_PROXY", "1")];
+        let with = |list: &'static str| config(&[base[0], ("KATALOG_TRUSTED_PROXIES", list)]);
+        // Missing, empty or broken lists stop the start; "everything" is not a proxy list.
+        assert!(config(&base).err().unwrap().contains("KATALOG_TRUSTED_PROXIES"));
+        for bad in ["", " ", ",", "10.0.0.1,", "nope", "10.0.0.0/33", "::1/129", "10.0.0.0/", "10.0.0.0/-1", "0.0.0.0/0", "::/0", "10.0.0.0/8/9", "10.0.0.1:80"] {
+            assert!(with(bad).is_err(), "{bad:?} must be rejected");
+        }
+        let c = with("127.0.0.1, 10.0.0.0/8 ,fd00::/8,::1").unwrap();
+        assert!(c.trust_proxy && !c.trusted_proxies.is_empty());
+        // Without TRUST_PROXY nothing changes: no list needed, nothing trusted.
+        let c = config(&[("KATALOG_TRUSTED_PROXIES", "10.0.0.0/8")]).unwrap();
+        assert!(!c.trust_proxy && c.trusted_proxies.is_empty());
+    }
+    #[test]
+    fn trusted_proxy_matching_covers_ipv4_ipv6_and_mapped_addresses() {
+        let t = TrustedProxies::parse("10.0.0.0/8,192.0.2.7,2001:db8::/32,::ffff:198.51.100.0/120").unwrap();
+        let yes = ["10.1.2.3", "192.0.2.7", "2001:db8:ffff::1", "::ffff:10.1.2.3", "198.51.100.9"];
+        let no = ["11.0.0.1", "192.0.2.8", "2001:db9::1", "::1", "198.51.101.9"];
+        for a in yes { assert!(t.contains(a.parse().unwrap()), "{a}"); }
+        for a in no { assert!(!t.contains(a.parse().unwrap()), "{a}"); }
+    }
+    #[test]
     fn defaults_and_bootstrap_inputs() {
         let c = config(&[]).unwrap();
         assert_eq!(c.bind.to_string(), "127.0.0.1:8080");
@@ -918,6 +1015,7 @@ mod tests {
         let c = config(&[
             ("KATALOG_BIND", "0.0.0.0:9090"),
             ("KATALOG_TRUST_PROXY", "1"),
+            ("KATALOG_TRUSTED_PROXIES", "172.18.0.0/16"),
             ("KATALOG_ALLOWED_HOSTS", "katalog.example"),
         ])
         .unwrap();

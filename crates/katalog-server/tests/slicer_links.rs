@@ -194,6 +194,10 @@ async fn valid_link_serves_content_ranges_head_and_safe_headers() {
     assert!(h.get("set-cookie").is_none());
     assert_eq!(h["cache-control"], "no-store");
     assert_eq!(h["x-content-type-options"], "nosniff");
+    // The signed /dl/ answer carries the isolation headers too (a slicer app does not enforce them).
+    assert_eq!(h["cross-origin-resource-policy"], "same-origin");
+    assert_eq!(h["cross-origin-opener-policy"], "same-origin");
+    assert!(h["permissions-policy"].to_str().unwrap().contains("geolocation=()"));
     assert_eq!(h["accept-ranges"], "bytes");
     assert_eq!(h["content-length"], DATA.len().to_string());
     assert_eq!(h["content-type"], "application/octet-stream");
