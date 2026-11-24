@@ -30,7 +30,7 @@ describe('folder tree: folders that are gone from disk', () => {
     const fine = screen.getByText('Deko').closest('[tabindex]') as HTMLElement;
     expect(within(missing).getByText(de.folderMissingOnDisk)).toBeTruthy();
     expect(within(missing).getByTestId('folder-missing-icon')).toBeTruthy();
-    expect(missing).toHaveAttribute('title', de.folderMissingOnDisk);
+    expect(missing).toHaveAttribute('title', `Altes Zeug (${de.folderMissingOnDisk})`);
     // The label is part of the row's accessible name, so a screen reader announces it.
     expect(missing).toHaveAccessibleName(expect.stringContaining(de.folderMissingOnDisk));
     expect(within(fine).queryByText(de.folderMissingOnDisk)).toBeNull();
@@ -41,11 +41,14 @@ describe('folder tree: folders that are gone from disk', () => {
     render(<Provider><FolderTree folders={folders} totalModelCount={37} activeFolderId="all" onSelect={vi.fn()} /></Provider>);
     const missing = screen.getByText('Altes Zeug').closest('[tabindex]') as HTMLElement;
     expect(screen.getByText('Altes Zeug').className).toContain('min-w-[8ch]');
+    expect(screen.getByText('Altes Zeug').className).toContain('flex-[1_1_auto]');
+    expect(screen.getByText('Altes Zeug').className).toContain('text-ellipsis');
     const badge = within(missing).getByText(de.folderMissingOnDisk);
-    expect(badge.className).toContain('shrink ');
+    expect(badge.className).toContain('shrink-[100]');
     expect(badge.className).not.toContain('shrink-0');
     expect(badge.className).toContain('text-ellipsis');
     expect(screen.getByText('Deko').className).not.toContain('min-w-');
+    expect(screen.getByText('Deko').closest('[tabindex]')).not.toHaveAttribute('title');
   });
   it('keeps click and keyboard selection working on a missing folder', () => {
     const onSelect = vi.fn();
