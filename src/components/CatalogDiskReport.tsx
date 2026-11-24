@@ -241,7 +241,7 @@ export function CatalogDiskReport({ active = true }: { active?: boolean }) {
   const cancel = () => { stop.current = true; setStep(current => current === 'starting' || current === 'running' ? 'cancelling' : current); };
 
   return <>
-    {active && <button type="button" className={`${button} shrink-0 flex gap-2 items-center !py-1.5`} disabled={open} title={t('diskReportOpen')} onClick={() => void scan()}>
+    {active && <button type="button" className={`${button} shrink-0 flex gap-2 items-center !py-1.5`} title={t('diskReportOpen')} onClick={() => { if (!openRef.current) void scan(); }}>
       <Icon name="restore" size={16} /><span className="max-[1279px]:sr-only">{t('diskReportOpen')}</span>
     </button>}
     {open && <ReportDialog step={step} report={report} selection={selection} preview={preview} progress={progress} outcome={outcome} failure={failure} scanError={scanError} canApply={canApply}
