@@ -971,6 +971,15 @@ fn rss_child_extract_7z() {
     println!("RSS_DELTA_KB={}", vm_hwm_kb().saturating_sub(before));
 }
 
+/// Removes the test directory (about 257 MB unpacked) even when an assertion panics.
+struct RemoveOnDrop(PathBuf);
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 /// 256 MiB of zeros in a few KiB of 7z, compressed as independent LZMA2 packets:
 /// the shape for which the library starts one decoding worker per CPU, each
 /// holding its packet fully decoded in memory.
@@ -978,7 +987,8 @@ fn rss_child_extract_7z() {
 #[test]
 fn sevenz_extraction_does_not_multiply_memory_with_worker_threads() {
     use std::io::Read;
-    let dir = unique_dir("rss");
+    let dir = RemoveOnDrop(unique_dir("rss"));
+    let dir = dir.0.as_path();
     let archive = dir.join("nullen.7z");
     let mut writer = sevenz_rust2::ArchiveWriter::create(&archive).unwrap();
     writer.set_content_methods(vec![sevenz_rust2::encoder_options::Lzma2Options::from_level_mt(6, 4, 64 * 1024 * 1024).into()]);
