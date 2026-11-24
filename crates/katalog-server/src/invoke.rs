@@ -1218,6 +1218,21 @@ mod tests {
         assert_eq!(v["message"], "fileFormatUnsupported");
         assert_eq!(v["code"], "unsupported");
     }
+    #[tokio::test]
+    async fn a_busy_worker_answers_at_once_with_a_retry_hint_and_frees_up_again() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let gate = step_gate(1);
+        let held = gate.step.try_slot().expect("the only place is free");
+        let busy = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId": id}), gate.clone()).await;
+        assert_eq!(busy.status(), 429);
+        assert_eq!(busy.headers()["retry-after"], crate::step_worker::StepWorker::RETRY_AFTER_SECONDS.to_string().as_str());
+        let v: Value = serde_json::from_slice(&body(busy).await).unwrap();
+        assert_eq!(v["message"], "webTooManyRequests");
+        drop(held);
+        let again = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId": id}), gate).await;
+        assert_eq!(again.status(), 422, "a freed place is used, not refused");
+    }
     #[test]
     fn every_worker_outcome_is_a_wire_code() {
         use crate::step_worker::WorkerError as W;
