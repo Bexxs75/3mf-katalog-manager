@@ -299,7 +299,7 @@ export const en: Translations = {
   diskUnclearIntro: "For these entries the server could not tell for sure whether the file is still there. They are not touched, not removed and not preselected. Fix the cause (for example mount the drive) and check again.",
   diskUnclearChip: {"one": "{count} unclear", "other": "{count} unclear"},
   diskUnclearWhy_unreachable: "The folder or drive is not reachable right now. Maybe it is not mounted.",
-  diskUnclearWhy_link: "There is a link on the way to the file. For safety the server does not follow links.",
+  diskUnclearWhy_link: "On the way to the file there is a link or a file instead of a folder. For safety the server does not follow links.",
   diskUnclearWhy_read: "The file could not be checked (read error).",
   diskFolderHeading: "Folder missing entirely",
   diskFolderLabel: "Folder missing:",

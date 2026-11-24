@@ -299,7 +299,7 @@ export const fr: Translations = {
   diskUnclearIntro: "Pour ces entrées, le serveur n’a pas pu dire avec certitude si le fichier est toujours là. Elles ne sont ni modifiées, ni retirées, ni présélectionnées. Corrigez la cause (par exemple montez le lecteur) et revérifiez.",
   diskUnclearChip: {"one": "{count} incertain", "other": "{count} incertains"},
   diskUnclearWhy_unreachable: "Le dossier ou le lecteur est inaccessible pour le moment. Peut-être n’est-il pas monté.",
-  diskUnclearWhy_link: "Un lien se trouve sur le chemin du fichier. Par sécurité, le serveur ne suit pas les liens.",
+  diskUnclearWhy_link: "Sur le chemin du fichier se trouve un lien ou un fichier à la place d’un dossier. Par sécurité, le serveur ne suit pas les liens.",
   diskUnclearWhy_read: "Le fichier n’a pas pu être vérifié (erreur de lecture).",
   diskFolderHeading: "Dossier entièrement manquant",
   diskFolderLabel: "Dossier manquant :",

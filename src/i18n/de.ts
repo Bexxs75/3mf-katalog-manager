@@ -299,7 +299,7 @@ export const de: Translations = {
   diskUnclearIntro: "Bei diesen Einträgen konnte der Server nicht sicher sagen, ob die Datei noch da ist. Sie werden nicht angefasst, nicht entfernt und nicht vorausgewählt. Behebe die Ursache (zum Beispiel das Laufwerk einhängen) und prüfe erneut.",
   diskUnclearChip: {"one": "{count} unklar", "other": "{count} unklar"},
   diskUnclearWhy_unreachable: "Der Ordner oder das Laufwerk ist gerade nicht erreichbar. Vielleicht ist es nicht eingehängt.",
-  diskUnclearWhy_link: "Auf dem Weg zur Datei liegt ein Link. Aus Sicherheitsgründen folgt der Server Links nicht.",
+  diskUnclearWhy_link: "Auf dem Weg zur Datei liegt ein Link oder eine Datei statt eines Ordners. Aus Sicherheitsgründen folgt der Server Links nicht.",
   diskUnclearWhy_read: "Die Datei konnte nicht geprüft werden (Lesefehler).",
   diskFolderHeading: "Ordner fehlt ganz",
   diskFolderLabel: "Ordner fehlt:",

@@ -299,7 +299,7 @@ export const es: Translations = {
   diskUnclearIntro: "De estas entradas el servidor no pudo saber con seguridad si el archivo sigue ahí. No se tocan, no se quitan y no se preseleccionan. Corrija la causa (por ejemplo, monte la unidad) y compruebe de nuevo.",
   diskUnclearChip: {"one": "{count} incierto", "other": "{count} inciertos"},
   diskUnclearWhy_unreachable: "La carpeta o la unidad no es accesible ahora. Quizá no esté montada.",
-  diskUnclearWhy_link: "Hay un enlace en el camino al archivo. Por seguridad el servidor no sigue enlaces.",
+  diskUnclearWhy_link: "En el camino al archivo hay un enlace o un archivo en lugar de una carpeta. Por seguridad el servidor no sigue enlaces.",
   diskUnclearWhy_read: "No se pudo comprobar el archivo (error de lectura).",
   diskFolderHeading: "Falta la carpeta entera",
   diskFolderLabel: "Falta la carpeta:",
