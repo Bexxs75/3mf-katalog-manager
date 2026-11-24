@@ -180,7 +180,7 @@ mod tests {
         let triangles = raw_triangles(&shape, 0.01).expect("tessellate");
         let center = [5.0f64, 5.0, 5.0];
 
-        for tri in triangles.chunks_exact(3) {
+        for tri in triangles.as_chunks::<3>().0 {
             let normal = cross(sub(tri[1], tri[0]), sub(tri[2], tri[0]));
             let centroid = [
                 (tri[0][0] + tri[1][0] + tri[2][0]) / 3.0,
