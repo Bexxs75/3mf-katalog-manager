@@ -160,6 +160,7 @@ const PAGE_TIMEOUT: Duration = Duration::from_secs(10);
 pub const PRINTER_BUDGET: Duration = Duration::from_secs(45);
 pub const MAX_JSON_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_THUMB_BYTES: u64 = 512 * 1024;
+const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
 const PAGE: usize = 50;
 const MAX_PAGES: usize = 40;
 /// Moonraker filters `since` by the job start; a print that started before
@@ -282,10 +283,19 @@ impl MoonrakerLink {
     /// First port 80 (Mainsail/nginx), then 7125 (Moonraker directly), unless the address names a port itself.
     fn candidate_bases(&self) -> Result<Vec<String>, LinkError> {
         let target = resolve(&self.address, self.policy.clone())?;
-        Ok(match target.port {
-            Some(p) => vec![base_url(target.ip, p)],
-            None => vec![base_url(target.ip, 80), base_url(target.ip, 7125)],
-        })
+        let ports = match target.port {
+            Some(p) => vec![p],
+            None => vec![80, 7125],
+        };
+        let bases: Vec<String> = ports
+            .into_iter()
+            .filter(|p| !self.policy.denies_port(*p))
+            .map(|p| base_url(target.ip, p))
+            .collect();
+        if bases.is_empty() {
+            return Err(LinkError::AddressNotAllowed);
+        }
+        Ok(bases)
     }
 
     fn check_base(&self, base: &str) -> Result<(), LinkError> {
@@ -551,7 +561,12 @@ impl PrinterLink for MoonrakerLink {
             let mut segs = u.path_segments_mut().map_err(|_| LinkError::BadResponse("URL".into()))?;
             segs.clear().extend(["server", "files", "gcodes"]).extend(path.split('/'));
         }
-        self.get_bytes(u, MAX_THUMB_BYTES)
+        let bytes = self.get_bytes(u, MAX_THUMB_BYTES)?;
+        // The printer is not trusted: only real PNG data goes on to the browser or the store.
+        if !bytes.starts_with(PNG_MAGIC) {
+            return Err(LinkError::BadResponse("kein PNG".into()));
+        }
+        Ok(bytes)
     }
 
     fn set_deadline(&mut self, deadline: Instant) {
@@ -1311,4 +1326,35 @@ mod client_tests {
         assert!(matches!(link.thumbnail(&base, ".thumbs/test.png"), Err(LinkError::BadResponse(_))));
     }
 
+    #[test]
+    fn thumbnail_without_png_magic_is_discarded() {
+        let base_of = |s: &FakeServer| format!("http://{}", s.address());
+        for body in [&b"<html>secret internal page</html>"[..], b"\x89PNG", b"GIF89a", b"", b" \x89PNG\r\n\x1a\n"] {
+            let body = body.to_vec();
+            let server = FakeServer::start(move |_| Some((200, body.clone())));
+            let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+            let err = link.thumbnail(&base_of(&server), ".thumbs/a-300x300.png").unwrap_err();
+            assert_eq!(err, LinkError::BadResponse("kein PNG".into()));
+        }
+        let ok = FakeServer::start(|_| Some((200, b"\x89PNG\r\n\x1a\nrest".to_vec())));
+        let link = MoonrakerLink::new(&ok.address(), AddressPolicy::TEST);
+        assert!(link.thumbnail(&base_of(&ok), ".thumbs/a-300x300.png").unwrap().starts_with(b"\x89PNG\r\n\x1a\n"));
+    }
+
+    #[test]
+    fn own_service_port_never_sends_a_request() {
+        let server = sv08();
+        let port = server.address().rsplit(':').next().unwrap().parse::<u16>().unwrap();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST.denying_port(port));
+        assert_eq!(link.test(), Err(LinkError::AddressNotAllowed));
+        assert!(server.requests().is_empty());
+        // A different denied port leaves the printer reachable.
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST.denying_port(port.wrapping_add(1).max(1)));
+        assert!(link.test().is_ok());
+        // Default ports 80/7125 are dropped from the candidates when one of them is the service port.
+        let link = MoonrakerLink::new("127.0.0.1", AddressPolicy::TEST.denying_port(80));
+        assert_eq!(link.candidate_bases().unwrap(), vec!["http://127.0.0.1:7125".to_string()]);
+        let link = MoonrakerLink::new("127.0.0.1", AddressPolicy::TEST.denying_port(7125));
+        assert_eq!(link.candidate_bases().unwrap(), vec!["http://127.0.0.1".to_string()]);
+    }
 }

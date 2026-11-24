@@ -2761,6 +2761,33 @@ async fn printer_service_api_key_never_appears_in_sync_logs_or_response() {
 }
 
 #[tokio::test]
+async fn printer_service_refuses_link_local_and_own_port_without_network_use() {
+    let mut f = Fixture::new(true);
+    let own = f.app.config.bind.port();
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("169.254.0.0/16,192.168.1.60").unwrap();
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+    }
+    let secret = "dummy-key-0123456789abcdef0123456789";
+    let addresses = ["169.254.10.10", "169.254.169.254", "[::ffff:169.254.10.10]", "192.168.1.60:0"].map(str::to_string);
+    for address in addresses.into_iter().chain([format!("192.168.1.60:{own}")]) {
+        let started = std::time::Instant::now();
+        let response = f
+            .send("test_printer_connection", json!({"printerId": "1", "kind": "moonraker", "address": address, "apiKey": secret}))
+            .await;
+        assert_eq!(response.status(), 200, "{address}");
+        let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("address_not_allowed"), "{address}: {text}");
+        assert!(!text.contains(secret), "{address}: key in answer");
+        assert!(started.elapsed() < std::time::Duration::from_secs(3), "{address} went to the network");
+    }
+}
+
+#[tokio::test]
 async fn printer_service_background_waits_then_publishes_and_respects_write_gate() {
     use http_body_util::BodyExt;
     let mut f = Fixture::new(true);

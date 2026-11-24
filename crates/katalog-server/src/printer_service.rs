@@ -62,7 +62,12 @@ fn policy(config: &Config) -> Result<AddressPolicy, LinkError> {
             PrinterAllowEntry::Host(host) => host.clone(),
             PrinterAllowEntry::Network(net) => format!("{}/{}", net.address(), net.prefix()),
         });
-    Ok(AddressPolicy::HOME_NETWORK.with_allowlist(AddressAllowlist::from_strings(entries)?))
+    // Server hardening on top of the shared rules: no link-local range at all (the desktop
+    // app still accepts it) and never the server's own web port.
+    Ok(AddressPolicy::HOME_NETWORK
+        .blocking_link_local()
+        .denying_port(config.bind.port())
+        .with_allowlist(AddressAllowlist::from_strings(entries)?))
 }
 
 fn disabled(app: &App) -> bool {
