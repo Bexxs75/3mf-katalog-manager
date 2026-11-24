@@ -6,6 +6,8 @@ use crate::fileops_startup::{DbAdapter, ServerLedger};
 use katalog_core::fsops::{self, FileOps, FolderTrashSnapshot, TrashSnapshot};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+#[path = "fileops_disksync.rs"]
+mod disksync;
 type Ops = FileOps<DbAdapter, ServerLedger>;
 pub(super) struct Runtime {
     pub(super) state: Mutex<RuntimeState>,
@@ -18,6 +20,8 @@ pub(super) struct RuntimeState {
     ops: Ops,
     snapshots: HashMap<String, Snapshot>,
     folder_snapshots: HashMap<String, FolderSnapshot>,
+    /// Disk-comparison plans (W2), in memory only.
+    plans: HashMap<String, disksync::Plan>,
 }
 struct Snapshot {
     session: String,
@@ -40,6 +44,7 @@ impl Runtime {
                 ops,
                 snapshots: HashMap::new(),
                 folder_snapshots: HashMap::new(),
+                plans: HashMap::new(),
             }),
         }
     }
@@ -166,6 +171,11 @@ enum Command {
     TrashFolderBlock(String),
     CompanionTrash(i64),
     CompanionRestore(i64),
+    DiskPreview(disksync::Selection),
+    DiskApplyStart(String, bool),
+    DiskApplyBlock(String, u64),
+    DatePreview(Vec<i64>, katalog_core::date_rename::DateSource),
+    DateApply(Vec<katalog_core::date_rename::DateRenameItem>),
 }
 fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
     let obj = v.as_object().ok_or_else(|| err(400, "invalid_arguments"))?;
@@ -184,10 +194,11 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "trash_folder_start" => &["folderId"],
         "trash_folder_block" => &["token"],
         "remove_companion" | "restore_companion" => &["companionId"],
-        // Contract only (W2 P0): named in the lists, implemented in the server package.
-        "disk_sync_preview" | "disk_sync_apply_start" | "disk_sync_apply_block" | "preview_date_rename" | "apply_date_rename" => {
-            return Err(err(404, "command_unavailable"))
-        }
+        "disk_sync_preview" => &["newFiles", "missingModels", "danglingCompanions"],
+        "disk_sync_apply_start" => &["token", "confirmRemoval"],
+        "disk_sync_apply_block" => &["token", "seq"],
+        "preview_date_rename" => &["fileIds", "dateSource"],
+        "apply_date_rename" => &["items"],
         _ => return Err(err(404, "unknown_command")),
     };
     if obj.keys().any(|k| !keys.contains(&k.as_str())) {
@@ -284,6 +295,21 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "trash_folder_block" => Command::TrashFolderBlock(text("token")?),
         "remove_companion" => Command::CompanionTrash(id("companionId")?),
         "restore_companion" => Command::CompanionRestore(id("companionId")?),
+        "disk_sync_preview" => Command::DiskPreview(disksync::parse_selection(v)?),
+        "disk_sync_apply_start" => Command::DiskApplyStart(
+            text("token")?,
+            match v.get("confirmRemoval") {
+                None => false,
+                Some(Value::Bool(b)) => *b,
+                Some(_) => return Err(err(400, "invalid_arguments")),
+            },
+        ),
+        "disk_sync_apply_block" => Command::DiskApplyBlock(
+            text("token")?,
+            v.get("seq").and_then(Value::as_u64).ok_or_else(|| err(400, "invalid_arguments"))?,
+        ),
+        "preview_date_rename" => Command::DatePreview(ids()?, disksync::parse_date_source(v)?),
+        "apply_date_rename" => Command::DateApply(disksync::parse_date_items(v)?),
         _ => unreachable!(),
     })
 }
@@ -586,6 +612,15 @@ fn execute(
             progress.set_companion_ids(&[id]);
             unit(ops.restore_companion(id))
         }
+        Command::DiskPreview(selection) => disksync::preview(app, current, state, selection, now),
+        Command::DiskApplyStart(token, confirm) => {
+            disksync::apply_start(app, current, progress, state, &token, confirm, now, &mut allowed)
+        }
+        Command::DiskApplyBlock(token, seq) => {
+            disksync::apply_block(app, current, progress, state, &token, seq, now, &mut allowed)
+        }
+        Command::DatePreview(ids, source) => disksync::date_preview(state, &ids, source),
+        Command::DateApply(items) => disksync::date_apply(app, progress, state, items, &mut allowed),
         Command::Start(count, companions, cutoff, _) => {
             let snapshot = ops
                 .empty_trash_snapshot_with(count, companions, cutoff.as_deref())
@@ -722,7 +757,13 @@ fn eligible(
 }
 
 fn completed_items(command: &str, v: &Value) -> u64 {
-    if command == "empty_trash_start" || command == "trash_folder_start" {
+    if command == "empty_trash_start" || command == "trash_folder_start" || command == "disk_sync_preview" || command == "disk_sync_apply_start" {
+        0
+    } else if command == "apply_date_rename" {
+        v.as_array()
+            .map(|r| r.iter().filter(|e| e.get("status").and_then(Value::as_str) == Some("renamed")).count() as u64)
+            .unwrap_or(0)
+    } else if command == "preview_date_rename" {
         0
     } else if let Some(results) = v
         .as_array()
