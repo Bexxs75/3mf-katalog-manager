@@ -234,3 +234,51 @@ async fn a_run_whose_task_is_dropped_stops_before_the_next_file() {
     assert_eq!(hashes(&f), (2, 1));
     assert!(f.app.geometry.hash_backfill.pending());
 }
+
+#[tokio::test]
+async fn a_file_renamed_while_the_run_is_paused_gets_its_hash_at_the_new_path() {
+    // The same fixture as `two_models_without_hashes`, with the web file operations on.
+    let mut f = Fixture::with_env(true, &[("KATALOG_FILE_OPS", "1")]);
+    let root = f.dir.join("source");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(root.join("source.obj"), MODEL).unwrap();
+    std::fs::write(root.join("other.obj"), OTHER).unwrap();
+    Arc::get_mut(&mut f.app).unwrap().config.source_roots = vec![root];
+    let result = import(&f).await;
+    assert_eq!((state_of(&result, "source.obj"), state_of(&result, "other.obj")), ("imported", "imported"));
+    sql(&f, "UPDATE files SET content_hash = NULL", &[]);
+
+    let pause = Pause::install(&f);
+    let run = hash_backfill::start_with(&f.app, RETRY).expect("a run is due");
+    assert_eq!(pause.row().await, 1);
+    // The first row has its hash; the second is still waiting, and its path was read already.
+    let (id, old_path): (i64, String) = {
+        let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+        conn.query_row("SELECT id, path FROM files WHERE content_hash IS NULL", [], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+    };
+    // The real file operation of the server, while the run is stopped between two rows.
+    let response = f.invoke("rename_file", json!({"fileId": id.to_string(), "name": "renamed"})).await;
+    assert_eq!(response.status(), 200, "{}", value(response).await);
+    let new_path: String = {
+        let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+        conn.query_row("SELECT path FROM files WHERE id = ?1", [id], |row| row.get(0)).unwrap()
+    };
+    assert_ne!(new_path, old_path);
+    assert!(new_path.ends_with("renamed.obj") && !std::path::Path::new(&old_path).exists());
+    assert!(f.app.geometry.hash_backfill.pending());
+
+    drop(pause);
+    run.await.unwrap();
+    assert!(!f.app.geometry.hash_backfill.pending(), "the run reports complete");
+    assert_eq!(hashes(&f), (2, 2));
+    let (path, hash): (String, String) = {
+        let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+        conn.query_row("SELECT path, content_hash FROM files WHERE id = ?1", [id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+    };
+    assert_eq!(path, new_path);
+    assert_eq!(hash, katalog_core::import::files::compute_reader_hash(std::fs::File::open(&new_path).unwrap()).unwrap());
+    // Nothing is left for the next start.
+    assert!(hash_backfill::start_with(&f.app, RETRY).is_none());
+}

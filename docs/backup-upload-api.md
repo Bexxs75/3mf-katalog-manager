@@ -43,3 +43,10 @@ lookup, while an existing lease keeps its files alive. The path contains the
 original inspected database, not the migrated temporary copy. Activation must
 still recheck session authorization, use the barrier and call the core prepare
 pipeline before replacing anything. No activation route is provided here.
+
+After a restore, the new catalog has no `files.content_hash` values. The next server
+start fills them in in the background (`hash_backfill`). Until that run is complete,
+`start_upload_import`, `start_source_import` and `scan_source_folders` answer
+HTTP 409 with the error code `catalogHashCheckPending`; other commands are not
+affected, and a rename or move during the run is followed. A server without a writer
+(read-only) does not run it.

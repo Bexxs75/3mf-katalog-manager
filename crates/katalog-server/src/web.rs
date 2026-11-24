@@ -683,7 +683,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
         // Nothing here needs a device or sensor; clipboard-write and fullscreen stay at their defaults.
         (
             "permissions-policy",
-            "camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), bluetooth=(), midi=(), payment=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=(), xr-spatial-tracking=()",
+            "camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), midi=(), payment=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=(), xr-spatial-tracking=()",
         ),
     ] {
         response.headers_mut().insert(name, value.parse().unwrap());
