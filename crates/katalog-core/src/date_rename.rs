@@ -30,6 +30,22 @@ pub trait DateRenameFs {
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
     fn entry(&self, path: &Path) -> io::Result<()>;
     fn modified(&self, path: &Path) -> io::Result<SystemTime>;
+    /// Hosts that confine access themselves (the web server) say here whether the path
+    /// lies inside the catalog. `Some` replaces the `catalog_base_dir` rule, `None`
+    /// keeps it (desktop).
+    fn within_catalog(&self, _path: &Path) -> Option<bool> {
+        None
+    }
+}
+
+/// A row that passed every check of `apply`; only the rename itself is left.
+#[derive(Debug, Clone)]
+pub struct VerifiedRename {
+    pub file: FileRecord,
+    pub old_path: PathBuf,
+    pub new_path: PathBuf,
+    /// New name without the extension of the old name, for hosts that re-attach it.
+    pub stem: String,
 }
 
 /// Host-owned reversible file operation, including companion carry and cleanup.
@@ -255,10 +271,13 @@ fn eligibility(
     if fs.entry(Path::new(&file.path)).is_err() {
         return Err(PreviewStatus::SkipMissing);
     }
-    if !base
-        .zip(fs.canonicalize(Path::new(&file.path)).ok())
-        .is_some_and(|(base, path)| path.starts_with(base))
-    {
+    let inside = match fs.within_catalog(Path::new(&file.path)) {
+        Some(inside) => inside,
+        None => base
+            .zip(fs.canonicalize(Path::new(&file.path)).ok())
+            .is_some_and(|(base, path)| path.starts_with(base)),
+    };
+    if !inside {
         return Err(PreviewStatus::SkipExternal);
     }
     if import_rename::has_date_prefix(&disk_name(file)) {
@@ -372,14 +391,26 @@ fn follows_rule(new_name: &str, old_name: &str) -> bool {
         && chrono::NaiveTime::parse_from_str(&prefix[11..16], "%H-%M").is_ok()
 }
 
-fn apply_one(
+/// Same extension rule as the rename operation (`.gcode.3mf` counts as one).
+fn extension_of(name: &str) -> &str {
+    if name.to_ascii_lowercase().ends_with(".gcode.3mf") {
+        &name[name.len() - 10..]
+    } else {
+        name.rfind('.').map(|i| &name[i..]).unwrap_or("")
+    }
+}
+
+/// Everything `apply` checks before it renames: state, trash, presence, location,
+/// name rule, free target, name validity and protected folders. Errors are the short
+/// reason codes of `DateRenameResult::reason`. `base` is only used when the host's
+/// `within_catalog` returns `None`.
+pub fn verify_item(
     fs: &dyn DateRenameFs,
-    effect: &dyn DateRenameEffect,
     conn: &Connection,
     item: &DateRenameItem,
     base: Option<&Path>,
     sensitive: &[PathBuf],
-) -> Result<(), String> {
+) -> Result<VerifiedRename, String> {
     let id: i64 = item.id.parse().map_err(|_| "missing".to_string())?;
     let file = db::get_file(conn, id)
         .map_err(|e| format!("database: {e}"))?
@@ -394,7 +425,8 @@ fn apply_one(
         .to_string()
     })?;
     // The UI may only send names the preview produced, never free input.
-    if !follows_rule(&item.new_name, &disk_name(&file)) {
+    let old_name = disk_name(&file);
+    if !follows_rule(&item.new_name, &old_name) {
         return Err("nameRule".into());
     }
     let old_path = PathBuf::from(&file.path);
@@ -402,17 +434,44 @@ fn apply_one(
     if target_taken(fs, conn, id, &new_path).map_err(|e| e.message)? {
         return Err("targetTaken".into());
     }
-    let outcome = (|| -> CmdResult<()> {
-        folders::validate_name(&item.new_name, true, folders::NameKind::File)?;
-        reject_if_sensitive_path(fs, &old_path, sensitive)?;
-        reject_if_sensitive_path(fs, &new_path, sensitive)?;
-        effect
-            .rename(&file, &old_path, &new_path, &mut || {
-                db::rename_file(conn, id, &item.new_name, &new_path.to_string_lossy())
-                    .map_err(|e| e.to_string())
-            })
-            .map_err(CmdError::from)
-    })();
+    folders::validate_name(&item.new_name, true, folders::NameKind::File)
+        .map_err(|e| e.message)?;
+    reject_if_sensitive_path(fs, &old_path, sensitive).map_err(|e| e.message)?;
+    reject_if_sensitive_path(fs, &new_path, sensitive).map_err(|e| e.message)?;
+    let stem = item
+        .new_name
+        .strip_suffix(extension_of(&old_name))
+        .unwrap_or(&item.new_name)
+        .to_string();
+    Ok(VerifiedRename {
+        file,
+        old_path,
+        new_path,
+        stem,
+    })
+}
+
+fn apply_one(
+    fs: &dyn DateRenameFs,
+    effect: &dyn DateRenameEffect,
+    conn: &Connection,
+    item: &DateRenameItem,
+    base: Option<&Path>,
+    sensitive: &[PathBuf],
+) -> Result<(), String> {
+    let VerifiedRename {
+        file,
+        old_path,
+        new_path,
+        ..
+    } = verify_item(fs, conn, item, base, sensitive)?;
+    let id = file.id;
+    let outcome = effect
+        .rename(&file, &old_path, &new_path, &mut || {
+            db::rename_file(conn, id, &item.new_name, &new_path.to_string_lossy())
+                .map_err(|e| e.to_string())
+        })
+        .map_err(CmdError::from);
     outcome.map_err(|e| {
         // The target can appear between the check above and the rename.
         if target_taken(fs, conn, id, &new_path).unwrap_or(false) {
