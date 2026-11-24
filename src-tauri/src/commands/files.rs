@@ -1161,11 +1161,13 @@ mod tests {
             conn.execute("UPDATE files SET path = '/tmp/renamed.stl' WHERE id = 3", []).unwrap();
             Ok("computed".into())
         }).unwrap();
-        assert_eq!(reads, 3);
+        // The renamed row is read once more, at its new path; the hash read from the old one is dropped.
+        assert_eq!(reads, 4);
         let conn = state.db.lock().unwrap();
         assert_eq!(db::get_file(&conn, 1).unwrap().unwrap().content_hash.as_deref(), Some("computed"));
         assert_eq!(db::get_file(&conn, 2).unwrap().unwrap().content_hash.as_deref(), Some("new"));
-        assert!(db::get_file(&conn, 3).unwrap().unwrap().content_hash.is_none());
+        let renamed = db::get_file(&conn, 3).unwrap().unwrap();
+        assert_eq!((renamed.path.as_str(), renamed.content_hash.as_deref()), ("/tmp/renamed.stl", Some("computed")));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

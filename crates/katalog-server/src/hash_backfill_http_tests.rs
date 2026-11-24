@@ -64,6 +64,8 @@ fn restart(mut f: Fixture) -> Fixture {
 struct Pause {
     reached: std::sync::mpsc::Receiver<usize>,
     go: std::sync::mpsc::Sender<()>,
+    /// Set by a test that wants the run to go on only once its cancellation has arrived.
+    await_cancel: Arc<std::sync::atomic::AtomicBool>,
     key: std::path::PathBuf,
 }
 impl Pause {
@@ -72,15 +74,24 @@ impl Pause {
         let (go, go_rx) = std::sync::mpsc::channel::<()>();
         let (reached_tx, go_rx) = (Mutex::new(reached_tx), Mutex::new(go_rx));
         let key = f.app.config.db_path.clone();
+        let await_cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let wait = await_cancel.clone();
         hash_backfill::row_hooks().lock().unwrap().insert(
             key.clone(),
-            Arc::new(move |rows| {
+            Arc::new(move |rows, cancel| {
                 let _ = reached_tx.lock().unwrap().send(rows);
                 // A dropped sender means the test is over: go on.
                 let _ = go_rx.lock().unwrap().recv();
+                // Bounded, so a missing cancellation fails the test instead of hanging it.
+                for _ in 0..20_000 {
+                    if !wait.load(Ordering::SeqCst) || cancel.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(1));
+                }
             }),
         );
-        Self { reached, go, key }
+        Self { reached, go, await_cancel, key }
     }
     async fn row(&self) -> usize {
         for _ in 0..2000 {
@@ -193,8 +204,8 @@ async fn maintenance_interrupts_the_run_and_it_resumes_afterwards() {
         f.app.geometry.barrier.snapshot().state == crate::barrier::State::Draining
     })
     .await;
-    // The watcher looks at the barrier every 50 ms.
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // The run goes on only after its watcher has passed the cancellation on.
+    pause.await_cancel.store(true, Ordering::SeqCst);
     pause.go.send(()).unwrap();
     // Draining only ends when the run has given up its writer guard.
     let window = drain.await.unwrap().unwrap();
@@ -217,6 +228,7 @@ async fn a_run_whose_task_is_dropped_stops_before_the_next_file() {
     // What the runtime does to the task when the server shuts down.
     run.abort();
     assert!(run.await.unwrap_err().is_cancelled());
+    pause.await_cancel.store(true, Ordering::SeqCst);
     pause.go.send(()).unwrap();
     until("the run kept its writer guard", || f.app.geometry.barrier.snapshot().writers == 0).await;
     assert_eq!(hashes(&f), (2, 1));

@@ -130,8 +130,9 @@ fn run(app: &App, cancel: &AtomicBool) -> bool {
 }
 
 #[cfg(test)]
-pub(crate) type RowHook = Arc<dyn Fn(usize) + Send + Sync>;
-/// Tests pause a run between two rows, keyed by the catalog path of their server.
+pub(crate) type RowHook = Arc<dyn Fn(usize, &AtomicBool) + Send + Sync>;
+/// Tests pause a run between two rows, keyed by the catalog path of their server. The hook
+/// also sees the run's cancel flag, so a test can wait for the cancellation itself.
 #[cfg(test)]
 pub(crate) fn row_hooks() -> &'static Mutex<HashMap<PathBuf, RowHook>> {
     static HOOKS: std::sync::OnceLock<Mutex<HashMap<PathBuf, RowHook>>> = std::sync::OnceLock::new();
@@ -182,7 +183,7 @@ impl HashBackfill for Server<'_> {
     fn progress(&mut self, summary: &HashBackfillSummary) {
         #[cfg(test)]
         if let Some(hook) = &self.row_hook {
-            hook(summary.hashed + summary.failed + summary.refused);
+            hook(summary.hashed + summary.failed + summary.refused, self.cancel);
         }
         if self.reported.elapsed() >= REPORT_EVERY {
             self.reported = Instant::now();
