@@ -245,6 +245,50 @@ fn after_a_timeout_unchecked_rows_never_form_duplicate_groups() {
     assert!(issues.duplicate_groups.is_empty(), "the unchecked older missing copy must not anchor a group: {issues:?}");
 }
 
+/// Unclear (`Err`) for one name, present for everything else.
+struct UnclearFor(&'static str);
+impl MissingProbe for UnclearFor {
+    fn is_missing(&self, path: &Path) -> std::io::Result<bool> {
+        if path.to_string_lossy().contains(self.0) {
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        } else {
+            Ok(!path.exists())
+        }
+    }
+}
+
+#[test]
+fn an_unclear_row_never_anchors_a_web_duplicate_group() {
+    let dir = crate::unique_test_dir("ci-unclear");
+    // The OLDER copy cannot be judged (outside the roots, unreadable); the newer one is reachable.
+    let conn = catalog_dated(
+        &dir,
+        &[("old-unclear.3mf", true, Some("h"), "2026-01-01"), ("new-reachable.3mf", true, Some("h"), "2026-02-01")],
+    );
+    let issues = scan(&conn, &UnclearFor("old-unclear"), IssueLimits::UNLIMITED).unwrap();
+    assert!(issues.orphaned.is_empty());
+    assert!(issues.duplicate_groups.is_empty(), "an unclear row must not anchor a group: {issues:?}");
+    // Two positively present rows still form a group, even next to an unclear one.
+    let conn = catalog_dated(
+        &dir,
+        &[
+            ("old-unclear.3mf", true, Some("h"), "2026-01-01"),
+            ("b.3mf", true, Some("h"), "2026-02-01"),
+            ("c.3mf", true, Some("h"), "2026-03-01"),
+        ],
+    );
+    let issues = scan(&conn, &UnclearFor("old-unclear"), IssueLimits::UNLIMITED).unwrap();
+    assert_eq!(issues.duplicate_groups.len(), 1);
+    let unclear = db::list_files(&conn).unwrap().into_iter().find(|f| f.path.contains("old-unclear")).unwrap().id;
+    assert_eq!(issues.duplicate_groups[0].len(), 2);
+    assert!(!issues.duplicate_groups[0].contains(&unclear));
+    // The desktop keeps its behaviour: the unclear row is still grouped there.
+    let files = db::list_files(&conn).unwrap();
+    let desktop = scan_records(&files, &UnclearFor("old-unclear"), IssueLimits::UNLIMITED);
+    assert_eq!(desktop.duplicate_groups[0].len(), 3);
+    assert_eq!(desktop.duplicate_groups[0][0], unclear);
+}
+
 #[test]
 fn light_scan_matches_the_record_scan() {
     let dir = crate::unique_test_dir("ci-parity");

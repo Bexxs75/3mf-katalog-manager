@@ -225,9 +225,14 @@ fn group_rows(rows: &[Row], orphaned_ids: &HashSet<i64>, started: Instant, max_d
     (groups.into_iter().map(|g| g.into_iter().map(|r| r.id).collect()).collect(), timed_out)
 }
 
-fn scan_rows(rows: &[Row], probe: &dyn MissingProbe, limits: IssueLimits, started: Instant) -> Issues {
+/// `strict` (web): only rows the probe positively found are grouped as duplicates. A row the
+/// probe could not judge (an `Err`) is neither missing nor safe: it is kept out of every group,
+/// so it can never be the "keep" anchor of a group whose only reachable copy would then be
+/// preselected for deletion. The desktop (`strict == false`) keeps its established behaviour.
+fn scan_rows(rows: &[Row], probe: &dyn MissingProbe, limits: IssueLimits, started: Instant, strict: bool) -> Issues {
     let mut issues = Issues::default();
     let mut orphaned_ids: HashSet<i64> = HashSet::new();
+    let mut ungrouped_ids: HashSet<i64> = HashSet::new();
     // Rows that were really looked at. A bounded scan that stops early must not form groups
     // from the rest (or from the row that hit the orphan limit): an unchecked missing model
     // could become the "keep" anchor of a group whose only living copy then gets deleted.
@@ -238,7 +243,11 @@ fn scan_rows(rows: &[Row], probe: &dyn MissingProbe, limits: IssueLimits, starte
             checked = index;
             break;
         }
-        if probe.is_missing(Path::new(row.path)).unwrap_or(false) {
+        let looked = probe.is_missing(Path::new(row.path));
+        if strict && looked.is_err() {
+            ungrouped_ids.insert(row.id);
+        }
+        if looked.unwrap_or(false) {
             if issues.orphaned.len() >= limits.max_orphaned {
                 issues.truncated = true;
                 checked = index;
@@ -248,7 +257,8 @@ fn scan_rows(rows: &[Row], probe: &dyn MissingProbe, limits: IssueLimits, starte
             issues.orphaned.push(row.id);
         }
     }
-    let (mut groups, timed_out) = group_rows(&rows[..checked], &orphaned_ids, started, limits.max_duration);
+    ungrouped_ids.extend(orphaned_ids.iter().copied());
+    let (mut groups, timed_out) = group_rows(&rows[..checked], &ungrouped_ids, started, limits.max_duration);
     if timed_out {
         issues.truncated = true;
     }
@@ -265,7 +275,7 @@ fn scan_rows(rows: &[Row], probe: &dyn MissingProbe, limits: IssueLimits, starte
 pub fn scan_records(files: &[FileRecord], probe: &dyn MissingProbe, limits: IssueLimits) -> Issues {
     let started = Instant::now();
     let rows: Vec<Row> = files.iter().map(Row::of).collect();
-    scan_rows(&rows, probe, limits, started)
+    scan_rows(&rows, probe, limits, started, false)
 }
 
 /// Web: the budget starts before the catalog is read, and only the few columns the scan needs
@@ -277,7 +287,7 @@ pub fn scan(conn: &Connection, probe: &dyn MissingProbe, limits: IssueLimits) ->
         .iter()
         .map(|r| Row { id: r.id, path: &r.path, hash: r.content_hash.as_deref(), imported_at: &r.imported_at })
         .collect();
-    Ok(scan_rows(&rows, probe, limits, started))
+    Ok(scan_rows(&rows, probe, limits, started, true))
 }
 
 #[cfg(test)]
