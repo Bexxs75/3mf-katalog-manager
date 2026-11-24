@@ -2,7 +2,7 @@ import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { CatalogIssues } from '../types';
 import { useFormatCount, useT } from '../i18n/LanguageContext';
 import { DiskReportUnclear } from './DiskReportUnclear';
@@ -16,6 +16,8 @@ interface Props {
   onDelete: (fileIds: string[]) => void;
   /** Why the last removal failed; shown inside the dialog because it stays open for what is left. */
   error?: AppError | null;
+  /** What the last removal did; the dialog stays open for what is left and says so. A new object per removal. */
+  notice?: { count: number } | null;
   /** What gets the focus back on close (the button that started the scan; it is disabled while the scan runs). */
   returnFocus?: RefObject<HTMLElement | null>;
 }
@@ -66,7 +68,7 @@ function initialSelection(issues: CatalogIssues): Set<string> {
   return checked;
 }
 
-export function CatalogCleanupDialog({ issues, onClose, onDelete, error, returnFocus }: Props) {
+export function CatalogCleanupDialog({ issues, onClose, onDelete, error, notice, returnFocus }: Props) {
   const { lockProps } = useImportLock();
   const t = useT();
   const count = useFormatCount();
@@ -83,8 +85,24 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete, error, returnF
   };
 
   const hasIssues = issues.orphaned.length > 0 || issues.duplicateGroups.length > 0;
+  // Removed models leave the lists while the dialog stays open; only what is still listed can be selected.
+  const listed = new Set([...issues.orphaned, ...issues.duplicateGroups.flat()].map(m => m.id));
+  const selected = Array.from(checked).filter(id => listed.has(id));
+  // Roots are named only when there is more than one, like in the comparison dialog.
+  const showRoot = (issues.roots?.length ?? 0) > 1;
 
   const dialogRef = useModalDialog({ open: true, onClose, initialFocus: '[data-initial-focus]', returnFocus });
+
+  // The button that was clicked is gone with its group; the focus must not fall back to the page behind.
+  const handledNotice = useRef(notice);
+  useEffect(() => {
+    if (!notice || handledNotice.current === notice) return;
+    handledNotice.current = notice;
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.contains(document.activeElement)) {
+      (dialog.querySelector<HTMLElement>('[data-initial-focus]') ?? dialog).focus({ preventScroll: true });
+    }
+  }, [notice, dialogRef]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -97,7 +115,8 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete, error, returnF
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
-          {!hasIssues && <div className="text-[length:var(--font-size-title)] text-[var(--ink-3)]">{t('cleanupNoIssues')}</div>}
+          {notice && <p role="status" className="pb-3 text-[length:var(--font-size-title)] text-[var(--ink-2)]">{count(t('cleanupRemovedNotice'), notice.count)}</p>}
+          {!hasIssues && <div className="pb-3 text-[length:var(--font-size-title)] text-[var(--ink-3)]">{t(notice ? 'cleanupNothingLeft' : 'cleanupNoIssues')}</div>}
 
           {error && <div role="alert" className="pb-3 text-[length:var(--font-size-title)] text-[var(--crit)] whitespace-pre-wrap break-words"><ErrorText error={error} /></div>}
           {issues.truncated && <p role="status" className="pb-3 text-small text-[var(--ink-2)]">{t('cleanupTruncated')}</p>}
@@ -162,7 +181,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete, error, returnF
               ))}
             </div>
           ))}
-          <DiskReportUnclear rows={(issues.unclear ?? []).map((u, i) => ({ key: `${i}`, path: displayName(u.path), reason: u.reason }))} />
+          <DiskReportUnclear rows={(issues.unclear ?? []).map((u, i) => ({ key: `${i}`, path: showRoot && u.root !== undefined && issues.roots?.[u.root] ? `${issues.roots[u.root]}: ${displayName(u.path)}` : displayName(u.path), reason: u.reason }))} />
         </div>
 
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] flex justify-end gap-2">
@@ -171,13 +190,13 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete, error, returnF
             onClick={onClose}
             className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[length:var(--font-size-title)] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
-            {t('cancel')}
+            {hasIssues ? t('cancel') : t('diskSyncClose')}
           </button>
           <button
-            onClick={() => onDelete(Array.from(checked))}
-            disabled={checked.size === 0} {...lockProps}
+            onClick={() => onDelete(selected)}
+            disabled={selected.length === 0} {...lockProps}
             className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-title)] font-semibold ${
-              checked.size === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              selected.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
             }`}
           >
             {t('cleanupDeleteSelected')}

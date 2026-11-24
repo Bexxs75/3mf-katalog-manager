@@ -1691,6 +1691,8 @@ export const fr: Translations = {
   catalogCleanupScanning: 'Analyse…',
   catalogCleanupError: "Échec de l'analyse :",
   cleanupDialogTitle: 'Suggestions de nettoyage',
+  cleanupRemovedNotice: {"one": "{count} modèle déplacé vers la corbeille", "other": "{count} modèles déplacés vers la corbeille"},
+  cleanupNothingLeft: 'Plus rien à nettoyer.',
   cleanupNoIssues: 'Aucun problème trouvé.',
   cleanupOrphanedHeading: 'Entrées orphelines',
   cleanupDuplicateGroupHeading: 'Groupe de doublons',

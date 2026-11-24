@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useCatalogCleanup } from './useCatalogCleanup';
+import { makeModelFile } from '../test/factories';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -31,17 +32,22 @@ describe('useCatalogCleanup', () => {
     expect(result.current.cleanupDialogOpen).toBe(false);
   });
 
-  it('deleteSelectedCleanupFiles closes the dialog and calls onDeleted', async () => {
-    vi.mocked(invoke).mockResolvedValue(undefined);
+  it('deleteSelectedCleanupFiles keeps the dialog open without the removed models and calls onDeleted', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ orphaned: [makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })], duplicateGroups: [] });
     const onDeleted = vi.fn();
     const { result } = renderHook(() => useCatalogCleanup());
+    await act(async () => {
+      await result.current.scanCatalogIssues();
+    });
+    vi.mocked(invoke).mockResolvedValue(undefined);
     await act(async () => {
       await result.current.deleteSelectedCleanupFiles(['m1'], onDeleted);
     });
     expect(invoke).toHaveBeenCalledWith('delete_files', { fileIds: ['m1'] });
     expect(onDeleted).toHaveBeenCalledWith(['m1']);
-    expect(result.current.cleanupDialogOpen).toBe(false);
-    expect(result.current.cleanupIssues).toBeNull();
+    expect(result.current.cleanupDialogOpen).toBe(true);
+    expect(result.current.cleanupIssues!.orphaned.map(m => m.id)).toEqual(['m2']);
+    expect(result.current.cleanupNotice).toEqual({ count: 1 });
   });
 
   it('deleteSelectedCleanupFiles sets cleanupError on failure and keeps dialog open', async () => {

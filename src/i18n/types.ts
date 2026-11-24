@@ -1718,6 +1718,8 @@ export interface Translations {
   catalogCleanupScanning: string;
   catalogCleanupError: string;
   cleanupDialogTitle: string;
+  cleanupRemovedNotice: PluralForms;
+  cleanupNothingLeft: string;
   cleanupNoIssues: string;
   cleanupOrphanedHeading: string;
   cleanupDuplicateGroupHeading: string;

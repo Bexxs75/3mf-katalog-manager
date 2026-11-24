@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { de } from '../i18n/de';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { CatalogCleanupDialog } from './CatalogCleanupDialog';
@@ -89,5 +90,55 @@ describe('CatalogCleanupDialog keyboard and focus', () => {
     unmount();
     expect(opener).toHaveFocus();
     opener.remove();
+  });
+});
+
+describe('CatalogCleanupDialog stays open for what is left', () => {
+  beforeEach(() => vi.stubEnv('VITE_TARGET', 'web'));
+  afterEach(() => { vi.unstubAllEnvs(); localStorage.removeItem('3mf-katalog-language'); });
+  const gone = (id: string, path: string) => makeModelFile({ id, name: `m${id}.3mf`, path });
+  const folders = [{ relativePath: 'Alt', root: 0, models: ['1', '2'] }, { relativePath: 'Neu', root: 0, models: ['3', '4'] }];
+  const issues = () => ({ orphaned: [gone('1', '/r/Alt/a.3mf'), gone('2', '/r/Alt/b.3mf'), gone('3', '/r/Neu/c.3mf'), gone('4', '/r/Neu/d.3mf')], duplicateGroups: [], missingFolders: folders });
+  /** Like the app: removing hands the ids to the hook, which hands back fewer issues and a notice. */
+  function Harness({ start }: { start: ReturnType<typeof issues> }) {
+    const [current, setCurrent] = useState(start);
+    const [notice, setNotice] = useState<{ count: number } | null>(null);
+    return <LanguageProvider><CatalogCleanupDialog issues={current} notice={notice} onClose={vi.fn()}
+      onDelete={(ids) => { setCurrent({ ...current, orphaned: current.orphaned.filter(m => !ids.includes(m.id)) }); setNotice({ count: ids.length }); }} /></LanguageProvider>;
+  }
+
+  it('keeps the other group after a removal, says what happened and keeps the focus inside', () => {
+    render(<Harness start={issues()} />);
+    const removeFirst = screen.getAllByRole('button', { name: de.cleanupFolderRemove.other.replace('{count}', '2') })[0];
+    removeFirst.focus();
+    fireEvent.click(removeFirst);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe(de.cleanupRemovedNotice.other.replace('{count}', '2'));
+    expect(screen.getAllByRole('region')).toHaveLength(1);
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+    expect(screen.queryByText(de.cleanupNothingLeft)).toBeNull();
+  });
+
+  it('shows the empty state with a close button once nothing removable is left', () => {
+    render(<Harness start={issues()} />);
+    for (let i = 0; i < 2; i++) fireEvent.click(screen.getAllByRole('button', { name: de.cleanupFolderRemove.other.replace('{count}', '2') })[0]);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByText(de.cleanupNothingLeft)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: de.diskSyncClose }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+  });
+
+  it('names the root of an unclear entry when there are two roots, and not with one or with an old server', () => {
+    const unclear = [{ path: 'Sub/Einzelteil.3mf', root: 1, reason: 'link' }];
+    const view = (roots?: string[]) => {
+      const { unmount } = render(<LanguageProvider><CatalogCleanupDialog issues={{ orphaned: [], duplicateGroups: [], unclear, roots }} onClose={vi.fn()} onDelete={vi.fn()} /></LanguageProvider>);
+      const text = screen.getByTestId('disk-unclear').textContent ?? '';
+      unmount();
+      return text;
+    };
+    expect(view(['alpha', 'beta'])).toContain('beta: Sub/Einzelteil.3mf');
+    expect(view(['alpha'])).toContain('Sub/Einzelteil.3mf');
+    expect(view(['alpha'])).not.toContain('alpha:');
+    expect(view(undefined)).not.toMatch(/\w: Sub/);
   });
 });
