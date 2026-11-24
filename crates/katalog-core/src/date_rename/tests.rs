@@ -593,3 +593,93 @@ fn symlink_reads_match_desktop_eligibility_and_target_conflicts() {
     std::fs::remove_dir_all(dir).unwrap();
     std::fs::remove_dir_all(outside).unwrap();
 }
+
+/// Delegates to the desktop reads but decides "inside the catalog" itself, like the web host.
+struct WebLikeFs(Option<bool>);
+impl DateRenameFs for WebLikeFs {
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        StdDateRenameFs.canonicalize(path)
+    }
+    fn entry(&self, path: &Path) -> io::Result<()> {
+        StdDateRenameFs.entry(path)
+    }
+    fn modified(&self, path: &Path) -> io::Result<SystemTime> {
+        StdDateRenameFs.modified(path)
+    }
+    fn within_catalog(&self, _path: &Path) -> Option<bool> {
+        self.0
+    }
+}
+
+#[test]
+fn within_catalog_overrides_a_wrong_catalog_base_dir() {
+    let (conn, dir) = setup("date_rename_web_within");
+    // Docker case: the stored base dir is a foreign desktop path.
+    db::printer_link::set_setting(
+        &conn,
+        folders::SETTING_CATALOG_BASE_DIR,
+        "/nonexistent/desktop",
+    )
+    .unwrap();
+    let id = add(&conn, &dir, "model.gcode.3mf");
+    let ids = [id.clone()];
+    let desktop = preview(&conn, &ids, DateSource::Modified, &[], &StdDateRenameFs).unwrap();
+    assert_eq!(desktop[0].status, PreviewStatus::SkipExternal);
+    let web = preview(
+        &conn,
+        &ids,
+        DateSource::Modified,
+        &[],
+        &WebLikeFs(Some(true)),
+    )
+    .unwrap();
+    assert_eq!(web[0].status, PreviewStatus::Rename);
+    let denied = preview(
+        &conn,
+        &ids,
+        DateSource::Modified,
+        &[],
+        &WebLikeFs(Some(false)),
+    )
+    .unwrap();
+    assert_eq!(denied[0].status, PreviewStatus::SkipExternal);
+    // `None` keeps the base-dir rule.
+    let none = preview(&conn, &ids, DateSource::Modified, &[], &WebLikeFs(None)).unwrap();
+    assert_eq!(none[0].status, PreviewStatus::SkipExternal);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn verify_item_returns_paths_and_stem_without_renaming() {
+    let (conn, dir) = setup("date_rename_verify_item");
+    let id = add(&conn, &dir, "model.gcode.3mf");
+    let new_name = format!("{}model.gcode.3mf", modified_prefix());
+    let item = DateRenameItem {
+        id: id.clone(),
+        new_name: new_name.clone(),
+    };
+    let fs = WebLikeFs(Some(true));
+    let verified = verify_item(&fs, &conn, &item, None, &[]).unwrap();
+    assert_eq!(verified.stem, format!("{}model", modified_prefix()));
+    assert_eq!(verified.old_path, dir.join("model.gcode.3mf"));
+    assert_eq!(verified.new_path, dir.join(&new_name));
+    assert!(dir.join("model.gcode.3mf").exists());
+    assert!(!dir.join(&new_name).exists());
+
+    let bad = DateRenameItem {
+        id: id.clone(),
+        new_name: "free-input.3mf".into(),
+    };
+    assert_eq!(
+        verify_item(&fs, &conn, &bad, None, &[]).unwrap_err(),
+        "nameRule"
+    );
+    let outside = verify_item(&WebLikeFs(Some(false)), &conn, &item, None, &[]).unwrap_err();
+    assert_eq!(outside, "external");
+    std::fs::write(dir.join(&new_name), b"x").unwrap();
+    assert_eq!(
+        verify_item(&fs, &conn, &item, None, &[]).unwrap_err(),
+        "targetTaken"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
