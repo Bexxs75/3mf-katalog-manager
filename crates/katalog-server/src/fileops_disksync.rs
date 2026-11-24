@@ -352,6 +352,27 @@ pub(crate) fn row_hooks() -> &'static Mutex<HashMap<String, RowHook>> {
     HOOKS.get_or_init(Default::default)
 }
 
+/// Test helper: fills the plan table with plans of other sessions.
+#[cfg(test)]
+pub(crate) fn insert_other_plans(state: &mut RuntimeState, count: usize, created: u64) {
+    for n in 0..count {
+        state.plans.insert(
+            format!("filler-{n}"),
+            Plan {
+                session: format!("filler-session-{n}"),
+                created,
+                rows: Vec::new(),
+                cursor: 0,
+                seq: 0,
+                last_result: None,
+                started: false,
+                confirmed_removal: false,
+                applied: Applied::default(),
+            },
+        );
+    }
+}
+
 /// `disk_sync_apply_block`.
 pub(super) fn apply_block(
     app: &App,

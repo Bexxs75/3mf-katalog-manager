@@ -2040,6 +2040,7 @@ async fn folder_trash_commands_have_strict_arguments_and_an_unknown_folder_is_a_
 mod disksync_tests {
     use super::*;
     use std::io::Write as _;
+    use std::time::Duration;
     use std::os::unix::fs::symlink;
 
     const OBJ: &[u8] = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
@@ -2248,13 +2249,15 @@ mod disksync_tests {
         let f = Fixture::new(true).await;
         f.file("keep.3mf");
         let id = f.gone("gone.3mf");
-        let sessions: Vec<Session> = (0..101).map(|_| f.session_two()).collect();
-        for session in &sessions[..100] {
-            let r = f.invoke_as(session, "disk_sync_preview", json!({"missingModels":[id]})).await;
-            assert_eq!(r.status(), 200);
+        {
+            let mut state = f.app.fileops.as_ref().unwrap().state.lock().unwrap();
+            fileops::disksync::insert_other_plans(&mut state, 100, 100);
         }
-        let r = f.invoke_as(&sessions[100], "disk_sync_preview", json!({"missingModels":[id]})).await;
+        let r = f.invoke("disk_sync_preview", json!({"missingModels":[id]})).await;
         assert_eq!(kind(r, 503).await["kind"], "snapshot_capacity");
+        // Expired plans make room.
+        f.time.0.store(100 + 3600, Ordering::SeqCst);
+        assert_eq!(f.invoke("disk_sync_preview", json!({"missingModels":[id]})).await.status(), 200);
     }
 
     #[tokio::test]
@@ -2266,9 +2269,12 @@ mod disksync_tests {
         let token = f.started(json!({"missingModels":&ids[..10]})).await;
         let again = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
         assert_eq!(kind(again, 409).await["kind"], "snapshot_mismatch");
-        // Booked once: another plan of ten still fits into the day of twenty.
-        let more = f.plan(json!({"missingModels":&ids[10..]})).await;
-        assert_eq!(f.invoke("disk_sync_apply_start", json!({"token":more,"confirmRemoval":true})).await.status(), 200);
+        // Booked once: another plan of ten (another session, a session has one plan) still fits into the day of twenty.
+        let other = f.session_two();
+        let r = f.invoke_as(&other, "disk_sync_preview", json!({"missingModels":&ids[10..]})).await;
+        let more = value(r).await["token"].as_str().unwrap().to_owned();
+        let r = f.invoke_as(&other, "disk_sync_apply_start", json!({"token":more,"confirmRemoval":true})).await;
+        assert_eq!(r.status(), 200);
         let first = kind(f.block(&token, 0).await, 200).await;
         let (before, entries) = (count(&f, "files"), f.app.fileops.as_ref().unwrap().pending_entries_for_test());
         let again = kind(f.block(&token, 0).await, 200).await;
@@ -2277,7 +2283,10 @@ mod disksync_tests {
         // Wrong sequence numbers and a finished plan.
         assert_eq!(kind(f.block(&token, 1).await, 409).await["kind"], "snapshot_mismatch");
         assert_eq!(kind(f.block(&token, 7).await, 409).await["kind"], "snapshot_mismatch");
-        assert_eq!(kind(f.block(&more, 1).await, 409).await["kind"], "snapshot_mismatch");
+        let r = f.invoke_as(&other, "disk_sync_apply_block", json!({"token":more,"seq":0})).await;
+        assert_eq!(kind(r, 200).await["counts"]["removedModels"], 2);
+        let r = f.invoke_as(&other, "disk_sync_apply_block", json!({"token":more,"seq":1})).await;
+        assert_eq!(kind(r, 409).await["kind"], "snapshot_mismatch");
         assert_eq!(first["counts"]["removedModels"], 10);
     }
 
@@ -2306,12 +2315,12 @@ mod disksync_tests {
         f.file("keep.3mf");
         let ids: Vec<String> = (0..3).map(|n| f.gone(&format!("gone{n}.3mf"))).collect();
         let token = f.started(json!({"missingModels":ids})).await;
-        let validity = f.session.validity.clone();
+        let (weak, session) = (Arc::downgrade(&f.app), f.session.token.clone());
         fileops::disksync::row_hooks().lock().unwrap().insert(
             f.session.token.clone(),
             Arc::new(move |index| {
                 if index == 0 {
-                    validity.revoke()
+                    revoke_session(&mut weak.upgrade().unwrap().data.lock().unwrap(), &session);
                 }
             }),
         );
@@ -2436,7 +2445,7 @@ mod disksync_tests {
         let token = f.plan(json!({"missingModels":[id]})).await;
         let permit = f.app.uploads.as_ref().unwrap().active.clone().try_acquire_owned().unwrap();
         let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
-        assert_eq!(r.status(), 429);
+        assert_eq!(r.status(), 503);
         assert!(r.headers().contains_key("retry-after"));
         drop(permit);
         assert_eq!(f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await.status(), 200);
@@ -2626,7 +2635,8 @@ mod disksync_tests {
         let missing = f.gone("none.3mf");
         let preview = value(f.invoke("preview_date_rename", json!({"fileIds":[id, outside, missing],"dateSource":"modified"})).await).await;
         let status: Vec<&str> = preview.as_array().unwrap().iter().map(|p| p["status"].as_str().unwrap()).collect();
-        assert_eq!(status, ["rename", "skip_external", "skip_missing"], "{preview}");
+        // Outside the roots nothing can be resolved: reported like a missing file, and never touched.
+        assert_eq!(status, ["rename", "skip_missing", "skip_missing"], "{preview}");
         let new_name = preview[0]["newName"].as_str().unwrap().to_owned();
         assert!(new_name.ends_with("_c.3mf") || new_name.contains("c.3mf"), "{new_name}");
         let items = json!({"items":[{"id":id,"newName":new_name}]});
@@ -2646,7 +2656,7 @@ mod disksync_tests {
         assert!(f.dir.join("models/c.3mf").symlink_metadata().is_err());
         // A name the preview never made, and one outside the roots.
         let bad = kind(f.invoke("apply_date_rename", json!({"items":[{"id":outside,"newName":"2026-01-01_x.3mf"},{"id":missing,"newName":"2026-01-01_none.3mf"}]})).await, 200).await;
-        assert_eq!(bad[0]["reason"], "external");
+        assert_eq!(bad[0]["reason"], "missing");
         assert_eq!(bad[1]["reason"], "missing");
         assert_eq!(f.app.fileops.as_ref().unwrap().pending_entries_for_test(), 0);
         // 201 entries are too many.
