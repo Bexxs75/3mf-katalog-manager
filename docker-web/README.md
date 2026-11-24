@@ -374,9 +374,13 @@ and says that `KATALOG_FILE_OPS=1` is needed.
   after 60 minutes. While a backup is being restored the run stops and says so.
 - **Limits.** Report: 500 rows per section, 200,000 files, 20 s.
 - **Check at start (opt-in, off by default).** Settings has "Compare catalog
-  folders after start". The server then checks once per start in the background
-  and may only add new files; it never removes entries. Without the setting
-  nothing is changed.
+  folders after start". Needs `KATALOG_FILE_OPS=1` and write mode. The server then
+  checks once per start in the background, about 5 s after the start, and only
+  reports the numbers. Only with the second switch ("Add new
+  files automatically") it adds at most 200 new files per start, after the day copy of the
+  catalog; the rest stays "still open". It never removes entries. If a root is
+  unreachable or empty nothing is applied. The result is kept in memory only
+  until the next restart. Without the setting nothing is changed.
 
 ### Abgleich und Bereinigung im Web (Deutsch)
 
@@ -413,9 +417,14 @@ eine reine Anzeige und weist auf `KATALOG_FILE_OPS=1` hin.
   eingespielt, bricht der Lauf ab und sagt es.
 - **Grenzen.** Bericht: 500 Zeilen je Abschnitt, 200 000 Dateien, 20 s.
 - **Abgleich beim Start (Opt-in, standardmäßig aus).** In den Einstellungen gibt
-  es „Katalogordner nach dem Start abgleichen“. Der Server prüft dann einmal je
-  Start im Hintergrund und darf nur neue Dateien hinzufügen; Einträge entfernt er
-  nie. Ohne die Einstellung ändert sich nichts.
+  es „Katalogordner nach dem Start abgleichen“. Braucht `KATALOG_FILE_OPS=1` und
+  Schreibmodus. Der Server prüft dann einmal je Start im Hintergrund, etwa 5 s
+  nach dem Start, und meldet nur die Zahlen. Erst mit dem zweiten Schalter („Neue
+  Dateien automatisch aufnehmen“) nimmt er höchstens 200 neue Dateien je Start
+  auf, nach der Tageskopie des Katalogs; der Rest bleibt „weiter offen“. Einträge
+  entfernt er nie. Ist eine Wurzel nicht erreichbar oder leer, wird nichts
+  angewendet. Das Ergebnis liegt nur im Speicher, bis zum nächsten Neustart. Ohne
+  die Einstellung ändert sich nichts.
 
 ### Optionale Dateiverwaltung im Web (Stufe 7, Server)
 
