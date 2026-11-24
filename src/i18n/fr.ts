@@ -2517,7 +2517,7 @@ export const fr: Translations = {
   errSlicerPathNotExecutable: "Le fichier du slicer n’est pas exécutable.",
   errSlicerPathNotExe: "Sous Windows, seul un fichier .exe peut servir de slicer.",
   errModelFileNotFound: "Le fichier du modèle est introuvable. Il a peut-être été supprimé ou déplacé.",
-  errBackupEntryNameInvalid: "La sauvegarde contient un nom non valide.",
+  errBackupEntryNameInvalid: "La sauvegarde contient un fichier dont le nom n’est pas autorisé (par exemple avec un chemin ou des caractères de contrôle). Elle est endommagée ou n’a pas été créée par cette application. Rien n’a été restauré ; recréez la sauvegarde.",
   errBackupEntryNameUnsafeOnWindows: "La sauvegarde contient un nom qui n’est pas sûr sous Windows.",
   errUpdateNoLongerAvailable: "Aucune mise à jour n’est plus disponible.",
   errUpdateNotDownloaded: "Aucune mise à jour téléchargée n’est disponible.",

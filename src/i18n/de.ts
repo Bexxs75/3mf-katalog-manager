@@ -2517,7 +2517,7 @@ export const de: Translations = {
   errSlicerPathNotExecutable: "Die Slicer-Datei ist nicht ausführbar.",
   errSlicerPathNotExe: "Als Slicer ist unter Windows nur eine .exe-Datei erlaubt.",
   errModelFileNotFound: "Die Modelldatei wurde nicht gefunden. Sie wurde vielleicht gelöscht oder verschoben.",
-  errBackupEntryNameInvalid: "Das Backup enthält einen ungültigen Namen.",
+  errBackupEntryNameInvalid: "Das Backup enthält eine Datei mit unerlaubtem Namen (zum Beispiel mit Pfadangabe oder Steuerzeichen). Es ist beschädigt oder nicht von dieser App erstellt. Es wurde nichts eingespielt; erstelle die Sicherung neu.",
   errBackupEntryNameUnsafeOnWindows: "Das Backup enthält einen Namen, der unter Windows nicht sicher ist.",
   errUpdateNoLongerAvailable: "Es ist kein Update mehr verfügbar.",
   errUpdateNotDownloaded: "Es liegt kein heruntergeladenes Update vor.",
