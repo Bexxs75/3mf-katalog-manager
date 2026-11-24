@@ -37,6 +37,16 @@ describe('folder tree: folders that are gone from disk', () => {
     expect(fine).not.toHaveAttribute('title');
     expect(fine).toHaveAccessibleName(expect.not.stringContaining(de.folderMissingOnDisk));
   });
+  it('lets the badge shrink before the name, so the name of a missing folder stays readable', () => {
+    render(<Provider><FolderTree folders={folders} totalModelCount={37} activeFolderId="all" onSelect={vi.fn()} /></Provider>);
+    const missing = screen.getByText('Altes Zeug').closest('[tabindex]') as HTMLElement;
+    expect(screen.getByText('Altes Zeug').className).toContain('min-w-[8ch]');
+    const badge = within(missing).getByText(de.folderMissingOnDisk);
+    expect(badge.className).toContain('shrink ');
+    expect(badge.className).not.toContain('shrink-0');
+    expect(badge.className).toContain('text-ellipsis');
+    expect(screen.getByText('Deko').className).not.toContain('min-w-');
+  });
   it('keeps click and keyboard selection working on a missing folder', () => {
     const onSelect = vi.fn();
     render(<Provider><FolderTree folders={folders} totalModelCount={37} activeFolderId="all" onSelect={onSelect} /></Provider>);
