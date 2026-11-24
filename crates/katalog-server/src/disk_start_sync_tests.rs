@@ -191,13 +191,25 @@ async fn at_most_two_hundred_files_are_taken_over_and_the_rest_stays_open() {
 #[tokio::test]
 async fn an_unreachable_empty_or_replaced_root_means_nothing_is_applied() {
     // Two roots: models/x/a (with the upload folder) and models/x/b.
-    for case in ["empty", "gone", "replaced"] {
+    for case in ["empty", "empty-with-trash", "gone", "replaced"] {
         let f = Fixture::with_layout(true, true).await;
         f.switches(true, true);
         f.put_in("models/x/a", "new.obj", OBJ);
         f.put_in("models/x/b", "known.obj", OBJ);
         f.row_for("models/x/b", "known.obj");
         match case {
+            // Unmounted volume: an empty mount point that holds nothing but the trash folder the
+            // server creates in every root at its start (the folder stays!).
+            "empty-with-trash" => {
+                for entry in std::fs::read_dir(f.dir.join("models/x/b")).unwrap() {
+                    let path = entry.unwrap().path();
+                    if path.file_name().is_some_and(|n| n == katalog_core::fsops::TRASH) {
+                        continue;
+                    }
+                    if path.is_dir() { std::fs::remove_dir_all(path).unwrap() } else { std::fs::remove_file(path).unwrap() }
+                }
+                assert!(f.dir.join("models/x/b").join(katalog_core::fsops::TRASH).is_dir(), "the trash folder is there");
+            }
             // Empty root (also without the hidden trash folder, as an unmounted volume is).
             "empty" => {
                 for entry in std::fs::read_dir(f.dir.join("models/x/b")).unwrap() {
@@ -221,6 +233,20 @@ async fn an_unreachable_empty_or_replaced_root_means_nothing_is_applied() {
             "{case}"
         );
     }
+}
+
+#[tokio::test]
+async fn a_root_with_content_next_to_the_trash_folder_stays_usable() {
+    let f = Fixture::with_layout(true, true).await;
+    f.switches(true, true);
+    f.put_in("models/x/a", "new.obj", OBJ);
+    f.put_in("models/x/b", "known.obj", OBJ);
+    f.row_for("models/x/b", "known.obj");
+    assert!(f.dir.join("models/x/b").join(katalog_core::fsops::TRASH).is_dir());
+    let result = f.run().await;
+    assert_eq!(result.unreachable_roots, 0);
+    assert_eq!(result.new_files, 1);
+    assert_eq!(result.applied.map(|a| (a.added, a.failed)), Some((1, 0)));
 }
 
 #[tokio::test]

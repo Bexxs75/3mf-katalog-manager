@@ -473,15 +473,27 @@ mod unclear_and_gone_folders {
         assert!(issues.orphaned.is_empty());
         assert_eq!(reasons(&issues), vec![(0, "a.3mf".to_string(), UnclearReason::Unreachable)]);
 
+        // Only the server's trash folder in the root: still an empty (unmounted) root.
+        let trashed = crate::unique_test_dir("ci-trash-only").canonicalize().unwrap();
+        fs::create_dir(trashed.join(crate::fsops::TRASH)).unwrap();
+        let conn = catalog_at(&[&trashed.join("a.3mf")]);
+        let probe = RootsMissingProbe::new(std::slice::from_ref(&trashed));
+        let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
+        assert!(issues.orphaned.is_empty());
+        assert_eq!(reasons(&issues), vec![(0, "a.3mf".to_string(), UnclearReason::Unreachable)]);
+
         let root = crate::unique_test_dir("ci-replaced-root").canonicalize().unwrap();
         fs::write(root.join("a.3mf"), b"x").unwrap();
         let conn = catalog_at(&[&root.join("a.3mf")]);
         let probe = RootsMissingProbe::new(std::slice::from_ref(&root));
-        fs::rename(&root, root.with_file_name("ci-replaced-root.old")).unwrap();
+        let moved = crate::unique_test_dir("ci-replaced-root-old").canonicalize().unwrap();
+        fs::remove_dir(&moved).unwrap();
+        fs::rename(&root, &moved).unwrap();
         fs::create_dir_all(&root).unwrap();
         let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
         assert!(issues.orphaned.is_empty());
         assert_eq!(reasons(&issues), vec![(0, "a.3mf".to_string(), UnclearReason::Unreachable)]);
+        let _ = fs::remove_dir_all(&moved);
     }
 
     #[test]

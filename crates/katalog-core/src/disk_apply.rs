@@ -20,7 +20,7 @@
 use crate::db;
 use crate::db::models::NewFile;
 use crate::disk_report::{self, Presence, Root as ReportRoot, RootStatus};
-use crate::fsops::{Access, Error as FsError, FsContext, Identity, Protection, TRASH};
+use crate::fsops::{Access, Error as FsError, FsContext, Identity, Protection, is_root_content};
 use crate::import::files::{is_ignored_import_path, is_model_extension, read_web_model, WebImportLimits};
 use crate::rescan::{FileStamp, RescanError, StepReader};
 use crate::upload_fs::Directory;
@@ -287,7 +287,7 @@ impl Anchored {
     pub fn root_usable(&self, conn: &Connection, root: usize) -> bool {
         let Some(slot) = self.slots.get(root).copied().flatten() else { return false };
         let Ok(names) = self.ctx.roots[slot].handle.names() else { return false };
-        let has_content = names.iter().any(|n| n != "." && n != ".." && n != TRASH);
+        let has_content = names.iter().any(|n| is_root_content(n));
         has_content || !self.catalog_holds_models_below(conn, root)
     }
 
