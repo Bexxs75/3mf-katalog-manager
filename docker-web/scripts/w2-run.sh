@@ -78,7 +78,10 @@ phase ui
 expect 'Ordner-weg: 4 models in the trash' "$(db "$(named Ordner-weg 'NOT NULL')")" 4
 expect 'Archiv-alt: 3 models in the trash' "$(db "$(named Archiv-alt 'NOT NULL')")" 3
 expect 'trashed in total (4 + 3 folder rows + 2 single rows)' "$(db "$trashed")" 9
-expect 'rows not hard-deleted: 36 seeded + 31 new + 3 renamed-free (all rows still there)' "$(db "SELECT count(*) FROM files")" 67
+expect 'all 67 rows still in the table (36 seeded + 31 taken over; nothing hard-deleted)' "$(db "SELECT count(*) FROM files")" 67
+expect 'active models after the dialogs (67 - 9 in the trash)' "$(db "$active")" 58
+expect 'date rename: 2 files in beta carry the date prefix on disk' "$(find "$WORK/models/beta" -name '20??-??-??_??-??_Beta-[23].3mf' | wc -l | tr -d ' ')" 2
+expect 'date rename: the catalog knows the new names' "$(db "SELECT count(*) FROM files WHERE path GLOB '/data/beta/20??-??-??_??-??_Beta-[23].3mf'")" 2
 expect 'unclear models untouched (Sub, Verlinkt)' "$(db "SELECT count(*) FROM files WHERE (path LIKE '%Sub/%' OR path LIKE '%Verlinkt/%') AND deleted_at IS NULL")" 2
 expect 'beta/Beta-1 still active (start check must not remove)' "$(db "$(named Beta-1)")" 1
 
@@ -88,6 +91,7 @@ before=$(db "$active")
 start_container
 phase startup
 expect 'start check took over exactly the 3 late files' "$(( $(db "$active") - before ))" 3
+expect 'active models after the start check (58 + 3)' "$(db "$active")" 61
 expect 'start check removed nothing: trash unchanged' "$(db "$trashed")" 9
 expect 'beta/Beta-1 still active after the start check' "$(db "$(named Beta-1)")" 1
 
@@ -95,8 +99,12 @@ expect 'beta/Beta-1 still active after the start check' "$(db "$(named Beta-1)")
 docker stop "$NAME" >/dev/null
 find "$WORK/models/beta" -mindepth 1 -maxdepth 1 ! -name '.katalog-papierkorb' -exec rm -rf {} +
 mkdir -p "$WORK/models/beta/.katalog-papierkorb"
+ls -a "$WORK/models/beta" | tr '\n' ' ' | sed 's/^/beta before the restart: /'; echo
+active_before=$(db "$active")
 start_container
 phase emptyroot
+expect 'empty root: nothing taken over or removed (active unchanged)' "$(db "$active")" "$active_before"
+expect 'empty root: trash unchanged' "$(db "$trashed")" 9
 
 echo "DB checks: $((checks - failed))/$checks ok"
 [ "$failed" -eq 0 ]
