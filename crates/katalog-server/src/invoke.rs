@@ -222,6 +222,19 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
 
 /// Encoded picture bytes after which `list_file_images` defers the remaining entries.
 const IMAGE_RESPONSE_BUDGET: usize = 24 * 1024 * 1024;
+// The two list commands that answer with every row of a table. Measured with 100 000 rows:
+// ~71 MB / ~580 MB RSS (summaries), ~90 MB / ~690 MB RSS (trash). Past these counts the
+// answer is refused (`webLimitReached`) before any row is loaded; ordinary catalogs are
+// unaffected (50 000 summaries are ~36 MB). Server path only, the desktop calls the core directly.
+const MAX_LIST_SUMMARIES: i64 = 50_000;
+const MAX_LIST_TRASH: i64 = 20_000;
+fn guard_row_count(conn: &rusqlite::Connection, count_sql: &str, max: i64) -> Result<(), ReadError> {
+    let count: i64 = conn.query_row(count_sql, [], |r| r.get(0)).map_err(|e| ReadError::from(db::error::DbError::from(e)))?;
+    if count > max {
+        return Err(ReadError::coded_with(ErrorCode::WebLimitReached, [max]));
+    }
+    Ok(())
+}
 pub const READ_COMMANDS: &[&str] = &[
     "list_source_dirs",
     "list_source_folders",
@@ -671,7 +684,10 @@ pub async fn invoke(
                 }
                 encode(companion_read::image_data_uri(&mut file, head, &row.name).map_err(companion_error)?)
             }
-            "list_file_summaries" => encode(read::list_file_summaries(&conn)?),
+            "list_file_summaries" => {
+                guard_row_count(&conn, "SELECT COUNT(*) FROM files WHERE deleted_at IS NULL", MAX_LIST_SUMMARIES)?;
+                encode(read::list_file_summaries(&conn)?)
+            }
             "list_all_file_tags" => encode(read::list_all_file_tags(&conn)?),
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
             "list_tag_counts" => encode(read::list_tag_counts(&conn)?),
@@ -699,6 +715,7 @@ pub async fn invoke(
                 encode(read::list_collection_files(&conn, file_id.unwrap())?)
             }
             "list_trash" => {
+                guard_row_count(&conn, "SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL", MAX_LIST_TRASH)?;
                 let mut value = serde_json::to_value(read::list_trash(&conn)?).map_err(|_| ReadError::coded(ErrorCode::WebServerInternal))?;
                 let desktop_ids = katalog_core::fsops::desktop_trash_ids(&conn)
                     .map_err(|_| ReadError::coded(ErrorCode::WebServerInternal))?;
@@ -1106,6 +1123,15 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
         panic!("permits were never released");
+    }
+    #[test]
+    fn the_row_guard_refuses_past_the_limit_and_lets_the_limit_itself_through() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE files (id INTEGER PRIMARY KEY, deleted_at TEXT); INSERT INTO files (deleted_at) VALUES (NULL),(NULL),(NULL),('x');").unwrap();
+        let live = "SELECT COUNT(*) FROM files WHERE deleted_at IS NULL";
+        assert_eq!(guard_row_count(&conn, live, 3), Ok(()));
+        assert_eq!(guard_row_count(&conn, live, 2), Err(ReadError::coded_with(ErrorCode::WebLimitReached, [2])));
+        assert_eq!(guard_row_count(&conn, "SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL", 1), Ok(()));
     }
     #[tokio::test]
     async fn the_new_read_commands_respect_the_barrier() {
