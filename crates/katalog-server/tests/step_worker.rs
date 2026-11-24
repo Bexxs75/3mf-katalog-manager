@@ -3,7 +3,7 @@
 //! sandbox as a real parse.
 #![cfg(target_os = "linux")]
 
-use katalog_server::step_worker::{Limits, Mode, StepWorker, WorkerError, SELFTEST_ENV};
+use katalog_server::step_worker::{Limits, Mode, StepWorker, WorkerError, SELFTEST_ENV, SELFTEST_PATH_ENV};
 use std::fs::File;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -64,9 +64,63 @@ fn a_worker_that_blocks_is_killed_at_the_wall_deadline() {
 
 #[test]
 fn an_abort_is_a_coded_failure_and_the_caller_lives_on() {
-    assert_eq!(selftest(&worker(quick()), "selftest-abort", None), Err(WorkerError::Unreadable));
+    // A crash is not a verdict on the file: the caller must not treat it as "unreadable".
+    assert_eq!(selftest(&worker(quick()), "selftest-abort", None), Err(WorkerError::Crashed));
+    assert_eq!(selftest(&worker(quick()), "selftest-panic", None), Err(WorkerError::Crashed));
     // The same worker object keeps working afterwards.
     assert_eq!(worker(quick()).run_raw("probe", None, &[]), Ok(Vec::new()));
+}
+
+#[test]
+fn files_the_server_can_read_stay_closed_to_the_worker() {
+    // Stands for the catalog database and the password file: same owner, readable for the
+    // server, outside every rule of the worker.
+    let (dir, _) = temp_file("web-auth.json", b"{\"secret\":true}");
+    let secret = dir.join("web-auth.json");
+    assert!(std::fs::read(&secret).is_ok());
+    let read = |path: &std::path::Path| {
+        worker(quick()).run_raw("selftest-read", None, &[(SELFTEST_ENV, "1"), (SELFTEST_PATH_ENV, path.to_str().unwrap())])
+    };
+    assert_eq!(read(&secret), Err(WorkerError::Unreadable));
+    // Other processes' /proc entries too (here the server's own environment).
+    let parent = PathBuf::from(format!("/proc/{}/environ", std::process::id()));
+    assert_eq!(read(&parent), Err(WorkerError::Unreadable));
+    // What the runtime needs stays readable, so the rules are a real allow-list.
+    if std::path::Path::new("/etc/ld.so.cache").exists() {
+        assert!(read(std::path::Path::new("/etc/ld.so.cache")).is_ok());
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn the_worker_cannot_change_the_file_it_reads() {
+    use std::os::unix::fs::PermissionsExt;
+    let (dir, file) = temp_file("victim.step", b"ISO-10303-21;\n");
+    let path = dir.join("victim.step");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let before = std::fs::metadata(&path).unwrap();
+    let report = selftest(&worker(quick()), "selftest-mutate", Some(file)).unwrap();
+    let report = String::from_utf8(report).unwrap();
+    let errno = |name: &str| {
+        report
+            .lines()
+            .find_map(|l| l.strip_prefix(&format!("{name}=")))
+            .unwrap_or_else(|| panic!("{name} missing in {report}"))
+            .to_string()
+    };
+    let eperm = libc::EPERM.to_string();
+    // Refused by the system-call filter (EPERM) and not merely by file permissions, so the
+    // check holds even where Landlock has no truncate right.
+    for name in ["open_rdonly_trunc", "openat_rdonly_trunc", "fchmod", "fchmodat", "fchown", "futimens", "utimensat", "ftruncate"] {
+        assert_eq!(errno(name), eperm, "{name}: {report}");
+    }
+    let fchmodat2 = errno("fchmodat2");
+    assert!(fchmodat2 == eperm || fchmodat2 == libc::ENOSYS.to_string(), "{report}");
+    let after = std::fs::metadata(&path).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"ISO-10303-21;\n");
+    assert_eq!(after.permissions().mode() & 0o7777, 0o644);
+    assert_eq!(after.modified().unwrap(), before.modified().unwrap());
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

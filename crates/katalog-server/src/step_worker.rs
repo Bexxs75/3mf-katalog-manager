@@ -4,8 +4,10 @@
 //! loop or a runaway allocation in it must not take the server down, so the server never calls
 //! OCCT itself: it starts its own binary as `katalog-server step-worker <mode> ...` with the
 //! admitted file as standard input and reads the result from standard output. The worker first
-//! limits itself (resource limits, no core dumps, dies with its parent, a seccomp filter against
-//! network, exec, process control and writing files) and only then touches the input. The
+//! limits itself (resource limits, no core dumps, dies with its parent, Landlock read access to
+//! the system libraries and its input only, a seccomp filter against network, exec, process
+//! control and changing files) and only then touches the input. Without Landlock it does not run
+//! at all. The
 //! server adds what the worker cannot enforce on itself: a wall-clock deadline, an output cap and
 //! a small number of workers at a time.
 //!
@@ -34,10 +36,17 @@ pub const EXIT_UNSUPPORTED: i32 = 69;
 pub const EXIT_SANDBOX: i32 = 70;
 pub const EXIT_NOT_REGULAR: i32 = 71;
 pub const EXIT_OUTPUT: i32 = 72;
+/// The kernel offers no Landlock, or the container forbids it: without it the parser could read
+/// every file the server can, so the worker refuses to run at all.
+pub const EXIT_NO_LANDLOCK: i32 = 73;
+/// Reading the input handle failed below the parser (I/O, not the file's content).
+pub const EXIT_INPUT: i32 = 74;
 
 /// Lets the test-only modes run. The server starts workers with an empty environment, so a
 /// request can never reach them.
 pub const SELFTEST_ENV: &str = "KATALOG_STEP_WORKER_SELFTEST";
+/// A path for the self-test modes that probe the sandbox from inside.
+pub const SELFTEST_PATH_ENV: &str = "KATALOG_STEP_WORKER_SELFTEST_PATH";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -88,10 +97,20 @@ pub enum WorkerError {
     /// Over the triangle limit, over the output cap, or out of CPU or wall time.
     TooComplex,
     NoGeometry,
-    /// The parser rejected the file or died on it.
+    /// The parser looked at the file and said it cannot read it. Only this outcome (and
+    /// `NoGeometry`) says something about the file itself.
     Unreadable,
+    /// The worker died (signal, abort, panic) or ended with a status it does not plan. Says
+    /// nothing reliable about the file, so nothing may be concluded from it.
+    Crashed,
+    /// The worker ended "successfully" but its answer is broken, or it failed on its own
+    /// channels or its input handle.
+    Protocol,
     /// This build or this host cannot run the worker.
     Unavailable,
+    /// The kernel or the container offers no Landlock, so the worker cannot confine its file
+    /// access and does not run.
+    NoIsolation,
     /// All worker places are taken.
     Busy,
 }
@@ -130,6 +149,12 @@ impl StepWorker {
         let candidate = Self::with_exe(exe, limits, Self::PARALLEL);
         match candidate.spawn_and_wait(Mode::Probe, None, Duration::from_secs(10)) {
             Ok(_) => candidate,
+            Err(WorkerError::NoIsolation) => {
+                eprintln!(
+                    "STEP-Vorschau deaktiviert: Landlock (Dateizugriffsschutz) ist im Kernel nicht verfügbar oder vom Container verboten"
+                );
+                Self::disabled()
+            }
             Err(err) => {
                 eprintln!("STEP-Vorschau deaktiviert: Prüfprozess fehlgeschlagen ({err:?})");
                 Self::disabled()
@@ -271,19 +296,23 @@ fn classify(status: std::process::ExitStatus, read_ok: bool, out: Vec<u8>) -> Re
                 return Err(WorkerError::TooComplex);
             }
             let _ = signal;
-            return Err(WorkerError::Unreadable);
+            // SIGSEGV, SIGABRT and the like: a crash is not a verdict on the file.
+            return Err(WorkerError::Crashed);
         }
     }
     match status.code() {
         Some(0) if read_ok => Ok(out),
-        Some(0) => Err(WorkerError::Unreadable),
+        Some(0) => Err(WorkerError::Protocol),
         Some(EXIT_TOO_LARGE) => Err(WorkerError::TooLarge),
         Some(EXIT_TOO_COMPLEX) => Err(WorkerError::TooComplex),
         Some(EXIT_NO_GEOMETRY) => Err(WorkerError::NoGeometry),
+        Some(EXIT_UNREADABLE) => Err(WorkerError::Unreadable),
+        Some(EXIT_NOT_REGULAR | EXIT_OUTPUT | EXIT_INPUT) => Err(WorkerError::Protocol),
         Some(EXIT_UNSUPPORTED | EXIT_SANDBOX | EXIT_USAGE) => Err(WorkerError::Unavailable),
-        // Unreadable, not a regular file, failed to write, or an exit we did not plan (for example
-        // a Rust panic or an allocation failure under the address-space limit).
-        _ => Err(WorkerError::Unreadable),
+        Some(EXIT_NO_LANDLOCK) => Err(WorkerError::NoIsolation),
+        // A Rust panic (101), an allocation failure under the address-space limit or anything
+        // else the worker does not plan.
+        _ => Err(WorkerError::Crashed),
     }
 }
 
@@ -327,8 +356,8 @@ mod sandbox {
         // The result channel is a copy of fd 1; fd 1 itself goes to /dev/null, because OCCT
         // prints progress and warnings to std::cout and would corrupt the answer.
         let Ok(mut out) = take_stdout() else { return EXIT_SANDBOX };
-        if enter(address_space_mib, cpu_seconds, parent).is_err() {
-            return EXIT_SANDBOX;
+        if let Err(code) = enter(address_space_mib, cpu_seconds, parent) {
+            return code;
         }
         let result = match mode {
             "probe" => return probe(),
@@ -366,31 +395,49 @@ mod sandbox {
         if unsafe { libc::setrlimit(resource, &limit) } == 0 { Ok(()) } else { Err(()) }
     }
 
-    fn enter(address_space_mib: u64, cpu_seconds: u64, parent: u32) -> Result<(), ()> {
+    fn enter(address_space_mib: u64, cpu_seconds: u64, parent: u32) -> Result<(), i32> {
         // SAFETY: prctl with integer arguments only.
         if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong, 0, 0, 0) } != 0 {
-            return Err(());
+            return Err(EXIT_SANDBOX);
         }
         // The parent may have died before the line above; then nobody waits for the answer. The
         // server names itself, because in a container it often is PID 1 and "reparented to 1"
         // cannot be told from "started by 1".
         // SAFETY: getppid cannot fail.
         if unsafe { libc::getppid() } as u32 != parent {
-            return Err(());
+            return Err(EXIT_SANDBOX);
         }
-        set_limit(libc::RLIMIT_CORE, 0, 0)?;
-        // The worker writes no files; pipes and /dev/null are not affected by this limit.
-        set_limit(libc::RLIMIT_FSIZE, 0, 0)?;
-        set_limit(libc::RLIMIT_NOFILE, 32, 32)?;
-        let bytes = address_space_mib.saturating_mul(1024 * 1024);
-        set_limit(libc::RLIMIT_AS, bytes, bytes)?;
-        // Soft limit sends SIGXCPU, the hard one a second later SIGKILL.
-        set_limit(libc::RLIMIT_CPU, cpu_seconds, cpu_seconds.saturating_add(1))?;
-        super::filter::apply().map_err(|_| ())
+        let limits = || -> Result<(), ()> {
+            set_limit(libc::RLIMIT_CORE, 0, 0)?;
+            // The worker writes no files; pipes and /dev/null are not affected by this limit.
+            set_limit(libc::RLIMIT_FSIZE, 0, 0)?;
+            set_limit(libc::RLIMIT_NOFILE, 32, 32)?;
+            let bytes = address_space_mib.saturating_mul(1024 * 1024);
+            set_limit(libc::RLIMIT_AS, bytes, bytes)?;
+            // Soft limit sends SIGXCPU, the hard one a second later SIGKILL.
+            set_limit(libc::RLIMIT_CPU, cpu_seconds, cpu_seconds.saturating_add(1))
+        };
+        limits().map_err(|_| EXIT_SANDBOX)?;
+        // Required by Landlock and seccomp alike for an unprivileged process.
+        // SAFETY: prctl with integer arguments only.
+        if unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } != 0 {
+            return Err(EXIT_SANDBOX);
+        }
+        // The file view first: the seccomp filter cannot tell a library from the catalog
+        // database, Landlock can.
+        super::landlock::restrict().map_err(|e| match e {
+            super::landlock::Error::Missing => EXIT_NO_LANDLOCK,
+            super::landlock::Error::Failed => EXIT_SANDBOX,
+        })?;
+        super::filter::apply().map_err(|_| EXIT_SANDBOX)
     }
 
     /// Exits 0 only if the sandbox blocks what it must and still allows threads.
     fn probe() -> i32 {
+        // Landlock holds: the root directory is outside every rule, yet readable for the server.
+        if std::fs::read_dir("/").is_ok() {
+            return EXIT_SANDBOX;
+        }
         // SAFETY: plain syscalls with constant arguments; a returned descriptor is closed at once.
         let socket = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
         if socket >= 0 {
@@ -427,6 +474,28 @@ mod sandbox {
                 std::thread::sleep(Duration::from_secs(1));
             },
             "selftest-abort" => std::process::abort(),
+            "selftest-panic" => panic!("worker self-test"),
+            "selftest-read" => {
+                // A file the server could read: inside the sandbox it must stay closed.
+                let Some(path) = std::env::var_os(SELFTEST_PATH_ENV) else { return EXIT_USAGE };
+                let mut content = Vec::new();
+                match File::open(path).and_then(|mut f| f.read_to_end(&mut content)) {
+                    Ok(_) => match out.write_all(&content) {
+                        Ok(()) => 0,
+                        Err(_) => EXIT_OUTPUT,
+                    },
+                    Err(_) => EXIT_UNREADABLE,
+                }
+            }
+            "selftest-mutate" => {
+                // Every way to change the input file the worker holds open, with the errno each
+                // attempt got ("ok" if it went through).
+                let report = mutate_input();
+                match out.write_all(report.as_bytes()) {
+                    Ok(()) => 0,
+                    Err(_) => EXIT_OUTPUT,
+                }
+            }
             "selftest-flood" => {
                 let block = vec![0x5au8; 1 << 16];
                 while out.write_all(&block).is_ok() {}
@@ -457,6 +526,49 @@ mod sandbox {
             _ => EXIT_USAGE,
         }
     }
+
+    fn mutate_input() -> String {
+        fn outcome(result: libc::c_long) -> String {
+            if result >= 0 {
+                "ok".into()
+            } else {
+                std::io::Error::last_os_error().raw_os_error().unwrap_or(0).to_string()
+            }
+        }
+        let input = c"/proc/self/fd/0";
+        let mut lines = Vec::new();
+        // SAFETY: every call gets constant arguments, a NUL-terminated path or null pointers
+        // (which mean "now" for the time calls); a returned descriptor is closed at once.
+        unsafe {
+            let fd = libc::open(input.as_ptr(), libc::O_RDONLY | libc::O_TRUNC);
+            if fd >= 0 {
+                libc::close(fd);
+            }
+            lines.push(format!("open_rdonly_trunc={}", outcome(fd as libc::c_long)));
+            let fd = libc::openat(libc::AT_FDCWD, input.as_ptr(), libc::O_RDONLY | libc::O_TRUNC);
+            if fd >= 0 {
+                libc::close(fd);
+            }
+            lines.push(format!("openat_rdonly_trunc={}", outcome(fd as libc::c_long)));
+            lines.push(format!("fchmod={}", outcome(libc::fchmod(0, 0o666) as libc::c_long)));
+            lines.push(format!(
+                "fchmodat={}",
+                outcome(libc::fchmodat(libc::AT_FDCWD, input.as_ptr(), 0o666, 0) as libc::c_long)
+            ));
+            lines.push(format!(
+                "fchmodat2={}",
+                outcome(libc::syscall(super::filter::SYS_FCHMODAT2, libc::AT_FDCWD, input.as_ptr(), 0o666, 0))
+            ));
+            lines.push(format!("fchown={}", outcome(libc::fchown(0, libc::getuid(), libc::getgid()) as libc::c_long)));
+            lines.push(format!("futimens={}", outcome(libc::futimens(0, std::ptr::null()) as libc::c_long)));
+            lines.push(format!(
+                "utimensat={}",
+                outcome(libc::utimensat(libc::AT_FDCWD, input.as_ptr(), std::ptr::null(), 0) as libc::c_long)
+            ));
+            lines.push(format!("ftruncate={}", outcome(libc::ftruncate(0, 0) as libc::c_long)));
+        }
+        lines.join("\n")
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -464,6 +576,157 @@ mod sandbox {
     /// Without the Linux limits the worker would parse unprotected; it refuses instead.
     pub fn run(_mode: &str, _address_space_mib: u64, _cpu_seconds: u64, _parent: u32) -> i32 {
         super::EXIT_SANDBOX
+    }
+}
+
+/// Landlock through the raw system calls: the worker keeps read access to the system libraries
+/// and data OCCT and the C library load at run time, to its own /proc entry, and to the one
+/// input file it was handed, and loses every other file access, including the catalog database
+/// and the password file the server itself can read.
+#[cfg(target_os = "linux")]
+mod landlock {
+    use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+
+    pub enum Error {
+        /// No Landlock in this kernel, or the container's own filter forbids it.
+        Missing,
+        /// Landlock exists but the ruleset could not be built or entered.
+        Failed,
+    }
+
+    const CREATE_RULESET_VERSION: u32 = 1;
+    const RULE_PATH_BENEATH: libc::c_int = 1;
+
+    const FS_READ_FILE: u64 = 1 << 2;
+    const FS_READ_DIR: u64 = 1 << 3;
+    /// Every access right of the first ABI; later ABIs add REFER, TRUNCATE and IOCTL_DEV.
+    const FS_ABI1: u64 = (1 << 13) - 1;
+    const FS_REFER: u64 = 1 << 13;
+    const FS_TRUNCATE: u64 = 1 << 14;
+    const FS_IOCTL_DEV: u64 = 1 << 15;
+    const NET_BIND_TCP: u64 = 1 << 0;
+    const NET_CONNECT_TCP: u64 = 1 << 1;
+    const SCOPE_ABSTRACT_UNIX_SOCKET: u64 = 1 << 0;
+    const SCOPE_SIGNAL: u64 = 1 << 1;
+
+    /// Paths read below which is allowed. Library loading, locale and character set data,
+    /// the loader cache and the CPU list (thread pool size) are all OCCT and glibc need after
+    /// the worker has started; a missing entry is skipped.
+    const READABLE: &[&str] = &["/usr", "/lib", "/lib64", "/etc/ld.so.cache", "/sys/devices/system/cpu", "/proc/self"];
+
+    #[repr(C)]
+    struct RulesetAttr {
+        handled_access_fs: u64,
+        handled_access_net: u64,
+        scoped: u64,
+    }
+
+    #[repr(C, packed)]
+    struct PathBeneathAttr {
+        allowed_access: u64,
+        parent_fd: i32,
+    }
+
+    fn abi() -> Option<i64> {
+        // SAFETY: the version query takes a null attribute pointer and size 0 by definition.
+        let version = unsafe {
+            libc::syscall(
+                libc::SYS_landlock_create_ruleset,
+                std::ptr::null::<RulesetAttr>(),
+                0usize,
+                CREATE_RULESET_VERSION,
+            )
+        };
+        (version >= 1).then_some(version)
+    }
+
+    fn add_rule(ruleset: &OwnedFd, target: BorrowedFd<'_>, access: u64) -> Result<(), Error> {
+        let attr = PathBeneathAttr { allowed_access: access, parent_fd: target.as_raw_fd() };
+        // SAFETY: the attribute is a live local of the layout the kernel expects.
+        let result = unsafe {
+            libc::syscall(
+                libc::SYS_landlock_add_rule,
+                ruleset.as_raw_fd(),
+                RULE_PATH_BENEATH,
+                &attr as *const PathBeneathAttr,
+                0u32,
+            )
+        };
+        if result == 0 { Ok(()) } else { Err(Error::Failed) }
+    }
+
+    /// Read rights for `path` and what lies below it; files only take file rights.
+    fn allow_path(ruleset: &OwnedFd, path: &str) -> Result<(), Error> {
+        let Ok(c_path) = std::ffi::CString::new(path) else { return Err(Error::Failed) };
+        // SAFETY: NUL-terminated path; O_PATH opens nothing for reading or writing.
+        let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_PATH | libc::O_CLOEXEC) };
+        if fd < 0 {
+            return match std::io::Error::last_os_error().raw_os_error() {
+                Some(libc::ENOENT | libc::ENOTDIR) => Ok(()),
+                _ => Err(Error::Failed),
+            };
+        }
+        // SAFETY: a fresh descriptor this function owns.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let is_dir = std::fs::File::from(fd.try_clone().map_err(|_| Error::Failed)?)
+            .metadata()
+            .map_err(|_| Error::Failed)?
+            .is_dir();
+        let access = if is_dir { FS_READ_FILE | FS_READ_DIR } else { FS_READ_FILE };
+        add_rule(ruleset, fd.as_fd(), access)
+    }
+
+    pub fn restrict() -> Result<(), Error> {
+        let Some(abi) = abi() else { return Err(Error::Missing) };
+        let mut fs = FS_ABI1;
+        if abi >= 2 {
+            fs |= FS_REFER;
+        }
+        if abi >= 3 {
+            fs |= FS_TRUNCATE;
+        }
+        if abi >= 5 {
+            fs |= FS_IOCTL_DEV;
+        }
+        let attr = RulesetAttr {
+            handled_access_fs: fs,
+            handled_access_net: if abi >= 4 { NET_BIND_TCP | NET_CONNECT_TCP } else { 0 },
+            scoped: if abi >= 6 { SCOPE_ABSTRACT_UNIX_SOCKET | SCOPE_SIGNAL } else { 0 },
+        };
+        // SAFETY: the attribute is a live local and its size is passed with it.
+        let ruleset = unsafe {
+            libc::syscall(
+                libc::SYS_landlock_create_ruleset,
+                &attr as *const RulesetAttr,
+                std::mem::size_of::<RulesetAttr>(),
+                0u32,
+            )
+        };
+        if ruleset < 0 {
+            return Err(Error::Failed);
+        }
+        // SAFETY: a fresh descriptor this function owns.
+        let ruleset = unsafe { OwnedFd::from_raw_fd(ruleset as i32) };
+        for path in READABLE {
+            allow_path(&ruleset, path)?;
+        }
+        // The input: OCCT opens it again by path through /proc/self/fd/0, which Landlock checks
+        // against the file itself. Only a regular file gets a rule (the probe has /dev/null).
+        // SAFETY: fd 0 stays open for the whole life of the worker.
+        let input = unsafe { BorrowedFd::borrow_raw(0) };
+        let input_is_file = input
+            .try_clone_to_owned()
+            .ok()
+            .and_then(|fd| std::fs::File::from(fd).metadata().ok())
+            .is_some_and(|m| m.is_file());
+        if input_is_file {
+            add_rule(&ruleset, input, FS_READ_FILE)?;
+        }
+        // SAFETY: plain syscall on the ruleset descriptor; no_new_privs is already set.
+        if unsafe { libc::syscall(libc::SYS_landlock_restrict_self, ruleset.as_raw_fd(), 0u32) } != 0 {
+            return Err(Error::Failed);
+        }
+        Ok(())
     }
 }
 
@@ -476,6 +739,13 @@ mod filter {
     use std::collections::BTreeMap;
 
     type Rules = BTreeMap<i64, Vec<SeccompRule>>;
+
+    // Generic numbers, the same on x86_64 and aarch64; libc does not name all of them for every
+    // target. A kernel that predates one answers ENOSYS anyway.
+    pub(super) const SYS_FCHMODAT2: i64 = 452;
+    const SYS_SETXATTRAT: i64 = 463;
+    const SYS_REMOVEXATTRAT: i64 = 466;
+    const SYS_FILE_SETATTR: i64 = 469;
 
     fn rule(conditions: Vec<Cond>) -> Result<SeccompRule, seccompiler::BackendError> {
         SeccompRule::new(conditions)
@@ -497,6 +767,12 @@ mod filter {
             libc::SYS_truncate, libc::SYS_openat2, libc::SYS_io_uring_setup, libc::SYS_userfaultfd,
             libc::SYS_tkill, libc::SYS_pidfd_open, libc::SYS_pidfd_send_signal, libc::SYS_pidfd_getfd,
             libc::SYS_name_to_handle_at, libc::SYS_open_by_handle_at, libc::SYS_process_madvise,
+            // Changing a file without writing to it: rights, owner, times, size, attributes.
+            // Landlock does not cover these, and a read-only handle is enough for most of them.
+            libc::SYS_fchmod, SYS_FCHMODAT2, libc::SYS_fchown, libc::SYS_utimensat, libc::SYS_ftruncate,
+            libc::SYS_fallocate, libc::SYS_setxattr, libc::SYS_lsetxattr, libc::SYS_fsetxattr,
+            libc::SYS_removexattr, libc::SYS_lremovexattr, libc::SYS_fremovexattr, SYS_SETXATTRAT,
+            SYS_REMOVEXATTRAT, SYS_FILE_SETATTR, libc::SYS_fanotify_init, libc::SYS_quotactl,
         ];
         for nr in always {
             rules.insert(nr, Vec::new());
@@ -505,19 +781,24 @@ mod filter {
         for nr in [
             libc::SYS_creat, libc::SYS_mkdir, libc::SYS_rmdir, libc::SYS_unlink, libc::SYS_rename,
             libc::SYS_renameat, libc::SYS_link, libc::SYS_symlink, libc::SYS_chmod, libc::SYS_chown,
-            libc::SYS_lchown, libc::SYS_mknod, libc::SYS_fork, libc::SYS_vfork,
+            libc::SYS_lchown, libc::SYS_mknod, libc::SYS_fork, libc::SYS_vfork, libc::SYS_utime,
+            libc::SYS_utimes, libc::SYS_futimesat,
         ] {
             rules.insert(nr, Vec::new());
         }
     }
 
-    /// Opening for writing or creating, by flag argument `flags_arg` of the open call.
+    /// Opening for writing, creating or truncating, by flag argument `flags_arg` of the open call.
+    /// O_TRUNC counts on its own: Linux empties a file opened O_RDONLY|O_TRUNC if the caller may
+    /// write it, and RLIMIT_FSIZE does not stop a file from shrinking.
     fn writing_opens(flags_arg: u8) -> Result<Vec<SeccompRule>, seccompiler::BackendError> {
         let accmode = libc::O_ACCMODE as u64;
+        let flag = |bit: libc::c_int| Cond::new(flags_arg, Len::Dword, Op::MaskedEq(bit as u64), bit as u64);
         Ok(vec![
             rule(vec![Cond::new(flags_arg, Len::Dword, Op::MaskedEq(accmode), libc::O_WRONLY as u64)?])?,
             rule(vec![Cond::new(flags_arg, Len::Dword, Op::MaskedEq(accmode), libc::O_RDWR as u64)?])?,
-            rule(vec![Cond::new(flags_arg, Len::Dword, Op::MaskedEq(libc::O_CREAT as u64), libc::O_CREAT as u64)?])?,
+            rule(vec![flag(libc::O_CREAT)?])?,
+            rule(vec![flag(libc::O_TRUNC)?])?,
         ])
     }
 
@@ -589,7 +870,9 @@ mod parse {
             E::TooLarge { .. } => EXIT_TOO_LARGE,
             E::TooComplex { .. } | E::TooManyFaces { .. } => EXIT_TOO_COMPLEX,
             E::NoGeometry => EXIT_NO_GEOMETRY,
-            E::Io(_) | E::ReadFailed | E::TessellationFailed => EXIT_UNREADABLE,
+            E::ReadFailed | E::TessellationFailed => EXIT_UNREADABLE,
+            // An I/O error is about the handle or the sandbox, not about the file's content.
+            E::Io(_) => EXIT_INPUT,
         }
     }
 
@@ -657,6 +940,30 @@ mod tests {
         let file = File::open(&path).unwrap();
         assert_eq!(worker.run(Mode::Geometry, &file, Duration::from_secs(1)), Err(WorkerError::TooLarge));
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_a_parser_verdict_says_the_file_is_unreadable() {
+        use std::os::unix::process::ExitStatusExt;
+        let exit = |code: i32| std::process::ExitStatus::from_raw(code << 8);
+        let signal = |sig: i32| std::process::ExitStatus::from_raw(sig);
+        assert_eq!(classify(exit(EXIT_UNREADABLE), true, Vec::new()), Err(WorkerError::Unreadable));
+        assert_eq!(classify(exit(EXIT_NO_GEOMETRY), true, Vec::new()), Err(WorkerError::NoGeometry));
+        // A crash, a panic or an exit nobody planned says nothing about the file.
+        assert_eq!(classify(signal(libc::SIGSEGV), true, Vec::new()), Err(WorkerError::Crashed));
+        assert_eq!(classify(signal(libc::SIGABRT), true, Vec::new()), Err(WorkerError::Crashed));
+        assert_eq!(classify(exit(101), true, Vec::new()), Err(WorkerError::Crashed));
+        assert_eq!(classify(exit(1), true, Vec::new()), Err(WorkerError::Crashed));
+        // Broken channels are a protocol failure, also not a verdict.
+        assert_eq!(classify(exit(0), false, Vec::new()), Err(WorkerError::Protocol));
+        assert_eq!(classify(exit(EXIT_OUTPUT), true, Vec::new()), Err(WorkerError::Protocol));
+        assert_eq!(classify(exit(EXIT_INPUT), true, Vec::new()), Err(WorkerError::Protocol));
+        assert_eq!(classify(exit(EXIT_NOT_REGULAR), true, Vec::new()), Err(WorkerError::Protocol));
+        // Resource limits stay resource limits.
+        assert_eq!(classify(signal(libc::SIGXCPU), true, Vec::new()), Err(WorkerError::TooComplex));
+        assert_eq!(classify(signal(libc::SIGKILL), true, Vec::new()), Err(WorkerError::TooComplex));
+        assert_eq!(classify(exit(EXIT_NO_LANDLOCK), true, Vec::new()), Err(WorkerError::NoIsolation));
     }
 
     #[test]

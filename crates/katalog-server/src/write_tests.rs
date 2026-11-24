@@ -2134,6 +2134,22 @@ mod custom_image_and_rescan_tests {
     }
 
     #[tokio::test]
+    async fn a_rescan_that_reads_longer_than_five_seconds_still_gets_the_free_lock() {
+        use crate::write::rescan_hook::SLOW_MS;
+        use std::sync::atomic::Ordering::SeqCst;
+        let f = Fixture::new(true);
+        let path = f.dir.join("slow-model.obj");
+        std::fs::write(&path, OBJ).unwrap();
+        f.catalog_path(&path);
+        // Longer than the five seconds the lock may take, well inside the write request's 30.
+        SLOW_MS.store(6_000, SeqCst);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        SLOW_MS.store(0, SeqCst);
+        assert_eq!(r.status(), 200);
+        assert!(f.stored_hash().is_some());
+    }
+
+    #[tokio::test]
     async fn jpeg_and_webp_covers_are_accepted_over_http() {
         let f = Fixture::new(true);
         for bytes in [&b"\xff\xd8\xff\xe0\x00\x10JFIF"[..], &b"RIFF\x04\x00\x00\x00WEBPVP8 "[..]] {

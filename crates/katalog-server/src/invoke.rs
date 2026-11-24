@@ -443,6 +443,37 @@ pub async fn invoke(
             Err(_) => *error(StatusCode::GATEWAY_TIMEOUT, ErrorCode::RescanTimeout, &[]),
         };
     }
+    // A STEP preview has its own small number of places and must hear "busy" at once instead of
+    // queueing behind 3MF parses, so its type is known before the parser gate is waited for.
+    if command == "get_model_geometry" && gate.step.available() {
+        let (lookup_db, lookup_id) = (db_path.clone(), file_id.clone().unwrap());
+        let source = tokio::task::spawn_blocking(move || {
+            let conn = db::open_read_only(&lookup_db).map_err(ReadError::from)?;
+            read::load_geometry_source(&conn, &lookup_id)
+        })
+        .await;
+        match source {
+            Ok(Ok(source)) if source.file_type == katalog_core::db::models::FileType::Stp => {
+                let Ok(slot) = gate.step.try_slot() else { return step_busy() };
+                let step = gate.step.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    // Place and catalog guard live with the blocking work: a dropped request does
+                    // not free a place while its worker still runs.
+                    let _held = (catalog_guard, slot);
+                    step_geometry(&step, &source.path, &roots)
+                })
+                .await;
+                return match result {
+                    Ok(Ok(response)) => response,
+                    Ok(Err(e)) => read_error(e),
+                    Err(_) => *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]),
+                };
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => return read_error(e),
+            Err(_) => return *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]),
+        }
+    }
     // Both open and parse a 3MF, so both wait for the parser gate.
     let permits = if matches!(command.as_str(), "get_model_geometry" | "read_plate_overview") {
         match gate.acquire().await {
@@ -452,7 +483,6 @@ pub async fn invoke(
     } else {
         None
     };
-    let step = gate.step.clone();
     let result = tokio::task::spawn_blocking(move || -> Result<Response, ReadError> {
         // The permits belong to this closure: cancelling HTTP does not release a running parser.
         let _catalog_guard = catalog_guard;
@@ -569,12 +599,9 @@ pub async fn invoke(
             "get_model_geometry" => {
                 let source = read::load_geometry_source(&conn, &file_id.unwrap())?;
                 drop(conn);
-                // Without a working worker STEP takes the common path, which answers "unsupported".
-                if source.file_type == katalog_core::db::models::FileType::Stp && step.available() {
-                    return step_geometry(&step, &source.path, &roots);
-                }
-                // The read-only web has no configured budgets; the defaults are the
-                // largest values the configuration can set.
+                // STEP with a working worker was answered above; without one it takes the common
+                // path, which answers "unsupported". The read-only web has no configured budgets;
+                // the defaults are the largest values the configuration can set.
                 let bytes = read::get_model_geometry_with_limits(
                     &source.path,
                     Some(&roots),
@@ -598,22 +625,17 @@ pub async fn invoke(
     }
 }
 
-/// A STEP preview from the worker. The file is admitted and opened here; the worker only gets
-/// the handle.
+/// A STEP preview from the worker; the caller holds a worker place. The file is admitted and
+/// opened here; the worker only gets the handle.
 fn step_geometry(
     step: &crate::step_worker::StepWorker,
     path: &std::path::Path,
     roots: &[PathBuf],
 ) -> Result<Response, ReadError> {
-    let slot = match step.try_slot() {
-        Ok(slot) => slot,
-        Err(_) => return Ok(step_busy()),
-    };
     let file = read::open_geometry_file(path, roots)?;
     let bytes = step
         .run(crate::step_worker::Mode::Geometry, &file, step.limits().wall)
         .map_err(step_read_error)?;
-    drop(slot);
     Ok(([("content-type", "application/octet-stream")], bytes).into_response())
 }
 /// Too many STEP previews at once: repeatable, with a hint when to try again.
@@ -633,8 +655,11 @@ pub(crate) fn step_read_error(e: crate::step_worker::WorkerError) -> ReadError {
             .with_code(GeometryErrorCode::TooLarge),
         W::TooComplex => ReadError::coded(ErrorCode::PreviewTooLarge).with_code(GeometryErrorCode::TooLarge),
         W::NoGeometry => ReadError::coded(ErrorCode::GeometryEmpty).with_code(GeometryErrorCode::Unreadable),
-        W::Unreadable => ReadError::coded(ErrorCode::GeometryUnavailable).with_code(GeometryErrorCode::Unreadable),
-        W::Unavailable | W::Busy => ReadError::coded_with(ErrorCode::FileFormatUnsupported, ["step"])
+        // For the viewer a crash or a broken answer means the same as a refused file: no preview.
+        W::Unreadable | W::Crashed | W::Protocol => {
+            ReadError::coded(ErrorCode::GeometryUnavailable).with_code(GeometryErrorCode::Unreadable)
+        }
+        W::Unavailable | W::NoIsolation | W::Busy => ReadError::coded_with(ErrorCode::FileFormatUnsupported, ["step"])
             .with_code(GeometryErrorCode::Unsupported),
     }
 }
@@ -1148,6 +1173,30 @@ mod tests {
         assert_eq!(v["message"], "webTooManyRequests");
     }
     #[tokio::test]
+    async fn step_previews_do_not_queue_behind_busy_3mf_parsers() {
+        let c = catalog();
+        let id = step_entry(&c);
+        for parallel in [0, 1] {
+            let gate = step_gate(parallel);
+            // Both general parser places are taken by long 3MF work.
+            let _busy = (
+                gate.workers.clone().try_acquire_owned().unwrap(),
+                gate.workers.clone().try_acquire_owned().unwrap(),
+            );
+            let call = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId":id}), gate.clone());
+            let r = tokio::time::timeout(std::time::Duration::from_secs(5), call)
+                .await
+                .unwrap_or_else(|_| panic!("STEP request waited for the 3MF gate (parallel {parallel})"));
+            if parallel == 0 {
+                assert_eq!(r.status(), 429);
+                assert_eq!(r.headers()["retry-after"], "5");
+            } else {
+                // The worker cannot start here; what matters is the answer came without waiting.
+                assert_eq!(r.status(), 422);
+            }
+        }
+    }
+    #[tokio::test]
     async fn step_geometry_checks_the_roots_before_any_worker_and_names_no_path() {
         let c = catalog();
         let id = step_entry(&c);
@@ -1172,7 +1221,7 @@ mod tests {
     #[test]
     fn every_worker_outcome_is_a_wire_code() {
         use crate::step_worker::WorkerError as W;
-        for e in [W::TooLarge, W::TooComplex, W::NoGeometry, W::Unreadable, W::Unavailable, W::Busy] {
+        for e in [W::TooLarge, W::TooComplex, W::NoGeometry, W::Unreadable, W::Crashed, W::Protocol, W::Unavailable, W::NoIsolation, W::Busy] {
             let r = step_read_error(e.clone());
             assert!(r.expected, "{e:?}");
             assert!(is_wire_code(&r.message), "{e:?}: {}", r.message);

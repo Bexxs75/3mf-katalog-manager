@@ -549,7 +549,13 @@ pub(crate) mod rescan_hook {
     use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
     pub static HOLD: AtomicBool = AtomicBool::new(false);
     pub static REACHED: AtomicBool = AtomicBool::new(false);
+    /// A fixed delay for files named `slow-*`, standing in for a long STEP read.
+    pub static SLOW_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     pub fn after_parse(path: &std::path::Path) {
+        if path.file_name().is_some_and(|n| n.to_string_lossy().starts_with("slow-")) {
+            std::thread::sleep(std::time::Duration::from_millis(SLOW_MS.load(SeqCst)));
+            return;
+        }
         if !HOLD.load(SeqCst) || !path.file_name().is_some_and(|n| n.to_string_lossy().starts_with("hold-")) {
             return;
         }
@@ -583,13 +589,16 @@ pub(crate) fn prepare_rescan(
     rescan_hook::after_parse(prepared.canonical_path());
     Ok(prepared)
 }
-/// Wall time for one metadata read: the rescan answers within the 30 seconds of a write request.
-const STEP_RESCAN_WALL: std::time::Duration = std::time::Duration::from_secs(25);
+/// Wall time for one metadata read. With the scan place (1 s), a worker place (3 s) and write
+/// place plus lock (5 s, counted after the read) the rescan answers within the 30 seconds of a
+/// write request.
+const STEP_RESCAN_WALL: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// STEP metadata from the worker. Like the desktop, a file OCCT cannot read gets empty metadata
-/// and stays in the catalog; a worker that is busy, broken, or ran out of time or memory leaves
-/// the record as it is.
-fn step_metadata(
+/// STEP metadata from the worker. Like the desktop, a file OCCT itself declares unreadable gets
+/// empty metadata and stays in the catalog. A worker that is busy, crashed, broke its protocol, or
+/// ran out of time or memory says nothing about the file, so the rescan stops and the stored
+/// dimensions stay as they are.
+pub(crate) fn step_metadata(
     step: &crate::step_worker::StepWorker,
     file: &std::fs::File,
 ) -> Result<katalog_core::rescan::StepMetadata, katalog_core::rescan::RescanError> {
@@ -604,7 +613,84 @@ fn step_metadata(
         }
         Err(W::NoGeometry | W::Unreadable) => Ok((None, None, None)),
         Err(W::TooLarge | W::TooComplex) => Err(RescanError::TooLarge),
-        Err(W::Unavailable | W::Busy) => Err(RescanError::StepUnavailable),
+        // Most likely a hostile or badly damaged file; refused without touching the record.
+        Err(W::Crashed) => Err(RescanError::Invalid),
+        Err(W::Protocol) => Err(RescanError::Failed("step_worker_protocol".into())),
+        Err(W::Unavailable | W::NoIsolation | W::Busy) => Err(RescanError::StepUnavailable),
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod step_metadata_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// A stand-in worker: a shell script that ends the way a real worker might.
+    fn fake_worker(dir: &std::path::Path, name: &str, body: &str) -> crate::step_worker::StepWorker {
+        let exe = dir.join(name);
+        std::fs::write(&exe, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::step_worker::StepWorker::with_exe(exe, crate::step_worker::Limits::default(), 1)
+    }
+
+    fn temp_dir() -> std::path::PathBuf {
+        let mut random = [0u8; 8];
+        getrandom::fill(&mut random).unwrap();
+        let dir = std::env::temp_dir().join(format!("step-metadata-{:x}", u64::from_le_bytes(random)));
+        std::fs::create_dir(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_crashed_worker_keeps_the_stored_dimensions() {
+        let dir = temp_dir();
+        let step = dir.join("teil.step");
+        std::fs::write(&step, b"ISO-10303-21;\nEND-ISO-10303-21;\n").unwrap();
+        let db_path = dir.join("catalog.db");
+        let id = {
+            let conn = katalog_core::db::connect(&db_path).unwrap();
+            let id = katalog_core::db::test_insert_minimal_file(&conn, step.to_str().unwrap(), None).unwrap();
+            conn.execute(
+                "UPDATE files SET file_type='stp', dimension_x_mm=10, dimension_y_mm=20, dimension_z_mm=30, volume_cm3=6, object_count=2 WHERE id=?1",
+                [id],
+            )
+            .unwrap();
+            id
+        };
+        let ctx = |worker| ExecContext {
+            source_roots: Vec::new(),
+            db_path: db_path.clone(),
+            roots: vec![dir.clone()],
+            limits: Default::default(),
+            step: std::sync::Arc::new(worker),
+        };
+        let args = serde_json::json!({ "fileId": id.to_string() });
+        let stored = || {
+            let conn = katalog_core::db::connect(&db_path).unwrap();
+            let file = katalog_core::db::get_file(&conn, id).unwrap().unwrap();
+            (file.dimensions_mm, file.object_count)
+        };
+        // Signal, panic exit and an unplanned status all stop the rescan; whatever the caller
+        // would have done with a prepared rescan, the record is not reached.
+        for (name, body) in [("segv", "kill -SEGV $$"), ("panic", "exit 101"), ("odd", "exit 3")] {
+            let worker = fake_worker(&dir, name, body);
+            match prepare_rescan(&args, &ctx(worker)) {
+                Err(response) => assert_eq!(response.status(), 422, "{name}"),
+                Ok(prepared) => {
+                    let mut conn = katalog_core::db::connect(&db_path).unwrap();
+                    let _ = apply_rescan(&mut conn, prepared);
+                }
+            }
+            assert_eq!(stored(), (Some([10.0, 20.0, 30.0]), Some(2)), "{name}");
+        }
+        // The parser's own verdict "cannot read this" is the one case that clears them, as on
+        // the desktop.
+        let unreadable = fake_worker(&dir, "unreadable", &format!("exit {}", crate::step_worker::EXIT_UNREADABLE));
+        let prepared = prepare_rescan(&args, &ctx(unreadable)).unwrap_or_else(|r| panic!("{}", r.status()));
+        let mut conn = katalog_core::db::connect(&db_path).unwrap();
+        apply_rescan(&mut conn, prepared).unwrap_or_else(|r| panic!("{}", r.status()));
+        assert_eq!(stored(), (None, None));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
 pub(crate) fn apply_rescan(

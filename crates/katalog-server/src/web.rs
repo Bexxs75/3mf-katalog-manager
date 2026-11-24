@@ -1530,9 +1530,15 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         let _catalog_guard = catalog_guard;
         let (_admission, _scan) = (admission, scan_permit);
         let mut worker = worker;
+        // The five seconds for the write place and the database lock count from when the request
+        // is ready for them: a rescan may spend most of its budget reading the file first (a STEP
+        // file in the worker takes up to half a minute).
+        let mut lock_from = started;
         let prepared = if rescan {
             let prepared = match crate::write::prepare_rescan(&args, &exec_ctx) { Ok(p) => p, Err(response) => return *response };
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            // Write place and lock then share five seconds, as for every other write.
+            lock_from = std::time::Instant::now();
+            let deadline = lock_from + std::time::Duration::from_secs(5);
             loop {
                 if app.geometry.barrier.snapshot().state != crate::barrier::State::Open {
                     return crate::barrier::maintenance();
@@ -1576,7 +1582,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
             return printer_service::execute(&app, &command, &args);
         }
         let mutex = &app.writer.as_ref().unwrap().conn;
-        let deadline=started+std::time::Duration::from_secs(5);
+        let deadline=lock_from+std::time::Duration::from_secs(5);
         let locked=loop {
             if std::time::Instant::now()>=deadline{return crate::write::retry(503)}
             match mutex.try_lock(){
