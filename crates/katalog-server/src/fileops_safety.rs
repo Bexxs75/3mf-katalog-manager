@@ -107,6 +107,14 @@ impl FileOpsSafety {
     pub(crate) fn reserve_folder(&mut self, count: usize, now: u64) -> Result<(), BudgetError> {
         self.permanent.reserve(count, now, self.daily_limit, Charge::Folder)
     }
+    /// The disk comparison removes `count` catalog entries (to the trash) in blocks that are
+    /// not charged again. The whole plan is charged once, against the daily limit only: a plan
+    /// larger than the daily limit is refused with nothing booked (`LimitExceeded`), otherwise
+    /// exactly `count` is booked, so the blocks can never remove more than was paid for.
+    /// `reserve_folder` is not used for this: it books at most the daily limit and never refuses.
+    pub(crate) fn reserve_disk_sync(&mut self, count: usize, now: u64) -> Result<(), BudgetError> {
+        self.trash.reserve(count, now, self.daily_limit, Charge::DailyOnly)
+    }
     pub(crate) fn reserve_empty_block_items(&mut self, count: usize, now: u64) -> Result<(), BudgetError> {
         self.permanent.reserve(count, now, self.daily_limit, Charge::DailyOnly)
     }
@@ -384,6 +392,21 @@ mod tests {
         assert_eq!(safety.reserve_empty_block_items(1, 100 + 86400), Ok(()));
         let mut small = FileOpsSafety::new(100);
         assert_eq!(small.reserve_empty_block_items(101, 1), Err(BudgetError::LimitExceeded));
+    }
+    #[test]
+    fn disk_sync_books_exactly_the_plan_and_refuses_a_plan_above_the_daily_limit() {
+        let mut safety = FileOpsSafety::new(10);
+        // 100 removals against a daily limit of 10: refused, nothing booked.
+        assert_eq!(safety.reserve_disk_sync(100, 100), Err(BudgetError::LimitExceeded));
+        assert_eq!(safety.reserve_disk_sync(10, 101), Ok(()));
+        // The day is used up: a real wait, not a refusal for good.
+        assert_eq!(safety.reserve_disk_sync(1, 102), Err(BudgetError::Retry(86399)));
+        assert_eq!(safety.reserve_disk_sync(1, 101 + 86400), Ok(()));
+        // The 10-minute window is not touched, the single deletions keep their room.
+        let mut other = FileOpsSafety::new(2000);
+        assert_eq!(other.reserve_disk_sync(1500, 100), Ok(()));
+        assert_eq!(other.reserve(DestructiveKind::Trash, 200, 101), Ok(()));
+        assert_eq!(other.reserve_disk_sync(0, 102), Ok(()));
     }
     #[test]
     fn budgets_are_atomic_separate_and_rolling() {
