@@ -2793,3 +2793,6 @@ mod disksync_tests {
         assert_eq!(answer["skipped"].as_array().unwrap().len(), 1500);
     }
 }
+
+#[path = "disk_start_sync_tests.rs"]
+mod disk_start_sync_tests;
