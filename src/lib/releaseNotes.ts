@@ -9,28 +9,36 @@ export const releaseNotes: Record<string, ReleaseNote> = {
     "date": "2026-11-23",
     "notes": {
       "en": {
-        "new": [],
+        "new": [
+          "In the web version you can now compare the catalog with the disk and clean it up: apply new files, remove missing entries (after confirmation) and rename with a date prefix. Needs write mode and file management on the server."
+        ],
         "improved": [
           "Desktop and web refuse concurrent operation on the same catalog."
         ],
         "fixed": []
       },
       "de": {
-        "new": [],
+        "new": [
+          "In der Web-Version lässt sich der Katalog jetzt mit der Festplatte abgleichen und bereinigen: neue Dateien übernehmen, fehlende Einträge entfernen (nach Bestätigung) und mit Datumspräfix umbenennen. Braucht Schreibmodus und Dateiverwaltung auf dem Server."
+        ],
         "improved": [
           "Desktop und Web verweigern den gleichzeitigen Betrieb auf demselben Katalog."
         ],
         "fixed": []
       },
       "es": {
-        "new": [],
+        "new": [
+          "En la versión web ahora se puede comparar el catálogo con el disco y limpiarlo: aplicar archivos nuevos, quitar entradas que faltan (tras confirmar) y renombrar con prefijo de fecha. Requiere el modo de escritura y la gestión de archivos en el servidor."
+        ],
         "improved": [
           "La aplicación de escritorio y el servidor web impiden el uso simultáneo del mismo catálogo."
         ],
         "fixed": []
       },
       "fr": {
-        "new": [],
+        "new": [
+          "Dans la version web, vous pouvez désormais comparer le catalogue avec le disque et le nettoyer : appliquer les nouveaux fichiers, retirer les entrées manquantes (après confirmation) et renommer avec un préfixe de date. Nécessite le mode écriture et la gestion de fichiers sur le serveur."
+        ],
         "improved": [
           "L’application de bureau et le serveur web empêchent l’utilisation simultanée du même catalogue."
         ],

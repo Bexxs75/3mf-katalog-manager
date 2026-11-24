@@ -338,6 +338,81 @@ With uploads disabled, startup refuses these entries because their catalog ident
 cannot be reconstructed safely. Enable the original upload configuration, including
 `KATALOG_UPLOAD_DIR`, once to complete recovery.
 
+### Disk sync and cleanup in the web interface (English)
+
+The web app can compare the catalog with the disk and tidy it up, as the desktop
+app does. Requirements: `KATALOG_FILE_OPS=1` and `KATALOG_WRITE=1` (see above)
+and a signed-in session. Without write mode the sync report stays display-only
+and says that `KATALOG_FILE_OPS=1` is needed.
+
+- **Disk sync (disk to catalog).** The report lists new files on the disk, models
+  and companion files whose file is gone, and entries it cannot judge. You tick
+  what to apply, read a preview and confirm. New files are imported in place (the
+  file stays where it is); the server re-checks every row against the disk right
+  before it acts and skips rows that changed meanwhile (the result lists them with
+  a reason).
+- **Removing entries.** Missing models are only ever removed from the catalog
+  (they go to the catalog trash and can be restored there); no file is moved or
+  deleted by the sync. Removing needs an explicit confirmation tick and counts
+  against the daily limit of the file management.
+- **"Unclear" list.** Entries below a link, an unreachable or empty-looking root
+  or after an I/O error are not treated as missing. They are shown for
+  information only and can neither be selected nor removed.
+- **Cleanup ("Check catalog for problems").** Lists models whose file is missing
+  (a fully deleted folder is shown as one line "folder missing, N models") and
+  duplicate files. What you remove goes to the trash. The same limits as the
+  desktop apply: at most 500 missing models, 200 duplicate groups, 20 s; above
+  that the list is marked as truncated.
+- **Date prefix.** "Rename with date" works in the web interface (preview, then
+  apply; up to 200 files per request; companion files are renamed along).
+- **Progress and cancel.** The work runs in blocks of at most 10 rows. "Cancel"
+  stops after the running block; what was already applied stays. A preview expires
+  after 60 minutes. While a backup is being restored the run stops and says so.
+- **Limits.** Report: 500 rows per section, 200,000 files, 20 s.
+- **Check at start (opt-in, off by default).** Settings has "Compare catalog
+  folders after start". The server then checks once per start in the background
+  and may only add new files; it never removes entries. Without the setting
+  nothing is changed.
+
+### Abgleich und Bereinigung im Web (Deutsch)
+
+Die Web-App kann den Katalog mit der Festplatte abgleichen und aufräumen, wie die
+Desktop-App. Voraussetzungen: `KATALOG_FILE_OPS=1` und `KATALOG_WRITE=1` (siehe
+oben) und eine angemeldete Sitzung. Ohne Schreibmodus bleibt der Abgleichsbericht
+eine reine Anzeige und weist auf `KATALOG_FILE_OPS=1` hin.
+
+- **Abgleich (Platte zum Katalog).** Der Bericht listet neue Dateien auf der
+  Platte, Modelle und Begleitdateien, deren Datei fehlt, und Einträge, die er
+  nicht beurteilen kann. Du hakst an, was übernommen werden soll, liest die
+  Vorschau und bestätigst. Neue Dateien werden an Ort und Stelle aufgenommen (die
+  Datei bleibt liegen); der Server prüft vor jeder Zeile den Zustand auf der
+  Platte neu und überspringt Zeilen, die sich inzwischen geändert haben (das
+  Ergebnis nennt sie mit Grund).
+- **Einträge entfernen.** Fehlende Modelle werden nur aus dem Katalog entfernt (sie
+  landen im Papierkorb des Katalogs und lassen sich dort zurückholen); der
+  Abgleich verschiebt oder löscht keine Datei. Entfernen braucht einen
+  ausdrücklichen Bestätigungshaken und zählt gegen das Tageslimit der
+  Dateiverwaltung.
+- **Unklar-Liste.** Einträge unter einem Link, bei nicht erreichbarer oder leer
+  wirkender Wurzel oder nach einem Lesefehler gelten nicht als fehlend. Sie werden
+  nur angezeigt und lassen sich weder auswählen noch entfernen.
+- **Bereinigung („Katalog auf Probleme prüfen“).** Zeigt Modelle, deren Datei
+  fehlt (ein ganz gelöschter Ordner erscheint als eine Zeile „Ordner fehlt, N
+  Modelle“), und doppelte Dateien. Was du entfernst, kommt in den Papierkorb.
+  Grenzen wie am Desktop: höchstens 500 fehlende Modelle, 200 Duplikatgruppen,
+  20 s; darüber wird die Liste als gekürzt markiert.
+- **Datumspräfix.** „Mit Datum umbenennen“ funktioniert im Web (Vorschau, dann
+  anwenden; bis zu 200 Dateien je Anfrage; Begleitdateien ziehen mit).
+- **Fortschritt und Abbrechen.** Gearbeitet wird in Blöcken mit höchstens 10
+  Zeilen. „Abbrechen“ stoppt nach dem laufenden Block; schon Übernommenes bleibt.
+  Eine Vorschau verfällt nach 60 Minuten. Wird gerade eine Sicherung
+  eingespielt, bricht der Lauf ab und sagt es.
+- **Grenzen.** Bericht: 500 Zeilen je Abschnitt, 200 000 Dateien, 20 s.
+- **Abgleich beim Start (Opt-in, standardmäßig aus).** In den Einstellungen gibt
+  es „Katalogordner nach dem Start abgleichen“. Der Server prüft dann einmal je
+  Start im Hintergrund und darf nur neue Dateien hinzufügen; Einträge entfernt er
+  nie. Ohne die Einstellung ändert sich nichts.
+
 ### Optionale Dateiverwaltung im Web (Stufe 7, Server)
 
 **Warnung:** `KATALOG_FILE_OPS=1` erlaubt dem Webserver, Dateien umzubenennen,
