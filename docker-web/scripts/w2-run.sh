@@ -49,6 +49,8 @@ phase() { # name  -> runs w2-browser-test.mjs inside the Playwright image on the
         -e NODE_PATH=/tools/node_modules -v "$PW_TOOLS":/tools -v "$here":/scripts:ro -v "$OUT":/out -w /scripts \
         "$PW_IMAGE" node w2-browser-test.mjs "$1" "http://127.0.0.1:$PORT" "$PASSWORD" /out 2>&1 | tee "$OUT/log-$1.txt" | grep -v '^OK  ' || :
     tail -1 "$OUT/log-$1.txt"
+    # A phase that crashed (no "PASS n/n" last line) counts as failed, so the exit code cannot hide it.
+    tail -1 "$OUT/log-$1.txt" | grep -Eq '^PASS ([0-9]+)/\1$' || { checks=$((checks + 1)); failed=$((failed + 1)); echo "FAIL phase $1 did not finish with all checks passing"; }
 }
 db() { python3 - "$DB" "$1" <<'PY'
 import sqlite3, sys
@@ -105,6 +107,9 @@ start_container
 phase emptyroot
 expect 'empty root: nothing taken over or removed (active unchanged)' "$(db "$active")" "$active_before"
 expect 'empty root: trash unchanged' "$(db "$trashed")" 9
+
+# 5. P6c: remove everything in the cleanup dialog: confirmation, empty state, "Schließen", focus back to the trigger
+phase cleanupempty
 
 echo "DB checks: $((checks - failed))/$checks ok"
 [ "$failed" -eq 0 ]

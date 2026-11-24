@@ -163,6 +163,17 @@ async function tabOrder(page, max = 40) {
   }
   return seen;
 }
+/** axe on the open dialog in all four views (shotAll only runs it at 1280 px). */
+async function axeAllViews(page, name) {
+  for (const view of VIEWS) {
+    await page.setViewportSize({ width: view.width, height: view.height });
+    await page.emulateMedia({ colorScheme: view.scheme });
+    await sleep(250);
+    await axe(page, `${name} ${view.scheme} ${view.width}`);
+  }
+  await page.setViewportSize({ width: FIRST.width, height: FIRST.height });
+  await page.emulateMedia({ colorScheme: FIRST.scheme });
+}
 const dialog = (page) => page.locator('[role="dialog"]').first();
 const heading = (page) => dialog(page).locator('h2').first();
 async function waitStep(page, step, timeout = 30000) { await page.locator(`[role="dialog"][data-step="${step}"]`).waitFor({ timeout }); }
@@ -244,6 +255,7 @@ phaseFns.ui = async () => {
   const afterFocus = await focusInfo(page);
   check('Bereinigung: Fokus bleibt nach dem Entfernen im Dialog (nicht auf body)', afterFocus.inDialog, afterFocus.name);
   await shotAll(page, 'cleanup-after-folder', { withAxe: false });
+  await axeAllViews(page, 'cleanup-after-folder (Bestätigung)');
   await page.keyboard.press('Escape');
   await page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
 
@@ -435,6 +447,51 @@ phaseFns.emptyroot = async () => {
   check('Leere Wurzel mit .katalog-papierkorb: Start-Abgleich zählt sie als nicht erreichbar (unreachableRoots >= 1)', r.unreachableRoots >= 1, `unreachableRoots=${r.unreachableRoots}`);
   check('Leere Wurzel: Bericht stuft sie nicht als "ok" ein und listet ihre Modelle nicht als fehlend', report.roots.find(x => x.name === 'beta')?.status !== 'ok', JSON.stringify(report.roots));
   check('Leere Wurzel: nichts wurde aufgenommen oder angewendet', !r.applied || (r.applied.added === 0 && r.applied.renamed === 0), JSON.stringify(r.applied));
+};
+
+// ---- phase: cleanupempty (P6c: everything removed in the dialog -> confirmation, empty state, "Schließen") ---------------
+phaseFns.cleanupempty = async () => {
+  const browser = await chromium.launch();
+  const page = await newPage(browser);
+  await login(page);
+  await page.waitForTimeout(1500);
+  const trigger = page.getByRole('button', { name: 'Aufräum-Vorschläge' });
+  await trigger.click();
+  await dialog(page).waitFor();
+  await page.waitForTimeout(800);
+  const dlg = dialog(page);
+  let removed = 0;
+  for (let i = 0; i < 8 && !/Nichts mehr zu bereinigen/.test(await dlg.innerText()); i++) {
+    const boxes = dlg.locator('input[type=checkbox]');
+    for (let b = 0; b < await boxes.count(); b++) if (await boxes.nth(b).isEnabled() && !(await boxes.nth(b).isChecked())) await boxes.nth(b).check();
+    const btn = dlg.getByRole('button', { name: /^Auswahl in den Papierkorb$/ });
+    const folder = dlg.getByRole('button', { name: /^\d+ Modelle? in den Papierkorb$/ }).first();
+    if (await btn.isEnabled()) await btn.click(); else if (await folder.count()) await folder.click(); else break;
+    await page.getByText(/in den Papierkorb verschoben/).first().waitFor({ timeout: 20000 }).catch(() => {});
+    removed++;
+    await sleep(500);
+    check(`Bereinigung leeren, Runde ${removed}: Dialog bleibt offen`, await page.locator('[role="dialog"]').count() === 1);
+    const f = await focusInfo(page);
+    check(`Bereinigung leeren, Runde ${removed}: Fokus im Dialog, nicht auf body`, f.inDialog, f.name);
+  }
+  const text = (await dlg.innerText()).replace(/\s+/g, ' ');
+  note('Bereinigung, Leerzustand zeigt: ' + text.slice(0, 400));
+  check('Bereinigung: Bestätigung "N Modelle in den Papierkorb verschoben" sichtbar', /\d+ Modelle? in den Papierkorb verschoben/.test(text), text.slice(0, 160));
+  check('Bereinigung: Leerzustand "Nichts mehr zu bereinigen"', /Nichts mehr zu bereinigen/.test(text), text.slice(0, 160));
+  check('Bereinigung: Knopf heißt jetzt "Schließen" (kein "Abbrechen")', await dlg.getByRole('button', { name: 'Schließen', exact: true }).count() >= 1 && await dlg.getByRole('button', { name: 'Abbrechen', exact: true }).count() === 0);
+  await shotAll(page, 'empty-state', { withAxe: false });
+  await axeAllViews(page, 'empty-state (Leerzustand)');
+  await dlg.getByRole('button', { name: 'Schließen', exact: true }).first().click();
+  await page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+  const back = await focusInfo(page);
+  check('Bereinigung: nach "Schließen" kehrt der Fokus zum Auslöser zurück', back.name.includes('Aufräum-Vorschläge'), back.name);
+  // reopen: nothing left to clean up, still the same wording without the confirmation
+  await trigger.click();
+  await dialog(page).waitFor();
+  await page.waitForTimeout(800);
+  const again = (await dialog(page).innerText()).replace(/\s+/g, ' ');
+  check('Bereinigung: erneut geöffnet ohne Bestätigung, mit "Keine Probleme"-Text', !/verschoben/.test(again), again.slice(0, 160));
+  await browser.close();
 };
 
 await phaseFns[phase]?.();
