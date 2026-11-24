@@ -252,7 +252,52 @@ pub fn write_auth(path: &Path, auth: &AuthFile) -> Result<(), String> {
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
     }
-    result.map_err(|_| "Passwort konnte nicht gespeichert werden".to_owned())
+    result.map_err(|_| "Passwort konnte nicht gespeichert werden".to_owned())?;
+    // The password is now a chosen one: the file with the generated start password is obsolete.
+    if !auth.must_change {
+        remove_initial_password(path);
+    }
+    Ok(())
+}
+
+/// Name of the file that holds a generated start password, next to the password file.
+const INITIAL_PASSWORD_FILE: &str = "web-initial-password.txt";
+pub fn initial_password_path(auth_file: &Path) -> PathBuf {
+    auth_file.with_file_name(INITIAL_PASSWORD_FILE)
+}
+/// Best effort: a file that is already gone is the goal, anything else stays for the operator.
+fn remove_initial_password(auth_file: &Path) {
+    let _ = fs::remove_file(initial_password_path(auth_file));
+}
+/// A generated start password goes into a file only its owner can read (0600, never into the
+/// log, which anyone with log access reads and which is kept for good). A file left over from an
+/// earlier setup is replaced. A failure is an error: the password is never printed instead.
+fn write_initial_password(auth_file: &Path, password: &str) -> Result<PathBuf, String> {
+    let path = initial_password_path(auth_file);
+    match fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err("Startpasswort-Datei konnte nicht ersetzt werden".to_owned()),
+    }
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&path)
+        .map_err(|_| "Startpasswort-Datei konnte nicht angelegt werden".to_owned())?;
+    let written = file
+        .write_all(password.as_bytes())
+        .and_then(|()| file.write_all(b"\n"))
+        .and_then(|()| file.sync_all());
+    if written.is_err() {
+        let _ = fs::remove_file(&path);
+        return Err("Startpasswort-Datei konnte nicht geschrieben werden".to_owned());
+    }
+    Ok(path)
 }
 
 pub fn strip_line_ending(mut value: String) -> String {
@@ -291,6 +336,9 @@ pub async fn bootstrap(
         {
             let auth = read_auth(&check_path)?;
             validate_writable(&check_path)?;
+            if !auth.must_change {
+                remove_initial_password(&check_path);
+            }
             if password.is_some() || password_file.is_some() {
                 eprintln!("KATALOG_PASSWORD(_FILE) ignoriert: nur zur Ersteinrichtung");
             }
@@ -329,10 +377,22 @@ pub async fn bootstrap(
     };
     let write_path = path.to_path_buf();
     let persisted = auth.clone();
-    file_work(move || write_auth(&write_path, &persisted)).await?;
-    // A supplied password is never echoed into the log.
-    if generated {
-        eprintln!("\n=== EINMALIGES STARTPASSWORT ===\n{plaintext}\nBitte nach der Anmeldung sofort ändern.\n==============================\n");
+    // A generated start password is handed over in a 0600 file, never through the log.
+    // The file comes first: if it cannot be written, no password is set that nobody knows.
+    let initial = if generated {
+        let (file_path, secret) = (path.to_path_buf(), plaintext);
+        Some(file_work(move || write_initial_password(&file_path, &secret)).await?)
+    } else {
+        None
+    };
+    if let Err(e) = file_work(move || write_auth(&write_path, &persisted)).await {
+        if let Some(file) = &initial {
+            let _ = fs::remove_file(file);
+        }
+        return Err(e);
+    }
+    if let Some(file) = initial {
+        eprintln!("\n=== STARTPASSWORT ===\nEin Startpasswort wurde erzeugt und in dieser Datei abgelegt (nur für den Besitzer lesbar):\n{}\nDas Passwort steht nicht im Log. Nach der Anmeldung sofort ändern; die Datei wird dann entfernt.\n=====================\n", file.display());
     }
     Ok(auth)
 }
@@ -569,6 +629,37 @@ mod tests {
         fs::remove_dir_all(p.parent().unwrap()).unwrap();
     }
     #[tokio::test]
+    async fn a_supplied_password_makes_no_start_password_file_and_a_stale_one_is_replaced() {
+        let _guard = PASSWORD_TEST_LOCK.lock().await;
+        let p = path();
+        bootstrap(&p, Some(PASSWORD.into()), None).await.unwrap();
+        assert!(!initial_password_path(&p).exists());
+        fs::remove_file(&p).unwrap();
+        // A leftover file of an earlier setup (here with a foreign mode) is replaced, not reused.
+        fs::write(initial_password_path(&p), "stale\n").unwrap();
+        let generated = bootstrap(&p, None, None).await.unwrap();
+        let secret = strip_line_ending(fs::read_to_string(initial_password_path(&p)).unwrap());
+        assert_ne!(secret, "stale");
+        assert!(verify_password(generated.password_hash, secret).await.unwrap());
+        // A chosen password at the next start removes the file even when it was never "changed" here.
+        let mut auth = read_auth(&p).unwrap();
+        auth.must_change = false;
+        write_auth(&p, &auth).unwrap();
+        assert!(!initial_password_path(&p).exists());
+        fs::remove_dir_all(p.parent().unwrap()).unwrap();
+    }
+    #[tokio::test]
+    async fn setup_fails_closed_when_the_start_password_file_cannot_be_written() {
+        let _guard = PASSWORD_TEST_LOCK.lock().await;
+        let p = path();
+        // A directory in the place of the file: it cannot be replaced, so the setup fails closed
+        // and no password file is created (no password that nobody knows).
+        fs::create_dir(initial_password_path(&p)).unwrap();
+        assert!(bootstrap(&p, None, None).await.is_err());
+        assert!(!p.exists());
+        fs::remove_dir_all(p.parent().unwrap()).unwrap();
+    }
+    #[tokio::test]
     async fn bootstrap_file_random_and_set_password() {
         let _guard = PASSWORD_TEST_LOCK.lock().await;
         let p = path();
@@ -585,6 +676,19 @@ mod tests {
         assert!(!p.exists());
         let generated = bootstrap(&p, None, None).await.unwrap();
         assert!(generated.must_change);
+        // The generated password is in a 0600 file next to the auth file and verifies.
+        let initial = initial_password_path(&p);
+        let secret = strip_line_ending(fs::read_to_string(&initial).unwrap());
+        assert_eq!(secret.chars().count(), 20);
+        assert!(verify_password(generated.password_hash.clone(), secret.clone()).await.unwrap());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&initial).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        // Restarting before the change keeps the file; the password is still the start password.
+        bootstrap(&p, None, None).await.unwrap();
+        assert!(initial.exists());
         assert!(
             set_password(&p, Cursor::new(format!("{PASSWORD}\nwrong\n")), true)
                 .await
@@ -596,6 +700,8 @@ mod tests {
             .unwrap();
         let changed = read_auth(&p).unwrap();
         assert!(!changed.must_change);
+        // The change made the start password obsolete: its file is gone.
+        assert!(!initial.exists());
         let before_same = fs::read(&p).unwrap();
         assert!(
             set_password(&p, Cursor::new(format!("{PASSWORD}\n")), false)

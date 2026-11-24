@@ -85,8 +85,10 @@ async fn startup_bootstrap_existing_auth_and_invalid_auth_preserve_catalog() {
     drop(initialize(config.clone()).await.unwrap());
     let auth = password::read_auth(&config.auth_file).unwrap();
     assert!(auth.must_change);
+    // The generated start password is in a file next to the auth file, not in the log.
+    assert!(password::initial_password_path(&config.auth_file).is_file());
     let mut after = snapshot(&dir.0);
-    after.retain(|(name, _)| name != Path::new("web-auth.json") && name != Path::new("catalog.db.lock"));
+    after.retain(|(name, _)| name != Path::new("web-auth.json") && name != Path::new("catalog.db.lock") && name != Path::new("web-initial-password.txt"));
     assert_eq!(after, before);
     let existing = snapshot(&dir.0);
     config.password = Some(UNUSED_BOOTSTRAP_PASSWORD.into());
@@ -150,7 +152,8 @@ fn help_explains_proxy_cookie_password_log_and_terminal_risks() {
         "anhängen oder überschreiben",
         "nicht nach Port getrennt",
         "Host-/Domainnamen",
-        "docker logs",
+        "steht nicht im Log",
+        "web-initial-password.txt",
         "Anmelden ändern",
         "Eingabe sichtbar",
         "neu gestartet",

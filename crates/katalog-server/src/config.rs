@@ -5,8 +5,9 @@ use std::{
 
 // Betrieb: Cookies (katalog_session) sind nicht nach Port getrennt. Andere
 // HTTP-Dienste auf demselben Host erhalten sie; eigenen Host-/Domainnamen nutzen.
-// Das Bootstrap-Zufallspasswort bleibt dauerhaft im Log (docker logs) und sollte
-// nach dem ersten Anmelden geändert werden. set-password liest sichtbar im
+// Das Bootstrap-Zufallspasswort steht nicht im Log, sondern in web-initial-password.txt
+// (0600) neben der Passwortdatei und sollte nach dem ersten Anmelden geändert werden;
+// die Datei wird dann entfernt. set-password liest sichtbar im
 // Terminal; ein laufender Server übernimmt die Datei erst nach einem Neustart.
 // Ein vertrauenswürdiger Proxy muss X-Forwarded-For anhängen oder überschreiben.
 #[derive(Clone)]
