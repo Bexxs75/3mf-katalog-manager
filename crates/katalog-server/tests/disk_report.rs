@@ -282,7 +282,9 @@ async fn report_and_issue_scan_carry_unclear_and_missing_folders_in_the_expected
     let orphaned: Vec<_> = issues["orphaned"].as_array().unwrap().iter().map(|m| m["id"].as_str().unwrap().to_owned()).collect();
     assert_eq!(ids.len(), 2);
     assert!(ids.iter().all(|id| orphaned.contains(id)), "folder models are listed orphans: {ids:?} / {orphaned:?}");
-    assert!(!issues.to_string().contains(f.dir.to_str().unwrap()), "{issues}");
+    // The new fields name places only relative to a root (the old model DTOs carry their path).
+    let new_fields = json!([issues["unclear"], issues["missingFolders"]]).to_string();
+    assert!(!new_fields.contains(f.dir.to_str().unwrap()), "{new_fields}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
