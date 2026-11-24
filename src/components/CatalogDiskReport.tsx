@@ -4,7 +4,7 @@ import { useFormatCount, useT } from '../i18n/LanguageContext';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { toAppError, type AppError } from '../lib/errors';
 import { diskSyncReport, onDiskSyncRequest, type DiskReport, type DiskSyncPreview } from '../lib/api/diskSync';
-import { DISK_SYNC_PASSWORD_FROM } from '../lib/api/diskSync';
+import { REMOVAL_PASSWORD_FROM } from '../lib/api/diskSync';
 import { applyDiskSync, previewDiskSync, type DiskSyncOutcome } from '../lib/fileOps';
 import { fileOpsWait } from '../lib/fileOpsErrors';
 import { useCanManageFiles } from '../lib/webSession';
@@ -76,7 +76,7 @@ function FailureBody({ failure, report }: { failure: DiskFailure; report: DiskRe
 interface DialogProps {
   step: DiskStep; report: DiskReport | null; selection: DiskSelection; preview: DiskSyncPreview | null; progress: { done: number; total: number };
   outcome: DiskSyncOutcome | null; failure: DiskFailure | null; scanError: AppError | null; canApply: boolean;
-  password: string; onPassword: (value: string) => void;
+  password: string; onPassword: (value: string) => void; passwordError: string | null;
   onToggle: (section: DiskSection, key: string) => void; onAll: (section: DiskSection) => void; onNone: (section: DiskSection) => void; onFolder: (ids: string[], on: boolean) => void;
   onClose: () => void; onRescan: () => void; onNext: () => void; onBack: () => void; onApply: () => void; onCancel: () => void;
 }
@@ -104,7 +104,7 @@ function ReportDialog(p: DialogProps) {
   const total = preview ? preview.counts.import + preview.counts.removeModels + preview.counts.removeCompanions : 0;
   // The server asks for the password from this many removals on (web only; the desktop has no web login).
   const removals = preview ? preview.counts.removeModels + preview.counts.removeCompanions : 0;
-  const needsPassword = import.meta.env.VITE_TARGET === 'web' && removals >= DISK_SYNC_PASSWORD_FROM;
+  const needsPassword = import.meta.env.VITE_TARGET === 'web' && removals >= REMOVAL_PASSWORD_FROM;
   const selected = diskSelectionCount(selection);
   const title = step === 'preview' || step === 'previewing' ? t('diskApplyPreviewTitle')
     : running ? t('diskApplyRunTitle')
@@ -142,6 +142,7 @@ function ReportDialog(p: DialogProps) {
         {step === 'preview' && needsPassword && <div className="space-y-1">
           <p>{t('diskApplyPasswordHint').replace('{n}', String(removals))}</p>
           <label className="block">{t('webFilePassword')}<input type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" className="block w-full border p-2 bg-[var(--panel)]" value={p.password} onChange={event => p.onPassword(event.target.value)} /></label>
+          {p.passwordError && <p role="alert" className="text-[var(--crit)]">{p.passwordError}</p>}
         </div>}
         {running && <DiskReportRun done={p.progress.done} total={p.progress.total} starting={step === 'starting'} cancelling={step === 'cancelling'} />}
         {(step === 'done' || step === 'cancelled') && report && p.outcome && <DiskReportResult ref={resultRef} report={report} outcome={p.outcome} cancelled={step === 'cancelled'} />}
@@ -178,6 +179,7 @@ export function CatalogDiskReport({ active = true }: { active?: boolean }) {
   const [preview, setPreview] = useState<DiskSyncPreview | null>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<DiskSyncOutcome | null>(null);
   const [failure, setFailure] = useState<DiskFailure | null>(null);
   const [scanError, setScanError] = useState<AppError | null>(null);
@@ -234,7 +236,7 @@ export function CatalogDiskReport({ active = true }: { active?: boolean }) {
     const mine = ++run.current;
     stop.current = false;
     setProgress({ done: 0, total: 0 }); setStep('starting');
-    const secret = password; setPassword('');
+    const secret = password; setPassword(''); setPasswordError(null);
     try {
       const result = await applyDiskSync(preview.token, preview.removes, (done, total) => {
         if (run.current !== mine) return;
@@ -247,7 +249,14 @@ export function CatalogDiskReport({ active = true }: { active?: boolean }) {
       else if (result.aborted === 'maintenance') { setFailure({ kind: 'maintenanceRun', message: '', outcome: result }); setStep('error'); }
       else if (result.aborted === 'session') { setFailure({ kind: 'other', message: t('diskApplyInterrupted'), outcome: result }); setStep('error'); }
       else setStep('done');
-    } catch (reason) { if (run.current === mine) fail(reason); }
+    } catch (reason) {
+      if (run.current !== mine) return;
+      // A refused password leaves the plan unstarted: stay in the preview, say so, ask again.
+      const refused = (reason as { kind?: unknown } | null)?.kind;
+      if ((refused === 'password_invalid' || refused === 'password_required') && !asDiskFailure(reason).outcome) {
+        setPasswordError(asDiskFailure(reason).message); setStep('preview');
+      } else fail(reason);
+    }
   };
   const cancel = () => { stop.current = true; setStep(current => current === 'starting' || current === 'running' ? 'cancelling' : current); };
 
@@ -256,6 +265,6 @@ export function CatalogDiskReport({ active = true }: { active?: boolean }) {
       <Icon name="restore" size={16} /><span className="max-[1279px]:sr-only">{t('diskReportOpen')}</span>
     </button>}
     {open && <ReportDialog step={step} report={report} selection={selection} preview={preview} progress={progress} outcome={outcome} failure={failure} scanError={scanError} canApply={canApply}
-      onToggle={toggle} onAll={s => setAll(s, true)} onNone={s => setAll(s, false)} onFolder={setFolder} onClose={close} onRescan={() => void scan()} onNext={() => void next()} password={password} onPassword={setPassword} onBack={() => { setPassword(''); setStep('select'); }} onApply={() => void apply()} onCancel={cancel} />}
+      onToggle={toggle} onAll={s => setAll(s, true)} onNone={s => setAll(s, false)} onFolder={setFolder} onClose={close} onRescan={() => void scan()} onNext={() => void next()} password={password} passwordError={passwordError} onPassword={value => { setPassword(value); setPasswordError(null); }} onBack={() => { setPassword(''); setStep('select'); }} onApply={() => void apply()} onCancel={cancel} />}
   </>;
 }
