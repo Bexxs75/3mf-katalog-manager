@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 #[path = "fileops_disksync.rs"]
 pub(crate) mod disksync;
+#[path = "disk_start_sync.rs"]
+pub(crate) mod disk_start_sync;
 type Ops = FileOps<DbAdapter, ServerLedger>;
 pub(super) struct Runtime {
     pub(super) state: Mutex<RuntimeState>,
