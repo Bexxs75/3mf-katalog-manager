@@ -184,6 +184,10 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "trash_folder_start" => &["folderId"],
         "trash_folder_block" => &["token"],
         "remove_companion" | "restore_companion" => &["companionId"],
+        // Contract only (W2 P0): named in the lists, implemented in the server package.
+        "disk_sync_preview" | "disk_sync_apply_start" | "disk_sync_apply_block" | "preview_date_rename" | "apply_date_rename" => {
+            return Err(err(404, "command_unavailable"))
+        }
         _ => return Err(err(404, "unknown_command")),
     };
     if obj.keys().any(|k| !keys.contains(&k.as_str())) {

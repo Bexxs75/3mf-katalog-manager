@@ -29,6 +29,11 @@ pub const FILE_OPS_COMMANDS: &[&str] = &[
     "trash_folder_block",
     "remove_companion",
     "restore_companion",
+    "disk_sync_preview",
+    "disk_sync_apply_start",
+    "disk_sync_apply_block",
+    "preview_date_rename",
+    "apply_date_rename",
 ];
 pub const WRITE_COMMANDS: &[&str] = &[
     "add_source_folder",
@@ -61,6 +66,13 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "trash_folder_block",
     "remove_companion",
     "restore_companion",
+    "disk_sync_preview",
+    "disk_sync_apply_start",
+    "disk_sync_apply_block",
+    "preview_date_rename",
+    "apply_date_rename",
+    "set_sync_on_start",
+    "set_sync_auto_add",
 
     "remove_files_from_catalog",
     "start_source_import",
@@ -139,6 +151,10 @@ pub(crate) fn image_command(command: &str) -> bool {
 pub(crate) fn body_limit(command: &str) -> usize {
     if image_command(command) {
         katalog_core::write::MAX_CUSTOM_IMAGE_BYTES * 4 / 3 + 16 * 1024
+    } else if command == "disk_sync_preview" {
+        256 * 1024
+    } else if command == "apply_date_rename" {
+        384 * 1024
     } else if WRITE_COMMANDS.contains(&command) {
         16 * 1024
     } else {

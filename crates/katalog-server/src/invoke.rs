@@ -159,6 +159,10 @@ pub const READ_COMMANDS: &[&str] = &[
     "list_source_folders",
     "scan_source_folders",
     "get_source_check_on_start",
+    "scan_catalog_issues",
+    "get_sync_on_start",
+    "get_sync_auto_add",
+    "run_start_sync",
     "get_printer_link_enabled",
     "list_printer_connections",
     "list_open_printer_jobs",
@@ -280,6 +284,10 @@ pub async fn invoke(
     gate: Arc<GeometryGate>,
 ) -> Response {
     if !READ_COMMANDS.contains(&command.as_str()) {
+        return *error(StatusCode::NOT_FOUND, ErrorCode::WebCommandUnavailable, &[]);
+    }
+    // Contract only (W2 P0): listed so the lists agree, handled in a later package.
+    if matches!(command.as_str(), "scan_catalog_issues" | "get_sync_on_start" | "get_sync_auto_add" | "run_start_sync") {
         return *error(StatusCode::NOT_FOUND, ErrorCode::WebCommandUnavailable, &[]);
     }
     if !args.is_object() {
