@@ -17,6 +17,14 @@ use tokio::sync::Semaphore;
 pub const ARGON_MEMORY_KIB: u32 = 19_456;
 pub const ARGON_ITERATIONS: u32 = 2;
 pub const ARGON_PARALLELISM: u32 = 1;
+// Upper bounds for any stored hash. Verification uses the parameters written in the hash
+// itself, so an unbounded value in web-auth.json would let whoever can write that file
+// demand gigabytes or minutes of work per login attempt. About 3x the own settings.
+pub const ARGON_MAX_MEMORY_KIB: u32 = 65_536;
+pub const ARGON_MAX_ITERATIONS: u32 = 4;
+pub const ARGON_MAX_PARALLELISM: u32 = 4;
+const ARGON_MAX_OUTPUT_BYTES: usize = 64;
+const ARGON_MAX_SALT_CHARS: usize = 128;
 static HASH_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 #[cfg(test)]
 pub(crate) static PASSWORD_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -36,6 +44,31 @@ fn argon() -> Argon2<'static> {
         Params::new(ARGON_MEMORY_KIB, ARGON_ITERATIONS, ARGON_PARALLELISM, None)
             .expect("statische Argon2-Parameter"),
     )
+}
+
+/// Accepts only a well-formed Argon2id hash whose cost parameters stay within the limits above.
+pub(crate) fn check_hash(hash: &PasswordHash<'_>) -> Result<(), String> {
+    let invalid = || "Passwortdatei enthält keinen gültigen Argon2id-Hash".to_owned();
+    if hash.algorithm.as_str() != "argon2id"
+        || hash.version != Some(19)
+        || hash.salt.is_none()
+        || hash.hash.is_none()
+    {
+        return Err(invalid());
+    }
+    let params = Params::try_from(hash).map_err(|_| invalid())?;
+    if hash.hash.is_some_and(|h| h.len() > ARGON_MAX_OUTPUT_BYTES)
+        || hash.salt.is_some_and(|salt| salt.as_str().len() > ARGON_MAX_SALT_CHARS)
+    {
+        return Err(invalid());
+    }
+    if params.m_cost() > ARGON_MAX_MEMORY_KIB
+        || params.t_cost() > ARGON_MAX_ITERATIONS
+        || params.p_cost() > ARGON_MAX_PARALLELISM
+    {
+        return Err("Argon2-Parameter des Passwort-Hashes überschreiten die erlaubten Obergrenzen".into());
+    }
+    Ok(())
 }
 
 async fn hashing<T: Send + 'static>(
@@ -86,6 +119,8 @@ pub(crate) async fn verify_with_slot(
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let parsed = PasswordHash::new(&hash).map_err(|_| "Ungültiger Passwort-Hash".to_owned())?;
+        // Before any work: a manipulated hash must not choose how much memory or time we spend.
+        check_hash(&parsed)?;
         match argon().verify_password(password.as_bytes(), &parsed) {
             Ok(()) => Ok(true),
             Err(argon2::password_hash::Error::Password) => Ok(false),
@@ -105,14 +140,7 @@ pub fn read_auth(path: &Path) -> Result<AuthFile, String> {
     }
     let hash = PasswordHash::new(&auth.password_hash)
         .map_err(|_| "Passwortdatei enthält ungültigen PHC-Hash".to_owned())?;
-    if hash.algorithm.as_str() != "argon2id"
-        || hash.version != Some(19)
-        || hash.salt.is_none()
-        || hash.hash.is_none()
-        || Params::try_from(&hash).is_err()
-    {
-        return Err("Passwortdatei enthält keinen gültigen Argon2id-Hash".into());
-    }
+    check_hash(&hash)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -222,6 +250,7 @@ pub fn validate_writable(path: &Path) -> Result<(), String> {
 }
 
 pub fn write_auth(path: &Path, auth: &AuthFile) -> Result<(), String> {
+    check_hash(&PasswordHash::new(&auth.password_hash).map_err(|_| "Ungültiger Passwort-Hash".to_owned())?)?;
     validate_writable(path)?;
     let parent = path
         .parent()
@@ -525,6 +554,42 @@ mod tests {
             .await
             .unwrap());
         assert!(!verify_password(first, String::new()).await.unwrap());
+    }
+    #[tokio::test]
+    async fn oversized_argon2_parameters_are_rejected_everywhere() {
+        let _guard = PASSWORD_TEST_LOCK.lock().await;
+        let good = hash_password(PASSWORD.into()).await.unwrap();
+        // The server's own hash passes the limits it checks.
+        assert!(check_hash(&PasswordHash::new(&good).unwrap()).is_ok());
+        let tail = good.split('$').skip(4).collect::<Vec<_>>().join("$");
+        let with = |params: &str| format!("$argon2id$v=19${params}${tail}");
+        // Exactly at the limits is still fine; one step above is refused.
+        let at_limit = with(&format!("m={ARGON_MAX_MEMORY_KIB},t={ARGON_MAX_ITERATIONS},p={ARGON_MAX_PARALLELISM}"));
+        assert!(check_hash(&PasswordHash::new(&at_limit).unwrap()).is_ok());
+        for bad in [
+            format!("m={},t=2,p=1", ARGON_MAX_MEMORY_KIB + 1),
+            "m=4194304,t=2,p=1".to_owned(),
+            format!("m=19456,t={},p=1", ARGON_MAX_ITERATIONS + 1),
+            "m=19456,t=4294967295,p=1".to_owned(),
+            format!("m=19456,t=2,p={}", ARGON_MAX_PARALLELISM + 1),
+            "m=19456,t=2,p=255".to_owned(),
+        ] {
+            let hash = with(&bad);
+            assert!(check_hash(&PasswordHash::new(&hash).unwrap()).is_err(), "{bad}");
+            // Verification refuses before computing anything (this would otherwise allocate GiB).
+            let started = std::time::Instant::now();
+            assert!(verify_password(hash.clone(), PASSWORD.into()).await.is_err(), "{bad}");
+            assert!(started.elapsed() < Duration::from_secs(1), "{bad}");
+            // Reading a stored file and writing one refuse it as well.
+            let p = path();
+            let auth = AuthFile { version: 1, password_hash: hash, must_change: false, updated_at: 1 };
+            assert!(write_auth(&p, &auth).is_err(), "{bad}");
+            fs::write(&p, serde_json::to_vec(&auth).unwrap()).unwrap();
+            assert!(read_auth(&p).is_err(), "{bad}");
+        }
+        // Counter-check: the valid hash still verifies, with the right and the wrong password.
+        assert!(verify_password(good.clone(), PASSWORD.into()).await.unwrap());
+        assert!(!verify_password(good, "falsch".into()).await.unwrap());
     }
     #[tokio::test]
     async fn bootstrap_and_atomic_file() {
