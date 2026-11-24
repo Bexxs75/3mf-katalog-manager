@@ -114,6 +114,15 @@ describe('select step', () => {
   });
 });
 
+describe('unclear entries with several folders', () => {
+  it('names the folder of an unclear entry', async () => {
+    api.report.mockResolvedValue({ ...report, roots: [{ name: 'models', status: 'ok', mostlyMissing: false }, { name: 'nas', status: 'ok', mostlyMissing: false }], unclear: [{ root: 1, relativePath: 'x/y.3mf', reason: 'link' }] });
+    show(); const dialog = await open();
+    const details = await within(dialog).findByTestId('disk-unclear');
+    expect(within(details).getByText('nas: x/y.3mf')).toBeTruthy();
+  });
+});
+
 describe('preview and apply', () => {
   it('shows the summary with the trash note and no confirmation checkbox', async () => {
     api.preview.mockResolvedValue(preview({ counts: { import: 2, removeModels: 1, removeCompanions: 1 }, skipped: [{ kind: 'new', key: '0:b/new.3mf', reason: 'already_in_catalog' }] as never, mostlyMissingRoots: ['models'] }));

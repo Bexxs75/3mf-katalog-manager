@@ -103,6 +103,8 @@ export interface DiskReport {
   danglingCompanions: { id: string; fileId: string; name: string; root: number; relativePath: string; reason: 'missing' | 'notFile' }[];
   /** Not sent by every server version. */
   unclear?: DiskUnclearEntry[];
+  /** Folders the server verified gone as a whole, with the ids of their listed missing models. Not sent by every server version, and left out when empty. */
+  missingFolders?: { relativePath: string; root: number; models: string[] }[];
   modelsOutsideRoots: number;
   companionsOutsideRoots: number;
   scannedEntries: number;

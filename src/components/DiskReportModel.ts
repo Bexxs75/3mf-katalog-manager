@@ -78,17 +78,30 @@ export function asDiskFailure(reason: unknown): DiskSyncFailure {
 
 type MissingModel = DiskReport['missingModels'][number];
 const parentOf = (path: string) => { const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')); return cut > 0 ? path.slice(0, cut) : ''; };
+type MissingFolder = { key: string; root: number; path: string; models: MissingModel[] };
 /**
- * Missing models that share a folder are shown together as one folder row: at least two models below the same parent.
- * A single missing model stays a plain row. Which folder is really gone is the server's call; this only sums up what it listed as missing.
+ * Missing models that share a folder are shown together as one folder row, at least two models per row; a single missing model stays a plain row.
+ * Which folder is really gone is the server's call: when it sends `missingFolders`, only those folders (verified) form groups.
+ * Only an older server without the field falls back to "two or more missing models below the same parent".
  */
-export function groupMissingFolders(report: DiskReport): { folders: { key: string; root: number; path: string; models: MissingModel[] }[]; single: MissingModel[] } {
+export function groupMissingFolders(report: DiskReport): { folders: MissingFolder[]; single: MissingModel[] } {
+  const folders: MissingFolder[] = [];
+  const grouped = new Set<string>();
+  if (report.missingFolders) {
+    const byId = new Map(report.missingModels.map(m => [m.id, m]));
+    for (const entry of report.missingFolders) {
+      const models = entry.models.flatMap(id => { const m = byId.get(id); return m && !grouped.has(id) ? [m] : []; });
+      if (models.length < 2) continue;
+      models.forEach(m => grouped.add(m.id));
+      folders.push({ key: `${entry.root}|${entry.relativePath}`, root: entry.root, path: entry.relativePath, models });
+    }
+    return { folders, single: report.missingModels.filter(m => !grouped.has(m.id)) };
+  }
   const byParent = new Map<string, MissingModel[]>();
   for (const model of report.missingModels) {
     const key = `${model.root}|${parentOf(model.relativePath)}`;
     byParent.set(key, [...(byParent.get(key) ?? []), model]);
   }
-  const folders: { key: string; root: number; path: string; models: MissingModel[] }[] = [];
   const single: MissingModel[] = [];
   for (const [key, models] of byParent) {
     const path = parentOf(models[0].relativePath);

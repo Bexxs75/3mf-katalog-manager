@@ -24,16 +24,28 @@ const parentOf = (path: string) => {
 };
 
 /**
- * Models that are missing together from one folder: when a folder is gone from the disk, all its models are listed.
- * Only folders with at least two missing models are offered as a group; a single missing model stays a plain row.
+ * Models that are missing together from one folder, at least two per group; a single missing model stays a plain row.
+ * With `missingFolders` from the server only those verified folders form groups; without it (older server) it is
+ * "two or more missing models below the same parent".
  */
-export function groupMissingByFolder(orphaned: ModelFile[]): { folders: { path: string; models: ModelFile[] }[]; single: ModelFile[] } {
+export function groupMissingByFolder(orphaned: ModelFile[], missingFolders?: CatalogIssues['missingFolders']): { folders: { path: string; models: ModelFile[] }[]; single: ModelFile[] } {
+  const folders: { path: string; models: ModelFile[] }[] = [];
+  if (missingFolders) {
+    const byId = new Map(orphaned.map(m => [m.id, m]));
+    const grouped = new Set<string>();
+    for (const entry of missingFolders) {
+      const models = entry.models.flatMap(id => { const m = byId.get(id); return m && !grouped.has(id) ? [m] : []; });
+      if (models.length < 2) continue;
+      models.forEach(m => grouped.add(m.id));
+      folders.push({ path: entry.relativePath, models });
+    }
+    return { folders, single: orphaned.filter(m => !grouped.has(m.id)) };
+  }
   const byParent = new Map<string, ModelFile[]>();
   for (const model of orphaned) {
     const parent = parentOf(model.path);
     byParent.set(parent, [...(byParent.get(parent) ?? []), model]);
   }
-  const folders: { path: string; models: ModelFile[] }[] = [];
   const single: ModelFile[] = [];
   for (const [path, models] of byParent) {
     if (path && models.length > 1) folders.push({ path, models }); else single.push(...models);
@@ -43,7 +55,7 @@ export function groupMissingByFolder(orphaned: ModelFile[]): { folders: { path: 
 
 function initialSelection(issues: CatalogIssues): Set<string> {
   const checked = new Set<string>();
-  const folderIds = new Set(import.meta.env.VITE_TARGET === 'web' ? groupMissingByFolder(issues.orphaned).folders.flatMap(folder => folder.models.map(m => m.id)) : []);
+  const folderIds = new Set(import.meta.env.VITE_TARGET === 'web' ? groupMissingByFolder(issues.orphaned, issues.missingFolders).folders.flatMap(folder => folder.models.map(m => m.id)) : []);
   // Whole folders are removed only by their own button, never as a side effect of the main one.
   issues.orphaned.filter(m => !folderIds.has(m.id)).forEach((m) => checked.add(m.id));
   issues.duplicateGroups.forEach((group) => {
@@ -56,7 +68,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete, error }: Props
   const { lockProps } = useImportLock();
   const t = useT();
   const count = useFormatCount();
-  const grouped = import.meta.env.VITE_TARGET === 'web' ? groupMissingByFolder(issues.orphaned) : { folders: [], single: issues.orphaned };
+  const grouped = import.meta.env.VITE_TARGET === 'web' ? groupMissingByFolder(issues.orphaned, issues.missingFolders) : { folders: [], single: issues.orphaned };
   const [checked, setChecked] = useState<Set<string>>(() => initialSelection(issues));
 
   const toggle = (id: string) => {
