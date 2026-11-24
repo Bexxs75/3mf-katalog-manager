@@ -487,7 +487,9 @@ export interface CatalogIssues {
   /** Web: the scan stopped at a limit, so the lists may be incomplete. */
   truncated?: boolean;
   /** Models the server could not check reliably; shown, never offered for removal. Not sent by every server version. */
-  unclear?: { path: string; reason: string }[];
+  unclear?: { path: string; root?: number; reason: string }[];
+  /** Web: folders verified gone as a whole (the chain up to them is made of real directories) with the ids of their listed missing models. Not sent by every server version. */
+  missingFolders?: { relativePath: string; root: number; models: string[] }[];
 }
 
 export interface Collection {
