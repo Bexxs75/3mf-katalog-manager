@@ -498,6 +498,7 @@ mod unclear_and_folders {
         touch(&root.join("a.3mf"));
         let snapshot = Snapshot { models: vec![model(1, &root.join("a.3mf"), true)], companions: vec![] };
         let json = serde_json::to_value(report(&snapshot, &[&root])).unwrap();
-        assert!(json.get("unclear").is_none() && json.get("missingFolders").is_none());
+        assert!(json.get("unclear").is_none());
+        assert_eq!(json["missingFolders"], serde_json::json!([]), "the field is always present, also empty");
     }
 }

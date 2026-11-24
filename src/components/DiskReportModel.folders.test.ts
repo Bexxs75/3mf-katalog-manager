@@ -27,6 +27,11 @@ describe('groupMissingFolders (sync dialog)', () => {
     // 'Other' is not verified, so its models stay plain rows
     expect(single.map(m => m.id)).toEqual(['4', '5']);
   });
+  it('web, empty missingFolders: no folder group despite two models in the same folder', () => {
+    const { folders, single } = groupMissingFolders({ ...base, missingFolders: [] });
+    expect(folders).toHaveLength(0);
+    expect(single.map(m => m.id)).toEqual(['1', '2', '3', '4', '5']);
+  });
   it('keeps a single-model folder and unknown ids as plain rows', () => {
     const { folders, single } = groupMissingFolders({ ...base, missingFolders: [{ relativePath: 'Other', root: 0, models: ['4', 'gone'] }] });
     expect(folders).toHaveLength(0);
@@ -41,6 +46,11 @@ describe('groupMissingByFolder (cleanup dialog)', () => {
     const { folders, single } = groupMissingByFolder(orphaned);
     expect(folders.map(f => f.path).sort()).toEqual(['/r/Alt/Sub', '/r/Other']);
     expect(single.map(m => m.id)).toEqual(['3']);
+  });
+  it('web, empty missingFolders: no folder group despite two models in the same folder', () => {
+    const { folders, single } = groupMissingByFolder(orphaned, []);
+    expect(folders).toHaveLength(0);
+    expect(single.map(m => m.id)).toEqual(['1', '2', '3', '4', '5']);
   });
   it('lets the server folders win', () => {
     const { folders, single } = groupMissingByFolder(orphaned, [{ relativePath: 'Alt', root: 0, models: ['1', '2', '3'] }]);

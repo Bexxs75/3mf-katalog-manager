@@ -377,17 +377,16 @@ fn scan_issues(conn: &rusqlite::Connection, roots: &[PathBuf], limits: catalog_i
             .map(|u| json!({"path": u.place.relative, "root": u.place.root, "reason": u.reason}))
             .collect();
     }
-    if !issues.missing_folders.is_empty() {
-        answer["missingFolders"] = issues
-            .missing_folders
-            .iter()
-            .map(|f| {
-                let models: Vec<String> =
-                    f.models.iter().filter(|id| by_listed.contains(id)).map(|id| id.to_string()).collect();
-                json!({"relativePath": f.place.relative, "root": f.place.root, "models": models})
-            })
-            .collect();
-    }
+    // Always present, also empty: a present field tells the client the folders were verified here.
+    answer["missingFolders"] = issues
+        .missing_folders
+        .iter()
+        .map(|f| {
+            let models: Vec<String> =
+                f.models.iter().filter(|id| by_listed.contains(id)).map(|id| id.to_string()).collect();
+            json!({"relativePath": f.place.relative, "root": f.place.root, "models": models})
+        })
+        .collect();
     Ok(answer)
 }
 
@@ -1002,8 +1001,9 @@ mod tests {
         let v = json_body(r).await;
         let mut keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
         keys.sort();
-        assert_eq!(keys, ["duplicateGroups", "orphaned", "truncated"]);
+        assert_eq!(keys, ["duplicateGroups", "missingFolders", "orphaned", "truncated"]);
         assert_eq!(v["truncated"], false);
+        assert_eq!(v["missingFolders"], json!([]));
         // Only the model under the root that is really gone; rows outside the roots (even a
         // missing one) are unclear and never listed or grouped.
         assert_eq!(v["orphaned"].as_array().unwrap().len(), 1);

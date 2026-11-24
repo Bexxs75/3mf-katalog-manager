@@ -81,13 +81,13 @@ const parentOf = (path: string) => { const cut = Math.max(path.lastIndexOf('/'),
 type MissingFolder = { key: string; root: number; path: string; models: MissingModel[] };
 /**
  * Missing models that share a folder are shown together as one folder row, at least two models per row; a single missing model stays a plain row.
- * Which folder is really gone is the server's call: when it sends `missingFolders`, only those folders (verified) form groups.
+ * Which folder is really gone is the server's call: when it sends `missingFolders` (also an empty array), only those folders (verified) form groups.
  * Only an older server without the field falls back to "two or more missing models below the same parent".
  */
 export function groupMissingFolders(report: DiskReport): { folders: MissingFolder[]; single: MissingModel[] } {
   const folders: MissingFolder[] = [];
   const grouped = new Set<string>();
-  if (report.missingFolders) {
+  if (Array.isArray(report.missingFolders)) {
     const byId = new Map(report.missingModels.map(m => [m.id, m]));
     for (const entry of report.missingFolders) {
       const models = entry.models.flatMap(id => { const m = byId.get(id); return m && !grouped.has(id) ? [m] : []; });
