@@ -194,6 +194,7 @@ describe('ServerFolderPicker', () => {
       const cancel = await screen.findByRole('button', { name: de.sfiStop });
       await waitFor(() => expect(cancel).toHaveFocus());
       expect(screen.getByText(de.sfpCopyNote)).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: de.sfpTitleImport })).toBeInTheDocument();
       await advance(700);
       expect(await screen.findByText('5 von 18 Dateien kopiert')).toBeInTheDocument();
       expect(screen.getByText('Aktuell: Fafnir.3mf')).toBeInTheDocument();

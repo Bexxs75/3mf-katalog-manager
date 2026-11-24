@@ -158,6 +158,7 @@ export interface Translations {
   webUploadLength: string;
   webUploadFailed: string;
   webUploadSessionEnded: string;
+  webRestoreSignIn: string;
   webUploadCancelled: string;
   webUploadQueued: string;
   webUploadSending: string;
@@ -1880,6 +1881,8 @@ export interface Translations {
   bkrFactSchema: string;
   bkrFactModels: string;
   bkrFactFolders: string;
+  bkrFactCollections: string;
+  bkrFactSources: string;
   bkrWarnToggle: string;
   bkrWarnNote: string;
   bkrMore: string;
@@ -2213,6 +2216,7 @@ export interface Translations {
   sfpCheckNow: string;
   sfpResetDone: PluralForms;
   sfpTitle: string;
+  sfpTitleImport: string;
   sfpClose: string;
   sfpTreeLabel: string;
   sfpCrumbLabel: string;

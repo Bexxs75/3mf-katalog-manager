@@ -170,6 +170,18 @@ fn source_dirs_counts_and_limits_are_bounded_and_signalled() {
 }
 
 #[test]
+fn source_dirs_tree_ending_at_the_depth_limit_is_exact_not_truncated() {
+    let f = Fixture::new();
+    let root = &f.roots[0];
+    std::fs::create_dir_all(root.join("a/b/c/d")).unwrap();
+    std::fs::write(root.join("a/b/c/d/last.stl"), "model").unwrap();
+    let result = f.read("list_source_dirs", json!({"rootIdx":0})).unwrap();
+    assert_eq!(result["entries"][0]["fileCount"], 1);
+    assert_eq!(result["entries"][0]["truncated"], false);
+    assert_eq!(result["truncated"], false);
+}
+
+#[test]
 fn source_dirs_roundtrip_keeps_sources_and_hides_server_paths() {
     let f = Fixture::new();
     std::fs::write(f.roots[0].join("one.stl"), "model").unwrap();
