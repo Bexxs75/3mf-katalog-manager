@@ -42,6 +42,15 @@ describe('catalog disk sync', () => {
       expect(item).toHaveAttribute('title');
     }
   });
+  it.each([['de', 'Ordner'], ['en', 'Folder'], ['es', 'Carpeta'], ['fr', 'Dossier']])('labels a new folder as folder, not file, in %s', async (language, folderLabel) => {
+    localStorage.setItem('3mf-katalog-language', language);
+    vi.mocked(invoke).mockResolvedValue({ ...empty, newFolders: [{ path: '/models/Neu', relativePath: 'Neu', root: '/models' }] });
+    renderSync();
+    fireEvent.keyDown(document, { key: 'F5' });
+    const item = within(await screen.findByRole('dialog')).getByRole('listitem');
+    expect(within(item).getByText(folderLabel).parentElement).toHaveTextContent('Neu');
+    expect(within(item).queryByText({ de: 'Datei', en: 'File', es: 'Archivo', fr: 'Fichier' }[language]!)).toBeNull();
+  });
   it('runs via F5, prevents duplicate scans and reports unchanged catalogs', async () => {
     let resolve!: (scan: DiskScan) => void;
     vi.mocked(invoke).mockReturnValue(new Promise<DiskScan>(r => { resolve = r; }));
