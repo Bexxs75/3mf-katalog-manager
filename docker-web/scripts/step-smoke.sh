@@ -9,6 +9,8 @@
 #     server logs that the STEP preview is off, reports it unavailable and refuses STEP geometry
 #     with an error code instead of crashing.
 # Usage: docker-web/scripts/step-smoke.sh IMAGE
+# SMOKE_DEFAULT_USER=1 runs the container as the image's own user (no -u) on named volumes
+# instead of host directories, which proves the user baked into the image can do all of the above.
 # The empty catalog is made like in ci-smoke.sh (cargo example, or SMOKE_CATALOG_CMD, see there).
 set -euo pipefail
 image=${1:?usage: step-smoke.sh IMAGE}
@@ -18,6 +20,7 @@ work=$(mktemp -d)
 name="web-step-smoke-$$"
 cleanup() {
     docker rm -f "$name" >/dev/null 2>&1 || :
+    if [ -n "${SMOKE_DEFAULT_USER:-}" ]; then docker volume rm -f "$name-cfg" "$name-mod" >/dev/null 2>&1 || :; fi
     rm -rf "$work" 2>/dev/null || :
 }
 trap cleanup EXIT
@@ -38,6 +41,18 @@ else
 fi
 [ -s "$CATALOG_PATH" ] || fail 'catalog database was not created'
 chmod -R u+rwX "$work/config"
+if [ -n "${SMOKE_DEFAULT_USER:-}" ]; then
+    docker volume create "$name-cfg" >/dev/null && docker volume create "$name-mod" >/dev/null
+    docker run --rm --user 0 --entrypoint sh -v "$name-cfg":/config -v "$name-mod":/models \
+        -v "$work/config":/src:ro "$image" \
+        -c 'cp -a /src/. /config/ && mkdir -p /models/uploads && chown -R 65532:65532 /config /models' \
+        || fail 'could not prepare the volumes'
+    mounts=(-v "$name-cfg":/config -v "$name-mod":/models)
+    user_opt=()
+else
+    mounts=(-v "$work/config":/config -v "$work/models":/models)
+    user_opt=(-u "$(id -u):$(id -g)")
+fi
 password=$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
 base="http://127.0.0.1:$port"
@@ -47,9 +62,9 @@ jar="$work/cookies"
 start() {
     # shellcheck disable=SC2086
     docker run -d --name "$name" --read-only --tmpfs /tmp --cap-drop ALL \
-        --security-opt no-new-privileges:true $1 -u "$(id -u):$(id -g)" \
+        --security-opt no-new-privileges:true $1 "${user_opt[@]}" \
         -p "127.0.0.1:$port:8080" \
-        -v "$work/config":/config -v "$work/models":/models \
+        "${mounts[@]}" \
         -e KATALOG_PASSWORD="$password" \
         -e KATALOG_ALLOWED_HOSTS="127.0.0.1:$port,localhost:$port" \
         -e KATALOG_WRITE=1 -e KATALOG_UPLOAD_DIR=/models/uploads \
