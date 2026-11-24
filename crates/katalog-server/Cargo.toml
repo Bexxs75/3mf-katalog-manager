@@ -5,6 +5,13 @@ edition = "2021"
 license = "MIT"
 description = "Read-only web server for the 3MF Katalog Manager catalog"
 
+[features]
+# Off by default: the STEP preview links Open CASCADE dynamically, so a build with it
+# needs the OCCT development packages (cmake, g++, libocct-*-dev) and the image needs
+# the shared libraries. Without it the server reports the preview as unavailable.
+default = []
+step-preview = ["katalog-core/step-preview"]
+
 [dependencies]
 katalog-core = { path = "../katalog-core", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
@@ -25,6 +32,11 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 hyper = { version = "1", default-features = false, features = ["server", "http1"] }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 tower = { version = "0.5", features = ["util"] }
+
+# The STEP worker process limits itself before it parses untrusted input.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+seccompiler = "0.5"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }

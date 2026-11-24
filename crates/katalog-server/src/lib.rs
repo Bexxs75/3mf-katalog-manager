@@ -3,6 +3,7 @@ pub mod config;
 pub mod health;
 pub mod invoke;
 pub mod password;
+pub mod step_worker;
 mod web;
 pub use web::*;
 

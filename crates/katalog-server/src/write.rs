@@ -538,6 +538,8 @@ pub(crate) struct ExecContext {
     pub db_path: std::path::PathBuf,
     pub roots: Vec<std::path::PathBuf>,
     pub limits: katalog_core::import::files::WebImportLimits,
+    /// Reads STEP metadata in the isolated worker; a disabled one keeps STEP refused.
+    pub step: std::sync::Arc<crate::step_worker::StepWorker>,
 }
 /// Test-only pause between reading the file and the write step, to prove that a slow scan
 /// neither blocks other writers nor can overwrite a file that changed meanwhile. Only files
@@ -573,11 +575,37 @@ pub(crate) fn prepare_rescan(
         eprintln!("write error_kind=rescan_read_open");
         Box::new(super::web::error_coded(500, ErrorCode::WebServerInternal, &[]))
     })?;
-    let prepared = katalog_core::rescan::prepare_web_rescan(&conn, file_id, &ctx.roots, ctx.limits)
+    let step = |file: &std::fs::File| step_metadata(&ctx.step, file);
+    let reader = ctx.step.available().then_some(&step as katalog_core::rescan::StepReader<'_>);
+    let prepared = katalog_core::rescan::prepare_web_rescan_with(&conn, file_id, &ctx.roots, ctx.limits, reader)
         .map_err(rescan_error)?;
     #[cfg(test)]
     rescan_hook::after_parse(prepared.canonical_path());
     Ok(prepared)
+}
+/// Wall time for one metadata read: the rescan answers within the 30 seconds of a write request.
+const STEP_RESCAN_WALL: std::time::Duration = std::time::Duration::from_secs(25);
+
+/// STEP metadata from the worker. Like the desktop, a file OCCT cannot read gets empty metadata
+/// and stays in the catalog; a worker that is busy, broken, or ran out of time or memory leaves
+/// the record as it is.
+fn step_metadata(
+    step: &crate::step_worker::StepWorker,
+    file: &std::fs::File,
+) -> Result<katalog_core::rescan::StepMetadata, katalog_core::rescan::RescanError> {
+    use crate::step_worker::{Mode, WorkerError as W};
+    use katalog_core::rescan::RescanError;
+    let _slot = step.slot_within(std::time::Duration::from_secs(3)).map_err(|_| RescanError::StepUnavailable)?;
+    match step.run(Mode::Metadata, file, STEP_RESCAN_WALL) {
+        Ok(bytes) => {
+            let meta: crate::step_worker::StepMetadata =
+                serde_json::from_slice(&bytes).map_err(|_| RescanError::Invalid)?;
+            Ok((meta.dimensions_mm, meta.volume_cm3, meta.object_count))
+        }
+        Err(W::NoGeometry | W::Unreadable) => Ok((None, None, None)),
+        Err(W::TooLarge | W::TooComplex) => Err(RescanError::TooLarge),
+        Err(W::Unavailable | W::Busy) => Err(RescanError::StepUnavailable),
+    }
 }
 pub(crate) fn apply_rescan(
     c: &mut Connection,

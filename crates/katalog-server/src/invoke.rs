@@ -28,6 +28,8 @@ pub struct GeometryGate {
     report_limits: disk_report::Limits,
     report_timeout: std::time::Duration,
     admission: Arc<Semaphore>,
+    /// STEP parsing in a separate process; disabled unless the server found a working one.
+    pub step: Arc<crate::step_worker::StepWorker>,
 }
 impl Default for GeometryGate {
     fn default() -> Self {
@@ -39,10 +41,14 @@ impl Default for GeometryGate {
             report_limits: disk_report::Limits::default(),
             report_timeout: DISK_REPORT_TIMEOUT,
             admission: Arc::new(Semaphore::new(10)),
+            step: Arc::new(crate::step_worker::StepWorker::disabled()),
         }
     }
 }
 impl GeometryGate {
+    pub fn with_step(step: crate::step_worker::StepWorker) -> Self {
+        Self { step: Arc::new(step), ..Self::default() }
+    }
     pub(crate) async fn acquire(&self) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), Box<Response>> {
         let admission = self.admission.clone().try_acquire_owned().map_err(|_| {
             error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[])
@@ -344,7 +350,8 @@ pub async fn invoke(
     };
     match command.as_str() {
         "get_app_version" => return Json(json!(env!("CARGO_PKG_VERSION"))).into_response(),
-        "is_preview_build" | "has_step_preview" => return Json(json!(false)).into_response(),
+        "is_preview_build" => return Json(json!(false)).into_response(),
+        "has_step_preview" => return Json(json!(gate.step.available())).into_response(),
         _ => {}
     }
     // The file-management UI asks for the individually removed files as well; the plain listing stays as it was.
@@ -445,6 +452,7 @@ pub async fn invoke(
     } else {
         None
     };
+    let step = gate.step.clone();
     let result = tokio::task::spawn_blocking(move || -> Result<Response, ReadError> {
         // The permits belong to this closure: cancelling HTTP does not release a running parser.
         let _catalog_guard = catalog_guard;
@@ -561,6 +569,10 @@ pub async fn invoke(
             "get_model_geometry" => {
                 let source = read::load_geometry_source(&conn, &file_id.unwrap())?;
                 drop(conn);
+                // Without a working worker STEP takes the common path, which answers "unsupported".
+                if source.file_type == katalog_core::db::models::FileType::Stp && step.available() {
+                    return step_geometry(&step, &source.path, &roots);
+                }
                 // The read-only web has no configured budgets; the defaults are the
                 // largest values the configuration can set.
                 let bytes = read::get_model_geometry_with_limits(
@@ -583,6 +595,47 @@ pub async fn invoke(
         Ok(Ok(response)) => response,
         Ok(Err(e)) => read_error(e),
         Err(_) => *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]),
+    }
+}
+
+/// A STEP preview from the worker. The file is admitted and opened here; the worker only gets
+/// the handle.
+fn step_geometry(
+    step: &crate::step_worker::StepWorker,
+    path: &std::path::Path,
+    roots: &[PathBuf],
+) -> Result<Response, ReadError> {
+    let slot = match step.try_slot() {
+        Ok(slot) => slot,
+        Err(_) => return Ok(step_busy()),
+    };
+    let file = read::open_geometry_file(path, roots)?;
+    let bytes = step
+        .run(crate::step_worker::Mode::Geometry, &file, step.limits().wall)
+        .map_err(step_read_error)?;
+    drop(slot);
+    Ok(([("content-type", "application/octet-stream")], bytes).into_response())
+}
+/// Too many STEP previews at once: repeatable, with a hint when to try again.
+pub(crate) fn step_busy() -> Response {
+    let mut r = *error(StatusCode::TOO_MANY_REQUESTS, ErrorCode::WebTooManyRequests, &[]);
+    r.headers_mut().insert(
+        "retry-after",
+        crate::step_worker::StepWorker::RETRY_AFTER_SECONDS.to_string().parse().unwrap(),
+    );
+    r
+}
+/// Every worker outcome as a registered code; nothing of the parser's own text reaches the client.
+pub(crate) fn step_read_error(e: crate::step_worker::WorkerError) -> ReadError {
+    use crate::step_worker::WorkerError as W;
+    match e {
+        W::TooLarge => ReadError::coded_with(ErrorCode::FileTooLarge, [crate::step_worker::MAX_INPUT_BYTES.to_string()])
+            .with_code(GeometryErrorCode::TooLarge),
+        W::TooComplex => ReadError::coded(ErrorCode::PreviewTooLarge).with_code(GeometryErrorCode::TooLarge),
+        W::NoGeometry => ReadError::coded(ErrorCode::GeometryEmpty).with_code(GeometryErrorCode::Unreadable),
+        W::Unreadable => ReadError::coded(ErrorCode::GeometryUnavailable).with_code(GeometryErrorCode::Unreadable),
+        W::Unavailable | W::Busy => ReadError::coded_with(ErrorCode::FileFormatUnsupported, ["step"])
+            .with_code(GeometryErrorCode::Unsupported),
     }
 }
 
@@ -1046,6 +1099,85 @@ mod tests {
         let text = String::from_utf8(body(r).await).unwrap();
         assert!(text.contains("\"dlPathNotAllowed\""), "{text}");
         assert!(!text.contains(c.dir.to_str().unwrap()), "{text}");
+    }
+    /// A catalog row for a STEP file below the catalog folder.
+    fn step_entry(c: &Catalog) -> String {
+        let path = c.dir.join("teil.step");
+        std::fs::write(&path, b"ISO-10303-21;\nEND-ISO-10303-21;\n").unwrap();
+        let conn = db::connect(&c.db).unwrap();
+        let id = db::test_insert_minimal_file(&conn, path.to_str().unwrap(), None).unwrap();
+        conn.execute("UPDATE files SET file_type='stp' WHERE id=?1", [id]).unwrap();
+        id.to_string()
+    }
+    fn step_gate(parallel: usize) -> Arc<GeometryGate> {
+        // Never started in these tests: the answers come before a process would be spawned,
+        // or from a spawn that fails.
+        let worker = crate::step_worker::StepWorker::with_exe(
+            PathBuf::from("/nonexistent/katalog-server"),
+            crate::step_worker::Limits::default(),
+            parallel,
+        );
+        Arc::new(GeometryGate::with_step(worker))
+    }
+    #[tokio::test]
+    async fn has_step_preview_follows_the_worker() {
+        let c = catalog();
+        let disabled = invoke(c.db.clone(), vec![c.dir.clone()], "has_step_preview".into(), json!({}), Arc::new(GeometryGate::default())).await;
+        assert_eq!(serde_json::from_slice::<Value>(&body(disabled).await).unwrap(), json!(false));
+        let enabled = invoke(c.db.clone(), vec![c.dir.clone()], "has_step_preview".into(), json!({}), step_gate(1)).await;
+        assert_eq!(serde_json::from_slice::<Value>(&body(enabled).await).unwrap(), json!(true));
+    }
+    #[tokio::test]
+    async fn step_geometry_without_a_worker_stays_unsupported() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId":id}), Arc::new(GeometryGate::default())).await;
+        assert_eq!(r.status(), 422);
+        let v: Value = serde_json::from_slice(&body(r).await).unwrap();
+        assert_eq!(v["message"], "fileFormatUnsupported");
+        assert_eq!(v["code"], "unsupported");
+    }
+    #[tokio::test]
+    async fn step_geometry_over_the_worker_limit_is_429_with_retry_after() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId":id}), step_gate(0)).await;
+        assert_eq!(r.status(), 429);
+        assert_eq!(r.headers()["retry-after"], "5");
+        let v: Value = serde_json::from_slice(&body(r).await).unwrap();
+        assert_eq!(v["message"], "webTooManyRequests");
+    }
+    #[tokio::test]
+    async fn step_geometry_checks_the_roots_before_any_worker_and_names_no_path() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let root = c.dir.join("allowed");
+        std::fs::create_dir(&root).unwrap();
+        let r = invoke(c.db.clone(), vec![root], "get_model_geometry".into(), json!({"fileId":id}), step_gate(1)).await;
+        assert_eq!(r.status(), 422);
+        let text = String::from_utf8(body(r).await).unwrap();
+        assert!(text.contains("\"dlPathNotAllowed\""), "{text}");
+        assert!(!text.contains(c.dir.to_str().unwrap()), "{text}");
+    }
+    #[tokio::test]
+    async fn a_worker_that_cannot_start_is_a_coded_answer_not_a_crash() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId":id}), step_gate(1)).await;
+        assert_eq!(r.status(), 422);
+        let v: Value = serde_json::from_slice(&body(r).await).unwrap();
+        assert_eq!(v["message"], "fileFormatUnsupported");
+        assert_eq!(v["code"], "unsupported");
+    }
+    #[test]
+    fn every_worker_outcome_is_a_wire_code() {
+        use crate::step_worker::WorkerError as W;
+        for e in [W::TooLarge, W::TooComplex, W::NoGeometry, W::Unreadable, W::Unavailable, W::Busy] {
+            let r = step_read_error(e.clone());
+            assert!(r.expected, "{e:?}");
+            assert!(is_wire_code(&r.message), "{e:?}: {}", r.message);
+            assert!(r.code.is_some(), "{e:?}");
+        }
     }
     #[tokio::test]
     async fn list_files_by_ids_is_limited_to_500_ids() {

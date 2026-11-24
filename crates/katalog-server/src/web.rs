@@ -366,14 +366,15 @@ pub async fn initialize(mut config: Config) -> Result<Router, String> {
             .await?,
         )
     };
-    build_app_with_writer(AppConfig { config, auth, clock: Arc::new(SystemClock) }, writer, instance_lock)
+    let step = step_worker().await;
+    build_app_with_writer(AppConfig { config, auth, clock: Arc::new(SystemClock) }, writer, instance_lock, step)
 }
 /// Read-only convenience builder. Fallible write startup uses `try_build_app`.
 pub fn build_app(config: AppConfig) -> Router {
     assert!(!config.config.write && config.config.upload.is_none(), "use try_build_app for write/upload mode");
     let instance_lock = katalog_core::db::instance_lock::InstanceLock::from_env(&config.config.db_path, "server").expect("catalog lock");
     crate::restore_journal::recover(&config.config).expect("restoreRecoveryFailed");
-    build_app_with_writer(config, None, instance_lock).expect("read-only startup")
+    build_app_with_writer(config, None, instance_lock, crate::step_worker::StepWorker::disabled()).expect("read-only startup")
 }
 fn validate_write_config(config: &Config) -> Result<(), String> {
     crate::config::validate_fileops_config(config)?;
@@ -415,9 +416,9 @@ pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
     validate_write_config(&config.config)?;
     if config.config.write && config.auth.is_none() { return Err("Anmeldung fehlt".into()); }
     let (instance_lock, writer) = open_locked(&config.config).await?;
-    build_app_with_writer(config, writer, instance_lock)
+    build_app_with_writer(config, writer, instance_lock, crate::step_worker::StepWorker::disabled())
 }
-fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_lock: Option<katalog_core::db::instance_lock::InstanceLock>) -> Result<Router,String> {
+fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_lock: Option<katalog_core::db::instance_lock::InstanceLock>, step: crate::step_worker::StepWorker) -> Result<Router,String> {
     let uploads = uploads::initialize(&config.config)?;
     restore_upload::initialize(&config.config).map_err(|e| format!("restore staging: {e}"))?;
     crate::export::sweep_stale(&config.config.db_path);
@@ -445,13 +446,28 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_
             revision: 0,
         }),
         changes: Arc::new(tokio::sync::Mutex::new(())),
-        geometry: Arc::new(GeometryGate::default()),
+        geometry: Arc::new(GeometryGate::with_step(step)),
         downloads: Arc::new(tokio::sync::Semaphore::new(4)),
         export: crate::export::Runtime::new(),
     });
     if app.config.write { restore_upload::start_cleanup(&app); }
     printer_service::start(&app);
     Ok(router(app))
+}
+/// The STEP worker is this binary itself; the probe runs once at start, so a host where the
+/// sandbox cannot be set up simply offers no STEP preview.
+async fn step_worker() -> crate::step_worker::StepWorker {
+    use crate::step_worker::{Limits, StepWorker};
+    if !cfg!(feature = "step-preview") {
+        return StepWorker::disabled();
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        eprintln!("STEP-Vorschau deaktiviert: eigenes Programm nicht auffindbar");
+        return StepWorker::disabled();
+    };
+    tokio::task::spawn_blocking(move || StepWorker::start(exe, Limits::default()))
+        .await
+        .unwrap_or_else(|_| StepWorker::disabled())
 }
 fn router(app: Arc<App>) -> Router {
     Router::new()
@@ -1508,6 +1524,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         db_path: app.config.db_path.clone(),
         roots: app.config.roots.clone(),
         limits: app.config.upload.as_ref().map(|u| u.limits).unwrap_or_default(),
+        step: app.geometry.step.clone(),
     };
     let work=tokio::task::spawn_blocking(move || {
         let _catalog_guard = catalog_guard;

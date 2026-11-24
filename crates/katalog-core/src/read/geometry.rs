@@ -58,6 +58,14 @@ pub fn get_model_geometry_with_limits(
     Ok(encode_render_meshes(&load_geometry_with_obj_limit(&target, MAX_PREVIEW_TRIANGLES, web_limits)?))
 }
 
+/// Opens a model file for a reader in another process (the STEP worker gets the handle, never the
+/// path): same root admission as the in-process readers, and only a regular file is accepted, so a
+/// FIFO or device cannot hang or flood the reader.
+pub fn open_geometry_file(path: &Path, allowed_roots: &[PathBuf]) -> ReadResult<std::fs::File> {
+    let target = resolve_within_roots(path, Some(allowed_roots))?;
+    crate::safe_file::open_regular(&target).map_err(geometry_io_error)
+}
+
 /// `None` keeps the path as it is. With roots, both roots and the target are canonicalized and the
 /// resolved path that passed the containment check is returned, so a symlink swapped in
 /// afterwards cannot redirect the read.
