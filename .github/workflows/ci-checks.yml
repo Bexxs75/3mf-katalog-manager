@@ -8,6 +8,10 @@ on:
   pull_request: {}
   workflow_dispatch: {}
 
+# Least privilege: the jobs only read the repository (and the release via the read-only token).
+permissions:
+  contents: read
+
 jobs:
   ci-checks:
     runs-on: ubuntu-24.04

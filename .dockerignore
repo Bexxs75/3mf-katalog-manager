@@ -12,5 +12,7 @@ docker
 scripts
 *.md
 !WEB-PLAN.md
+!LICENSE
+!THIRD-PARTY-LICENSES.md
 src-tauri/icons/*.icns
 src-tauri/icons/*.ico

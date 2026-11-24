@@ -78,11 +78,14 @@ jobs:
 
       - name: Setup vcpkg binary cache (GitHub Packages / NuGet)
         shell: pwsh
+        env:
+          GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $nuget = & "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe" fetch nuget | Select-Object -Last 1
-          & $nuget sources add -Source "$env:VCPKG_NUGET_FEED" -StorePasswordInClearText -Name GitHubPackages -UserName "${{ github.repository_owner }}" -Password "${{ secrets.GITHUB_TOKEN }}"
+          & $nuget sources add -Source "$env:VCPKG_NUGET_FEED" -StorePasswordInClearText -Name GitHubPackages -UserName "$env:GH_REPOSITORY_OWNER" -Password "$env:GH_PACKAGES_TOKEN"
           if ($LASTEXITCODE -ne 0) { throw "nuget sources add failed" }
-          & $nuget setapikey "${{ secrets.GITHUB_TOKEN }}" -Source "$env:VCPKG_NUGET_FEED"
+          & $nuget setapikey "$env:GH_PACKAGES_TOKEN" -Source "$env:VCPKG_NUGET_FEED"
           if ($LASTEXITCODE -ne 0) { throw "nuget setapikey failed" }
 
       - name: Build OCCT 7.9.3 via vcpkg manifest

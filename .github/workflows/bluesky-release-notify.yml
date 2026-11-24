@@ -9,6 +9,10 @@ on:
         description: "Release-Tag erneut posten (z.B. v0.11.0)"
         required: true
 
+# Least privilege: the jobs only read the repository (and the release via the read-only token).
+permissions:
+  contents: read
+
 jobs:
   notify:
     # The fixed pre-release `preview` carries test versions, not a release to announce.

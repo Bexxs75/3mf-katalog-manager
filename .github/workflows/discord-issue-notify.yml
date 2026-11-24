@@ -9,6 +9,10 @@ on:
 # selectively (with a preview) instead of blindly re-posting "the last opened
 # issue".
 
+# Least privilege: the jobs only read the repository (and the release via the read-only token).
+permissions:
+  contents: read
+
 jobs:
   notify:
     runs-on: ubuntu-latest
