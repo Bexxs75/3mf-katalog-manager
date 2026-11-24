@@ -619,3 +619,6 @@ Quelle: `docs/plans/w2-spec-codex-befunde.md` (Verdikt REVISE). Jeder Befund wur
 Nebenbefund (nicht geändert, zur Entscheidung): `disk_sync_preview` begrenzt den Body auf 256 KiB (2.3), erlaubt aber Pfade bis 4096 Bytes; 500 solcher Pfade überschreiten die Grenze, obwohl sie gültig wären. Gleiches Muster wie W2-07; bei Bedarf Pfadlänge in der Vorschau oder Grenze anpassen.
 
 Nicht geprüft: ob `FsContext` und `Anchored` mit konfigurierten Wurzeln, deren Pfad selbst Links enthält, wie gewünscht arbeiten; ob `delete_file`-Aufrufer (`reset_imported`) vom neuen Pfad dasselbe Ledger-Verhalten brauchen (5.1); Aufwandsänderung ist eine Schätzung ohne Bau.
+
+### 10.1 Entscheidung des Users zu „Unterordner fehlt“ (24.11.2026)
+Bestätigt: Ein gelöschter Unterordner (verifizierte Kette bis zur ersten fehlenden Komponente) lässt die Modelle darin als „fehlend“ gelten; Link/ENOTDIR/Fehler/Wurzelzweifel bleiben „unklar“. Zusatz für P6: Der Bereinigungsdialog fasst fehlende Modelle eines komplett gelöschten Ordners zusammen („Ordner fehlt, N Modelle“) und bietet das Entfernen (Papierkorb) mit einem Klick an. Entfernt wird weiterhin nur auf Wunsch des Users, nie automatisch.
