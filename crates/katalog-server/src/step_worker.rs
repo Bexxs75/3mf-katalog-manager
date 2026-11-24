@@ -41,6 +41,8 @@ pub const EXIT_OUTPUT: i32 = 72;
 pub const EXIT_NO_LANDLOCK: i32 = 73;
 /// Reading the input handle failed below the parser (I/O, not the file's content).
 pub const EXIT_INPUT: i32 = 74;
+/// The system-call filter stopped the worker at a call outside its allow-list.
+pub const EXIT_FILTER: i32 = 75;
 
 /// Lets the test-only modes run. The server starts workers with an empty environment, so a
 /// request can never reach them.
@@ -121,6 +123,8 @@ pub struct StepWorker {
     exe: Option<PathBuf>,
     limits: Limits,
     slots: Arc<Semaphore>,
+    /// Number of the last system call the filter stopped a worker at, for the tests.
+    last_refused: std::sync::Mutex<Option<String>>,
 }
 impl Default for StepWorker {
     fn default() -> Self {
@@ -132,12 +136,22 @@ impl StepWorker {
     pub const RETRY_AFTER_SECONDS: u64 = 5;
 
     pub fn disabled() -> Self {
-        Self { exe: None, limits: Limits::default(), slots: Arc::new(Semaphore::new(Self::PARALLEL)) }
+        Self::new(None, Limits::default(), Self::PARALLEL)
     }
 
     /// A worker using `exe` without checking it first; tests use it with the real binary.
     pub fn with_exe(exe: PathBuf, limits: Limits, parallel: usize) -> Self {
-        Self { exe: Some(exe), limits, slots: Arc::new(Semaphore::new(parallel)) }
+        Self::new(Some(exe), limits, parallel)
+    }
+
+    fn new(exe: Option<PathBuf>, limits: Limits, parallel: usize) -> Self {
+        Self { exe, limits, slots: Arc::new(Semaphore::new(parallel)), last_refused: std::sync::Mutex::new(None) }
+    }
+
+    /// Test hook: the call number of the last worker the filter stopped.
+    #[doc(hidden)]
+    pub fn last_refused_syscall(&self) -> Option<String> {
+        self.last_refused.lock().ok().and_then(|last| last.clone())
     }
 
     /// For the running server: the preview is offered only if this build has OCCT and a probe
@@ -246,10 +260,12 @@ impl StepWorker {
         command
             .stdin(input.map_or_else(Stdio::null, Stdio::from))
             .stdout(Stdio::piped())
-            // OCCT and the C++ runtime talk on stderr; it is not ours to forward.
-            .stderr(Stdio::null());
+            // The worker sends OCCT's own stderr to /dev/null at once and keeps this pipe only
+            // for one line: which system call its filter refused, if any.
+            .stderr(Stdio::piped());
         let mut child = command.spawn().map_err(|_| WorkerError::Unavailable)?;
         let mut stdout = child.stdout.take().ok_or(WorkerError::Unavailable)?;
+        let diagnostics = child.stderr.take();
         let cap = self.limits.max_output_bytes;
         // Reading on a thread of its own keeps the pipe drained while this one watches the
         // clock. At the cap the reader stops and closes the pipe, which ends a flooding worker.
@@ -281,11 +297,55 @@ impl StepWorker {
             return Err(WorkerError::TooComplex);
         };
         let (read_ok, out) = reader.join().unwrap_or((false, Vec::new()));
+        if let Some(number) = log_refused_syscall(status, diagnostics) {
+            if let Ok(mut last) = self.last_refused.lock() {
+                *last = Some(number);
+            }
+        }
         if out.len() > cap {
             return Err(WorkerError::TooComplex);
         }
         classify(status, read_ok, out)
     }
+}
+
+/// A worker the filter stopped is a crash for the caller (nothing is concluded about the file),
+/// but for the operator it means the allow-list misses a call this OCCT build needs, so it is
+/// logged with the call's number. Only digits are taken from the worker.
+fn log_refused_syscall(status: std::process::ExitStatus, diagnostics: Option<std::process::ChildStderr>) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        let filtered = status.code() == Some(EXIT_FILTER) || status.signal() == Some(libc::SIGSYS);
+        if !filtered {
+            return None;
+        }
+        let mut line = Vec::new();
+        if let Some(mut pipe) = diagnostics {
+            let _ = (&mut pipe).take(64).read_to_end(&mut line);
+        }
+        let number = refused_number(&line);
+        eprintln!("STEP-Worker vom Systemaufruf-Filter beendet: Systemaufruf Nr. {number} ({}) ist nicht erlaubt", std::env::consts::ARCH);
+        Some(number)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (status, diagnostics);
+        None
+    }
+}
+
+/// The call number from the worker's `syscall=<digits>` line, or "?".
+fn refused_number(line: &[u8]) -> String {
+    let number: String = line
+        .strip_prefix(b"syscall=")
+        .unwrap_or(&[])
+        .iter()
+        .take(10)
+        .take_while(|b| b.is_ascii_digit())
+        .map(|&b| b as char)
+        .collect();
+    if number.is_empty() { "?".to_string() } else { number }
 }
 
 fn classify(status: std::process::ExitStatus, read_ok: bool, out: Vec<u8>) -> Result<Vec<u8>, WorkerError> {
@@ -313,6 +373,7 @@ fn classify(status: std::process::ExitStatus, read_ok: bool, out: Vec<u8>) -> Re
         Some(EXIT_NOT_REGULAR | EXIT_OUTPUT | EXIT_INPUT) => Err(WorkerError::Protocol),
         Some(EXIT_UNSUPPORTED | EXIT_SANDBOX | EXIT_USAGE) => Err(WorkerError::Unavailable),
         Some(EXIT_NO_LANDLOCK) => Err(WorkerError::NoIsolation),
+        Some(EXIT_FILTER) => Err(WorkerError::Crashed),
         // A Rust panic (101), an allocation failure under the address-space limit or anything
         // else the worker does not plan.
         _ => Err(WorkerError::Crashed),
@@ -359,6 +420,9 @@ mod sandbox {
         // The result channel is a copy of fd 1; fd 1 itself goes to /dev/null, because OCCT
         // prints progress and warnings to std::cout and would corrupt the answer.
         let Ok(mut out) = take_stdout() else { return EXIT_SANDBOX };
+        if take_stderr().is_err() {
+            return EXIT_SANDBOX;
+        }
         if let Err(code) = enter(address_space_mib, cpu_seconds, parent) {
             return code;
         }
@@ -385,6 +449,65 @@ mod sandbox {
             return Err(std::io::Error::last_os_error());
         }
         Ok(File::from(out))
+    }
+
+    /// The copy of fd 2 the SIGSYS handler reports on; -1 until it exists.
+    static DIAGNOSTICS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+    /// Like stdout: fd 2 goes to /dev/null (OCCT and a panic talk there), a private copy of the
+    /// original stays open for one diagnostic line, and SIGSYS (a call outside the filter's
+    /// allow-list) writes that line and ends the worker with [`EXIT_FILTER`].
+    fn take_stderr() -> std::io::Result<()> {
+        use std::os::fd::IntoRawFd;
+        let diagnostics = std::io::stderr().as_fd().try_clone_to_owned()?;
+        let null = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
+        // SAFETY: both descriptors are open and owned by this process; dup2 only replaces fd 2.
+        if unsafe { libc::dup2(null.as_raw_fd(), libc::STDERR_FILENO) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        DIAGNOSTICS.store(diagnostics.into_raw_fd(), std::sync::atomic::Ordering::SeqCst);
+        // SAFETY: a zeroed sigaction with a valid handler address and SA_SIGINFO is the
+        // documented way to install a three-argument handler.
+        unsafe {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            let handler: extern "C" fn(libc::c_int, *mut libc::siginfo_t, *mut libc::c_void) = on_sigsys;
+            action.sa_sigaction = handler as usize;
+            action.sa_flags = libc::SA_SIGINFO;
+            libc::sigemptyset(&mut action.sa_mask);
+            if libc::sigaction(libc::SIGSYS, &action, std::ptr::null_mut()) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+        Ok(())
+    }
+
+    /// Async-signal-safe: no allocation, only write(2) and _exit(2).
+    extern "C" fn on_sigsys(_signal: libc::c_int, info: *mut libc::siginfo_t, _context: *mut libc::c_void) {
+        // In the SIGSYS layout of siginfo_t (64-bit Linux) the call number is the int at byte 24,
+        // after signo, errno, code, padding and the faulting address.
+        // SAFETY: the kernel passes a valid siginfo_t for a SA_SIGINFO handler.
+        let number = unsafe { std::ptr::read_unaligned((info as *const u8).add(24) as *const i32) };
+        let mut line = *b"syscall=0000000000\n";
+        let mut value = number.unsigned_abs();
+        let mut end = line.len() - 1;
+        loop {
+            end -= 1;
+            line[end] = b'0' + (value % 10) as u8;
+            value /= 10;
+            if value == 0 || end == 8 {
+                break;
+            }
+        }
+        let digits = &line[end..];
+        let fd = DIAGNOSTICS.load(std::sync::atomic::Ordering::SeqCst);
+        // SAFETY: write(2) and _exit(2) are async-signal-safe; the buffers are locals.
+        unsafe {
+            if fd >= 0 {
+                libc::write(fd, b"syscall=".as_ptr().cast(), 8);
+                libc::write(fd, digits.as_ptr().cast(), digits.len());
+            }
+            libc::_exit(EXIT_FILTER);
+        }
     }
 
     #[cfg(target_env = "gnu")]
@@ -478,6 +601,13 @@ mod sandbox {
             },
             "selftest-abort" => std::process::abort(),
             "selftest-panic" => panic!("worker self-test"),
+            // A call outside the allow-list (and not among the polite refusals): the filter must
+            // stop the worker instead of letting it carry on.
+            // SAFETY: syslog with a null buffer and length 0 only asks for the buffer size.
+            "selftest-forbidden" => unsafe {
+                libc::syscall(libc::SYS_syslog, 10, std::ptr::null_mut::<libc::c_char>(), 0);
+                0
+            },
             "selftest-read" => {
                 // A file the server could read: inside the sandbox it must stay closed.
                 let Some(path) = std::env::var_os(SELFTEST_PATH_ENV) else { return EXIT_USAGE };
@@ -496,7 +626,7 @@ mod sandbox {
                 let Some(target) = std::env::var(SELFTEST_PATH_ENV).ok().and_then(|v| v.parse().ok()) else {
                     return EXIT_USAGE;
                 };
-                match out.write_all(act_on(target).as_bytes()) {
+                match out.write_all(act_on(target, 0, None).as_bytes()) {
                     Ok(()) => 0,
                     Err(_) => EXIT_OUTPUT,
                 }
@@ -604,7 +734,7 @@ mod sandbox {
     /// errno each attempt got. Signal 0 only checks permission, so nothing reaches the target if
     /// a call goes through; the limit attempt sets the open-file limit to zero on purpose, so a
     /// test sees whether it landed.
-    pub(super) fn act_on(target: libc::pid_t) -> String {
+    pub(super) fn act_on(target: libc::pid_t, async_fd: libc::c_int, async_write: Option<libc::c_int>) -> String {
         let mut lines = Vec::new();
         // SAFETY: plain system calls with integer arguments or pointers to live locals of the
         // layout the kernel expects; a returned descriptor is closed at once.
@@ -657,6 +787,38 @@ mod sandbox {
             ));
             lines.push(format!("ioprio_set={}", outcome(libc::syscall(libc::SYS_ioprio_set, 1, target, 0))));
             lines.push(format!("kcmp={}", outcome(libc::syscall(libc::SYS_kcmp, target, target, 0, 0, 0))));
+            // A descriptor that signals its owner: owner = target, signal = SIGTERM, O_ASYNC on,
+            // then something to read on it. Each step must be refused.
+            lines.push(format!("fcntl_setown={}", outcome(libc::fcntl(async_fd, libc::F_SETOWN, target) as libc::c_long)));
+            // libc names neither F_SETOWN_EX nor F_SETSIG for these targets.
+            const F_SETSIG: libc::c_int = 10;
+            const F_SETOWN_EX: libc::c_int = 15;
+            #[repr(C)]
+            struct OwnerEx {
+                kind: libc::c_int,
+                pid: libc::pid_t,
+            }
+            let owner = OwnerEx { kind: 1, pid: target };
+            lines.push(format!(
+                "fcntl_setown_ex={}",
+                outcome(libc::fcntl(async_fd, F_SETOWN_EX, &owner as *const OwnerEx) as libc::c_long)
+            ));
+            lines.push(format!("fcntl_setsig={}", outcome(libc::fcntl(async_fd, F_SETSIG, libc::SIGTERM) as libc::c_long)));
+            let flags = libc::fcntl(async_fd, libc::F_GETFL);
+            lines.push(format!(
+                "fcntl_setfl_async={}",
+                outcome(libc::fcntl(async_fd, libc::F_SETFL, flags | libc::O_ASYNC) as libc::c_long)
+            ));
+            if let Some(fd) = async_write {
+                libc::write(fd, b"x".as_ptr().cast(), 1);
+            }
+            let mut fds = [0 as libc::c_int; 2];
+            let piped = libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC);
+            if piped == 0 {
+                libc::close(fds[0]);
+                libc::close(fds[1]);
+            }
+            lines.push(format!("pipe2={}", outcome(piped as libc::c_long)));
             lines.push(format!(
                 "process_vm_readv={}",
                 outcome(libc::syscall(libc::SYS_process_vm_readv, target, std::ptr::null::<libc::iovec>(), 0, std::ptr::null::<libc::iovec>(), 0, 0))
@@ -848,6 +1010,21 @@ mod filter {
     #[allow(clippy::unnecessary_cast)]
     const ALLOWED_IOCTLS: [u64; 3] = [libc::TCGETS as u64, libc::TIOCGWINSZ as u64, libc::FIONREAD as u64];
 
+    /// Descriptor flags, status flags, duplicating and the pipe size query.
+    const ALLOWED_FCNTLS: [u64; 7] = [
+        libc::F_DUPFD as u64,
+        libc::F_DUPFD_CLOEXEC as u64,
+        libc::F_GETFD as u64,
+        libc::F_SETFD as u64,
+        libc::F_GETFL as u64,
+        libc::F_SETFL as u64,
+        libc::F_GETPIPE_SZ as u64,
+    ];
+
+    /// PR_SET_NAME, PR_GET_NAME, PR_SET_NO_NEW_PRIVS, PR_GET_NO_NEW_PRIVS and PR_SET_VMA (the
+    /// C library names anonymous mappings with it).
+    const ALLOWED_PRCTLS: [u64; 5] = [15, 16, 38, 39, 0x5356_4d41];
+
     fn rule(conditions: Vec<Cond>) -> Result<SeccompRule, seccompiler::BackendError> {
         SeccompRule::new(conditions)
     }
@@ -889,6 +1066,9 @@ mod filter {
             // The newer mount interface, next to mount/umount2 above.
             libc::SYS_open_tree, libc::SYS_move_mount, libc::SYS_fsopen, libc::SYS_fsconfig,
             libc::SYS_fsmount, libc::SYS_fspick, libc::SYS_mount_setattr,
+            // A pipe of its own is the start of signal tricks (O_ASYNC with a foreign owner);
+            // the worker already has every pipe it needs.
+            libc::SYS_pipe2,
         ];
         for nr in always {
             rules.insert(nr, Vec::new());
@@ -898,7 +1078,7 @@ mod filter {
             libc::SYS_creat, libc::SYS_mkdir, libc::SYS_rmdir, libc::SYS_unlink, libc::SYS_rename,
             libc::SYS_renameat, libc::SYS_link, libc::SYS_symlink, libc::SYS_chmod, libc::SYS_chown,
             libc::SYS_lchown, libc::SYS_mknod, libc::SYS_fork, libc::SYS_vfork, libc::SYS_utime,
-            libc::SYS_utimes, libc::SYS_futimesat,
+            libc::SYS_utimes, libc::SYS_futimesat, libc::SYS_pipe,
         ] {
             rules.insert(nr, Vec::new());
         }
@@ -957,11 +1137,77 @@ mod filter {
             libc::SYS_clone,
             vec![rule(vec![Cond::new(0, Len::Qword, Op::MaskedEq(libc::CLONE_THREAD as u64), 0)?])?],
         );
+        // fcntl only for descriptor flags, status flags and duplicating. Refused are, among
+        // others, F_SETOWN/F_SETOWN_EX/F_SETSIG (a descriptor that signals another process),
+        // leases, directory notifications and locks; F_SETFL may not switch on O_ASYNC.
+        rules.insert(
+            libc::SYS_fcntl,
+            vec![
+                rule(
+                    ALLOWED_FCNTLS
+                        .iter()
+                        .map(|&command| Cond::new(1, Len::Dword, Op::Ne, command))
+                        .collect::<Result<Vec<_>, _>>()?,
+                )?,
+                rule(vec![
+                    Cond::new(1, Len::Dword, Op::Eq, libc::F_SETFL as u64)?,
+                    Cond::new(2, Len::Dword, Op::MaskedEq(libc::O_ASYNC as u64), libc::O_ASYNC as u64)?,
+                ])?,
+            ],
+        );
+        // prctl for thread and mapping names (the C library names its allocations) and for the
+        // no-new-privileges flag the filter setup sets; nothing else, so the worker cannot, for
+        // example, drop its parent-death signal.
+        rules.insert(
+            libc::SYS_prctl,
+            vec![rule(
+                ALLOWED_PRCTLS
+                    .iter()
+                    .map(|&option| Cond::new(0, Len::Dword, Op::Ne, option))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )?],
+        );
         Ok(())
     }
 
-    fn build(rules: Rules, action: SeccompAction, arch: TargetArch) -> Result<BpfProgram, String> {
-        let filter = SeccompFilter::new(rules, SeccompAction::Allow, action, arch).map_err(|e| format!("{e:?}"))?;
+    /// What the worker needs after the sandbox is closed: reading its input, memory, threads
+    /// (OCCT and TBB), time, its own signals and exit. Measured with strace over every worker
+    /// mode and fixture, plus the thread calls glibc and the Rust runtime make. Anything that is
+    /// neither here nor refused politely by the rules above ends the worker with SIGSYS.
+    fn allowed() -> Vec<i64> {
+        let mut calls = vec![
+            libc::SYS_read, libc::SYS_write, libc::SYS_readv, libc::SYS_writev, libc::SYS_pread64,
+            libc::SYS_preadv, libc::SYS_lseek, libc::SYS_close, libc::SYS_close_range, libc::SYS_openat,
+            libc::SYS_statx, libc::SYS_newfstatat, libc::SYS_fstat, libc::SYS_getdents64, libc::SYS_getcwd,
+            libc::SYS_readlinkat, libc::SYS_faccessat, libc::SYS_faccessat2, libc::SYS_fcntl, libc::SYS_dup,
+            libc::SYS_dup3, libc::SYS_ioctl, libc::SYS_ppoll,
+            libc::SYS_mmap, libc::SYS_munmap, libc::SYS_mprotect, libc::SYS_mremap, libc::SYS_madvise,
+            libc::SYS_brk, libc::SYS_mincore, libc::SYS_msync, libc::SYS_membarrier, libc::SYS_get_mempolicy,
+            libc::SYS_set_mempolicy, libc::SYS_mbind,
+            libc::SYS_clone, libc::SYS_clone3, libc::SYS_futex, libc::SYS_set_robust_list, libc::SYS_rseq,
+            libc::SYS_set_tid_address, libc::SYS_gettid, libc::SYS_sched_yield, libc::SYS_sched_getaffinity,
+            libc::SYS_sched_setaffinity, libc::SYS_sched_getparam, libc::SYS_sched_getscheduler,
+            libc::SYS_sched_get_priority_max, libc::SYS_sched_get_priority_min, libc::SYS_getpriority,
+            libc::SYS_getcpu, libc::SYS_exit, libc::SYS_exit_group, libc::SYS_restart_syscall,
+            libc::SYS_nanosleep, libc::SYS_clock_nanosleep, libc::SYS_clock_gettime, libc::SYS_clock_getres,
+            libc::SYS_gettimeofday, libc::SYS_times, libc::SYS_getrusage,
+            libc::SYS_sigaltstack, libc::SYS_rt_sigaction, libc::SYS_rt_sigprocmask, libc::SYS_rt_sigreturn,
+            libc::SYS_rt_sigtimedwait, libc::SYS_kill, libc::SYS_tgkill,
+            libc::SYS_getpid, libc::SYS_getppid, libc::SYS_getuid, libc::SYS_geteuid, libc::SYS_getgid,
+            libc::SYS_getegid, libc::SYS_getresuid, libc::SYS_getresgid, libc::SYS_uname, libc::SYS_sysinfo,
+            libc::SYS_getrandom, libc::SYS_prlimit64, libc::SYS_prctl,
+        ];
+        #[cfg(target_arch = "x86_64")]
+        calls.extend([
+            libc::SYS_open, libc::SYS_stat, libc::SYS_lstat, libc::SYS_access, libc::SYS_readlink,
+            libc::SYS_dup2, libc::SYS_poll, libc::SYS_time, libc::SYS_arch_prctl, libc::SYS_getrlimit,
+            libc::SYS_setrlimit,
+        ]);
+        calls
+    }
+
+    fn build(rules: Rules, mismatch: SeccompAction, matched: SeccompAction, arch: TargetArch) -> Result<BpfProgram, String> {
+        let filter = SeccompFilter::new(rules, mismatch, matched, arch).map_err(|e| format!("{e:?}"))?;
         filter.try_into().map_err(|e: seccompiler::BackendError| format!("{e:?}"))
     }
 
@@ -969,19 +1215,32 @@ mod filter {
         let arch: TargetArch = std::env::consts::ARCH.try_into().map_err(|e| format!("{e:?}"))?;
         // SAFETY: getpid cannot fail.
         let pid = unsafe { libc::getpid() } as u64;
-        let mut rules = Rules::new();
-        denied(&mut rules);
-        conditional(&mut rules, pid).map_err(|e| format!("{e:?}"))?;
-        let main = build(rules, SeccompAction::Errno(libc::EPERM as u32), arch)?;
-        // clone3 passes its flags in memory the filter cannot read. ENOSYS (not EPERM) makes the C
-        // library fall back to clone, where the rule above can tell a thread from a fork.
+        // Three filters; the kernel applies the strictest answer of all of them.
+        // 1. Refusals with EPERM: calls the worker or its runtime may try and must survive (the
+        //    probe and the self-tests rely on it), with their argument rules.
+        let mut refusals = Rules::new();
+        denied(&mut refusals);
+        conditional(&mut refusals, pid).map_err(|e| format!("{e:?}"))?;
+        // 2. The allow-list: what the worker needs, plus everything filter 1 answers; every other
+        //    call is trapped (SIGSYS, reported by the worker's handler).
+        let mut allow_list: Rules = allowed().into_iter().map(|nr| (nr, Vec::new())).collect();
+        for nr in refusals.keys() {
+            allow_list.insert(*nr, Vec::new());
+        }
+        let refusals = build(refusals, SeccompAction::Allow, SeccompAction::Errno(libc::EPERM as u32), arch)?;
+        let allow_list = build(allow_list, SeccompAction::Trap, SeccompAction::Allow, arch)?;
+        // 3. clone3 passes its flags in memory no filter can read. ENOSYS (not EPERM) makes the C
+        //    library fall back to clone, where filter 1 can tell a thread from a fork.
         let clone3 = build(
             BTreeMap::from([(libc::SYS_clone3, Vec::new())]),
+            SeccompAction::Allow,
             SeccompAction::Errno(libc::ENOSYS as u32),
             arch,
         )?;
+        // The allow-list goes last: installing a filter needs prctl and seccomp, which it traps.
         seccompiler::apply_filter(&clone3).map_err(|e| format!("{e:?}"))?;
-        seccompiler::apply_filter(&main).map_err(|e| format!("{e:?}"))
+        seccompiler::apply_filter(&refusals).map_err(|e| format!("{e:?}"))?;
+        seccompiler::apply_filter(&allow_list).map_err(|e| format!("{e:?}"))
     }
 }
 
@@ -1107,6 +1366,12 @@ mod tests {
         assert_eq!(classify(signal(libc::SIGXCPU), true, Vec::new()), Err(WorkerError::TooComplex));
         assert_eq!(classify(signal(libc::SIGKILL), true, Vec::new()), Err(WorkerError::TooComplex));
         assert_eq!(classify(exit(EXIT_NO_LANDLOCK), true, Vec::new()), Err(WorkerError::NoIsolation));
+        // Stopped by the system-call filter: a crash, so nothing is concluded about the file.
+        assert_eq!(classify(exit(EXIT_FILTER), true, Vec::new()), Err(WorkerError::Crashed));
+        assert_eq!(classify(signal(libc::SIGSYS), true, Vec::new()), Err(WorkerError::Crashed));
+        assert_eq!(refused_number(b"syscall=103\n"), "103");
+        assert_eq!(refused_number(b"syscall=12x"), "12");
+        assert_eq!(refused_number(b"anything else"), "?");
     }
 
     /// The system-call filter on its own, without Landlock: in a child copy of this test binary
@@ -1125,8 +1390,12 @@ mod tests {
             assert!(fd >= 0);
             // SAFETY: prctl with integer arguments only.
             assert_eq!(unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) }, 0);
+            // The pipe exists before the filter, like any descriptor a worker might hold.
+            let mut pipe = [0 as libc::c_int; 2];
+            // SAFETY: valid pointer to a two-element array.
+            assert_eq!(unsafe { libc::pipe2(pipe.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
             super::filter::apply().unwrap();
-            println!("{}", super::sandbox::act_on(target.parse().unwrap()));
+            println!("{}", super::sandbox::act_on(target.parse().unwrap(), pipe[0], Some(pipe[1])));
             println!("{}", super::sandbox::mutate(fd, &path));
             return;
         }
@@ -1152,7 +1421,8 @@ mod tests {
         let expected = [
             "kill", "kill_group", "kill_all", "tkill", "tgkill", "rt_sigqueueinfo", "rt_tgsigqueueinfo",
             "pidfd_open", "prlimit64", "sched_setaffinity", "sched_setscheduler", "setpriority", "ioprio_set",
-            "kcmp", "process_vm_readv", "open_rdonly_trunc", "openat_rdonly_trunc", "fchmod", "fchmodat",
+            "kcmp", "process_vm_readv", "fcntl_setown", "fcntl_setown_ex", "fcntl_setsig",
+            "fcntl_setfl_async", "pipe2", "open_rdonly_trunc", "openat_rdonly_trunc", "fchmod", "fchmodat",
             "fchown", "futimens", "utimensat", "ftruncate", "ioctl_setflags", "ioctl_fssetxattr",
         ];
         for name in expected {

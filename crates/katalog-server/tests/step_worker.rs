@@ -116,6 +116,15 @@ fn other_processes_are_out_of_the_workers_reach() {
 }
 
 #[test]
+fn a_call_outside_the_allow_list_stops_the_worker_and_is_named() {
+    let worker = worker(quick());
+    // A crash for the caller: no verdict on the file, so stored metadata stays untouched.
+    assert_eq!(selftest(&worker, "selftest-forbidden", None), Err(WorkerError::Crashed));
+    let expected = if cfg!(target_arch = "aarch64") { "116" } else { "103" };
+    assert_eq!(worker.last_refused_syscall().as_deref(), Some(expected));
+}
+
+#[test]
 fn the_worker_cannot_change_the_file_it_reads() {
     use std::os::unix::fs::PermissionsExt;
     let (dir, file) = temp_file("victim.step", b"ISO-10303-21;\n");
