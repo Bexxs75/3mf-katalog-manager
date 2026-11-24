@@ -153,6 +153,9 @@ pub(super) fn retry(seconds: u64) -> Box<Response> {
 /// "Remove folder from catalog" needs the password as soon as the folder (with all subfolders)
 /// holds at least this many catalog entries, i.e. any entry at all.
 pub(super) const FOLDER_REMOVE_PASSWORD_FROM: usize = 1;
+/// A comparison with the disk, or one `remove_files_from_catalog` call, that removes at least
+/// this many catalog entries needs the password.
+pub(super) const REMOVAL_PASSWORD_FROM: usize = 50;
 pub(super) fn budget_error(error: crate::fileops_safety::BudgetError) -> Box<Response> {
     match error {
         crate::fileops_safety::BudgetError::LimitExceeded => err(422, "limit_exceeded"),

@@ -264,8 +264,7 @@ fn mostly_missing(conn: &katalog_core::write::Connection, roots: &[PathBuf], mod
     names
 }
 
-/// A disk comparison that removes at least this many catalog entries needs the password.
-pub(super) const REMOVAL_PASSWORD_FROM: usize = 50;
+use super::REMOVAL_PASSWORD_FROM;
 
 #[allow(clippy::too_many_arguments)]
 /// `disk_sync_apply_start`: confirmation, budget, backup, then the plan is switched on.

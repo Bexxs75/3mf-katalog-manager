@@ -693,6 +693,66 @@ async fn folder_removal_above_the_daily_limit_is_refused_even_with_the_password(
     assert_eq!(r.status(), 200);
     assert_eq!(file_count(&f), 6);
 }
+fn all_file_ids(f: &Fixture) -> Vec<String> {
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    let mut stmt = c.prepare("SELECT id FROM files WHERE deleted_at IS NULL ORDER BY id").unwrap();
+    stmt.query_map([], |r| r.get::<_, i64>(0)).unwrap().map(|id| id.unwrap().to_string()).collect()
+}
+#[tokio::test]
+async fn catalog_removal_of_fifty_or_more_needs_the_password_and_changes_nothing_without_it() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "fifty", 50);
+    let ids = all_file_ids(&f);
+    assert_eq!(ids.len(), 50);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_required");
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":7})).await.status(), 400);
+    // Nothing changed, no backup, nothing booked.
+    assert_eq!(file_count(&f), 50);
+    assert!(!f.dir.join("config/backups").exists());
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn catalog_removal_below_fifty_needs_no_password_but_a_wrong_one_is_refused() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "few", 49);
+    let ids = all_file_ids(&f);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(file_count(&f), 49);
+    assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":ids})).await.status(), 200);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn splitting_a_removal_into_calls_of_49_runs_into_the_budget_not_past_the_password() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "split", 250);
+    let ids = all_file_ids(&f);
+    let mut removed = 0;
+    for chunk in ids.chunks(49) {
+        let r = f.invoke("remove_files_from_catalog", json!({"fileIds":chunk})).await;
+        if r.status() != 200 {
+            // The 200-per-10-minutes budget ends the splitting; the folder keeps the rest.
+            assert_eq!(r.status(), 429);
+            break;
+        }
+        removed += chunk.len();
+    }
+    assert_eq!(removed, 196);
+    assert_eq!(file_count(&f), 250 - 196);
+    // A call that removes 50 or more is never possible without the password, budget or not.
+    let rest = all_file_ids(&f);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":&rest[..50]})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(rest.len(), 54);
+}
 #[tokio::test]
 async fn poisoned_fileops_mutex_requires_restart_also_for_6d() {
     let f = Fixture::new(true).await;
