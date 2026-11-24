@@ -3,16 +3,18 @@
 # a pull downloads and what the 250 MB budget of the web image is measured in. Layers that are
 # already gzip blobs count with their size; uncompressed ones (local builds) are compressed with
 # gzip level 6, the level docker push and buildx use by default.
-# Usage: docker-web/scripts/image-size.sh IMAGE   (nothing is pushed)
+# Usage: docker-web/scripts/image-size.sh IMAGE [MAX_BYTES]   (nothing is pushed)
+# With MAX_BYTES the script exits 1 when the compressed total is larger (the CI budget check).
 set -euo pipefail
-image=${1:?usage: image-size.sh IMAGE}
+image=${1:?usage: image-size.sh IMAGE [MAX_BYTES]}
+max_bytes=${2:-0}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 docker save -o "$work/image.tar" "$image"
-python3 - "$work/image.tar" "$image" <<'EOF'
+python3 - "$work/image.tar" "$image" "$max_bytes" <<'EOF'
 import json, sys, tarfile, zlib
 
-archive, image = sys.argv[1], sys.argv[2]
+archive, image, max_bytes = sys.argv[1], sys.argv[2], int(sys.argv[3])
 with tarfile.open(archive) as tar:
     manifest = json.load(tar.extractfile("manifest.json"))[0]
     total_c = total_u = 0
@@ -37,4 +39,9 @@ with tarfile.open(archive) as tar:
         total_u += size
         print(f"layer {i:2d}: {compressed / 1e6:8.1f} MB compressed  {size / 1e6:8.1f} MB unpacked")
 print(f"{image}: {len(manifest['Layers'])} layers, compressed {total_c / 1e6:.1f} MB ({total_c} bytes), unpacked {total_u / 1e6:.1f} MB")
+if max_bytes and total_c > max_bytes:
+    print(f"FAIL: compressed size {total_c} bytes is over the budget of {max_bytes} bytes", file=sys.stderr)
+    sys.exit(1)
+if max_bytes:
+    print(f"OK: within the budget of {max_bytes / 1e6:.0f} MB")
 EOF
