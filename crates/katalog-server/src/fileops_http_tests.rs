@@ -2469,12 +2469,13 @@ mod disksync_tests {
         assert_eq!(reasons(&answer), ["ok", "ok", "ok"], "{answer}");
         assert_eq!(answer["counts"]["imported"], 3);
         assert_eq!(count(&f, "files"), 3);
-        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
-        let folders: Vec<String> = conn
-            .prepare("SELECT name FROM folders ORDER BY name").unwrap()
-            .query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        let folders: Vec<String> = {
+            let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT name FROM folders ORDER BY name").unwrap();
+            let names = stmt.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+            names
+        };
         assert!(["deep", "er", "new"].iter().all(|n| folders.iter().any(|f| f == n)), "{folders:?}");
-        drop(conn);
         // The files themselves are untouched.
         assert_eq!(std::fs::read(f.dir.join("models/b.stl")).unwrap(), STL);
         // Offered again, they are in the catalog.

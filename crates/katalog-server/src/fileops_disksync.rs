@@ -263,6 +263,7 @@ fn mostly_missing(conn: &katalog_core::write::Connection, roots: &[PathBuf], mod
     names
 }
 
+#[allow(clippy::too_many_arguments)]
 /// `disk_sync_apply_start`: confirmation, budget, backup, then the plan is switched on.
 pub(super) fn apply_start(
     app: &App,
@@ -374,6 +375,7 @@ pub(crate) fn insert_other_plans(state: &mut RuntimeState, count: usize, created
 }
 
 /// `disk_sync_apply_block`.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn apply_block(
     app: &App,
     current: &Session,
