@@ -228,3 +228,20 @@ fn password_and_restore_paths_reject_resolved_collisions() {
     assert!(validate_password_path(Some(&db), &f.0.join("elsewhere/custom.sqlite")).is_ok());
     assert!(validate_password_path(None, Path::new(".bak-new")).is_err());
 }
+
+#[test]
+fn the_start_password_file_name_cannot_be_the_catalog_or_the_auth_file() {
+    let f = Fixture::new();
+    let auth = f.0.join("auth/web-auth.json");
+    std::fs::create_dir_all(f.0.join("auth")).unwrap();
+    // A catalog with that name next to the auth file would be replaced by the start password.
+    let clash = f.0.join("auth/web-initial-password.txt");
+    std::fs::write(&clash, b"catalog bytes").unwrap();
+    let error = validate_password_path(Some(&clash), &auth).unwrap_err();
+    assert!(error.contains("web-initial-password.txt"), "{error}");
+    // The auth file itself must not carry the name either.
+    assert!(validate_password_path(Some(&f.0.join("catalog.db")), &clash).is_err());
+    assert_eq!(std::fs::read(&clash).unwrap(), b"catalog bytes");
+    // Gegenprobe: a normal pair is fine.
+    assert!(validate_password_path(Some(&f.0.join("catalog.db")), &auth).is_ok());
+}
