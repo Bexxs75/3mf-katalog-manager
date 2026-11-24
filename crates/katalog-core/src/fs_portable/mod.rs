@@ -34,9 +34,6 @@ pub enum Error {
     PathUnresolvable,
     Protected,
     HasCompanions,
-    /// A file that was expected to be missing is there (again); an entry removal that only
-    /// touches the database refuses instead of moving it.
-    SourcePresent,
     /// A companion file's name is taken at the destination, or the destination folder is not a plain folder.
     CompanionsConflict,
     /// The model's companion rows changed while the operation was under way.

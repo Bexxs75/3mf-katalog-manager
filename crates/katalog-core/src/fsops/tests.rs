@@ -2047,7 +2047,7 @@ mod missing_removal {
             let mut f = Rec::new();
             let p = f.add(1, "a.stl");
             let ino = fs::metadata(&p).unwrap().ino();
-            assert_eq!(f.ops.remove_missing_entry(1, mode), Err(Error::SourcePresent));
+            assert_eq!(f.ops.remove_missing_entry(1, mode), Err(Error::Changed));
             assert_eq!(f.row(1), (None, None));
             assert!(f.ops.journal.is_empty());
             assert_eq!(fs::metadata(&p).unwrap().ino(), ino);
@@ -2081,7 +2081,7 @@ mod missing_removal {
         fs::remove_file(&p).unwrap();
         let q = p.clone();
         at("remove_missing_before_db_only", PointAction::Run(Box::new(move || fs::write(&q, b"back").unwrap())));
-        assert_eq!(f.ops.remove_missing_entry(1, MissingRemoval::Trash), Err(Error::SourcePresent));
+        assert_eq!(f.ops.remove_missing_entry(1, MissingRemoval::Trash), Err(Error::Changed));
         assert_eq!(fs::read(&p).unwrap(), b"back");
         assert_eq!(f.row(1), (None, None));
         assert_eq!(f.trash_entries(), 0);
@@ -2153,7 +2153,7 @@ mod missing_removal {
     fn present_companion_is_refused_and_stays() {
         let mut f = standard();
         let ino = fs::metadata(f.p("Foo_extras/pic.png")).unwrap().ino();
-        assert_eq!(f.ops.remove_missing_companion(1), Err(Error::SourcePresent));
+        assert_eq!(f.ops.remove_missing_companion(1), Err(Error::Changed));
         assert_eq!(fs::metadata(f.p("Foo_extras/pic.png")).unwrap().ino(), ino);
         companion_untouched(&f);
     }
@@ -2165,7 +2165,7 @@ mod missing_removal {
         fs::remove_file(&p).unwrap();
         let q = p.clone();
         at("remove_missing_before_db_only", PointAction::Run(Box::new(move || fs::write(&q, b"back").unwrap())));
-        assert_eq!(f.ops.remove_missing_companion(1), Err(Error::SourcePresent));
+        assert_eq!(f.ops.remove_missing_companion(1), Err(Error::Changed));
         assert_eq!(fs::read(&p).unwrap(), b"back");
         companion_untouched(&f);
     }

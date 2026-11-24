@@ -232,7 +232,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
 
     /// Removes the row of an active companion file whose file is gone from the disk. Changes
     /// the database only (journalled as `CompanionTrash` without a source) and never moves
-    /// a file; a file that is there (again) ends in `SourcePresent`.
+    /// a file; a file that is there (again) ends in `Changed` (the removal callers report it as "file is back").
     pub fn remove_missing_companion(&mut self, companion_id: i64) -> Result<()> {
         let s = self.load_subject(companion_id)?;
         if s.row.deleted_at.is_some() || s.model.deleted_at.is_some() {

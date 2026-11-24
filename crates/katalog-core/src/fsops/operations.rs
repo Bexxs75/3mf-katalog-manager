@@ -515,7 +515,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.outcome.moved = carry.steps.len();
         self.transfer(before, after, source, target, Operation::Trash, carry)
     }
-    /// Fails with `SourcePresent` unless nothing is at `path` any more. Only `NotFound` counts as
+    /// Fails with `Changed` unless nothing is at `path` any more. Only `NotFound` counts as
     /// missing; a file, link, special file or any other resolution error stops the caller.
     pub(super) fn ensure_source_missing(&self, path: &str) -> Result<()> {
         match self.context.resolve(path, Access::Source) {
@@ -523,7 +523,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             Err(e) => Err(e),
             Ok(r) => match FileIdentity::read(&r) {
                 Err(Error::NotFound) => Ok(()),
-                Ok(_) => Err(Error::SourcePresent),
+                Ok(_) => Err(Error::Changed),
                 Err(e) => Err(e),
             },
         }
@@ -531,7 +531,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
 
     /// Removes the entry of a model whose file is gone from the disk. Changes the database
     /// only and never moves or deletes a file: `transfer` and `Operation::Trash` cannot be
-    /// reached from here. A file that is there (again) ends in `SourcePresent`.
+    /// reached from here. A file that is there (again) ends in `Changed` (the removal callers report it as "file is back").
     pub fn remove_missing_entry(&mut self, id: i64, mode: MissingRemoval) -> Result<()> {
         let before = self.active(id)?;
         self.outcome = CarryOutcome::default();
