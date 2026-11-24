@@ -27,6 +27,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - The web trash recognizes desktop trash entries and can permanently remove their files and companions. Restoring them remains a desktop action.
 - The web image now contains the STEP preview: it is built on Debian trixie with Open CASCADE 7.8.1 from Debian (LGPL 2.1 with the Open CASCADE exception, linked dynamically; license files and source references are in the image under `/usr/share/doc/occt-runtime/`). It needs Linux Landlock, which Docker's default seccomp profile allows; without it the preview stays off and the log says so. The run-time base is now `debian:trixie-slim` instead of distroless, and the download grows from about 17 MB to about 69 MB (sum of the compressed layers). amd64 only for now.
+- The web viewer now asks the server whether it can render STEP files before it shows the "no 3D preview" note, so STEP files show their 3D view in an image that has the preview.
 
 - Desktop and web refuse concurrent operation on the same catalog. `KATALOG_LOCK=off` disables the instance lock for SMB/NFS setups managed by the operator.
 - On Linux the startup error message (for example "catalog already in use") now also appears when `zenity` is missing: the app falls back to `kdialog` or `xmessage` and always prints the message to stderr.

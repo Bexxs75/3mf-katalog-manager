@@ -26,11 +26,16 @@ beforeEach(() => {
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it('explains a STEP file in the web build without asking the server for geometry', async () => {
+const answers = (hasPreview: boolean) => geometry.mockImplementation(async (command: string) => {
+  if (command === 'has_step_preview') return hasPreview;
+  throw { code: 'notFound', message: 'x', expected: true };
+});
+it('explains a STEP file in the web build without asking the server for geometry when it has no preview', async () => {
+  answers(false);
   const model = makeModelFile({ id: '9', path: '/models/würfel.STEP', name: 'würfel.STEP' });
   render(<LanguageProvider><ModelViewer fileId="9" model={model} needsSnapshot={false} onSnapshotCaptured={vi.fn()} /></LanguageProvider>);
   expect(await screen.findByRole('alert')).toHaveTextContent('Dieser Dateityp unterstützt keine 3D-Vorschau');
-  expect(geometry).not.toHaveBeenCalled();
+  expect(geometry).not.toHaveBeenCalledWith('get_model_geometry', expect.anything());
   expect(console.error).not.toHaveBeenCalledWith('[ModelViewer] loading failed:', expect.anything());
 });
 it('still loads geometry for other formats in the web build', async () => {
@@ -38,4 +43,18 @@ it('still loads geometry for other formats in the web build', async () => {
   render(<LanguageProvider><ModelViewer fileId="9" model={model} needsSnapshot={false} onSnapshotCaptured={vi.fn()} /></LanguageProvider>);
   await screen.findByRole('alert');
   expect(geometry).toHaveBeenCalledWith('get_model_geometry', { fileId: '9' });
+});
+it('asks the server for the geometry of a STEP file when the web build has the preview', async () => {
+  answers(true);
+  const model = makeModelFile({ id: '9', path: '/models/würfel.step', name: 'würfel.step' });
+  render(<LanguageProvider><ModelViewer fileId="9" model={model} needsSnapshot={false} onSnapshotCaptured={vi.fn()} /></LanguageProvider>);
+  await screen.findByRole('alert');
+  expect(geometry).toHaveBeenCalledWith('get_model_geometry', { fileId: '9' });
+});
+it('treats a failed preview check like a missing preview', async () => {
+  geometry.mockRejectedValue(new Error('offline'));
+  const model = makeModelFile({ id: '9', path: '/models/würfel.step', name: 'würfel.step' });
+  render(<LanguageProvider><ModelViewer fileId="9" model={model} needsSnapshot={false} onSnapshotCaptured={vi.fn()} /></LanguageProvider>);
+  expect(await screen.findByRole('alert')).toHaveTextContent('Dieser Dateityp unterstützt keine 3D-Vorschau');
+  expect(geometry).not.toHaveBeenCalledWith('get_model_geometry', expect.anything());
 });
