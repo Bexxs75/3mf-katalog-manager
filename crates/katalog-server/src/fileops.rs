@@ -7,7 +7,7 @@ use katalog_core::fsops::{self, FileOps, FolderTrashSnapshot, TrashSnapshot};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 #[path = "fileops_disksync.rs"]
-mod disksync;
+pub(crate) mod disksync;
 type Ops = FileOps<DbAdapter, ServerLedger>;
 pub(super) struct Runtime {
     pub(super) state: Mutex<RuntimeState>,

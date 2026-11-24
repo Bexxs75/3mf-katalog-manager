@@ -344,10 +344,10 @@ fn stop_reason(app: &App, current: &Session) -> &'static str {
 }
 
 #[cfg(test)]
-type RowHook = Arc<dyn Fn(usize) + Send + Sync>;
+pub(crate) type RowHook = Arc<dyn Fn(usize) + Send + Sync>;
 /// Test hook per session token: called after each row of a block (index inside the block).
 #[cfg(test)]
-pub(super) fn row_hooks() -> &'static Mutex<HashMap<String, RowHook>> {
+pub(crate) fn row_hooks() -> &'static Mutex<HashMap<String, RowHook>> {
     static HOOKS: std::sync::OnceLock<Mutex<HashMap<String, RowHook>>> = std::sync::OnceLock::new();
     HOOKS.get_or_init(Default::default)
 }
