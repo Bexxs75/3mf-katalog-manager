@@ -107,7 +107,7 @@ it('fills the limits into the password length rejection', async () => {
   expect(screen.getAllByRole('alert').map(alert => alert.textContent)).toContain(fillParams(de.errWebPasswordLength, ['12', '128']));
 });
 
-it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('says the backup was restored, not that uploads were cancelled, after a restore in %s', async (language, dictionary) => {
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('says the backup was restored and that uploads were cancelled, after a restore in %s', async (language, dictionary) => {
   localStorage.setItem('3mf-katalog-language', language);
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ authenticated: true, mustChangePassword: false, csrfToken: 'a' })));
   await act(async () => { render(<LanguageProvider><WebAuthGate><div>APP</div></WebAuthGate></LanguageProvider>); });
@@ -115,5 +115,6 @@ it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('says the bac
   act(() => authenticationFailed(401));
   expect(screen.getByRole('alert')).toHaveTextContent(dictionary.webRestoreSignIn);
   expect(screen.queryByText(dictionary.webUploadSessionEnded)).toBeNull();
+  if (language === 'de') expect(screen.getByRole('alert')).toHaveTextContent('Laufende Uploads wurden abgebrochen');
   markRestore(false);
 });

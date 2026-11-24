@@ -104,6 +104,12 @@ it('does not interrupt navigation with historical results from a reconnect snaps
   expect(screen.getByRole('button', { name: de.webUploadResults })).toBeVisible();
 });
 
+it('shows the import job progress as "x von y"', async () => {
+  await start(true);
+  await act(async () => Events.latest.emit({ snapshot: true, jobs: [{ jobId: 'run', state: 'importing', current: 'b.stl', total: 5, done: 2, files: [], kind: null }], uploads: [] }));
+  expect(screen.getByText(new RegExp(de.webUploadOf.replace('{done}', '2').replace('{total}', '5')))).toBeVisible();
+});
+
 it('shows the browser import entry only with permission and never offers native folder import', async () => {
   await start(false); cleanup();
   const open = vi.fn();

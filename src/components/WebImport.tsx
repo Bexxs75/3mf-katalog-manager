@@ -78,7 +78,7 @@ function WebImportSurface({ controller, open, onClose }: Props & { controller: W
           </li>)}</ul>
         </section>
         {state.jobs.length > 0 && <section><h3>{t('webUploadJobs')}</h3><ul>{state.jobs.map(job => <li key={job.jobId} className="py-2">
-          <span>{label(job.state)} · {job.done}/{job.total} {job.current}</span>
+          <span>{label(job.state)} · {t('webUploadOf').replace('{done}', String(job.done)).replace('{total}', String(job.total))} {job.current}</span>
           {!importFinished(job) ? <><progress className="block w-full" aria-label={t('webUploadImporting')} max={Math.max(1, job.total)} value={job.done} />
             <button disabled={job.state === 'cancelling'} onClick={() => void controller.cancelImport(job.jobId)}>{t('webCancel')}</button></>
             : <button className="ml-2" onClick={() => setResult(job)}>{t('webUploadResults')}</button>}
