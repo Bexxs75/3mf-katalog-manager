@@ -291,6 +291,10 @@ async fn report_and_issue_scan_carry_unclear_and_missing_folders_in_the_expected
     assert_eq!(issues["unclear"], json!([{"path": "plain/c.3mf", "root": 0, "reason": "link"}]));
     assert_eq!(issues["missingFolders"][0]["relativePath"], "Alt");
     assert_eq!(issues["missingFolders"][0]["root"], 0);
+    // `roots` names the places by index (same numbering as the report), as labels only.
+    assert_eq!(issues["roots"], json!([report["roots"][0]["name"]]), "{issues}");
+    assert_eq!(issues["roots"][issues["unclear"][0]["root"].as_u64().unwrap() as usize], "models");
+    assert!(!issues["roots"].to_string().contains(f.dir.to_str().unwrap()), "{issues}");
     let ids: Vec<_> = issues["missingFolders"][0]["models"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_owned()).collect();
     let orphaned: Vec<_> = issues["orphaned"].as_array().unwrap().iter().map(|m| m["id"].as_str().unwrap().to_owned()).collect();
     assert_eq!(ids.len(), 2);

@@ -348,7 +348,8 @@ fn folder_summary(
 /// answer carries full DTOs for the hits only (never the whole catalog with its pictures).
 fn scan_issues(conn: &rusqlite::Connection, roots: &[PathBuf], limits: catalog_issues::IssueLimits) -> Result<Value, ReadError> {
     // Same root numbering as `disk_sync_report`, so `root` means the same in both answers.
-    let probe = catalog_issues::RootsMissingProbe::new(&disk_report::ordered_roots(roots));
+    let ordered = disk_report::ordered_roots(roots);
+    let probe = catalog_issues::RootsMissingProbe::new(&ordered);
     let issues = catalog_issues::scan(conn, &probe, limits).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
     let ids: Vec<i64> = issues.orphaned.iter().chain(issues.duplicate_groups.iter().flatten()).copied().collect();
     // Chunked: a few huge duplicate groups must not exceed SQLite's variable limit.
@@ -377,6 +378,8 @@ fn scan_issues(conn: &rusqlite::Connection, roots: &[PathBuf], limits: catalog_i
             .map(|u| json!({"path": u.place.relative, "root": u.place.root, "reason": u.reason}))
             .collect();
     }
+    // Display names only (like the report's `roots[].name`), indexed like `root`; never absolute paths.
+    answer["roots"] = json!(disk_report::root_names(&ordered));
     // Always present, also empty: a present field tells the client the folders were verified here.
     answer["missingFolders"] = issues
         .missing_folders
@@ -1001,7 +1004,7 @@ mod tests {
         let v = json_body(r).await;
         let mut keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
         keys.sort();
-        assert_eq!(keys, ["duplicateGroups", "missingFolders", "orphaned", "truncated"]);
+        assert_eq!(keys, ["duplicateGroups", "missingFolders", "orphaned", "roots", "truncated"]);
         assert_eq!(v["truncated"], false);
         assert_eq!(v["missingFolders"], json!([]));
         // Only the model under the root that is really gone; rows outside the roots (even a

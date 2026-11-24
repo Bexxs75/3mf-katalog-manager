@@ -312,6 +312,16 @@ pub fn ordered_roots(configured: &[PathBuf]) -> Vec<PathBuf> {
     open_roots(configured).into_iter().map(|r| r.stored).collect()
 }
 
+/// Display names of the roots, indexed like [`ordered_roots`] (what `root` means in every list):
+/// the last path component only, never the absolute path.
+pub fn root_names(ordered: &[PathBuf]) -> Vec<String> {
+    ordered.iter().map(|p| root_name(p)).collect()
+}
+
+fn root_name(stored: &Path) -> String {
+    stored.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
 /// Whether an earlier, usable root already walks each root. Run after the status checks:
 /// a root that turned out empty or unreachable covers nothing.
 pub(crate) fn mark_covered(roots: &mut [Root]) {
@@ -494,7 +504,7 @@ pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: R
         .iter()
         .enumerate()
         .map(|(i, r)| RootInfo {
-            name: r.stored.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            name: root_name(&r.stored),
             status: r.status,
             mostly_missing: mostly_missing[i],
         })

@@ -490,6 +490,8 @@ export interface CatalogIssues {
   unclear?: { path: string; root?: number; reason: string }[];
   /** Web: folders verified gone as a whole (the chain up to them is made of real directories) with the ids of their listed missing models. Not sent by every server version. */
   missingFolders?: { relativePath: string; root: number; models: string[] }[];
+  /** Web: display names of the roots (last path component), indexed like `unclear[].root`. Not sent by every server version. */
+  roots?: string[];
 }
 
 export interface Collection {
