@@ -106,23 +106,23 @@ describe('step 1: file', () => {
     expect(api.uploadBackup).not.toHaveBeenCalled();
   });
 
-  it('accepts a ZIP at the limit and moves on with the next button', () => {
+  it('accepts a ZIP at the limit and moves on with the next button', async () => {
     show(); openDialog();
     pickFile(zip('katalog.zip', BACKUP_MAX_BYTES));
     expect(screen.queryByRole('alert')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: de.bkrNext }));
-    expect(screen.getByRole('heading', { name: de.bkrPwTitle })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('heading', { name: de.bkrPwTitle })).toHaveFocus());
   });
 });
 
 describe('step 2: password and check', () => {
-  it('asks for the password first and sends nothing without it', () => {
+  it('asks for the password first and sends nothing without it', async () => {
     show(); openDialog(); pickFile(zip());
     fireEvent.click(screen.getByRole('button', { name: de.bkrNext }));
     fireEvent.click(screen.getByRole('button', { name: de.bkrCheck }));
     expect(screen.getByRole('alert')).toHaveTextContent(de.bkrPwEmpty);
     expect(screen.getByLabelText(de.bkrPwLabel)).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByLabelText(de.bkrPwLabel)).toHaveFocus();
+    await waitFor(() => expect(screen.getByLabelText(de.bkrPwLabel)).toHaveFocus());
     expect(api.uploadBackup).not.toHaveBeenCalled();
   });
 
