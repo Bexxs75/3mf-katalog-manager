@@ -232,7 +232,7 @@ export function ServerFolderPicker({ onClose, returnFocus, onRemember, copyImpor
   const empty = roots.status === 'ready' && rootKeys.length === 0;
 
   return (
-    <CatalogActionDialog title={t('sfpTitle')} onClose={onClose} busy={busy || sourceImport.running} wide returnFocus={returnFocus} closeLabel={t('sfpClose')}>
+    <CatalogActionDialog title={t(sourceImport.job ? 'sfpTitleImport' : 'sfpTitle')} onClose={onClose} busy={busy || sourceImport.running} wide returnFocus={returnFocus} closeLabel={t('sfpClose')}>
       {sourceImport.job && (
         <SourceImportProgress job={sourceImport.job} error={sourceImport.error} sourceName={chosen?.name ?? ''}
           onCancel={() => void sourceImport.cancel()} onClose={onClose} />

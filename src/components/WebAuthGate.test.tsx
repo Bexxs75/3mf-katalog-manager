@@ -7,7 +7,7 @@ import { es } from '../i18n/es';
 import { fr } from '../i18n/fr';
 import { fillParams } from '../lib/errorMessage';
 import { WebAuthGate } from './WebAuthGate';
-import { authenticationFailed, getSession } from '../lib/webSession';
+import { authenticationFailed, getSession, markRestore } from '../lib/webSession';
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
 it('checks session, requires login and password change before mounting the app', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ authenticated: false, mustChangePassword: false, csrfToken: null }))
@@ -105,4 +105,15 @@ it('fills the limits into the password length rejection', async () => {
   fireEvent.change(screen.getByLabelText('Neues Passwort'), { target: { value: 'new password' } });
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Passwort ändern' })));
   expect(screen.getAllByRole('alert').map(alert => alert.textContent)).toContain(fillParams(de.errWebPasswordLength, ['12', '128']));
+});
+
+it.each([['de', de], ['en', en], ['es', es], ['fr', fr]] as const)('says the backup was restored, not that uploads were cancelled, after a restore in %s', async (language, dictionary) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ authenticated: true, mustChangePassword: false, csrfToken: 'a' })));
+  await act(async () => { render(<LanguageProvider><WebAuthGate><div>APP</div></WebAuthGate></LanguageProvider>); });
+  markRestore(true);
+  act(() => authenticationFailed(401));
+  expect(screen.getByRole('alert')).toHaveTextContent(dictionary.webRestoreSignIn);
+  expect(screen.queryByText(dictionary.webUploadSessionEnded)).toBeNull();
+  markRestore(false);
 });

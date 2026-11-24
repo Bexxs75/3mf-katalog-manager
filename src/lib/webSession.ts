@@ -4,6 +4,10 @@ import { isReadOnly } from './readOnly';
 export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean; uploadable?: boolean; fileOps?: boolean; slicerLinks?: boolean; companionMaxBytes?: number }
 let session: WebSession = { authenticated: false, mustChangePassword: false, csrfToken: null };
 let sessionEpoch = 0;
+// A backup restore replaces the catalog and the server restarts; the sign-in page then says so instead of "session ended".
+let restoreStarted = false;
+export const markRestore = (started: boolean) => { restoreStarted = started; };
+export const restoreWasStarted = () => restoreStarted;
 const subscribers = new Set<() => void>();
 export const getSnapshot = () => session;
 export const subscribe = (callback: () => void) => { subscribers.add(callback); return () => { subscribers.delete(callback); }; };

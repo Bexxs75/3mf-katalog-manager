@@ -238,6 +238,45 @@ struct Entry {
     truncated: bool,
 }
 
+/// A folder at the depth limit is only a lower bound if it still holds subfolders: its own
+/// supported files are counted here, so a tree that ends exactly at the limit stays exact.
+fn peek_limit_dir(
+    fs: &SourceAdapter<'_>,
+    dir: &Path,
+    owner: Option<usize>,
+    entries: &mut [Entry],
+    visited: &mut usize,
+    entry_limit: usize,
+) -> bool {
+    let Ok(children) = fs.list(dir) else {
+        return true;
+    };
+    for child in children {
+        if *visited == entry_limit {
+            return true;
+        }
+        *visited += 1;
+        let Ok(child) = child else {
+            return true;
+        };
+        let Ok(kind) = child.kind else {
+            return true;
+        };
+        if kind == SourceKind::Directory {
+            return true;
+        }
+        if kind == SourceKind::File
+            && files::is_model_extension(&child.path)
+            && !files::is_ignored_import_path(&child.path)
+        {
+            if let Some(i) = owner {
+                entries[i].file_count += 1;
+            }
+        }
+    }
+    false
+}
+
 /// One budget covers both immediate children and their recursive counts.
 fn browse(
     fs: &SourceAdapter<'_>,
@@ -310,7 +349,14 @@ fn browse(
             if is_dir {
                 if depth < depth_limit {
                     pending.push((child.path, depth + 1, owner));
-                } else {
+                } else if peek_limit_dir(
+                    fs,
+                    &child.path,
+                    owner,
+                    &mut entries,
+                    &mut visited,
+                    entry_limit,
+                ) {
                     truncated = true;
                     if let Some(i) = owner {
                         entries[i].truncated = true;

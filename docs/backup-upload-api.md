@@ -16,7 +16,7 @@ for the portable `ui_settings::BACKUP_KEYS` preferences.
 Success returns HTTP 200 with `{ "token": "…", "report": { … },
 "settings_ignored": true }`. `report` is the core `RestoreReport`: original
 `schema_version`, `migration_needed`, `model_count`, `folder_count`,
-`path_warnings` (`PathWarning` objects) and `unreachable_source_folders`.
+`collection_count`, `source_folder_count`, `path_warnings` (`PathWarning` objects) and `unreachable_source_folders`.
 The existing core error envelope is returned with HTTP 400 for invalid backups,
 including newer schemas. No new translation/error codes are introduced.
 Source directory probes are limited to `KATALOG_SOURCE_ROOTS` and refuse links.

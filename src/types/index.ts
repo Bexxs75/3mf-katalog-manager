@@ -817,6 +817,8 @@ export interface BackupRestoreReport {
   migration_needed: boolean;
   model_count: number;
   folder_count: number;
+  collection_count: number;
+  source_folder_count: number;
   path_warnings: BackupPathWarning[];
   unreachable_source_folders: string[];
 }

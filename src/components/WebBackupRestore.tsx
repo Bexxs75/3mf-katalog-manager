@@ -3,7 +3,7 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import { displayName } from '../lib/displayName';
 import { toAppError, type AppError } from '../lib/errors';
-import { useCanEditMetadata } from '../lib/webSession';
+import { markRestore, useCanEditMetadata } from '../lib/webSession';
 import { BACKUP_MAX_BYTES, backupFileProblem, discardBackup, restoreBackup, uploadBackup, waitForServer } from '../lib/api/backupRestore';
 import { ErrorText } from '../diagnostics/ErrorText';
 import type { BackupPreview } from '../types';
@@ -176,6 +176,7 @@ function RestoreDialog({ returnFocus, onClose }: { returnFocus: React.RefObject<
     const secret = password;
     setPassword(''); setFieldError(''); setError(null);
     setStep('working');
+    markRestore(true);
     try {
       await restoreBackup(held, secret);
       token.current = null;
@@ -189,11 +190,14 @@ function RestoreDialog({ returnFocus, onClose }: { returnFocus: React.RefObject<
         setStep('result');
         watchServer(true);
       } else if (failure.message === 'password_invalid') {
+        markRestore(false);
         fail(e); setStep('confirm');
       } else if (failure.message === 'webNotFound') {
+        markRestore(false);
         token.current = null; setPreview(null);
         setError({ message: 'backupTokenGone', unexpected: false }); setStep('file');
       } else {
+        markRestore(false);
         setOutcome({ kind: 'failed', error: toAppError(e), keepToken: RETRYABLE.has(failure.message ?? '') });
         setStep('result');
       }
@@ -294,6 +298,8 @@ function RestoreDialog({ returnFocus, onClose }: { returnFocus: React.RefObject<
           <dt className="text-[var(--ink-2)]">{t('bkrFactSchema')}</dt><dd className="tabular-nums">{report.schema_version}</dd>
           <dt className="text-[var(--ink-2)]">{t('bkrFactModels')}</dt><dd className="tabular-nums">{number.format(report.model_count)}</dd>
           <dt className="text-[var(--ink-2)]">{t('bkrFactFolders')}</dt><dd className="tabular-nums">{number.format(report.folder_count)}</dd>
+          <dt className="text-[var(--ink-2)]">{t('bkrFactCollections')}</dt><dd className="tabular-nums">{number.format(report.collection_count)}</dd>
+          <dt className="text-[var(--ink-2)]">{t('bkrFactSources')}</dt><dd className="tabular-nums">{number.format(report.source_folder_count)}</dd>
         </dl>
         {warnings.length > 0 && (
           <div>

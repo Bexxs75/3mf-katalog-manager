@@ -16,7 +16,7 @@ import { WebBackupRestore } from './WebBackupRestore';
 import { BACKUP_MAX_BYTES } from '../lib/api/backupRestore';
 
 const report = {
-  schema_version: 62, migration_needed: true, model_count: 4218, folder_count: 312,
+  schema_version: 62, migration_needed: true, model_count: 4218, folder_count: 312, collection_count: 17, source_folder_count: 4,
   path_warnings: Array.from({ length: 7 }, (_, i) => ({ table: 'files', column: 'path', row_id: i, display_path: `Vase_${i}.3mf` })),
   unreachable_source_folders: ['/mnt/nas/Alt-2023'],
 };
@@ -179,6 +179,8 @@ describe('step 3: report', () => {
     expect(dialog()).toHaveTextContent('Schema 62: Beim Einspielen wird die Sicherung automatisch');
     expect(dialog()).toHaveTextContent('4.218');
     expect(dialog()).toHaveTextContent('312');
+    expect(screen.getByText(de.bkrFactCollections).nextElementSibling).toHaveTextContent('17');
+    expect(screen.getByText(de.bkrFactSources).nextElementSibling).toHaveTextContent('4');
     expect(dialog()).toHaveTextContent('Nicht erreichbare Quellordner: 1');
     expect(dialog()).toHaveTextContent('Alt-2023');
     expect(dialog()).not.toHaveTextContent('/mnt/nas');

@@ -22,6 +22,8 @@ pub struct RestoreReport {
     pub migration_needed: bool,
     pub model_count: i64,
     pub folder_count: i64,
+    pub collection_count: i64,
+    pub source_folder_count: i64,
     pub path_warnings: Vec<PathWarning>,
     pub unreachable_source_folders: Vec<String>,
 }
@@ -79,6 +81,8 @@ pub fn inspect_backup(
         migration_needed: schema_version < db::migrations_current_version(),
         model_count: 0,
         folder_count: 0,
+        collection_count: 0,
+        source_folder_count: 0,
         path_warnings: Vec::new(),
         unreachable_source_folders: Vec::new(),
     };
@@ -88,6 +92,12 @@ pub fn inspect_backup(
         .map_err(invalid)?;
     report.folder_count = conn
         .query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0))
+        .map_err(invalid)?;
+    report.collection_count = conn
+        .query_row("SELECT COUNT(*) FROM collections", [], |r| r.get(0))
+        .map_err(invalid)?;
+    report.source_folder_count = conn
+        .query_row("SELECT COUNT(*) FROM source_folders", [], |r| r.get(0))
         .map_err(invalid)?;
     // Constants only; include companion paths because those also drive file operations.
     for (table, column) in [
@@ -286,6 +296,7 @@ mod tests {
         });
         let report = inspect(&bytes, &dir).unwrap();
         assert_eq!((report.model_count, report.folder_count), (3, 1));
+        assert_eq!((report.collection_count, report.source_folder_count), (0, 3));
         assert_eq!(report.path_warnings.len(), 3);
         assert!(report
             .path_warnings
