@@ -419,6 +419,8 @@ pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
     build_app_with_writer(config, writer, instance_lock, crate::step_worker::StepWorker::disabled())
 }
 fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_lock: Option<katalog_core::db::instance_lock::InstanceLock>, step: crate::step_worker::StepWorker) -> Result<Router,String> {
+    // Imports (upload, source folders, archives, disk comparison) may not create more tags than the web write path allows.
+    katalog_core::db::set_auto_tag_limit(katalog_core::write::web::MAX_TAGS);
     let uploads = uploads::initialize(&config.config)?;
     restore_upload::initialize(&config.config).map_err(|e| format!("restore staging: {e}"))?;
     crate::export::sweep_stale(&config.config.db_path);
