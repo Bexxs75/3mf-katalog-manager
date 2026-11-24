@@ -388,7 +388,9 @@ async fn sse_does_not_refresh_session_and_closes_on_expiration() {
 }
 
 async fn wait_result(f: &Fixture, job: &Value) -> Value {
-    for _ in 0..100 {
+    // Up to 30 seconds: under a fully parallel run of an unoptimised build an import can take
+    // well over one second; the loop ends as soon as the job is done.
+    for _ in 0..3000 {
         let r = f.invoke("get_import_result", json!({"jobId":job})).await;
         assert_eq!(r.status(), 200);
         let result = value(r).await;

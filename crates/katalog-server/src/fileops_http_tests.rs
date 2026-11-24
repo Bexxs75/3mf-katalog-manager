@@ -469,7 +469,9 @@ async fn detached_worker_keeps_import_gate_until_completion() {
     let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
     let app = f.app.clone();
     let task = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
-    for _ in 0..100 {
+    // Generous waits (10 s each, left as soon as the state is reached): in a fully parallel
+    // run of an unoptimised build the detached worker can take well over 200 ms.
+    for _ in 0..5000 {
         if f.app.uploads.as_ref().unwrap().active.available_permits() == 0 {
             break;
         }
@@ -490,7 +492,7 @@ async fn detached_worker_keeps_import_gate_until_completion() {
         .try_acquire_owned()
         .is_err());
     drop(conn);
-    for _ in 0..100 {
+    for _ in 0..5000 {
         if f.app.uploads.as_ref().unwrap().active.available_permits() == 1 {
             break;
         }
