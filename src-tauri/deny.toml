@@ -21,7 +21,10 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
 ignore = [
     # chrono is reported as unmaintained (no known vulnerability). It is a direct dependency
-    # for date formatting; moving to jiff or time is planned separately.
+    # of katalog-core, katalog-server and the desktop app (about 115 uses in 47 files), so a
+    # move to jiff or time is a separate task. Review by 2027-03-31: replace chrono or renew
+    # this entry with a fresh reason; remove it as soon as chrono leaves the tree.
+    # (The zip 4.x entries RUSTSEC-2026-0545/0548 are gone: tauri-plugin-updater 2.14.1 uses zip 9.)
     { id = "RUSTSEC-2026-0543", reason = "chrono reported as unmaintained, no known vulnerability; direct dependency for date formatting, replacement planned separately" },
 ]
 
