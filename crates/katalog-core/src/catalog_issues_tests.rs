@@ -377,3 +377,130 @@ mod roots_probe_races {
         assert!(probe.is_missing(&root.join("a/link")).is_err());
     }
 }
+
+#[cfg(unix)]
+mod unclear_and_gone_folders {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    fn catalog_at(paths: &[&Path]) -> Connection {
+        let mut conn = db::connect_in_memory().unwrap();
+        for (i, p) in paths.iter().enumerate() {
+            let day = format!("2026-01-{:02}", i + 1);
+            db::insert_file(&mut conn, &new_file(p.to_str().unwrap(), None, &day)).unwrap();
+        }
+        conn
+    }
+    fn reasons(issues: &Issues) -> Vec<(usize, String, UnclearReason)> {
+        issues.unclear.iter().map(|u| (u.place.root, u.place.relative.clone(), u.reason)).collect()
+    }
+
+    #[test]
+    fn a_deleted_folder_with_several_models_is_one_missing_folder_and_a_lone_file_is_not() {
+        let root = crate::unique_test_dir("ci-gone-folder").canonicalize().unwrap();
+        fs::create_dir_all(root.join("keep")).unwrap();
+        fs::write(root.join("keep/here.3mf"), b"x").unwrap();
+        let conn = catalog_at(&[
+            &root.join("old/a.3mf"),
+            &root.join("old/sub/b.3mf"),
+            &root.join("keep/lost.3mf"),
+            &root.join("keep/here.3mf"),
+        ]);
+        let probe = RootsMissingProbe::new(std::slice::from_ref(&root));
+        let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
+        assert_eq!(issues.orphaned.len(), 3);
+        assert_eq!(issues.missing_folders.len(), 1);
+        let folder = &issues.missing_folders[0];
+        assert_eq!((folder.place.root, folder.place.relative.as_str()), (0, "old"));
+        assert_eq!(folder.models.len(), 2);
+        assert!(issues.unclear.is_empty());
+    }
+
+    #[test]
+    fn a_file_where_a_folder_should_be_is_unclear_with_reason_link_and_never_missing() {
+        let root = crate::unique_test_dir("ci-file-for-folder").canonicalize().unwrap();
+        fs::write(root.join("notafolder"), b"x").unwrap();
+        fs::write(root.join("other.3mf"), b"x").unwrap();
+        let conn = catalog_at(&[&root.join("notafolder/m.3mf"), &root.join("other.3mf")]);
+        let probe = RootsMissingProbe::new(std::slice::from_ref(&root));
+        let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
+        assert!(issues.orphaned.is_empty() && issues.missing_folders.is_empty());
+        assert_eq!(reasons(&issues), vec![(0, "notafolder/m.3mf".to_string(), UnclearReason::Link)]);
+    }
+
+    #[test]
+    fn a_link_on_the_way_is_unclear_and_does_not_anchor_a_duplicate_group() {
+        let root = crate::unique_test_dir("ci-link-way").canonicalize().unwrap();
+        let outside = crate::unique_test_dir("ci-link-way-out").canonicalize().unwrap();
+        fs::write(outside.join("m.3mf"), b"x").unwrap();
+        fs::write(root.join("real.3mf"), b"x").unwrap();
+        symlink(&outside, root.join("link")).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        db::insert_file(&mut conn, &new_file(root.join("link/m.3mf").to_str().unwrap(), Some("h"), "2026-01-01")).unwrap();
+        db::insert_file(&mut conn, &new_file(root.join("real.3mf").to_str().unwrap(), Some("h"), "2026-01-02")).unwrap();
+        let probe = RootsMissingProbe::new(std::slice::from_ref(&root));
+        let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
+        assert_eq!(reasons(&issues), vec![(0, "link/m.3mf".to_string(), UnclearReason::Link)]);
+        assert!(issues.duplicate_groups.is_empty());
+        assert!(issues.orphaned.is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_folder_is_unclear_with_reason_read() {
+        let root = crate::unique_test_dir("ci-chmod").canonicalize().unwrap();
+        fs::create_dir_all(root.join("locked")).unwrap();
+        fs::write(root.join("locked/m.3mf"), b"x").unwrap();
+        fs::write(root.join("other.3mf"), b"x").unwrap();
+        fs::set_permissions(root.join("locked"), fs::Permissions::from_mode(0o000)).unwrap();
+        // Root (uid 0) ignores permissions; nothing to prove then.
+        let denied = fs::read_dir(root.join("locked")).is_err();
+        let conn = catalog_at(&[&root.join("locked/m.3mf")]);
+        let probe = RootsMissingProbe::new(std::slice::from_ref(&root));
+        let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
+        fs::set_permissions(root.join("locked"), fs::Permissions::from_mode(0o755)).unwrap();
+        if denied {
+            assert_eq!(reasons(&issues), vec![(0, "locked/m.3mf".to_string(), UnclearReason::Read)]);
+            assert!(issues.orphaned.is_empty());
+        }
+    }
+
+    #[test]
+    fn an_empty_root_and_a_replaced_root_are_unreachable_not_missing() {
+        let empty = crate::unique_test_dir("ci-empty-root").canonicalize().unwrap();
+        let conn = catalog_at(&[&empty.join("a.3mf")]);
+        let probe = RootsMissingProbe::new(std::slice::from_ref(&empty));
+        let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
+        assert!(issues.orphaned.is_empty());
+        assert_eq!(reasons(&issues), vec![(0, "a.3mf".to_string(), UnclearReason::Unreachable)]);
+
+        let root = crate::unique_test_dir("ci-replaced-root").canonicalize().unwrap();
+        fs::write(root.join("a.3mf"), b"x").unwrap();
+        let conn = catalog_at(&[&root.join("a.3mf")]);
+        let probe = RootsMissingProbe::new(std::slice::from_ref(&root));
+        fs::rename(&root, root.with_file_name("ci-replaced-root.old")).unwrap();
+        fs::create_dir_all(&root).unwrap();
+        let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
+        assert!(issues.orphaned.is_empty());
+        assert_eq!(reasons(&issues), vec![(0, "a.3mf".to_string(), UnclearReason::Unreachable)]);
+    }
+
+    #[test]
+    fn rows_outside_every_root_stay_unlisted_and_no_path_leaves_the_roots() {
+        let root = crate::unique_test_dir("ci-outside").canonicalize().unwrap();
+        fs::write(root.join("x.3mf"), b"x").unwrap();
+        let conn = catalog_at(&[Path::new("/definitely/elsewhere/m.3mf"), &root.join("x.3mf")]);
+        let probe = RootsMissingProbe::new(std::slice::from_ref(&root));
+        let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();
+        assert!(issues.orphaned.is_empty() && issues.unclear.is_empty());
+    }
+
+    #[test]
+    fn the_desktop_scan_collects_nothing_extra() {
+        let root = crate::unique_test_dir("ci-desktop-same").canonicalize().unwrap();
+        let conn = catalog_at(&[&root.join("old/a.3mf"), &root.join("old/b.3mf")]);
+        let files = db::list_files(&conn).unwrap();
+        let issues = scan_records(&files, &StdMissingProbe, IssueLimits::UNLIMITED);
+        assert_eq!(issues.orphaned.len(), 2);
+        assert!(issues.unclear.is_empty() && issues.missing_folders.is_empty());
+    }
+}

@@ -9,6 +9,7 @@
 //! followed (a link on the way makes a row "unknown", not "missing"), and nothing in the
 //! result is an absolute path: every entry names its root by index and its path relative
 //! to that root.
+use crate::catalog_issues::{classify, UnclearReason};
 use crate::import::files::{is_ignored_import_path, is_model_extension};
 use rusqlite::Connection;
 use serde::Serialize;
@@ -137,6 +138,24 @@ pub struct DanglingCompanion {
     pub relative_path: String,
     pub reason: DanglingReason,
 }
+/// An entry the check could not judge (drive gone, link or file on the way, read error).
+/// Display only: it is never reported as missing and never offered for removal.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UnclearEntry {
+    pub root: usize,
+    pub relative_path: String,
+    pub reason: UnclearReason,
+}
+/// A folder that is gone as a whole: every component before it exists as a real directory and
+/// it does not. `models` are the ids listed in `missing_models` below it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingFolder {
+    pub root: usize,
+    pub relative_path: String,
+    pub models: Vec<String>,
+}
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum TruncatedBy {
@@ -151,6 +170,10 @@ pub struct DiskReport {
     pub missing_models: Vec<MissingModel>,
     pub new_files: Vec<NewFile>,
     pub dangling_companions: Vec<DanglingCompanion>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unclear: Vec<UnclearEntry>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub missing_folders: Vec<MissingFolder>,
     /// Active models and companions whose stored path is below no configured root; they
     /// are counted, never listed (no path leaves the server).
     pub models_outside_roots: usize,
@@ -199,8 +222,20 @@ pub(crate) enum Presence {
     /// A link on the way or an I/O error: no statement possible.
     Unknown,
 }
+/// A certain answer of [`inspect`].
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Found {
+    /// Nothing at the path. `absent` is the index of the first component that does not exist;
+    /// everything before it is a real directory.
+    Missing { absent: usize },
+    File,
+    /// A folder, a final link or a special file.
+    Other,
+}
 /// Looks at `relative` below the canonical root component by component without following links.
-pub(crate) fn presence(root: &Path, relative: &Path) -> Presence {
+/// A link or a non-directory on the way, or an I/O error, gives no statement (`Err` with the
+/// reason): a file where a folder should be is never taken for "gone".
+pub(crate) fn inspect(root: &Path, relative: &Path) -> Result<Found, UnclearReason> {
     let mut current = root.to_path_buf();
     let count = relative.components().count();
     for (index, component) in relative.components().enumerate() {
@@ -208,15 +243,24 @@ pub(crate) fn presence(root: &Path, relative: &Path) -> Presence {
         match std::fs::symlink_metadata(&current) {
             Ok(meta) if index + 1 < count => {
                 if !meta.is_dir() {
-                    return if meta.file_type().is_symlink() { Presence::Unknown } else { Presence::Missing };
+                    return Err(UnclearReason::Link);
                 }
             }
-            Ok(meta) => return if meta.is_file() { Presence::File } else { Presence::Other },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Presence::Missing,
-            Err(_) => return Presence::Unknown,
+            Ok(meta) => return Ok(if meta.is_file() { Found::File } else { Found::Other }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Found::Missing { absent: index }),
+            Err(e) => return Err(classify(&e)),
         }
     }
-    Presence::Unknown
+    Err(UnclearReason::Read)
+}
+/// [`inspect`] without the reason.
+pub(crate) fn presence(root: &Path, relative: &Path) -> Presence {
+    match inspect(root, relative) {
+        Ok(Found::Missing { .. }) => Presence::Missing,
+        Ok(Found::File) => Presence::File,
+        Ok(Found::Other) => Presence::Other,
+        Err(_) => Presence::Unknown,
+    }
 }
 
 struct Budget {
@@ -368,6 +412,7 @@ pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: R
     let mut known = HashSet::new();
     let mut companion_dirs = HashSet::new();
     let mut model_checks = Vec::new();
+    let mut not_judged = Vec::new();
     for model in &snapshot.models {
         match locate(&roots, &model.path) {
             None => {
@@ -379,6 +424,8 @@ pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: R
                 known.insert(key(&roots[index].canonical.join(&relative)));
                 if model.active && roots[index].status == RootStatus::Ok {
                     model_checks.push((model.id, index, relative));
+                } else if model.active {
+                    not_judged.push((index, relative));
                 }
             }
         }
@@ -394,25 +441,48 @@ pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: R
         }
         if roots[index].status == RootStatus::Ok {
             companion_checks.push((row, index, relative));
+        } else {
+            not_judged.push((index, relative));
         }
     }
 
     let mut checked = vec![0usize; roots.len()];
     let mut gone = vec![0usize; roots.len()];
     let mut all_checked = true;
+    // Rows below a root that is gone, empty or unreadable: shown as unclear, nothing more.
+    for (index, relative) in not_judged {
+        if budget.room(report.unclear.len()) {
+            report.unclear.push(UnclearEntry { root: index, relative_path: shown(&relative), reason: UnclearReason::Unreachable });
+        }
+    }
+    let mut folders: std::collections::BTreeMap<(usize, String), Vec<String>> = std::collections::BTreeMap::new();
     for (id, index, relative) in model_checks {
         if budget.out_of_time() {
             all_checked = false;
             break;
         }
         checked[index] += 1;
-        if presence(&roots[index].canonical, &relative) == Presence::Missing {
-            gone[index] += 1;
-            if budget.room(report.missing_models.len()) {
-                report.missing_models.push(MissingModel { id: id.to_string(), root: index, relative_path: shown(&relative) });
+        match inspect(&roots[index].canonical, &relative) {
+            Ok(Found::Missing { absent }) => {
+                gone[index] += 1;
+                if budget.room(report.missing_models.len()) {
+                    report.missing_models.push(MissingModel { id: id.to_string(), root: index, relative_path: shown(&relative) });
+                    if absent + 1 < relative.components().count() {
+                        let folder: PathBuf = relative.components().take(absent + 1).collect();
+                        folders.entry((index, shown(&folder))).or_default().push(id.to_string());
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(reason) => {
+                if budget.room(report.unclear.len()) {
+                    report.unclear.push(UnclearEntry { root: index, relative_path: shown(&relative), reason });
+                }
             }
         }
     }
+    report.missing_folders =
+        folders.into_iter().map(|((root, relative_path), models)| MissingFolder { root, relative_path, models }).collect();
     let mostly_missing: Vec<bool> =
         (0..roots.len()).map(|i| all_checked && checked[i] >= MOSTLY_MISSING_MIN_MODELS && gone[i] * 2 > checked[i]).collect();
     report.roots = roots
@@ -429,10 +499,16 @@ pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: R
         if budget.out_of_time() {
             break;
         }
-        let reason = match presence(&roots[index].canonical, &relative) {
-            Presence::Missing => DanglingReason::Missing,
-            Presence::Other => DanglingReason::NotFile,
-            Presence::File | Presence::Unknown => continue,
+        let reason = match inspect(&roots[index].canonical, &relative) {
+            Ok(Found::Missing { .. }) => DanglingReason::Missing,
+            Ok(Found::Other) => DanglingReason::NotFile,
+            Ok(Found::File) => continue,
+            Err(why) => {
+                if budget.room(report.unclear.len()) {
+                    report.unclear.push(UnclearEntry { root: index, relative_path: shown(&relative), reason: why });
+                }
+                continue;
+            }
         };
         if budget.room(report.dangling_companions.len()) {
             report.dangling_companions.push(DanglingCompanion {
@@ -460,6 +536,7 @@ pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: R
     report.missing_models.sort_by(|a, b| (a.root, &a.relative_path).cmp(&(b.root, &b.relative_path)));
     report.new_files.sort_by(|a, b| (a.root, &a.relative_path).cmp(&(b.root, &b.relative_path)));
     report.dangling_companions.sort_by(|a, b| (a.root, &a.relative_path).cmp(&(b.root, &b.relative_path)));
+    report.unclear.sort_by(|a, b| (a.root, &a.relative_path).cmp(&(b.root, &b.relative_path)));
     report.truncated = !budget.truncated.is_empty();
     report.truncated_by = budget.truncated;
     report

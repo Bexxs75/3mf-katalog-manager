@@ -410,3 +410,94 @@ fn excluded_folders_are_not_walked_and_ordered_roots_match_the_report_indexes() 
     let by_index: Vec<_> = r.new_files.iter().map(|f| (f.root, f.relative_path.clone())).collect();
     assert_eq!(by_index, vec![(0, "s.3mf".to_owned()), (1, "deep.3mf".to_owned())]);
 }
+
+#[cfg(unix)]
+mod unclear_and_folders {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    fn unclear(r: &DiskReport) -> Vec<(usize, &str, UnclearReason)> {
+        r.unclear.iter().map(|u| (u.root, u.relative_path.as_str(), u.reason)).collect()
+    }
+
+    #[test]
+    fn a_deleted_subfolder_with_several_models_becomes_one_missing_folder() {
+        let root = dir("dr-gone-folder");
+        touch(&root.join("keep/here.3mf"));
+        let snapshot = Snapshot {
+            models: vec![
+                model(1, &root.join("old/a.3mf"), true),
+                model(2, &root.join("old/deeper/b.3mf"), true),
+                model(3, &root.join("keep/lost.3mf"), true),
+                model(4, &root.join("keep/here.3mf"), true),
+            ],
+            companions: vec![],
+        };
+        let r = report(&snapshot, &[&root]);
+        assert_eq!(r.missing_models.len(), 3);
+        assert_eq!(r.missing_folders, vec![MissingFolder { root: 0, relative_path: "old".into(), models: vec!["1".into(), "2".into()] }]);
+        assert!(r.unclear.is_empty());
+        let json = serde_json::to_value(&r).unwrap();
+        assert_eq!(json["missingFolders"][0]["relativePath"], "old");
+    }
+
+    #[test]
+    fn a_file_or_a_link_on_the_way_is_unclear_never_missing() {
+        let root = dir("dr-unclear-way");
+        let outside = dir("dr-unclear-way-out");
+        touch(&root.join("plain"));
+        touch(&outside.join("m.3mf"));
+        symlink(&outside, root.join("link")).unwrap();
+        let snapshot = Snapshot {
+            models: vec![model(1, &root.join("plain/m.3mf"), true), model(2, &root.join("link/m.3mf"), true)],
+            companions: vec![companion(9, 1, &root.join("plain/x/pic.png"))],
+        };
+        let r = report(&snapshot, &[&root]);
+        assert!(r.missing_models.is_empty() && r.missing_folders.is_empty() && r.dangling_companions.is_empty());
+        assert_eq!(
+            unclear(&r),
+            vec![(0, "link/m.3mf", UnclearReason::Link), (0, "plain/m.3mf", UnclearReason::Link), (0, "plain/x/pic.png", UnclearReason::Link)]
+        );
+    }
+
+    #[test]
+    fn a_folder_without_permission_is_unclear_with_reason_read() {
+        let root = dir("dr-chmod");
+        touch(&root.join("locked/m.3mf"));
+        touch(&root.join("other.3mf"));
+        fs::set_permissions(root.join("locked"), fs::Permissions::from_mode(0o000)).unwrap();
+        let denied = fs::read_dir(root.join("locked")).is_err();
+        let snapshot = Snapshot { models: vec![model(1, &root.join("locked/m.3mf"), true)], companions: vec![] };
+        let r = report(&snapshot, &[&root]);
+        fs::set_permissions(root.join("locked"), fs::Permissions::from_mode(0o755)).unwrap();
+        if denied {
+            assert!(r.missing_models.is_empty());
+            assert_eq!(unclear(&r), vec![(0, "locked/m.3mf", UnclearReason::Read)]);
+        }
+    }
+
+    #[test]
+    fn rows_below_an_unreachable_or_empty_root_are_unclear_unreachable() {
+        let gone = dir("dr-root-gone").join("not-there");
+        let empty = dir("dr-root-empty");
+        let snapshot = Snapshot {
+            models: vec![model(1, &gone.join("a.3mf"), true), model(2, &empty.join("b.3mf"), true), model(3, &empty.join("t.3mf"), false)],
+            companions: vec![],
+        };
+        let r = report(&snapshot, &[&gone, &empty]);
+        assert!(r.missing_models.is_empty());
+        assert_eq!(r.unclear.len(), 2, "trashed rows are not listed: {:?}", r.unclear);
+        assert!(r.unclear.iter().all(|u| u.reason == UnclearReason::Unreachable));
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(!json.contains(empty.to_str().unwrap()) && !json.contains(gone.to_str().unwrap()));
+    }
+
+    #[test]
+    fn nothing_new_is_serialized_when_there_is_nothing_to_say() {
+        let root = dir("dr-quiet");
+        touch(&root.join("a.3mf"));
+        let snapshot = Snapshot { models: vec![model(1, &root.join("a.3mf"), true)], companions: vec![] };
+        let json = serde_json::to_value(report(&snapshot, &[&root])).unwrap();
+        assert!(json.get("unclear").is_none() && json.get("missingFolders").is_none());
+    }
+}

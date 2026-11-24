@@ -12,6 +12,67 @@ use std::time::{Duration, Instant};
 /// deletion.
 pub trait MissingProbe {
     fn is_missing(&self, path: &Path) -> std::io::Result<bool>;
+    /// Like `is_missing`, with the reason of an unclear answer and (web) the gone folder.
+    fn judge(&self, path: &Path) -> Verdict {
+        match self.is_missing(path) {
+            Ok(true) => Verdict::Missing { folder: None },
+            Ok(false) => Verdict::Present,
+            Err(e) => Verdict::Unclear { reason: classify(&e), place: None },
+        }
+    }
+}
+
+/// Why a row could not be judged. Shown to the user, never acted on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UnclearReason {
+    /// The root (or a folder) is not reachable right now: not mounted, empty, replaced, outside.
+    Unreachable,
+    /// A link, or something that is not a folder, lies on the way.
+    Link,
+    /// Any other read error (permissions, I/O).
+    Read,
+}
+
+/// Marker carried inside an `io::Error` so the probe's own decisions keep their reason.
+#[derive(Debug)]
+struct Why(UnclearReason);
+impl std::fmt::Display for Why {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unclear: {:?}", self.0)
+    }
+}
+impl std::error::Error for Why {}
+fn why(reason: UnclearReason) -> std::io::Error {
+    std::io::Error::other(Why(reason))
+}
+/// The reason behind a probe error: the probe's own marker, else by OS error.
+pub fn classify(error: &std::io::Error) -> UnclearReason {
+    if let Some(Why(reason)) = error.get_ref().and_then(|e| e.downcast_ref::<Why>()) {
+        return *reason;
+    }
+    #[cfg(unix)]
+    if matches!(error.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR)) {
+        return UnclearReason::Link;
+    }
+    UnclearReason::Read
+}
+
+/// Where below which root (by index) a row lies; never an absolute path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Place {
+    pub root: usize,
+    pub relative: String,
+}
+
+/// What a probe says about one path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    Present,
+    /// Certainly gone. `folder` is the topmost folder on the way that is itself gone (the
+    /// whole chain before it consists of real directories), when the missing part is a folder.
+    Missing { folder: Option<Place> },
+    Unclear { reason: UnclearReason, place: Option<Place> },
 }
 
 /// Desktop: asks the file system directly; only `NotFound` counts as missing.
@@ -46,6 +107,8 @@ struct ProbeRoot {
     /// (dev, ino) of the root directory when the probe was built.
     #[cfg(unix)]
     identity: Option<(u64, u64)>,
+    /// Whether the root holds no entry at all (checked once, on first need).
+    empty: std::sync::OnceLock<bool>,
 }
 impl RootsMissingProbe {
     pub fn new(roots: &[PathBuf]) -> Self {
@@ -64,6 +127,7 @@ impl RootsMissingProbe {
                     canonical,
                     #[cfg(unix)]
                     identity,
+                    empty: std::sync::OnceLock::new(),
                 }
             })
             .collect();
@@ -72,61 +136,74 @@ impl RootsMissingProbe {
 
     /// `step(i)` runs right before component `i` is looked at (tests swap entries there).
     fn probe(&self, path: &Path, step: &mut dyn FnMut(usize)) -> std::io::Result<bool> {
-        let unclear = |what: &str| std::io::Error::other(what.to_string());
-        let (root, relative) = self
-            .roots
-            .iter()
-            .find_map(|root| {
-                let rel = path.strip_prefix(&root.stored).ok().or_else(|| path.strip_prefix(root.canonical.as_deref()?).ok())?;
-                Some((root, rel))
-            })
-            .ok_or_else(|| unclear("outside the roots"))?;
-        let mut parts: Vec<&std::ffi::OsStr> = Vec::new();
-        for component in relative.components() {
+        self.probe_detail(path, step).map(|(missing, _)| missing)
+    }
+
+    /// The root a path lies below (by index) and its plain components.
+    fn locate<'p>(&self, path: &'p Path) -> Option<(usize, &ProbeRoot, Vec<&'p std::ffi::OsStr>)> {
+        let (index, root, rel) = self.roots.iter().enumerate().find_map(|(index, root)| {
+            let rel = path.strip_prefix(&root.stored).ok().or_else(|| path.strip_prefix(root.canonical.as_deref()?).ok())?;
+            Some((index, root, rel))
+        })?;
+        let mut parts = Vec::new();
+        for component in rel.components() {
             match component {
                 std::path::Component::Normal(name) => parts.push(name),
-                _ => return Err(unclear("not a plain relative path")),
+                _ => return None,
             }
         }
+        Some((index, root, parts))
+    }
+
+    /// `Ok((true, absent))`: gone; `absent` is the index of the first absent component when it is
+    /// a folder on the way (not the last component). Errors carry their reason (see `classify`).
+    fn probe_detail(&self, path: &Path, step: &mut dyn FnMut(usize)) -> std::io::Result<(bool, Option<usize>)> {
+        let (_, root, parts) = match self.locate(path) {
+            Some(found) => found,
+            None if self.roots.iter().any(|r| path.starts_with(&r.stored) || r.canonical.as_deref().is_some_and(|c| path.starts_with(c))) => {
+                return Err(why(UnclearReason::Read));
+            }
+            None => return Err(why(UnclearReason::Unreachable)),
+        };
         if parts.is_empty() {
-            return Err(unclear("is a root"));
+            return Err(why(UnclearReason::Read));
         }
-        let canonical = root.canonical.as_deref().ok_or_else(|| unclear("root not usable"))?;
+        let canonical = root.canonical.as_deref().ok_or_else(|| why(UnclearReason::Unreachable))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
-            let mut current = crate::upload_fs::Directory::open(canonical)?;
-            let meta = current.metadata()?;
+            let mut current = crate::upload_fs::Directory::open(canonical).map_err(|_| why(UnclearReason::Unreachable))?;
+            let meta = current.metadata().map_err(|_| why(UnclearReason::Unreachable))?;
             if Some((meta.dev(), meta.ino())) != root.identity {
-                return Err(unclear("root replaced"));
+                return Err(why(UnclearReason::Unreachable));
             }
             let last = parts.len() - 1;
             for (index, part) in parts.iter().enumerate() {
                 step(index);
-                let name = part.to_str().ok_or_else(|| unclear("name is not text"))?;
+                let name = part.to_str().ok_or_else(|| why(UnclearReason::Read))?;
                 if index < last {
                     match current.open_dir(name) {
                         Ok(next) => current = next,
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((true, Some(index))),
                         Err(e) => return Err(e),
                     }
                 } else {
                     return match current.read(name) {
-                        Ok(_) => Ok(false),
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
+                        Ok(_) => Ok((false, None)),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok((true, None)),
                         // Present, but not a regular file (folder, device): not missing.
-                        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Ok(false),
+                        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Ok((false, None)),
                         Err(e) => Err(e),
                     };
                 }
             }
-            Err(unclear("empty path"))
+            Err(why(UnclearReason::Read))
         }
         #[cfg(not(unix))]
         {
             let is_real_dir = |p: &Path| std::fs::symlink_metadata(p).map(|m| m.is_dir() && !m.file_type().is_symlink());
-            if !is_real_dir(canonical)? {
-                return Err(unclear("root replaced"));
+            if !is_real_dir(canonical).map_err(|_| why(UnclearReason::Unreachable))? {
+                return Err(why(UnclearReason::Unreachable));
             }
             let mut current = canonical.to_path_buf();
             let last = parts.len() - 1;
@@ -136,21 +213,52 @@ impl RootsMissingProbe {
                 match std::fs::symlink_metadata(&current) {
                     Ok(meta) if index < last => {
                         if !(meta.is_dir() && !meta.file_type().is_symlink()) {
-                            return Err(unclear("link or non-directory on the way"));
+                            return Err(why(UnclearReason::Link));
                         }
                     }
-                    Ok(meta) => return if meta.file_type().is_symlink() { Err(unclear("link")) } else { Ok(false) },
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+                    Ok(meta) => return if meta.file_type().is_symlink() { Err(why(UnclearReason::Link)) } else { Ok((false, None)) },
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((true, (index < last).then_some(index))),
                     Err(e) => return Err(e),
                 }
             }
-            Err(unclear("empty path"))
+            Err(why(UnclearReason::Read))
         }
+    }
+
+    /// True when the root has no entry at all although a row lies below it: most likely a
+    /// volume that is not mounted. Nothing below such a root counts as gone.
+    fn root_is_empty(root: &ProbeRoot) -> bool {
+        *root.empty.get_or_init(|| match root.canonical.as_deref().map(std::fs::read_dir) {
+            Some(Ok(mut entries)) => entries.next().is_none(),
+            _ => true,
+        })
     }
 }
 impl MissingProbe for RootsMissingProbe {
     fn is_missing(&self, path: &Path) -> std::io::Result<bool> {
         self.probe(path, &mut |_| {})
+    }
+    fn judge(&self, path: &Path) -> Verdict {
+        let place = |parts: &[&std::ffi::OsStr], root: usize| Place {
+            root,
+            relative: parts.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>().join("/"),
+        };
+        let located = self.locate(path);
+        match self.probe_detail(path, &mut |_| {}) {
+            Ok((false, _)) => Verdict::Present,
+            Ok((true, absent)) => match &located {
+                // An empty root is not trusted: its rows are not "gone", they are unclear.
+                Some((root, r, parts)) if Self::root_is_empty(r) => {
+                    Verdict::Unclear { reason: UnclearReason::Unreachable, place: Some(place(parts, *root)) }
+                }
+                Some((root, _, parts)) => Verdict::Missing { folder: absent.map(|i| place(&parts[..=i], *root)) },
+                None => Verdict::Missing { folder: None },
+            },
+            Err(e) => Verdict::Unclear {
+                reason: classify(&e),
+                place: located.map(|(root, _, parts)| place(&parts, root)),
+            },
+        }
     }
 }
 
@@ -159,6 +267,22 @@ pub struct Issues {
     pub orphaned: Vec<i64>,
     pub duplicate_groups: Vec<Vec<i64>>,
     pub truncated: bool,
+    /// Web only: rows the probe could not judge, with a place below a root (rows outside every
+    /// root have none and are not listed). Display only: never missing, never an anchor.
+    pub unclear: Vec<UnclearRow>,
+    /// Web only: folders that are gone as a whole (the chain up to the first absent folder is
+    /// made of real directories) and the listed orphaned rows below them.
+    pub missing_folders: Vec<GoneFolder>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnclearRow {
+    pub place: Place,
+    pub reason: UnclearReason,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GoneFolder {
+    pub place: Place,
+    pub models: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -233,6 +357,7 @@ fn scan_rows(rows: &[Row], probe: &dyn MissingProbe, limits: IssueLimits, starte
     let mut issues = Issues::default();
     let mut orphaned_ids: HashSet<i64> = HashSet::new();
     let mut ungrouped_ids: HashSet<i64> = HashSet::new();
+    let mut folders: BTreeMap<(usize, String), Vec<i64>> = BTreeMap::new();
     // Rows that were really looked at. A bounded scan that stops early must not form groups
     // from the rest (or from the row that hit the orphan limit): an unchecked missing model
     // could become the "keep" anchor of a group whose only living copy then gets deleted.
@@ -243,20 +368,37 @@ fn scan_rows(rows: &[Row], probe: &dyn MissingProbe, limits: IssueLimits, starte
             checked = index;
             break;
         }
-        let looked = probe.is_missing(Path::new(row.path));
-        if strict && looked.is_err() {
+        let verdict = probe.judge(Path::new(row.path));
+        if strict && matches!(verdict, Verdict::Unclear { .. }) {
             ungrouped_ids.insert(row.id);
         }
-        if looked.unwrap_or(false) {
-            if issues.orphaned.len() >= limits.max_orphaned {
-                issues.truncated = true;
-                checked = index;
-                break;
+        match verdict {
+            Verdict::Missing { folder } => {
+                if issues.orphaned.len() >= limits.max_orphaned {
+                    issues.truncated = true;
+                    checked = index;
+                    break;
+                }
+                orphaned_ids.insert(row.id);
+                issues.orphaned.push(row.id);
+                if let (true, Some(place)) = (strict, folder) {
+                    folders.entry((place.root, place.relative)).or_default().push(row.id);
+                }
             }
-            orphaned_ids.insert(row.id);
-            issues.orphaned.push(row.id);
+            Verdict::Unclear { reason, place: Some(place) } if strict => {
+                if issues.unclear.len() >= limits.max_orphaned {
+                    issues.truncated = true;
+                } else {
+                    issues.unclear.push(UnclearRow { place, reason });
+                }
+            }
+            _ => {}
         }
     }
+    issues.missing_folders = folders
+        .into_iter()
+        .map(|((root, relative), models)| GoneFolder { place: Place { root, relative }, models })
+        .collect();
     ungrouped_ids.extend(orphaned_ids.iter().copied());
     let (mut groups, timed_out) = group_rows(&rows[..checked], &ungrouped_ids, started, limits.max_duration);
     if timed_out {
