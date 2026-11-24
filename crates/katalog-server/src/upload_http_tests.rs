@@ -1886,7 +1886,13 @@ async fn source_import_http_rejects_paths_links_and_replaced_root() {
     let root = &f.app.config.source_roots[0];
     std::os::unix::fs::symlink("/proc", root.join("proc")).unwrap();
     std::os::unix::fs::symlink(f.dir.join("models"), root.join("outside")).unwrap();
-    for rel in ["..", "/etc", "proc", "outside"] {
+    for (idx, rel) in [(0, ".."), (0, "/etc"), (7, "")] {
+        let response = f.invoke("start_source_import", json!({"rootIdx":idx,"rel":rel})).await;
+        assert_eq!(response.status(), 400, "{rel}");
+        assert_eq!(value(response).await["message"], "sourceRootNotAllowed");
+        assert_eq!(source_catalog_count(&f), 0);
+    }
+    for rel in ["proc", "outside"] {
         let start = value(f.invoke("start_source_import", json!({"rootIdx":0,"rel":rel})).await).await;
         let result = wait_result(&f, &start["jobId"]).await;
         assert_eq!(result["state"], "failed");

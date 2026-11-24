@@ -2212,7 +2212,7 @@ export const de: Translations = {
   sfiReadOnly: "Dein Zugang darf nur lesen. Zum Importieren wird Schreibrecht gebraucht.",
   sfiImportCopy: "Importieren (Kopie)",
   sfiImportCopyLabel: "Importieren (Kopie): {name}",
-  sfiWebHint: "„Importieren (Kopie)“ kopiert den ganzen Quellordner in den Katalog; Dateien, die schon dort sind, werden übersprungen. Auch abgelehnte Dateien werden mitkopiert. Die Originale bleiben unverändert. Die Auswahl oben gilt nur für „Ausgewählte ablehnen“.",
+  sfiWebHint: "„Importieren (Kopie)“ kopiert den ganzen Quellordner in den Katalog; Dateien, die schon dort sind, werden übersprungen. Auch abgelehnte Dateien werden mitkopiert. Alle Dateien landen flach im Katalogordner, Unterordner werden nicht nachgebaut. Die Originale bleiben unverändert. Die Auswahl oben gilt nur für „Ausgewählte ablehnen“.",
   filamentGroupModeLabel: 'Ansicht',
   filamentGroupModeGrouped: 'Gruppiert',
   filamentGroupModeSingle: 'Einzeln',

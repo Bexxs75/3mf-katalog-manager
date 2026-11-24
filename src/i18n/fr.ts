@@ -2212,7 +2212,7 @@ export const fr: Translations = {
   sfiReadOnly: "Votre accès est en lecture seule. L'import demande le droit d'écriture.",
   sfiImportCopy: "Importer (copie)",
   sfiImportCopyLabel: "Importer (copie) : {name}",
-  sfiWebHint: "« Importer (copie) » copie tout le dossier source dans le catalogue. Les fichiers déjà présents sont ignorés ; les fichiers refusés sont copiés aussi. Les originaux restent inchangés. La sélection ci-dessus ne vaut que pour « Refuser la sélection ».",
+  sfiWebHint: "« Importer (copie) » copie tout le dossier source dans le catalogue. Les fichiers déjà présents sont ignorés ; les fichiers refusés sont copiés aussi. Tous les fichiers arrivent à plat dans le dossier du catalogue ; les sous-dossiers ne sont pas recréés. Les originaux restent inchangés. La sélection ci-dessus ne vaut que pour « Refuser la sélection ».",
   filamentGroupModeLabel: 'Affichage',
   filamentGroupModeGrouped: 'Groupé',
   filamentGroupModeSingle: 'Individuel',

@@ -1824,6 +1824,9 @@ selbst passiert nichts.
   gleichem Inhalt wie ein Modell im Katalog sind nicht vorausgewählt.
 - **Abgelehnte Dateien:** Die Einstellungen zeigen „Abgelehnte Dateien: N“. „Abgelehnte Dateien wieder anbieten“
   sorgt dafür, dass die App sie bei der nächsten Quellordnersuche wieder anbietet; sie sucht dabei nicht selbst.
+- - **Browser-Version:** „Importieren (Kopie)“ kopiert den ganzen Quellordner flach in den
+  Katalogordner; Unterordner werden dabei nicht nachgebaut, die Originale bleiben unverändert.
+  Pfade außerhalb der freigegebenen Wurzeln lehnt der Server sofort ab.
 - Ein Quellordner, der nicht erreichbar ist, ist mit „nicht erreichbar“ markiert. Bricht die
   Prüfung bei sehr vielen Einträgen ab, weist ein Hinweis darauf hin, dass es weitere Dateien geben
   kann.

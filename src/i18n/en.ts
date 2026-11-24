@@ -2212,7 +2212,7 @@ export const en: Translations = {
   sfiReadOnly: "Your access is read-only. Importing needs write permission.",
   sfiImportCopy: "Import (copy)",
   sfiImportCopyLabel: "Import (copy): {name}",
-  sfiWebHint: "“Import (copy)” copies the whole source folder into the catalog. Files that are already there are skipped; declined files are copied too. The originals stay unchanged. The selection above only applies to “Decline selected”.",
+  sfiWebHint: "“Import (copy)” copies the whole source folder into the catalog. Files that are already there are skipped; declined files are copied too. All files land flat in the catalog folder; subfolders are not recreated. The originals stay unchanged. The selection above only applies to “Decline selected”.",
   filamentGroupModeLabel: 'View',
   filamentGroupModeGrouped: 'Grouped',
   filamentGroupModeSingle: 'Single',

@@ -2212,7 +2212,7 @@ export const es: Translations = {
   sfiReadOnly: "Tu acceso es de solo lectura. Para importar se necesita permiso de escritura.",
   sfiImportCopy: "Importar (copia)",
   sfiImportCopyLabel: "Importar (copia): {name}",
-  sfiWebHint: "«Importar (copia)» copia toda la carpeta de origen al catálogo. Los archivos que ya están se omiten; los rechazados también se copian. Los originales no cambian. La selección de arriba solo vale para «Rechazar seleccionados».",
+  sfiWebHint: "«Importar (copia)» copia toda la carpeta de origen al catálogo. Los archivos que ya están se omiten; los rechazados también se copian. Todos los archivos quedan en la carpeta del catálogo sin subcarpetas; no se recrea la estructura. Los originales no cambian. La selección de arriba solo vale para «Rechazar seleccionados».",
   filamentGroupModeLabel: 'Vista',
   filamentGroupModeGrouped: 'Agrupado',
   filamentGroupModeSingle: 'Individual',
