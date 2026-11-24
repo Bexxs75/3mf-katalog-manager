@@ -147,7 +147,7 @@ fn anchored(app: &App) -> Result<Anchored, SkipReason> {
 
 fn row_label(kind: RowKind) -> &'static str {
     match kind {
-        RowKind::New => "new",
+        RowKind::New => "import",
         RowKind::MissingModel => "removeModel",
         RowKind::DanglingCompanion => "removeCompanion",
     }
@@ -212,11 +212,12 @@ pub(super) fn preview(
         "token": "", "expiresIn": PLAN_TTL, "counts": counts, "skipped": skipped,
         "mostlyMissingRoots": mostly, "removes": removes,
     });
+    // One plan per session: every successful preview replaces the old one, also an empty one
+    // (a started plan must not stay runnable behind a preview that found nothing to do).
+    plans.retain(|_, p| p.session != current.token);
     if rows.is_empty() {
         return Ok(answer);
     }
-    // One plan per session: the new one replaces the old one.
-    plans.retain(|_, p| p.session != current.token);
     if plans.len() >= MAX_PLANS {
         return Err(err(503, "snapshot_capacity"));
     }
@@ -448,7 +449,7 @@ fn block_rows(
     for result in &results {
         let kind = result["kind"].as_str().unwrap_or_default();
         match (result["ok"].as_bool() == Some(true), kind) {
-            (true, "new") => plan.applied.imported += 1,
+            (true, "import") => plan.applied.imported += 1,
             (true, "removeModel") => plan.applied.removed_models += 1,
             (true, _) => plan.applied.removed_companions += 1,
             (false, _) => plan.applied.skipped += 1,

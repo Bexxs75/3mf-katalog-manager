@@ -428,6 +428,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_
     uploads::reconcile(&config.config, uploads.as_ref())?;
     let fileops_safety = Mutex::new(crate::fileops_safety::FileOpsSafety::new(config.config.file_ops_daily_limit as usize));
     let slicer = config.config.slicer_links.map(|ttl| crate::slicer::Slicer::new(ttl).map(Arc::new)).transpose()?;
+    let upload_excluded: Vec<std::path::PathBuf> = config.config.upload.iter().map(|u| u.dir.clone()).collect();
     let app = Arc::new(App {
         restore: restore_upload::Runtime::default(),
         events: uploads.as_ref().map(|r| r.hub.clone()).unwrap_or_default(),
@@ -446,7 +447,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_
             revision: 0,
         }),
         changes: Arc::new(tokio::sync::Mutex::new(())),
-        geometry: Arc::new(GeometryGate::with_step(step)),
+        geometry: Arc::new(GeometryGate::with_step(step).with_report_excluded(upload_excluded)),
         downloads: Arc::new(tokio::sync::Semaphore::new(4)),
         export: crate::export::Runtime::new(),
     });
@@ -1110,9 +1111,12 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
                 return crate::source_dirs::invoke(app.config.db_path.clone(), app.config.source_roots.clone(),
                     command.to_owned(), args, app.geometry.clone()).await;
             }
+            // The comparison numbers its roots like the preview does: the file roots only,
+            // not the desktop trash folder `roots` carries for downloads.
+            let report_roots = if command == "disk_sync_report" { &app.config.file_roots } else { &app.config.roots };
             invoke(
                 app.config.db_path.clone(),
-                app.config.roots.clone(),
+                report_roots.clone(),
                 p[12..].into(),
                 args,
                 app.geometry.clone(),

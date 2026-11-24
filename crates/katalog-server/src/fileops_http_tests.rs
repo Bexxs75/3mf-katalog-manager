@@ -16,23 +16,39 @@ struct Fixture {
 }
 impl Fixture {
     async fn new(enabled: bool) -> Self {
+        Self::with_layout(enabled, false).await
+    }
+    /// `two_roots`: models/x/a and models/x/b as roots (upload folder in a) next to a desktop
+    /// trash folder that is shallower than both, so it sorts first in the comparison.
+    async fn with_layout(enabled: bool, two_roots: bool) -> Self {
         let mut random = [0; 16];
         getrandom::fill(&mut random).unwrap();
         let dir = std::env::temp_dir().join(format!(
             "web-fileops-http-{:032x}",
             u128::from_ne_bytes(random)
         ));
-        for sub in ["config", "models/uploads", "static"] {
+        let (roots, upload) = if two_roots {
+            let (a, b) = (dir.join("models/x/a"), dir.join("models/x/b"));
+            (std::env::join_paths([&a, &b]).unwrap().to_string_lossy().into_owned(), a.join("uploads"))
+        } else {
+            (dir.join("models").to_string_lossy().into_owned(), dir.join("models/uploads"))
+        };
+        for sub in ["config", "static"] {
             std::fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+        std::fs::create_dir_all(&upload).unwrap();
+        if two_roots {
+            std::fs::create_dir_all(dir.join("models/x/b")).unwrap();
+            std::fs::create_dir_all(dir.join("config/trash")).unwrap();
         }
         let path = dir.join("config/catalog.db");
         drop(db::connect(&path).unwrap());
         let config = Config::from_lookup(|key| match key {
             "KATALOG_DB" => Some(path.to_string_lossy().into_owned()),
-            "KATALOG_ROOTS" => Some(dir.join("models").to_string_lossy().into_owned()),
+            "KATALOG_ROOTS" => Some(roots.clone()),
             "KATALOG_STATIC_DIR" => Some(dir.join("static").to_string_lossy().into_owned()),
             "KATALOG_FILE_OPS" if enabled => Some("1".into()),
-            "KATALOG_UPLOAD_DIR" => Some(dir.join("models/uploads").to_string_lossy().into_owned()),
+            "KATALOG_UPLOAD_DIR" => Some(upload.to_string_lossy().into_owned()),
             "KATALOG_UPLOAD_MAX_MB" => Some("1".into()),
             "KATALOG_COMPANION_MAX_MB" => Some("1".into()),
             "KATALOG_WRITE" => Some("1".into()),
@@ -62,6 +78,7 @@ impl Fixture {
         )
         .unwrap()
         .map(|o| Arc::new(fileops::Runtime::new(o)));
+        let excluded: Vec<std::path::PathBuf> = config.upload.iter().map(|u| u.dir.clone()).collect();
         let app = Arc::new(App {
             restore: restore_upload::Runtime::default(),
             events: uploads.as_ref().map(|r| r.hub.clone()).unwrap_or_default(),
@@ -75,7 +92,7 @@ impl Fixture {
             clock: time.clone(),
             data: Mutex::new(data),
             changes: Arc::new(tokio::sync::Mutex::new(())),
-            geometry: Arc::new(GeometryGate::default()),
+            geometry: Arc::new(GeometryGate::default().with_report_excluded(excluded)),
             downloads: Arc::new(tokio::sync::Semaphore::new(4)),
             export: crate::export::Runtime::new(),
             slicer: None,
@@ -2198,8 +2215,67 @@ mod disksync_tests {
         *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(1);
         f.put("a.obj", OBJ);
         let token = f.started(json!({"newFiles":[{"root":0,"relativePath":"a.obj"}]})).await;
-        assert_eq!(kind(f.block(&token, 0).await, 200).await["counts"]["imported"], 1);
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(answer["counts"]["imported"], 1);
+        // Apply results say "import" (spec 2.5); "new" belongs to the preview's skipped list.
+        let result = &answer["results"][0];
+        assert_eq!((&result["kind"], &result["key"], &result["ok"]), (&json!("import"), &json!("0:a.obj"), &json!(true)));
+        let id = result["fileId"].as_str().unwrap();
+        assert!(!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()), "{result}");
+        assert_eq!(result.as_object().unwrap().len(), 4, "{result}");
         assert_eq!(f.app.fileops_safety.lock().unwrap().reserve_disk_sync(1, 100), Ok(()));
+    }
+
+    #[tokio::test]
+    async fn an_empty_preview_still_replaces_the_started_plan_of_the_session() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let id = f.gone("gone.3mf");
+        let old = f.started(json!({"missingModels":[id]})).await;
+        // Everything is skipped (outside the roots): no rows, no token, but the old plan is gone.
+        let answer = value(f.invoke("disk_sync_preview", json!({"newFiles":[{"root":9,"relativePath":"x.obj"}]})).await).await;
+        assert_eq!(answer["token"], "");
+        assert_eq!(answer["skipped"][0]["reason"], "outside");
+        let r = f.block(&old, 0).await;
+        assert_eq!(kind(r, 404).await["kind"], "snapshot_not_found");
+        assert!(f.state(&id).0.is_none(), "the old plan must not have run");
+    }
+
+    #[tokio::test]
+    async fn report_preview_and_apply_use_the_same_root_numbers_next_to_a_shallower_trash_folder() {
+        let f = Fixture::with_layout(true, true).await;
+        // The desktop trash folder (config/trash) is in `config.roots` and sorts before both roots.
+        assert_eq!(f.app.config.roots.len(), 3);
+        assert_eq!(f.app.config.file_roots.len(), 2);
+        let (a, b) = (f.dir.join("models/x/a"), f.dir.join("models/x/b"));
+        std::fs::write(a.join("only-in-a.obj"), OBJ).unwrap();
+        std::fs::write(b.join("only-in-b.obj"), OBJ).unwrap();
+        std::fs::write(a.join("uploads/up.obj"), OBJ).unwrap();
+        std::fs::write(f.dir.join("config/trash/in-trash.obj"), OBJ).unwrap();
+        let report = value(f.invoke("disk_sync_report", json!({})).await).await;
+        let mut found: Vec<(u64, String)> = report["newFiles"].as_array().unwrap().iter()
+            .map(|n| (n["root"].as_u64().unwrap(), n["relativePath"].as_str().unwrap().to_owned())).collect();
+        found.sort();
+        // Only the file roots, numbered as the preview numbers them; no trash, no upload folder.
+        assert_eq!(report["roots"].as_array().unwrap().len(), 2, "{report}");
+        assert_eq!(found.len(), 2, "{found:?}");
+        let pick = |name: &str| found.iter().find(|(_, p)| p == name).cloned().unwrap();
+        let (root_b, rel_b) = pick("only-in-b.obj");
+        let (root_a, rel_a) = pick("only-in-a.obj");
+        let ordered = katalog_core::disk_report::ordered_roots(&f.app.config.file_roots);
+        assert_eq!(ordered[root_a as usize].file_name().unwrap(), "a");
+        assert_eq!(ordered[root_b as usize].file_name().unwrap(), "b");
+        let token = f.started(json!({"newFiles":[{"root":root_b,"relativePath":rel_b},{"root":root_a,"relativePath":rel_a}]})).await;
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["ok", "ok"], "{answer}");
+        assert_eq!(answer["counts"]["imported"], 2);
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        let mut paths: Vec<String> = conn.prepare("SELECT path FROM files").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        paths.sort();
+        let norm = |p: std::path::PathBuf| p.canonicalize().unwrap().to_string_lossy().into_owned();
+        assert_eq!(paths.len(), 2, "{paths:?}");
+        assert!(paths.iter().any(|p| p.ends_with("/models/x/a/only-in-a.obj")), "{paths:?} {}", norm(a));
+        assert!(paths.iter().any(|p| p.ends_with("/models/x/b/only-in-b.obj")), "{paths:?} {}", norm(b));
     }
 
     #[tokio::test]
@@ -2500,6 +2576,7 @@ mod disksync_tests {
         std::fs::rename(f.dir.join("models/other.tmp"), f.dir.join("models/swapped.obj")).unwrap();
         let answer = kind(f.block(&token, 0).await, 200).await;
         assert_eq!(reasons(&answer), ["changed", "changed", "changed"], "{answer}");
+        assert_eq!(answer["results"][0], json!({"kind":"import","key":"0:changed.obj","ok":false,"reason":"changed"}));
         assert_eq!(count(&f, "files"), 0);
         assert_eq!(count(&f, "folders"), 0);
     }

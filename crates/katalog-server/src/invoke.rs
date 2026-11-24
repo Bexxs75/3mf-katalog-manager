@@ -26,6 +26,8 @@ pub struct GeometryGate {
     /// One disk comparison at a time: each walks the roots.
     disk_reports: Arc<Semaphore>,
     report_limits: disk_report::Limits,
+    /// Folders the comparison does not walk (the upload folder), like the preview.
+    report_excluded: Vec<PathBuf>,
     report_timeout: std::time::Duration,
     admission: Arc<Semaphore>,
     /// STEP parsing in a separate process; disabled unless the server found a working one.
@@ -39,6 +41,7 @@ impl Default for GeometryGate {
             manager_reads: Arc::new(Semaphore::new(4)),
             disk_reports: Arc::new(Semaphore::new(1)),
             report_limits: disk_report::Limits::default(),
+            report_excluded: Vec::new(),
             report_timeout: DISK_REPORT_TIMEOUT,
             admission: Arc::new(Semaphore::new(10)),
             step: Arc::new(crate::step_worker::StepWorker::disabled()),
@@ -48,6 +51,11 @@ impl Default for GeometryGate {
 impl GeometryGate {
     pub fn with_step(step: crate::step_worker::StepWorker) -> Self {
         Self { step: Arc::new(step), ..Self::default() }
+    }
+    /// The folders the disk comparison leaves out, the same ones the preview refuses.
+    pub fn with_report_excluded(mut self, excluded: Vec<PathBuf>) -> Self {
+        self.report_excluded = excluded;
+        self
     }
     pub(crate) async fn acquire(&self) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), Box<Response>> {
         let admission = self.admission.clone().try_acquire_owned().map_err(|_| {
@@ -424,7 +432,7 @@ pub async fn invoke(
     };
     let catalog_guard = match gate.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     if command == "disk_sync_report" {
-        let (limits, wait) = (gate.report_limits, gate.report_timeout);
+        let (limits, wait, excluded) = (gate.report_limits, gate.report_timeout, gate.report_excluded.clone());
         let (tx, rx) = tokio::sync::oneshot::channel();
         // A thread of its own, not the blocking pool: the scan may never return. The permits
         // move into it on purpose and are released only when it ends, so a stuck scan keeps
@@ -436,7 +444,7 @@ pub async fn invoke(
                 // The database is only read for the copy; the disk scan runs without it.
                 let snapshot = disk_report::snapshot(&conn).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
                 drop(conn);
-                serde_json::to_value(disk_report::build_report(&snapshot, &roots, limits))
+                serde_json::to_value(disk_report::build_report_with(&snapshot, &roots, disk_report::ReportOptions { limits, excluded: &excluded }))
                     .map_err(|_| ReadError::from("Antwort konnte nicht kodiert werden"))
             })();
             let _ = tx.send(outcome);
