@@ -379,37 +379,12 @@ pub struct CatalogIssuesDto {
     pub orphaned: Vec<ModelFileDto>,
     pub duplicate_groups: Vec<Vec<ModelFileDto>>,
 }
-/// Groups `files` by `content_hash`, skipping `orphaned_ids` (a missing file must
-/// never become a group's "keep the oldest" anchor). Returns only groups with 2+
-/// members, each sorted oldest-first, groups sorted by their oldest member.
-fn group_duplicates(files: Vec<FileRecord>, orphaned_ids: &HashSet<i64>) -> Vec<Vec<FileRecord>> {
-    let mut by_hash: BTreeMap<String, Vec<FileRecord>> = BTreeMap::new();
-    for file in files {
-        if orphaned_ids.contains(&file.id) {
-            continue;
-        }
-        if let Some(hash) = file.content_hash.clone() {
-            by_hash.entry(hash).or_default().push(file);
-        }
-    }
+#[cfg(test)]
+use katalog_core::catalog_issues::group_duplicates;
+use katalog_core::catalog_issues::{self, IssueLimits, MissingProbe, StdMissingProbe};
 
-    let mut groups: Vec<Vec<FileRecord>> = by_hash
-        .into_values()
-        .filter(|group| group.len() >= 2)
-        .map(|mut group| {
-            group.sort_by(|a, b| a.imported_at.cmp(&b.imported_at));
-            group
-        })
-        .collect();
-    groups.sort_by(|a, b| a[0].imported_at.cmp(&b[0].imported_at));
-    groups
-}
 pub(super) fn is_missing(path: &Path) -> std::io::Result<bool> {
-    match std::fs::metadata(path) {
-        Ok(_) => Ok(false),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
-        Err(e) => Err(e),
-    }
+    StdMissingProbe.is_missing(path)
 }
 
 #[tauri::command]
@@ -418,21 +393,14 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
     let files = db::list_files(&conn).map_err(|e| e.to_string())?;
     let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
 
-    // Only NotFound means "missing": PermissionDenied or IO errors (e.g. an
+    // Only NotFound means "missing" (StdMissingProbe): PermissionDenied or IO errors (e.g. an
     // unmounted network drive) must not mark files for deletion.
-    let mut orphaned_ids: HashSet<i64> = HashSet::new();
-    let mut orphaned: Vec<ModelFileDto> = Vec::new();
-    for file in &files {
-        if is_missing(Path::new(&file.path)).unwrap_or(false) {
-            orphaned_ids.insert(file.id);
-            orphaned.push(to_dto(file.clone(), &spools));
-        }
-    }
-
-    let duplicate_groups: Vec<Vec<ModelFileDto>> = group_duplicates(files, &orphaned_ids)
-        .into_iter()
-        .map(|group| group.into_iter().map(|f| to_dto(f, &spools)).collect())
-        .collect();
+    let issues = catalog_issues::scan_records(&files, &StdMissingProbe, IssueLimits::UNLIMITED);
+    let by_id: HashMap<i64, &FileRecord> = files.iter().map(|f| (f.id, f)).collect();
+    let dto = |id: &i64| to_dto(by_id[id].clone(), &spools);
+    let orphaned: Vec<ModelFileDto> = issues.orphaned.iter().map(dto).collect();
+    let duplicate_groups: Vec<Vec<ModelFileDto>> =
+        issues.duplicate_groups.iter().map(|group| group.iter().map(dto).collect()).collect();
 
     Ok(CatalogIssuesDto { orphaned, duplicate_groups })
 }

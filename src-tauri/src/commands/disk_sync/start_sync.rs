@@ -4,18 +4,14 @@
 use super::*;
 use std::sync::Arc;
 
-pub(super) const SETTING_ON_START: &str = "sync_on_start";
-pub(super) const SETTING_AUTO_ADD: &str = "sync_auto_add";
+pub(super) use katalog_core::disk_sync_settings::{SETTING_AUTO_ADD, SETTING_ON_START};
+use katalog_core::disk_sync_settings as settings;
 
 pub(super) fn flag(conn: &Connection, key: &str) -> CmdResult<bool> {
-    Ok(db::printer_link::get_setting(conn, key)
-        .map_err(|e| format!("database: {e}"))?
-        .as_deref()
-        == Some("1"))
+    settings::flag(conn, key).map_err(Into::into)
 }
 pub(super) fn set_flag(conn: &Connection, key: &str, enabled: bool) -> CmdResult<()> {
-    db::printer_link::set_setting(conn, key, if enabled { "1" } else { "0" })
-        .map_err(|e| e.to_string().into())
+    settings::set_flag(conn, key, enabled).map_err(Into::into)
 }
 
 #[tauri::command]
