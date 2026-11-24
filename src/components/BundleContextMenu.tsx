@@ -2,6 +2,7 @@ import { useCanEditMetadata } from '../lib/webSession';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useT } from '../i18n/LanguageContext';
 import { ContextMenuFrame } from './ContextMenu';
+import { WebFileActions } from './WebFileActions';
 
 interface Props {
   x: number;
@@ -21,12 +22,17 @@ interface Props {
   onToggleFavorite: () => void;
   onDissolve: () => void;
   onDelete: () => void;
+  /** Desktop: opens the "Move to ..." dialog for the living members. Omitted when the caller cannot move files. */
+  onMove?: () => void;
+  /** Web: the living members, moved through the file operations dialog. */
+  moveFileIds?: string[];
+  name?: string;
 }
 
 const ITEM = 'w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50';
 
 /** Menu of a bundle card: every action works on all living members, and the text says how many. */
-export function BundleContextMenu({ x, y, count, allPrinted, allFavorite, queueChoice, canDelete, onClose, onEdit, onTogglePrinted, onQueueAll, onToggleFavorite, onDissolve, onDelete }: Props) {
+export function BundleContextMenu({ x, y, count, allPrinted, allFavorite, queueChoice, canDelete, onClose, onEdit, onTogglePrinted, onQueueAll, onToggleFavorite, onDissolve, onDelete, onMove, moveFileIds, name }: Props) {
   const t = useT();
   const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
@@ -44,6 +50,8 @@ export function BundleContextMenu({ x, y, count, allPrinted, allFavorite, queueC
         {entry(named(allPrinted ? 'bundleMarkAllNotPrinted' : 'bundleMarkAllPrinted'), onTogglePrinted)}
         {entry(queueChoice ? t('bundleQueueOpen') : named('bundleQueueAll'), onQueueAll)}
         {entry(named(allFavorite ? 'bundleUnfavoriteAll' : 'bundleFavoriteAll'), onToggleFavorite)}
+        {moveFileIds ? <WebFileActions fileIds={moveFileIds} name={name} onDone={onClose} menuAction="move" menuLabel={t('moveContextLabel')} menuClassName={ITEM} />
+          : onMove && entry(t('moveContextLabel'), onMove, { locked: true })}
         <div className="border-t border-[var(--line)]" />
         {entry(t('bundleDissolve'), onDissolve)}
         {canDelete && entry(t('bundleDeleteEntry'), onDelete, { critical: true, locked: true })}

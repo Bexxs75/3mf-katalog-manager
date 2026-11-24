@@ -97,6 +97,31 @@ describe('moving several files by dragging', () => {
   });
 });
 
+describe('dragging a bundle card', () => {
+  it('moves all members of the bundle, also when only the title card was grabbed', async () => {
+    backendMovesEverything();
+    const { result } = setup();
+    act(() => result.current.onDragFileStart('m1', ['m1', 'm3']));
+    expect(result.current.draggedFileIds).toEqual(['m1', 'm3']);
+    act(() => result.current.handleFolderMouseEnter('target'));
+    await act(async () => { fireEvent.mouseUp(document); });
+    expect(calls('move_files_to_folder')).toEqual([{ fileIds: ['m1', 'm3'], folderId: 'target' }]);
+    expect(result.current.undoCount).toBe(1);
+  });
+
+  it('takes the whole selection along when it already holds every member', () => {
+    const { result } = setup(['m1', 'm3', 'm4']);
+    act(() => result.current.onDragFileStart('m1', ['m1', 'm3']));
+    expect(result.current.draggedFileIds.sort()).toEqual(['m1', 'm3', 'm4']);
+  });
+
+  it('keeps the old single-card behavior without member ids', () => {
+    const { result } = setup(['m2']);
+    act(() => result.current.onDragFileStart('m1'));
+    expect(result.current.draggedFileIds).toEqual(['m1']);
+  });
+});
+
 describe('undo', () => {
   it('puts files back grouped by their old folder, newest step first', async () => {
     backendMovesEverything();

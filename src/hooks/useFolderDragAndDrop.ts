@@ -77,11 +77,14 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     hoveredFolderId.current = null;
   }, []);
 
-  const onDragFileStart = useCallback((id: string) => {
+  // A bundle card passes its living members: the bundle travels as a whole. If the selection already
+  // holds all of them, the whole selection travels, like with a single card.
+  const onDragFileStart = useCallback((id: string, memberIds?: readonly string[]) => {
     if (!canEditMetadata()) return;
     fileDragCancelled.current = false;
     setDraggedFileId(id);
-    setDraggedFileIds(selectedIds?.has(id) ? [...selectedIds] : [id]);
+    const bundleSelected = memberIds && memberIds.length > 0 && selectedIds && memberIds.every(member => selectedIds.has(member));
+    setDraggedFileIds(memberIds && memberIds.length > 0 ? (bundleSelected ? [...selectedIds] : [...memberIds]) : selectedIds?.has(id) ? [...selectedIds] : [id]);
   }, [selectedIds]);
   // A click without hovering over another row moves nothing. Folders that
   // cannot be moved are still draggable, so dropping them explains the refusal.

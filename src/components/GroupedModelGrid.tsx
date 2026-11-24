@@ -21,7 +21,7 @@ interface Props {
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
   displayPreference: DisplayPreference;
-  onDragFileStart?: (id: string) => void;
+  onDragFileStart?: (id: string, memberIds?: readonly string[]) => void;
   draggedFileId?: string | null;
   draggedFileCount?: number;
   draggedFileFolderId?: string | null;

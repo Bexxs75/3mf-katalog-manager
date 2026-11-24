@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { ContextMenu, type BundleMenuActions } from './ContextMenu';
 import { BundleContextMenu } from './BundleContextMenu';
@@ -70,6 +70,16 @@ describe('bundle card context menu', () => {
     expect(props.onQueueAll).toHaveBeenCalledOnce();
     expect(screen.queryByRole('button', { name: de.bundleDeleteEntry })).toBeNull();
     expect(screen.getByRole('button', { name: de.bundleDissolve })).toBeInTheDocument();
+  });
+
+  it('offers "Move to" for the whole bundle only when moving is possible', () => {
+    const onMove = vi.fn();
+    menu();
+    expect(screen.queryByRole('button', { name: de.moveContextLabel })).toBeNull();
+    cleanup();
+    menu({ onMove } as never);
+    fireEvent.click(screen.getByRole('button', { name: de.moveContextLabel }));
+    expect(onMove).toHaveBeenCalledOnce();
   });
 
   it('runs the action of the clicked entry', () => {

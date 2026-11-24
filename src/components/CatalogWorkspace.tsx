@@ -200,7 +200,7 @@ interface CatalogWorkspaceProps {
   setContextMenu: (value: { modelId: string; x: number; y: number; bundleId?: string } | null) => void;
   toggleBulkSelect: (id: string) => void;
   reorderCollection: (orderedIds: string[]) => void;
-  onDragFileStart: (id: string) => void;
+  onDragFileStart: (id: string, memberIds?: readonly string[]) => void;
   selected: ModelFile | null;
   collapsedFolders: ReturnType<typeof useCollapsedFolders>;
   toolView: ToolView | null;

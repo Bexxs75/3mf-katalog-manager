@@ -24,7 +24,7 @@ import { useActivePrintFilter } from '../hooks/PrintFilterContext';
 import { PrintFactsExtra, printFactsExtraHeight } from './PrintFactsExtra';
 import { useBundleCardsSettings, useCardItems } from '../hooks/BundleCardsContext';
 import { BundleGridCard, PartOfChip, usePartOfText } from './BundleCardParts';
-import { cardNavId, cardSelectionState, cardToggleIds, isCardOpen } from '../lib/bundleCards';
+import { cardMemberIds, cardNavId, cardSelectionState, cardToggleIds, isCardOpen } from '../lib/bundleCards';
 
 interface Props {
   models: ModelFile[];
@@ -43,7 +43,7 @@ interface Props {
   displayPreference: DisplayPreference;
   reorderable?: boolean;
   onReorder?: (orderedIds: string[]) => void;
-  onDragFileStart?: (id: string) => void;
+  onDragFileStart?: (id: string, memberIds?: readonly string[]) => void;
   // Accessible name of the grid; grouped views pass the folder name.
   label?: string;
 }
@@ -198,7 +198,9 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   // Cards as drag source for moving into a folder (only without
   // `reorderable`), with the same threshold. The move itself is triggered by the
   // global mouseup handler in App.tsx; here only `onDragFileStart`.
-  const fileDrag = useDragThreshold(onDragFileStart);
+  // A bundle card drags all its living members; the ids are remembered on mouse down for the start callback.
+  const dragMembers = useRef<readonly string[] | undefined>(undefined);
+  const fileDrag = useDragThreshold(onDragFileStart ? (id: string) => (dragMembers.current ? onDragFileStart(id, dragMembers.current) : onDragFileStart(id)) : undefined);
 
   const handleCardMouseDown = (e: { clientX: number; clientY: number }, id: string) => {
     if (!canEdit) return;
@@ -206,8 +208,14 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
       dragStartPos.current = { x: e.clientX, y: e.clientY };
       setDragIndex(models.findIndex((x) => x.id === id));
     } else if (onDragFileStart && !readOnly) {
+      dragMembers.current = undefined;
       fileDrag.begin(e, id);
     }
+  };
+  const handleBundleMouseDown = (e: { clientX: number; clientY: number }, card: BundleCard) => {
+    if (!canEdit || reorderable || !onDragFileStart || readOnly) return;
+    dragMembers.current = cardMemberIds(card);
+    fileDrag.begin(e, card.title.id);
   };
 
   // Every card is a grid row with two cells (picture and details). aria-rowindex/aria-rowcount
@@ -246,6 +254,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         onOpenDetail={() => onOpenDetail(card.title.id)}
         onContextMenu={(x, y) => onContextMenu?.(card.title.id, x, y, card.bundle.id)}
         onToggleChecked={() => cardToggleIds(card, selectedForBulk).forEach(onToggleBulkSelect)}
+        onMouseDown={event => handleBundleMouseDown(event, card)}
       />
     );
   }
