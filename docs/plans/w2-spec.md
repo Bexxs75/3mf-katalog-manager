@@ -172,7 +172,7 @@ Jede Zeile wird **unmittelbar vor ihrer Änderung** gegen den dann aktuellen Zus
 - Ausschlüsse (Upload-Ordner, Wurzeln anderer Index, Papierkorb der Wurzel) ergeben sich aus den **Identitäten der beim Auflösen geöffneten Handles** (`Protection::Upload`/`Protected` in `resolve_relative`), nicht aus einem Pfadvergleich. Namensregeln (`.versteckt`, `_extras`, `~$`) bleiben in `validate_relative`.
 - Wurzel-Wiederprüfung beim Anwenden: `Directory::open(canonical)` neu öffnen und die Identität mit dem `PlanRow` vergleichen; abweichend oder nicht lesbar → `root_unavailable`.
 - `rescan::open_below_roots` (`rescan.rs:183-210`) wird für W2 **nicht** übernommen und gilt nicht als Sicherheitsgarantie: es kanonisiert den ganzen Pfad (`canonicalize` folgt Zwischenlinks), prüft nur die letzte ursprüngliche Komponente auf einen Link, und `safe_file::open_regular` (`safe_file.rs:18-24`) setzt `O_NONBLOCK`, aber kein `O_NOFOLLOW`. Ein nach der Vorschau durch einen Link auf denselben Ordner ersetzter Unterordner würde dort akzeptiert (Inode, Länge, mtime bleiben gleich). `open_below_roots` bleibt für den Rescan unverändert.
-- `presence` für die Entfernen-Zeilen wird über dieselbe Auflösung berechnet (`Missing` nur, wenn alle Elternkomponenten als echte Verzeichnisse geöffnet werden konnten und die letzte `NotFound` liefert; Link, `ELOOP`, andere Fehler → `Unknown`).
+- `presence` für die Entfernen-Zeilen wird über dieselbe Auflösung berechnet. `Missing` ist zulässig, wenn die Auflösung bis zur **ersten fehlenden Komponente** nur über verifizierte echte Verzeichnisse lief (jede Komponente davor per `open_dir` mit `O_NOFOLLOW` geöffnet) und genau diese Komponente `NotFound` liefert; das ist auch der Fall, dass ein ganzer Unterordner auf der Platte gelöscht wurde (die Modelle darin gelten als fehlend, wie im Bericht `disk_report::presence` und am Desktop). Link, `ELOOP`, `ENOTDIR` (Zwischenkomponente ist eine Datei), Ausschluss, `CrossDevice` und jeder andere Fehler → `Unknown`. (Stand R2: frühere Fassung verlangte `NotFound` nur an der letzten Komponente; das hätte den Hauptanwendungsfall ausgeschlossen. Entscheidung vorläufig, dem User gemeldet.) Dieselbe Regel gilt für `RootsMissingProbe` (2.11).
 
 **Aufnahme (`import`)**
 1. Wurzel noch brauchbar: Wurzelverzeichnis lässt sich lesen, Identität (dev/ino) wie im Plan, nicht „leer obwohl Katalog dort Modelle führt“ (nur für Entfernen nötig, hier genügt die Identität). Sonst `root_unavailable`.
@@ -273,14 +273,14 @@ Leitlinie (R1): Logik, Prüfungen und SQL kommen in den Kern, Dateieffekte bleib
 ```rust
 pub trait MissingProbe { fn is_missing(&self, path: &Path) -> std::io::Result<bool>; }
 pub struct StdMissingProbe;                       // wie backup.rs:409: metadata() == NotFound
-pub struct RootsMissingProbe<'a> { /* roots */ } // Web: nur unter Wurzeln, presence()-Regeln, Link/Fehler = unklar
+pub struct RootsMissingProbe { /* roots */ } // Web: nur unter Wurzeln, verankerte Auflösung (Unix: openat+O_NOFOLLOW ab frisch geöffneter Wurzel, Identität wie bei new), Link/Fehler/Wurzelwechsel = unklar
 pub struct Issues { pub orphaned: Vec<i64>, pub duplicate_groups: Vec<Vec<i64>>, pub truncated: bool }
 pub struct IssueLimits { pub max_orphaned: usize, pub max_groups: usize, pub max_duration: Duration }
 pub fn scan(conn: &Connection, probe: &dyn MissingProbe, limits: IssueLimits) -> Result<Issues, String>;
 pub fn group_duplicates(files: Vec<FileRecord>, orphaned: &HashSet<i64>) -> Vec<Vec<FileRecord>>; // aus backup.rs:350 verschoben
 ```
 
-Verschoben werden `group_duplicates` und `is_missing`-Logik aus `src-tauri/src/commands/backup.rs:350-415`. `scan_catalog_issues` im Desktop ruft `catalog_issues::scan` mit `StdMissingProbe` und `IssueLimits` ohne Grenzen (`usize::MAX`, ohne Zeit) und baut weiter `to_dto(file, &spools)`; Ergebnis byte-gleich (Paritätstest 7.2). `RootsMissingProbe` wiederverwendet `disk_report::presence` (wird `pub(crate)`).
+Verschoben werden `group_duplicates` und `is_missing`-Logik aus `src-tauri/src/commands/backup.rs:350-415`. `scan_catalog_issues` im Desktop ruft `catalog_issues::scan` mit `StdMissingProbe` und `IssueLimits` ohne Grenzen (`usize::MAX`, ohne Zeit) und baut weiter `to_dto(file, &spools)`; Ergebnis byte-gleich (Paritätstest 7.2). `RootsMissingProbe` löst selbst verankert auf (nicht über `disk_report::presence`, da dieses absolute Pfade nacheinander mit `symlink_metadata` prüft und so nach dem Austausch einer Zwischenkomponente gegen einen Link folgen würde). Begrenzter Scan (R2): Duplikatgruppen entstehen nur aus tatsächlich geprüften Zeilen (weder die Zeile, die `max_orphaned` überläuft, noch ungeprüfte Zeilen nach Zeitüberschreitung); `scan` lädt nur Id/Pfad/Hash/Importzeit der aktiven Zeilen (`db::list_issue_rows`), startet das Zeitbudget vor dem Laden und prüft es auch beim Gruppieren. `scan_records` (Desktop) bleibt unverändert im Ergebnis.
 
 ### 4.2 `disk_report.rs` (Erweiterungen) und `disk_apply.rs` (neu)
 

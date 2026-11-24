@@ -46,7 +46,7 @@ pub use repository::{
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
     insert_registered_slicer,
     list_all_file_tags, list_filament_spools, list_filament_spools_with_images, list_file_summaries, list_file_images, list_files,
-    list_files_by_ids, list_folders, list_print_log_entries,
+    list_files_by_ids, list_folders, list_issue_rows, IssueRow, list_print_log_entries,
     list_registered_slicers,
     list_tag_counts,
     list_trash,

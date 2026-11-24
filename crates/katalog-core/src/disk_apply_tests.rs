@@ -499,3 +499,38 @@ fn rows_outside_every_root_are_outside_and_codes_are_stable() {
     assert_eq!(SkipReason::ExistsAgain.code(), "exists_again");
     assert_eq!(serde_json::to_string(&SkipReason::AlreadyInCatalog).unwrap(), "\"already_in_catalog\"");
 }
+
+#[test]
+fn a_deleted_subfolder_makes_its_models_missing_but_a_file_or_link_on_the_way_is_unknown() {
+    let root = dir("da-parent-rule");
+    let outside = dir("da-parent-rule-out");
+    put(&root.join("keep.3mf"), &three_mf(10));
+    put(&root.join("sub/m.3mf"), &three_mf(10));
+    put(&root.join("blocker"), b"not a folder");
+    symlink(&outside, root.join("link")).unwrap();
+    let conn = catalog();
+    let in_deleted = add_model(&conn, &root.join("sub/deeper/m.3mf"));
+    let a = anchored(&[&root]);
+    // The first absent component is `NotFound` and everything before it is a real folder.
+    assert_eq!(a.presence(0, "gone/deeper/m.3mf"), Presence::Missing);
+    assert_eq!(a.presence(0, "sub/gone/deeper/m.3mf"), Presence::Missing);
+    assert!(plan_missing_model(&conn, &a, in_deleted).is_ok());
+    // A file where a folder should be (ENOTDIR) and a link are not "gone".
+    assert_eq!(a.presence(0, "blocker/m.3mf"), Presence::Unknown);
+    assert_eq!(a.presence(0, "link/m.3mf"), Presence::Unknown);
+    assert_eq!(a.presence(0, "sub/m.3mf/deeper.3mf"), Presence::Unknown);
+    let blocked = add_model(&conn, &root.join("blocker/m.3mf"));
+    assert_eq!(plan_missing_model(&conn, &a, blocked).err(), Some(SkipReason::Unclear));
+}
+
+#[test]
+fn an_unusable_root_stays_root_unavailable_even_if_its_subfolder_is_gone() {
+    let root = dir("da-parent-rule-root");
+    put(&root.join("sub/m.3mf"), &three_mf(10));
+    let conn = catalog();
+    let id = add_model(&conn, &root.join("sub/m.3mf"));
+    let a = anchored(&[&root]);
+    fs::remove_dir_all(root.join("sub")).unwrap();
+    // The root is empty although the catalog holds models below it: not trusted.
+    assert_eq!(plan_missing_model(&conn, &a, id).err(), Some(SkipReason::RootUnavailable));
+}

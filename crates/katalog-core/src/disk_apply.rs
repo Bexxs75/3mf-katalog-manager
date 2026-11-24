@@ -332,7 +332,8 @@ impl Anchored {
     }
 
     /// What is at `relative` below `root`, without following a link anywhere. `Missing` only when
-    /// every parent was opened as a real directory (or is itself gone) and the entry is `NotFound`.
+    /// the path up to the first absent component ran over real directories only (no link, no
+    /// non-directory, no other error) and that component is `NotFound` (a whole folder may be gone).
     pub(crate) fn presence(&self, root: usize, relative: &str) -> Presence {
         let resolved = match self.resolve(root, relative) {
             Ok(r) => r,

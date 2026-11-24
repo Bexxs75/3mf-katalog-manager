@@ -1137,6 +1137,26 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     Ok(files)
 }
 
+/// The columns the catalog health check needs of an active model.
+pub struct IssueRow {
+    pub id: i64,
+    pub path: String,
+    pub content_hash: Option<String>,
+    pub imported_at: String,
+}
+
+/// Active models for the catalog health check, in the order of `list_files` (by name), without
+/// image blobs or child queries.
+pub fn list_issue_rows(conn: &Connection) -> Result<Vec<IssueRow>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, path, content_hash, imported_at FROM files WHERE deleted_at IS NULL ORDER BY name",
+    )?;
+    let rows = stmt
+        .query_map([], |r| Ok(IssueRow { id: r.get(0)?, path: r.get(1)?, content_hash: r.get(2)?, imported_at: r.get(3)? }))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 /// Catalog metadata without image blobs or per-file child queries.
 pub struct FileSummary {
     pub plate_count: Option<i64>,
