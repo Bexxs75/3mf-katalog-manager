@@ -1453,7 +1453,7 @@ export const fr: Translations = {
   bundleDlgLiveWillRemove: "{name} sera retiré du lot à l'enregistrement.",
   bundleDlgLiveKept: "{name} reste dans le lot.",
   bundleDlgSwitch: "« {name} » passe du lot « {from} » au lot « {to} ».",
-  bundleDlgSwitchKeeps: "Le lot « {from} » conserve {count} modèles.",
+  bundleDlgSwitchKeeps: {"one": "Le lot « {from} » conserve {count} modèle.", "other": "Le lot « {from} » conserve {count} modèles."},
   bundleDlgSwitchDissolves: "Le lot « {from} » n’aurait plus de modèle et est dissous.",
   bundleDlgSwitchConfirm: "Confirmer le changement",
   bundleDlgCreateSubmit: { one: "Créer le lot ({count} modèle)", other: "Créer le lot ({count} modèles)" },

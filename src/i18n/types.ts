@@ -1127,7 +1127,7 @@ export interface Translations {
   bundleDlgLiveWillRemove: string;
   bundleDlgLiveKept: string;
   bundleDlgSwitch: string;
-  bundleDlgSwitchKeeps: string;
+  bundleDlgSwitchKeeps: PluralForms;
   bundleDlgSwitchDissolves: string;
   bundleDlgSwitchConfirm: string;
   bundleDlgCreateSubmit: PluralForms;

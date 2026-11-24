@@ -1453,7 +1453,7 @@ export const de: Translations = {
   bundleDlgLiveWillRemove: "{name} wird beim Speichern aus dem Bündel entfernt.",
   bundleDlgLiveKept: "{name} bleibt im Bündel.",
   bundleDlgSwitch: "„{name}“ wechselt von Bündel „{from}“ zu „{to}“.",
-  bundleDlgSwitchKeeps: "Das Bündel „{from}“ behält {count} Modelle.",
+  bundleDlgSwitchKeeps: {"one": "Das Bündel „{from}“ behält {count} Modell.", "other": "Das Bündel „{from}“ behält {count} Modelle."},
   bundleDlgSwitchDissolves: "Das Bündel „{from}“ hätte danach kein Modell mehr und wird aufgelöst.",
   bundleDlgSwitchConfirm: "Wechsel bestätigen",
   bundleDlgCreateSubmit: { one: "Bündel anlegen ({count} Modell)", other: "Bündel anlegen ({count} Modelle)" },

@@ -1453,7 +1453,7 @@ export const en: Translations = {
   bundleDlgLiveWillRemove: "{name} will be removed from the bundle when saved.",
   bundleDlgLiveKept: "{name} stays in the bundle.",
   bundleDlgSwitch: "“{name}” moves from bundle “{from}” to “{to}”.",
-  bundleDlgSwitchKeeps: "The bundle “{from}” keeps {count} models.",
+  bundleDlgSwitchKeeps: {"one": "The bundle “{from}” keeps {count} model.", "other": "The bundle “{from}” keeps {count} models."},
   bundleDlgSwitchDissolves: "The bundle “{from}” would have no model left afterwards and is dissolved.",
   bundleDlgSwitchConfirm: "Confirm the change",
   bundleDlgCreateSubmit: { one: "Create bundle ({count} model)", other: "Create bundle ({count} models)" },

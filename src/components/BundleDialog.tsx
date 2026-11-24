@@ -336,7 +336,7 @@ export function BundleDialog({ request, models, bundles, onClose, returnFocus, o
             <div key={note.fileId}>
               <b>{t('bundleDlgSwitch').replace('{name}', nameOf(note.fileId)).replace('{from}', displayName(note.from.name)).replace('{to}', displayName(request.mode === 'add' ? target?.name ?? '' : trimmedName || '…'))}</b>{' '}
               <span className="text-[var(--ink-2)]">{note.left >= MIN_BUNDLE_MEMBERS
-                ? t('bundleDlgSwitchKeeps').replace('{from}', displayName(note.from.name)).replace('{count}', String(note.left))
+                ? formatCount(t('bundleDlgSwitchKeeps'), note.left).replace('{from}', displayName(note.from.name))
                 : t('bundleDlgSwitchDissolves').replace('{from}', displayName(note.from.name))}</span>
             </div>
           ))}
