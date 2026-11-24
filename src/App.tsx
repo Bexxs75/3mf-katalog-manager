@@ -530,10 +530,24 @@ export default function App() {
     setDetailModelId(id);
   };
 
+  // With no batch selection, the open card of a bundle stands for the whole bundle (as in its context menu).
+  const openBundleOfSelection = () => {
+    if (!collapseBundles || bulk.selectedForBulk.size > 0 || !store.selectedId) return null;
+    const bundle = bundles.find(candidate => candidate.members.some(member => member.fileId === store.selectedId && !member.inTrash));
+    const ids = bundle?.members.flatMap(member => member.inTrash || !store.models.some(model => model.id === member.fileId) ? [] : member.fileId) ?? [];
+    return bundle && ids.length > 1 ? { bundle, ids } : null;
+  };
+
   const openSelectionMenu = (initialView: 'move' | 'rename' | 'confirmRemove' | 'confirmDelete') => {
     if (fileImport.jobActive) return;
     const ids = bulk.selectedForBulk.size ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
     if (!ids.length || (initialView === 'rename' && ids.length !== 1)) return;
+    const openBundle = initialView === 'move' ? openBundleOfSelection() : null;
+    if (openBundle) {
+      const bundleBounds = tileOf(ids[0])?.getBoundingClientRect();
+      setContextMenu({ modelId: ids[0], x: bundleBounds?.left ?? 0, y: bundleBounds?.top ?? 0, bundleId: openBundle.bundle.id, initialView });
+      return;
+    }
     const bounds = tileOf(ids[0])?.getBoundingClientRect();
     setContextMenu({ modelId: ids[0], x: bounds?.left ?? 0, y: bounds?.top ?? 0, initialView });
   };
@@ -554,7 +568,8 @@ export default function App() {
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
     toggleBulkSelect: bulk.toggleBulkSelect,
     onMoveSelection: web ? () => openSelectionMenu('move') : () => {
-      const ids = bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
+      const openBundle = openBundleOfSelection();
+      const ids = openBundle ? openBundle.ids : bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
       openMoveDialog(ids, ids.length === 1 ? tileOf(ids[0]) : (document.activeElement as HTMLElement | null));
     },
     onUndo: bundleActions.undoable ? bundleActions.runUndo : fileImport.jobActive ? undefined : () => void dragDrop.undo(),
@@ -974,6 +989,7 @@ export default function App() {
               }}
               onDissolve={() => void bundleActions.dissolve([contextBundle.id])}
               onMove={web || !canManageFiles() ? undefined : () => openMoveDialog(contextBundleModels.map(model => model.id), tileOf(contextModel.id))}
+              autoMove={contextMenu.initialView === 'move'}
               moveFileIds={web && canManageFiles() ? contextBundleModels.map(model => model.id) : undefined}
               name={contextBundle.name}
               onDelete={() => bundleActions.askDeleteBundle(contextBundle, tileOf(contextModel.id))}
