@@ -2154,6 +2154,68 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    fn bundle_members(conn: &Connection, bundle_id: i64) -> Vec<i64> {
+        db::bundles::get_bundle(conn, bundle_id).unwrap().unwrap().members.iter().map(|m| m.file_id).collect()
+    }
+
+    #[test]
+    fn moving_all_members_keeps_the_bundle_and_its_order() {
+        let (conn, dir, src, dst) = batch_move_fixture("batch_move_bundle_whole");
+        let a = batch_add_file(&conn, &dir, "src", "a.3mf", src);
+        let b = batch_add_file(&conn, &dir, "src", "b.3mf", src);
+        let c = batch_add_file(&conn, &dir, "src", "c.3mf", src);
+        let bundle = db::bundles::create_bundle(&conn, "Set", db::bundles::BundleKind::Parts, &[b, a, c], "2026-01-01T00:00:00Z").unwrap();
+
+        let res = run_batch(&conn, &ids(&[b, a, c]), dst).unwrap();
+
+        assert!(res.iter().all(|r| r.status == "moved"));
+        assert_eq!(bundle_members(&conn, bundle), vec![b, a, c]);
+        for id in [a, b, c] {
+            assert_eq!(db::get_file(&conn, id).unwrap().unwrap().folder_id, Some(dst));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn moving_one_member_keeps_the_bundle_with_members_in_two_folders() {
+        let (conn, dir, src, dst) = batch_move_fixture("batch_move_bundle_single");
+        let a = batch_add_file(&conn, &dir, "src", "a.3mf", src);
+        let b = batch_add_file(&conn, &dir, "src", "b.3mf", src);
+        let bundle = db::bundles::create_bundle(&conn, "Set", db::bundles::BundleKind::Parts, &[a, b], "2026-01-01T00:00:00Z").unwrap();
+
+        let res = run_batch(&conn, &ids(&[a]), dst).unwrap();
+
+        assert_eq!(res[0].status, "moved");
+        assert_eq!(bundle_members(&conn, bundle), vec![a, b]);
+        assert_eq!(db::get_file(&conn, a).unwrap().unwrap().folder_id, Some(dst));
+        assert_eq!(db::get_file(&conn, b).unwrap().unwrap().folder_id, Some(src));
+        // Members that sit in different folders move together; the one already there is only skipped.
+        let res = run_batch(&conn, &ids(&[a, b]), dst).unwrap();
+        assert_eq!(res.iter().map(|r| r.status).collect::<Vec<_>>(), vec!["skipped", "moved"]);
+        assert_eq!(bundle_members(&conn, bundle), vec![a, b]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_name_clash_in_one_member_leaves_that_member_and_reports_it_while_the_bundle_stays() {
+        let (conn, dir, src, dst) = batch_move_fixture("batch_move_bundle_clash");
+        let a = batch_add_file(&conn, &dir, "src", "a.3mf", src);
+        let b = batch_add_file(&conn, &dir, "src", "b.3mf", src);
+        std::fs::write(dir.join("dst/b.3mf"), b"TARGET").unwrap();
+        db::test_insert_minimal_file(&conn, &dir.join("dst/b.3mf").to_string_lossy(), Some(dst)).unwrap();
+        let bundle = db::bundles::create_bundle(&conn, "Set", db::bundles::BundleKind::Parts, &[a, b], "2026-01-01T00:00:00Z").unwrap();
+
+        let res = run_batch(&conn, &ids(&[a, b]), dst).unwrap();
+
+        // Nothing is half done silently: every member has its own status, and the undo data covers the moved one.
+        assert_eq!(res.iter().map(|r| (r.status, r.reason.as_deref())).collect::<Vec<_>>(), vec![("moved", None), ("skipped", Some("name_exists"))]);
+        assert_eq!(res[0].from_folder_id.as_deref(), Some(src.to_string().as_str()));
+        assert_eq!(std::fs::read(dir.join("dst/b.3mf")).unwrap(), b"TARGET");
+        assert!(dir.join("src/b.3mf").is_file());
+        assert_eq!(bundle_members(&conn, bundle), vec![a, b]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn move_files_to_folder_rejects_more_than_the_limit_and_a_bad_target() {
         let (conn, dir, src, dst) = batch_move_fixture("batch_move_limit");

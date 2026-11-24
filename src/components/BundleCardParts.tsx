@@ -66,13 +66,15 @@ interface BundleGridCardProps {
   onOpenDetail: () => void;
   onContextMenu: (x: number, y: number) => void;
   onToggleChecked: () => void;
+  /** Starts the drag of the whole bundle; omitted when moving is not possible. */
+  onMouseDown?: (event: { clientX: number; clientY: number }) => void;
 }
 
 /**
  * Card of a bundle. It has the outer size of a single card: the "stack" is only an edge strip
  * inside the picture, the line under the name takes the place of the tags.
  */
-export function BundleGridCard({ card, comfort, rowProps, open, image, checked, readOnly, metadataHeight, onSelect, onOpenDetail, onContextMenu, onToggleChecked }: BundleGridCardProps) {
+export function BundleGridCard({ card, comfort, rowProps, open, image, checked, readOnly, metadataHeight, onSelect, onOpenDetail, onContextMenu, onToggleChecked, onMouseDown }: BundleGridCardProps) {
   const { language } = useLanguage();
   const canEdit = useCanEditMetadata();
   const text = useBundleText();
@@ -87,6 +89,7 @@ export function BundleGridCard({ card, comfort, rowProps, open, image, checked, 
       aria-label={text.ariaLabel(card)}
       tabIndex={-1}
       onClick={onSelect}
+      onMouseDown={onMouseDown}
       onDoubleClick={readOnly ? undefined : onOpenDetail}
       onKeyDown={event => {
         if (event.target !== event.currentTarget || !isContextMenuKey(event)) return;

@@ -973,6 +973,9 @@ export default function App() {
                 for (const model of contextBundleModels) if (model.favorite === favorite) void store.toggleFavorite(model.id);
               }}
               onDissolve={() => void bundleActions.dissolve([contextBundle.id])}
+              onMove={web || !canManageFiles() ? undefined : () => openMoveDialog(contextBundleModels.map(model => model.id), tileOf(contextModel.id))}
+              moveFileIds={web && canManageFiles() ? contextBundleModels.map(model => model.id) : undefined}
+              name={contextBundle.name}
               onDelete={() => bundleActions.askDeleteBundle(contextBundle, tileOf(contextModel.id))}
             />
           )}
