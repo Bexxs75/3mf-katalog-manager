@@ -77,7 +77,9 @@ pub use folder_trash::*;
 pub use updater::*;
 pub use upgrade_notice::*;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(test)]
+use std::collections::BTreeMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
