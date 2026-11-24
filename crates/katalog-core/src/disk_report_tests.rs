@@ -375,3 +375,38 @@ fn folder_check_stops_at_its_entry_limit_and_says_so() {
     assert_eq!(missing, HashSet::from([1, 2]));
     assert!(truncated);
 }
+
+#[test]
+fn excluded_folders_are_not_walked_and_ordered_roots_match_the_report_indexes() {
+    let root = dir("dr-excluded");
+    touch(&root.join("uploads/a.3mf"));
+    touch(&root.join("uploads/deep/b.3mf"));
+    touch(&root.join("ok/c.3mf"));
+    let snapshot = Snapshot::default();
+    let configured = vec![root.clone()];
+    let plain = build_report(&snapshot, &configured, Limits::default());
+    assert_eq!(plain.new_files.len(), 3);
+    let excluded = [root.join("uploads"), root.join("does-not-exist")];
+    let r = build_report_with(&snapshot, &configured, ReportOptions { limits: Limits::default(), excluded: &excluded });
+    let new: Vec<_> = r.new_files.iter().map(|f| f.relative_path.as_str()).collect();
+    assert_eq!(new, vec!["ok/c.3mf"]);
+    // Without exclusions the new entry point reports exactly what the old one did.
+    assert_eq!(build_report_with(&snapshot, &configured, ReportOptions { limits: Limits::default(), excluded: &[] }), plain);
+
+    // A root inside an excluded folder is not walked at all.
+    let inner = build_report_with(&snapshot, &[root.join("uploads")], ReportOptions { limits: Limits::default(), excluded: &[root.join("uploads")] });
+    assert!(inner.new_files.is_empty());
+
+    // Index order: shallow roots first, the same for the report and for `ordered_roots`.
+    let deep = dir("dr-order").join("x/y");
+    fs::create_dir_all(&deep).unwrap();
+    touch(&deep.join("deep.3mf"));
+    let shallow = dir("dr-order-shallow");
+    touch(&shallow.join("s.3mf"));
+    let configured = vec![deep.clone(), shallow.clone()];
+    let ordered = ordered_roots(&configured);
+    assert_eq!(ordered, vec![shallow.clone(), deep.clone()]);
+    let r = build_report(&snapshot, &configured, Limits::default());
+    let by_index: Vec<_> = r.new_files.iter().map(|f| (f.root, f.relative_path.clone())).collect();
+    assert_eq!(by_index, vec![(0, "s.3mf".to_owned()), (1, "deep.3mf".to_owned())]);
+}

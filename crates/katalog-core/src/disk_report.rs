@@ -161,16 +161,16 @@ pub struct DiskReport {
     pub truncated_by: Vec<TruncatedBy>,
 }
 
-struct Root {
-    stored: PathBuf,
-    canonical: PathBuf,
-    status: RootStatus,
+pub(crate) struct Root {
+    pub(crate) stored: PathBuf,
+    pub(crate) canonical: PathBuf,
+    pub(crate) status: RootStatus,
     /// Nested in an earlier root: that root's walk already covers it.
-    covered: bool,
+    pub(crate) covered: bool,
 }
 impl Root {
     /// Path relative to this root when `path` lies below it, spelled either way.
-    fn relative(&self, path: &Path) -> Option<PathBuf> {
+    pub(crate) fn relative(&self, path: &Path) -> Option<PathBuf> {
         let relative = path.strip_prefix(&self.stored).or_else(|_| path.strip_prefix(&self.canonical)).ok()?;
         if relative.as_os_str().is_empty() || relative.components().any(|c| !matches!(c, Component::Normal(_))) {
             return None;
@@ -186,12 +186,12 @@ fn key(path: &Path) -> PathBuf {
         path.to_path_buf()
     }
 }
-fn shown(relative: &Path) -> String {
+pub(crate) fn shown(relative: &Path) -> String {
     relative.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Presence {
+pub(crate) enum Presence {
     Missing,
     File,
     /// A folder, a final link or a special file.
@@ -200,7 +200,7 @@ enum Presence {
     Unknown,
 }
 /// Looks at `relative` below the canonical root component by component without following links.
-fn presence(root: &Path, relative: &Path) -> Presence {
+pub(crate) fn presence(root: &Path, relative: &Path) -> Presence {
     let mut current = root.to_path_buf();
     let count = relative.components().count();
     for (index, component) in relative.components().enumerate() {
@@ -247,7 +247,7 @@ impl Budget {
     }
 }
 
-fn open_roots(configured: &[PathBuf]) -> Vec<Root> {
+pub(crate) fn open_roots(configured: &[PathBuf]) -> Vec<Root> {
     let mut roots: Vec<Root> = configured
         .iter()
         .map(|stored| match std::fs::canonicalize(stored) {
@@ -260,9 +260,16 @@ fn open_roots(configured: &[PathBuf]) -> Vec<Root> {
     roots
 }
 
+/// The configured roots in the order the report numbers them (`root` indexes of every list in
+/// [`DiskReport`]): shallow roots first. Report and apply must index roots the same way, so both
+/// go through here.
+pub fn ordered_roots(configured: &[PathBuf]) -> Vec<PathBuf> {
+    open_roots(configured).into_iter().map(|r| r.stored).collect()
+}
+
 /// Whether an earlier, usable root already walks each root. Run after the status checks:
 /// a root that turned out empty or unreachable covers nothing.
-fn mark_covered(roots: &mut [Root]) {
+pub(crate) fn mark_covered(roots: &mut [Root]) {
     for index in 0..roots.len() {
         let covered = roots[..index].iter().any(|r| r.status == RootStatus::Ok && roots[index].canonical.starts_with(&r.canonical));
         roots[index].covered = covered && roots[index].status == RootStatus::Ok;
@@ -270,7 +277,7 @@ fn mark_covered(roots: &mut [Root]) {
 }
 
 /// The root a stored path belongs to and its path below it.
-fn locate(roots: &[Root], path: &str) -> Option<(usize, PathBuf)> {
+pub(crate) fn locate(roots: &[Root], path: &str) -> Option<(usize, PathBuf)> {
     let path = Path::new(path);
     // A usable root wins; a row that lies only below an unreachable root still belongs to it
     // (so it is not mistaken for a row outside every root) and is skipped by the callers.
@@ -322,6 +329,19 @@ pub fn missing_folder_ids(folders: &[(i64, String)], configured: &[PathBuf], lim
 /// Compares the snapshot with the disk below `configured`. Never fails: whatever cannot
 /// be judged is left out and, where a limit caused it, `truncated` says so.
 pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits) -> DiskReport {
+    build_report_with(snapshot, configured, ReportOptions { limits, excluded: &[] })
+}
+
+/// [`build_report`] with folders the walk must not enter (for the web: the upload folder).
+/// Files inside them are never listed as new; folders that do not exist are ignored.
+pub struct ReportOptions<'a> {
+    pub limits: Limits,
+    pub excluded: &'a [PathBuf],
+}
+
+pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: ReportOptions<'_>) -> DiskReport {
+    let ReportOptions { limits, excluded } = options;
+    let excluded: Vec<PathBuf> = excluded.iter().filter_map(|p| std::fs::canonicalize(p).ok()).collect();
     let mut budget = Budget { started: Instant::now(), limits, truncated: Vec::new() };
     let mut roots = open_roots(configured);
     let mut report = DiskReport::default();
@@ -432,7 +452,7 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
         if root.status != RootStatus::Ok || root.covered {
             continue;
         }
-        if !walk(index, root, &known, &companion_dirs, &mut budget, &mut report) {
+        if !walk(index, root, &known, &companion_dirs, &excluded, &mut budget, &mut report) {
             break;
         }
     }
@@ -452,9 +472,13 @@ fn walk(
     root: &Root,
     known: &HashSet<PathBuf>,
     companion_dirs: &HashSet<PathBuf>,
+    excluded: &[PathBuf],
     budget: &mut Budget,
     report: &mut DiskReport,
 ) -> bool {
+    if excluded.iter().any(|e| root.canonical.starts_with(e)) {
+        return true;
+    }
     let mut pending = vec![root.canonical.clone()];
     while let Some(dir) = pending.pop() {
         if let Some(hook) = budget.limits.walk_hook {
@@ -484,7 +508,10 @@ fn walk(
                 continue;
             }
             if kind.is_dir() {
-                if crate::companions::is_extras_dir_name(&path) || companion_dirs.contains(&key(&path)) {
+                if crate::companions::is_extras_dir_name(&path)
+                    || companion_dirs.contains(&key(&path))
+                    || excluded.iter().any(|e| path.starts_with(e))
+                {
                     continue;
                 }
                 subdirs.push(path);

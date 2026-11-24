@@ -231,11 +231,11 @@ fn update_from(new_file: NewFile) -> ScannedMetadataUpdate {
 /// Identity of the file as it was parsed. The short write step compares it again so a file
 /// replaced or rewritten in between is never stored under stale metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct FileStamp {
-    len: u64,
-    modified: Option<std::time::SystemTime>,
+pub(crate) struct FileStamp {
+    pub(crate) len: u64,
+    pub(crate) modified: Option<std::time::SystemTime>,
     #[cfg(unix)]
-    dev_ino: (u64, u64),
+    pub(crate) dev_ino: (u64, u64),
 }
 
 impl PreparedRescan {
@@ -246,7 +246,7 @@ impl PreparedRescan {
 }
 
 impl FileStamp {
-    fn of(meta: &std::fs::Metadata) -> Self {
+    pub(crate) fn of(meta: &std::fs::Metadata) -> Self {
         #[cfg(unix)]
         use std::os::unix::fs::MetadataExt;
         Self {
