@@ -493,25 +493,40 @@ fn client_key(ip: std::net::IpAddr) -> String {
         },
     }
 }
+/// Address of the directly connected peer (test stand-in or real socket).
+fn peer_ip(req: &Request) -> Option<std::net::IpAddr> {
+    if let Some(p) = req.extensions().get::<ClientAddress>() {
+        return p.0.parse::<std::net::IpAddr>().ok().or_else(|| p.0.parse::<SocketAddr>().ok().map(|s| s.ip()));
+    }
+    req.extensions().get::<ConnectInfo<SocketAddr>>().map(|p| p.0.ip())
+}
+/// Forwarded headers count only for a direct peer listed in KATALOG_TRUSTED_PROXIES.
+fn via_trusted_proxy(app: &App, req: &Request) -> bool {
+    app.config.trust_proxy && peer_ip(req).is_some_and(|ip| app.config.trusted_proxies.contains(ip))
+}
+/// Walks X-Forwarded-For from the right (the hop the trusted proxy saw) and returns
+/// the first address that is not itself a trusted proxy. Entries to its left are
+/// client-controlled and never read. If every hop is a trusted proxy, the leftmost is used.
+fn forwarded_client(app: &App, h: &HeaderMap) -> Option<std::net::IpAddr> {
+    let mut entries = Vec::new();
+    for value in h.get_all("x-forwarded-for") {
+        entries.extend(value.to_str().ok()?.split(','));
+    }
+    let mut last = None;
+    for entry in entries.into_iter().rev() {
+        let entry = entry.trim();
+        let ip = entry.parse::<std::net::IpAddr>().ok().or_else(|| entry.parse::<SocketAddr>().ok().map(|s| s.ip()))?;
+        if !app.config.trusted_proxies.contains(ip) {
+            return Some(ip);
+        }
+        last = Some(ip);
+    }
+    last
+}
 fn client(app: &App, req: &Request) -> Result<String, Box<Response>> {
-    if app.config.trust_proxy {
-        // Across repeated header fields the last field contains the last hop.
-        let ip = req
-            .headers()
-            .get_all("x-forwarded-for")
-            .iter()
-            .next_back()
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.rsplit(',').next())
-            .and_then(|s| {
-                s.trim()
-                    .parse::<std::net::IpAddr>()
-                    .ok()
-                    .or_else(|| s.trim().parse::<SocketAddr>().ok().map(|s| s.ip()))
-            })
-            .ok_or_else(|| {
-                boxed_coded(400, ErrorCode::WebProxyHeaderInvalid, &[])
-            })?;
+    if via_trusted_proxy(app, req) {
+        let ip = forwarded_client(app, req.headers())
+            .ok_or_else(|| boxed_coded(400, ErrorCode::WebProxyHeaderInvalid, &[]))?;
         return Ok(client_key(ip));
     }
     if let Some(p) = req.extensions().get::<ClientAddress>() {
@@ -578,6 +593,13 @@ async fn limited(req: Request, next: Next, limit: usize) -> Response {
     RequestBodyLimitLayer::new(limit).layer(service).oneshot(req).await.unwrap().map(Body::new)
 }
 async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> Response {
+    // A peer outside KATALOG_TRUSTED_PROXIES cannot vouch for anything: its forwarded headers
+    // are dropped before any code (client address, HTTPS, host check) can read them.
+    if app.config.trust_proxy && !via_trusted_proxy(&app, &req) {
+        for name in ["x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "x-forwarded-port", "forwarded", "x-real-ip"] {
+            req.headers_mut().remove(name);
+        }
+    }
     let command = req.uri().path().strip_prefix("/api/invoke/").unwrap_or("").to_owned();
     let companion_upload = req.uri().path() == COMPANION_UPLOAD;
     let restore = req.uri().path() == restore::ROUTE || req.uri().path() == restore_upload::UPLOAD || req.uri().path().starts_with(restore_upload::DELETE_PREFIX);

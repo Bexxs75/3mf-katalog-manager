@@ -113,6 +113,31 @@ fn cli_rejects_no_auth_with_proxy_before_opening_catalog() {
 }
 
 #[test]
+fn cli_requires_a_valid_trusted_proxy_list_with_trust_proxy() {
+    let run = |list: Option<&str>| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_katalog-server"));
+        command
+            .env_clear()
+            .env("KATALOG_DB", "/unused/catalog.db")
+            .env("KATALOG_ROOTS", "/unused")
+            .env("KATALOG_TRUST_PROXY", "1");
+        if let Some(list) = list {
+            command.env("KATALOG_TRUSTED_PROXIES", list);
+        }
+        command.output().unwrap()
+    };
+    for list in [None, Some(""), Some("not-an-ip"), Some("0.0.0.0/0")] {
+        let output = run(list);
+        assert_eq!(output.status.code(), Some(1), "{list:?}");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("KATALOG_TRUSTED_PROXIES"), "{list:?}");
+    }
+    // Counter-check: a valid list gets past this check (the unused catalog path fails later).
+    let output = run(Some("127.0.0.1,172.18.0.0/16,::1"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("erfordert KATALOG_TRUSTED_PROXIES") && !stderr.contains("ungültiger Eintrag"), "{stderr}");
+}
+
+#[test]
 fn external_binding_without_allowed_hosts_aborts_with_dns_rebinding_hint() {
     let run = |hosts: Option<&str>| {
         let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_katalog-server"));
