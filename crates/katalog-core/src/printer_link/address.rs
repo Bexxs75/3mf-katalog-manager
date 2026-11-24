@@ -10,23 +10,48 @@ use super::LinkError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddressPolicy {
     pub allow_loopback: bool,
+    /// Blocks the whole link-local range (169.254.0.0/16, fe80::/10), also for allowlist entries.
+    /// Off by default (the desktop app keeps accepting directly cabled printers); the server turns it on.
+    block_link_local: bool,
+    /// A port of the service itself; printer addresses must not point at it.
+    denied_port: Option<u16>,
     allowlist: Option<Arc<AddressAllowlist>>,
 }
 
 impl AddressPolicy {
     pub const HOME_NETWORK: Self = Self {
         allow_loopback: false,
+        block_link_local: false,
+        denied_port: None,
         allowlist: None,
     };
     #[cfg(test)]
     pub const TEST: Self = Self {
         allow_loopback: true,
+        block_link_local: false,
+        denied_port: None,
         allowlist: None,
     };
 
     pub fn with_allowlist(mut self, allowlist: AddressAllowlist) -> Self {
         self.allowlist = Some(Arc::new(allowlist));
         self
+    }
+
+    /// Server hardening: the whole link-local range is refused, even with a covering allowlist entry.
+    pub fn blocking_link_local(mut self) -> Self {
+        self.block_link_local = true;
+        self
+    }
+
+    /// Server hardening: refuses an explicit or default printer port that is the service's own port.
+    pub fn denying_port(mut self, port: u16) -> Self {
+        self.denied_port = Some(port);
+        self
+    }
+
+    pub fn denies_port(&self, port: u16) -> bool {
+        self.denied_port == Some(port)
     }
 }
 
@@ -171,6 +196,10 @@ fn valid_host_chars(host: &str) -> bool {
 }
 
 fn parse_port(s: &str) -> Result<u16, LinkError> {
+    // Digits only ("+80" would parse as a number) and 1..=65535.
+    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(LinkError::AddressNotAllowed);
+    }
     match s.parse::<u16>() {
         Ok(p) if p > 0 => Ok(p),
         _ => Err(LinkError::AddressNotAllowed),
@@ -242,6 +271,9 @@ fn policy_allows_ip(ip: IpAddr, policy: &AddressPolicy) -> bool {
             if v4.octets() == [169, 254, 169, 254] {
                 return false;
             }
+            if policy.block_link_local && v4.is_link_local() {
+                return false;
+            }
             if v4.is_loopback() {
                 policy.allow_loopback
             } else {
@@ -250,6 +282,9 @@ fn policy_allows_ip(ip: IpAddr, policy: &AddressPolicy) -> bool {
         }
         IpAddr::V6(v6) => {
             if v6.segments() == [0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254] {
+                return false;
+            }
+            if policy.block_link_local && (v6.segments()[0] & 0xffc0) == 0xfe80 {
                 return false;
             }
             if v6.is_loopback() {
@@ -270,6 +305,9 @@ pub fn resolve(input: &str, policy: AddressPolicy) -> Result<Target, LinkError> 
 
 fn resolve_with_resolver(input: &str, policy: AddressPolicy, resolver: impl FnOnce(&str) -> Result<Vec<IpAddr>, LinkError>) -> Result<Target, LinkError> {
     let (host, port) = split_host_port(input)?;
+    if port.is_some_and(|p| policy.denies_port(p)) {
+        return Err(LinkError::AddressNotAllowed);
+    }
     if let Ok(ip) = host.parse::<IpAddr>() {
         return if policy_allows_ip(ip, &policy) {
             Ok(Target { ip, port })
@@ -580,5 +618,48 @@ mod tests {
         assert!(looks_valid("sv08.local:7125"));
         assert!(!looks_valid("8.8.8.8"));
         assert!(!looks_valid("http://x"));
+    }
+
+    #[test]
+    fn whole_link_local_range_is_blocked_only_when_asked() {
+        let addrs = ["169.254.0.1", "169.254.1.1", "169.254.255.254", "::ffff:169.254.1.1", "fe80::1", "febf::1"];
+        let strict = AddressPolicy::HOME_NETWORK.blocking_link_local();
+        let covering = strict.clone().with_allowlist(AddressAllowlist::from_strings(["169.254.0.0/16", "fe80::/10", "::/0", "0.0.0.0/0"]).unwrap());
+        for a in addrs {
+            assert!(!is_allowed_ip(ip(a), strict.clone()), "{a}");
+            assert!(!is_allowed_ip(ip(a), covering.clone()), "{a} with allowlist");
+            // Default (desktop) behavior is unchanged.
+            assert!(is_allowed_ip(ip(a), AddressPolicy::HOME_NETWORK), "{a} default");
+        }
+        // Neighbours of the range and normal LAN addresses stay allowed.
+        for a in ["169.253.255.255", "169.255.0.1"] {
+            assert!(!is_allowed_ip(ip(a), strict.clone()), "{a} is public");
+        }
+        for a in ["192.168.1.60", "10.0.0.5", "fd00::1", "::ffff:192.168.1.60", "fec0::1"] {
+            let expected = a != "fec0::1";
+            assert_eq!(is_allowed_ip(ip(a), strict.clone()), expected, "{a}");
+        }
+        assert_eq!(resolve("169.254.10.10", strict), Err(LinkError::AddressNotAllowed));
+    }
+
+    #[test]
+    fn own_service_port_is_refused() {
+        let p = AddressPolicy::HOME_NETWORK.denying_port(8080);
+        assert_eq!(resolve("192.168.1.60:8080", p.clone()), Err(LinkError::AddressNotAllowed));
+        assert_eq!(resolve("[fd00::1]:8080", p.clone()), Err(LinkError::AddressNotAllowed));
+        assert_eq!(resolve("192.168.1.60:7125", p.clone()).unwrap().port, Some(7125));
+        assert_eq!(resolve("192.168.1.60", p.clone()).unwrap().port, None);
+        assert!(p.denies_port(8080) && !p.denies_port(7125));
+        // Without the setting every valid port stays possible.
+        assert_eq!(resolve("192.168.1.60:8080", AddressPolicy::HOME_NETWORK).unwrap().port, Some(8080));
+    }
+
+    #[test]
+    fn port_range_is_one_to_65535() {
+        for bad in ["host:0", "host:00", "host:65536", "host:-1", "host:+80", "host:", "[fd00::1]:0", "[fd00::1]:65536", "host:8 0"] {
+            assert!(split_host_port(bad).is_err(), "{bad}");
+        }
+        assert_eq!(split_host_port("host:1").unwrap().1, Some(1));
+        assert_eq!(split_host_port("host:65535").unwrap().1, Some(65535));
     }
 }

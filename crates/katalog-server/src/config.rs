@@ -176,6 +176,10 @@ impl Config {
             .unwrap_or_else(|| "127.0.0.1:8080".into())
             .parse()
             .map_err(|_| "KATALOG_BIND ist keine gültige IP-Adresse mit Port".to_string())?;
+        // Port 0 = vom System gewählt: der Drucker-Schutz kennt den eigenen Port sonst nicht.
+        if bind.port() == 0 {
+            return Err("KATALOG_BIND braucht einen festen Port (nicht 0)".into());
+        }
         let write = lookup("KATALOG_WRITE").as_deref() == Some("1");
         if write
             && (lookup("KATALOG_ALLOW_NO_AUTH").as_deref() == Some("1")
@@ -1007,6 +1011,11 @@ mod tests {
         assert_eq!(c.mode_description(), "Schreibmodus mit Upload und Dateiverwaltung");
         c.file_ops = false;
         assert_eq!(c.mode_description(), "Schreibmodus mit Upload");
+    }
+    #[test]
+    fn bind_port_zero_is_rejected() {
+        let Err(err) = config(&[("KATALOG_BIND", "127.0.0.1:0")]) else { panic!("port 0") };
+        assert!(err.contains("festen Port"), "{err}");
     }
     #[test]
     fn non_loopback_bind_without_allowed_hosts_is_rejected() {
