@@ -70,15 +70,20 @@ impl Fixture {
         };
         let session = new_session(&mut data, "test", 100).unwrap();
         let uploads = uploads::initialize(&config).unwrap();
+        let writer = WriteGate::new(db::open_read_write(&path).unwrap());
+        // Only a fixture given KATALOG_FILE_OPS has the file operations (none otherwise).
+        let fileops = crate::fileops_startup::prepare(&config, writer.conn.clone(), uploads.as_ref().map(|u| u.store.clone()))
+            .unwrap()
+            .map(|o| Arc::new(fileops::Runtime::new(o)));
         let app = Arc::new(App {
             restore: restore_upload::Runtime::default(),
             events: uploads.as_ref().map(|r| r.hub.clone()).unwrap_or_default(),
             printers: printer_service::Runtime::default(),
             _instance_lock: None,
-            fileops: None,
+            fileops,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads,
-            writer: Some(WriteGate::new(db::open_read_write(&path).unwrap())),
+            writer: Some(writer),
             config,
             clock: time.clone(),
             data: Mutex::new(data),

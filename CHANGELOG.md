@@ -42,6 +42,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Restoring from the web trash recreates missing parent folders and reconnects their catalog entries, including after an interrupted restore. Name conflicts remain errors.
 - A file without any displayable geometry (for example a sliced package that only contains G-code) is no longer logged as an error when its preview is requested; it is logged as information.
 - The settings search finds the close-to-tray option under the term "Tray" as well.
+- On the web, after a backup has been restored, imports and the search for new files wait a moment (the message says so, HTTP 409) until the server has filled in the file checksums again; before, an import of the same source folder copied every known file a second time. Renaming or moving files during that time is safe.
 
 ## [0.18.7] - 2026-11-22
 

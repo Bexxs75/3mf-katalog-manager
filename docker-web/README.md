@@ -342,6 +342,20 @@ With uploads disabled, startup refuses these entries because their catalog ident
 cannot be reconstructed safely. Enable the original upload configuration, including
 `KATALOG_UPLOAD_DIR`, once to complete recovery.
 
+### Catalog check after a restored backup (English)
+
+Restoring a backup drops the content hashes of the files. After the restart the server
+fills them in again in the background (it reads each model file once). Until that run
+has finished, the browser-upload import, the source-folder import and the search for new
+files are refused with HTTP 409, and the web interface shows "The catalog is still being
+checked after the restore. Please wait a moment."; repeat the action afterwards.
+Without this wait every known file would count as new and be copied again. Everything
+else (viewing, searching, editing, file management) stays available meanwhile; renaming
+or moving a file during the run is fine, its hash is stored for the new path. The log
+reports start and end ("Prüfsummen: …"). A server without write mode (`KATALOG_WRITE`
+not set) does not run the check and has no imports that it would have to block.
+
+
 ### Disk sync and cleanup in the web interface (English)
 
 The web app can compare the catalog with the disk and tidy it up, as the desktop
@@ -381,6 +395,21 @@ and says that `KATALOG_FILE_OPS=1` is needed.
   catalog; the rest stays "still open". It never removes entries. If a root is
   unreachable or empty nothing is applied. The result is kept in memory only
   until the next restart. Without the setting nothing is changed.
+
+### Katalogprüfung nach dem Einspielen einer Sicherung (Deutsch)
+
+Beim Einspielen einer Sicherung gehen die Prüfsummen der Dateien verloren. Nach dem
+Neustart ergänzt der Server sie im Hintergrund (er liest dafür jede Modelldatei einmal).
+Solange dieser Lauf nicht fertig ist, lehnen der Import aus dem Browser-Upload, der Import
+aus einem Quellordner und die Suche nach neuen Dateien mit HTTP 409 ab; die Oberfläche
+zeigt „Der Katalog wird nach dem Einspielen noch geprüft, bitte kurz warten.“ und der
+Vorgang lässt sich danach wiederholen. Ohne diese Wartezeit würde jede bereits bekannte
+Datei als neu gelten und noch einmal kopiert. Alles andere (Ansehen, Suchen, Ändern,
+Dateiverwaltung) bleibt in dieser Zeit verfügbar; Umbenennen oder Verschieben während
+des Laufs ist erlaubt, die Prüfsumme wird zum neuen Pfad gespeichert. Das Log nennt
+Beginn und Ende („Prüfsummen: …“). Ein Server ohne Schreibmodus (`KATALOG_WRITE` nicht
+gesetzt) führt den Lauf nicht aus und kennt auch keine Importe, die er sperren müsste.
+
 
 ### Abgleich und Bereinigung im Web (Deutsch)
 
