@@ -159,6 +159,7 @@ export interface Translations {
   webUploadFailed: string;
   webUploadSessionEnded: string;
   webRestoreSignIn: string;
+  webUploadOf: string;
   webUploadCancelled: string;
   webUploadQueued: string;
   webUploadSending: string;
