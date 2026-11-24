@@ -66,10 +66,25 @@ impl Fx {
     async fn invoke(&self, args: Value, session: Option<(&str, &str)>) -> (u16, Value) {
         self.call("disk_sync_report", args, session, None).await
     }
+    /// POST /api/login. The production password check admits only two hashes at a time
+    /// (process-wide, 250 ms wait), so parallel tests in this binary can get a 503;
+    /// retry that case with a short backoff, bounded to 10 s.
+    async fn post_login(&self, origin: bool) -> (u16, Value) {
+        let started = std::time::Instant::now();
+        loop {
+            let mut req = Request::builder().method("POST").uri("/api/login").header("host", "localhost:8080").header("content-type", "application/json");
+            if origin {
+                req = req.header("origin", "http://localhost:8080");
+            }
+            let (status, body) = self.send(req.body(Body::from(r#"{"password":"report-test-password"}"#)).unwrap()).await;
+            if status != 503 || started.elapsed() > std::time::Duration::from_secs(10) {
+                return (status, body);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
     async fn login(&self) -> (String, String) {
-        let (status, login) = self
-            .send(Request::builder().method("POST").uri("/api/login").header("host", "localhost:8080").header("origin", "http://localhost:8080").header("content-type", "application/json").body(Body::from(r#"{"password":"report-test-password"}"#)).unwrap())
-            .await;
+        let (status, login) = self.post_login(true).await;
         assert_eq!(status, 200, "{login}");
         (login["_cookie"].as_str().unwrap().to_owned(), login["csrfToken"].as_str().unwrap().to_owned())
     }
@@ -104,9 +119,7 @@ async fn needs_a_session() {
 #[tokio::test(flavor = "multi_thread")]
 async fn answers_a_logged_in_session() {
     let f = Fx::new(true).await;
-    let (status, login) = f
-        .send(Request::builder().method("POST").uri("/api/login").header("host", "localhost:8080").header("content-type", "application/json").body(Body::from(r#"{"password":"report-test-password"}"#)).unwrap())
-        .await;
+    let (status, login) = f.post_login(false).await;
     assert_eq!(status, 200);
     let cookie = login["_cookie"].as_str().unwrap().to_owned();
     let csrf = login["csrfToken"].as_str().unwrap().to_owned();
