@@ -1104,6 +1104,7 @@ export default function App() {
               onClose={cleanup.closeCleanupDialog}
               onDelete={(fileIds) => cleanup.deleteSelectedCleanupFiles(fileIds, store.refetchAfterPartialDelete)}
               error={cleanup.cleanupError}
+              notice={cleanup.cleanupNotice}
               returnFocus={cleanup.cleanupOpener}
             />
           )}

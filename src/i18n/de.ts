@@ -1691,6 +1691,8 @@ export const de: Translations = {
   catalogCleanupScanning: 'Prüfe…',
   catalogCleanupError: 'Prüfung fehlgeschlagen:',
   cleanupDialogTitle: 'Aufräum-Vorschläge',
+  cleanupRemovedNotice: {"one": "{count} Modell in den Papierkorb verschoben", "other": "{count} Modelle in den Papierkorb verschoben"},
+  cleanupNothingLeft: 'Nichts mehr zu bereinigen.',
   cleanupNoIssues: 'Keine Probleme gefunden.',
   cleanupOrphanedHeading: 'Verwaiste Einträge',
   cleanupDuplicateGroupHeading: 'Duplikat-Gruppe',

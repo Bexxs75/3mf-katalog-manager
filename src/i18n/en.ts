@@ -1691,6 +1691,8 @@ export const en: Translations = {
   catalogCleanupScanning: 'Scanning…',
   catalogCleanupError: 'Scan failed:',
   cleanupDialogTitle: 'Cleanup suggestions',
+  cleanupRemovedNotice: {"one": "{count} model moved to the trash", "other": "{count} models moved to the trash"},
+  cleanupNothingLeft: 'Nothing left to clean up.',
   cleanupNoIssues: 'No issues found.',
   cleanupOrphanedHeading: 'Orphaned entries',
   cleanupDuplicateGroupHeading: 'Duplicate group',

@@ -200,9 +200,8 @@ phaseFns.ui = async () => {
   await unclear.locator('summary').click();
   const unclearText = await unclear.innerText();
   note(`Bereinigung, Unklar aufgeklappt zeigt: ${unclearText.replace(/\s+/g, ' ').trim()}`);
-  // Known gap from P6/P6b: scan_catalog_issues sends only the root index, the dialog has no root names, so with two roots
-  // "Sub/Einzelteil.3mf" does not say which root it is below (the reconciliation dialog prints "alpha: Sub/...").
-  check('Bereinigung: Unklar-Zeilen zeigen den relativen Pfad (ohne Wurzelname, bekannte Lücke)', /Sub\/Einzelteil\.3mf/.test(unclearText) && /Verlinkt\/Linkteil\.3mf/.test(unclearText) && !/alpha/.test(unclearText));
+  // scan_catalog_issues sends `roots` (display names by index), so with two roots the rows read "alpha: Sub/..." like in the reconciliation dialog.
+  check('Bereinigung: Unklar-Zeilen nennen Wurzelname und Pfad ("alpha: Sub/Einzelteil.3mf")', /alpha: Sub\/Einzelteil\.3mf/.test(unclearText) && /alpha: Verlinkt\/Linkteil\.3mf/.test(unclearText));
   check('Bereinigung: Unklar-Zeilen haben einen Grund', /link|Link|nicht erreichbar|gelesen|geprüft werden/i.test(unclearText), unclearText.replace(/\s+/g, ' ').slice(0, 200));
   await shotAll(page, 'cleanup-open');
   // keyboard: tab order, focus ring, trap
@@ -237,10 +236,16 @@ phaseFns.ui = async () => {
   await sidebarTrigger.click();
   await page.getByText('Ordner fehlt, 4 Modelle').first().waitFor();
   await page.getByRole('button', { name: '4 Modelle in den Papierkorb' }).click();
-  await page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 20000 }).catch(() => {});
+  await page.getByText('4 Modelle in den Papierkorb verschoben').waitFor({ timeout: 20000 }).catch(() => {});
   check('Bereinigung: "4 Modelle in den Papierkorb" entfernt die Ordnergruppe mit einem Klick (Katalog zählt 32 statt 36)', await page.getByText('32 Dateien').count() > 0);
-  note(`Bereinigung: nach dem Klick schließt der Dialog ${await page.locator('[role="dialog"]').count() === 0 ? 'ganz (auch wenn Archiv-alt und 4 Einzelmodelle noch offen sind)' : 'nicht'}; Fokus danach: ${(await focusInfo(page)).name}`);
+  const stay = dialog(page);
+  check('Bereinigung: Dialog bleibt nach dem Entfernen offen und bestätigt "4 Modelle in den Papierkorb verschoben"', await page.locator('[role="dialog"]').count() === 1 && /4 Modelle in den Papierkorb verschoben/.test(await stay.innerText()));
+  check('Bereinigung: die entfernte Ordnergruppe ist weg, die andere Gruppe und die Einzelmodelle bleiben', await stay.getByText('Ordner fehlt, 4 Modelle').count() === 0 && await stay.getByText(/Ordner fehlt, \d Modelle/).count() === 1 && await stay.locator('input[type=checkbox]').count() > 0);
+  const afterFocus = await focusInfo(page);
+  check('Bereinigung: Fokus bleibt nach dem Entfernen im Dialog (nicht auf body)', afterFocus.inDialog, afterFocus.name);
   await shotAll(page, 'cleanup-after-folder', { withAxe: false });
+  await page.keyboard.press('Escape');
+  await page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
 
   // ===== B. Abgleich-Dialog =====
   const abgleichTrigger = await openAbgleich(page);

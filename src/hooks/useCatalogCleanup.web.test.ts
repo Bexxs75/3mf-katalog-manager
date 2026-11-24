@@ -29,7 +29,7 @@ const scanned = async (orphaned: string[]) => {
 };
 
 describe('web cleanup removal', () => {
-  it('sends 450 models in blocks of 200, 200 and 50 and closes when all are gone', async () => {
+  it('sends 450 models in blocks of 200, 200 and 50 and keeps the dialog open, empty, when all are gone', async () => {
     const all = ids(450);
     const { result } = await scanned(all);
     respond = (_, args) => Response.json((args.fileIds as string[]).map(id => ({ id, ok: true })));
@@ -38,8 +38,9 @@ describe('web cleanup removal', () => {
     const deletes = calls.filter(c => c.command === 'delete_files').map(c => (c.args.fileIds as string[]).length);
     expect(deletes).toEqual([200, 200, 50]);
     expect(onDeleted).toHaveBeenCalledWith(all);
-    expect(result.current.cleanupDialogOpen).toBe(false);
-    expect(result.current.cleanupIssues).toBeNull();
+    expect(result.current.cleanupDialogOpen).toBe(true);
+    expect(result.current.cleanupIssues!.orphaned).toEqual([]);
+    expect(result.current.cleanupNotice).toEqual({ count: 450 });
     expect(result.current.cleanupError).toBeNull();
   });
 

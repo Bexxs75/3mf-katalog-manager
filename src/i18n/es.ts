@@ -1691,6 +1691,8 @@ export const es: Translations = {
   catalogCleanupScanning: 'Buscando…',
   catalogCleanupError: 'Error al revisar:',
   cleanupDialogTitle: 'Sugerencias de limpieza',
+  cleanupRemovedNotice: {"one": "{count} modelo movido a la papelera", "other": "{count} modelos movidos a la papelera"},
+  cleanupNothingLeft: 'No queda nada por limpiar.',
   cleanupNoIssues: 'No se encontraron problemas.',
   cleanupOrphanedHeading: 'Entradas huérfanas',
   cleanupDuplicateGroupHeading: 'Grupo de duplicados',
