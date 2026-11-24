@@ -37,16 +37,22 @@ describe('folder tree: folders that are gone from disk', () => {
     expect(fine).not.toHaveAttribute('title');
     expect(fine).toHaveAccessibleName(expect.not.stringContaining(de.folderMissingOnDisk));
   });
-  it('lets the badge shrink before the name, so the name of a missing folder stays readable', () => {
+  it('shows the badge completely or not at all: it wraps out of a one-line clipped box instead of shrinking', () => {
     render(<Provider><FolderTree folders={folders} totalModelCount={37} activeFolderId="all" onSelect={vi.fn()} /></Provider>);
     const missing = screen.getByText('Altes Zeug').closest('[tabindex]') as HTMLElement;
-    expect(screen.getByText('Altes Zeug').className).toContain('min-w-[8ch]');
-    expect(screen.getByText('Altes Zeug').className).toContain('flex-[1_1_auto]');
-    expect(screen.getByText('Altes Zeug').className).toContain('text-ellipsis');
-    const badge = within(missing).getByText(de.folderMissingOnDisk);
-    expect(badge.className).toContain('shrink-[100]');
-    expect(badge.className).not.toContain('shrink-0');
-    expect(badge.className).toContain('text-ellipsis');
+    const line = within(missing).getByTestId('folder-missing-line');
+    expect(line.className).toContain('flex-wrap');
+    expect(line.className).toContain('overflow-hidden');
+    expect(line.className).toContain('h-[26px]');
+    const name = screen.getByText('Altes Zeug');
+    expect(name.className).toContain('min-w-[8ch]');
+    expect(name.className).toContain('max-w-full');
+    expect(name.className).toContain('text-ellipsis');
+    const badge = within(missing).getByTestId('folder-missing-badge');
+    expect(badge.className).toContain('whitespace-nowrap');
+    expect(badge.className).not.toMatch(/shrink|min-w-0|overflow-hidden/);
+    expect(within(badge).getByText(de.folderMissingOnDisk)).toBeTruthy();
+    expect(within(missing).getByTestId('folder-missing-icon')).toBeTruthy();
     expect(screen.getByText('Deko').className).not.toContain('min-w-');
     expect(screen.getByText('Deko').closest('[tabindex]')).not.toHaveAttribute('title');
   });

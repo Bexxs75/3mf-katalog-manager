@@ -243,8 +243,14 @@ export function FolderTree({
             <Icon name="chevron" size={14} className={isOpen  ? '' : '-rotate-90'} />
           </span>
           {node.missing && <span className="text-[var(--warn)] shrink-0 flex" data-testid="folder-missing-icon"><Icon name="warning" size={14} /></span>}
-          <span className={`overflow-hidden text-ellipsis whitespace-nowrap ${node.missing ? 'flex-[1_1_auto] min-w-[8ch]' : 'flex-1'}`}>{displayName(node.name)}</span>
-          {node.missing && <span className="min-w-0 shrink-[100] overflow-hidden text-ellipsis whitespace-nowrap rounded-full px-1.5 text-compact-meta bg-[var(--warn-soft)] text-[var(--warn)]">{t('folderMissingOnDisk')}</span>}
+          {node.missing ? (
+            // Name first: the badge sits in the same wrapping line and wraps out of the one-line box
+            // (clipped) when the full text does not fit, so it shows completely or not at all.
+            <span className="flex flex-wrap flex-1 min-w-0 h-[26px] overflow-hidden gap-x-1.5" data-testid="folder-missing-line">
+              <span className="h-[26px] leading-[26px] max-w-full min-w-[8ch] overflow-hidden text-ellipsis whitespace-nowrap">{displayName(node.name)}</span>
+              <span className="h-[26px] flex items-center whitespace-nowrap" data-testid="folder-missing-badge"><span className="rounded-full px-1.5 text-compact-meta bg-[var(--warn-soft)] text-[var(--warn)]">{t('folderMissingOnDisk')}</span></span>
+            </span>
+          ) : <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{displayName(node.name)}</span>}
           <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{node.count}</span>
           {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{external === 'folder' ? (externalDrag.count > 1 ? formatCount(t('dzDropMany'), externalDrag.count) : t('dropHereLabel')) : draggedFileId && draggedFileCount > 1 ? formatCount(t('dropHereMany'), draggedFileCount) : t('dropHereLabel')}</span>}
           {external === 'invalid' && <span className="font-medium text-compact-meta text-[var(--ink-2)]">{t('dzNoTarget')}</span>}
