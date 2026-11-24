@@ -12,6 +12,9 @@ use rusqlite::Connection;
 pub const MAX_SPOOLS: i64 = 5000;
 pub const MAX_PRINTERS: i64 = 200;
 pub const MAX_UNITS: i64 = 50;
+/// All spool images together (each one is at most `MAX_CUSTOM_IMAGE_BYTES`). The web refuses a
+/// further image rather than letting the catalog grow without bound.
+pub const MAX_SPOOL_IMAGE_TOTAL_BYTES: i64 = 200 * 1024 * 1024;
 /// Multiplication by ten in round_tenth must remain representable.
 pub const MAX_WEIGHT: f64 = f64::MAX / 10.0;
 
@@ -43,6 +46,22 @@ fn quota(c: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql], max: i64) -> 
         return Err(invalid_with(ErrorCode::WebLimitReached, [max]));
     }
     Ok(())
+}
+/// Refuses when the stored spool images, without those of `except` (the spool being replaced),
+/// plus `added` bytes would pass the total. Values are in whole megabytes for the text.
+fn image_room(c: &Connection, except: Option<i64>, added: i64) -> WriteResult<()> {
+    let used: i64 = c.query_row(
+        "SELECT COALESCE(SUM(length(image_png)),0) FROM filament_spools WHERE id IS NOT ?1",
+        [except],
+        |r| r.get(0),
+    )?;
+    if used.saturating_add(added) > MAX_SPOOL_IMAGE_TOTAL_BYTES {
+        return Err(invalid_with(ErrorCode::WebImageQuotaReached, [MAX_SPOOL_IMAGE_TOTAL_BYTES / (1024 * 1024)]));
+    }
+    Ok(())
+}
+fn image_len(record: &db::models::NewFilamentSpool) -> i64 {
+    record.image_png.as_ref().map_or(0, |b| b.len() as i64)
 }
 fn prepare(s: &read::FilamentSpoolDto) -> WriteResult<db::models::NewFilamentSpool> {
     if !db::models::SPOOL_KINDS.contains(&s.kind.as_str()) {
@@ -89,6 +108,7 @@ pub fn add_filament_spool(
     let record = prepare(&s)?;
     transaction(c, |c| {
         quota(c, "SELECT count(*) FROM filament_spools", &[], MAX_SPOOLS)?;
+        image_room(c, None, image_len(&record))?;
         let id = db::insert_filament_spool(c, &record)?;
         let changes = c.changes();
         Ok(outcome(
@@ -106,6 +126,9 @@ pub fn update_filament_spool(
     let record = prepare(&s)?;
     transaction(c, |c| {
         exists(c, "filament_spools", id)?;
+        if replace_image {
+            image_room(c, Some(id), image_len(&record))?;
+        }
         db::update_filament_spool_image_policy(c, id, &record, replace_image).map_err(business)?;
         let changes = c.changes();
         Ok(outcome(
@@ -149,6 +172,13 @@ pub fn restock_filament_spool(
         if n + count > MAX_SPOOLS {
             return Err(invalid_with(ErrorCode::WebLimitReached, [MAX_SPOOLS]));
         }
+        // Every new row carries the template's image along.
+        let image: i64 = c.query_row(
+            "SELECT COALESCE(length(image_png),0) FROM filament_spools WHERE id=?1",
+            [template_id],
+            |r| r.get(0),
+        )?;
+        image_room(c, None, image.saturating_mul(count))?;
         let created = m::restock_in(c, template_id, count, weight, price, location)?;
         // c.changes() would only report the last insert; the audit counts all rows.
         let rows = created.len() as u64;

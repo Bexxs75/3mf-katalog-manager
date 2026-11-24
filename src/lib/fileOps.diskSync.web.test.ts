@@ -49,6 +49,11 @@ describe('previewDiskSync', () => {
 });
 
 describe('applyDiskSync', () => {
+  it('sends the password with the start only when one is given', async () => {
+    respond = command => command === 'disk_sync_apply_start' ? Response.json({ total: 1, remaining: 0 }) : blockResponse({ seq: 0, remaining: 0 });
+    await applyDiskSync('tok', true, () => {}, () => false, 'secret');
+    expect(calls[0]).toEqual({ command: 'disk_sync_apply_start', args: { token: 'tok', confirmRemoval: true, password: 'secret' } });
+  });
   it('starts with the confirmation, counts per kind and numbers the blocks from zero', async () => {
     let n = 0;
     respond = command => {

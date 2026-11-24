@@ -406,10 +406,10 @@ export default function App() {
     setDateRenameOutcome(outcome);
     void store.refreshFiles().catch((e) => console.error('[files] refresh after date rename failed:', e));
   };
-  const removeCatalogModels = async (fileIds: string[]) => {
+  const removeCatalogModels = async (fileIds: string[], password?: string) => {
     if (!canEditMetadata()) return;
     try {
-      await invoke('remove_files_from_catalog', { fileIds });
+      await invoke('remove_files_from_catalog', password === undefined ? { fileIds } : { fileIds, password });
       store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
       if (isReadOnly()) {
         store.setSelectedId(null);
@@ -852,7 +852,7 @@ export default function App() {
               setConfirmBulkDelete={setConfirmBulkDelete}
               bulkDelete={bulk.bulkDelete}
               onBulkMove={web ? undefined : () => openMoveDialog([...bulk.selectedForBulk], document.activeElement as HTMLElement | null)}
-              bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
+              bulkRemove={(password) => removeCatalogModels(Array.from(bulk.selectedForBulk), password)}
               onCatalogRemoved={refreshAfterRemoval}
               onFolderRenamed={onFolderRenamed}
               onFolderTrashed={onFolderTrashed}
@@ -999,7 +999,7 @@ export default function App() {
               } : undefined}
               stlModel={contextStlModels.find(model => ['step', 'stp'].includes(modelFileType(model))) ?? contextStlModels[0] ?? contextModel}
               onDelete={() => runModelSelection(contextFileIds, id => store.deleteModel(id))}
-              onRemove={() => removeCatalogModels(contextFileIds)}
+              onRemove={(password) => removeCatalogModels(contextFileIds, password)}
               inQueue={selectionState(contextModels.map(model => model.queuePosition !== null))}
               onToggleQueue={() => {
                 const queued = contextModels.every(model => model.queuePosition !== null);

@@ -336,7 +336,7 @@ async fn folder_commands_and_backups_before_removal() {
         200
     );
     assert_eq!(
-        f.invoke("remove_folder_from_catalog", json!({"folderId":a}))
+        f.invoke("remove_folder_from_catalog", json!({"folderId":a,"password":"test-password-long"}))
             .await
             .status(),
         200
@@ -558,7 +558,7 @@ async fn db_only_removal_revoked_after_first_delete_rolls_back_all_rows() {
             ))
             .unwrap();
         let response = if folder_mode {
-            f.invoke("remove_folder_from_catalog", json!({"folderId":folder}))
+            f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"}))
                 .await
         } else {
             f.invoke("remove_files_from_catalog", json!({"fileIds":[a,b]}))
@@ -604,7 +604,7 @@ async fn large_folder_removal_is_possible_and_charges_one_window() {
         }
         folder.to_string()
     };
-    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder})).await;
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
     assert_eq!(r.status(), 200);
     assert_eq!(value(r).await["modelCount"], 500);
     let id = f.file("after.3mf");
@@ -613,6 +613,145 @@ async fn large_folder_removal_is_possible_and_charges_one_window() {
     assert_eq!(r.headers()["retry-after"], "600");
     f.time.0.store(700, Ordering::SeqCst);
     assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":[id]})).await.status(), 200);
+}
+/// A folder with `models` catalog entries (no files on disk needed for a catalog-only removal).
+fn catalog_folder(f: &Fixture, name: &str, models: usize) -> String {
+    std::fs::create_dir(f.dir.join("models").join(name)).unwrap();
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    c.execute("INSERT INTO folders(name,path) VALUES(?1,?2)", [name, f.dir.join("models").join(name).to_str().unwrap()]).unwrap();
+    let folder = c.last_insert_rowid();
+    for n in 0..models {
+        db::test_insert_minimal_file(&c, f.dir.join(format!("models/{name}/{n}.3mf")).to_str().unwrap(), Some(folder)).unwrap();
+    }
+    folder.to_string()
+}
+fn file_count(f: &Fixture) -> i64 {
+    f.app.writer.as_ref().unwrap().conn.lock().unwrap().query_row("SELECT count(*) FROM files", [], |r| r.get(0)).unwrap()
+}
+#[tokio::test]
+async fn folder_removal_with_entries_needs_the_password_and_changes_nothing_without_it() {
+    let f = Fixture::new(true).await;
+    let folder = catalog_folder(&f, "pw", 3);
+    // No password: refused before any budget, backup or change.
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_required");
+    assert_eq!(file_count(&f), 3);
+    assert!(!f.dir.join("config/backups").exists());
+    // Wrong password: refused as a wrong password, still nothing changed.
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(file_count(&f), 3);
+    // Not a string: invalid arguments.
+    assert_eq!(f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":1})).await.status(), 400);
+    assert_eq!(file_count(&f), 3);
+    // The refusals booked nothing: the right password removes all three.
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await["modelCount"], 3);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn folder_removal_of_an_empty_folder_needs_no_password_but_a_wrong_one_is_still_refused() {
+    let f = Fixture::new(true).await;
+    let empty = catalog_folder(&f, "empty", 0);
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":empty,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(f.invoke("remove_folder_from_catalog", json!({"folderId":empty})).await.status(), 200);
+}
+#[tokio::test]
+async fn folder_removal_password_check_busy_refuses_without_change() {
+    let _serial = crate::password::PASSWORD_TEST_LOCK.lock().await;
+    let f = Fixture::new(true).await;
+    let folder = catalog_folder(&f, "busy", 2);
+    let first = crate::password::hash_slot().await.unwrap();
+    let second = crate::password::hash_slot().await.unwrap();
+    // Both hash slots are taken: the check is busy (503), which is never read as "allowed".
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 503);
+    assert_eq!(file_count(&f), 2);
+    drop((first, second));
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn folder_removal_above_the_daily_limit_is_refused_even_with_the_password() {
+    let f = Fixture::new(true).await;
+    *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(5);
+    let folder = catalog_folder(&f, "big", 6);
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 422);
+    assert_eq!(value(r).await["kind"], "limit_exceeded");
+    assert_eq!(file_count(&f), 6);
+    assert!(!f.dir.join("config/backups").exists());
+    // Within the limit the same folder size class is removed: exactly the count is booked.
+    let small = catalog_folder(&f, "small", 5);
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":small,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(file_count(&f), 6);
+}
+fn all_file_ids(f: &Fixture) -> Vec<String> {
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    let mut stmt = c.prepare("SELECT id FROM files WHERE deleted_at IS NULL ORDER BY id").unwrap();
+    stmt.query_map([], |r| r.get::<_, i64>(0)).unwrap().map(|id| id.unwrap().to_string()).collect()
+}
+#[tokio::test]
+async fn catalog_removal_of_fifty_or_more_needs_the_password_and_changes_nothing_without_it() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "fifty", 50);
+    let ids = all_file_ids(&f);
+    assert_eq!(ids.len(), 50);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_required");
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":7})).await.status(), 400);
+    // Nothing changed, no backup, nothing booked.
+    assert_eq!(file_count(&f), 50);
+    assert!(!f.dir.join("config/backups").exists());
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn catalog_removal_below_fifty_needs_no_password_but_a_wrong_one_is_refused() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "few", 49);
+    let ids = all_file_ids(&f);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(file_count(&f), 49);
+    assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":ids})).await.status(), 200);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn splitting_a_removal_into_calls_of_49_runs_into_the_budget_not_past_the_password() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "split", 250);
+    let ids = all_file_ids(&f);
+    let mut removed = 0;
+    for chunk in ids.chunks(49) {
+        let r = f.invoke("remove_files_from_catalog", json!({"fileIds":chunk})).await;
+        if r.status() != 200 {
+            // The 200-per-10-minutes budget ends the splitting; the folder keeps the rest.
+            assert_eq!(r.status(), 429);
+            break;
+        }
+        removed += chunk.len();
+    }
+    assert_eq!(removed, 196);
+    assert_eq!(file_count(&f), 250 - 196);
+    // A call that removes 50 or more is never possible without the password, budget or not.
+    let rest = all_file_ids(&f);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":&rest[..50]})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(rest.len(), 54);
 }
 #[tokio::test]
 async fn poisoned_fileops_mutex_requires_restart_also_for_6d() {
@@ -2191,7 +2330,8 @@ mod disksync_tests {
         *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(10);
         let ids: Vec<String> = (0..100).map(|n| f.gone(&format!("gone{n}.3mf"))).collect();
         let token = f.plan(json!({"missingModels":ids})).await;
-        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        // 100 removals need the password (from 50 on); with it the daily limit refuses the whole plan.
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"test-password-long"})).await;
         assert_eq!(kind(r, 422).await["kind"], "limit_exceeded");
         assert!(!backups(&f), "a refusal makes no backup");
         assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
@@ -2791,6 +2931,57 @@ mod disksync_tests {
         let answer = kind(r, 200).await;
         assert_eq!(answer["token"], "");
         assert_eq!(answer["skipped"].as_array().unwrap().len(), 1500);
+    }
+    async fn ids_gone(f: &Fixture, n: usize) -> Vec<String> {
+        (0..n).map(|i| f.gone(&format!("gone{i}.3mf"))).collect()
+    }
+    #[tokio::test]
+    async fn a_removal_of_fifty_or_more_needs_the_password_and_changes_nothing_without_it() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids = ids_gone(&f, 50).await;
+        let token = f.plan(json!({"missingModels":ids})).await;
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(kind(r, 403).await["kind"], "password_required");
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"wrong"})).await;
+        assert_eq!(kind(r, 403).await["kind"], "password_invalid");
+        // Nothing started, nothing booked, no backup: the block is still refused.
+        assert!(!backups(&f));
+        assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
+        assert!(ids.iter().all(|id| f.state(id).0.is_none()));
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"test-password-long"})).await;
+        assert_eq!(r.status(), 200);
+        // A block works off at most 10 rows.
+        let done = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!((done["counts"]["removedModels"].clone(), done["remaining"].clone()), (json!(10), json!(40)));
+    }
+    #[tokio::test]
+    async fn a_removal_below_fifty_needs_no_password_but_a_wrong_one_is_still_refused() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids = ids_gone(&f, 49).await;
+        let token = f.plan(json!({"missingModels":ids})).await;
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"wrong"})).await;
+        assert_eq!(kind(r, 403).await["kind"], "password_invalid");
+        assert!(!backups(&f));
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(r.status(), 200);
+    }
+    #[tokio::test]
+    async fn the_password_check_being_busy_does_not_start_a_large_removal() {
+        let _serial = crate::password::PASSWORD_TEST_LOCK.lock().await;
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids = ids_gone(&f, 50).await;
+        let token = f.plan(json!({"missingModels":ids})).await;
+        let first = crate::password::hash_slot().await.unwrap();
+        let second = crate::password::hash_slot().await.unwrap();
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"test-password-long"})).await;
+        assert_eq!(r.status(), 503);
+        drop((first, second));
+        assert!(!backups(&f));
+        assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
+        assert!(ids.iter().all(|id| f.state(id).0.is_none()));
     }
 }
 

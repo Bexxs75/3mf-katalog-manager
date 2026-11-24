@@ -301,6 +301,7 @@ export interface Translations {
   diskApplyMaintenanceStart: string;
   diskApplyMaintenanceRun: string;
   diskApplyBackupFailed: string;
+  diskApplyPasswordHint: string;
   diskUnclearSummary: PluralForms;
   diskUnclearTag: string;
   diskUnclearIntro: string;
@@ -872,6 +873,7 @@ export interface Translations {
   removeFolderList: PluralForms;
   removeFolderModels: PluralForms;
   removeFolderSafe: string;
+  removeFolderPasswordHint: string;
   removeFolderReimport: string;
   renameFolder: string;
   renameFolderLabel: string;
@@ -2429,6 +2431,7 @@ export interface Translations {
   errConsumeOnlyResin: string;
   errInvalidSlot: string;
   errWebLimitReached: string;
+  errWebImageQuotaReached: string;
   errEntryNotFound: string;
   errTextEmpty: string;
   errTextTooLong: string;

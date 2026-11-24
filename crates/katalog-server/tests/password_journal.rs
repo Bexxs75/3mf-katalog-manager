@@ -7,7 +7,7 @@ use std::{
 fn set_password_refuses_operation_journals_without_mutating_them() {
     let root = std::env::temp_dir().join(format!("password-journal-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
-    for name in ["web-fsops.json", "web-uploads.json", "web-restore.json"] {
+    for name in ["web-fsops.json", "web-uploads.json", "web-restore.json", "web-initial-password.txt"] {
         let path = root.join(name);
         let original = b"existing durable journal must survive";
         std::fs::write(&path, original).unwrap();

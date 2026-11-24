@@ -9,9 +9,10 @@ import { authenticationFailed, getSession } from '../lib/webSession';
 import { makeFolder } from '../test/factories';
 let enabled: boolean;
 let protectedFolder = false;
+let summaryModels = 3;
 let calls: { command: string; args: unknown }[];
 beforeEach(async () => {
-  enabled = true; protectedFolder = false; calls = []; localStorage.setItem('3mf-katalog-language', 'en');
+  enabled = true; protectedFolder = false; summaryModels = 3; calls = []; localStorage.setItem('3mf-katalog-language', 'en');
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
     if (url === '/api/session') return Response.json({ authenticated: true, writable: true, fileOps: enabled, csrfToken: 'token' });
     const command = url.split('/').pop()!;
@@ -19,7 +20,7 @@ beforeEach(async () => {
     if (command === 'folder_trash_summary') return Response.json({ name: 'source', subfolderCount: 2, modelCount: 3, otherFileCount: 1, otherFileCountTruncated: false, isCatalogRootOrAncestor: protectedFolder });
     if (command === 'trash_folder_start') return Response.json({ token: 'tok', remaining: 3 });
     if (command === 'trash_folder_block') return Response.json({ results: [{ id: '1', ok: true }, { id: '2', ok: true }, { id: '3', ok: true }], remaining: 0, removedFolderCount: 3 });
-    return Response.json(command === 'folder_removal_summary' ? { name: 'source', subfolderCount: 2, modelCount: 3 } : null);
+    return Response.json(command === 'folder_removal_summary' ? { name: 'source', subfolderCount: 2, modelCount: summaryModels } : null);
   }));
   await getSession();
 });
@@ -49,10 +50,22 @@ it.each(['mouse', 'keyboard'] as const)('moves only into a selected folder with 
   expect(calls).toEqual([]); fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(calls).toEqual([{ command: 'move_folder', args: { folderId: '2', newParentId: '3' } }]));
 });
-it('loads removal counts before explicit removal confirmation', async () => {
+it('loads removal counts and asks for the password before the removal of a folder with entries', async () => {
   setup(); fireEvent.click(screen.getByRole('menuitem', { name: /Remove from catalog/i }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm' })).not.toBeDisabled());
+  await waitFor(() => expect(screen.getByLabelText(/Password to confirm/i)).toBeTruthy());
   expect(calls).toEqual([{ command: 'folder_removal_summary', args: { folderId: '2' } }]);
+  // Without the password nothing can be confirmed.
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+  expect(calls).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText(/Password to confirm/i), { target: { value: 'secret' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+  await waitFor(() => expect(calls[1]).toEqual({ command: 'remove_folder_from_catalog', args: { folderId: '2', password: 'secret' } }));
+});
+it('removes a folder without entries without a password', async () => {
+  summaryModels = 0; setup(); fireEvent.click(screen.getByRole('menuitem', { name: /Remove from catalog/i }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm' })).not.toBeDisabled());
+  expect(screen.queryByLabelText(/Password to confirm/i)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(calls[1]).toEqual({ command: 'remove_folder_from_catalog', args: { folderId: '2' } }));
 });

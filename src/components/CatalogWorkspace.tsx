@@ -119,7 +119,7 @@ interface CatalogWorkspaceProps {
   setConfirmBulkDelete: (value: boolean) => void;
   bulkDelete: () => void;
   onBulkMove?: () => void;
-  bulkRemove?: () => Promise<void>;
+  bulkRemove?: (password?: string) => Promise<void>;
   onCatalogRemoved?: () => void;
   onFolderRenamed?: (info: { id: string; from: string; to: string; count: number }) => void;
   onFolderTrashed?: (result: FolderTrashResult) => void;

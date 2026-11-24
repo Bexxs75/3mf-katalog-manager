@@ -33,6 +33,7 @@ pub fn migrations_current_version() -> i64 {
     migrations::CURRENT_SCHEMA_VERSION
 }
 
+pub use repository::set_auto_tag_limit;
 pub use repository::{BACKUP_DIR_NAME, update_filament_spool_image_policy, list_filament_spools_with_image_flags};
 #[cfg(any(test, feature = "test-support"))]
 pub use repository::{list_files_missing_content_hash, set_content_hash};
@@ -90,6 +91,8 @@ pub use repository::{file_exists_by_hash, file_exists_by_path};
 
 #[cfg(test)]
 pub(crate) mod print_info_tests;
+#[cfg(test)]
+mod auto_tag_tests;
 
 #[cfg(test)]
 mod tests {

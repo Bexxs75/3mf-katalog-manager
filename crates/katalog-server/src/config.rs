@@ -5,8 +5,9 @@ use std::{
 
 // Betrieb: Cookies (katalog_session) sind nicht nach Port getrennt. Andere
 // HTTP-Dienste auf demselben Host erhalten sie; eigenen Host-/Domainnamen nutzen.
-// Das Bootstrap-Zufallspasswort bleibt dauerhaft im Log (docker logs) und sollte
-// nach dem ersten Anmelden geändert werden. set-password liest sichtbar im
+// Das Bootstrap-Zufallspasswort steht nicht im Log, sondern in web-initial-password.txt
+// (0600) neben der Passwortdatei und sollte nach dem ersten Anmelden geändert werden;
+// die Datei wird dann entfernt. set-password liest sichtbar im
 // Terminal; ein laufender Server übernimmt die Datei erst nach einem Neustart.
 // Ein vertrauenswürdiger Proxy muss X-Forwarded-For anhängen oder überschreiben.
 // Forwarded-Header zählen nur, wenn der direkte Peer in KATALOG_TRUSTED_PROXIES steht.
@@ -626,8 +627,11 @@ pub fn validate_upload_config(config: &mut Config) -> Result<(), String> {
 }
 
 /// Names shared by all durable server journals.
-pub const RESERVED_JOURNAL_NAMES: [&str; 3] =
-    ["web-fsops.json", "web-uploads.json", "web-restore.json"];
+/// The last name is not a journal but the file with a generated start password
+/// (`password::initial_password_path`); it is reserved the same way so that nothing else
+/// configured can be overwritten or deleted by it.
+pub const RESERVED_JOURNAL_NAMES: [&str; 4] =
+    ["web-fsops.json", "web-uploads.json", "web-restore.json", "web-initial-password.txt"];
 
 pub fn validate_auth_journal_name(path: &Path) -> Result<(), String> {
     for path in [path.to_path_buf(), resolved(path)?] {
@@ -670,6 +674,12 @@ pub fn validate_password_path(db: Option<&Path>, auth: &Path) -> Result<(), Stri
         }
     }
     checked_journal_path(db, auth, RESERVED_JOURNAL_NAMES[2])?;
+    if let Some(db) = db {
+        // The start password file lies next to the auth file and is replaced or removed by the server.
+        validate_auth_path(db, &crate::password::initial_password_path(auth)).map_err(|_| {
+            "Die Katalogdatei kollidiert mit der Startpasswort-Datei web-initial-password.txt neben KATALOG_AUTH_FILE".to_owned()
+        })?;
+    }
     Ok(())
 }
 

@@ -226,11 +226,11 @@ const isLostAnswer = (reason: unknown) => reason instanceof Error;
  * A block whose answer was lost is asked for again with the same `seq`; the server then returns its stored answer instead of
  * running the rows twice. Stopping happens between blocks only, so what ran stays and the rest is untouched.
  */
-export async function applyDiskSync(token: string, confirmRemoval: boolean, onProgress: (done: number, total: number) => void, shouldStop: () => boolean = () => false): Promise<DiskSyncOutcome> {
+export async function applyDiskSync(token: string, confirmRemoval: boolean, onProgress: (done: number, total: number) => void, shouldStop: () => boolean = () => false, password?: string): Promise<DiskSyncOutcome> {
   const initiatingToken = getSnapshot().csrfToken;
   if (!canManageFiles()) throw failure({ kind: 'revoked' }, null);
   let start: { total: number; remaining: number };
-  try { start = await diskSyncApplyStart(token, confirmRemoval); } catch (reason) { throw failure(reason, null); }
+  try { start = await (password === undefined ? diskSyncApplyStart(token, confirmRemoval) : diskSyncApplyStart(token, confirmRemoval, password)); } catch (reason) { throw failure(reason, null); }
   if (!start || !validRemaining(start.total) || !validRemaining(start.remaining)) throw failure({ kind: 'not_started' }, null);
   const outcome: DiskSyncOutcome = { imported: 0, removedModels: 0, removedCompanions: 0, skipped: [], fileIds: [], done: start.total - start.remaining, total: start.total, aborted: null };
   const snapshot = (): DiskSyncOutcome => ({ ...outcome, skipped: [...outcome.skipped], fileIds: [...outcome.fileIds] });

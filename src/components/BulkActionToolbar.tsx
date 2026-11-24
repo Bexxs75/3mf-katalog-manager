@@ -14,6 +14,7 @@ import { ViewportPopover } from './ViewportPopover';
 import { tagLabel } from '../lib/autoTags';
 import { modelMenuActions, type ModelMenuActionId } from '../lib/modelMenuActions';
 import { usePrintDataReread } from '../hooks/usePrintDataReread';
+import { REMOVAL_PASSWORD_FROM } from '../lib/api/diskSync';
 import { PrintDataRereadJob } from './PrintDataRereadJob';
 import { DateRenameDialog, type DateRenameOutcome } from './DateRenameDialog';
 
@@ -58,7 +59,7 @@ interface BulkActionToolbarProps {
   onBulkSetPrintStatus: (status: 'printed' | 'not_printed') => void;
   onBulkDelete: () => void;
   onBulkMove?: () => void;
-  onBulkRemove?: () => Promise<void>;
+  onBulkRemove?: (password?: string) => Promise<void>;
   addTagMenuOpen: boolean;
   onAddTagMenuOpenChange: (value: boolean) => void;
   allTags: string[];
@@ -167,6 +168,9 @@ export function BulkActionToolbar({
   const [group, setGroup] = useState<'quick' | 'organize' | 'bundle'>('organize');
 
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removePassword, setRemovePassword] = useState('');
+  // In the web version one call removing this many entries or more needs the password.
+  const removeNeedsPassword = import.meta.env.VITE_TARGET === 'web' && selectedCount >= REMOVAL_PASSWORD_FROM;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   // Snapshot at opening: the preview must not reload when the selection prop is rebuilt.
@@ -374,12 +378,14 @@ export function BulkActionToolbar({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-small font-medium text-[var(--ink)]">{formatCount(t('removeModelsQuestion'), selectedCount)}</span>
           <span className="text-small text-[var(--ink-2)]">{t(isReadOnly() ? 'webRemoveModelHint' : 'removeModelHint')}</span>
+          {removeNeedsPassword && <label className="flex items-center gap-2 text-small">{t('webFilePassword')}<input type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" className="h-8 border px-2 bg-[var(--panel)]" value={removePassword} disabled={busy} onChange={event => setRemovePassword(event.target.value)} /></label>}
           {error && <span role="alert" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)]"><ErrorText error={error} /></span>}
-          <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
-          <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
-            if (!onBulkRemove || !canEditMetadata() || busy) return;
+          <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => { setConfirmRemove(false); setRemovePassword(''); }}>{t('cancel')}</button>
+          <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50" disabled={busy || (removeNeedsPassword && !removePassword)} {...lockProps} onClick={async () => {
+            if (!onBulkRemove || !canEditMetadata() || busy || (removeNeedsPassword && !removePassword)) return;
             setBusy(true); setError(null);
-            try { await onBulkRemove(); setConfirmRemove(false); }
+            const secret = removePassword; setRemovePassword('');
+            try { await (removeNeedsPassword ? onBulkRemove(secret) : onBulkRemove()); setConfirmRemove(false); }
             catch (e) { setError(toAppError(e)); }
             finally { setBusy(false); }
           }}>{t('removeEntry')}</button>

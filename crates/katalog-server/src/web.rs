@@ -419,6 +419,8 @@ pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
     build_app_with_writer(config, writer, instance_lock, crate::step_worker::StepWorker::disabled())
 }
 fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>, instance_lock: Option<katalog_core::db::instance_lock::InstanceLock>, step: crate::step_worker::StepWorker) -> Result<Router,String> {
+    // Imports (upload, source folders, archives, disk comparison) may not create more tags than the web write path allows.
+    katalog_core::db::set_auto_tag_limit(katalog_core::write::web::MAX_TAGS);
     let uploads = uploads::initialize(&config.config)?;
     restore_upload::initialize(&config.config).map_err(|e| format!("restore staging: {e}"))?;
     crate::export::sweep_stale(&config.config.db_path);
@@ -1118,9 +1120,9 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             if is_write {
                 let current = current.expect("authenticated write");
                 if let Some(request_id) = request_id {
-                    return idempotent_write(app, current, command.to_owned(), args, audit, admission, request_id).await;
+                    return idempotent_write(app, current, peer.clone(), command.to_owned(), args, audit, admission, request_id).await;
                 }
-                return write_invoke(app, current, command.to_owned(), args, audit, admission.unwrap(), None).await;
+                return write_invoke(app, current, peer.clone(), command.to_owned(), args, audit, admission.unwrap(), None).await;
             }
             if command == crate::slicer::COMMAND {
                 // Hashed so the raw session token never sits in another table.
@@ -1498,12 +1500,13 @@ where
         }
     }
 }
-async fn idempotent_write(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: Option<tokio::sync::OwnedSemaphorePermit>, request_id: String) -> Response {
+#[allow(clippy::too_many_arguments)]
+async fn idempotent_write(app: Arc<App>, current: Session, peer: String, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: Option<tokio::sync::OwnedSemaphorePermit>, request_id: String) -> Response {
     let args_hash = crate::idempotency::args_hash(&args);
     let name = WRITE_COMMANDS.iter().copied().find(|c| *c == command).expect("allowlisted write");
     let (app2, current2, audit2) = (app.clone(), current.clone(), audit.clone());
     run_once(&app, &current, &request_id, name, args_hash, &audit, admission, move |guard, permit| {
-        write_invoke(app2, current2, command, args, audit2, permit, Some(guard))
+        write_invoke(app2, current2, peer, command, args, audit2, permit, Some(guard))
     })
     .await
 }
@@ -1539,7 +1542,24 @@ async fn record_outcome(guard: crate::idempotency::Guard, work: tokio::task::Joi
     });
     delivered.await.unwrap_or_else(|_| error_coded(500, ErrorCode::WebServerInternal, &[]))
 }
-async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit, replay: Option<crate::idempotency::Guard>) -> Response {
+#[allow(clippy::too_many_arguments)]
+async fn write_invoke(app: Arc<App>, current: Session, peer: String, command: String, mut args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit, replay: Option<crate::idempotency::Guard>) -> Response {
+    // Removing many catalog entries at once needs the password (see `fileops::REMOVAL_PASSWORD_FROM`).
+    // A password that is sent is always checked here, before any budget or backup, and taken out of
+    // the arguments so that the strict argument check of the command never sees it.
+    let mut verified = false;
+    if command == "remove_files_from_catalog" {
+        if let Some(password) = args.as_object_mut().and_then(|o| o.remove("password")) {
+            let Value::String(password) = password else { return fileops::failure(400, "invalid_arguments") };
+            let hash = app.data.lock().unwrap().auth.as_ref().map(|a| a.password_hash.clone());
+            let Some(hash) = hash else { return fileops::failure(403, "password_invalid") };
+            match verify_client(app.clone(), &peer, hash, password, true).await {
+                Ok(true) => verified = true,
+                Ok(false) => return fileops::failure(403, "password_invalid"),
+                Err(r) => return *r,
+            }
+        }
+    }
     let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let gate = app.writer.as_ref().expect("write connection initialized");
     let started=std::time::Instant::now();
@@ -1658,6 +1678,8 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
                     Ok(true) => active_count += 1, Ok(false) => (), Err(_) => return fileops::failure(500, "internal"),
                 }
             }
+            // Before budget and backup: a large removal only with the verified password.
+            if active_count >= fileops::REMOVAL_PASSWORD_FROM && !verified { return fileops::failure(403, "password_required"); }
             let mut safety = match app.fileops_safety.lock() { Ok(s) => s, Err(_) => return fileops::failure(503,"restart_required") };
             if let Err(e) = safety.reserve(crate::fileops_safety::DestructiveKind::Permanent, active_count, app.clock.now()) {
                 return *fileops::budget_error(e);

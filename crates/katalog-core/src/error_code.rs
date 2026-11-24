@@ -241,6 +241,8 @@ error_codes! {
     InvalidSlot => "invalidSlot",
     /// params: the highest number of entries.
     WebLimitReached => "webLimitReached",
+    /// params: the highest total size of all spool images, in megabytes.
+    WebImageQuotaReached => "webImageQuotaReached",
     // Catalog entries written from the web.
     EntryNotFound => "entryNotFound",
     TextEmpty => "textEmpty",

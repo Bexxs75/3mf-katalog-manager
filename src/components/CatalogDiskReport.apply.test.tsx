@@ -9,7 +9,7 @@ vi.mock('../lib/api/diskSync', async importOriginal => ({
   ...await importOriginal<typeof import('../lib/api/diskSync')>(),
   diskSyncReport: api.report, diskSyncPreview: api.preview, diskSyncApplyStart: api.start, diskSyncApplyBlock: api.block,
 }));
-vi.mock('../lib/webSession', async importOriginal => ({ ...await importOriginal<typeof import('../lib/webSession')>(), useCanManageFiles: () => true }));
+vi.mock('../lib/webSession', async importOriginal => ({ ...await importOriginal<typeof import('../lib/webSession')>(), useCanManageFiles: () => true, canManageFiles: () => true }));
 
 import { CatalogDiskReport } from './CatalogDiskReport';
 import { diskSyncRetry, subscribeFileOpsRefresh } from '../lib/fileOps';
@@ -238,6 +238,47 @@ describe('preview and apply', () => {
     await waitFor(() => expect(step()).toBe('error'));
     expect(screen.getByText(de.diskApplyStateChanged)).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toContain(de.diskApplyAppliedSoFar.replace('{done}', '10').replace('{total}', '30'));
+  });
+});
+
+describe('password for a large removal (web)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it('asks for the password from 50 removals on and sends it with the start', async () => {
+    vi.stubEnv('VITE_TARGET', 'web');
+    api.preview.mockResolvedValue(preview({ counts: { import: 0, removeModels: 50, removeCompanions: 0 } }));
+    api.start.mockResolvedValue({ total: 50, remaining: 0 });
+    await toPreview();
+    const apply = screen.getByRole('button', { name: de.diskSyncApply }) as HTMLButtonElement;
+    expect(apply.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(de.webFilePassword), { target: { value: 'secret' } });
+    expect(apply.disabled).toBe(false);
+    press(de.diskSyncApply);
+    await waitFor(() => expect(api.start).toHaveBeenCalledWith('tok', true, 'secret'));
+  });
+  it('stays in the preview after a wrong password, says so and starts after a retry', async () => {
+    vi.stubEnv('VITE_TARGET', 'web');
+    api.preview.mockResolvedValue(preview({ counts: { import: 0, removeModels: 50, removeCompanions: 0 } }));
+    api.start.mockRejectedValueOnce({ kind: 'password_invalid' });
+    api.start.mockResolvedValueOnce({ total: 50, remaining: 0 });
+    await toPreview();
+    fireEvent.change(screen.getByLabelText(de.webFilePassword), { target: { value: 'wrong' } });
+    press(de.diskSyncApply);
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Passwort'));
+    expect(step()).toBe('preview');
+    expect((screen.getByLabelText(de.webFilePassword) as HTMLInputElement).value).toBe('');
+    fireEvent.change(screen.getByLabelText(de.webFilePassword), { target: { value: 'right' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    press(de.diskSyncApply);
+    await waitFor(() => expect(api.start).toHaveBeenLastCalledWith('tok', true, 'right'));
+  });
+  it('asks for no password below 50 removals and sends none', async () => {
+    vi.stubEnv('VITE_TARGET', 'web');
+    api.preview.mockResolvedValue(preview({ counts: { import: 0, removeModels: 49, removeCompanions: 0 } }));
+    api.start.mockResolvedValue({ total: 49, remaining: 0 });
+    await toPreview();
+    expect(screen.queryByLabelText(de.webFilePassword)).toBeNull();
+    press(de.diskSyncApply);
+    await waitFor(() => expect(api.start).toHaveBeenCalledWith('tok', true));
   });
 });
 

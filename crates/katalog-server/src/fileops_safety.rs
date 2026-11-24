@@ -18,7 +18,9 @@ pub(crate) enum BudgetError {
 enum Charge {
     /// Same amount in both windows; above a window limit it can never fit.
     Strict,
-    /// Folder removal: at most one full window per window, so it is never impossible.
+    /// Folder removal: the 10-minute window is charged at most 200 (one full window, so a big
+    /// folder is only ever delayed there), the day is charged exactly `count`. A folder larger
+    /// than the daily limit can never fit and is refused with nothing booked.
     Folder,
     /// Trash-emptying blocks: the client is already throttled by the 60 s start and
     /// 2 s block intervals, so only the daily limit applies (a full 200-block would
@@ -35,15 +37,14 @@ impl Budget {
         let limits = [(600, 200), (86400, daily_limit)];
         let impossible = match mode {
             Charge::Strict => limits.iter().any(|(_, limit)| count > *limit),
-            Charge::Folder => false,
-            Charge::DailyOnly => count > daily_limit,
+            Charge::Folder | Charge::DailyOnly => count > daily_limit,
         };
         if impossible {
             return Err(BudgetError::LimitExceeded);
         }
         let charges = match mode {
             Charge::Strict => [count; 2],
-            Charge::Folder => [count.min(200), count.min(daily_limit)],
+            Charge::Folder => [count.min(200), count],
             Charge::DailyOnly => [0, count],
         };
         let mut retry = 0;
@@ -111,7 +112,7 @@ impl FileOpsSafety {
     /// not charged again. The whole plan is charged once, against the daily limit only: a plan
     /// larger than the daily limit is refused with nothing booked (`LimitExceeded`), otherwise
     /// exactly `count` is booked, so the blocks can never remove more than was paid for.
-    /// `reserve_folder` is not used for this: it books at most the daily limit and never refuses.
+    /// (`reserve_folder` differs only in the 10-minute window, which it charges at most 200.)
     pub(crate) fn reserve_disk_sync(&mut self, count: usize, now: u64) -> Result<(), BudgetError> {
         self.trash.reserve(count, now, self.daily_limit, Charge::DailyOnly)
     }
@@ -378,6 +379,18 @@ mod tests {
         let mut half = FileOpsSafety::new(100_000);
         assert_eq!(half.reserve(DestructiveKind::Permanent, 100, 100), Ok(()));
         assert_eq!(half.reserve_folder(500, 150), Err(BudgetError::Retry(550)));
+    }
+    #[test]
+    fn folder_removal_above_the_daily_limit_is_refused_and_books_exactly_the_count() {
+        let mut safety = FileOpsSafety::new(1000);
+        // 5000 entries against a daily limit of 1000: refused for good, nothing booked.
+        assert_eq!(safety.reserve_folder(5000, 100), Err(BudgetError::LimitExceeded));
+        assert_eq!(safety.reserve_folder(1001, 100), Err(BudgetError::LimitExceeded));
+        // Nothing was booked: a full-day folder still fits, and is booked in full (not capped).
+        assert_eq!(safety.reserve_folder(1000, 101), Ok(()));
+        assert_eq!(safety.reserve_folder(1, 800), Err(BudgetError::Retry(85701)));
+        // After the day the room is back.
+        assert_eq!(safety.reserve_folder(1000, 101 + 86400), Ok(()));
     }
     #[test]
     fn empty_trash_blocks_count_only_against_daily_limit() {

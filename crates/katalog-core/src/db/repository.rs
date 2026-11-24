@@ -510,6 +510,25 @@ fn hue_for_tag(name: &str) -> i64 {
     (hash % 360) as i64
 }
 
+/// Highest number of different tags that automatic (derived) tagging may create. The web server
+/// sets it at startup (see `write::web::MAX_TAGS`) so imports cannot grow the tag list without
+/// bound; unset (the desktop) there is no limit.
+static AUTO_TAG_LIMIT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(i64::MAX);
+pub fn set_auto_tag_limit(limit: i64) {
+    AUTO_TAG_LIMIT.store(limit, std::sync::atomic::Ordering::Relaxed);
+}
+/// A derived tag that already exists always fits; a new one only while the catalog is below `limit`.
+pub(super) fn auto_tag_fits(conn: &Connection, name: &str, limit: i64) -> Result<bool, DbError> {
+    if limit == i64::MAX {
+        return Ok(true);
+    }
+    let known: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM tags WHERE name = ?1)", params![name], |r| r.get(0))?;
+    if known {
+        return Ok(true);
+    }
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM tags", [], |r| r.get(0))?;
+    Ok(count < limit)
+}
 fn get_or_create_tag(conn: &Connection, name: &str) -> Result<i64, DbError> {
     let existing: Option<i64> = conn
         .query_row("SELECT id FROM tags WHERE name = ?1", params![name], |row| {
@@ -729,6 +748,10 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
     for tag_name in &tags {
         // Derived tags must never prevent importing the file itself.
         if tag_name.encode_utf16().take(101).count() > 100 {
+            continue;
+        }
+        // Over the tag limit (web only) a derived tag is left out; the file is still imported.
+        if !auto_tag_fits(conn, tag_name, AUTO_TAG_LIMIT.load(std::sync::atomic::Ordering::Relaxed))? {
             continue;
         }
         let tag_id = get_or_create_tag(conn, tag_name)?;
