@@ -22,7 +22,7 @@ export interface WebImportFile { uploadId: string; name: string; state: string; 
 export interface WebImportJob { jobId: string; state: string; current: string | null; total: number; done: number; files: WebImportFile[]; kind: string | null; source?: boolean }
 export interface UploadRow { id: number; name: string; percent: number; state: 'queued' | 'uploading' | 'retrying' | 'uploaded' | 'cancelled' | 'error'; error?: UploadTextKey }
 interface View { queue: UploadRow[]; uploads: WebUpload[]; jobs: WebImportJob[]; connection: 'connecting' | 'connected' | 'disconnected'; error: UploadTextKey | null; busy: boolean; result: WebImportJob | null }
-interface Failure { status?: number; kind?: string; code?: string; retryAfter?: string | null }
+interface Failure { status?: number; kind?: string; code?: string; message?: string; retryAfter?: string | null }
 export const importFinished = (job: WebImportJob) => ['completed', 'cancelled', 'failed'].includes(job.state);
 export function uploadErrorKey(error: unknown): UploadTextKey {
   const e = (error ?? {}) as Failure;
@@ -30,6 +30,7 @@ export function uploadErrorKey(error: unknown): UploadTextKey {
   if (e.kind === 'folders') return 'webUploadFolders';
   if (e.kind === 'cancelled') return 'webUploadCancelled';
   if (e.status === 503 && !e.retryAfter) return 'webUploadRestart';
+  if (e.status === 409 && (e.code === 'catalogHashCheckPending' || e.message === 'catalogHashCheckPending')) return 'errCatalogHashCheckPending';
   return ({ 400: 'webUploadInvalid', 401: 'webUploadSessionEnded', 403: 'webUploadForbidden', 404: 'webUploadMissing', 408: 'webUploadOffline', 409: 'webUploadConflict', 411: 'webUploadLength', 413: 'webUploadTooLarge', 415: 'webUploadType', 429: 'webUploadBusy', 503: 'webUploadBusy', 507: 'webUploadNoSpace' } as Record<number, UploadTextKey>)[e.status ?? 0] ?? (e.status ? 'webUploadFailed' : 'webUploadOffline');
 }
 function retryDelay(e: Failure): number | null {

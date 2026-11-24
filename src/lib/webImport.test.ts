@@ -202,3 +202,9 @@ it('starts all successful uploads from the authoritative GET despite a delayed o
   resolve(Response.json(uploads)); await flush();
   expect(calls.find(c => c.url.endsWith('start_upload_import'))?.args).toEqual({ uploadIds: ['u1', 'u2'] });
 });
+
+it('shows the checksum wait, not the generic upload conflict, for a 409 catalogHashCheckPending', () => {
+  expect(uploadErrorKey({ status: 409, message: 'catalogHashCheckPending' })).toBe('errCatalogHashCheckPending');
+  expect(uploadErrorKey({ status: 409, code: 'catalogHashCheckPending' })).toBe('errCatalogHashCheckPending');
+  expect(uploadErrorKey({ status: 409 })).toBe('webUploadConflict');
+});
