@@ -181,3 +181,18 @@ fn rescan_of_other_formats_leaves_the_fields_empty() {
     rescan_file(&mut conn, id).unwrap();
     assert_eq!(stored(&conn, id), (None, None, None));
 }
+
+#[test]
+fn numeric_makerworld_id_prefills_the_source_url_on_import() {
+    let dir = unique_test_dir("source_platform_url");
+    let numeric = model_in(&dir, "numeric.3mf", &[("DesignModelId", "123456"), ("DesignProfileId", "9")]);
+    let hashed = model_in(&dir, "hashed.3mf", MAKERWORLD);
+    for reader in [read_model_file(&numeric, None).unwrap(), read_import_model_file(&numeric, None).unwrap()] {
+        assert_eq!(reader.source_url.as_deref(), Some("https://makerworld.com/models/123456"));
+    }
+    assert_eq!(read_model_file(&hashed, None).unwrap().source_url, None);
+    let conn = crate::db::connect_in_memory().unwrap();
+    let dto = import_one(&conn, &numeric, None, None, None).unwrap();
+    let stored = db::get_file(&conn, dto.id.parse().unwrap()).unwrap().unwrap();
+    assert_eq!(stored.source_url.as_deref(), Some("https://makerworld.com/models/123456"));
+}

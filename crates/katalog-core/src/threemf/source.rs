@@ -54,6 +54,17 @@ pub fn detect_source(metadata: &BTreeMap<String, String>) -> SourceInfo {
     }
 }
 
+/// The model page of a Makerworld file whose model ID is purely numeric. Other
+/// ID shapes (e.g. `US...` hashes) do not map to a page, so they give `None`.
+/// Pure derivation from stored values, no network access.
+pub fn derive_source_url(source: &SourceInfo) -> Option<String> {
+    if source.platform.as_deref() != Some(PLATFORM_MAKERWORLD) {
+        return None;
+    }
+    let id = source.model_id.as_deref()?;
+    (!id.is_empty() && id.chars().all(|c| c.is_ascii_digit())).then(|| format!("https://makerworld.com/models/{id}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +112,20 @@ mod tests {
         assert_eq!(sanitize_source_value(&long).unwrap().chars().count(), 128);
         let info = detect_source(&meta(&[("DesignModelId", &"a".repeat(300)), ("DesignProfileId", "1")]));
         assert_eq!(info.model_id.unwrap().len(), 128);
+    }
+
+    #[test]
+    fn numeric_makerworld_model_id_gives_a_model_url() {
+        let info = detect_source(&meta(&[("DesignModelId", "123456"), ("DesignProfileId", "9")]));
+        assert_eq!(derive_source_url(&info).as_deref(), Some("https://makerworld.com/models/123456"));
+    }
+
+    #[test]
+    fn non_numeric_or_unknown_sources_give_no_url() {
+        let hashed = detect_source(&meta(&[("DesignModelId", "USfa963547e39de4"), ("DesignProfileId", "1")]));
+        assert_eq!(derive_source_url(&hashed), None);
+        assert_eq!(derive_source_url(&SourceInfo::default()), None);
+        let mixed = detect_source(&meta(&[("DesignModelId", "12/../x"), ("DesignProfileId", "1")]));
+        assert_eq!(derive_source_url(&mixed), None);
     }
 }
