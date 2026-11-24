@@ -26,6 +26,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Changed
 
 - The web trash recognizes desktop trash entries and can permanently remove their files and companions. Restoring them remains a desktop action.
+- The web image now contains the STEP preview: it is built on Debian trixie with Open CASCADE 7.8.1 from Debian (LGPL 2.1 with the Open CASCADE exception, linked dynamically; license files and source references are in the image under `/usr/share/doc/occt-runtime/`). It needs Linux Landlock, which Docker's default seccomp profile allows; without it the preview stays off and the log says so. The run-time base is now `debian:trixie-slim` instead of distroless, and the download grows from about 17 MB to about 69 MB (sum of the compressed layers). amd64 only for now.
 
 - Desktop and web refuse concurrent operation on the same catalog. `KATALOG_LOCK=off` disables the instance lock for SMB/NFS setups managed by the operator.
 - On Linux the startup error message (for example "catalog already in use") now also appears when `zenity` is missing: the app falls back to `kdialog` or `xmessage` and always prints the message to stderr.
@@ -940,6 +941,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Geändert
 
 - Der Web-Papierkorb erkennt Desktop-Papierkorbeinträge und kann ihre Dateien samt Begleitdateien endgültig löschen. Wiederherstellen bleibt eine Desktop-Aktion.
+- Das Web-Image enthält jetzt die STEP-Vorschau: Es wird auf Debian trixie mit Open CASCADE 7.8.1 aus Debian gebaut (LGPL 2.1 mit Open-CASCADE-Ausnahme, dynamisch gelinkt; Lizenzdateien und Quellenangaben im Image unter `/usr/share/doc/occt-runtime/`). Sie braucht Linux-Landlock, das Dockers Standard-Seccomp-Profil erlaubt; ohne Landlock bleibt die Vorschau aus und das Log sagt es. Die Laufzeitbasis ist jetzt `debian:trixie-slim` statt distroless, der Download wächst von etwa 17 MB auf etwa 69 MB (Summe der komprimierten Schichten). Vorerst nur amd64.
 
 - Desktop und Web verweigern den gleichzeitigen Betrieb auf demselben Katalog. `KATALOG_LOCK=off` schaltet die Instanzsperre für selbst koordinierte SMB/NFS-Umgebungen ab.
 - Unter Linux erscheint die Startfehler-Meldung (z. B. „Katalog wird bereits verwendet“) jetzt auch ohne `zenity`: Die App weicht auf `kdialog` oder `xmessage` aus und schreibt die Meldung immer auch auf stderr.

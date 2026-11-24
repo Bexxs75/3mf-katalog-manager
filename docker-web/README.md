@@ -1,6 +1,6 @@
 # docker-web: Web-Version des 3MF Katalog Manager (Entwurf, nicht öffentlich)
 
-**Deutsch.** Kleines Image (ca. 47 MB) mit `katalog-server` und der Web-Oberfläche. Es zeigt einen **vorhandenen** Katalog **standardmäßig nur lesend** im Browser; kein gestreamter Desktop. Gleiche Ordner wie das Desktop-Image: `./config` (Programmdaten, Heimatordner der App) und `./models`.
+**Deutsch.** Image (ca. 69 MB Download, Summe der komprimierten Schichten; entpackt ca. 180 MB) mit `katalog-server`, STEP-Vorschau und der Web-Oberfläche. Es zeigt einen **vorhandenen** Katalog **standardmäßig nur lesend** im Browser; kein gestreamter Desktop. Gleiche Ordner wie das Desktop-Image: `./config` (Programmdaten, Heimatordner der App) und `./models`.
 
 ```
 cd docker-web
@@ -13,7 +13,7 @@ docker compose logs katalog-web # beim ersten Start steht dort einmal das Zufall
 - Passwort: erster Start aus `KATALOG_PASSWORD(_FILE)` (z. B. `/config/.kasmvnc-password` des Desktop-Images) oder zufällig; danach als Argon2-Hash in `config/web-auth.json`, änderbar in der Oberfläche. Vergessen: `docker compose exec katalog-web katalog-server set-password` ist im Image ohne Shell nicht möglich, daher `docker compose run --rm -it katalog-web set-password`.
 - Das Dateisystem des Containers ist schreibgeschützt, Modelle werden nur lesend eingebunden, der Prozess läuft ohne Root und ohne Linux-Fähigkeiten. Bei `read_only: true` braucht SQLite ein beschreibbares `/tmp` (tmpfs, in `docker-compose.yml` gesetzt), sonst meldet der Server beim ersten Laden „disk I/O error“.
 
-**English.** Small image (about 47 MB) with `katalog-server` and the web UI. It shows an **existing** catalog **read-only by default** in the browser; no streamed desktop. Same folders as the desktop image: `./config` (app data, the app's home) and `./models`. Run `docker compose up -d --build` in `docker-web/`; a random password is printed once in the log on first start. Reachable at `http://127.0.0.1:8080` by default; set `KATALOG_BIND_IP` and `KATALOG_ALLOWED_HOSTS` (mandatory, the server refuses to start otherwise; Compose derives the `localhost`/`127.0.0.1` default from `KATALOG_PORT`) for other devices in the home network, use a VPN or an HTTPS reverse proxy for access from outside. The catalog must already exist in the same version (the web server never migrates). The password is stored as an Argon2 hash in `config/web-auth.json` and can be changed in the UI; to reset it use `docker compose run --rm -it katalog-web set-password`. With `read_only: true` SQLite needs a writable `/tmp` (tmpfs, set in `docker-compose.yml`), otherwise the server reports "disk I/O error" on the first load.
+**English.** Image (about 69 MB download, sum of the compressed layers; about 180 MB unpacked) with `katalog-server`, the STEP preview and the web UI. It shows an **existing** catalog **read-only by default** in the browser; no streamed desktop. Same folders as the desktop image: `./config` (app data, the app's home) and `./models`. Run `docker compose up -d --build` in `docker-web/`; a random password is printed once in the log on first start. Reachable at `http://127.0.0.1:8080` by default; set `KATALOG_BIND_IP` and `KATALOG_ALLOWED_HOSTS` (mandatory, the server refuses to start otherwise; Compose derives the `localhost`/`127.0.0.1` default from `KATALOG_PORT`) for other devices in the home network, use a VPN or an HTTPS reverse proxy for access from outside. The catalog must already exist in the same version (the web server never migrates). The password is stored as an Argon2 hash in `config/web-auth.json` and can be changed in the UI; to reset it use `docker compose run --rm -it katalog-web set-password`. With `read_only: true` SQLite needs a writable `/tmp` (tmpfs, set in `docker-compose.yml`), otherwise the server reports "disk I/O error" on the first load.
 
 **Healthcheck:** the image has no shell or curl, so `katalog-server health` asks the server's own `/api/health` (exit code 0 = healthy); the Dockerfile `HEALTHCHECK` and the Compose `healthcheck:` use it.
 
@@ -34,6 +34,18 @@ docker compose logs katalog-web # beim ersten Start steht dort einmal das Zufall
 **Smoke-Test (Deutsch).** `bash docker-web/scripts/ci-smoke.sh IMAGE` startet das Image schreibgeschützt mit einem frisch erzeugten, leeren Katalog und prüft Web-Oberfläche, Abweisung ohne Anmeldung, Anmeldung, eine lesende Katalogabfrage und sauberes Stoppen. Der Katalog entsteht mit `cargo run -p katalog-core --no-default-features --example make_smoke_catalog -- <Pfad>`; ohne lokales Rust kann `SMOKE_CATALOG_CMD` das ersetzen (siehe Skriptkopf). Der Workflow `.github/workflows/docker-web.yml` baut das Image und führt diesen Test aus.
 
 **Smoke test (English).** `bash docker-web/scripts/ci-smoke.sh IMAGE` starts the image read-only with a freshly created empty catalog and checks the web UI, rejection without login, login, one catalog read and a clean stop. The catalog is created with `cargo run -p katalog-core --no-default-features --example make_smoke_catalog -- <path>`; without a local Rust toolchain `SMOKE_CATALOG_CMD` can replace that (see the script header). The workflow `.github/workflows/docker-web.yml` builds the image and runs this test.
+
+**STEP-Vorschau (Deutsch).** Das Image ist mit `--features step-preview` gebaut und zeigt STEP-Dateien in der 3D-Ansicht. Jede STEP-Datei liest ein eigener, begrenzter Hilfsprozess des Servers. Er braucht **Linux-Landlock** (Kernel ab 5.13, im Kernel aktiviert) und darf es unter dem Seccomp-Profil des Containers aufrufen; Dockers Standardprofil erlaubt das (geprüft mit Docker 29.10 auf Kernel 7.3). Fehlt Landlock oder schlägt die Startprüfung fehl, bleibt die STEP-Vorschau aus: Der Server läuft normal weiter, schreibt einmal `STEP-Vorschau deaktiviert: …` ins Log (`docker compose logs katalog-web`) und meldet STEP-Dateien als nicht darstellbar. Kein eigenes Seccomp-Profil, `seccomp=unconfined` oder zusätzliche Fähigkeiten nötig; die Compose-Einstellungen (`read_only`, `cap_drop: [ALL]`, `no-new-privileges`) bleiben. Nur **amd64**: Mit STEP-Vorschau ist arm64 (z. B. Raspberry Pi) noch nicht gebaut und nicht geprüft.
+
+**Lizenz Open CASCADE (Deutsch).** Die STEP-Vorschau nutzt Open CASCADE Technology (OCCT) 7.8.1 unter der **LGPL 2.1 mit der Open-CASCADE-Ausnahme**, dynamisch gelinkt. Die Bibliotheken (`/usr/local/lib/libTK*.so.7.8`) sind unverändert aus den Debian-trixie-Paketen `libocct-*-7.8` (Quellpaket `opencascade` 7.8.1+dfsg1-3) übernommen. Paketliste mit genauen Versionen und die Debian-Copyright-Dateien liegen im Image unter `/usr/share/doc/occt-runtime/` (`SOURCES.txt`, `*.copyright`). Quellcode: <https://sources.debian.org/src/opencascade/7.8.1+dfsg1-3/>, dauerhaft auch über <https://snapshot.debian.org/package/opencascade/7.8.1%2Bdfsg1-3/>. Welche Bibliotheken kopiert und welche Pakete per apt installiert werden, ermittelt `docker-web/scripts/collect-occt-runtime.sh` beim Bauen per `ldd` aus dem gelinkten Server.
+
+**STEP preview (English).** The image is built with `--features step-preview` and shows STEP files in the 3D view. Each STEP file is read by a separate, limited helper process of the server. It needs **Linux Landlock** (kernel 5.13 or newer, enabled in the kernel) and must be allowed to call it under the container's seccomp profile; Docker's default profile allows this (checked with Docker 29.10 on kernel 7.3). Without Landlock, or if the start-up probe fails, the STEP preview stays off: the server keeps running, logs `STEP-Vorschau deaktiviert: …` once (`docker compose logs katalog-web`) and reports STEP files as not viewable. No custom seccomp profile, `seccomp=unconfined` or extra capabilities are needed; the Compose settings (`read_only`, `cap_drop: [ALL]`, `no-new-privileges`) stay. **amd64 only**: arm64 (e.g. Raspberry Pi) with the STEP preview is not built or tested yet.
+
+**Open CASCADE license (English).** The STEP preview uses Open CASCADE Technology (OCCT) 7.8.1 under the **LGPL 2.1 with the Open CASCADE exception**, linked dynamically. The libraries (`/usr/local/lib/libTK*.so.7.8`) are taken unchanged from the Debian trixie packages `libocct-*-7.8` (source package `opencascade` 7.8.1+dfsg1-3). The package list with exact versions and Debian's copyright files are in the image under `/usr/share/doc/occt-runtime/` (`SOURCES.txt`, `*.copyright`). Source code: <https://sources.debian.org/src/opencascade/7.8.1+dfsg1-3/>, permanently also at <https://snapshot.debian.org/package/opencascade/7.8.1%2Bdfsg1-3/>. Which libraries are copied and which packages apt installs is worked out at build time by `docker-web/scripts/collect-occt-runtime.sh` from `ldd` of the linked server.
+
+**STEP-Rauchtest und Größe (Deutsch).** `bash docker-web/scripts/step-smoke.sh IMAGE` startet das Image wie `docker-compose.yml` (schreibgeschützt, ohne Fähigkeiten, Dockers Standard-Seccomp-Profil), lädt einen STEP-Würfel hoch, importiert ihn und prüft die Vorschau (10 mm auf jeder Achse), die Ablehnung einer Datei ohne STEP-Inhalt, eine beschädigte STEP-Datei und mit einem Seccomp-Profil ohne Landlock die Logzeile und die abgeschaltete Vorschau. `bash docker-web/scripts/image-size.sh IMAGE` misst die Summe der komprimierten Schichten (Maß für die 250-MB-Grenze), ohne etwas hochzuladen.
+
+**STEP smoke test and size (English).** `bash docker-web/scripts/step-smoke.sh IMAGE` starts the image like `docker-compose.yml` (read-only, no capabilities, Docker's default seccomp profile), uploads and imports a STEP cube and checks the preview (10 mm on every axis), the refusal of a file without STEP content, a damaged STEP file and, with a seccomp profile without Landlock, the log line and the preview being off. `bash docker-web/scripts/image-size.sh IMAGE` measures the sum of the compressed layers (the measure for the 250 MB budget) without uploading anything.
 
 ### Quellordner und Druckeradressen (Deutsch)
 
@@ -57,8 +69,9 @@ verschachtelte Archive werden übersprungen und im Ergebnis gezählt. Verschlüs
 Archive (`archive_encrypted`) werden abgelehnt. Das Archiv selbst bleibt als Upload
 liegen, wird nicht automatisch gelöscht und lässt sich in der Liste verwerfen (löscht nur das
 Archiv, nicht die Modelle). Dateien bleiben im Upload-Ordner, ohne
-Zielordner-Auswahl und ohne Kopieren/Verschieben beim Import. STEP wird ohne
-OCCT/`step-preview` importiert: keine STEP-Metadaten oder Vorschau im Server.
+Zielordner-Auswahl und ohne Kopieren/Verschieben beim Import. STEP-Dateien werden
+beim Import ohne Maße übernommen; die 3D-Vorschau und die Maße beim „Neu einlesen“
+liefert die STEP-Vorschau des Images (siehe „STEP-Vorschau“ oben).
 
 Den Upload-Ordner vorher anlegen (0755) und gezielt schreibbar einbinden; er muss
 unter `KATALOG_ROOTS` liegen. Der Prozess mit `PUID`/`PGID` (Standard 1000:1000)
@@ -157,8 +170,8 @@ counted in the result. Encrypted archives (`archive_encrypted`) are refused. The
 archive itself stays as an upload, is never deleted automatically and can be discarded
 from the list (removes only the archive, not the models). Files remain in
 the upload directory: import neither copies nor moves them and has no target-folder
-selection. The server excludes OCCT/`step-preview`, so STEP metadata and preview
-are unavailable.
+selection. STEP files are imported without dimensions; the 3D preview and the
+dimensions on "Rescan" come from the image's STEP preview (see "STEP preview" above).
 
 Create the upload directory first (0755) and mount it writable. It must be under
 `KATALOG_ROOTS`; the process UID/GID (`PUID`/`PGID`, default 1000:1000) needs write
