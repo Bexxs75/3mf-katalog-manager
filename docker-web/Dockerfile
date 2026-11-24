@@ -38,6 +38,9 @@ RUN collect-occt-runtime.sh /w/src-tauri/target/release/katalog-server /occt
 # debian-slim instead of distroless: the OCCT libraries need X11/fontconfig/FreeImage from apt
 # (the STEP translator links the visualisation toolkit even though nothing is drawn).
 FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+LABEL org.opencontainers.image.title="3MF Katalog Manager (web)" \
+      org.opencontainers.image.licenses="MIT AND LGPL-2.1-only WITH OCCT-exception-1.0" \
+      org.opencontainers.image.source="https://github.com/Bexxs75/3mf-katalog-manager"
 COPY --from=server /occt/apt-packages.txt /tmp/apt-packages.txt
 # tzdata: chrono reads the local time zone for backup and rename dates (distroless shipped it).
 # --no-upgrade keeps the base packages at the digest's versions.
@@ -48,6 +51,8 @@ RUN apt-get update \
 COPY --from=server /occt/lib/ /usr/local/lib/
 COPY --from=server /occt/doc/ /usr/share/doc/occt-runtime/
 COPY --from=server /w/src-tauri/target/release/katalog-server /usr/local/bin/katalog-server
+# Licence texts of the application and its third-party components (checked by ci-smoke.sh).
+COPY LICENSE THIRD-PARTY-LICENSES.md /licenses/
 # Fail the build, not the first STEP preview, if a library is missing.
 RUN ldconfig && ! ldd /usr/local/bin/katalog-server | grep 'not found'
 COPY --from=ui /app/dist-web /srv/ui

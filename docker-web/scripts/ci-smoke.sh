@@ -20,6 +20,16 @@ trap cleanup EXIT
 fail() { printf 'FAIL: %s\n' "$*" >&2; docker logs "$name" 2>&1 | tail -20 >&2 || :; exit 1; }
 ok() { printf 'OK: %s\n' "$*"; }
 
+# Licence texts and OCI licence/source labels must be part of the image (licence obligation).
+for f in LICENSE THIRD-PARTY-LICENSES.md; do
+    docker run --rm --entrypoint test "$image" -s "/licenses/$f" || fail "licence file /licenses/$f is missing or empty in the image"
+done
+ok 'LICENSE and THIRD-PARTY-LICENSES.md are in the image (/licenses)'
+for l in org.opencontainers.image.licenses org.opencontainers.image.source; do
+    [ -n "$(docker image inspect -f "{{index .Config.Labels \"$l\"}}" "$image")" ] || fail "image label $l is missing"
+done
+ok 'OCI labels licenses and source are set'
+
 # Catalog in the layout of the image: /config/.local/share/com.thebexxs.mfkatalogmanager/catalog.db
 catalog_dir="$work/config/.local/share/com.thebexxs.mfkatalogmanager"
 mkdir -p "$catalog_dir" "$work/models"
