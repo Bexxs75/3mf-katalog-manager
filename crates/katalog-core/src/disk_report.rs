@@ -400,7 +400,11 @@ pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: R
         match std::fs::read_dir(&root.canonical) {
             Err(_) => root.status = RootStatus::Unreachable,
             Ok(mut entries) => {
-                if holds_models && entries.next().is_none() {
+                let has_content = entries.any(|e| match e {
+                    Ok(e) => e.file_name().to_str().is_none_or(crate::fsops::is_root_content),
+                    Err(_) => true,
+                });
+                if holds_models && !has_content {
                     root.status = RootStatus::Empty;
                 }
             }

@@ -225,11 +225,14 @@ impl RootsMissingProbe {
         }
     }
 
-    /// True when the root has no entry at all although a row lies below it: most likely a
+    /// True when the root has no entry (apart from the server's trash folder) although a row lies below it: most likely a
     /// volume that is not mounted. Nothing below such a root counts as gone.
     fn root_is_empty(root: &ProbeRoot) -> bool {
         *root.empty.get_or_init(|| match root.canonical.as_deref().map(std::fs::read_dir) {
-            Some(Ok(mut entries)) => entries.next().is_none(),
+            Some(Ok(mut entries)) => !entries.any(|e| match e {
+                Ok(e) => e.file_name().to_str().is_none_or(crate::fsops::is_root_content),
+                Err(_) => true,
+            }),
             _ => true,
         })
     }
