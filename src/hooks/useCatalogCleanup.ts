@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import * as cleanupApi from '../lib/api/cleanup';
 import { toAppError, type AppError } from '../lib/errors';
 import * as filesApi from '../lib/api/files';
@@ -21,8 +21,11 @@ export function useCatalogCleanup() {
   const [cleanupIssues, setCleanupIssues] = useState<CatalogIssues | null>(null);
   const [cleanupScanning, setCleanupScanning] = useState(false);
   const [cleanupError, setCleanupError] = useState<AppError | null>(null);
+  // The button that started the scan is disabled while it runs and loses the focus, so the dialog cannot find it by itself.
+  const cleanupOpener = useRef<HTMLElement | null>(null);
 
   const scanCatalogIssues = useCallback(() => {
+    cleanupOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setCleanupScanning(true);
     setCleanupError(null);
     return cleanupApi
@@ -86,6 +89,7 @@ export function useCatalogCleanup() {
     cleanupIssues,
     cleanupScanning,
     cleanupError,
+    cleanupOpener,
     scanCatalogIssues,
     closeCleanupDialog,
     deleteSelectedCleanupFiles,

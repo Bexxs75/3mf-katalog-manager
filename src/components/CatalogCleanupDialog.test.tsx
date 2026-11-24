@@ -66,3 +66,28 @@ describe('CatalogCleanupDialog on the web', () => {
     expect(screen.getByRole('alert').textContent).toContain('boom');
   });
 });
+
+describe('CatalogCleanupDialog keyboard and focus', () => {
+  afterEach(() => localStorage.removeItem('3mf-katalog-language'));
+  const issues = { orphaned: [makeModelFile({ id: '1', name: 'gone.3mf', path: '/r/gone.3mf' })], duplicateGroups: [] };
+
+  it('closes through a real button that Tab can reach', () => {
+    const onClose = vi.fn();
+    render(<LanguageProvider><CatalogCleanupDialog issues={issues} onClose={onClose} onDelete={vi.fn()} /></LanguageProvider>);
+    const close = screen.getByRole('button', { name: de.diskSyncClose });
+    expect(close.tagName).toBe('BUTTON');
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the focus back to the button that started the scan, even though that button lost it meanwhile', () => {
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    const ref = { current: opener };
+    const { unmount } = render(<LanguageProvider><CatalogCleanupDialog issues={issues} onClose={vi.fn()} onDelete={vi.fn()} returnFocus={ref} /></LanguageProvider>);
+    expect(opener).not.toHaveFocus();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+});

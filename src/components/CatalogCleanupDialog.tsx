@@ -2,7 +2,7 @@ import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { useState } from 'react';
+import { useState, type RefObject } from 'react';
 import type { CatalogIssues } from '../types';
 import { useFormatCount, useT } from '../i18n/LanguageContext';
 import { DiskReportUnclear } from './DiskReportUnclear';
@@ -16,6 +16,8 @@ interface Props {
   onDelete: (fileIds: string[]) => void;
   /** Why the last removal failed; shown inside the dialog because it stays open for what is left. */
   error?: AppError | null;
+  /** What gets the focus back on close (the button that started the scan; it is disabled while the scan runs). */
+  returnFocus?: RefObject<HTMLElement | null>;
 }
 
 const parentOf = (path: string) => {
@@ -64,7 +66,7 @@ function initialSelection(issues: CatalogIssues): Set<string> {
   return checked;
 }
 
-export function CatalogCleanupDialog({ issues, onClose, onDelete, error }: Props) {
+export function CatalogCleanupDialog({ issues, onClose, onDelete, error, returnFocus }: Props) {
   const { lockProps } = useImportLock();
   const t = useT();
   const count = useFormatCount();
@@ -82,16 +84,16 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete, error }: Props
 
   const hasIssues = issues.orphaned.length > 0 || issues.duplicateGroups.length > 0;
 
-  const dialogRef = useModalDialog({ open: true, onClose, initialFocus: '[data-initial-focus]' });
+  const dialogRef = useModalDialog({ open: true, onClose, initialFocus: '[data-initial-focus]', returnFocus });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('cleanupDialogTitle')} tabIndex={-1} className="w-[480px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)]">
         <div className="flex-none px-4 py-3 border-b border-[var(--line)] flex items-center justify-between">
           <span className="text-body font-semibold">{t('cleanupDialogTitle')}</span>
-          <span onClick={onClose} className="cursor-pointer text-[var(--ink-3)] hover:text-[var(--accent)]">
+          <button type="button" onClick={onClose} aria-label={t('diskSyncClose')} className="cursor-pointer text-[var(--ink-3)] hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
             <Icon name="close" size={14} />
-          </span>
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
