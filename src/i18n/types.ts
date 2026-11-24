@@ -2431,6 +2431,7 @@ export interface Translations {
   errConsumeOnlyResin: string;
   errInvalidSlot: string;
   errWebLimitReached: string;
+  errWebImageQuotaReached: string;
   errEntryNotFound: string;
   errTextEmpty: string;
   errTextTooLong: string;

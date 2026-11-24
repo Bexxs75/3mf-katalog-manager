@@ -2389,6 +2389,7 @@ export const de: Translations = {
   errConsumeOnlyResin: "Verbrauch abbuchen gibt es nur für Resin",
   errInvalidSlot: "Ungültiger Slot",
   errWebLimitReached: "Die Obergrenze von {0} Einträgen ist erreicht",
+  errWebImageQuotaReached: "Der Speicherplatz für Spulenbilder ist ausgeschöpft (insgesamt höchstens {0} MB). Bitte erst ein Bild entfernen.",
   errEntryNotFound: "Eintrag nicht gefunden",
   errTextEmpty: "Der Text darf nicht leer sein",
   errTextTooLong: "Der Text darf höchstens {0} Zeichen haben",

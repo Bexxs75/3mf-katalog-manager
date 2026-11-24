@@ -765,3 +765,98 @@ fn merge_tags_is_atomic_and_deduplicates_including_trash() {
     assert!(tag_id(&c, "source").is_err());
     assert_eq!(tag_model_count(&c, tag_id(&c, "target").unwrap()).unwrap(), 2);
 }
+
+fn limit_reached<T: std::fmt::Debug>(result: WriteResult<T>, max: i64) {
+    match result {
+        Err(WriteError::Coded { code: ErrorCode::WebLimitReached, params, .. }) => assert_eq!(params, vec![max.to_string()]),
+        other => panic!("expected WebLimitReached({max}), got {other:?}"),
+    }
+}
+fn count_rows(c: &Connection, table: &str) -> i64 {
+    c.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap()
+}
+
+#[test]
+fn tag_quota_per_catalog_refuses_a_new_tag_but_not_a_known_one() {
+    let mut c = db::connect_in_memory().unwrap();
+    let a = db::test_insert_minimal_file(&c, "/a.3mf", None).unwrap();
+    let b = db::test_insert_minimal_file(&c, "/b.3mf", None).unwrap();
+    add_tag(&mut c, a, "known").unwrap();
+    c.execute_batch(&format!(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < {}) INSERT INTO tags(name,color_hue) SELECT 'bulk' || i, 0 FROM n",
+        MAX_TAGS - count_rows(&c, "tags")
+    ))
+    .unwrap();
+    assert_eq!(count_rows(&c, "tags"), MAX_TAGS);
+    // A new tag would be number MAX_TAGS + 1: refused, nothing written.
+    limit_reached(add_tag(&mut c, b, "brand-new"), MAX_TAGS);
+    assert_eq!(count_rows(&c, "tags"), MAX_TAGS);
+    // Gegenprobe: a tag that already exists is still attachable (it creates no new tag) and
+    // adding it again to the same file stays a harmless no-op.
+    add_tag(&mut c, b, "known").unwrap();
+    add_tag(&mut c, b, "known").unwrap();
+    assert_eq!(count_rows(&c, "tags"), MAX_TAGS);
+    // Gegenprobe: freeing one place lets a new tag in.
+    c.execute("DELETE FROM tags WHERE name='bulk1'", []).unwrap();
+    add_tag(&mut c, b, "brand-new").unwrap();
+}
+
+#[test]
+fn tag_quota_per_file_refuses_the_next_tag_but_not_a_repeat() {
+    let mut c = db::connect_in_memory().unwrap();
+    let a = db::test_insert_minimal_file(&c, "/a.3mf", None).unwrap();
+    let b = db::test_insert_minimal_file(&c, "/b.3mf", None).unwrap();
+    for n in 0..MAX_TAGS_PER_FILE {
+        add_tag(&mut c, a, &format!("t{n}")).unwrap();
+    }
+    limit_reached(add_tag(&mut c, a, "one-too-many"), MAX_TAGS_PER_FILE);
+    assert_eq!(count_rows(&c, "file_tags"), MAX_TAGS_PER_FILE);
+    // Gegenprobe: a tag the file already has is not refused, and another file is not affected.
+    add_tag(&mut c, a, "t0").unwrap();
+    add_tag(&mut c, b, "one-too-many").unwrap();
+    remove_tag(&mut c, a, "t1").unwrap();
+    add_tag(&mut c, a, "now-fits").unwrap();
+}
+
+#[test]
+fn collection_quota_refuses_the_next_collection_until_one_is_deleted() {
+    let mut c = db::connect_in_memory().unwrap();
+    c.execute_batch(&format!(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < {MAX_COLLECTIONS}) INSERT INTO collections(name, created_at) SELECT 'c' || i, '2026-01-01T00:00:00Z' FROM n"
+    ))
+    .unwrap();
+    limit_reached(create_collection(&mut c, "too many"), MAX_COLLECTIONS);
+    assert_eq!(count_rows(&c, "collections"), MAX_COLLECTIONS);
+    // Gegenprobe: renaming is not creating, and deleting one frees exactly one place.
+    rename_collection(&mut c, 1, "renamed").unwrap();
+    delete_collection(&mut c, 2).unwrap();
+    create_collection(&mut c, "fits again").unwrap();
+    limit_reached(create_collection(&mut c, "full again"), MAX_COLLECTIONS);
+}
+
+#[test]
+fn collection_file_quota_counts_only_models_that_are_not_members_yet() {
+    let mut c = db::connect_in_memory().unwrap();
+    let cid: i64 = create_collection(&mut c, "big").unwrap().value.id.parse().unwrap();
+    let mut files = Vec::new();
+    for n in 0..=MAX_COLLECTION_FILES {
+        files.push(db::test_insert_minimal_file(&c, &format!("/f{n}.3mf"), None).unwrap());
+    }
+    let (full, extra) = files.split_at(MAX_COLLECTION_FILES as usize);
+    c.execute_batch(&format!(
+        "INSERT INTO collection_files(collection_id,file_id,position) SELECT {cid}, id, id FROM files WHERE id <= {}",
+        full[full.len() - 1]
+    ))
+    .unwrap();
+    assert_eq!(count_rows(&c, "collection_files"), MAX_COLLECTION_FILES);
+    limit_reached(add_files_to_collection(&mut c, cid, &[extra[0]]), MAX_COLLECTION_FILES);
+    assert_eq!(count_rows(&c, "collection_files"), MAX_COLLECTION_FILES);
+    // Gegenprobe: a model that is already in the collection is no new member.
+    add_files_to_collection(&mut c, cid, &[full[0], full[0]]).unwrap();
+    assert_eq!(count_rows(&c, "collection_files"), MAX_COLLECTION_FILES);
+    // Gegenprobe: a batch counts its new models once and a freed place is usable.
+    remove_file_from_collection(&mut c, cid, full[0]).unwrap();
+    limit_reached(add_files_to_collection(&mut c, cid, &[extra[0], full[0]]), MAX_COLLECTION_FILES);
+    add_files_to_collection(&mut c, cid, &[extra[0], extra[0]]).unwrap();
+    assert_eq!(count_rows(&c, "collection_files"), MAX_COLLECTION_FILES);
+}

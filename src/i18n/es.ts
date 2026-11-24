@@ -2389,6 +2389,7 @@ export const es: Translations = {
   errConsumeOnlyResin: "Descontar el consumo solo existe para resina",
   errInvalidSlot: "Ranura no válida",
   errWebLimitReached: "Se ha alcanzado el límite de {0} entradas",
+  errWebImageQuotaReached: "Se ha agotado el espacio para imágenes de bobinas (como máximo {0} MB en total). Elimine primero una imagen.",
   errEntryNotFound: "Entrada no encontrada",
   errTextEmpty: "El texto no puede estar vacío",
   errTextTooLong: "El texto puede tener como máximo {0} caracteres",

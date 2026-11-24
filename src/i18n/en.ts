@@ -2389,6 +2389,7 @@ export const en: Translations = {
   errConsumeOnlyResin: "Deducting consumption is only available for resin",
   errInvalidSlot: "Invalid slot",
   errWebLimitReached: "The limit of {0} entries has been reached",
+  errWebImageQuotaReached: "The space for spool images is used up (at most {0} MB in total). Please remove an image first.",
   errEntryNotFound: "Entry not found",
   errTextEmpty: "The text must not be empty",
   errTextTooLong: "The text may be at most {0} characters long",

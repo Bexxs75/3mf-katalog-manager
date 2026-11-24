@@ -2389,6 +2389,7 @@ export const fr: Translations = {
   errConsumeOnlyResin: "Déduire la consommation n’existe que pour la résine",
   errInvalidSlot: "Emplacement non valide",
   errWebLimitReached: "La limite de {0} entrées est atteinte",
+  errWebImageQuotaReached: "L’espace pour les images de bobines est épuisé ({0} Mo au maximum au total). Supprimez d’abord une image.",
   errEntryNotFound: "Entrée introuvable",
   errTextEmpty: "Le texte ne peut pas être vide",
   errTextTooLong: "Le texte ne peut pas dépasser {0} caractères",
