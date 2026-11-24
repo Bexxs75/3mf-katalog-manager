@@ -118,7 +118,7 @@ function ReportDialog(p: DialogProps) {
     <div ref={ref} role="dialog" aria-modal="true" aria-label={title} data-step={step} tabIndex={-1} className="w-[560px] max-w-full max-h-[85vh] flex flex-col rounded-lg bg-[var(--panel)] border border-[var(--line)] shadow-[var(--shadow)]">
       <h2 ref={titleRef} tabIndex={-1} className="text-title font-semibold px-4 py-3 border-b border-[var(--line)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{title}</h2>
       <div className="overflow-auto p-4 space-y-4 text-body" aria-busy={step === 'scanning' || step === 'previewing'}>
-        {!p.canApply && <p className="text-small text-[var(--ink-2)]">{t('diskReportReadOnly')} {t('diskApplyReadOnlyHint')}</p>}
+        {!p.canApply && <div className="space-y-1 text-small text-[var(--ink-2)]"><p>{t('diskReportReadOnly')}</p><p>{t('diskApplyReadOnlyHint')}</p></div>}
         {(step === 'scanning' || step === 'previewing') && <p role="status">{t('diskReportRunning')}</p>}
         {step === 'error' && failureKind === 'scan' && p.scanError && <div role="alert" className="text-[var(--crit)] whitespace-pre-wrap break-words">{t('diskReportFailed')} <ErrorText error={p.scanError} /></div>}
         {step === 'error' && p.failure && failureKind !== 'scan' && <FailureBody failure={p.failure} report={report} />}
