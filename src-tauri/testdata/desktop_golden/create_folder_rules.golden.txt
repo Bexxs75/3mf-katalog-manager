@@ -1,0 +1,217 @@
+== steps ==
+[
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameEmpty"
+      }
+    },
+    "step": "name rule: empty"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameEmpty"
+      }
+    },
+    "step": "name rule: blank"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameForbiddenChar",
+        "params": [
+          "/"
+        ]
+      }
+    },
+    "step": "name rule: slash"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameForbiddenChar",
+        "params": [
+          ":"
+        ]
+      }
+    },
+    "step": "name rule: colon"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameNotAllowed"
+      }
+    },
+    "step": "name rule: dot"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameNotAllowed"
+      }
+    },
+    "step": "name rule: dotdot"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameEndsWithDotOrSpace"
+      }
+    },
+    "step": "name rule: trailing dot"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameEndsWithDotOrSpace"
+      }
+    },
+    "step": "name rule: trailing space"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameWindowsReserved"
+      }
+    },
+    "step": "name rule: windows reserved CON"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameWindowsReserved"
+      }
+    },
+    "step": "name rule: windows reserved with extension"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameForbiddenChar",
+        "params": [
+          "U+0007"
+        ]
+      }
+    },
+    "step": "name rule: control char"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameTooLong"
+      }
+    },
+    "step": "name rule: 256 bytes"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "folder not found"
+      }
+    },
+    "step": "unknown parent id"
+  },
+  {
+    "result": {
+      "ok": "<ROOT>/base/n"
+    },
+    "step": "target below parent"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderExists",
+        "params": [
+          "<ROOT>/base/taken"
+        ]
+      }
+    },
+    "step": "target is an existing file"
+  },
+  {
+    "result": {
+      "ok": {
+        "count": 0,
+        "id": "2",
+        "missing": false,
+        "moveTarget": true,
+        "name": "Dup",
+        "parentId": "1",
+        "path": "<ROOT>/base/Dup"
+      }
+    },
+    "step": "create Dup"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderExists",
+        "params": [
+          "<ROOT>/base/Dup"
+        ]
+      }
+    },
+    "step": "create Dup again"
+  },
+  {
+    "result": {
+      "ok": {
+        "count": 0,
+        "id": "3",
+        "missing": false,
+        "moveTarget": true,
+        "name": "deep",
+        "parentId": "2",
+        "path": "<ROOT>/base/Dup/deep"
+      }
+    },
+    "step": "nested, parent derived from the closest catalog folder"
+  }
+]
+
+== tables ==
+[folders] 3 row(s)
+  id=1 | name=base | parent_id=NULL | path=<ROOT>/base
+  id=2 | name=Dup | parent_id=1 | path=<ROOT>/base/Dup
+  id=3 | name=deep | parent_id=2 | path=<ROOT>/base/Dup/deep
+[files] 0 row(s)
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+base/
+base/Dup/
+base/Dup/deep/
+base/taken (1 bytes)

@@ -60,6 +60,47 @@ fn golden_create_folder() {
 }
 
 #[test]
+fn golden_create_folder_rules() {
+    run_golden("create_folder_rules", |w| {
+        let base = w.dir("base");
+        let root = db::insert_folder_with_parent(&w.conn, "base", None, &base.to_string_lossy()).unwrap();
+        for (label, name) in [
+            ("empty", ""),
+            ("blank", "   "),
+            ("slash", "a/b"),
+            ("colon", "D:Neu"),
+            ("dot", "."),
+            ("dotdot", ".."),
+            ("trailing dot", "a."),
+            ("trailing space", "a "),
+            ("windows reserved CON", "CON"),
+            ("windows reserved with extension", "lpt9.log"),
+            ("control char", "a\u{7}b"),
+        ] {
+            let r = validate_folder_name(name);
+            w.step(&format!("name rule: {label}"), r);
+        }
+        let long = "a".repeat(256);
+        let r = validate_folder_name(&long);
+        w.step("name rule: 256 bytes", r);
+        let r = new_dir_below_parent(&w.conn, root + 99, "n").map(|p| p.to_string_lossy().into_owned());
+        w.step("unknown parent id", r);
+        let r = new_dir_below_parent(&w.conn, root, "n").map(|p| p.to_string_lossy().into_owned());
+        w.step("target below parent", r);
+        w.file("base/taken", "x");
+        let r = create_folder_with_conn(&w.conn, Some(root), "taken".into(), &base.join("taken"), &[]);
+        w.step("target is an existing file", r);
+        let r = create_folder_with_conn(&w.conn, Some(root), "Dup".into(), &base.join("Dup"), &[]);
+        w.step("create Dup", r);
+        let r = create_folder_with_conn(&w.conn, Some(root), "Dup".into(), &base.join("Dup"), &[]);
+        w.step("create Dup again", r);
+        let sub = base.join("Dup");
+        let r = create_folder_with_conn(&w.conn, None, "deep".into(), &sub.join("deep"), &[]);
+        w.step("nested, parent derived from the closest catalog folder", r);
+    });
+}
+
+#[test]
 fn golden_remove_folder_from_catalog() {
     run_golden("remove_folder_catalog", |w| {
         let top = db::insert_folder_with_parent(&w.conn, "top", None, &w.dir("top").to_string_lossy()).unwrap();
