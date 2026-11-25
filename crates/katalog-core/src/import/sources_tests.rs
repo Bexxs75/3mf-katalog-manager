@@ -180,6 +180,22 @@ fn protected_system_folders_are_refused() {
     assert!(f.add(&f.dir("fine")).is_ok(), "counter-check");
 }
 
+#[cfg(unix)]
+#[test]
+fn a_protected_folder_that_does_not_exist_yet_is_matched_through_a_linked_parent() {
+    let mut f = Fixture::new();
+    let real = f.dir("real");
+    let alias = f.base.join("alias");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    // Protected by the linked spelling and not created yet: only its ancestor resolves.
+    f.sensitive_dirs = vec![alias.join("secret")];
+    assert!(
+        f.add(&real).is_err(),
+        "a folder that will contain the protected one"
+    );
+    assert!(f.add(&f.dir("fine")).is_ok(), "counter-check");
+}
+
 #[test]
 fn source_folders_may_not_overlap() {
     let f = Fixture::new();

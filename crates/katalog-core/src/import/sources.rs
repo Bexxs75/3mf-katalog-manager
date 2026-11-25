@@ -65,12 +65,38 @@ pub struct SourceState<'a> {
 /// Selected paths and the roots that the host must enforce while importing.
 pub type ImportSelection = (Vec<PathBuf>, Vec<PathBuf>);
 
+/// Resolves a path through the adapter; one that does not exist yet is resolved through its
+/// nearest existing ancestor, the way a checked path is (see `placement`).
+fn resolve_through_ancestor(fs: &dyn SourceFs, path: &Path) -> Option<PathBuf> {
+    if let Ok(resolved) = fs.canonicalize(path) {
+        return Some(resolved);
+    }
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return None;
+    }
+    let mut trailing = Vec::new();
+    let mut cursor = path;
+    while let (Some(name), Some(parent)) = (cursor.file_name(), cursor.parent()) {
+        trailing.push(name.to_os_string());
+        if let Ok(mut resolved) = fs.canonicalize(parent) {
+            resolved.extend(trailing.iter().rev());
+            return Some(resolved);
+        }
+        cursor = parent;
+    }
+    None
+}
+
+/// Adds the resolved spelling of each protected folder, also for one that does not exist yet.
 fn expand_sensitive_dirs(fs: &dyn SourceFs, dirs: &[PathBuf]) -> Vec<PathBuf> {
     let mut expanded = Vec::new();
     for dir in dirs {
-        if let Ok(canonical) = fs.canonicalize(dir) {
-            if canonical != *dir {
-                expanded.push(canonical);
+        if let Some(resolved) = resolve_through_ancestor(fs, dir) {
+            if resolved != *dir {
+                expanded.push(resolved);
             }
         }
         expanded.push(dir.clone());
