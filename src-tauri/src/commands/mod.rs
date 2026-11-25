@@ -397,3 +397,7 @@ mod test_log;
 mod rename_log_tests;
 #[cfg(test)]
 mod golden_move_tests;
+#[cfg(test)]
+mod golden_folder_tests;
+#[cfg(test)]
+mod folder_log_tests;

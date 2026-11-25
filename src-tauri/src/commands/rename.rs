@@ -7,8 +7,12 @@ use std::fs::Metadata;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::fs_boundary::{move_file_with, Fs, RealFs};
-use katalog_core::file_rename::{self as core, FileRenameFs};
+use super::fs_boundary::{move_file_with, Fs};
+#[cfg(test)]
+use super::fs_boundary::RealFs;
+#[cfg(test)]
+use katalog_core::file_rename as core;
+use katalog_core::file_rename::FileRenameFs;
 #[cfg(test)]
 use katalog_core::file_rename::is_case_only;
 
@@ -37,10 +41,12 @@ impl FileRenameFs for FileRenameFsAdapter<'_> {
     }
 }
 
+#[cfg(test)]
 pub(super) fn target_collides(old: &Path, new: &Path) -> io::Result<bool> {
     core::target_collides(&FileRenameFsAdapter(&RealFs), old, new)
 }
 
+#[cfg(test)]
 pub(super) fn rename_on_disk(old: &Path, new: &Path) -> io::Result<()> {
     core::rename_on_disk(&FileRenameFsAdapter(&RealFs), old, new)
 }
