@@ -22,7 +22,7 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
 /// component: "../../etc/x" or "/etc/x" would otherwise create outside the
 /// catalog, just by typing text (CWE-22).
 pub(super) fn validate_folder_name(name: &str) -> CmdResult<()> {
-    validate_dir_name(name, true)
+    katalog_core::folder_create::validate_folder_name(name).map_err(Into::into)
 }
 /// Creates a real folder on disk (below an existing folder, or - with
 /// `parent_id: None` - below a base directory the user picked in a dialog) and a
@@ -60,9 +60,22 @@ pub async fn create_folder(
 
 /// Target path of a new folder below the catalog folder `pid`.
 pub(super) fn new_dir_below_parent(conn: &Connection, pid: i64, name: &str) -> CmdResult<PathBuf> {
-    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
-    let parent_folder = folders.iter().find(|f| f.id == pid).ok_or_else(|| "folder not found".to_string())?;
-    Ok(std::path::PathBuf::from(&parent_folder.path).join(name))
+    katalog_core::folder_create::new_dir_below_parent(conn, pid, name).map_err(Into::into)
+}
+
+/// The disk access of "create folder" (core trait) on top of the desktop's `Fs` boundary.
+struct FolderFs<'a>(&'a dyn Fs);
+
+impl katalog_core::folder_create::CreateFolderFs for FolderFs<'_> {
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+        self.0.canonicalize(path)
+    }
+    fn exists(&self, path: &Path) -> bool {
+        self.0.exists(path)
+    }
+    fn create_dir(&self, path: &Path) -> std::io::Result<()> {
+        self.0.create_dir(path)
+    }
 }
 
 /// Creation after path selection, without UI state so disk/DB outcomes are testable.
@@ -73,46 +86,24 @@ pub(super) fn create_folder_with_conn(
     new_dir: &Path,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<FolderDto> {
-    reject_if_sensitive_path(new_dir, sensitive_dirs)?;
-    let parent = match parent {
-        Some(id) => Some(id),
-        None => {
-            let mut folders = db::list_folders(conn).map_err(|e| e.to_string())?;
-            // Canonical spelling respects the actual filesystem's case rules,
-            // including case-insensitive macOS volumes and symlinked selections.
-            for folder in &mut folders {
-                if let Ok(path) = Path::new(&folder.path).canonicalize() {
-                    folder.path = path.to_string_lossy().into_owned();
-                }
-            }
-            let base = new_dir.parent().ok_or_else(|| "folder has no parent path".to_string())?;
-            let base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
-            find_catalog_parent(&base, &folders)
-        }
-    };
-    if new_dir.exists() {
-        return Err(map_create_folder_error(std::io::ErrorKind::AlreadyExists.into(), new_dir));
-    }
-    std::fs::create_dir(new_dir).map_err(|e| map_create_folder_error(e, new_dir))?;
-
-    let new_id = db::insert_folder_with_parent(conn, &name, parent, &new_dir.to_string_lossy())
-        .map_err(|e| e.to_string())?;
-    Ok(FolderDto {
-        id: new_id.to_string(),
-        name,
-        path: new_dir.to_string_lossy().to_string(),
-        parent_id: parent.map(|p| p.to_string()),
-        count: 0,
-        missing: false,
-        move_target: true,
-    })
+    create_folder_with_conn_fs(conn, &RealFs, parent, name, new_dir, sensitive_dirs)
 }
+
+/// [`create_folder_with_conn`] with the file system passed in (tests fail a step on purpose).
+fn create_folder_with_conn_fs(
+    conn: &Connection,
+    fs: &dyn Fs,
+    parent: Option<i64>,
+    name: String,
+    new_dir: &Path,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<FolderDto> {
+    katalog_core::folder_create::create_folder(conn, &FolderFs(fs), parent, name, new_dir, sensitive_dirs)
+        .map_err(Into::into)
+}
+#[cfg(test)]
 fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
-    if error.kind() == std::io::ErrorKind::AlreadyExists {
-        CmdError::coded_with(ErrorCode::FolderExists, [path.display()])
-    } else {
-        error.to_string().into()
-    }
+    katalog_core::folder_create::map_create_folder_error(error, path).into()
 }
 
 pub(super) fn comparison_path(path: &Path) -> PathBuf {
@@ -134,15 +125,7 @@ pub(super) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> 
 
 // Pure component comparison; callers resolve existing filesystem paths first.
 pub(super) fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
-    let path = comparison_path(path);
-    folders.iter()
-        .filter_map(|folder| {
-            let parent = comparison_path(Path::new(&folder.path));
-            (!parent.as_os_str().is_empty() && path.starts_with(&parent))
-                .then_some((parent.components().count(), folder.id))
-        })
-        .max_by_key(|(depth, _)| *depth)
-        .map(|(_, id)| id)
+    katalog_core::folder_create::find_catalog_parent(path, folders)
 }
 
 /// Core logic of `rename_folder`, without `State`, so it's testable.
@@ -814,7 +797,10 @@ mod tests {
     }
 
     fn rows(conn: &Connection) -> Vec<(i64, String, Option<i64>, String)> {
-        db::list_folders(conn).unwrap().into_iter().map(|f| (f.id, f.name, f.parent_id, f.path)).collect()
+        let mut rows: Vec<_> =
+            db::list_folders(conn).unwrap().into_iter().map(|f| (f.id, f.name, f.parent_id, f.path)).collect();
+        rows.sort_by_key(|r| r.0);
+        rows
     }
 
     #[test]
@@ -926,6 +912,44 @@ mod tests {
         let err = create_folder_with_conn(&conn, None, "f".into(), &dir, &[]).unwrap_err();
         assert!(err.is(ErrorCode::FolderExists, &[&dir.display().to_string()]), "{err:?}");
         assert!(dir.is_file());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_fault_mkdir_error_maps_and_leaves_no_row() {
+        use super::super::fs_boundary::{FaultFs, Op};
+        use std::io::ErrorKind::{AlreadyExists, PermissionDenied};
+        for (kind, coded) in [(PermissionDenied, false), (AlreadyExists, true)] {
+            let conn = db::connect_in_memory().unwrap();
+            let base = unique_test_dir("create_fault_mkdir");
+            let dir = base.join("child");
+            let fs = FaultFs::new().fail(Op::CreateDir, 1, kind);
+            let err = create_folder_with_conn_fs(&conn, &fs, None, "child".into(), &dir, &[]).unwrap_err();
+            if coded {
+                assert!(err.is(ErrorCode::FolderExists, &[&dir.display().to_string()]), "{err:?}");
+            } else {
+                assert!(!err.expected, "{err:?}");
+                assert!(err.message.contains("CreateDir"), "{err:?}");
+            }
+            assert!(!dir.exists());
+            assert!(rows(&conn).is_empty());
+            std::fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn create_folder_fault_case_insensitive_sibling_is_folder_exists_before_mkdir() {
+        use super::super::fs_boundary::{FaultFs, Op};
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_fault_case");
+        std::fs::create_dir(base.join("Neu")).unwrap();
+        let dir = base.join("neu");
+        let fs = FaultFs::new().case_insensitive();
+        let err = create_folder_with_conn_fs(&conn, &fs, None, "neu".into(), &dir, &[]);
+        let ci_hit = err.as_ref().err().is_some_and(|e| e.is(ErrorCode::FolderExists, &[&dir.display().to_string()]));
+        // On a case-sensitive disk the lookalike is a different folder; both outcomes are consistent.
+        assert!(ci_hit || dir.is_dir(), "{err:?}");
+        assert_eq!(fs.count(Op::CreateDir) == 0, ci_hit);
         std::fs::remove_dir_all(base).unwrap();
     }
 
