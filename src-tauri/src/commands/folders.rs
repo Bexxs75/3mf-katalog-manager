@@ -63,7 +63,7 @@ pub async fn create_folder(
 }
 
 /// Creation after path selection, without UI state so disk/DB outcomes are testable.
-fn create_folder_with_conn(
+pub(super) fn create_folder_with_conn(
     conn: &Connection,
     parent: Option<i64>,
     name: String,

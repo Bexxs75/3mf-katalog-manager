@@ -1,0 +1,44 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": "child"
+    },
+    "step": "create child"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderExists",
+        "params": [
+          "<ROOT>/base/child"
+        ]
+      }
+    },
+    "step": "create child again (exists)"
+  },
+  {
+    "result": {
+      "ok": true
+    },
+    "step": "create without parent id (parent derived)"
+  }
+]
+
+== tables ==
+[folders] 3 row(s)
+  id=1 | name=base | parent_id=NULL | path=<ROOT>/base
+  id=2 | name=child | parent_id=1 | path=<ROOT>/base/child
+  id=3 | name=viaparent | parent_id=1 | path=<ROOT>/base/viaparent
+[files] 0 row(s)
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+
+== tree ==
+base/
+base/child/
+base/viaparent/

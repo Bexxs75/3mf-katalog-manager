@@ -1,0 +1,36 @@
+== steps ==
+[
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "invalidCatalogId"
+      }
+    },
+    "step": "invalid id"
+  },
+  {
+    "result": {
+      "ok": {
+        "folderCount": 2,
+        "modelCount": 2
+      }
+    },
+    "step": "remove top (files stay on disk)"
+  }
+]
+
+== tables ==
+[folders] 0 row(s)
+[files] 0 row(s)
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+
+== tree ==
+top/
+top/a.3mf (20 bytes)
+top/sub/
+top/sub/b.3mf (24 bytes)

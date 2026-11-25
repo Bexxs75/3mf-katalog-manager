@@ -357,3 +357,9 @@ mod tests {
 
 mod ui_settings;
 pub use ui_settings::*;
+
+// Golden-Harness (nur Tests): Szenarien gegen den Desktop-Code, Snapshot unter testdata/desktop_golden/.
+#[cfg(test)]
+mod golden_harness;
+#[cfg(test)]
+mod golden_tests;
