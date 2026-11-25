@@ -1,0 +1,524 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 2,
+          "Metadata": 2,
+          "ReadDir": 2
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/orig.obj",
+              "relativePath": "orig.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "first scan"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 8,
+          "Metadata": 7,
+          "ReadDir": 2,
+          "SymlinkMetadata": 7
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [
+            "1"
+          ],
+          "folderIds": [],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "take over everything"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 3,
+          "Metadata": 7,
+          "ReadDir": 2,
+          "SymlinkMetadata": 4
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [
+            {
+              "duplicateOfName": "orig.obj",
+              "duplicateOfPath": "<ROOT>/models/orig.obj",
+              "id": null,
+              "path": "<ROOT>/models/copy.obj",
+              "relativePath": "copy.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "duplicateOfName": "orig.obj",
+              "duplicateOfPath": "<ROOT>/models/orig.obj",
+              "id": null,
+              "path": "<ROOT>/models/copy2.obj",
+              "relativePath": "copy2.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "copies offered"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 6,
+          "Metadata": 9,
+          "ReadDir": 2,
+          "SymlinkMetadata": 5
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [],
+          "folderIds": [],
+          "knownCopyCount": 2,
+          "notedCopyCount": 2,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "decline both copies"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|orig.obj|<ROOT>/models/orig.obj|1|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models"
+        ],
+        "knownCopies": [
+          "<ROOT>/models/copy.obj|32",
+          "<ROOT>/models/copy2.obj|32"
+        ]
+      }
+    },
+    "step": "after declining: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 3,
+          "Metadata": 5,
+          "ReadDir": 2,
+          "SymlinkMetadata": 4
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 2,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "remembered copies are not offered"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 6,
+          "Metadata": 7,
+          "ReadDir": 2,
+          "SymlinkMetadata": 5
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [],
+          "folderIds": [],
+          "knownCopyCount": 2,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "decline a remembered copy and an unknown path"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 3,
+          "Metadata": 7,
+          "ReadDir": 2,
+          "SymlinkMetadata": 4
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 1,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/copy.obj",
+              "relativePath": "copy.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "changed copy is a new file again"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|orig.obj|<ROOT>/models/orig.obj|1|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models"
+        ],
+        "knownCopies": [
+          "<ROOT>/models/copy2.obj|32"
+        ]
+      }
+    },
+    "step": "after the change: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 3,
+          "Metadata": 7,
+          "ReadDir": 2,
+          "SymlinkMetadata": 4
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/copy.obj",
+              "relativePath": "copy.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFolders": [],
+          "renamedFiles": [
+            {
+              "id": "1",
+              "newPath": "<ROOT>/models/copy2.obj",
+              "newRelativePath": "copy2.obj",
+              "oldPath": "<ROOT>/models/orig.obj",
+              "oldRelativePath": "orig.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "original gone: the remembered copy is offered as its rename"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 9,
+          "Metadata": 12,
+          "ReadDir": 2,
+          "SymlinkMetadata": 12
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [
+            "2"
+          ],
+          "folderIds": [],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "a chosen path is never remembered"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 3,
+          "Metadata": 6,
+          "ReadDir": 2,
+          "SymlinkMetadata": 8
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [
+            {
+              "id": "1",
+              "newPath": "<ROOT>/models/copy2.obj",
+              "newRelativePath": "copy2.obj",
+              "oldPath": "<ROOT>/models/orig.obj",
+              "oldRelativePath": "orig.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "rename still offered"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 10,
+          "Metadata": 16,
+          "ReadDir": 2,
+          "SymlinkMetadata": 18
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [],
+          "folderIds": [],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 1,
+          "renamedIds": [
+            "1"
+          ]
+        }
+      }
+    },
+    "step": "take over the rename"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|copy2.obj|<ROOT>/models/copy2.obj|1|0|-",
+          "2|copy.obj|<ROOT>/models/copy.obj|1|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models"
+        ],
+        "knownCopies": []
+      }
+    },
+    "step": "after the rename: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 3,
+          "Metadata": 6,
+          "ReadDir": 2,
+          "SymlinkMetadata": 8
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [
+            {
+              "duplicateOfName": "copy2.obj",
+              "duplicateOfPath": "<ROOT>/models/copy2.obj",
+              "id": null,
+              "path": "<ROOT>/models/copy3.obj",
+              "relativePath": "copy3.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "a new copy of the renamed model"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 6,
+          "Metadata": 8,
+          "ReadDir": 2,
+          "SymlinkMetadata": 10
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [],
+          "folderIds": [],
+          "knownCopyCount": 1,
+          "notedCopyCount": 1,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "decline it"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 3,
+          "Metadata": 4,
+          "ReadDir": 2,
+          "SymlinkMetadata": 8
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "a remembered copy that is gone is forgotten"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|copy2.obj|<ROOT>/models/copy2.obj|1|0|-",
+          "2|copy.obj|<ROOT>/models/copy.obj|1|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models"
+        ],
+        "knownCopies": []
+      }
+    },
+    "step": "end: state"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=models | parent_id=NULL | path=<ROOT>/models
+[files] 2 row(s)
+  id=1 | name=copy2.obj | path=<ROOT>/models/copy2.obj | file_type=obj | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=1 | dimension_y_mm=0 | dimension_z_mm=1 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=697b00ab13410c52a542d2e9c63711fcc04e9cbf6c0d3439a9b43cc812e6e713 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=copy.obj | path=<ROOT>/models/copy.obj | file_type=obj | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=44 | dimension_x_mm=1 | dimension_y_mm=0 | dimension_z_mm=1 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=67dbfbacc26a2fdb7c353b38f5da6c9ec4a479d16837bc7896f59966905a94ca | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 2 row(s)
+  id=1 | name=orig | color_hue=0
+  id=2 | name=miniatur | color_hue=52
+[file_tags] 3 row(s)
+  file_id=1 | tag_id=1
+  file_id=1 | tag_id=2
+  file_id=2 | tag_id=2
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+models/
+models/copy.obj (44 bytes)
+models/copy2.obj (32 bytes)

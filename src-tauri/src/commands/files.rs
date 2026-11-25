@@ -512,7 +512,7 @@ pub fn set_source_url(
     let conn = lock_db(&state)?;
     katalog_core::write::set_source_url(&conn, file_id, url).map_err(Into::into)
 }
-pub(crate) use katalog_core::import::files::{is_ignored_import_path, is_model_extension};
+pub(crate) use katalog_core::import::files::is_model_extension;
 /// Stricter than [`is_model_extension`]: STEP can be cataloged, but most
 /// slicers can't import it. OBJ is a print-ready mesh and therefore allowed.
 pub(crate) fn is_sliceable_extension(path: &Path) -> bool {

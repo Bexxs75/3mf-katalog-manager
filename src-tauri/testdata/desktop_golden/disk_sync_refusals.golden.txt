@@ -1,0 +1,916 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 2,
+          "Metadata": 2,
+          "ReadDir": 5,
+          "SymlinkMetadata": 4
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/Basis/b.obj",
+              "relativePath": "Basis/b.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Weg/unter/u.obj",
+              "relativePath": "Weg/unter/u.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Weg/w.obj",
+              "relativePath": "Weg/w.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/a.obj",
+              "relativePath": "a.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/c.obj",
+              "relativePath": "c.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/d.obj",
+              "relativePath": "d.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFolders": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/Basis",
+              "relativePath": "Basis",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Weg",
+              "relativePath": "Weg",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Weg/unter",
+              "relativePath": "Weg/unter",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "first scan"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 32,
+          "Metadata": 28,
+          "ReadDir": 5,
+          "SymlinkMetadata": 72
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6"
+          ],
+          "folderIds": [
+            "2",
+            "3",
+            "4"
+          ],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "take over everything"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 7,
+          "Metadata": 13,
+          "ReadDir": 5,
+          "SymlinkMetadata": 39
+        },
+        "logs": [],
+        "syncError": {
+          "code": "diskSyncStale",
+          "paths": []
+        }
+      }
+    },
+    "step": "new path the scan does not offer"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 7,
+          "Metadata": 13,
+          "ReadDir": 5,
+          "SymlinkMetadata": 39
+        },
+        "logs": [],
+        "syncError": {
+          "code": "diskSyncStale",
+          "paths": []
+        }
+      }
+    },
+    "step": "rename the scan does not offer"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 7,
+          "Metadata": 13,
+          "ReadDir": 5,
+          "SymlinkMetadata": 39
+        },
+        "logs": [],
+        "syncError": {
+          "code": "diskSyncStale",
+          "paths": []
+        }
+      }
+    },
+    "step": "remove a row that is not missing"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 7,
+          "Metadata": 15,
+          "ReadDir": 6,
+          "SymlinkMetadata": 40
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [
+            {
+              "id": "4",
+              "newPath": "<ROOT>/models/Prot/a.obj",
+              "newRelativePath": "Prot/a.obj",
+              "oldPath": "<ROOT>/models/a.obj",
+              "oldRelativePath": "a.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "rename into a protected folder"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 14,
+          "Metadata": 18,
+          "ReadDir": 6,
+          "SymlinkMetadata": 47
+        },
+        "logs": [
+          "ERROR cmd: Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/models/Prot) und wird abgelehnt"
+        ],
+        "value": {
+          "failedPaths": [
+            {
+              "path": "<ROOT>/models/Prot/a.obj",
+              "reason": "Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/models/Prot) und wird abgelehnt"
+            }
+          ],
+          "fileIds": [],
+          "folderIds": [],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "protected target fails that pairing"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 19,
+          "Metadata": 25,
+          "ReadDir": 6,
+          "SymlinkMetadata": 57
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [],
+          "folderIds": [
+            "5"
+          ],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 1,
+          "renamedIds": [
+            "4"
+          ]
+        }
+      }
+    },
+    "step": "same rename without protection"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 8,
+          "Metadata": 20,
+          "ReadDir": 7,
+          "SymlinkMetadata": 43
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/boom.obj",
+              "relativePath": "boom.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/neu/n.obj",
+              "relativePath": "neu/n.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFolders": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/neu",
+              "relativePath": "neu",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "renamedFiles": [
+            {
+              "id": "4",
+              "newPath": "<ROOT>/models/a2.obj",
+              "newRelativePath": "a2.obj",
+              "oldPath": "<ROOT>/models/Prot/a.obj",
+              "oldRelativePath": "Prot/a.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "new files and a rename"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 22,
+          "Metadata": 31,
+          "ReadDir": 7,
+          "SymlinkMetadata": 69
+        },
+        "logs": [],
+        "syncError": {
+          "code": "diskSyncFailed",
+          "paths": []
+        }
+      }
+    },
+    "step": "insert fails: nothing is kept"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|b.obj|<ROOT>/models/Basis/b.obj|2|0|-",
+          "2|u.obj|<ROOT>/models/Weg/unter/u.obj|4|0|-",
+          "3|w.obj|<ROOT>/models/Weg/w.obj|3|0|-",
+          "4|a.obj|<ROOT>/models/Prot/a.obj|5|0|-",
+          "5|c.obj|<ROOT>/models/c.obj|1|0|-",
+          "6|d.obj|<ROOT>/models/d.obj|1|0|-",
+          "7|loose.obj|<ROOT>/outside/loose.obj|-|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models",
+          "2|Basis|1|<ROOT>/models/Basis",
+          "3|Weg|1|<ROOT>/models/Weg",
+          "4|unter|3|<ROOT>/models/Weg/unter",
+          "5|Prot|1|<ROOT>/models/Prot"
+        ],
+        "knownCopies": []
+      }
+    },
+    "step": "after the failed insert: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 8,
+          "Metadata": 22,
+          "ReadDir": 7,
+          "SymlinkMetadata": 43
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/neu/n.obj",
+              "relativePath": "neu/n.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFolders": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/neu",
+              "relativePath": "neu",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "renamedFiles": [
+            {
+              "id": "4",
+              "newPath": "<ROOT>/models/a2.obj",
+              "newRelativePath": "a2.obj",
+              "oldPath": "<ROOT>/models/Prot/a.obj",
+              "oldRelativePath": "Prot/a.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "5",
+              "newPath": "<ROOT>/models/blockren.obj",
+              "newRelativePath": "blockren.obj",
+              "oldPath": "<ROOT>/models/c.obj",
+              "oldRelativePath": "c.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "6",
+              "newPath": "<ROOT>/models/d2.obj",
+              "newRelativePath": "d2.obj",
+              "oldPath": "<ROOT>/models/d.obj",
+              "oldRelativePath": "d.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "two renames, one row blocked"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 34,
+          "Metadata": 53,
+          "ReadDir": 7,
+          "SymlinkMetadata": 90
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [
+            {
+              "path": "<ROOT>/models/blockren.obj",
+              "reason": "blocked rename"
+            }
+          ],
+          "fileIds": [
+            "8"
+          ],
+          "folderIds": [
+            "6"
+          ],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 2,
+          "renamedIds": [
+            "4",
+            "6"
+          ]
+        }
+      }
+    },
+    "step": "a failed pairing leaves the others"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|b.obj|<ROOT>/models/Basis/b.obj|2|0|-",
+          "2|u.obj|<ROOT>/models/Weg/unter/u.obj|4|0|-",
+          "3|w.obj|<ROOT>/models/Weg/w.obj|3|0|-",
+          "4|a2.obj|<ROOT>/models/a2.obj|1|0|-",
+          "5|c.obj|<ROOT>/models/c.obj|1|0|-",
+          "6|d2.obj|<ROOT>/models/d2.obj|1|0|-",
+          "7|loose.obj|<ROOT>/outside/loose.obj|-|0|-",
+          "8|n.obj|<ROOT>/models/neu/n.obj|6|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models",
+          "2|Basis|1|<ROOT>/models/Basis",
+          "3|Weg|1|<ROOT>/models/Weg",
+          "4|unter|3|<ROOT>/models/Weg/unter",
+          "5|Prot|1|<ROOT>/models/Prot",
+          "6|neu|1|<ROOT>/models/neu"
+        ],
+        "knownCopies": []
+      }
+    },
+    "step": "after the blocked rename: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 8,
+          "Metadata": 18,
+          "ReadDir": 4,
+          "SymlinkMetadata": 39
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [
+            {
+              "id": "1",
+              "path": "<ROOT>/models/Basis/b.obj",
+              "relativePath": "Basis/b.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "2",
+              "path": "<ROOT>/models/Weg/unter/u.obj",
+              "relativePath": "Weg/unter/u.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "3",
+              "path": "<ROOT>/models/Weg/w.obj",
+              "relativePath": "Weg/w.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "7",
+              "path": "<ROOT>/outside/loose.obj",
+              "relativePath": "<ROOT>/outside/loose.obj",
+              "root": ""
+            }
+          ],
+          "missingFolders": [
+            {
+              "id": "2",
+              "modelCount": 1,
+              "path": "<ROOT>/models/Basis",
+              "relativePath": "Basis",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "3",
+              "modelCount": 2,
+              "path": "<ROOT>/models/Weg",
+              "relativePath": "Weg",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [
+            {
+              "id": "5",
+              "newPath": "<ROOT>/models/blockren.obj",
+              "newRelativePath": "blockren.obj",
+              "oldPath": "<ROOT>/models/c.obj",
+              "oldRelativePath": "c.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "missing files and folders"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 20,
+          "Metadata": 28,
+          "ReadDir": 4,
+          "SymlinkMetadata": 55
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [],
+          "folderIds": [],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 1,
+          "renamedIds": [
+            "5"
+          ]
+        }
+      }
+    },
+    "step": "missing files kept without remove_missing"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 8,
+          "Metadata": 16,
+          "ReadDir": 4,
+          "SymlinkMetadata": 39
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [
+            {
+              "id": "1",
+              "path": "<ROOT>/models/Basis/b.obj",
+              "relativePath": "Basis/b.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "2",
+              "path": "<ROOT>/models/Weg/unter/u.obj",
+              "relativePath": "Weg/unter/u.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "3",
+              "path": "<ROOT>/models/Weg/w.obj",
+              "relativePath": "Weg/w.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "7",
+              "path": "<ROOT>/outside/loose.obj",
+              "relativePath": "<ROOT>/outside/loose.obj",
+              "root": ""
+            }
+          ],
+          "missingFolders": [
+            {
+              "id": "2",
+              "modelCount": 1,
+              "path": "<ROOT>/models/Basis",
+              "relativePath": "Basis",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "3",
+              "modelCount": 2,
+              "path": "<ROOT>/models/Weg",
+              "relativePath": "Weg",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "missing entries still offered"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 25,
+          "Metadata": 42,
+          "ReadDir": 4,
+          "SymlinkMetadata": 56
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [],
+          "folderIds": [],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 4,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "remove the missing entries"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|b.obj|<ROOT>/models/Basis/b.obj|2|1|-",
+          "2|u.obj|<ROOT>/models/Weg/unter/u.obj|-|1|-",
+          "3|w.obj|<ROOT>/models/Weg/w.obj|-|1|-",
+          "4|a2.obj|<ROOT>/models/a2.obj|1|0|-",
+          "5|blockren.obj|<ROOT>/models/blockren.obj|1|0|-",
+          "6|d2.obj|<ROOT>/models/d2.obj|1|0|-",
+          "7|loose.obj|<ROOT>/outside/loose.obj|-|1|-",
+          "8|n.obj|<ROOT>/models/neu/n.obj|6|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models",
+          "2|Basis|1|<ROOT>/models/Basis",
+          "5|Prot|1|<ROOT>/models/Prot",
+          "6|neu|1|<ROOT>/models/neu"
+        ],
+        "knownCopies": []
+      }
+    },
+    "step": "after removing: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 8,
+          "Metadata": 9,
+          "ReadDir": 4,
+          "SymlinkMetadata": 34
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [
+            {
+              "id": "2",
+              "modelCount": 0,
+              "path": "<ROOT>/models/Basis",
+              "relativePath": "Basis",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "scan after removing"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 8,
+          "Metadata": 7,
+          "ReadDir": 4,
+          "SymlinkMetadata": 34
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": [
+            "<ROOT>/outside"
+          ]
+        }
+      }
+    },
+    "step": "loose file without its folder is unreachable"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 7,
+          "Metadata": 1,
+          "ReadDir": 1,
+          "SymlinkMetadata": 24
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": [
+            "<ROOT>/models"
+          ]
+        }
+      }
+    },
+    "step": "empty root with catalogued files is unreachable"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 7,
+          "Metadata": 1,
+          "ReadDir": 1,
+          "SymlinkMetadata": 24
+        },
+        "logs": [],
+        "syncError": {
+          "code": "diskSyncRootUnreachable",
+          "paths": [
+            "<ROOT>/models"
+          ]
+        }
+      }
+    },
+    "step": "apply on an unreachable root"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 7,
+          "SymlinkMetadata": 24
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": [
+            "<ROOT>/models"
+          ]
+        }
+      }
+    },
+    "step": "root gone"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|b.obj|<ROOT>/models/Basis/b.obj|2|1|-",
+          "2|u.obj|<ROOT>/models/Weg/unter/u.obj|-|1|-",
+          "3|w.obj|<ROOT>/models/Weg/w.obj|-|1|-",
+          "4|a2.obj|<ROOT>/models/a2.obj|1|0|-",
+          "5|blockren.obj|<ROOT>/models/blockren.obj|1|0|-",
+          "6|d2.obj|<ROOT>/models/d2.obj|1|0|-",
+          "7|loose.obj|<ROOT>/outside/loose.obj|-|1|-",
+          "8|n.obj|<ROOT>/models/neu/n.obj|6|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models",
+          "2|Basis|1|<ROOT>/models/Basis",
+          "5|Prot|1|<ROOT>/models/Prot",
+          "6|neu|1|<ROOT>/models/neu"
+        ],
+        "knownCopies": []
+      }
+    },
+    "step": "end: state"
+  }
+]
+
+== tables ==
+[folders] 4 row(s)
+  id=1 | name=models | parent_id=NULL | path=<ROOT>/models
+  id=2 | name=Basis | parent_id=1 | path=<ROOT>/models/Basis
+  id=5 | name=Prot | parent_id=1 | path=<ROOT>/models/Prot
+  id=6 | name=neu | parent_id=1 | path=<ROOT>/models/neu
+[files] 8 row(s)
+  id=1 | name=b.obj | path=<ROOT>/models/Basis/b.obj | file_type=obj | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=7 | dimension_y_mm=0 | dimension_z_mm=7 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=8893fddd25019411f8a5ce38f60c4716be917ffe4daf4d309d0435022361e183 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=u.obj | path=<ROOT>/models/Weg/unter/u.obj | file_type=obj | folder_id=NULL | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=6 | dimension_y_mm=0 | dimension_z_mm=6 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=ea8a6235d9d1a4cc06eef332a8c7ccaeea60d84cc7b9f0292046b1eca7b5644a | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=w.obj | path=<ROOT>/models/Weg/w.obj | file_type=obj | folder_id=NULL | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=5 | dimension_y_mm=0 | dimension_z_mm=5 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=1405d8b278bdf6859bd019c277c1b1bc6632ba708afc5a0d9e2449a4f5b3bf50 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=a2.obj | path=<ROOT>/models/a2.obj | file_type=obj | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=1 | dimension_y_mm=0 | dimension_z_mm=1 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=697b00ab13410c52a542d2e9c63711fcc04e9cbf6c0d3439a9b43cc812e6e713 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=blockren.obj | path=<ROOT>/models/blockren.obj | file_type=obj | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=3 | dimension_y_mm=0 | dimension_z_mm=3 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=ccf1a8093b4b63e4433ee7515661bc47bf360331b8b5c53c2f16cef96acd08db | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=d2.obj | path=<ROOT>/models/d2.obj | file_type=obj | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=4 | dimension_y_mm=0 | dimension_z_mm=4 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=e6f4096be72a59aa75797db4cd785d7896574ecf7820990b0e8e0d877cb2b906 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=loose.obj | path=<ROOT>/outside/loose.obj | file_type=3mf | folder_id=NULL | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=n.obj | path=<ROOT>/models/neu/n.obj | file_type=obj | folder_id=6 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=34 | dimension_x_mm=10 | dimension_y_mm=0 | dimension_z_mm=10 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=7b8e80063b085b544745ec0e3ed49e478336746fefcfb9e88263e995e1010847 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 1 row(s)
+  id=1 | name=miniatur | color_hue=52
+[file_tags] 7 row(s)
+  file_id=1 | tag_id=1
+  file_id=2 | tag_id=1
+  file_id=3 | tag_id=1
+  file_id=4 | tag_id=1
+  file_id=5 | tag_id=1
+  file_id=6 | tag_id=1
+  file_id=8 | tag_id=1
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
