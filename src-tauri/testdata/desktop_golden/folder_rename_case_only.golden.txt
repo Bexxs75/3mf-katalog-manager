@@ -1,0 +1,663 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "case-only rename through the intermediate name"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/Models -> <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "Rename <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/models"
+      ]
+    },
+    "step": "case-only rename through the intermediate name: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-",
+          "5|<ROOT>/cat/models/part.stl|6|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|models|1|<ROOT>/cat/models"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "cat/models/",
+          "cat/models/part.stl",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "case-only rename through the intermediate name: state"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "and back"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/models.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/models -> <ROOT>/cat/models.3mf-rename-tmp-<PID>-<N>",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "Rename <ROOT>/cat/models.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/Models"
+      ]
+    },
+    "step": "and back: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-",
+          "5|<ROOT>/cat/Models/part.stl|6|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Models|1|<ROOT>/cat/Models"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Models/",
+          "cat/Models/part.stl",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "and back: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "injected Rename #1 on <ROOT>/cat/Models"
+      }
+    },
+    "step": "first step refused"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/Models -> <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>"
+      ]
+    },
+    "step": "first step refused: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-",
+          "5|<ROOT>/cat/Models/part.stl|6|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Models|1|<ROOT>/cat/Models"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Models/",
+          "cat/Models/part.stl",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "first step refused: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "injected Rename #2 on <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>"
+      }
+    },
+    "step": "second step refused (put back)"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/Models -> <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "Rename <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "Rename <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/Models"
+      ]
+    },
+    "step": "second step refused (put back): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-",
+          "5|<ROOT>/cat/Models/part.stl|6|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Models|1|<ROOT>/cat/Models"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Models/",
+          "cat/Models/part.stl",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "second step refused (put back): state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "Umbenennung fehlgeschlagen (injected Rename #2 on <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>); Rollback fehlgeschlagen (injected Rename #3 on <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>); Daten liegen unter <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>"
+      }
+    },
+    "step": "second step and put-back refused (data stays under the intermediate name)"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "SymlinkMetadata <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/Models -> <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N>",
+        "SymlinkMetadata <ROOT>/cat/models",
+        "Rename <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/models",
+        "SymlinkMetadata <ROOT>/cat/Models",
+        "Rename <ROOT>/cat/Models.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/Models"
+      ]
+    },
+    "step": "second step and put-back refused (data stays under the intermediate name): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-",
+          "5|<ROOT>/cat/Models/part.stl|6|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Models|1|<ROOT>/cat/Models"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Models.3mf-rename-tmp-<PID>-<N>/",
+          "cat/Models.3mf-rename-tmp-<PID>-<N>/part.stl",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "second step and put-back refused (data stays under the intermediate name): state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "database error: blocked"
+      }
+    },
+    "step": "catalog update fails after a case-only rename (back through the intermediate name)"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/Deko2.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/Deko2 -> <ROOT>/cat/Deko2.3mf-rename-tmp-<PID>-<N>",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "Rename <ROOT>/cat/Deko2.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/deko2",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/deko2 -> <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N>",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "Rename <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/Deko2"
+      ]
+    },
+    "step": "catalog update fails after a case-only rename (back through the intermediate name): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-",
+          "5|<ROOT>/cat/Models/part.stl|6|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Models|1|<ROOT>/cat/Models"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Models/",
+          "cat/Models/part.stl",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "catalog update fails after a case-only rename (back through the intermediate name): state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "DB-Update fehlgeschlagen (database error: blocked) UND Rollback der Ordner-Umbenennung fehlgeschlagen (Umbenennung fehlgeschlagen (injected Rename #4 on <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N>); Rollback fehlgeschlagen (injected Rename #5 on <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N>); Daten liegen unter <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N>) - Ordner heisst jetzt <ROOT>/cat/deko2, DB verweist teilweise noch auf <ROOT>/cat/Deko2"
+      }
+    },
+    "step": "catalog update fails, the way back fails in its second step"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/Deko2.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/Deko2 -> <ROOT>/cat/Deko2.3mf-rename-tmp-<PID>-<N>",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "Rename <ROOT>/cat/Deko2.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/deko2",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N>",
+        "Rename <ROOT>/cat/deko2 -> <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N>",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "Rename <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/Deko2",
+        "SymlinkMetadata <ROOT>/cat/deko2",
+        "Rename <ROOT>/cat/deko2.3mf-rename-tmp-<PID>-<N> -> <ROOT>/cat/deko2"
+      ]
+    },
+    "step": "catalog update fails, the way back fails in its second step: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-",
+          "5|<ROOT>/cat/Models/part.stl|6|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Models|1|<ROOT>/cat/Models"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Models/",
+          "cat/Models/part.stl",
+          "cat/Target/",
+          "cat/deko2.3mf-rename-tmp-<PID>-<N>/",
+          "cat/deko2.3mf-rename-tmp-<PID>-<N>/c.3mf",
+          "cat/deko2.3mf-rename-tmp-<PID>-<N>/c_extras/",
+          "cat/deko2.3mf-rename-tmp-<PID>-<N>/c_extras/c.png",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "catalog update fails, the way back fails in its second step: state"
+  }
+]
+
+== tables ==
+[folders] 6 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+  id=2 | name=Deko | parent_id=1 | path=<ROOT>/cat/Deko
+  id=3 | name=sub | parent_id=2 | path=<ROOT>/cat/Deko/sub
+  id=4 | name=Deko2 | parent_id=1 | path=<ROOT>/cat/Deko2
+  id=5 | name=Target | parent_id=1 | path=<ROOT>/cat/Target
+  id=6 | name=Models | parent_id=1 | path=<ROOT>/cat/Models
+[files] 5 row(s)
+  id=1 | name=a.3mf | path=<ROOT>/cat/Deko/a.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=b.3mf | path=<ROOT>/cat/Deko/sub/b.3mf | file_type=3mf | folder_id=3 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=t.3mf | path=<ROOT>/cat/Deko/t.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/t.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=c.3mf | path=<ROOT>/cat/Deko2/c.3mf | file_type=3mf | folder_id=4 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=part.stl | path=<ROOT>/cat/Models/part.stl | file_type=3mf | folder_id=6 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 4 row(s)
+  id=1 | file_id=1 | name=a.png | path=<ROOT>/cat/Deko/a_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=2 | name=live.png | path=<ROOT>/cat/Deko/sub/b_extras/live.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=2 | name=gone.png | path=<ROOT>/cat/Deko/sub/b_extras/gone.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-3-gone.png
+  id=4 | file_id=4 | name=c.png | path=<ROOT>/cat/Deko2/c_extras/c.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/Deko/
+cat/Deko/a.3mf (5 bytes)
+cat/Deko/a_extras/
+cat/Deko/a_extras/a.png (16 bytes)
+cat/Deko/sub/
+cat/Deko/sub/b.3mf (5 bytes)
+cat/Deko/sub/b_extras/
+cat/Deko/sub/b_extras/live.png (16 bytes)
+cat/Deko/t.3mf (5 bytes)
+cat/Deko2/
+cat/Deko2/c.3mf (5 bytes)
+cat/Deko2/c_extras/
+cat/Deko2/c_extras/c.png (16 bytes)
+cat/Models/
+cat/Models/part.stl (8 bytes)
+cat/Target/
+outside/
+outside/a.png (16 bytes)
+outside/c.png (16 bytes)
+outside/gone.png (16 bytes)
+outside/live.png (16 bytes)
+trash/
+trash/companion-3-gone.png (16 bytes)
+trash/t.3mf (5 bytes)
