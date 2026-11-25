@@ -21,7 +21,7 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
 /// `name` ends up in `join`/`with_file_name` and must be a single harmless path
 /// component: "../../etc/x" or "/etc/x" would otherwise create outside the
 /// catalog, just by typing text (CWE-22).
-fn validate_folder_name(name: &str) -> CmdResult<()> {
+pub(super) fn validate_folder_name(name: &str) -> CmdResult<()> {
     validate_dir_name(name, true)
 }
 /// Creates a real folder on disk (below an existing folder, or - with
@@ -59,7 +59,7 @@ pub async fn create_folder(
 }
 
 /// Target path of a new folder below the catalog folder `pid`.
-fn new_dir_below_parent(conn: &Connection, pid: i64, name: &str) -> CmdResult<PathBuf> {
+pub(super) fn new_dir_below_parent(conn: &Connection, pid: i64, name: &str) -> CmdResult<PathBuf> {
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let parent_folder = folders.iter().find(|f| f.id == pid).ok_or_else(|| "folder not found".to_string())?;
     Ok(std::path::PathBuf::from(&parent_folder.path).join(name))
