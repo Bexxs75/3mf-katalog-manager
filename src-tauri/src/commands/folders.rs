@@ -43,11 +43,7 @@ pub async fn create_folder(
     let new_dir = {
         let conn = lock_db(&state)?;
         match parent {
-            Some(pid) => {
-                let folders = db::list_folders(&conn).map_err(|e| e.to_string())?;
-                let parent_folder = folders.iter().find(|f| f.id == pid).ok_or_else(|| "folder not found".to_string())?;
-                std::path::PathBuf::from(&parent_folder.path).join(&name)
-            }
+            Some(pid) => new_dir_below_parent(&conn, pid, &name)?,
             None => {
                 let picked = app.dialog().file().blocking_pick_folder();
                 let Some(picked) = picked else {
@@ -60,6 +56,13 @@ pub async fn create_folder(
 
     let conn = lock_db(&state)?;
     create_folder_with_conn(&conn, parent, name, &new_dir, &state.sensitive_dirs).map(Some)
+}
+
+/// Target path of a new folder below the catalog folder `pid`.
+fn new_dir_below_parent(conn: &Connection, pid: i64, name: &str) -> CmdResult<PathBuf> {
+    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+    let parent_folder = folders.iter().find(|f| f.id == pid).ok_or_else(|| "folder not found".to_string())?;
+    Ok(std::path::PathBuf::from(&parent_folder.path).join(name))
 }
 
 /// Creation after path selection, without UI state so disk/DB outcomes are testable.
@@ -807,6 +810,132 @@ mod tests {
         let stored = folders.iter().find(|f| f.id.to_string() == dto.id).unwrap();
         assert_eq!(stored.parent_id, Some(parent));
         assert_eq!(stored.path, dto.path);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    fn rows(conn: &Connection) -> Vec<(i64, String, Option<i64>, String)> {
+        db::list_folders(conn).unwrap().into_iter().map(|f| (f.id, f.name, f.parent_id, f.path)).collect()
+    }
+
+    #[test]
+    fn create_folder_parity_name_rules_map_to_codes() {
+        let cases: &[(&str, ErrorCode, &[&str])] = &[
+            ("", ErrorCode::FolderNameEmpty, &[]),
+            ("   ", ErrorCode::FolderNameEmpty, &[]),
+            ("a/b", ErrorCode::FolderNameForbiddenChar, &["/"]),
+            ("a\0b", ErrorCode::FolderNameForbiddenChar, &["U+0000"]),
+            ("D:Neu", ErrorCode::FolderNameForbiddenChar, &[":"]),
+            (".", ErrorCode::FolderNameNotAllowed, &[]),
+            ("..", ErrorCode::FolderNameNotAllowed, &[]),
+            ("a.", ErrorCode::FolderNameEndsWithDotOrSpace, &[]),
+            ("a ", ErrorCode::FolderNameEndsWithDotOrSpace, &[]),
+            ("CON", ErrorCode::FolderNameWindowsReserved, &[]),
+            ("nul.txt", ErrorCode::FolderNameWindowsReserved, &[]),
+            ("lpt9.log", ErrorCode::FolderNameWindowsReserved, &[]),
+        ];
+        for (name, code, params) in cases {
+            let err = validate_folder_name(name).unwrap_err();
+            assert!(err.is(*code, params), "{name:?}: {err:?}");
+        }
+        let long = "a".repeat(MAX_DIR_NAME_BYTES + 1);
+        assert!(validate_folder_name(&long).unwrap_err().is(ErrorCode::FolderNameTooLong, &[]));
+        assert!(validate_folder_name(&"a".repeat(MAX_DIR_NAME_BYTES)).is_ok());
+    }
+
+    #[test]
+    fn create_folder_parity_dto_rows_and_disk() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_dto");
+        let parent = db::insert_folder_with_parent(&conn, "base", None, &base.to_string_lossy()).unwrap();
+        let dir = base.join("Neu");
+        let dto = create_folder_with_conn(&conn, Some(parent), "Neu".into(), &dir, &[]).unwrap();
+        assert!(dir.is_dir());
+        assert_eq!(dto.name, "Neu");
+        assert_eq!(dto.path, dir.to_string_lossy());
+        assert_eq!((dto.count, dto.missing, dto.move_target), (0, false, true));
+        assert_eq!(dto.parent_id, Some(parent.to_string()));
+        assert_eq!(rows(&conn), vec![
+            (parent, "base".into(), None, base.to_string_lossy().into_owned()),
+            (dto.id.parse().unwrap(), "Neu".into(), Some(parent), dir.to_string_lossy().into_owned()),
+        ]);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_without_catalog_parent_stores_root() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_root");
+        let dir = base.join("x");
+        let dto = create_folder_with_conn(&conn, None, "x".into(), &dir, &[]).unwrap();
+        assert_eq!(dto.parent_id, None);
+        assert_eq!(rows(&conn).len(), 1);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_missing_parent_on_disk_is_plain_io_error() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_noparent");
+        let dir = base.join("gone").join("child");
+        let err = create_folder_with_conn(&conn, None, "child".into(), &dir, &[]).unwrap_err();
+        assert!(!err.expected, "{err:?}");
+        assert_eq!(err.message, std::fs::create_dir(&dir).unwrap_err().to_string());
+        assert!(rows(&conn).is_empty());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_sensitive_path_refused_before_disk() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_sensitive");
+        let dir = base.join("child");
+        let expected = reject_if_sensitive_path(&dir, std::slice::from_ref(&base)).unwrap_err();
+        let err = create_folder_with_conn(&conn, None, "child".into(), &dir, std::slice::from_ref(&base)).unwrap_err();
+        assert_eq!((err.expected, &err.message, &err.params), (expected.expected, &expected.message, &expected.params));
+        assert!(!dir.exists());
+        assert!(rows(&conn).is_empty());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_folder_parity_permission_denied_is_unexpected_and_unregistered() {
+        use std::os::unix::fs::PermissionsExt;
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_perm");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let dir = base.join("child");
+        let can_write = std::fs::create_dir(base.join("probe")).is_ok();
+        let result = create_folder_with_conn(&conn, None, "child".into(), &dir, &[]);
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if !can_write {
+            let err = result.unwrap_err();
+            assert!(!err.expected, "{err:?}");
+            assert!(!dir.exists());
+            assert!(rows(&conn).is_empty());
+        }
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_existing_file_is_folder_exists() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_file");
+        let dir = base.join("f");
+        std::fs::write(&dir, b"x").unwrap();
+        let err = create_folder_with_conn(&conn, None, "f".into(), &dir, &[]).unwrap_err();
+        assert!(err.is(ErrorCode::FolderExists, &[&dir.display().to_string()]), "{err:?}");
+        assert!(dir.is_file());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_parent_lookup() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_lookup");
+        let parent = db::insert_folder_with_parent(&conn, "base", None, &base.to_string_lossy()).unwrap();
+        assert_eq!(new_dir_below_parent(&conn, parent, "n").unwrap(), base.join("n"));
+        assert_eq!(new_dir_below_parent(&conn, parent + 99, "n").unwrap_err().message, "folder not found");
         std::fs::remove_dir_all(base).unwrap();
     }
 
