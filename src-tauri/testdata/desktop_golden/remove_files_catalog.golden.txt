@@ -1,0 +1,135 @@
+== steps ==
+[
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "invalidCatalogId"
+      }
+    },
+    "step": "zero id"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "invalidCatalogId"
+      }
+    },
+    "step": "not a number"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "invalidCatalogId"
+      }
+    },
+    "step": "negative id"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "modelNotFoundOrTrashed"
+      }
+    },
+    "step": "unknown id"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "modelNotFoundOrTrashed"
+      }
+    },
+    "step": "trashed id"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "modelNotFoundOrTrashed"
+      }
+    },
+    "step": "valid and unknown (nothing removed)"
+  },
+  {
+    "result": {
+      "ok": 0
+    },
+    "step": "empty list"
+  },
+  {
+    "result": {
+      "ok": 2
+    },
+    "step": "batch with duplicate (a, a, c)"
+  },
+  {
+    "result": {
+      "ok": 1
+    },
+    "step": "single (b), bundle Trio keeps two"
+  }
+]
+
+== tables ==
+[folders] 3 row(s)
+  id=1 | name=top | parent_id=NULL | path=<ROOT>/top
+  id=2 | name=sub | parent_id=1 | path=<ROOT>/top/sub
+  id=3 | name=other | parent_id=NULL | path=<ROOT>/other
+[files] 2 row(s)
+  id=4 | name=d.3mf | path=<ROOT>/other/d.3mf | file_type=3mf | folder_id=3 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=t.3mf | path=<ROOT>/top/sub/t.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/t.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 1 row(s)
+  id=2 | name=Trio | kind=variants | created_at=<TS>
+[bundle_members] 1 row(s)
+  file_id=4 | bundle_id=2 | position=2 | label=NULL
+[disk_sync_known_copies] 0 row(s)
+[tags] 1 row(s)
+  id=1 | name=red | color_hue=10
+[file_tags] 2 row(s)
+  file_id=4 | tag_id=1
+  file_id=5 | tag_id=1
+[file_metadata] 2 row(s)
+  file_id=4 | label=k | value=v4
+  file_id=5 | label=k | value=v5
+[file_materials] 2 row(s)
+  id=4 | file_id=4 | name=PLA4 | display_color=#ff0000
+  id=5 | file_id=5 | name=PLA5 | display_color=#ff0000
+[collections] 1 row(s)
+  id=1 | name=set | created_at=<TS>
+[collection_files] 2 row(s)
+  collection_id=1 | file_id=4 | position=4
+  collection_id=1 | file_id=5 | position=5
+[print_log] 2 row(s)
+  id=4 | file_id=4 | printed_at=<TS> | note=n4 | photo_png=NULL | created_at=<TS>
+  id=5 | file_id=5 | printed_at=<TS> | note=n5 | photo_png=NULL | created_at=<TS>
+[file_print_info] 2 row(s)
+  file_id=4 | reader_version=1 | read_at=<TS> | slice_state=sliced | settings_state=read | printer_model=NULL | bed_type=NULL | layer_height_mm=NULL | nozzle_mm=NULL | nozzle_mixed=0 | bed_temp_c=NULL | bed_temp_mixed=0 | nozzle_temp_c=NULL | nozzle_temp_mixed=0 | filament_colors=NULL
+  file_id=5 | reader_version=1 | read_at=<TS> | slice_state=sliced | settings_state=read | printer_model=NULL | bed_type=NULL | layer_height_mm=NULL | nozzle_mm=NULL | nozzle_mixed=0 | bed_temp_c=NULL | bed_temp_mixed=0 | nozzle_temp_c=NULL | nozzle_temp_mixed=0 | filament_colors=NULL
+[file_print_plates] 2 row(s)
+  file_id=4 | plate_index=1 | plate_name=plate4 | print_seconds=NULL | first_layer_seconds=NULL | plate_bed_type=NULL
+  file_id=5 | plate_index=1 | plate_name=plate5 | print_seconds=NULL | first_layer_seconds=NULL | plate_bed_type=NULL
+[printers] 1 row(s)
+  id=1 | name=P1 | position=0 | kind=filament | manufacturer=NULL | model=NULL | nozzle_mm=NULL | bed_x_mm=NULL | bed_y_mm=NULL | bed_z_mm=NULL
+[printer_jobs] 5 row(s)
+  id=1 | printer_id=1 | remote_id=job1 | file_name=f1.3mf | outcome=completed | raw_status=ok | ended_at=1 | print_duration_s=1 | used_mm=1 | slicer_total_mm=NULL | slicer_weight_g=NULL | material=NULL | thumbnail_path=NULL | state=open | booked_spool_id=NULL | booked_file_id=NULL | booked_g=NULL | decided_at=NULL | failure_reason=NULL | failure_note=NULL | auto_closed=0
+  id=2 | printer_id=1 | remote_id=job2 | file_name=f2.3mf | outcome=completed | raw_status=ok | ended_at=1 | print_duration_s=1 | used_mm=1 | slicer_total_mm=NULL | slicer_weight_g=NULL | material=NULL | thumbnail_path=NULL | state=open | booked_spool_id=NULL | booked_file_id=NULL | booked_g=NULL | decided_at=NULL | failure_reason=NULL | failure_note=NULL | auto_closed=0
+  id=3 | printer_id=1 | remote_id=job3 | file_name=f3.3mf | outcome=completed | raw_status=ok | ended_at=1 | print_duration_s=1 | used_mm=1 | slicer_total_mm=NULL | slicer_weight_g=NULL | material=NULL | thumbnail_path=NULL | state=open | booked_spool_id=NULL | booked_file_id=NULL | booked_g=NULL | decided_at=NULL | failure_reason=NULL | failure_note=NULL | auto_closed=0
+  id=4 | printer_id=1 | remote_id=job4 | file_name=f4.3mf | outcome=completed | raw_status=ok | ended_at=1 | print_duration_s=1 | used_mm=1 | slicer_total_mm=NULL | slicer_weight_g=NULL | material=NULL | thumbnail_path=NULL | state=open | booked_spool_id=NULL | booked_file_id=4 | booked_g=NULL | decided_at=NULL | failure_reason=NULL | failure_note=NULL | auto_closed=0
+  id=5 | printer_id=1 | remote_id=job5 | file_name=f5.3mf | outcome=completed | raw_status=ok | ended_at=1 | print_duration_s=1 | used_mm=1 | slicer_total_mm=NULL | slicer_weight_g=NULL | material=NULL | thumbnail_path=NULL | state=open | booked_spool_id=NULL | booked_file_id=5 | booked_g=NULL | decided_at=NULL | failure_reason=NULL | failure_note=NULL | auto_closed=0
+[slicer_reports] 0 row(s)
+
+== tree ==
+other/
+other/c.3mf (22 bytes)
+other/d.3mf (22 bytes)
+top/
+top/a.3mf (20 bytes)
+top/sub/
+top/sub/b.3mf (24 bytes)
+top/sub/t.3mf (24 bytes)

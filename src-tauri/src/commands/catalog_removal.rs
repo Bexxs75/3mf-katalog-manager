@@ -28,7 +28,7 @@ pub(super) fn parse_id(id: &str) -> CmdResult<i64> {
         .ok_or_else(|| CmdError::coded(ErrorCode::InvalidCatalogId))
 }
 
-fn remove_files_with_conn(conn: &Connection, file_ids: Vec<String>) -> CmdResult<usize> {
+pub(super) fn remove_files_with_conn(conn: &Connection, file_ids: Vec<String>) -> CmdResult<usize> {
     let ids = file_ids
         .iter()
         .map(|id| parse_id(id))
@@ -56,7 +56,7 @@ fn remove_files_with_conn(conn: &Connection, file_ids: Vec<String>) -> CmdResult
     Ok(ids.len())
 }
 
-fn folder_summary_with_conn(conn: &Connection, folder_id: &str) -> CmdResult<FolderRemovalSummary> {
+pub(super) fn folder_summary_with_conn(conn: &Connection, folder_id: &str) -> CmdResult<FolderRemovalSummary> {
     let id = parse_id(folder_id)?;
     let name = conn
         .query_row("SELECT name FROM folders WHERE id = ?1", [id], |r| r.get(0))
@@ -103,7 +103,7 @@ pub(super) fn remove_folder_with_conn(
     Ok(result)
 }
 
-fn reset_with_conn(conn: &Connection) -> CmdResult<CatalogRemovalCount> {
+pub(super) fn reset_with_conn(conn: &Connection) -> CmdResult<CatalogRemovalCount> {
     let tx = conn.unchecked_transaction().map_err(DbError::from)?;
     let folder_count = tx
         .query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0))

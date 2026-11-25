@@ -1129,6 +1129,50 @@ mod tests {
     }
 
     #[test]
+    fn catalog_backup_parity_entries_settings_rows_and_no_secret() {
+        const KEY: &str = "TVKEY-0123456789-abcdefghijkl";
+        let conn = crate::db::connect_in_memory().unwrap();
+        crate::db::test_insert_minimal_file(&conn, "/m/a.stl", None).unwrap();
+        crate::db::test_insert_minimal_file(&conn, "/m/b.stl", None).unwrap();
+        crate::db::thingiverse::set_enabled(&conn, true).unwrap();
+        crate::db::thingiverse::set_token(&conn, &katalog_core::thingiverse::Token::parse(KEY).unwrap()).unwrap();
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        let counts = |c: &Connection| -> Vec<(String, i64)> {
+            tables.iter().map(|t| (t.clone(), c.query_row(&format!("SELECT COUNT(*) FROM \"{t}\""), [], |r| r.get(0)).unwrap())).collect()
+        };
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let before = counts(&conn);
+        let db = std::sync::Mutex::new(conn);
+        let dest = unique_test_dir("backup_parity").join("backup.zip");
+        let settings = r#"{"a":"1","b":null}"#;
+        write_catalog_backup(&db, &dest, settings).unwrap();
+
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        let names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().unwrap().to_string()).collect();
+        assert_eq!(names, ["catalog.db", "settings.json"]);
+        let mut stored = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("settings.json").unwrap(), &mut stored).unwrap();
+        assert_eq!(stored, settings);
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut zip.by_name("catalog.db").unwrap(), &mut bytes).unwrap();
+        assert!(!bytes.windows(KEY.len()).any(|w| w == KEY.as_bytes()), "no API key in the copy");
+        let copy_path = dest.with_file_name("copy.db");
+        std::fs::write(&copy_path, bytes).unwrap();
+        let copy = Connection::open(&copy_path).unwrap();
+        // Everything but the scrubbed secret: the key row is the only difference.
+        let mut expected = before.clone();
+        expected.iter_mut().find(|(t, _)| t == "app_settings").unwrap().1 -= 1;
+        assert_eq!(counts(&copy), expected);
+        assert!(crate::db::thingiverse::get_enabled(&copy).unwrap());
+        assert_eq!(copy.query_row::<i64, _, _>("PRAGMA user_version", [], |r| r.get(0)).unwrap(), version);
+        assert_eq!(copy.query_row::<String, _, _>("PRAGMA integrity_check", [], |r| r.get(0)).unwrap(), "ok");
+        // The live catalog keeps its key.
+        assert!(crate::db::thingiverse::get_token(&db.lock().unwrap()).unwrap().is_some());
+    }
+
+    #[test]
     fn catalog_backup_replaces_an_existing_target_and_leaves_none_on_failure() {
         let db = std::sync::Mutex::new(crate::db::connect_in_memory().unwrap());
         let dir = unique_test_dir("backup_target");
