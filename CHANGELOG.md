@@ -38,6 +38,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Tar uploads (tar, tar.gz, tar.bz2, tar.xz, tar.zst) can no longer make the server use hundreds of MiB for one entry name: GNU long-name and PAX extension headers above 64 KiB and entry paths above 4096 bytes are rejected before they are buffered ("archive needs more memory than allowed"). Normal long paths and PAX headers still work (#76).
 - On the web, several catalogs in one folder no longer clear each other's backup previews at start, backup checks no longer look at source folders outside the shared folders (nor at any file, folder, trash or companion path outside them, except to refuse paths in the protected data folders), and the printer pages share the read limit of the other manager lists (busy answers ask to retry).
 - Restoring from the web trash recreates missing parent folders and reconnects their catalog entries, including after an interrupted restore. Name conflicts remain errors.
 - A file without any displayable geometry (for example a sliced package that only contains G-code) is no longer logged as an error when its preview is requested; it is logged as information.
@@ -955,6 +956,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- Tar-Uploads (tar, tar.gz, tar.bz2, tar.xz, tar.zst) können den Server nicht mehr dazu bringen, für einen einzigen Eintragsnamen hunderte MiB Speicher zu belegen: GNU-Langnamen- und PAX-Erweiterungsköpfe über 64 KiB sowie Eintragspfade über 4096 Bytes werden abgelehnt, bevor sie gepuffert werden („Archiv braucht mehr Arbeitsspeicher als erlaubt“). Normale lange Pfade und PAX-Köpfe funktionieren weiter (#76).
 - Im Web löschen mehrere Kataloge in einem Ordner beim Start nicht mehr gegenseitig ihre Sicherungsvorschauen, die Sicherungsprüfung sieht sich keine Quellordner außerhalb der freigegebenen Ordner mehr an (und auch keine Datei-, Ordner-, Papierkorb- oder Begleitdatei-Pfade außerhalb davon, außer um Pfade in den geschützten Datenordnern abzulehnen), und die Druckerseiten teilen sich das Leselimit der übrigen Listen des Managers (bei Auslastung wird zum erneuten Versuch aufgefordert).
 - Beim Wiederherstellen aus dem Web-Papierkorb werden fehlende Elternordner neu angelegt und ihre Katalogeinträge verknüpft, auch nach einer unterbrochenen Wiederherstellung. Namenskonflikte bleiben Fehler.
 - Eine Datei ohne darstellbare Geometrie (zum Beispiel ein gesliceltes Paket, das nur G-Code enthält) wird bei der Vorschau nicht mehr als Fehler protokolliert, sondern als Information.

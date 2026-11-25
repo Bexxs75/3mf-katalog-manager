@@ -188,12 +188,28 @@ const TAR_STREAM_LIMIT: u64 = MAX_UNPACKED_BYTES + (MAX_ENTRIES as u64 + 16) * 4
 /// Memory limit for the xz decoder (KiB). `xz -9` needs ~65 MiB.
 const XZ_MEM_LIMIT_KIB: u32 = 256 * 1024;
 
+/// Largest GNU long-name (L/K) or PAX (x/g) header block we let the tar crate
+/// buffer. The crate reads such blocks completely into memory, so without this
+/// bound a tiny compressed archive could claim hundreds of MiB for one name.
+pub(super) const TAR_MAX_EXT_HEADER: u64 = 64 * 1024;
+/// Longest entry path (bytes) accepted from a tar archive.
+pub(super) const TAR_MAX_PATH_BYTES: usize = 4096;
+
+/// Overflow markers that stay detectable despite the error wrapping in the tar crate.
+#[derive(Default)]
+struct TarFlags {
+    /// Decompressed stream limit hit.
+    exceeded: Cell<bool>,
+    /// An extension header (L/K/x/g) was larger than `TAR_MAX_EXT_HEADER`.
+    big_header: Cell<bool>,
+}
+
 /// Reads at most `remaining` bytes and remembers an overflow, so it stays
 /// detectable despite the error wrapping in the tar crate.
 struct LimitedReader<R> {
     inner: R,
     remaining: u64,
-    exceeded: Rc<Cell<bool>>,
+    exceeded: Rc<TarFlags>,
 }
 
 impl<R: Read> Read for LimitedReader<R> {
@@ -203,7 +219,7 @@ impl<R: Read> Read for LimitedReader<R> {
             return match self.inner.read(&mut probe)? {
                 0 => Ok(0),
                 _ => {
-                    self.exceeded.set(true);
+                    self.exceeded.exceeded.set(true);
                     Err(std::io::Error::other("tar-Datenstrom ueberschreitet das Limit"))
                 }
             };
@@ -215,15 +231,128 @@ impl<R: Read> Read for LimitedReader<R> {
     }
 }
 
-fn tar_error(exceeded: &Cell<bool>, e: impl std::fmt::Display) -> ArchiveError {
-    if exceeded.get() {
+/// Size field of a tar header block (octal, or GNU base-256); `None` if malformed.
+fn tar_header_size(block: &[u8; 512]) -> Option<u64> {
+    let field = &block[124..136];
+    if field[0] & 0x80 != 0 {
+        if field[0] & 0x40 != 0 {
+            return None; // negative
+        }
+        let mut v: u128 = u128::from(field[0] & 0x3f);
+        for b in &field[1..] {
+            v = (v << 8) | u128::from(*b);
+            if v > u128::from(u64::MAX) {
+                return Some(u64::MAX);
+            }
+        }
+        return Some(v as u64);
+    }
+    let text: Vec<u8> = field.iter().copied().skip_while(|b| *b == b' ').take_while(|b| (b'0'..=b'7').contains(b)).collect();
+    let mut v: u64 = 0;
+    for b in text {
+        v = v.checked_mul(8)?.checked_add(u64::from(b - b'0'))?;
+    }
+    Some(v)
+}
+
+enum GuardState {
+    /// Collecting a 512-byte header block (`filled` bytes so far).
+    Header { filled: usize },
+    /// Handing the checked header block to the caller (`sent` bytes so far).
+    Emit { sent: usize, len: usize, data: Option<u64> },
+    /// Passing through `remaining` data bytes (incl. padding).
+    Data { remaining: u64 },
+    /// End marker or truncated input: no further checks.
+    Passthrough,
+}
+
+/// Inspects the raw 512-byte tar headers BEFORE the tar crate sees them and
+/// rejects GNU long-name/link (L/K) and PAX (x/g) blocks above
+/// `TAR_MAX_EXT_HEADER`, which the crate would otherwise read fully into memory.
+struct HeaderGuard<R> {
+    inner: R,
+    block: [u8; 512],
+    state: GuardState,
+    flags: Rc<TarFlags>,
+}
+
+impl<R: Read> Read for HeaderGuard<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        loop {
+            match self.state {
+                GuardState::Passthrough => return self.inner.read(buf),
+                GuardState::Data { remaining } => {
+                    if remaining == 0 {
+                        self.state = GuardState::Header { filled: 0 };
+                        continue;
+                    }
+                    let max = buf.len().min(remaining.min(usize::MAX as u64) as usize);
+                    let n = self.inner.read(&mut buf[..max])?;
+                    if n == 0 {
+                        self.state = GuardState::Passthrough;
+                    } else {
+                        self.state = GuardState::Data { remaining: remaining - n as u64 };
+                    }
+                    return Ok(n);
+                }
+                GuardState::Header { filled } => {
+                    let n = self.inner.read(&mut self.block[filled..])?;
+                    if n == 0 {
+                        // Truncated or finished: hand over what we hold, then pass through.
+                        self.state = GuardState::Emit { sent: 0, len: filled, data: None };
+                        continue;
+                    }
+                    let filled = filled + n;
+                    if filled < 512 {
+                        self.state = GuardState::Header { filled };
+                        continue;
+                    }
+                    if self.block.iter().all(|b| *b == 0) {
+                        self.state = GuardState::Emit { sent: 0, len: 512, data: None };
+                        continue;
+                    }
+                    let kind = self.block[156];
+                    let size = tar_header_size(&self.block);
+                    let ext = matches!(kind, b'L' | b'K' | b'x' | b'g');
+                    if ext && size.is_none_or(|s| s > TAR_MAX_EXT_HEADER) {
+                        self.flags.big_header.set(true);
+                        return Err(std::io::Error::other("tar-Erweiterungskopf zu gross"));
+                    }
+                    let data = size.unwrap_or(0).saturating_add(511) / 512 * 512;
+                    self.state = GuardState::Emit { sent: 0, len: 512, data: Some(data) };
+                }
+                GuardState::Emit { sent, len, data } => {
+                    if sent >= len {
+                        self.state = match data {
+                            Some(remaining) => GuardState::Data { remaining },
+                            None => GuardState::Passthrough,
+                        };
+                        continue;
+                    }
+                    let n = (len - sent).min(buf.len());
+                    buf[..n].copy_from_slice(&self.block[sent..sent + n]);
+                    self.state = GuardState::Emit { sent: sent + n, len, data };
+                    return Ok(n);
+                }
+            }
+        }
+    }
+}
+
+fn tar_error(flags: &TarFlags, e: impl std::fmt::Display) -> ArchiveError {
+    if flags.big_header.get() {
+        ArchiveError::MemoryLimit
+    } else if flags.exceeded.get() {
         ArchiveError::LimitExceeded
     } else {
         unreadable(e)
     }
 }
 
-fn tar_stream(path: &Path, format: ArchiveFormat, exceeded: Rc<Cell<bool>>) -> Result<Box<dyn Read>, ArchiveError> {
+fn tar_stream(path: &Path, format: ArchiveFormat, flags: Rc<TarFlags>) -> Result<Box<dyn Read>, ArchiveError> {
     let file = BufReader::new(File::open(path)?);
     let decoded: Box<dyn Read> = match format {
         ArchiveFormat::Tar => Box::new(file),
@@ -235,17 +364,26 @@ fn tar_stream(path: &Path, format: ArchiveFormat, exceeded: Rc<Cell<bool>>) -> R
         }
         other => return Err(ArchiveError::Unsupported(format!("kein tar-Format: {other:?}"))),
     };
-    Ok(Box::new(LimitedReader {
-        inner: decoded,
-        remaining: TAR_STREAM_LIMIT,
-        exceeded,
+    Ok(Box::new(HeaderGuard {
+        inner: LimitedReader {
+            inner: decoded,
+            remaining: TAR_STREAM_LIMIT,
+            exceeded: flags.clone(),
+        },
+        block: [0; 512],
+        state: GuardState::Header { filled: 0 },
+        flags,
     }))
 }
 
-fn tar_meta<R: Read>(entry: &tar::Entry<'_, R>) -> EntryMeta {
+fn tar_meta<R: Read>(entry: &tar::Entry<'_, R>) -> Result<EntryMeta, ArchiveError> {
     use tar::EntryType;
-    EntryMeta {
-        name: String::from_utf8_lossy(&entry.path_bytes()).to_string(),
+    let raw_name = entry.path_bytes();
+    if raw_name.len() > TAR_MAX_PATH_BYTES {
+        return Err(ArchiveError::MemoryLimit);
+    }
+    Ok(EntryMeta {
+        name: String::from_utf8_lossy(&raw_name).to_string(),
         size: entry.size(),
         kind: match entry.header().entry_type() {
             EntryType::Regular | EntryType::Continuous => EntryKind::File,
@@ -253,16 +391,16 @@ fn tar_meta<R: Read>(entry: &tar::Entry<'_, R>) -> EntryMeta {
             _ => EntryKind::Other,
         },
         encrypted: false,
-    }
+    })
 }
 
 fn list_tar(path: &Path, format: ArchiveFormat) -> Result<Vec<EntryMeta>, ArchiveError> {
-    let exceeded = Rc::new(Cell::new(false));
+    let exceeded = Rc::new(TarFlags::default());
     let mut archive = tar::Archive::new(tar_stream(path, format, exceeded.clone())?);
     let mut out = Vec::new();
     for entry in archive.entries().map_err(|e| tar_error(&exceeded, e))? {
         let entry = entry.map_err(|e| tar_error(&exceeded, e))?;
-        out.push(tar_meta(&entry));
+        out.push(tar_meta(&entry)?);
         if out.len() > MAX_ENTRIES {
             break;
         }
@@ -271,11 +409,11 @@ fn list_tar(path: &Path, format: ArchiveFormat) -> Result<Vec<EntryMeta>, Archiv
 }
 
 fn extract_tar(path: &Path, format: ArchiveFormat, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
-    let exceeded = Rc::new(Cell::new(false));
+    let exceeded = Rc::new(TarFlags::default());
     let mut archive = tar::Archive::new(tar_stream(path, format, exceeded.clone())?);
     for entry in archive.entries().map_err(|e| tar_error(&exceeded, e))? {
         let mut entry = entry.map_err(|e| tar_error(&exceeded, e))?;
-        let meta = tar_meta(&entry);
+        let meta = tar_meta(&entry)?;
         if let Some(target) = ex.prepare(&meta)? {
             ex.write_from(&target, &mut entry).map_err(|e| match e {
                 ArchiveError::Io(io) => tar_error(&exceeded, io),
@@ -804,17 +942,17 @@ mod tests {
 
     #[test]
     fn limited_reader_passes_data_up_to_the_limit_and_flags_more() {
-        let exceeded = Rc::new(Cell::new(false));
+        let exceeded = Rc::new(TarFlags::default());
         let mut exact = LimitedReader { inner: &b"abcd"[..], remaining: 4, exceeded: exceeded.clone() };
         let mut out = Vec::new();
         exact.read_to_end(&mut out).unwrap();
         assert_eq!(out, b"abcd");
-        assert!(!exceeded.get());
+        assert!(!exceeded.exceeded.get());
 
         let mut too_much = LimitedReader { inner: &b"abcdef"[..], remaining: 4, exceeded: exceeded.clone() };
         let mut out = Vec::new();
         assert!(too_much.read_to_end(&mut out).is_err());
-        assert!(exceeded.get());
+        assert!(exceeded.exceeded.get());
     }
 
     #[test]
