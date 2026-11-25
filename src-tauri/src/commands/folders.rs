@@ -136,6 +136,18 @@ fn rename_folder_with_conn(
     name: String,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
+    rename_folder_with_conn_fs(&RealFs, conn, id, name, sensitive_dirs)
+}
+
+/// [`rename_folder_with_conn`] with the file system passed in (tests fail a step on purpose).
+pub(super) fn rename_folder_with_conn_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    id: i64,
+    name: String,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    let disk = rename::FileRenameFsAdapter(fs);
     validate_folder_name(&name)?;
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
@@ -150,10 +162,10 @@ fn rename_folder_with_conn(
     if new_path == old_path {
         return Ok(());
     }
-    if rename::target_collides(&old_path, &new_path).map_err(|e| e.to_string())? {
+    if katalog_core::file_rename::target_collides(&disk, &old_path, &new_path).map_err(|e| e.to_string())? {
         return Err(CmdError::coded_with(ErrorCode::RenameTargetFolderExists, [new_path.display()]));
     }
-    rename::rename_on_disk(&old_path, &new_path).map_err(|e| e.to_string())?;
+    katalog_core::file_rename::rename_on_disk(&disk, &old_path, &new_path).map_err(|e| e.to_string())?;
 
     let db_result = (|| -> Result<(), DbError> {
         let tx = conn.unchecked_transaction()?;
@@ -163,7 +175,7 @@ fn rename_folder_with_conn(
     })();
 
     if let Err(db_err) = db_result {
-        if let Err(rollback_err) = rename::rename_on_disk(&new_path, &old_path) {
+        if let Err(rollback_err) = katalog_core::file_rename::rename_on_disk(&disk, &new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Ordner-Umbenennung fehlgeschlagen ({rollback_err}) - Ordner heisst jetzt {}, DB verweist teilweise noch auf {}",
                 new_path.display(),
@@ -204,6 +216,17 @@ fn move_folder_with_conn(
     target: Option<i64>,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
+    move_folder_with_conn_fs(&RealFs, conn, id, target, sensitive_dirs)
+}
+
+/// [`move_folder_with_conn`] with the file system passed in (tests fail a step on purpose).
+pub(super) fn move_folder_with_conn_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    id: i64,
+    target: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
     let Some(target) = target else {
         // There's no "move to root": the disk would stay unchanged, but the DB would
         // no longer see a parent.
@@ -236,27 +259,27 @@ fn move_folder_with_conn(
     archives::check_managed_location(&new_path, &expanded)?;
 
     // Without these checks a vanished folder would surface as a raw OS error.
-    if !old_path.is_dir() {
+    if !fs.is_dir(&old_path) {
         return Err(CmdError::coded_with(ErrorCode::FolderMissingOnDisk, [old_path.display()]));
     }
     let new_parent = Path::new(&new_parent_path);
-    if !new_parent.is_dir() {
+    if !fs.is_dir(new_parent) {
         return Err(CmdError::coded_with(ErrorCode::TargetFolderMissingOnDisk, [new_parent.display()]));
     }
     // The ids can disagree with the disk (outdated catalog, symlinks, differing
     // case on case-insensitive volumes), so the real locations are compared too.
-    if let (Ok(source), Ok(parent)) = (old_path.canonicalize(), new_parent.canonicalize()) {
+    if let (Ok(source), Ok(parent)) = (fs.canonicalize(&old_path), fs.canonicalize(new_parent)) {
         if comparison_path(&parent).starts_with(comparison_path(&source)) {
             return Err(CmdError::coded(ErrorCode::FolderMoveIntoSelfOrDescendant));
         }
-        if old_path.parent().and_then(|p| p.canonicalize().ok()).is_some_and(|current| comparison_path(&current) == comparison_path(&parent)) {
+        if old_path.parent().and_then(|p| fs.canonicalize(p).ok()).is_some_and(|current| comparison_path(&current) == comparison_path(&parent)) {
             return Err(CmdError::coded(ErrorCode::FolderMoveAlreadyThere));
         }
     }
-    if new_path.exists() {
+    if fs.exists(&new_path) {
         return Err(CmdError::coded_with(ErrorCode::FolderMoveNameTaken, [new_path.display()]));
     }
-    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+    fs.rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
     // Parent and paths in one transaction, so the DB is never half-updated while
     // the disk has already moved. unchecked_transaction because we only have
@@ -269,7 +292,7 @@ fn move_folder_with_conn(
     })();
 
     if let Err(db_err) = db_result {
-        if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
+        if let Err(rollback_err) = fs.rename(&new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback des Ordner-Moves fehlgeschlagen ({rollback_err}) - Ordner liegt jetzt unter {}, DB verweist teilweise noch auf {}",
                 new_path.display(),
