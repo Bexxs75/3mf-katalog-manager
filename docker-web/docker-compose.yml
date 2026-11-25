@@ -13,6 +13,9 @@ services:
     ports:
       # Local only by default. For other devices in the home network set KATALOG_BIND_IP
       # to the server's address; for access from outside use a VPN or a reverse proxy with HTTPS.
+      # With a proxy in front of the server, remove this ports entry (the proxy reaches the server
+      # over the Compose network) and trust only the proxy's fixed address in
+      # KATALOG_TRUSTED_PROXIES (/32), never a whole network; see README.
       - "${KATALOG_BIND_IP:-127.0.0.1}:${KATALOG_PORT:-8080}:8080"
     volumes:
       - ./config:/config

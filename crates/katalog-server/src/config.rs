@@ -58,6 +58,16 @@ impl TrustedProxies {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+    /// Entries wider than /24 (IPv4) or /64 (IPv6): a whole network instead of the proxy's own
+    /// address. Anyone who can connect from there controls X-Forwarded-For and so the per-client
+    /// login lock. Returned as text for a start-up warning; the list is still accepted.
+    pub fn broad_entries(&self) -> Vec<String> {
+        self.0
+            .iter()
+            .filter(|(ip, prefix)| *prefix < if ip.is_ipv4() { 24 } else { 64 })
+            .map(|(ip, prefix)| format!("{ip}/{prefix}"))
+            .collect()
+    }
     pub fn contains(&self, ip: IpAddr) -> bool {
         let ip = canonical_ip(ip);
         self.0.iter().any(|(net, prefix)| match (net, ip) {
@@ -952,6 +962,21 @@ mod tests {
         // Without TRUST_PROXY nothing changes: no list needed, nothing trusted.
         let c = config(&[("KATALOG_TRUSTED_PROXIES", "10.0.0.0/8")]).unwrap();
         assert!(!c.trust_proxy && c.trusted_proxies.is_empty());
+    }
+    #[test]
+    fn broad_trusted_proxy_ranges_are_reported_but_accepted() {
+        let t = TrustedProxies::parse(
+            "172.18.0.5,172.18.0.0/24,10.0.0.0/8,::1,fd00::/64,2001:db8::/32,172.16.0.0/23",
+        )
+        .unwrap();
+        assert_eq!(
+            t.broad_entries(),
+            ["10.0.0.0/8", "2001:db8::/32", "172.16.0.0/23"]
+        );
+        assert!(TrustedProxies::parse("192.0.2.7/32,::1/128")
+            .unwrap()
+            .broad_entries()
+            .is_empty());
     }
     #[test]
     fn trusted_proxy_matching_covers_ipv4_ipv6_and_mapped_addresses() {

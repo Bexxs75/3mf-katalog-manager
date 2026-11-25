@@ -26,6 +26,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
+- The web server now logs a warning at start when `KATALOG_TRUSTED_PROXIES` contains a range wider than /24 (IPv4) or /64 (IPv6), and the documentation recommends only the proxy's fixed address (`/32`, IPv6 `/128`) instead of the whole Docker network and no published port 8080 behind a proxy. Anyone who can connect from a trusted range sets `X-Forwarded-For` freely and so bypasses the per-client login lock (only the global limit and the two password checks remain). The lock itself is unchanged.
 - The web trash recognizes desktop trash entries and can permanently remove their files and companions. Restoring them remains a desktop action.
 - The web image now contains the STEP preview: it is built on Debian trixie with Open CASCADE 7.8.1 from Debian (LGPL 2.1 with the Open CASCADE exception, linked dynamically; license files and source references are in the image under `/usr/share/doc/occt-runtime/`). It needs Linux Landlock, which Docker's default seccomp profile allows; without it the preview stays off and the log says so. The run-time base is now `debian:trixie-slim` instead of distroless, and the download grows from about 17 MB to about 69 MB (sum of the compressed layers). amd64 only for now.
 - The web viewer now asks the server whether it can render STEP files before it shows the "no 3D preview" note, so STEP files show their 3D view in an image that has the preview.
@@ -944,6 +945,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Geändert
 
+- Der Web-Server schreibt beim Start eine Warnung ins Log, wenn `KATALOG_TRUSTED_PROXIES` einen Bereich breiter als /24 (IPv4) bzw. /64 (IPv6) enthält; die Dokumentation empfiehlt nur noch die feste Adresse des Proxys (`/32`, IPv6 `/128`) statt des ganzen Docker-Netzes und keinen veröffentlichten Port 8080 hinter einem Proxy. Wer aus einem vertrauten Bereich verbinden kann, setzt `X-Forwarded-For` frei und umgeht so die Anmeldesperre pro Client (es bleiben nur das globale Limit und die zwei Passwortprüfungen). Die Sperre selbst ist unverändert.
 - Der Web-Papierkorb erkennt Desktop-Papierkorbeinträge und kann ihre Dateien samt Begleitdateien endgültig löschen. Wiederherstellen bleibt eine Desktop-Aktion.
 - Das Web-Image enthält jetzt die STEP-Vorschau: Es wird auf Debian trixie mit Open CASCADE 7.8.1 aus Debian gebaut (LGPL 2.1 mit Open-CASCADE-Ausnahme, dynamisch gelinkt; Lizenzdateien und Quellenangaben im Image unter `/usr/share/doc/occt-runtime/`). Sie braucht Linux-Landlock, das Dockers Standard-Seccomp-Profil erlaubt; ohne Landlock bleibt die Vorschau aus und das Log sagt es. Die Laufzeitbasis ist jetzt `debian:trixie-slim` statt distroless, der Download wächst von etwa 17 MB auf etwa 69 MB (Summe der komprimierten Schichten). Vorerst nur amd64.
 
