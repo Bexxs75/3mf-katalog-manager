@@ -259,6 +259,9 @@ fn golden_file_rename_faults() {
     });
 }
 
+// The recorded call trace is the Unix one: on Windows the collision check also canonicalizes both
+// paths, so the trace differs by design. The case rules themselves run in the katalog-core tests.
+#[cfg(not(windows))]
 #[test]
 fn golden_file_rename_case_only() {
     run_golden("file_rename_case_only", |w| {
