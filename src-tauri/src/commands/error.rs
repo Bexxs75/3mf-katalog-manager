@@ -174,6 +174,20 @@ mod tests {
     }
 
     #[test]
+    fn a_converted_core_error_logs_like_coded_with_including_its_parameters() {
+        let params = vec!["Permission denied (os error 13)".to_string(), "x".to_string()];
+        assert_eq!(
+            CmdError::expected_log_text(ErrorCode::CompanionTargetFolderCreateFailed.as_str(), &params),
+            CmdError::coded_log_text(ErrorCode::CompanionTargetFolderCreateFailed, &params)
+        );
+        assert_eq!(CmdError::expected_log_text("plain", &[]), "plain");
+        let core = katalog_core::import::ImportError::coded_with(ErrorCode::CompanionTargetFolderCreateFailed, ["boom"]);
+        let converted = CmdError::from(core);
+        assert!(converted.is(ErrorCode::CompanionTargetFolderCreateFailed, &["boom"]));
+        assert!(converted.expected && converted.code.is_none());
+    }
+
+    #[test]
     fn coded_error_carries_code_and_params() {
         let error = CmdError::coded_with(ErrorCode::FolderNameForbiddenChar, [":"]);
         assert!(error.is(ErrorCode::FolderNameForbiddenChar, &[":"]));
@@ -322,9 +336,25 @@ mod write_adapter_tests {
     }
 }
 
+impl CmdError {
+    /// Log text of an expected error: with parameters in the format of `coded_log_text`
+    /// (`code: p1 | p2`), so a converted core error logs what `coded_with` logged.
+    fn expected_log_text(message: &str, params: &[String]) -> String {
+        if params.is_empty() { message.to_string() } else { format!("{message}: {}", params.join(" | ")) }
+    }
+}
+
 impl From<katalog_core::import::ImportError> for CmdError {
+    #[track_caller]
     fn from(error: katalog_core::import::ImportError) -> Self {
-        let mut mapped = if error.expected { Self::expected(error.message) } else { Self::from(error.message) };
+        let mut mapped = if error.expected {
+            // Built directly (not via `expected`) so the parameters are in the one log line.
+            let at = std::panic::Location::caller();
+            log::info!(target: "cmd", "{} ({}:{})", Self::expected_log_text(&error.message, &error.params), at.file(), at.line());
+            Self { message: error.message, expected: true, code: None, params: Vec::new() }
+        } else {
+            Self::from(error.message)
+        };
         mapped.code = error.code;
         mapped.params = error.params;
         mapped
