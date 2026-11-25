@@ -59,19 +59,16 @@ impl CheckedCatalog {
             .map_err(|_| ImportError::coded(ErrorCode::BackupInvalidDatabase))?;
         let parent = db_directory(&config.db_path);
         let trash = parent.join("trash");
-        let known: Vec<String> = config
-            .file_roots
-            .iter()
-            .map(|p| p.to_string_lossy().into_owned())
-            .collect();
-        let prepared = catalog_restore::prepare_catalog(
+        // Same host boundary as the preview in `stage`: imported paths outside the
+        // configured roots are never resolved while restore holds its gates.
+        let prepared = catalog_restore::prepare_catalog_within(
             &bytes,
             &[parent.to_path_buf(), config.auth_file.clone()],
             &TrashPolicy {
                 desktop_trash: Some(&trash),
                 catalog_roots: &config.file_roots,
             },
-            &known,
+            &config.file_roots,
             &InspectionFs(&self.directory),
             &[],
             local,

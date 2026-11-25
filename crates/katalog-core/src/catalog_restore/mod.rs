@@ -1260,14 +1260,34 @@ pub fn validate_catalog_db_bytes(
 
 /// True when `path` lies lexically below one of the host-configured roots. Pure
 /// string work: used to decide whether an imported path may touch the filesystem.
+/// Only an absolute path without `..` components can be inside: `/root/../x`
+/// starts with `/root` as text but leaves it once resolved.
 pub(super) fn import_path_in_boundary(path: &Path, roots: &[PathBuf]) -> bool {
-    roots.iter().any(|root| path.starts_with(root))
+    path.is_absolute()
+        && !path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        && roots.iter().any(|root| path.starts_with(root))
+}
+
+/// Everything the host itself configured as a place for catalog files. An
+/// imported path outside of it is never resolved on the filesystem. Preview
+/// (`inspect_backup`) and activation (`prepare_catalog_within`) share it, so both
+/// reach the same verdict for the same bytes.
+pub(super) fn host_boundary(known_roots: &[PathBuf], policy: &TrashPolicy<'_>) -> Vec<PathBuf> {
+    known_roots
+        .iter()
+        .chain(policy.catalog_roots)
+        .cloned()
+        .chain(policy.desktop_trash.map(Path::to_path_buf))
+        .collect()
 }
 
 /// `reject_sensitive` for an imported path, behind the optional host boundary.
 /// Outside the boundary the path is never resolved (a dead network mount must not
 /// stall the check); only a lexical match against the unresolved protected
-/// directories still rejects it. Without a boundary (desktop) nothing changes.
+/// directories still rejects it, and so does a `..` component (the preview
+/// refuses those as well). Without a boundary (desktop) nothing changes.
 fn reject_sensitive_bounded(
     fs: &dyn RestoreFs,
     path: &Path,
@@ -1277,7 +1297,11 @@ fn reject_sensitive_bounded(
 ) -> CmdResult<()> {
     match boundary {
         Some(roots) if !import_path_in_boundary(path, roots) => {
-            if lexical.iter().any(|dir| path.starts_with(dir)) {
+            if lexical.iter().any(|dir| path.starts_with(dir))
+                || path
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
                 Err(CmdError::coded(ErrorCode::BackupInvalidDatabase))
             } else {
                 Ok(())
@@ -1695,6 +1719,7 @@ fn validate_trash_path(
 /// Validate, migrate and sanitize a private copy. The returned owner keeps it alive.
 /// Capture local settings while holding the host's operation gate; keep that gate
 /// until activation. This function never replaces or writes the active connection.
+/// Desktop variant: every imported path is resolved (no host boundary).
 pub fn prepare_catalog(
     bytes: &[u8],
     sensitive_dirs: &[PathBuf],
@@ -1704,9 +1729,70 @@ pub fn prepare_catalog(
     local_slicers: &[db::models::RegisteredSlicer],
     local_thingiverse: &db::thingiverse::LocalSettings,
 ) -> CmdResult<Box<dyn TemporaryCatalog>> {
+    prepare_with_boundary(
+        bytes,
+        sensitive_dirs,
+        policy,
+        known_folders,
+        fs,
+        None,
+        local_slicers,
+        local_thingiverse,
+    )
+}
+
+/// `prepare_catalog` behind the same host boundary as `inspect_backup`: imported
+/// paths outside `known_roots`, the catalog roots and the trash are checked only
+/// lexically and never resolved on the filesystem (a dead network mount must not
+/// stall activation while the host holds its gates). `known_roots` must come
+/// from host configuration, never from the backup.
+pub fn prepare_catalog_within(
+    bytes: &[u8],
+    sensitive_dirs: &[PathBuf],
+    policy: &TrashPolicy<'_>,
+    known_roots: &[PathBuf],
+    fs: &dyn RestoreFs,
+    local_slicers: &[db::models::RegisteredSlicer],
+    local_thingiverse: &db::thingiverse::LocalSettings,
+) -> CmdResult<Box<dyn TemporaryCatalog>> {
+    let known: Vec<String> = known_roots
+        .iter()
+        .map(|root| root.to_string_lossy().into_owned())
+        .collect();
+    let boundary = host_boundary(known_roots, policy);
+    prepare_with_boundary(
+        bytes,
+        sensitive_dirs,
+        policy,
+        &known,
+        fs,
+        Some(&boundary),
+        local_slicers,
+        local_thingiverse,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_with_boundary(
+    bytes: &[u8],
+    sensitive_dirs: &[PathBuf],
+    policy: &TrashPolicy<'_>,
+    known_folders: &[String],
+    fs: &dyn RestoreFs,
+    boundary: Option<&[PathBuf]>,
+    local_slicers: &[db::models::RegisteredSlicer],
+    local_thingiverse: &db::thingiverse::LocalSettings,
+) -> CmdResult<Box<dyn TemporaryCatalog>> {
     let mut temporary = fs.temporary_catalog(bytes)?;
     let incoming = temporary.connection();
-    validate_connection(incoming, sensitive_dirs, policy, known_folders, fs, None)?;
+    validate_connection(
+        incoming,
+        sensitive_dirs,
+        policy,
+        known_folders,
+        fs,
+        boundary,
+    )?;
     // A key in a file somebody handed over must never take effect. Outside the
     // transaction because it vacuums the file; the on/off switch stays. Then the
     // key of this computer goes back in (it is the only one that takes effect).

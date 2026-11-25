@@ -65,12 +65,7 @@ pub fn inspect_backup(
         .collect();
     // Everything the host itself configured as a place for catalog files. An
     // imported path outside of it is never resolved on the filesystem.
-    let boundary: Vec<PathBuf> = known_roots
-        .iter()
-        .chain(policy.catalog_roots)
-        .cloned()
-        .chain(policy.desktop_trash.map(Path::to_path_buf))
-        .collect();
+    let boundary = host_boundary(known_roots, policy);
     validate_connection(conn, sensitive_dirs, policy, &known, fs, Some(&boundary))?;
     let resolved_roots: Vec<PathBuf> = known_roots
         .iter()
@@ -669,5 +664,192 @@ mod tests {
         drop(conn);
         assert!(inspect(&std::fs::read(dir.join("source.db")).unwrap(), &dir).is_err());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Activation (web) with the same host roots as `inspect_recorded`.
+    fn prepare_recorded(bytes: &[u8], dir: &Path) -> (CmdResult<()>, Vec<PathBuf>) {
+        let fs = RecordingFs {
+            inner: StdRestoreFs::new(dir.to_path_buf()),
+            resolved: Default::default(),
+        };
+        let local = db::connect_in_memory().unwrap();
+        let local = db::thingiverse::local_settings(&local).unwrap();
+        let result = prepare_catalog_within(
+            bytes,
+            &[dir.join("config")],
+            &TrashPolicy {
+                desktop_trash: None,
+                catalog_roots: &[dir.join("models")],
+            },
+            &[dir.join("models")],
+            &fs,
+            &[],
+            &local,
+        )
+        .map(drop);
+        let resolved = fs.resolved.lock().unwrap().clone();
+        (result, resolved)
+    }
+
+    /// Rows in every table whose paths validation resolves: files, folders,
+    /// companions and remembered copies, all outside the host roots, plus a
+    /// Windows path from a backup made on another computer.
+    fn foreign_rows(conn: &Connection) {
+        let id = db::test_insert_minimal_file(conn, "/net/untrusted/m.3mf", None).unwrap();
+        conn.execute(
+            "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
+             VALUES ('w.3mf', ?1, '3mf', 0, 'now')",
+            [r"C:\Modelle\w.3mf"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO folders (name, path) VALUES ('f', '/net/untrusted/f')",
+            [],
+        )
+        .unwrap();
+        add_extras_companion(conn, id, "/net/untrusted/m_extras/a.png", None);
+        conn.execute(
+            "INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at)
+             VALUES ('/net/untrusted/k.3mf', 1, ?1, 'now')",
+            [&"a".repeat(64)],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn activation_never_resolves_paths_outside_host_boundary_and_matches_preview() {
+        let (bytes, dir) = fixture("boundary-activation", |conn, _| foreign_rows(conn));
+        let (report, inspected) = inspect_recorded(&bytes, &dir);
+        assert!(report.is_ok());
+        assert_never_resolved(&inspected);
+        let (prepared, resolved) = prepare_recorded(&bytes, &dir);
+        assert_eq!(
+            prepared,
+            Ok(()),
+            "activation must accept what the preview accepted"
+        );
+        assert_never_resolved(&resolved);
+        assert!(
+            !resolved
+                .iter()
+                .any(|p| p.to_string_lossy().starts_with("C:")),
+            "a Windows path is not below a Linux root and must not be resolved: {resolved:?}"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn desktop_activation_without_boundary_is_unchanged() {
+        let (bytes, dir) = fixture("boundary-activation-desktop", |conn, _| foreign_rows(conn));
+        let fs = RecordingFs {
+            inner: StdRestoreFs::new(dir.clone()),
+            resolved: Default::default(),
+        };
+        let local = db::connect_in_memory().unwrap();
+        let local = db::thingiverse::local_settings(&local).unwrap();
+        prepare_catalog(
+            &bytes,
+            &[dir.join("config")],
+            &TrashPolicy {
+                desktop_trash: None,
+                catalog_roots: &[],
+            },
+            &[],
+            &fs,
+            &[],
+            &local,
+        )
+        .map(drop)
+        .unwrap();
+        let resolved = fs.resolved.lock().unwrap();
+        for path in [
+            "/net/untrusted/m.3mf",
+            "/net/untrusted/f",
+            "/net/untrusted/m_extras/a.png",
+            "/net/untrusted/k.3mf",
+        ] {
+            assert!(resolved.iter().any(|p| p == Path::new(path)), "{path}");
+        }
+        drop(resolved);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn activation_inside_host_boundary_still_resolves_and_accepts() {
+        let (bytes, dir) = fixture("boundary-activation-inside", |conn, dir| {
+            std::fs::create_dir_all(dir.join("models")).unwrap();
+            let id = db::test_insert_minimal_file(
+                conn,
+                &dir.join("models/a.3mf").to_string_lossy(),
+                None,
+            )
+            .unwrap();
+            add_extras_companion(
+                conn,
+                id,
+                &dir.join("models/a_extras/a.png").to_string_lossy(),
+                None,
+            );
+        });
+        let (prepared, resolved) = prepare_recorded(&bytes, &dir);
+        assert_eq!(prepared, Ok(()));
+        assert!(resolved.iter().any(|p| p.ends_with("models/a.3mf")));
+        assert!(resolved
+            .iter()
+            .any(|p| p.ends_with("models/a_extras/a.png")));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn activation_and_preview_refuse_the_same_outside_paths() {
+        // Below a protected directory (lexically) and with parent traversal: both
+        // refuse, and the escaping path is never resolved on the way.
+        for (name, path) in [
+            ("boundary-activation-sensitive", "config/secret.3mf"),
+            ("boundary-activation-parent", "models/../config/x.3mf"),
+        ] {
+            let (bytes, dir) = fixture(name, |conn, dir| {
+                db::test_insert_minimal_file(conn, &dir.join(path).to_string_lossy(), None)
+                    .unwrap();
+            });
+            let invalid = CmdError::coded(ErrorCode::BackupInvalidDatabase);
+            assert_eq!(
+                inspect_recorded(&bytes, &dir).0.unwrap_err(),
+                invalid,
+                "{name}"
+            );
+            let (prepared, resolved) = prepare_recorded(&bytes, &dir);
+            assert_eq!(prepared.unwrap_err(), invalid, "{name}");
+            assert!(
+                !resolved.iter().any(|p| p.ends_with(path)),
+                "{name}: {resolved:?}"
+            );
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn boundary_check_is_lexical_and_component_wise() {
+        let roots = [PathBuf::from("/srv/models")];
+        assert!(import_path_in_boundary(
+            Path::new("/srv/models/a.3mf"),
+            &roots
+        ));
+        assert!(import_path_in_boundary(
+            Path::new("/srv/models/./a.3mf"),
+            &roots
+        ));
+        for outside in [
+            "/srv/models-other/a.3mf",
+            "/srv/models/../etc/passwd",
+            "srv/models/a.3mf",
+            r"C:\srv\models\a.3mf",
+            "/net/untrusted/a.3mf",
+        ] {
+            assert!(
+                !import_path_in_boundary(Path::new(outside), &roots),
+                "{outside}"
+            );
+        }
     }
 }
