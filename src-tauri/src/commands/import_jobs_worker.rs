@@ -162,30 +162,12 @@ impl files::ImportDb for ArchiveJobDb<'_> {
 mod tests {
     use super::*;
     use files::ImportDb;
-    use std::cell::RefCell;
-
-    thread_local! {
-        static ERRORS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-    }
-    struct Logger;
-    impl log::Log for Logger {
-        fn enabled(&self, _: &log::Metadata<'_>) -> bool { true }
-        fn log(&self, record: &log::Record<'_>) {
-            if record.level() == log::Level::Error {
-                ERRORS.with(|errors| errors.borrow_mut().push(record.args().to_string()));
-            }
-        }
-        fn flush(&self) {}
-    }
     fn capture(f: impl FnOnce()) -> Vec<String> {
-        static INIT: std::sync::Once = std::sync::Once::new();
-        INIT.call_once(|| {
-            log::set_logger(&Logger).unwrap();
-            log::set_max_level(log::LevelFilter::Trace);
-        });
-        ERRORS.with(|errors| errors.borrow_mut().clear());
-        f();
-        ERRORS.with(|errors| std::mem::take(&mut *errors.borrow_mut()))
+        super::super::test_log::capture(f)
+            .into_iter()
+            .filter(|(level, _, _)| *level == log::Level::Error)
+            .map(|(_, _, text)| text)
+            .collect()
     }
     fn with_database(f: impl FnOnce(&mut ArchiveJobDb<'_>)) {
         let db = Mutex::new(db::connect_in_memory().unwrap());

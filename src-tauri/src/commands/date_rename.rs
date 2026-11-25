@@ -45,6 +45,11 @@ impl DateRenameEffect for DesktopDateRenameEffect<'_> {
             }
             RenameFlowError::Disk(error) => error.to_string(),
             RenameFlowError::Companion(error) => CmdError::from(error).message,
+            RenameFlowError::CompanionAndRollback { companion, text } => {
+                // The original error is logged once, as before; the combined text is returned.
+                let _ = CmdError::from(companion);
+                text
+            }
             RenameFlowError::Combined(text) | RenameFlowError::Commit(text) => text,
         })
     }

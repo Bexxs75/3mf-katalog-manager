@@ -24,7 +24,7 @@ use crate::db;
 use crate::error_code::ErrorCode;
 use crate::import::file_names::{validate_name, NameKind};
 use crate::import::placement::reject_if_sensitive_path;
-use crate::import::{ImportError, ImportResult};
+use crate::import::ImportError;
 
 /// The disk operations the rename uses.
 pub trait FileRenameFs {
@@ -238,6 +238,9 @@ pub enum RenameFlowError {
     Companion(ImportError),
     /// A step failed and the rename could not be put back; the text names where the file is.
     Combined(String),
+    /// The companions could not follow and the rename could not be put back either. `text` names
+    /// where the file is; `companion` is the original error, which the host logs on its own.
+    CompanionAndRollback { companion: ImportError, text: String },
     /// The host's commit failed; the rename and the companions were put back.
     Commit(String),
 }
@@ -262,10 +265,11 @@ pub fn rename_reversible(
         Ok(carried) => carried,
         Err(error) => {
             if let Err(rollback_err) = rename_file_on_disk(fs, new, old) {
-                return Err(RenameFlowError::Combined(format!(
+                let text = format!(
                     "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}",
                     new.display()
-                )));
+                );
+                return Err(RenameFlowError::CompanionAndRollback { companion: error, text });
             }
             return Err(RenameFlowError::Companion(error));
         }
@@ -287,6 +291,20 @@ pub fn rename_reversible(
     Ok(())
 }
 
+/// The error of [`rename_file`]. `first` is an earlier error that the host logs before `error`
+/// (the companion error when putting the file back failed as well).
+#[derive(Debug, PartialEq)]
+pub struct RenameFileError {
+    pub error: ImportError,
+    pub first: Option<ImportError>,
+}
+
+impl From<ImportError> for RenameFileError {
+    fn from(error: ImportError) -> Self {
+        Self { error, first: None }
+    }
+}
+
 /// Core logic of `rename_file`: renames a real file on disk (same directory, never replacing a
 /// file) and updates `name`/`path` in the catalog; the companion files follow.
 pub fn rename_file(
@@ -297,11 +315,11 @@ pub fn rename_file(
     new_name: &str,
     sensitive_dirs: &[PathBuf],
     case_insensitive: bool,
-) -> ImportResult<()> {
+) -> Result<(), RenameFileError> {
     validate_name(new_name, true, NameKind::File)?;
-    let file = db::get_file(conn, id).map_err(|e| e.to_string())?.ok_or_else(|| "file not found".to_string())?;
+    let file = db::get_file(conn, id).map_err(|e| ImportError::from(e.to_string()))?.ok_or_else(|| ImportError::from("file not found"))?;
     if file.deleted_at.is_some() {
-        return Err(ImportError::coded(ErrorCode::FileInTrash));
+        return Err(ImportError::coded(ErrorCode::FileInTrash).into());
     }
 
     let old_path = PathBuf::from(&file.path);
@@ -312,22 +330,24 @@ pub fn rename_file(
     if new_path == old_path {
         return Ok(());
     }
-    if target_collides(fs, &old_path, &new_path).map_err(|e| e.to_string())? {
-        return Err(ImportError::coded_with(ErrorCode::FileTargetExists, [new_path.display()]));
+    if target_collides(fs, &old_path, &new_path).map_err(|e| ImportError::from(e.to_string()))? {
+        return Err(ImportError::coded_with(ErrorCode::FileTargetExists, [new_path.display()]).into());
     }
     let mut commit = || db::rename_file(conn, id, new_name, &new_path.to_string_lossy()).map_err(|e| e.to_string());
     rename_reversible(conn, fs, companion_fs, id, &old_path, &new_path, case_insensitive, &mut commit).map_err(|error| match error {
         // Created by someone else after the check above; reported like the early collision.
-        RenameFlowError::Disk(e) if e.kind() == io::ErrorKind::AlreadyExists => ImportError::coded_with(ErrorCode::FileTargetExists, [new_path.display()]),
-        RenameFlowError::Disk(e) => e.to_string().into(),
-        RenameFlowError::Companion(error) => error,
-        RenameFlowError::Combined(text) | RenameFlowError::Commit(text) => text.into(),
+        RenameFlowError::Disk(e) if e.kind() == io::ErrorKind::AlreadyExists => ImportError::coded_with(ErrorCode::FileTargetExists, [new_path.display()]).into(),
+        RenameFlowError::Disk(e) => ImportError::from(e.to_string()).into(),
+        RenameFlowError::Companion(error) => error.into(),
+        RenameFlowError::CompanionAndRollback { companion, text } => RenameFileError { error: text.into(), first: Some(companion) },
+        RenameFlowError::Combined(text) | RenameFlowError::Commit(text) => ImportError::from(text).into(),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::import::ImportResult;
     use crate::companion_actions::{add_companion, StdCompanionFs};
     use crate::unique_test_dir;
     use std::cell::{Cell, RefCell};
@@ -447,7 +467,7 @@ mod tests {
             add_companion(&self.conn, &StdCompanionFs, model, &source, &[]).unwrap();
         }
         fn rename(&self, fs: &dyn FileRenameFs, id: i64, name: &str, case_insensitive: bool) -> ImportResult<()> {
-            rename_file(&self.conn, fs, &StdCompanionFs, id, name, &[], case_insensitive)
+            rename_file(&self.conn, fs, &StdCompanionFs, id, name, &[], case_insensitive).map_err(|e| e.error)
         }
         fn names(&self) -> Vec<String> {
             let mut names: Vec<String> = std::fs::read_dir(&self.root).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
@@ -534,6 +554,20 @@ mod tests {
         assert_eq!(e.message, "companionTargetFolderBlocked");
         assert!(old.exists() && !fx.root.join("Bar.3mf").exists());
         assert_eq!(fx.row(id).0, "Foo.3mf");
+    }
+
+    #[test]
+    fn a_blocked_companion_folder_and_a_failed_way_back_keep_the_companion_error() {
+        let fx = Fx::new("blocked_lost");
+        let (id, old) = fx.model("Foo.3mf");
+        fx.companion(id, "a.png");
+        std::fs::write(fx.root.join("Bar_extras"), b"a file").unwrap();
+        let fs = FakeFs::default().fail("move_file", 2);
+        let e = rename_file(&fx.conn, &fs, &StdCompanionFs, id, "Bar.3mf", &[], false).unwrap_err();
+        let first = e.first.expect("the companion error is kept");
+        assert_eq!((first.message.as_str(), first.expected), ("companionTargetFolderBlocked", true));
+        assert!(e.error.message.starts_with("Begleitdateien konnten nicht mitgenommen werden (companionTargetFolderBlocked) UND Rollback der Datei-Umbenennung fehlgeschlagen (injected move_file #2) - Datei heisst jetzt "), "{}", e.error.message);
+        assert!(!e.error.expected && !old.exists());
     }
 
     #[test]

@@ -547,7 +547,13 @@ pub(super) fn rename_file_with_conn_fs_case(
         sensitive_dirs,
         case_insensitive,
     )
-    .map_err(Into::into)
+    .map_err(|failure| {
+        // The companion error is logged first (once), like before; the returned text is the combined one.
+        if let Some(first) = failure.first {
+            let _ = CmdError::from(first);
+        }
+        CmdError::from(failure.error)
+    })
 }
 /// Renames a real file on disk (same directory, never replacing a file) and updates
 /// `name`/`path` in the DB accordingly.
