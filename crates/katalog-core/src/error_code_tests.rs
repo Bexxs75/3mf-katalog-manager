@@ -276,7 +276,8 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         functions("files.rs", include_str!("../../../src-tauri/src/commands/files.rs"), &[
             "validate_file_name", "move_file_core", "move_files_to_folder_with", "rename_file_with_conn",
         ]),
-        functions("companions.rs", include_str!("../../../src-tauri/src/commands/companions.rs"), &["carry_with", "extras_dir_problem"]),
+        // The carry of the companions moved from the desktop into the core with issue #20 (P3).
+        functions("companion_actions.rs", include_str!("companion_actions.rs"), &["carry", "extras_dir_problem"]),
         whole("web.rs", include_str!("../../katalog-server/src/web.rs")),
         whole("write.rs", include_str!("../../katalog-server/src/write.rs")),
         whole("download.rs", include_str!("../../katalog-server/src/download.rs")),
