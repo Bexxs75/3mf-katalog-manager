@@ -199,159 +199,21 @@ pub fn list_blocked_auto_tags(state: State<AppState>) -> CmdResult<Vec<String>> 
     let conn = lock_db(&state)?;
     db::blocked_tags::list_blocked_auto_tags(&conn).map_err(blocked_tag_error)
 }
-/// What `move_file_core` did for one file.
-#[derive(Debug, PartialEq, Eq)]
-enum MoveOutcome {
-    /// Moved (or, for a file already lying in the folder's directory, only
-    /// re-assigned in the catalog). Carries the old place for an undo.
-    Moved { from_folder_id: Option<i64>, from_path: String },
-    /// Already in the target folder, nothing to do.
-    AlreadyThere,
-}
+/// The move flow (checks, move, companions, roll-back) lives in `katalog_core::file_move`
+/// (issue #20, P5); this adapter hands it the desktop's `Fs` boundary.
+use katalog_core::file_move::{self as moving, FileMoveFs};
 
-/// A refused move: a stable machine code for the batch result plus the
-/// message the single-file command has always shown.
-struct MoveRefusal {
-    code: &'static str,
-    error: CmdError,
-}
-
-impl MoveRefusal {
-    fn new(code: &'static str, error: impl Into<CmdError>) -> Self {
-        Self { code, error: error.into() }
+impl FileMoveFs for super::companions::CompanionFsAdapter<'_> {
+    fn is_dir(&self, path: &Path) -> bool {
+        self.0.is_dir(path)
+    }
+    fn is_file(&self, path: &Path) -> bool {
+        self.0.is_file(path)
     }
 }
 
-/// Shared by the single and the batch move, so both keep the same safety
-/// checks, never overwrite and roll back on a DB failure. The refusal code is
-/// what lets the batch report a name clash or a missing source without
-/// parsing messages.
-fn move_file_core(
-    conn: &Connection,
-    file_id: i64,
-    folder_id: Option<i64>,
-    sensitive_dirs: &[PathBuf],
-) -> Result<MoveOutcome, MoveRefusal> {
-    move_file_core_fs(&RealFs, conn, file_id, folder_id, sensitive_dirs)
-}
-
-/// `move_file_core` on an injected file system (tests); production passes `RealFs`.
-fn move_file_core_fs(
-    fs: &dyn Fs,
-    conn: &Connection,
-    file_id: i64,
-    folder_id: Option<i64>,
-    sensitive_dirs: &[PathBuf],
-) -> Result<MoveOutcome, MoveRefusal> {
-    let file = db::get_file(conn, file_id)
-        .map_err(|e| MoveRefusal::new("error", e.to_string()))?
-        .ok_or_else(|| MoveRefusal::new("not_found", "file not found".to_string()))?;
-    if file.deleted_at.is_some() {
-        return Err(MoveRefusal::new("in_trash", CmdError::coded(ErrorCode::FileInTrash)));
-    }
-
-    let target_dir: std::path::PathBuf = match folder_id {
-        Some(fid) => {
-            let folders = db::list_folders(conn).map_err(|e| MoveRefusal::new("error", e.to_string()))?;
-            let folder = folders
-                .iter()
-                .find(|f| f.id == fid)
-                .ok_or_else(|| MoveRefusal::new("folder_not_found", "folder not found".to_string()))?;
-            std::path::PathBuf::from(&folder.path)
-        }
-        None => std::path::Path::new(&file.path)
-            .parent()
-            .map(|p| p.to_path_buf())
-            .ok_or_else(|| MoveRefusal::new("error", "invalid current path".to_string()))?,
-    };
-    let sensitive = |path: &std::path::Path| {
-        reject_if_sensitive_path(path, sensitive_dirs).map_err(|e| MoveRefusal::new("sensitive_path", e))
-    };
-    sensitive(&target_dir)?;
-
-    let old_path = std::path::PathBuf::from(&file.path);
-    let name = old_path
-        .file_name()
-        .ok_or_else(|| MoveRefusal::new("error", "invalid file path".to_string()))?;
-    let new_path = target_dir.join(name);
-    sensitive(&old_path)?;
-    sensitive(&new_path)?;
-    if folders::comparison_path(&old_path) == folders::comparison_path(&new_path) {
-        if folder_id.is_some() && file.folder_id == folder_id {
-            return Ok(MoveOutcome::AlreadyThere);
-        }
-        // Importing the target's own contents only needs a catalog assignment.
-        db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
-            .map_err(|e| MoveRefusal::new("error", e.to_string()))?;
-        return Ok(MoveOutcome::Moved { from_folder_id: file.folder_id, from_path: file.path });
-    }
-    // Without these checks the OS error ("No such file or directory") would reach
-    // the user as an unexpected fault, although the catalog is merely out of date.
-    if !fs.is_dir(&target_dir) {
-        return Err(MoveRefusal::new(
-            "target_missing",
-            CmdError::coded_with(ErrorCode::TargetFolderMissingOnDisk, [target_dir.display()]),
-        ));
-    }
-    if !fs.is_file(&old_path) {
-        return Err(MoveRefusal::new(
-            "source_missing",
-            CmdError::coded_with(ErrorCode::FileMissingOnDisk, [old_path.display()]),
-        ));
-    }
-    if let Err(e) = move_file_with(fs, &old_path, &new_path) {
-        let code = if e.kind() == std::io::ErrorKind::AlreadyExists { "name_exists" } else { "error" };
-        return Err(MoveRefusal::new(code, e.to_string()));
-    }
-    // The model's companion files travel with it; a clash there undoes the model move.
-    let carried = match companions::carry_fs(fs, conn, file_id, &old_path, &new_path) {
-        Ok(carried) => carried,
-        Err(error) => {
-            if let Err(rollback_err) = move_file_with(fs, &new_path, &old_path) {
-                return Err(MoveRefusal::new(
-                    "error",
-                    format!(
-                        "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}",
-                        new_path.display()
-                    ),
-                ));
-            }
-            return Err(MoveRefusal::new("error", error));
-        }
-    };
-
-    if let Err(db_err) =
-        db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
-    {
-        carried.undo_with(fs, conn);
-        // Undo the physical move so file system and DB don't drift apart. move_file
-        // never overwrites anything.
-        if let Err(rollback_err) = move_file_with(fs, &new_path, &old_path) {
-            return Err(MoveRefusal::new(
-                "error",
-                format!(
-                    "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB verweist weiter auf {}",
-                    new_path.display(),
-                    old_path.display()
-                ),
-            ));
-        }
-        // files.path is UNIQUE: a catalog row already owning the target path
-        // (e.g. a file missing on disk) is a name clash, not a fault.
-        let path_taken = conn
-            .query_row(
-                "SELECT 1 FROM files WHERE path = ?1 AND id != ?2",
-                rusqlite::params![new_path.to_string_lossy(), file_id],
-                |_| Ok(()),
-            )
-            .is_ok();
-        let code = if path_taken { "name_exists" } else { "error" };
-        return Err(MoveRefusal::new(code, db_err.to_string()));
-    }
-    carried.finish_with(fs);
-    log::debug!(target: "datei", "verschoben: {} -> {}", old_path.display(), new_path.display());
-    Ok(MoveOutcome::Moved { from_folder_id: file.folder_id, from_path: file.path })
-}
+/// On these systems two names that differ only in case are the same folder.
+const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
 
 /// `move_file_to_folder_with_conn` on an injected file system (tests).
 #[cfg(test)]
@@ -362,12 +224,12 @@ pub(super) fn move_file_to_folder_with_conn_fs(
     folder_id: Option<i64>,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
-    move_file_core_fs(fs, conn, file_id, folder_id, sensitive_dirs)
+    moving::move_file(&super::companions::CompanionFsAdapter(fs), conn, file_id, folder_id, sensitive_dirs, CASE_INSENSITIVE_PATHS)
         .map(|_| ())
-        .map_err(|refusal| refusal.error)
+        .map_err(|refusal| refusal.error.into())
 }
 
-/// The outcome of `move_file_core_fs` as JSON, with the refusal code the batch reports
+/// The outcome of the move as JSON, with the refusal code the batch reports
 /// (golden scenarios of issue #20, P5).
 #[cfg(test)]
 pub(super) fn move_file_outcome_fs(
@@ -377,12 +239,13 @@ pub(super) fn move_file_outcome_fs(
     folder_id: Option<i64>,
     sensitive_dirs: &[PathBuf],
 ) -> serde_json::Value {
-    match move_file_core_fs(fs, conn, file_id, folder_id, sensitive_dirs) {
-        Ok(MoveOutcome::Moved { from_folder_id, from_path }) => {
+    let outcome = moving::move_file(&super::companions::CompanionFsAdapter(fs), conn, file_id, folder_id, sensitive_dirs, CASE_INSENSITIVE_PATHS);
+    match outcome {
+        Ok(moving::MoveOutcome::Moved { from_folder_id, from_path }) => {
             serde_json::json!({ "moved": { "fromFolderId": from_folder_id, "fromPath": from_path } })
         }
-        Ok(MoveOutcome::AlreadyThere) => serde_json::json!("alreadyThere"),
-        Err(refusal) => serde_json::json!({ "refused": { "code": refusal.code, "error": refusal.error } }),
+        Ok(moving::MoveOutcome::AlreadyThere) => serde_json::json!("alreadyThere"),
+        Err(refusal) => serde_json::json!({ "refused": { "code": refusal.code, "error": CmdError::from(refusal.error) } }),
     }
 }
 
@@ -393,9 +256,9 @@ pub(super) fn move_file_to_folder_with_conn(
     folder_id: Option<i64>,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
-    move_file_core(conn, file_id, folder_id, sensitive_dirs)
+    moving::move_file(&super::companions::CompanionFsAdapter(&RealFs), conn, file_id, folder_id, sensitive_dirs, CASE_INSENSITIVE_PATHS)
         .map(|_| ())
-        .map_err(|refusal| refusal.error)
+        .map_err(|refusal| refusal.error.into())
 }
 /// Moves a file into a target folder's directory and updates `folder_id`/`path`.
 /// `folder_id: None` leaves it where it is.
@@ -419,37 +282,16 @@ pub fn move_file_to_folder(
     move_file_to_folder_with_conn(&conn, id, target_id, &sensitive_dirs)
 }
 
-/// Upper bound per `move_files_to_folder` call; keeps one call from holding the
-/// catalog gate for an unbounded time.
-pub(crate) const MAX_BATCH_MOVE_FILES: usize = 5000;
-
-/// Per-file result of `move_files_to_folder`. `status` is "moved", "skipped"
-/// or "failed"; `reason` is a stable code. `from_folder_id`/`from_path` are
-/// only set for "moved" and are exactly what an undo call needs.
-#[derive(Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct MoveFileResult {
-    pub id: String,
-    pub status: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub from_folder_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub from_path: Option<String>,
-}
-
-impl MoveFileResult {
-    fn with_reason(id: &str, status: &'static str, reason: &str) -> Self {
-        Self { id: id.to_string(), status, reason: Some(reason.to_string()), from_folder_id: None, from_path: None }
-    }
-}
+// Only the tests next to this file name the limit; the flow itself lives in the core.
+#[cfg(test)]
+pub(crate) use moving::MAX_BATCH_MOVE_FILES;
+pub use moving::MoveFileResult;
 
 /// Core of `move_files_to_folder`, without `State`. `lock` hands out the DB
 /// connection per file, so the lock is not held across the whole batch (moves
 /// across drives can be slow) and never nested.
 pub(super) fn move_files_to_folder_with<G, C>(
-    mut lock: G,
+    lock: G,
     file_ids: &[String],
     folder_id: i64,
     sensitive_dirs: &[PathBuf],
@@ -458,48 +300,7 @@ where
     G: FnMut() -> CmdResult<C>,
     C: std::ops::Deref<Target = Connection>,
 {
-    if file_ids.len() > MAX_BATCH_MOVE_FILES {
-        return Err(CmdError::coded_with(ErrorCode::MoveTooManyFiles, [file_ids.len(), MAX_BATCH_MOVE_FILES]));
-    }
-    {
-        // The target is the same for every file, so a wrong one fails the whole call
-        // instead of producing thousands of identical per-file failures.
-        let conn = lock()?;
-        let folders = db::list_folders(&conn).map_err(|e| e.to_string())?;
-        let folder = folders
-            .iter()
-            .find(|f| f.id == folder_id)
-            .ok_or_else(|| "folder not found".to_string())?;
-        let target_dir = std::path::PathBuf::from(&folder.path);
-        reject_if_sensitive_path(&target_dir, sensitive_dirs)?;
-        if !target_dir.is_dir() {
-            return Err(CmdError::coded_with(ErrorCode::TargetFolderMissingOnDisk, [target_dir.display()]));
-        }
-    }
-
-    let mut results = Vec::with_capacity(file_ids.len());
-    for id_str in file_ids {
-        let Ok(id) = id_str.parse::<i64>() else {
-            results.push(MoveFileResult::with_reason(id_str, "failed", "invalid_id"));
-            continue;
-        };
-        let conn = lock()?;
-        results.push(match move_file_core(&conn, id, Some(folder_id), sensitive_dirs) {
-            Ok(MoveOutcome::Moved { from_folder_id, from_path }) => MoveFileResult {
-                id: id_str.clone(),
-                status: "moved",
-                reason: None,
-                from_folder_id: from_folder_id.map(|f| f.to_string()),
-                from_path: Some(from_path),
-            },
-            Ok(MoveOutcome::AlreadyThere) => MoveFileResult::with_reason(id_str, "skipped", "already_there"),
-            Err(refusal) => {
-                let status = if refusal.code == "name_exists" { "skipped" } else { "failed" };
-                MoveFileResult::with_reason(id_str, status, refusal.code)
-            }
-        });
-    }
-    Ok(results)
+    moving::move_files(&super::companions::CompanionFsAdapter(&RealFs), lock, file_ids, folder_id, sensitive_dirs, CASE_INSENSITIVE_PATHS)
 }
 
 /// Moves several files into one catalog folder. Every file is moved on its own

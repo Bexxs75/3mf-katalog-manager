@@ -274,8 +274,10 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         whole("catalog_removal.rs", include_str!("../../../src-tauri/src/commands/catalog_removal.rs")),
         whole("source_folders.rs", include_str!("../../../src-tauri/src/commands/source_folders.rs")),
         functions("files.rs", include_str!("../../../src-tauri/src/commands/files.rs"), &[
-            "validate_file_name", "move_file_core", "move_files_to_folder_with", "rename_file_with_conn",
+            "validate_file_name", "move_files_to_folder_with", "rename_file_with_conn",
         ]),
+        // The move flow moved from the desktop into the core with issue #20 (P5).
+        whole("file_move.rs", include_str!("file_move.rs")),
         // The carry of the companions moved from the desktop into the core with issue #20 (P3).
         functions("companion_actions.rs", include_str!("companion_actions.rs"), &["carry", "extras_dir_problem"]),
         whole("web.rs", include_str!("../../katalog-server/src/web.rs")),
