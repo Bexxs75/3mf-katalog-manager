@@ -248,6 +248,8 @@ pub(super) fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_
 
 /// `carry` on an injected file system; the `Carried` it returns must be finished or undone
 /// with the same one (`finish_with` / `undo_with`).
+// Kept for the old signature; the move and rename paths now call the core directly (issue #20, P5).
+#[allow(dead_code)]
 pub(super) fn carry_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path) -> CmdResult<Carried> {
     carry_with_fs(fs, conn, file_id, old_model, new_model, CASE_INSENSITIVE_PATHS)
 }

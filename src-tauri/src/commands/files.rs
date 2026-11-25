@@ -219,7 +219,7 @@ const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
 /// converted (and so logged) first, as it was when the carry still lived here.
 fn refusal_error(refusal: moving::MoveRefusal) -> CmdError {
     if let Some(origin) = refusal.origin {
-        drop(CmdError::from(origin));
+        drop(CmdError::from(*origin));
     }
     refusal.error.into()
 }

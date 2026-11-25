@@ -96,7 +96,7 @@ pub struct MoveRefusal {
     /// `error` is the composed message instead. The caller converts it first (so the
     /// desktop log keeps the origin with its parameters, as before the move went into the
     /// core), then `error`. `None` when `error` is itself the origin.
-    pub origin: Option<CmdError>,
+    pub origin: Option<Box<CmdError>>,
 }
 
 impl MoveRefusal {
@@ -185,7 +185,7 @@ pub fn move_file(
                     "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}",
                     new_path.display()
                 );
-                return Err(MoveRefusal { origin: Some(error), ..MoveRefusal::new("error", composed) });
+                return Err(MoveRefusal { origin: Some(Box::new(error)), ..MoveRefusal::new("error", composed) });
             }
             return Err(MoveRefusal::new("error", error));
         }
@@ -303,7 +303,7 @@ where
                 // The caller's error type is built (and so logged) for a refused file, as it
                 // always was, although the batch reports only the code.
                 if let Some(origin) = refusal.origin {
-                    drop(E::from(origin));
+                    drop(E::from(*origin));
                 }
                 drop(E::from(refusal.error));
                 let status = if refusal.code == "name_exists" { "skipped" } else { "failed" };
