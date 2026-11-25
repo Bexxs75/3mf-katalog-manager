@@ -45,6 +45,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Restoring from the web trash recreates missing parent folders and reconnects their catalog entries, including after an interrupted restore. Name conflicts remain errors.
 - A file without any displayable geometry (for example a sliced package that only contains G-code) is no longer logged as an error when its preview is requested; it is logged as information.
 - The settings search finds the close-to-tray option under the term "Tray" as well.
+- The window remembers its size, its maximized state and (where the system allows it) its position across restarts, and starts maximized under GNOME/Wayland as configured (the window was small there before).
 - On the web, after a backup has been restored, imports and the search for new files wait a moment (the message says so, HTTP 409) until the server has filled in the file checksums again; before, an import of the same source folder copied every known file a second time. Renaming or moving files during that time is safe.
 
 ## [0.18.7] - 2026-11-22
@@ -964,6 +965,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Im Web hält sich das Einspielen einer geprüften Sicherung jetzt an dieselbe Grenze wie die Prüfung: Pfade aus der Sicherung außerhalb der freigegebenen Ordner werden nicht mehr auf der Platte nachgeschlagen (vorher konnte ein Pfad auf einem nicht erreichbaren Netzlaufwerk den Server aufhalten, während er mit gesperrtem Katalog wartete), und Prüfung und Einspielen kommen bei derselben Datei zum selben Ergebnis.
 - Beim Wiederherstellen aus dem Web-Papierkorb werden fehlende Elternordner neu angelegt und ihre Katalogeinträge verknüpft, auch nach einer unterbrochenen Wiederherstellung. Namenskonflikte bleiben Fehler.
 - Eine Datei ohne darstellbare Geometrie (zum Beispiel ein gesliceltes Paket, das nur G-Code enthält) wird bei der Vorschau nicht mehr als Fehler protokolliert, sondern als Information.
+- Das Fenster merkt sich Größe, Maximiert-Zustand und (wo das System es erlaubt) die Position über Neustarts hinweg und startet unter GNOME/Wayland wie eingestellt maximiert (dort blieb es bisher klein).
 - Die Einstellungssuche findet die Option zum Minimieren in den Infobereich jetzt auch unter dem Begriff „Tray“.
 
 ## [0.18.7] - 2026-11-22
