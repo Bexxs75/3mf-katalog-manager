@@ -246,7 +246,7 @@ fn unsafe_source_paths_are_refused() {
     let sensitive = vec![f.outside.clone()];
     assert!(add_companion_with_conn(&f.conn, id, &source, &sensitive).is_err(), "inside a protected folder");
     assert!(add_companion_with_conn(&f.conn, id, Path::new("pic.png"), &[]).is_err(), "relative");
-    let dotdot = f.outside.join("..").join("outside").join("pic.png");
+    let dotdot = crate::commands::join_unresolved(&f.outside, "../outside/pic.png");
     assert!(add_companion_with_conn(&f.conn, id, &dotdot, &[]).is_err(), "with ..");
     assert!(add_companion_with_conn(&f.conn, id, &f.outside, &[]).is_err(), "a folder");
     assert!(add_companion_with_conn(&f.conn, id, &f.outside.join("missing.png"), &[]).is_err(), "missing");
@@ -258,10 +258,15 @@ fn awkward_names_are_made_harmless() {
     let f = Fixture::new();
     let (id, _) = f.model("Foo.3mf");
     let a = f.add(id, ".hidden.png", PNG);
-    let b = f.add(id, "a:b*c?.PNG", PNG);
     assert_eq!(a.name, "hidden.png");
-    assert_eq!(b.name, "a_b_c_.png");
-    for row in [a, b] {
+    let mut rows = vec![a];
+    // Windows cannot hold a source file with these characters in its name.
+    if !cfg!(windows) {
+        let b = f.add(id, "a:b*c?.PNG", PNG);
+        assert_eq!(b.name, "a_b_c_.png");
+        rows.push(b);
+    }
+    for row in rows {
         assert_eq!(Path::new(&row.path).parent().unwrap(), f.root.join("Foo_extras"));
     }
 }
@@ -782,15 +787,16 @@ fn the_listing_flags_a_missing_file_without_changing_the_catalog() {
 
 #[test]
 fn stored_rows_are_validated_like_the_app_writes_them() {
-    let good = |name: &str, kind: &str| validate_stored_fields(name, &format!("/c/Foo_extras/{name}"), kind);
+    let n = crate::commands::native_test_path;
+    let good = |name: &str, kind: &str| validate_stored_fields(name, &n(&format!("/c/Foo_extras/{name}")), kind);
     assert!(good("a.png", "image").is_ok());
     assert!(good("a.png", "pdf").is_err(), "kind must match the extension");
     assert!(good("a.exe", "image").is_err());
     assert!(good("a.png", "exe").is_err());
-    assert!(validate_stored_fields("a.png", "/c/Foo/a.png", "image").is_err(), "not an _extras folder");
-    assert!(validate_stored_fields("a.png", "/c/Foo_extras/../a.png", "image").is_err());
+    assert!(validate_stored_fields("a.png", &n("/c/Foo/a.png"), "image").is_err(), "not an _extras folder");
+    assert!(validate_stored_fields("a.png", &n("/c/Foo_extras/../a.png"), "image").is_err());
     assert!(validate_stored_fields("a.png", "Foo_extras/a.png", "image").is_err(), "relative");
-    assert!(validate_stored_fields("b.png", "/c/Foo_extras/a.png", "image").is_err(), "name must match the path");
+    assert!(validate_stored_fields("b.png", &n("/c/Foo_extras/a.png"), "image").is_err(), "name must match the path");
 }
 
 /// Replaces the extras folder of `Foo.3mf` by a link to a foreign folder that holds a

@@ -11,9 +11,11 @@ fn touch(dir: &Path, name: &str) -> PathBuf {
 }
 
 fn uri_of(path: &Path) -> String {
-    let mut out = String::from("file://");
-    for byte in path.to_string_lossy().bytes() {
-        if byte.is_ascii_alphanumeric() || b"/-_.~".contains(&byte) {
+    // A Windows path `C:\dir\a.3mf` is written `file:///C:/dir/a.3mf`.
+    let text = path.to_string_lossy().replace('\\', "/");
+    let mut out = String::from(if text.starts_with('/') { "file://" } else { "file:///" });
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || b"/-_.~:".contains(&byte) {
             out.push(byte as char);
         } else {
             out.push_str(&format!("%{byte:02X}"));

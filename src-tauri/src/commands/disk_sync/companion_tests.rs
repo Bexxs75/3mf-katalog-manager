@@ -78,7 +78,9 @@ fn the_same_stray_file_elsewhere_is_still_offered() {
 
     let mut files: Vec<_> = scan.new_files.iter().map(|e| e.relative_path.clone()).collect();
     files.sort();
-    assert_eq!(files, vec!["Orphan_extras/unrelated.obj", "Other/stray.obj"], "an _extras folder without a catalog model is a normal folder");
+    // The path below the root is shown in the spelling of the system.
+    let expected: Vec<String> = ["Orphan_extras/unrelated.obj", "Other/stray.obj"].iter().map(|p| p.replace('/', std::path::MAIN_SEPARATOR_STR)).collect();
+    assert_eq!(files, expected, "an _extras folder without a catalog model is a normal folder");
     assert_eq!(scan.new_folders.len(), 2);
 }
 

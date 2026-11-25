@@ -102,7 +102,7 @@ fn unfit_folders_are_refused() {
     assert!(f.add(&f.base.join("missing")).is_err(), "missing");
     assert!(f.add(&file).is_err(), "a file");
     assert!(f.add(Path::new("relative/dir")).is_err(), "relative");
-    let dotdot = f.dir("one").join("..").join("one");
+    let dotdot = crate::commands::join_unresolved(&f.dir("one"), "../one");
     assert!(f.add(&dotdot).is_err(), "with ..");
     assert!(f.add(&f.dir("ok")).is_ok(), "counter-check: a normal folder is fine");
 }

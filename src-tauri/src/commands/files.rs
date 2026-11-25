@@ -1194,7 +1194,7 @@ mod tests {
             let _gate = state.import_jobs.gate.exclusive().unwrap();
             let conn = state.db.try_lock().unwrap();
             conn.execute("UPDATE files SET content_hash = 'new' WHERE id = 2", []).unwrap();
-            conn.execute("UPDATE files SET path = '/tmp/renamed.stl' WHERE id = 3", []).unwrap();
+            conn.execute("UPDATE files SET path = ?1 WHERE id = 3", [crate::commands::native_test_path("/tmp/renamed.stl")]).unwrap();
             Ok("computed".into())
         }).unwrap();
         // The renamed row is read once more, at its new path; the hash read from the old one is dropped.
@@ -1203,7 +1203,7 @@ mod tests {
         assert_eq!(db::get_file(&conn, 1).unwrap().unwrap().content_hash.as_deref(), Some("computed"));
         assert_eq!(db::get_file(&conn, 2).unwrap().unwrap().content_hash.as_deref(), Some("new"));
         let renamed = db::get_file(&conn, 3).unwrap().unwrap();
-        assert_eq!((renamed.path.as_str(), renamed.content_hash.as_deref()), ("/tmp/renamed.stl", Some("computed")));
+        assert_eq!((renamed.path.as_str(), renamed.content_hash.as_deref()), (crate::commands::native_test_path("/tmp/renamed.stl").as_str(), Some("computed")));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -2027,9 +2027,10 @@ mod tests {
         let dir = unique_test_dir("move_file_to_folder_compensation");
         std::fs::create_dir_all(dir.join("source")).unwrap();
         std::fs::create_dir_all(dir.join("target")).unwrap();
-        let src_path = dir.join("source/model.3mf");
+        // Stored paths are compared as text: join by component, so the separator is native.
+        let src_path = dir.join("source").join("model.3mf");
         std::fs::write(&src_path, b"CONTENT").unwrap();
-        let colliding_target_path = dir.join("target/model.3mf");
+        let colliding_target_path = dir.join("target").join("model.3mf");
 
         let conn = db::connect_in_memory().unwrap();
         let folder_id = db::insert_folder_with_parent(
@@ -2129,7 +2130,7 @@ mod tests {
         let clash = batch_add_file(&conn, &dir, "src", "clash.3mf", src);
         // Same name already in the target, on disk and in the catalog.
         std::fs::write(dir.join("dst/clash.3mf"), b"TARGET").unwrap();
-        db::test_insert_minimal_file(&conn, &dir.join("dst/clash.3mf").to_string_lossy(), Some(dst)).unwrap();
+        db::test_insert_minimal_file(&conn, &dir.join("dst").join("clash.3mf").to_string_lossy(), Some(dst)).unwrap();
         let there = batch_add_file(&conn, &dir, "dst", "there.3mf", dst);
         let trashed = batch_add_file(&conn, &dir, "src", "trash.3mf", src);
         db::soft_delete_file(&conn, trashed, None, "2026-01-01T00:00:00Z").unwrap();
@@ -2169,7 +2170,7 @@ mod tests {
         }
         assert!(dir.join("src/trash.3mf").is_file());
         let there_rec = db::get_file(&conn, there).unwrap().unwrap();
-        assert_eq!(there_rec.path, dir.join("dst/there.3mf").to_string_lossy());
+        assert_eq!(there_rec.path, dir.join("dst").join("there.3mf").to_string_lossy());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2178,7 +2179,7 @@ mod tests {
         let (conn, dir, src, dst) = batch_move_fixture("batch_move_catalog_clash");
         let f = batch_add_file(&conn, &dir, "src", "m.3mf", src);
         // Catalog row owns the target path although the file is gone from disk.
-        db::test_insert_minimal_file(&conn, &dir.join("dst/m.3mf").to_string_lossy(), Some(dst)).unwrap();
+        db::test_insert_minimal_file(&conn, &dir.join("dst").join("m.3mf").to_string_lossy(), Some(dst)).unwrap();
 
         let res = run_batch(&conn, &ids(&[f]), dst).unwrap();
 
@@ -2237,7 +2238,7 @@ mod tests {
         let a = batch_add_file(&conn, &dir, "src", "a.3mf", src);
         let b = batch_add_file(&conn, &dir, "src", "b.3mf", src);
         std::fs::write(dir.join("dst/b.3mf"), b"TARGET").unwrap();
-        db::test_insert_minimal_file(&conn, &dir.join("dst/b.3mf").to_string_lossy(), Some(dst)).unwrap();
+        db::test_insert_minimal_file(&conn, &dir.join("dst").join("b.3mf").to_string_lossy(), Some(dst)).unwrap();
         let bundle = db::bundles::create_bundle(&conn, "Set", db::bundles::BundleKind::Parts, &[a, b], "2026-01-01T00:00:00Z").unwrap();
 
         let res = run_batch(&conn, &ids(&[a, b]), dst).unwrap();

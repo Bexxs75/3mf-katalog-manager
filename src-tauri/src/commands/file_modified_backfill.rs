@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn backfill_does_not_overwrite_concurrent_rescan() {
         let state = state();
-        let id = db::test_insert_minimal_file(&state.db.lock().unwrap(), "/tmp/backfill.stl", None)
+        let id = db::test_insert_minimal_file(&state.db.lock().unwrap(), &crate::commands::native_test_path("/tmp/backfill.stl"), None)
             .unwrap();
         assert_eq!(
             backfill_with_reader(&state, |_| {
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn backfill_yields_to_import_and_does_not_write_a_changed_path() {
         let state = state();
-        let id = db::test_insert_minimal_file(&state.db.lock().unwrap(), "/tmp/before.stl", None)
+        let id = db::test_insert_minimal_file(&state.db.lock().unwrap(), &crate::commands::native_test_path("/tmp/before.stl"), None)
             .unwrap();
         let share = state.import_jobs.gate.import();
         let (sent, received) = std::sync::mpsc::channel();
@@ -349,7 +349,7 @@ mod tests {
         let state = state();
         {
             let conn = state.db.lock().unwrap();
-            db::test_insert_minimal_file(&conn, "/tmp/fail.stl", None).unwrap();
+            db::test_insert_minimal_file(&conn, &crate::commands::native_test_path("/tmp/fail.stl"), None).unwrap();
             conn.execute_batch("CREATE TRIGGER reject_modified BEFORE UPDATE OF file_modified_at ON files BEGIN SELECT RAISE(ABORT, 'injected failure'); END;").unwrap();
         }
         assert!(backfill_with_reader(&state, |_| Some("date".into())).is_err());

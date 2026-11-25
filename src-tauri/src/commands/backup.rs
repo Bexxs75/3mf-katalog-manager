@@ -408,6 +408,8 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Stored paths in the spelling of this system: Windows refuses an imported path without a drive.
+    use crate::commands::native_test_path as n;
 
     #[cfg(not(windows))]
     #[test]
@@ -502,7 +504,7 @@ mod tests {
     #[test]
     fn catalog_license_validation_accepts_old_exports_and_validates_new_values() {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-            crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
             conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
             // The license step is the one before the source-column step.
             conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION - 2).unwrap();
@@ -512,14 +514,14 @@ mod tests {
             (Some(" Free license ".to_string()), true), (Some("é".repeat(200)), true),
             (Some("a".repeat(201)), false), (Some("bad\0text".to_string()), false)] {
             let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-                let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+                let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
                 conn.execute("UPDATE files SET license = ?1 WHERE id = ?2", rusqlite::params![value, id]).unwrap();
             });
             let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), valid, "{result:?}");
         }
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
             conn.execute("UPDATE files SET license = X'1234' WHERE id = ?1", [id]).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
@@ -830,14 +832,14 @@ mod tests {
             ("source_profile_id", "12\u{202E}34".to_string(), false),
         ] {
             let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-                let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+                let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
                 conn.execute(&format!("UPDATE files SET {column} = ?1 WHERE id = ?2"), rusqlite::params![value, id]).unwrap();
             });
             let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), valid, "{column}: {result:?}");
         }
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
             conn.execute("UPDATE files SET source_model_id = X'1234' WHERE id = ?1", [id]).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err(), "a BLOB is the wrong storage class");
@@ -865,7 +867,7 @@ mod tests {
     fn imported_paths_have_a_length_limit() {
         for length in [4096, 4097] {
             let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-                conn.execute("INSERT INTO folders (name, path) VALUES ('root', ?1)", [format!("/{}", "a".repeat(length - 1))]).unwrap();
+                conn.execute("INSERT INTO folders (name, path) VALUES ('root', ?1)", [n(&format!("/{}", "a".repeat(length - if cfg!(windows) { 3 } else { 1 })))]).unwrap();
             });
             let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), length == 4096, "{result:?}");
@@ -1014,8 +1016,8 @@ mod tests {
             // Deliberately NO run_migrations() here - simulates a DB exported before the
             // parent_id/path migration.
             conn.execute(
-                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.3mf', '3mf', 1, '2026-01-01T00:00:00Z')",
-                [],
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', ?1, '3mf', 1, '2026-01-01T00:00:00Z')",
+                [n("/tmp/x.3mf")],
             ).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
@@ -1657,7 +1659,7 @@ mod tests {
             let mut conn = crate::db::connect(&tmp_path).unwrap();
 
             let folder_id =
-                crate::db::insert_folder_with_parent(&conn, "Projekte", None, "/tmp/Projekte").unwrap();
+                crate::db::insert_folder_with_parent(&conn, "Projekte", None, &n("/tmp/Projekte")).unwrap();
 
             let mut metadata = BTreeMap::new();
             metadata.insert("Slicer".to_string(), "Bambu Studio".to_string());
@@ -1665,7 +1667,7 @@ mod tests {
                 license: None,
                 source: Default::default(),
                 name: "Gehaeuse.3mf".to_string(),
-                path: "/tmp/Projekte/Gehaeuse.3mf".to_string(),
+                path: n("/tmp/Projekte/Gehaeuse.3mf"),
                 file_type: FileType::ThreeMf,
                 folder_id: Some(folder_id),
                 origin: "local".to_string(),
@@ -1878,7 +1880,7 @@ mod tests {
         let (source, dir) = state_with_catalog("backup_bundles_a");
         let ids: Vec<i64> = {
             let conn = source.db.lock().unwrap();
-            let ids: Vec<i64> = (0..3).map(|i| db::test_insert_minimal_file(&conn, &format!("/tmp/b{i}.3mf"), None).unwrap()).collect();
+            let ids: Vec<i64> = (0..3).map(|i| db::test_insert_minimal_file(&conn, &n(&format!("/tmp/b{i}.3mf")), None).unwrap()).collect();
             let bundle = db::bundles::create_bundle(&conn, "Vase", db::bundles::BundleKind::Parts, &[ids[2], ids[0], ids[1]], "2026-11-04T10:00:00Z").unwrap();
             db::bundles::update_bundle_member(&conn, ids[0], Some("Lid"), false).unwrap();
             assert!(db::bundles::get_bundle(&conn, bundle).unwrap().is_some());
@@ -1906,7 +1908,7 @@ mod tests {
         let (old, dir) = state_with_catalog("backup_bundles_old_a");
         {
             let conn = old.db.lock().unwrap();
-            db::test_insert_minimal_file(&conn, "/tmp/old.3mf", None).unwrap();
+            db::test_insert_minimal_file(&conn, &n("/tmp/old.3mf"), None).unwrap();
             conn.execute_batch("DROP TABLE bundle_members; DROP TABLE bundles").unwrap();
             conn.pragma_update(None, "user_version", 56).unwrap(); // the version before the bundle tables (a development number, not derived from the current one)
         }
@@ -2024,8 +2026,8 @@ mod tests {
         new_conn
             .execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
-                 VALUES ('new.3mf', '/incoming/new.3mf', '3mf', 42, '2026-09-13T00:00:00Z')",
-                [],
+                 VALUES ('new.3mf', ?1, '3mf', 42, '2026-09-13T00:00:00Z')",
+                [n("/incoming/new.3mf")],
             )
             .expect("seed new db with a marker row");
         new_conn.execute("UPDATE files SET content_hash = 'forged'", []).unwrap();
@@ -2134,8 +2136,8 @@ mod tests {
         old_conn
             .execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
-                 VALUES ('old.3mf', '/old/old.3mf', '3mf', 7, '2026-09-13T00:00:00Z')",
-                [],
+                 VALUES ('old.3mf', ?1, '3mf', 7, '2026-09-13T00:00:00Z')",
+                [n("/old/old.3mf")],
             )
             .expect("seed old db with a marker row");
         drop(old_conn);
@@ -2188,8 +2190,8 @@ mod tests {
         old_conn
             .execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
-                 VALUES ('old.3mf', '/old/old.3mf', '3mf', 7, '2026-09-13T00:00:00Z')",
-                [],
+                 VALUES ('old.3mf', ?1, '3mf', 7, '2026-09-13T00:00:00Z')",
+                [n("/old/old.3mf")],
             )
             .expect("seed old db with a marker row");
         drop(old_conn);
@@ -2201,8 +2203,8 @@ mod tests {
         new_conn
             .execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
-                 VALUES ('new.3mf', '/incoming/new.3mf', '3mf', 42, '2026-09-13T00:00:00Z')",
-                [],
+                 VALUES ('new.3mf', ?1, '3mf', 42, '2026-09-13T00:00:00Z')",
+                [n("/incoming/new.3mf")],
             )
             .expect("seed new db with a marker row");
         drop(new_conn);
@@ -2474,7 +2476,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&dir.join("1-modell.3mf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from("/etc")], &dir, &[]);
+        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from(n("/etc"))], &dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
     }
@@ -3057,6 +3059,8 @@ mod tests {
 #[cfg(test)]
 mod companion_tests {
     use super::*;
+    // Stored paths in the spelling of this system: Windows refuses an imported path without a drive.
+    use crate::commands::native_test_path as n;
 
     fn state_with_catalog(name: &str) -> (AppState, PathBuf) {
         let dir = unique_test_dir(name);
@@ -3085,10 +3089,10 @@ mod companion_tests {
     fn with_companion(conn: &Connection, name: &str, path: &str, kind: &str, trash_path: Option<&str>) {
         // A crafted backup need not carry the CHECK constraints.
         conn.pragma_update(None, "ignore_check_constraints", true).unwrap();
-        let id = crate::db::test_insert_minimal_file(conn, "/catalog/Foo.3mf", None).unwrap();
+        let id = crate::db::test_insert_minimal_file(conn, &n("/catalog/Foo.3mf"), None).unwrap();
         conn.execute(
             "INSERT INTO companion_files (file_id, name, path, kind, added_at, deleted_at, trash_path) VALUES (?1, ?2, ?3, ?4, 'now', ?5, ?6)",
-            rusqlite::params![id, name, path, kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path],
+            rusqlite::params![id, name, n(path), kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path.map(n)],
         )
         .unwrap();
     }
@@ -3137,11 +3141,19 @@ mod companion_tests {
         let (source, source_dir) = state_with_catalog("backup_lock_source");
         let lock = InstanceLock::acquire(&target.db_path, "desktop").unwrap();
         let sidecar = InstanceLock::path_for(&target.db_path).unwrap();
-        let metadata = std::fs::read_to_string(&sidecar).unwrap();
+        // Unix locks are advisory, so the owner's line is readable while the lock is held.
+        // A Windows lock keeps every other handle from reading it; there size and time
+        // show that the file was not rewritten.
+        let observed = |sidecar: &Path| {
+            let meta = std::fs::metadata(sidecar).unwrap();
+            let text = if cfg!(windows) { String::new() } else { std::fs::read_to_string(sidecar).unwrap() };
+            (text, meta.len(), meta.modified().unwrap())
+        };
+        let metadata = observed(&sidecar);
         let incoming = source.db_path.clone();
         drop(source);
         replace_catalog_db(&target, &incoming).unwrap();
-        assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), metadata);
+        assert_eq!(observed(&sidecar), metadata);
         assert!(matches!(InstanceLock::acquire(&target.db_path, "server"), Err(LockError::InUse)));
         drop(lock);
         drop(InstanceLock::acquire(&target.db_path, "server").unwrap());
@@ -3174,7 +3186,7 @@ mod companion_tests {
         let restored: (String, String, String) = conn
             .query_row("SELECT name, path, kind FROM companion_files", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .unwrap();
-        assert_eq!(restored, ("pic.png".into(), "/catalog/Foo_extras/pic.png".into(), "image".into()));
+        assert_eq!(restored, ("pic.png".into(), n("/catalog/Foo_extras/pic.png"), "image".into()));
         let count = |table: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap();
         assert_eq!((count("source_folders"), count("source_rejected")), (1, 1));
         assert!(crate::db::sources::source_check_on_start(&conn).unwrap());
@@ -3185,7 +3197,7 @@ mod companion_tests {
         let (old, dir) = state_with_catalog("backup_companion_old_a");
         {
             let conn = old.db.lock().unwrap();
-            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, &n("/catalog/old.3mf"), None).unwrap();
             conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
             conn.execute_batch("DROP TABLE companion_files; DROP TABLE source_folders; DROP TABLE source_rejected").unwrap();
             conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION).unwrap();
@@ -3237,7 +3249,7 @@ mod companion_tests {
     #[test]
     fn a_companion_row_in_a_protected_folder_is_rejected() {
         let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "a.png", "/home/user/.config/autostart_extras/a.png", "image", None));
-        assert!(validate_catalog_db_bytes(&bytes, &[PathBuf::from("/home/user/.config")], &trash, &[]).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &[PathBuf::from(n("/home/user/.config"))], &trash, &[]).is_err());
         assert!(validate(&bytes, &trash).is_ok(), "counter-check: allowed when nothing is protected there");
     }
 
@@ -3278,7 +3290,7 @@ mod companion_tests {
         let (old, dir) = state_with_catalog("backup_blocked_tags_old_a");
         {
             let conn = old.db.lock().unwrap();
-            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, &n("/catalog/old.3mf"), None).unwrap();
             conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
             conn.execute_batch("DROP TABLE blocked_auto_tags").unwrap();
             conn.pragma_update(None, "user_version", crate::db::BLOCKED_AUTO_TAGS_MIGRATION_VERSION - 1).unwrap();
@@ -3357,7 +3369,7 @@ mod companion_tests {
     fn insert_known_copy(conn: &Connection, path: &str, size: i64, hash: &str) {
         conn.execute(
             "INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES (?1, ?2, ?3, 't')",
-            rusqlite::params![path, size, hash],
+            rusqlite::params![n(path), size, hash],
         )
         .unwrap();
     }
@@ -3367,7 +3379,7 @@ mod companion_tests {
         let (source, dir) = state_with_catalog("backup_known_copies_a");
         {
             let conn = source.db.lock().unwrap();
-            db::known_copies::note_known_copy(&conn, "/models/copy.3mf", 42, COPY_HASH, "2026-11-01T10:00:00Z").unwrap();
+            db::known_copies::note_known_copy(&conn, &n("/models/copy.3mf"), 42, COPY_HASH, "2026-11-01T10:00:00Z").unwrap();
         }
         let zip_path = dir.join("backup.zip");
         write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
@@ -3382,7 +3394,7 @@ mod companion_tests {
         let conn = target.db.lock().unwrap();
         let rows = db::known_copies::list_known_copies(&conn).unwrap();
         assert_eq!(rows.len(), 1);
-        assert_eq!((rows[0].path.as_str(), rows[0].size_bytes, rows[0].content_hash.as_str()), ("/models/copy.3mf", 42, COPY_HASH));
+        assert_eq!((rows[0].path.as_str(), rows[0].size_bytes, rows[0].content_hash.as_str()), (n("/models/copy.3mf").as_str(), 42, COPY_HASH));
     }
 
     #[test]
@@ -3390,7 +3402,7 @@ mod companion_tests {
         let (old, dir) = state_with_catalog("backup_known_copies_old_a");
         {
             let conn = old.db.lock().unwrap();
-            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, &n("/catalog/old.3mf"), None).unwrap();
             conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
             conn.execute_batch("DROP TABLE disk_sync_known_copies").unwrap();
             conn.pragma_update(None, "user_version", 54).unwrap();
@@ -3437,7 +3449,7 @@ mod companion_tests {
     #[test]
     fn a_known_copy_in_a_protected_location_is_rejected() {
         let (bytes, trash) = catalog_bytes(|conn| insert_known_copy(conn, "/protected/dir/a.3mf", 1, COPY_HASH));
-        let sensitive = [PathBuf::from("/protected")];
+        let sensitive = [PathBuf::from(n("/protected"))];
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
         assert!(validate_catalog_db_bytes(&bytes, &[], &trash, &[]).is_ok(), "counter-check: without the protection the row is fine");
     }

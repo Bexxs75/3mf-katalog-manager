@@ -126,14 +126,13 @@ jobs:
         shell: pwsh
         run: .\src-tauri\scripts\stage-vc-runtime.ps1
 
-      # Only the portable file layer: other core tests are not proven on Windows/macOS yet.
+      # The portable file layer first: when it fails, the rest of the core fails for the same reason.
       - name: Test the portable file operations of the core
         run: "cargo test -p katalog-core --no-default-features fs_portable::"
 
       # Whole core test suite and the desktop command tests (incl. golden scenarios) on the real
-      # systems. continue-on-error until one run is green on both; then remove it (issue #20, P0).
+      # systems: file locks, path spelling and case folding differ from Linux.
       - name: Test the core (all modules)
-        continue-on-error: true
         run: cargo test -p katalog-core --no-default-features
 
       # tauri-build embeds the application manifest (common controls 6, which the dialog
@@ -163,7 +162,6 @@ jobs:
           }
 
       - name: Test the desktop commands and golden scenarios
-        continue-on-error: true
         run: "cargo test -p mf-katalog-manager --no-default-features commands::"
 
       # Only the desktop crate and the core it depends on: the web server is Linux/Docker only.

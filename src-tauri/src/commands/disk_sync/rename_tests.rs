@@ -380,7 +380,7 @@ fn target_in_a_sensitive_directory_fails_only_that_pairing() {
     let applied = apply(&mut f.conn, selection).unwrap();
     assert_eq!(applied.renamed_count, 1);
     assert_eq!(applied.failed_paths.len(), 1);
-    assert!(applied.failed_paths[0].path.ends_with("secret/B.obj"));
+    assert!(Path::new(&applied.failed_paths[0].path).ends_with("secret/B.obj"));
     let paths: Vec<String> = db::list_files(&f.conn).unwrap().into_iter().map(|file| file.path).collect();
     assert!(paths.contains(&s(&f.root.join("ok/A2.obj"))));
     assert!(paths.contains(&s(&blocked)), "the blocked row keeps its old path");
@@ -491,7 +491,7 @@ fn folder_rows_stay_when_a_sibling_folder_still_exists_on_disk() {
     assert_eq!(f.folder(&leer).unwrap().id, leer_row.id);
     assert!(f.folder(&f.root.join("Neu/Leer")).is_none());
     assert_ne!(f.folder(&f.root.join("Neu")).unwrap().id, alt.id);
-    assert!(db::list_files(&f.conn).unwrap()[0].path.ends_with("Neu/a.obj"));
+    assert!(Path::new(&db::list_files(&f.conn).unwrap()[0].path).ends_with("Neu/a.obj"));
 }
 
 #[test]

@@ -167,7 +167,7 @@ fn apply_removes_only_the_reported_folder_and_sends_its_models_to_the_trash() {
     let applied = apply(&mut f.conn, selection).unwrap();
     assert_eq!(applied.removed_count, 2);
     let root = f.root.to_string_lossy().into_owned();
-    let expected: Vec<String> = ["", "/keep", "/other"].iter().map(|s| format!("{root}{s}")).collect();
+    let expected: Vec<String> = ["", "/keep", "/other"].iter().map(|s| format!("{root}{}", s.replace('/', std::path::MAIN_SEPARATOR_STR))).collect();
     assert_eq!(f.folder_paths(), expected);
     assert!(before.len() > expected.len());
     assert_eq!(db::list_trash(&f.conn).unwrap().len(), 2);

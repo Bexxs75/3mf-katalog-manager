@@ -187,6 +187,33 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
     dir
 }
 
+/// A made-up absolute path in the spelling of the system the tests run on. Tests write
+/// such paths the Unix way; on Windows a path without a drive is not absolute, and code
+/// that stores or compares native paths expects the native separator. Anything that does
+/// not start with a single `/` (a relative path, a real path of this system) stays as it is.
+#[cfg(test)]
+pub(crate) fn native_test_path(path: &str) -> String {
+    if cfg!(windows) && path.starts_with('/') && !path.starts_with("//") {
+        format!("C:{}", path.replace('/', "\\"))
+    } else {
+        path.to_owned()
+    }
+}
+
+/// `base` followed by the `/`-separated `tail`, exactly as written. `Path::join` cannot
+/// build a path with `.` or `..` in it on Windows when `base` is a verbatim path
+/// (`\\?\C:\...`, which is what `canonicalize` returns there): it resolves them
+/// while joining.
+#[cfg(test)]
+pub(crate) fn join_unresolved(base: &std::path::Path, tail: &str) -> std::path::PathBuf {
+    let mut path = base.as_os_str().to_owned();
+    for part in tail.split('/') {
+        path.push(std::path::MAIN_SEPARATOR_STR);
+        path.push(part);
+    }
+    path.into()
+}
+
 /// Minimal `FileRecord` for tests, remaining fields with placeholders.
 #[cfg(test)]
 pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_at: &str) -> FileRecord {
