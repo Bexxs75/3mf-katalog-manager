@@ -396,3 +396,5 @@ mod fs_fault_tests;
 mod golden_harness;
 #[cfg(test)]
 mod golden_tests;
+#[cfg(test)]
+mod golden_companion_tests;

@@ -764,7 +764,7 @@ pub(super) fn carry(conn: &Connection, file_id: i64, old_model: &Path, new_model
     carry_with(conn, file_id, old_model, new_model, CASE_INSENSITIVE_PATHS)
 }
 
-fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
+pub(super) fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
     carry_with_fs(&RealFs, conn, file_id, old_model, new_model, case_insensitive)
 }
 
@@ -774,7 +774,7 @@ pub(super) fn carry_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, old_model: 
     carry_with_fs(fs, conn, file_id, old_model, new_model, CASE_INSENSITIVE_PATHS)
 }
 
-fn carry_with_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
+pub(super) fn carry_with_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
     let (Some(old_dir), Some(new_dir)) = (extras_dir_for(old_model), extras_dir_for(new_model)) else {
         return Ok(Carried::default());
     };

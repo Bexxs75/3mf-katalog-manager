@@ -1,0 +1,408 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "fileId": 1,
+        "id": 101,
+        "kind": "image",
+        "name": "photo.png",
+        "path": "<ROOT>/cat/m_extras/photo.png",
+        "sizeBytes": 16,
+        "trashPath": null,
+        "trashed": false
+      }
+    },
+    "step": "add photo.png"
+  },
+  {
+    "result": {
+      "ok": {
+        "fileId": 1,
+        "id": 102,
+        "kind": "image",
+        "name": "photo (2).png",
+        "path": "<ROOT>/cat/m_extras/photo (2).png",
+        "sizeBytes": 16,
+        "trashPath": null,
+        "trashed": false
+      }
+    },
+    "step": "add photo.png again (free name)"
+  },
+  {
+    "result": {
+      "ok": {
+        "fileId": 1,
+        "id": 103,
+        "kind": "text",
+        "name": "notes.txt",
+        "path": "<ROOT>/cat/m_extras/notes.txt",
+        "sizeBytes": 14,
+        "trashPath": null,
+        "trashed": false
+      }
+    },
+    "step": "add notes.txt"
+  },
+  {
+    "result": {
+      "ok": {
+        "fileId": 1,
+        "id": 104,
+        "kind": "pdf",
+        "name": "doc.pdf",
+        "path": "<ROOT>/cat/m_extras/doc.pdf",
+        "sizeBytes": 17,
+        "trashPath": null,
+        "trashed": false
+      }
+    },
+    "step": "add doc.pdf"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Der Inhalt der Datei passt nicht zu ihrem Dateityp und wird nicht übernommen."
+      }
+    },
+    "step": "exe named png (content refused)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Dieser Dateityp ist als Begleitdatei nicht erlaubt. Erlaubt sind Bilder (PNG, JPG, GIF, WebP), PDF, Textdateien (TXT, MD) und weitere Formate (FCStd, SCAD, DXF, CSV, DOCX, ODT)."
+      }
+    },
+    "step": "zip (type refused)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Der Inhalt der Datei passt nicht zu ihrem Dateityp und wird nicht übernommen."
+      }
+    },
+    "step": "text with invalid bytes"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Der Pfad der Datei ist nicht gültig."
+      }
+    },
+    "step": "relative source path"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Der Pfad der Datei ist nicht gültig."
+      }
+    },
+    "step": "source path with .."
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Das ist keine normale Datei."
+      }
+    },
+    "step": "source is a directory"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Die Datei existiert nicht oder kann nicht gelesen werden."
+      }
+    },
+    "step": "source missing"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Modell nicht gefunden."
+      }
+    },
+    "step": "unknown model"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Das Modell liegt nicht in einem Katalogordner. Begleitdateien können nur dort abgelegt werden."
+      }
+    },
+    "step": "model outside every catalog folder"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Das Modell liegt im Papierkorb."
+      }
+    },
+    "step": "model in the trash"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Ein Modell kann höchstens 100 Begleitdateien haben."
+      }
+    },
+    "step": "model already holds 100"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/outside/secret) und wird abgelehnt"
+      }
+    },
+    "step": "source in a protected folder"
+  },
+  {
+    "result": {
+      "ok": {
+        "fileId": 1,
+        "id": 105,
+        "kind": "image",
+        "name": "a b (1).png",
+        "path": "<ROOT>/cat/m_extras/a b (1).png",
+        "sizeBytes": 16,
+        "trashPath": null,
+        "trashed": false
+      }
+    },
+    "step": "awkward file name"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 1,
+          "id": 105,
+          "kind": "image",
+          "name": "a b (1).png",
+          "path": "<ROOT>/cat/m_extras/a b (1).png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 1,
+          "id": 104,
+          "kind": "pdf",
+          "name": "doc.pdf",
+          "path": "<ROOT>/cat/m_extras/doc.pdf",
+          "sizeBytes": 17,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 1,
+          "id": 103,
+          "kind": "text",
+          "name": "notes.txt",
+          "path": "<ROOT>/cat/m_extras/notes.txt",
+          "sizeBytes": 14,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 1,
+          "id": 102,
+          "kind": "image",
+          "name": "photo (2).png",
+          "path": "<ROOT>/cat/m_extras/photo (2).png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 1,
+          "id": 101,
+          "kind": "image",
+          "name": "photo.png",
+          "path": "<ROOT>/cat/m_extras/photo.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "list"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Modell nicht gefunden."
+      }
+    },
+    "step": "list unknown model"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+[files] 4 row(s)
+  id=1 | name=m.3mf | path=<ROOT>/cat/m.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=x.3mf | path=<ROOT>/loose/x.3mf | file_type=3mf | folder_id=NULL | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=t.3mf | path=<ROOT>/cat/t.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=x | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=full.3mf | path=<ROOT>/cat/full.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 105 row(s)
+  id=1 | file_id=4 | name=n0.png | path=/nowhere/n0.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=4 | name=n1.png | path=/nowhere/n1.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=4 | name=n2.png | path=/nowhere/n2.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=4 | file_id=4 | name=n3.png | path=/nowhere/n3.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=5 | file_id=4 | name=n4.png | path=/nowhere/n4.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=6 | file_id=4 | name=n5.png | path=/nowhere/n5.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=7 | file_id=4 | name=n6.png | path=/nowhere/n6.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=8 | file_id=4 | name=n7.png | path=/nowhere/n7.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=9 | file_id=4 | name=n8.png | path=/nowhere/n8.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=10 | file_id=4 | name=n9.png | path=/nowhere/n9.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=11 | file_id=4 | name=n10.png | path=/nowhere/n10.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=12 | file_id=4 | name=n11.png | path=/nowhere/n11.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=13 | file_id=4 | name=n12.png | path=/nowhere/n12.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=14 | file_id=4 | name=n13.png | path=/nowhere/n13.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=15 | file_id=4 | name=n14.png | path=/nowhere/n14.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=16 | file_id=4 | name=n15.png | path=/nowhere/n15.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=17 | file_id=4 | name=n16.png | path=/nowhere/n16.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=18 | file_id=4 | name=n17.png | path=/nowhere/n17.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=19 | file_id=4 | name=n18.png | path=/nowhere/n18.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=20 | file_id=4 | name=n19.png | path=/nowhere/n19.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=21 | file_id=4 | name=n20.png | path=/nowhere/n20.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=22 | file_id=4 | name=n21.png | path=/nowhere/n21.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=23 | file_id=4 | name=n22.png | path=/nowhere/n22.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=24 | file_id=4 | name=n23.png | path=/nowhere/n23.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=25 | file_id=4 | name=n24.png | path=/nowhere/n24.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=26 | file_id=4 | name=n25.png | path=/nowhere/n25.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=27 | file_id=4 | name=n26.png | path=/nowhere/n26.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=28 | file_id=4 | name=n27.png | path=/nowhere/n27.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=29 | file_id=4 | name=n28.png | path=/nowhere/n28.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=30 | file_id=4 | name=n29.png | path=/nowhere/n29.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=31 | file_id=4 | name=n30.png | path=/nowhere/n30.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=32 | file_id=4 | name=n31.png | path=/nowhere/n31.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=33 | file_id=4 | name=n32.png | path=/nowhere/n32.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=34 | file_id=4 | name=n33.png | path=/nowhere/n33.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=35 | file_id=4 | name=n34.png | path=/nowhere/n34.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=36 | file_id=4 | name=n35.png | path=/nowhere/n35.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=37 | file_id=4 | name=n36.png | path=/nowhere/n36.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=38 | file_id=4 | name=n37.png | path=/nowhere/n37.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=39 | file_id=4 | name=n38.png | path=/nowhere/n38.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=40 | file_id=4 | name=n39.png | path=/nowhere/n39.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=41 | file_id=4 | name=n40.png | path=/nowhere/n40.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=42 | file_id=4 | name=n41.png | path=/nowhere/n41.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=43 | file_id=4 | name=n42.png | path=/nowhere/n42.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=44 | file_id=4 | name=n43.png | path=/nowhere/n43.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=45 | file_id=4 | name=n44.png | path=/nowhere/n44.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=46 | file_id=4 | name=n45.png | path=/nowhere/n45.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=47 | file_id=4 | name=n46.png | path=/nowhere/n46.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=48 | file_id=4 | name=n47.png | path=/nowhere/n47.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=49 | file_id=4 | name=n48.png | path=/nowhere/n48.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=50 | file_id=4 | name=n49.png | path=/nowhere/n49.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=51 | file_id=4 | name=n50.png | path=/nowhere/n50.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=52 | file_id=4 | name=n51.png | path=/nowhere/n51.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=53 | file_id=4 | name=n52.png | path=/nowhere/n52.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=54 | file_id=4 | name=n53.png | path=/nowhere/n53.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=55 | file_id=4 | name=n54.png | path=/nowhere/n54.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=56 | file_id=4 | name=n55.png | path=/nowhere/n55.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=57 | file_id=4 | name=n56.png | path=/nowhere/n56.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=58 | file_id=4 | name=n57.png | path=/nowhere/n57.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=59 | file_id=4 | name=n58.png | path=/nowhere/n58.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=60 | file_id=4 | name=n59.png | path=/nowhere/n59.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=61 | file_id=4 | name=n60.png | path=/nowhere/n60.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=62 | file_id=4 | name=n61.png | path=/nowhere/n61.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=63 | file_id=4 | name=n62.png | path=/nowhere/n62.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=64 | file_id=4 | name=n63.png | path=/nowhere/n63.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=65 | file_id=4 | name=n64.png | path=/nowhere/n64.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=66 | file_id=4 | name=n65.png | path=/nowhere/n65.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=67 | file_id=4 | name=n66.png | path=/nowhere/n66.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=68 | file_id=4 | name=n67.png | path=/nowhere/n67.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=69 | file_id=4 | name=n68.png | path=/nowhere/n68.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=70 | file_id=4 | name=n69.png | path=/nowhere/n69.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=71 | file_id=4 | name=n70.png | path=/nowhere/n70.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=72 | file_id=4 | name=n71.png | path=/nowhere/n71.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=73 | file_id=4 | name=n72.png | path=/nowhere/n72.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=74 | file_id=4 | name=n73.png | path=/nowhere/n73.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=75 | file_id=4 | name=n74.png | path=/nowhere/n74.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=76 | file_id=4 | name=n75.png | path=/nowhere/n75.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=77 | file_id=4 | name=n76.png | path=/nowhere/n76.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=78 | file_id=4 | name=n77.png | path=/nowhere/n77.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=79 | file_id=4 | name=n78.png | path=/nowhere/n78.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=80 | file_id=4 | name=n79.png | path=/nowhere/n79.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=81 | file_id=4 | name=n80.png | path=/nowhere/n80.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=82 | file_id=4 | name=n81.png | path=/nowhere/n81.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=83 | file_id=4 | name=n82.png | path=/nowhere/n82.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=84 | file_id=4 | name=n83.png | path=/nowhere/n83.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=85 | file_id=4 | name=n84.png | path=/nowhere/n84.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=86 | file_id=4 | name=n85.png | path=/nowhere/n85.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=87 | file_id=4 | name=n86.png | path=/nowhere/n86.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=88 | file_id=4 | name=n87.png | path=/nowhere/n87.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=89 | file_id=4 | name=n88.png | path=/nowhere/n88.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=90 | file_id=4 | name=n89.png | path=/nowhere/n89.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=91 | file_id=4 | name=n90.png | path=/nowhere/n90.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=92 | file_id=4 | name=n91.png | path=/nowhere/n91.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=93 | file_id=4 | name=n92.png | path=/nowhere/n92.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=94 | file_id=4 | name=n93.png | path=/nowhere/n93.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=95 | file_id=4 | name=n94.png | path=/nowhere/n94.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=96 | file_id=4 | name=n95.png | path=/nowhere/n95.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=97 | file_id=4 | name=n96.png | path=/nowhere/n96.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=98 | file_id=4 | name=n97.png | path=/nowhere/n97.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=99 | file_id=4 | name=n98.png | path=/nowhere/n98.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=100 | file_id=4 | name=n99.png | path=/nowhere/n99.png | kind=image | size_bytes=NULL | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=101 | file_id=1 | name=photo.png | path=<ROOT>/cat/m_extras/photo.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=102 | file_id=1 | name=photo (2).png | path=<ROOT>/cat/m_extras/photo (2).png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=103 | file_id=1 | name=notes.txt | path=<ROOT>/cat/m_extras/notes.txt | kind=text | size_bytes=14 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=104 | file_id=1 | name=doc.pdf | path=<ROOT>/cat/m_extras/doc.pdf | kind=pdf | size_bytes=17 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=105 | file_id=1 | name=a b (1).png | path=<ROOT>/cat/m_extras/a b (1).png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/full.3mf (5 bytes)
+cat/m.3mf (5 bytes)
+cat/m_extras/
+cat/m_extras/a b (1).png (16 bytes)
+cat/m_extras/doc.pdf (17 bytes)
+cat/m_extras/notes.txt (14 bytes)
+cat/m_extras/photo (2).png (16 bytes)
+cat/m_extras/photo.png (16 bytes)
+cat/t.3mf (5 bytes)
+loose/
+loose/x.3mf (5 bytes)
+outside/
+outside/a b (1).png (16 bytes)
+outside/adir/
+outside/bad.txt (9 bytes)
+outside/data.zip (8 bytes)
+outside/doc.pdf (17 bytes)
+outside/fake.png (8 bytes)
+outside/notes.txt (14 bytes)
+outside/photo.png (16 bytes)
+outside/secret/
+outside/secret/a.png (16 bytes)
