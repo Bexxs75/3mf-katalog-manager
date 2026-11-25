@@ -319,6 +319,7 @@ mod tests {
     #[cfg(any(windows, target_os = "macos"))]
     #[test]
     fn case_only_existing_alias_on_case_insensitive_volume() {
+        use unicode_normalization::UnicodeNormalization;
         let dir = crate::commands::unique_test_dir("rename_insensitive");
         let probe = dir.join("CaseProbe");
         std::fs::write(&probe, b"probe").unwrap();
