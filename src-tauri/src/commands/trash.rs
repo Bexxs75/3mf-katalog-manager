@@ -1,8 +1,51 @@
+//! Desktop side of the model trash (issue #20, package P7): the Tauri commands, the locks and
+//! thin wrappers with the old signatures. The actions themselves live in
+//! `katalog_core::model_trash`.
 use super::*;
+use katalog_core::companion_actions::CompanionFs;
+use katalog_core::model_trash::{self as core, ModelTrashFs};
+
+/// The model trash's disk access (core trait) on top of the desktop's `Fs` boundary. Every
+/// call goes to the same `Fs` method the code used before the actions moved into the core,
+/// so the call order seen by `FaultFs` is unchanged; `create_dir_all` and the `exists` of a
+/// restore never had an `Fs` argument and still go to `std::fs` directly.
+pub(super) struct ModelTrashFsAdapter<'a> {
+    fs: &'a dyn Fs,
+    companions: companions::CompanionFsAdapter<'a>,
+}
+
+impl<'a> ModelTrashFsAdapter<'a> {
+    pub(super) fn new(fs: &'a dyn Fs) -> Self {
+        Self { fs, companions: companions::CompanionFsAdapter(fs) }
+    }
+}
+
+impl ModelTrashFs for ModelTrashFsAdapter<'_> {
+    fn metadata(&self, path: &Path) -> std::io::Result<std::fs::Metadata> {
+        self.fs.metadata(path)
+    }
+    fn exists(&self, path: &Path) -> bool {
+        self.fs.exists(path)
+    }
+    fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(path)
+    }
+    fn remove_dir(&self, path: &Path) -> std::io::Result<()> {
+        self.fs.remove_dir(path)
+    }
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+        self.fs.remove_file(path)
+    }
+    fn move_file(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+        move_file_with(self.fs, from, to)
+    }
+    fn companions(&self) -> &dyn CompanionFs {
+        &self.companions
+    }
+}
 
 pub(super) fn delete_missing_file_with_conn(conn: &Connection, id: i64) -> CmdResult<()> {
-    let deleted_at = chrono::Utc::now().to_rfc3339();
-    db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string().into())
+    core::delete_missing_file(conn, id).map_err(Into::into)
 }
 
 /// Core logic of `delete_file` with an already loaded `FileRecord`, without `State`, so it's testable.
@@ -23,45 +66,7 @@ pub(super) fn delete_file_with_conn_fs(
     id: i64,
     trash_dir: &std::path::Path,
 ) -> CmdResult<()> {
-    if file.deleted_at.is_some() {
-        return Err(CmdError::coded(ErrorCode::FileInTrash));
-    }
-    match fs.metadata(std::path::Path::new(&file.path)) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Path unreachable (renamed folder, unmounted drive): nothing to move, but
-            // still only soft-delete, because the file is usually not really gone. Other
-            // errors like PermissionDenied go through the error path below.
-            let deleted_at = chrono::Utc::now().to_rfc3339();
-            db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| CmdError::from(e.to_string()))?;
-            companions::trash_with_model_fs(fs, conn, id, trash_dir, &deleted_at);
-            return Ok(());
-        }
-        Err(e) => return Err(e.to_string().into()),
-        Ok(_) => {}
-    }
-
-    let trash_path = trash_dir.join(format!("{id}-{}", file.name));
-    move_file_with(fs, std::path::Path::new(&file.path), &trash_path).map_err(|e| e.to_string())?;
-
-    let deleted_at = chrono::Utc::now().to_rfc3339();
-    if let Err(db_err) = db::soft_delete_file(conn, id, Some(&trash_path.to_string_lossy()), &deleted_at) {
-        // Move the file back out of the trash if the DB couldn't mark it as deleted;
-        // otherwise it would vanish for the user.
-        if let Err(rollback_err) = move_file_with(fs, &trash_path, std::path::Path::new(&file.path)) {
-            return Err(format!(
-                "DB-Update fehlgeschlagen ({db_err}) UND Rollback aus dem Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als aktiv unter {}",
-                trash_path.display(),
-                file.path
-            )
-            .into());
-        }
-        return Err(db_err.to_string().into());
-    }
-    // The companions follow the model into the trash under the same timestamp, so
-    // restoring the model finds exactly these. They cannot make the removal fail.
-    companions::trash_with_model_fs(fs, conn, id, trash_dir, &deleted_at);
-    log::debug!(target: "datei", "in den Papierkorb: {}", file.path);
-    Ok(())
+    core::delete_file(&ModelTrashFsAdapter::new(fs), conn, file, id, trash_dir).map_err(Into::into)
 }
 #[tauri::command]
 pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
@@ -81,33 +86,7 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
 }
 /// Core logic of `delete_files`, without `State`, so it's testable.
 pub(super) fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_ids: Vec<String>) -> CmdResult<()> {
-    for file_id in file_ids {
-        let id: i64 = match file_id.parse() {
-            Ok(id) => id,
-            Err(_) => {
-                log::warn!(target: "cleanup", "skipped invalid file ID: {file_id}");
-                continue;
-            }
-        };
-        // Cleanup batch: a file deleted in the meantime (e.g. twice in the selection)
-        // is skipped instead of aborting the whole batch.
-        let file = match db::get_file(conn, id) {
-            Ok(Some(file)) => file,
-            Ok(None) => continue,
-            Err(e) => {
-                log::error!(target: "cleanup", "could not load file ID {id}: {e}");
-                continue;
-            }
-        };
-        // Log single errors and continue, so the frontend can reload cleanly
-        // afterwards. Same function as for single deletes, so the move-back
-        // compensation applies here too. delete_file_with_conn already logged the
-        // fault itself; this is just the (expected) consequence for the batch.
-        if let Err(e) = delete_file_with_conn(conn, &file, id, trash_dir) {
-            log::warn!(target: "cleanup", "übersprungen: {} ({e})", file.path);
-        }
-    }
-    Ok(())
+    core::delete_files(&ModelTrashFsAdapter::new(&RealFs), conn, trash_dir, file_ids).map_err(Into::into)
 }
 #[tauri::command]
 pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
@@ -121,156 +100,7 @@ pub(super) fn restore_file_with_conn(
     id: i64,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
-    restore_model_with_conn(conn, file, id, sensitive_dirs)?;
-    // Companions that went to the trash together with the model come back with it.
-    if let Some(deleted_at) = &file.deleted_at {
-        companions::restore_with_model(conn, id, deleted_at, sensitive_dirs);
-    }
-    Ok(())
-}
-
-fn restore_model_with_conn(
-    conn: &Connection,
-    file: &db::models::FileRecord,
-    id: i64,
-    sensitive_dirs: &[PathBuf],
-) -> CmdResult<()> {
-    if file.deleted_at.is_none() {
-        return Err("file is not in trash".into());
-    }
-
-    let Some(trash_path) = file.trash_path.clone() else {
-        // Without trash_path the file was already unreachable when deleted: just make
-        // the entry visible again.
-        return db::restore_file(conn, id, None).map_err(|e| e.to_string().into());
-    };
-
-    let original = std::path::Path::new(&file.path);
-    let target_path = if original.exists() {
-        let stem = original.file_stem().and_then(|s| s.to_str()).unwrap_or("datei");
-        let ext = original.extension().and_then(|s| s.to_str());
-        let parent = original.parent().unwrap_or_else(|| std::path::Path::new("."));
-        let new_name = match ext {
-            Some(ext) => format!("{stem} (wiederhergestellt).{ext}"),
-            None => format!("{stem} (wiederhergestellt)"),
-        };
-        parent.join(new_name)
-    } else {
-        original.to_path_buf()
-    };
-
-    // A folder moved to the trash takes its directories with it, so the target
-    // folder may be gone. Recreate it (only after the sensitive-path check, since
-    // the stored path can come from an imported backup) and remember which
-    // directories are new so a failed restore can undo them.
-    let created_dirs = missing_parent_dirs(&target_path);
-    if !created_dirs.is_empty() {
-        let parent = target_path.parent().unwrap_or_else(|| std::path::Path::new("."));
-        archives::check_managed_location(parent, &expand_sensitive_dirs(sensitive_dirs))?;
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let undo_dirs = || {
-        // Deepest first; remove_dir only ever removes an empty directory.
-        for dir in created_dirs.iter().rev() {
-            let _ = std::fs::remove_dir(dir);
-        }
-    };
-
-    if let Err(e) = move_file(std::path::Path::new(&trash_path), &target_path) {
-        undo_dirs();
-        return Err(e.to_string().into());
-    }
-
-    let from_folder_trash = conn
-        .query_row("SELECT 1 FROM folder_trash_origin WHERE file_id = ?1", [id], |_| Ok(()))
-        .is_ok();
-    let new_path_str = target_path.to_string_lossy().to_string();
-    let new_path_arg = if new_path_str == file.path { None } else { Some(new_path_str.as_str()) };
-    let db_result = (|| -> Result<(), DbError> {
-        let tx = conn.unchecked_transaction()?;
-        db::restore_file(&tx, id, new_path_arg)?;
-        relink_restored_folder(&tx, id, target_path.parent(), created_dirs.first().map(|d| d.as_path()), from_folder_trash)?;
-        tx.execute("DELETE FROM folder_trash_origin WHERE file_id = ?1", [id])?;
-        tx.commit().map_err(DbError::from)
-    })();
-    if let Err(db_err) = db_result {
-        // Back into the trash if the DB couldn't record the restore.
-        let moved_back = move_file(&target_path, std::path::Path::new(&trash_path));
-        if moved_back.is_ok() {
-            undo_dirs();
-        }
-        if let Err(rollback_err) = moved_back {
-            return Err(format!(
-                "DB-Update fehlgeschlagen ({db_err}) UND Rollback in den Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als geloescht",
-                target_path.display()
-            )
-            .into());
-        }
-        return Err(db_err.to_string().into());
-    }
-    log::debug!(target: "datei", "wiederhergestellt: {} -> {}", trash_path, target_path.display());
-    Ok(())
-}
-/// Directories above `target` that do not exist yet, outermost first.
-fn missing_parent_dirs(target: &std::path::Path) -> Vec<PathBuf> {
-    let mut missing = Vec::new();
-    let mut cursor = target.parent();
-    while let Some(dir) = cursor {
-        if dir.as_os_str().is_empty() || dir.exists() {
-            break;
-        }
-        missing.push(dir.to_path_buf());
-        cursor = dir.parent();
-    }
-    missing.reverse();
-    missing
-}
-
-/// Puts a restored file back into the catalog folder tree. When the directory was
-/// recreated (`created_root` is the outermost new directory), the nearest cataloged ancestor (or the catalog base folder)
-/// is the anchor and the missing folder rows are inserted below it - the same way the
-/// disk sync attaches new folders. When the directory already existed, only a folder
-/// row for exactly that directory is reused: a row that is missing then may have been
-/// removed from the catalog on purpose, and a restore must not bring it back. A file
-/// whose folder is not found stays as it is. When the recreated directory has no cataloged
-/// ancestor and lies outside the catalog base folder (a top-level catalog folder that was
-/// trashed), the outermost recreated directory becomes a new top-level folder row.
-/// A model that was trashed together with its folder (`from_folder_trash`) also gets
-/// its folder rows back when the directory stayed on disk because of a foreign file:
-/// there the row was removed by the folder trash, not by the user. Only catalog rows
-/// are written, below a cataloged ancestor or the catalog base folder.
-fn relink_restored_folder(
-    conn: &Connection,
-    id: i64,
-    dir: Option<&std::path::Path>,
-    created_root: Option<&std::path::Path>,
-    from_folder_trash: bool,
-) -> Result<(), DbError> {
-    let Some(dir) = dir else { return Ok(()) };
-    let folders = db::list_folders(conn)?;
-    let existing = folders
-        .iter()
-        .find(|f| folders::comparison_path(std::path::Path::new(&f.path)) == folders::comparison_path(dir))
-        .map(|f| f.id);
-    let folder_id = match existing {
-        Some(folder_id) => folder_id,
-        None if created_root.is_none() && !from_folder_trash => return Ok(()),
-        None => {
-            let anchor = match folders::find_catalog_parent(dir, &folders) {
-                Some(parent) => folders.iter().find(|f| f.id == parent).map(|f| PathBuf::from(&f.path)),
-                None => db::printer_link::get_setting(conn, folders::SETTING_CATALOG_BASE_DIR)?
-                    .map(PathBuf::from)
-                    .filter(|base| folders::comparison_path(dir).starts_with(folders::comparison_path(base))),
-            };
-            let Some(anchor) = anchor.or_else(|| created_root.map(PathBuf::from)) else { return Ok(()) };
-            db::ensure_folder_path(conn, &anchor, dir)?
-        }
-    };
-    conn.execute(
-        "UPDATE files SET folder_id = ?1 WHERE id = ?2 AND folder_id IS NOT ?1",
-        rusqlite::params![folder_id, id],
-    )?;
-    Ok(())
+    core::restore_file(&ModelTrashFsAdapter::new(&RealFs), conn, file, id, sensitive_dirs).map_err(Into::into)
 }
 #[tauri::command]
 pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
@@ -291,22 +121,7 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
 }
 /// Core logic of `delete_file_permanently`, without `State`, so it's testable.
 pub(super) fn delete_file_permanently_with_conn(conn: &Connection, id: i64, trash_dir: &std::path::Path) -> CmdResult<()> {
-    let file = db::get_file(conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "file not found".to_string())?;
-    if file.deleted_at.is_none() {
-        return Err("file is not in trash".into());
-    }
-    if let Some(trash_path) = &file.trash_path {
-        if let Err(e) = std::fs::remove_file(trash_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(e.to_string().into());
-            }
-        }
-    }
-    // Its companions in the trash go with it; the rows follow by cascade.
-    companions::purge_trash_files_of_model(conn, id, trash_dir)?;
-    db::delete_file(conn, id).map_err(|e| e.to_string().into())
+    core::delete_file_permanently(&ModelTrashFsAdapter::new(&RealFs), conn, id, trash_dir).map_err(Into::into)
 }
 #[tauri::command]
 pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
@@ -316,57 +131,12 @@ pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
 }
 /// Core logic of `empty_trash`, without `State`, so it's testable.
 pub(super) fn empty_trash_with_conn(conn: &Connection, trash_dir: &std::path::Path) -> CmdResult<()> {
-    let files = db::list_trash(conn).map_err(|e| e.to_string())?;
-    for file in files {
-        if let Some(trash_path) = &file.trash_path {
-            if let Err(e) = std::fs::remove_file(trash_path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    log::error!(target: "trash", "removing failed for file ID {}: {e}", file.id);
-                    continue;
-                }
-            }
-        }
-        if let Err(e) = companions::purge_trash_files_of_model(conn, file.id, trash_dir) {
-            log::error!(target: "trash", "removing companions failed for file ID {}: {e}", file.id);
-            continue;
-        }
-        if let Err(e) = db::delete_file(conn, file.id) {
-            log::error!(target: "trash", "could not delete DB row for file ID {}: {e}", file.id);
-        }
-    }
-    // Companions removed on their own from a model that is still in the catalog.
-    companions::purge_all_trashed(conn, trash_dir);
-    Ok(())
+    core::empty_trash(&ModelTrashFsAdapter::new(&RealFs), conn, trash_dir).map_err(Into::into)
 }
 /// At startup: removes trash entries older than 7 days. Single errors are
 /// logged and skipped.
 pub fn purge_expired_trash_on_startup(conn: &Connection, trash_dir: &std::path::Path) {
-    let cutoff = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
-    let expired = match db::purge_expired_trash(conn, &cutoff) {
-        Ok(files) => files,
-        Err(e) => {
-            log::error!(target: "startup", "trash cleanup: query failed: {e}");
-            return;
-        }
-    };
-    for file in expired {
-        if let Some(trash_path) = &file.trash_path {
-            if let Err(e) = std::fs::remove_file(trash_path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    log::error!(target: "startup", "trash cleanup: file failed for ID {}: {e}", file.id);
-                    continue;
-                }
-            }
-        }
-        if let Err(e) = companions::purge_trash_files_of_model(conn, file.id, trash_dir) {
-            log::error!(target: "startup", "trash cleanup: companions failed for ID {}: {e}", file.id);
-            continue;
-        }
-        if let Err(e) = db::delete_file(conn, file.id) {
-            log::error!(target: "startup", "trash cleanup: DB row failed for ID {}: {e}", file.id);
-        }
-    }
-    companions::purge_expired_trashed(conn, trash_dir, &cutoff);
+    core::purge_expired_trash(&ModelTrashFsAdapter::new(&RealFs), conn, trash_dir, chrono::Utc::now());
 }
 
 #[cfg(test)]

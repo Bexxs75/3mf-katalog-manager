@@ -13,6 +13,7 @@ pub mod safe_file;
 pub mod companions;
 pub mod companion_read;
 pub mod companion_actions;
+pub mod model_trash;
 pub mod rescan;
 pub mod disk_report;
 pub mod disk_apply;

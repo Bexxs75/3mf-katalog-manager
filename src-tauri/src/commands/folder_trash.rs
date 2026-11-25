@@ -40,8 +40,8 @@ pub struct FolderTrashResult {
     kept_on_disk: Vec<String>,
 }
 
-// Single-model moves stay shared with the desktop delete command, including
-// companion handling and move-back compensation.
+// Single-model moves stay shared with the desktop delete command (the core's
+// `model_trash::delete_file`), including companion handling and move-back compensation.
 struct DesktopModelTrash<'a>(&'a Path);
 
 impl ModelTrash for DesktopModelTrash<'_> {
@@ -50,7 +50,8 @@ impl ModelTrash for DesktopModelTrash<'_> {
         conn: &Connection,
         file: &db::models::FileRecord,
     ) -> katalog_core::write::WriteResult<()> {
-        trash::delete_file_with_conn(conn, file, file.id, self.0)
+        katalog_core::model_trash::delete_file(&trash::ModelTrashFsAdapter::new(&RealFs), conn, file, file.id, self.0)
+            .map_err(CmdError::from)
             .map_err(|error| error.to_string().into())
     }
 }

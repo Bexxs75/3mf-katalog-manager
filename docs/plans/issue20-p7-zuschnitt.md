@@ -52,3 +52,11 @@ nötig). Der Adapter leitet 1:1 an `Fs`/`move_file_with` weiter: `delete_file_wi
 Alle Szenarien schreiben Rückgabe/Fehler-JSON, alle `GOLDEN_TABLES` und den Dateibaum. Unix-spezifisches (Rechte, Symlink)
 in eigene `#[cfg(unix)]`-Goldens. Danach: Umbau, Goldens byte-gleich, `trash.rs`-Tests und `fs_fault_tests` unverändert,
 neue Kern-Tests mit Fake-`ModelTrashFs` (Fehler in Schritt n, feste Zeit).
+
+## Umsetzung (Abweichungen vom Zuschnitt)
+
+- Goldens liegen in `golden_trash_tests.rs` (13 Szenarien, 1 davon `#[cfg(target_os = "linux")]`); der Gruppe `trash_delete_faults` fehlt ein Restore-Gegenstück,
+  weil Restore vorher kein `Fs`-Argument hatte; Restore-Fehler in Schritt n sind Kern-Tests (`model_trash::tests`) mit Fake.
+- Tote Hüllen in `companions.rs`, `mod.rs::move_file`, `folders.rs::find_catalog_parent` sind nur noch von Tests gebraucht: `#[cfg(test)]` bzw.
+  `#[cfg_attr(not(test), allow(dead_code))] mod companions;` (companions.rs bleibt unberührt).
+- `error_code_tests.rs` scannt `model_trash.rs` (wie `folder_trash.rs`).

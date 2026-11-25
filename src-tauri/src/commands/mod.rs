@@ -11,6 +11,9 @@ mod backup;
 mod imported_paths;
 mod bundles;
 mod collections;
+// The model trash now reaches the companion actions through the core (P7); the wrappers here
+// are only used by the companion tests now (kept so those tests stay unchanged).
+#[cfg_attr(not(test), allow(dead_code))]
 mod companions;
 mod fs_boundary;
 mod diagnostics;
@@ -120,6 +123,7 @@ pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::Mu
 /// Moves a file without ever overwriting an existing target, keeping its
 /// permissions and modification time (hard link first, copy as fallback; see
 /// `katalog_core::import::placement::move_file`).
+#[cfg(test)]
 pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     katalog_core::import::placement::move_file(from, to)
 }
