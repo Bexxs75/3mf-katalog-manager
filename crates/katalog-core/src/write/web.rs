@@ -624,23 +624,15 @@ pub fn remove_files_from_catalog(c: &mut Connection, ids: &[i64]) -> WriteResult
     if ids.iter().any(|id| *id <= 0) {
         return Err(invalid(ErrorCode::InvalidCatalogId));
     }
-    let ids: std::collections::BTreeSet<_> = ids.iter().copied().collect();
     transaction(c, |c| {
-        for id in &ids {
-            let active: bool = c.query_row(
-                "SELECT EXISTS(SELECT 1 FROM files WHERE id=?1 AND deleted_at IS NULL)",
-                [id], |r| r.get(0),
-            )?;
-            if !active {
-                return Err(WriteError::coded_not_found(ErrorCode::ModelNotFoundOrTrashed));
-            }
-        }
-        let mut changes = 0;
-        for id in &ids {
-            changes += c.execute("DELETE FROM files WHERE id=?1", [id])?;
-        }
-        db::bundles::prune_bundles(c)?;
-        Ok(outcome(changes, changes as u64))
+        let removed = crate::catalog_removal::remove_files_in(c, ids).map_err(|e| match e {
+            // The server answers a missing model with 404, not 422.
+            db::error::DbError::Coded { code: ErrorCode::ModelNotFoundOrTrashed, .. } => WriteError::coded_not_found(ErrorCode::ModelNotFoundOrTrashed),
+            // Database failures keep the plain wording this API always used.
+            db::error::DbError::Sqlite(e) => e.into(),
+            other => other.into(),
+        })?;
+        Ok(outcome(removed, removed as u64))
     })
 }
 

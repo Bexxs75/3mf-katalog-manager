@@ -55,23 +55,12 @@ fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings
             crate::safe_file::harden_permissions(&backup_db_path);
 
             let conn = db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
-            let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
-            {
-                let backup =
-                    rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
-                // One step for the whole database: `run_to_completion` sleeps after
-                // every step that isn't the last, while the catalog lock (and with it
-                // every synchronous command of the UI) waits - see updater/backup.rs.
-                backup
-                    .run_to_completion(i32::MAX, std::time::Duration::from_millis(250), None)
-                    .map_err(|e| e.to_string())?;
-            }
-            // The ZIP is meant to be kept and passed on: no API keys in the copy.
-            db::scrub_secrets(&dst).map_err(|e| e.to_string())?;
+            // One step for the whole database, scrubbed of API keys: the ZIP is meant to be
+            // kept and passed on (see `katalog_core::catalog_export::snapshot`).
+            katalog_core::catalog_export::snapshot(&conn, &backup_db_path)?;
         }
 
-        let db_bytes = std::fs::read(&backup_db_path).map_err(|e| e.to_string())?;
-        write_zip_atomically(dest, &[("catalog.db", &db_bytes), ("settings.json", settings_json.as_bytes())])
+        katalog_core::catalog_export::write_zip_atomically(&backup_db_path, settings_json, dest)
             .map_err(|e| e.to_string())?;
         Ok(())
     })();
@@ -80,31 +69,6 @@ fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings
     result
 }
 
-/// Writes a ZIP with `entries` to `dest` via a private temp file next to it and
-/// renames it into place only when complete: never a partial archive at the
-/// destination. The temp name is unpredictable and created exclusively, so a
-/// symlink planted under a guessable name can't redirect the write.
-fn write_zip_atomically(dest: &Path, entries: &[(&str, &[u8])]) -> std::io::Result<()> {
-    use std::io::Write;
-    let parent = dest.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let base = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let (tmp_path, file) = crate::safe_file::create_private_temp(parent, &format!(".{base}"), ".tmp")?;
-
-    let written = (|| {
-        let mut zip = zip::ZipWriter::new(file);
-        let options = zip::write::SimpleFileOptions::default();
-        for (name, bytes) in entries {
-            zip.start_file(*name, options).map_err(std::io::Error::other)?;
-            zip.write_all(bytes)?;
-        }
-        zip.finish().map_err(std::io::Error::other)?.sync_all()?;
-        std::fs::rename(&tmp_path, dest)
-    })();
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-    written
-}
 /// Writes `bytes` exclusively (`create_new`) to `path` and sets 0600.
 /// `fs::write` would follow a pre-planted symlink in a shared `/tmp` and create
 /// the file with umask permissions (often world-readable) (CWE-377, TOCTOU).
@@ -1186,30 +1150,6 @@ mod tests {
         assert!(!missing.exists());
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn backup_zip_ignores_a_planted_temp_symlink_and_is_private() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = unique_test_dir("backup_zip_symlink");
-        let dest = dir.join("backup.zip");
-        let victim = dir.join("victim.txt");
-        std::fs::write(&victim, b"KEEP").unwrap();
-        std::os::unix::fs::symlink(&victim, dir.join("backup.zip.tmp")).unwrap();
-
-        write_zip_atomically(&dest, &[("catalog.db", b"DB"), ("settings.json", b"{}")]).unwrap();
-
-        assert_eq!(std::fs::read(&victim).unwrap(), b"KEEP");
-        assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o600);
-        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
-        assert_eq!(zip.len(), 2);
-        assert_eq!(zip.by_name("catalog.db").unwrap().size(), 2);
-        let leftovers: Vec<_> = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .filter(|n| n.ends_with(".tmp") && n != "backup.zip.tmp")
-            .collect();
-        assert!(leftovers.is_empty(), "{leftovers:?}");
-    }
     #[cfg(unix)]
     #[test]
     fn temp_copy_for_validation_is_private_from_the_start() {
