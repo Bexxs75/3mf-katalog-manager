@@ -278,6 +278,8 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         ]),
         // The move flow moved from the desktop into the core with issue #20 (P5).
         whole("file_move.rs", include_str!("file_move.rs")),
+        // The folder rename and move moved from the desktop into the core with issue #20 (P6).
+        whole("folder_move.rs", include_str!("folder_move.rs")),
         // The carry of the companions moved from the desktop into the core with issue #20 (P3).
         functions("companion_actions.rs", include_str!("companion_actions.rs"), &["carry", "extras_dir_problem"]),
         whole("web.rs", include_str!("../../katalog-server/src/web.rs")),

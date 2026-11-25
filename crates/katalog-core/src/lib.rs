@@ -74,6 +74,7 @@ pub mod import;
 pub mod folder_create;
 pub mod file_move;
 pub mod file_rename;
+pub mod folder_move;
 pub mod folder_trash;
 pub mod date_rename;
 pub mod catalog_restore;
