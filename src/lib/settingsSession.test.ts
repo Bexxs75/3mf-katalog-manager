@@ -48,3 +48,14 @@ it('treats a missing stored primary slicer as unknown, not as a base to differ f
   expect(settingBaseline('primarySlicer')).toBeUndefined();
   expect(settingChanged('auto-picked', settingBaseline('primarySlicer'))).toBe(false);
 });
+it('compares the close action with the value read at startup, not with the default', async () => {
+  backend.invoke.mockImplementation(async (command: string) => {
+    if (command === 'get_close_behavior') return { action: 'tray', platform: 'linux', supported: true, trayAvailable: true };
+    throw new Error('unavailable');
+  });
+  await captureSettingsBaseline();
+  // Saved "tray" before the restart: the same value now is not a change, although it differs from the default.
+  expect(settingChanged('tray', settingBaseline('close'))).toBe(false);
+  // Going back to the default is a change compared with the start of this session.
+  expect(settingChanged('exit', settingBaseline('close'))).toBe(true);
+});

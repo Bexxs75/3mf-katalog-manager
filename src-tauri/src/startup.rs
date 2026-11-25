@@ -5,14 +5,36 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[derive(Default)]
 struct StartupShown(AtomicBool);
 
+/// Whether the window should be maximized once it is visible (saved state, else the configured default).
+struct WantMaximized(bool);
+
 fn show_once(window: &WebviewWindow) -> tauri::Result<()> {
     if !window.state::<StartupShown>().0.swap(true, Ordering::SeqCst) {
         if let Err(error) = window.show() {
             window.state::<StartupShown>().0.store(false, Ordering::SeqCst);
             return Err(error);
         }
+        // GTK under Wayland (GNOME) ignores maximizing a window that is not mapped yet; ask again now that it is
+        // shown and, because the compositor answers late, check once more shortly afterwards.
+        if window.state::<WantMaximized>().0 {
+            if let Err(error) = window.maximize() { log::warn!(target: "startup", "maximizing after show failed: {error}"); }
+            let late = window.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let maximized = late.is_maximized().unwrap_or(true);
+                log::info!(target: "startup", "maximized 500 ms after show: {maximized}");
+                if !maximized {
+                    if let Err(error) = late.maximize() { log::warn!(target: "startup", "late maximize failed: {error}"); }
+                }
+            });
+        }
     }
     Ok(())
+}
+
+/// The "maximized" flag of the main window in the file written by tauri-plugin-window-state.
+fn saved_maximized(json: &str) -> Option<bool> {
+    serde_json::from_str::<serde_json::Value>(json).ok()?.get("main")?.get("maximized")?.as_bool()
 }
 
 const MARKER: &str = "window-theme";
@@ -41,8 +63,13 @@ pub fn create_window(app: &tauri::App) -> tauri::Result<()> {
     let marker = app.path().app_data_dir().ok()
         .and_then(|dir| std::fs::read_to_string(dir.join(MARKER)).ok()).unwrap_or_default();
     let config = &app.config().app.windows[0];
+    let saved = app.path().app_config_dir().ok()
+        .and_then(|dir| std::fs::read_to_string(dir.join(".window-state.json")).ok())
+        .and_then(|json| saved_maximized(&json));
+    let maximized = saved.unwrap_or(config.maximized);
+    app.manage(WantMaximized(maximized));
     let window = tauri::WebviewWindowBuilder::from_config(app, config)?
-        .visible(false).background_color(background(&marker, None)).build()?;
+        .maximized(maximized).visible(false).background_color(background(&marker, None)).build()?;
     // Query the platform only after the native window exists, while it is hidden.
     window.set_background_color(Some(background(&marker, window.theme().ok())))?;
     let reserve = window.clone();
@@ -102,6 +129,15 @@ mod tests {
         assert_eq!(background("slate", None), slate);
         assert_eq!(background("invalid", Some(Theme::Dark)), dark);
         assert_eq!(background("", None), light);
+    }
+
+    #[test]
+    fn reads_the_saved_maximized_flag() {
+        assert_eq!(saved_maximized(r#"{"main":{"width":1100,"maximized":true}}"#), Some(true));
+        assert_eq!(saved_maximized(r#"{"main":{"maximized":false}}"#), Some(false));
+        assert_eq!(saved_maximized(r#"{"other":{"maximized":true}}"#), None);
+        assert_eq!(saved_maximized("not json"), None);
+        assert_eq!(saved_maximized(""), None);
     }
 
     #[test]
