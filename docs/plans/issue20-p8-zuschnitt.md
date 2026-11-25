@@ -12,7 +12,7 @@ Nicht angefasst: `files.rs`, `trash.rs`, `folders.rs`, `archives.rs`, Web (`disk
 | Schritt | Inhalt | Commit |
 |---|---|---|
 | Naht | `_fs`-Fassungen im alten Code (`scan_with_fs`, `apply_with_fs`, `KeyResolver::with_fs`, `no_symlinks_fs`, `read_directory_fs`, `hash_for_match_fs` ...), Plattenzugriffe über `&dyn Fs`; alte Namen rufen `RealFs`. `Fs` bekommt `read_dir_entries` (Einträge mit Typ). Keine Verhaltensänderung. | eigener |
-| Goldens | `golden_disk_sync_tests.rs` mit dem alten Code aufgenommen | eigener |
+| Goldens | `disk_sync/golden_sync_tests.rs` mit dem alten Code aufgenommen | eigener |
 | 8a Scan | Typen + Scan-Planung in den Kern, Desktop-Anwenden arbeitet auf den Kern-Typen | eigener |
 | 8b Anwenden | `apply`, `apply_rename`, `move_emptied_folders`, `remember_declined_copies` in den Kern | eigener |
 
@@ -44,7 +44,7 @@ Plattenzugriffe, die nicht über `DiskScanFs` laufen (wie heute std): Inhalt les
 (`resolve_path_for_sensitivity_check` in den Effekten), `missing_folder_ids`, Start-Abgleich `repeated_new_files_within`.
 Kein `fsops`/`upload_fs`: Der Kern baut auf Windows/macOS.
 
-## Szenarien der Goldens (alter Code zuerst, `golden_disk_sync_tests.rs`)
+## Szenarien der Goldens (alter Code zuerst, `disk_sync/golden_sync_tests.rs`)
 
 Jeder Schritt schreibt Scan- bzw. Anwenden-JSON (oder Fehler-JSON), die Logzeilen (Stufe, Ziel, Text ohne Ort) und am Ende alle
 `GOLDEN_TABLES` (inkl. `disk_sync_known_copies`) und den Dateibaum. `FaultFs`-Aufrufe werden sortiert und gezählt mitgeschrieben

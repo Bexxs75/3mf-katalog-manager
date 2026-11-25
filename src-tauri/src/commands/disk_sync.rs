@@ -2651,3 +2651,6 @@ mod blocked_tags_tests;
 
 #[cfg(test)]
 mod known_copy_tests;
+
+#[cfg(test)]
+mod golden_sync_tests;
