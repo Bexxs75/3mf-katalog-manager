@@ -159,14 +159,20 @@ fn path_key(path: &Path, case_insensitive: bool) -> PathBuf {
 /// while the scan walks the real tree; both must yield the same key or the same file
 /// is offered as new. Stored paths are never rewritten, only the comparison key is.
 struct KeyResolver<'a> {
+    fs: &'a dyn Fs,
     roots: &'a [DiskRoot],
     case_insensitive: bool,
     // One lookup per directory instead of per file; `None` remembers a failed lookup.
     dirs: std::cell::RefCell<HashMap<PathBuf, Option<PathBuf>>>,
 }
 impl<'a> KeyResolver<'a> {
+    #[cfg(test)]
     fn new(roots: &'a [DiskRoot], case_insensitive: bool) -> Self {
+        Self::with_fs(&RealFs, roots, case_insensitive)
+    }
+    fn with_fs(fs: &'a dyn Fs, roots: &'a [DiskRoot], case_insensitive: bool) -> Self {
         Self {
+            fs,
             roots,
             case_insensitive,
             dirs: Default::default(),
@@ -183,7 +189,7 @@ impl<'a> KeyResolver<'a> {
         if let Some(known) = self.dirs.borrow().get(dir) {
             return known.clone();
         }
-        let resolved = std::fs::canonicalize(dir).ok();
+        let resolved = self.fs.canonicalize(dir).ok();
         self.dirs
             .borrow_mut()
             .insert(dir.to_path_buf(), resolved.clone());
@@ -200,8 +206,8 @@ impl<'a> KeyResolver<'a> {
             _ => normalized,
         };
         // The file itself may be a symlink; the scan lists its target instead.
-        if std::fs::symlink_metadata(&resolved).is_ok_and(|m| m.file_type().is_symlink()) {
-            if let Ok(target) = std::fs::canonicalize(&resolved) {
+        if self.fs.symlink_metadata(&resolved).is_ok_and(|m| m.file_type().is_symlink()) {
+            if let Ok(target) = self.fs.canonicalize(&resolved) {
                 resolved = target;
             }
         }
@@ -228,9 +234,9 @@ impl DiskRoot {
         }
         Some(self.canonical.join(relative))
     }
-    fn unchanged(&self) -> bool {
-        std::fs::canonicalize(&self.stored).ok().as_ref() == Some(&self.canonical)
-            && self.canonical.is_dir()
+    fn unchanged(&self, fs: &dyn Fs) -> bool {
+        fs.canonicalize(&self.stored).ok().as_ref() == Some(&self.canonical)
+            && fs.is_dir(&self.canonical)
     }
 }
 
@@ -266,8 +272,22 @@ impl From<CmdError> for DiskSyncError {
     }
 }
 
-// The canonical root is trusted; only descendants must be free of symlinks.
+#[cfg(test)]
 fn no_symlinks(root: &Path, path: &Path) -> std::io::Result<bool> {
+    no_symlinks_fs(&RealFs, root, path)
+}
+
+/// Same as `backup::is_missing` (only `NotFound` counts), on an injected file system.
+fn is_missing_fs(fs: &dyn Fs, path: &Path) -> std::io::Result<bool> {
+    match fs.metadata(path) {
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(e) => Err(e),
+    }
+}
+
+// The canonical root is trusted; only descendants must be free of symlinks.
+fn no_symlinks_fs(fs: &dyn Fs, root: &Path, path: &Path) -> std::io::Result<bool> {
     let Ok(relative) = path.strip_prefix(root) else {
         return Ok(false);
     };
@@ -280,7 +300,7 @@ fn no_symlinks(root: &Path, path: &Path) -> std::io::Result<bool> {
     let mut current = root.to_path_buf();
     for component in relative.components() {
         current.push(component);
-        match std::fs::symlink_metadata(&current) {
+        match fs.symlink_metadata(&current) {
             Ok(m) if m.file_type().is_symlink() => return Ok(false),
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
@@ -292,23 +312,11 @@ fn no_symlinks(root: &Path, path: &Path) -> std::io::Result<bool> {
 type DirectoryEntries = Vec<(PathBuf, std::fs::FileType)>;
 
 fn read_directory(dir: &Path) -> std::io::Result<DirectoryEntries> {
-    let mut entries = Vec::new();
-    for item in std::fs::read_dir(dir)? {
-        let item = match item {
-            Ok(item) => item,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(e),
-        };
-        if files::is_ignored_import_path(&item.path()) {
-            continue;
-        }
-        match item.file_type() {
-            Ok(kind) => entries.push((item.path(), kind)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(e),
-        }
-    }
-    Ok(entries)
+    read_directory_fs(&RealFs, dir)
+}
+
+fn read_directory_fs(fs: &dyn Fs, dir: &Path) -> std::io::Result<DirectoryEntries> {
+    fs.read_dir_entries(dir, &files::is_ignored_import_path)
 }
 
 fn record_skipped(scan: &mut DiskScan, root: &DiskRoot, dir: &Path) {
@@ -328,6 +336,7 @@ struct KnownPaths<'a> {
 }
 
 fn walk(
+    fs: &dyn Fs,
     root: &DiskRoot,
     known: &KnownPaths,
     scan: &mut DiskScan,
@@ -338,7 +347,7 @@ fn walk(
     let mut pending = vec![root.canonical.clone()];
     let mut new_folders = HashSet::new();
     while let Some(dir) = pending.pop() {
-        let entries = no_symlinks(&root.canonical, &dir).and_then(|safe| {
+        let entries = no_symlinks_fs(fs, &root.canonical, &dir).and_then(|safe| {
             if safe {
                 read(&dir)
             } else {
@@ -423,6 +432,17 @@ fn scan_with_hasher(
     case_insensitive: bool,
     hash: &dyn Fn(&Path) -> Option<String>,
 ) -> SyncResult<DiskScan> {
+    scan_with_fs(&RealFs, conn, read, case_insensitive, hash)
+}
+
+/// The scan on an injected file system (tests); `read` lists a directory, `hash` hashes a file.
+fn scan_with_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    read: &mut impl FnMut(&Path) -> std::io::Result<DirectoryEntries>,
+    case_insensitive: bool,
+    hash: &dyn Fn(&Path) -> Option<String>,
+) -> SyncResult<DiskScan> {
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let known_folders: HashSet<PathBuf> = folders
         .iter()
@@ -445,8 +465,8 @@ fn scan_with_hasher(
     configured.sort();
     let mut result = DiskScan::default();
     for stored in &configured {
-        match std::fs::canonicalize(stored) {
-            Ok(canonical) if canonical.is_dir() => result.roots.push(DiskRoot {
+        match fs.canonicalize(stored) {
+            Ok(canonical) if fs.is_dir(&canonical) => result.roots.push(DiskRoot {
                 stored: stored.clone(),
                 canonical,
             }),
@@ -460,7 +480,7 @@ fn scan_with_hasher(
         .roots
         .sort_by_key(|r| r.canonical.components().count());
     let roots = std::mem::take(&mut result.roots);
-    let resolver = KeyResolver::new(&roots, case_insensitive);
+    let resolver = KeyResolver::with_fs(fs, &roots, case_insensitive);
     let normalize = |p: &Path| resolver.normalize(p);
     let known_folders = known_folders
         .iter()
@@ -526,6 +546,7 @@ fn scan_with_hasher(
                 .any(|r| root.canonical.starts_with(&r.canonical))
             {
                 walk(
+                    fs,
                     root,
                     &KnownPaths { folders: &known_folders, files: &known_files, trashed: &trashed_files, extras: &known_extras },
                     &mut result,
@@ -546,9 +567,9 @@ fn scan_with_hasher(
                 {
                     continue;
                 }
-                let missing = no_symlinks(&root.canonical, &resolved).and_then(|safe| {
+                let missing = no_symlinks_fs(fs, &root.canonical, &resolved).and_then(|safe| {
                     if safe {
-                        backup::is_missing(&resolved)
+                        is_missing_fs(fs, &resolved)
                     } else {
                         Ok(false)
                     }
@@ -568,7 +589,7 @@ fn scan_with_hasher(
                     ));
                 }
             }
-            if !root.unchanged() {
+            if !root.unchanged(fs) {
                 return Err(std::io::Error::other("diskSyncPathChanged"));
             }
             Ok(())
@@ -587,11 +608,11 @@ fn scan_with_hasher(
             && !roots.iter().any(|root| root.resolve(path).is_some())
         {
             // Without its parent folder (unplugged drive) a loose file is unreachable, not missing.
-            if !parent_exists(path) {
+            if !parent_exists(fs, path) {
                 result
                     .unreachable_roots
                     .push(path.parent().unwrap_or(path).to_string_lossy().into_owned());
-            } else if backup::is_missing(path).unwrap_or(false) {
+            } else if is_missing_fs(fs, path).unwrap_or(false) {
                 result
                     .missing_files
                     .push(entry(Path::new(""), path, Some(id.to_string())));
@@ -624,10 +645,10 @@ fn scan_with_hasher(
     result.missing_files.sort_by(|a, b| a.path.cmp(&b.path));
     result.missing_files.dedup_by(|a, b| a.id == b.id);
     if result.unreachable_roots.is_empty() {
-        skip_known_copies(conn, &mut result, case_insensitive)?;
-        classify_by_content(conn, &mut result, case_insensitive, hash)?;
+        skip_known_copies_fs(fs, conn, &mut result, case_insensitive)?;
+        classify_by_content_fs(fs, conn, &mut result, case_insensitive, hash)?;
         // After the content match: a folder whose files were recognised as moved is not gone.
-        result.missing_folders = find_missing_folders(conn, &result, case_insensitive)?;
+        result.missing_folders = find_missing_folders(fs, conn, &result, case_insensitive)?;
     }
     result.unreachable_roots.sort();
     result.unreachable_roots.dedup();
@@ -640,7 +661,11 @@ fn scan_with_hasher(
 /// `content_hash`, so equal content always yields equal hashes. Files above the import
 /// size limit and unreadable files get no hash and simply stay "new".
 fn hash_for_match(path: &Path) -> Option<String> {
-    let meta = std::fs::metadata(path).ok()?;
+    hash_for_match_fs(&RealFs, path)
+}
+
+fn hash_for_match_fs(fs: &dyn Fs, path: &Path) -> Option<String> {
+    let meta = fs.metadata(path).ok()?;
     if !meta.is_file() || meta.len() > crate::safe_file::MAX_MODEL_FILE_BYTES {
         return None;
     }
@@ -665,7 +690,12 @@ fn disk_path_of(scan: &DiskScan, e: &DiskEntry) -> Option<PathBuf> {
 /// is forgotten and the file is judged like any new file, so a copy is offered again as
 /// soon as its original is gone. Size instead of a new hash is what saves the time; a
 /// file that changes its content at the same size stays remembered.
+#[cfg(test)]
 fn skip_known_copies(conn: &Connection, scan: &mut DiskScan, case_insensitive: bool) -> SyncResult<()> {
+    skip_known_copies_fs(&RealFs, conn, scan, case_insensitive)
+}
+
+fn skip_known_copies_fs(fs: &dyn Fs, conn: &Connection, scan: &mut DiskScan, case_insensitive: bool) -> SyncResult<()> {
     let known = db::known_copies::list_known_copies(conn).map_err(|e| e.to_string())?;
     if known.is_empty() {
         return Ok(());
@@ -699,7 +729,7 @@ fn skip_known_copies(conn: &Connection, scan: &mut DiskScan, case_insensitive: b
         let still_a_copy = index.is_some_and(|i| {
             live_hashes.contains(&row.content_hash)
                 && disk_path_of(scan, &scan.new_files[i])
-                    .and_then(|p| std::fs::metadata(p).ok())
+                    .and_then(|p| fs.metadata(&p).ok())
                     .is_some_and(|m| m.is_file() && i64::try_from(m.len()).ok() == Some(row.size_bytes))
         });
         match index {
@@ -742,7 +772,18 @@ fn skip_known_copies(conn: &Connection, scan: &mut DiskScan, case_insensitive: b
 /// Splits the new files by content: a clear rename partner among the missing rows, or a
 /// copy of a row that is still there. Only new files are hashed (never the whole
 /// catalog), so a scan of a large, unchanged catalog costs nothing extra.
+#[cfg(test)]
 fn classify_by_content(
+    conn: &Connection,
+    scan: &mut DiskScan,
+    case_insensitive: bool,
+    hash: &dyn Fn(&Path) -> Option<String>,
+) -> SyncResult<()> {
+    classify_by_content_fs(&RealFs, conn, scan, case_insensitive, hash)
+}
+
+fn classify_by_content_fs(
+    fs: &dyn Fs,
     conn: &Connection,
     scan: &mut DiskScan,
     case_insensitive: bool,
@@ -794,7 +835,7 @@ fn classify_by_content(
     for (index, e) in scan.new_files.iter().enumerate() {
         let disk_path = disk_path_of(scan, e);
         // Size first: it is what a remembered copy is later compared with.
-        let size = disk_path.as_ref().and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len() as i64);
+        let size = disk_path.as_ref().and_then(|p| fs.metadata(p).ok()).map_or(0, |m| m.len() as i64);
         if let Some(content_hash) = disk_path.and_then(|p| hash(&p)) {
             sizes.insert(index, size);
             new_by_hash.entry(content_hash).or_default().push(index);
@@ -879,6 +920,7 @@ fn classify_by_content(
 /// Folders holding files that were recognised as renamed or moved are left out: they most
 /// likely moved with their content, and the apply step follows them.
 fn find_missing_folders(
+    fs: &dyn Fs,
     conn: &Connection,
     scan: &DiskScan,
     case_insensitive: bool,
@@ -902,8 +944,8 @@ fn find_missing_folders(
         else {
             continue;
         };
-        let missing = no_symlinks(&root.canonical, &resolved)
-            .and_then(|safe| if safe { backup::is_missing(&resolved) } else { Ok(false) });
+        let missing = no_symlinks_fs(fs, &root.canonical, &resolved)
+            .and_then(|safe| if safe { is_missing_fs(fs, &resolved) } else { Ok(false) });
         if !missing.unwrap_or(false) || skipped.iter().any(|s| path.starts_with(s)) {
             continue;
         }
@@ -1057,9 +1099,9 @@ fn remove_missing_folders(tx: &Connection, current: &DiskScan) -> SyncResult<()>
     Ok(())
 }
 
-fn parent_exists(path: &Path) -> bool {
+fn parent_exists(fs: &dyn Fs, path: &Path) -> bool {
     path.parent()
-        .is_some_and(|p| std::fs::metadata(p).is_ok_and(|m| m.is_dir()))
+        .is_some_and(|p| fs.metadata(p).is_ok_and(|m| m.is_dir()))
 }
 
 fn suppress_case_only_new_files(scan: &mut DiskScan, case_insensitive: bool) {
@@ -1078,11 +1120,11 @@ fn suppress_case_only_new_files(scan: &mut DiskScan, case_insensitive: bool) {
     });
 }
 
-fn checked_path(scan: &DiskScan, e: &DiskEntry, kind: &str) -> SyncResult<PathBuf> {
+fn checked_path(fs: &dyn Fs, scan: &DiskScan, e: &DiskEntry, kind: &str) -> SyncResult<PathBuf> {
     let changed = || DiskSyncError::path("diskSyncPathChanged", Path::new(&e.path));
     if kind == "missing" && e.root.is_empty() {
         let path = Path::new(&e.path);
-        return if parent_exists(path) && backup::is_missing(path).unwrap_or(false) {
+        return if parent_exists(fs, path) && is_missing_fs(fs, path).unwrap_or(false) {
             Ok(path.to_path_buf())
         } else {
             Err(changed())
@@ -1093,17 +1135,17 @@ fn checked_path(scan: &DiskScan, e: &DiskEntry, kind: &str) -> SyncResult<PathBu
         .iter()
         .find(|r| r.stored == Path::new(&e.root))
         .ok_or_else(changed)?;
-    if !root.unchanged() {
+    if !root.unchanged(fs) {
         return Err(DiskSyncError::path("diskSyncRootUnreachable", &root.stored));
     }
     let path = root.resolve(Path::new(&e.path)).ok_or_else(changed)?;
-    if !no_symlinks(&root.canonical, &path).map_err(|_| changed())? {
+    if !no_symlinks_fs(fs, &root.canonical, &path).map_err(|_| changed())? {
         return Err(changed());
     }
     let valid = match kind {
-        "missing" => backup::is_missing(&path).unwrap_or(false),
-        "folder" => std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()),
-        _ => std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file()),
+        "missing" => is_missing_fs(fs, &path).unwrap_or(false),
+        "folder" => fs.symlink_metadata(&path).is_ok_and(|m| m.is_dir()),
+        _ => fs.symlink_metadata(&path).is_ok_and(|m| m.is_file()),
     };
     if !valid {
         return Err(changed());
@@ -1144,13 +1186,24 @@ fn ensure_sync_folder(
 /// moment ago, but parsing other files can take minutes and the user may have edited the
 /// target in between. Quick pre-filter only: `confirm_rename_target` decides right before
 /// the row is switched.
+#[cfg(test)]
 fn verify_rename(
     conn: &Connection,
     scan: &DiskScan,
     rename: &DiskRename,
     expanded_sensitive: &[PathBuf],
 ) -> Result<(), String> {
-    confirm_rename_target(conn, scan, rename)?;
+    verify_rename_fs(&RealFs, conn, scan, rename, expanded_sensitive)
+}
+
+fn verify_rename_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    scan: &DiskScan,
+    rename: &DiskRename,
+    expanded_sensitive: &[PathBuf],
+) -> Result<(), String> {
+    confirm_rename_target(fs, conn, scan, rename)?;
     let new_path = Path::new(&rename.new_path);
     let parent = new_path.parent().unwrap_or(new_path);
     archives::check_managed_location(parent, expanded_sensitive).map_err(|e| e.message)
@@ -1159,6 +1212,7 @@ fn verify_rename(
 /// The target must still hold the content stored for the row. Without this a different
 /// model put there in the meantime would inherit the row's tags, favourite and print log.
 fn confirm_rename_target(
+    fs: &dyn Fs,
     conn: &Connection,
     scan: &DiskScan,
     rename: &DiskRename,
@@ -1177,7 +1231,7 @@ fn confirm_rename_target(
         .find(|r| r.stored == Path::new(&rename.root))
         .and_then(|r| r.resolve(Path::new(&rename.new_path)))
         .ok_or("diskSyncPathChanged")?;
-    match (stored, hash_for_match(&target)) {
+    match (stored, hash_for_match_fs(fs, &target)) {
         (Some(stored), Some(current)) if stored == current => {}
         _ => return Err("Inhalt der Datei hat sich geändert".into()),
     }
@@ -1235,6 +1289,7 @@ fn apply_rename(
 /// empty old row beside a new one. Anything less clear leaves the folder alone: the old
 /// row then stays and is treated as before. Best effort, never fails the sync.
 fn move_emptied_folders(
+    fs: &dyn Fs,
     tx: &Connection,
     scan: &DiskScan,
     renames: &[&DiskRename],
@@ -1264,7 +1319,7 @@ fn move_emptied_folders(
         {
             continue;
         }
-        let Some(target) = emptied_folder_target(tx, scan, &folders, folder, &by_id, expanded_sensitive)
+        let Some(target) = emptied_folder_target(fs, tx, scan, &folders, folder, &by_id, expanded_sensitive)
         else {
             continue;
         };
@@ -1306,9 +1361,9 @@ fn move_emptied_folders(
 
 /// True when something still exists at `old` that is not just `new` under another
 /// spelling (a case-only rename on a case-insensitive file system).
-fn remains_at_old_location(old: &Path, new: &Path) -> bool {
-    old.symlink_metadata().is_ok()
-        && match (old.canonicalize(), new.canonicalize()) {
+fn remains_at_old_location(fs: &dyn Fs, old: &Path, new: &Path) -> bool {
+    fs.symlink_metadata(old).is_ok()
+        && match (fs.canonicalize(old), fs.canonicalize(new)) {
             (Ok(old), Ok(new)) => old != new,
             _ => true,
         }
@@ -1316,6 +1371,7 @@ fn remains_at_old_location(old: &Path, new: &Path) -> bool {
 
 /// The new location of `folder` if the renames describe a pure folder rename or move.
 fn emptied_folder_target(
+    fs: &dyn Fs,
     tx: &Connection,
     scan: &DiskScan,
     folders: &[db::models::FolderRecord],
@@ -1382,7 +1438,7 @@ fn emptied_folder_target(
             let relocated = stored
                 .strip_prefix(old)
                 .map_or_else(|_| target.clone(), |rest| target.join(rest));
-            remains_at_old_location(stored, &relocated)
+            remains_at_old_location(fs, stored, &relocated)
         });
     let usable = !subfolder_remains
         && target != old
@@ -1417,11 +1473,22 @@ fn apply_with_reader(
 fn apply_with_path_mode(
     conn: &mut Connection,
     selection: DiskSelection,
+    read: impl FnMut(&Path) -> CmdResult<db::models::NewFile>,
+    case_insensitive: bool,
+) -> SyncResult<DiskApplied> {
+    apply_with_fs(&RealFs, conn, selection, read, case_insensitive)
+}
+
+/// The apply step on an injected file system (tests); the re-scan uses it too.
+fn apply_with_fs(
+    fs: &dyn Fs,
+    conn: &mut Connection,
+    selection: DiskSelection,
     mut read: impl FnMut(&Path) -> CmdResult<db::models::NewFile>,
     case_insensitive: bool,
 ) -> SyncResult<DiskApplied> {
     // Re-scan under the exclusive catalog gate; the webview is not authoritative.
-    let current = scan_with_path_mode(conn, &mut read_directory, case_insensitive)?;
+    let current = scan_with_fs(fs, conn, &mut |dir| read_directory_fs(fs, dir), case_insensitive, &|p| hash_for_match_fs(fs, p))?;
     if !current.unreachable_roots.is_empty() {
         return Err(DiskSyncError::new(
             "diskSyncRootUnreachable",
@@ -1472,7 +1539,7 @@ fn apply_with_path_mode(
         if renames.iter().any(|known| known.id == r.id) {
             continue;
         }
-        match verify_rename(conn, &current, r, &expanded_sensitive) {
+        match verify_rename_fs(fs, conn, &current, r, &expanded_sensitive) {
             Ok(()) => renames.push(r),
             Err(reason) => result.failed_paths.push(DiskFailedPath {
                 path: r.new_path.clone(),
@@ -1481,7 +1548,7 @@ fn apply_with_path_mode(
         }
     }
     for e in importable.iter().copied().filter(|e| chosen.contains(&e.path)) {
-        let path = checked_path(&current, e, "file")?;
+        let path = checked_path(fs, &current, e, "file")?;
         let mut file = match read(&path) {
             Ok(file) => file,
             Err(error) => {
@@ -1497,7 +1564,7 @@ fn apply_with_path_mode(
     }
     let validate = || -> SyncResult<()> {
         for root in &current.roots {
-            if !root.unchanged() {
+            if !root.unchanged(fs) {
                 return Err(DiskSyncError::path("diskSyncRootUnreachable", &root.stored));
             }
         }
@@ -1506,14 +1573,14 @@ fn apply_with_path_mode(
             .iter()
             .filter(|e| chosen.contains(&e.path))
         {
-            checked_path(&current, e, "folder")?;
+            checked_path(fs, &current, e, "folder")?;
         }
         for e in importable.iter().copied().filter(|e| chosen.contains(&e.path)) {
-            checked_path(&current, e, "file")?;
+            checked_path(fs, &current, e, "file")?;
         }
         for r in &renames {
-            checked_path(&current, &r.new_entry(), "file")?;
-            checked_path(&current, &r.old_entry(), "missing")?;
+            checked_path(fs, &current, &r.new_entry(), "file")?;
+            checked_path(fs, &current, &r.old_entry(), "missing")?;
         }
         if selection.remove_missing {
             for e in current
@@ -1521,7 +1588,7 @@ fn apply_with_path_mode(
                 .iter()
                 .filter(|e| e.id.as_ref().is_some_and(|id| missing.contains(id)))
             {
-                checked_path(&current, e, "missing")?;
+                checked_path(fs, &current, e, "missing")?;
             }
         }
         Ok(())
@@ -1538,7 +1605,7 @@ fn apply_with_path_mode(
     // rewrites paths for the pairings it covers.
     let mut confirmed: Vec<&DiskRename> = Vec::new();
     for r in &renames {
-        match confirm_rename_target(&tx, &current, r) {
+        match confirm_rename_target(fs, &tx, &current, r) {
             Ok(()) => confirmed.push(r),
             Err(reason) => result.failed_paths.push(DiskFailedPath {
                 path: r.new_path.clone(),
@@ -1548,8 +1615,8 @@ fn apply_with_path_mode(
     }
     let renames = confirmed;
     // Before the path set is read: a renamed folder rewrites the paths below it.
-    move_emptied_folders(&tx, &current, &renames, &expanded_sensitive);
-    let resolver = KeyResolver::new(&current.roots, case_insensitive);
+    move_emptied_folders(fs, &tx, &current, &renames, &expanded_sensitive);
+    let resolver = KeyResolver::with_fs(fs, &current.roots, case_insensitive);
     let key = |p: &Path| resolver.key(p);
     let mut known_files: HashSet<_> = {
         let mut stmt = tx
@@ -1630,7 +1697,7 @@ fn apply_with_path_mode(
             .iter()
             .filter(|e| e.id.as_ref().is_some_and(|id| missing.contains(id)))
         {
-            checked_path(&current, e, "missing")?;
+            checked_path(fs, &current, e, "missing")?;
             let id =
                 e.id.as_ref()
                     .unwrap()

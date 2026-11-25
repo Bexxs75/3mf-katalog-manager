@@ -28,6 +28,10 @@ pub(crate) trait Fs {
     /// Copy half of a copy-based move: creates `to` (never replaces), copies content,
     /// permissions and time; the source stays. A partial target is removed on failure.
     fn copy_new(&self, from: &Path, to: &Path) -> io::Result<()>;
+    /// Entries of `dir` with their types, as `std::fs::read_dir` lists them. An entry that
+    /// vanishes while listing (`NotFound`) is skipped, `ignore`d paths are skipped before
+    /// their type is read; any other error fails the whole listing (disk sync).
+    fn read_dir_entries(&self, dir: &Path, ignore: &dyn Fn(&Path) -> bool) -> io::Result<Vec<(PathBuf, std::fs::FileType)>>;
 
     /// Same as `Path::is_dir` (follows links, any error is `false`).
     fn is_dir(&self, path: &Path) -> bool {
@@ -80,6 +84,25 @@ impl Fs for RealFs {
     }
     fn copy_new(&self, from: &Path, to: &Path) -> io::Result<()> {
         katalog_core::import::placement::copy_file_new(from, to)
+    }
+    fn read_dir_entries(&self, dir: &Path, ignore: &dyn Fn(&Path) -> bool) -> io::Result<Vec<(PathBuf, std::fs::FileType)>> {
+        let mut entries = Vec::new();
+        for item in std::fs::read_dir(dir)? {
+            let item = match item {
+                Ok(item) => item,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e),
+            };
+            if ignore(&item.path()) {
+                continue;
+            }
+            match item.file_type() {
+                Ok(kind) => entries.push((item.path(), kind)),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(entries)
     }
 }
 
@@ -272,6 +295,10 @@ mod fault {
                 return Err(io::Error::from(io::ErrorKind::AlreadyExists));
             }
             RealFs.copy_new(from, to)
+        }
+        fn read_dir_entries(&self, dir: &Path, ignore: &dyn Fn(&Path) -> bool) -> io::Result<Vec<(PathBuf, std::fs::FileType)>> {
+            self.enter(Op::ReadDir, dir, None)?;
+            RealFs.read_dir_entries(dir, ignore)
         }
     }
 }
