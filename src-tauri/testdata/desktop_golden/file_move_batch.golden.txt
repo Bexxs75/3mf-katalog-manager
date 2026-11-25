@@ -1,0 +1,321 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": [
+        {
+          "fromFolderId": "1",
+          "fromPath": "<ROOT>/src/ok1.3mf",
+          "id": "1",
+          "status": "moved"
+        },
+        {
+          "fromFolderId": "1",
+          "fromPath": "<ROOT>/src/ok2.3mf",
+          "id": "2",
+          "status": "moved"
+        },
+        {
+          "id": "3",
+          "reason": "name_exists",
+          "status": "skipped"
+        },
+        {
+          "id": "5",
+          "reason": "already_there",
+          "status": "skipped"
+        },
+        {
+          "fromPath": "<ROOT>/dst/loose.3mf",
+          "id": "6",
+          "status": "moved"
+        },
+        {
+          "id": "7",
+          "reason": "source_missing",
+          "status": "failed"
+        },
+        {
+          "id": "8",
+          "reason": "in_trash",
+          "status": "failed"
+        },
+        {
+          "id": "9",
+          "reason": "name_exists",
+          "status": "skipped"
+        },
+        {
+          "fromFolderId": "1",
+          "fromPath": "<ROOT>/src/Foo.3mf",
+          "id": "11",
+          "status": "moved"
+        },
+        {
+          "id": "1",
+          "reason": "already_there",
+          "status": "skipped"
+        },
+        {
+          "id": "9999",
+          "reason": "not_found",
+          "status": "failed"
+        },
+        {
+          "id": "abc",
+          "reason": "invalid_id",
+          "status": "failed"
+        },
+        {
+          "id": "",
+          "reason": "invalid_id",
+          "status": "failed"
+        }
+      ]
+    },
+    "step": "mixed batch"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/ok1.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/Foo.3mf",
+          "dst/Foo_extras/",
+          "dst/Foo_extras/pic.png",
+          "dst/dup.3mf",
+          "dst/here.3mf",
+          "dst/loose.3mf",
+          "dst/ok1.3mf",
+          "dst/ok2.3mf",
+          "outside/",
+          "outside/pic.png",
+          "src/",
+          "src/dup.3mf",
+          "src/taken.3mf",
+          "src/trashed.3mf"
+        ]
+      }
+    },
+    "step": "mixed batch: state"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fromFolderId": "2",
+          "fromPath": "<ROOT>/dst/ok1.3mf",
+          "id": "1",
+          "status": "moved"
+        },
+        {
+          "fromFolderId": "2",
+          "fromPath": "<ROOT>/dst/ok2.3mf",
+          "id": "2",
+          "status": "moved"
+        }
+      ]
+    },
+    "step": "batch back to src"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/ok1.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/Foo.3mf",
+          "dst/Foo_extras/",
+          "dst/Foo_extras/pic.png",
+          "dst/dup.3mf",
+          "dst/here.3mf",
+          "dst/loose.3mf",
+          "outside/",
+          "outside/pic.png",
+          "src/",
+          "src/dup.3mf",
+          "src/ok1.3mf",
+          "src/ok2.3mf",
+          "src/taken.3mf",
+          "src/trashed.3mf"
+        ]
+      }
+    },
+    "step": "batch back to src: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "folder not found"
+      }
+    },
+    "step": "unknown target folder"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/dst) und wird abgelehnt"
+      }
+    },
+    "step": "protected target folder"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "targetFolderMissingOnDisk",
+        "params": [
+          "<ROOT>/ghost"
+        ]
+      }
+    },
+    "step": "target folder missing on disk"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "locked"
+      }
+    },
+    "step": "the lock fails at once"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "locked later"
+      }
+    },
+    "step": "the lock fails for the second file (first stays moved)"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/ok1.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/Foo.3mf",
+          "dst/Foo_extras/",
+          "dst/Foo_extras/pic.png",
+          "dst/dup.3mf",
+          "dst/here.3mf",
+          "dst/loose.3mf",
+          "dst/ok1.3mf",
+          "outside/",
+          "outside/pic.png",
+          "src/",
+          "src/dup.3mf",
+          "src/ok2.3mf",
+          "src/taken.3mf",
+          "src/trashed.3mf"
+        ]
+      }
+    },
+    "step": "lock fails later: state"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "empty batch"
+  },
+  {
+    "result": {
+      "ok": {
+        "byStatusAndReason": {
+          "failed/invalid_id": 5000
+        },
+        "len": 5000
+      }
+    },
+    "step": "exactly the limit (all ids invalid)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "moveTooManyFiles",
+        "params": [
+          "5001",
+          "5000"
+        ]
+      }
+    },
+    "step": "one more than the limit"
+  },
+  {
+    "result": {
+      "ok": 5000
+    },
+    "step": "limit value"
+  }
+]
+
+== tables ==
+[folders] 3 row(s)
+  id=1 | name=src | parent_id=NULL | path=<ROOT>/src
+  id=2 | name=dst | parent_id=NULL | path=<ROOT>/dst
+  id=3 | name=ghost | parent_id=NULL | path=<ROOT>/ghost
+[files] 11 row(s)
+  id=1 | name=ok1.3mf | path=<ROOT>/dst/ok1.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=ok2.3mf | path=<ROOT>/src/ok2.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=dup.3mf | path=<ROOT>/src/dup.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=dup.3mf | path=<ROOT>/dst/dup.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=here.3mf | path=<ROOT>/dst/here.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=loose.3mf | path=<ROOT>/dst/loose.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=gone.3mf | path=<ROOT>/src/gone.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=trashed.3mf | path=<ROOT>/src/trashed.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=x | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=9 | name=taken.3mf | path=<ROOT>/src/taken.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=10 | name=taken.3mf | path=<ROOT>/dst/taken.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=11 | name=Foo.3mf | path=<ROOT>/dst/Foo.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 1 row(s)
+  id=1 | file_id=11 | name=pic.png | path=<ROOT>/dst/Foo_extras/pic.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+dst/
+dst/Foo.3mf (5 bytes)
+dst/Foo_extras/
+dst/Foo_extras/pic.png (16 bytes)
+dst/dup.3mf (5 bytes)
+dst/here.3mf (5 bytes)
+dst/loose.3mf (5 bytes)
+dst/ok1.3mf (5 bytes)
+outside/
+outside/pic.png (16 bytes)
+src/
+src/dup.3mf (5 bytes)
+src/ok2.3mf (5 bytes)
+src/taken.3mf (5 bytes)
+src/trashed.3mf (5 bytes)
