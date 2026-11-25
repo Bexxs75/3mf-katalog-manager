@@ -124,6 +124,7 @@ pub(super) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> 
 }
 
 // Pure component comparison; callers resolve existing filesystem paths first.
+#[cfg(test)]
 pub(super) fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
     katalog_core::folder_create::find_catalog_parent(path, folders)
 }

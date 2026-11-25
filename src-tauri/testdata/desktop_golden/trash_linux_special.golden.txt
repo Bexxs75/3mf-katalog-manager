@@ -1,0 +1,123 @@
+== steps ==
+[
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "<io error: other>"
+      }
+    },
+    "step": "delete a model whose path is a directory"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "delete a model recorded as Real.3mf while real.3mf is on disk"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "<io error: not found>"
+      }
+    },
+    "step": "same on a simulated case-insensitive volume (the twin is found, the move fails)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/cat/Twin.3mf",
+        "SymlinkMetadata <ROOT>/cat/Twin.3mf",
+        "HardLink <ROOT>/cat/Twin.3mf -> <ROOT>/trash/3-Twin.3mf",
+        "CopyNew <ROOT>/cat/Twin.3mf -> <ROOT>/trash/3-Twin.3mf"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "restore Model.3mf while model.3mf exists (separate file on this system)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "<io error: other>"
+      }
+    },
+    "step": "restore where the folder cannot be created"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "<io error: other>"
+      }
+    },
+    "step": "delete for good: trash path is a non-empty directory"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "empty the trash: entries that cannot be removed stay"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "startup clean-up: entries that cannot be removed stay"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+[files] 6 row(s)
+  id=1 | name=adir | path=<ROOT>/cat/adir | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=Twin.3mf | path=<ROOT>/cat/Twin.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=Model.3mf | path=<ROOT>/cat/Model.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=s1.3mf | path=<ROOT>/cat/s1.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/6-s1.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=s2.3mf | path=<ROOT>/cat/s2.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/7-s2.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=s3.3mf | path=<ROOT>/cat/s3.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/8-s3.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/Model.3mf (13 bytes)
+cat/adir/
+cat/blocked (27 bytes)
+cat/model.3mf (10 bytes)
+cat/other.3mf (13 bytes)
+cat/real.3mf (12 bytes)
+cat/twin.3mf (12 bytes)
+outside/
+outside/s1.png (16 bytes)
+outside/s2.png (16 bytes)
+outside/s3.png (16 bytes)
+trash/
+trash/6-s1.3mf/
+trash/6-s1.3mf/inner (1 bytes)
+trash/7-s2.3mf/
+trash/7-s2.3mf/inner (1 bytes)
+trash/8-s3.3mf/
+trash/8-s3.3mf/inner (1 bytes)

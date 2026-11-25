@@ -40,8 +40,8 @@ pub struct FolderTrashResult {
     kept_on_disk: Vec<String>,
 }
 
-// Single-model moves stay shared with the desktop delete command, including
-// companion handling and move-back compensation.
+// Single-model moves stay shared with the desktop delete command (the core's
+// `model_trash::delete_file`), including companion handling and move-back compensation.
 struct DesktopModelTrash<'a>(&'a Path);
 
 impl ModelTrash for DesktopModelTrash<'_> {
@@ -50,7 +50,8 @@ impl ModelTrash for DesktopModelTrash<'_> {
         conn: &Connection,
         file: &db::models::FileRecord,
     ) -> katalog_core::write::WriteResult<()> {
-        trash::delete_file_with_conn(conn, file, file.id, self.0)
+        katalog_core::model_trash::delete_file(&trash::ModelTrashFsAdapter::new(&RealFs), conn, file, file.id, self.0)
+            .map_err(CmdError::from)
             .map_err(|error| error.to_string().into())
     }
 }
@@ -105,6 +106,12 @@ fn trash_folder_with_conn(
 #[cfg(test)]
 pub(super) fn trash_folder_for_test(conn: &Connection, folder_id: i64, trash_dir: &Path) -> i64 {
     trash_folder_with_conn(conn, &folder_id.to_string(), trash_dir, &[]).unwrap().trashed_model_count
+}
+
+/// Test helper for the golden scenarios: the whole result of the folder trash as JSON.
+#[cfg(test)]
+pub(super) fn trash_folder_result_for_test(conn: &Connection, folder_id: i64, trash_dir: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<serde_json::Value> {
+    trash_folder_with_conn(conn, &folder_id.to_string(), trash_dir, sensitive_dirs).map(|result| serde_json::to_value(result).unwrap())
 }
 
 #[tauri::command]

@@ -315,6 +315,7 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         whole("catalog_restore/mod.rs", include_str!("catalog_restore/mod.rs")),
         whole("catalog_restore/imported_paths.rs", include_str!("catalog_restore/imported_paths.rs")),
         whole("folder_trash.rs (core)", include_str!("folder_trash.rs")),
+        whole("model_trash.rs (core)", include_str!("model_trash.rs")),
         whole("date_rename.rs (core)", include_str!("date_rename.rs")),
         whole("import/sources.rs", include_str!("import/sources.rs")),
     ]
