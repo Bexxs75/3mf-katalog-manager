@@ -212,6 +212,7 @@ const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
 
 impl Carried {
     /// Everything went through: the old folder goes away if it is empty now.
+    #[allow(dead_code)] // P4: the rename calls the core flow; kept for the tests
     pub(super) fn finish(self) {
         self.finish_with(&RealFs)
     }
@@ -221,6 +222,7 @@ impl Carried {
     }
 
     /// Puts files and rows back where they were (best effort, failures are logged).
+    #[allow(dead_code)] // P4: the rename calls the core flow; kept for the tests
     pub(super) fn undo(self, conn: &Connection) {
         self.undo_with(&RealFs, conn)
     }
@@ -234,10 +236,12 @@ impl Carried {
 /// already at its new place): its companions follow into the new extras folder. On any
 /// failure everything done here is undone and an error returned, so the caller can undo
 /// the model move.
+#[allow(dead_code)] // P4: the rename calls the core flow; kept for the tests
 pub(super) fn carry(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path) -> CmdResult<Carried> {
     carry_with(conn, file_id, old_model, new_model, CASE_INSENSITIVE_PATHS)
 }
 
+#[allow(dead_code)] // P4: the rename calls the core flow; kept for the tests
 pub(super) fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
     carry_with_fs(&RealFs, conn, file_id, old_model, new_model, case_insensitive)
 }
