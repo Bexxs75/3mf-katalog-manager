@@ -138,7 +138,7 @@ jobs:
 
       - name: Test the desktop commands and golden scenarios
         continue-on-error: true
-        run: cargo test -p mf-katalog-manager --no-default-features commands::
+        run: "cargo test -p mf-katalog-manager --no-default-features commands::"
 
       # Only the desktop crate and the core it depends on: the web server is Linux/Docker only.
       - name: Compile the desktop app (core included)
