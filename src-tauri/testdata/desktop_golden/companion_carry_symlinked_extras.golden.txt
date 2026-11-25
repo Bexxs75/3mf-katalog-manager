@@ -54,7 +54,7 @@
 
 == tree ==
 cat/
-cat/Link_extras (79 bytes)
+cat/Link_extras (symlink)
 dst/
 dst/Link.3mf (5 bytes)
 elsewhere/

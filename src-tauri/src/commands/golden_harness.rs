@@ -155,6 +155,9 @@ fn dump_tree(dir: &Path, base: &Path, out: &mut Vec<String>) {
         if meta.is_dir() {
             out.push(format!("{rel}/"));
             dump_tree(&path, base, out);
+        } else if meta.file_type().is_symlink() {
+            // A link's size is the length of its target path, which differs per platform and temp root.
+            out.push(format!("{rel} (symlink)"));
         } else {
             out.push(format!("{rel} ({} bytes)", meta.len()));
         }
@@ -189,6 +192,13 @@ fn golden_path(name: &str) -> PathBuf {
 pub fn run_golden(name: &str, body: impl FnOnce(&mut World)) {
     let root = unique_test_dir(&format!("golden_{name}"));
     let root = root.canonicalize().unwrap_or(root);
+    // Windows canonicalizes to `\\?\D:\..`; there `..` is an ordinary name, so the code under test would
+    // no longer see parent components. Scenarios use the plain spelling, like the app does.
+    #[cfg(windows)]
+    let root = {
+        let plain = root.to_str().and_then(|s| s.strip_prefix(r"\\?\")).filter(|p| !p.starts_with("UNC")).map(std::path::PathBuf::from);
+        plain.unwrap_or(root)
+    };
     let mut w = World {
         conn: db::connect_in_memory().unwrap(),
         root: root.clone(),

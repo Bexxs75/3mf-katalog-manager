@@ -120,8 +120,8 @@
 
 == tree ==
 cat/
-cat/Link2.3mf (65 bytes)
-cat/alias.3mf (65 bytes)
-cat/dangling.3mf (64 bytes)
+cat/Link2.3mf (symlink)
+cat/alias.3mf (symlink)
+cat/dangling.3mf (symlink)
 cat/real.3mf (5 bytes)
 cat/twin.3mf (5 bytes)

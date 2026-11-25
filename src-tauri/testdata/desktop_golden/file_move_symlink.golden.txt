@@ -121,4 +121,4 @@ dst/linked.3mf (10 bytes)
 outside/
 outside/real.3mf (10 bytes)
 src/
-src/dangling.3mf (69 bytes)
+src/dangling.3mf (symlink)

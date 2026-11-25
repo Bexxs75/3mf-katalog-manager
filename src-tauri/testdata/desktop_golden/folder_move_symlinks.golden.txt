@@ -427,10 +427,10 @@ cat/Deko2/
 cat/Deko2/c.3mf (5 bytes)
 cat/Deko2/c_extras/
 cat/Deko2/c_extras/c.png (16 bytes)
-cat/Kaputt (68 bytes)
+cat/Kaputt (symlink)
 cat/Target/
-cat/Target/Up (56 bytes)
-cat/Target/Verlinkt (65 bytes)
+cat/Target/Up (symlink)
+cat/Target/Verlinkt (symlink)
 outside/
 outside/a.png (16 bytes)
 outside/c.png (16 bytes)

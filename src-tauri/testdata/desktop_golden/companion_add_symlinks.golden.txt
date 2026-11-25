@@ -48,8 +48,8 @@
 cat/
 cat/m.3mf (5 bytes)
 cat/n.3mf (5 bytes)
-cat/n_extras (64 bytes)
+cat/n_extras (symlink)
 elsewhere/
 outside/
-outside/link.png (72 bytes)
+outside/link.png (symlink)
 outside/photo.png (16 bytes)
