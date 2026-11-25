@@ -72,7 +72,8 @@ fn is_time_column(name: &str) -> bool {
 
 fn norm_text(s: &str, root: &Path) -> String {
     let root_s = root.to_string_lossy().to_string();
-    s.replace(&root_s, "<ROOT>").replace('\\', "/")
+    // A canonicalized Windows path (`\\?\D:\..`) shows up in some messages; it names the same root.
+    s.replace(&root_s, "<ROOT>").replace('\\', "/").replace("//?/<ROOT>", "<ROOT>")
 }
 
 /// OS error texts differ per platform ("File exists (os error 17)" vs. the Windows wording);

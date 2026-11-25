@@ -801,8 +801,12 @@ fn a_folder_swapped_for_another_one_is_not_removed_by_the_rollback() {
     run_at("after_mkdir", 0, move || {
         // A different empty folder takes the place of the one this move created, and the
         // first file changes so that the move fails.
-        fs::remove_dir(&made).unwrap();
+        // The old folder stays (renamed) until the new one exists, so the file system cannot hand
+        // the new folder the same inode number, which would make the swap invisible.
+        let aside = made.with_file_name("Foo_extras_aside");
+        fs::rename(&made, &aside).unwrap();
         fs::create_dir(&made).unwrap();
+        fs::remove_dir(&aside).unwrap();
         fs::write(&source, b"changed size").unwrap();
     });
     assert_eq!(f.ops.move_file_to_folder(1, Some(1)), Err(Error::Changed));
