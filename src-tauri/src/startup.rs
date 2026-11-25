@@ -23,7 +23,12 @@ fn show_once(window: &WebviewWindow) -> tauri::Result<()> {
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 let maximized = late.is_maximized().unwrap_or(true);
                 log::info!(target: "startup", "maximized 500 ms after show: {maximized}");
-                if !maximized {
+                // Only retry while the window is still in its start state: not when the user restored,
+                // minimized or hid it (tray) in the meantime.
+                let untouched = late.is_visible().unwrap_or(false)
+                    && !late.is_minimized().unwrap_or(false)
+                    && !late.is_fullscreen().unwrap_or(false);
+                if !maximized && untouched {
                     if let Err(error) = late.maximize() { log::warn!(target: "startup", "late maximize failed: {error}"); }
                 }
             });

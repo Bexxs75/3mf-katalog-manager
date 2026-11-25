@@ -199,13 +199,13 @@ pub fn run() {
                 })
                 .build(),
         )
-        // Size and maximized state survive a restart; the position only where the platform lets programs set it
-        // (not under Wayland). VISIBLE is left out on purpose: the startup code decides when the window is shown.
+        // Size and maximized state survive a restart. POSITION is left out on purpose: the plugin restores any saved
+        // rectangle that touches a monitor, which can leave the title bar off-screen after a monitor was removed.
+        // VISIBLE is left out too: the startup code decides when the window is shown.
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(
                     tauri_plugin_window_state::StateFlags::SIZE
-                        | tauri_plugin_window_state::StateFlags::POSITION
                         | tauri_plugin_window_state::StateFlags::MAXIMIZED
                         | tauri_plugin_window_state::StateFlags::FULLSCREEN,
                 )
