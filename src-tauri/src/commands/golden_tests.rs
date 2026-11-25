@@ -139,7 +139,7 @@ fn golden_trash_file_with_companion() {
         let f = db::insert_folder_with_parent(&w.conn, "cat", None, &w.dir("cat").to_string_lossy()).unwrap();
         let id = add_file(w, "cat/m.3mf", f);
         let companion = {
-            let model = w.root.join("cat/m.3mf");
+            let model = w.root.join(crate::commands::golden_harness::nat("cat/m.3mf"));
             let extras = katalog_core::companions::extras_dir_for(&model).unwrap();
             let rel = extras.strip_prefix(&w.root).unwrap().join("photo.png");
             w.file(&rel.to_string_lossy(), "png")
@@ -202,7 +202,7 @@ fn removal_world(w: &mut World) -> (i64, i64, [i64; 5]) {
     let c = add_file(w, "other/c.3mf", other);
     let d = add_file(w, "other/d.3mf", other);
     let t = add_file(w, "top/sub/t.3mf", sub);
-    db::soft_delete_file(&w.conn, t, Some(&w.root.join("trash/t.3mf").to_string_lossy()), "2026-01-01T00:00:00Z").unwrap();
+    db::soft_delete_file(&w.conn, t, Some(&w.root.join(crate::commands::golden_harness::nat("trash/t.3mf")).to_string_lossy()), "2026-01-01T00:00:00Z").unwrap();
     seed_related(w, &[a, b, c, d, t]);
     db::bundles::create_bundle(&w.conn, "Pair", db::bundles::BundleKind::Parts, &[a, c], "2026-01-01T00:00:00Z").unwrap();
     db::bundles::create_bundle(&w.conn, "Trio", db::bundles::BundleKind::Variants, &[b, c, d], "2026-01-01T00:00:00Z").unwrap();
@@ -246,7 +246,7 @@ fn golden_remove_folder_refusals_and_summary() {
         }
         step_count(w, "remove unknown folder", "9999");
         step_count(w, "remove zero id", "0");
-        let sub_path = w.root.join("top/sub").to_string_lossy().to_string();
+        let sub_path = w.root.join(crate::commands::golden_harness::nat("top/sub")).to_string_lossy().to_string();
         db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &sub_path).unwrap();
         step_count(w, "remove top (subtree holds the base dir)", &top.to_string());
         step_count(w, "remove sub (is the base dir)", &sub.to_string());
