@@ -127,6 +127,8 @@ pub(super) fn start(app: &Arc<App>) {
 }
 
 fn run_sync(app: &App, force: bool, cancel: Arc<AtomicBool>) -> Result<Value, ()> {
+    // The budget starts before the policy is built: its host lookups are bounded and count against it.
+    let deadline = Instant::now() + BUDGET;
     let db = Mutex::new(db::open_read_write(&app.config.db_path).map_err(|_| ())?);
     let policy = policy(&app.config).map_err(|_| ())?;
     let make = move |kind: &str, address: &str, key: Option<&ApiKey>| {
@@ -135,7 +137,7 @@ fn run_sync(app: &App, force: bool, cancel: Arc<AtomicBool>) -> Result<Value, ()
     let options = SyncOptions {
         force,
         cancel: Some(cancel.clone()),
-        deadline: Some(Instant::now() + BUDGET),
+        deadline: Some(deadline),
         ..SyncOptions::default()
     };
     let finished = AtomicBool::new(false);

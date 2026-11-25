@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use super::address::{base_url, resolve, AddressPolicy};
+use super::address::{base_url, resolve_within, AddressPolicy};
 use super::api_key::ApiKey;
 use super::sync::unix_now;
 use super::{ConnectionInfo, JobOutcome, LinkError, PrinterLink, RemoteJob};
@@ -282,7 +282,8 @@ impl MoonrakerLink {
 
     /// First port 80 (Mainsail/nginx), then 7125 (Moonraker directly), unless the address names a port itself.
     fn candidate_bases(&self) -> Result<Vec<String>, LinkError> {
-        let target = resolve(&self.address, self.policy.clone())?;
+        let left = self.deadline.saturating_duration_since(Instant::now());
+        let target = resolve_within(&self.address, self.policy.clone(), left)?;
         let ports = match target.port {
             Some(p) => vec![p],
             None => vec![80, 7125],
@@ -505,6 +506,9 @@ impl MoonrakerLink {
 impl PrinterLink for MoonrakerLink {
     fn test(&self) -> Result<ConnectionInfo, LinkError> {
         let mut last = LinkError::Unreachable;
+        if self.deadline <= Instant::now() {
+            return Err(LinkError::Timeout);
+        }
         for base in self.candidate_bases()? {
             if self.deadline <= Instant::now() {
                 return Err(LinkError::Timeout);

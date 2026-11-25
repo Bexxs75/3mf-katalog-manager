@@ -2,7 +2,9 @@
 //! the connection goes to the checked IP (no second DNS lookup).
 
 use std::net::{IpAddr, ToSocketAddrs};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc};
+use std::time::{Duration, Instant};
 
 use super::LinkError;
 
@@ -117,7 +119,9 @@ impl AddressAllowlist {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        Self::from_strings_with_resolver(entries, lookup_ips)
+        // All host lookups together get one budget, so a hanging system resolver cannot hold the caller for long.
+        let end = Instant::now() + ALLOWLIST_DNS_BUDGET;
+        Self::from_strings_with_resolver(entries, |host| lookup_ips(host, end.saturating_duration_since(Instant::now()).min(DNS_TIMEOUT)))
     }
 
     fn from_strings_with_resolver<I, S>(entries: I, mut resolver: impl FnMut(&str) -> Result<Vec<IpAddr>, LinkError>) -> Result<Self, LinkError>
@@ -177,11 +181,71 @@ fn valid_allowlist_host(host: &str) -> bool {
         })
 }
 
-fn lookup_ips(host: &str) -> Result<Vec<IpAddr>, LinkError> {
+/// Longest wait for one name lookup, and for all host lookups of one allowlist together.
+const DNS_TIMEOUT: Duration = Duration::from_secs(5);
+const ALLOWLIST_DNS_BUDGET: Duration = Duration::from_secs(15);
+/// The system resolver cannot be interrupted, so a hanging lookup keeps its thread until it returns.
+/// At most this many such threads exist at once; further lookups fail fast instead of adding more.
+const MAX_LOOKUP_THREADS: usize = 8;
+
+static LOOKUPS: LookupGate = LookupGate { running: AtomicUsize::new(0), max: MAX_LOOKUP_THREADS };
+
+struct LookupGate {
+    running: AtomicUsize,
+    max: usize,
+}
+
+struct LookupSlot<'a>(&'a LookupGate);
+
+impl Drop for LookupSlot<'_> {
+    fn drop(&mut self) {
+        self.0.running.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+impl LookupGate {
+    fn enter(&self) -> Option<LookupSlot<'_>> {
+        self.running
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| (n < self.max).then_some(n + 1))
+            .ok()
+            .map(|_| LookupSlot(self))
+    }
+}
+
+/// Runs `lookup` on its own thread and waits at most `limit`. The slot is held by the thread until the
+/// lookup really returns, so hanging lookups count against the cap. No slot or no time: `Timeout`.
+fn bounded_lookup(
+    gate: &'static LookupGate,
+    host: &str,
+    limit: Duration,
+    lookup: impl FnOnce(&str) -> Result<Vec<IpAddr>, LinkError> + Send + 'static,
+) -> Result<Vec<IpAddr>, LinkError> {
+    if limit.is_zero() {
+        return Err(LinkError::Timeout);
+    }
+    let slot = gate.enter().ok_or(LinkError::Timeout)?;
+    let (tx, rx) = mpsc::channel();
+    let host = host.to_string();
+    // The slot moves into the thread and is freed when the lookup returns (or if the thread cannot start).
+    std::thread::Builder::new()
+        .name("printer-dns".into())
+        .spawn(move || {
+            let _slot = slot;
+            let _ = tx.send(lookup(&host));
+        })
+        .map_err(|_| LinkError::Timeout)?;
+    rx.recv_timeout(limit).unwrap_or(Err(LinkError::Timeout))
+}
+
+fn system_lookup(host: &str) -> Result<Vec<IpAddr>, LinkError> {
     (host, 0)
         .to_socket_addrs()
         .map(|addresses| addresses.map(|sa| sa.ip()).collect())
         .map_err(|_| LinkError::NameResolutionFailed)
+}
+
+fn lookup_ips(host: &str, limit: Duration) -> Result<Vec<IpAddr>, LinkError> {
+    bounded_lookup(&LOOKUPS, host, limit, system_lookup)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -300,7 +364,12 @@ fn policy_allows_ip(ip: IpAddr, policy: &AddressPolicy) -> bool {
 
 /// Resolves the address and checks EVERY resolved IP. Prefers IPv4.
 pub fn resolve(input: &str, policy: AddressPolicy) -> Result<Target, LinkError> {
-    resolve_with_resolver(input, policy, lookup_ips)
+    resolve_within(input, policy, DNS_TIMEOUT)
+}
+
+/// Like `resolve`, but a name lookup waits at most `limit` (callers pass the time left in their budget).
+pub fn resolve_within(input: &str, policy: AddressPolicy, limit: Duration) -> Result<Target, LinkError> {
+    resolve_with_resolver(input, policy, |host| lookup_ips(host, limit.min(DNS_TIMEOUT)))
 }
 
 fn resolve_with_resolver(input: &str, policy: AddressPolicy, resolver: impl FnOnce(&str) -> Result<Vec<IpAddr>, LinkError>) -> Result<Target, LinkError> {
@@ -467,6 +536,39 @@ mod tests {
         assert!(is_allowed_ip(ip("192.168.1.60"), p.clone()));
         assert!(is_allowed_ip(ip("fd12::1"), p.clone()));
         assert!(!is_allowed_ip(ip("192.168.1.61"), p));
+    }
+
+    #[test]
+    fn blocked_lookup_times_out_and_frees_its_slot() {
+        use std::sync::{mpsc, Mutex};
+        static GATE: LookupGate = LookupGate { running: AtomicUsize::new(0), max: 2 };
+        let (release, wait) = mpsc::channel::<()>();
+        let wait = Arc::new(Mutex::new(wait));
+        let started = Instant::now();
+        // Two lookups hang: both time out near the limit and keep their slots.
+        for _ in 0..2 {
+            let wait = wait.clone();
+            let r = bounded_lookup(&GATE, "blocked.invalid", Duration::from_millis(100), move |_| {
+                let _ = wait.lock().unwrap().recv();
+                Ok(vec![])
+            });
+            assert_eq!(r, Err(LinkError::Timeout));
+        }
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(GATE.running.load(Ordering::SeqCst), 2);
+        // Cap reached: the next lookup fails at once and starts no thread.
+        let t = Instant::now();
+        assert_eq!(bounded_lookup(&GATE, "x.invalid", Duration::from_secs(5), |_| Ok(vec![])), Err(LinkError::Timeout));
+        assert!(t.elapsed() < Duration::from_millis(500));
+        // Released lookups end their threads; the slots return and lookups work again.
+        drop(release);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while GATE.running.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(GATE.running.load(Ordering::SeqCst), 0);
+        assert_eq!(bounded_lookup(&GATE, "ok.invalid", Duration::from_secs(5), |_| Ok(vec![ip("192.168.1.2")])), Ok(vec![ip("192.168.1.2")]));
+        assert_eq!(bounded_lookup(&GATE, "ok.invalid", Duration::ZERO, |_| Ok(vec![])), Err(LinkError::Timeout));
     }
 
     #[test]
