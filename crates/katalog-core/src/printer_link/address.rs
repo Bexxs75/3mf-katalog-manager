@@ -205,10 +205,17 @@ impl Drop for LookupSlot<'_> {
 
 impl LookupGate {
     fn enter(&self) -> Option<LookupSlot<'_>> {
-        self.running
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| (n < self.max).then_some(n + 1))
-            .ok()
-            .map(|_| LookupSlot(self))
+        // A compare-exchange loop: `fetch_update` is deprecated on newer toolchains (renamed `try_update`).
+        let mut current = self.running.load(Ordering::SeqCst);
+        loop {
+            if current >= self.max {
+                return None;
+            }
+            match self.running.compare_exchange_weak(current, current + 1, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => return Some(LookupSlot(self)),
+                Err(seen) => current = seen,
+            }
+        }
     }
 }
 
