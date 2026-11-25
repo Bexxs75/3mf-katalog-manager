@@ -1,5 +1,6 @@
 use super::*;
 use super::paths::sanitize_component;
+use super::formats::{TAR_MAX_EXT_HEADER, TAR_MAX_PATH_BYTES};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1019,4 +1020,96 @@ fn sevenz_extraction_does_not_multiply_memory_with_worker_threads() {
     println!("7z extraction peak growth: {} MiB", delta / 1024);
     assert_eq!(fs::metadata(dest.join("nullen.bin")).unwrap().len(), 256 * 1024 * 1024);
     assert!(delta < 64 * 1024, "peak resident memory grew by {} MiB", delta / 1024);
+}
+
+// ---------- tar: oversized extension headers and long paths (#76) ----------
+
+/// A header block that claims `claimed` bytes of data of the given type, followed
+/// by only a few real bytes - nothing is allocated by the test itself.
+fn tar_ext_header_only(kind: tar::EntryType, claimed: u64) -> Vec<u8> {
+    let mut header = tar::Header::new_gnu();
+    header.set_path("././@LongLink").unwrap();
+    header.set_entry_type(kind);
+    header.set_size(claimed);
+    header.set_mode(0o644);
+    header.set_cksum();
+    let mut raw = header.as_bytes().to_vec();
+    raw.extend_from_slice(&[b'a'; 64]);
+    raw
+}
+
+#[test]
+fn tar_oversized_extension_headers_are_rejected_without_buffering() {
+    let dir = unique_dir("tarbighdr");
+    for kind in [
+        tar::EntryType::GNULongName,
+        tar::EntryType::GNULongLink,
+        tar::EntryType::XHeader,
+        tar::EntryType::XGlobalHeader,
+    ] {
+        let path = dir.join("big.tar");
+        fs::write(&path, tar_ext_header_only(kind, 256 * 1024 * 1024)).unwrap();
+        assert!(matches!(list_entries(&path, ArchiveFormat::Tar), Err(ArchiveError::MemoryLimit)), "{kind:?}");
+        assert_eq!(inspect(&path, |_| true).status, InspectStatus::MemoryLimit, "{kind:?}");
+        let dest = dir.join("out");
+        let result = extract_archive(&path, ArchiveFormat::Tar, &dest, false, MAX_UNPACKED_BYTES, &|_| true);
+        assert!(matches!(result, Err(ArchiveError::MemoryLimit)), "{kind:?}");
+    }
+    // Same inside a compressed stream.
+    let raw = tar_ext_header_only(tar::EntryType::GNULongName, 256 * 1024 * 1024);
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(&raw).unwrap();
+    let gz = dir.join("big.tar.gz");
+    fs::write(&gz, enc.finish().unwrap()).unwrap();
+    assert_eq!(inspect(&gz, |_| true).status, InspectStatus::MemoryLimit);
+    // Just above the bound is rejected, at the bound it is read (and then ends early).
+    let path = dir.join("edge.tar");
+    fs::write(&path, tar_ext_header_only(tar::EntryType::GNULongName, TAR_MAX_EXT_HEADER + 1)).unwrap();
+    assert!(matches!(list_entries(&path, ArchiveFormat::Tar), Err(ArchiveError::MemoryLimit)));
+    fs::write(&path, tar_ext_header_only(tar::EntryType::GNULongName, TAR_MAX_EXT_HEADER)).unwrap();
+    assert!(matches!(list_entries(&path, ArchiveFormat::Tar), Err(ArchiveError::Unreadable(_))));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_long_but_normal_paths_still_work() {
+    let dir = unique_dir("tarlongok");
+    let long300 = format!("Ordner/{}/modell.stl", "x".repeat(300));
+    let long4000 = format!("{}/m.stl", "d".repeat(3990));
+    for name in [&long300, &long4000] {
+        let path = dir.join("long.tar");
+        fs::write(&path, tar_bytes(&[(name.as_str(), b"solid x")])).unwrap();
+        let entries = list_entries(&path, ArchiveFormat::Tar).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(&entries[0].name, name);
+    }
+    // PAX extended header of normal size (as written by bsdtar / GNU tar --format=pax).
+    let mut builder = tar::Builder::new(Vec::new());
+    builder.append_pax_extensions([("path", long300.as_bytes()), ("comment", b"hello".as_slice())]).unwrap();
+    let mut header = tar::Header::new_ustar();
+    header.set_path("kurz.stl").unwrap();
+    header.set_size(7);
+    header.set_mode(0o644);
+    header.set_cksum();
+    builder.append(&header, &b"solid x"[..]).unwrap();
+    let path = dir.join("pax.tar");
+    fs::write(&path, builder.into_inner().unwrap()).unwrap();
+    let entries = list_entries(&path, ArchiveFormat::Tar).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].name, long300);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_path_over_4096_bytes_is_rejected() {
+    let dir = unique_dir("tarpath4097");
+    let ok = "p".repeat(TAR_MAX_PATH_BYTES);
+    let too_long = "p".repeat(TAR_MAX_PATH_BYTES + 1);
+    let path = dir.join("p.tar");
+    fs::write(&path, tar_bytes(&[(ok.as_str(), b"x")])).unwrap();
+    assert!(list_entries(&path, ArchiveFormat::Tar).is_ok());
+    fs::write(&path, tar_bytes(&[(too_long.as_str(), b"x")])).unwrap();
+    assert!(matches!(list_entries(&path, ArchiveFormat::Tar), Err(ArchiveError::MemoryLimit)));
+    assert_eq!(inspect(&path, |_| true).status, InspectStatus::MemoryLimit);
+    let _ = fs::remove_dir_all(&dir);
 }
