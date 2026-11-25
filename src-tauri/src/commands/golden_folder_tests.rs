@@ -45,7 +45,7 @@ fn scrub_err(mut e: CmdError) -> CmdError {
 }
 
 fn put(w: &World, rel: &str, bytes: &[u8]) -> PathBuf {
-    let path = w.root.join(rel);
+    let path = w.root.join(crate::commands::golden_harness::nat(rel));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, bytes).unwrap();
     path
@@ -188,21 +188,21 @@ fn golden_folder_rename_rules() {
         rename(w, "unknown folder", &FaultFs::new(), 9999, "Neu", &[]);
         rename(w, "same name is a no-op", &FaultFs::new(), fx.deko, "Deko", &[]);
         rename(w, "the catalog base folder cannot be renamed", &FaultFs::new(), fx.cat, "cat2", &[]);
-        db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &w.root.join("cat/Deko/sub").to_string_lossy()).unwrap();
+        db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &w.root.join(crate::commands::golden_harness::nat("cat/Deko/sub")).to_string_lossy()).unwrap();
         rename(w, "an ancestor of the catalog base folder cannot be renamed", &FaultFs::new(), fx.deko, "Neu", &[]);
         db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &w.root.join("cat").to_string_lossy()).unwrap();
-        rename(w, "new path is protected", &FaultFs::new(), fx.deko, "Neu", &[w.root.join("cat/Neu")]);
-        rename(w, "folder contains a protected directory", &FaultFs::new(), fx.deko, "Neu", &[w.root.join("cat/Deko/sub")]);
+        rename(w, "new path is protected", &FaultFs::new(), fx.deko, "Neu", &[w.root.join(crate::commands::golden_harness::nat("cat/Neu"))]);
+        rename(w, "folder contains a protected directory", &FaultFs::new(), fx.deko, "Neu", &[w.root.join(crate::commands::golden_harness::nat("cat/Deko/sub"))]);
         rename(w, "name taken by a folder on disk", &FaultFs::new(), fx.deko, "Target", &[]);
         put(w, "cat/Datei", b"x");
         rename(w, "name taken by a file on disk", &FaultFs::new(), fx.deko, "Datei", &[]);
         // The catalog knows a folder with the new path, the disk does not: the DB refuses (UNIQUE
         // path) after the rename, which is undone.
         folder(w, "Phantom", Some(fx.cat), "elsewhere");
-        w.conn.execute("UPDATE folders SET path = ?1 WHERE name = 'Phantom'", [w.root.join("cat/Phantom").to_string_lossy().to_string()]).unwrap();
+        w.conn.execute("UPDATE folders SET path = ?1 WHERE name = 'Phantom'", [w.root.join(crate::commands::golden_harness::nat("cat/Phantom")).to_string_lossy().to_string()]).unwrap();
         rename(w, "name taken only in the catalog (disk rename undone)", &FaultFs::new(), fx.deko2, "Phantom", &[]);
         // The folder is gone from the disk.
-        std::fs::remove_dir_all(w.root.join("cat/Target")).unwrap();
+        std::fs::remove_dir_all(w.root.join(crate::commands::golden_harness::nat("cat/Target"))).unwrap();
         rename(w, "source missing on disk", &FaultFs::new(), fx.target, "Ziel", &[]);
         rename(w, "success: nested folders, models and companion files", &FaultFs::new(), fx.deko, "Decor", &[]);
         rename(w, "success: name with non-ASCII characters", &FaultFs::new(), fx.sub, "Übersicht", &[]);
@@ -298,29 +298,29 @@ fn golden_folder_move_rules() {
         mv(w, "into a descendant", &FaultFs::new(), fx.deko, Some(fx.sub), &[]);
         mv(w, "the catalog base folder cannot be moved", &FaultFs::new(), fx.cat, Some(fx.target), &[]);
         // The base folder lies below Deko: moving Deko would move the base folder with it.
-        let base = |w: &World, rel: &str| db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &w.root.join(rel).to_string_lossy()).unwrap();
+        let base = |w: &World, rel: &str| db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &w.root.join(crate::commands::golden_harness::nat(rel)).to_string_lossy()).unwrap();
         base(w, "cat/Deko/sub");
         mv(w, "an ancestor of the catalog base folder cannot be moved", &FaultFs::new(), fx.deko, Some(fx.target), &[]);
         w.conn.execute("DELETE FROM app_settings WHERE key = ?1", [folders::SETTING_CATALOG_BASE_DIR]).unwrap();
         let nameless = db::insert_folder_with_parent(&w.conn, "nameless", Some(fx.cat), "/").unwrap();
         mv(w, "stored path has no folder name (no base folder configured)", &FaultFs::new(), nameless, Some(fx.target), &[]);
         base(w, "cat");
-        mv(w, "new path is protected", &FaultFs::new(), fx.deko, Some(fx.target), &[w.root.join("cat/Target/Deko")]);
-        mv(w, "folder contains a protected directory", &FaultFs::new(), fx.deko, Some(fx.target), &[w.root.join("cat/Deko/sub")]);
+        mv(w, "new path is protected", &FaultFs::new(), fx.deko, Some(fx.target), &[w.root.join(crate::commands::golden_harness::nat("cat/Target/Deko"))]);
+        mv(w, "folder contains a protected directory", &FaultFs::new(), fx.deko, Some(fx.target), &[w.root.join(crate::commands::golden_harness::nat("cat/Deko/sub"))]);
         mv(w, "already below that parent", &FaultFs::new(), fx.deko, Some(fx.cat), &[]);
         w.dir("cat/Target/Deko");
         mv(w, "name taken by a folder in the target", &FaultFs::new(), fx.deko, Some(fx.target), &[]);
-        std::fs::remove_dir(w.root.join("cat/Target/Deko")).unwrap();
+        std::fs::remove_dir(w.root.join(crate::commands::golden_harness::nat("cat/Target/Deko"))).unwrap();
         put(w, "cat/Target/Deko", b"file");
         mv(w, "name taken by a file in the target", &FaultFs::new(), fx.deko, Some(fx.target), &[]);
-        std::fs::remove_file(w.root.join("cat/Target/Deko")).unwrap();
+        std::fs::remove_file(w.root.join(crate::commands::golden_harness::nat("cat/Target/Deko"))).unwrap();
         // The catalog lists `Inner` as a sibling of `Deko2`, but it really lies inside it.
         let inner = folder(w, "Inner", Some(fx.cat), "cat/Deko2/Inner");
         mv(w, "stale catalog nesting (real locations compared)", &FaultFs::new(), fx.deko2, Some(inner), &[]);
         mv(w, "real parent equals the target", &FaultFs::new(), fx.sub, Some(fx.deko), &[]);
-        let ghost = db::insert_folder_with_parent(&w.conn, "ghost", Some(fx.cat), &w.root.join("cat/ghost").to_string_lossy()).unwrap();
+        let ghost = db::insert_folder_with_parent(&w.conn, "ghost", Some(fx.cat), &w.root.join(crate::commands::golden_harness::nat("cat/ghost")).to_string_lossy()).unwrap();
         mv(w, "target missing on disk", &FaultFs::new(), fx.deko, Some(ghost), &[]);
-        let vanished = db::insert_folder_with_parent(&w.conn, "vanished", Some(fx.cat), &w.root.join("cat/vanished").to_string_lossy()).unwrap();
+        let vanished = db::insert_folder_with_parent(&w.conn, "vanished", Some(fx.cat), &w.root.join(crate::commands::golden_harness::nat("cat/vanished")).to_string_lossy()).unwrap();
         mv(w, "source missing on disk", &FaultFs::new(), vanished, Some(fx.target), &[]);
         mv(w, "success: nested folders, models and companion files", &FaultFs::new(), fx.deko, Some(fx.target), &[]);
         mv(w, "success: back to the parent", &FaultFs::new(), fx.deko, Some(fx.cat), &[]);
@@ -350,6 +350,9 @@ fn golden_folder_move_faults() {
     });
 }
 
+// Faults are injected at the n-th canonicalize call; on Windows the collision check adds calls, so the
+// numbering differs by design (see golden_folder_rename_case_only).
+#[cfg(not(windows))]
 #[test]
 fn golden_folder_move_faults_resolving() {
     run_golden("folder_move_faults_resolving", |w| {
@@ -391,18 +394,18 @@ fn golden_folder_move_symlinks() {
         let fx = fixture(w);
         // A folder that is a symlink to a directory outside the catalog.
         let real = w.dir("outside/real");
-        let link = w.root.join("cat/Linked");
+        let link = w.root.join(crate::commands::golden_harness::nat("cat/Linked"));
         std::os::unix::fs::symlink(&real, &link).unwrap();
         let linked = db::insert_folder_with_parent(&w.conn, "Linked", Some(fx.cat), &link.to_string_lossy()).unwrap();
         mv(w, "move the symlinked folder", &FaultFs::new(), linked, Some(fx.target), &[]);
         rename(w, "rename the symlinked folder", &FaultFs::new(), linked, "Verlinkt", &[]);
         // A catalog folder whose path is a symlink to its own parent.
-        let loop_link = w.root.join("cat/Target/Up");
+        let loop_link = w.root.join(crate::commands::golden_harness::nat("cat/Target/Up"));
         std::os::unix::fs::symlink(w.root.join("cat"), &loop_link).unwrap();
         let up = db::insert_folder_with_parent(&w.conn, "Up", Some(fx.target), &loop_link.to_string_lossy()).unwrap();
         mv(w, "move a folder into a symlink that leads back to its parent", &FaultFs::new(), fx.deko, Some(up), &[]);
-        let dangling = w.root.join("cat/Dangling");
-        std::os::unix::fs::symlink(w.root.join("outside/nothing"), &dangling).unwrap();
+        let dangling = w.root.join(crate::commands::golden_harness::nat("cat/Dangling"));
+        std::os::unix::fs::symlink(w.root.join(crate::commands::golden_harness::nat("outside/nothing")), &dangling).unwrap();
         let dang = db::insert_folder_with_parent(&w.conn, "Dangling", Some(fx.cat), &dangling.to_string_lossy()).unwrap();
         mv(w, "move a dangling symlink (source is no folder)", &FaultFs::new(), dang, Some(fx.target), &[]);
         rename(w, "rename a dangling symlink", &FaultFs::new(), dang, "Kaputt", &[]);

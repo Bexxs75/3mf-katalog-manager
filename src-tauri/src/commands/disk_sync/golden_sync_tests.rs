@@ -30,7 +30,7 @@ fn s(path: &Path) -> String {
 }
 
 fn id_of(w: &World, rel: &str) -> i64 {
-    w.conn.query_row("SELECT id FROM files WHERE path = ?1", [s(&w.root.join(rel))], |r| r.get(0)).unwrap()
+    w.conn.query_row("SELECT id FROM files WHERE path = ?1", [s(&w.root.join(crate::commands::golden_harness::nat(rel)))], |r| r.get(0)).unwrap()
 }
 
 /// The real import reader without the preview images: their PNG size depends on the platform.
@@ -153,7 +153,7 @@ fn golden_disk_sync_plan() {
         state(w, "after the first sync");
         // A trash row whose file is still on disk blocks the path.
         let t = id_of(w, "models/t.obj");
-        db::soft_delete_file(&w.conn, t, Some(&s(&w.root.join("trash/t.obj"))), STAMP).unwrap();
+        db::soft_delete_file(&w.conn, t, Some(&s(&w.root.join(crate::commands::golden_harness::nat("trash/t.obj")))), STAMP).unwrap();
         // The companion folder of a catalog model is not scanned.
         let extras = katalog_core::companions::extras_dir_for(&root.join("m.obj")).unwrap();
         let extras_rel = extras.strip_prefix(&w.root).unwrap().join("inside.obj");
@@ -223,12 +223,12 @@ fn golden_disk_sync_emptied_folders() {
         state(w, "before");
         std::fs::rename(root.join("Alt"), root.join("Neu")).unwrap();
         std::fs::create_dir(root.join("Q")).unwrap();
-        std::fs::rename(root.join("P/x.obj"), root.join("Q/x.obj")).unwrap();
-        std::fs::rename(root.join("M"), root.join("Ziel/M")).unwrap();
+        std::fs::rename(root.join(crate::commands::golden_harness::nat("P/x.obj")), root.join(crate::commands::golden_harness::nat("Q/x.obj"))).unwrap();
+        std::fs::rename(root.join("M"), root.join(crate::commands::golden_harness::nat("Ziel/M"))).unwrap();
         std::fs::rename(root.join("Basis"), root.join("Basis2")).unwrap();
         // All files moved, but the folder itself is still there: its row stays.
         std::fs::create_dir(root.join("Bleibt2")).unwrap();
-        std::fs::rename(root.join("Bleibt/r.obj"), root.join("Bleibt2/r.obj")).unwrap();
+        std::fs::rename(root.join(crate::commands::golden_harness::nat("Bleibt/r.obj")), root.join(crate::commands::golden_harness::nat("Bleibt2/r.obj"))).unwrap();
         let plan = scan_step(w, "renames found", &FaultFs::new(), false);
         apply_step(w, "take over the renames", &FaultFs::new(), everything(&plan, false), false);
         state(w, "after apply");
@@ -260,7 +260,7 @@ fn golden_disk_sync_refusals() {
         apply_step(w, "remove a row that is not missing", &fresh(), stale, false);
 
         std::fs::create_dir(root.join("Prot")).unwrap();
-        std::fs::rename(root.join("a.obj"), root.join("Prot/a.obj")).unwrap();
+        std::fs::rename(root.join("a.obj"), root.join(crate::commands::golden_harness::nat("Prot/a.obj"))).unwrap();
         let plan = scan_step(w, "rename into a protected folder", &fresh(), false);
         let mut protected = everything(&plan, false);
         protected.sensitive_dirs = vec![root.join("Prot")];
@@ -272,7 +272,7 @@ fn golden_disk_sync_refusals() {
             .unwrap();
         put(w, "models/boom.obj", &obj(9));
         put(w, "models/neu/n.obj", &obj(10));
-        std::fs::rename(root.join("Prot/a.obj"), root.join("a2.obj")).unwrap();
+        std::fs::rename(root.join(crate::commands::golden_harness::nat("Prot/a.obj")), root.join("a2.obj")).unwrap();
         let plan = scan_step(w, "new files and a rename", &fresh(), false);
         apply_step(w, "insert fails: nothing is kept", &fresh(), everything(&plan, false), false);
         state(w, "after the failed insert");
@@ -301,7 +301,7 @@ fn golden_disk_sync_refusals() {
         scan_step(w, "scan after removing", &fresh(), false);
 
         std::fs::remove_dir_all(w.root.join("outside")).unwrap();
-        let loose2 = w.root.join("outside/again.obj");
+        let loose2 = w.root.join(crate::commands::golden_harness::nat("outside/again.obj"));
         db::test_insert_minimal_file(&w.conn, &s(&loose2), None).unwrap();
         scan_step(w, "loose file without its folder is unreachable", &fresh(), false);
         w.conn.execute("DELETE FROM files WHERE path = ?1", [s(&loose2)]).unwrap();
@@ -385,7 +385,7 @@ fn golden_disk_sync_case_insensitive() {
         put(w, "models/orig.obj", &obj(2));
         let first = scan_step(w, "first scan", &insensitive(), true);
         apply_step(w, "take over everything", &insensitive(), everything(&first, false), true);
-        std::fs::rename(root.join("Part/A.obj"), root.join("Part/a.obj")).unwrap();
+        std::fs::rename(root.join(crate::commands::golden_harness::nat("Part/A.obj")), root.join(crate::commands::golden_harness::nat("Part/a.obj"))).unwrap();
         scan_step(w, "case-only rename is neither new nor missing", &insensitive(), true);
         let kopie = put(w, "models/Kopie.obj", &obj(2));
         let plan = scan_step(w, "copy offered", &insensitive(), true);
@@ -394,7 +394,7 @@ fn golden_disk_sync_case_insensitive() {
         std::fs::rename(&kopie, root.join("kopie.obj")).unwrap();
         scan_step(w, "remembered copy under another spelling", &insensitive(), true);
         put(w, "models/Part/B.obj", &obj(3));
-        db::test_insert_minimal_file(&w.conn, &s(&root.join("Part/b.obj")), None).unwrap();
+        db::test_insert_minimal_file(&w.conn, &s(&root.join(crate::commands::golden_harness::nat("Part/b.obj"))), None).unwrap();
         scan_step(w, "row with another spelling of a new file", &insensitive(), true);
         put(w, "models/Neu/N.obj", &obj(4));
         let plan = scan_step(w, "new folder", &insensitive(), true);
@@ -415,7 +415,7 @@ fn golden_disk_sync_symlinks() {
         let alias = w.root.join("alias");
         symlink(&real, &alias).unwrap();
         db::ensure_folder_path(&w.conn, &alias, &alias).unwrap();
-        symlink(w.root.join("elsewhere/e.obj"), real.join("link.obj")).unwrap();
+        symlink(w.root.join(crate::commands::golden_harness::nat("elsewhere/e.obj")), real.join("link.obj")).unwrap();
         symlink(w.root.join("elsewhere"), real.join("linkdir")).unwrap();
         let first = scan_step(w, "root through a link, links inside are not followed", &FaultFs::new(), false);
         apply_step(w, "take over", &FaultFs::new(), everything(&first, false), false);

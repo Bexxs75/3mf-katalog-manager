@@ -42,16 +42,22 @@ pub struct World {
     steps: Vec<serde_json::Value>,
 }
 
+/// A `/`-separated relative path in the native spelling. A path built from `root.join("a/b")` has mixed
+/// separators on Windows and would not equal the one the code under test builds (UNIQUE columns, prefixes).
+pub fn nat(rel: &str) -> PathBuf {
+    Path::new(rel).components().collect()
+}
+
 impl World {
     /// Creates a directory below the root and returns its path.
     pub fn dir(&self, rel: &str) -> PathBuf {
-        let p = self.root.join(rel);
+        let p = self.root.join(nat(rel));
         std::fs::create_dir_all(&p).unwrap();
         p
     }
     /// Writes a file below the root (parents created); content is part of the tree size only.
     pub fn file(&self, rel: &str, content: &str) -> PathBuf {
-        let p = self.root.join(rel);
+        let p = self.root.join(nat(rel));
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(&p, content).unwrap();
         p

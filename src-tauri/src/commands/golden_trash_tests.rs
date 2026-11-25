@@ -14,7 +14,7 @@ use std::io::ErrorKind::{PermissionDenied, Unsupported};
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
 
 fn put(w: &World, rel: &str, bytes: &[u8]) -> PathBuf {
-    let path = w.root.join(rel);
+    let path = w.root.join(crate::commands::golden_harness::nat(rel));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, bytes).unwrap();
     path
@@ -475,11 +475,11 @@ fn golden_trash_linux_special() {
         w.step("delete a model whose path is a directory", r);
         // The recorded spelling differs from the file on disk only in case (case-sensitive volume).
         let (cased, cased_path) = model(w, "cat/Real.3mf", Some(folder));
-        std::fs::rename(&cased_path, w.root.join("cat/real.3mf")).unwrap();
+        std::fs::rename(&cased_path, w.root.join(crate::commands::golden_harness::nat("cat/real.3mf"))).unwrap();
         let r = del(w, cased);
         w.step("delete a model recorded as Real.3mf while real.3mf is on disk", r);
         let (twin, twin_path) = model(w, "cat/Twin.3mf", Some(folder));
-        std::fs::rename(&twin_path, w.root.join("cat/twin.3mf")).unwrap();
+        std::fs::rename(&twin_path, w.root.join(crate::commands::golden_harness::nat("cat/twin.3mf"))).unwrap();
         let fs = FaultFs::new().case_insensitive();
         let r = trash::delete_file_with_conn_fs(&fs, &w.conn, &load(w, twin), twin, &trash_dir);
         w.step("same on a simulated case-insensitive volume (the twin is found, the move fails)", r);
@@ -493,7 +493,7 @@ fn golden_trash_linux_special() {
         // Restore with a file where the directory should be.
         let (blocked, _) = model(w, "cat/blocked/b.3mf", Some(folder));
         del(w, blocked).unwrap();
-        std::fs::remove_dir(w.root.join("cat/blocked")).unwrap();
+        std::fs::remove_dir(w.root.join(crate::commands::golden_harness::nat("cat/blocked"))).unwrap();
         put(w, "cat/blocked", b"a file where the folder was");
         let r = restore(w, blocked, &[]);
         w.step("restore where the folder cannot be created", r);

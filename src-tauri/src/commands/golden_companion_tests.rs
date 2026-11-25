@@ -15,7 +15,7 @@ const BAD_TEXT: &[u8] = b"abc\xff\xfe\0def";
 const STAMP: &str = "2026-01-01T00:00:00Z";
 
 fn put(w: &World, rel: &str, bytes: &[u8]) -> PathBuf {
-    let path = w.root.join(rel);
+    let path = w.root.join(crate::commands::golden_harness::nat(rel));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, bytes).unwrap();
     path
@@ -94,7 +94,7 @@ fn golden_companion_add() {
         w.step("source path with ..", r.map(|c| rec(&c)));
         let r = companions::add_companion_with_conn(&w.conn, m, &w.dir("outside/adir"), &[]);
         w.step("source is a directory", r.map(|c| rec(&c)));
-        let r = companions::add_companion_with_conn(&w.conn, m, &w.root.join("outside/missing.png"), &[]);
+        let r = companions::add_companion_with_conn(&w.conn, m, &w.root.join(crate::commands::golden_harness::nat("outside/missing.png")), &[]);
         w.step("source missing", r.map(|c| rec(&c)));
         let r = companions::add_companion_with_conn(&w.conn, 999, &photo, &[]);
         w.step("unknown model", r.map(|c| rec(&c)));
@@ -142,12 +142,12 @@ fn golden_companion_add_symlinks() {
         let (m, _) = model(w, "cat/m.3mf", Some(folder));
         let (n, _) = model(w, "cat/n.3mf", Some(folder));
         let real = source(w, "photo.png", PNG);
-        let link = w.root.join("outside/link.png");
+        let link = w.root.join(crate::commands::golden_harness::nat("outside/link.png"));
         std::os::unix::fs::symlink(&real, &link).unwrap();
         let r = companions::add_companion_with_conn(&w.conn, m, &link, &[]);
         w.step("symlink as source", r.map(|c| rec(&c)));
         let elsewhere = w.dir("elsewhere");
-        std::os::unix::fs::symlink(&elsewhere, w.root.join("cat/n_extras")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, w.root.join(crate::commands::golden_harness::nat("cat/n_extras"))).unwrap();
         let r = companions::add_companion_with_conn(&w.conn, n, &real, &[]);
         w.step("extras folder is a symlink", r.map(|c| rec(&c)));
     });
@@ -220,7 +220,7 @@ fn golden_companion_trash_restore_db_failures() {
         let r = companions::restore_companion_with_conn(&w.conn, b.id, &[]);
         w.step("restore b with the row update failing (file back in the trash)", r.map(|c| rec(&c)));
         w.conn.execute_batch("DROP TRIGGER block_path").unwrap();
-        std::fs::remove_dir_all(w.root.join("cat/m_extras")).unwrap();
+        std::fs::remove_dir_all(w.root.join(crate::commands::golden_harness::nat("cat/m_extras"))).unwrap();
         w.conn
             .execute_batch("CREATE TRIGGER block_path BEFORE UPDATE OF path ON companion_files BEGIN SELECT RAISE(ABORT, 'blocked'); END;")
             .unwrap();
@@ -320,7 +320,7 @@ fn golden_companion_purge() {
         w.step("purge trash files of unknown model", r);
         // A row that points outside the trash is refused and stays.
         let precious = source(w, "precious.png", PNG);
-        let planted = db::companions::insert_companion(&w.conn, fresh, "x.png", &w.root.join("cat/fresh_extras/x.png").to_string_lossy(), "image", None, STAMP).unwrap();
+        let planted = db::companions::insert_companion(&w.conn, fresh, "x.png", &w.root.join(crate::commands::golden_harness::nat("cat/fresh_extras/x.png")).to_string_lossy(), "image", None, STAMP).unwrap();
         w.conn
             .execute(
                 "UPDATE companion_files SET deleted_at = '2000-01-01T00:00:00+00:00', trash_path = ?1 WHERE id = ?2",
@@ -333,7 +333,7 @@ fn golden_companion_purge() {
         w.step("empty trash (the planted row stays)", ok(()));
         // A companion the web version put in its own trash folder.
         let web_dir = w.dir("cat/.katalog-papierkorb");
-        let row = db::companions::insert_companion(&w.conn, alone, "web.png", &w.root.join("cat/alone_extras/web.png").to_string_lossy(), "image", None, STAMP).unwrap();
+        let row = db::companions::insert_companion(&w.conn, alone, "web.png", &w.root.join(crate::commands::golden_harness::nat("cat/alone_extras/web.png")).to_string_lossy(), "image", None, STAMP).unwrap();
         let web_file = web_dir.join(format!("companion-{row}-abcd1234-web.png"));
         std::fs::write(&web_file, PNG).unwrap();
         w.conn
@@ -455,7 +455,7 @@ fn golden_companion_carry() {
         let (m1, old1) = model(w, "cat/Foo.3mf", Some(folder));
         add(w, m1, "a.png", PNG);
         add(w, m1, "b.png", PNG);
-        let new1 = w.root.join("dst/Foo.3mf");
+        let new1 = w.root.join(crate::commands::golden_harness::nat("dst/Foo.3mf"));
         move_model(&old1, &new1);
         let fs = FaultFs::new();
         carry_step(w, "move Foo to dst", &fs, m1, &old1, &new1, false);
@@ -463,7 +463,7 @@ fn golden_companion_carry() {
         rows_of(w, "rows of Foo", m1);
         // 2: move there and undo.
         let old2 = new1.clone();
-        let new2 = w.root.join("cat/Foo.3mf");
+        let new2 = w.root.join(crate::commands::golden_harness::nat("cat/Foo.3mf"));
         move_model(&old2, &new2);
         let fs = FaultFs::new();
         let carried = companions::carry_with_fs(&fs, &w.conn, m1, &old2, &new2, false);
@@ -476,7 +476,7 @@ fn golden_companion_carry() {
         add(w, m3, "a.png", PNG);
         add(w, m3, "b.png", PNG);
         put(w, "dst/Bar_extras/b.png", b"in the way");
-        let new3 = w.root.join("dst/Bar.3mf");
+        let new3 = w.root.join(crate::commands::golden_harness::nat("dst/Bar.3mf"));
         move_model(&old3, &new3);
         let fs = FaultFs::new();
         carry_step(w, "move Bar, second name taken", &fs, m3, &old3, &new3, false);
@@ -486,14 +486,14 @@ fn golden_companion_carry() {
         let (m4, old4) = model(w, "cat/Baz.3mf", Some(folder));
         add(w, m4, "a.png", PNG);
         put(w, "dst/Baz_extras", b"a file");
-        let new4 = w.root.join("dst/Baz.3mf");
+        let new4 = w.root.join(crate::commands::golden_harness::nat("dst/Baz.3mf"));
         move_model(&old4, &new4);
         let fs = FaultFs::new();
         carry_step(w, "move Baz, target folder name is a file", &fs, m4, &old4, &new4, false);
         // 5: creating the target folder fails.
         let (m5, old5) = model(w, "cat/Qux.3mf", Some(folder));
         add(w, m5, "a.png", PNG);
-        let new5 = w.root.join("dst/Qux.3mf");
+        let new5 = w.root.join(crate::commands::golden_harness::nat("dst/Qux.3mf"));
         move_model(&old5, &new5);
         let fs = FaultFs::new().fail(Op::CreateDir, 1, PermissionDenied);
         carry_step(w, "move Qux, folder creation refused", &fs, m5, &old5, &new5, false);
@@ -502,7 +502,7 @@ fn golden_companion_carry() {
         let (m6, old6) = model(w, "cat/Lock.3mf", Some(folder));
         add(w, m6, "a.png", PNG);
         add(w, m6, "b.png", PNG);
-        let new6 = w.root.join("dst/Lock.3mf");
+        let new6 = w.root.join(crate::commands::golden_harness::nat("dst/Lock.3mf"));
         move_model(&old6, &new6);
         let fs = FaultFs::new()
             .fail_on(Op::HardLink, Some("b.png"), 1, PermissionDenied)
@@ -513,7 +513,7 @@ fn golden_companion_carry() {
         // 7: the hard link is not possible (other volume): the copy path carries the files.
         let (m7, old7) = model(w, "cat/Vol.3mf", Some(folder));
         add(w, m7, "a.png", PNG);
-        let new7 = w.root.join("dst/Vol.3mf");
+        let new7 = w.root.join(crate::commands::golden_harness::nat("dst/Vol.3mf"));
         move_model(&old7, &new7);
         let fs = FaultFs::new().fail(Op::HardLink, 1, Unsupported);
         carry_step(w, "move Vol, hard link not possible", &fs, m7, &old7, &new7, false);
@@ -525,19 +525,19 @@ fn golden_companion_carry() {
         db::companions::insert_companion(&w.conn, m8, "stray.png", &stray.to_string_lossy(), "image", Some(1), STAMP).unwrap();
         let gone = add(w, m8, "gone.png", PNG);
         std::fs::remove_file(&gone.path).unwrap();
-        let new8 = w.root.join("dst/Odd.3mf");
+        let new8 = w.root.join(crate::commands::golden_harness::nat("dst/Odd.3mf"));
         move_model(&old8, &new8);
         let fs = FaultFs::new();
         carry_step(w, "move Odd (stray row, missing file)", &fs, m8, &old8, &new8, false);
         rows_of(w, "rows of Odd", m8);
         // 9: nothing to carry, same folder, no extras.
         let (m9, old9) = model(w, "cat/None.3mf", Some(folder));
-        let new9 = w.root.join("dst/None.3mf");
+        let new9 = w.root.join(crate::commands::golden_harness::nat("dst/None.3mf"));
         move_model(&old9, &new9);
         carry_step(w, "move a model without companions", &FaultFs::new(), m9, &old9, &new9, false);
         let (m10, old10) = model(w, "cat/Same.3mf", Some(folder));
         add(w, m10, "a.png", PNG);
-        let new10 = w.root.join("cat/Same.stl");
+        let new10 = w.root.join(crate::commands::golden_harness::nat("cat/Same.stl"));
         move_model(&old10, &new10);
         carry_step(w, "change only the extension (same folder)", &FaultFs::new(), m10, &old10, &new10, false);
         // 10: a row fails to update after the first file moved.
@@ -547,7 +547,7 @@ fn golden_companion_carry() {
         w.conn
             .execute_batch("CREATE TRIGGER block_path BEFORE UPDATE OF path ON companion_files WHEN NEW.path GLOB '*dst*b.png' BEGIN SELECT RAISE(ABORT, 'blocked'); END;")
             .unwrap();
-        let new12 = w.root.join("dst/Db.3mf");
+        let new12 = w.root.join(crate::commands::golden_harness::nat("dst/Db.3mf"));
         move_model(&old12, &new12);
         let fs = FaultFs::new();
         carry_step(w, "move Db, the row of the second file cannot be updated", &fs, m12, &old12, &new12, false);
@@ -565,11 +565,11 @@ fn golden_companion_carry_symlinked_extras() {
         w.dir("dst");
         let (m, old) = model(w, "cat/Link.3mf", Some(folder));
         add(w, m, "a.png", PNG);
-        let extras = w.root.join("cat/Link_extras");
+        let extras = w.root.join(crate::commands::golden_harness::nat("cat/Link_extras"));
         let elsewhere = w.dir("elsewhere");
         std::fs::rename(&extras, elsewhere.join("held")).unwrap();
         std::os::unix::fs::symlink(elsewhere.join("held"), &extras).unwrap();
-        let new = w.root.join("dst/Link.3mf");
+        let new = w.root.join(crate::commands::golden_harness::nat("dst/Link.3mf"));
         move_model(&old, &new);
         carry_step(w, "move Link, extras folder is a symlink", &FaultFs::new(), m, &old, &new, false);
         rows_of(w, "rows of Link", m);
@@ -584,7 +584,7 @@ fn golden_companion_carry_case_only() {
         let (m1, old1) = model(w, "cat/foo.3mf", Some(folder));
         add(w, m1, "a.png", PNG);
         add(w, m1, "b.png", PNG);
-        let new1 = w.root.join("cat/Foo.3mf");
+        let new1 = w.root.join(crate::commands::golden_harness::nat("cat/Foo.3mf"));
         let fs = FaultFs::new();
         carry_step(w, "rename foo to Foo (case-insensitive volume)", &fs, m1, &old1, &new1, true);
         w.step("calls", ok(calls(&fs)));
@@ -594,7 +594,7 @@ fn golden_companion_carry_case_only() {
         let (m4, _) = model(w, "cat/baz.3mf", Some(folder));
         add(w, m3, "one.png", PNG);
         add(w, m4, "two.png", PNG);
-        let new3 = w.root.join("cat/Baz.stl");
+        let new3 = w.root.join(crate::commands::golden_harness::nat("cat/Baz.stl"));
         let fs = FaultFs::new();
         carry_step(w, "rename baz.stl to Baz.stl, folder shared", &fs, m3, &old3, &new3, true);
         w.step("calls", ok(calls(&fs)));
@@ -603,7 +603,7 @@ fn golden_companion_carry_case_only() {
         // 3: renaming the folder is refused.
         let (m5, old5) = model(w, "cat/qux.3mf", Some(folder));
         add(w, m5, "a.png", PNG);
-        let new5 = w.root.join("cat/QUX.3mf");
+        let new5 = w.root.join(crate::commands::golden_harness::nat("cat/QUX.3mf"));
         let fs = FaultFs::new().fail(Op::Rename, 1, PermissionDenied);
         carry_step(w, "rename qux to QUX, folder rename refused", &fs, m5, &old5, &new5, true);
         w.step("calls", ok(calls(&fs)));
@@ -615,7 +615,7 @@ fn golden_companion_carry_case_only() {
         w.conn
             .execute_batch("CREATE TRIGGER block_path BEFORE UPDATE OF path ON companion_files WHEN NEW.path GLOB '*DB_extras*b.png' BEGIN SELECT RAISE(ABORT, 'blocked'); END;")
             .unwrap();
-        let new6 = w.root.join("cat/DB.3mf");
+        let new6 = w.root.join(crate::commands::golden_harness::nat("cat/DB.3mf"));
         let fs = FaultFs::new();
         carry_step(w, "rename db to DB, second row cannot be updated", &fs, m6, &old6, &new6, true);
         w.step("calls", ok(calls(&fs)));
@@ -632,7 +632,7 @@ fn golden_companion_carry_case_sensitive() {
         let folder = cat(w);
         let (m, old) = model(w, "cat/bar.3mf", Some(folder));
         add(w, m, "a.png", PNG);
-        let new = w.root.join("cat/Bar.3mf");
+        let new = w.root.join(crate::commands::golden_harness::nat("cat/Bar.3mf"));
         let fs = FaultFs::new();
         carry_step(w, "rename bar to Bar (case-sensitive)", &fs, m, &old, &new, false);
         w.step("calls", ok(calls(&fs)));

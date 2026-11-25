@@ -43,7 +43,7 @@ fn scrub_err(mut e: CmdError) -> CmdError {
 }
 
 fn put(w: &World, rel: &str, bytes: &[u8]) -> PathBuf {
-    let path = w.root.join(rel);
+    let path = w.root.join(crate::commands::golden_harness::nat(rel));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, bytes).unwrap();
     path
@@ -84,7 +84,7 @@ fn calls(fs: &FaultFs) -> Vec<String> {
 
 /// Names in a directory of the scenario (sorted, intermediate names scrubbed).
 fn ls(w: &mut World, label: &str, rel: &str) {
-    let mut names: Vec<String> = std::fs::read_dir(w.root.join(rel)).unwrap().map(|e| scrub(&e.unwrap().file_name().to_string_lossy())).collect();
+    let mut names: Vec<String> = std::fs::read_dir(w.root.join(crate::commands::golden_harness::nat(rel))).unwrap().map(|e| scrub(&e.unwrap().file_name().to_string_lossy())).collect();
     names.sort();
     w.step(label, Ok::<_, CmdError>(names));
 }
@@ -356,22 +356,22 @@ fn golden_file_rename_symlinks() {
     run_golden("file_rename_symlinks", |w| {
         let folder = cat(w);
         let (real, real_path) = model(w, "cat/real.3mf", folder);
-        let link = w.root.join("cat/link.3mf");
+        let link = w.root.join(crate::commands::golden_harness::nat("cat/link.3mf"));
         std::os::unix::fs::symlink(&real_path, &link).unwrap();
         let link_id = db::test_insert_minimal_file(&w.conn, &link.to_string_lossy(), Some(folder)).unwrap();
         // The target is a symlink onto the file itself: a distinct entry, so a collision.
-        std::os::unix::fs::symlink(&real_path, w.root.join("cat/alias.3mf")).unwrap();
+        std::os::unix::fs::symlink(&real_path, w.root.join(crate::commands::golden_harness::nat("cat/alias.3mf"))).unwrap();
         let r = rename_file_with_conn(&w.conn, real, "alias.3mf".into(), &[]);
         w.step("rename onto a symlink to itself", r);
         // A dangling symlink is a collision too.
-        std::os::unix::fs::symlink(w.root.join("cat/nowhere"), w.root.join("cat/dangling.3mf")).unwrap();
+        std::os::unix::fs::symlink(w.root.join(crate::commands::golden_harness::nat("cat/nowhere")), w.root.join(crate::commands::golden_harness::nat("cat/dangling.3mf"))).unwrap();
         let r = rename_file_with_conn(&w.conn, real, "dangling.3mf".into(), &[]);
         w.step("rename onto a dangling symlink", r);
         // A symlink model is renamed as a link, not by moving its content.
         let r = rename_file_with_conn(&w.conn, link_id, "link2.3mf".into(), &[]);
         w.step("rename a symlink model", r);
         // Two names of the same file are distinct entries.
-        std::fs::hard_link(&real_path, w.root.join("cat/twin.3mf")).unwrap();
+        std::fs::hard_link(&real_path, w.root.join(crate::commands::golden_harness::nat("cat/twin.3mf"))).unwrap();
         let r = rename_file_with_conn(&w.conn, real, "twin.3mf".into(), &[]);
         w.step("rename onto a hard link twin", r);
         // A symlink model with a case-only change goes through the intermediate name.

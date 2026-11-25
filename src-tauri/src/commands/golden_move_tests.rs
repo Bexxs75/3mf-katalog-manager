@@ -13,7 +13,7 @@ const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
 const STAMP: &str = "2026-01-01T00:00:00Z";
 
 fn put(w: &World, rel: &str, bytes: &[u8]) -> PathBuf {
-    let path = w.root.join(rel);
+    let path = w.root.join(crate::commands::golden_harness::nat(rel));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, bytes).unwrap();
     path
@@ -121,7 +121,7 @@ fn golden_file_move_single() {
         let fs = FaultFs::new();
         mv(w, "source is protected", &fs, s, Some(dst), std::slice::from_ref(&secret));
         let fs = FaultFs::new();
-        mv(w, "new path is protected", &fs, e, Some(dst), &[w.root.join("dst/e.3mf")]);
+        mv(w, "new path is protected", &fs, e, Some(dst), &[w.root.join(crate::commands::golden_harness::nat("dst/e.3mf"))]);
 
         // Invalid stored paths.
         let root_file = db::test_insert_minimal_file(&w.conn, "/", None).unwrap();
@@ -134,15 +134,15 @@ fn golden_file_move_single() {
         let ghost = db::insert_folder_with_parent(&w.conn, "ghost", None, &w.root.join("ghost").to_string_lossy()).unwrap();
         let fs = FaultFs::new();
         mv(w, "target folder missing on disk", &fs, e, Some(ghost), &[]);
-        let gone = db::test_insert_minimal_file(&w.conn, &w.root.join("src/gone.3mf").to_string_lossy(), Some(src)).unwrap();
+        let gone = db::test_insert_minimal_file(&w.conn, &w.root.join(crate::commands::golden_harness::nat("src/gone.3mf")).to_string_lossy(), Some(src)).unwrap();
         let fs = FaultFs::new();
         mv(w, "source missing on disk", &fs, gone, Some(dst), &[]);
         w.dir("src/dirmodel.3mf");
-        let dir_row = db::test_insert_minimal_file(&w.conn, &w.root.join("src/dirmodel.3mf").to_string_lossy(), Some(src)).unwrap();
+        let dir_row = db::test_insert_minimal_file(&w.conn, &w.root.join(crate::commands::golden_harness::nat("src/dirmodel.3mf")).to_string_lossy(), Some(src)).unwrap();
         let fs = FaultFs::new();
         mv(w, "source is a directory", &fs, dir_row, Some(dst), &[]);
         let (g, _) = model(w, "src/g.3mf", Some(src));
-        db::test_insert_minimal_file(&w.conn, &w.root.join("dst/g.3mf").to_string_lossy(), Some(dst)).unwrap();
+        db::test_insert_minimal_file(&w.conn, &w.root.join(crate::commands::golden_harness::nat("dst/g.3mf")).to_string_lossy(), Some(dst)).unwrap();
         let fs = FaultFs::new();
         mv(w, "name taken only in the catalog (file moved back)", &fs, g, Some(dst), &[]);
 
@@ -178,11 +178,11 @@ fn mixed_batch_world(w: &mut World) -> (i64, i64, Vec<String>) {
     model(w, "dst/dup.3mf", Some(dst));
     let (here, _) = model(w, "dst/here.3mf", Some(dst));
     let (loose, _) = model(w, "dst/loose.3mf", None);
-    let gone = db::test_insert_minimal_file(&w.conn, &w.root.join("src/gone.3mf").to_string_lossy(), Some(src)).unwrap();
+    let gone = db::test_insert_minimal_file(&w.conn, &w.root.join(crate::commands::golden_harness::nat("src/gone.3mf")).to_string_lossy(), Some(src)).unwrap();
     let (trashed, _) = model(w, "src/trashed.3mf", Some(src));
     db::soft_delete_file(&w.conn, trashed, Some("x"), STAMP).unwrap();
     let (taken, _) = model(w, "src/taken.3mf", Some(src));
-    db::test_insert_minimal_file(&w.conn, &w.root.join("dst/taken.3mf").to_string_lossy(), Some(dst)).unwrap();
+    db::test_insert_minimal_file(&w.conn, &w.root.join(crate::commands::golden_harness::nat("dst/taken.3mf")).to_string_lossy(), Some(dst)).unwrap();
     let (foo, _) = model(w, "src/Foo.3mf", Some(src));
     companion(w, foo, "pic.png");
     let ids = [ok1, ok2, dup, here, loose, gone, trashed, taken, foo, ok1, 9999]
@@ -313,7 +313,7 @@ fn golden_file_move_faults() {
         mv(w, "other drive: catalog update fails, the move back is a copy", &unsupported(FaultFs::new(), 4), id, Some(dst), &[]);
         w.conn.execute_batch("DROP TRIGGER block_move").unwrap();
         let id = new(w, "f12.3mf", false);
-        db::test_insert_minimal_file(&w.conn, &w.root.join("dst/f12.3mf").to_string_lossy(), Some(dst)).unwrap();
+        db::test_insert_minimal_file(&w.conn, &w.root.join(crate::commands::golden_harness::nat("dst/f12.3mf")).to_string_lossy(), Some(dst)).unwrap();
         mv(w, "path owned by another catalog row (name exists)", &FaultFs::new(), id, Some(dst), &[]);
 
         // Simulated case-insensitive volume.
@@ -343,12 +343,12 @@ fn golden_file_move_symlink() {
         let src = folder(w, "src");
         let dst = folder(w, "dst");
         let real = put(w, "outside/real.3mf", b"real model");
-        let link = w.root.join("src/linked.3mf");
+        let link = w.root.join(crate::commands::golden_harness::nat("src/linked.3mf"));
         std::os::unix::fs::symlink(&real, &link).unwrap();
         let id = db::test_insert_minimal_file(&w.conn, &link.to_string_lossy(), Some(src)).unwrap();
         mv(w, "symlinked model (no hard link, copy)", &FaultFs::new(), id, Some(dst), &[]);
-        let dangling = w.root.join("src/dangling.3mf");
-        std::os::unix::fs::symlink(w.root.join("outside/nothing.3mf"), &dangling).unwrap();
+        let dangling = w.root.join(crate::commands::golden_harness::nat("src/dangling.3mf"));
+        std::os::unix::fs::symlink(w.root.join(crate::commands::golden_harness::nat("outside/nothing.3mf")), &dangling).unwrap();
         let id = db::test_insert_minimal_file(&w.conn, &dangling.to_string_lossy(), Some(src)).unwrap();
         mv(w, "dangling symlink (source missing)", &FaultFs::new(), id, Some(dst), &[]);
     });
