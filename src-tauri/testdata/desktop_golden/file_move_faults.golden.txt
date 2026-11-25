@@ -1,0 +1,1321 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 1,
+          "fromPath": "<ROOT>/src/f01.3mf"
+        }
+      }
+    },
+    "step": "link and remove"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f01.3mf",
+        "SymlinkMetadata <ROOT>/src/f01.3mf",
+        "HardLink <ROOT>/src/f01.3mf -> <ROOT>/dst/f01.3mf",
+        "RemoveFile <ROOT>/src/f01.3mf"
+      ]
+    },
+    "step": "link and remove: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/f01.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "src/"
+        ]
+      }
+    },
+    "step": "link and remove: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 1,
+          "fromPath": "<ROOT>/src/f02.3mf"
+        }
+      }
+    },
+    "step": "other drive: link refused, copy and remove"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f02.3mf",
+        "SymlinkMetadata <ROOT>/src/f02.3mf",
+        "HardLink <ROOT>/src/f02.3mf -> <ROOT>/dst/f02.3mf",
+        "CopyNew <ROOT>/src/f02.3mf -> <ROOT>/dst/f02.3mf",
+        "RemoveFile <ROOT>/src/f02.3mf"
+      ]
+    },
+    "step": "other drive: link refused, copy and remove: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/f02.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "src/"
+        ]
+      }
+    },
+    "step": "other drive: link refused, copy and remove: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "injected RemoveFile #1 on <ROOT>/src/f03.3mf"
+          }
+        }
+      }
+    },
+    "step": "copy done, removing the source fails (copy removed)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f03.3mf",
+        "SymlinkMetadata <ROOT>/src/f03.3mf",
+        "HardLink <ROOT>/src/f03.3mf -> <ROOT>/dst/f03.3mf",
+        "CopyNew <ROOT>/src/f03.3mf -> <ROOT>/dst/f03.3mf",
+        "RemoveFile <ROOT>/src/f03.3mf",
+        "RemoveFile <ROOT>/dst/f03.3mf"
+      ]
+    },
+    "step": "copy done, removing the source fails (copy removed): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f03.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "src/",
+          "src/f03.3mf"
+        ]
+      }
+    },
+    "step": "copy done, removing the source fails (copy removed): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "injected RemoveFile #1 on <ROOT>/src/f04.3mf"
+          }
+        }
+      }
+    },
+    "step": "link done, removing the source fails (link removed)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f04.3mf",
+        "SymlinkMetadata <ROOT>/src/f04.3mf",
+        "HardLink <ROOT>/src/f04.3mf -> <ROOT>/dst/f04.3mf",
+        "RemoveFile <ROOT>/src/f04.3mf",
+        "RemoveFile <ROOT>/dst/f04.3mf"
+      ]
+    },
+    "step": "link done, removing the source fails (link removed): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f04.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf"
+        ]
+      }
+    },
+    "step": "link done, removing the source fails (link removed): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "name_exists",
+          "error": {
+            "expected": false,
+            "message": "injected HardLink #1 on <ROOT>/src/f05.3mf"
+          }
+        }
+      }
+    },
+    "step": "link says the name exists"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f05.3mf",
+        "SymlinkMetadata <ROOT>/src/f05.3mf",
+        "HardLink <ROOT>/src/f05.3mf -> <ROOT>/dst/f05.3mf"
+      ]
+    },
+    "step": "link says the name exists: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f05.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf"
+        ]
+      }
+    },
+    "step": "link says the name exists: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "injected CopyNew #1 on <ROOT>/src/f06.3mf"
+          }
+        }
+      }
+    },
+    "step": "other drive: the copy itself fails"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f06.3mf",
+        "SymlinkMetadata <ROOT>/src/f06.3mf",
+        "HardLink <ROOT>/src/f06.3mf -> <ROOT>/dst/f06.3mf",
+        "CopyNew <ROOT>/src/f06.3mf -> <ROOT>/dst/f06.3mf"
+      ]
+    },
+    "step": "other drive: the copy itself fails: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f06.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf"
+        ]
+      }
+    },
+    "step": "other drive: the copy itself fails: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "injected CopyNew #1 on <ROOT>/src/f07_extras/f07.3mf.png"
+          }
+        }
+      }
+    },
+    "step": "a companion cannot move (model moved back)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f07.3mf",
+        "SymlinkMetadata <ROOT>/src/f07.3mf",
+        "HardLink <ROOT>/src/f07.3mf -> <ROOT>/dst/f07.3mf",
+        "RemoveFile <ROOT>/src/f07.3mf",
+        "SymlinkMetadata <ROOT>/src/f07_extras/f07.3mf.png",
+        "SymlinkMetadata <ROOT>/dst/f07_extras",
+        "SymlinkMetadata <ROOT>/dst/f07_extras",
+        "CreateDir <ROOT>/dst/f07_extras",
+        "SymlinkMetadata <ROOT>/src/f07_extras/f07.3mf.png",
+        "SymlinkMetadata <ROOT>/src/f07_extras/f07.3mf.png",
+        "HardLink <ROOT>/src/f07_extras/f07.3mf.png -> <ROOT>/dst/f07_extras/f07.3mf.png",
+        "CopyNew <ROOT>/src/f07_extras/f07.3mf.png -> <ROOT>/dst/f07_extras/f07.3mf.png",
+        "RemoveDir <ROOT>/dst/f07_extras",
+        "SymlinkMetadata <ROOT>/dst/f07.3mf",
+        "HardLink <ROOT>/dst/f07.3mf -> <ROOT>/src/f07.3mf",
+        "RemoveFile <ROOT>/dst/f07.3mf"
+      ]
+    },
+    "step": "a companion cannot move (model moved back): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 1,
+            "path": "<ROOT>/src/f07_extras/f07.3mf.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f07.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "outside/",
+          "outside/f07.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png"
+        ]
+      }
+    },
+    "step": "a companion cannot move (model moved back): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "Begleitdateien konnten nicht mitgenommen werden (injected CopyNew #1 on <ROOT>/src/f08_extras/f08.3mf.png) UND Rollback der Dateiverschiebung fehlgeschlagen (injected CopyNew #2 on <ROOT>/dst/f08.3mf) - Datei liegt jetzt unter <ROOT>/dst/f08.3mf"
+          }
+        }
+      }
+    },
+    "step": "a companion cannot move and the move back fails too"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f08.3mf",
+        "SymlinkMetadata <ROOT>/src/f08.3mf",
+        "HardLink <ROOT>/src/f08.3mf -> <ROOT>/dst/f08.3mf",
+        "RemoveFile <ROOT>/src/f08.3mf",
+        "SymlinkMetadata <ROOT>/src/f08_extras/f08.3mf.png",
+        "SymlinkMetadata <ROOT>/dst/f08_extras",
+        "SymlinkMetadata <ROOT>/dst/f08_extras",
+        "CreateDir <ROOT>/dst/f08_extras",
+        "SymlinkMetadata <ROOT>/src/f08_extras/f08.3mf.png",
+        "SymlinkMetadata <ROOT>/src/f08_extras/f08.3mf.png",
+        "HardLink <ROOT>/src/f08_extras/f08.3mf.png -> <ROOT>/dst/f08_extras/f08.3mf.png",
+        "CopyNew <ROOT>/src/f08_extras/f08.3mf.png -> <ROOT>/dst/f08_extras/f08.3mf.png",
+        "RemoveDir <ROOT>/dst/f08_extras",
+        "SymlinkMetadata <ROOT>/dst/f08.3mf",
+        "HardLink <ROOT>/dst/f08.3mf -> <ROOT>/src/f08.3mf",
+        "CopyNew <ROOT>/dst/f08.3mf -> <ROOT>/src/f08.3mf"
+      ]
+    },
+    "step": "a companion cannot move and the move back fails too: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 2,
+            "path": "<ROOT>/src/f08_extras/f08.3mf.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f08.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png"
+        ]
+      }
+    },
+    "step": "a companion cannot move and the move back fails too: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "database error: blocked"
+          }
+        }
+      }
+    },
+    "step": "catalog update fails, companions and model are put back"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f09.3mf",
+        "SymlinkMetadata <ROOT>/src/f09.3mf",
+        "HardLink <ROOT>/src/f09.3mf -> <ROOT>/dst/f09.3mf",
+        "RemoveFile <ROOT>/src/f09.3mf",
+        "SymlinkMetadata <ROOT>/src/f09_extras/f09.3mf.png",
+        "SymlinkMetadata <ROOT>/dst/f09_extras",
+        "SymlinkMetadata <ROOT>/dst/f09_extras",
+        "CreateDir <ROOT>/dst/f09_extras",
+        "SymlinkMetadata <ROOT>/src/f09_extras/f09.3mf.png",
+        "SymlinkMetadata <ROOT>/src/f09_extras/f09.3mf.png",
+        "HardLink <ROOT>/src/f09_extras/f09.3mf.png -> <ROOT>/dst/f09_extras/f09.3mf.png",
+        "RemoveFile <ROOT>/src/f09_extras/f09.3mf.png",
+        "Metadata <ROOT>/src/f09_extras",
+        "SymlinkMetadata <ROOT>/dst/f09_extras/f09.3mf.png",
+        "HardLink <ROOT>/dst/f09_extras/f09.3mf.png -> <ROOT>/src/f09_extras/f09.3mf.png",
+        "RemoveFile <ROOT>/dst/f09_extras/f09.3mf.png",
+        "RemoveDir <ROOT>/dst/f09_extras",
+        "SymlinkMetadata <ROOT>/dst/f09.3mf",
+        "HardLink <ROOT>/dst/f09.3mf -> <ROOT>/src/f09.3mf",
+        "RemoveFile <ROOT>/dst/f09.3mf"
+      ]
+    },
+    "step": "catalog update fails, companions and model are put back: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 3,
+            "path": "<ROOT>/src/f09_extras/f09.3mf.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f09.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png"
+        ]
+      }
+    },
+    "step": "catalog update fails, companions and model are put back: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "injected CopyNew #1 on <ROOT>/src/f10_extras/f10.3mf.png"
+          }
+        }
+      }
+    },
+    "step": "catalog update fails and the move back fails too"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f10.3mf",
+        "SymlinkMetadata <ROOT>/src/f10.3mf",
+        "HardLink <ROOT>/src/f10.3mf -> <ROOT>/dst/f10.3mf",
+        "RemoveFile <ROOT>/src/f10.3mf",
+        "SymlinkMetadata <ROOT>/src/f10_extras/f10.3mf.png",
+        "SymlinkMetadata <ROOT>/dst/f10_extras",
+        "SymlinkMetadata <ROOT>/dst/f10_extras",
+        "CreateDir <ROOT>/dst/f10_extras",
+        "SymlinkMetadata <ROOT>/src/f10_extras/f10.3mf.png",
+        "SymlinkMetadata <ROOT>/src/f10_extras/f10.3mf.png",
+        "HardLink <ROOT>/src/f10_extras/f10.3mf.png -> <ROOT>/dst/f10_extras/f10.3mf.png",
+        "CopyNew <ROOT>/src/f10_extras/f10.3mf.png -> <ROOT>/dst/f10_extras/f10.3mf.png",
+        "RemoveDir <ROOT>/dst/f10_extras",
+        "SymlinkMetadata <ROOT>/dst/f10.3mf",
+        "HardLink <ROOT>/dst/f10.3mf -> <ROOT>/src/f10.3mf",
+        "RemoveFile <ROOT>/dst/f10.3mf"
+      ]
+    },
+    "step": "catalog update fails and the move back fails too: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 4,
+            "path": "<ROOT>/src/f10_extras/f10.3mf.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f10.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png"
+        ]
+      }
+    },
+    "step": "catalog update fails and the move back fails too: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "database error: blocked"
+          }
+        }
+      }
+    },
+    "step": "other drive: catalog update fails, the move back is a copy"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f11.3mf",
+        "SymlinkMetadata <ROOT>/src/f11.3mf",
+        "HardLink <ROOT>/src/f11.3mf -> <ROOT>/dst/f11.3mf",
+        "CopyNew <ROOT>/src/f11.3mf -> <ROOT>/dst/f11.3mf",
+        "RemoveFile <ROOT>/src/f11.3mf",
+        "SymlinkMetadata <ROOT>/dst/f11.3mf",
+        "HardLink <ROOT>/dst/f11.3mf -> <ROOT>/src/f11.3mf",
+        "CopyNew <ROOT>/dst/f11.3mf -> <ROOT>/src/f11.3mf",
+        "RemoveFile <ROOT>/dst/f11.3mf"
+      ]
+    },
+    "step": "other drive: catalog update fails, the move back is a copy: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f11.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png",
+          "src/f11.3mf"
+        ]
+      }
+    },
+    "step": "other drive: catalog update fails, the move back is a copy: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "name_exists",
+          "error": {
+            "expected": false,
+            "message": "database error: UNIQUE constraint failed: files.path"
+          }
+        }
+      }
+    },
+    "step": "path owned by another catalog row (name exists)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f12.3mf",
+        "SymlinkMetadata <ROOT>/src/f12.3mf",
+        "HardLink <ROOT>/src/f12.3mf -> <ROOT>/dst/f12.3mf",
+        "RemoveFile <ROOT>/src/f12.3mf",
+        "SymlinkMetadata <ROOT>/dst/f12.3mf",
+        "HardLink <ROOT>/dst/f12.3mf -> <ROOT>/src/f12.3mf",
+        "RemoveFile <ROOT>/dst/f12.3mf"
+      ]
+    },
+    "step": "path owned by another catalog row (name exists): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f12.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png",
+          "src/f11.3mf",
+          "src/f12.3mf"
+        ]
+      }
+    },
+    "step": "path owned by another catalog row (name exists): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "name_exists",
+          "error": {
+            "expected": false,
+            "message": "entity already exists"
+          }
+        }
+      }
+    },
+    "step": "name differs only in case on a case-insensitive volume"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f13.3mf",
+        "SymlinkMetadata <ROOT>/src/f13.3mf",
+        "HardLink <ROOT>/src/f13.3mf -> <ROOT>/dst/f13.3mf"
+      ]
+    },
+    "step": "name differs only in case on a case-insensitive volume: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f13.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/F13.3MF",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png",
+          "src/f11.3mf",
+          "src/f12.3mf",
+          "src/f13.3mf"
+        ]
+      }
+    },
+    "step": "name differs only in case on a case-insensitive volume: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "injected CopyNew #1 on <ROOT>/src/f14_extras/f14.3mf.png"
+          }
+        }
+      }
+    },
+    "step": "other drive: the companion copy fails, the model comes back by copy"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f14.3mf",
+        "SymlinkMetadata <ROOT>/src/f14.3mf",
+        "HardLink <ROOT>/src/f14.3mf -> <ROOT>/dst/f14.3mf",
+        "CopyNew <ROOT>/src/f14.3mf -> <ROOT>/dst/f14.3mf",
+        "RemoveFile <ROOT>/src/f14.3mf",
+        "SymlinkMetadata <ROOT>/src/f14_extras/f14.3mf.png",
+        "SymlinkMetadata <ROOT>/dst/f14_extras",
+        "SymlinkMetadata <ROOT>/dst/f14_extras",
+        "CreateDir <ROOT>/dst/f14_extras",
+        "SymlinkMetadata <ROOT>/src/f14_extras/f14.3mf.png",
+        "SymlinkMetadata <ROOT>/src/f14_extras/f14.3mf.png",
+        "HardLink <ROOT>/src/f14_extras/f14.3mf.png -> <ROOT>/dst/f14_extras/f14.3mf.png",
+        "CopyNew <ROOT>/src/f14_extras/f14.3mf.png -> <ROOT>/dst/f14_extras/f14.3mf.png",
+        "RemoveDir <ROOT>/dst/f14_extras",
+        "SymlinkMetadata <ROOT>/dst/f14.3mf",
+        "HardLink <ROOT>/dst/f14.3mf -> <ROOT>/src/f14.3mf",
+        "CopyNew <ROOT>/dst/f14.3mf -> <ROOT>/src/f14.3mf",
+        "RemoveFile <ROOT>/dst/f14.3mf"
+      ]
+    },
+    "step": "other drive: the companion copy fails, the model comes back by copy: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 5,
+            "path": "<ROOT>/src/f14_extras/f14.3mf.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f14.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/F13.3MF",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "outside/f14.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png",
+          "src/f11.3mf",
+          "src/f12.3mf",
+          "src/f13.3mf",
+          "src/f14.3mf",
+          "src/f14_extras/",
+          "src/f14_extras/f14.3mf.png"
+        ]
+      }
+    },
+    "step": "other drive: the companion copy fails, the model comes back by copy: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 1,
+          "fromPath": "<ROOT>/src/f15.3mf"
+        }
+      }
+    },
+    "step": "other drive: model and companions travel by copy"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f15.3mf",
+        "SymlinkMetadata <ROOT>/src/f15.3mf",
+        "HardLink <ROOT>/src/f15.3mf -> <ROOT>/dst/f15.3mf",
+        "CopyNew <ROOT>/src/f15.3mf -> <ROOT>/dst/f15.3mf",
+        "RemoveFile <ROOT>/src/f15.3mf",
+        "SymlinkMetadata <ROOT>/src/f15_extras/f15.3mf.png",
+        "SymlinkMetadata <ROOT>/dst/f15_extras",
+        "SymlinkMetadata <ROOT>/dst/f15_extras",
+        "CreateDir <ROOT>/dst/f15_extras",
+        "SymlinkMetadata <ROOT>/src/f15_extras/f15.3mf.png",
+        "SymlinkMetadata <ROOT>/src/f15_extras/f15.3mf.png",
+        "HardLink <ROOT>/src/f15_extras/f15.3mf.png -> <ROOT>/dst/f15_extras/f15.3mf.png",
+        "CopyNew <ROOT>/src/f15_extras/f15.3mf.png -> <ROOT>/dst/f15_extras/f15.3mf.png",
+        "RemoveFile <ROOT>/src/f15_extras/f15.3mf.png",
+        "RemoveDir <ROOT>/src/f15_extras"
+      ]
+    },
+    "step": "other drive: model and companions travel by copy: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 6,
+            "path": "<ROOT>/dst/f15_extras/f15.3mf.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/f15.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/F13.3MF",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "dst/f15.3mf",
+          "dst/f15_extras/",
+          "dst/f15_extras/f15.3mf.png",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "outside/f14.3mf.png",
+          "outside/f15.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png",
+          "src/f11.3mf",
+          "src/f12.3mf",
+          "src/f13.3mf",
+          "src/f14.3mf",
+          "src/f14_extras/",
+          "src/f14_extras/f14.3mf.png"
+        ]
+      }
+    },
+    "step": "other drive: model and companions travel by copy: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "target_missing",
+          "error": {
+            "expected": true,
+            "message": "targetFolderMissingOnDisk",
+            "params": [
+              "<ROOT>/dst"
+            ]
+          }
+        }
+      }
+    },
+    "step": "reading the target folder is refused"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst"
+      ]
+    },
+    "step": "reading the target folder is refused: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f16.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/F13.3MF",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "dst/f15.3mf",
+          "dst/f15_extras/",
+          "dst/f15_extras/f15.3mf.png",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "outside/f14.3mf.png",
+          "outside/f15.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png",
+          "src/f11.3mf",
+          "src/f12.3mf",
+          "src/f13.3mf",
+          "src/f14.3mf",
+          "src/f14_extras/",
+          "src/f14_extras/f14.3mf.png",
+          "src/f16.3mf"
+        ]
+      }
+    },
+    "step": "reading the target folder is refused: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "source_missing",
+          "error": {
+            "expected": true,
+            "message": "fileMissingOnDisk",
+            "params": [
+              "<ROOT>/src/f16.3mf"
+            ]
+          }
+        }
+      }
+    },
+    "step": "reading the source file is refused"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f16.3mf"
+      ]
+    },
+    "step": "reading the source file is refused: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/f16.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/F13.3MF",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "dst/f15.3mf",
+          "dst/f15_extras/",
+          "dst/f15_extras/f15.3mf.png",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "outside/f14.3mf.png",
+          "outside/f15.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png",
+          "src/f11.3mf",
+          "src/f12.3mf",
+          "src/f13.3mf",
+          "src/f14.3mf",
+          "src/f14_extras/",
+          "src/f14_extras/f14.3mf.png",
+          "src/f16.3mf"
+        ]
+      }
+    },
+    "step": "reading the source file is refused: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 1,
+          "fromPath": "<ROOT>/src/f17.3mf"
+        }
+      }
+    },
+    "step": "emptied extras folder cannot be removed (ignored)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/f17.3mf",
+        "SymlinkMetadata <ROOT>/src/f17.3mf",
+        "HardLink <ROOT>/src/f17.3mf -> <ROOT>/dst/f17.3mf",
+        "RemoveFile <ROOT>/src/f17.3mf",
+        "SymlinkMetadata <ROOT>/src/f17_extras/f17.3mf.png",
+        "SymlinkMetadata <ROOT>/dst/f17_extras",
+        "SymlinkMetadata <ROOT>/dst/f17_extras",
+        "CreateDir <ROOT>/dst/f17_extras",
+        "SymlinkMetadata <ROOT>/src/f17_extras/f17.3mf.png",
+        "SymlinkMetadata <ROOT>/src/f17_extras/f17.3mf.png",
+        "HardLink <ROOT>/src/f17_extras/f17.3mf.png -> <ROOT>/dst/f17_extras/f17.3mf.png",
+        "RemoveFile <ROOT>/src/f17_extras/f17.3mf.png",
+        "RemoveDir <ROOT>/src/f17_extras"
+      ]
+    },
+    "step": "emptied extras folder cannot be removed (ignored): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 7,
+            "path": "<ROOT>/dst/f17_extras/f17.3mf.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/f17.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/F13.3MF",
+          "dst/f01.3mf",
+          "dst/f02.3mf",
+          "dst/f08.3mf",
+          "dst/f15.3mf",
+          "dst/f15_extras/",
+          "dst/f15_extras/f15.3mf.png",
+          "dst/f17.3mf",
+          "dst/f17_extras/",
+          "dst/f17_extras/f17.3mf.png",
+          "outside/",
+          "outside/f07.3mf.png",
+          "outside/f08.3mf.png",
+          "outside/f09.3mf.png",
+          "outside/f10.3mf.png",
+          "outside/f14.3mf.png",
+          "outside/f15.3mf.png",
+          "outside/f17.3mf.png",
+          "src/",
+          "src/f03.3mf",
+          "src/f04.3mf",
+          "src/f05.3mf",
+          "src/f06.3mf",
+          "src/f07.3mf",
+          "src/f07_extras/",
+          "src/f07_extras/f07.3mf.png",
+          "src/f08_extras/",
+          "src/f08_extras/f08.3mf.png",
+          "src/f09.3mf",
+          "src/f09_extras/",
+          "src/f09_extras/f09.3mf.png",
+          "src/f10.3mf",
+          "src/f10_extras/",
+          "src/f10_extras/f10.3mf.png",
+          "src/f11.3mf",
+          "src/f12.3mf",
+          "src/f13.3mf",
+          "src/f14.3mf",
+          "src/f14_extras/",
+          "src/f14_extras/f14.3mf.png",
+          "src/f16.3mf",
+          "src/f17_extras/"
+        ]
+      }
+    },
+    "step": "emptied extras folder cannot be removed (ignored): state"
+  }
+]
+
+== tables ==
+[folders] 2 row(s)
+  id=1 | name=src | parent_id=NULL | path=<ROOT>/src
+  id=2 | name=dst | parent_id=NULL | path=<ROOT>/dst
+[files] 18 row(s)
+  id=1 | name=f01.3mf | path=<ROOT>/dst/f01.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=f02.3mf | path=<ROOT>/dst/f02.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=f03.3mf | path=<ROOT>/src/f03.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=f04.3mf | path=<ROOT>/src/f04.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=f05.3mf | path=<ROOT>/src/f05.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=f06.3mf | path=<ROOT>/src/f06.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=f07.3mf | path=<ROOT>/src/f07.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=f08.3mf | path=<ROOT>/src/f08.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=9 | name=f09.3mf | path=<ROOT>/src/f09.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=10 | name=f10.3mf | path=<ROOT>/src/f10.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=11 | name=f11.3mf | path=<ROOT>/src/f11.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=12 | name=f12.3mf | path=<ROOT>/src/f12.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=13 | name=f12.3mf | path=<ROOT>/dst/f12.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=14 | name=f13.3mf | path=<ROOT>/src/f13.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=15 | name=f14.3mf | path=<ROOT>/src/f14.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=16 | name=f15.3mf | path=<ROOT>/dst/f15.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=17 | name=f16.3mf | path=<ROOT>/src/f16.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=18 | name=f17.3mf | path=<ROOT>/dst/f17.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 7 row(s)
+  id=1 | file_id=7 | name=f07.3mf.png | path=<ROOT>/src/f07_extras/f07.3mf.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=8 | name=f08.3mf.png | path=<ROOT>/src/f08_extras/f08.3mf.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=9 | name=f09.3mf.png | path=<ROOT>/src/f09_extras/f09.3mf.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=4 | file_id=10 | name=f10.3mf.png | path=<ROOT>/src/f10_extras/f10.3mf.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=5 | file_id=15 | name=f14.3mf.png | path=<ROOT>/src/f14_extras/f14.3mf.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=6 | file_id=16 | name=f15.3mf.png | path=<ROOT>/dst/f15_extras/f15.3mf.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=7 | file_id=18 | name=f17.3mf.png | path=<ROOT>/dst/f17_extras/f17.3mf.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+dst/
+dst/F13.3MF (5 bytes)
+dst/f01.3mf (5 bytes)
+dst/f02.3mf (5 bytes)
+dst/f08.3mf (5 bytes)
+dst/f15.3mf (5 bytes)
+dst/f15_extras/
+dst/f15_extras/f15.3mf.png (16 bytes)
+dst/f17.3mf (5 bytes)
+dst/f17_extras/
+dst/f17_extras/f17.3mf.png (16 bytes)
+outside/
+outside/f07.3mf.png (16 bytes)
+outside/f08.3mf.png (16 bytes)
+outside/f09.3mf.png (16 bytes)
+outside/f10.3mf.png (16 bytes)
+outside/f14.3mf.png (16 bytes)
+outside/f15.3mf.png (16 bytes)
+outside/f17.3mf.png (16 bytes)
+src/
+src/f03.3mf (5 bytes)
+src/f04.3mf (5 bytes)
+src/f05.3mf (5 bytes)
+src/f06.3mf (5 bytes)
+src/f07.3mf (5 bytes)
+src/f07_extras/
+src/f07_extras/f07.3mf.png (16 bytes)
+src/f08_extras/
+src/f08_extras/f08.3mf.png (16 bytes)
+src/f09.3mf (5 bytes)
+src/f09_extras/
+src/f09_extras/f09.3mf.png (16 bytes)
+src/f10.3mf (5 bytes)
+src/f10_extras/
+src/f10_extras/f10.3mf.png (16 bytes)
+src/f11.3mf (5 bytes)
+src/f12.3mf (5 bytes)
+src/f13.3mf (5 bytes)
+src/f14.3mf (5 bytes)
+src/f14_extras/
+src/f14_extras/f14.3mf.png (16 bytes)
+src/f16.3mf (5 bytes)
+src/f17_extras/

@@ -1,0 +1,1024 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 1,
+          "fromPath": "<ROOT>/src/a.3mf"
+        }
+      }
+    },
+    "step": "move a to dst"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/a.3mf",
+        "SymlinkMetadata <ROOT>/src/a.3mf",
+        "HardLink <ROOT>/src/a.3mf -> <ROOT>/dst/a.3mf",
+        "RemoveFile <ROOT>/src/a.3mf"
+      ]
+    },
+    "step": "move a to dst: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/a.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "src/",
+          "src/b.3mf"
+        ]
+      }
+    },
+    "step": "move a to dst: state"
+  },
+  {
+    "result": {
+      "ok": "alreadyThere"
+    },
+    "step": "move a to dst again (already there)"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "move a to dst again (already there): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/a.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "src/",
+          "src/b.3mf"
+        ]
+      }
+    },
+    "step": "move a to dst again (already there): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 2,
+          "fromPath": "<ROOT>/dst/a.3mf"
+        }
+      }
+    },
+    "step": "move a with no folder (stays, catalog folder cleared)"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "move a with no folder (stays, catalog folder cleared): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": null,
+          "path": "<ROOT>/dst/a.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "src/",
+          "src/b.3mf"
+        ]
+      }
+    },
+    "step": "move a with no folder (stays, catalog folder cleared): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": null,
+          "fromPath": "<ROOT>/dst/a.3mf"
+        }
+      }
+    },
+    "step": "move a to dst once more (lies in the directory, assigned only)"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "move a to dst once more (lies in the directory, assigned only): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/a.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "src/",
+          "src/b.3mf"
+        ]
+      }
+    },
+    "step": "move a to dst once more (lies in the directory, assigned only): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "name_exists",
+          "error": {
+            "expected": false,
+            "message": "<io error: already exists>"
+          }
+        }
+      }
+    },
+    "step": "move b to dst (name taken on disk)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/b.3mf",
+        "SymlinkMetadata <ROOT>/src/b.3mf",
+        "HardLink <ROOT>/src/b.3mf -> <ROOT>/dst/b.3mf"
+      ]
+    },
+    "step": "move b to dst (name taken on disk): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/b.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "src/",
+          "src/b.3mf"
+        ]
+      }
+    },
+    "step": "move b to dst (name taken on disk): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "not_found",
+          "error": {
+            "expected": false,
+            "message": "file not found"
+          }
+        }
+      }
+    },
+    "step": "unknown file"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "unknown file: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": null,
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "src/",
+          "src/b.3mf"
+        ]
+      }
+    },
+    "step": "unknown file: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "folder_not_found",
+          "error": {
+            "expected": false,
+            "message": "folder not found"
+          }
+        }
+      }
+    },
+    "step": "unknown folder"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "unknown folder: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/b.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "src/",
+          "src/b.3mf"
+        ]
+      }
+    },
+    "step": "unknown folder: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "in_trash",
+          "error": {
+            "expected": true,
+            "message": "fileInTrash"
+          }
+        }
+      }
+    },
+    "step": "file in the trash"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "file in the trash: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/t.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "file in the trash: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 1,
+          "fromPath": "<ROOT>/dst/d.3mf"
+        }
+      }
+    },
+    "step": "file in the target directory under another folder"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "file in the target directory under another folder: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/d.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "file in the target directory under another folder: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "sensitive_path",
+          "error": {
+            "expected": false,
+            "message": "Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/secret) und wird abgelehnt"
+          }
+        }
+      }
+    },
+    "step": "target folder is protected"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "target folder is protected: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/e.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "src/",
+          "src/b.3mf",
+          "src/e.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "target folder is protected: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "sensitive_path",
+          "error": {
+            "expected": false,
+            "message": "Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/secret) und wird abgelehnt"
+          }
+        }
+      }
+    },
+    "step": "source is protected"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "source is protected: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/secret/s.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/e.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "source is protected: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "sensitive_path",
+          "error": {
+            "expected": false,
+            "message": "Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/dst/e.3mf) und wird abgelehnt"
+          }
+        }
+      }
+    },
+    "step": "new path is protected"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "new path is protected: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/e.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/e.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "new path is protected: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "invalid current path"
+          }
+        }
+      }
+    },
+    "step": "stored path has no parent (no folder)"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "stored path has no parent (no folder): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": null,
+          "path": "/"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/e.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "stored path has no parent (no folder): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": false,
+            "message": "invalid file path"
+          }
+        }
+      }
+    },
+    "step": "stored path has no file name"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "stored path has no file name: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": null,
+          "path": "/"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/e.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "stored path has no file name: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "target_missing",
+          "error": {
+            "expected": true,
+            "message": "targetFolderMissingOnDisk",
+            "params": [
+              "<ROOT>/ghost"
+            ]
+          }
+        }
+      }
+    },
+    "step": "target folder missing on disk"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/ghost"
+      ]
+    },
+    "step": "target folder missing on disk: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/e.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/e.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "target folder missing on disk: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "source_missing",
+          "error": {
+            "expected": true,
+            "message": "fileMissingOnDisk",
+            "params": [
+              "<ROOT>/src/gone.3mf"
+            ]
+          }
+        }
+      }
+    },
+    "step": "source missing on disk"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/gone.3mf"
+      ]
+    },
+    "step": "source missing on disk: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/gone.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/e.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "source missing on disk: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "source_missing",
+          "error": {
+            "expected": true,
+            "message": "fileMissingOnDisk",
+            "params": [
+              "<ROOT>/src/dirmodel.3mf"
+            ]
+          }
+        }
+      }
+    },
+    "step": "source is a directory"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/dirmodel.3mf"
+      ]
+    },
+    "step": "source is a directory: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/dirmodel.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/dirmodel.3mf/",
+          "src/e.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "source is a directory: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "name_exists",
+          "error": {
+            "expected": false,
+            "message": "database error: UNIQUE constraint failed: files.path"
+          }
+        }
+      }
+    },
+    "step": "name taken only in the catalog (file moved back)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/g.3mf",
+        "SymlinkMetadata <ROOT>/src/g.3mf",
+        "HardLink <ROOT>/src/g.3mf -> <ROOT>/dst/g.3mf",
+        "RemoveFile <ROOT>/src/g.3mf",
+        "SymlinkMetadata <ROOT>/dst/g.3mf",
+        "HardLink <ROOT>/dst/g.3mf -> <ROOT>/src/g.3mf",
+        "RemoveFile <ROOT>/dst/g.3mf"
+      ]
+    },
+    "step": "name taken only in the catalog (file moved back): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/g.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/dirmodel.3mf/",
+          "src/e.3mf",
+          "src/g.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "name taken only in the catalog (file moved back): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 1,
+          "fromPath": "<ROOT>/src/Foo.3mf"
+        }
+      }
+    },
+    "step": "model with companions"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/Foo.3mf",
+        "SymlinkMetadata <ROOT>/src/Foo.3mf",
+        "HardLink <ROOT>/src/Foo.3mf -> <ROOT>/dst/Foo.3mf",
+        "RemoveFile <ROOT>/src/Foo.3mf",
+        "SymlinkMetadata <ROOT>/src/Foo_extras/pic.png",
+        "SymlinkMetadata <ROOT>/src/Foo_extras/pic2.png",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras",
+        "CreateDir <ROOT>/dst/Foo_extras",
+        "SymlinkMetadata <ROOT>/src/Foo_extras/pic.png",
+        "SymlinkMetadata <ROOT>/src/Foo_extras/pic.png",
+        "HardLink <ROOT>/src/Foo_extras/pic.png -> <ROOT>/dst/Foo_extras/pic.png",
+        "RemoveFile <ROOT>/src/Foo_extras/pic.png",
+        "SymlinkMetadata <ROOT>/src/Foo_extras/pic2.png",
+        "SymlinkMetadata <ROOT>/src/Foo_extras/pic2.png",
+        "HardLink <ROOT>/src/Foo_extras/pic2.png -> <ROOT>/dst/Foo_extras/pic2.png",
+        "RemoveFile <ROOT>/src/Foo_extras/pic2.png",
+        "RemoveDir <ROOT>/src/Foo_extras"
+      ]
+    },
+    "step": "model with companions: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 1,
+            "path": "<ROOT>/dst/Foo_extras/pic.png",
+            "trashed": false
+          },
+          {
+            "id": 2,
+            "path": "<ROOT>/dst/Foo_extras/pic2.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/Foo.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/Foo.3mf",
+          "dst/Foo_extras/",
+          "dst/Foo_extras/pic.png",
+          "dst/Foo_extras/pic2.png",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "outside/",
+          "outside/pic.png",
+          "outside/pic2.png",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/b.3mf",
+          "src/dirmodel.3mf/",
+          "src/e.3mf",
+          "src/g.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "model with companions: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "error",
+          "error": {
+            "expected": true,
+            "message": "companionNameTaken",
+            "params": [
+              "bar.png"
+            ]
+          }
+        }
+      }
+    },
+    "step": "companion name taken in the new extras folder (move undone)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/Bar.3mf",
+        "SymlinkMetadata <ROOT>/src/Bar.3mf",
+        "HardLink <ROOT>/src/Bar.3mf -> <ROOT>/dst/Bar.3mf",
+        "RemoveFile <ROOT>/src/Bar.3mf",
+        "SymlinkMetadata <ROOT>/src/Bar_extras/bar.png",
+        "SymlinkMetadata <ROOT>/dst/Bar_extras",
+        "SymlinkMetadata <ROOT>/src/Bar_extras/bar.png",
+        "SymlinkMetadata <ROOT>/src/Bar_extras/bar.png",
+        "HardLink <ROOT>/src/Bar_extras/bar.png -> <ROOT>/dst/Bar_extras/bar.png",
+        "SymlinkMetadata <ROOT>/dst/Bar.3mf",
+        "HardLink <ROOT>/dst/Bar.3mf -> <ROOT>/src/Bar.3mf",
+        "RemoveFile <ROOT>/dst/Bar.3mf"
+      ]
+    },
+    "step": "companion name taken in the new extras folder (move undone): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          {
+            "id": 3,
+            "path": "<ROOT>/src/Bar_extras/bar.png",
+            "trashed": false
+          }
+        ],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/Bar.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/Bar_extras/",
+          "dst/Bar_extras/bar.png",
+          "dst/Foo.3mf",
+          "dst/Foo_extras/",
+          "dst/Foo_extras/pic.png",
+          "dst/Foo_extras/pic2.png",
+          "dst/a.3mf",
+          "dst/b.3mf",
+          "dst/d.3mf",
+          "outside/",
+          "outside/bar.png",
+          "outside/pic.png",
+          "outside/pic2.png",
+          "secret/",
+          "secret/s.3mf",
+          "src/",
+          "src/Bar.3mf",
+          "src/Bar_extras/",
+          "src/Bar_extras/bar.png",
+          "src/b.3mf",
+          "src/dirmodel.3mf/",
+          "src/e.3mf",
+          "src/g.3mf",
+          "src/t.3mf"
+        ]
+      }
+    },
+    "step": "companion name taken in the new extras folder (move undone): state"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "wrapper: move c"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "wrapper: move c back"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "file not found"
+      }
+    },
+    "step": "wrapper: unknown file"
+  }
+]
+
+== tables ==
+[folders] 4 row(s)
+  id=1 | name=src | parent_id=NULL | path=<ROOT>/src
+  id=2 | name=dst | parent_id=NULL | path=<ROOT>/dst
+  id=3 | name=secret | parent_id=NULL | path=<ROOT>/secret
+  id=4 | name=ghost | parent_id=NULL | path=<ROOT>/ghost
+[files] 15 row(s)
+  id=1 | name=a.3mf | path=<ROOT>/dst/a.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=b.3mf | path=<ROOT>/src/b.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=b.3mf | path=<ROOT>/dst/b.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=t.3mf | path=<ROOT>/src/t.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=x | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=d.3mf | path=<ROOT>/dst/d.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=e.3mf | path=<ROOT>/src/e.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=s.3mf | path=<ROOT>/secret/s.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=/ | path=/ | file_type=3mf | folder_id=NULL | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=9 | name=gone.3mf | path=<ROOT>/src/gone.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=10 | name=dirmodel.3mf | path=<ROOT>/src/dirmodel.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=11 | name=g.3mf | path=<ROOT>/src/g.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=12 | name=g.3mf | path=<ROOT>/dst/g.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=13 | name=Foo.3mf | path=<ROOT>/dst/Foo.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=14 | name=Bar.3mf | path=<ROOT>/src/Bar.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=15 | name=c.3mf | path=<ROOT>/src/c.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 3 row(s)
+  id=1 | file_id=13 | name=pic.png | path=<ROOT>/dst/Foo_extras/pic.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=13 | name=pic2.png | path=<ROOT>/dst/Foo_extras/pic2.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=14 | name=bar.png | path=<ROOT>/src/Bar_extras/bar.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+dst/
+dst/Bar_extras/
+dst/Bar_extras/bar.png (16 bytes)
+dst/Foo.3mf (5 bytes)
+dst/Foo_extras/
+dst/Foo_extras/pic.png (16 bytes)
+dst/Foo_extras/pic2.png (16 bytes)
+dst/a.3mf (5 bytes)
+dst/b.3mf (5 bytes)
+dst/d.3mf (5 bytes)
+outside/
+outside/bar.png (16 bytes)
+outside/pic.png (16 bytes)
+outside/pic2.png (16 bytes)
+secret/
+secret/s.3mf (5 bytes)
+src/
+src/Bar.3mf (5 bytes)
+src/Bar_extras/
+src/Bar_extras/bar.png (16 bytes)
+src/b.3mf (5 bytes)
+src/c.3mf (5 bytes)
+src/dirmodel.3mf/
+src/e.3mf (5 bytes)
+src/g.3mf (5 bytes)
+src/t.3mf (5 bytes)

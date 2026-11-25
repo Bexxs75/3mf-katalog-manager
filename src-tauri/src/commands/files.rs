@@ -367,6 +367,25 @@ pub(super) fn move_file_to_folder_with_conn_fs(
         .map_err(|refusal| refusal.error)
 }
 
+/// The outcome of `move_file_core_fs` as JSON, with the refusal code the batch reports
+/// (golden scenarios of issue #20, P5).
+#[cfg(test)]
+pub(super) fn move_file_outcome_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    file_id: i64,
+    folder_id: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> serde_json::Value {
+    match move_file_core_fs(fs, conn, file_id, folder_id, sensitive_dirs) {
+        Ok(MoveOutcome::Moved { from_folder_id, from_path }) => {
+            serde_json::json!({ "moved": { "fromFolderId": from_folder_id, "fromPath": from_path } })
+        }
+        Ok(MoveOutcome::AlreadyThere) => serde_json::json!("alreadyThere"),
+        Err(refusal) => serde_json::json!({ "refused": { "code": refusal.code, "error": refusal.error } }),
+    }
+}
+
 /// Core logic of `move_file_to_folder`, without `State`, so it's testable.
 pub(super) fn move_file_to_folder_with_conn(
     conn: &Connection,
