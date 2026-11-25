@@ -475,7 +475,7 @@ mod unclear_and_gone_folders {
 
         // Only the server's trash folder in the root: still an empty (unmounted) root.
         let trashed = crate::unique_test_dir("ci-trash-only").canonicalize().unwrap();
-        fs::create_dir(trashed.join(crate::fsops::TRASH)).unwrap();
+        fs::create_dir(trashed.join(crate::fs_portable::names::TRASH)).unwrap();
         let conn = catalog_at(&[&trashed.join("a.3mf")]);
         let probe = RootsMissingProbe::new(std::slice::from_ref(&trashed));
         let issues = scan(&conn, &probe, IssueLimits::UNLIMITED).unwrap();

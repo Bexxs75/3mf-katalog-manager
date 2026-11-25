@@ -4,13 +4,6 @@ use std::{
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
-pub const TRASH: &str = ".katalog-papierkorb";
-/// Whether a directory entry of a root is the user's content. `.`/`..` and the server's own
-/// trash folder (created in every root at start) do not count: a volume that is not mounted
-/// leaves an empty mount point that only holds the trash folder.
-pub fn is_root_content(name: &str) -> bool {
-    name != "." && name != ".." && name != TRASH
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Identity {
     pub dev: u64,

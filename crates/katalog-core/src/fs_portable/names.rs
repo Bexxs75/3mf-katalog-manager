@@ -132,3 +132,23 @@ mod tests {
         }
     }
 }
+pub const TRASH: &str = ".katalog-papierkorb";
+/// Whether a directory entry of a root is the user's content. `.`/`..` and the server's own
+/// trash folder (created in every root at start) do not count: a volume that is not mounted
+/// leaves an empty mount point that only holds the trash folder.
+pub fn is_root_content(name: &str) -> bool {
+    name != "." && name != ".." && name != TRASH
+}
+
+#[cfg(test)]
+mod root_content_tests {
+    use super::*;
+    #[test]
+    fn root_content_ignores_dots_and_trash() {
+        assert!(!is_root_content("."));
+        assert!(!is_root_content(".."));
+        assert!(!is_root_content(TRASH));
+        assert!(is_root_content("model.3mf"));
+        assert!(is_root_content(".hidden"));
+    }
+}

@@ -90,11 +90,12 @@ impl MissingProbe for StdMissingProbe {
 /// Web: only looks below the configured roots and never follows a link. A path outside
 /// every root, behind a link or with any other I/O error is unclear.
 ///
-/// On Unix the path is resolved from a freshly opened root handle, one component at a time
+/// On Linux the path is resolved from a freshly opened root handle, one component at a time
 /// (`openat` with `O_NOFOLLOW` relative to the previous handle), so a component swapped for a
 /// link between two steps is refused instead of followed. The root is opened by its canonical
-/// path without following any link and must still be the directory seen in `new`. Elsewhere
-/// every prefix is checked with `symlink_metadata` (no anchoring there).
+/// path without following any link and must still be the directory seen in `new`. On every other
+/// system (Windows, macOS) every prefix is checked with `symlink_metadata` instead: no anchoring,
+/// so a component swapped for a link between two steps is not caught there (weaker than Linux).
 ///
 /// "Missing" needs every component before the first absent one to be a real directory; a link,
 /// a non-directory or any other error on the way is unclear.
@@ -105,7 +106,7 @@ struct ProbeRoot {
     stored: PathBuf,
     canonical: Option<PathBuf>,
     /// (dev, ino) of the root directory when the probe was built.
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     identity: Option<(u64, u64)>,
     /// Whether the root holds no entry at all (checked once, on first need).
     empty: std::sync::OnceLock<bool>,
@@ -116,7 +117,7 @@ impl RootsMissingProbe {
             .iter()
             .map(|stored| {
                 let canonical = std::fs::canonicalize(stored).ok().filter(|c| c.is_dir());
-                #[cfg(unix)]
+                #[cfg(target_os = "linux")]
                 let identity = canonical.as_deref().and_then(|c| {
                     use std::os::unix::fs::MetadataExt;
                     let meta = crate::upload_fs::Directory::open(c).ok()?.metadata().ok()?;
@@ -125,7 +126,7 @@ impl RootsMissingProbe {
                 ProbeRoot {
                     stored: stored.clone(),
                     canonical,
-                    #[cfg(unix)]
+                    #[cfg(target_os = "linux")]
                     identity,
                     empty: std::sync::OnceLock::new(),
                 }
@@ -169,7 +170,7 @@ impl RootsMissingProbe {
             return Err(why(UnclearReason::Read));
         }
         let canonical = root.canonical.as_deref().ok_or_else(|| why(UnclearReason::Unreachable))?;
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         {
             use std::os::unix::fs::MetadataExt;
             let mut current = crate::upload_fs::Directory::open(canonical).map_err(|_| why(UnclearReason::Unreachable))?;
@@ -199,7 +200,7 @@ impl RootsMissingProbe {
             }
             Err(why(UnclearReason::Read))
         }
-        #[cfg(not(unix))]
+        #[cfg(not(target_os = "linux"))]
         {
             let is_real_dir = |p: &Path| std::fs::symlink_metadata(p).map(|m| m.is_dir() && !m.file_type().is_symlink());
             if !is_real_dir(canonical).map_err(|_| why(UnclearReason::Unreachable))? {
@@ -230,7 +231,7 @@ impl RootsMissingProbe {
     fn root_is_empty(root: &ProbeRoot) -> bool {
         *root.empty.get_or_init(|| match root.canonical.as_deref().map(std::fs::read_dir) {
             Some(Ok(mut entries)) => !entries.any(|e| match e {
-                Ok(e) => e.file_name().to_str().is_none_or(crate::fsops::is_root_content),
+                Ok(e) => e.file_name().to_str().is_none_or(crate::fs_portable::names::is_root_content),
                 Err(_) => true,
             }),
             _ => true,

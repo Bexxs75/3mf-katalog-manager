@@ -973,8 +973,10 @@ fn rss_child_extract_7z() {
 }
 
 /// Removes the test directory (about 257 MB unpacked) even when an assertion panics.
+#[cfg(target_os = "linux")]
 struct RemoveOnDrop(PathBuf);
 
+#[cfg(target_os = "linux")]
 impl Drop for RemoveOnDrop {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);

@@ -411,7 +411,7 @@ pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: R
             Err(_) => root.status = RootStatus::Unreachable,
             Ok(mut entries) => {
                 let has_content = entries.any(|e| match e {
-                    Ok(e) => e.file_name().to_str().is_none_or(crate::fsops::is_root_content),
+                    Ok(e) => e.file_name().to_str().is_none_or(crate::fs_portable::names::is_root_content),
                     Err(_) => true,
                 });
                 if holds_models && !has_content {
