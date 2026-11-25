@@ -1,0 +1,231 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "rename a -> b"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "same name again"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameEmpty"
+      }
+    },
+    "step": "empty name"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameEmpty"
+      }
+    },
+    "step": "blank name"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameForbiddenChar",
+        "params": [
+          "/"
+        ]
+      }
+    },
+    "step": "slash"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameForbiddenChar",
+        "params": [
+          ":"
+        ]
+      }
+    },
+    "step": "colon"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameForbiddenChar",
+        "params": [
+          "U+0001"
+        ]
+      }
+    },
+    "step": "control character"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameTooLong"
+      }
+    },
+    "step": "too long"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameNotAllowed"
+      }
+    },
+    "step": "dot"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameNotAllowed"
+      }
+    },
+    "step": "dot dot"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameEndsWithDotOrSpace"
+      }
+    },
+    "step": "ends with a dot"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameEndsWithDotOrSpace"
+      }
+    },
+    "step": "ends with a space"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileNameWindowsReserved"
+      }
+    },
+    "step": "windows reserved"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "file not found"
+      }
+    },
+    "step": "unknown id"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileInTrash"
+      }
+    },
+    "step": "model in the trash"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/cat) und wird abgelehnt"
+      }
+    },
+    "step": "protected folder"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileTargetExists",
+        "params": [
+          "<ROOT>/cat/taken.3mf"
+        ]
+      }
+    },
+    "step": "name of another file"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileTargetExists",
+        "params": [
+          "<ROOT>/cat/adir.3mf"
+        ]
+      }
+    },
+    "step": "name of a directory"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "<io error: not found>"
+      }
+    },
+    "step": "file missing on disk"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "b -> B (case only, free name on this volume)"
+  },
+  {
+    "result": {
+      "ok": [
+        "B.3mf",
+        "<ROOT>/cat/B.3mf"
+      ]
+    },
+    "step": "row of a"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+[files] 4 row(s)
+  id=1 | name=B.3mf | path=<ROOT>/cat/B.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=taken.3mf | path=<ROOT>/cat/taken.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=t.3mf | path=<ROOT>/cat/t.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=x | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=gone.3mf | path=<ROOT>/cat/gone.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/B.3mf (5 bytes)
+cat/adir.3mf/
+cat/t.3mf (5 bytes)
+cat/taken.3mf (5 bytes)

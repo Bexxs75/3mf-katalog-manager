@@ -71,7 +71,7 @@ fn preview_with_conn(
     core::preview(conn, file_ids, source, sensitive, &StdDateRenameFs).map_err(Into::into)
 }
 
-fn apply_with_conn(
+pub(super) fn apply_with_conn(
     conn: &Connection,
     items: Vec<DateRenameItem>,
     sensitive: &[PathBuf],

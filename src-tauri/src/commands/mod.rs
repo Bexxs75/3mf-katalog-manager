@@ -383,3 +383,5 @@ mod golden_harness;
 mod golden_tests;
 #[cfg(test)]
 mod golden_companion_tests;
+#[cfg(test)]
+mod golden_rename_tests;

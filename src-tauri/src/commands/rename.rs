@@ -12,6 +12,9 @@ pub(super) fn normalized_lowercase(name: &str) -> String {
         .collect()
 }
 
+/// On these systems two names that differ only in letter case are the same entry.
+pub(super) const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
+
 fn is_case_only(old: &Path, new: &Path) -> bool {
     old.parent() == new.parent()
         && old.file_name() != new.file_name()

@@ -1,0 +1,589 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "foo -> Foo"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Foo.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/foo.3mf",
+        "SymlinkMetadata <ROOT>/cat/Foo.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/foo.3mf",
+        "SymlinkMetadata <ROOT>/cat/foo.3mf",
+        "SymlinkMetadata <ROOT>/cat/Foo.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/foo.3mf",
+        "SymlinkMetadata <ROOT>/cat/Foo.3mf",
+        "SymlinkMetadata <ROOT>/cat/foo.3mf",
+        "SymlinkMetadata <ROOT>/cat/foo.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/foo.3mf -> <ROOT>/cat/foo.3mf-rename-tmp-<PID>-<N>.3mf",
+        "SymlinkMetadata <ROOT>/cat/Foo.3mf",
+        "Rename <ROOT>/cat/foo.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/Foo.3mf",
+        "SymlinkMetadata <ROOT>/cat/foo_extras",
+        "Rename <ROOT>/cat/foo_extras -> <ROOT>/cat/Foo_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 1,
+          "id": 1,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/Foo_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 1,
+          "id": 2,
+          "kind": "image",
+          "name": "b.png",
+          "path": "<ROOT>/cat/Foo_extras/b.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of Foo"
+  },
+  {
+    "result": {
+      "ok": [
+        "Foo.3mf",
+        "<ROOT>/cat/Foo.3mf"
+      ]
+    },
+    "step": "row of Foo"
+  },
+  {
+    "result": {
+      "ok": [
+        "Foo.3mf",
+        "Foo_extras"
+      ]
+    },
+    "step": "cat"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "injected Rename #1 on <ROOT>/cat/one.3mf"
+      }
+    },
+    "step": "one -> One, first step refused"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/One.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/one.3mf",
+        "SymlinkMetadata <ROOT>/cat/One.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/one.3mf",
+        "SymlinkMetadata <ROOT>/cat/one.3mf",
+        "SymlinkMetadata <ROOT>/cat/One.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/one.3mf",
+        "SymlinkMetadata <ROOT>/cat/One.3mf",
+        "SymlinkMetadata <ROOT>/cat/one.3mf",
+        "SymlinkMetadata <ROOT>/cat/one.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/one.3mf -> <ROOT>/cat/one.3mf-rename-tmp-<PID>-<N>.3mf"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        "one.3mf",
+        "<ROOT>/cat/one.3mf"
+      ]
+    },
+    "step": "row of one"
+  },
+  {
+    "result": {
+      "ok": [
+        "Foo.3mf",
+        "Foo_extras",
+        "one.3mf"
+      ]
+    },
+    "step": "cat"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "injected Rename #2 on <ROOT>/cat/two.3mf-rename-tmp-<PID>-<N>.3mf"
+      }
+    },
+    "step": "two -> Two, second step locked"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Two.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/two.3mf",
+        "SymlinkMetadata <ROOT>/cat/Two.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/two.3mf",
+        "SymlinkMetadata <ROOT>/cat/two.3mf",
+        "SymlinkMetadata <ROOT>/cat/Two.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/two.3mf",
+        "SymlinkMetadata <ROOT>/cat/Two.3mf",
+        "SymlinkMetadata <ROOT>/cat/two.3mf",
+        "SymlinkMetadata <ROOT>/cat/two.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/two.3mf -> <ROOT>/cat/two.3mf-rename-tmp-<PID>-<N>.3mf",
+        "SymlinkMetadata <ROOT>/cat/Two.3mf",
+        "Rename <ROOT>/cat/two.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/Two.3mf",
+        "SymlinkMetadata <ROOT>/cat/two.3mf",
+        "Rename <ROOT>/cat/two.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/two.3mf"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        "two.3mf",
+        "<ROOT>/cat/two.3mf"
+      ]
+    },
+    "step": "row of two"
+  },
+  {
+    "result": {
+      "ok": [
+        "Foo.3mf",
+        "Foo_extras",
+        "one.3mf",
+        "two.3mf"
+      ]
+    },
+    "step": "cat"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "Umbenennung fehlgeschlagen (injected Rename #2 on <ROOT>/cat/three.3mf-rename-tmp-<PID>-<N>.3mf); Rollback fehlgeschlagen (injected Rename #3 on <ROOT>/cat/three.3mf-rename-tmp-<PID>-<N>.3mf); Daten liegen unter <ROOT>/cat/three.3mf-rename-tmp-<PID>-<N>.3mf"
+      }
+    },
+    "step": "three -> Three, second step and way back locked"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Three.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/three.3mf",
+        "SymlinkMetadata <ROOT>/cat/Three.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/three.3mf",
+        "SymlinkMetadata <ROOT>/cat/three.3mf",
+        "SymlinkMetadata <ROOT>/cat/Three.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/three.3mf",
+        "SymlinkMetadata <ROOT>/cat/Three.3mf",
+        "SymlinkMetadata <ROOT>/cat/three.3mf",
+        "SymlinkMetadata <ROOT>/cat/three.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/three.3mf -> <ROOT>/cat/three.3mf-rename-tmp-<PID>-<N>.3mf",
+        "SymlinkMetadata <ROOT>/cat/Three.3mf",
+        "Rename <ROOT>/cat/three.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/Three.3mf",
+        "SymlinkMetadata <ROOT>/cat/three.3mf",
+        "Rename <ROOT>/cat/three.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/three.3mf"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        "three.3mf",
+        "<ROOT>/cat/three.3mf"
+      ]
+    },
+    "step": "row of three"
+  },
+  {
+    "result": {
+      "ok": [
+        "Foo.3mf",
+        "Foo_extras",
+        "one.3mf",
+        "three.3mf-rename-tmp-<PID>-<N>.3mf",
+        "two.3mf"
+      ]
+    },
+    "step": "cat"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "injected Rename #3 on <ROOT>/cat/bar_extras"
+      }
+    },
+    "step": "bar -> Bar, extras folder refused"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/bar.3mf -> <ROOT>/cat/bar.3mf-rename-tmp-<PID>-<N>.3mf",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "Rename <ROOT>/cat/bar.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/Bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/bar_extras",
+        "Rename <ROOT>/cat/bar_extras -> <ROOT>/cat/Bar_extras",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf",
+        "SymlinkMetadata <ROOT>/cat/Bar.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/Bar.3mf -> <ROOT>/cat/Bar.3mf-rename-tmp-<PID>-<N>.3mf",
+        "SymlinkMetadata <ROOT>/cat/bar.3mf",
+        "Rename <ROOT>/cat/Bar.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/bar.3mf"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 5,
+          "id": 3,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/bar_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of bar"
+  },
+  {
+    "result": {
+      "ok": [
+        "bar.3mf",
+        "<ROOT>/cat/bar.3mf"
+      ]
+    },
+    "step": "row of bar"
+  },
+  {
+    "result": {
+      "ok": [
+        "Foo.3mf",
+        "Foo_extras",
+        "bar.3mf",
+        "bar_extras",
+        "one.3mf",
+        "three.3mf",
+        "two.3mf"
+      ]
+    },
+    "step": "cat"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "database error: simulated"
+      }
+    },
+    "step": "db -> DB, row cannot be updated"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "SymlinkMetadata <ROOT>/cat/db.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/db.3mf -> <ROOT>/cat/db.3mf-rename-tmp-<PID>-<N>.3mf",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "Rename <ROOT>/cat/db.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/DB.3mf",
+        "SymlinkMetadata <ROOT>/cat/db_extras",
+        "Rename <ROOT>/cat/db_extras -> <ROOT>/cat/DB_extras",
+        "Rename <ROOT>/cat/DB_extras -> <ROOT>/cat/db_extras",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf",
+        "SymlinkMetadata <ROOT>/cat/DB.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/DB.3mf -> <ROOT>/cat/DB.3mf-rename-tmp-<PID>-<N>.3mf",
+        "SymlinkMetadata <ROOT>/cat/db.3mf",
+        "Rename <ROOT>/cat/DB.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/db.3mf"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 6,
+          "id": 4,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/db_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of db"
+  },
+  {
+    "result": {
+      "ok": [
+        "db.3mf",
+        "<ROOT>/cat/db.3mf"
+      ]
+    },
+    "step": "row of db"
+  },
+  {
+    "result": {
+      "ok": [
+        "Foo.3mf",
+        "Foo_extras",
+        "bar.3mf",
+        "bar_extras",
+        "db.3mf",
+        "db_extras",
+        "one.3mf",
+        "three.3mf",
+        "two.3mf"
+      ]
+    },
+    "step": "cat"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "DB-Update fehlgeschlagen (database error: simulated) UND Rollback der Datei-Umbenennung fehlgeschlagen (injected Rename #3 on <ROOT>/cat/Dbf.3mf) - Datei heisst jetzt <ROOT>/cat/Dbf.3mf, DB verweist weiter auf <ROOT>/cat/dbf.3mf"
+      }
+    },
+    "step": "dbf -> Dbf, row cannot be updated and the way back locked"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/dbf.3mf -> <ROOT>/cat/dbf.3mf-rename-tmp-<PID>-<N>.3mf",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "Rename <ROOT>/cat/dbf.3mf-rename-tmp-<PID>-<N>.3mf -> <ROOT>/cat/Dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf",
+        "ReadDir <ROOT>/cat",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf",
+        "SymlinkMetadata <ROOT>/cat/Dbf.3mf-rename-tmp-<PID>-<N>.3mf",
+        "Rename <ROOT>/cat/Dbf.3mf -> <ROOT>/cat/Dbf.3mf-rename-tmp-<PID>-<N>.3mf"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        "dbf.3mf",
+        "<ROOT>/cat/dbf.3mf"
+      ]
+    },
+    "step": "row of dbf"
+  },
+  {
+    "result": {
+      "ok": [
+        "Dbf.3mf",
+        "Foo.3mf",
+        "Foo_extras",
+        "bar.3mf",
+        "bar_extras",
+        "db.3mf",
+        "db_extras",
+        "one.3mf",
+        "three.3mf",
+        "two.3mf"
+      ]
+    },
+    "step": "cat"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileTargetExists",
+        "params": [
+          "<ROOT>/cat/other-name.3mf"
+        ]
+      }
+    },
+    "step": "Other -> other-name (distinct entry)"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/other-name.3mf"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "injected ReadDir #1 on <ROOT>/cat"
+      }
+    },
+    "step": "list -> List, directory unreadable"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/List.3mf",
+        "ReadDir <ROOT>/cat"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        "list.3mf",
+        "<ROOT>/cat/list.3mf"
+      ]
+    },
+    "step": "row of list"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+[files] 10 row(s)
+  id=1 | name=Foo.3mf | path=<ROOT>/cat/Foo.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=one.3mf | path=<ROOT>/cat/one.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=two.3mf | path=<ROOT>/cat/two.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=three.3mf | path=<ROOT>/cat/three.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=bar.3mf | path=<ROOT>/cat/bar.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=db.3mf | path=<ROOT>/cat/db.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=dbf.3mf | path=<ROOT>/cat/dbf.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=Other.3mf | path=<ROOT>/cat/Other.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=9 | name=other-name.3mf | path=<ROOT>/cat/other-name.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=10 | name=list.3mf | path=<ROOT>/cat/list.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 4 row(s)
+  id=1 | file_id=1 | name=a.png | path=<ROOT>/cat/Foo_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=1 | name=b.png | path=<ROOT>/cat/Foo_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=5 | name=a.png | path=<ROOT>/cat/bar_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=4 | file_id=6 | name=a.png | path=<ROOT>/cat/db_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/Dbf.3mf (5 bytes)
+cat/Foo.3mf (5 bytes)
+cat/Foo_extras/
+cat/Foo_extras/a.png (16 bytes)
+cat/Foo_extras/b.png (16 bytes)
+cat/Other.3mf (5 bytes)
+cat/bar.3mf (5 bytes)
+cat/bar_extras/
+cat/bar_extras/a.png (16 bytes)
+cat/db.3mf (5 bytes)
+cat/db_extras/
+cat/db_extras/a.png (16 bytes)
+cat/list.3mf (5 bytes)
+cat/one.3mf (5 bytes)
+cat/other-name.3mf (5 bytes)
+cat/three.3mf (5 bytes)
+cat/two.3mf (5 bytes)
+outside/
+outside/a.png (16 bytes)
+outside/b.png (16 bytes)

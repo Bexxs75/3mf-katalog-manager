@@ -522,6 +522,19 @@ pub(super) fn rename_file_with_conn_fs(
     new_name: String,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
+    rename_file_with_conn_fs_case(fs, conn, id, new_name, sensitive_dirs, rename::CASE_INSENSITIVE_PATHS)
+}
+
+/// `rename_file_with_conn_fs` with the case rule as a parameter (macOS/Windows: two names that
+/// differ only in letter case are the same folder), so Linux tests cover both branches.
+pub(super) fn rename_file_with_conn_fs_case(
+    fs: &dyn Fs,
+    conn: &Connection,
+    id: i64,
+    new_name: String,
+    sensitive_dirs: &[PathBuf],
+    case_insensitive: bool,
+) -> CmdResult<()> {
     validate_file_name(&new_name)?;
     let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
@@ -551,7 +564,7 @@ pub(super) fn rename_file_with_conn_fs(
     })?;
 
     // The model's companion files follow into the folder named after the new name.
-    let carried = match companions::carry_fs(fs, conn, id, &old_path, &new_path) {
+    let carried = match companions::carry_with_fs(fs, conn, id, &old_path, &new_path, case_insensitive) {
         Ok(carried) => carried,
         Err(error) => {
             if let Err(rollback_err) = rename::rename_file_on_disk_with(fs, &new_path, &old_path) {
