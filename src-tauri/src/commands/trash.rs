@@ -80,7 +80,7 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
     delete_files_with_conn(&conn, &state.trash_dir, file_ids)
 }
 /// Core logic of `delete_files`, without `State`, so it's testable.
-fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_ids: Vec<String>) -> CmdResult<()> {
+pub(super) fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_ids: Vec<String>) -> CmdResult<()> {
     for file_id in file_ids {
         let id: i64 = match file_id.parse() {
             Ok(id) => id,

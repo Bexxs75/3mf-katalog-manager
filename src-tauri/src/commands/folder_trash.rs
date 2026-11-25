@@ -107,6 +107,12 @@ pub(super) fn trash_folder_for_test(conn: &Connection, folder_id: i64, trash_dir
     trash_folder_with_conn(conn, &folder_id.to_string(), trash_dir, &[]).unwrap().trashed_model_count
 }
 
+/// Test helper for the golden scenarios: the whole result of the folder trash as JSON.
+#[cfg(test)]
+pub(super) fn trash_folder_result_for_test(conn: &Connection, folder_id: i64, trash_dir: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<serde_json::Value> {
+    trash_folder_with_conn(conn, &folder_id.to_string(), trash_dir, sensitive_dirs).map(|result| serde_json::to_value(result).unwrap())
+}
+
 #[tauri::command]
 pub async fn folder_trash_summary(app: tauri::AppHandle, folder_id: String) -> CmdResult<FolderTrashSummary> {
     tauri::async_runtime::spawn_blocking(move || {
