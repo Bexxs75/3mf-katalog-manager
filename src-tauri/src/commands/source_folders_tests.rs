@@ -422,7 +422,9 @@ impl JobFixture {
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        Self(dir)
+        // A scan lists files below the resolved source folder, and a selection must name
+        // them exactly as listed. The temp folder is reached through a link on macOS.
+        Self(dir.canonicalize().unwrap())
     }
     fn stl(&self, seed: u32) -> PathBuf {
         write(&self.0.join(format!("model_{seed}.stl")), &stl(seed))

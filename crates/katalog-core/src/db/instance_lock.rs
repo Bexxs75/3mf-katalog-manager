@@ -138,6 +138,19 @@ mod tests {
         }
         panic!("lock stayed busy after release");
     }
+    /// What an outsider can tell about the sidecar while its owner holds the lock. Unix
+    /// locks are advisory, so the text itself is readable. A Windows lock also keeps every
+    /// other handle from reading the locked bytes; there only size and time are visible.
+    fn locked_sidecar_state(sidecar: &Path) -> impl PartialEq + std::fmt::Debug {
+        #[cfg(not(windows))]
+        return std::fs::read(sidecar).unwrap();
+        #[cfg(windows)]
+        {
+            let meta = std::fs::metadata(sidecar).unwrap();
+            (meta.len(), meta.modified().unwrap())
+        }
+    }
+
     #[test]
     fn exclusive_until_drop_and_metadata_survives_contention() {
         let dir = fixture();
@@ -145,15 +158,18 @@ mod tests {
         let lock = InstanceLock::acquire(&db, "desktop").unwrap();
         let sidecar = InstanceLock::path_for(&db).unwrap();
         assert_eq!(sidecar, dir.canonicalize().unwrap().join("catalog.db.lock"));
-        let text = std::fs::read_to_string(&sidecar).unwrap();
-        assert!(text.starts_with("desktop, pid="));
+        let before = locked_sidecar_state(&sidecar);
+        #[cfg(not(windows))]
+        assert!(std::fs::read_to_string(&sidecar).unwrap().starts_with("desktop, pid="));
         assert!(matches!(
             InstanceLock::acquire(&db, "server"),
             Err(LockError::InUse)
         ));
-        assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), text);
+        assert!(locked_sidecar_state(&sidecar) == before);
         drop(lock);
         assert!(sidecar.exists());
+        // Released, the text is readable everywhere: the refused attempt left the owner's line.
+        assert!(std::fs::read_to_string(&sidecar).unwrap().starts_with("desktop, pid="));
         drop(acquire_released(&db, "server"));
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -183,7 +199,7 @@ mod tests {
         let db = dir.join("catalog.db");
         let lock = InstanceLock::acquire(&db, "desktop").unwrap();
         let sidecar = InstanceLock::path_for(&db).unwrap();
-        let before = std::fs::read(&sidecar).unwrap();
+        let before = locked_sidecar_state(&sidecar);
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "db::instance_lock::tests::child_probe"])
             .env("KATALOG_LOCK_TEST_DB", &db)
@@ -192,8 +208,9 @@ mod tests {
             .status()
             .unwrap();
         assert!(status.success());
-        assert_eq!(std::fs::read(sidecar).unwrap(), before);
+        assert!(locked_sidecar_state(&sidecar) == before);
         drop(lock);
+        assert!(std::fs::read_to_string(&sidecar).unwrap().starts_with("desktop, pid="));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

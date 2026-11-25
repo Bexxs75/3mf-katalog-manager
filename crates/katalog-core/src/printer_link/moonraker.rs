@@ -402,6 +402,11 @@ fn classify_kind(kind: std::io::ErrorKind) -> Option<LinkError> {
 fn class_in_chain(error: &(dyn std::error::Error + 'static)) -> Option<LinkError> {
     let mut current: Option<&(dyn std::error::Error + 'static)> = Some(error);
     while let Some(e) = current {
+        // The total limit of a request also ends a body that is still being read. reqwest
+        // reports that as its own error without any I/O kind below it.
+        if e.downcast_ref::<reqwest::Error>().is_some_and(reqwest::Error::is_timeout) {
+            return Some(LinkError::Timeout);
+        }
         if let Some(io) = e.downcast_ref::<std::io::Error>() {
             if let Some(class) = classify_kind(io.kind()) {
                 return Some(class);
@@ -1235,6 +1240,34 @@ mod client_tests {
         let server = FakeServer::start(move |_| Some((200, big.clone())));
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
         assert!(matches!(link.test(), Err(LinkError::BadResponse(_))));
+    }
+
+    /// The request's own limit can end the body read a moment before the waiting side gives
+    /// up. That answer must say "timeout" too, whichever of the two is first.
+    #[test]
+    fn a_body_cut_off_by_the_request_limit_is_a_timeout() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut h = String::new();
+                if reader.read_line(&mut h).is_err() || h == "\r\n" || h.is_empty() {
+                    break;
+                }
+            }
+            let _ = stream.write_all(b"HTTP/1.1 200 X\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n ");
+            // Keep the connection open and silent until the client has given up.
+            let _ = done_rx.recv_timeout(Duration::from_secs(10));
+        });
+        let client = reqwest::blocking::Client::builder().no_proxy().build().unwrap();
+        let mut resp = client.get(format!("http://127.0.0.1:{port}/")).timeout(Duration::from_millis(200)).send().unwrap();
+        let error = resp.read_to_end(&mut Vec::new()).unwrap_err();
+        let _ = done_tx.send(());
+        assert_eq!(classify_io_error(&error), LinkError::Timeout, "{error:?}");
     }
 
     /// A trickling printer must not block `get_bytes` indefinitely.

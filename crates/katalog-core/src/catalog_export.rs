@@ -200,6 +200,8 @@ mod tests {
                 .unwrap();
             assert_eq!(found, 1, "{table}.{column}");
         }
+        // Windows cannot remove a folder that holds an open database.
+        drop((copy, reader, writer));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -259,14 +261,17 @@ mod tests {
             assert_eq!(counts.0, counts.1, "round {round}");
         }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        // Joining drops the writer, which the thread owns.
         assert!(thread.join().unwrap() > 1);
+        // Windows cannot remove a folder that holds an open database.
+        drop(reader);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn zip_has_the_desktop_entry_layout_and_the_database_round_trips() {
         let dir = unique_test_dir("export-zip");
-        let (path, _writer) = seeded(&dir);
+        let (path, writer) = seeded(&dir);
         let reader = db::open_read_only(&path).unwrap();
         let snapshot_path = empty_target(&dir, "snap.db");
         snapshot(&reader, &snapshot_path).unwrap();
@@ -286,6 +291,8 @@ mod tests {
         for key in crate::ui_settings::BACKUP_KEYS {
             assert!(parsed[key].is_null(), "{key}");
         }
+        // Windows cannot remove a folder that holds open files.
+        drop((archive, reader, writer));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -307,6 +314,8 @@ mod tests {
         assert!(started.elapsed() >= std::time::Duration::from_millis(150), "{:?}", started.elapsed());
         holder.execute_batch("ROLLBACK").unwrap();
         snapshot_with(&reader, &dest, 4, std::time::Duration::from_millis(50)).unwrap();
+        // Windows cannot remove a folder that holds an open database.
+        drop((reader, holder));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

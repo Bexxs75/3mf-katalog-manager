@@ -181,6 +181,8 @@ pub fn inspect_backup(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Stored paths in the spelling of this system: Windows refuses an imported path without a drive.
+    use crate::native_test_path as n;
 
     #[test]
     fn inspection_reports_current_empty_catalog_without_changing_source() {
@@ -326,7 +328,7 @@ mod tests {
     #[test]
     fn source_folder_outside_host_boundary_is_never_resolved() {
         let (bytes, dir) = fixture("boundary", |conn, _| {
-            db::sources::insert_source_folder(conn, "/net/untrusted/models", "now").unwrap();
+            db::sources::insert_source_folder(conn, &n("/net/untrusted/models"), "now").unwrap();
         });
         let fs = RecordingFs {
             inner: StdRestoreFs::new(dir.clone()),
@@ -345,13 +347,13 @@ mod tests {
             &|_| false,
         )
         .unwrap();
-        assert_eq!(report.unreachable_source_folders, vec!["/net/untrusted/models"]);
+        assert_eq!(report.unreachable_source_folders, vec![n("/net/untrusted/models")]);
         assert!(
             fs.resolved
                 .lock()
                 .unwrap()
                 .iter()
-                .all(|p| !p.starts_with("/net")),
+                .all(|p| !p.starts_with(n("/net"))),
             "an imported path outside the boundary was resolved on the filesystem"
         );
         std::fs::remove_dir_all(dir).unwrap();
@@ -380,7 +382,7 @@ mod tests {
 
     fn assert_never_resolved(resolved: &[PathBuf]) {
         assert!(
-            resolved.iter().all(|p| !p.starts_with("/net")),
+            resolved.iter().all(|p| !p.starts_with(n("/net"))),
             "an imported path outside the boundary was resolved on the filesystem: {resolved:?}"
         );
     }
@@ -397,7 +399,7 @@ mod tests {
     #[test]
     fn file_path_outside_host_boundary_is_warned_and_never_resolved() {
         let (bytes, dir) = fixture("boundary-file", |conn, _| {
-            db::test_insert_minimal_file(conn, "/net/untrusted/m.3mf", None).unwrap();
+            db::test_insert_minimal_file(conn, &n("/net/untrusted/m.3mf"), None).unwrap();
         });
         let (report, resolved) = inspect_recorded(&bytes, &dir);
         let report = report.unwrap();
@@ -411,8 +413,8 @@ mod tests {
     fn folder_path_outside_host_boundary_is_warned_and_never_resolved() {
         let (bytes, dir) = fixture("boundary-folder", |conn, _| {
             conn.execute(
-                "INSERT INTO folders (name, path) VALUES ('f', '/net/untrusted/f')",
-                [],
+                "INSERT INTO folders (name, path) VALUES ('f', ?1)",
+                [n("/net/untrusted/f")],
             )
             .unwrap();
         });
@@ -435,7 +437,7 @@ mod tests {
             .unwrap();
             conn.execute(
                 "UPDATE files SET trash_path = ?1 WHERE id = ?2",
-                rusqlite::params![format!("/net/untrusted/{id}-aaaaaaaa-a.3mf"), id],
+                rusqlite::params![n(&format!("/net/untrusted/{id}-aaaaaaaa-a.3mf")), id],
             )
             .unwrap();
         });
@@ -457,7 +459,7 @@ mod tests {
                 None,
             )
             .unwrap();
-            add_extras_companion(conn, id, "/net/untrusted/a_extras/a.png", None);
+            add_extras_companion(conn, id, &n("/net/untrusted/a_extras/a.png"), None);
         });
         let (report, resolved) = inspect_recorded(&bytes, &dir);
         let report = report.unwrap();
@@ -477,7 +479,7 @@ mod tests {
                 conn,
                 id,
                 &dir.join("models/a_extras/a.png").to_string_lossy(),
-                Some("/net/untrusted/companion-1-aaaaaaaa-a.png"),
+                Some(&n("/net/untrusted/companion-1-aaaaaaaa-a.png")),
             );
         });
         let (report, resolved) = inspect_recorded(&bytes, &dir);
@@ -524,7 +526,7 @@ mod tests {
     #[test]
     fn desktop_validation_without_boundary_still_resolves_every_path() {
         let (bytes, dir) = fixture("boundary-desktop", |conn, _| {
-            db::test_insert_minimal_file(conn, "/net/untrusted/m.3mf", None).unwrap();
+            db::test_insert_minimal_file(conn, &n("/net/untrusted/m.3mf"), None).unwrap();
         });
         let fs = RecordingFs {
             inner: StdRestoreFs::new(dir.clone()),
@@ -546,7 +548,7 @@ mod tests {
             .lock()
             .unwrap()
             .iter()
-            .any(|p| p.starts_with("/net/untrusted")));
+            .any(|p| p.starts_with(n("/net/untrusted"))));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -695,7 +697,7 @@ mod tests {
     /// companions and remembered copies, all outside the host roots, plus a
     /// Windows path from a backup made on another computer.
     fn foreign_rows(conn: &Connection) {
-        let id = db::test_insert_minimal_file(conn, "/net/untrusted/m.3mf", None).unwrap();
+        let id = db::test_insert_minimal_file(conn, &n("/net/untrusted/m.3mf"), None).unwrap();
         conn.execute(
             "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
              VALUES ('w.3mf', ?1, '3mf', 0, 'now')",
@@ -703,15 +705,15 @@ mod tests {
         )
         .unwrap();
         conn.execute(
-            "INSERT INTO folders (name, path) VALUES ('f', '/net/untrusted/f')",
-            [],
+            "INSERT INTO folders (name, path) VALUES ('f', ?1)",
+            [n("/net/untrusted/f")],
         )
         .unwrap();
-        add_extras_companion(conn, id, "/net/untrusted/m_extras/a.png", None);
+        add_extras_companion(conn, id, &n("/net/untrusted/m_extras/a.png"), None);
         conn.execute(
             "INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at)
-             VALUES ('/net/untrusted/k.3mf', 1, ?1, 'now')",
-            [&"a".repeat(64)],
+             VALUES (?2, 1, ?1, 'now')",
+            [&"a".repeat(64), &n("/net/untrusted/k.3mf")],
         )
         .unwrap();
     }
@@ -732,8 +734,8 @@ mod tests {
         assert!(
             !resolved
                 .iter()
-                .any(|p| p.to_string_lossy().starts_with("C:")),
-            "a Windows path is not below a Linux root and must not be resolved: {resolved:?}"
+                .any(|p| p.to_string_lossy().contains("Modelle")),
+            "a path from another computer is not below a host root and must not be resolved: {resolved:?}"
         );
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -768,7 +770,7 @@ mod tests {
             "/net/untrusted/m_extras/a.png",
             "/net/untrusted/k.3mf",
         ] {
-            assert!(resolved.iter().any(|p| p == Path::new(path)), "{path}");
+            assert!(resolved.iter().any(|p| p == Path::new(&n(path))), "{path}");
         }
         drop(resolved);
         std::fs::remove_dir_all(dir).unwrap();
@@ -830,24 +832,21 @@ mod tests {
 
     #[test]
     fn boundary_check_is_lexical_and_component_wise() {
-        let roots = [PathBuf::from("/srv/models")];
-        assert!(import_path_in_boundary(
-            Path::new("/srv/models/a.3mf"),
-            &roots
-        ));
-        assert!(import_path_in_boundary(
-            Path::new("/srv/models/./a.3mf"),
-            &roots
-        ));
+        let roots = [PathBuf::from(n("/srv/models"))];
+        for inside in ["/srv/models/a.3mf", "/srv/models/./a.3mf"] {
+            assert!(import_path_in_boundary(Path::new(&n(inside)), &roots), "{inside}");
+        }
+        // An absolute path in the spelling of the other kind of system.
+        let foreign = if cfg!(windows) { "/srv/models/a.3mf" } else { r"C:\srv\models\a.3mf" };
         for outside in [
-            "/srv/models-other/a.3mf",
-            "/srv/models/../etc/passwd",
-            "srv/models/a.3mf",
-            r"C:\srv\models\a.3mf",
-            "/net/untrusted/a.3mf",
+            n("/srv/models-other/a.3mf"),
+            n("/srv/models/../etc/passwd"),
+            "srv/models/a.3mf".into(),
+            foreign.into(),
+            n("/net/untrusted/a.3mf"),
         ] {
             assert!(
-                !import_path_in_boundary(Path::new(outside), &roots),
+                !import_path_in_boundary(Path::new(&outside), &roots),
                 "{outside}"
             );
         }

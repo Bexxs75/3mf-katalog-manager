@@ -134,14 +134,18 @@ pub fn copy_file_new(from: &std::path::Path, to: &std::path::Path) -> std::io::R
 pub fn reject_if_sensitive_path(path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<()> {
     reject_if_sensitive_path_expanded(path, &expand_sensitive_dirs(sensitive_dirs))
 }
-/// Adds the canonical spelling of each protected folder (e.g. /bin -> /usr/bin).
+/// Adds the resolved spelling of each protected folder (e.g. /bin -> /usr/bin). A folder
+/// that does not exist yet is resolved through its nearest existing ancestor, exactly as a
+/// checked path is. Otherwise a path reached through another spelling of that ancestor (a
+/// linked home folder, /var on macOS, the `\\?\` form Windows resolves to) would never
+/// match it, and the folder could be created inside the protected place.
 /// Compute once when many paths are checked.
 pub fn expand_sensitive_dirs(sensitive_dirs: &[PathBuf]) -> Vec<PathBuf> {
     let mut expanded = Vec::with_capacity(sensitive_dirs.len());
     for dir in sensitive_dirs {
-        if let Ok(canonical) = dir.canonicalize() {
-            if canonical != *dir {
-                expanded.push(canonical);
+        if let Ok(resolved) = resolve_path_for_sensitivity_check(dir) {
+            if resolved != *dir {
+                expanded.push(resolved);
             }
         }
         expanded.push(dir.clone());
@@ -438,5 +442,24 @@ mod move_tests {
         assert_eq!(std::fs::read(&to).unwrap(), b"EXISTING");
         assert!(from.exists());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_protected_folder_that_does_not_exist_yet_is_matched_through_a_linked_parent() {
+        let base = crate::unique_test_dir("placement-alias").canonicalize().unwrap();
+        std::fs::create_dir(base.join("real")).unwrap();
+        std::os::unix::fs::symlink(base.join("real"), base.join("alias")).unwrap();
+        // Protected by the linked spelling, reached by the real one and by the link itself.
+        let protected = vec![base.join("alias/secret")];
+        assert!(reject_if_sensitive_path(&base.join("real/secret"), &protected).is_err());
+        assert!(reject_if_sensitive_path(&base.join("alias/secret/deeper"), &protected).is_err());
+        assert!(reject_if_sensitive_path(&base.join("real/other"), &protected).is_ok());
+        std::fs::remove_dir_all(base).unwrap();
     }
 }

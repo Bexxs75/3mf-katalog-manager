@@ -249,11 +249,14 @@ fn an_empty_root_without_models_is_fine() {
 
 #[test]
 fn rows_with_dot_dot_leave_no_trace_and_count_as_outside() {
-    let root = dir("dr-dots");
+    // The root as a user types it, not its canonical spelling: Windows canonicalizes to a
+    // verbatim path (`\\?\C:\...`), in which `.` is no longer skipped as a component.
+    let root = crate::unique_test_dir("dr-dots");
     touch(&root.join("keep.stl"));
-    let sneaky = format!("{}/../outside/x.3mf", root.display());
+    let row = |tail: &str| crate::join_unresolved(&root, tail).to_str().unwrap().to_owned();
+    let sneaky = row("../outside/x.3mf");
     let snapshot = Snapshot {
-        models: vec![ModelRow { id: 1, path: sneaky.clone(), active: true }, ModelRow { id: 2, path: format!("{}/./keep.stl", root.display()), active: true }],
+        models: vec![ModelRow { id: 1, path: sneaky.clone(), active: true }, ModelRow { id: 2, path: row("./keep.stl"), active: true }],
         companions: vec![CompanionRow { id: 1, file_id: 1, name: "n".into(), path: sneaky }],
     };
     let r = report(&snapshot, &[&root]);

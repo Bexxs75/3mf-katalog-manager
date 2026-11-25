@@ -300,6 +300,10 @@ fn unresolvable_file_falls_back_to_path_key() {
 /// What is shown: a catalog row stored in NFD spelling next to a disk entry in NFC
 /// spelling is offered as new file (and the row as missing). Simulation, not a
 /// real macOS run: "not reproduced" for the real macOS case.
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "simulates two spellings as two files; APFS treats NFC and NFD names as one file"
+)]
 #[test]
 fn h2_unicode_spellings_are_different_keys_and_simulated_nfd_row_next_to_nfc_file_is_offered() {
     let nfc = "W\u{00fc}rfel.obj";

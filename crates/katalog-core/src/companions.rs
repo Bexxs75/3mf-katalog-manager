@@ -260,11 +260,13 @@ mod tests {
 
     #[test]
     fn stored_fields_must_describe_a_real_companion() {
-        assert_eq!(validate_stored_fields("a.png", "/c/Foo_extras/a.png", "image"), Ok(CompanionKind::Image));
-        assert_eq!(validate_stored_fields("a.png", "/c/Foo_extras/a.png", "pdf"), Err("type"));
-        assert_eq!(validate_stored_fields("a.png", "/c/Foo_extras/b.png", "image"), Err("name"));
-        assert_eq!(validate_stored_fields("a.png", "/c/Foo/a.png", "image"), Err("location"));
-        assert_eq!(validate_stored_fields("a.png", "/c/x_extras/../a.png", "image"), Err("location"));
+        let check = |name: &str, path: &str, kind: &str| validate_stored_fields(name, &crate::native_test_path(path), kind);
+        assert_eq!(check("a.png", "/c/Foo_extras/a.png", "image"), Ok(CompanionKind::Image));
+        assert_eq!(check("a.png", "/c/Foo_extras/a.png", "pdf"), Err("type"));
+        assert_eq!(check("a.png", "/c/Foo_extras/b.png", "image"), Err("name"));
+        assert_eq!(check("a.png", "/c/Foo/a.png", "image"), Err("location"));
+        assert_eq!(check("a.png", "/c/x_extras/../a.png", "image"), Err("location"));
+        assert_eq!(validate_stored_fields("a.png", "c/Foo_extras/a.png", "image"), Err("location"), "a relative path");
     }
 
     #[test]
@@ -387,7 +389,7 @@ mod tests {
 
     #[test]
     fn a_stored_other_row_must_have_an_allowed_extension() {
-        let row = |name: &str, kind: &str| validate_stored_fields(name, &format!("/c/Foo_extras/{name}"), kind);
+        let row = |name: &str, kind: &str| validate_stored_fields(name, &crate::native_test_path(&format!("/c/Foo_extras/{name}")), kind);
         assert_eq!(row("m.fcstd", "other"), Ok(CompanionKind::Other));
         assert_eq!(row("m.exe", "other"), Err("type"), "a foreign catalog may claim anything");
         assert_eq!(row("m.js", "other"), Err("type"));

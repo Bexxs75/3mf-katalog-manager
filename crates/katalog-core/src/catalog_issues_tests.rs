@@ -174,7 +174,7 @@ fn roots_probe_only_decides_below_a_root() {
     assert!(probe.is_missing(&root.join("nodir/gone.3mf")).unwrap());
     assert!(probe.is_missing(Path::new("/definitely/elsewhere/m.3mf")).is_err());
     assert!(probe.is_missing(&root).is_err());
-    assert!(probe.is_missing(&root.join("a/../a/m.3mf")).is_err());
+    assert!(probe.is_missing(&crate::join_unresolved(&root, "a/../a/m.3mf")).is_err());
 }
 
 #[cfg(unix)]
@@ -354,6 +354,10 @@ mod roots_probe_races {
         assert!(probe.is_missing(&root.join("a/b/m.3mf")).is_err());
     }
 
+    // Only Linux remembers which directory the root was (device and inode) and resolves
+    // from a handle on it. The fallback for other systems checks every prefix by name and
+    // cannot tell a new folder under the old name from the old one (see `RootsMissingProbe`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_root_replaced_by_another_folder_is_unclear() {
         let (root, _) = tree("ci-race-root2");

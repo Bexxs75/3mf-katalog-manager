@@ -230,7 +230,9 @@ fn an_answer_above_one_mib_is_refused() {
 #[test]
 fn a_refused_connection_is_offline() {
     let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let cfg = Config { base_url: format!("http://127.0.0.1:{port}"), timeout: Duration::from_secs(2), limits: Limits::NONE, image_limits: Limits::NONE, local_test: true };
+    // Windows reports a refused local connection only after its own retries (about two
+    // seconds), so the limit has to leave room for the refusal to arrive first.
+    let cfg = Config { base_url: format!("http://127.0.0.1:{port}"), timeout: Duration::from_secs(15), limits: Limits::NONE, image_limits: Limits::NONE, local_test: true };
     let svc = Service::with_config(cfg, Arc::new(|| 0.0));
     assert_eq!(err(svc.search(&token(), "x", 1, &open())).code, ErrorCode::ThingiverseOffline);
 }

@@ -223,6 +223,24 @@ mod tests {
         d
     }
 
+    /// Sets the modification time of a directory. Windows opens a directory only with
+    /// backup semantics, and changing its times needs the right to write attributes.
+    fn set_dir_modified(dir: &Path, time: std::time::SystemTime) {
+        #[cfg(windows)]
+        let handle = {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            std::fs::OpenOptions::new()
+                .access_mode(FILE_WRITE_ATTRIBUTES)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(dir)
+        };
+        #[cfg(not(windows))]
+        let handle = std::fs::File::open(dir);
+        handle.unwrap().set_modified(time).unwrap();
+    }
+
     #[test]
     fn an_update_backup_never_carries_the_api_key() {
         const KEY: &str = "TVKEY-0123456789-abcdefghijkl";
@@ -354,6 +372,8 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 0);
+        // Windows cannot remove a folder that holds an open database.
+        drop(saved);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -429,6 +449,8 @@ mod tests {
         let copy = rusqlite::Connection::open(&path).unwrap();
         let v: String = copy.query_row("SELECT value FROM app_settings WHERE key='probe'", [], |r| r.get(0)).unwrap();
         assert_eq!(v, "x");
+        // Windows cannot remove a folder that holds an open database.
+        drop(copy);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -521,7 +543,7 @@ mod tests {
         // Retention owns regular backup files only, not unrelated directories.
         let stuck = dir.join("catalog-vor-0.1.db");
         std::fs::create_dir(&stuck).unwrap();
-        std::fs::File::open(&stuck).unwrap().set_modified(base).unwrap();
+        set_dir_modified(&stuck, base);
         for (i, v) in ["0.2", "0.3"].iter().enumerate() {
             let p = dir.join(format!("catalog-vor-{v}.db"));
             std::fs::write(&p, b"x").unwrap();

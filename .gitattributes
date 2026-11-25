@@ -1,0 +1,7 @@
+# Test fixtures and golden files are compared byte for byte. Without this a Windows
+# checkout turns their line ends into CRLF and the tests see other bytes than Linux.
+crates/katalog-core/tests/fixtures/** -text
+crates/katalog-core/testdata/** -text
+crates/katalog-core/src/archive/testdata/** -text
+src-tauri/testdata/** -text
+src-tauri/src/commands/testdata/** -text

@@ -1810,7 +1810,9 @@ mod tests {
             let conn = Connection::open(&path).unwrap();
             conn.pragma_update(None, "user_version", target - 1).unwrap();
         }
-        let (_conn, report) = connect_with_report(&path).unwrap();
+        let (conn, report) = connect_with_report(&path).unwrap();
+        // Windows cannot remove the folder below while the catalog is still open.
+        drop(conn);
         let report = report.expect("an older catalog is reported");
         assert_eq!((report.from, report.to, report.backup_error), (target - 1, target, false));
         let copy = report.backup.expect("the copy exists");
@@ -2085,7 +2087,9 @@ mod tests {
         assert_eq!(folders.len(), 2);
         let leaf = folders.iter().find(|f| f.id == leaf_id).unwrap();
         assert_eq!(leaf.name, "Reaper");
-        assert_eq!(leaf.path, "/tmp/Tabletop/Reaper");
+        // The stored path is joined with the native separator.
+        assert_eq!(Path::new(&leaf.path), dir);
+        assert_eq!(leaf.path, format!("/tmp/Tabletop{}Reaper", std::path::MAIN_SEPARATOR));
         let parent = folders.iter().find(|f| f.id == leaf.parent_id.unwrap()).unwrap();
         assert_eq!(parent.name, "Tabletop");
         assert_eq!(parent.parent_id, None);

@@ -3,6 +3,9 @@ use crate::db::models::{FileType, MaterialRecord, NewFile};
 use rusqlite::params;
 use std::collections::BTreeMap;
 
+// Stored paths in the spelling of this system: Windows refuses an imported path without a drive.
+use crate::native_test_path as n;
+
 fn unique_test_dir(name: &str) -> PathBuf {
     let dir = test_temp_dir().join(format!(
         "{name}-{}",
@@ -87,7 +90,7 @@ fn imported_empty_trash_paths_are_ignored() {
 #[test]
 fn imported_identity_is_recomputed_locally() {
     let conn = db::connect_in_memory().unwrap();
-    let id = db::test_insert_minimal_file(&conn, "/tmp/x.3mf", None).unwrap();
+    let id = db::test_insert_minimal_file(&conn, &n("/tmp/x.3mf"), None).unwrap();
     conn.execute(
         "UPDATE files SET content_hash = 'forged', imported_at = '1900'",
         [],
@@ -211,7 +214,7 @@ fn imported_source_values_are_checked() {
         ("source_profile_id", "12\u{202E}34".to_string(), false),
     ] {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
             conn.execute(
                 &format!("UPDATE files SET {column} = ?1 WHERE id = ?2"),
                 rusqlite::params![value, id],
@@ -222,7 +225,7 @@ fn imported_source_values_are_checked() {
         assert_eq!(result.is_ok(), valid, "{column}: {result:?}");
     }
     let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-        let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+        let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
         conn.execute(
             "UPDATE files SET source_model_id = X'1234' WHERE id = ?1",
             [id],
@@ -267,7 +270,8 @@ fn imported_paths_have_a_length_limit() {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
             conn.execute(
                 "INSERT INTO folders (name, path) VALUES ('root', ?1)",
-                [format!("/{}", "a".repeat(length - 1))],
+                // The drive Windows needs counts toward the length like any other character.
+                [n(&format!("/{}", "a".repeat(length - if cfg!(windows) { 3 } else { 1 })))],
             )
             .unwrap();
         });
@@ -577,8 +581,8 @@ fn validate_catalog_db_bytes_accepts_a_legitimate_pre_migration_backup() {
         // Deliberately NO run_migrations() here - simulates a DB exported before the
         // parent_id/path migration.
         conn.execute(
-                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.3mf', '3mf', 1, '2026-01-01T00:00:00Z')",
-                [],
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', ?1, '3mf', 1, '2026-01-01T00:00:00Z')",
+                [n("/tmp/x.3mf")],
             ).unwrap();
     }
     let bytes = std::fs::read(&tmp_path).unwrap();
@@ -1189,7 +1193,7 @@ fn validate_catalog_db_bytes_accepts_a_full_catalog_with_data_in_every_table() {
         let mut conn = crate::db::connect(&tmp_path).unwrap();
 
         let folder_id =
-            crate::db::insert_folder_with_parent(&conn, "Projekte", None, "/tmp/Projekte").unwrap();
+            crate::db::insert_folder_with_parent(&conn, "Projekte", None, &n("/tmp/Projekte")).unwrap();
 
         let mut metadata = BTreeMap::new();
         metadata.insert("Slicer".to_string(), "Bambu Studio".to_string());
@@ -1197,7 +1201,7 @@ fn validate_catalog_db_bytes_accepts_a_full_catalog_with_data_in_every_table() {
             license: None,
             source: Default::default(),
             name: "Gehaeuse.3mf".to_string(),
-            path: "/tmp/Projekte/Gehaeuse.3mf".to_string(),
+            path: n("/tmp/Projekte/Gehaeuse.3mf"),
             file_type: FileType::ThreeMf,
             folder_id: Some(folder_id),
             origin: "local".to_string(),
@@ -1325,7 +1329,7 @@ fn validate_catalog_db_bytes_accepts_harmless_file_rows() {
         &dir.join("modell.3mf").to_string_lossy(),
         Some(&dir.join("1-modell.3mf").to_string_lossy()),
     );
-    let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from("/etc")], &dir, &[]);
+    let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from(n("/etc"))], &dir, &[]);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(
         result.is_ok(),
@@ -2206,7 +2210,7 @@ fn sample_new_file_for_rescan_test(path: &std::path::Path) -> NewFile {
 #[test]
 fn catalog_license_validation_accepts_old_exports_and_validates_new_values() {
     let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-        crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+        crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
         conn.execute_batch("ALTER TABLE files DROP COLUMN license")
             .unwrap();
         // The license step is the one before the source-column step.
@@ -2222,7 +2226,7 @@ fn catalog_license_validation_accepts_old_exports_and_validates_new_values() {
         (Some("bad\0text".to_string()), false),
     ] {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
             conn.execute(
                 "UPDATE files SET license = ?1 WHERE id = ?2",
                 rusqlite::params![value, id],
@@ -2233,7 +2237,7 @@ fn catalog_license_validation_accepts_old_exports_and_validates_new_values() {
         assert_eq!(result.is_ok(), valid, "{result:?}");
     }
     let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-        let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+        let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
         conn.execute("UPDATE files SET license = X'1234' WHERE id = ?1", [id])
             .unwrap();
     });
@@ -2301,8 +2305,8 @@ fn print_data_template() -> &'static [u8] {
                         first_layer_seconds REAL, plate_bed_type TEXT);",
                 )
                 .unwrap();
-                crate::db::test_insert_minimal_file(conn, "/tmp/a.3mf", None).unwrap();
-                crate::db::test_insert_minimal_file(conn, "/tmp/b.stl", None).unwrap();
+                crate::db::test_insert_minimal_file(conn, &n("/tmp/a.3mf"), None).unwrap();
+                crate::db::test_insert_minimal_file(conn, &n("/tmp/b.stl"), None).unwrap();
                 conn.execute("UPDATE files SET file_type = 'stl' WHERE id = 2", []).unwrap();
             })
             .0
@@ -2412,7 +2416,7 @@ fn a_backup_with_valid_print_data_but_no_constraints_is_accepted() {
 #[test]
 fn a_backup_with_a_gcode_file_and_its_print_data_is_accepted() {
     let (explicit, restore) = print_data_case(|conn| {
-        crate::db::test_insert_minimal_file(conn, "/tmp/c.gcode", None).unwrap();
+        crate::db::test_insert_minimal_file(conn, &n("/tmp/c.gcode"), None).unwrap();
         conn.execute("UPDATE files SET file_type = 'gcode' WHERE id = 3", [])
             .unwrap();
         info_row(
@@ -2433,7 +2437,7 @@ fn a_gcode_row_with_a_reader_version_from_a_newer_build_is_rejected_but_a_3mf_ro
     // not exist for G-code yet, but it does for 3MF.
     let too_new = (crate::gcode::GCODE_READER_VERSION + 1).to_string();
     let (explicit, restore) = print_data_case(|conn| {
-        crate::db::test_insert_minimal_file(conn, "/tmp/e.gcode", None).unwrap();
+        crate::db::test_insert_minimal_file(conn, &n("/tmp/e.gcode"), None).unwrap();
         conn.execute("UPDATE files SET file_type = 'gcode' WHERE id = 3", [])
             .unwrap();
         info_row(conn, 3, &[("reader_version", too_new.as_str())]);
@@ -2449,7 +2453,7 @@ fn a_gcode_row_with_a_reader_version_from_a_newer_build_is_rejected_but_a_3mf_ro
 #[test]
 fn a_backup_with_resin_and_gcode_rows_but_print_data_for_a_resin_file_is_rejected() {
     let (explicit, restore) = print_data_case(|conn| {
-        crate::db::test_insert_minimal_file(conn, "/tmp/d.ctb", None).unwrap();
+        crate::db::test_insert_minimal_file(conn, &n("/tmp/d.ctb"), None).unwrap();
         conn.execute("UPDATE files SET file_type = 'resin' WHERE id = 3", [])
             .unwrap();
         info_row(conn, 3, &[]);
@@ -2758,8 +2762,8 @@ fn bundle_template() -> &'static [u8] {
                      CREATE TABLE bundle_members (file_id INTEGER, bundle_id INTEGER, position INTEGER, label TEXT);",
                 )
                 .unwrap();
-                crate::db::test_insert_minimal_file(conn, "/tmp/a.3mf", None).unwrap();
-                crate::db::test_insert_minimal_file(conn, "/tmp/b.3mf", None).unwrap();
+                crate::db::test_insert_minimal_file(conn, &n("/tmp/a.3mf"), None).unwrap();
+                crate::db::test_insert_minimal_file(conn, &n("/tmp/b.3mf"), None).unwrap();
             })
             .0
         })
@@ -3025,10 +3029,10 @@ fn with_companion(conn: &Connection, name: &str, path: &str, kind: &str, trash_p
     // A crafted backup need not carry the CHECK constraints.
     conn.pragma_update(None, "ignore_check_constraints", true)
         .unwrap();
-    let id = crate::db::test_insert_minimal_file(conn, "/catalog/Foo.3mf", None).unwrap();
+    let id = crate::db::test_insert_minimal_file(conn, &n("/catalog/Foo.3mf"), None).unwrap();
     conn.execute(
             "INSERT INTO companion_files (file_id, name, path, kind, added_at, deleted_at, trash_path) VALUES (?1, ?2, ?3, ?4, 'now', ?5, ?6)",
-            rusqlite::params![id, name, path, kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path],
+            rusqlite::params![id, name, n(path), kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path.map(n)],
         )
         .unwrap();
 }
@@ -3110,7 +3114,7 @@ fn a_companion_row_in_a_protected_folder_is_rejected() {
         )
     });
     assert!(
-        validate_catalog_db_bytes(&bytes, &[PathBuf::from("/home/user/.config")], &trash, &[])
+        validate_catalog_db_bytes(&bytes, &[PathBuf::from(n("/home/user/.config"))], &trash, &[])
             .is_err()
     );
     assert!(
@@ -3232,7 +3236,7 @@ fn wrong_storage_classes_in_the_new_tables_are_rejected() {
 fn insert_known_copy(conn: &Connection, path: &str, size: i64, hash: &str) {
     conn.execute(
             "INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES (?1, ?2, ?3, 't')",
-            rusqlite::params![path, size, hash],
+            rusqlite::params![n(path), size, hash],
         )
         .unwrap();
 }
@@ -3271,7 +3275,7 @@ fn crafted_known_copy_rows_are_rejected() {
 fn a_known_copy_in_a_protected_location_is_rejected() {
     let (bytes, trash) =
         catalog_bytes(|conn| insert_known_copy(conn, "/protected/dir/a.3mf", 1, COPY_HASH));
-    let sensitive = [PathBuf::from("/protected")];
+    let sensitive = [PathBuf::from(n("/protected"))];
     assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     assert!(
         validate_catalog_db_bytes(&bytes, &[], &trash, &[]).is_ok(),
@@ -3345,9 +3349,10 @@ fn trash_policy_accepts_both_formats_and_rejects_escape_cases() {
             desktop.join(format!("sub/{prefix}7-model.3mf")),
             web.join(format!("{prefix}7-model.3mf")),
             web.join(format!("{prefix}7-nothex00-model.3mf")),
-            web.join(format!(
-                "../.katalog-papierkorb/{prefix}7-deadbeef-model.3mf"
-            )),
+            crate::join_unresolved(
+                &web,
+                &format!("../.katalog-papierkorb/{prefix}7-deadbeef-model.3mf"),
+            ),
         ] {
             assert!(
                 validate_trash_path(&fs, &path, 7, companion, &policy, &[], None).is_err(),
@@ -3456,7 +3461,7 @@ fn preparation_scrubs_foreign_secrets_and_preserves_local_state_and_source_bytes
         &crate::thingiverse::Token::parse(foreign_key).unwrap(),
     )
     .unwrap();
-    db::test_insert_minimal_file(&incoming, "/models/a.3mf", None).unwrap();
+    db::test_insert_minimal_file(&incoming, &n("/models/a.3mf"), None).unwrap();
     incoming
         .execute(
             "UPDATE files SET content_hash = 'forged', imported_at = '1900'",
