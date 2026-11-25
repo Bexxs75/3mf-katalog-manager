@@ -82,3 +82,32 @@ Windows-Verhalten lässt sich auf ObiWan näherungsweise prüfen: Testprogramme 
 der 48 Kernfehler; die übrigen sechs (K6, K8, K9) zeigt nur echtes Windows. Wine weicht
 bei Groß/Klein-Umbenennung, Erstellzeiten und Prozessnummern ab, das Ergebnis der CI
 entscheidet.
+
+## Läufe
+
+Gezählt sind die Zeilen `test result:` und `... FAILED` im Log, nicht der Schritt-Status.
+
+| Lauf | Stand | Windows Kern | Windows Befehle | macOS Kern | macOS Befehle |
+|---|---|---|---|---|---|
+| 45602887314 | 54082126 (vorher) | 1432 ok, 48 Fehler | nicht gestartet | 1526 ok, 6 Fehler | 851 ok, 3 Fehler |
+| 45609856443 | 7eee543a | 1481 ok, 0 Fehler, 9 ausgelassen | 786 ok, 37 Fehler, 8 ausgelassen | 1532 ok, 0 Fehler, 9 ausgelassen | 853 ok, 0 Fehler, 9 ausgelassen |
+| 45616640720 | e477afcf, ohne `continue-on-error` | 1481 ok, 0 Fehler, 9 ausgelassen | 823 ok, 0 Fehler, 8 ausgelassen | 1532 ok, 0 Fehler, 9 ausgelassen | 853 ok, 0 Fehler, 9 ausgelassen |
+
+Im Lauf 45616640720 sind beide `desktop-compile`-Jobs ohne `continue-on-error` grün.
+
+Der Linux-Job `ci-checks` desselben Laufs schlug im ersten Versuch an
+`katalog-server … invoke::tests::issue_scan_runs_on_its_own_thread_and_answers_a_timeout`
+fehl (200 statt 504). Der Test setzt die Zeitgrenze auf null und erwartet, dass der Scan
+sie verliert; auf einem ausgelasteten Rechner gewinnt er. `katalog-server` ist in P0c
+unverändert. Auf ObiWan: 0 von 60 Fehlschlägen ohne Last, 19 von 60 mit 16 ausgelasteten
+Kernen. Gehört zum geplanten Umbau der Zeittests, nicht zu P0c.
+
+Linux auf ObiWan (Stand e477afcf): `cargo test -p katalog-core --no-default-features`
+1949 ok, 10 ausgelassen (vorher 1947; zwei neue Tests zu K10 und K11);
+`cargo test -p mf-katalog-manager --no-default-features commands::` 856 ok, 8 ausgelassen
+(unverändert); `cargo test --workspace --no-default-features` ohne Fehler;
+`cargo clippy --workspace --no-default-features --all-targets -- -D warnings` ohne Befund.
+Golden-Dateien unverändert.
+
+Mehrlaufzeit auf Windows: Kern 333 bis 653 s, Befehle 637 bis 828 s je Lauf (macOS 27 bis
+56 s). Der Windows-Job dauert damit rund 25 bis 30 Minuten.
