@@ -768,3 +768,43 @@ async fn restore_refuses_unrestorable_automatic_backup_before_exchange() {
         crate::barrier::State::Open
     );
 }
+
+/// Preview and activation with the same bytes: `outside-link` lies outside the
+/// catalog roots and points at the protected config directory. Only resolving the
+/// path on the filesystem would reveal that, so activation accepting it like the
+/// preview proves it was not resolved. The same link below a root is still
+/// resolved, and both refuse it.
+#[tokio::test]
+async fn restore_activation_uses_the_preview_boundary_for_imported_paths() {
+    let f = Fixture::new(true);
+    std::os::unix::fs::symlink(f.dir.join("config"), f.dir.join("outside-link")).unwrap();
+    std::os::unix::fs::symlink(f.dir.join("config"), f.dir.join("models/inside-link")).unwrap();
+    let local =
+        katalog_core::db::thingiverse::local_settings(&db::connect_in_memory().unwrap()).unwrap();
+    let prepare = |catalog: &CheckedCatalog| {
+        let mut output = std::fs::File::create(f.dir.join("prepared.db")).unwrap();
+        catalog.prepare_to(&f.app.config, &local, &mut output)
+    };
+
+    let outside = format!(
+        "UPDATE files SET path = '{}', name = 'x.3mf'",
+        f.dir.join("outside-link/x.3mf").display()
+    );
+    let (catalog, report) = stage(&f.app.config, &f.archive(&outside)).unwrap();
+    assert_eq!(report.path_warnings.len(), 1);
+    assert!(
+        prepare(&catalog).is_ok(),
+        "activation must match the preview"
+    );
+
+    let inside = format!(
+        "UPDATE files SET path = '{}', name = 'x.3mf'",
+        f.dir.join("models/inside-link/x.3mf").display()
+    );
+    assert!(stage(&f.app.config, &f.archive(&inside)).is_err());
+    let (catalog, _) = stage(&f.app.config, &f.archive("")).unwrap();
+    assert!(
+        prepare(&catalog).is_ok(),
+        "a normal backup is still prepared"
+    );
+}
