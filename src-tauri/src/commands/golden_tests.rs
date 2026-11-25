@@ -131,3 +131,105 @@ fn golden_trash_file_invalid_companion() {
         w.step("delete again (already trashed)", r);
     });
 }
+
+/// Related rows for every file id: they must follow the model (CASCADE / SET NULL) in removals.
+fn seed_related(w: &World, ids: &[i64]) {
+    w.conn.execute_batch("INSERT INTO tags (id, name, color_hue) VALUES (1, 'red', 10); INSERT INTO collections (id, name, created_at) VALUES (1, 'set', '2026-01-01T00:00:00Z'); INSERT INTO printers (id, name) VALUES (1, 'P1');").unwrap();
+    for (n, id) in ids.iter().enumerate() {
+        let n = n + 1;
+        w.conn
+            .execute_batch(&format!(
+                "INSERT INTO file_tags (file_id, tag_id) VALUES ({id}, 1);
+                 INSERT INTO file_metadata (file_id, label, value) VALUES ({id}, 'k', 'v{n}');
+                 INSERT INTO file_materials (file_id, name, display_color) VALUES ({id}, 'PLA{n}', '#ff0000');
+                 INSERT INTO collection_files (collection_id, file_id, position) VALUES (1, {id}, {n});
+                 INSERT INTO print_log (file_id, printed_at, note, created_at) VALUES ({id}, '2026-01-01', 'n{n}', '2026-01-01T00:00:00Z');
+                 INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES ({id}, 1, '2026-01-01T00:00:00Z', 'sliced', 'read');
+                 INSERT INTO file_print_plates (file_id, plate_index, plate_name) VALUES ({id}, 1, 'plate{n}');
+                 INSERT INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s, used_mm, booked_file_id) VALUES (1, 'job{n}', 'f{n}.3mf', 'completed', 'ok', 1.0, 1.0, 1.0, {id});"
+            ))
+            .unwrap();
+    }
+}
+
+fn removal_world(w: &mut World) -> (i64, i64, [i64; 5]) {
+    let top = db::insert_folder_with_parent(&w.conn, "top", None, &w.dir("top").to_string_lossy()).unwrap();
+    let sub = db::insert_folder_with_parent(&w.conn, "sub", Some(top), &w.dir("top/sub").to_string_lossy()).unwrap();
+    let other = db::insert_folder_with_parent(&w.conn, "other", None, &w.dir("other").to_string_lossy()).unwrap();
+    let a = add_file(w, "top/a.3mf", top);
+    let b = add_file(w, "top/sub/b.3mf", sub);
+    let c = add_file(w, "other/c.3mf", other);
+    let d = add_file(w, "other/d.3mf", other);
+    let t = add_file(w, "top/sub/t.3mf", sub);
+    db::soft_delete_file(&w.conn, t, Some(&w.root.join("trash/t.3mf").to_string_lossy()), "2026-01-01T00:00:00Z").unwrap();
+    seed_related(w, &[a, b, c, d, t]);
+    db::bundles::create_bundle(&w.conn, "Pair", db::bundles::BundleKind::Parts, &[a, c], "2026-01-01T00:00:00Z").unwrap();
+    db::bundles::create_bundle(&w.conn, "Trio", db::bundles::BundleKind::Variants, &[b, c, d], "2026-01-01T00:00:00Z").unwrap();
+    (top, sub, [a, b, c, d, t])
+}
+
+#[test]
+fn golden_remove_files_from_catalog() {
+    run_golden("remove_files_catalog", |w| {
+        let (_top, _sub, [a, b, c, _d, t]) = removal_world(w);
+        for (label, ids) in [
+            ("zero id", vec!["0".to_string()]),
+            ("not a number", vec!["abc".to_string()]),
+            ("negative id", vec!["-3".to_string()]),
+            ("unknown id", vec!["9999".to_string()]),
+            ("trashed id", vec![t.to_string()]),
+            ("valid and unknown (nothing removed)", vec![a.to_string(), "9999".to_string()]),
+            ("empty list", vec![]),
+        ] {
+            let r = remove_files_with_conn(&w.conn, ids);
+            w.step(label, r);
+        }
+        let r = remove_files_with_conn(&w.conn, vec![a.to_string(), a.to_string(), c.to_string()]);
+        w.step("batch with duplicate (a, a, c)", r);
+        let r = remove_files_with_conn(&w.conn, vec![b.to_string()]);
+        w.step("single (b), bundle Trio keeps two", r);
+    });
+}
+
+#[test]
+fn golden_remove_folder_refusals_and_summary() {
+    run_golden("remove_folder_refusals", |w| {
+        let (top, sub, _ids) = removal_world(w);
+        let step_count = |w: &mut World, label: &str, id: &str| {
+            let r = remove_folder_with_conn(&w.conn, id).map(|c| serde_json::to_value(&c).unwrap());
+            w.step(label, r);
+        };
+        for (label, id) in [("summary top", top.to_string()), ("summary sub", sub.to_string()), ("summary unknown", "9999".to_string()), ("summary bad id", "x".to_string())] {
+            let r = folder_summary_with_conn(&w.conn, &id);
+            w.step(label, r);
+        }
+        step_count(w, "remove unknown folder", "9999");
+        step_count(w, "remove zero id", "0");
+        let sub_path = w.root.join("top/sub").to_string_lossy().to_string();
+        db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &sub_path).unwrap();
+        step_count(w, "remove top (subtree holds the base dir)", &top.to_string());
+        step_count(w, "remove sub (is the base dir)", &sub.to_string());
+        let r = db::printer_link::get_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR).map_err(CmdError::from);
+        w.step("base dir setting after refusals", r.map(|v| v.map(|s| s.replace(&w.root.to_string_lossy().to_string(), "<ROOT>"))));
+        let other = w.root.join("other").to_string_lossy().to_string();
+        db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &other).unwrap();
+        step_count(w, "remove sub (base dir elsewhere; trashed file stays)", &sub.to_string());
+    });
+}
+
+#[test]
+fn golden_reset_catalog() {
+    run_golden("reset_catalog", |w| {
+        let (_top, _sub, _ids) = removal_world(w);
+        db::printer_link::set_setting(&w.conn, folders::SETTING_CATALOG_BASE_DIR, &w.root.join("top").to_string_lossy()).unwrap();
+        db::printer_link::set_setting(&w.conn, "keep_me", "yes").unwrap();
+        let r = reset_with_conn(&w.conn).map(|c| serde_json::to_value(&c).unwrap());
+        w.step("reset", r);
+        for key in [folders::SETTING_CATALOG_BASE_DIR, "keep_me"] {
+            let r = db::printer_link::get_setting(&w.conn, key).map_err(CmdError::from);
+            w.step(&format!("setting {key}"), r);
+        }
+        let r = reset_with_conn(&w.conn).map(|c| serde_json::to_value(&c).unwrap());
+        w.step("reset again (empty)", r);
+    });
+}

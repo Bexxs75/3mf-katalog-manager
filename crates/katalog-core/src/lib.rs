@@ -25,6 +25,7 @@ pub mod thingiverse;
 pub mod backup;
 pub mod schema_versions;
 pub mod catalog_export;
+pub mod catalog_removal;
 
 #[cfg(test)]
 pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {

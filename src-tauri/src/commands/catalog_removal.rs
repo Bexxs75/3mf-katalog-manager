@@ -1,10 +1,6 @@
 use super::*;
-use rusqlite::OptionalExtension;
+use katalog_core::catalog_removal;
 use tauri::Manager;
-
-use crate::db::FOLDER_SUBTREE_CTE;
-
-const BASE_DIR_ERROR: ErrorCode = ErrorCode::CatalogBaseDirProtected;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,53 +24,22 @@ pub(super) fn parse_id(id: &str) -> CmdResult<i64> {
         .ok_or_else(|| CmdError::coded(ErrorCode::InvalidCatalogId))
 }
 
-fn remove_files_with_conn(conn: &Connection, file_ids: Vec<String>) -> CmdResult<usize> {
+pub(super) fn remove_files_with_conn(conn: &Connection, file_ids: Vec<String>) -> CmdResult<usize> {
     let ids = file_ids
         .iter()
         .map(|id| parse_id(id))
-        .collect::<CmdResult<HashSet<_>>>()?;
-    let tx = conn.unchecked_transaction().map_err(DbError::from)?;
-    for id in &ids {
-        let exists: bool = tx
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM files WHERE id = ?1 AND deleted_at IS NULL)",
-                [id],
-                |r| r.get(0),
-            )
-            .map_err(DbError::from)?;
-        if !exists {
-            return Err(CmdError::coded(ErrorCode::ModelNotFoundOrTrashed));
-        }
-    }
-    for id in &ids {
-        tx.execute("DELETE FROM files WHERE id = ?1", [id])
-            .map_err(DbError::from)?;
-    }
-    db::bundles::prune_bundles(&tx)?;
-    tx.commit().map_err(DbError::from)?;
-    log::info!(target: "catalog", "{} Modelle aus dem Katalog entfernt", ids.len());
-    Ok(ids.len())
+        .collect::<CmdResult<Vec<_>>>()?;
+    let removed = catalog_removal::remove_files(conn, &ids)?;
+    log::info!(target: "catalog", "{removed} Modelle aus dem Katalog entfernt");
+    Ok(removed)
 }
 
-fn folder_summary_with_conn(conn: &Connection, folder_id: &str) -> CmdResult<FolderRemovalSummary> {
-    let id = parse_id(folder_id)?;
-    let name = conn
-        .query_row("SELECT name FROM folders WHERE id = ?1", [id], |r| r.get(0))
-        .optional()
-        .map_err(DbError::from)?
-        .ok_or_else(|| CmdError::coded(ErrorCode::FolderNotFound))?;
-    let subfolder_count = conn
-        .query_row(
-            &format!("{FOLDER_SUBTREE_CTE} SELECT COUNT(*) - 1 FROM subtree"),
-            [id],
-            |r| r.get(0),
-        )
-        .map_err(DbError::from)?;
-    let model_count = conn.query_row(&format!("{FOLDER_SUBTREE_CTE} SELECT COUNT(*) FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id], |r| r.get(0)).map_err(DbError::from)?;
+pub(super) fn folder_summary_with_conn(conn: &Connection, folder_id: &str) -> CmdResult<FolderRemovalSummary> {
+    let s = catalog_removal::folder_summary(conn, parse_id(folder_id)?)?;
     Ok(FolderRemovalSummary {
-        name,
-        subfolder_count,
-        model_count,
+        name: s.name,
+        subfolder_count: s.subfolder_count,
+        model_count: s.model_count,
     })
 }
 
@@ -82,55 +47,19 @@ pub(super) fn remove_folder_with_conn(
     conn: &Connection,
     folder_id: &str,
 ) -> CmdResult<CatalogRemovalCount> {
-    let id = parse_id(folder_id)?;
-    let tx = conn.unchecked_transaction().map_err(DbError::from)?;
-    let summary = folder_summary_with_conn(&tx, folder_id)?;
-    // Protect ancestors too: cascading their removal must not bypass the base-directory guard.
-    let contains_base: bool = tx.query_row(&format!("{FOLDER_SUBTREE_CTE} SELECT EXISTS(SELECT 1 FROM folders WHERE id IN (SELECT id FROM subtree) AND path = (SELECT value FROM app_settings WHERE key = ?2))"), rusqlite::params![id, folders::SETTING_CATALOG_BASE_DIR], |r| r.get(0)).map_err(DbError::from)?;
-    if contains_base {
-        return Err(CmdError::coded(BASE_DIR_ERROR));
-    }
-    tx.execute(&format!("{FOLDER_SUBTREE_CTE} DELETE FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL"), [id]).map_err(DbError::from)?;
-    db::bundles::prune_bundles(&tx)?;
-    tx.execute("DELETE FROM folders WHERE id = ?1", [id])
-        .map_err(DbError::from)?;
-    tx.commit().map_err(DbError::from)?;
-    let result = CatalogRemovalCount {
-        model_count: summary.model_count,
-        folder_count: summary.subfolder_count + 1,
-    };
+    let result = count_of(catalog_removal::remove_folder(conn, parse_id(folder_id)?)?);
     log::info!(target: "catalog", "{} Modelle und {} Ordner aus dem Katalog entfernt", result.model_count, result.folder_count);
     Ok(result)
 }
 
-fn reset_with_conn(conn: &Connection) -> CmdResult<CatalogRemovalCount> {
-    let tx = conn.unchecked_transaction().map_err(DbError::from)?;
-    let folder_count = tx
-        .query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0))
-        .map_err(DbError::from)?;
-    let model_count = tx
-        .execute("DELETE FROM files WHERE deleted_at IS NULL", [])
-        .map_err(DbError::from)? as i64;
-    // Reset detaches the retained job history from the catalog, including trash entries.
-    tx.execute("UPDATE printer_jobs SET booked_file_id = NULL", [])
-        .map_err(DbError::from)?;
-    tx.execute("DELETE FROM folders", [])
-        .map_err(DbError::from)?;
-    tx.execute("DELETE FROM tags", []).map_err(DbError::from)?;
-    tx.execute("DELETE FROM collections", [])
-        .map_err(DbError::from)?;
-    db::bundles::clear_bundles(&tx)?;
-    tx.execute(
-        "DELETE FROM app_settings WHERE key = ?1",
-        [folders::SETTING_CATALOG_BASE_DIR],
-    )
-    .map_err(DbError::from)?;
-    tx.commit().map_err(DbError::from)?;
-    log::info!(target: "catalog", "Katalog zurückgesetzt: {model_count} Modelle, {folder_count} Ordner");
-    Ok(CatalogRemovalCount {
-        model_count,
-        folder_count,
-    })
+pub(super) fn reset_with_conn(conn: &Connection) -> CmdResult<CatalogRemovalCount> {
+    let result = count_of(catalog_removal::reset(conn)?);
+    log::info!(target: "catalog", "Katalog zurückgesetzt: {} Modelle, {} Ordner", result.model_count, result.folder_count);
+    Ok(result)
+}
+
+fn count_of(c: catalog_removal::CatalogRemovalCount) -> CatalogRemovalCount {
+    CatalogRemovalCount { model_count: c.model_count, folder_count: c.folder_count }
 }
 
 #[tauri::command]
