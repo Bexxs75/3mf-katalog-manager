@@ -500,6 +500,8 @@ pub fn move_files_to_folder(
 }
 /// `name` ends up in `with_file_name` and must be a single harmless path
 /// component (CWE-22, like `validate_folder_name`).
+/// The rename itself checks the name in `katalog_core::file_rename`; this stays for the tests.
+#[allow(dead_code)]
 fn validate_file_name(name: &str) -> CmdResult<()> {
     folders::validate_name(name, true, folders::NameKind::File)
 }
@@ -522,64 +524,36 @@ pub(super) fn rename_file_with_conn_fs(
     new_name: String,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
-    validate_file_name(&new_name)?;
-    let file = db::get_file(conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "file not found".to_string())?;
-    if file.deleted_at.is_some() {
-        return Err(CmdError::coded(ErrorCode::FileInTrash));
-    }
+    rename_file_with_conn_fs_case(fs, conn, id, new_name, sensitive_dirs, rename::CASE_INSENSITIVE_PATHS)
+}
 
-    let old_path = PathBuf::from(&file.path);
-    let new_path = old_path.with_file_name(&new_name);
-    reject_if_sensitive_path(&old_path, sensitive_dirs)?;
-    reject_if_sensitive_path(&new_path, sensitive_dirs)?;
-
-    if new_path == old_path {
-        return Ok(());
-    }
-    if rename::target_collides_with(fs, &old_path, &new_path).map_err(|e| e.to_string())? {
-        return Err(CmdError::coded_with(ErrorCode::FileTargetExists, [new_path.display()]));
-    }
-    rename::rename_file_on_disk_with(fs, &old_path, &new_path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::AlreadyExists {
-            // Created by someone else after the check above; reported like the early collision.
-            CmdError::coded_with(ErrorCode::FileTargetExists, [new_path.display()])
-        } else {
-            e.to_string().into()
+/// `rename_file_with_conn_fs` with the case rule as a parameter (macOS/Windows: two names that
+/// differ only in letter case are the same folder), so Linux tests cover both branches. The
+/// rename itself lives in `katalog_core::file_rename`.
+pub(super) fn rename_file_with_conn_fs_case(
+    fs: &dyn Fs,
+    conn: &Connection,
+    id: i64,
+    new_name: String,
+    sensitive_dirs: &[PathBuf],
+    case_insensitive: bool,
+) -> CmdResult<()> {
+    katalog_core::file_rename::rename_file(
+        conn,
+        &rename::FileRenameFsAdapter(fs),
+        &companions::CompanionFsAdapter(fs),
+        id,
+        &new_name,
+        sensitive_dirs,
+        case_insensitive,
+    )
+    .map_err(|failure| {
+        // The companion error is logged first (once), like before; the returned text is the combined one.
+        if let Some(first) = failure.first {
+            let _ = CmdError::from(first);
         }
-    })?;
-
-    // The model's companion files follow into the folder named after the new name.
-    let carried = match companions::carry_fs(fs, conn, id, &old_path, &new_path) {
-        Ok(carried) => carried,
-        Err(error) => {
-            if let Err(rollback_err) = rename::rename_file_on_disk_with(fs, &new_path, &old_path) {
-                return Err(format!(
-                    "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}",
-                    new_path.display()
-                )
-                .into());
-            }
-            return Err(error);
-        }
-    };
-    if let Err(db_err) = db::rename_file(conn, id, &new_name, &new_path.to_string_lossy()) {
-        carried.undo_with(fs, conn);
-        // Undo the rename so file system and DB don't drift apart.
-        if let Err(rollback_err) = rename::rename_file_on_disk_with(fs, &new_path, &old_path) {
-            return Err(format!(
-                "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
-                new_path.display(),
-                old_path.display()
-            )
-            .into());
-        }
-        return Err(db_err.to_string().into());
-    }
-    carried.finish_with(fs);
-    log::debug!(target: "datei", "umbenannt: {} -> {}", old_path.display(), new_path.display());
-    Ok(())
+        CmdError::from(failure.error)
+    })
 }
 /// Renames a real file on disk (same directory, never replacing a file) and updates
 /// `name`/`path` in the DB accordingly.

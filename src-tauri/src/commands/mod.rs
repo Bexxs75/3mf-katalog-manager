@@ -389,3 +389,9 @@ mod golden_tests;
 mod golden_companion_tests;
 #[cfg(test)]
 mod golden_trash_tests;
+#[cfg(test)]
+mod golden_rename_tests;
+#[cfg(test)]
+mod test_log;
+#[cfg(test)]
+mod rename_log_tests;

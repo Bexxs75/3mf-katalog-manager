@@ -3,6 +3,7 @@ use super::*;
 #[cfg(test)]
 use chrono::{DateTime, Local};
 use katalog_core::date_rename::{self as core, DateRenameEffect, StdDateRenameFs};
+use katalog_core::file_rename as core_rename;
 #[cfg(test)]
 use katalog_core::date_rename::{ApplyStatus, PreviewStatus};
 pub use katalog_core::date_rename::{
@@ -26,39 +27,31 @@ impl DateRenameEffect for DesktopDateRenameEffect<'_> {
         new: &Path,
         commit: &mut dyn FnMut() -> Result<(), String>,
     ) -> Result<(), String> {
-        rename::rename_file_on_disk(old, new).map_err(|error| {
-            if error.kind() == std::io::ErrorKind::AlreadyExists {
+        use katalog_core::file_rename::RenameFlowError;
+        let fs = RealFs;
+        core_rename::rename_reversible(
+            self.conn,
+            &rename::FileRenameFsAdapter(&fs),
+            &companions::CompanionFsAdapter(&fs),
+            file.id,
+            old,
+            new,
+            rename::CASE_INSENSITIVE_PATHS,
+            commit,
+        )
+        .map_err(|error| match error {
+            RenameFlowError::Disk(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 CmdError::coded_with(ErrorCode::FileTargetExists, [new.display()]).message
-            } else {
-                error.to_string()
             }
-        })?;
-        let carried = match companions::carry(self.conn, file.id, old, new) {
-            Ok(carried) => carried,
-            Err(error) => {
-                if let Err(rollback_err) = rename::rename_file_on_disk(new, old) {
-                    return Err(format!(
-                        "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}",
-                        new.display()
-                    ));
-                }
-                return Err(error.message);
+            RenameFlowError::Disk(error) => error.to_string(),
+            RenameFlowError::Companion(error) => CmdError::from(error).message,
+            RenameFlowError::CompanionAndRollback { companion, text } => {
+                // The original error is logged once, as before; the combined text is returned.
+                let _ = CmdError::from(companion);
+                text
             }
-        };
-        if let Err(db_err) = commit() {
-            carried.undo(self.conn);
-            if let Err(rollback_err) = rename::rename_file_on_disk(new, old) {
-                return Err(format!(
-                    "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
-                    new.display(),
-                    old.display()
-                ));
-            }
-            return Err(db_err);
-        }
-        carried.finish();
-        log::debug!(target: "datei", "umbenannt: {} -> {}", old.display(), new.display());
-        Ok(())
+            RenameFlowError::Combined(text) | RenameFlowError::Commit(text) => text,
+        })
     }
 }
 
@@ -71,7 +64,7 @@ fn preview_with_conn(
     core::preview(conn, file_ids, source, sensitive, &StdDateRenameFs).map_err(Into::into)
 }
 
-fn apply_with_conn(
+pub(super) fn apply_with_conn(
     conn: &Connection,
     items: Vec<DateRenameItem>,
     sensitive: &[PathBuf],
