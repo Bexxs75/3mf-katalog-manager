@@ -215,6 +215,15 @@ impl FileMoveFs for super::companions::CompanionFsAdapter<'_> {
 /// On these systems two names that differ only in case are the same folder.
 const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
 
+/// The error a refused move returns; the companion error behind a failed move back is
+/// converted (and so logged) first, as it was when the carry still lived here.
+fn refusal_error(refusal: moving::MoveRefusal) -> CmdError {
+    if let Some(origin) = refusal.origin {
+        drop(CmdError::from(origin));
+    }
+    refusal.error.into()
+}
+
 /// `move_file_to_folder_with_conn` on an injected file system (tests).
 #[cfg(test)]
 pub(super) fn move_file_to_folder_with_conn_fs(
@@ -226,7 +235,7 @@ pub(super) fn move_file_to_folder_with_conn_fs(
 ) -> CmdResult<()> {
     moving::move_file(&super::companions::CompanionFsAdapter(fs), conn, file_id, folder_id, sensitive_dirs, CASE_INSENSITIVE_PATHS)
         .map(|_| ())
-        .map_err(|refusal| refusal.error.into())
+        .map_err(refusal_error)
 }
 
 /// The outcome of the move as JSON, with the refusal code the batch reports
@@ -245,7 +254,10 @@ pub(super) fn move_file_outcome_fs(
             serde_json::json!({ "moved": { "fromFolderId": from_folder_id, "fromPath": from_path } })
         }
         Ok(moving::MoveOutcome::AlreadyThere) => serde_json::json!("alreadyThere"),
-        Err(refusal) => serde_json::json!({ "refused": { "code": refusal.code, "error": CmdError::from(refusal.error) } }),
+        Err(refusal) => {
+            let code = refusal.code;
+            serde_json::json!({ "refused": { "code": code, "error": refusal_error(refusal) } })
+        }
     }
 }
 
@@ -258,7 +270,7 @@ pub(super) fn move_file_to_folder_with_conn(
 ) -> CmdResult<()> {
     moving::move_file(&super::companions::CompanionFsAdapter(&RealFs), conn, file_id, folder_id, sensitive_dirs, CASE_INSENSITIVE_PATHS)
         .map(|_| ())
-        .map_err(|refusal| refusal.error.into())
+        .map_err(refusal_error)
 }
 /// Moves a file into a target folder's directory and updates `folder_id`/`path`.
 /// `folder_id: None` leaves it where it is.

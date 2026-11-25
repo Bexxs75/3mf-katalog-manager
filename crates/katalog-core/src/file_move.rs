@@ -92,11 +92,16 @@ pub enum MoveOutcome {
 pub struct MoveRefusal {
     pub code: &'static str,
     pub error: CmdError,
+    /// The companion error that made the move undo itself, when the undo failed too and
+    /// `error` is the composed message instead. The caller converts it first (so the
+    /// desktop log keeps the origin with its parameters, as before the move went into the
+    /// core), then `error`. `None` when `error` is itself the origin.
+    pub origin: Option<CmdError>,
 }
 
 impl MoveRefusal {
     fn new(code: &'static str, error: impl Into<CmdError>) -> Self {
-        Self { code, error: error.into() }
+        Self { code, error: error.into(), origin: None }
     }
 }
 
@@ -176,13 +181,11 @@ pub fn move_file(
         Ok(carried) => carried,
         Err(error) => {
             if let Err(rollback_err) = fs.move_file(&new_path, &old_path) {
-                return Err(MoveRefusal::new(
-                    "error",
-                    format!(
-                        "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}",
-                        new_path.display()
-                    ),
-                ));
+                let composed = format!(
+                    "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}",
+                    new_path.display()
+                );
+                return Err(MoveRefusal { origin: Some(error), ..MoveRefusal::new("error", composed) });
             }
             return Err(MoveRefusal::new("error", error));
         }
@@ -299,6 +302,9 @@ where
             Err(refusal) => {
                 // The caller's error type is built (and so logged) for a refused file, as it
                 // always was, although the batch reports only the code.
+                if let Some(origin) = refusal.origin {
+                    drop(E::from(origin));
+                }
                 drop(E::from(refusal.error));
                 let status = if refusal.code == "name_exists" { "skipped" } else { "failed" };
                 MoveFileResult::with_reason(id_str, status, refusal.code)

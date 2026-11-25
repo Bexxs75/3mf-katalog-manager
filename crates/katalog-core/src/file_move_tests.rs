@@ -179,6 +179,7 @@ fn a_companion_that_cannot_follow_sends_the_model_back() {
     let fs = FaultMoveFs::new(&[("move_file", 2, PermissionDenied)]);
     let r = w.go(&fs, id).unwrap_err();
     assert_eq!(r.code, "error");
+    assert!(r.origin.is_none(), "the returned error is the origin itself");
     assert!(old.exists() && !w.dst.join("Foo.3mf").exists());
     assert_eq!(w.path_of(id), old.to_string_lossy());
     assert!(pic.exists());
@@ -289,4 +290,28 @@ fn the_batch_stops_when_the_lock_fails_and_keeps_what_was_moved() {
     let err = move_files(&StdFileMoveFs, lock, &[a.to_string(), b.to_string()], w.dst_id, &[], false).unwrap_err();
     assert_eq!(err.message, "locked");
     assert!(w.dst.join("a.3mf").exists() && w.src.join("b.3mf").exists());
+}
+
+#[test]
+fn the_original_companion_error_survives_a_failing_move_back() {
+    let w = World::new("origin");
+    let (id, _) = w.model("Foo.3mf");
+    w.companion(id, "Foo.3mf");
+    // The companion's name is taken in the new folder (coded error with a parameter), then
+    // the move back of the model fails too.
+    let fs = FaultMoveFs::new(&[("move_file", 2, AlreadyExists), ("move_file", 3, PermissionDenied)]);
+    let r = w.go(&fs, id).unwrap_err();
+    assert!(r.error.message.contains("UND Rollback"), "{}", r.error.message);
+    let origin = r.origin.expect("origin kept for the log");
+    assert!(origin.expected);
+    assert_eq!(origin.message, ErrorCode::CompanionNameTaken.as_str());
+    assert_eq!(origin.params, vec!["pic.png".to_string()]);
+    // The same clash with a working move back returns the origin itself, once.
+    let w = World::new("origin2");
+    let (id, _) = w.model("Foo.3mf");
+    w.companion(id, "Foo.3mf");
+    let r = w.go(&FaultMoveFs::new(&[("move_file", 2, AlreadyExists)]), id).unwrap_err();
+    assert!(r.origin.is_none());
+    assert_eq!(r.error.message, ErrorCode::CompanionNameTaken.as_str());
+    assert_eq!(r.error.params, vec!["pic.png".to_string()]);
 }
