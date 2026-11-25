@@ -20,14 +20,25 @@ pub const GOLDEN_TABLES: &[&str] = &[
     "bundles",
     "bundle_members",
     "disk_sync_known_copies",
+    // Dependents of `files` (CASCADE / SET NULL on delete) and their parents.
+    "tags",
+    "file_tags",
+    "file_metadata",
+    "file_materials",
+    "collections",
+    "collection_files",
+    "print_log",
+    "file_print_info",
+    "file_print_plates",
+    "printers",
+    "printer_jobs",
+    "slicer_reports",
 ];
 
 pub struct World {
     pub conn: Connection,
     /// Real temp directory of the scenario; replaced by `<ROOT>` in the snapshot.
     pub root: PathBuf,
-    /// Scenarios that want the case-insensitive branch pass this on where the code has the parameter.
-    pub case_insensitive: bool,
     steps: Vec<serde_json::Value>,
 }
 
@@ -64,9 +75,27 @@ fn norm_text(s: &str, root: &Path) -> String {
     s.replace(&root_s, "<ROOT>").replace('\\', "/")
 }
 
+/// OS error texts differ per platform ("File exists (os error 17)" vs. the Windows wording);
+/// map them to a stable category. Structured error codes and parameters stay untouched.
+fn norm_os_error(s: &str) -> Option<String> {
+    if !s.contains("(os error ") {
+        return None;
+    }
+    let category = if s.contains("File exists") || s.contains("already exists") {
+        "already exists"
+    } else if s.contains("No such file") || s.contains("cannot find") {
+        "not found"
+    } else if s.contains("Permission denied") || s.contains("Access is denied") {
+        "permission denied"
+    } else {
+        "other"
+    };
+    Some(format!("<io error: {category}>"))
+}
+
 fn norm_json(v: &mut serde_json::Value, root: &Path) {
     match v {
-        serde_json::Value::String(s) => *s = norm_text(s, root),
+        serde_json::Value::String(s) => *s = norm_os_error(s).unwrap_or_else(|| norm_text(s, root)),
         serde_json::Value::Array(a) => a.iter_mut().for_each(|x| norm_json(x, root)),
         serde_json::Value::Object(o) => o.values_mut().for_each(|x| norm_json(x, root)),
         _ => {}
@@ -157,13 +186,12 @@ fn golden_path(name: &str) -> PathBuf {
 }
 
 /// Runs `body` in a fresh world and compares the snapshot with the golden file.
-pub fn run_golden(name: &str, case_insensitive: bool, body: impl FnOnce(&mut World)) {
+pub fn run_golden(name: &str, body: impl FnOnce(&mut World)) {
     let root = unique_test_dir(&format!("golden_{name}"));
     let root = root.canonicalize().unwrap_or(root);
     let mut w = World {
         conn: db::connect_in_memory().unwrap(),
         root: root.clone(),
-        case_insensitive,
         steps: Vec::new(),
     };
     body(&mut w);

@@ -10,7 +10,7 @@ use super::golden_harness::World;
 
 #[test]
 fn golden_rename_file() {
-    run_golden("rename_file", false, |w| {
+    run_golden("rename_file", |w| {
         let dir = w.dir("cat");
         let f = db::insert_folder_with_parent(&w.conn, "cat", None, &dir.to_string_lossy()).unwrap();
         let a = add_file(w, "cat/a.3mf", f);
@@ -30,7 +30,7 @@ fn golden_rename_file() {
 
 #[test]
 fn golden_move_file() {
-    run_golden("move_file", false, |w| {
+    run_golden("move_file", |w| {
         let src = db::insert_folder_with_parent(&w.conn, "src", None, &w.dir("src").to_string_lossy()).unwrap();
         let dst = db::insert_folder_with_parent(&w.conn, "dst", None, &w.dir("dst").to_string_lossy()).unwrap();
         let a = add_file(w, "src/a.3mf", src);
@@ -47,25 +47,44 @@ fn golden_move_file() {
 
 #[test]
 fn golden_create_folder() {
-    run_golden("create_folder", false, |w| {
+    run_golden("create_folder", |w| {
         let base = w.dir("base");
         let root = db::insert_folder_with_parent(&w.conn, "base", None, &base.to_string_lossy()).unwrap();
-        let r = create_folder_with_conn(&w.conn, Some(root), "child".into(), &base.join("child"), &[]).map(|d| d.name);
+        let r = create_folder_with_conn(&w.conn, Some(root), "child".into(), &base.join("child"), &[]);
         w.step("create child", r);
-        let r = create_folder_with_conn(&w.conn, Some(root), "child".into(), &base.join("child"), &[]).map(|d| d.name);
+        let r = create_folder_with_conn(&w.conn, Some(root), "child".into(), &base.join("child"), &[]);
         w.step("create child again (exists)", r);
-        let r = create_folder_with_conn(&w.conn, None, "viaparent".into(), &base.join("viaparent"), &[]).map(|d| d.parent_id.is_some());
+        let r = create_folder_with_conn(&w.conn, None, "viaparent".into(), &base.join("viaparent"), &[]);
         w.step("create without parent id (parent derived)", r);
     });
 }
 
 #[test]
 fn golden_remove_folder_from_catalog() {
-    run_golden("remove_folder_catalog", false, |w| {
+    run_golden("remove_folder_catalog", |w| {
         let top = db::insert_folder_with_parent(&w.conn, "top", None, &w.dir("top").to_string_lossy()).unwrap();
         let sub = db::insert_folder_with_parent(&w.conn, "sub", Some(top), &w.dir("top/sub").to_string_lossy()).unwrap();
-        add_file(w, "top/a.3mf", top);
-        add_file(w, "top/sub/b.3mf", sub);
+        let other = db::insert_folder_with_parent(&w.conn, "other", None, &w.dir("other").to_string_lossy()).unwrap();
+        let a = add_file(w, "top/a.3mf", top);
+        let b = add_file(w, "top/sub/b.3mf", sub);
+        // Control row in an unrelated folder: must survive the removal untouched.
+        let c = add_file(w, "other/c.3mf", other);
+        w.conn.execute_batch("INSERT INTO tags (id, name, color_hue) VALUES (1, 'red', 10); INSERT INTO collections (id, name, created_at) VALUES (1, 'set', '2026-01-01T00:00:00Z'); INSERT INTO printers (id, name) VALUES (1, 'P1');").unwrap();
+        for (n, id) in [(1, a), (2, b), (3, c)] {
+            w.conn
+                .execute_batch(&format!(
+                    "INSERT INTO file_tags (file_id, tag_id) VALUES ({id}, 1);
+                     INSERT INTO file_metadata (file_id, label, value) VALUES ({id}, 'k', 'v{n}');
+                     INSERT INTO file_materials (file_id, name, display_color) VALUES ({id}, 'PLA{n}', '#ff0000');
+                     INSERT INTO collection_files (collection_id, file_id, position) VALUES (1, {id}, {n});
+                     INSERT INTO print_log (file_id, printed_at, note, created_at) VALUES ({id}, '2026-01-01', 'n{n}', '2026-01-01T00:00:00Z');
+                     INSERT INTO file_print_info (file_id, reader_version, read_at, slice_state, settings_state) VALUES ({id}, 1, '2026-01-01T00:00:00Z', 'sliced', 'read');
+                     INSERT INTO file_print_plates (file_id, plate_index, plate_name) VALUES ({id}, 1, 'plate{n}');
+                     INSERT INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s, used_mm, booked_file_id) VALUES (1, 'job{n}', 'f{n}.3mf', 'completed', 'ok', 1.0, 1.0, 1.0, {id});
+                     INSERT INTO slicer_reports (reported_at, reported_path, file_name, file_size_bytes, summary_json, suggested_file_id, model_file_id) VALUES ('2026-01-01T00:00:00Z', 'r{n}', 'f{n}.3mf', 1, '{{}}', {id}, {id});"
+                ))
+                .unwrap();
+        }
         let r = remove_folder_with_conn(&w.conn, "abc").map(|c| serde_json::to_value(&c).unwrap());
         w.step("invalid id", r);
         let r = remove_folder_with_conn(&w.conn, &top.to_string()).map(|c| serde_json::to_value(&c).unwrap());
@@ -75,7 +94,30 @@ fn golden_remove_folder_from_catalog() {
 
 #[test]
 fn golden_trash_file_with_companion() {
-    run_golden("trash_file_companion", false, |w| {
+    run_golden("trash_file_companion", |w| {
+        let f = db::insert_folder_with_parent(&w.conn, "cat", None, &w.dir("cat").to_string_lossy()).unwrap();
+        let id = add_file(w, "cat/m.3mf", f);
+        let companion = {
+            let model = w.root.join("cat/m.3mf");
+            let extras = katalog_core::companions::extras_dir_for(&model).unwrap();
+            let rel = extras.strip_prefix(&w.root).unwrap().join("photo.png");
+            w.file(&rel.to_string_lossy(), "png")
+        };
+        db::companions::insert_companion(&w.conn, id, "photo.png", &companion.to_string_lossy(), "image", Some(3), "2026-01-01T00:00:00Z").unwrap();
+        let trash = w.dir("trash");
+        let record = db::get_file(&w.conn, id).unwrap().unwrap();
+        let r = trash::delete_file_with_conn(&w.conn, &record, id, &trash);
+        w.step("delete model with companion", r);
+        let record = db::get_file(&w.conn, id).unwrap().unwrap();
+        let r = trash::delete_file_with_conn(&w.conn, &record, id, &trash);
+        w.step("delete again (already trashed)", r);
+    });
+}
+
+/// Documents the refusal: a companion that is not in an `_extras` folder is not taken along.
+#[test]
+fn golden_trash_file_invalid_companion() {
+    run_golden("trash_file_invalid_companion", |w| {
         let f = db::insert_folder_with_parent(&w.conn, "cat", None, &w.dir("cat").to_string_lossy()).unwrap();
         let id = add_file(w, "cat/m.3mf", f);
         let companion = w.file("cat/m/photo.png", "png");
@@ -83,7 +125,7 @@ fn golden_trash_file_with_companion() {
         let trash = w.dir("trash");
         let record = db::get_file(&w.conn, id).unwrap().unwrap();
         let r = trash::delete_file_with_conn(&w.conn, &record, id, &trash);
-        w.step("delete model with companion", r);
+        w.step("delete model with companion outside _extras (rejected)", r);
         let record = db::get_file(&w.conn, id).unwrap().unwrap();
         let r = trash::delete_file_with_conn(&w.conn, &record, id, &trash);
         w.step("delete again (already trashed)", r);
