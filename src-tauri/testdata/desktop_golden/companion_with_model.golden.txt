@@ -1,0 +1,160 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/m1_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/m1_extras/a.png",
+        "HardLink <ROOT>/cat/m1_extras/a.png -> <ROOT>/trash/companion-1-a.png",
+        "RemoveFile <ROOT>/cat/m1_extras/a.png",
+        "RemoveDir <ROOT>/cat/m1_extras",
+        "SymlinkMetadata <ROOT>/cat/m1_extras/b.png",
+        "SymlinkMetadata <ROOT>/cat/m1_extras/b.png",
+        "HardLink <ROOT>/cat/m1_extras/b.png -> <ROOT>/trash/companion-2-b.png",
+        "RemoveFile <ROOT>/cat/m1_extras/b.png",
+        "RemoveDir <ROOT>/cat/m1_extras"
+      ]
+    },
+    "step": "trash with model m1"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "restore with model m1"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/m2_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/m2_extras/a.png",
+        "HardLink <ROOT>/cat/m2_extras/a.png -> <ROOT>/trash/companion-3-a.png",
+        "CopyNew <ROOT>/cat/m2_extras/a.png -> <ROOT>/trash/companion-3-a.png",
+        "RemoveFile <ROOT>/cat/m2_extras/a.png",
+        "RemoveDir <ROOT>/cat/m2_extras"
+      ]
+    },
+    "step": "trash with model m2, hard link not possible"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/m3_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/m3_extras/a.png",
+        "HardLink <ROOT>/cat/m3_extras/a.png -> <ROOT>/trash/companion-4-a.png",
+        "CopyNew <ROOT>/cat/m3_extras/a.png -> <ROOT>/trash/companion-4-a.png"
+      ]
+    },
+    "step": "trash with model m3, file locked"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/m4_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/m4_extras/a.png",
+        "HardLink <ROOT>/cat/m4_extras/a.png -> <ROOT>/trash/companion-5-a.png",
+        "RemoveFile <ROOT>/cat/m4_extras/a.png",
+        "RemoveFile <ROOT>/trash/companion-5-a.png"
+      ]
+    },
+    "step": "trash with model m4, removing the original refused"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/m5_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/m5_extras/b.png"
+      ]
+    },
+    "step": "trash with model m5 (directory, gone file)"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "restore with model m5"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "restore with model m6, extras name taken by a file (stays in the trash)"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "restore with model m7, other stamp"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "restore with unknown model"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+[files] 7 row(s)
+  id=1 | name=m1.3mf | path=<ROOT>/cat/m1.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=m2.3mf | path=<ROOT>/cat/m2.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=m3.3mf | path=<ROOT>/cat/m3.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=m4.3mf | path=<ROOT>/cat/m4.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=m5.3mf | path=<ROOT>/cat/m5.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=m6.3mf | path=<ROOT>/cat/m6.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=m7.3mf | path=<ROOT>/cat/m7.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 9 row(s)
+  id=1 | file_id=1 | name=a.png | path=<ROOT>/cat/m1_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=1 | name=b.png | path=<ROOT>/cat/m1_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=2 | name=a.png | path=<ROOT>/cat/m2_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-3-a.png
+  id=4 | file_id=3 | name=a.png | path=<ROOT>/cat/m3_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=5 | file_id=4 | name=a.png | path=<ROOT>/cat/m4_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=6 | file_id=5 | name=a.png | path=<ROOT>/cat/m5_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=7 | file_id=5 | name=b.png | path=<ROOT>/cat/m5_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=8 | file_id=6 | name=a.png | path=<ROOT>/cat/m6_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-8-a.png
+  id=9 | file_id=7 | name=a.png | path=<ROOT>/cat/m7_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-9-a.png
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/m1.3mf (5 bytes)
+cat/m1_extras/
+cat/m1_extras/a.png (16 bytes)
+cat/m1_extras/b.png (16 bytes)
+cat/m2.3mf (5 bytes)
+cat/m3.3mf (5 bytes)
+cat/m3_extras/
+cat/m3_extras/a.png (16 bytes)
+cat/m4.3mf (5 bytes)
+cat/m4_extras/
+cat/m4_extras/a.png (16 bytes)
+cat/m5.3mf (5 bytes)
+cat/m5_extras/
+cat/m5_extras/a.png/
+cat/m6.3mf (5 bytes)
+cat/m6_extras (10 bytes)
+cat/m7.3mf (5 bytes)
+outside/
+outside/a.png (16 bytes)
+outside/b.png (16 bytes)
+trash/
+trash/companion-3-a.png (16 bytes)
+trash/companion-8-a.png (16 bytes)
+trash/companion-9-a.png (16 bytes)

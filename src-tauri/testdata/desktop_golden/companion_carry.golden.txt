@@ -1,0 +1,505 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "move Foo to dst"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Foo_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras/b.png",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras",
+        "CreateDir <ROOT>/dst/Foo_extras",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras/a.png",
+        "HardLink <ROOT>/cat/Foo_extras/a.png -> <ROOT>/dst/Foo_extras/a.png",
+        "RemoveFile <ROOT>/cat/Foo_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras/b.png",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras/b.png",
+        "HardLink <ROOT>/cat/Foo_extras/b.png -> <ROOT>/dst/Foo_extras/b.png",
+        "RemoveFile <ROOT>/cat/Foo_extras/b.png",
+        "RemoveDir <ROOT>/cat/Foo_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 1,
+          "id": 1,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/dst/Foo_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 1,
+          "id": 2,
+          "kind": "image",
+          "name": "b.png",
+          "path": "<ROOT>/dst/Foo_extras/b.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of Foo"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "move Foo back to cat (kept for undo)"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/dst/Foo_extras/a.png",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras/b.png",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras",
+        "CreateDir <ROOT>/cat/Foo_extras",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras/a.png",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras/a.png",
+        "HardLink <ROOT>/dst/Foo_extras/a.png -> <ROOT>/cat/Foo_extras/a.png",
+        "RemoveFile <ROOT>/dst/Foo_extras/a.png",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras/b.png",
+        "SymlinkMetadata <ROOT>/dst/Foo_extras/b.png",
+        "HardLink <ROOT>/dst/Foo_extras/b.png -> <ROOT>/cat/Foo_extras/b.png",
+        "RemoveFile <ROOT>/dst/Foo_extras/b.png",
+        "Metadata <ROOT>/dst/Foo_extras",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras/b.png",
+        "HardLink <ROOT>/cat/Foo_extras/b.png -> <ROOT>/dst/Foo_extras/b.png",
+        "RemoveFile <ROOT>/cat/Foo_extras/b.png",
+        "SymlinkMetadata <ROOT>/cat/Foo_extras/a.png",
+        "HardLink <ROOT>/cat/Foo_extras/a.png -> <ROOT>/dst/Foo_extras/a.png",
+        "RemoveFile <ROOT>/cat/Foo_extras/a.png",
+        "RemoveDir <ROOT>/cat/Foo_extras"
+      ]
+    },
+    "step": "undo"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 1,
+          "id": 1,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/dst/Foo_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 1,
+          "id": 2,
+          "kind": "image",
+          "name": "b.png",
+          "path": "<ROOT>/dst/Foo_extras/b.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows after undo"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "companionNameTaken",
+        "params": [
+          "b.png"
+        ]
+      }
+    },
+    "step": "move Bar, second name taken"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Bar_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Bar_extras/b.png",
+        "SymlinkMetadata <ROOT>/dst/Bar_extras",
+        "SymlinkMetadata <ROOT>/cat/Bar_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Bar_extras/a.png",
+        "HardLink <ROOT>/cat/Bar_extras/a.png -> <ROOT>/dst/Bar_extras/a.png",
+        "RemoveFile <ROOT>/cat/Bar_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Bar_extras/b.png",
+        "SymlinkMetadata <ROOT>/cat/Bar_extras/b.png",
+        "HardLink <ROOT>/cat/Bar_extras/b.png -> <ROOT>/dst/Bar_extras/b.png",
+        "Metadata <ROOT>/cat/Bar_extras",
+        "SymlinkMetadata <ROOT>/dst/Bar_extras/a.png",
+        "HardLink <ROOT>/dst/Bar_extras/a.png -> <ROOT>/cat/Bar_extras/a.png",
+        "RemoveFile <ROOT>/dst/Bar_extras/a.png"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 2,
+          "id": 3,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/Bar_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 2,
+          "id": 4,
+          "kind": "image",
+          "name": "b.png",
+          "path": "<ROOT>/cat/Bar_extras/b.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of Bar"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "companionTargetFolderBlocked"
+      }
+    },
+    "step": "move Baz, target folder name is a file"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "companionTargetFolderCreateFailed",
+        "params": [
+          "injected CreateDir #1 on <ROOT>/dst/Qux_extras"
+        ]
+      }
+    },
+    "step": "move Qux, folder creation refused"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Qux_extras/a.png",
+        "SymlinkMetadata <ROOT>/dst/Qux_extras",
+        "SymlinkMetadata <ROOT>/dst/Qux_extras",
+        "CreateDir <ROOT>/dst/Qux_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "injected CopyNew #1 on <ROOT>/cat/Lock_extras/b.png"
+      }
+    },
+    "step": "move Lock, second file locked"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Lock_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Lock_extras/b.png",
+        "SymlinkMetadata <ROOT>/dst/Lock_extras",
+        "SymlinkMetadata <ROOT>/dst/Lock_extras",
+        "CreateDir <ROOT>/dst/Lock_extras",
+        "SymlinkMetadata <ROOT>/cat/Lock_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Lock_extras/a.png",
+        "HardLink <ROOT>/cat/Lock_extras/a.png -> <ROOT>/dst/Lock_extras/a.png",
+        "RemoveFile <ROOT>/cat/Lock_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Lock_extras/b.png",
+        "SymlinkMetadata <ROOT>/cat/Lock_extras/b.png",
+        "HardLink <ROOT>/cat/Lock_extras/b.png -> <ROOT>/dst/Lock_extras/b.png",
+        "CopyNew <ROOT>/cat/Lock_extras/b.png -> <ROOT>/dst/Lock_extras/b.png",
+        "Metadata <ROOT>/cat/Lock_extras",
+        "SymlinkMetadata <ROOT>/dst/Lock_extras/a.png",
+        "HardLink <ROOT>/dst/Lock_extras/a.png -> <ROOT>/cat/Lock_extras/a.png",
+        "RemoveFile <ROOT>/dst/Lock_extras/a.png",
+        "RemoveDir <ROOT>/dst/Lock_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 5,
+          "id": 7,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/Lock_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 5,
+          "id": 8,
+          "kind": "image",
+          "name": "b.png",
+          "path": "<ROOT>/cat/Lock_extras/b.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of Lock"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "move Vol, hard link not possible"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Vol_extras/a.png",
+        "SymlinkMetadata <ROOT>/dst/Vol_extras",
+        "SymlinkMetadata <ROOT>/dst/Vol_extras",
+        "CreateDir <ROOT>/dst/Vol_extras",
+        "SymlinkMetadata <ROOT>/cat/Vol_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Vol_extras/a.png",
+        "HardLink <ROOT>/cat/Vol_extras/a.png -> <ROOT>/dst/Vol_extras/a.png",
+        "CopyNew <ROOT>/cat/Vol_extras/a.png -> <ROOT>/dst/Vol_extras/a.png",
+        "RemoveFile <ROOT>/cat/Vol_extras/a.png",
+        "RemoveDir <ROOT>/cat/Vol_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "move Odd (stray row, missing file)"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 7,
+          "id": 10,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/dst/Odd_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 7,
+          "id": 12,
+          "kind": "image",
+          "name": "gone.png",
+          "path": "<ROOT>/dst/Odd_extras/gone.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 7,
+          "id": 11,
+          "kind": "image",
+          "name": "stray.png",
+          "path": "<ROOT>/outside/stray.png",
+          "sizeBytes": 1,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of Odd"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "move a model without companions"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "change only the extension (same folder)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "database error: blocked"
+      }
+    },
+    "step": "move Db, the row of the second file cannot be updated"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Db_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Db_extras/b.png",
+        "SymlinkMetadata <ROOT>/dst/Db_extras",
+        "SymlinkMetadata <ROOT>/dst/Db_extras",
+        "CreateDir <ROOT>/dst/Db_extras",
+        "SymlinkMetadata <ROOT>/cat/Db_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Db_extras/a.png",
+        "HardLink <ROOT>/cat/Db_extras/a.png -> <ROOT>/dst/Db_extras/a.png",
+        "RemoveFile <ROOT>/cat/Db_extras/a.png",
+        "SymlinkMetadata <ROOT>/cat/Db_extras/b.png",
+        "SymlinkMetadata <ROOT>/cat/Db_extras/b.png",
+        "HardLink <ROOT>/cat/Db_extras/b.png -> <ROOT>/dst/Db_extras/b.png",
+        "RemoveFile <ROOT>/cat/Db_extras/b.png",
+        "Metadata <ROOT>/cat/Db_extras",
+        "SymlinkMetadata <ROOT>/dst/Db_extras/b.png",
+        "HardLink <ROOT>/dst/Db_extras/b.png -> <ROOT>/cat/Db_extras/b.png",
+        "RemoveFile <ROOT>/dst/Db_extras/b.png",
+        "SymlinkMetadata <ROOT>/dst/Db_extras/a.png",
+        "HardLink <ROOT>/dst/Db_extras/a.png -> <ROOT>/cat/Db_extras/a.png",
+        "RemoveFile <ROOT>/dst/Db_extras/a.png",
+        "RemoveDir <ROOT>/dst/Db_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 10,
+          "id": 14,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/Db_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 10,
+          "id": 15,
+          "kind": "image",
+          "name": "b.png",
+          "path": "<ROOT>/cat/Db_extras/b.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of Db"
+  }
+]
+
+== tables ==
+[folders] 2 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+  id=2 | name=dst | parent_id=NULL | path=<ROOT>/dst
+[files] 10 row(s)
+  id=1 | name=Foo.3mf | path=<ROOT>/cat/Foo.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=Bar.3mf | path=<ROOT>/cat/Bar.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=Baz.3mf | path=<ROOT>/cat/Baz.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=Qux.3mf | path=<ROOT>/cat/Qux.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=Lock.3mf | path=<ROOT>/cat/Lock.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=Vol.3mf | path=<ROOT>/cat/Vol.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=Odd.3mf | path=<ROOT>/cat/Odd.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=None.3mf | path=<ROOT>/cat/None.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=9 | name=Same.3mf | path=<ROOT>/cat/Same.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=10 | name=Db.3mf | path=<ROOT>/cat/Db.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 15 row(s)
+  id=1 | file_id=1 | name=a.png | path=<ROOT>/dst/Foo_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=1 | name=b.png | path=<ROOT>/dst/Foo_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=2 | name=a.png | path=<ROOT>/cat/Bar_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=4 | file_id=2 | name=b.png | path=<ROOT>/cat/Bar_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=5 | file_id=3 | name=a.png | path=<ROOT>/cat/Baz_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=6 | file_id=4 | name=a.png | path=<ROOT>/cat/Qux_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=7 | file_id=5 | name=a.png | path=<ROOT>/cat/Lock_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=8 | file_id=5 | name=b.png | path=<ROOT>/cat/Lock_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=9 | file_id=6 | name=a.png | path=<ROOT>/dst/Vol_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=10 | file_id=7 | name=a.png | path=<ROOT>/dst/Odd_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=11 | file_id=7 | name=stray.png | path=<ROOT>/outside/stray.png | kind=image | size_bytes=1 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=12 | file_id=7 | name=gone.png | path=<ROOT>/dst/Odd_extras/gone.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=13 | file_id=9 | name=a.png | path=<ROOT>/cat/Same_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=14 | file_id=10 | name=a.png | path=<ROOT>/cat/Db_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=15 | file_id=10 | name=b.png | path=<ROOT>/cat/Db_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/Bar_extras/
+cat/Bar_extras/a.png (16 bytes)
+cat/Bar_extras/b.png (16 bytes)
+cat/Baz_extras/
+cat/Baz_extras/a.png (16 bytes)
+cat/Db_extras/
+cat/Db_extras/a.png (16 bytes)
+cat/Db_extras/b.png (16 bytes)
+cat/Foo.3mf (5 bytes)
+cat/Lock_extras/
+cat/Lock_extras/a.png (16 bytes)
+cat/Lock_extras/b.png (16 bytes)
+cat/Qux_extras/
+cat/Qux_extras/a.png (16 bytes)
+cat/Same.stl (5 bytes)
+cat/Same_extras/
+cat/Same_extras/a.png (16 bytes)
+dst/
+dst/Bar.3mf (5 bytes)
+dst/Bar_extras/
+dst/Bar_extras/b.png (10 bytes)
+dst/Baz.3mf (5 bytes)
+dst/Baz_extras (6 bytes)
+dst/Db.3mf (5 bytes)
+dst/Foo_extras/
+dst/Foo_extras/a.png (16 bytes)
+dst/Foo_extras/b.png (16 bytes)
+dst/Lock.3mf (5 bytes)
+dst/None.3mf (5 bytes)
+dst/Odd.3mf (5 bytes)
+dst/Odd_extras/
+dst/Odd_extras/a.png (16 bytes)
+dst/Qux.3mf (5 bytes)
+dst/Vol.3mf (5 bytes)
+dst/Vol_extras/
+dst/Vol_extras/a.png (16 bytes)
+outside/
+outside/a.png (16 bytes)
+outside/b.png (16 bytes)
+outside/gone.png (16 bytes)
+outside/stray.png (16 bytes)

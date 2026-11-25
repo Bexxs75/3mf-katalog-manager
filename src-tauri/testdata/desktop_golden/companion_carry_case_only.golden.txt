@@ -1,0 +1,230 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "rename foo to Foo (case-insensitive volume)"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/foo_extras",
+        "Rename <ROOT>/cat/foo_extras -> <ROOT>/cat/Foo_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 1,
+          "id": 1,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/Foo_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 1,
+          "id": 2,
+          "kind": "image",
+          "name": "b.png",
+          "path": "<ROOT>/cat/Foo_extras/b.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of Foo"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "rename baz.stl to Baz.stl, folder shared"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 2,
+          "id": 3,
+          "kind": "image",
+          "name": "one.png",
+          "path": "<ROOT>/cat/baz_extras/one.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of baz.stl"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 3,
+          "id": 4,
+          "kind": "image",
+          "name": "two.png",
+          "path": "<ROOT>/cat/baz_extras/two.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of baz.3mf"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "injected Rename #1 on <ROOT>/cat/qux_extras"
+      }
+    },
+    "step": "rename qux to QUX, folder rename refused"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/qux_extras",
+        "Rename <ROOT>/cat/qux_extras -> <ROOT>/cat/QUX_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 4,
+          "id": 5,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/qux_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of qux"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "database error: blocked"
+      }
+    },
+    "step": "rename db to DB, second row cannot be updated"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/db_extras",
+        "Rename <ROOT>/cat/db_extras -> <ROOT>/cat/DB_extras",
+        "Rename <ROOT>/cat/DB_extras -> <ROOT>/cat/db_extras"
+      ]
+    },
+    "step": "calls"
+  },
+  {
+    "result": {
+      "ok": [
+        {
+          "fileId": 5,
+          "id": 6,
+          "kind": "image",
+          "name": "a.png",
+          "path": "<ROOT>/cat/db_extras/a.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        },
+        {
+          "fileId": 5,
+          "id": 7,
+          "kind": "image",
+          "name": "b.png",
+          "path": "<ROOT>/cat/db_extras/b.png",
+          "sizeBytes": 16,
+          "trashPath": null,
+          "trashed": false
+        }
+      ]
+    },
+    "step": "rows of db"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+[files] 5 row(s)
+  id=1 | name=foo.3mf | path=<ROOT>/cat/foo.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=baz.stl | path=<ROOT>/cat/baz.stl | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=baz.3mf | path=<ROOT>/cat/baz.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=qux.3mf | path=<ROOT>/cat/qux.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=db.3mf | path=<ROOT>/cat/db.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 7 row(s)
+  id=1 | file_id=1 | name=a.png | path=<ROOT>/cat/Foo_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=1 | name=b.png | path=<ROOT>/cat/Foo_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=2 | name=one.png | path=<ROOT>/cat/baz_extras/one.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=4 | file_id=3 | name=two.png | path=<ROOT>/cat/baz_extras/two.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=5 | file_id=4 | name=a.png | path=<ROOT>/cat/qux_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=6 | file_id=5 | name=a.png | path=<ROOT>/cat/db_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=7 | file_id=5 | name=b.png | path=<ROOT>/cat/db_extras/b.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/Foo_extras/
+cat/Foo_extras/a.png (16 bytes)
+cat/Foo_extras/b.png (16 bytes)
+cat/baz.3mf (5 bytes)
+cat/baz.stl (5 bytes)
+cat/baz_extras/
+cat/baz_extras/one.png (16 bytes)
+cat/baz_extras/two.png (16 bytes)
+cat/db.3mf (5 bytes)
+cat/db_extras/
+cat/db_extras/a.png (16 bytes)
+cat/db_extras/b.png (16 bytes)
+cat/foo.3mf (5 bytes)
+cat/qux.3mf (5 bytes)
+cat/qux_extras/
+cat/qux_extras/a.png (16 bytes)
+outside/
+outside/a.png (16 bytes)
+outside/b.png (16 bytes)
+outside/one.png (16 bytes)
+outside/two.png (16 bytes)

@@ -142,21 +142,6 @@ fn expand_sensitive_dirs(sensitive_dirs: &[PathBuf]) -> Vec<PathBuf> {
 fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> CmdResult<()> {
     katalog_core::import::placement::reject_if_sensitive_path_expanded(path, expanded_dirs).map_err(Into::into)
 }
-/// Containment instead of a denylist: `path` must lie inside the trash. Otherwise
-/// a backup could set `trash_path = ~/Documents/important.pdf` with an old
-/// `deleted_at`, and `purge_expired_trash_on_startup` would delete the file on
-/// the next start. Both sides are resolved (`..`, symlinks).
-fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdResult<()> {
-    let resolved = resolve_path_for_sensitivity_check(path)?;
-    if resolved == resolved_trash_dir || !resolved.starts_with(resolved_trash_dir) {
-        return Err(format!(
-            "Papierkorb-Pfad liegt ausserhalb des Papierkorb-Verzeichnisses ({}) und wird abgelehnt",
-            resolved_trash_dir.display()
-        )
-        .into());
-    }
-    Ok(())
-}
 /// Resolves a path far enough that the prefix comparison in
 /// `reject_if_sensitive_path` can't be undermined by `..` components or symlinks.
 /// The path need NOT exist - at many call sites it's a target still to be
@@ -396,3 +381,5 @@ mod fs_fault_tests;
 mod golden_harness;
 #[cfg(test)]
 mod golden_tests;
+#[cfg(test)]
+mod golden_companion_tests;

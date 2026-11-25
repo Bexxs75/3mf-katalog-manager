@@ -1,0 +1,161 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "remove a"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Die Begleitdatei liegt schon im Papierkorb."
+      }
+    },
+    "step": "remove a again (already in the trash)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Begleitdatei nicht gefunden."
+      }
+    },
+    "step": "remove unknown id"
+  },
+  {
+    "result": {
+      "ok": {
+        "fileId": 1,
+        "id": 1,
+        "kind": "image",
+        "name": "a.png",
+        "path": "<ROOT>/cat/m_extras/a.png",
+        "sizeBytes": 16,
+        "trashPath": null,
+        "trashed": false
+      }
+    },
+    "step": "restore a"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Die Begleitdatei liegt nicht im Papierkorb."
+      }
+    },
+    "step": "restore a again (not in the trash)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Begleitdatei nicht gefunden."
+      }
+    },
+    "step": "restore unknown id"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "remove b"
+  },
+  {
+    "result": {
+      "ok": {
+        "fileId": 1,
+        "id": 2,
+        "kind": "image",
+        "name": "b (2).png",
+        "path": "<ROOT>/cat/m_extras/b (2).png",
+        "sizeBytes": 16,
+        "trashPath": null,
+        "trashed": false
+      }
+    },
+    "step": "restore b (name taken, gets a free one)"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "remove d whose file is gone (row dropped)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Die Begleitdatei ist keine normale Datei."
+      }
+    },
+    "step": "remove c that is now a directory"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "remove e"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "Das Modell liegt im Papierkorb. Zuerst das Modell wiederherstellen."
+      }
+    },
+    "step": "restore e while the model is in the trash"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "remove a while the model is in the trash"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+[files] 1 row(s)
+  id=1 | name=m.3mf | path=<ROOT>/cat/m.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=x | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 4 row(s)
+  id=1 | file_id=1 | name=a.png | path=<ROOT>/cat/m_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-1-a.png
+  id=2 | file_id=1 | name=b (2).png | path=<ROOT>/cat/m_extras/b (2).png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=1 | name=c.png | path=<ROOT>/cat/m_extras/c.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=5 | file_id=1 | name=e.png | path=<ROOT>/cat/m_extras/e.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-5-e.png
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/m.3mf (5 bytes)
+cat/m_extras/
+cat/m_extras/b (2).png (16 bytes)
+cat/m_extras/b.png (5 bytes)
+cat/m_extras/c.png/
+outside/
+outside/a.png (16 bytes)
+outside/b.png (16 bytes)
+outside/c.png (16 bytes)
+outside/d.png (16 bytes)
+outside/e.png (16 bytes)
+trash/
+trash/companion-1-a.png (16 bytes)
+trash/companion-5-e.png (16 bytes)
