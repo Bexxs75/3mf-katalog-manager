@@ -232,6 +232,17 @@ fn move_file_core(
     folder_id: Option<i64>,
     sensitive_dirs: &[PathBuf],
 ) -> Result<MoveOutcome, MoveRefusal> {
+    move_file_core_fs(&RealFs, conn, file_id, folder_id, sensitive_dirs)
+}
+
+/// `move_file_core` on an injected file system (tests); production passes `RealFs`.
+fn move_file_core_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    file_id: i64,
+    folder_id: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> Result<MoveOutcome, MoveRefusal> {
     let file = db::get_file(conn, file_id)
         .map_err(|e| MoveRefusal::new("error", e.to_string()))?
         .ok_or_else(|| MoveRefusal::new("not_found", "file not found".to_string()))?;
@@ -276,27 +287,27 @@ fn move_file_core(
     }
     // Without these checks the OS error ("No such file or directory") would reach
     // the user as an unexpected fault, although the catalog is merely out of date.
-    if !target_dir.is_dir() {
+    if !fs.is_dir(&target_dir) {
         return Err(MoveRefusal::new(
             "target_missing",
             CmdError::coded_with(ErrorCode::TargetFolderMissingOnDisk, [target_dir.display()]),
         ));
     }
-    if !old_path.is_file() {
+    if !fs.is_file(&old_path) {
         return Err(MoveRefusal::new(
             "source_missing",
             CmdError::coded_with(ErrorCode::FileMissingOnDisk, [old_path.display()]),
         ));
     }
-    if let Err(e) = move_file(&old_path, &new_path) {
+    if let Err(e) = move_file_with(fs, &old_path, &new_path) {
         let code = if e.kind() == std::io::ErrorKind::AlreadyExists { "name_exists" } else { "error" };
         return Err(MoveRefusal::new(code, e.to_string()));
     }
     // The model's companion files travel with it; a clash there undoes the model move.
-    let carried = match companions::carry(conn, file_id, &old_path, &new_path) {
+    let carried = match companions::carry_fs(fs, conn, file_id, &old_path, &new_path) {
         Ok(carried) => carried,
         Err(error) => {
-            if let Err(rollback_err) = move_file(&new_path, &old_path) {
+            if let Err(rollback_err) = move_file_with(fs, &new_path, &old_path) {
                 return Err(MoveRefusal::new(
                     "error",
                     format!(
@@ -312,10 +323,10 @@ fn move_file_core(
     if let Err(db_err) =
         db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
     {
-        carried.undo(conn);
+        carried.undo_with(fs, conn);
         // Undo the physical move so file system and DB don't drift apart. move_file
         // never overwrites anything.
-        if let Err(rollback_err) = move_file(&new_path, &old_path) {
+        if let Err(rollback_err) = move_file_with(fs, &new_path, &old_path) {
             return Err(MoveRefusal::new(
                 "error",
                 format!(
@@ -337,9 +348,23 @@ fn move_file_core(
         let code = if path_taken { "name_exists" } else { "error" };
         return Err(MoveRefusal::new(code, db_err.to_string()));
     }
-    carried.finish();
+    carried.finish_with(fs);
     log::debug!(target: "datei", "verschoben: {} -> {}", old_path.display(), new_path.display());
     Ok(MoveOutcome::Moved { from_folder_id: file.folder_id, from_path: file.path })
+}
+
+/// `move_file_to_folder_with_conn` on an injected file system (tests).
+#[cfg(test)]
+pub(super) fn move_file_to_folder_with_conn_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    file_id: i64,
+    folder_id: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    move_file_core_fs(fs, conn, file_id, folder_id, sensitive_dirs)
+        .map(|_| ())
+        .map_err(|refusal| refusal.error)
 }
 
 /// Core logic of `move_file_to_folder`, without `State`, so it's testable.
@@ -486,6 +511,17 @@ pub(super) fn rename_file_with_conn(
     new_name: String,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
+    rename_file_with_conn_fs(&RealFs, conn, id, new_name, sensitive_dirs)
+}
+
+/// `rename_file_with_conn` on an injected file system (tests); production passes `RealFs`.
+pub(super) fn rename_file_with_conn_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    id: i64,
+    new_name: String,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
     validate_file_name(&new_name)?;
     let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
@@ -502,10 +538,10 @@ pub(super) fn rename_file_with_conn(
     if new_path == old_path {
         return Ok(());
     }
-    if rename::target_collides(&old_path, &new_path).map_err(|e| e.to_string())? {
+    if rename::target_collides_with(fs, &old_path, &new_path).map_err(|e| e.to_string())? {
         return Err(CmdError::coded_with(ErrorCode::FileTargetExists, [new_path.display()]));
     }
-    rename::rename_file_on_disk(&old_path, &new_path).map_err(|e| {
+    rename::rename_file_on_disk_with(fs, &old_path, &new_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
             // Created by someone else after the check above; reported like the early collision.
             CmdError::coded_with(ErrorCode::FileTargetExists, [new_path.display()])
@@ -515,10 +551,10 @@ pub(super) fn rename_file_with_conn(
     })?;
 
     // The model's companion files follow into the folder named after the new name.
-    let carried = match companions::carry(conn, id, &old_path, &new_path) {
+    let carried = match companions::carry_fs(fs, conn, id, &old_path, &new_path) {
         Ok(carried) => carried,
         Err(error) => {
-            if let Err(rollback_err) = rename::rename_file_on_disk(&new_path, &old_path) {
+            if let Err(rollback_err) = rename::rename_file_on_disk_with(fs, &new_path, &old_path) {
                 return Err(format!(
                     "Begleitdateien konnten nicht mitgenommen werden ({error}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}",
                     new_path.display()
@@ -529,9 +565,9 @@ pub(super) fn rename_file_with_conn(
         }
     };
     if let Err(db_err) = db::rename_file(conn, id, &new_name, &new_path.to_string_lossy()) {
-        carried.undo(conn);
+        carried.undo_with(fs, conn);
         // Undo the rename so file system and DB don't drift apart.
-        if let Err(rollback_err) = rename::rename_file_on_disk(&new_path, &old_path) {
+        if let Err(rollback_err) = rename::rename_file_on_disk_with(fs, &new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
                 new_path.display(),
@@ -541,7 +577,7 @@ pub(super) fn rename_file_with_conn(
         }
         return Err(db_err.to_string().into());
     }
-    carried.finish();
+    carried.finish_with(fs);
     log::debug!(target: "datei", "umbenannt: {} -> {}", old_path.display(), new_path.display());
     Ok(())
 }

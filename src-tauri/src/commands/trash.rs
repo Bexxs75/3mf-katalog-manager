@@ -12,17 +12,28 @@ pub(super) fn delete_file_with_conn(
     id: i64,
     trash_dir: &std::path::Path,
 ) -> CmdResult<()> {
+    delete_file_with_conn_fs(&RealFs, conn, file, id, trash_dir)
+}
+
+/// `delete_file_with_conn` on an injected file system (tests).
+pub(super) fn delete_file_with_conn_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    file: &db::models::FileRecord,
+    id: i64,
+    trash_dir: &std::path::Path,
+) -> CmdResult<()> {
     if file.deleted_at.is_some() {
         return Err(CmdError::coded(ErrorCode::FileInTrash));
     }
-    match std::fs::metadata(&file.path) {
+    match fs.metadata(std::path::Path::new(&file.path)) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Path unreachable (renamed folder, unmounted drive): nothing to move, but
             // still only soft-delete, because the file is usually not really gone. Other
             // errors like PermissionDenied go through the error path below.
             let deleted_at = chrono::Utc::now().to_rfc3339();
             db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| CmdError::from(e.to_string()))?;
-            companions::trash_with_model(conn, id, trash_dir, &deleted_at);
+            companions::trash_with_model_fs(fs, conn, id, trash_dir, &deleted_at);
             return Ok(());
         }
         Err(e) => return Err(e.to_string().into()),
@@ -30,13 +41,13 @@ pub(super) fn delete_file_with_conn(
     }
 
     let trash_path = trash_dir.join(format!("{id}-{}", file.name));
-    move_file(std::path::Path::new(&file.path), &trash_path).map_err(|e| e.to_string())?;
+    move_file_with(fs, std::path::Path::new(&file.path), &trash_path).map_err(|e| e.to_string())?;
 
     let deleted_at = chrono::Utc::now().to_rfc3339();
     if let Err(db_err) = db::soft_delete_file(conn, id, Some(&trash_path.to_string_lossy()), &deleted_at) {
         // Move the file back out of the trash if the DB couldn't mark it as deleted;
         // otherwise it would vanish for the user.
-        if let Err(rollback_err) = move_file(&trash_path, std::path::Path::new(&file.path)) {
+        if let Err(rollback_err) = move_file_with(fs, &trash_path, std::path::Path::new(&file.path)) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback aus dem Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als aktiv unter {}",
                 trash_path.display(),
@@ -48,7 +59,7 @@ pub(super) fn delete_file_with_conn(
     }
     // The companions follow the model into the trash under the same timestamp, so
     // restoring the model finds exactly these. They cannot make the removal fail.
-    companions::trash_with_model(conn, id, trash_dir, &deleted_at);
+    companions::trash_with_model_fs(fs, conn, id, trash_dir, &deleted_at);
     log::debug!(target: "datei", "in den Papierkorb: {}", file.path);
     Ok(())
 }

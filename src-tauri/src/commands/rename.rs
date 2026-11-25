@@ -1,5 +1,7 @@
 use std::io;
 use std::path::Path;
+
+use super::fs_boundary::{move_file_with, Fs, RealFs};
 use unicode_normalization::UnicodeNormalization;
 
 pub(super) fn normalized_lowercase(name: &str) -> String {
@@ -23,7 +25,11 @@ fn is_case_only(old: &Path, new: &Path) -> bool {
 }
 
 pub(super) fn target_collides(old: &Path, new: &Path) -> io::Result<bool> {
-    let new_metadata = match std::fs::symlink_metadata(new) {
+    target_collides_with(&RealFs, old, new)
+}
+
+pub(super) fn target_collides_with(fs: &dyn Fs, old: &Path, new: &Path) -> io::Result<bool> {
+    let new_metadata = match fs.symlink_metadata(new) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error),
         Ok(metadata) => metadata,
@@ -35,12 +41,11 @@ pub(super) fn target_collides(old: &Path, new: &Path) -> io::Result<bool> {
     // Exactly one matching entry rules out distinct hard links and symlinks.
     let expected = normalized_lowercase(old.file_name().unwrap().to_str().unwrap());
     let mut matches = 0;
-    for entry in std::fs::read_dir(
+    for entry_name in fs.read_dir_names(
         old.parent()
             .ok_or_else(|| io::Error::other("missing parent"))?,
     )? {
-        if entry?
-            .file_name()
+        if entry_name
             .to_str()
             .is_some_and(|name| normalized_lowercase(name) == expected)
         {
@@ -50,7 +55,7 @@ pub(super) fn target_collides(old: &Path, new: &Path) -> io::Result<bool> {
     if matches != 1 {
         return Ok(true);
     }
-    let old_metadata = std::fs::symlink_metadata(old)?;
+    let old_metadata = fs.symlink_metadata(old)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -61,16 +66,16 @@ pub(super) fn target_collides(old: &Path, new: &Path) -> io::Result<bool> {
         // Canonical paths provide a stable fallback without unstable Windows
         // metadata APIs; metadata above also checks that both entries exist.
         Ok(old_metadata.file_type() != new_metadata.file_type()
-            || std::fs::canonicalize(old)? != std::fs::canonicalize(new)?)
+            || fs.canonicalize(old)? != fs.canonicalize(new)?)
     }
 }
 
-fn intermediate_name(old: &Path, counter: u64) -> io::Result<String> {
+fn intermediate_name(fs: &dyn Fs, old: &Path, counter: u64) -> io::Result<String> {
     let name = old
         .file_name()
         .and_then(|s| s.to_str())
         .ok_or_else(|| io::Error::other("invalid source name"))?;
-    let is_directory = std::fs::symlink_metadata(old)?.is_dir();
+    let is_directory = fs.symlink_metadata(old)?.is_dir();
     let (stem, extension) = if is_directory {
         (name, String::new())
     } else {
@@ -107,27 +112,45 @@ fn intermediate_name(old: &Path, counter: u64) -> io::Result<String> {
 /// file itself on a case-insensitive volume (a link would be refused), and a link
 /// to a symlink would not move the symlink.
 pub(super) fn rename_file_on_disk(old: &Path, new: &Path) -> io::Result<()> {
-    if target_collides(old, new)? {
+    rename_file_on_disk_with(&RealFs, old, new)
+}
+
+pub(super) fn rename_file_on_disk_with(fs: &dyn Fs, old: &Path, new: &Path) -> io::Result<()> {
+    if target_collides_with(fs, old, new)? {
         return Err(io::Error::new(io::ErrorKind::AlreadyExists, "rename target exists"));
     }
-    let is_symlink = std::fs::symlink_metadata(old).is_ok_and(|m| m.file_type().is_symlink());
+    let is_symlink = fs.symlink_metadata(old).is_ok_and(|m| m.file_type().is_symlink());
     if is_case_only(old, new) || is_symlink {
-        return rename_on_disk(old, new);
+        return rename_on_disk_with(fs, old, new);
     }
     super::import_rename::race_point("before-file-rename", new);
-    super::move_file(old, new)
+    move_file_with(fs, old, new)
 }
 
 pub(super) fn rename_on_disk(old: &Path, new: &Path) -> io::Result<()> {
-    rename_with(old, new, |from, to| std::fs::rename(from, to))
+    rename_on_disk_with(&RealFs, old, new)
 }
 
+pub(super) fn rename_on_disk_with(fs: &dyn Fs, old: &Path, new: &Path) -> io::Result<()> {
+    rename_with_fs(fs, old, new, |from, to| fs.rename(from, to))
+}
+
+#[cfg(test)]
 fn rename_with(
+    old: &Path,
+    new: &Path,
+    rename: impl FnMut(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
+    rename_with_fs(&RealFs, old, new, rename)
+}
+
+fn rename_with_fs(
+    fs: &dyn Fs,
     old: &Path,
     new: &Path,
     mut rename: impl FnMut(&Path, &Path) -> io::Result<()>,
 ) -> io::Result<()> {
-    if target_collides(old, new)? {
+    if target_collides_with(fs, old, new)? {
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             "rename target exists",
@@ -137,15 +160,25 @@ fn rename_with(
         return rename(old, new);
     }
     // A free destination permits one atomic rename, even for case-only changes.
-    match std::fs::symlink_metadata(new) {
+    match fs.symlink_metadata(new) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => return rename(old, new),
         Err(error) => return Err(error),
         Ok(_) => {}
     }
-    rename_via_intermediate_with(old, new, rename)
+    rename_via_intermediate_fs(fs, old, new, rename)
 }
 
+#[cfg(test)]
 fn rename_via_intermediate_with(
+    old: &Path,
+    new: &Path,
+    rename: impl FnMut(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
+    rename_via_intermediate_fs(&RealFs, old, new, rename)
+}
+
+fn rename_via_intermediate_fs(
+    fs: &dyn Fs,
     old: &Path,
     new: &Path,
     mut rename: impl FnMut(&Path, &Path) -> io::Result<()>,
@@ -158,8 +191,8 @@ fn rename_via_intermediate_with(
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let intermediate = loop {
         let counter = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let candidate = parent.join(intermediate_name(old, counter)?);
-        match std::fs::symlink_metadata(&candidate) {
+        let candidate = parent.join(intermediate_name(fs, old, counter)?);
+        match fs.symlink_metadata(&candidate) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => break candidate,
             Err(error) => return Err(error),
             Ok(_) => continue,
@@ -168,7 +201,7 @@ fn rename_via_intermediate_with(
     rename(old, &intermediate)?;
     // The source no longer aliases the destination: every existing target
     // now belongs to somebody else, including a dangling symlink.
-    let second = match std::fs::symlink_metadata(new) {
+    let second = match fs.symlink_metadata(new) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => rename(&intermediate, new),
         Err(error) => Err(error),
         Ok(_) => Err(io::Error::new(
@@ -177,7 +210,7 @@ fn rename_via_intermediate_with(
         )),
     };
     if let Err(error) = second {
-        let rollback = match std::fs::symlink_metadata(old) {
+        let rollback = match fs.symlink_metadata(old) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => rename(&intermediate, old),
             Err(e) => Err(e),
             Ok(_) => Err(io::Error::new(

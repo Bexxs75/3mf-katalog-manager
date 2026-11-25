@@ -67,12 +67,12 @@ fn create_unique(conn: &Connection, dir: &Path, name: &str, own_row: Option<i64>
     Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free name"))
 }
 
-fn is_real_dir(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
+fn is_real_dir(fs: &dyn Fs, path: &Path) -> bool {
+    fs.symlink_metadata(path).is_ok_and(|m| m.is_dir())
 }
 
-fn is_real_file(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file())
+fn is_real_file(fs: &dyn Fs, path: &Path) -> bool {
+    fs.symlink_metadata(path).is_ok_and(|m| m.is_file())
 }
 
 /// The extras folder of a model, after checking that it may be written to: next to
@@ -179,7 +179,7 @@ pub struct CompanionDto {
 
 fn to_dto(row: CompanionRecord) -> CompanionDto {
     let location = row.trash_path.as_deref().filter(|_| row.deleted_at.is_some()).unwrap_or(&row.path);
-    let missing = !is_real_file(Path::new(location));
+    let missing = !is_real_file(&RealFs, Path::new(location));
     CompanionDto {
         id: row.id.to_string(),
         file_id: row.file_id.to_string(),
@@ -276,7 +276,7 @@ pub(super) fn add_companion_with_conn(
     }
 
     let extras = resolve_extras_target(conn, Path::new(&model.path), sensitive_dirs)?;
-    let created_dir = if is_real_dir(&extras) {
+    let created_dir = if is_real_dir(&RealFs, &extras) {
         false
     } else {
         std::fs::create_dir(&extras).map_err(|e| format!("Begleitdateien-Ordner konnte nicht angelegt werden: {e}"))?;
@@ -344,19 +344,19 @@ fn trash_target(trash_dir: &Path, row: &CompanionRecord) -> PathBuf {
 
 /// Removes the directory of a companion if it is empty now. Never removes a folder
 /// that still holds anything.
-fn remove_dir_if_empty(path: &Path) {
+fn remove_dir_if_empty(fs: &dyn Fs, path: &Path) {
     if let Some(dir) = path.parent().filter(|d| is_extras_dir_name(d)) {
-        let _ = std::fs::remove_dir(dir);
+        let _ = fs.remove_dir(dir);
     }
 }
 
 /// Moves one companion file into the app trash and marks its row. With
 /// `drop_row_if_gone`, a file that no longer exists removes the row instead (nothing
 /// could be restored); otherwise the row is only marked, so it comes back with its model.
-fn trash_one(conn: &Connection, row: &CompanionRecord, trash_dir: &Path, deleted_at: &str, drop_row_if_gone: bool) -> CmdResult<()> {
+fn trash_one(fs: &dyn Fs, conn: &Connection, row: &CompanionRecord, trash_dir: &Path, deleted_at: &str, drop_row_if_gone: bool) -> CmdResult<()> {
     verify_row(row)?;
     let path = Path::new(&row.path);
-    match std::fs::symlink_metadata(path) {
+    match fs.symlink_metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return if drop_row_if_gone {
                 db::companions::delete_companion(conn, row.id).map_err(Into::into)
@@ -370,9 +370,9 @@ fn trash_one(conn: &Connection, row: &CompanionRecord, trash_dir: &Path, deleted
     }
     ensure_row_folder_genuine(conn, row)?;
     let target = trash_target(trash_dir, row);
-    move_file(path, &target).map_err(|e| e.to_string())?;
+    move_file_with(fs, path, &target).map_err(|e| e.to_string())?;
     if let Err(db_err) = db::companions::soft_delete_companion(conn, row.id, Some(&target.to_string_lossy()), deleted_at) {
-        if let Err(rollback_err) = move_file(&target, path) {
+        if let Err(rollback_err) = move_file_with(fs, &target, path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback aus dem Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}",
                 target.display()
@@ -381,7 +381,7 @@ fn trash_one(conn: &Connection, row: &CompanionRecord, trash_dir: &Path, deleted
         }
         return Err(db_err.to_string().into());
     }
-    remove_dir_if_empty(path);
+    remove_dir_if_empty(fs, path);
     Ok(())
 }
 
@@ -390,14 +390,14 @@ pub(super) fn remove_companion_with_conn(conn: &Connection, id: i64, trash_dir: 
     if row.deleted_at.is_some() {
         return Err(CmdError::expected("Die Begleitdatei liegt schon im Papierkorb."));
     }
-    trash_one(conn, &row, trash_dir, &chrono::Utc::now().to_rfc3339(), true)
+    trash_one(&RealFs, conn, &row, trash_dir, &chrono::Utc::now().to_rfc3339(), true)
 }
 
 /// Sends every active companion of a model to the trash together with it, stamped with
 /// the model's `deleted_at` so a restore of the model finds exactly these. A companion
 /// that cannot be moved stays where it is and active; the model's removal never fails
 /// because of it.
-pub(super) fn trash_with_model(conn: &Connection, file_id: i64, trash_dir: &Path, deleted_at: &str) {
+pub(super) fn trash_with_model_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, trash_dir: &Path, deleted_at: &str) {
     let rows = match db::companions::list_active_companions(conn, file_id) {
         Ok(rows) => rows,
         Err(e) => {
@@ -406,7 +406,7 @@ pub(super) fn trash_with_model(conn: &Connection, file_id: i64, trash_dir: &Path
         }
     };
     for row in rows {
-        if let Err(e) = trash_one(conn, &row, trash_dir, deleted_at, false) {
+        if let Err(e) = trash_one(fs, conn, &row, trash_dir, deleted_at, false) {
             log::warn!(target: "datei", "Begleitdatei bleibt liegen ({}): {e}", row.path);
         }
     }
@@ -418,7 +418,7 @@ fn restore_one(conn: &Connection, row: &CompanionRecord, extras: &Path) -> CmdRe
         // Nothing was moved (the file was already gone): the entry just becomes visible.
         return db::companions::restore_companion(conn, row.id, &extras.join(&row.name).to_string_lossy()).map_err(Into::into);
     };
-    let created_dir = if is_real_dir(extras) {
+    let created_dir = if is_real_dir(&RealFs, extras) {
         false
     } else {
         std::fs::create_dir(extras).map_err(|e| e.to_string())?;
@@ -664,7 +664,7 @@ pub(super) fn assign_from_archive(
         if *count >= MAX_COMPANIONS_PER_MODEL {
             continue;
         }
-        let created_dir = !is_real_dir(&extras);
+        let created_dir = !is_real_dir(&RealFs, &extras);
         if created_dir && std::fs::create_dir(&extras).is_err() {
             continue;
         }
@@ -714,25 +714,33 @@ const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
 impl Carried {
     /// Everything went through: the old folder goes away if it is empty now.
     pub(super) fn finish(self) {
+        self.finish_with(&RealFs)
+    }
+
+    pub(super) fn finish_with(self, fs: &dyn Fs) {
         if let Some(dir) = self.old_dir.filter(|_| !self.moves.is_empty()) {
-            let _ = std::fs::remove_dir(dir);
+            let _ = fs.remove_dir(&dir);
         }
     }
 
     /// Puts files and rows back where they were (best effort, failures are logged).
     pub(super) fn undo(self, conn: &Connection) {
+        self.undo_with(&RealFs, conn)
+    }
+
+    pub(super) fn undo_with(self, fs: &dyn Fs, conn: &Connection) {
         if let Some((from, to)) = &self.renamed_dir {
-            if let Err(e) = std::fs::rename(to, from) {
+            if let Err(e) = fs.rename(to, from) {
                 log::error!(target: "datei", "Begleitdateien-Ordner konnte nicht zurückbenannt werden ({}): {e}", to.display());
             }
         }
         if let Some(old_dir) = &self.old_dir {
-            if !self.moves.is_empty() && !old_dir.exists() {
-                let _ = std::fs::create_dir(old_dir);
+            if !self.moves.is_empty() && !fs.exists(old_dir) {
+                let _ = fs.create_dir(old_dir);
             }
         }
         for (_, from, to) in self.moves.iter().rev() {
-            if let Err(e) = move_file(to, from) {
+            if let Err(e) = move_file_with(fs, to, from) {
                 log::error!(target: "datei", "Begleitdatei konnte nicht zurückgelegt werden ({}): {e}", to.display());
             }
         }
@@ -742,7 +750,7 @@ impl Carried {
             }
         }
         if let Some(dir) = &self.created_dir {
-            let _ = std::fs::remove_dir(dir);
+            let _ = fs.remove_dir(dir);
         }
     }
 }
@@ -757,6 +765,16 @@ pub(super) fn carry(conn: &Connection, file_id: i64, old_model: &Path, new_model
 }
 
 fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
+    carry_with_fs(&RealFs, conn, file_id, old_model, new_model, case_insensitive)
+}
+
+/// `carry` on an injected file system; the `Carried` it returns must be finished or undone
+/// with the same one (`finish_with` / `undo_with`).
+pub(super) fn carry_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path) -> CmdResult<Carried> {
+    carry_with_fs(fs, conn, file_id, old_model, new_model, CASE_INSENSITIVE_PATHS)
+}
+
+fn carry_with_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
     let (Some(old_dir), Some(new_dir)) = (extras_dir_for(old_model), extras_dir_for(new_model)) else {
         return Ok(Carried::default());
     };
@@ -786,7 +804,7 @@ fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Pat
     }
     let mut carried = Carried { old_dir: Some(old_dir.clone()), ..Default::default() };
     let fail = |carried: Carried, error: CmdError| -> CmdResult<Carried> {
-        carried.undo(conn);
+        carried.undo_with(fs, conn);
         Err(error)
     };
     if case_insensitive && old_dir.to_string_lossy().to_lowercase() == new_dir.to_string_lossy().to_lowercase() {
@@ -803,8 +821,8 @@ fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Pat
         if in_folder > own {
             return Ok(Carried::default());
         }
-        if is_real_dir(&old_dir) {
-            std::fs::rename(&old_dir, &new_dir).map_err(|e| CmdError::from(e.to_string()))?;
+        if is_real_dir(fs, &old_dir) {
+            fs.rename(&old_dir, &new_dir).map_err(|e| CmdError::from(e.to_string()))?;
             carried.renamed_dir = Some((old_dir.clone(), new_dir.clone()));
         }
         for row in &rows {
@@ -818,12 +836,12 @@ fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Pat
         carried.old_dir = None;
         return Ok(carried);
     }
-    let movable: Vec<&CompanionRecord> = rows.iter().filter(|row| is_real_file(Path::new(&row.path))).collect();
-    if !movable.is_empty() && !is_real_dir(&new_dir) {
-        if std::fs::symlink_metadata(&new_dir).is_ok() {
+    let movable: Vec<&CompanionRecord> = rows.iter().filter(|row| is_real_file(fs, Path::new(&row.path))).collect();
+    if !movable.is_empty() && !is_real_dir(fs, &new_dir) {
+        if fs.symlink_metadata(&new_dir).is_ok() {
             return Err(CmdError::coded(ErrorCode::CompanionTargetFolderBlocked));
         }
-        if let Err(e) = std::fs::create_dir(&new_dir) {
+        if let Err(e) = fs.create_dir(&new_dir) {
             return Err(CmdError::coded_with(ErrorCode::CompanionTargetFolderCreateFailed, [e]));
         }
         carried.created_dir = Some(new_dir.clone());
@@ -832,8 +850,8 @@ fn carry_with(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Pat
         let old_path = PathBuf::from(&row.path);
         let target = new_dir.join(&row.name);
         carried.old_paths.push((row.id, row.path.clone()));
-        if is_real_file(&old_path) {
-            if let Err(e) = move_file(&old_path, &target) {
+        if is_real_file(fs, &old_path) {
+            if let Err(e) = move_file_with(fs, &old_path, &target) {
                 let error = if e.kind() == std::io::ErrorKind::AlreadyExists {
                     CmdError::coded_with(ErrorCode::CompanionNameTaken, [&row.name])
                 } else {

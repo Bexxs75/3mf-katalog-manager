@@ -12,6 +12,7 @@ mod imported_paths;
 mod bundles;
 mod collections;
 mod companions;
+mod fs_boundary;
 mod diagnostics;
 mod dropped_image;
 mod error;
@@ -95,6 +96,9 @@ use crate::db::models::NewFile;
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::detect_slicers;
+
+#[allow(unused_imports)] // Not every flow of the desktop uses each item.
+use fs_boundary::{move_file_with, Fs, RealFs};
 
 pub struct AppState {
     pub import_jobs: ImportJobs,
@@ -359,6 +363,8 @@ mod ui_settings;
 pub use ui_settings::*;
 
 // Golden-Harness (nur Tests): Szenarien gegen den Desktop-Code, Snapshot unter testdata/desktop_golden/.
+#[cfg(test)]
+mod fs_fault_tests;
 #[cfg(test)]
 mod golden_harness;
 #[cfg(test)]
