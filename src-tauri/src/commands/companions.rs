@@ -14,7 +14,9 @@ use super::*;
 use crate::db::models::CompanionRecord;
 
 use katalog_core::companion_actions::{self as actions, CompanionFs};
-pub(crate) use katalog_core::companions::{extras_dir_for, CompanionKind, MAX_COMPANION_BYTES_CONFIGURABLE};
+pub(crate) use katalog_core::companions::{CompanionKind, MAX_COMPANION_BYTES_CONFIGURABLE};
+#[cfg(test)]
+pub(crate) use katalog_core::companions::extras_dir_for;
 use katalog_core::companion_read::{self, RowError};
 pub(super) use katalog_core::companion_read::MAX_PREVIEW_BYTES;
 use katalog_core::companions::ALLOWED_EXTENSIONS;

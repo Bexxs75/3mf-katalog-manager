@@ -18,6 +18,7 @@ pub mod rescan;
 pub mod disk_report;
 pub mod disk_apply;
 pub mod catalog_issues;
+pub mod disk_sync;
 pub mod disk_sync_settings;
 pub mod tagging;
 pub mod filament_check;

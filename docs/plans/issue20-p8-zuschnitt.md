@@ -5,7 +5,8 @@ nach `crates/katalog-core/src/disk_sync.rs`, mit Desktop-Semantik (absolute Pfad
 geleerte Ordner, Groß/Klein über den Parameter `case_insensitive`). Keine Vereinheitlichung mit dem Web-Bericht
 (`disk_report`/`disk_apply`), nur dieselben Bausteine aus dem Kern (`db`, `import::files`, `placement`), wo sie heute schon
 benutzt werden. Tauri-Befehle, Signaturen, Fehlercodes (`DiskSyncError` `{code, paths}`), Rückgaben und Logzeilen bleiben gleich.
-Nicht angefasst: `files.rs`, `trash.rs`, `folders.rs`, `archives.rs`, Web (`disk_report`, `disk_apply`), Frontend.
+Nicht angefasst (außer Importzeilen, die nur der Abgleich brauchte: `files.rs`, `companions.rs` jetzt `#[cfg(test)]`): `trash.rs`, `folders.rs`,
+`archives.rs`, Web (`disk_report`, `disk_apply`), Frontend. Im Kern wird `folder_move::reject_catalog_root_relocation` `pub(crate)` (für `StdDiskSyncEffects`).
 
 ## Teilschritte
 
@@ -13,8 +14,7 @@ Nicht angefasst: `files.rs`, `trash.rs`, `folders.rs`, `archives.rs`, Web (`disk
 |---|---|---|
 | Naht | `_fs`-Fassungen im alten Code (`scan_with_fs`, `apply_with_fs`, `KeyResolver::with_fs`, `no_symlinks_fs`, `read_directory_fs`, `hash_for_match_fs` ...), Plattenzugriffe über `&dyn Fs`; alte Namen rufen `RealFs`. `Fs` bekommt `read_dir_entries` (Einträge mit Typ). Keine Verhaltensänderung. | eigener |
 | Goldens | `disk_sync/golden_sync_tests.rs` mit dem alten Code aufgenommen | eigener |
-| 8a Scan | Typen + Scan-Planung in den Kern, Desktop-Anwenden arbeitet auf den Kern-Typen | eigener |
-| 8b Anwenden | `apply`, `apply_rename`, `move_emptied_folders`, `remember_declined_copies` in den Kern | eigener |
+| 8a+8b | Typen, Scan-Planung und Anwenden in den Kern. Geplant waren zwei Commits; da das Anwenden den Scan wiederholt und alle Hilfen teilt, wäre ein Zwischenstand mit Kern-Scan und Desktop-Anwenden nur eine Kopie gewesen. Ein Commit, Goldens unverändert. | eigener |
 
 ## Was wandert (Kern `disk_sync`) / was bleibt (Desktop)
 

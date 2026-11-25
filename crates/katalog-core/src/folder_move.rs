@@ -68,7 +68,7 @@ fn validate_folder_name(name: &str) -> CmdResult<()> {
 
 /// Relocating an ancestor of the catalog base folder also invalidates the persisted import
 /// destination.
-fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {
+pub(crate) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {
     let Some(base) = db::printer_link::get_setting(conn, SETTING_CATALOG_BASE_DIR)? else {
         return Ok(());
     };
