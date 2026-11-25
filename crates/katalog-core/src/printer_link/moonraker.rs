@@ -41,6 +41,16 @@ pub struct HistoryPage {
     pub jobs: Vec<RemoteJob>,
 }
 
+/// We ask for PAGE entries. More is a protocol violation (and would break the paging arithmetic if
+/// cut), so such an answer is refused as a whole, before any job is parsed.
+fn check_page_len(v: &Value) -> Result<(), LinkError> {
+    let len = v.pointer("/result/jobs").and_then(Value::as_array).map_or(0, Vec::len);
+    if len > PAGE {
+        return Err(bad("zu viele Jobs auf einer Seite"));
+    }
+    Ok(())
+}
+
 pub fn parse_history_page(v: &Value) -> Result<HistoryPage, LinkError> {
     let result = v.get("result").ok_or_else(|| bad("result fehlt"))?;
     let count = result.get("count").and_then(Value::as_u64).ok_or_else(|| bad("count fehlt"))?;
@@ -163,6 +173,8 @@ const MAX_THUMB_BYTES: u64 = 512 * 1024;
 const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
 const PAGE: usize = 50;
 const MAX_PAGES: usize = 40;
+/// Hard cap for the jobs gathered from one printer in one pass (the sync stores far fewer per pass).
+const MAX_COLLECTED_JOBS: usize = 1000;
 /// Moonraker filters `since` by the job start; a print that started before
 /// `since` and ended after it would otherwise be missing.
 pub const LOOKBACK_S: f64 = 2.0 * 24.0 * 3600.0;
@@ -484,7 +496,7 @@ impl MoonrakerLink {
                     self.page_timeout,
                 )
                 .and_then(|f| serde_json::from_slice::<Value>(&f.body).map_err(|e| bad(&e.to_string())))
-                .and_then(|v| parse_history_page(&v));
+                .and_then(|v| check_page_len(&v).and_then(|()| parse_history_page(&v)));
             let page = match answer {
                 Ok(page) => page,
                 Err(e) if e.is_transient() && start > 0 => {
@@ -494,6 +506,11 @@ impl MoonrakerLink {
                 Err(e) => return Err(e),
             };
             jobs.extend(page.jobs);
+            if jobs.len() >= MAX_COLLECTED_JOBS {
+                // The next pass continues after the newest stored print.
+                jobs.truncate(MAX_COLLECTED_JOBS);
+                break;
+            }
             start += PAGE;
             if page.raw_len < PAGE || start as u64 >= page.count {
                 break;
@@ -1177,6 +1194,40 @@ mod client_tests {
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
         let info = link.test().unwrap();
         assert_eq!(link.jobs_ended_since(&info, 0.0).unwrap().len(), 120);
+    }
+
+    fn history_server(count: u64, per_page: usize) -> FakeServer {
+        FakeServer::start(move |target| {
+            if target.starts_with("/server/history/list") {
+                let start: usize = target.split("start=").nth(1).unwrap_or("0").split('&').next().unwrap().parse().unwrap();
+                let jobs: Vec<String> = (start..start + per_page)
+                    .map(|i| format!(r#"{{"end_time": {}.0, "filament_used": 1.0, "filename": "a.gcode", "metadata": {{}}, "print_duration": 1.0, "status": "completed", "job_id": "{i}"}}"#, 1000 + i))
+                    .collect();
+                Some((200, format!(r#"{{"result": {{"count": {count}, "jobs": [{}]}}}}"#, jobs.join(",")).into_bytes()))
+            } else {
+                Some((200, fixture_bytes("server_info_v0_8_0_209.json")))
+            }
+        })
+    }
+
+    #[test]
+    fn overfull_history_pages_are_refused() {
+        let server = history_server(10_000, PAGE + 1);
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert!(matches!(link.jobs_ended_since(&info, 0.0), Err(LinkError::BadResponse(_))));
+        let page = serde_json::json!({"result": {"count": 1, "jobs": vec![serde_json::json!({}); PAGE + 1]}});
+        assert!(matches!(check_page_len(&page), Err(LinkError::BadResponse(_))));
+    }
+
+    #[test]
+    fn collected_jobs_per_printer_have_a_hard_cap() {
+        let server = history_server(1_000_000, PAGE);
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert_eq!(link.jobs_ended_since(&info, 0.0).unwrap().len(), MAX_COLLECTED_JOBS);
+        let pages = server.requests().iter().filter(|r| r.starts_with("/server/history/list")).count();
+        assert_eq!(pages, MAX_COLLECTED_JOBS / PAGE);
     }
 
     #[test]

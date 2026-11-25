@@ -580,7 +580,9 @@ mod tests {
             if target.starts_with("/server/info") {
                 return Some((200, crate::printer_link::fake_moonraker::fixture_bytes("server_info_v0_8_0_209.json")));
             }
-            let jobs: Vec<_> = (0..250).map(|i| serde_json::json!({
+            // Pages of at most 50, as asked for (longer ones are refused).
+            let start: usize = target.split("start=").nth(1).unwrap_or("0").split('&').next().unwrap().parse().unwrap();
+            let jobs: Vec<_> = (start..(start + 50).min(250)).map(|i| serde_json::json!({
                 "job_id": i.to_string(), "end_time": if i == 0 { 1100.0 } else { 1000.0 },
                 "filament_used": 1.0, "filename": "a.gcode", "status": "completed"
             })).collect();
