@@ -5,148 +5,71 @@
 //! and the type is decided by extension AND content, so an executable renamed to
 //! `.png` or a PNG without a matching extension is refused. Nothing here can open
 //! or read a file the allowlist did not accept.
+//!
+//! The actions (add, trash, restore, purge, assign from an archive, carry with the model)
+//! live in `katalog_core::companion_actions` (issue #20, P3); this file keeps the Tauri
+//! commands, the DTOs and the reading side, and passes the desktop's `Fs` boundary on.
 
 use super::*;
 use crate::db::models::CompanionRecord;
-use std::io::{Read, Write};
 
-pub(super) use katalog_core::companions::validate_stored_fields;
-pub(crate) use katalog_core::companions::{
-    classify, extras_dir_for, is_extras_dir_name, CompanionKind, Refusal, MAX_COMPANIONS_PER_MODEL, MAX_COMPANION_BYTES, MAX_COMPANION_BYTES_CONFIGURABLE,
-};
-use katalog_core::companion_read::{self, FolderProblem, RowError};
-pub(super) use katalog_core::companion_read::{read_head, same_dir_with, MAX_PREVIEW_BYTES};
-use katalog_core::companions::{has_parent_component, is_text_name, kind_for_extension, lowercase_extension, ALLOWED_EXTENSIONS};
+use katalog_core::companion_actions::{self as actions, CompanionFs};
+pub(crate) use katalog_core::companions::{extras_dir_for, CompanionKind, MAX_COMPANION_BYTES_CONFIGURABLE};
+use katalog_core::companion_read::{self, RowError};
+pub(super) use katalog_core::companion_read::MAX_PREVIEW_BYTES;
+use katalog_core::companions::ALLOWED_EXTENSIONS;
+// Used by the tests next to this file (`use super::*`).
 #[cfg(test)]
-use katalog_core::companions::CONTENT_CHECK_BYTES;
+use katalog_core::companions::{classify, validate_stored_fields, Refusal, CONTENT_CHECK_BYTES, MAX_COMPANIONS_PER_MODEL, MAX_COMPANION_BYTES};
 
-/// The user-facing text for a refusal; the rule itself lives in `katalog_core::companions`.
-trait RefusalText {
-    fn message(self) -> &'static str;
-}
+/// The companion actions' disk access (core trait) on top of the desktop's `Fs` boundary.
+/// Every call goes to the same `Fs` method the code used before the actions moved into the
+/// core, so the call order seen by `FaultFs` is unchanged.
+pub(super) struct CompanionFsAdapter<'a>(pub(super) &'a dyn Fs);
 
-impl RefusalText for Refusal {
-    fn message(self) -> &'static str {
-        match self {
-            Self::Type => "Dieser Dateityp ist als Begleitdatei nicht erlaubt. Erlaubt sind Bilder (PNG, JPG, GIF, WebP), PDF, Textdateien (TXT, MD) und weitere Formate (FCStd, SCAD, DXF, CSV, DOCX, ODT).",
-            Self::Content => "Der Inhalt der Datei passt nicht zu ihrem Dateityp und wird nicht übernommen.",
-        }
+impl CompanionFs for CompanionFsAdapter<'_> {
+    fn symlink_metadata(&self, path: &Path) -> std::io::Result<std::fs::Metadata> {
+        self.0.symlink_metadata(path)
     }
-}
-
-/// A harmless single-component name for the copy of a user-chosen file; the rule itself
-/// lives in `katalog_core::companions`, shared with the web upload.
-fn companion_file_name(source: &Path) -> Option<String> {
-    katalog_core::companions::companion_file_name(&source.file_name()?.to_string_lossy())
-}
-
-/// Creates a new file under the first free `name`, `name (2)`, ... Never replaces and
-/// never follows a symlink at the target (create_new). A path that a catalog row
-/// already holds (a trashed companion keeps its old path) counts as taken too, because
-/// the row's path is unique; `own_row` is the row that is being restored, which may
-/// take its own old path back.
-fn create_unique(conn: &Connection, dir: &Path, name: &str, own_row: Option<i64>) -> std::io::Result<(PathBuf, std::fs::File)> {
-    let (stem, extension) = match name.rsplit_once('.') {
-        Some((stem, extension)) => (stem, format!(".{extension}")),
-        None => (name, String::new()),
-    };
-    for attempt in 1..=999u32 {
-        let candidate = if attempt == 1 { name.to_string() } else { format!("{stem} ({attempt}){extension}") };
-        let path = dir.join(candidate);
-        let held = db::companions::path_held_by_other_row(conn, &path.to_string_lossy(), own_row)
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
-        if held {
-            continue;
-        }
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(file) => return Ok((path, file)),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
+    fn exists(&self, path: &Path) -> bool {
+        self.0.exists(path)
     }
-    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free name"))
-}
-
-fn is_real_dir(fs: &dyn Fs, path: &Path) -> bool {
-    fs.symlink_metadata(path).is_ok_and(|m| m.is_dir())
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+        self.0.canonicalize(path)
+    }
+    fn create_dir(&self, path: &Path) -> std::io::Result<()> {
+        self.0.create_dir(path)
+    }
+    fn remove_dir(&self, path: &Path) -> std::io::Result<()> {
+        self.0.remove_dir(path)
+    }
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+        self.0.remove_file(path)
+    }
+    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+        self.0.rename(from, to)
+    }
+    fn create_new(&self, path: &Path) -> std::io::Result<std::fs::File> {
+        std::fs::OpenOptions::new().write(true).create_new(true).open(path)
+    }
+    fn move_file(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+        move_file_with(self.0, from, to)
+    }
 }
 
 fn is_real_file(fs: &dyn Fs, path: &Path) -> bool {
     fs.symlink_metadata(path).is_ok_and(|m| m.is_file())
 }
 
-/// The extras folder of a model, after checking that it may be written to: next to
-/// the model, free of `..`, outside protected folders, below a catalog folder (also
-/// after resolving symlinks) and not itself a symlink.
-fn resolve_extras_target(conn: &Connection, model_path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<PathBuf> {
-    if has_parent_component(model_path) || !model_path.is_absolute() {
-        return Err(CmdError::expected("Der Pfad des Modells ist nicht gültig."));
-    }
-    let extras = extras_dir_for(model_path).ok_or_else(|| CmdError::expected("Der Pfad des Modells ist nicht gültig."))?;
-    let extras_name = extras.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    folders::validate_name(&extras_name, true, folders::NameKind::Folder)?;
-    reject_if_sensitive_path(&extras, sensitive_dirs)?;
-    let parent = extras.parent().ok_or_else(|| CmdError::expected("Der Pfad des Modells ist nicht gültig."))?;
-    let resolved_parent = parent
-        .canonicalize()
-        .map_err(|_| CmdError::expected("Der Ordner des Modells existiert auf der Festplatte nicht mehr."))?;
-    let catalog_folders = db::list_folders(conn)?;
-    let owner = folders::find_catalog_parent(&extras, &catalog_folders)
-        .and_then(|id| catalog_folders.iter().find(|f| f.id == id))
-        .and_then(|f| Path::new(&f.path).canonicalize().ok());
-    let inside_catalog = owner.is_some_and(|root| folders::comparison_path(&resolved_parent).starts_with(folders::comparison_path(&root)));
-    if !inside_catalog {
-        return Err(CmdError::expected("Das Modell liegt nicht in einem Katalogordner. Begleitdateien können nur dort abgelegt werden."));
-    }
-    if let Some(problem) = extras_dir_problem(&extras, &extras) {
-        return Err(CmdError::coded(problem));
-    }
-    Ok(extras)
-}
-
-/// Why `dir` cannot be trusted as the companion folder `expected` (the `_extras` folder
-/// next to a model). The check itself lives in `katalog_core::companion_read`, shared
-/// with the web server; this only names the problem for the desktop.
-fn extras_dir_problem(dir: &Path, expected: &Path) -> Option<ErrorCode> {
-    companion_read::extras_dir_problem(dir, expected).map(folder_error_code)
-}
-
-fn folder_error_code(problem: FolderProblem) -> ErrorCode {
-    match problem {
-        FolderProblem::Unverifiable => ErrorCode::CompanionFolderUnverifiable,
-        FolderProblem::NotReal => ErrorCode::CompanionFolderNotReal,
-        FolderProblem::Elsewhere => ErrorCode::CompanionFolderElsewhere,
-        FolderProblem::ModelPathInvalid => ErrorCode::ModelPathInvalid,
-    }
-}
-
 /// The user-facing text for a refusal to open a stored companion.
 fn row_error(error: RowError) -> CmdError {
-    match error {
-        RowError::Invalid => CmdError::expected("Diese Begleitdatei ist ungültig und wird nicht verwendet."),
-        RowError::Trashed => CmdError::expected("Diese Begleitdatei liegt im Papierkorb."),
-        RowError::ModelMissing => CmdError::expected("Modell nicht gefunden."),
-        RowError::ModelTrashed => CmdError::expected("Das Modell liegt im Papierkorb."),
-        RowError::ModelPathInvalid => CmdError::expected("Der Pfad des Modells ist nicht gültig."),
-        RowError::NotInModelFolder => CmdError::expected("Die Begleitdatei liegt nicht im Begleitdateien-Ordner ihres Modells."),
-        RowError::Folder(problem) => CmdError::coded(folder_error_code(problem)),
-        RowError::NotAFile => CmdError::expected("Die Begleitdatei existiert nicht mehr oder ist keine normale Datei."),
-        RowError::Unreadable => CmdError::expected("Die Begleitdatei kann nicht gelesen werden."),
-        RowError::TooLarge => CmdError::expected("Die Begleitdatei ist zu groß."),
-        RowError::Content(refusal) => CmdError::expected(refusal.message()),
-    }
+    actions::row_error(error).into()
 }
 
 /// The folder of a stored companion must be exactly the genuine `_extras` folder of the
 /// model the row belongs to, before any file in it is moved, opened or read.
 fn ensure_row_folder_genuine(conn: &Connection, row: &CompanionRecord) -> CmdResult<()> {
-    companion_read::check_row_folder(conn, row).map(|_| ()).map_err(row_error)
-}
-
-/// Checks a stored row before anything touches its file.
-fn verify_row(row: &CompanionRecord) -> CmdResult<CompanionKind> {
-    validate_stored_fields(&row.name, &row.path, &row.kind)
-        .map_err(|_| CmdError::expected("Diese Begleitdatei ist ungültig und wird nicht verwendet."))
+    actions::ensure_row_folder_genuine(conn, row).map_err(Into::into)
 }
 
 /// Opens a stored companion for reading after all checks: structure, not trashed, a
@@ -226,171 +149,11 @@ pub(super) fn add_companion_with_conn(
     source: &Path,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<CompanionRecord> {
-    let model = load_model(conn, file_id)?;
-    if model.deleted_at.is_some() {
-        return Err(CmdError::expected("Das Modell liegt im Papierkorb."));
-    }
-    if db::companions::count_active_companions(conn, file_id)? >= MAX_COMPANIONS_PER_MODEL {
-        return Err(CmdError::expected(format!("Ein Modell kann höchstens {MAX_COMPANIONS_PER_MODEL} Begleitdateien haben.")));
-    }
-
-    if !source.is_absolute() || has_parent_component(source) {
-        return Err(CmdError::expected("Der Pfad der Datei ist nicht gültig."));
-    }
-    reject_if_sensitive_path(source, sensitive_dirs)?;
-    match std::fs::symlink_metadata(source) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            return Err(CmdError::expected("Verknüpfungen (Symlinks) werden nicht als Begleitdatei übernommen."));
-        }
-        Ok(meta) if meta.is_file() => {}
-        Ok(_) => return Err(CmdError::expected("Das ist keine normale Datei.")),
-        Err(_) => return Err(CmdError::expected("Die Datei existiert nicht oder kann nicht gelesen werden.")),
-    }
-    let source_name = source.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    // The same handle is checked and copied, so what was inspected is what is stored.
-    let mut input = crate::safe_file::open_regular(source).map_err(|_| CmdError::expected("Die Datei kann nicht gelesen werden."))?;
-    if input.metadata().map_err(|e| e.to_string())?.len() > MAX_COMPANION_BYTES {
-        return Err(CmdError::expected(format!("Die Datei ist zu groß (höchstens {} MB).", MAX_COMPANION_BYTES / 1024 / 1024)));
-    }
-    let head = read_head(&mut input).map_err(|_| CmdError::expected("Die Datei kann nicht gelesen werden."))?;
-    let kind = classify(source_name, &head).map_err(|r| CmdError::expected(r.message()))?;
-    let name = companion_file_name(source).ok_or_else(|| CmdError::expected("Der Dateiname ist nicht verwendbar."))?;
-    // A text file is valid from its first to its last byte, not just in the inspected head.
-    if is_text_name(&name) {
-        use std::io::Seek;
-        let mut scan = katalog_core::companions::TextScan::default();
-        let mut ok = scan.feed(&head);
-        let mut buffer = vec![0u8; 64 * 1024];
-        let mut limited = Read::by_ref(&mut input).take(MAX_COMPANION_BYTES + 1 - head.len() as u64);
-        while ok {
-            let n = limited.read(&mut buffer).map_err(|_| CmdError::expected("Die Datei kann nicht gelesen werden."))?;
-            if n == 0 {
-                break;
-            }
-            ok = scan.feed(&buffer[..n]);
-        }
-        if !ok || !scan.finish() {
-            return Err(CmdError::expected(Refusal::Content.message()));
-        }
-        input.seek(std::io::SeekFrom::Start(head.len() as u64)).map_err(|_| CmdError::expected("Die Datei kann nicht gelesen werden."))?;
-    }
-
-    let extras = resolve_extras_target(conn, Path::new(&model.path), sensitive_dirs)?;
-    let created_dir = if is_real_dir(&RealFs, &extras) {
-        false
-    } else {
-        std::fs::create_dir(&extras).map_err(|e| format!("Begleitdateien-Ordner konnte nicht angelegt werden: {e}"))?;
-        true
-    };
-    let cleanup_dir = || {
-        if created_dir {
-            let _ = std::fs::remove_dir(&extras);
-        }
-    };
-    let (target, mut output) = match create_unique(conn, &extras, &name, None) {
-        Ok(created) => created,
-        Err(e) => {
-            cleanup_dir();
-            return Err(e.to_string().into());
-        }
-    };
-    let copied = (|| -> std::io::Result<u64> {
-        output.write_all(&head)?;
-        // The size can grow after the check above; the cap keeps the copy finite.
-        let rest = std::io::copy(&mut Read::by_ref(&mut input).take(MAX_COMPANION_BYTES + 1 - head.len() as u64), &mut output)?;
-        output.sync_all()?;
-        Ok(head.len() as u64 + rest)
-    })();
-    drop(output);
-    let size = match copied {
-        Ok(size) if size <= MAX_COMPANION_BYTES => size,
-        other => {
-            let _ = std::fs::remove_file(&target);
-            cleanup_dir();
-            return Err(match other {
-                Ok(_) => CmdError::expected("Die Datei ist zu groß."),
-                Err(e) => e.to_string().into(),
-            });
-        }
-    };
-
-    let stored_name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(name);
-    let added_at = chrono::Utc::now().to_rfc3339();
-    let id = match db::companions::insert_companion(
-        conn,
-        file_id,
-        &stored_name,
-        &target.to_string_lossy(),
-        kind.as_str(),
-        Some(size as i64),
-        &added_at,
-    ) {
-        Ok(id) => id,
-        Err(e) => {
-            let _ = std::fs::remove_file(&target);
-            cleanup_dir();
-            return Err(e.into());
-        }
-    };
-    log::debug!(target: "datei", "Begleitdatei hinzugefügt: {}", target.display());
-    load_row(conn, id)
-}
-
-/// Where a trashed companion goes. The id keeps names unique across models, and the
-/// `companion-` prefix keeps them apart from trashed models (`{id}-{name}`).
-fn trash_target(trash_dir: &Path, row: &CompanionRecord) -> PathBuf {
-    trash_dir.join(format!("companion-{}-{}", row.id, row.name))
-}
-
-/// Removes the directory of a companion if it is empty now. Never removes a folder
-/// that still holds anything.
-fn remove_dir_if_empty(fs: &dyn Fs, path: &Path) {
-    if let Some(dir) = path.parent().filter(|d| is_extras_dir_name(d)) {
-        let _ = fs.remove_dir(dir);
-    }
-}
-
-/// Moves one companion file into the app trash and marks its row. With
-/// `drop_row_if_gone`, a file that no longer exists removes the row instead (nothing
-/// could be restored); otherwise the row is only marked, so it comes back with its model.
-fn trash_one(fs: &dyn Fs, conn: &Connection, row: &CompanionRecord, trash_dir: &Path, deleted_at: &str, drop_row_if_gone: bool) -> CmdResult<()> {
-    verify_row(row)?;
-    let path = Path::new(&row.path);
-    match fs.symlink_metadata(path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return if drop_row_if_gone {
-                db::companions::delete_companion(conn, row.id).map_err(Into::into)
-            } else {
-                db::companions::soft_delete_companion(conn, row.id, None, deleted_at).map_err(Into::into)
-            };
-        }
-        Err(e) => return Err(e.to_string().into()),
-        Ok(meta) if !meta.is_file() => return Err(CmdError::expected("Die Begleitdatei ist keine normale Datei.")),
-        Ok(_) => {}
-    }
-    ensure_row_folder_genuine(conn, row)?;
-    let target = trash_target(trash_dir, row);
-    move_file_with(fs, path, &target).map_err(|e| e.to_string())?;
-    if let Err(db_err) = db::companions::soft_delete_companion(conn, row.id, Some(&target.to_string_lossy()), deleted_at) {
-        if let Err(rollback_err) = move_file_with(fs, &target, path) {
-            return Err(format!(
-                "DB-Update fehlgeschlagen ({db_err}) UND Rollback aus dem Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}",
-                target.display()
-            )
-            .into());
-        }
-        return Err(db_err.to_string().into());
-    }
-    remove_dir_if_empty(fs, path);
-    Ok(())
+    actions::add_companion(conn, &CompanionFsAdapter(&RealFs), file_id, source, sensitive_dirs).map_err(Into::into)
 }
 
 pub(super) fn remove_companion_with_conn(conn: &Connection, id: i64, trash_dir: &Path) -> CmdResult<()> {
-    let row = load_row(conn, id)?;
-    if row.deleted_at.is_some() {
-        return Err(CmdError::expected("Die Begleitdatei liegt schon im Papierkorb."));
-    }
-    trash_one(&RealFs, conn, &row, trash_dir, &chrono::Utc::now().to_rfc3339(), true)
+    actions::remove_companion(conn, &CompanionFsAdapter(&RealFs), id, trash_dir).map_err(Into::into)
 }
 
 /// Sends every active companion of a model to the trash together with it, stamped with
@@ -398,315 +161,51 @@ pub(super) fn remove_companion_with_conn(conn: &Connection, id: i64, trash_dir: 
 /// that cannot be moved stays where it is and active; the model's removal never fails
 /// because of it.
 pub(super) fn trash_with_model_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, trash_dir: &Path, deleted_at: &str) {
-    let rows = match db::companions::list_active_companions(conn, file_id) {
-        Ok(rows) => rows,
-        Err(e) => {
-            log::warn!(target: "datei", "Begleitdateien konnten nicht gelesen werden: {e}");
-            return;
-        }
-    };
-    for row in rows {
-        if let Err(e) = trash_one(fs, conn, &row, trash_dir, deleted_at, false) {
-            log::warn!(target: "datei", "Begleitdatei bleibt liegen ({}): {e}", row.path);
-        }
-    }
-}
-
-/// Moves a trashed file back next to `extras`, under a free name, and updates its row.
-fn restore_one(conn: &Connection, row: &CompanionRecord, extras: &Path) -> CmdResult<()> {
-    let Some(trash_path) = row.trash_path.as_deref() else {
-        // Nothing was moved (the file was already gone): the entry just becomes visible.
-        return db::companions::restore_companion(conn, row.id, &extras.join(&row.name).to_string_lossy()).map_err(Into::into);
-    };
-    let created_dir = if is_real_dir(&RealFs, extras) {
-        false
-    } else {
-        std::fs::create_dir(extras).map_err(|e| e.to_string())?;
-        true
-    };
-    let cleanup_dir = || {
-        if created_dir {
-            let _ = std::fs::remove_dir(extras);
-        }
-    };
-    // Reserve a free name first: move_file never replaces, but the name decides the new path.
-    let (target, reserved) = match create_unique(conn, extras, &row.name, Some(row.id)) {
-        Ok(created) => created,
-        Err(e) => {
-            cleanup_dir();
-            return Err(e.to_string().into());
-        }
-    };
-    drop(reserved);
-    let _ = std::fs::remove_file(&target);
-    if let Err(e) = move_file(Path::new(trash_path), &target) {
-        cleanup_dir();
-        return Err(e.to_string().into());
-    }
-    let new_name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| row.name.clone());
-    // Name, path and trash state change in one statement, so a failure cannot leave the
-    // row half restored.
-    let db_result = db::companions::restore_companion_as(conn, row.id, &new_name, &target.to_string_lossy());
-    if let Err(db_err) = db_result {
-        if let Err(rollback_err) = move_file(&target, Path::new(trash_path)) {
-            return Err(format!(
-                "DB-Update fehlgeschlagen ({db_err}) UND Rollback in den Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}",
-                target.display()
-            )
-            .into());
-        }
-        cleanup_dir();
-        return Err(db_err.to_string().into());
-    }
-    Ok(())
+    actions::trash_with_model(&CompanionFsAdapter(fs), conn, file_id, trash_dir, deleted_at)
 }
 
 pub(super) fn restore_companion_with_conn(conn: &Connection, id: i64, sensitive_dirs: &[PathBuf]) -> CmdResult<CompanionRecord> {
-    let row = load_row(conn, id)?;
-    if row.deleted_at.is_none() {
-        return Err(CmdError::expected("Die Begleitdatei liegt nicht im Papierkorb."));
-    }
-    let model = load_model(conn, row.file_id)?;
-    if model.deleted_at.is_some() {
-        return Err(CmdError::expected("Das Modell liegt im Papierkorb. Zuerst das Modell wiederherstellen."));
-    }
-    if db::companions::count_active_companions(conn, model.id)? >= MAX_COMPANIONS_PER_MODEL {
-        return Err(CmdError::expected(format!("Ein Modell kann höchstens {MAX_COMPANIONS_PER_MODEL} Begleitdateien haben.")));
-    }
-    // The stored name decides the new file name and path; make sure it is harmless first.
-    folders::validate_name(&row.name, true, folders::NameKind::File)?;
-    if lowercase_extension(&row.name).and_then(|e| kind_for_extension(&e)).is_none() {
-        return Err(CmdError::expected("Diese Begleitdatei ist ungültig und wird nicht verwendet."));
-    }
-    let extras = resolve_extras_target(conn, Path::new(&model.path), sensitive_dirs)?;
-    restore_one(conn, &row, &extras)?;
-    load_row(conn, id)
+    actions::restore_companion(conn, &CompanionFsAdapter(&RealFs), id, sensitive_dirs).map_err(Into::into)
 }
 
 /// Brings back the companions that went to the trash with `model_deleted_at`, after the
 /// model itself was restored (its path may have changed). Failures are logged; the file
 /// stays in the trash and can be restored on its own.
 pub(super) fn restore_with_model(conn: &Connection, file_id: i64, model_deleted_at: &str, sensitive_dirs: &[PathBuf]) {
-    let rows = match db::companions::list_trashed_with_model(conn, file_id, model_deleted_at) {
-        Ok(rows) if !rows.is_empty() => rows,
-        Ok(_) => return,
-        Err(e) => {
-            log::warn!(target: "datei", "Begleitdateien konnten nicht gelesen werden: {e}");
-            return;
-        }
-    };
-    let model = match db::get_file(conn, file_id) {
-        Ok(Some(model)) => model,
-        _ => return,
-    };
-    let extras = match resolve_extras_target(conn, Path::new(&model.path), sensitive_dirs) {
-        Ok(extras) => extras,
-        Err(e) => {
-            log::warn!(target: "datei", "Begleitdateien bleiben im Papierkorb: {e}");
-            return;
-        }
-    };
-    for row in rows {
-        if let Err(e) = folders::validate_name(&row.name, true, folders::NameKind::File).and_then(|_| restore_one(conn, &row, &extras)) {
-            log::warn!(target: "datei", "Begleitdatei bleibt im Papierkorb ({}): {e}", row.name);
-        }
-    }
-}
-
-/// The web version keeps its trash in `<root>/.katalog-papierkorb` and names a
-/// companion there `companion-<row id>-...`. Such a file is ours to delete: otherwise a
-/// model deleted for good here would leave it behind with no row to find it by. The
-/// folder must be a real folder (no link), and only the row's own name qualifies.
-fn is_web_trash_file(row_id: i64, path: &Path) -> bool {
-    let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str())) else { return false };
-    dir.file_name().is_some_and(|n| n == ".katalog-papierkorb")
-        && name.starts_with(&format!("companion-{row_id}-"))
-        && std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir())
-}
-
-/// Deletes the trash file of a row, but only inside the trash folder: a row from a
-/// restored backup must never make the app delete anything elsewhere.
-fn remove_trash_file(row: &CompanionRecord, trash_dir: &Path) -> Result<(), String> {
-    let Some(trash_path) = row.trash_path.as_deref().filter(|p| !p.trim().is_empty()) else { return Ok(()) };
-    let resolved_trash = resolve_path_for_sensitivity_check(trash_dir).map_err(|e| e.message)?;
-    if reject_if_outside_trash_dir(Path::new(trash_path), &resolved_trash).is_err() && !is_web_trash_file(row.id, Path::new(trash_path)) {
-        log::warn!(target: "trash", "Begleitdatei außerhalb des Papierkorbs wird nicht gelöscht (ID {})", row.id);
-        return Err("Die Begleitdatei liegt außerhalb des Papierkorbs und wird nicht gelöscht".into());
-    }
-    match std::fs::remove_file(trash_path) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+    actions::restore_with_model(&CompanionFsAdapter(&RealFs), conn, file_id, model_deleted_at, sensitive_dirs)
 }
 
 /// Removes the trash files of all companions of a model that is about to be deleted for
 /// good (its rows follow by cascade). An error means a file could not be removed; the
 /// caller then keeps the model entry, like for the model file itself.
 pub(super) fn purge_trash_files_of_model(conn: &Connection, file_id: i64, trash_dir: &Path) -> Result<(), String> {
-    for row in db::companions::list_trashed_files_of_model(conn, file_id).map_err(|e| e.to_string())? {
-        remove_trash_file(&row, trash_dir)?;
-    }
-    Ok(())
-}
-
-fn purge_rows(conn: &Connection, rows: Vec<CompanionRecord>, trash_dir: &Path, target: &str) {
-    for row in rows {
-        if let Err(e) = remove_trash_file(&row, trash_dir) {
-            log::error!(target: "trash", "{target}: Begleitdatei ID {} konnte nicht entfernt werden: {e}", row.id);
-            continue;
-        }
-        if let Err(e) = db::companions::delete_companion(conn, row.id) {
-            log::error!(target: "trash", "{target}: Zeile der Begleitdatei ID {} konnte nicht gelöscht werden: {e}", row.id);
-        }
-    }
+    actions::purge_trash_files_of_model(&CompanionFsAdapter(&RealFs), conn, file_id, trash_dir)
 }
 
 /// Final removal of every companion in the trash (for "empty trash").
 pub(super) fn purge_all_trashed(conn: &Connection, trash_dir: &Path) {
-    match db::companions::list_all_trashed_companions(conn) {
-        Ok(rows) => purge_rows(conn, rows, trash_dir, "trash"),
-        Err(e) => log::error!(target: "trash", "Begleitdateien konnten nicht gelesen werden: {e}"),
-    }
+    actions::purge_all_trashed(&CompanionFsAdapter(&RealFs), conn, trash_dir)
 }
 
 /// Final removal of companions that have been in the trash longer than the cutoff.
 pub(super) fn purge_expired_trashed(conn: &Connection, trash_dir: &Path, cutoff: &str) {
-    match db::companions::list_expired_trashed_companions(conn, cutoff) {
-        Ok(rows) => purge_rows(conn, rows, trash_dir, "startup"),
-        Err(e) => log::error!(target: "startup", "trash cleanup: Begleitdateien konnten nicht gelesen werden: {e}"),
-    }
-}
-
-/// Moves `source` into `extras` under the first free name (never replacing a file) and
-/// returns the final path.
-fn move_into_unique(source: &Path, extras: &Path, name: &str) -> std::io::Result<PathBuf> {
-    let (stem, extension) = match name.rsplit_once('.') {
-        Some((stem, extension)) => (stem, format!(".{extension}")),
-        None => (name, String::new()),
-    };
-    for attempt in 1..=999u32 {
-        let candidate = if attempt == 1 { name.to_string() } else { format!("{stem} ({attempt}){extension}") };
-        let target = extras.join(candidate);
-        match move_file(source, &target) {
-            Ok(()) => return Ok(target),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free name"))
+    actions::purge_expired_trashed(&CompanionFsAdapter(&RealFs), conn, trash_dir, cutoff)
 }
 
 /// After an archive was extracted and its models imported: gives the files of an allowed
-/// type to the model they belong to. With exactly one model in the archive all of them
-/// belong to it; with several, a file belongs to the model that lies in the same archive
-/// folder (and only if that folder holds exactly one model). Anything else stays where it
-/// is. Returns `(assigned, ignored)`, where `ignored` counts extracted files whose type or
-/// content is not allowed; those are never touched.
+/// type to the model they belong to (see `katalog_core::companion_actions::assign_from_archive`).
+/// Returns `(assigned, ignored)`.
 pub(super) fn assign_from_archive(
     conn: &Connection,
     written: &[PathBuf],
     imported: &[ModelFileDto],
     sensitive_dirs: &[PathBuf],
 ) -> (u32, u32) {
-    let key = |p: &Path| folders::comparison_path(p);
-    let model_files: Vec<&PathBuf> = written.iter().filter(|p| files::is_model_extension(p)).collect();
-    let imported_id: HashMap<PathBuf, i64> =
-        imported.iter().filter_map(|m| Some((key(Path::new(&m.path)), m.id.parse().ok()?))).collect();
-    let owner_of = |candidate: &Path| -> Option<i64> {
-        let model = if model_files.len() == 1 {
-            model_files[0]
-        } else {
-            let mut same_folder = model_files.iter().filter(|m| m.parent() == candidate.parent());
-            let first = same_folder.next()?;
-            if same_folder.next().is_some() {
-                return None;
-            }
-            first
-        };
-        imported_id.get(&key(model)).copied()
-    };
-
-    let mut assigned = 0u32;
-    let mut ignored = 0u32;
-    let mut extras_of: HashMap<i64, Option<PathBuf>> = HashMap::new();
-    let mut count_of: HashMap<i64, i64> = HashMap::new();
-    for candidate in written.iter().filter(|p| !files::is_model_extension(p) && !files::is_ignored_import_path(p)) {
-        let Some(name) = candidate.file_name().and_then(|n| n.to_str()) else { continue };
-        let Ok(mut file) = crate::safe_file::open_regular(candidate) else { continue };
-        let Ok(length) = file.metadata().map(|m| m.len()) else { continue };
-        let Ok(head) = read_head(&mut file) else { continue };
-        drop(file);
-        let kind = match classify(name, &head) {
-            Ok(kind) => kind,
-            Err(_) => {
-                ignored += 1;
-                continue;
-            }
-        };
-        if length > MAX_COMPANION_BYTES {
-            continue;
-        }
-        let Some(model_id) = owner_of(candidate) else { continue };
-        let Some(model) = db::get_file(conn, model_id).ok().flatten() else { continue };
-        let extras = extras_of
-            .entry(model_id)
-            .or_insert_with(|| match resolve_extras_target(conn, Path::new(&model.path), sensitive_dirs) {
-                Ok(extras) => Some(extras),
-                Err(e) => {
-                    log::warn!(target: "archive", "Begleitdateien ohne Ablage ({}): {}", model.path, e.message);
-                    None
-                }
-            })
-            .clone();
-        let Some(extras) = extras else { continue };
-        let count = count_of.entry(model_id).or_insert_with(|| db::companions::count_active_companions(conn, model_id).unwrap_or(i64::MAX));
-        if *count >= MAX_COMPANIONS_PER_MODEL {
-            continue;
-        }
-        let created_dir = !is_real_dir(&RealFs, &extras);
-        if created_dir && std::fs::create_dir(&extras).is_err() {
-            continue;
-        }
-        let Some(safe_name) = companion_file_name(candidate) else { continue };
-        let target = match move_into_unique(candidate, &extras, &safe_name) {
-            Ok(target) => target,
-            Err(e) => {
-                log::warn!(target: "archive", "Begleitdatei bleibt liegen ({}): {e}", candidate.display());
-                if created_dir {
-                    let _ = std::fs::remove_dir(&extras);
-                }
-                continue;
-            }
-        };
-        let stored_name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(safe_name);
-        let added_at = chrono::Utc::now().to_rfc3339();
-        match db::companions::insert_companion(conn, model_id, &stored_name, &target.to_string_lossy(), kind.as_str(), Some(length as i64), &added_at) {
-            Ok(_) => {
-                *count += 1;
-                assigned += 1;
-            }
-            Err(e) => {
-                log::warn!(target: "archive", "Begleitdatei konnte nicht eingetragen werden: {e}");
-                if move_file(&target, candidate).is_err() {
-                    log::error!(target: "archive", "Begleitdatei liegt jetzt unter {}", target.display());
-                }
-            }
-        }
-    }
-    (assigned, ignored)
+    actions::assign_from_archive(&CompanionFsAdapter(&RealFs), conn, written, imported, sensitive_dirs)
 }
 
 /// Companion files that were moved along with their model, so the move can be undone.
-#[derive(Default)]
-pub(super) struct Carried {
-    moves: Vec<(i64, PathBuf, PathBuf)>,
-    old_paths: Vec<(i64, String)>,
-    created_dir: Option<PathBuf>,
-    old_dir: Option<PathBuf>,
-    /// The folder itself was renamed (a rename that only changes letter case).
-    renamed_dir: Option<(PathBuf, PathBuf)>,
-}
+pub(super) struct Carried(actions::Carried);
 
 /// On these systems two names that differ only in case are the same folder.
 const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
@@ -718,9 +217,7 @@ impl Carried {
     }
 
     pub(super) fn finish_with(self, fs: &dyn Fs) {
-        if let Some(dir) = self.old_dir.filter(|_| !self.moves.is_empty()) {
-            let _ = fs.remove_dir(&dir);
-        }
+        self.0.finish(&CompanionFsAdapter(fs))
     }
 
     /// Puts files and rows back where they were (best effort, failures are logged).
@@ -729,37 +226,14 @@ impl Carried {
     }
 
     pub(super) fn undo_with(self, fs: &dyn Fs, conn: &Connection) {
-        if let Some((from, to)) = &self.renamed_dir {
-            if let Err(e) = fs.rename(to, from) {
-                log::error!(target: "datei", "Begleitdateien-Ordner konnte nicht zurückbenannt werden ({}): {e}", to.display());
-            }
-        }
-        if let Some(old_dir) = &self.old_dir {
-            if !self.moves.is_empty() && !fs.exists(old_dir) {
-                let _ = fs.create_dir(old_dir);
-            }
-        }
-        for (_, from, to) in self.moves.iter().rev() {
-            if let Err(e) = move_file_with(fs, to, from) {
-                log::error!(target: "datei", "Begleitdatei konnte nicht zurückgelegt werden ({}): {e}", to.display());
-            }
-        }
-        for (id, path) in &self.old_paths {
-            if let Err(e) = db::companions::update_companion_path(conn, *id, path) {
-                log::error!(target: "datei", "Pfad der Begleitdatei konnte nicht zurückgesetzt werden: {e}");
-            }
-        }
-        if let Some(dir) = &self.created_dir {
-            let _ = fs.remove_dir(dir);
-        }
+        self.0.undo(&CompanionFsAdapter(fs), conn)
     }
 }
 
 /// A model moved or was renamed from `old_model` to `new_model` (the model file is
-/// already at its new place): its companions follow into the new extras folder. Only
-/// the model's own files move, never other files of a folder two models share. Nothing is
-/// overwritten; on any failure everything done here is undone and an error returned, so
-/// the caller can undo the model move.
+/// already at its new place): its companions follow into the new extras folder. On any
+/// failure everything done here is undone and an error returned, so the caller can undo
+/// the model move.
 pub(super) fn carry(conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path) -> CmdResult<Carried> {
     carry_with(conn, file_id, old_model, new_model, CASE_INSENSITIVE_PATHS)
 }
@@ -775,99 +249,7 @@ pub(super) fn carry_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, old_model: 
 }
 
 pub(super) fn carry_with_fs(fs: &dyn Fs, conn: &Connection, file_id: i64, old_model: &Path, new_model: &Path, case_insensitive: bool) -> CmdResult<Carried> {
-    let (Some(old_dir), Some(new_dir)) = (extras_dir_for(old_model), extras_dir_for(new_model)) else {
-        return Ok(Carried::default());
-    };
-    if old_dir == new_dir {
-        return Ok(Carried::default());
-    }
-    // Only rows that really sit in the model's own folder travel with it; a row that
-    // points anywhere else is left exactly as it is, so a move never reaches a file
-    // outside that folder.
-    let rows: Vec<CompanionRecord> = db::companions::list_active_companions(conn, file_id)?
-        .into_iter()
-        .filter(|row| {
-            let inside = Path::new(&row.path).parent().is_some_and(|dir| same_dir_with(dir, &old_dir, case_insensitive));
-            if !inside {
-                log::warn!(target: "datei", "Begleitdatei liegt nicht im Ordner ihres Modells und wird nicht mitgeführt: {}", row.path);
-            }
-            inside
-        })
-        .collect();
-    if rows.is_empty() {
-        return Ok(Carried::default());
-    }
-    // Files are only taken out of the genuine old folder; through a link they could belong
-    // to someone else.
-    if let Some(problem) = extras_dir_problem(&old_dir, &old_dir) {
-        return Err(CmdError::coded(problem));
-    }
-    let mut carried = Carried { old_dir: Some(old_dir.clone()), ..Default::default() };
-    let fail = |carried: Carried, error: CmdError| -> CmdResult<Carried> {
-        carried.undo_with(fs, conn);
-        Err(error)
-    };
-    if case_insensitive && old_dir.to_string_lossy().to_lowercase() == new_dir.to_string_lossy().to_lowercase() {
-        // The model's new name differs only in case: it is the same folder, which has to be
-        // renamed in place (moving the files into "the other" folder would hit themselves).
-        // A folder that another model's companions live in is left alone: renaming it
-        // would leave that model's rows pointing at a name that no longer exists on
-        // volumes that tell the two spellings apart.
-        let own = rows.len();
-        let in_folder = db::companions::list_active_companion_paths(conn)?
-            .iter()
-            .filter(|path| Path::new(path).parent().is_some_and(|dir| same_dir_with(dir, &old_dir, case_insensitive)))
-            .count();
-        if in_folder > own {
-            return Ok(Carried::default());
-        }
-        if is_real_dir(fs, &old_dir) {
-            fs.rename(&old_dir, &new_dir).map_err(|e| CmdError::from(e.to_string()))?;
-            carried.renamed_dir = Some((old_dir.clone(), new_dir.clone()));
-        }
-        for row in &rows {
-            let Some(rest) = row.path.get(old_dir.to_string_lossy().len()..) else { continue };
-            let moved_path = format!("{}{rest}", new_dir.to_string_lossy());
-            carried.old_paths.push((row.id, row.path.clone()));
-            if let Err(e) = db::companions::update_companion_path(conn, row.id, &moved_path) {
-                return fail(carried, e.into());
-            }
-        }
-        carried.old_dir = None;
-        return Ok(carried);
-    }
-    let movable: Vec<&CompanionRecord> = rows.iter().filter(|row| is_real_file(fs, Path::new(&row.path))).collect();
-    if !movable.is_empty() && !is_real_dir(fs, &new_dir) {
-        if fs.symlink_metadata(&new_dir).is_ok() {
-            return Err(CmdError::coded(ErrorCode::CompanionTargetFolderBlocked));
-        }
-        if let Err(e) = fs.create_dir(&new_dir) {
-            return Err(CmdError::coded_with(ErrorCode::CompanionTargetFolderCreateFailed, [e]));
-        }
-        carried.created_dir = Some(new_dir.clone());
-    }
-    for row in &rows {
-        let old_path = PathBuf::from(&row.path);
-        let target = new_dir.join(&row.name);
-        carried.old_paths.push((row.id, row.path.clone()));
-        if is_real_file(fs, &old_path) {
-            if let Err(e) = move_file_with(fs, &old_path, &target) {
-                let error = if e.kind() == std::io::ErrorKind::AlreadyExists {
-                    CmdError::coded_with(ErrorCode::CompanionNameTaken, [&row.name])
-                } else {
-                    CmdError::from(e.to_string())
-                };
-                // The failed file never moved, so it is not in the list to undo.
-                carried.old_paths.pop();
-                return fail(carried, error);
-            }
-            carried.moves.push((row.id, old_path, target.clone()));
-        }
-        if let Err(e) = db::companions::update_companion_path(conn, row.id, &target.to_string_lossy()) {
-            return fail(carried, e.into());
-        }
-    }
-    Ok(carried)
+    actions::carry(&CompanionFsAdapter(fs), conn, file_id, old_model, new_model, case_insensitive).map(Carried).map_err(Into::into)
 }
 
 async fn blocking<T: Send + 'static>(
