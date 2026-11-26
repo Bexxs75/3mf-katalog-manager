@@ -2623,6 +2623,29 @@ async fn printer_service_rejects_non_allowlisted_public_loopback_and_metadata_ad
 }
 
 #[tokio::test]
+async fn printer_connection_test_is_limited_per_session() {
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+    }
+    let args = json!({"printerId":"1","kind":"moonraker","address":"8.8.8.8"});
+    for _ in 0..10 {
+        assert_eq!(f.send("test_printer_connection", args.clone()).await.status(), 200);
+    }
+    let r = f.send("test_printer_connection", args.clone()).await;
+    assert_eq!(r.status(), 429);
+    assert_eq!(r.headers()["retry-after"], "60");
+    let body = axum::body::to_bytes(r.into_body(), 4096).await.unwrap();
+    assert!(std::str::from_utf8(&body).unwrap().contains("webTooManyRequests"));
+    f.time.0.fetch_add(60, Ordering::SeqCst);
+    assert_eq!(f.send("test_printer_connection", args).await.status(), 200);
+}
+
+#[tokio::test]
 async fn printer_service_commands_use_core_and_hide_stored_keys() {
     let mut f = Fixture::new(true);
     Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
