@@ -166,6 +166,8 @@ struct Session {
     created: u64,
     seen: u64,
     bucket: crate::write::Bucket,
+    /// Start times of the recent printer connection tests (see `printer_service::allow_test`).
+    printer_tests: VecDeque<u64>,
 }
 #[derive(Default)]
 struct Failure {
@@ -760,6 +762,7 @@ fn new_session(data: &mut Data, client: &str, now: u64) -> Result<Session, Box<R
         created: now,
         seen: now,
         bucket: crate::write::Bucket::new(now),
+        printer_tests: VecDeque::new(),
     };
     cleanup(data, now);
     if data
@@ -1350,6 +1353,7 @@ async fn change_password(
             created: now,
             seen: now,
         bucket: crate::write::Bucket::new(now),
+        printer_tests: VecDeque::new(),
         },
     );
     with_cookie(
@@ -1638,6 +1642,15 @@ async fn write_invoke(app: Arc<App>, current: Session, peer: String, command: St
         } else { None };
         if printer_service::command(&command) {
             if !uploads::authenticated(&app, &current) { return error_coded(401, ErrorCode::WebSessionExpired, &[]); }
+            if command == "test_printer_connection" {
+                let allowed = app.data.lock().unwrap().sessions.get_mut(&current.token)
+                    .is_some_and(|s| printer_service::allow_test(&mut s.printer_tests, app.clock.now()));
+                if !allowed {
+                    let mut r = error_coded(429, ErrorCode::WebTooManyRequests, &[]);
+                    r.headers_mut().insert("retry-after", printer_service::TEST_WINDOW_SECONDS.to_string().parse().unwrap());
+                    return r;
+                }
+            }
             return printer_service::execute(&app, &command, &args);
         }
         let mutex = &app.writer.as_ref().unwrap().conn;

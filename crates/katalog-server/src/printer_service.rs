@@ -21,6 +21,40 @@ const BUDGET: Duration = Duration::from_secs(60);
 const FIRST_RUN: Duration = Duration::from_secs(10);
 const INTERVAL: Duration = Duration::from_secs(300);
 
+/// At most this many connection tests per session within `TEST_WINDOW_SECONDS`: the test reaches
+/// out to addresses the client names, so it must not be usable as a fast port scanner.
+const TESTS_PER_WINDOW: usize = 10;
+pub(super) const TEST_WINDOW_SECONDS: u64 = 60;
+
+/// Sliding window over the start times (clock seconds) of a session's recent tests.
+pub(super) fn allow_test(starts: &mut std::collections::VecDeque<u64>, now: u64) -> bool {
+    while starts.front().is_some_and(|t| now.saturating_sub(*t) >= TEST_WINDOW_SECONDS) {
+        starts.pop_front();
+    }
+    if starts.len() >= TESTS_PER_WINDOW {
+        return false;
+    }
+    starts.push_back(now);
+    true
+}
+
+/// What the web client may learn about a failed test. Which of refused, filtered, closed or
+/// "something else answers" happened would let a session map the allowed networks, so those
+/// collapse into `unreachable`. The detail goes to the server log. Wrong or missing keys stay
+/// distinct: they only occur after a Moonraker answer and the user has to act on them.
+fn public_error(code: &str) -> &'static str {
+    match code {
+        "auth_required" => "auth_required",
+        "auth_rejected" => "auth_rejected",
+        "api_key_invalid" => "api_key_invalid",
+        "address_not_allowed" => "address_not_allowed",
+        "container_local_name" => "container_local_name",
+        "container_loopback" => "container_loopback",
+        "name_resolution_failed" => "name_resolution_failed",
+        _ => "unreachable",
+    }
+}
+
 pub(super) struct Runtime {
     network: Arc<Semaphore>,
 }
@@ -363,7 +397,10 @@ fn test_connection(app: &App, conn: &rusqlite::Connection, args: &Value) -> Resu
         link.test()
     })();
     match result {
-        Err(e) => Ok(test_result(e.code())),
+        Err(e) => {
+            log::info!(target: "drucker", "connection test failed: {}", e.code());
+            Ok(test_result(public_error(e.code())))
+        }
         Ok(info) => {
             store::save_connection_after_test(
                 conn,
@@ -387,5 +424,31 @@ fn test_connection(app: &App, conn: &rusqlite::Connection, args: &Value) -> Resu
                 )),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn network_failure_classes_are_not_distinguishable_to_the_client() {
+        for code in ["timeout", "connection_refused", "connection_reset", "server_busy", "bad_response", "unreachable", "something_new"] {
+            assert_eq!(public_error(code), "unreachable", "{code}");
+        }
+        for code in ["auth_required", "auth_rejected", "api_key_invalid", "address_not_allowed", "name_resolution_failed"] {
+            assert_eq!(public_error(code), code);
+        }
+    }
+
+    #[test]
+    fn test_window_limits_then_frees_up_again() {
+        let mut starts = std::collections::VecDeque::new();
+        for _ in 0..TESTS_PER_WINDOW {
+            assert!(allow_test(&mut starts, 1000));
+        }
+        assert!(!allow_test(&mut starts, 1000));
+        assert!(!allow_test(&mut starts, 1000 + TEST_WINDOW_SECONDS - 1));
+        assert!(allow_test(&mut starts, 1000 + TEST_WINDOW_SECONDS));
     }
 }
