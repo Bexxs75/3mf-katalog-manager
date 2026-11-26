@@ -202,6 +202,10 @@ struct TarFlags {
     exceeded: Cell<bool>,
     /// An extension header (L/K/x/g) was larger than `TAR_MAX_EXT_HEADER`.
     big_header: Cell<bool>,
+    /// A GNU sparse entry (type `S`) was found; not supported.
+    sparse: Cell<bool>,
+    /// A PAX `size=` record disagreed with the size in its header.
+    pax_mismatch: Cell<bool>,
 }
 
 /// Reads at most `remaining` bytes and remembers an overflow, so it stays
@@ -231,49 +235,156 @@ impl<R: Read> Read for LimitedReader<R> {
     }
 }
 
-/// Size field of a tar header block (octal, or GNU base-256); `None` if malformed.
+/// Upper bound for all extension data (L/K/x) the tar crate buffers for ONE
+/// entry. The crate keeps at most one block of each kind, so this is never hit
+/// by sane archives; it bounds the buffering independently of the crate.
+pub(super) const TAR_MAX_EXT_CHAIN: u64 = 3 * TAR_MAX_EXT_HEADER;
+
+/// Data size of a header block, parsed exactly like the tar crate does it
+/// (`Header::entry_size`), so guard and crate cannot disagree; `None` if malformed.
 fn tar_header_size(block: &[u8; 512]) -> Option<u64> {
-    let field = &block[124..136];
-    if field[0] & 0x80 != 0 {
-        if field[0] & 0x40 != 0 {
-            return None; // negative
+    tar::Header::from_byte_slice(block).entry_size().ok()
+}
+
+/// `size=` record of a PAX block, with the same semantics as the tar crate
+/// (`pax_extensions_value`: first `size` key wins, any parse error means "none").
+fn pax_size(data: &[u8]) -> Option<u64> {
+    for ext in tar::PaxExtensions::new(data) {
+        let ext = ext.ok()?;
+        if ext.key() != Ok("size") {
+            continue;
         }
-        let mut v: u128 = u128::from(field[0] & 0x3f);
-        for b in &field[1..] {
-            v = (v << 8) | u128::from(*b);
-            if v > u128::from(u64::MAX) {
-                return Some(u64::MAX);
-            }
+        return ext.value().ok()?.parse::<u64>().ok();
+    }
+    None
+}
+
+/// Reads until `buf` is full or the input ends; returns the bytes read.
+fn read_up_to(inner: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut got = 0;
+    while got < buf.len() {
+        match inner.read(&mut buf[got..]) {
+            Ok(0) => break,
+            Ok(n) => got += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
         }
-        return Some(v as u64);
     }
-    let text: Vec<u8> = field.iter().copied().skip_while(|b| *b == b' ').take_while(|b| (b'0'..=b'7').contains(b)).collect();
-    let mut v: u64 = 0;
-    for b in text {
-        v = v.checked_mul(8)?.checked_add(u64::from(b - b'0'))?;
-    }
-    Some(v)
+    Ok(got)
+}
+
+/// What follows a header block once it has been handed over.
+#[derive(Clone, Copy)]
+enum After {
+    /// `n` data bytes (incl. padding) pass through.
+    Data(u64),
+    /// The buffered PAX block (`HeaderGuard::pax`) is handed over; `complete`
+    /// is false if the input ended inside it.
+    Pax { complete: bool },
+    /// Truncated input: no further checks.
+    End,
 }
 
 enum GuardState {
     /// Collecting a 512-byte header block (`filled` bytes so far).
     Header { filled: usize },
     /// Handing the checked header block to the caller (`sent` bytes so far).
-    Emit { sent: usize, len: usize, data: Option<u64> },
+    Emit { sent: usize, len: usize, after: After },
+    /// Handing the buffered PAX block to the caller (`sent` bytes so far).
+    EmitPax { sent: usize, complete: bool },
     /// Passing through `remaining` data bytes (incl. padding).
     Data { remaining: u64 },
-    /// End marker or truncated input: no further checks.
+    /// Truncated input: no further checks.
     Passthrough,
 }
 
 /// Inspects the raw 512-byte tar headers BEFORE the tar crate sees them and
-/// rejects GNU long-name/link (L/K) and PAX (x/g) blocks above
-/// `TAR_MAX_EXT_HEADER`, which the crate would otherwise read fully into memory.
+/// keeps its own view of the stream in step with the crate's (S19-001):
+/// - GNU long-name/link (L/K) and PAX (x/g) blocks above `TAR_MAX_EXT_HEADER`
+///   are rejected, and all L/K/x data for one entry is capped at
+///   `TAR_MAX_EXT_CHAIN` (the crate reads these blocks fully into memory).
+/// - Sizes are parsed with the crate's own parser. A PAX `size=` record (which
+///   the crate uses instead of the header size) must equal the size in the
+///   header it applies to; otherwise guard and crate would drift apart.
+/// - GNU sparse entries (type `S`, with `isextended` follow-up blocks the crate
+///   reads in addition to the data) are rejected.
 struct HeaderGuard<R> {
     inner: R,
     block: [u8; 512],
     state: GuardState,
     flags: Rc<TarFlags>,
+    /// Buffered data of the current PAX (x) block, incl. padding.
+    pax: Vec<u8>,
+    /// `size=` of the last PAX (x) block, for the next regular header.
+    pending_pax_size: Option<u64>,
+    /// L/K/x data bytes seen since the last regular header.
+    ext_chain: u64,
+}
+
+impl<R: Read> HeaderGuard<R> {
+    fn new(inner: R, flags: Rc<TarFlags>) -> Self {
+        HeaderGuard {
+            inner,
+            block: [0; 512],
+            state: GuardState::Header { filled: 0 },
+            flags,
+            pax: Vec::new(),
+            pending_pax_size: None,
+            ext_chain: 0,
+        }
+    }
+
+    /// Checks a complete, non-zero header block; returns what follows it.
+    fn check_header(&mut self) -> std::io::Result<After> {
+        let kind = self.block[156];
+        let size = tar_header_size(&self.block);
+        let ext = matches!(kind, b'L' | b'K' | b'x' | b'g');
+        if ext {
+            let Some(size) = size.filter(|s| *s <= TAR_MAX_EXT_HEADER) else {
+                self.flags.big_header.set(true);
+                return Err(std::io::Error::other("tar-Erweiterungskopf zu gross"));
+            };
+            if kind != b'g' {
+                self.ext_chain += size;
+                if self.ext_chain > TAR_MAX_EXT_CHAIN {
+                    self.flags.big_header.set(true);
+                    return Err(std::io::Error::other("tar-Erweiterungskoepfe zusammen zu gross"));
+                }
+            }
+        }
+        if kind == b'S' {
+            self.flags.sparse.set(true);
+            return Err(std::io::Error::other("tar-Sparse-Eintrag"));
+        }
+        let Some(size) = size else {
+            return Err(std::io::Error::other("tar-Kopf mit ungueltiger Groesse"));
+        };
+        if !matches!(kind, b'L' | b'K' | b'x') {
+            // This header consumes the preceding extension blocks.
+            self.ext_chain = 0;
+            if let Some(pax) = self.pending_pax_size.take() {
+                if pax != size {
+                    if pax > MAX_UNPACKED_BYTES {
+                        self.flags.exceeded.set(true);
+                    } else {
+                        self.flags.pax_mismatch.set(true);
+                    }
+                    return Err(std::io::Error::other("tar-PAX-Groesse weicht vom Kopf ab"));
+                }
+            }
+        }
+        let padded = size.div_ceil(512) * 512;
+        if kind != b'x' {
+            return Ok(After::Data(padded));
+        }
+        // Bounded by TAR_MAX_EXT_HEADER above.
+        self.pax.clear();
+        self.pax.resize(padded as usize, 0);
+        let got = read_up_to(&mut self.inner, &mut self.pax)?;
+        self.pax.truncate(got);
+        self.pending_pax_size = pax_size(&self.pax[..got.min(size as usize)]);
+        Ok(After::Pax { complete: got == padded as usize })
+    }
 }
 
 impl<R: Read> Read for HeaderGuard<R> {
@@ -302,7 +413,7 @@ impl<R: Read> Read for HeaderGuard<R> {
                     let n = self.inner.read(&mut self.block[filled..])?;
                     if n == 0 {
                         // Truncated or finished: hand over what we hold, then pass through.
-                        self.state = GuardState::Emit { sent: 0, len: filled, data: None };
+                        self.state = GuardState::Emit { sent: 0, len: filled, after: After::End };
                         continue;
                     }
                     let filled = filled + n;
@@ -310,31 +421,37 @@ impl<R: Read> Read for HeaderGuard<R> {
                         self.state = GuardState::Header { filled };
                         continue;
                     }
-                    if self.block.iter().all(|b| *b == 0) {
-                        self.state = GuardState::Emit { sent: 0, len: 512, data: None };
-                        continue;
-                    }
-                    let kind = self.block[156];
-                    let size = tar_header_size(&self.block);
-                    let ext = matches!(kind, b'L' | b'K' | b'x' | b'g');
-                    if ext && size.is_none_or(|s| s > TAR_MAX_EXT_HEADER) {
-                        self.flags.big_header.set(true);
-                        return Err(std::io::Error::other("tar-Erweiterungskopf zu gross"));
-                    }
-                    let data = size.unwrap_or(0).saturating_add(511) / 512 * 512;
-                    self.state = GuardState::Emit { sent: 0, len: 512, data: Some(data) };
+                    // A zero block (end marker) carries no data; whatever the crate
+                    // reads after it is checked as a header again.
+                    let after = if self.block.iter().all(|b| *b == 0) {
+                        After::Data(0)
+                    } else {
+                        self.check_header()?
+                    };
+                    self.state = GuardState::Emit { sent: 0, len: 512, after };
                 }
-                GuardState::Emit { sent, len, data } => {
+                GuardState::Emit { sent, len, after } => {
                     if sent >= len {
-                        self.state = match data {
-                            Some(remaining) => GuardState::Data { remaining },
-                            None => GuardState::Passthrough,
+                        self.state = match after {
+                            After::Data(remaining) => GuardState::Data { remaining },
+                            After::Pax { complete } => GuardState::EmitPax { sent: 0, complete },
+                            After::End => GuardState::Passthrough,
                         };
                         continue;
                     }
                     let n = (len - sent).min(buf.len());
                     buf[..n].copy_from_slice(&self.block[sent..sent + n]);
-                    self.state = GuardState::Emit { sent: sent + n, len, data };
+                    self.state = GuardState::Emit { sent: sent + n, len, after };
+                    return Ok(n);
+                }
+                GuardState::EmitPax { sent, complete } => {
+                    if sent >= self.pax.len() {
+                        self.state = if complete { GuardState::Header { filled: 0 } } else { GuardState::Passthrough };
+                        continue;
+                    }
+                    let n = (self.pax.len() - sent).min(buf.len());
+                    buf[..n].copy_from_slice(&self.pax[sent..sent + n]);
+                    self.state = GuardState::EmitPax { sent: sent + n, complete };
                     return Ok(n);
                 }
             }
@@ -345,6 +462,10 @@ impl<R: Read> Read for HeaderGuard<R> {
 fn tar_error(flags: &TarFlags, e: impl std::fmt::Display) -> ArchiveError {
     if flags.big_header.get() {
         ArchiveError::MemoryLimit
+    } else if flags.sparse.get() {
+        ArchiveError::Unsupported("tar-Sparse-Dateien (GNU-Typ S) werden nicht unterstuetzt".into())
+    } else if flags.pax_mismatch.get() {
+        ArchiveError::Unreadable("PAX-Groessenangabe weicht vom tar-Kopf ab".into())
     } else if flags.exceeded.get() {
         ArchiveError::LimitExceeded
     } else {
@@ -364,16 +485,12 @@ fn tar_stream(path: &Path, format: ArchiveFormat, flags: Rc<TarFlags>) -> Result
         }
         other => return Err(ArchiveError::Unsupported(format!("kein tar-Format: {other:?}"))),
     };
-    Ok(Box::new(HeaderGuard {
-        inner: LimitedReader {
-            inner: decoded,
-            remaining: TAR_STREAM_LIMIT,
-            exceeded: flags.clone(),
-        },
-        block: [0; 512],
-        state: GuardState::Header { filled: 0 },
-        flags,
-    }))
+    let limited = LimitedReader {
+        inner: decoded,
+        remaining: TAR_STREAM_LIMIT,
+        exceeded: flags.clone(),
+    };
+    Ok(Box::new(HeaderGuard::new(limited, flags)))
 }
 
 fn tar_meta<R: Read>(entry: &tar::Entry<'_, R>) -> Result<EntryMeta, ArchiveError> {
