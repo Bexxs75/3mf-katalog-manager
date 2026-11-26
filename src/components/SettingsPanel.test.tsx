@@ -584,6 +584,14 @@ describe('SettingsPanel program behavior section', () => {
     expect(await screen.findByRole('radio', { name: de.closeActionExit })).toBeVisible();
     expect(screen.getByRole('heading', { level: 3, name: de.settingsSecProgram })).toBeVisible();
   });
+
+  it('finds the close behavior through its keyword "Tray"', async () => {
+    answer({ action: 'exit', trayAvailable: true, supported: true, platform: 'windows' });
+    renderPanel();
+    fireEvent.change(screen.getByRole('searchbox', { name: de.settingsSearch }), { target: { value: 'Tray' } });
+    expect(await screen.findByRole('radio', { name: de.closeActionExit })).toBeVisible();
+    expect(screen.queryByText(de.settingsNoResults)).toBeNull();
+  });
 });
 
 describe('SettingsPanel switches and container paths', () => {

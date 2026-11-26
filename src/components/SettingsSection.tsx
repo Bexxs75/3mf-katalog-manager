@@ -61,7 +61,9 @@ export function SettingsSection({ id, title, experimental, help, advanced, dange
     const update = () => {
       const content = section.cloneNode(true) as HTMLElement;
       content.querySelectorAll('[data-setting-actions]').forEach(element => element.remove());
-      const visible = !(hideWhenEmpty && empty) && matchesSettingsSearch(tools?.query ?? '', tabLabel, title, help ?? '', content.textContent ?? '');
+      // Alternative names of a setting live in an attribute, so they are searchable but neither shown nor read out.
+      const keywords = [...content.querySelectorAll('[data-setting-keywords]')].map(element => element.getAttribute('data-setting-keywords') ?? '').join(' ');
+      const visible = !(hideWhenEmpty && empty) && matchesSettingsSearch(tools?.query ?? '', tabLabel, title, help ?? '', content.textContent ?? '', keywords);
       setMatches(visible);
       tools?.reportSection(id, tab, visible);
     };

@@ -58,7 +58,7 @@ export function SettingRow({ id, value, label, onReset, disabled, keywords = '',
     observer.observe(node, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
   }, [tools?.query, tabLabel, section, label, keywords]);
-  return <div ref={ref} hidden={!visible} data-setting-row>
+  return <div ref={ref} hidden={!visible} data-setting-row data-setting-keywords={keywords || undefined}>
     <div data-setting-content>{children}</div>
     <SettingActions id={id} value={value} label={label} onReset={onReset} disabled={disabled} />
   </div>;
