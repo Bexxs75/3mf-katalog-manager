@@ -1252,6 +1252,62 @@ fn tar_pax_size_differing_from_the_header_is_rejected() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// x block (`size=7`), a global `g` header, then a regular entry with the given
+/// header size and a body of that length (7 bytes of data at most).
+fn tar_x_then_g(header_size: u64, body: &[u8]) -> Vec<u8> {
+    let mut builder = tar::Builder::new(Vec::new());
+    builder.append_pax_extensions([("size", &b"7"[..])]).unwrap();
+    let mut raw = builder.into_inner().unwrap();
+    raw.truncate(raw.len() - 1024);
+    let mut global = tar::Header::new_ustar();
+    global.set_path("pax_global_header").unwrap();
+    global.set_entry_type(tar::EntryType::XGlobalHeader);
+    global.set_size(0);
+    global.set_cksum();
+    raw.extend_from_slice(global.as_bytes());
+    raw.extend_from_slice(file_header("modell.stl", header_size).as_bytes());
+    raw.extend_from_slice(body);
+    raw.resize(raw.len().div_ceil(512) * 512 + 1024, 0);
+    raw
+}
+
+#[test]
+fn tar_global_header_does_not_inherit_the_pending_pax_size() {
+    // The crate hands the g header out as its own entry and drops the pending x
+    // data with it, so a following file is read with its own header size.
+    let dir = unique_dir("tarpaxglobal");
+    for (header_size, body) in [(7u64, &b"solid x"[..]), (8, &b"solid x!"[..])] {
+        let raw = tar_x_then_g(header_size, body);
+        for_tar_and_gz(&dir, &raw, |name, result, status| {
+            assert!(result.is_ok(), "{name} ({header_size}): {result:?}");
+            assert_eq!(status, InspectStatus::Ok, "{name}");
+        });
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_header_size_near_u64_max_is_an_archive_error() {
+    // Base-256 size fields can carry values whose 512-rounding overflows u64.
+    let dir = unique_dir("tarsizemax");
+    for size in [u64::MAX, u64::MAX - 511, u64::MAX - 510] {
+        let mut header = file_header("modell.stl", 0);
+        let field = &mut header.as_mut_bytes()[124..136];
+        field[0] = 0x80;
+        field[1..4].fill(0);
+        field[4..].copy_from_slice(&size.to_be_bytes());
+        header.set_cksum();
+        let mut raw = header.as_bytes().to_vec();
+        raw.extend_from_slice(&[b'a'; 512]);
+        raw.extend_from_slice(&[0; 1024]);
+        for_tar_and_gz(&dir, &raw, |name, result, status| {
+            assert!(result.is_err(), "{name} ({size}): {result:?}");
+            assert_ne!(status, InspectStatus::Ok, "{name} ({size})");
+        });
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn tar_long_name_and_pax_path_still_extract() {
     // (d) Normal archive: GNU L long name, then PAX path (+ matching size) entry.
