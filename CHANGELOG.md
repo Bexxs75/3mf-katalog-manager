@@ -63,6 +63,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Known limitations
 
 - On GNOME (Wayland), the window does not get keyboard focus after "Open" in the tray icon's menu: the compositor's focus-stealing prevention blocks it. The order of unminimize, show and set-focus is correct; a fix would need xdg-activation. Click into the window to continue.
+- Dragging into OrcaSlicer on GNOME (Wayland): in the test VM OrcaSlicer took no drop from synthetic input (it works on GNOME X11 and KDE); not yet confirmed with a real mouse. If it fails, use an X11 session or the file manager.
 - In Settings, the header count and the "Changed" marker compare with the value when Settings was opened, not with the default.
 - The window remembers its size and maximized state, not its position: a restored position could leave the title bar off screen after a monitor was removed.
 - Dragging out on Linux: if the mouse is released immediately, the drag can still start (about 1 of 3 attempts in the measurement); after a cancel by a GTK3 target the window has frozen in the tests (3 reproductions, not measured again). Both are accepted for 0.19.0.
@@ -1008,6 +1009,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Bekannte Einschränkungen
 
 - Unter GNOME (Wayland) bekommt das Fenster nach „Öffnen“ im Menü des Infobereich-Symbols keinen Tastaturfokus: Der Fokus-Stehlschutz des Compositors verhindert es. Die Reihenfolge unminimize, show und set_focus ist korrekt; ein Fix bräuchte xdg-activation. Klicke ins Fenster, um weiterzumachen.
+- Herausziehen in OrcaSlicer unter GNOME (Wayland): In der Test-VM nahm OrcaSlicer bei künstlicher Eingabe keine Datei an (unter GNOME X11 und KDE geht es); mit echter Maus noch nicht bestätigt. Falls es fehlschlägt, eine X11-Sitzung oder den Dateimanager nutzen.
 - In den Einstellungen vergleichen die Zahl in der Kopfzeile und die Markierung „Geändert“ mit dem Wert beim Öffnen der Einstellungen, nicht mit dem Standard.
 - Das Fenster merkt sich Größe und Maximiert-Zustand, nicht die Position: Eine wiederhergestellte Position könnte die Titelleiste außerhalb des Bildschirms lassen, wenn ein Monitor entfernt wurde.
 - Herausziehen unter Linux: Wird die Maustaste sofort losgelassen, kann der Zug trotzdem noch starten (etwa 1 von 3 Versuchen in der Messung); nach einem Abbruch durch ein GTK3-Ziel fror die Oberfläche in den Tests ein (3 Reproduktionen, nicht erneut gemessen). Beides bleibt für 0.19.0 bewusst so.
