@@ -41,7 +41,9 @@ pub(super) fn allow_test(starts: &mut std::collections::VecDeque<u64>, now: u64)
 /// What the web client may learn about a failed test. Which of refused, filtered, closed or
 /// "something else answers" happened would let a session map the allowed networks, so those
 /// collapse into `unreachable`. The detail goes to the server log. Wrong or missing keys stay
-/// distinct: they only occur after a Moonraker answer and the user has to act on them.
+/// distinct because the user has to act on them. Known remainder (accepted, see Forgejo #88): any
+/// HTTP 401/403 yields these, so an auth-protected HTTP service in the allowed networks is still
+/// told apart from a closed port, and a dropped packet still takes the request timeout.
 fn public_error(code: &str) -> &'static str {
     match code {
         "auth_required" => "auth_required",
