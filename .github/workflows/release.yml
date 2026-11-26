@@ -30,7 +30,7 @@ jobs:
       # ships the MSI alone, exactly as before.
       nsis: ${{ steps.nsis.outputs.nsis }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Passed through env instead of being pasted into the script, so the input
       # can never be interpreted as shell code.
       # A red or missing CI run on exactly this commit must stop the build: an
@@ -110,16 +110,16 @@ jobs:
       # installer, otherwise the draft is not created.
       NSIS_FLAG: ${{ needs.verify.outputs.nsis == 'true' && '--require-nsis' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       # Only the final packages; the single-arch .app bundles of the STEP macOS
       # build are intermediate artifacts and not needed here.
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 3mf-katalog-manager-*
           path: artifacts
