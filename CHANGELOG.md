@@ -9,6 +9,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-26
+
 ### Added
 
 - The printer connection works in the web interface too: the server asks the printers (only addresses on its printer allowlist), and the web app shows status, test, new prints and history like the desktop app.
@@ -23,6 +25,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - The web server can show STEP files in the 3D view and read their dimensions on "Rescan" when it is built with the `step-preview` feature (Open CASCADE linked dynamically). Each STEP file is read by a separate, limited helper process of the server (memory, CPU time and a time limit; no network and no influence on other processes; it can read only that file and the system libraries and change no file at all), so a damaged file cannot affect the server; at most two run at once, further requests get "try again shortly". The read restriction uses Linux Landlock: where the kernel or the container does not offer it, the server keeps the STEP preview off and says so in its log. Built without the feature, the server reports the preview as unavailable as before.
 - "Save as STL" can now write ASCII STL as well as binary. The dialog has a "Format" choice (binary stays the default; ASCII is about 4–5 times larger) that also applies to "each part as its own file" and to plate export; the web download takes `format=ascii` (limited to 250,000 triangles, a quarter of the binary limit, to keep the server's memory use the same).
 - The web interface can now compare the catalog with the disk and clean it up (needs write mode and `KATALOG_FILE_OPS=1`): the disk report has a preview and applies the selected new files, missing models and orphaned companion files in blocks of at most 10 rows with a progress line and "Cancel" (it stops after the running block). The server re-checks every row against the disk before it acts. Removing only takes catalog entries out (to the catalog trash) after an explicit confirmation and counts against the daily limit; no file is moved or deleted. Entries it cannot judge (below a link, unreachable root) are listed as "unclear", display only. "Check catalog for problems" works in the web interface with a one-click removal for a fully deleted folder, and "Rename with date" works there too. The optional check after the server start (Settings, off by default, once per start) only reports unless automatic taking over is switched on; then it adds at most 200 new files per start and never removes entries. The Spanish and French texts have not been checked by native speakers.
+- A bundle can now hold a single file, and a whole bundle can be moved to another folder: drag it onto a folder or use "Move to" (F6 also works while only the bundle's card is open) (#23, #27).
+- On import, the source URL is filled in automatically when a Makerworld file carries a purely numeric model ID (no network access; other ID shapes give no link) (#30).
 
 ### Changed
 
@@ -36,6 +40,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - The update component was brought up to date, so the update packages are handled by a current archive library. The dependency audit no longer needs exceptions for it.
 - Tests now cover the web "What's new" window: no window on the first start, the window after a version change, and a marker that never moves backwards.
+- Renaming, moving, trash, folders, companion files, disk comparison, catalog removal, export, source folders and backup restore of the desktop app now run on the same shared core as the web version (#20). Nothing changes visibly: the behaviour was recorded with test scenarios against the old code and matches it byte for byte; the desktop tests now run on Windows and macOS in the CI as well.
+- Web server hardening: removing 50 or more catalog entries in one call (and removing a folder that holds entries) asks for the password; imports keep to the tag limit for automatically derived tags; tags, collections and spool images have quotas (5000 tags, 100 per model, 500 collections, 10,000 models per collection, 200 MB of spool images); list calls past a row limit are refused; stored password hashes with excessive Argon2 parameters are refused; the server sends CORP, COOP and Permissions-Policy headers; `KATALOG_BIND` with port 0 is refused. The web server now also needs `KATALOG_TRUSTED_PROXIES` whenever `KATALOG_TRUST_PROXY` is on and refuses to start without a valid list: forwarded headers are believed only from those proxies, and the X-Forwarded-For chain is read from the right.
+- The generated first password of the web server is no longer printed in the log: it is written to `web-initial-password.txt` next to the password file (mode 0600), and the log names only the path. The file is removed as soon as the password is changed or a chosen password is set.
+- The web printer connection test only answers "not reachable" for every network failure (refused, filtered, reset, not a Moonraker; the detail goes to the server log) and is limited to 10 tests per minute per session (HTTP 429 with a retry hint). The printer network path also refuses the link-local ranges (169.254.0.0/16, fe80::/10) and the server's own port, accepts only real PNG thumbnails, bounds hostname lookups with a time limit, refuses Moonraker history pages with more entries than requested and collects at most 1000 jobs per printer and pass.
+- The web image now carries `LICENSE` and `THIRD-PARTY-LICENSES.md` and OCI labels (checked in the image smoke test); the CI workflows run with least privilege and a Dependabot configuration was added; the `cookie` library was updated (RUSTSEC-2026-0594). The texts of the settings counter now say that changes are counted since opening the settings.
 
 ### Fixed
 
@@ -47,11 +56,19 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - The settings search finds the close-to-tray option under the term "Tray" as well.
 - The window remembers its size and its maximized state across restarts, and starts maximized under GNOME/Wayland as configured (the window was small there before).
 - On the web, after a backup has been restored, imports and the search for new files wait a moment (the message says so, HTTP 409) until the server has filled in the file checksums again; before, an import of the same source folder copied every known file a second time. Renaming or moving files during that time is safe.
+- Dragging a file out of the catalog into other programs works on Linux again: Bambu Studio, OrcaSlicer and simple editors now accept the file (the address is percent-encoded correctly, also for names with umlauts, and the data stays available after the mouse is released). Tested with Bambu Studio and OrcaSlicer on GNOME and KDE (Wayland) and with Bambu Studio on KDE X11; see the known limitations (#25).
+- In a narrow sidebar the name of a missing folder stays readable and its "missing" badge is shown completely or not at all (#29). The disk comparison labels new folders as "Folder" instead of "File" (#28).
+- On the web, "Save as STL" no longer loses the downloaded file silently in the dialog, a server folder import no longer opens the result dialog twice, and the backup download button and its note wrap instead of being clipped. Import progress reads "x of y".
 
 ### Known limitations
 
 - On GNOME (Wayland), the window does not get keyboard focus after "Open" in the tray icon's menu: the compositor's focus-stealing prevention blocks it. The order of unminimize, show and set-focus is correct; a fix would need xdg-activation. Click into the window to continue.
 - In Settings, the header count and the "Changed" marker compare with the value when Settings was opened, not with the default.
+- The window remembers its size and maximized state, not its position: a restored position could leave the title bar off screen after a monitor was removed.
+- Dragging out on Linux: if the mouse is released immediately, the drag can still start (about 1 of 3 attempts in the measurement); after a cancel by a GTK3 target the window has frozen in the tests (3 reproductions, not measured again). Both are accepted for 0.19.0.
+- Tar uploads: sparse tar archives (GNU sparse) are refused as not supported, and an archive whose PAX `size` record differs from the size in the entry header is reported as damaged.
+- Web printer connection test: it only reports "not reachable" and is limited to 10 tests per minute per session; a remaining timing difference of the test is documented and accepted.
+- Reverse proxy operators: set `KATALOG_TRUSTED_PROXIES` to the proxy's fixed address or a small fixed proxy subnet (`/32`, IPv6 `/128`) and do not publish port 8080 behind the proxy; every client that can connect from a trusted range can set `X-Forwarded-For` freely and bypass the per-client login lock.
 
 ## [0.18.7] - 2026-11-22
 
@@ -936,6 +953,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-26
+
 ### Hinzugefügt
 
 - Die Druckeranbindung funktioniert jetzt auch in der Web-Oberfläche: Der Server fragt die Drucker ab (nur Adressen aus seiner Drucker-Freigabeliste), die Web-App zeigt Status, Test, neue Drucke und Verlauf wie die Desktop-App.
@@ -950,6 +969,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Der Web-Server kann STEP-Dateien in der 3D-Ansicht zeigen und ihre Maße beim „Neu einlesen“ lesen, wenn er mit dem Feature `step-preview` gebaut ist (Open CASCADE dynamisch gelinkt). Jede STEP-Datei liest ein eigener, begrenzter Hilfsprozess des Servers (Speicher, Rechenzeit und Zeitlimit; kein Netz und kein Einfluss auf andere Prozesse; er kann nur diese Datei und die Systembibliotheken lesen und keine Datei verändern), damit eine beschädigte Datei den Server nicht beeinträchtigt; höchstens zwei laufen gleichzeitig, weitere Anfragen erhalten „bitte gleich erneut versuchen“. Die Lesebeschränkung nutzt Linux-Landlock: Wo Kernel oder Container es nicht anbieten, lässt der Server die STEP-Vorschau aus und vermerkt das im Log. Ohne das Feature meldet der Server die Vorschau wie bisher als nicht verfügbar.
 - „Als STL speichern“ kann jetzt auch ASCII-STL schreiben. Der Dialog hat die Auswahl „Format“ (Standard bleibt binär; ASCII ist etwa 4–5-mal größer), sie gilt auch für „Jedes Teil als eigene Datei“ und den Plattenexport; der Web-Download nimmt `format=ascii` (begrenzt auf 250.000 Dreiecke, ein Viertel der binären Grenze, damit der Speicherbedarf des Servers gleich bleibt). Spanische und französische Texte vom Modell geschrieben, nicht von Muttersprachlern geprüft.
 - Die Web-Oberfläche kann den Katalog jetzt mit der Festplatte abgleichen und bereinigen (braucht Schreibmodus und `KATALOG_FILE_OPS=1`): Der Abgleichsbericht hat eine Vorschau und übernimmt die gewählten neuen Dateien, fehlenden Modelle und verwaisten Begleitdateien in Blöcken mit höchstens 10 Zeilen, mit Fortschrittszeile und „Abbrechen“ (stoppt nach dem laufenden Block). Der Server prüft jede Zeile vor der Ausführung neu gegen die Platte. Entfernen nimmt nur Katalogeinträge heraus (in den Papierkorb des Katalogs), nur nach ausdrücklicher Bestätigung und zählt gegen das Tageslimit; keine Datei wird verschoben oder gelöscht. Einträge, die er nicht beurteilen kann (unter einem Link, nicht erreichbare Wurzel), stehen als „unklar“ nur zur Ansicht in einer Liste. „Katalog auf Probleme prüfen“ funktioniert im Web mit Ein-Klick-Entfernen für einen ganz gelöschten Ordner, ebenso „Mit Datum umbenennen“. Der optionale Abgleich nach dem Serverstart (Einstellungen, standardmäßig aus, einmal je Start) meldet nur, solange das automatische Übernehmen aus ist; sonst fügt er höchstens 200 neue Dateien je Start hinzu und entfernt nie Einträge. Die spanischen und französischen Texte wurden nicht von Muttersprachlern geprüft.
+- Ein Bündel darf jetzt nur eine Datei enthalten, und ein ganzes Bündel lässt sich in einen anderen Ordner verschieben: auf einen Ordner ziehen oder „Verschieben nach“ nutzen (F6 geht auch, wenn nur die Karte des Bündels geöffnet ist) (#23, #27).
+- Beim Import wird die Quell-Adresse automatisch eingetragen, wenn eine Makerworld-Datei eine rein numerische Modell-ID trägt (ohne Netzzugriff; andere ID-Formen ergeben keinen Link) (#30).
 
 ### Geändert
 
@@ -962,6 +983,11 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 - Die Update-Komponente wurde aktualisiert, damit Update-Pakete von einer aktuellen Archiv-Bibliothek verarbeitet werden. Die Abhängigkeitsprüfung braucht dafür keine Ausnahmen mehr.
 - Tests decken jetzt das „Neu“-Fenster im Web ab: kein Fenster beim ersten Start, das Fenster nach einem Versionswechsel und eine Marke, die nie rückwärts wandert.
+- Umbenennen, Verschieben, Papierkorb, Ordner, Begleitdateien, Festplattenabgleich, Katalogentfernung, Export, Quellordner und Sicherungs-Wiederherstellung der Desktop-App laufen jetzt auf demselben gemeinsamen Kern wie die Web-Version (#20). Sichtbar ändert sich nichts: Das Verhalten wurde mit Testszenarien gegen den alten Code aufgenommen und stimmt byte-genau überein; die Desktop-Tests laufen in der CI jetzt auch unter Windows und macOS.
+- Härtung des Web-Servers: Das Entfernen von 50 oder mehr Katalogeinträgen in einem Aufruf (und das Entfernen eines Ordners mit Einträgen) fragt das Passwort; Importe halten die Tag-Grenze auch für automatisch abgeleitete Tags ein; Tags, Sammlungen und Spulenbilder haben Obergrenzen (5000 Tags, 100 je Modell, 500 Sammlungen, 10.000 Modelle je Sammlung, 200 MB Spulenbilder); Listenaufrufe über einer Zeilengrenze werden abgelehnt; gespeicherte Passwort-Hashes mit überzogenen Argon2-Parametern werden abgelehnt; der Server sendet CORP-, COOP- und Permissions-Policy-Header; `KATALOG_BIND` mit Port 0 wird abgelehnt. Außerdem braucht der Web-Server `KATALOG_TRUSTED_PROXIES`, sobald `KATALOG_TRUST_PROXY` an ist, und startet ohne gültige Liste nicht: Weitergeleitete Köpfe gelten nur von diesen Proxys, die X-Forwarded-For-Kette wird von rechts gelesen.
+- Das erzeugte Startpasswort des Web-Servers steht nicht mehr im Log: Es wird in `web-initial-password.txt` neben der Passwortdatei geschrieben (Modus 0600), das Log nennt nur den Pfad. Die Datei verschwindet, sobald das Passwort geändert oder ein eigenes gesetzt ist.
+- Der Verbindungstest der Web-Druckeranbindung antwortet bei jedem Netzfehler nur noch „nicht erreichbar“ (abgelehnt, gefiltert, zurückgesetzt, kein Moonraker; die Einzelheiten stehen im Server-Log) und ist auf 10 Tests pro Minute je Sitzung begrenzt (HTTP 429 mit Wiederholungshinweis). Der Netzwerkweg zu den Druckern lehnt außerdem die Link-Local-Bereiche (169.254.0.0/16, fe80::/10) und den eigenen Port des Servers ab, nimmt nur echte PNG-Vorschaubilder an, begrenzt Namensauflösungen durch ein Zeitlimit, lehnt Moonraker-Verlaufsseiten mit mehr Einträgen als angefordert ab und sammelt höchstens 1000 Aufträge je Drucker und Durchgang.
+- Das Web-Image enthält jetzt `LICENSE` und `THIRD-PARTY-LICENSES.md` sowie OCI-Labels (im Image-Rauchtest geprüft); die CI-Workflows laufen mit minimalen Rechten, eine Dependabot-Konfiguration kam hinzu, und die Bibliothek `cookie` wurde aktualisiert (RUSTSEC-2026-0594). Die Texte des Einstellungs-Zählers sagen jetzt, dass seit dem Öffnen der Einstellungen gezählt wird.
 
 ### Behoben
 
@@ -972,11 +998,19 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Eine Datei ohne darstellbare Geometrie (zum Beispiel ein gesliceltes Paket, das nur G-Code enthält) wird bei der Vorschau nicht mehr als Fehler protokolliert, sondern als Information.
 - Das Fenster merkt sich Größe und Maximiert-Zustand über Neustarts hinweg und startet unter GNOME/Wayland wie eingestellt maximiert (dort blieb es bisher klein).
 - Die Einstellungssuche findet die Option zum Minimieren in den Infobereich jetzt auch unter dem Begriff „Tray“.
+- Das Herausziehen einer Datei aus dem Katalog in andere Programme funktioniert unter Linux wieder: Bambu Studio, OrcaSlicer und einfache Editoren nehmen die Datei an (die Adresse wird richtig prozent-kodiert, auch bei Namen mit Umlauten, und die Daten bleiben nach dem Loslassen abrufbar). Geprüft mit Bambu Studio und OrcaSlicer unter GNOME und KDE (Wayland) und mit Bambu Studio unter KDE X11; siehe die bekannten Einschränkungen (#25).
+- In einer schmalen Seitenleiste bleibt der Name eines fehlenden Ordners lesbar, und seine Markierung „fehlt“ erscheint ganz oder gar nicht (#29). Der Abgleich nennt neue Ordner „Ordner“ statt „Datei“ (#28).
+- Im Web verliert „Als STL speichern“ die heruntergeladene Datei im Dialog nicht mehr stillschweigend, ein Server-Ordner-Import öffnet den Ergebnisdialog nicht mehr doppelt, und der Knopf zum Herunterladen der Sicherung samt Hinweis bricht um statt abgeschnitten zu werden. Der Importfortschritt heißt „x von y“.
 
 ### Bekannte Einschränkungen
 
 - Unter GNOME (Wayland) bekommt das Fenster nach „Öffnen“ im Menü des Infobereich-Symbols keinen Tastaturfokus: Der Fokus-Stehlschutz des Compositors verhindert es. Die Reihenfolge unminimize, show und set_focus ist korrekt; ein Fix bräuchte xdg-activation. Klicke ins Fenster, um weiterzumachen.
 - In den Einstellungen vergleichen die Zahl in der Kopfzeile und die Markierung „Geändert“ mit dem Wert beim Öffnen der Einstellungen, nicht mit dem Standard.
+- Das Fenster merkt sich Größe und Maximiert-Zustand, nicht die Position: Eine wiederhergestellte Position könnte die Titelleiste außerhalb des Bildschirms lassen, wenn ein Monitor entfernt wurde.
+- Herausziehen unter Linux: Wird die Maustaste sofort losgelassen, kann der Zug trotzdem noch starten (etwa 1 von 3 Versuchen in der Messung); nach einem Abbruch durch ein GTK3-Ziel fror die Oberfläche in den Tests ein (3 Reproduktionen, nicht erneut gemessen). Beides bleibt für 0.19.0 bewusst so.
+- Tar-Uploads: Sparse-tar-Archive (GNU sparse) werden als nicht unterstützt abgelehnt, und ein Archiv, dessen PAX-`size`-Eintrag von der Größe im Eintragskopf abweicht, gilt als beschädigt.
+- Web-Verbindungstest der Drucker: Er meldet nur „nicht erreichbar“ und ist auf 10 Tests pro Minute je Sitzung begrenzt; ein verbleibender Zeitunterschied des Tests ist dokumentiert und akzeptiert.
+- Betreiber hinter einem Reverse-Proxy: `KATALOG_TRUSTED_PROXIES` auf die feste Adresse des Proxys oder ein kleines festes Proxy-Subnetz setzen (`/32`, IPv6 `/128`) und Port 8080 hinter dem Proxy nicht veröffentlichen; jeder Client, der aus einem vertrauten Bereich verbinden kann, setzt `X-Forwarded-For` frei und umgeht die Sperre je Client beim Anmelden.
 
 ## [0.18.7] - 2026-11-22
 
