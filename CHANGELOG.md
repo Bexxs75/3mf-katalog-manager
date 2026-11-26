@@ -69,6 +69,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Tar uploads: sparse tar archives (GNU sparse) are refused as not supported, and an archive whose PAX `size` record differs from the size in the entry header is reported as damaged.
 - Web printer connection test: it only reports "not reachable" and is limited to 10 tests per minute per session; a remaining timing difference of the test is documented and accepted.
 - Reverse proxy operators: set `KATALOG_TRUSTED_PROXIES` to the proxy's fixed address or a small fixed proxy subnet (`/32`, IPv6 `/128`) and do not publish port 8080 behind the proxy; every client that can connect from a trusted range can set `X-Forwarded-For` freely and bypass the per-client login lock.
+- Web: the per-session write throttle slows down only slightly; a stricter limit follows in 0.19.1 (#90).
 
 ## [0.18.7] - 2026-11-22
 
@@ -1001,6 +1002,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Das Herausziehen einer Datei aus dem Katalog in andere Programme funktioniert unter Linux wieder: Bambu Studio, OrcaSlicer und einfache Editoren nehmen die Datei an (die Adresse wird richtig prozent-kodiert, auch bei Namen mit Umlauten, und die Daten bleiben nach dem Loslassen abrufbar). Geprüft mit Bambu Studio und OrcaSlicer unter GNOME und KDE (Wayland) und mit Bambu Studio unter KDE X11; siehe die bekannten Einschränkungen (#25).
 - In einer schmalen Seitenleiste bleibt der Name eines fehlenden Ordners lesbar, und seine Markierung „fehlt“ erscheint ganz oder gar nicht (#29). Der Abgleich nennt neue Ordner „Ordner“ statt „Datei“ (#28).
 - Im Web verliert „Als STL speichern“ die heruntergeladene Datei im Dialog nicht mehr stillschweigend, ein Server-Ordner-Import öffnet den Ergebnisdialog nicht mehr doppelt, und der Knopf zum Herunterladen der Sicherung samt Hinweis bricht um statt abgeschnitten zu werden. Der Importfortschritt heißt „x von y“.
+- Im Web warten Importe und die Suche nach neuen Dateien nach dem Einspielen einer Sicherung einen Moment (die Meldung sagt es, HTTP 409), bis der Server die Datei-Prüfsummen wieder ergänzt hat; vorher kopierte ein Import desselben Quellordners jede bekannte Datei ein zweites Mal. Dateien in dieser Zeit umzubenennen oder zu verschieben ist unbedenklich.
 
 ### Bekannte Einschränkungen
 
@@ -1011,6 +1013,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Tar-Uploads: Sparse-tar-Archive (GNU sparse) werden als nicht unterstützt abgelehnt, und ein Archiv, dessen PAX-`size`-Eintrag von der Größe im Eintragskopf abweicht, gilt als beschädigt.
 - Web-Verbindungstest der Drucker: Er meldet nur „nicht erreichbar“ und ist auf 10 Tests pro Minute je Sitzung begrenzt; ein verbleibender Zeitunterschied des Tests ist dokumentiert und akzeptiert.
 - Betreiber hinter einem Reverse-Proxy: `KATALOG_TRUSTED_PROXIES` auf die feste Adresse des Proxys oder ein kleines festes Proxy-Subnetz setzen (`/32`, IPv6 `/128`) und Port 8080 hinter dem Proxy nicht veröffentlichen; jeder Client, der aus einem vertrauten Bereich verbinden kann, setzt `X-Forwarded-For` frei und umgeht die Sperre je Client beim Anmelden.
+- Web: Die Schreibdrossel je Sitzung bremst nur leicht; eine strengere Grenze folgt in 0.19.1 (#90).
 
 ## [0.18.7] - 2026-11-22
 
