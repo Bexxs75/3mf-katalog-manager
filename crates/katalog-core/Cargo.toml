@@ -28,7 +28,7 @@ ruzstd = "0.9"
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util"] }
 # RAR: embeds the official UnRAR source code (C++). License see THIRD-PARTY-LICENSES.md (freeware, not an OSI license).
 unrar = "0.5"
-quick-xml = "0.41"
+quick-xml = "0.42"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 rusqlite = { version = "0.41.1", features = ["bundled", "backup", "trace"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

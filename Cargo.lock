@@ -2496,7 +2496,7 @@ dependencies = [
  "log",
  "lzma-rust2 0.21.0",
  "opencascade-sys",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "regex",
  "reqwest 0.12.28",
  "rusqlite",
