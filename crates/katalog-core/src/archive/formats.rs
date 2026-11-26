@@ -362,7 +362,10 @@ impl<R: Read> HeaderGuard<R> {
         if !matches!(kind, b'L' | b'K' | b'x') {
             // This header consumes the preceding extension blocks.
             self.ext_chain = 0;
-            if let Some(pax) = self.pending_pax_size.take() {
+            // The crate hands a global (g) header out as an entry of its own and
+            // drops the pending x data with it: the size is not applied to it,
+            // so it is not compared either.
+            if let Some(pax) = self.pending_pax_size.take().filter(|_| kind != b'g') {
                 if pax != size {
                     if pax > MAX_UNPACKED_BYTES {
                         self.flags.exceeded.set(true);
@@ -373,7 +376,10 @@ impl<R: Read> HeaderGuard<R> {
                 }
             }
         }
-        let padded = size.div_ceil(512) * 512;
+        // Same rounding as the crate (checked_add + mask); overflow is an error.
+        let Some(padded) = size.checked_add(511).map(|s| s & !511) else {
+            return Err(std::io::Error::other("tar-Kopf mit ungueltiger Groesse"));
+        };
         if kind != b'x' {
             return Ok(After::Data(padded));
         }
